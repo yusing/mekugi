@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestLiveDiffTerminalCatWriteStreamsDiff(t *testing.T) {
@@ -25,8 +26,8 @@ func TestLiveDiffTerminalCatWriteStreamsDiff(t *testing.T) {
 	t.Cleanup(worker.stop)
 	for i, delta := range []string{"mkdir -p generated\ncat >'visible file.txt' <<'END'\nfirst\n", "second\n", "END\n"} {
 		worker.appendDelta(delta)
-		preview := waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
-			return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 1
+		preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
+			return preview.Status == diffview.PreviewEdit && len(preview.Files) == 1
 		})
 		want := "+first"
 		if i > 0 {

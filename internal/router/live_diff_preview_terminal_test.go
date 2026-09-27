@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"fmt"
-	"github.com/yusing/mekugi/internal/livediff"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,10 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alecthomas/chroma/v2"
+	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // The UI harness consumes complete terminal frames, not publication callbacks.
@@ -358,7 +359,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 		t.Fatalf("concurrent frame lost attribution: %q", frame)
 	}
 	// Child callers keep the agents pane's color for the same canonical path.
-	if !strings.Contains(frame, liveAgentColor("/root/editor")+"editor") || !strings.Contains(frame, "STREAM · v diff") {
+	if !strings.Contains(frame, activityui.Color("/root/editor")+"editor") || !strings.Contains(frame, "STREAM · v diff") {
 		t.Fatalf("concurrent frame lost attribution: %q", frame)
 	}
 	for i := 101; i <= 150; i++ {

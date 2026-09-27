@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 // The native shell owns terminal presentation; Codex app-server owns execution.
@@ -29,7 +30,7 @@ type terminalUI struct {
 	side, activityOpen                             bool
 	diffOpen                                       bool
 	diffUnseen                                     bool // Saved changes arrived while Activity held the right column.
-	mainDock, agentDock                            liveDiffPreviewPane
+	mainDock, agentDock                            diffview.PreviewPane
 	dockSeen                                       [2]time.Time // Last card update in each dock.
 	prefix                                         bool
 	sequenceAt                                     time.Time
@@ -41,6 +42,7 @@ type terminalUI struct {
 }
 
 type terminalRect struct{ x, y, w, h int }
+
 type terminalLayout struct {
 	codex, diff, agents, roster, live      terminalRect
 	vertical, horizontal, rosterHorizontal int
@@ -245,15 +247,15 @@ func (u *terminalUI) resize(key string) {
 		u.horizontal++
 	case "[", "]":
 		n := &u.diff.navigation
-		if n.columns == 0 {
-			n.columns = max(25, u.layout.diff.w/4)
+		if n.Columns == 0 {
+			n.Columns = max(25, u.layout.diff.w/4)
 		}
 		if key == "[" {
-			n.columns -= 2
+			n.Columns -= 2
 		} else {
-			n.columns += 2
+			n.Columns += 2
 		}
-		n.columns = max(16, n.columns)
+		n.Columns = max(16, n.Columns)
 		u.diff.dirty = true
 	}
 	u.split = min(max(30, u.split), max(30, u.width-41))
@@ -270,7 +272,7 @@ func (u *terminalUI) terminalColor(reply string) {
 	if fg, ok := livediff.ForegroundColor(reply); ok {
 		for _, view := range views {
 			if view != nil {
-				view.painter.colors.foreground, view.painter.colors.hasForeground = fg, true
+				view.painter.Colors.Foreground, view.painter.Colors.HasForeground = fg, true
 			}
 		}
 	}
@@ -281,8 +283,8 @@ func (u *terminalUI) terminalColor(reply string) {
 	bg, _ := livediff.BackgroundColor(reply)
 	for _, view := range views {
 		if view != nil {
-			view.painter.theme = theme
-			view.painter.colors.background, view.painter.colors.hasBackground = bg, true
+			view.painter.Theme = theme
+			view.painter.Colors.Background, view.painter.Colors.HasBackground = bg, true
 		}
 	}
 	if u.diff != nil {
@@ -292,16 +294,20 @@ func (u *terminalUI) terminalColor(reply string) {
 }
 
 func (u *terminalUI) send(s string) error {
- if s == "\x1b" && u.main != nil && !u.main.keybindings {
-  var transcript *liveActivityView
-  if u.focus == 0 { transcript = u.main.view } else if u.focus == 2 { transcript = u.agents }
-  if transcript != nil && !transcript.following {
-   transcript.follow()
-   u.selection = nil
-   u.agentEscape = ""
-   return nil
-  }
- }
+	if s == "\x1b" && u.main != nil && !u.main.keybindings {
+		var transcript *liveActivityView
+		if u.focus == 0 {
+			transcript = u.main.view
+		} else if u.focus == 2 {
+			transcript = u.agents
+		}
+		if transcript != nil && !transcript.following {
+			transcript.follow()
+			u.selection = nil
+			u.agentEscape = ""
+			return nil
+		}
+	}
 	if u.selection != nil && !u.selection.dragging {
 		if s == "\x1b" {
 			u.selection = nil
@@ -374,7 +380,7 @@ func (u *terminalUI) mouse(s string) error {
 		case 4:
 			u.rosterHeight = min(max(3, u.height-y-2), max(3, u.height-11))
 		case 3:
-			u.diff.navigation.columns = max(16, x-u.layout.diff.x)
+			u.diff.navigation.Columns = max(16, x-u.layout.diff.x)
 			u.diff.dirty = true
 		}
 		return nil
@@ -390,7 +396,7 @@ func (u *terminalUI) mouse(s string) error {
 		case y == u.layout.horizontal && x > u.layout.vertical && u.layout.horizontal >= 0:
 			u.drag = 2
 			return nil
-		case u.layout.diff.contains(x, y) && u.diff.diffMode && u.diff.navigation.width(u.layout.diff.w) > 0 && x-u.layout.diff.x == u.diff.navigation.width(u.layout.diff.w):
+		case u.layout.diff.contains(x, y) && u.diff.diffMode && u.diff.navigation.Width(u.layout.diff.w) > 0 && x-u.layout.diff.x == u.diff.navigation.Width(u.layout.diff.w):
 			u.drag = 3
 			return nil
 		}

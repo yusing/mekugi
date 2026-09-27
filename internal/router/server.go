@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/internal/ui/dashboard"
 )
 
 const (
@@ -307,7 +308,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", serveDashboard)
+	mux.HandleFunc("GET /", dashboard.ServeHTTP)
 	mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
 	if mekugiCalls != nil {

@@ -5,18 +5,19 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/vt"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestNativeUISubtleForeground(t *testing.T) {
-	p := liveActivityPainter{}
+	p := activityui.Painter{}
 	u := &appServerUI{model: "x", view: newLiveActivityView()}
 	frame, _ := u.mainFrame(40, 3, 0)
 	for name, row := range map[string]string{
 		"composer":   strings.Join(frame, ""),
-		"metadata":   p.label("Edit", "`file` · x"),
-		"path":       liveActivityPath("x/file"),
-		"reasoning":  strings.Join(p.block(liveActivityBlock{kind: "summary", body: "x"}, 80), ""),
-		"after link": strings.Join(p.block(liveActivityBlock{kind: "summary", body: "before [link](https://example.com) x"}, 80), ""),
+		"metadata":   p.Label("Edit", "`file` · x"),
+		"path":       activityui.Path("x/file"),
+		"reasoning":  strings.Join(p.Block(activityui.Block{Kind: "summary", Body: "x"}, 80), ""),
+		"after link": strings.Join(p.Block(activityui.Block{Kind: "summary", Body: "before [link](https://example.com) x"}, 80), ""),
 	} {
 		t.Run(name, func(t *testing.T) {
 			screen := vt.NewEmulator(100, 1)

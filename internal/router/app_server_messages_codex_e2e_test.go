@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/appserver"
 )
 
 // A real Codex app-server exposes native child lifecycle, but not a public
@@ -47,11 +48,11 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 		"-c", "tools.update_plan.enabled=false", "-c", "include_collaboration_mode_instructions=false")
 	cmd.Env = routerFaultCodexEnvironment(t)
 	cmd.Dir = t.TempDir()
-	client, err := startAppServer(cmd)
+	client, err := appserver.Start(cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.close()
+	defer client.Close()
 	u := &appServerUI{client: client, proxy: proxy, view: newLiveActivityView(), agents: newLiveActivityView(), requests: make(map[string]string), ctx: ctx}
 	u.ensureShell()
 	defer u.shell.diff.close()
@@ -64,7 +65,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 	started := false
 	for {
 		select {
-		case m, ok := <-client.messages:
+		case m, ok := <-client.Messages:
 			if !ok {
 				t.Fatal("app-server closed before the directed message was rendered")
 			}
@@ -74,13 +75,13 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 			u.applyObservedActivity()
 			if u.thread != "" && !started {
 				started = true
-				if err := u.request("turn/start", map[string]any{"threadId": u.thread, "input": appServerInput("Spawn the assigned child and wait for its report.")}); err != nil {
+				if err := u.request("turn/start", map[string]any{"threadId": u.thread, "input": appserver.Input("Spawn the assigned child and wait for its report.")}); err != nil {
 					t.Fatal(err)
 				}
 			}
 		case <-tick.C:
 			u.applyObservedActivity()
-		case err := <-client.done:
+		case err := <-client.Done:
 			t.Fatalf("app-server exited before message and reply link: %v", err)
 		case <-ctx.Done():
 			provider.mu.Lock()

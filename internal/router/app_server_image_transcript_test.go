@@ -14,7 +14,7 @@ func TestAppServerImageTranscriptHighlight(t *testing.T) {
 	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
 		for _, width := range []int{16, 80} {
 			u, _ := newAppServerTestUI()
-			u.view.painter.theme = theme
+			u.view.painter.Theme = theme
 			appServerTestKeys(t, u, "literal [Image 1] 世界 ")
 			u.insertImage("/tmp/one.png")
 			appServerTestKeys(t, u, " after ")
@@ -55,7 +55,7 @@ func TestAppServerImageTranscriptHighlight(t *testing.T) {
 				check(u.view)
 			}
 			restored := newAppServerSessionTestUI(t, t.TempDir())
-			restored.view.painter.theme = theme
+			restored.view.painter.Theme = theme
 			restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
 			check(restored.view)
 		}

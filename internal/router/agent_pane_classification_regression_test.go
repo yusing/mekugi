@@ -84,13 +84,13 @@ func TestAgentPaneRetainsUnknownJavaScriptToolParagraph(t *testing.T) {
 		Kind: "tool",
 		Text: "Read `a.go`\n\nRun JavaScript · other code\n\nInspect `b.go`",
 	})
-	if len(blocks) != 3 || blocks[0].verb != "Read" || blocks[1].verb != "Run JavaScript" || blocks[2].verb != "Inspect" {
+	if len(blocks) != 3 || blocks[0].Verb != "Read" || blocks[1].Verb != "Run JavaScript" || blocks[2].Verb != "Inspect" {
 		t.Fatalf("genuinely unknown JavaScript was hidden: %+v", blocks)
 	}
 
 	const authored = "A note about Run JavaScript · other code should remain visible."
 	text := parseLiveActivity(activityPaneEntry{Kind: "commentary", Text: authored})
-	if len(text) != 1 || text[0].kind != "text" || text[0].body != authored {
+	if len(text) != 1 || text[0].Kind != "text" || text[0].Body != authored {
 		t.Fatalf("non-tool authored text changed: %+v", text)
 	}
 }
@@ -110,10 +110,10 @@ func TestAgentPaneEditLikeToolBlocksOmitDiffBodies(t *testing.T) {
 		t.Fatalf("edit-like blocks = %+v, want %d blocks", blocks, len(wantVerbs))
 	}
 	for i, block := range blocks {
-		if block.kind != "op" || block.verb != wantVerbs[i] || block.label != wantLabels[i] {
+		if block.Kind != "op" || block.Verb != wantVerbs[i] || block.Label != wantLabels[i] {
 			t.Errorf("block %d lost its operation/path/count label: %+v", i, block)
 		}
-		if block.fenced || block.code != "" || block.body != "" || strings.Contains(block.label, "diff") {
+		if block.Fenced || block.Code != "" || block.Body != "" || strings.Contains(block.Label, "diff") {
 			t.Errorf("block %d retained diff content: %+v", i, block)
 		}
 	}
@@ -122,7 +122,7 @@ func TestAgentPaneEditLikeToolBlocksOmitDiffBodies(t *testing.T) {
 func TestAgentPaneChainedMultilineFallback(t *testing.T) {
 	command := "cat a.go && python -c '\nprint(1)\n\nprint(2)\n'"
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(command)})
-	if len(blocks) != 2 || blocks[0].kind != "reads" || blocks[1].verb != "Run" || !blocks[1].fenced || !strings.Contains(blocks[1].code, "print(1)\n\nprint(2)") {
+	if len(blocks) != 2 || blocks[0].Kind != "reads" || blocks[1].Verb != "Run" || !blocks[1].Fenced || !strings.Contains(blocks[1].Code, "print(1)\n\nprint(2)") {
 		t.Fatalf("multiline && neighbor lost structure: %+v", blocks)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
@@ -118,7 +119,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 func TestNativeUnretainedQuestionUsesActualText(t *testing.T) {
 	v := newLiveActivityView()
 	var out conversationLines
-	v.journalReplyContext(&out, liveActivityAnswerGroup{question: "Which exact assignment?", target: 99}, 0, "", 100)
+	v.journalReplyContext(&out, activityui.AnswerGroup{Question: "Which exact assignment?", Target: 99}, 0, "", 100)
 	if len(out.lines) != 2 || !strings.Contains(ansi.Strip(out.lines[0]), "not loaded") || ansi.Strip(out.lines[1]) != "│ Which exact assignment?" {
 		t.Fatalf("missing original lost its quoted excerpt: %q", out.lines)
 	}
@@ -161,12 +162,12 @@ func TestLiveActivitySkillNamesBold(t *testing.T) {
 			command = "skills-mgr " + operand
 		}
 		classified := toolActivityShell(command)
-		block := parseLiveActivityOperation(classified)
-		if block.verb != "Skill" {
+		block := activityui.ParseOperation(classified)
+		if block.Verb != "Skill" {
 			t.Fatalf("skill command misclassified: %q", classified)
 		}
-		rendered := strings.Join(v.painter.block(block, 120), "\n")
-		if !strings.Contains(rendered, "\x1b[1mgolang-best-practices"+liveActivityUndim) || !strings.Contains(ansi.Strip(rendered), operand) {
+		rendered := strings.Join(v.painter.Block(block, 120), "\n")
+		if !strings.Contains(rendered, "\x1b[1mgolang-best-practices"+activityui.Undim) || !strings.Contains(ansi.Strip(rendered), operand) {
 			t.Fatalf("skill name not bold or operand changed: %q", rendered)
 		}
 	}
@@ -215,21 +216,21 @@ func TestNativeRepliesShareHeaderQuoteAnswerLayout(t *testing.T) {
 				v := newLiveActivityView()
 				question := activityPaneEntry{Seq: 1, Agent: "You", Kind: "text", Text: "Original request.\n\nSecond detail.\n\nThird detail.", Observed: time.Now()}
 				entry := activityPaneEntry{Seq: 2, Agent: "Main", Kind: "text", Text: "Answer body.", native: &liveActivityNativeItem{question: 1}}
-				block := liveActivityBlock{kind: "text", body: entry.Text}
+				block := activityui.Block{Kind: "text", Body: entry.Text}
 				if strings.HasPrefix(kind, "agent") {
 					question.Kind = "assignment"
 					question.assignment = &activityAssignment{to: "/root/worker", text: question.Text}
-					entry.Agent, entry.Kind, block.kind = "/root/worker", "final", "final"
+					entry.Agent, entry.Kind, block.Kind = "/root/worker", "final", "final"
 				}
 				if strings.Contains(kind, "journal") || kind == "agent excerpt" {
 					entry.journal = &journalItem{}
-					block.journal = &liveActivityJournal{groups: []liveActivityAnswerGroup{{question: question.Text, target: 1, answers: []liveActivityAnswer{{text: entry.Text}}}}}
+					block.Journal = &activityui.Journal{Groups: []activityui.AnswerGroup{{Question: question.Text, Target: 1, Answers: []activityui.Answer{{Text: entry.Text}}}}}
 				}
 				if kind == "agent excerpt" {
 					entry.activitySeq = 5
 				}
 				v.entries = []activityPaneEntry{question, entry}
-				v.blocks = [][]liveActivityBlock{nil, {block}}
+				v.blocks = [][]activityui.Block{nil, {block}}
 				run := v.conversationItem(1, 1, width, conversationThread{})
 				if len(run.lines) < 5 {
 					t.Fatalf("missing reply rows: %q", run.lines)

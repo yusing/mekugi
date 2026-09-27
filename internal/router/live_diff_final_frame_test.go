@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func newLiveDiffFinalFrameTransform(t *testing.T, native bool) (*mekugiResponseTransform, *liveDiffBroker, *liveDiffSubscriber) {
@@ -51,7 +52,7 @@ func liveDiffCodeModeCat(t *testing.T, path string, lines ...string) string {
 	return "const result = await tools.exec_command({cmd:" + string(encoded) + "}); text(JSON.stringify(result));"
 }
 
-func liveDiffPreviewAdds(preview liveDiffPreview, line string) bool {
+func liveDiffPreviewAdds(preview diffview.Preview, line string) bool {
 	return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+"+line)
 }
 
@@ -71,7 +72,7 @@ func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeEdit(t *testing.T)
 	} {
 		requireLiveDiffSSEUnchanged(t, transform, event)
 	}
-	waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+	waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 		return liveDiffPreviewAdds(preview, "first") && !preview.Complete
 	})
 	worker := transform.previews["exec-item"]
@@ -91,10 +92,10 @@ func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeEdit(t *testing.T)
 	cancel()
 	transform.Close()
 
-	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 		return preview.Complete && liveDiffPreviewAdds(preview, "FINAL_DONE_ONLY")
 	})
-	if complete.Status != liveDiffPreviewEdit || complete.Input != "" {
+	if complete.Status != diffview.PreviewEdit || complete.Input != "" {
 		t.Fatalf("final edit preview = %+v", complete)
 	}
 	select {
@@ -135,13 +136,13 @@ func TestLiveDiffFinalFrameOutputItemDoneFallback(t *testing.T) {
 	} {
 		requireLiveDiffSSEUnchanged(t, transform, event)
 	}
-	waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+	waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 		return liveDiffPreviewAdds(preview, "first") && !preview.Complete
 	})
 	completedItem := map[string]any{"type": "custom_tool_call", "id": "fallback-item", "call_id": "fallback-call", "name": "exec", "input": fullInput, "status": "completed"}
 	event := mustTestJSON(t, map[string]any{"type": "response.output_item.done", "output_index": 0, "item": completedItem})
 	requireLiveDiffSSEUnchanged(t, transform, event)
-	waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+	waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 		return preview.Complete && liveDiffPreviewAdds(preview, "FALLBACK_FINAL")
 	})
 }
@@ -159,12 +160,12 @@ func TestLiveDiffFinalFrameNativeExecArgumentsDoneUsesFullCommand(t *testing.T) 
 		requireLiveDiffSSEUnchanged(t, transform, event)
 	}
 	// Unfinished JSON arguments stream their literal cat write.
-	waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+	waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 		return liveDiffPreviewAdds(preview, "first") && !preview.Complete
 	})
 	event := mustTestJSON(t, map[string]any{"type": "response.function_call_arguments.done", "item_id": "native-item", "arguments": arguments})
 	requireLiveDiffSSEUnchanged(t, transform, event)
-	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 		return preview.Complete && liveDiffPreviewAdds(preview, "FINAL_NATIVE")
 	})
 	if complete.Input != "" {
@@ -186,7 +187,7 @@ func TestLiveDiffCancellationBeforeDoneDiscardsActivePreview(t *testing.T) {
 	} {
 		requireLiveDiffSSEUnchanged(t, transform, event)
 	}
-	partial := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+	partial := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 		return liveDiffPreviewAdds(preview, "active") && !preview.Complete
 	})
 	if !liveDiffBrokerHasActivePreview(broker, partial.ID) {
@@ -219,7 +220,7 @@ func TestLiveDiffInputOverflowAfterPartialPreviewDiscardsActiveState(t *testing.
 	} {
 		requireLiveDiffSSEUnchanged(t, transform, event)
 	}
-	partial := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+	partial := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 		return liveDiffPreviewAdds(preview, "active") && !preview.Complete
 	})
 	if !liveDiffBrokerHasActivePreview(broker, partial.ID) {
@@ -265,7 +266,7 @@ func TestLiveDiffFinalFrameNativeHeredocIncludesLastLineAfterContextCancellation
 	requireLiveDiffSSEUnchanged(t, transform, event)
 	cancel()
 
-	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 		return preview.Complete && len(preview.Files) == 1 && strings.Contains(preview.Files[0].UnifiedDiff(), "FINAL_NATIVE_EDIT")
 	})
 	if !strings.Contains(complete.Files[0].UnifiedDiff(), "+FINAL_NATIVE_EDIT") {
@@ -307,7 +308,7 @@ func TestLiveDiffFinalFrameCodeModeHeredocIncludesLastLineAfterContextCancellati
 	requireLiveDiffSSEUnchanged(t, transform, event)
 	cancel()
 
-	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 		return preview.Complete && len(preview.Files) == 1 && strings.Contains(preview.Files[0].UnifiedDiff(), "FINAL_CODEMODE_EDIT")
 	})
 	if !strings.Contains(complete.Files[0].UnifiedDiff(), "+FINAL_CODEMODE_EDIT") {
@@ -391,7 +392,7 @@ func TestLiveDiffFinalFrameTransformCloseDoesNotDiscardFinalUpdate(t *testing.T)
 	} {
 		requireLiveDiffSSEUnchanged(t, transform, event)
 	}
-	waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+	waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 		return liveDiffPreviewAdds(preview, "first") && !preview.Complete
 	})
 	worker := transform.previews["close-item"]
@@ -401,10 +402,10 @@ func TestLiveDiffFinalFrameTransformCloseDoesNotDiscardFinalUpdate(t *testing.T)
 	event := mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "close-item", "call_id": "close-call", "input": fullInput})
 	requireLiveDiffSSEUnchanged(t, transform, event)
 	transform.Close()
-	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 		return preview.Complete && liveDiffPreviewAdds(preview, "CLOSE_FINAL")
 	})
-	if complete.Status != liveDiffPreviewEdit {
+	if complete.Status != diffview.PreviewEdit {
 		t.Fatalf("completion status = %q, want an edit with Complete=true", complete.Status)
 	}
 }

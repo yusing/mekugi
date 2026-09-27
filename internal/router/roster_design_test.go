@@ -7,10 +7,11 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
-	p := liveActivityPainter{}
+	p := activityui.Painter{}
 	for _, tc := range []struct{ owner, from, to, want string }{
 		{"/root/a", "/root/a", "/root", "→ main"},
 		{"/root", "/root/a", "/root", "← a"},
@@ -20,17 +21,17 @@ func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 		{"/root/a", "/root/a/x", "/root/a", "← a/x"},
 	} {
 		blocks := parseLiveActivity(activityPaneEntry{Agent: tc.owner, Kind: "reply", Text: "[`" + tc.from + "` -> `" + tc.to + "`] Message received:\nMessage body"})
-		if len(blocks) != 1 || blocks[0].kind != "message" {
+		if len(blocks) != 1 || blocks[0].Kind != "message" {
 			t.Fatalf("parsed message = %+v", blocks)
 		}
-		for _, got := range []string{ansi.Strip(strings.Join(p.block(blocks[0], 80), "\n")), ansi.Strip(p.summary(blocks))} {
+		for _, got := range []string{ansi.Strip(strings.Join(p.Block(blocks[0], 80), "\n")), ansi.Strip(p.Summary(blocks))} {
 			if !strings.Contains(got, tc.want) || !strings.Contains(got, "Message body") {
 				t.Errorf("%s -> %s owned by %s: %q, want direction %q and body", tc.from, tc.to, tc.owner, got, tc.want)
 			}
 		}
 	}
 	start := parseLiveActivity(activityPaneEntry{Kind: "start", Text: "Started · model high\nSpawn assignment:\nInspect parser.\n\n- Preserve behavior."})
-	if len(start) != 1 || start[0].body != "Inspect parser.\n\n- Preserve behavior." {
+	if len(start) != 1 || start[0].Body != "Inspect parser.\n\n- Preserve behavior." {
 		t.Fatalf("assignment body = %+v", start)
 	}
 	now := time.Now()
@@ -101,7 +102,7 @@ func TestRosterDesignSeparateHeaderTreeAndMetrics(t *testing.T) {
 		t.Errorf("strip hover styling = %q", hovered)
 	}
 	table := v.metricTable(rows[:2], now)
-	if metric := table[1]; strings.Contains(metric, "explorer") || !strings.Contains(metric, liveActivityDim+"T+"+liveActivityUndim+"1") || strings.Contains(metric, "n/a") {
+	if metric := table[1]; strings.Contains(metric, "explorer") || !strings.Contains(metric, activityui.Dim+"T+"+activityui.Undim+"1") || strings.Contains(metric, "n/a") {
 		t.Errorf("metric style = %q", metric)
 	}
 	if strings.Contains(table[0], "root-role") {

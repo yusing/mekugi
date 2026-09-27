@@ -461,7 +461,7 @@ unknown counts are not presented as zero. Help is available without permanently
 occupying code rows. These controls change no execution or durable evidence.
 
 Mekugi owns the native terminal composition, while Codex app-server remains the
-execution authority. The [native UI contract](router.md#native-app-server-ui)
+execution authority. The [native UI contract](native_ui.md)
 owns pane layout and input: Main on the left, Diff or Activity on the right,
 and the child Agents roster below. `Ctrl-B` followed by `1`, `2`, `3`, or `4`
 focuses those panes. Mouse dragging and prefix shortcuts resize panes and the

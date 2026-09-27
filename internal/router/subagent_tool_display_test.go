@@ -55,6 +55,7 @@ func TestSubagentToolDisplay(t *testing.T) {
 		})
 	}
 }
+
 func TestSubagentMCPToolDisplay(t *testing.T) {
 	name := "mcp__openaiDeveloperDocs__search_openai_docs"
 	arguments := `{"query":"Codex subagents model catalog switching threads","limit":5}`
@@ -871,7 +872,7 @@ func TestSubagentMappedCommandArray(t *testing.T) {
 		source := prefix + call + format
 		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
 		blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: subagentToolActivityText(item, "exec")})
-		if len(blocks) != 2 || blocks[0].verb != "Run" || !strings.Contains(blocks[0].code, "curl -fsSL") || blocks[1].kind != "reads" || blocks[1].reads[0].path != "a.go" {
+		if len(blocks) != 2 || blocks[0].Verb != "Run" || !strings.Contains(blocks[0].Code, "curl -fsSL") || blocks[1].Kind != "reads" || blocks[1].Reads[0].Path != "a.go" {
 			t.Fatalf("mapped commands not displayed: %+v", blocks)
 		}
 		if jsonString(item, "input") != source {

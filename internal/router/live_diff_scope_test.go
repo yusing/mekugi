@@ -12,10 +12,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 // Exercise the same snapshot path used by the event-stream consumer.
-func (s *mekugiReplayStore) liveDiffSnapshotFiles(ctx context.Context, scope liveDiffScope) ([]liveDiffFile, error) {
+func (s *mekugiReplayStore) liveDiffSnapshotFiles(ctx context.Context, scope liveDiffScope) ([]livediff.File, error) {
 	data, err := s.liveDiffSnapshot(ctx, scope)
 	if err != nil {
 		return nil, err
@@ -44,7 +45,7 @@ func TestLiveDiffSessionScopeStreamsAndWorkspaces(t *testing.T) {
 	}
 	liveDiffScopeCapture(t, store, workspace, "unrelated", "old", filepath.Join(workspace, "old.go"), "a", "b")
 	workspaces := map[string]map[string]bool{workspace: {"current": true}}
-	read := func() []liveDiffFile {
+	read := func() []livediff.File {
 		t.Helper()
 		// A fresh reader has no in-memory ancestry or routing cache.
 		reader := &mekugiReplayStore{directory: store.directory}
@@ -83,7 +84,7 @@ func TestLiveDiffSessionCrossWorkspaceOverlap(t *testing.T) {
 	scope := liveDiffScope{Workspaces: map[string]map[string]bool{first: {"root": true}, second: {"child": true}}}
 	path := filepath.Join(t.TempDir(), "notes.txt")
 	liveDiffScopeCapture(t, store, first, "root", "same-call-id", path, "original", "first")
-	view := liveDiffView{Scroll: make(map[string]int)}
+	view := livediff.View{Scroll: make(map[string]int)}
 	refresh := func() {
 		t.Helper()
 		files, err := store.liveDiffSnapshotFiles(t.Context(), scope)
@@ -138,7 +139,7 @@ func TestLiveDiffFreshSnapshotComposesCrossStreamCaptures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var view liveDiffView
+	var view livediff.View
 	view.Merge(files)
 	view.RefreshVisible()
 	for _, file := range view.Files {

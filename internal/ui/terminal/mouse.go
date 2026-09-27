@@ -1,4 +1,4 @@
-package router
+package terminal
 
 import (
 	"strconv"
@@ -7,27 +7,27 @@ import (
 
 // SGR mouse reports can span reads. Consume the whole report, including ignored
 // clicks and malformed payloads, so its bytes never become review commands.
-type liveDiffMouse struct {
-	active, discard bool
-	payload         string
+type Mouse struct {
+	Active, discard bool
+	Payload         string
 }
 
-func (m *liveDiffMouse) consume(key byte) (action byte, row, column int) {
-	if !m.active {
-		m.active = true // The caller consumed CSI and passed its '<' introducer.
+func (m *Mouse) Consume(key byte) (action byte, row, column int) {
+	if !m.Active {
+		m.Active = true // The caller consumed CSI and passed its '<' introducer.
 		return 0, 0, 0
 	}
 	if key != 'M' && key != 'm' {
-		if len(m.payload) >= 48 || key != ';' && (key < '0' || key > '9') {
+		if len(m.Payload) >= 48 || key != ';' && (key < '0' || key > '9') {
 			m.discard = true
 		}
 		if !m.discard {
-			m.payload += string(key)
+			m.Payload += string(key)
 		}
 		return 0, 0, 0
 	}
-	payload, discard := m.payload, m.discard
-	*m = liveDiffMouse{}
+	payload, discard := m.Payload, m.discard
+	*m = Mouse{}
 	if discard || key == 'm' { // Button releases do not scroll.
 		return 0, 0, 0
 	}

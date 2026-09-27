@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
@@ -17,11 +18,11 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"root": true}}})
 	sub := broker.subscribe()
 	<-sub.events
-	var pane liveDiffPreviewPane
+	var pane diffview.PreviewPane
 	baseline := liveDiffPreviewWorker{ctx: t.Context(), kind: applyPatchToolName}
 	previous, _ := baseline.project("*** Begin Patch\n*** Add File: previous.txt\n+PREVIOUS DIFF\n*** End Patch\n", workspace, true)
 	previous.ID, previous.Workspace, previous.Thread, previous.Complete = "baseline", workspace, "root", true
-	pane.update(previous)
+	pane.Update(previous)
 	for index, fixture := range previewBoundaryCases() {
 		worker := liveDiffPreviewWorker{ctx: t.Context(), kind: fixture.Kind}
 		var input string
@@ -33,15 +34,15 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 			}
 			preview.ID, preview.Workspace, preview.Thread = fmt.Sprint(index), workspace, "root"
 			if !recognized {
-				preview.Status = liveDiffPreviewEdit
+				preview.Status = diffview.PreviewEdit
 			}
 			broker.publishPreview(preview, false)
 			for _, event := range broker.takePreviews(sub) {
 				if event.Preview != nil {
-					pane.update(*event.Preview)
+					pane.Update(*event.Preview)
 				}
 			}
-			lines, err := pane.render(t.Context(), workspace, livediff.DarkTheme, 110, 24)
+			lines, err := pane.Render(t.Context(), workspace, livediff.DarkTheme, 110, 24)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -56,7 +57,7 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 					t.Fatalf("%s step %d: exposed %q in %q", fixture.Name, phase+1, absent, frame)
 				}
 			}
-			if phase == 0 && (len(pane.order) != 1 || pane.order[0] != previous.ID) {
+			if phase == 0 && (len(pane.Order) != 1 || pane.Order[0] != previous.ID) {
 				t.Fatalf("%s header replaced preceding diff", fixture.Name)
 			}
 		}
@@ -65,6 +66,6 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 		}
 		previous, _ = worker.project(fixture.Final, workspace, true)
 		previous.ID, previous.Workspace, previous.Thread, previous.Complete = fmt.Sprint(index), workspace, "root", true
-		pane.update(previous)
+		pane.Update(previous)
 	}
 }

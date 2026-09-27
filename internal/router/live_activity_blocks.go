@@ -1,81 +1,31 @@
 package router
 
 import (
-	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
-// The agents pane parses the router's own commentary grammar back into parts
-// so it can lay them out natively. Unrecognized text stays a plain text block;
-// nothing is interpreted, expanded, or executed.
-type liveActivityBlock struct {
-	source   uint64 // Activity entry identity for exact cross-pane navigation.
-	kind     string // op, reads, message, start, error, text
-	verb     string // Operation verb, or a message headline.
-	label    string // Markdown remainder of the operation label.
-	code     string // Inline code or fenced program under the label.
-	lang     string
-	fenced   bool
-	from, to string
-	owner    string
-	body     string
-	reads    []liveActivityRead
-	journal  *liveActivityJournal // A final answer in journal-result form.
-	results  *int
-	exitCode int // Nonzero command exit; zero means no failure label.
-}
-
-// liveActivityJournal is a child's journal result laid out by the router's
-// journal delivery grammar: answer groups, then this agent's recorded changes.
-type liveActivityJournal struct {
-	groups  []liveActivityAnswerGroup
-	empty   bool
-	changes string // Change ranges.
-	stats   []liveActivityStat
-	notes   []string // Unavailable or empty change reports.
-	clipped bool
-}
-
-type liveActivityAnswerGroup struct {
-	question string
-	answers  []liveActivityAnswer
-	target   uint64
-}
-
-type liveActivityAnswer struct{ id, text string }
-
-type liveActivityStat struct{ added, removed, path string }
-
-type liveActivityRead struct {
-	path   string
-	ranges []string
-}
-
-// Read previews append line spans as space-separated N:M pairs.
-var liveActivityReadRange = regexp.MustCompile(`^(.+?) (\d+:\d+(?: \d+:\d+)*)$`)
-
-func parseLiveActivity(entry activityPaneEntry) []liveActivityBlock {
+func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 	text := livediff.Safe(entry.Text, false)
 	// Only the router writes reply envelopes; child-authored text that looks
 	// like one stays plain, so it cannot pose as another agent's message.
 	if entry.Kind == "reply" {
-		if from, to, headline, body, ok := parseLiveActivityEnvelope(text); ok {
-			return []liveActivityBlock{{kind: "message", from: from, to: to, owner: entry.Agent, verb: headline, body: body}}
+		if from, to, headline, body, ok := activityui.ParseEnvelope(text); ok {
+			return []activityui.Block{{Kind: "message", From: from, To: to, Owner: entry.Agent, Verb: headline, Body: body}}
 		}
 	}
 	switch entry.Kind {
 	case "assignment":
 		if entry.assignment != nil {
-			return []liveActivityBlock{{kind: "message", from: entry.assignment.from, to: entry.assignment.to, owner: entry.Agent, body: livediff.Safe(entry.assignment.text, false)}}
+			return []activityui.Block{{Kind: "message", From: entry.assignment.from, To: entry.assignment.to, Owner: entry.Agent, Body: livediff.Safe(entry.assignment.text, false)}}
 		}
 	case "reasoning":
-		return []liveActivityBlock{{kind: "summary", body: text}}
+		return []activityui.Block{{Kind: "summary", Body: text}}
 	case "native_journal":
 		if entry.journal != nil {
-			journal := &liveActivityJournal{}
+			journal := &activityui.Journal{}
 			items := entry.journalItems
 			if len(items) == 0 {
 				items = []journalItem{*entry.journal}
@@ -84,287 +34,55 @@ func parseLiveActivity(entry activityPaneEntry) []liveActivityBlock {
 			for _, item := range items {
 				index, found := questions[item.Question]
 				if item.Question == "" || !found {
-					index = len(journal.groups)
-					journal.groups = append(journal.groups, liveActivityAnswerGroup{question: livediff.Safe(item.Question, false)})
+					index = len(journal.Groups)
+					journal.Groups = append(journal.Groups, activityui.AnswerGroup{Question: livediff.Safe(item.Question, false)})
 					questions[item.Question] = index
 				}
-				journal.groups[index].answers = append(journal.groups[index].answers, liveActivityAnswer{id: item.ID, text: livediff.Safe(item.Text, false)})
+				journal.Groups[index].Answers = append(journal.Groups[index].Answers, activityui.Answer{ID: item.ID, Text: livediff.Safe(item.Text, false)})
 			}
-			return []liveActivityBlock{{kind: "final", body: text, journal: journal}}
+			return []activityui.Block{{Kind: "final", Body: text, Journal: journal}}
 		}
 	case "command":
 		if entry.native != nil {
-			return []liveActivityBlock{{kind: "op", verb: "Run", label: livediff.Safe(entry.native.status, false), code: livediff.Safe(entry.native.command, false), lang: "bash", fenced: true}}
+			return []activityui.Block{{Kind: "op", Verb: "Run", Label: livediff.Safe(entry.native.status, false), Code: livediff.Safe(entry.native.command, false), Lang: "bash", Fenced: true}}
 		}
 	case "final":
-		journal, _ := parseLiveActivityJournal(text)
-		return []liveActivityBlock{{kind: "final", body: text, journal: journal, owner: entry.Agent}}
+		journal, _ := activityui.ParseJournal(text)
+		return []activityui.Block{{Kind: "final", Body: text, Journal: journal, Owner: entry.Agent}}
 	case "start":
 		if strings.HasPrefix(text, "Started") {
-			block := parseLiveActivityStart(text)
+			block := activityui.ParseStart(text)
 			if entry.assignment != nil {
-				block.from, block.to = entry.assignment.from, entry.assignment.to
-				block.body = livediff.Safe(entry.assignment.text, false)
+				block.From, block.To = entry.assignment.from, entry.assignment.to
+				block.Body = livediff.Safe(entry.assignment.text, false)
 			}
-			return []liveActivityBlock{block}
+			return []activityui.Block{block}
 		}
 	case "error":
-		return []liveActivityBlock{{kind: "error", body: text}}
+		return []activityui.Block{{Kind: "error", Body: text}}
 	case "compaction":
-		return []liveActivityBlock{{kind: "compaction", body: text}}
+		return []activityui.Block{{Kind: "compaction", Body: text}}
 	case "output_filter":
 		if entry.Filter != nil {
-			return []liveActivityBlock{{kind: "filter", body: text}}
+			return []activityui.Block{{Kind: "filter", Body: text}}
 		}
 	case "tool":
-		var blocks []liveActivityBlock
-		for _, paragraph := range liveActivityParagraphs(text) {
-			block := parseLiveActivityOperation(paragraph)
-			switch block.verb {
+		var blocks []activityui.Block
+		for _, paragraph := range activityui.Paragraphs(text) {
+			block := activityui.ParseOperation(paragraph)
+			switch block.Verb {
 			case "Create", "Edit", "Delete", "Move":
-				if block.fenced && block.lang == "diff" {
-					block.code, block.lang, block.fenced = "", "", false
+				if block.Fenced && block.Lang == "diff" {
+					block.Code, block.Lang, block.Fenced = "", "", false
 				}
 			}
 			blocks = append(blocks, block)
 		}
-		blocks = mergeLiveActivityReads(blocks)
-		if len(blocks) == 1 && blocks[0].verb == "Search" && entry.native != nil {
-			blocks[0].results = entry.native.searchResults
+		blocks = activityui.MergeLiveActivityReads(blocks)
+		if len(blocks) == 1 && blocks[0].Verb == "Search" && entry.native != nil {
+			blocks[0].Results = entry.native.searchResults
 		}
 		return blocks
 	}
-	return []liveActivityBlock{{kind: "text", body: text}}
-}
-
-// liveActivityCodeSpan reads one Markdown code span starting at i.
-func liveActivityCodeSpan(s string, i int) (string, int, bool) {
-	if i >= len(s) || s[i] != '`' {
-		return "", i, false
-	}
-	run := 1
-	for i+run < len(s) && s[i+run] == '`' {
-		run++
-	}
-	end := strings.Index(s[i+run:], strings.Repeat("`", run))
-	if end < 0 {
-		return "", i, false
-	}
-	code := s[i+run : i+run+end]
-	if len(code) > 1 && code[0] == ' ' && code[len(code)-1] == ' ' {
-		code = code[1 : len(code)-1]
-	}
-	return code, i + run + end + run, true
-}
-
-func parseLiveActivityEnvelope(text string) (from, to, headline, body string, ok bool) {
-	if !strings.HasPrefix(text, "[") {
-		return
-	}
-	from, i, ok := liveActivityCodeSpan(text, 1)
-	if !ok || !strings.HasPrefix(text[i:], " -> ") {
-		return "", "", "", "", false
-	}
-	to, j, ok := liveActivityCodeSpan(text, i+4)
-	if !ok || !strings.HasPrefix(text[j:], "]") {
-		return "", "", "", "", false
-	}
-	headline, body, _ = strings.Cut(strings.TrimPrefix(text[j+1:], " "), "\n")
-	return from, to, headline, strings.Trim(body, "\n"), true
-}
-
-func parseLiveActivityStart(text string) liveActivityBlock {
-	heading, body, _ := strings.Cut(text, "\n")
-	_, details, _ := strings.Cut(heading, "Started · ")
-	body = strings.TrimPrefix(strings.TrimLeft(body, "\n"), "Spawn assignment:\n")
-	return liveActivityBlock{kind: "start", label: details, body: body}
-}
-
-// liveActivityParagraphs splits operations at blank lines outside fences.
-func liveActivityParagraphs(text string) []string {
-	var paragraphs, current []string
-	flush := func() {
-		if len(current) > 0 {
-			paragraphs = append(paragraphs, strings.Join(current, "\n"))
-			current = nil
-		}
-	}
-	fence := ""
-	for line := range strings.SplitSeq(text, "\n") {
-		switch {
-		case fence != "":
-			current = append(current, line)
-			if line == fence {
-				fence = ""
-			}
-			continue
-		case strings.TrimSpace(line) == "":
-			flush()
-			continue
-		}
-		if delimiter, ok := toolActivityFenceDelimiter(line); ok {
-			fence = delimiter
-		}
-		current = append(current, line)
-	}
-	flush()
-	return paragraphs
-}
-
-func parseLiveActivityOperation(paragraph string) liveActivityBlock {
-	lines := strings.Split(paragraph, "\n")
-	label := lines[0]
-	cut := len(label)
-	if i := strings.IndexByte(label, '`'); i >= 0 {
-		cut = i
-	}
-	if i := strings.Index(label, " · "); i >= 0 && i < cut {
-		cut = i
-	}
-	block := liveActivityBlock{kind: "op", verb: strings.TrimSuffix(strings.TrimSpace(label[:cut]), ":"), label: strings.TrimSpace(label[cut:])}
-	if rest := lines[1:]; len(rest) > 0 {
-		joined := strings.Join(rest, "\n")
-		if delimiter, ok := toolActivityFenceDelimiter(rest[0]); ok {
-			body := rest[1:]
-			if n := len(body); n > 0 && body[n-1] == delimiter {
-				body = body[:n-1]
-			}
-			block.fenced, block.lang, block.code = true, strings.TrimSpace(rest[0][len(delimiter):]), strings.Join(body, "\n")
-		} else if code, end, ok := liveActivityCodeSpan(joined, 0); ok && end == len(joined) {
-			block.code = code
-		} else {
-			block.body = joined
-		}
-	}
-	if slices.Contains([]string{"Read", "View", "Inspect", "List", "Search", "Skill", "Create", "Edit", "Delete", "Move", "Write"}, block.verb) && len(lines) == 1 && !(block.verb == "Skill" && strings.HasPrefix(block.label, "`run ")) {
-		if reads, ok := parseLiveActivityReads(block.label); ok {
-			if block.verb != "Read" {
-				for i := range reads {
-					if len(reads[i].ranges) > 0 {
-						reads[i].path += " " + strings.Join(reads[i].ranges, " ")
-						reads[i].ranges = nil
-					}
-				}
-			}
-			block.kind, block.reads, block.label = "reads", reads, ""
-		}
-	}
-	return block
-}
-
-func parseLiveActivityReads(label string) ([]liveActivityRead, bool) {
-	var reads []liveActivityRead
-	for i := 0; i < len(label); {
-		code, end, ok := liveActivityCodeSpan(label, i)
-		if !ok {
-			return nil, false
-		}
-		read := liveActivityRead{path: code}
-		if match := liveActivityReadRange.FindStringSubmatch(code); match != nil {
-			read.path = match[1]
-			read.ranges = strings.Fields(match[2])
-		}
-		reads = append(reads, read)
-		if i = end; i < len(label) {
-			if label[i] != ' ' {
-				return nil, false
-			}
-			i++
-		}
-	}
-	return reads, len(reads) > 0
-}
-
-// mergeLiveActivityReads collapses adjacent targets of the same action, joining ranges
-// of the same path. Merged blocks own their slices; parsed entries are shared.
-func mergeLiveActivityReads(blocks []liveActivityBlock) []liveActivityBlock {
-	var merged []liveActivityBlock
-	for _, block := range blocks {
-		n := len(merged)
-		if block.kind != "reads" || n == 0 || merged[n-1].kind != "reads" || merged[n-1].verb != block.verb || block.results != nil || merged[n-1].results != nil {
-			if block.kind == "reads" {
-				block.reads = slices.Clone(block.reads)
-				for i := range block.reads {
-					block.reads[i].ranges = slices.Clone(block.reads[i].ranges)
-				}
-			}
-			merged = append(merged, block)
-			continue
-		}
-		last := &merged[n-1]
-		for _, read := range block.reads {
-			if i := slices.IndexFunc(last.reads, func(r liveActivityRead) bool { return r.path == read.path }); i >= 0 {
-				last.reads[i].ranges = append(last.reads[i].ranges, read.ranges...)
-			} else {
-				last.reads = append(last.reads, liveActivityRead{path: read.path, ranges: slices.Clone(read.ranges)})
-			}
-		}
-	}
-	return merged
-}
-
-const liveActivityClippedAnswer = "… (full answer in Codex completion)"
-
-// parseLiveActivityJournal reads the journal result grammar written by journal
-// delivery. Any other shape stays authored Markdown.
-func parseLiveActivityJournal(text string) (*liveActivityJournal, bool) {
-	lines := strings.Split(text, "\n")
-	if lines[0] != "Journal result" && !strings.HasPrefix(lines[0], "Journal result `") {
-		return nil, false
-	}
-	journal := &liveActivityJournal{}
-	current, inChanges := -1, false
-	for i := 1; i < len(lines); i++ {
-		line := lines[i]
-		switch {
-		case line == liveActivityClippedAnswer:
-			journal.clipped = true
-		case line == "":
-		case line == "---":
-			current = -1
-		case line == "No journal entries." && !inChanges:
-			journal.empty = true
-		case line == "**Question:**" && !inChanges:
-			var question []string
-			for i+1 < len(lines) && lines[i+1] != "**Answer:**" && lines[i+1] != "**Answers:**" && lines[i+1] != liveActivityClippedAnswer {
-				i++
-				question = append(question, lines[i])
-			}
-			if i+1 < len(lines) && lines[i+1] != liveActivityClippedAnswer {
-				i++ // The answer label.
-			}
-			journal.groups = append(journal.groups, liveActivityAnswerGroup{question: strings.Trim(strings.Join(question, "\n"), "\n")})
-			current = len(journal.groups) - 1
-		case strings.HasPrefix(line, "- `") && !inChanges:
-			id, end, ok := liveActivityCodeSpan(line, 2)
-			if !ok || end != len(line) {
-				return nil, false
-			}
-			var body []string
-			for i+1 < len(lines) && (lines[i+1] == "" || strings.HasPrefix(lines[i+1], "  ")) {
-				i++
-				body = append(body, strings.TrimPrefix(lines[i], "  "))
-			}
-			if current < 0 {
-				journal.groups = append(journal.groups, liveActivityAnswerGroup{})
-				current = len(journal.groups) - 1
-			}
-			group := &journal.groups[current]
-			group.answers = append(group.answers, liveActivityAnswer{id: id, text: strings.Trim(strings.Join(body, "\n"), "\n")})
-		case strings.HasPrefix(line, "**Changes:**"):
-			inChanges = true
-			journal.changes = strings.TrimSpace(strings.TrimPrefix(line, "**Changes:**"))
-		case inChanges && strings.HasPrefix(line, "    "):
-			// Numstat columns are tabs, expanded by the sanitizer.
-			if fields := strings.SplitN(strings.TrimPrefix(line, "    "), "    ", 3); len(fields) == 3 {
-				journal.stats = append(journal.stats, liveActivityStat{fields[0], fields[1], fields[2]})
-			}
-		case inChanges && strings.HasPrefix(line, "Aggregated numstat"):
-		case inChanges:
-			journal.notes = append(journal.notes, line)
-		default:
-			return nil, false
-		}
-	}
-	return journal, true
+	return []activityui.Block{{Kind: "text", Body: text}}
 }

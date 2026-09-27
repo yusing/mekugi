@@ -312,7 +312,7 @@ update heading. No production response is held open, and no polling or model
 turn is created. During an idle stream there may be no event boundary to deliver
 through; once a response closes, inline updates wait for the next eligible root response.
 
-Interactive terminal launches use the [native UI](router.md#native-app-server-ui),
+Interactive terminal launches use the [native UI](native_ui.md),
 whose app-server event stream owns Main, child Activity, and the child-only Agents
 roster. Child activity continues independently of root responses, including during
 native waits. The native client consumes router observations directly without a

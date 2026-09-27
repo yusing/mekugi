@@ -370,7 +370,7 @@ func TestLiveActivityViewRosterTreeOverflowAndSelection(t *testing.T) {
 	styled := view.render(60, 20, time.Now())
 	lines = plainLines(styled)
 	// Selection fills its row in place, without a marker column.
-	fill := view.painter.theme.SelectionBackground()
+	fill := view.painter.Theme.SelectionBackground()
 	if view.selected != "/root/e" || !slices.ContainsFunc(styled[1:7], func(line string) bool {
 		return strings.HasPrefix(line, fill) && strings.Contains(ansi.Strip(line), " · e")
 	}) ||

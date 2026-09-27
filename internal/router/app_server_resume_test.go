@@ -6,6 +6,8 @@ import (
 	json "encoding/json/v2"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/appserver"
 )
 
 func TestAppServerResumeStartup(t *testing.T) {
@@ -69,7 +71,7 @@ func TestAppServerResumeRejectsFailureAndWrongIdentity(t *testing.T) {
 		u, w := newAppServerTestUI()
 		u.thread, u.resumeThread = "", "saved"
 		u.requests["1"] = "thread/resume"
-		var m appServerMessage
+		var m appserver.Message
 		if err := json.Unmarshal([]byte(wire), &m); err != nil {
 			t.Fatal(err)
 		}
@@ -86,7 +88,7 @@ func TestAppServerResumeHistoryDoesNotReviveEffects(t *testing.T) {
 		{ID: "edit", Type: "fileChange", Changes: []appServerFileChange{{Path: "a.go", Diff: "+changed"}}},
 		{ID: "spawn", Type: "collabAgentToolCall", Tool: "spawnAgent", ReceiverThreadIDs: []string{"child"}},
 	}}})
-	if u.turn != "" || len(u.session.agents) != 1 || u.session.agents[0].Responding || len(u.view.entries) != 2 || u.view.blocks[0][0].exitCode != 2 {
+	if u.turn != "" || len(u.session.agents) != 1 || u.session.agents[0].Responding || len(u.view.entries) != 2 || u.view.blocks[0][0].ExitCode != 2 {
 		t.Fatalf("history revived lifecycle or lost tools: %+v", u.session)
 	}
 	u.restoreHistory([]appServerHistoryTurn{{ID: "active", Status: "inProgress", Items: []appServerItem{{ID: "partial", Type: "agentMessage", Text: "Partial"}}}})
@@ -102,7 +104,7 @@ func TestAppServerResumeHistoryDoesNotReviveEffects(t *testing.T) {
 func TestAppServerResumePendingBound(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.thread, u.resumeThread = "", "saved"
-	m := appServerMessage{Method: "thread/started", Params: jsontext.Value(`{}`)}
+	m := appserver.Message{Method: "thread/started", Params: jsontext.Value(`{}`)}
 	for range 256 {
 		if err := u.message(m); err != nil {
 			t.Fatal(err)

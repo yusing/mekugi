@@ -3,6 +3,8 @@ package router
 import (
 	"slices"
 	"strings"
+
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // Retain only the display receipt and durable host identities, not scripts or
@@ -68,17 +70,17 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 			entry := v.entries[i]
 			exit := 0
 			for _, block := range v.blocks[i] {
-				if block.exitCode != 0 {
-					exit = block.exitCode
+				if block.ExitCode != 0 {
+					exit = block.ExitCode
 					break
 				}
 			}
 			text := receipt.text
 			if index > 0 {
 				var remaining []string
-				for _, paragraph := range liveActivityParagraphs(entry.Text) {
-					block := parseLiveActivityOperation(paragraph)
-					if exit == 0 && slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.verb) {
+				for _, paragraph := range activityui.Paragraphs(entry.Text) {
+					block := activityui.ParseOperation(paragraph)
+					if exit == 0 && slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) {
 						continue
 					}
 					remaining = append(remaining, paragraph)
@@ -90,7 +92,7 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 				blocks := parseLiveActivity(entry)
 				if len(v.blocks[i]) > 0 {
 					for j := range blocks {
-						blocks[j].exitCode = exit
+						blocks[j].ExitCode = exit
 					}
 				}
 				v.entries[i], v.blocks[i], v.runs = entry, blocks, nil

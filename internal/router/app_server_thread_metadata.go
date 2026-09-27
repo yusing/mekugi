@@ -3,6 +3,8 @@ package router
 import (
 	json "encoding/json/v2"
 	"slices"
+
+	"github.com/yusing/mekugi/internal/appserver"
 )
 
 // Child event subscriptions do not imply a thread/started notification. Read
@@ -15,7 +17,7 @@ func (u *appServerUI) requestThreadMetadata(thread string) error {
 		u.session.metadata[thread] = ""
 		return nil // thread/started or restored history already supplied it.
 	}
-	id, err := u.client.send("thread/read", map[string]any{"threadId": thread, "includeTurns": false}, true)
+	id, err := u.client.Send("thread/read", map[string]any{"threadId": thread, "includeTurns": false}, true)
 	if err != nil {
 		return err
 	}
@@ -24,7 +26,7 @@ func (u *appServerUI) requestThreadMetadata(thread string) error {
 	return nil
 }
 
-func (u *appServerUI) applyThreadMetadata(m appServerMessage) bool {
+func (u *appServerUI) applyThreadMetadata(m appserver.Message) bool {
 	for thread, id := range u.session.metadata {
 		if id == "" || id != string(m.ID) {
 			continue
@@ -68,14 +70,14 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 			// only the display identities in already-parsed blocks.
 			for j := range view.blocks[i] {
 				block := &view.blocks[i][j]
-				if block.from == old {
-					block.from = name
+				if block.From == old {
+					block.From = name
 				}
-				if block.to == old {
-					block.to = name
+				if block.To == old {
+					block.To = name
 				}
-				if block.owner == old {
-					block.owner = name
+				if block.Owner == old {
+					block.Owner = name
 				}
 			}
 		}

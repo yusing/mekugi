@@ -4,10 +4,12 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "63"
+  revision: "64"
   files:
     - journal.md
     - router.md
+    - native_ui.md
+    - transport.md
     - third_party.md
     - grok.md
     - opencode.md
@@ -37,6 +39,8 @@ linked, not copied.
 
 - [`REQ-JOURNAL-001`](journal.md): durable per-thread milestone journals
 - [`REQ-ROUTER-001`](router.md): standalone and session-scoped Codex launch
+- [`REQ-NATIVE-UI-001`](native_ui.md): native app-server UI presentation and client behavior
+- [`REQ-TRANSPORT-001`](transport.md): Codex-facing and provider Responses transports
 - [`REQ-THIRD-PARTY-001`](third_party.md): shared third-party native-agent routing
 - [`REQ-GROK-001`](grok.md): Grok provider route
 - [`REQ-OPENCODE-001`](opencode.md): OpenCode Go and Zen provider routes

@@ -1,9 +1,11 @@
 package router
 
 import (
-	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestAppServerNativeFilterActivity(t *testing.T) {
@@ -40,11 +42,11 @@ func TestAppServerNativeFilterActivity(t *testing.T) {
 					publish()
 				}
 				u.applyObservedActivity()
-				if len(view.entries) != 1 || len(view.blocks[0]) != 2 || view.blocks[0][0].verb != "Search" || view.blocks[0][1].kind != "filter" {
+				if len(view.entries) != 1 || len(view.blocks[0]) != 2 || view.blocks[0][0].Verb != "Search" || view.blocks[0][1].Kind != "filter" {
 					t.Fatalf("filter lifecycle: entries=%+v blocks=%+v", view.entries, view.blocks)
 				}
-				rows := strings.Join(view.painter.block(view.blocks[0][1], 100), "\n")
-				if !strings.Contains(rows, liveActivityDim) || !strings.Contains(ansi.Strip(rows), "−5/10 lines") {
+				rows := strings.Join(view.painter.Block(view.blocks[0][1], 100), "\n")
+				if !strings.Contains(rows, activityui.Dim) || !strings.Contains(ansi.Strip(rows), "−5/10 lines") {
 					t.Fatalf("filter style: %q", rows)
 				}
 				if len(activity.takeNativeActivity("other")) != 0 {
@@ -90,16 +92,16 @@ func TestAppServerSearchResultCounts(t *testing.T) {
 			}
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-			if len(u.view.blocks) != 1 || len(u.view.blocks[0]) != 1 || u.view.blocks[0][0].results == nil || *u.view.blocks[0][0].results != tc.want {
+			if len(u.view.blocks) != 1 || len(u.view.blocks[0]) != 1 || u.view.blocks[0][0].Results == nil || *u.view.blocks[0][0].Results != tc.want {
 				t.Fatalf("lost count: %+v", u.view.blocks)
 			}
-			painted := strings.Join(u.view.painter.block(u.view.blocks[0][0], 120), "\n")
-			if !strings.Contains(painted, liveActivityResultCount(count)) {
+			painted := strings.Join(u.view.painter.Block(u.view.blocks[0][0], 120), "\n")
+			if !strings.Contains(painted, activityui.ResultCount(count)) {
 				t.Fatalf("not muted: %q", painted)
 			}
 			restored := newAppServerSessionTestUI(t, t.TempDir())
 			restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
-			if *restored.view.blocks[0][0].results != tc.want {
+			if *restored.view.blocks[0][0].Results != tc.want {
 				t.Fatal("restored count lost")
 			}
 		})
@@ -122,12 +124,12 @@ func TestAppServerWebSearchResults(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	item := map[string]any{"id": "web", "type": "webSearch", "query": "golang"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	if len(u.view.blocks) != 1 || u.view.blocks[0][0].results != nil {
+	if len(u.view.blocks) != 1 || u.view.blocks[0][0].Results != nil {
 		t.Fatal("started search count")
 	}
 	item["results"] = []any{map[string]any{"title": "one"}, map[string]any{"title": "two"}}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	if len(u.view.entries) != 1 || u.view.blocks[0][0].results == nil || *u.view.blocks[0][0].results != 2 {
+	if len(u.view.entries) != 1 || u.view.blocks[0][0].Results == nil || *u.view.blocks[0][0].Results != 2 {
 		t.Fatalf("completed search: %+v", u.view.blocks)
 	}
 }
@@ -142,7 +144,7 @@ func TestAppServerCodeModeFilterDoesNotInventCommand(t *testing.T) {
 	event := exploreFilterEvent{Command: item.Command, LinesBefore: 10, LinesRemoved: 5}
 	activity.collectEvent(activityEvent{thread: "main", source: "filtered", kind: "output_filter", callID: "outer-exec", text: event.text(), filter: &event})
 	u.applyObservedActivity()
-	if len(u.view.entries) != 2 || len(u.view.blocks[1]) != 1 || u.view.blocks[1][0].kind != "filter" {
+	if len(u.view.entries) != 2 || len(u.view.blocks[1]) != 1 || u.view.blocks[1][0].Kind != "filter" {
 		t.Fatalf("invented command for unmatched Code Mode filter: %+v", u.view.blocks)
 	}
 }

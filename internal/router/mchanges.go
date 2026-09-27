@@ -15,9 +15,11 @@ import (
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/pathdisplay"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 const changesReadUsage = "mchanges --list [--workspace DIR] [--max-tokens N] | mchanges [--mine | ID[..ID] ...] [--summary|--history|--net] [--workspace DIR] [--max-tokens N] [-- PATH ...] | mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]"
+
 const maxChangeReadBytes = 64 << 20
 
 type changeReadOptions struct {
@@ -231,7 +233,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 	type counts struct {
 		added, removed int
 		incomplete     bool
-		status         liveDiffStatus
+		status         diffview.Status
 		managed        bool
 		composition    mekugi.ReviewComposition
 		uncomposable   bool
@@ -403,7 +405,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		}
 		entry := stats[key(before)]
 		if entry == nil {
-			entry = &counts{status: liveDiffStatus{before: file.BeforePath}, managed: file.Origin != ""}
+			entry = &counts{status: diffview.Status{Before: file.BeforePath}, managed: file.Origin != ""}
 			entries = append(entries, entry)
 		}
 		delete(stats, key(before))
@@ -411,7 +413,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			after = before
 		}
 		stats[key(after)] = entry
-		entry.status.add(file)
+		entry.status.Add(file)
 		if !entry.uncomposable {
 			entry.uncomposable = entry.composition.ApplyWithHighlight(file, false, false) != nil
 		}
@@ -425,7 +427,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		}
 	}
 	for _, entry := range entries {
-		if !entry.uncomposable && entry.status.before == "" && entry.status.after == "" {
+		if !entry.uncomposable && entry.status.Before == "" && entry.status.After == "" {
 			continue // A creation followed by deletion leaves no file in the diff pane.
 		}
 		if !entry.uncomposable {
@@ -433,24 +435,24 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			for _, region := range entry.composition.FilesWithHighlights() {
 				regions = append(regions, region.ReviewFile)
 			}
-			composed := liveDiffStatusOf(regions...)
-			entry.status.edited, entry.status.conflict = composed.edited, composed.conflict
+			composed := diffview.StatusOf(regions...)
+			entry.status.Edited, entry.status.Conflict = composed.Edited, composed.Conflict
 		}
-		path := entry.status.after
+		path := entry.status.After
 		if path == "" {
-			path = entry.status.before
+			path = entry.status.Before
 		}
 		path = displayPath(pathdisplay.ForWorkspace(options.workspace, path))
-		if entry.status.before != "" && entry.status.after != "" && entry.status.before != entry.status.after {
-			path = displayPath(pathdisplay.ForWorkspace(options.workspace, entry.status.before)) + " => " + path
+		if entry.status.Before != "" && entry.status.After != "" && entry.status.Before != entry.status.After {
+			path = displayPath(pathdisplay.ForWorkspace(options.workspace, entry.status.Before)) + " => " + path
 		}
 		if entry.managed {
 			path = "tool-managed\t" + path
 		}
 		if entry.incomplete {
-			fmt.Fprintf(&output, "%s\t-\t-\t%s\n", entry.status.shortCode(), path)
+			fmt.Fprintf(&output, "%s\t-\t-\t%s\n", entry.status.ShortCode(), path)
 		} else {
-			fmt.Fprintf(&output, "%s\t%d\t%d\t%s\n", entry.status.shortCode(), entry.added, entry.removed, path)
+			fmt.Fprintf(&output, "%s\t%d\t%d\t%s\n", entry.status.ShortCode(), entry.added, entry.removed, path)
 		}
 		if output.Len() > maxChangeReadBytes {
 			return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")

@@ -509,7 +509,7 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 				}
 				view := newLiveActivityView()
 				view.apply(activityPaneEvent{Kind: "entries", Entries: entries})
-				if len(entries) != 2 || len(view.blocks) != 1 || view.blocks[0][0].verb != "Delete" {
+				if len(entries) != 2 || len(view.blocks) != 1 || view.blocks[0][0].Verb != "Delete" {
 					t.Fatalf("observed exec receipt did not replace Run: entries=%+v blocks=%+v events=%+v", entries, view.blocks, proxy.activity.events)
 				}
 			}

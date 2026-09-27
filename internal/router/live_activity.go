@@ -1,8 +1,9 @@
 package router
 
 import (
-	"github.com/yusing/mekugi/internal/livediff"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func (v *liveActivityView) handleKey(escape string, key byte) (string, bool) {
@@ -17,7 +18,7 @@ func (v *liveActivityView) handleKey(escape string, key byte) (string, bool) {
 	} else if v.osc.Active || escape == "\x1b" && key == ']' {
 		if reply, complete := v.osc.Consume(key); complete {
 			if theme, ok := livediff.BackgroundTheme(reply); ok {
-				v.painter.theme = theme
+				v.painter.Theme = theme
 			}
 		}
 		return "", false

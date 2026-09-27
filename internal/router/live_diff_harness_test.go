@@ -5,12 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"golang.org/x/term"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
 	"time"
+
+	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	"golang.org/x/term"
 )
 
 // Legacy transport harness keeps the existing PTY rendering regressions usable.
@@ -76,7 +78,7 @@ func runLiveDiffTerminal(ctx context.Context, store *mekugiReplayStore, workspac
 	if err != nil {
 		return err
 	}
-	return withRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1000;1006h\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1000;1006l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
+	return terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1000;1006h\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1000;1006l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 		streamCtx, cancelStream := context.WithCancel(ctx)
 		events := make(chan liveDiffEvent, 32)
 		streamDone := make(chan struct{})
@@ -135,7 +137,7 @@ func (c *liveDiffTerminalController) run(
 			c.escapeC = nil
 			if c.escape == "\x1b" {
 				c.escape = ""
-				c.navigation.filtering, c.navigation.focused, c.help = false, false, false
+				c.navigation.Filtering, c.navigation.Focused, c.help = false, false, false
 				c.dirty = true
 			}
 		case <-resizes:

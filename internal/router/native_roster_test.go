@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestNativeRosterClickSurvivesActivityPaint(t *testing.T) {
@@ -163,7 +164,7 @@ func TestNativeRosterRoleLegendAndCompactSpacing(t *testing.T) {
 		}
 	}
 	for _, agent := range v.agents[1:] {
-		if got := v.nativeGlyph(agent); got != v.roleColor("worker")+"✓"+liveActivityReset {
+		if got := v.nativeGlyph(agent); got != v.roleColor("worker")+"✓"+activityui.Reset {
 			t.Fatalf("status did not preserve role color and completion shape: %q", got)
 		}
 	}

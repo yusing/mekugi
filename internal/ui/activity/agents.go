@@ -1,4 +1,4 @@
-package router
+package activity
 
 import (
 	"hash/fnv"
@@ -10,7 +10,7 @@ import (
 var liveAgentPalette = []string{"39", "170", "38", "99", "37", "133", "74"}
 
 // liveAgentColor returns an SGR prefix; the root uses the caller's own style.
-func liveAgentColor(name string) string {
+func Color(name string) string {
 	if name == "" || name == "/root" {
 		return ""
 	}
@@ -23,7 +23,7 @@ func liveAgentColor(name string) string {
 // main for the root, the path below it otherwise (worker, or a/worker when
 // nested). Model-visible text keeps canonical paths, since agents address
 // each other by them.
-func agentDisplayName(name string) string {
+func AgentDisplayName(name string) string {
 	if name == "/root" {
 		return "main"
 	}

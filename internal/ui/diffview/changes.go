@@ -1,4 +1,4 @@
-package router
+package diffview
 
 import (
 	"cmp"
@@ -9,58 +9,59 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/pathdisplay"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // liveDiffChanges is the Changes tab: captured changes in capture order, one
 // graph lane per caller. Lanes branch from main at the caller's first change.
 type liveDiffChanges struct {
-	query string
-	nodes []liveDiffChangeNode
+	Query string
+	Nodes []liveDiffChangeNode
 	lanes []string
-	rows  []liveDiffChangeRow
+	Rows  []ChangeRow
 	paths []string // File names by view index.
 	// workspace displays rename sources.
 	workspace string
-	expanded  map[string]bool
-	cursor    int
-	top       int
+	Expanded  map[string]bool
+	Cursor    int
+	Top       int
 	// hover is the pointed row plus one; zero points at none.
-	hover int
+	Hover int
 	// inline names a single-file change's file on the change row, for a
 	// navigator too narrow to nest it; otherwise the file is always nested.
-	inline bool
+	Inline bool
 	// target is the change and file that { } last opened.
-	target liveDiffChangeTarget
+	Target ChangeTarget
 }
 
 type liveDiffChangeNode struct {
 	livediff.Origin
-	files   []liveDiffChangeFile
+	Files   []liveDiffChangeFile
 	added   int
 	removed int
 	unknown bool
 }
 
 type liveDiffChangeFile struct {
-	file           int
+	File           int
 	added, removed int
 	unknown        bool
-	status         liveDiffStatus
+	status         Status
 }
 
-type liveDiffChangeRow struct {
-	kind byte // 'b' branch, 'c' change, 'f' file
-	node int
-	file int // Index into node.files for 'f' rows.
+type ChangeRow struct {
+	Kind byte // 'b' branch, 'c' change, 'f' file
+	Node int
+	File int // Index into node.files for 'f' rows.
 	lane int
 	// active counts the lanes that have branched at or before this row.
 	active int
 }
 
-type liveDiffChangeTarget struct{ change, file string }
+type ChangeTarget struct{ Change, File string }
 
-// liveDiffCallers lists the caller filter keys with captures, main first.
-func liveDiffCallers(view *liveDiffView) []string {
+// Callers lists the caller filter keys with captures, main first.
+func Callers(view *livediff.View) []string {
 	var callers []string
 	for _, file := range view.Files {
 		for _, chunk := range file.Chunks {
@@ -75,12 +76,12 @@ func liveDiffCallers(view *liveDiffView) []string {
 	return callers
 }
 
-func (l *liveDiffChanges) rebuild(view *liveDiffView, workspace string) {
-	cursor := liveDiffChangeTarget{}
-	if l.cursor < len(l.rows) {
-		cursor = l.rowTarget(l.rows[l.cursor])
+func (l *liveDiffChanges) Rebuild(view *livediff.View, workspace string) {
+	cursor := ChangeTarget{}
+	if l.Cursor < len(l.Rows) {
+		cursor = l.rowTarget(l.Rows[l.Cursor])
 	}
-	l.nodes, l.rows, l.lanes, l.paths, l.workspace = nil, nil, []string{"/root"}, nil, workspace
+	l.Nodes, l.Rows, l.lanes, l.paths, l.workspace = nil, nil, []string{"/root"}, nil, workspace
 	for _, file := range view.Files {
 		path := pathdisplay.ForWorkspace(workspace, file.Path)
 		if _, name, found := strings.CutLast(path, "/"); found {
@@ -104,7 +105,7 @@ func (l *liveDiffChanges) rebuild(view *liveDiffView, workspace string) {
 	slices.SortStableFunc(captures, func(a, b capture) int {
 		return cmp.Compare(a.chunk.CaptureOrder, b.chunk.CaptureOrder)
 	})
-	query := strings.ToLower(l.query)
+	query := strings.ToLower(l.Query)
 	for _, capture := range captures {
 		chunk := capture.chunk
 		if query != "" && !liveDiffChangeMatches(chunk.Origin, query) {
@@ -116,46 +117,46 @@ func (l *liveDiffChanges) rebuild(view *liveDiffView, workspace string) {
 		}
 		n, found := index[id]
 		if !found {
-			n = len(l.nodes)
+			n = len(l.Nodes)
 			index[id] = n
-			l.nodes = append(l.nodes, liveDiffChangeNode{Origin: chunk.Origin})
-			if l.nodes[n].Change == "" {
-				l.nodes[n].Change = "change"
+			l.Nodes = append(l.Nodes, liveDiffChangeNode{Origin: chunk.Origin})
+			if l.Nodes[n].Change == "" {
+				l.Nodes[n].Change = "change"
 			}
 		}
-		node := &l.nodes[n]
+		node := &l.Nodes[n]
 		added, removed := chunk.Review.LineCounts()
 		incomplete := chunk.Review.Incomplete != ""
 		node.unknown = node.unknown || incomplete
 		node.added, node.removed = node.added+added, node.removed+removed
-		at := slices.IndexFunc(node.files, func(file liveDiffChangeFile) bool { return file.file == capture.file })
+		at := slices.IndexFunc(node.Files, func(file liveDiffChangeFile) bool { return file.File == capture.file })
 		if at < 0 {
-			at = len(node.files)
-			node.files = append(node.files, liveDiffChangeFile{file: capture.file, status: liveDiffStatus{before: chunk.Review.BeforePath}})
+			at = len(node.Files)
+			node.Files = append(node.Files, liveDiffChangeFile{File: capture.file, status: Status{Before: chunk.Review.BeforePath}})
 		}
-		file := &node.files[at]
+		file := &node.Files[at]
 		file.added, file.removed, file.unknown = file.added+added, file.removed+removed, file.unknown || incomplete
-		file.status.add(chunk.Review)
+		file.status.Add(chunk.Review)
 	}
-	for n, node := range l.nodes {
+	for n, node := range l.Nodes {
 		lane := slices.Index(l.lanes, node.Caller)
 		if lane < 0 {
 			lane = len(l.lanes)
 			l.lanes = append(l.lanes, node.Caller)
-			l.rows = append(l.rows, liveDiffChangeRow{kind: 'b', node: n, lane: lane, active: len(l.lanes)})
+			l.Rows = append(l.Rows, ChangeRow{Kind: 'b', Node: n, lane: lane, active: len(l.lanes)})
 		}
-		l.rows = append(l.rows, liveDiffChangeRow{kind: 'c', node: n, lane: lane, active: len(l.lanes)})
-		if len(node.files) > 1 && l.expanded[node.Change] || len(node.files) == 1 && !l.inline {
-			for f := range node.files {
-				l.rows = append(l.rows, liveDiffChangeRow{kind: 'f', node: n, file: f, lane: lane, active: len(l.lanes)})
+		l.Rows = append(l.Rows, ChangeRow{Kind: 'c', Node: n, lane: lane, active: len(l.lanes)})
+		if len(node.Files) > 1 && l.Expanded[node.Change] || len(node.Files) == 1 && !l.Inline {
+			for f := range node.Files {
+				l.Rows = append(l.Rows, ChangeRow{Kind: 'f', Node: n, File: f, lane: lane, active: len(l.lanes)})
 			}
 		}
 	}
-	l.cursor = min(l.cursor, max(0, len(l.rows)-1))
-	l.top = min(l.top, max(0, len(l.rows)-1))
-	for i, row := range l.rows {
-		if cursor.change != "" && l.rowTarget(row) == cursor {
-			l.cursor = i
+	l.Cursor = min(l.Cursor, max(0, len(l.Rows)-1))
+	l.Top = min(l.Top, max(0, len(l.Rows)-1))
+	for i, row := range l.Rows {
+		if cursor.Change != "" && l.rowTarget(row) == cursor {
+			l.Cursor = i
 			break
 		}
 	}
@@ -165,7 +166,7 @@ func (l *liveDiffChanges) rebuild(view *liveDiffView, workspace string) {
 func liveDiffChangeMatches(origin livediff.Origin, query string) bool {
 	caller := "unknown"
 	if origin.Caller != "" {
-		caller = strings.ToLower(agentDisplayName(origin.Caller))
+		caller = strings.ToLower(activityui.AgentDisplayName(origin.Caller))
 	}
 	if name, ok := strings.CutPrefix(query, "@"); ok {
 		return strings.Contains(caller, name)
@@ -173,67 +174,67 @@ func liveDiffChangeMatches(origin livediff.Origin, query string) bool {
 	return strings.Contains(strings.ToLower(origin.Change+" "+origin.Source)+" "+caller, query)
 }
 
-func (l *liveDiffChanges) rowTarget(row liveDiffChangeRow) liveDiffChangeTarget {
-	if row.node >= len(l.nodes) {
-		return liveDiffChangeTarget{}
+func (l *liveDiffChanges) rowTarget(row ChangeRow) ChangeTarget {
+	if row.Node >= len(l.Nodes) {
+		return ChangeTarget{}
 	}
-	target := liveDiffChangeTarget{change: l.nodes[row.node].Change}
-	if row.kind == 'f' {
-		target.file = fmt.Sprint(l.nodes[row.node].files[row.file].file)
+	target := ChangeTarget{Change: l.Nodes[row.Node].Change}
+	if row.Kind == 'f' {
+		target.File = fmt.Sprint(l.Nodes[row.Node].Files[row.File].File)
 	}
-	if row.kind == 'b' {
-		target.file = "branch"
+	if row.Kind == 'b' {
+		target.File = "branch"
 	}
 	return target
 }
 
-func (l *liveDiffChanges) ensureVisible(rows int) {
+func (l *liveDiffChanges) EnsureVisible(rows int) {
 	rows = max(1, rows-2)
-	l.top = min(l.cursor, max(0, min(l.top, len(l.rows)-rows)))
-	if l.cursor >= l.top+rows {
-		l.top = l.cursor - rows + 1
+	l.Top = min(l.Cursor, max(0, min(l.Top, len(l.Rows)-rows)))
+	if l.Cursor >= l.Top+rows {
+		l.Top = l.Cursor - rows + 1
 	}
 }
 
 // focusChange moves the cursor to a change's row, keeping its branch row in view.
-func (l *liveDiffChanges) focusChange(change string, rows int) {
-	for i, row := range l.rows {
-		if row.kind == 'c' && l.nodes[row.node].Change == change {
-			l.cursor = i
-			l.ensureVisible(rows)
-			if i > 0 && l.rows[i-1].kind == 'b' && l.top == i {
-				l.top = i - 1
+func (l *liveDiffChanges) FocusChange(change string, rows int) {
+	for i, row := range l.Rows {
+		if row.Kind == 'c' && l.Nodes[row.Node].Change == change {
+			l.Cursor = i
+			l.EnsureVisible(rows)
+			if i > 0 && l.Rows[i-1].Kind == 'b' && l.Top == i {
+				l.Top = i - 1
 			}
 			return
 		}
 	}
 }
 
-// liveDiffCallerStyle is how the diff presents a canonical agent path.
-func liveDiffCallerStyle(theme livediff.Theme) func(string) (string, string) {
+// CallerStyle is how the diff presents a canonical agent path.
+func CallerStyle(theme livediff.Theme) func(string) (string, string) {
 	return func(caller string) (string, string) {
 		if caller == "" || caller == livediff.UnknownCaller {
 			return "unknown", livediff.Subtle
 		}
-		if color := liveAgentColor(caller); color != "" {
-			return agentDisplayName(caller), color
+		if color := activityui.Color(caller); color != "" {
+			return activityui.AgentDisplayName(caller), color
 		}
-		return agentDisplayName(caller), theme.Accent()
+		return activityui.AgentDisplayName(caller), theme.Accent()
 	}
 }
 
-func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter string, width, rows int, theme livediff.Theme) []string {
+func (l *liveDiffChanges) Render(focused bool, filtering bool, callerFilter string, width, rows int, theme livediff.Theme) []string {
 	out := make([]string, rows)
 	if rows == 0 {
 		return out
 	}
-	style := liveDiffCallerStyle(theme)
+	style := CallerStyle(theme)
 	scope := "@all"
 	if callerFilter != "" {
 		name, _ := style(callerFilter)
 		scope = "@" + name
 	}
-	heading := fmt.Sprintf(" Changes  %d · %s", len(l.nodes), livediff.Safe(scope, false))
+	heading := fmt.Sprintf(" Changes  %d · %s", len(l.Nodes), livediff.Safe(scope, false))
 	if focused {
 		heading = theme.Accent() + "▎" + strings.TrimPrefix(heading, " ") + "\x1b[0m"
 	}
@@ -242,15 +243,15 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 		return out
 	}
 	filter := " / id, @caller, source"
-	if l.query != "" || filtering {
-		filter = " / " + livediff.Safe(l.query, false)
+	if l.Query != "" || filtering {
+		filter = " / " + livediff.Safe(l.Query, false)
 		if filtering {
 			filter += "▏"
 		}
 	}
 	out[1] = ansi.Truncate(livediff.Subtle+filter+"\x1b[0m", max(0, width-1), "…")
 	// Rows never stay scrolled off the top while space remains below.
-	l.top = min(l.top, max(0, len(l.rows)-(rows-2)))
+	l.Top = min(l.Top, max(0, len(l.Rows)-(rows-2)))
 	contentWidth := max(0, width-1)
 	// Lanes are two cells wide. Beyond the cap, later callers share the last
 	// lane and their rows name the caller instead.
@@ -261,32 +262,32 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 		return color
 	}
 	for row := 2; row < rows; row++ {
-		index := l.top + row - 2
-		if index >= len(l.rows) {
-			if row == 2 && len(l.rows) == 0 {
+		index := l.Top + row - 2
+		if index >= len(l.Rows) {
+			if row == 2 && len(l.Rows) == 0 {
 				out[row] = " No captured changes"
 			}
 			break
 		}
-		entry := l.rows[index]
-		node := l.nodes[entry.node]
+		entry := l.Rows[index]
+		node := l.Nodes[entry.Node]
 		active := laneOf(entry.active-1) + 1
 		lane := laneOf(entry.lane)
 		var graph strings.Builder
 		for i := range active {
 			glyph, pad := "│", " "
 			switch {
-			case entry.kind == 'b' && i == 0:
+			case entry.Kind == 'b' && i == 0:
 				glyph, pad = "├", "─"
-			case entry.kind == 'b' && i < lane:
+			case entry.Kind == 'b' && i < lane:
 				glyph, pad = "┼", "─"
-			case entry.kind == 'b' && i == lane:
+			case entry.Kind == 'b' && i == lane:
 				glyph = "╮"
-			case entry.kind == 'c' && i == lane:
+			case entry.Kind == 'c' && i == lane:
 				glyph = "●"
 			}
 			color := laneColor(min(i, len(l.lanes)-1))
-			if entry.kind == 'b' && i < lane {
+			if entry.Kind == 'b' && i < lane {
 				color = laneColor(entry.lane)
 			}
 			graph.WriteString(color + glyph + pad + "\x1b[0m")
@@ -294,7 +295,7 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 		name, color := style(node.Caller)
 		// A change row is label, optional source, then callerTag when its lane is shared.
 		label, source, callerTag, stats := "", "", "", ""
-		switch entry.kind {
+		switch entry.Kind {
 		case 'b':
 			label = color + livediff.Safe(name, false) + "\x1b[0m"
 		case 'c':
@@ -305,28 +306,28 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 			if entry.lane != lane {
 				callerTag = " " + color + livediff.Safe(name, false) + "\x1b[0m"
 			}
-			stats = liveDiffCountStats(livediff.Counts{Added: node.added, Removed: node.removed}, theme)
+			stats = CountStats(livediff.Counts{Added: node.added, Removed: node.removed}, theme)
 			if node.unknown {
-				stats = liveDiffCountStats(livediff.Counts{Added: -1, Removed: -1}, theme)
+				stats = CountStats(livediff.Counts{Added: -1, Removed: -1}, theme)
 			}
-			if len(node.files) == 1 && l.inline {
-				file := node.files[0]
-				stats = " " + liveDiffFileLabel(file.status, l.path(file.file), l.workspace, theme) + stats
+			if len(node.Files) == 1 && l.Inline {
+				file := node.Files[0]
+				stats = " " + FileLabel(file.status, l.path(file.File), l.workspace, theme) + stats
 			} else {
-				stats = fmt.Sprintf(" "+livediff.Subtle+"%df"+livediff.SubtleReset, len(node.files)) + stats
+				stats = fmt.Sprintf(" "+livediff.Subtle+"%df"+livediff.SubtleReset, len(node.Files)) + stats
 			}
 		case 'f':
-			file := node.files[entry.file]
+			file := node.Files[entry.File]
 			branch := "├"
-			if entry.file == len(node.files)-1 {
+			if entry.File == len(node.Files)-1 {
 				branch = "└"
 			}
 			// The tree glyph extends the graph.
 			graph.WriteString(livediff.Subtle + branch + livediff.SubtleReset + " ")
-			label = liveDiffFileLabel(file.status, l.path(file.file), l.workspace, theme)
-			stats = liveDiffCountStats(livediff.Counts{Added: file.added, Removed: file.removed}, theme)
+			label = FileLabel(file.status, l.path(file.File), l.workspace, theme)
+			stats = CountStats(livediff.Counts{Added: file.added, Removed: file.removed}, theme)
 			if file.unknown {
-				stats = liveDiffCountStats(livediff.Counts{Added: -1, Removed: -1}, theme)
+				stats = CountStats(livediff.Counts{Added: -1, Removed: -1}, theme)
 			}
 		}
 		prefix := graph.String()
@@ -338,9 +339,9 @@ func (l *liveDiffChanges) render(focused bool, filtering bool, callerFilter stri
 		label += source + callerTag
 		body := ansi.Truncate(label, available, "…") + stats
 		line := ansi.Truncate(prefix+body, contentWidth, "")
-		if focused && index == l.cursor {
+		if focused && index == l.Cursor {
 			line = liveDiffSelectRow(line, contentWidth, theme)
-		} else if index == l.hover-1 {
+		} else if index == l.Hover-1 {
 			// An underlined lane would read as a graph edge.
 			line = ansi.Truncate(prefix+liveDiffHoverRow(body), contentWidth, "")
 		}

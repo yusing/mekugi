@@ -3,6 +3,8 @@ package router
 import (
 	"fmt"
 	"strings"
+
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // TypeSafe consumption has its own provider bucket. It must not change an
@@ -39,7 +41,7 @@ func writeTypesafeUsageReport(text *strings.Builder, report tokenUsageReport, ro
 	}
 	for _, agent := range rows {
 		if agent.report.typesafe.Requests != 0 || agent.report.typesafe.Incomplete {
-			row(agentDisplayName(agent.agent), agent.report.typesafe)
+			row(activityui.AgentDisplayName(agent.agent), agent.report.typesafe)
 		}
 	}
 	row("Total TypeSafe", report.typesafe)

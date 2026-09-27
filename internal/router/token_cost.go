@@ -3,6 +3,8 @@ package router
 import (
 	"fmt"
 	"strings"
+
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // tokenCost contains estimates for disjoint billable categories. Reasoning is
@@ -148,7 +150,7 @@ func formatTokenUsageReport(report tokenUsageReport) string {
 		rows = *report.rows
 	}
 	for _, row := range rows {
-		writeTokenUsageRow(&text, agentDisplayName(row.agent), row.role, row.report)
+		writeTokenUsageRow(&text, activityui.AgentDisplayName(row.agent), row.role, row.report)
 	}
 	total := report
 	total.model = "—"

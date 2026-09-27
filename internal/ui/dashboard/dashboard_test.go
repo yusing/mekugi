@@ -1,4 +1,4 @@
-package router
+package dashboard
 
 import (
 	"net/http"
@@ -10,7 +10,7 @@ import (
 
 func TestDashboardUsesCaptureMetricsOnTheExistingListener(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	serveDashboard(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
+	ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d", recorder.Code)
 	}
@@ -27,7 +27,7 @@ func TestDashboardUsesCaptureMetricsOnTheExistingListener(t *testing.T) {
 
 func TestDashboardRejectsUnrelatedPaths(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	serveDashboard(recorder, httptest.NewRequest(http.MethodGet, "/future", nil))
+	ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/future", nil))
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("status = %d", recorder.Code)
 	}

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // threadTestView is Main with a long assignment and the agent's long reply.
@@ -19,9 +20,9 @@ func threadTestView() *liveActivityView {
 		{Seq: 1, Agent: "Main", Kind: "start", Observed: start, assignment: &activityAssignment{to: "/root/reviewer", text: task}},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Observed: start.Add(58 * time.Second), activitySeq: 9},
 	}
-	v.blocks = [][]liveActivityBlock{
-		{{kind: "start", from: "/root", to: "/root/reviewer", label: "gpt-6-astra", body: task}},
-		{{kind: "message", from: "/root/reviewer", to: "/root", body: reply}},
+	v.blocks = [][]activityui.Block{
+		{{Kind: "start", From: "/root", To: "/root/reviewer", Label: "gpt-6-astra", Body: task}},
+		{{Kind: "message", From: "/root/reviewer", To: "/root", Body: reply}},
 	}
 	return v
 }
@@ -86,7 +87,7 @@ func TestConversationThreadEndsAtOtherTraffic(t *testing.T) {
 	v = threadTestView()
 	other := activityPaneEntry{Seq: 3, Agent: "/root/other", Kind: "reply", Observed: v.entries[1].Observed, activitySeq: 8}
 	v.entries = []activityPaneEntry{v.entries[0], other, v.entries[1]}
-	v.blocks = [][]liveActivityBlock{v.blocks[0], {{kind: "message", from: "/root/other", to: "/root", body: "Unrelated."}}, v.blocks[1]}
+	v.blocks = [][]activityui.Block{v.blocks[0], {{Kind: "message", From: "/root/other", To: "/root", Body: "Unrelated."}}, v.blocks[1]}
 	text := strings.Join(threadPlain(v.renderFeed(60, 40)), "\n")
 	if strings.Contains(text, "├─") || strings.Contains(text, " lines\n") || !strings.Contains(text, "← reviewer") {
 		t.Fatalf("non-adjacent traffic joined a thread:\n%s", text)
@@ -99,19 +100,19 @@ func TestConversationThreadQuotesEarlierAssignment(t *testing.T) {
 	task := func(seq uint64, text string) activityPaneEntry {
 		return activityPaneEntry{Seq: seq, Agent: "Main", Kind: "assignment", Observed: time.Now(), assignment: &activityAssignment{to: "/root/reviewer", text: text}}
 	}
-	answer := &liveActivityJournal{groups: []liveActivityAnswerGroup{{question: "First task.", target: 1, answers: []liveActivityAnswer{{text: "First answer."}}}}}
+	answer := &activityui.Journal{Groups: []activityui.AnswerGroup{{Question: "First task.", Target: 1, Answers: []activityui.Answer{{Text: "First answer."}}}}}
 	v.entries = []activityPaneEntry{task(1, "First task."), task(2, "Second task."), {Seq: 3, Agent: "/root/reviewer", Kind: "final", Observed: time.Now(), activitySeq: 7, journal: &journalItem{}}}
-	v.blocks = [][]liveActivityBlock{
-		{{kind: "message", from: "/root", to: "/root/reviewer", body: "First task."}},
-		{{kind: "message", from: "/root", to: "/root/reviewer", body: "Second task."}},
-		{{kind: "final", journal: answer}},
+	v.blocks = [][]activityui.Block{
+		{{Kind: "message", From: "/root", To: "/root/reviewer", Body: "First task."}},
+		{{Kind: "message", From: "/root", To: "/root/reviewer", Body: "Second task."}},
+		{{Kind: "final", Journal: answer}},
 	}
 	feed := v.renderFeed(60, 40)
 	text := strings.Join(threadPlain(feed), "\n")
 	if !strings.Contains(text, "├─→ follow-up") || !strings.Contains(text, "├─✓ finished") || !strings.Contains(text, "↩ re: assignment") {
 		t.Fatalf("an answer to the earlier task must keep its quote:\n%s", text)
 	}
-	v.blocks[2][0].journal.groups[0].target = 2
+	v.blocks[2][0].Journal.Groups[0].Target = 2
 	v.runs = nil
 	if text := strings.Join(threadPlain(v.renderFeed(60, 40)), "\n"); strings.Contains(text, "↩ re:") {
 		t.Fatalf("an answer to the nearest task repeated it:\n%s", text)
@@ -123,7 +124,7 @@ func TestConversationThreadContinuesThroughReasoning(t *testing.T) {
 	v := threadTestView()
 	reasoning := activityPaneEntry{Seq: 3, Agent: "Main", Kind: "reasoning", Text: "**Waiting on review**\n\nThe reviewer is still reading.", Observed: v.entries[0].Observed.Add(time.Second)}
 	v.entries = []activityPaneEntry{v.entries[0], reasoning, v.entries[1]}
-	v.blocks = [][]liveActivityBlock{v.blocks[0], parseLiveActivity(reasoning), v.blocks[1]}
+	v.blocks = [][]activityui.Block{v.blocks[0], parseLiveActivity(reasoning), v.blocks[1]}
 	feed := v.renderFeed(width, 40)
 	plain := threadPlain(feed)
 	text := strings.Join(plain, "\n")

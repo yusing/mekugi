@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestAppServerFrontendCommandClassification(t *testing.T) {
@@ -83,18 +84,18 @@ func TestAppServerShellDisplayHighlight(t *testing.T) {
 	source := `printf '%s' "$HOME"; go test ./...`
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: appServerCommandText(appServerItem{Command: `/bin/bash -lc 'printf '\''%s'\'' "$HOME"; go test ./...'`}, "")})
 	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
-		p := liveActivityPainter{theme: theme}
+		p := activityui.Painter{Theme: theme}
 		var rows []string
 		for _, block := range blocks {
-			rows = append(rows, p.block(block, 120)...)
+			rows = append(rows, p.Block(block, 120)...)
 		}
 		got := strings.Join(rows, "\n")
-		highlighted := strings.Join(p.highlight("bash", source), " ")
+		highlighted := strings.Join(p.Highlight("bash", source), " ")
 		if ansi.Strip(highlighted) != source || highlighted == source || !strings.Contains(ansi.Strip(got), "printf") || !strings.Contains(ansi.Strip(got), "go test ./...") || strings.Contains(ansi.Strip(got), "/bin/bash") {
 			t.Fatalf("inner source not highlighted: %q", got)
 		}
 		for _, block := range blocks {
-			highlighted := strings.Join(p.highlight(block.lang, block.code), " ")
+			highlighted := strings.Join(p.Highlight(block.Lang, block.Code), " ")
 			if !strings.Contains(got, highlighted) {
 				t.Fatalf("command lost shared highlighting: %q", got)
 			}
@@ -122,7 +123,7 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 				t.Fatalf("image activity: %+v", v.entries)
 			}
 			blocks := parseLiveActivity(v.entries[0])
-			if len(blocks) != 1 || blocks[0].verb != "View" || len(blocks[0].reads) != 1 || blocks[0].reads[0].path != "images/a.png" {
+			if len(blocks) != 1 || blocks[0].Verb != "View" || len(blocks[0].Reads) != 1 || blocks[0].Reads[0].Path != "images/a.png" {
 				t.Fatalf("image blocks: %+v", blocks)
 			}
 		}
@@ -142,14 +143,14 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 
 func TestLiveActivitySkillRendering(t *testing.T) {
 	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
-		p := liveActivityPainter{theme: theme}
+		p := activityui.Painter{Theme: theme}
 		for _, command := range []string{"skills-mgr get golang-best-practices", "skills-mgr run use-modern-go/scripts/run-tool.sh list --go-version 1.27"} {
 			blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(command)})
-			if len(blocks) != 1 || blocks[0].verb != "Skill" {
+			if len(blocks) != 1 || blocks[0].Verb != "Skill" {
 				t.Fatalf("skill blocks: %+v", blocks)
 			}
-			rows := strings.Join(p.block(blocks[0], 120), "\n")
-			if !strings.HasPrefix(rows, liveActivityVerbColor("Skill")) || liveActivityVerbColor("Skill") == "" {
+			rows := strings.Join(p.Block(blocks[0], 120), "\n")
+			if !strings.HasPrefix(rows, activityui.VerbColor("Skill")) || activityui.VerbColor("Skill") == "" {
 				t.Fatalf("uncolored skill: %q", rows)
 			}
 			if strings.Contains(command, " run ") && !strings.Contains(ansi.Strip(rows), "Skill  run use-modern-go/scripts/run-tool.sh list --go-version 1.27") {

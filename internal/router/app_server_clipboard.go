@@ -18,6 +18,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/internal/appserver"
 )
 
 type composerImage struct {
@@ -164,13 +166,13 @@ func (u *appServerUI) composerInput() []map[string]any {
 	at := 0
 	for _, attachment := range u.images {
 		if attachment.start > at {
-			input = append(input, appServerInput(u.draft[at:attachment.start])...)
+			input = append(input, appserver.Input(u.draft[at:attachment.start])...)
 		}
 		input = append(input, map[string]any{"type": "localImage", "path": attachment.path})
 		at = attachment.end
 	}
 	if at < len(u.draft) || len(input) == 0 {
-		input = append(input, appServerInput(u.draft[at:])...)
+		input = append(input, appserver.Input(u.draft[at:])...)
 	}
 	return input
 }

@@ -2,16 +2,14 @@ package router
 
 import (
 	"bytes"
-	"context"
 	json "encoding/json/v2"
-	"io"
-	"os"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/appserver"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 type appServerTestInput struct{ bytes.Buffer }
@@ -20,7 +18,7 @@ func (*appServerTestInput) Close() error { return nil }
 
 func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
-	return &appServerUI{client: &appServerClient{input: w}, view: newLiveActivityView(), requests: make(map[string]string), thread: "main"}, w
+	return &appServerUI{client: &appserver.Client{Input: w}, view: newLiveActivityView(), requests: make(map[string]string), thread: "main"}, w
 }
 
 func TestAppServerUIDelayedSubmissionEditing(t *testing.T) {
@@ -64,51 +62,6 @@ func TestAppServerUIEscapeAndLongDraft(t *testing.T) {
 	appServerTestKeys(t, u, "[201~")
 	if u.draft != "split\npaste" || w.Len() != 0 {
 		t.Fatal("split paste submitted or lost data")
-	}
-}
-
-func TestAppServerShutdownChild(t *testing.T) {
-	mode := os.Getenv("MEKUGI_APP_SERVER_SHUTDOWN_TEST")
-	if mode == "" {
-		return
-	}
-	if mode == "stuck" {
-		for {
-			time.Sleep(time.Hour)
-		}
-	}
-	io.Copy(io.Discard, os.Stdin)
-	fmtText := `{"method":"test/drained","params":{}}` + "\n"
-	io.WriteString(os.Stdout, fmtText)
-	os.Exit(0)
-}
-
-func TestAppServerShutdown(t *testing.T) {
-	for _, mode := range []string{"graceful", "stuck"} {
-		t.Run(mode, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestAppServerShutdownChild$")
-			cmd.Env = append(os.Environ(), "MEKUGI_APP_SERVER_SHUTDOWN_TEST="+mode)
-			c, err := startAppServer(cmd)
-			if err != nil {
-				t.Fatal(err)
-			}
-			err = c.shutdown()
-			if mode == "stuck" {
-				if err == nil || !strings.Contains(err.Error(), "forced termination") {
-					t.Fatalf("missing forced-shutdown failure: %v", err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			m, ok := <-c.messages
-			if !ok || m.Method != "test/drained" {
-				t.Fatal("did not let backend drain on EOF")
-			}
-		})
 	}
 }
 
@@ -159,7 +112,7 @@ func TestAppServerComposerNoticeKeepsTurnStateAndClearsOnEdit(t *testing.T) {
 func TestAppServerIdleStateUsesDefaultText(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.status = "Ready"
-	if label := u.stateLabel(time.Now()); label != "\x1b[39mReady"+liveActivityReset {
+	if label := u.stateLabel(time.Now()); label != "\x1b[39mReady"+activityui.Reset {
 		t.Fatalf("idle label = %q", label)
 	}
 }
@@ -175,7 +128,7 @@ func appServerTestKeys(t *testing.T, u *appServerUI, keys string) {
 
 func appServerTestMessage(t *testing.T, u *appServerUI, wire string) {
 	t.Helper()
-	var m appServerMessage
+	var m appserver.Message
 	if err := json.Unmarshal([]byte(wire), &m); err != nil {
 		t.Fatal(err)
 	}

@@ -137,6 +137,8 @@ back here. Docs must stand on their own interface and architecture references.
 | Review-diff rendering used by observed change evidence | Root-package `review*.go` |
 | Shared quoted operands, logical rows, source capability, Go lexical, and shell-header semantics | `internal/quotedoperand`, `internal/logicalrow`, `internal/sourcekind`, `internal/golex`, `internal/shellsyntax` |
 | Versioned plugin shared-core adapter and private WASM bridge | `internal/router/toolplugin/core-v1.mjs`, `internal/router/toolplugin/core-v1.d.ts`, `internal/sharedwasm` |
+| Activity presentation, diff navigation/previews, terminal primitives, and dashboard | `internal/ui/activity`, `internal/ui/diffview`, `internal/ui/terminal`, `internal/ui/dashboard`; native session integration remains in `internal/router` |
+| Codex app-server stdio RPC and child-process lifecycle | `internal/appserver` |
 | Router lifecycle, launch flags, modes, and HTTP endpoints | `internal/router/server.go`, `internal/router/flags.go` |
 | Third-party native-agent projection, Grok authentication/translation, and model metadata | `internal/router/subagent_bridge.go`, `internal/router/grok_*.go` |
 | Automatic notices and root-visible child activity | `internal/router/commentary.go`, `internal/router/commentary_publisher.go`, `internal/router/subagent_activity.go`; details in `doc/architecture/commentary.md` |

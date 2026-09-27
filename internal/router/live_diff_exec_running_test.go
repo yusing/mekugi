@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
-func waitExecScopePreview(t *testing.T, broker *liveDiffBroker, match func(liveDiffPreview) bool) liveDiffPreview {
+func waitExecScopePreview(t *testing.T, broker *liveDiffBroker, match func(diffview.Preview) bool) diffview.Preview {
 	t.Helper()
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
@@ -87,8 +88,8 @@ func TestExecWatchWithoutCapturedPathsDoesNotCrowdStreamingInput(t *testing.T) {
 		registry.open(&execWindow{ref: ref, roots: []string{workspace}, thread: "thread"})
 		registry.preview(ref, execObservation{Class: execOpaque.String(), Reason: "unresolved command"}, broker, workspace, "thread", "same-caller")
 	}
-	broker.publishPreview(liveDiffPreview{ID: "script", Workspace: workspace, Thread: "thread", Caller: "same-caller",
-		Status: liveDiffPreviewEdit, Input: "cat /tmp/example\n"}, false)
+	broker.publishPreview(diffview.Preview{ID: "script", Workspace: workspace, Thread: "thread", Caller: "same-caller",
+		Status: diffview.PreviewEdit, Input: "cat /tmp/example\n"}, false)
 	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "cat /tmp/example") })
 	plain := ansi.Strip(frame)
 	if strings.Count(plain, "same-caller ·") != 1 || strings.Contains(plain, "No scoped changes") ||
@@ -180,8 +181,8 @@ func TestExecRunningPreviewShowsScopedVCSAndCancelsWithoutEvidence(t *testing.T)
 		!strings.Contains(ansi.Strip(pending), "bounded scope") {
 		t.Fatalf("pending VCS card omitted bounded/unresolved scope qualification: %s", ansi.Strip(pending))
 	}
-	preview := waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
-		return preview.ID == "running:call-1" && preview.Status == liveDiffPreviewPending
+	preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
+		return preview.ID == "running:call-1" && preview.Status == diffview.PreviewPending
 	})
 	if preview.Workspace != repo || preview.Thread != "thread" || !strings.Contains(preview.Input, tracked) {
 		t.Fatalf("pending preview lost its authorized caller scope: %+v", preview)
@@ -202,8 +203,8 @@ func TestExecRunningPreviewShowsScopedVCSAndCancelsWithoutEvidence(t *testing.T)
 		strings.Contains(plainRunning, "outside secret marker") || strings.Contains(plainRunning, "outside.txt") {
 		t.Fatalf("running preview escaped its captured scope or lost its qualification: %s", plainRunning)
 	}
-	preview = waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
-		return preview.ID == "running:call-1" && preview.Status == liveDiffPreviewRunning && len(preview.Files) == 1
+	preview = waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
+		return preview.ID == "running:call-1" && preview.Status == diffview.PreviewRunning && len(preview.Files) == 1
 	})
 	if path := preview.Files[0].AfterPath; path != tracked {
 		t.Fatalf("running preview reported path %q outside captured target %q", path, tracked)
@@ -251,7 +252,7 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 			registry.preview(ref, *observation, broker, repo, "thread", "bounded-test")
 		}
 		for _, ref := range refs[:16] {
-			waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
+			waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
 				return preview.ID == "running:"+ref
 			})
 		}
@@ -281,8 +282,8 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 			registry := &execWindowRegistry{}
 			registry.open(&execWindow{ref: "lifecycle", roots: []string{repo}, thread: "thread", turn: "old-turn", session: "session:42"})
 			registry.preview("lifecycle", *observation, broker, repo, "thread", "lifecycle-test")
-			waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
-				return preview.ID == "running:lifecycle" && preview.Status == liveDiffPreviewPending
+			waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
+				return preview.ID == "running:lifecycle" && preview.Status == diffview.PreviewPending
 			})
 
 			if lifecycle == "background" {

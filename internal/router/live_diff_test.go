@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alecthomas/chroma/v2"
+	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi"
@@ -50,10 +50,10 @@ func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 	after := filepath.Join(workspace, "sub", "new.txt")
 	source := "const path = " + strconv.Quote(before)
 	diff := "--- " + strconv.Quote(before) + "\n+++ " + strconv.Quote(after) + "\n@@ -1 +1 @@\n-old\n+" + source + "\n"
-	chunk := liveDiffChunk{
+	chunk := livediff.Chunk{
 		Review: mekugi.ReviewFile{BeforePath: before, AfterPath: after, Diff: diff},
 	}
-	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{{Path: after, Chunks: []liveDiffChunk{chunk}}}, workspace, 240, 0, chunk)
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: after, Chunks: []livediff.Chunk{chunk}}}, workspace, 240, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,18 +64,18 @@ func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 }
 
 func TestLiveDiffFollowPauseAndResume(t *testing.T) {
-	view := liveDiffView{Following: true}
-	first := liveDiffFile{Path: "a", Chunks: []liveDiffChunk{{Key: "first"}}}
-	second := liveDiffFile{Path: "b", Chunks: []liveDiffChunk{{Key: "second"}}}
-	view.Merge([]liveDiffFile{first})
-	view.Merge([]liveDiffFile{first, second})
+	view := livediff.View{Following: true}
+	first := livediff.File{Path: "a", Chunks: []livediff.Chunk{{Key: "first"}}}
+	second := livediff.File{Path: "b", Chunks: []livediff.Chunk{{Key: "second"}}}
+	view.Merge([]livediff.File{first})
+	view.Merge([]livediff.File{first, second})
 	if view.Files[view.Selected].Path != "b" {
 		t.Fatal("following did not select new edit")
 	}
 	view.Following = false
 	view.Selected = 0
-	third := liveDiffFile{Path: "c", Chunks: []liveDiffChunk{{Key: "third"}}}
-	view.Merge([]liveDiffFile{first, second, third})
+	third := livediff.File{Path: "c", Chunks: []livediff.Chunk{{Key: "third"}}}
+	view.Merge([]livediff.File{first, second, third})
 	if view.Files[view.Selected].Path != "a" {
 		t.Fatal("paused update changed selection")
 	}
@@ -83,17 +83,17 @@ func TestLiveDiffFollowPauseAndResume(t *testing.T) {
 	if !view.Following || view.Files[view.Selected].Path != "c" {
 		t.Fatal("resume did not follow the edit received while paused")
 	}
-	view.Merge([]liveDiffFile{first, second, third})
+	view.Merge([]livediff.File{first, second, third})
 	if view.Files[view.Selected].Path != "c" {
 		t.Fatal("repeated snapshot stole follow selection")
 	}
 }
 
 func TestLiveDiffFollowUsesCaptureOrderNotFileGrouping(t *testing.T) {
-	view := liveDiffView{Following: true}
-	view.Merge([]liveDiffFile{
-		{Path: "a", Chunks: []liveDiffChunk{{Key: "a1", SnapshotOrder: 1}, {Key: "a2", SnapshotOrder: 3}}},
-		{Path: "b", Chunks: []liveDiffChunk{{Key: "b1", SnapshotOrder: 2}}},
+	view := livediff.View{Following: true}
+	view.Merge([]livediff.File{
+		{Path: "a", Chunks: []livediff.Chunk{{Key: "a1", SnapshotOrder: 1}, {Key: "a2", SnapshotOrder: 3}}},
+		{Path: "b", Chunks: []livediff.Chunk{{Key: "b1", SnapshotOrder: 2}}},
 	})
 	if view.Latest != "a2" || view.Files[view.Selected].Path != "a" {
 		t.Fatal("file grouping overrode latest capture order")
@@ -101,15 +101,15 @@ func TestLiveDiffFollowUsesCaptureOrderNotFileGrouping(t *testing.T) {
 }
 
 func TestLiveDiffMergePreservesFileAndPosition(t *testing.T) {
-	v := liveDiffView{Scroll: map[string]int{"old": 40}}
-	v.Merge([]liveDiffFile{
-		{Path: "b", Chunks: []liveDiffChunk{{Key: "old", Status: "prepared"}}},
+	v := livediff.View{Scroll: map[string]int{"old": 40}}
+	v.Merge([]livediff.File{
+		{Path: "b", Chunks: []livediff.Chunk{{Key: "old", Status: "prepared"}}},
 		{Path: "c"},
 	})
-	v.Merge([]liveDiffFile{
+	v.Merge([]livediff.File{
 		{Path: "c"},
 		{Path: "a"},
-		{Path: "b", Chunks: []liveDiffChunk{{Key: "new"}, {Key: "old"}}},
+		{Path: "b", Chunks: []livediff.Chunk{{Key: "new"}, {Key: "old"}}},
 	})
 	if v.Files[v.Selected].Path != "b" || v.Scroll["old"] != 40 ||
 		v.Files[0].Chunks[0].Key != "old" ||
@@ -117,7 +117,7 @@ func TestLiveDiffMergePreservesFileAndPosition(t *testing.T) {
 		t.Fatalf("viewport shifted: %#v", v)
 	}
 	v.Selected = 1
-	v.Merge(append(slices.Clone(v.Files), liveDiffFile{Path: "d"}))
+	v.Merge(append(slices.Clone(v.Files), livediff.File{Path: "d"}))
 	if v.Files[v.Selected].Path != "c" || v.Scroll["old"] != 40 {
 		t.Fatal("other-file update stole navigation")
 	}
@@ -197,7 +197,7 @@ func TestLiveDiffLegacyChangeFlagsDoNotAffectSavedEdits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	view := liveDiffView{}
+	view := livediff.View{}
 	view.Merge(files)
 	view.RefreshVisible()
 	if len(view.Files) != 1 {
@@ -213,10 +213,10 @@ func TestLiveDiffNativeRenderer(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "x.go")
-	file := liveDiffFile{Path: path, Chunks: []liveDiffChunk{{
+	file := livediff.File{Path: path, Chunks: []livediff.Chunk{{
 		Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n"},
 	}}}
-	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{file}, workspace, 80, 0, liveDiffChunk{})
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 80, 0, livediff.Chunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,13 +235,13 @@ func TestLiveDiffRenderFollowsLatestHunk(t *testing.T) {
 	header := "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n"
 	top := header + "@@ -1 +1 @@\n-top\n+TOP\n"
 	bottom := header + "@@ -99 +100 @@\n-bottom\n+BOTTOM\n"
-	file := liveDiffFile{Chunks: []liveDiffChunk{
+	file := livediff.File{Chunks: []livediff.Chunk{
 		{Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: top}},
 		{Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: bottom}},
 	}}
 	for i, diff := range []string{top, bottom} {
-		focus := liveDiffChunk{Review: mekugi.ReviewFile{Diff: diff}}
-		render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{file}, workspace, 80, 0, focus)
+		focus := livediff.Chunk{Review: mekugi.ReviewFile{Diff: diff}}
+		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 80, 0, focus)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -336,7 +336,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	waitFor("v stream")
 	for _, reply := range []struct {
 		text  string
-		theme liveDiffTheme
+		theme livediff.Theme
 	}{
 		{"\x1b]11;rgb:ffff/ffff/ffff\x1b\\", livediff.LightTheme},
 		{"\x1b]11;rgb:1111/1111/1111\a", livediff.DarkTheme},
@@ -565,7 +565,7 @@ func liveDiffIdentityCapture(t *testing.T, store *mekugiReplayStore, workspace, 
 	}
 }
 
-func liveDiffRefreshTest(t *testing.T, store *mekugiReplayStore, workspace string, view *liveDiffView) {
+func liveDiffRefreshTest(t *testing.T, store *mekugiReplayStore, workspace string, view *livediff.View) {
 	t.Helper()
 	files, err := store.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
 	if err != nil {
@@ -575,7 +575,7 @@ func liveDiffRefreshTest(t *testing.T, store *mekugiReplayStore, workspace strin
 	view.RefreshVisible()
 }
 
-func liveDiffVisibleText(file liveDiffFile) string {
+func liveDiffVisibleText(file livediff.File) string {
 	var text strings.Builder
 	for _, chunk := range file.Chunks {
 		text.WriteString(chunk.Status + "\n" + chunk.Review.UnifiedDiff())
@@ -589,7 +589,7 @@ func TestLiveDiffSavedMoveCarriesBaselineToDestination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v := liveDiffView{Scroll: make(map[string]int)}
+	v := livediff.View{Scroll: make(map[string]int)}
 	liveDiffIdentityCapture(t, store, workspace, "A", "a.txt", "a.txt", "old\n", "first\n")
 	liveDiffRefreshTest(t, store, workspace, &v)
 	liveDiffIdentityCapture(t, store, workspace, "move", "a.txt", "b.txt", "first\n", "first\n")
@@ -613,7 +613,7 @@ func TestLiveDiffMoveIntoDeletedPathKeepsChainsSeparate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			v := liveDiffView{Scroll: map[string]int{workspace + "\x00A/0": 9}}
+			v := livediff.View{Scroll: map[string]int{workspace + "\x00A/0": 9}}
 			order := []string{"A", "B"}
 			if reverse {
 				slices.Reverse(order)
@@ -623,7 +623,7 @@ func TestLiveDiffMoveIntoDeletedPathKeepsChainsSeparate(t *testing.T) {
 				liveDiffIdentityCapture(t, store, workspace, id, path, path, "old"+id+"\n", id+"\n")
 			}
 			liveDiffRefreshTest(t, store, workspace, &v)
-			v.Selected = slices.IndexFunc(v.Files, func(f liveDiffFile) bool { return f.Key() == workspace+"\x00A/0" })
+			v.Selected = slices.IndexFunc(v.Files, func(f livediff.File) bool { return f.Key() == workspace+"\x00A/0" })
 			liveDiffIdentityCapture(t, store, workspace, "deleteB", "b.txt", "", "B\n", "")
 			liveDiffRefreshTest(t, store, workspace, &v)
 			liveDiffIdentityCapture(t, store, workspace, "moveA", "a.txt", "b.txt", "A\n", "A\n")

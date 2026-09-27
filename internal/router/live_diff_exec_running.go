@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -38,7 +39,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	window.previewCancel = cancel
 	go func() {
 		defer func() { <-execRunningPreviewSlots }()
-		runExecScopePreview(ctx, broker, observation, liveDiffPreview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Caller: caller})
+		runExecScopePreview(ctx, broker, observation, diffview.Preview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Caller: caller})
 	}()
 }
 
@@ -130,12 +131,12 @@ func execPendingScope(observation execObservation) string {
 	return body.String()
 }
 
-func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observation execObservation, preview liveDiffPreview) {
+func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observation execObservation, preview diffview.Preview) {
 	defer broker.discardRunningPreview(preview)
 	pending := execPendingScope(observation)
 	preview.Footer = execScopePreviewFooter(observation)
 	if pending != "" {
-		preview.Status, preview.Input = liveDiffPreviewPending, pending
+		preview.Status, preview.Input = diffview.PreviewPending, pending
 		broker.publishPreview(preview, false)
 	}
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -211,14 +212,14 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 				preview.Files = append(preview.Files, file)
 			}
 		}
-		status, input := liveDiffPreviewRunning, ""
+		status, input := diffview.PreviewRunning, ""
 		if len(preview.Files) == 0 {
 			if pending == "" {
 				broker.discardRunningPreview(preview)
 				preview.Status, preview.Input = "", ""
 				continue
 			}
-			status, input = liveDiffPreviewPending, pending
+			status, input = diffview.PreviewPending, pending
 		}
 		updated = updated || preview.Status != status || preview.Input != input
 		preview.Status, preview.Input = status, input
@@ -241,11 +242,11 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 
 // A running card vanishes when it has no observed effect. Unlike completed
 // input streams, it must not leave a completed placeholder behind.
-func (b *liveDiffBroker) discardRunningPreview(preview liveDiffPreview) {
+func (b *liveDiffBroker) discardRunningPreview(preview diffview.Preview) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if _, active := b.previews[preview.ID]; active {
 		delete(b.previews, preview.ID)
-		b.emitPreviewLocked(liveDiffPreview{ID: preview.ID, Workspace: preview.Workspace, Thread: preview.Thread})
+		b.emitPreviewLocked(diffview.Preview{ID: preview.ID, Workspace: preview.Workspace, Thread: preview.Thread})
 	}
 }

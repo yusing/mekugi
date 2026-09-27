@@ -4,8 +4,9 @@ pjdoc:
   kind: architecture
   scope: root
   status: draft
-  revision: "49"
+  revision: "50"
   files:
+    - ui.md
     - journal.md
     - third_party.md
     - grok.md
@@ -25,6 +26,8 @@ this governed architecture set. Architecture documents name responsibilities and
 collaborators without restating implementation.
 
 ## Inventory
+
+- [`CTR-UI-001`](ui.md): presentation, app-server client, and router integration boundaries
 
 - [`CTR-JOURNAL-001`](journal.md): router-owned journal state and delivery
 - [`CTR-THIRD-PARTY-001`](third_party.md): router-owned third-party provider bridge

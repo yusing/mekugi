@@ -9,6 +9,8 @@ isolated frontend PATH, sending fixture reads to the wrong retained-output store
 | Changed owner | Focused check |
 | --- | --- |
 | Root review rendering | `.` |
+| Activity rendering, diff navigation/previews, terminal input, or dashboard | `./internal/ui/...`, plus affected router integration tests |
+| Codex app-server RPC transport and process lifecycle | `./internal/appserver` and `./internal/router -run AppServer` |
 | Router behavior | `./internal/router` |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
 | Native terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the native UI without model requests |

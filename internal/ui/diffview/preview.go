@@ -1,4 +1,4 @@
-package router
+package diffview
 
 import (
 	"context"
@@ -12,39 +12,41 @@ import (
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/pathdisplay"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
 
 const (
-	liveDiffPreviewFrameDelay = 33 * time.Millisecond
+	PreviewFrameDelay = 33 * time.Millisecond
 	// Revealed rows fade in; rows revealed together cascade within a bound.
 	// A fade starts partly visible, so a coarsely sampled frame, as over mosh
 	// or a slow link, still shows readable text rather than a blank row.
-	liveDiffPreviewFade       = 160 * time.Millisecond
-	liveDiffPreviewFadeFloor  = .4
-	liveDiffPreviewStagger    = 16 * time.Millisecond
-	liveDiffPreviewMaxStagger = 96 * time.Millisecond
+	liveDiffPreviewFade      = 160 * time.Millisecond
+	liveDiffPreviewFadeFloor = .4
+	liveDiffPreviewStagger   = 16 * time.Millisecond
+	PreviewMaxStagger        = 96 * time.Millisecond
 	// Keep consecutive target units visually distinct: the next unit starts
 	// after the preceding unit's last row has finished fading in.
-	liveDiffPreviewUnitDelay = liveDiffPreviewFade + liveDiffPreviewMaxStagger
+	PreviewUnitDelay = liveDiffPreviewFade + PreviewMaxStagger
 	// A finished call keeps distinct unit reveals only this long before its
 	// remaining input is shown at once.
-	liveDiffPreviewFinishDrain = time.Second
+	PreviewFinishDrain = time.Second
 )
 
 // Previews have their own viewport and lifecycle. They never change the captured
 // diff's selection, scroll, acknowledgements, or follow mode.
 // Updates replace snapshots; only a displayed frame parses and lays out rows.
-type liveDiffPreviewPane struct {
-	views  map[string]*liveDiffPreviewView
-	order  []string
-	motion liveDiffPreviewMotion
+type PreviewPane struct {
+	Views  map[string]*PreviewView
+	Order  []string
+	Motion PreviewMotion
 	// A dock too short for every call keeps one card open and folds the rest
 	// to their headings. prefer names the caller whose card opens first;
 	// pinned holds a card chosen with next() until that call completes.
-	prefer       string
+	Prefer       string
 	open, pinned string
 	openedAt     time.Time
-	accordion    bool // The last frame folded cards.
+	Accordion    bool // The last frame folded cards.
 }
 
 // liveDiffDockRows is the least a card needs to be worth an even split: its
@@ -56,55 +58,55 @@ const liveDiffDockRows = 5
 const liveDiffDockHold = 1500 * time.Millisecond
 
 // Motion is display-only. Without it, rows appear at their final colors.
-type liveDiffPreviewMotion struct {
-	enabled bool
-	canvas  livediff.Canvas
-	now     time.Time
+type PreviewMotion struct {
+	Enabled bool
+	Canvas  livediff.Canvas
+	Now     time.Time
 }
 
 // Each call owns its source window, syntax cache, and completion state.
-type liveDiffPreviewView struct {
-	current   liveDiffPreview
-	complete  bool
+type PreviewView struct {
+	Current   Preview
+	Complete  bool
 	displayed bool
 	digits    int // Line-number width only grows, so the source never shifts sideways.
-	rendered  liveDiffPreview
-	focus     int
-	paused    bool
-	scrollRow int
+	Rendered  Preview
+	Focus     int
+	Paused    bool
+	ScrollRow int
 	rows      int
 	file      int
-	renderer  liveDiffRenderer
-	source    []liveDiffPreviewRow
+	renderer  livediff.Renderer
+	Source    []PreviewRow
 	born      []time.Time // When each source row was revealed, for its fade.
 	updated   time.Time   // The latest snapshot's arrival, for choosing the open card.
-	fading    time.Time   // Until a displayed row finishes fading in.
+	Fading    time.Time   // Until a displayed row finishes fading in.
 }
 
-type liveDiffPreviewRow struct {
-	number int
-	kind   byte
-	text   string
+type PreviewRow struct {
+	Number int
+	Kind   byte
+	Text   string
 }
 
-func (p *liveDiffPreviewPane) update(preview liveDiffPreview) {
-	view := p.views[preview.ID]
+func (p *PreviewPane) Update(preview Preview) {
+	view := p.Views[preview.ID]
 	if preview.Workspace != "" && preview.Status == "" && preview.Input == "" && len(preview.Files) == 0 {
-		delete(p.views, preview.ID)
-		p.order = slices.DeleteFunc(p.order, func(id string) bool { return id == preview.ID })
+		delete(p.Views, preview.ID)
+		p.Order = slices.DeleteFunc(p.Order, func(id string) bool { return id == preview.ID })
 		return
 	}
 	if preview.Workspace == "" {
-		if view != nil && !view.complete {
-			view.complete = true
+		if view != nil && !view.Complete {
+			view.Complete = true
 		}
 		return
 	}
 	if view == nil {
-		if preview.Status == liveDiffPreviewEdit && len(preview.Files) == 0 && strings.TrimSpace(preview.Input) == "" &&
-			slices.ContainsFunc(p.order, func(id string) bool {
-				old := p.views[id]
-				return old.complete && (len(old.current.Files) != 0 || old.current.DiffText)
+		if preview.Status == PreviewEdit && len(preview.Files) == 0 && strings.TrimSpace(preview.Input) == "" &&
+			slices.ContainsFunc(p.Order, func(id string) bool {
+				old := p.Views[id]
+				return old.Complete && (len(old.Current.Files) != 0 || old.Current.DiffText)
 			}) {
 			// A new call's empty patch header is only a placeholder. Keep the
 			// last useful card until this call has a projected change.
@@ -113,44 +115,44 @@ func (p *liveDiffPreviewPane) update(preview liveDiffPreview) {
 		// An evaluated completion must get a render opportunity before the next
 		// fast call replaces it.
 		replaceable := func(id string) bool {
-			return p.views[id].complete && (!p.views[id].current.Evaluated || p.views[id].displayed)
+			return p.Views[id].Complete && (!p.Views[id].Current.Evaluated || p.Views[id].displayed)
 		}
 		// A new call takes over a finished card's slot, preferring its caller's,
 		// so the other cards keep their positions and heights. Cards resize only
 		// when concurrency grows.
-		slot := slices.IndexFunc(p.order, func(id string) bool {
-			return replaceable(id) && p.views[id].current.Caller == preview.Caller
+		slot := slices.IndexFunc(p.Order, func(id string) bool {
+			return replaceable(id) && p.Views[id].Current.Caller == preview.Caller
 		})
 		if slot < 0 {
-			slot = slices.IndexFunc(p.order, replaceable)
+			slot = slices.IndexFunc(p.Order, replaceable)
 		}
-		if slot < 0 && len(p.order) >= 16 {
+		if slot < 0 && len(p.Order) >= 16 {
 			// Capacity still favors new calls over old completions.
-			slot = slices.IndexFunc(p.order, func(id string) bool { return p.views[id].complete })
+			slot = slices.IndexFunc(p.Order, func(id string) bool { return p.Views[id].Complete })
 			if slot < 0 {
 				return
 			}
 		}
-		if p.views == nil {
-			p.views = make(map[string]*liveDiffPreviewView)
+		if p.Views == nil {
+			p.Views = make(map[string]*PreviewView)
 		}
-		view = &liveDiffPreviewView{}
+		view = &PreviewView{}
 		if slot >= 0 {
-			delete(p.views, p.order[slot])
-			p.order[slot] = preview.ID
+			delete(p.Views, p.Order[slot])
+			p.Order[slot] = preview.ID
 		} else {
-			p.order = append(p.order, preview.ID)
+			p.Order = append(p.Order, preview.ID)
 		}
-		p.views[preview.ID] = view
+		p.Views[preview.ID] = view
 	}
-	view.current, view.complete, view.updated = preview, preview.Complete, time.Now()
+	view.Current, view.Complete, view.updated = preview, preview.Complete, time.Now()
 }
 
 // live counts calls whose input is still streaming.
-func (p *liveDiffPreviewPane) live() int {
+func (p *PreviewPane) Live() int {
 	count := 0
-	for _, id := range p.order {
-		if !p.views[id].complete {
+	for _, id := range p.Order {
+		if !p.Views[id].Complete {
 			count++
 		}
 	}
@@ -158,38 +160,38 @@ func (p *liveDiffPreviewPane) live() int {
 }
 
 // animating reports whether a displayed row is still fading in.
-func (p *liveDiffPreviewPane) animating(now time.Time) bool {
-	if !p.motion.enabled {
+func (p *PreviewPane) Animating(now time.Time) bool {
+	if !p.Motion.Enabled {
 		return false
 	}
-	for _, id := range p.order {
-		if p.views[id].fading.After(now) {
+	for _, id := range p.Order {
+		if p.Views[id].Fading.After(now) {
 			return true
 		}
 	}
 	return false
 }
 
-func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
-	if height <= 0 || len(p.order) == 0 {
+func (p *PreviewPane) Render(ctx context.Context, workspace string, theme livediff.Theme, width, height int) ([]string, error) {
+	if height <= 0 || len(p.Order) == 0 {
 		return nil, nil
 	}
-	if p.motion.enabled {
-		p.motion.now = time.Now()
+	if p.Motion.Enabled {
+		p.Motion.Now = time.Now()
 	}
-	count := len(p.order)
-	p.accordion = count > 1 && height < count*liveDiffDockRows
-	if p.accordion {
+	count := len(p.Order)
+	p.Accordion = count > 1 && height < count*liveDiffDockRows
+	if p.Accordion {
 		return p.renderAccordion(ctx, workspace, theme, width, height)
 	}
 	var lines []string
-	for i, id := range p.order {
+	for i, id := range p.Order {
 		rows := (height - len(lines)) / (count - i)
-		part, err := p.views[id].render(ctx, workspace, theme, width, rows, p.motion)
+		part, err := p.Views[id].Render(ctx, workspace, theme, width, rows, p.Motion)
 		if err != nil {
 			return nil, err
 		}
-		p.views[id].displayed = len(part) > 1 || len(part) > 0 && len(p.views[id].source) == 0
+		p.Views[id].displayed = len(part) > 1 || len(part) > 0 && len(p.Views[id].Source) == 0
 		lines = append(lines, part...)
 		// Stable card positions even when a call has little source so far.
 		if i+1 < count {
@@ -204,39 +206,39 @@ func (p *liveDiffPreviewPane) render(ctx context.Context, workspace string, them
 // renderAccordion keeps card order, so positions stay stable while one card
 // holds the source rows and the others fold to their heading. When even the
 // headings do not fit, the remainder is counted rather than cycled.
-func (p *liveDiffPreviewPane) renderAccordion(ctx context.Context, workspace string, theme liveDiffTheme, width, height int) ([]string, error) {
-	open := p.chooseOpen(p.motion.now)
-	openAt := slices.Index(p.order, open)
-	shown := min(len(p.order), max(1, height-(liveDiffDockRows-1)))
+func (p *PreviewPane) renderAccordion(ctx context.Context, workspace string, theme livediff.Theme, width, height int) ([]string, error) {
+	open := p.chooseOpen(p.Motion.Now)
+	openAt := slices.Index(p.Order, open)
+	shown := min(len(p.Order), max(1, height-(liveDiffDockRows-1)))
 	start := 0
 	if openAt >= shown {
 		start = openAt - shown + 1
 	}
-	hidden := len(p.order) - shown
+	hidden := len(p.Order) - shown
 	if hidden > 0 {
 		shown = max(1, min(shown, height-liveDiffDockRows))
 		start = min(start, openAt)
 		if openAt >= start+shown {
 			start = openAt - shown + 1
 		}
-		hidden = len(p.order) - shown
+		hidden = len(p.Order) - shown
 	}
 	var lines []string
-	for _, id := range p.order[start : start+shown] {
-		view := p.views[id]
+	for _, id := range p.Order[start : start+shown] {
+		view := p.Views[id]
 		if id != open {
-			lines = append(lines, ansi.Truncate(livediff.Gutter(false, theme)+livediff.Subtle+"▸"+livediff.SubtleReset+" "+view.title(workspace, theme, width-2), max(0, width-1), ""))
+			lines = append(lines, ansi.Truncate(livediff.Gutter(false, theme)+livediff.Subtle+"▸"+livediff.SubtleReset+" "+view.Title(workspace, theme, width-2), max(0, width-1), ""))
 			continue
 		}
 		rows := height - shown + 1
 		if hidden > 0 {
 			rows--
 		}
-		part, err := view.render(ctx, workspace, theme, width, rows, p.motion)
+		part, err := view.Render(ctx, workspace, theme, width, rows, p.Motion)
 		if err != nil {
 			return nil, err
 		}
-		view.displayed = len(part) > 1 || len(part) > 0 && len(view.source) == 0
+		view.displayed = len(part) > 1 || len(part) > 0 && len(view.Source) == 0
 		lines = append(lines, part...)
 		for range rows - len(part) {
 			lines = append(lines, "")
@@ -246,9 +248,9 @@ func (p *liveDiffPreviewPane) renderAccordion(ctx context.Context, workspace str
 		label := fmt.Sprintf("+%d more calls · next shows another", hidden)
 		lines = append(lines, ansi.Truncate(theme.Accent()+label+"\x1b[0m", max(0, width-1), ""))
 	}
-	for _, id := range p.order {
+	for _, id := range p.Order {
 		if id != open {
-			p.views[id].displayed = true // A folded heading has been shown.
+			p.Views[id].displayed = true // A folded heading has been shown.
 		}
 	}
 	return lines, nil
@@ -257,19 +259,19 @@ func (p *liveDiffPreviewPane) renderAccordion(ctx context.Context, workspace str
 // chooseOpen picks the card that keeps its source rows: a pinned live card,
 // then the preferred caller's, then the current one while it is still
 // arriving, then the card that changed most recently.
-func (p *liveDiffPreviewPane) chooseOpen(now time.Time) string {
+func (p *PreviewPane) chooseOpen(now time.Time) string {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	exists := func(id string) bool { return id != "" && p.views[id] != nil }
-	if exists(p.pinned) && !p.views[p.pinned].complete {
+	exists := func(id string) bool { return id != "" && p.Views[id] != nil }
+	if exists(p.pinned) && !p.Views[p.pinned].Complete {
 		return p.setOpen(p.pinned, now)
 	}
 	p.pinned = ""
-	if p.prefer != "" {
+	if p.Prefer != "" {
 		best := ""
-		for _, id := range p.order {
-			if p.views[id].current.Caller == p.prefer && (best == "" || p.views[best].complete && !p.views[id].complete) {
+		for _, id := range p.Order {
+			if p.Views[id].Current.Caller == p.Prefer && (best == "" || p.Views[best].Complete && !p.Views[id].Complete) {
 				best = id
 			}
 		}
@@ -279,21 +281,21 @@ func (p *liveDiffPreviewPane) chooseOpen(now time.Time) string {
 	}
 	// The open card keeps its rows while it is still arriving, briefly after
 	// opening and while its input keeps changing.
-	if exists(p.open) && !p.views[p.open].complete &&
-		(now.Sub(p.openedAt) < liveDiffDockHold || now.Sub(p.views[p.open].updated) < liveDiffDockHold) {
+	if exists(p.open) && !p.Views[p.open].Complete &&
+		(now.Sub(p.openedAt) < liveDiffDockHold || now.Sub(p.Views[p.open].updated) < liveDiffDockHold) {
 		return p.open
 	}
-	latest := p.order[len(p.order)-1]
-	for _, id := range p.order {
-		view, best := p.views[id], p.views[latest]
-		if view.complete == best.complete && view.updated.After(best.updated) || best.complete && !view.complete {
+	latest := p.Order[len(p.Order)-1]
+	for _, id := range p.Order {
+		view, best := p.Views[id], p.Views[latest]
+		if view.Complete == best.Complete && view.updated.After(best.updated) || best.Complete && !view.Complete {
 			latest = id
 		}
 	}
 	return p.setOpen(latest, now)
 }
 
-func (p *liveDiffPreviewPane) setOpen(id string, now time.Time) string {
+func (p *PreviewPane) setOpen(id string, now time.Time) string {
 	if p.open != id {
 		p.open, p.openedAt = id, now
 	}
@@ -301,30 +303,30 @@ func (p *liveDiffPreviewPane) setOpen(id string, now time.Time) string {
 }
 
 // next opens the following card and holds it open until its call completes.
-func (p *liveDiffPreviewPane) next() bool {
-	if len(p.order) < 2 {
+func (p *PreviewPane) Next() bool {
+	if len(p.Order) < 2 {
 		return false
 	}
-	at := slices.Index(p.order, p.open)
-	p.pinned = p.order[(at+1)%len(p.order)]
+	at := slices.Index(p.Order, p.open)
+	p.pinned = p.Order[(at+1)%len(p.Order)]
 	p.setOpen(p.pinned, time.Now())
 	return true
 }
 
 // callers counts distinct callers with a card, for the dock heading.
-func (p *liveDiffPreviewPane) callers() []string {
+func (p *PreviewPane) Callers() []string {
 	var names []string
-	for _, id := range p.order {
-		if caller := p.views[id].current.Caller; !slices.Contains(names, caller) {
+	for _, id := range p.Order {
+		if caller := p.Views[id].Current.Caller; !slices.Contains(names, caller) {
 			names = append(names, caller)
 		}
 	}
 	return names
 }
 
-func (p *liveDiffPreviewView) columns(width int) (digits, sourceWidth int) {
-	if len(p.source) > 0 && p.source[len(p.source)-1].number > 0 {
-		p.digits = max(p.digits, len(strconv.Itoa(p.source[len(p.source)-1].number)))
+func (p *PreviewView) columns(width int) (digits, sourceWidth int) {
+	if len(p.Source) > 0 && p.Source[len(p.Source)-1].Number > 0 {
+		p.digits = max(p.digits, len(strconv.Itoa(p.Source[len(p.Source)-1].Number)))
 		digits = p.digits
 	}
 	numberWidth := 0
@@ -337,16 +339,16 @@ func (p *liveDiffPreviewView) columns(width int) (digits, sourceWidth int) {
 	return digits, max(1, width-4-numberWidth)
 }
 
-func liveDiffPreviewRows(review mekugi.ReviewFile, workspace string) ([]liveDiffPreviewRow, error) {
+func liveDiffPreviewRows(review mekugi.ReviewFile, workspace string) ([]PreviewRow, error) {
 	if review.BeforePath != "" && review.AfterPath == "" {
 		path := pathdisplay.ForWorkspace(workspace, review.BeforePath)
-		return []liveDiffPreviewRow{{kind: ' ', text: "# " + path + " deleted\n"}}, nil
+		return []PreviewRow{{Kind: ' ', Text: "# " + path + " deleted\n"}}, nil
 	}
 	hunks, err := review.Hunks()
 	if err != nil {
 		return nil, err
 	}
-	var rows []liveDiffPreviewRow
+	var rows []PreviewRow
 	for _, hunk := range hunks {
 		before, after := hunk.BeforeStart+1, hunk.AfterStart+1
 		for _, row := range hunk.Rows {
@@ -354,7 +356,7 @@ func liveDiffPreviewRows(review mekugi.ReviewFile, workspace string) ([]liveDiff
 			if row.Kind == '-' {
 				number = before
 			}
-			rows = append(rows, liveDiffPreviewRow{number, row.Kind, row.Text})
+			rows = append(rows, PreviewRow{number, row.Kind, row.Text})
 			if row.Kind != '+' {
 				before++
 			}
@@ -369,8 +371,8 @@ func liveDiffPreviewRows(review mekugi.ReviewFile, workspace string) ([]liveDiff
 // liveDiffPreviewChanged returns the replaced rows: after[start:end] took the
 // place of before[start:oldEnd]. Rows match by content, so context that only
 // renumbered under an added row is unchanged.
-func liveDiffPreviewChanged(before, after []liveDiffPreviewRow) (start, end, oldEnd int) {
-	same := func(a, b liveDiffPreviewRow) bool { return a.kind == b.kind && a.text == b.text }
+func liveDiffPreviewChanged(before, after []PreviewRow) (start, end, oldEnd int) {
+	same := func(a, b PreviewRow) bool { return a.Kind == b.Kind && a.Text == b.Text }
 	for start < len(before) && start < len(after) && same(before[start], after[start]) {
 		start++
 	}
@@ -384,28 +386,28 @@ func liveDiffPreviewChanged(before, after []liveDiffPreviewRow) (start, end, old
 
 // Locate the new end of the changed range, not the hunk's start. Trailing
 // unchanged context must not steal focus from a growing multiline replacement.
-func liveDiffPreviewFocus(before, after []liveDiffPreviewRow) int {
+func liveDiffPreviewFocus(before, after []PreviewRow) int {
 	start, end, _ := liveDiffPreviewChanged(before, after)
 	for i := end - 1; i >= start; i-- {
-		if after[i].kind == '+' || after[i].kind == '-' {
+		if after[i].Kind == '+' || after[i].Kind == '-' {
 			return i
 		}
 	}
 	return max(0, min(start, len(after)-1))
 }
 
-func (p *liveDiffPreviewView) prepare(now time.Time) error {
-	current := p.current
-	if p.rendered.ID == current.ID && p.rendered.Input == current.Input && slices.Equal(p.rendered.Files, current.Files) {
+func (p *PreviewView) prepare(now time.Time) error {
+	current := p.Current
+	if p.Rendered.ID == current.ID && p.Rendered.Input == current.Input && slices.Equal(p.Rendered.Files, current.Files) {
 		return nil
 	}
 	file := min(p.file, max(0, len(current.Files)-1))
 	for i, review := range current.Files {
-		if p.rendered.ID != current.ID || !slices.Contains(p.rendered.Files, review) {
+		if p.Rendered.ID != current.ID || !slices.Contains(p.Rendered.Files, review) {
 			file = i
 		}
 	}
-	var source []liveDiffPreviewRow
+	var source []PreviewRow
 	var err error
 	if current.Input != "" {
 		for i, line := range strings.Split(strings.TrimSuffix(current.Input, "\n"), "\n") {
@@ -413,7 +415,7 @@ func (p *liveDiffPreviewView) prepare(now time.Time) error {
 			if current.DiffText {
 				number = 0 // A clipped unified-diff row is not a source coordinate.
 			}
-			source = append(source, liveDiffPreviewRow{number, ' ', line + "\n"})
+			source = append(source, PreviewRow{number, ' ', line + "\n"})
 		}
 	}
 	if len(current.Files) > 0 {
@@ -422,23 +424,23 @@ func (p *liveDiffPreviewView) prepare(now time.Time) error {
 			return err
 		}
 	}
-	before := p.source
-	if p.rendered.ID != current.ID || p.file != file {
+	before := p.Source
+	if p.Rendered.ID != current.ID || p.file != file {
 		before = nil
 	}
-	p.focus = liveDiffPreviewFocus(before, source)
-	p.born = liveDiffPreviewBirths(before, source, p.born, now)
+	p.Focus = liveDiffPreviewFocus(before, source)
+	p.born = PreviewBirths(before, source, p.born, now)
 	if current.Input != "" {
-		p.focus = max(0, len(source)-1)
+		p.Focus = max(0, len(source)-1)
 	}
-	p.file, p.source, p.rendered = file, source, current
+	p.file, p.Source, p.Rendered = file, source, current
 	return nil
 }
 
-// liveDiffPreviewBirths carries reveal times across a snapshot. Unchanged rows
+// PreviewBirths carries reveal times across a snapshot. Unchanged rows
 // and rows that only grew keep theirs, so a streaming line does not restart
 // its fade; newly revealed rows cascade in order.
-func liveDiffPreviewBirths(before, after []liveDiffPreviewRow, born []time.Time, now time.Time) []time.Time {
+func PreviewBirths(before, after []PreviewRow, born []time.Time, now time.Time) []time.Time {
 	if len(born) != len(before) {
 		born = make([]time.Time, len(before))
 	}
@@ -457,7 +459,7 @@ func liveDiffPreviewBirths(before, after []liveDiffPreviewRow, born []time.Time,
 	copy(next[end:], born[oldEnd:])
 	step := liveDiffPreviewStagger
 	if count := time.Duration(end - start); count > 0 {
-		step = min(step, liveDiffPreviewMaxStagger/count)
+		step = min(step, PreviewMaxStagger/count)
 	}
 	fresh := time.Duration(0)
 	for i := range end {
@@ -473,18 +475,18 @@ func liveDiffPreviewBirths(before, after []liveDiffPreviewRow, born []time.Time,
 }
 
 // liveDiffPreviewOverlap matches rows by content, letting the last one grow.
-func liveDiffPreviewOverlap(before, after []liveDiffPreviewRow) bool {
+func liveDiffPreviewOverlap(before, after []PreviewRow) bool {
 	if len(before) != len(after) || len(before) == 0 {
 		return false
 	}
 	last := len(before) - 1
 	for i := range last {
-		if before[i].kind != after[i].kind || before[i].text != after[i].text {
+		if before[i].Kind != after[i].Kind || before[i].Text != after[i].Text {
 			return false
 		}
 	}
-	return before[last].kind == after[last].kind &&
-		strings.HasPrefix(after[last].text, strings.TrimSuffix(before[last].text, "\n"))
+	return before[last].Kind == after[last].Kind &&
+		strings.HasPrefix(after[last].Text, strings.TrimSuffix(before[last].Text, "\n"))
 }
 
 // liveDiffPreviewEase decelerates a fade so rows settle rather than stop.
@@ -495,24 +497,24 @@ func liveDiffPreviewEase(progress float64) float64 {
 
 // Render and color only a bounded source window around the streaming tip.
 // Captured history composition stays out of this high-frequency path.
-func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, theme liveDiffTheme, width, height int, motion liveDiffPreviewMotion) ([]string, error) {
-	if height <= 0 || p.current.ID == "" {
+func (p *PreviewView) Render(ctx context.Context, workspace string, theme livediff.Theme, width, height int, motion PreviewMotion) ([]string, error) {
+	if height <= 0 || p.Current.ID == "" {
 		return nil, nil
 	}
-	now := motion.now
-	if !motion.enabled {
+	now := motion.Now
+	if !motion.Enabled {
 		now = time.Now()
 	}
 	if err := p.prepare(now); err != nil {
 		return nil, err
 	}
-	p.fading = time.Time{}
-	header := ansi.Truncate(livediff.Gutter(false, theme)+p.title(workspace, theme, width), max(0, width-1), "")
+	p.Fading = time.Time{}
+	header := ansi.Truncate(livediff.Gutter(false, theme)+p.Title(workspace, theme, width), max(0, width-1), "")
 	lines := []string{header}
 	rows := height - 1
 	var footer []string
-	if p.current.Footer != "" && rows > 0 {
-		footer = []string{ansi.Truncate(livediff.Safe(p.current.Footer, false), max(0, width-1), "…")}
+	if p.Current.Footer != "" && rows > 0 {
+		footer = []string{ansi.Truncate(livediff.Safe(p.Current.Footer, false), max(0, width-1), "…")}
 		rows--
 	}
 	finish := func(lines []string) []string {
@@ -523,19 +525,19 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 		}
 		return append(lines, footer...)
 	}
-	if rows == 0 || len(p.source) == 0 {
+	if rows == 0 || len(p.Source) == 0 {
 		return finish(lines), nil
 	}
 	digits, sourceWidth := p.columns(width)
 	fragmentsAt := func(i int) int {
-		text := livediff.Safe(strings.TrimSuffix(p.source[i].text, "\n"), false)
+		text := livediff.Safe(strings.TrimSuffix(p.Source[i].Text, "\n"), false)
 		return strings.Count(ansi.Hardwrap(text, sourceWidth, true), "\n") + 1
 	}
 	// Keep the tip's last wrapped fragment visible before admitting trailing
 	// context. Fill the region with source rather than empty centering padding.
-	focus := p.focus
-	if p.paused {
-		focus = min(max(0, p.scrollRow), len(p.source)-1)
+	focus := p.Focus
+	if p.Paused {
+		focus = min(max(0, p.ScrollRow), len(p.Source)-1)
 	}
 	p.rows = rows
 	start, skip, count := focus, 0, 0
@@ -546,7 +548,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 		count += n - skip
 	}
 	end := focus + 1
-	for end < len(p.source) && count < rows {
+	for end < len(p.Source) && count < rows {
 		count += fragmentsAt(end)
 		end++
 	}
@@ -554,19 +556,19 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	// a growing whole file on every frame.
 	colorStart := max(0, start-32)
 	source := make([]mekugi.ReviewRow, 0, end-colorStart)
-	for _, row := range p.source[colorStart:end] {
-		source = append(source, mekugi.ReviewRow{Kind: row.kind, Text: row.text})
+	for _, row := range p.Source[colorStart:end] {
+		source = append(source, mekugi.ReviewRow{Kind: row.Kind, Text: row.Text})
 	}
 	review := mekugi.ReviewFile{BeforePath: "stream.sh", AfterPath: "stream.sh"}
-	if len(p.current.Files) > 0 {
-		review = p.current.Files[p.file]
+	if len(p.Current.Files) > 0 {
+		review = p.Current.Files[p.file]
 	}
 	var before, after []string
 	var err error
-	if p.current.Input != "" {
+	if p.Current.Input != "" {
 		// Raw diff tails and pending scope lists are plain text.
-		for _, row := range p.source[colorStart:end] {
-			after = append(after, livediff.Safe(strings.TrimSuffix(row.text, "\n"), false))
+		for _, row := range p.Source[colorStart:end] {
+			after = append(after, livediff.Safe(strings.TrimSuffix(row.Text, "\n"), false))
 		}
 		before = after
 	} else {
@@ -578,13 +580,13 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 	}
 	oldIndex, newIndex := 0, 0
 	for i := colorStart; i < end && len(lines) <= rows; i++ {
-		row := p.source[i]
+		row := p.Source[i]
 		text := ""
-		if row.kind != '+' {
+		if row.Kind != '+' {
 			text = before[oldIndex]
 			oldIndex++
 		}
-		if row.kind != '-' {
+		if row.Kind != '-' {
 			text = after[newIndex]
 			newIndex++
 		}
@@ -593,7 +595,7 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 		}
 		numbers := ""
 		if digits > 0 && width-3 >= digits+4 {
-			numbers = fmt.Sprintf(livediff.Subtle+"%*d│"+livediff.SubtleReset, digits, row.number)
+			numbers = fmt.Sprintf(livediff.Subtle+"%*d│"+livediff.SubtleReset, digits, row.Number)
 		}
 		carry := ""
 		for n, fragment := range strings.Split(ansi.Hardwrap(text, sourceWidth, true), "\n") {
@@ -613,17 +615,17 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 			if n > 0 && numbers != "" {
 				prefix = livediff.Subtle + strings.Repeat(" ", digits) + "│" + livediff.SubtleReset
 			}
-			line := livediff.Gutter(i == p.focus, theme) + livediff.SourceLine(theme, width, prefix, fragment, row.kind)
+			line := livediff.Gutter(i == p.Focus, theme) + livediff.SourceLine(theme, width, prefix, fragment, row.Kind)
 			line = ansi.Truncate(line, max(0, width-1), "")
 			// Completion can replace the streaming source with its final diff.
 			// That is a settled snapshot, not a pane full of newly arriving rows.
-			if until := p.born[i].Add(liveDiffPreviewFade); motion.enabled && !p.complete && until.After(motion.now) {
-				if until.After(p.fading) {
-					p.fading = until
+			if until := p.born[i].Add(liveDiffPreviewFade); motion.Enabled && !p.Complete && until.After(motion.Now) {
+				if until.After(p.Fading) {
+					p.Fading = until
 				}
-				progress := float64(motion.now.Sub(p.born[i])) / float64(liveDiffPreviewFade)
+				progress := float64(motion.Now.Sub(p.born[i])) / float64(liveDiffPreviewFade)
 				progress = liveDiffPreviewFadeFloor + (1-liveDiffPreviewFadeFloor)*liveDiffPreviewEase(progress)
-				line = livediff.Fade(line, progress, motion.canvas)
+				line = livediff.Fade(line, progress, motion.Canvas)
 			}
 			lines = append(lines, line)
 		}
@@ -633,46 +635,46 @@ func (p *liveDiffPreviewView) render(ctx context.Context, workspace string, them
 
 // title follows the agents roster: a state glyph, then what the card shows.
 // Edits use the file navigator's status letter and live line counts.
-func (p *liveDiffPreviewView) title(workspace string, theme liveDiffTheme, width int) string {
-	glyph := liveActivityAmber + "◐" + liveActivityReset
+func (p *PreviewView) Title(workspace string, theme livediff.Theme, width int) string {
+	glyph := activityui.Amber + "◐" + activityui.Reset
 	var label string
-	reason, unavailable := strings.CutPrefix(p.current.Status, liveDiffPreviewUnavailable)
+	reason, unavailable := strings.CutPrefix(p.Current.Status, PreviewUnavailable)
 	switch {
 	case unavailable:
-		glyph, label = liveActivityRed+"!"+liveActivityReset, livediff.Safe(reason, false)
-	case len(p.current.Files) > 0:
-		file := p.current.Files[p.file]
+		glyph, label = activityui.Red+"!"+activityui.Reset, livediff.Safe(reason, false)
+	case len(p.Current.Files) > 0:
+		file := p.Current.Files[p.file]
 		path := file.AfterPath
 		if path == "" {
 			path = file.BeforePath
 		}
 		added, removed := file.LineCounts()
-		label = liveDiffFileLabel(liveDiffStatusOf(file), pathdisplay.ForWorkspace(workspace, path), workspace, theme) +
-			liveDiffCountStats(livediff.Counts{Added: added, Removed: removed}, theme)
-		if len(p.current.Files) > 1 {
-			label += fmt.Sprintf(" "+livediff.Subtle+"%d/%d files"+livediff.SubtleReset, p.file+1, len(p.current.Files))
+		label = FileLabel(StatusOf(file), pathdisplay.ForWorkspace(workspace, path), workspace, theme) +
+			CountStats(livediff.Counts{Added: added, Removed: removed}, theme)
+		if len(p.Current.Files) > 1 {
+			label += fmt.Sprintf(" "+livediff.Subtle+"%d/%d files"+livediff.SubtleReset, p.file+1, len(p.Current.Files))
 		}
-	case p.current.Status == liveDiffPreviewPending:
+	case p.Current.Status == PreviewPending:
 		label = "scoped effects"
 	default:
 		label = "edit"
 	}
-	if p.current.Status == liveDiffPreviewRunning {
+	if p.Current.Status == PreviewRunning {
 		label += " " + livediff.Subtle + "· observed so far" + livediff.SubtleReset
 	}
-	if p.current.Input != "" && p.current.Truncated {
+	if p.Current.Input != "" && p.Current.Truncated {
 		label += " " + livediff.Subtle + "· tail" + livediff.SubtleReset
 	}
-	if p.complete && !unavailable {
+	if p.Complete && !unavailable {
 		// Complete means the input stream ended, not that the host applied it.
 		// Keep predicted edits visibly provisional even after a host rejection.
-		glyph = liveActivityDim + "○" + liveActivityReset
+		glyph = activityui.Dim + "○" + activityui.Reset
 		label += " " + livediff.Subtle + "· preview" + livediff.SubtleReset
 	}
 	label = glyph + " " + label
-	caller := agentDisplayName(p.current.Caller)
+	caller := activityui.AgentDisplayName(p.Current.Caller)
 	if caller == "" {
-		caller = p.current.Thread
+		caller = p.Current.Thread
 	}
 	if caller == "" {
 		caller = "unknown caller"
@@ -680,7 +682,7 @@ func (p *liveDiffPreviewView) title(workspace string, theme liveDiffTheme, width
 	// Put attribution first so narrow panes do not silently lose the caller.
 	// The caller keeps the agents pane's color for the same canonical path.
 	caller = ansi.Truncate(livediff.Safe(caller, false), max(1, width/3, width-6-ansi.StringWidth(label)), "…")
-	if color := liveAgentColor(p.current.Caller); color != "" {
+	if color := activityui.Color(p.Current.Caller); color != "" {
 		caller = color + caller + "\x1b[0m"
 	}
 	return theme.Accent() + caller + "\x1b[0m" + theme.Accent() + " · \x1b[0m" + label + "\x1b[0m"
@@ -688,25 +690,25 @@ func (p *liveDiffPreviewView) title(workspace string, theme liveDiffTheme, width
 
 // A manual stream scroll pauses each visible card; new input still replaces its
 // snapshot, without moving its source window. r restores each card's live tip.
-func (p *liveDiffPreviewPane) scroll(key byte) bool {
-	_, _, ok := paneScroll(key, 0, 1, 1)
+func (p *PreviewPane) Scroll(key byte) bool {
+	_, _, ok := terminalui.PaneScroll(key, 0, 1, 1)
 	if !ok {
 		return false
 	}
-	for _, v := range p.views {
-		at := v.scrollRow
-		if !v.paused {
-			at = v.focus
+	for _, v := range p.Views {
+		at := v.ScrollRow
+		if !v.Paused {
+			at = v.Focus
 		}
-		next, follow, _ := paneScroll(key, at, 1, len(v.source))
+		next, follow, _ := terminalui.PaneScroll(key, at, 1, len(v.Source))
 		if key == ' ' {
-			next = min(len(v.source)-1, at+max(1, v.rows))
+			next = min(len(v.Source)-1, at+max(1, v.rows))
 		}
 		if key == 'b' {
 			next = max(0, at-max(1, v.rows))
 		}
-		v.paused = !follow
-		v.scrollRow = next
+		v.Paused = !follow
+		v.ScrollRow = next
 	}
 	return true
 }

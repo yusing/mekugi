@@ -4,11 +4,13 @@ import (
 	"bytes"
 	json "encoding/json/v2"
 	"fmt"
-	"github.com/charmbracelet/x/ansi"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/appserver"
 )
 
 func restoreContentReply(t *testing.T, u *appServerUI, id int, result any) {
@@ -17,7 +19,7 @@ func restoreContentReply(t *testing.T, u *appServerUI, id int, result any) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var m appServerMessage
+	var m appserver.Message
 	if err := json.Unmarshal(w, &m); err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +34,7 @@ func restoreContentError(t *testing.T, u *appServerUI, id int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var m appServerMessage
+	var m appserver.Message
 	if err := json.Unmarshal(w, &m); err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +129,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 			t.Fatalf("observational history triggered execution: %+v", request)
 		}
 	}
-	if len(u.shell.mainDock.order) != 0 || len(u.shell.agentDock.order) != 0 {
+	if len(u.shell.mainDock.Order) != 0 || len(u.shell.agentDock.Order) != 0 {
 		t.Fatal("historical edit reopened a live preview")
 	}
 }
@@ -263,7 +265,7 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			}
 			liveDiffScopeCapture(t, store, workspace, "main", "edit", filepath.Join(workspace, "restored.go"), "before", "after")
 			u := newAppServerSessionTestUI(t, workspace)
-			w := u.client.input.(*appServerTestInput)
+			w := u.client.Input.(*appServerTestInput)
 			auto, stop := newAutoLiveDiff(t.Context(), store.directory)
 			defer stop()
 			auto.enable()

@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"github.com/yusing/mekugi/internal/livediff"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,21 +14,22 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestLiveDiffRenderAllFiles(t *testing.T) {
 	workspace := t.TempDir()
-	var files []liveDiffFile
+	var files []livediff.File
 	for _, name := range []string{"first", "second"} {
 		path := filepath.Join(workspace, name+".txt")
 		diff := "--- /dev/null\n+++ " + strconv.Quote(path) + "\n@@ -0,0 +1 @@\n+" + name + " content\n"
-		files = append(files, liveDiffFile{Path: path, Chunks: []liveDiffChunk{{
+		files = append(files, livediff.File{Path: path, Chunks: []livediff.Chunk{{
 
 			Review: mekugi.ReviewFile{AfterPath: path, Diff: diff},
 		}}})
 	}
 	for focusFile := range files {
-		render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90, focusFile, files[focusFile].Chunks[0])
+		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90, focusFile, files[focusFile].Chunks[0])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -57,12 +57,12 @@ func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
 	first := filepath.Join(workspace, "first.txt")
 	second := filepath.Join(workspace, "second.txt")
 	diff := "--- /dev/null\n+++ " + strconv.Quote(first) + "\n@@ -0,0 +1,40 @@\n" + strings.Repeat("+first content\n", 40)
-	files := []liveDiffFile{
-		{Path: first, Chunks: []liveDiffChunk{{
+	files := []livediff.File{
+		{Path: first, Chunks: []livediff.Chunk{{
 			Review: mekugi.ReviewFile{AfterPath: first, Diff: diff}}}},
 		{Path: second}, // The latest file was fully reverted.
 	}
-	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90, 1, liveDiffChunk{})
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90, 1, livediff.Chunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,11 +81,11 @@ func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
 }
 
 func TestLiveDiffScrollAcrossFiles(t *testing.T) {
-	view := liveDiffView{
-		Files:  []liveDiffFile{{Path: "first"}, {Path: "second"}},
+	view := livediff.View{
+		Files:  []livediff.File{{Path: "first"}, {Path: "second"}},
 		Scroll: make(map[string]int),
 	}
-	render := liveDiffRender{Lines: make([]string, 20), Starts: []int{0, 10}}
+	render := livediff.Render{Lines: make([]string, 20), Starts: []int{0, 10}}
 	for _, tc := range []struct {
 		offset, file, local int
 	}{

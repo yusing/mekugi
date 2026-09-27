@@ -8,25 +8,27 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/ui/diffview"
+	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
 
 func TestTerminalUIDockLingersAfterLastAnimation(t *testing.T) {
 	u := &terminalUI{}
 	now := time.Now()
-	u.mainDock = liveDiffPreviewPane{
-		order: []string{"edit"}, motion: liveDiffPreviewMotion{enabled: true},
-		views: map[string]*liveDiffPreviewView{"edit": {complete: true, fading: now.Add(time.Second)}},
+	u.mainDock = diffview.PreviewPane{
+		Order: []string{"edit"}, Motion: diffview.PreviewMotion{Enabled: true},
+		Views: map[string]*diffview.PreviewView{"edit": {Complete: true, Fading: now.Add(time.Second)}},
 	}
 	u.dockSeen[0] = now.Add(-nativeDockLinger)
-	if !u.animating(now) || len(u.mainDock.order) == 0 {
+	if !u.animating(now) || len(u.mainDock.Order) == 0 {
 		t.Fatal("animated completed preview disappeared")
 	}
 	u.animating(now.Add(time.Second))
-	if len(u.mainDock.order) == 0 {
+	if len(u.mainDock.Order) == 0 {
 		t.Fatal("preview closed immediately after animation")
 	}
 	u.animating(now.Add(nativeDockLinger))
-	if len(u.mainDock.order) != 0 {
+	if len(u.mainDock.Order) != 0 {
 		t.Fatal("finished preview did not expire")
 	}
 }
@@ -80,7 +82,7 @@ func TestTerminalUIIncrementalPaint(t *testing.T) {
 
 func TestPaneScrollUnified(t *testing.T) {
 	for _, key := range []byte{'j', 'k', ' ', 'b', 'g', 'G'} {
-		next, follow, ok := paneScroll(key, 50, 10, 100)
+		next, follow, ok := terminalui.PaneScroll(key, 50, 10, 100)
 		if !ok {
 			t.Fatal("missing scroll binding")
 		}
@@ -134,7 +136,7 @@ func TestTerminalUIIdleLiveLayout(t *testing.T) {
 		return screen.String()
 	}
 	workspace := t.TempDir()
-	u.shell.preview(projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{Workspace: workspace, ID: "main-edit", Caller: "/root", Tool: applyPatchToolName, Status: liveDiffPreviewEdit, Input: "*** Begin Patch\n*** Add File: idle-live.txt\n+unique-live-line\n*** End Patch"}))
+	u.shell.preview(projectStockPatchPreview(t.Context(), workspace, diffview.Preview{Workspace: workspace, ID: "main-edit", Caller: "/root", Tool: applyPatchToolName, Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: idle-live.txt\n+unique-live-line\n*** End Patch"}))
 	u.agents.agents = []activityPaneAgent{{Name: "/root", Responding: true}}
 	frame := paint()
 	if u.shell.layout.agents.h != 0 || !strings.Contains(frame, "3 Live") || !strings.Contains(frame, "unique-live-line") {
@@ -219,7 +221,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			}
 			assertFollow(paint(120, 40))
 			workspace := t.TempDir()
-			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{ID: "edit", Workspace: workspace, Caller: caller, Tool: applyPatchToolName, Status: liveDiffPreviewEdit, Input: "*** Begin Patch\n*** Add File: follow.txt\n+live content\n*** End Patch"}))
+			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, diffview.Preview{ID: "edit", Workspace: workspace, Caller: caller, Tool: applyPatchToolName, Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: follow.txt\n+live content\n*** End Patch"}))
 			assertFollow(paint(120, 40))
 			u.agents.agents[0].Responding = false
 			assertFollow(paint(120, 40))
@@ -230,9 +232,9 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			}
 			u.shell.diffOpen = false
 			assertFollow(paint(140, 32))
-			view.scrollKey(paneWheelDown)
+			view.scrollKey(terminalui.PaneWheelDown)
 			assertFollow(paint(140, 32))
-			view.scrollKey(paneWheelUp)
+			view.scrollKey(terminalui.PaneWheelUp)
 			frame := paint(140, 32)
 			if view.following || !strings.Contains(frame, "↓ Back to bottom · esc") {
 				t.Fatalf("missing manual scrollback hint:\n%s", frame)
@@ -268,7 +270,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			view.scrollKey('b')
 			paint(140, 32)
 			for !view.following {
-				view.scrollKey(paneWheelDown)
+				view.scrollKey(terminalui.PaneWheelDown)
 			}
 			assertFollow(paint(140, 32))
 			view.toggleSnippet(liveActivitySnippet{1, 0})

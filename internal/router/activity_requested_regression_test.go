@@ -1,17 +1,18 @@
 package router
 
 import (
-	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestRequestedInspectOperandsGroupLikeReads(t *testing.T) {
 	got := toolActivityShell("inspect_file --json --max-tokens 500 a.go b.go")
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: got})
-	if len(blocks) != 1 || blocks[0].kind != "reads" || blocks[0].verb != "Inspect" ||
-		len(blocks[0].reads) != 2 || blocks[0].reads[0].path != "a.go" || blocks[0].reads[1].path != "b.go" {
+	if len(blocks) != 1 || blocks[0].Kind != "reads" || blocks[0].Verb != "Inspect" ||
+		len(blocks[0].Reads) != 2 || blocks[0].Reads[0].Path != "a.go" || blocks[0].Reads[1].Path != "b.go" {
 		t.Fatalf("inspect operands were not one grouped operation: %q, %+v", got, blocks)
 	}
 }

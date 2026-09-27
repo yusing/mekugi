@@ -156,17 +156,17 @@ func TestLiveDiffHunkNavigationAndFileMemory(t *testing.T) {
 	c := newLiveDiffTerminalController(nil, "", nil)
 	defer c.close()
 	c.diffMode = true
-	c.files = []liveDiffFile{{Path: "a.go", Chunks: []liveDiffChunk{{Key: "a", Review: mekugi.ReviewFile{BeforePath: "a.go", AfterPath: "a.go", Diff: "@@ -1 +1 @@\n-old\n+new\n@@ -20 +20 @@\n-before\n+after\n"}}}}, {Path: "b.go", Chunks: []liveDiffChunk{{Key: "b", Review: mekugi.RenderReviewFile("", "b.go", "", "second\n")}}}}
+	c.files = []livediff.File{{Path: "a.go", Chunks: []livediff.Chunk{{Key: "a", Review: mekugi.ReviewFile{BeforePath: "a.go", AfterPath: "a.go", Diff: "@@ -1 +1 @@\n-old\n+new\n@@ -20 +20 @@\n-before\n+after\n"}}}}, {Path: "b.go", Chunks: []livediff.Chunk{{Key: "b", Review: mekugi.RenderReviewFile("", "b.go", "", "second\n")}}}}
 	c.view.Files = c.files
 	var err error
-	c.rendering, err = c.renderer.Render(t.Context(), livediff.DarkTheme, c.files, "", 80, 0, liveDiffChunk{})
+	c.rendering, err = c.renderer.Render(t.Context(), livediff.DarkTheme, c.files, "", 80, 0, livediff.Chunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(c.rendering.Hunks) != 3 {
 		t.Fatalf("hunk offsets: %v", c.rendering.Hunks)
 	}
-	c.navigation.rebuild(c.files, "")
+	c.navigation.Rebuild(c.files, "")
 	c.lines, c.rows = c.rendering.Lines, 8
 	c.handleKey(']')
 	first := c.view.Scroll[c.files[0].Key()]

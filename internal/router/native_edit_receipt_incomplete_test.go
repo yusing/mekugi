@@ -27,11 +27,11 @@ func TestEditReceiptGroupsCaptureGapsWithoutClaimingEdits(t *testing.T) {
 			wantBlocks := 1
 			if known {
 				wantBlocks++
-				if blocks[0].verb != "Edit" || !strings.Contains(text, "Edit `edited.go` +1 -1 · python3") {
+				if blocks[0].Verb != "Edit" || !strings.Contains(text, "Edit `edited.go` +1 -1 · python3") {
 					t.Fatalf("lost confirmed edit: %q", text)
 				}
 			}
-			if len(blocks) != wantBlocks || blocks[len(blocks)-1].verb != "Capture" ||
+			if len(blocks) != wantBlocks || blocks[len(blocks)-1].Verb != "Capture" ||
 				!strings.Contains(text, "evidence unavailable for 100 paths") || !strings.Contains(text, "mchanges amber1 --summary") ||
 				strings.Contains(text, "unknown-") || strings.Contains(text, "tool-managed files") {
 				t.Fatalf("capture gaps became edit claims or flooded the receipt: %q", text)

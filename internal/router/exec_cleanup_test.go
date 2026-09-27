@@ -9,6 +9,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestMergeExecObservationsDoesNotMutateFirstMember(t *testing.T) {
@@ -105,7 +107,7 @@ func TestExecScopePreviewPublishesOnlyReviewChanges(t *testing.T) {
 		sub := broker.subscribe()
 		broker.takePreviews(sub) // Discard initial scope synchronization.
 		const previewID = "running:cleanup-test"
-		go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, liveDiffPreview{
+		go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{
 			ID: previewID, Workspace: root, Thread: "thread",
 		})
 		synctest.Wait()
@@ -121,7 +123,7 @@ func TestExecScopePreviewPublishesOnlyReviewChanges(t *testing.T) {
 		}
 		advanceExecCleanupPreviewTicker(t)
 		events := broker.takePreviews(sub)
-		changed := assertExecCleanupPreview(t, events, previewID, liveDiffPreviewRunning)
+		changed := assertExecCleanupPreview(t, events, previewID, diffview.PreviewRunning)
 		if len(changed.Files) != 1 || changed.Files[0].BeforePath != path || changed.Files[0].AfterPath != path {
 			t.Fatalf("changed review files = %+v", changed.Files)
 		}
@@ -159,7 +161,7 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 		broker := newLiveDiffBroker(ctx)
 		broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
 		for index := range 16 {
-			broker.publishPreview(liveDiffPreview{
+			broker.publishPreview(diffview.Preview{
 				ID: filepath.Join("occupied", string(rune('a'+index))), Workspace: root, Thread: "thread", Status: "RUNNING · occupied",
 			}, false)
 		}
@@ -182,7 +184,7 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 		}
 
 		const previewID = "running:admission-retry"
-		go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, liveDiffPreview{
+		go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{
 			ID: previewID, Workspace: root, Thread: "thread",
 		})
 		synctest.Wait()
@@ -196,10 +198,10 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "broker-full changed preview should be rejected")
 		assertExecCleanupPreviewNotActive(t, broker, previewID)
 
-		broker.publishPreview(liveDiffPreview{ID: "occupied/a"}, true)
+		broker.publishPreview(diffview.Preview{ID: "occupied/a"}, true)
 		assertExecCleanupPreview(t, broker.takePreviews(sub), "occupied/a", "")
 		advanceExecCleanupPreviewTicker(t) // The file is unchanged since the rejected preview; retry it.
-		preview := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, liveDiffPreviewRunning)
+		preview := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, diffview.PreviewRunning)
 		if len(preview.Files) != 1 {
 			t.Fatalf("retried preview lost its changed-file projection: %+v", preview)
 		}
@@ -207,7 +209,7 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 		active, found := broker.previews[previewID]
 		count := len(broker.previews)
 		broker.mu.Unlock()
-		if !found || active.Status != liveDiffPreviewRunning || count != 16 {
+		if !found || active.Status != diffview.PreviewRunning || count != 16 {
 			t.Fatalf("retried preview not admitted to full broker: found=%v active=%+v count=%d", found, active, count)
 		}
 
@@ -236,7 +238,7 @@ func TestExecScopePreviewDoesNotTreatReadBudgetAsChange(t *testing.T) {
 		sub := broker.subscribe()
 		broker.takePreviews(sub)
 		const previewID = "running:large-unchanged"
-		go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, liveDiffPreview{
+		go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{
 			ID: previewID, Workspace: root, Thread: "thread",
 		})
 		advanceExecCleanupPreviewTicker(t)
@@ -260,7 +262,7 @@ func TestExecScopePreviewDoesNotTreatReadBudgetAsChange(t *testing.T) {
 			t.Fatal(err)
 		}
 		advanceExecCleanupPreviewTicker(t)
-		changed := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, liveDiffPreviewRunning)
+		changed := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, diffview.PreviewRunning)
 		if len(changed.Files) != 1 || !strings.Contains(changed.Files[0].Incomplete, "content bound") {
 			t.Fatalf("changed large file lost its bounded observation: %+v", changed)
 		}
@@ -287,9 +289,9 @@ func advanceExecCleanupPreviewTicker(t *testing.T) {
 	synctest.Wait()
 }
 
-func assertExecCleanupPreview(t *testing.T, events []liveDiffEvent, id, status string) liveDiffPreview {
+func assertExecCleanupPreview(t *testing.T, events []liveDiffEvent, id, status string) diffview.Preview {
 	t.Helper()
-	var previews []liveDiffPreview
+	var previews []diffview.Preview
 	for _, event := range events {
 		if event.Preview != nil {
 			previews = append(previews, *event.Preview)

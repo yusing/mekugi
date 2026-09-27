@@ -1,4 +1,4 @@
-package router
+package appserver
 
 import (
 	"bufio"
@@ -15,74 +15,74 @@ import (
 // Wire subset from codex-rs/app-server-protocol/src/protocol/{common,v2}.rs
 // at 86be5320; exercised against codex-cli 0.157.1. initialize is not version
 // negotiation. Unknown notifications are ignored, not inferred from their text.
-type appServerMessage struct {
-	ID     jsontext.Value  `json:"id,omitempty"`
-	Method string          `json:"method,omitempty"`
-	Params jsontext.Value  `json:"params,omitempty"`
-	Result jsontext.Value  `json:"result,omitempty"`
-	Error  *appServerError `json:"error,omitempty"`
+type Message struct {
+	ID     jsontext.Value `json:"id,omitempty"`
+	Method string         `json:"method,omitempty"`
+	Params jsontext.Value `json:"params,omitempty"`
+	Result jsontext.Value `json:"result,omitempty"`
+	Error  *Error         `json:"error,omitempty"`
 }
 
-type appServerError struct {
+type Error struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 }
 
-type appServerClient struct {
+type Client struct {
 	cmd         *exec.Cmd
-	input       io.WriteCloser
-	output      io.ReadCloser
-	messages    chan appServerMessage
+	Input       io.WriteCloser
+	Output      io.ReadCloser
+	Messages    chan Message
 	readDone    chan error
-	done        chan error
-	diagnostics appServerDiagnostics
+	Done        chan error
+	Diagnostics Diagnostics
 	next        int
 }
 
 // Diagnostics never share the RPC stream or write through the terminal painter.
-type appServerDiagnostics struct {
+type Diagnostics struct {
 	sync.Mutex
-	text []byte
+	Text []byte
 }
 
-func (d *appServerDiagnostics) Write(p []byte) (int, error) {
+func (d *Diagnostics) Write(p []byte) (int, error) {
 	d.Lock()
 	defer d.Unlock()
-	d.text = append(d.text, p...)
-	if len(d.text) > 64<<10 {
-		d.text = append([]byte(nil), d.text[len(d.text)-(64<<10):]...)
+	d.Text = append(d.Text, p...)
+	if len(d.Text) > 64<<10 {
+		d.Text = append([]byte(nil), d.Text[len(d.Text)-(64<<10):]...)
 	}
 	return len(p), nil
 }
 
-func startAppServer(cmd *exec.Cmd) (*appServerClient, error) {
-	c := &appServerClient{cmd: cmd, messages: make(chan appServerMessage, 256), readDone: make(chan error, 1), done: make(chan error, 1)}
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, &c.diagnostics
+func Start(cmd *exec.Cmd) (*Client, error) {
+	c := &Client{cmd: cmd, Messages: make(chan Message, 256), readDone: make(chan error, 1), Done: make(chan error, 1)}
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, &c.Diagnostics
 	var err error
-	if c.input, err = cmd.StdinPipe(); err != nil {
+	if c.Input, err = cmd.StdinPipe(); err != nil {
 		return nil, err
 	}
-	if c.output, err = cmd.StdoutPipe(); err != nil {
-		c.input.Close()
+	if c.Output, err = cmd.StdoutPipe(); err != nil {
+		c.Input.Close()
 		return nil, err
 	}
 	if err = cmd.Start(); err != nil {
-		c.input.Close()
-		c.output.Close()
+		c.Input.Close()
+		c.Output.Close()
 		return nil, err
 	}
 	go func() {
-		defer close(c.messages)
-		scanner := bufio.NewScanner(c.output)
+		defer close(c.Messages)
+		scanner := bufio.NewScanner(c.Output)
 		scanner.Buffer(make([]byte, 64<<10), 16<<20)
 		for scanner.Scan() {
-			var message appServerMessage
+			var message Message
 			if err := json.Unmarshal(scanner.Bytes(), &message); err != nil {
 				c.readDone <- fmt.Errorf("decode app-server: %w", err)
 				return
 			}
 			select {
-			case c.messages <- message:
+			case c.Messages <- message:
 			default:
 				c.readDone <- errors.New("app-server event capacity exceeded; session state is incomplete, do not resubmit automatically")
 				return
@@ -96,17 +96,17 @@ func startAppServer(cmd *exec.Cmd) (*appServerClient, error) {
 		if readErr != nil {
 			_ = cmd.Process.Kill()
 		}
-		c.done <- errors.Join(readErr, cmd.Wait())
+		c.Done <- errors.Join(readErr, cmd.Wait())
 	}()
 	return c, nil
 }
 
-func (c *appServerClient) send(method string, params any, request bool) (string, error) {
+func (c *Client) Send(method string, params any, request bool) (string, error) {
 	data, err := json.Marshal(params)
 	if err != nil {
 		return "", err
 	}
-	m := appServerMessage{Method: method, Params: data}
+	m := Message{Method: method, Params: data}
 	if request {
 		c.next++
 		m.ID = jsontext.Value(fmt.Sprint(c.next))
@@ -115,38 +115,38 @@ func (c *appServerClient) send(method string, params any, request bool) (string,
 	if err != nil {
 		return "", err
 	}
-	_, err = c.input.Write(append(encoded, '\n'))
+	_, err = c.Input.Write(append(encoded, '\n'))
 	return string(m.ID), err
 }
 
-func (c *appServerClient) close() {
-	_ = c.input.Close()
+func (c *Client) Close() {
+	_ = c.Input.Close()
 	_ = c.cmd.Process.Kill()
-	_ = c.output.Close()
+	_ = c.Output.Close()
 }
 
 // EOF is Codex's graceful shutdown signal. Allow its thread/background-task
 // owners to drain before falling back to forced cleanup.
-func (c *appServerClient) shutdown() error {
-	_ = c.input.Close()
+func (c *Client) Shutdown() error {
+	_ = c.Input.Close()
 	timer := time.NewTimer(3 * time.Second)
 	defer timer.Stop()
 	select {
-	case err := <-c.done:
+	case err := <-c.Done:
 		return err
 	case <-timer.C:
-		c.close()
-		return errors.Join(errors.New("app-server did not shut down after EOF; forced termination"), <-c.done)
+		c.Close()
+		return errors.Join(errors.New("app-server did not shut down after EOF; forced termination"), <-c.Done)
 	}
 }
 
-func (c *appServerClient) initialize() (string, error) {
-	return c.send("initialize", map[string]any{
+func (c *Client) Initialize() (string, error) {
+	return c.Send("initialize", map[string]any{
 		"clientInfo":   map[string]any{"name": "mekugi", "version": "app-server-preview"},
 		"capabilities": map[string]any{"experimentalApi": true},
 	}, true)
 }
 
-func appServerInput(text string) []map[string]any {
+func Input(text string) []map[string]any {
 	return []map[string]any{{"type": "text", "text": text, "textElements": []any{}}}
 }

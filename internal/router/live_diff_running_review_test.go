@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestExecRunningPreviewReportsOversizedFile(t *testing.T) {
@@ -19,8 +21,8 @@ func TestExecRunningPreviewReportsOversizedFile(t *testing.T) {
 	defer cancel()
 	broker := newLiveDiffBroker(ctx)
 	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
-	go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, liveDiffPreview{ID: "oversized", Workspace: root, Thread: "thread"})
-	preview := waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool { return preview.ID == "oversized" && len(preview.Files) == 1 })
+	go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{ID: "oversized", Workspace: root, Thread: "thread"})
+	preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool { return preview.ID == "oversized" && len(preview.Files) == 1 })
 	if !strings.Contains(preview.Files[0].Incomplete, "content bound") || strings.Contains(preview.Files[0].Diff, "+new") || strings.Contains(preview.Files[0].Diff, "-old") {
 		t.Fatalf("oversized display hid bounds or guessed content: %+v", preview)
 	}
@@ -55,11 +57,11 @@ func TestExecRunningPreviewRetriesBudgetedFiles(t *testing.T) {
 	broker := newLiveDiffBroker(ctx)
 	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
 	const previewID = "running:budgeted"
-	go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: files}, liveDiffPreview{
+	go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: files}, diffview.Preview{
 		ID: previewID, Workspace: root, Thread: "thread", Caller: "budget-test",
 	})
-	preview := waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
-		return preview.ID == previewID && preview.Status == liveDiffPreviewRunning && len(preview.Files) == 2
+	preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
+		return preview.ID == previewID && preview.Status == diffview.PreviewRunning && len(preview.Files) == 2
 	})
 	byPath := make(map[string]string, len(preview.Files))
 	for _, file := range preview.Files {

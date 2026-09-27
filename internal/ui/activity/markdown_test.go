@@ -1,14 +1,15 @@
-package router
+package activity_test
 
 import (
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestLiveActivityMarkdownQuotes(t *testing.T) {
-	p := liveActivityPainter{}
+	p := activityui.Painter{}
 	for _, tc := range []struct {
 		name, text string
 		want       []string
@@ -23,14 +24,14 @@ func TestLiveActivityMarkdownQuotes(t *testing.T) {
 		{"inline unchanged", "value > threshold", []string{"value > threshold"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := strings.Join(plainLines(p.markdown(tc.text, 40)), "\n")
+			got := strings.Join(plainLines(p.Markdown(tc.text, 40)), "\n")
 			if got != strings.Join(tc.want, "\n") {
 				t.Fatalf("quote rendering: %q, want %q", got, strings.Join(tc.want, "\n"))
 			}
 		})
 	}
 	for _, width := range []int{1, 2, 12, 30} {
-		rows := p.markdown("> **Quoted words** that must wrap across multiple lines.", width)
+		rows := p.Markdown("> **Quoted words** that must wrap across multiple lines.", width)
 		if len(rows) < 2 {
 			t.Fatalf("quote did not wrap at width %d: %q", width, rows)
 		}
@@ -40,7 +41,15 @@ func TestLiveActivityMarkdownQuotes(t *testing.T) {
 			}
 		}
 	}
-	if got := strings.Join(p.markdown("> **bold**", 30), "\n"); !strings.Contains(got, "\x1b[1mbold") {
+	if got := strings.Join(p.Markdown("> **bold**", 30), "\n"); !strings.Contains(got, "\x1b[1mbold") {
 		t.Fatalf("quote lost inline styling: %q", got)
 	}
+}
+
+func plainLines(lines []string) []string {
+	plain := make([]string, len(lines))
+	for i, line := range lines {
+		plain[i] = ansi.Strip(line)
+	}
+	return plain
 }

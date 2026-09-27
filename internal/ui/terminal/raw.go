@@ -1,4 +1,4 @@
-package router
+package terminal
 
 import (
 	"context"
@@ -6,21 +6,12 @@ import (
 	"io"
 	"os"
 
-	"github.com/yusing/mekugi/internal/livediff"
 	"golang.org/x/term"
 )
 
-type liveDiffFile = livediff.File
-type liveDiffChunk = livediff.Chunk
-type liveDiffView = livediff.View
-type liveDiffRender = livediff.Render
-type liveDiffRenderer = livediff.Renderer
-type liveDiffTheme = livediff.Theme
-type liveDiffOSC = livediff.OSC
-
-// withRawPane owns raw mode, screen setup, and a cancellable key reader for a
+// WithRawPane owns raw mode, screen setup, and a cancellable key reader for a
 // router pane. The reader is joined before terminal state is restored.
-func withRawPane(ctx context.Context, stdin, stdout *os.File, enter, leave string, body func(<-chan byte) error) (err error) {
+func WithRawPane(ctx context.Context, stdin, stdout *os.File, enter, leave string, body func(<-chan byte) error) (err error) {
 	old, err := term.MakeRaw(int(stdin.Fd()))
 	if err != nil {
 		return err

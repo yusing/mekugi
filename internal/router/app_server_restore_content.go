@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/pathdisplay"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 const appServerRestoreThreadLimit = 128
@@ -65,7 +67,7 @@ func (u *appServerUI) restoreContentNotice(message string) {
 	u.session.seq = max(u.session.seq, u.view.lastSeq)
 }
 
-func (u *appServerUI) restoreActivityResponse(method string, m appServerMessage) error {
+func (u *appServerUI) restoreActivityResponse(method string, m appserver.Message) error {
 	r := u.restoring
 	if r == nil {
 		return nil
@@ -220,7 +222,7 @@ func historyTime(seconds int64) time.Time {
 func (u *appServerUI) applyRestoredActivity(entries []activityPaneEntry) {
 	for i := range entries {
 		if entries[i].Kind == "reply" {
-			from, to, _, _, ok := parseLiveActivityEnvelope(entries[i].Text)
+			from, to, _, _, ok := activityui.ParseEnvelope(entries[i].Text)
 			if ok && from == "/root" {
 				entries[i].Agent = to
 			}

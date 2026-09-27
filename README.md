@@ -270,7 +270,7 @@ Redirected sessions keep ordinary Codex input/output and inline agent activity.
 Inside Herdr, Mekugi advertises the invocation through Herdr's agent hint.
 Herdr is optional and does not control Mekugi's internal panes.
 
-See the [native UI contract](doc/spec/router.md#native-app-server-ui).
+See the [native UI contract](doc/spec/native_ui.md).
 
 ## Metrics
 

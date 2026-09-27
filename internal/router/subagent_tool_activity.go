@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"maps"
 	"strings"
+
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // Observe complete calls, not argument deltas. This is a user-only description
@@ -82,7 +84,7 @@ func toolActivityGroup(author, text string) string {
 			if line == fence {
 				fence = ""
 			}
-		} else if delimiter, ok := toolActivityFenceDelimiter(line); ok {
+		} else if delimiter, ok := activityui.FenceDelimiter(line); ok {
 			fence = delimiter
 		}
 	}
@@ -150,20 +152,9 @@ func toolActivityNested(text string) string {
 			if line == fence {
 				fence = ""
 			}
-		} else if delimiter, ok := toolActivityFenceDelimiter(line); ok {
+		} else if delimiter, ok := activityui.FenceDelimiter(line); ok {
 			fence = delimiter
 		}
 	}
 	return out.String()
-}
-
-func toolActivityFenceDelimiter(line string) (string, bool) {
-	ticks := 0
-	for ticks < len(line) && line[ticks] == '`' {
-		ticks++
-	}
-	if ticks < 3 || strings.ContainsRune(line[ticks:], '`') {
-		return "", false
-	}
-	return line[:ticks], true
 }

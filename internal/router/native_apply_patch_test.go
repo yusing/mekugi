@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func prepareNativeStockTransform(t *testing.T, proxy *mekugiProxy, workspace, session string) *mekugiResponseTransform {
@@ -59,8 +60,8 @@ func streamNativePatch(t *testing.T, transform *mekugiResponseTransform, patch s
 		}
 	}
 	if subscriber != nil {
-		preview := waitLiveDiffWorkerPreview(t, broker, subscriber, func(preview liveDiffPreview) bool {
-			return len(preview.Files) == 1 && preview.Status == liveDiffPreviewEdit && strings.Contains(preview.Files[0].Diff, "+new")
+		preview := waitLiveDiffWorkerPreview(t, broker, subscriber, func(preview diffview.Preview) bool {
+			return len(preview.Files) == 1 && preview.Status == diffview.PreviewEdit && strings.Contains(preview.Files[0].Diff, "+new")
 		})
 		if preview.Input != "" || !strings.Contains(preview.Files[0].Diff, "+new") {
 			t.Fatalf("preview = %+v", preview)

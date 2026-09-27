@@ -6,6 +6,8 @@ import (
 	"maps"
 	"slices"
 	"sync"
+
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 type liveDiffChange struct {
@@ -19,19 +21,19 @@ type liveDiffChange struct {
 
 type liveDiffEvent struct {
 	Kind         string
-	Scope        *liveDiffScope   `json:",omitempty"`
-	Changes      []liveDiffChange `json:",omitempty"`
-	Status       string           `json:",omitempty"`
-	Preview      *liveDiffPreview `json:",omitempty"`
-	TurnRevision uint64           `json:",omitzero"`
-	Resync       bool             `json:",omitzero"`
+	Scope        *liveDiffScope    `json:",omitempty"`
+	Changes      []liveDiffChange  `json:",omitempty"`
+	Status       string            `json:",omitempty"`
+	Preview      *diffview.Preview `json:",omitempty"`
+	TurnRevision uint64            `json:",omitzero"`
+	Resync       bool              `json:",omitzero"`
 }
 
 type liveDiffSubscriber struct {
 	events       chan liveDiffEvent
 	gap          chan struct{}
 	previewReady chan struct{}
-	previews     []liveDiffPreview // Latest per ID, guarded by the broker mutex.
+	previews     []diffview.Preview // Latest per ID, guarded by the broker mutex.
 }
 
 // The router owns this mailbox for the single in-process UI. Enqueueing never
@@ -43,8 +45,8 @@ type liveDiffBroker struct {
 	subscriber        *liveDiffSubscriber
 	turnRevision      uint64
 	turnStatus        string
-	completedPreviews []liveDiffPreview // Last 16 evaluated snapshots in this turn, oldest first.
-	previews          map[string]liveDiffPreview
+	completedPreviews []diffview.Preview // Last 16 evaluated snapshots in this turn, oldest first.
+	previews          map[string]diffview.Preview
 }
 
 func newLiveDiffBroker(ctx context.Context) *liveDiffBroker {
@@ -82,12 +84,12 @@ func (b *liveDiffBroker) emitLocked(event liveDiffEvent) {
 
 // Preview snapshots are replaceable display state, not durable publications.
 // Keep slow viewers from accumulating obsolete frames or starving edit receipts.
-func (b *liveDiffBroker) emitPreviewLocked(preview liveDiffPreview) {
+func (b *liveDiffBroker) emitPreviewLocked(preview diffview.Preview) {
 	sub := b.subscriber
 	if sub == nil {
 		return
 	}
-	if i := slices.IndexFunc(sub.previews, func(old liveDiffPreview) bool { return old.ID == preview.ID }); i >= 0 {
+	if i := slices.IndexFunc(sub.previews, func(old diffview.Preview) bool { return old.ID == preview.ID }); i >= 0 {
 		sub.previews = slices.Delete(sub.previews, i, i+1)
 	}
 	if len(sub.previews) >= 32 {

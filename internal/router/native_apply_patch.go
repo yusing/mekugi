@@ -13,6 +13,7 @@ import (
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 const (
@@ -554,10 +555,10 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 	return nil
 }
 
-func nativePatchPreview(input string) (liveDiffPreview, bool) {
+func nativePatchPreview(input string) (diffview.Preview, bool) {
 	// Incomplete input is useful provisional display, never application evidence.
 	if input != "*** Begin Patch" && !strings.HasPrefix(input, "*** Begin Patch\n") && !strings.HasPrefix(input, "*** Begin Patch\r\n") {
-		return liveDiffPreview{}, false
+		return diffview.Preview{}, false
 	}
-	return liveDiffPreview{Input: input, DiffText: true, Status: liveDiffPreviewEdit}, true
+	return diffview.Preview{Input: input, DiffText: true, Status: diffview.PreviewEdit}, true
 }

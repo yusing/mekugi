@@ -8,6 +8,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
 
 func TestLiveActivityScrollStopsAtLastFullViewport(t *testing.T) {
@@ -16,7 +18,7 @@ func TestLiveActivityScrollStopsAtLastFullViewport(t *testing.T) {
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: strings.Repeat("Content row\n", 30) + "Last row"}}})
 	feed := v.renderFeed(80, 8)
 	bottom := v.viewport(feed, 8)
-	for _, key := range []byte{'j', paneWheelDown, ' ', 'G'} {
+	for _, key := range []byte{'j', terminalui.PaneWheelDown, ' ', 'G'} {
 		v.scrollKey(key)
 		if got := v.viewport(feed, 8); !slices.Equal(got, bottom) {
 			t.Fatalf("key %d scrolled past the bottom: %q", key, got)
@@ -37,7 +39,7 @@ func TestLiveActivityScrollStopsAtLastFullViewport(t *testing.T) {
 
 func TestLiveActivityJavaScriptStableIndent(t *testing.T) {
 	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
-		painter := liveActivityPainter{theme: theme}
+		painter := activityui.Painter{Theme: theme}
 		for _, width := range []int{24, 80} {
 			for _, source := range []string{
 				"text(1);",
@@ -48,7 +50,7 @@ func TestLiveActivityJavaScriptStableIndent(t *testing.T) {
 				if len(blocks) != 1 {
 					t.Fatalf("blocks = %+v", blocks)
 				}
-				rows := plainLines(painter.block(blocks[0], width))
+				rows := plainLines(painter.Block(blocks[0], width))
 				if len(rows) < 2 || strings.TrimSpace(rows[0]) != "Run JavaScript" {
 					t.Fatalf("heading shares source: %q", rows)
 				}
@@ -64,11 +66,11 @@ func TestLiveActivityJavaScriptStableIndent(t *testing.T) {
 
 func TestParseLiveActivityBlocks(t *testing.T) {
 	message := parseLiveActivity(activityPaneEntry{Kind: "reply", Text: "[`/root/a` -> `/root`] Message received:\nDone.\n- `x.go`"})
-	if len(message) != 1 || message[0].kind != "message" || message[0].from != "/root/a" || message[0].to != "/root" || message[0].body != "Done.\n- `x.go`" {
+	if len(message) != 1 || message[0].Kind != "message" || message[0].From != "/root/a" || message[0].To != "/root" || message[0].Body != "Done.\n- `x.go`" {
 		t.Fatalf("message = %+v", message)
 	}
 	start := parseLiveActivity(activityPaneEntry{Kind: "start", Text: "Started · `m` high · tier `fast`"})
-	if len(start) != 1 || start[0].kind != "start" || start[0].label != "`m` high · tier `fast`" || start[0].body != "" {
+	if len(start) != 1 || start[0].Kind != "start" || start[0].Label != "`m` high · tier `fast`" || start[0].Body != "" {
 		t.Fatalf("start = %+v", start)
 	}
 	// Blank lines inside a fence do not split the operation.
@@ -76,18 +78,18 @@ func TestParseLiveActivityBlocks(t *testing.T) {
 	if len(ops) != 3 {
 		t.Fatalf("ops = %+v", ops)
 	}
-	if ops[0].kind != "op" || ops[0].verb != "Run" || !ops[0].fenced || ops[0].lang != "bash" || ops[0].code != "go test ./...\n\necho done" {
+	if ops[0].Kind != "op" || ops[0].Verb != "Run" || !ops[0].Fenced || ops[0].Lang != "bash" || ops[0].Code != "go test ./...\n\necho done" {
 		t.Fatalf("run = %+v", ops[0])
 	}
-	want := []liveActivityRead{{path: "a.go", ranges: []string{"1:2", "5:6"}}, {path: "b.go"}}
-	if ops[1].kind != "reads" || !slices.EqualFunc(ops[1].reads, want, func(a, b liveActivityRead) bool { return a.path == b.path && slices.Equal(a.ranges, b.ranges) }) {
-		t.Fatalf("reads = %+v", ops[1].reads)
+	want := []activityui.Read{{Path: "a.go", Ranges: []string{"1:2", "5:6"}}, {Path: "b.go"}}
+	if ops[1].Kind != "reads" || !slices.EqualFunc(ops[1].Reads, want, func(a, b activityui.Read) bool { return a.Path == b.Path && slices.Equal(a.Ranges, b.Ranges) }) {
+		t.Fatalf("reads = %+v", ops[1].Reads)
 	}
-	if ops[2].verb != "Search" || len(ops[2].reads) != 1 || ops[2].reads[0].path != "rg x" {
+	if ops[2].Verb != "Search" || len(ops[2].Reads) != 1 || ops[2].Reads[0].Path != "rg x" {
 		t.Fatalf("search = %+v", ops[2])
 	}
 	// Unrecognized text stays text.
-	if text := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Read `a.go` and more"}); text[0].kind != "op" {
+	if text := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Read `a.go` and more"}); text[0].Kind != "op" {
 		t.Fatalf("mixed read = %+v", text)
 	}
 }
@@ -119,7 +121,7 @@ func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 		Seq: 1, Agent: caller, Kind: "tool", CallID: "call", Text: "Run\n```bash\npython3 edit.py\n```",
 	}}})
-	if len(v.entries) != 1 || v.blocks[0][0].verb != "Run" {
+	if len(v.entries) != 1 || v.blocks[0][0].Verb != "Run" {
 		t.Fatalf("pending command = %+v", v.blocks)
 	}
 	filter := exploreFilterEvent{Command: "python3 edit.py", LinesBefore: 20, LinesRemoved: 10}
@@ -131,17 +133,17 @@ func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 		Seq: 4, Agent: caller, Kind: "tool", CallID: "call", Text: "Edit `edit.py` +1 -1",
 	}}})
-	if len(v.entries) != 1 || v.blocks[0][0].verb != "Edit" || v.entries[0].Seq != 1 || v.lastSeq != 4 {
+	if len(v.entries) != 1 || v.blocks[0][0].Verb != "Edit" || v.entries[0].Seq != 1 || v.lastSeq != 4 {
 		t.Fatalf("confirmed edit did not replace Run: entries=%+v blocks=%+v", v.entries, v.blocks)
 	}
-	if len(v.blocks[0]) != 2 || v.blocks[0][1].kind != "filter" || v.blocks[0][0].exitCode != 1 ||
-		!strings.Contains(ansi.Strip(strings.Join(v.painter.block(v.blocks[0][0], 80), "\n")), "exit 1") {
+	if len(v.blocks[0]) != 2 || v.blocks[0][1].Kind != "filter" || v.blocks[0][0].ExitCode != 1 ||
+		!strings.Contains(ansi.Strip(strings.Join(v.painter.Block(v.blocks[0][0], 80), "\n")), "exit 1") {
 		t.Fatalf("replacement lost failure or filter: %+v", v.blocks[0])
 	}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 		Seq: 5, Agent: caller, Kind: "tool", CallID: "other", Text: "Edit `other.py` +1 -0",
 	}}})
-	if len(v.entries) != 2 || v.blocks[1][0].verb != "Edit" {
+	if len(v.entries) != 2 || v.blocks[1][0].Verb != "Edit" {
 		t.Fatalf("unmatched receipt lost: %+v", v.blocks)
 	}
 }
@@ -283,40 +285,40 @@ func TestLiveActivityHoverClearsWhenRosterMoves(t *testing.T) {
 }
 
 func TestLiveActivityPainterColors(t *testing.T) {
-	var painter liveActivityPainter
-	run := strings.Join(painter.block(liveActivityBlock{kind: "op", verb: "Run", label: "`go test`"}, 60), "\n")
-	if !strings.HasPrefix(run, liveActivityAmber) || !strings.Contains(run, "Run") {
+	var painter activityui.Painter
+	run := strings.Join(painter.Block(activityui.Block{Kind: "op", Verb: "Run", Label: "`go test`"}, 60), "\n")
+	if !strings.HasPrefix(run, activityui.Amber) || !strings.Contains(run, "Run") {
 		t.Fatalf("run verb = %q", run)
 	}
-	read := strings.Join(painter.block(liveActivityBlock{kind: "reads", verb: "Read", reads: []liveActivityRead{{path: "dir/a.go", ranges: []string{"1:2"}}}}, 60), "\n")
-	if !strings.Contains(read, liveActivityDim+"dir/") || !strings.Contains(read, "\x1b[1ma.go") {
+	read := strings.Join(painter.Block(activityui.Block{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "dir/a.go", Ranges: []string{"1:2"}}}}, 60), "\n")
+	if !strings.Contains(read, activityui.Dim+"dir/") || !strings.Contains(read, "\x1b[1ma.go") {
 		t.Fatalf("read path = %q", read)
 	}
-	failure := strings.Join(painter.block(liveActivityBlock{kind: "error", body: "boom"}, 60), "\n")
-	if !strings.Contains(failure, liveActivityRed) {
+	failure := strings.Join(painter.Block(activityui.Block{Kind: "error", Body: "boom"}, 60), "\n")
+	if !strings.Contains(failure, activityui.Red) {
 		t.Fatalf("error = %q", failure)
 	}
 }
 
 func TestLiveActivityLinksAndCommandExit(t *testing.T) {
-	painter := liveActivityPainter{theme: livediff.DarkTheme}
-	link := painter.inline("[report.go](</tmp/review folder/report.go:12>)")
+	painter := activityui.Painter{Theme: livediff.DarkTheme}
+	link := painter.Inline("[report.go](</tmp/review folder/report.go:12>)")
 	if ansi.Strip(link) != "report.go" || !strings.Contains(link, "\x1b]8;;file:///tmp/review%20folder/report.go:12\x1b\\") ||
 		!strings.Contains(link, "\x1b]8;;\x1b\\") {
 		t.Fatalf("local link = %q", link)
 	}
-	if got := painter.inline("[remote](https://example.com)"); ansi.Strip(got) != "remote" || !strings.Contains(got, "\x1b]8;;https://example.com\x1b\\") {
+	if got := painter.Inline("[remote](https://example.com)"); ansi.Strip(got) != "remote" || !strings.Contains(got, "\x1b]8;;https://example.com\x1b\\") {
 		t.Fatalf("unhandled link changed: %q", got)
 	}
 	for _, tc := range []struct {
-		block liveActivityBlock
+		block activityui.Block
 		want  string
 	}{
-		{liveActivityBlock{kind: "op", verb: "Run", code: "false", exitCode: 1}, "Run    false (exit 1)"},
-		{liveActivityBlock{kind: "op", verb: "Run", code: "false\necho done", lang: "bash", fenced: true, exitCode: 2}, "       (exit 2)"},
+		{activityui.Block{Kind: "op", Verb: "Run", Code: "false", ExitCode: 1}, "Run    false (exit 1)"},
+		{activityui.Block{Kind: "op", Verb: "Run", Code: "false\necho done", Lang: "bash", Fenced: true, ExitCode: 2}, "       (exit 2)"},
 	} {
-		rows := painter.block(tc.block, 80)
-		if !strings.Contains(strings.Join(plainLines(rows), "\n"), tc.want) || !strings.Contains(strings.Join(rows, "\n"), liveActivityRed) {
+		rows := painter.Block(tc.block, 80)
+		if !strings.Contains(strings.Join(plainLines(rows), "\n"), tc.want) || !strings.Contains(strings.Join(rows, "\n"), activityui.Red) {
 			t.Fatalf("run rows = %q", rows)
 		}
 	}
@@ -359,11 +361,11 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 	} {
 		t.Run(tc.shell, func(t *testing.T) {
 			blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(tc.shell)})
-			if len(blocks) != 1 || !blocks[0].fenced {
+			if len(blocks) != 1 || !blocks[0].Fenced {
 				t.Fatalf("interpreter preview = %+v", blocks)
 			}
-			painter := liveActivityPainter{theme: livediff.DarkTheme}
-			rows := painter.block(blocks[0], 80)
+			painter := activityui.Painter{Theme: livediff.DarkTheme}
+			rows := painter.Block(blocks[0], 80)
 			if len(rows) < 2 || !strings.HasPrefix(ansi.Strip(rows[0]), "Run    │ "+tc.first) || !strings.Contains(ansi.Strip(rows[1]), "│ "+tc.second) {
 				t.Fatalf("preview rows = %q", plainLines(rows))
 			}
@@ -371,7 +373,7 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 				t.Fatalf("source was not syntax highlighted: %q", rows[0])
 			}
 			for _, width := range []int{11, 18, 40} {
-				for _, row := range painter.block(blocks[0], width) {
+				for _, row := range painter.Block(blocks[0], width) {
 					if ansi.StringWidth(row) > width {
 						t.Fatalf("width %d: overlong row %q", width, row)
 					}
@@ -380,24 +382,24 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 		})
 	}
 
-	painter := liveActivityPainter{theme: livediff.DarkTheme}
+	painter := activityui.Painter{Theme: livediff.DarkTheme}
 	search := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Search `create(MCat|MSymbol)|description:` in `plugins/mrun.ts`"})[0]
-	colored := strings.Join(painter.block(search, 110), "\n")
-	if !strings.Contains(colored, painter.theme.Accent()+"create(MCat|MSymbol)|description:\x1b[39m") ||
-		!strings.Contains(colored, liveActivityVerbColor("Search")+liveActivityDim+"plugins/"+liveActivityUndim+"\x1b[1mmrun.ts") ||
-		!strings.HasPrefix(colored, liveActivityVerbColor("Search")) {
+	colored := strings.Join(painter.Block(search, 110), "\n")
+	if !strings.Contains(colored, painter.Theme.Accent()+"create(MCat|MSymbol)|description:\x1b[39m") ||
+		!strings.Contains(colored, activityui.VerbColor("Search")+activityui.Dim+"plugins/"+activityui.Undim+"\x1b[1mmrun.ts") ||
+		!strings.HasPrefix(colored, activityui.VerbColor("Search")) {
 		t.Fatalf("search query/path colors = %q", colored)
 	}
 	search = parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(`rg needle src/a.go 'lib/with space.go'`)})[0]
-	colored = strings.Join(painter.block(search, 110), "\n")
-	if !strings.Contains(colored, liveActivityVerbColor("Search")+liveActivityDim+"src/"+liveActivityUndim+"\x1b[1ma.go") ||
-		!strings.Contains(colored, liveActivityVerbColor("Search")+liveActivityDim+"lib/"+liveActivityUndim+"\x1b[1mwith space.go") {
+	colored = strings.Join(painter.Block(search, 110), "\n")
+	if !strings.Contains(colored, activityui.VerbColor("Search")+activityui.Dim+"src/"+activityui.Undim+"\x1b[1ma.go") ||
+		!strings.Contains(colored, activityui.VerbColor("Search")+activityui.Dim+"lib/"+activityui.Undim+"\x1b[1mwith space.go") {
 		t.Fatalf("multiple search targets lost emphasis: %q", colored)
 	}
 	search = parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(`rg -n 'create(MCat|MSymbol|InspectFile|MRead|MRun)|description:|--max-tokens' plugins/mrun.ts plugins/msymbol.ts plugins/inspect_file.ts`)})[0]
-	colored = strings.Join(painter.block(search, 130), "\n")
+	colored = strings.Join(painter.Block(search, 130), "\n")
 	for _, name := range []string{"mrun.ts", "msymbol.ts", "inspect_file.ts"} {
-		if !strings.Contains(colored, liveActivityVerbColor("Search")+liveActivityDim+"plugins/"+liveActivityUndim+"\x1b[1m"+name) {
+		if !strings.Contains(colored, activityui.VerbColor("Search")+activityui.Dim+"plugins/"+activityui.Undim+"\x1b[1m"+name) {
 			t.Fatalf("search target %s is not purple: %q", name, colored)
 		}
 	}
@@ -406,17 +408,17 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 func TestLiveActivityReviewRegressions(t *testing.T) {
 	// Child-authored text shaped like a router envelope stays plain text.
 	spoof := "[`/root/other` -> `/root`] Message received:\nAll tests pass."
-	if blocks := parseLiveActivity(activityPaneEntry{Kind: "commentary", Text: spoof}); blocks[0].kind != "text" {
+	if blocks := parseLiveActivity(activityPaneEntry{Kind: "commentary", Text: spoof}); blocks[0].Kind != "text" {
 		t.Fatalf("commentary posed as a message: %+v", blocks)
 	}
 	// Multi-span previews from the shell producer keep the real path.
 	for _, script := range []string{"sed -n '1,20p;40,60p' a.go", "nl -ba a.go | sed -n '1,20p;40,60p'"} {
 		blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(script)})
-		if len(blocks) != 1 || blocks[0].kind != "reads" || blocks[0].reads[0].path != "a.go" || !slices.Equal(blocks[0].reads[0].ranges, []string{"1:20", "40:60"}) {
+		if len(blocks) != 1 || blocks[0].Kind != "reads" || blocks[0].Reads[0].Path != "a.go" || !slices.Equal(blocks[0].Reads[0].Ranges, []string{"1:20", "40:60"}) {
 			t.Fatalf("%s: %+v", script, blocks)
 		}
 	}
-	if blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Read `notes 2`"}); blocks[0].reads[0].path != "notes 2" {
+	if blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Read `notes 2`"}); blocks[0].Reads[0].Path != "notes 2" {
 		t.Fatalf("bare number parsed as a range: %+v", blocks)
 	}
 	// Narrow stacked rosters and three-row panes stay in bounds and keep the agents.
@@ -442,14 +444,14 @@ func TestLiveActivityReviewRegressions(t *testing.T) {
 		t.Fatalf("o after Esc ] was swallowed: osc=%+v", view.osc)
 	}
 	// A real background reply still selects the theme.
-	view.painter.theme = livediff.DarkTheme
+	view.painter.Theme = livediff.DarkTheme
 	reply := "\x1b]11;rgb:ffff/ffff/ffff\x1b\\"
 	escape = ""
 	for i := range len(reply) {
 		escape, _ = view.handleKey(escape, reply[i])
 	}
-	if view.painter.theme != livediff.LightTheme || view.osc.Active {
-		t.Fatalf("theme reply: theme=%v osc=%+v", view.painter.theme, view.osc)
+	if view.painter.Theme != livediff.LightTheme || view.osc.Active {
+		t.Fatalf("theme reply: theme=%v osc=%+v", view.painter.Theme, view.osc)
 	}
 }
 
@@ -465,15 +467,15 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 	text.WriteString("\n\n**Changes:** amber3..amber4\n\nAggregated numstat (this agent's recorded evaluations, not a net diff):\n\n" +
 		indentJournalText("10\t2\tinternal/a.go\n2\t2\tb.go", "    "))
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "final", Text: text.String()})
-	journal := blocks[0].journal
-	if len(blocks) != 1 || journal == nil || len(journal.groups) != 2 || journal.groups[0].question != question ||
-		len(journal.groups[0].answers) != 2 || journal.groups[0].answers[0].text != "Yes.\n\n- `node -e` covered" ||
-		journal.groups[1].question != "" || journal.groups[1].answers[0].id != "misc" ||
-		journal.changes != "amber3..amber4" || len(journal.stats) != 2 || journal.stats[0] != (liveActivityStat{"10", "2", "internal/a.go"}) {
+	journal := blocks[0].Journal
+	if len(blocks) != 1 || journal == nil || len(journal.Groups) != 2 || journal.Groups[0].Question != question ||
+		len(journal.Groups[0].Answers) != 2 || journal.Groups[0].Answers[0].Text != "Yes.\n\n- `node -e` covered" ||
+		journal.Groups[1].Question != "" || journal.Groups[1].Answers[0].ID != "misc" ||
+		journal.Changes != "amber3..amber4" || len(journal.Stats) != 2 || journal.Stats[0] != (activityui.Stat{"10", "2", "internal/a.go"}) {
 		t.Fatalf("journal = %+v", journal)
 	}
-	painter := liveActivityPainter{theme: livediff.DarkTheme}
-	full := ansi.Strip(strings.Join(painter.block(blocks[0], 80), "\n"))
+	painter := activityui.Painter{Theme: livediff.DarkTheme}
+	full := ansi.Strip(strings.Join(painter.Block(blocks[0], 80), "\n"))
 	for _, want := range []string{
 		"✓ Final answer · 3 answers · 2 files +12 -4",
 		"  ↩ Does the preview color interpreter bodies?",
@@ -487,7 +489,7 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 	if strings.Contains(full, "Journal result") || strings.Contains(full, "**") || strings.Contains(full, "Answer") {
 		t.Fatalf("legacy journal grammar leaked into the pane:\n%s", full)
 	}
-	if summary := ansi.Strip(painter.summary(blocks)); summary != "Yes." {
+	if summary := ansi.Strip(painter.Summary(blocks)); summary != "Yes." {
 		t.Fatalf("roster summary = %q", summary)
 	}
 
@@ -497,11 +499,11 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 	writeJournalItems(&readOnly, []journalItem{{ID: "only", Text: "Found it."}})
 	readOnly.WriteString("\n\n**Changes:**\nNo recorded changes.\n")
 	blocks = parseLiveActivity(activityPaneEntry{Kind: "final", Text: readOnly.String()})
-	if got := ansi.Strip(strings.Join(painter.block(blocks[0], 80), "\n")); got != "✓ Final answer\n  • Found it." {
+	if got := ansi.Strip(strings.Join(painter.Block(blocks[0], 80), "\n")); got != "✓ Final answer\n  • Found it." {
 		t.Fatalf("read-only layout = %q", got)
 	}
 	blocks = parseLiveActivity(activityPaneEntry{Kind: "final", Text: "Plain **answer**."})
-	if blocks[0].journal != nil || ansi.Strip(strings.Join(painter.block(blocks[0], 80), "\n")) != "✓ Final answer\n  Plain answer." {
+	if blocks[0].Journal != nil || ansi.Strip(strings.Join(painter.Block(blocks[0], 80), "\n")) != "✓ Final answer\n  Plain answer." {
 		t.Fatalf("plain final = %+v", blocks[0])
 	}
 }
@@ -509,15 +511,15 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 func TestLiveActivityFilterAlignmentAndDimStyle(t *testing.T) {
 	const summary = "~tokens 3.5K→2.4K (-29.4%) · -42/104 lines · 0.6s"
 	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
-		painter := liveActivityPainter{theme: theme}
+		painter := activityui.Painter{Theme: theme}
 		for _, width := range []int{8, 18, 40, 100} {
-			rows := painter.block(liveActivityBlock{kind: "filter", body: summary}, width)
-			indent := min(ansi.StringWidth(liveActivityVerb("Run")), width/2)
+			rows := painter.Block(activityui.Block{Kind: "filter", Body: summary}, width)
+			indent := min(ansi.StringWidth(activityui.Verb("Run")), width/2)
 			for _, row := range rows {
 				if !strings.HasPrefix(ansi.Strip(row), strings.Repeat(" ", indent)) || ansi.StringWidth(row) > width {
 					t.Fatalf("filter alignment width %d: %q", width, row)
 				}
-				if !strings.Contains(row, liveActivityDim) || !strings.Contains(row, "\x1b[38;2;") || !strings.HasSuffix(row, liveActivityReset) {
+				if !strings.Contains(row, activityui.Dim) || !strings.Contains(row, "\x1b[38;2;") || !strings.HasSuffix(row, activityui.Reset) {
 					t.Fatalf("filter is not muted and isolated: %q", row)
 				}
 			}

@@ -10,6 +10,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
 
 const (
@@ -23,7 +25,7 @@ const (
 type liveActivityView struct {
 	agents         []activityPaneAgent
 	entries        []activityPaneEntry
-	blocks         [][]liveActivityBlock // Parsed entries, aligned with entries.
+	blocks         [][]activityui.Block // Parsed entries, aligned with entries.
 	lastSeq        uint64
 	selected       string
 	hovered        string
@@ -44,7 +46,7 @@ type liveActivityView struct {
 	bare           bool              // The shell's pane title replaces the heading and footer rows.
 	focused        bool              // Native Activity shows its key hints only while it has keyboard focus.
 	mainView       *liveActivityView // Roster reads Main's state without duplicating its feed entries.
-	painter        liveActivityPainter
+	painter        activityui.Painter
 	osc            livediff.OSC
 	runs           map[liveActivityRunKey]liveActivityRun
 
@@ -107,7 +109,7 @@ type liveActivityRunKey struct {
 func newLiveActivityView() *liveActivityView {
 	return &liveActivityView{
 		following: true, status: "CONNECTING",
-		painter: liveActivityPainter{theme: livediff.EnvironmentTheme(os.Getenv("COLORFGBG"))},
+		painter: activityui.Painter{Theme: livediff.EnvironmentTheme(os.Getenv("COLORFGBG"))},
 	}
 }
 
@@ -163,7 +165,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 					if previous.Kind == "reasoning" && previous.Agent == entry.Agent && previous.CallID == entry.CallID &&
 						(previous.native == nil && entry.native == nil || previous.native != nil && entry.native != nil && previous.native.sameItem(entry.native)) {
 						entry.Seq = previous.Seq
-						if reasoningSummaryHeader(previous.Text) == reasoningSummaryHeader(entry.Text) {
+						if activityui.ReasoningSummaryHeader(previous.Text) == activityui.ReasoningSummaryHeader(entry.Text) {
 							entry.Observed = previous.Observed
 						}
 						v.entries[i], v.blocks[i], v.runs = entry, parseLiveActivity(entry), nil
@@ -181,7 +183,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			for i, previous := range slices.Backward(v.entries) {
 				if previous.Kind == "tool" && previous.Agent == entry.Agent && previous.CallID == entry.CallID {
 					blocks := parseLiveActivity(entry)
-					if len(blocks) == 1 && blocks[0].kind == "filter" {
+					if len(blocks) == 1 && blocks[0].Kind == "filter" {
 						v.blocks[i] = append(v.blocks[i], blocks[0])
 						v.runs = nil
 						matched = true
@@ -197,8 +199,8 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			for i, v0 := range slices.Backward(v.entries) {
 				if v0.Agent == entry.Agent && v0.CallID == entry.CallID && entry.CallID != "" {
 					for j := range v.blocks[i] {
-						if v.blocks[i][j].verb == "Run" || v.blocks[i][j].verb == "Skill" || v.blocks[i][j].verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, v.blocks[i][j].verb) {
-							v.blocks[i][j].exitCode, _ = strconv.Atoi(entry.Text)
+						if v.blocks[i][j].Verb == "Run" || v.blocks[i][j].Verb == "Skill" || v.blocks[i][j].Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, v.blocks[i][j].Verb) {
+							v.blocks[i][j].ExitCode, _ = strconv.Atoi(entry.Text)
 						}
 					}
 					v.runs = nil
@@ -212,7 +214,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			for i, previous := range v.entries {
 				if previous.Kind == "output_filter" && previous.Agent == entry.Agent && previous.CallID == entry.CallID {
 					for _, annotation := range v.blocks[i] {
-						if annotation.kind == "filter" {
+						if annotation.Kind == "filter" {
 							blocks = append(blocks, annotation)
 						}
 					}
@@ -227,19 +229,19 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			}
 		}
 		if entry.Kind == "tool" && entry.CallID != "" && len(blocks) > 0 &&
-			slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, blocks[0].verb) {
+			slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, blocks[0].Verb) {
 			// A confirmed receipt replaces the provisional Run or requested
 			// Edit row for this call. Only the capturer supplies saved counts.
 			for i := len(v.entries) - 1; i >= 0; i-- {
 				prior := v.entries[i]
 				if prior.Kind != "tool" || prior.Agent != entry.Agent || prior.CallID != entry.CallID ||
-					len(v.blocks[i]) == 0 || (v.blocks[i][0].verb != "Run" && v.blocks[i][0].verb != "Edit") {
+					len(v.blocks[i]) == 0 || (v.blocks[i][0].Verb != "Run" && v.blocks[i][0].Verb != "Edit") {
 					continue
 				}
 				entry.Seq = prior.Seq
-				blocks[0].exitCode = v.blocks[i][0].exitCode
+				blocks[0].ExitCode = v.blocks[i][0].ExitCode
 				for _, annotation := range v.blocks[i][1:] {
-					if annotation.kind == "filter" {
+					if annotation.Kind == "filter" {
 						blocks = append(blocks, annotation)
 					}
 				}
@@ -338,17 +340,17 @@ func (v *liveActivityView) latest(name string) int {
 // event, or a sent plaintext final answer. None of them claims completion.
 func (v *liveActivityView) glyph(agent activityPaneAgent) string {
 	if role := liveActivityRole(agent); role != "" {
-		return v.roleColor(role) + string(v.agentStatus(agent)) + liveActivityReset
+		return v.roleColor(role) + string(v.agentStatus(agent)) + activityui.Reset
 	}
 	switch v.agentStatus(agent) {
 	case '◐':
-		return liveActivityAmber + "◐" + liveActivityReset
+		return activityui.Amber + "◐" + activityui.Reset
 	case '!':
-		return liveActivityRed + "!" + liveActivityReset
+		return activityui.Red + "!" + activityui.Reset
 	case '✓':
-		return liveActivityGreen + "✓" + liveActivityReset
+		return activityui.Green + "✓" + activityui.Reset
 	}
-	return liveActivityDim + "·" + liveActivityUndim
+	return activityui.Dim + "·" + activityui.Undim
 }
 
 // agentStatus is the glyph's fact; counts use it so they agree with visible rows.
@@ -407,7 +409,7 @@ func (v *liveActivityView) handleMouse(action byte, row, column int) bool {
 			v.scrollRoster(step)
 			return true
 		}
-		return v.scrollKey(paneWheelKey(action))
+		return v.scrollKey(terminalui.PaneWheelKey(action))
 	}
 
 	if action != 'h' && action != '\r' {
@@ -451,7 +453,7 @@ func underlineLink(line string) string {
 	if !ok {
 		return line
 	}
-	return lead + "\x1b[4m" + strings.ReplaceAll("↩"+link, liveActivityReset, liveActivityReset+"\x1b[4m") + "\x1b[24m"
+	return lead + "\x1b[4m" + strings.ReplaceAll("↩"+link, activityui.Reset, activityui.Reset+"\x1b[4m") + "\x1b[24m"
 }
 
 // pointSnippet underlines a hovered collapsed snippet. A click expands a
@@ -520,7 +522,7 @@ func (v *liveActivityView) scrollKey(key byte) bool {
 	if v.following {
 		offset = max(0, v.feedLines-v.feedRows)
 	}
-	next, follow, ok := paneScroll(key, offset, v.feedRows, v.feedLines)
+	next, follow, ok := terminalui.PaneScroll(key, offset, v.feedRows, v.feedLines)
 	if ok {
 		v.offset = max(0, min(next, v.feedLines-v.feedRows))
 		v.following = follow || v.offset == max(0, v.feedLines-v.feedRows)
@@ -573,7 +575,7 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 		lines = append(lines, v.viewport(v.renderFeed(text, feedRows), feedRows)...)
 		if hint {
 			label := ansi.Truncate("↓ Back to bottom · esc", text, "")
-			lines = append(lines, strings.Repeat(" ", max(0, (text-ansi.StringWidth(label))/2))+v.painter.theme.Accent()+label+liveActivityReset)
+			lines = append(lines, strings.Repeat(" ", max(0, (text-ansi.StringWidth(label))/2))+v.painter.Theme.Accent()+label+activityui.Reset)
 		}
 	case len(rows) > 0 && text >= liveActivitySideColumns && body >= 6:
 		cardWidth := min(44, max(28, text*3/10))
@@ -583,14 +585,14 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 		feed := v.viewport(v.renderFeed(feedWidth, body), body)
 		v.feedLeft = cardWidth + 4
 		for i := range body {
-			lines = append(lines, liveActivityPad(cards[i], cardWidth)+liveActivityDim+" │ "+liveActivityUndim+feed[i])
+			lines = append(lines, liveActivityPad(cards[i], cardWidth)+activityui.Dim+" │ "+activityui.Undim+feed[i])
 		}
 	case len(rows) > 0 && body >= 8:
 		roster := v.renderRoster(rows, text, max(2, body/3), now)
 		v.rosterTop, v.rosterBottom, v.rosterRight = 2, len(roster)+1, text
 		feedRows := body - len(roster) - 1
 		lines = append(lines, roster...)
-		lines = append(lines, liveActivityDim+strings.Repeat("─", text)+liveActivityUndim)
+		lines = append(lines, activityui.Dim+strings.Repeat("─", text)+activityui.Undim)
 		v.feedTop = len(lines) + 1
 		lines = append(lines, v.viewport(v.renderFeed(text, feedRows), feedRows)...)
 	case len(rows) > 0:
@@ -628,16 +630,16 @@ func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int,
 	if v.childrenOnly && !rosterOnly {
 		return v.activityHeader(rows, width)
 	}
-	left := "\x1b[1m" + v.painter.theme.Accent() + title + liveActivityReset
+	left := "\x1b[1m" + v.painter.Theme.Accent() + title + activityui.Reset
 	responding, errors := v.statusCounts(rows)
 	switch {
 	case v.feedOnly && !rosterOnly && !v.only:
 		left += " · all"
 	case len(rows) == 0:
-		left += liveActivityDim + " · waiting for subagent activity" + liveActivityUndim
+		left += activityui.Dim + " · waiting for subagent activity" + activityui.Undim
 	case v.only && !rosterOnly:
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
-		left += fmt.Sprintf(" · only %s %s(%d/%d)%s", v.painter.agent(v.selected), liveActivityDim, index+1, len(rows), liveActivityUndim)
+		left += fmt.Sprintf(" · only %s %s(%d/%d)%s", v.painter.Agent(v.selected), activityui.Dim, index+1, len(rows), activityui.Undim)
 	default:
 		left += fmt.Sprintf("  %d agents · %d responding", len(rows), responding)
 		if errors > 0 {
@@ -649,7 +651,7 @@ func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int,
 	}
 	right := "FOLLOW"
 	if !v.following {
-		right = liveActivityAmber + "PAUSED" + liveActivityReset
+		right = activityui.Amber + "PAUSED" + activityui.Reset
 		if v.unseen > 0 {
 			right += fmt.Sprintf(" · %d new", v.unseen)
 		}
@@ -671,18 +673,18 @@ func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int,
 // activityHeader names the native feed and its filter. Following the live
 // edge is the default, so only a paused feed says so.
 func (v *liveActivityView) activityHeader(rows []liveActivityRosterRow, width int) string {
-	left := "\x1b[1m" + v.painter.theme.Accent() + "Activity" + liveActivityReset
+	left := "\x1b[1m" + v.painter.Theme.Accent() + "Activity" + activityui.Reset
 	if v.only {
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
-		left += liveActivityDim + " · only " + liveActivityUndim + v.painter.agent(v.selected) + liveActivityDim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + liveActivityUndim
+		left += activityui.Dim + " · only " + activityui.Undim + v.painter.Agent(v.selected) + activityui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + activityui.Undim
 	}
 	right := v.status
 	if right == "" && !v.following {
-		right = liveActivityAmber + "paused" + liveActivityReset
+		right = activityui.Amber + "paused" + activityui.Reset
 		if v.unseen > 0 {
-			right += liveActivityAmber + fmt.Sprintf(" · %d new", v.unseen) + liveActivityReset
+			right += activityui.Amber + fmt.Sprintf(" · %d new", v.unseen) + activityui.Reset
 		}
-		right += liveActivityDim + " · End follows" + liveActivityUndim
+		right += activityui.Dim + " · End follows" + activityui.Undim
 	}
 	gap := width - ansi.StringWidth(left) - ansi.StringWidth(right)
 	if right == "" || gap < 2 {
@@ -693,7 +695,7 @@ func (v *liveActivityView) activityHeader(rows []liveActivityRosterRow, width in
 
 // current is an agent's latest activity summary and its elapsed/response timer.
 func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (string, string) {
-	summary := liveActivityDim + "—" + liveActivityUndim
+	summary := activityui.Dim + "—" + activityui.Undim
 	source := v
 	if agent.Name == "/root" && v.mainView != nil {
 		source = v.mainView
@@ -707,16 +709,16 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (stri
 			continue
 		}
 		if v0.Agent == agent.Name || agent.Name == "/root" && source != v && v0.Agent == "Main" {
-			summary = v.painter.summary(blocks)
+			summary = v.painter.Summary(blocks)
 			if v0.Kind == "reasoning" && agent.Responding {
-				summary = reasoningShimmer(reasoningSummaryHeader(v0.Text), now.Sub(v0.Observed), v.painter.colors)
+				summary = activityui.ReasoningShimmer(activityui.ReasoningSummaryHeader(v0.Text), now.Sub(v0.Observed), v.painter.Colors)
 			}
 			break
 		}
-		if agent.Name == "/root" && len(blocks) == 1 && blocks[0].kind == "message" && blocks[0].to == "/root" {
+		if agent.Name == "/root" && len(blocks) == 1 && blocks[0].Kind == "message" && blocks[0].To == "/root" {
 			block := blocks[0]
-			block.owner = "/root"
-			summary = v.painter.summary([]liveActivityBlock{block})
+			block.Owner = "/root"
+			summary = v.painter.Summary([]activityui.Block{block})
 			break
 		}
 	}
@@ -764,14 +766,14 @@ func liveActivityTurns(agent activityPaneAgent) string {
 	if agent.Turns == 0 {
 		return ""
 	}
-	return liveActivityDim + "T+" + liveActivityUndim + fmt.Sprint(agent.Turns)
+	return activityui.Dim + "T+" + activityui.Undim + fmt.Sprint(agent.Turns)
 }
 
 // selectRow fills the selected agent's rows, so selection takes no column of
 // its own. Resets inside the row restore the fill.
 func (v *liveActivityView) selectRow(line string, width int) string {
-	fill := v.painter.theme.SelectionBackground()
-	line = strings.ReplaceAll(line, liveActivityReset, liveActivityReset+fill)
+	fill := v.painter.Theme.SelectionBackground()
+	line = strings.ReplaceAll(line, activityui.Reset, activityui.Reset+fill)
 	return fill + line + strings.Repeat(" ", max(0, width-ansi.StringWidth(line))) + "\x1b[49m"
 }
 
@@ -853,7 +855,7 @@ func rosterTree(rows []liveActivityRosterRow, index, start int) (name, indent st
 	}
 	parent := parentAt(index)
 	if rows[index].depth == 0 || parent < 0 {
-		return agentDisplayName(rows[index].agent.Name), ""
+		return activityui.AgentDisplayName(rows[index].agent.Name), ""
 	}
 	var guides []string
 	for i := parent; i >= 0; i = parentAt(i) {
@@ -885,7 +887,7 @@ func (v *liveActivityView) hiddenRoster(rows []liveActivityRosterRow, direction 
 	if errors > 0 {
 		line += fmt.Sprintf(" · %d !", errors)
 	}
-	return liveActivityDim + line + liveActivityUndim
+	return activityui.Dim + line + activityui.Undim
 }
 
 // renderAgentRows gives each roster agent one row with its metrics inline;
@@ -949,7 +951,7 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 		}
 		name = strings.TrimRight(liveActivityMiddle(name, available), " ")
 		split := strings.LastIndexAny(name, " /") + 1
-		styled := liveActivityDim + name[:split] + liveActivityUndim + liveAgentColor(row.agent.Name) + v.hoverName(name[split:], row.agent.Name) + liveActivityReset
+		styled := activityui.Dim + name[:split] + activityui.Undim + activityui.Color(row.agent.Name) + v.hoverName(name[split:], row.agent.Name) + activityui.Reset
 		prefix := " " + v.glyph(row.agent) + " "
 		switch {
 		case cards && !compact:
@@ -957,10 +959,10 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 			gap := width - 3 - ansi.StringWidth(name) - ansi.StringWidth(last)
 			line := prefix + styled
 			if gap >= 2 {
-				line += strings.Repeat(" ", gap) + liveActivityDim + last + liveActivityUndim
+				line += strings.Repeat(" ", gap) + activityui.Dim + last + activityui.Undim
 			}
 			add(line)
-			add("   " + liveActivityDim + indents[i-start] + liveActivityUndim + summary)
+			add("   " + activityui.Dim + indents[i-start] + activityui.Undim + summary)
 		case cards:
 			add(prefix + styled + strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(name))) + "  " + summary)
 		default:
@@ -974,7 +976,7 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 			}
 		}
 		if cards && (!compact || (metrics && i == selected)) {
-			add("   " + liveActivityDim + indents[i-start] + liveActivityUndim + liveActivityCardMetrics(row.agent))
+			add("   " + activityui.Dim + indents[i-start] + activityui.Undim + liveActivityCardMetrics(row.agent))
 		}
 		if i == selected {
 			for j := first - 2; j < len(lines); j++ {
@@ -1012,12 +1014,12 @@ func (v *liveActivityView) metricTable(rows []liveActivityRosterRow, now time.Ti
 		_, timer := v.current(row.agent, now)
 		tokens := liveActivityTokens(row.agent)
 		if tokens != "" {
-			tokens = liveActivityDim + "↑ " + liveActivityUndim + liveActivityPad(formatUsageTokens(row.agent.InputTokens), 6) + liveActivityDim + " ↓ " + liveActivityUndim + liveActivityPad(formatUsageTokens(row.agent.OutputTokens), 6)
+			tokens = activityui.Dim + "↑ " + activityui.Undim + liveActivityPad(formatUsageTokens(row.agent.InputTokens), 6) + activityui.Dim + " ↓ " + activityui.Undim + liveActivityPad(formatUsageTokens(row.agent.OutputTokens), 6)
 		}
 		timerCell := ""
 		if timer != "" {
 			elapsed, age, _ := strings.Cut(timer, " · ")
-			timerCell = strings.Repeat(" ", max(0, 3-len(elapsed))) + liveActivityMetricValues(elapsed) + liveActivityDim + " · " + liveActivityUndim + liveActivityMetricValues(age)
+			timerCell = strings.Repeat(" ", max(0, 3-len(elapsed))) + liveActivityMetricValues(elapsed) + activityui.Dim + " · " + activityui.Undim + liveActivityMetricValues(age)
 		}
 		cost, turns := "", ""
 		if row.agent.Turns > 0 && row.agent.CostKnown {
@@ -1028,7 +1030,7 @@ func (v *liveActivityView) metricTable(rows []liveActivityRosterRow, now time.Ti
 			cost = prefix + "$" + fmt.Sprintf("%.2f", row.agent.Cost)
 		}
 		if row.agent.Turns > 0 {
-			turns = liveActivityDim + "T+" + liveActivityUndim + fmt.Sprint(row.agent.Turns)
+			turns = activityui.Dim + "T+" + activityui.Undim + fmt.Sprint(row.agent.Turns)
 		}
 		cells[i] = [columns]string{timerCell, tokens, cost, turns}
 	}
@@ -1061,7 +1063,7 @@ func liveActivityMetricValues(text string) string {
 		for n < len(field) && (field[n] >= '0' && field[n] <= '9' || field[n] == '.') {
 			n++
 		}
-		fields[i] = field[:n] + liveActivityDim + field[n:] + liveActivityUndim
+		fields[i] = field[:n] + activityui.Dim + field[n:] + activityui.Undim
 	}
 	return strings.Join(fields, " ")
 }
@@ -1071,12 +1073,12 @@ func liveActivityCardMetrics(agent activityPaneAgent) string {
 	if cost := liveActivityCost(agent); cost != "" {
 		parts = append(parts, cost)
 	} else if agent.InputTokens > 0 {
-		parts = append(parts, liveActivityDim+"↑ "+liveActivityUndim+formatUsageTokens(agent.InputTokens))
+		parts = append(parts, activityui.Dim+"↑ "+activityui.Undim+formatUsageTokens(agent.InputTokens))
 	}
 	if turns := liveActivityTurns(agent); turns != "" {
 		parts = append(parts, turns)
 	}
-	return strings.Join(parts, liveActivityDim+" · "+liveActivityUndim)
+	return strings.Join(parts, activityui.Dim+" · "+activityui.Undim)
 }
 
 // renderStrip is the one-line roster for short panes.
@@ -1084,11 +1086,11 @@ func (v *liveActivityView) renderStrip(rows []liveActivityRosterRow, width int) 
 	var parts []string
 	column := 1
 	for _, row := range rows {
-		name := agentDisplayName(row.agent.Name)
+		name := activityui.AgentDisplayName(row.agent.Name)
 		if row.agent.Name == v.selected || row.agent.Name == v.hovered {
 			name = "\x1b[4m" + name + "\x1b[24m"
 		}
-		part := v.glyph(row.agent) + " " + liveAgentColor(row.agent.Name) + name + liveActivityReset
+		part := v.glyph(row.agent) + " " + activityui.Color(row.agent.Name) + name + activityui.Reset
 		if last := min(width, column+ansi.StringWidth(part)-1); column <= last {
 			v.hits = append(v.hits, liveActivityHit{2, column, last, row.agent.Name})
 		}
@@ -1136,17 +1138,17 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 			}
 			last = j
 		}
-		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.theme, -1, false, conversationThread{}}
+		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.Theme, -1, false, conversationThread{}}
 		if v.snippet.run == key.first {
 			key.hover = v.snippet.block
 		}
 		run, ok := v.runs[key]
 		if !ok {
-			var blocks []liveActivityBlock
+			var blocks []activityui.Block
 			for k := i; k <= last; k++ {
 				if v.visible(v.entries[k]) {
 					for _, block := range v.blocks[k] {
-						block.source = v.entries[k].Seq
+						block.Source = v.entries[k].Seq
 						blocks = append(blocks, block)
 					}
 				}
@@ -1155,7 +1157,7 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 			if v.childrenOnly {
 				observed = v.entries[i].Observed // A stable heading while the run grows.
 			}
-			run = v.renderRun(key.first, agent, observed, mergeLiveActivityReads(blocks), width, clip)
+			run = v.renderRun(key.first, agent, observed, activityui.MergeLiveActivityReads(blocks), width, clip)
 		}
 		used[key] = run
 		if len(feed.lines) > 0 {
@@ -1180,20 +1182,20 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 	return feed
 }
 
-func (v *liveActivityView) renderRun(first uint64, agent string, observed time.Time, blocks []liveActivityBlock, width, clip int) liveActivityRun {
+func (v *liveActivityView) renderRun(first uint64, agent string, observed time.Time, blocks []activityui.Block, width, clip int) liveActivityRun {
 	stamp := " " + observed.Local().Format("15:04:05")
-	head := liveAgentGutter(agent, v.painter.theme) + "●" + liveActivityReset + " " + v.painter.agent(agent)
+	head := activityui.Gutter(agent, v.painter.Theme) + "●" + activityui.Reset + " " + v.painter.Agent(agent)
 	rule := max(1, width-ansi.StringWidth(head)-ansi.StringWidth(stamp)-1)
-	heading := head + " " + liveActivityDim + strings.Repeat("─", rule) + stamp + liveActivityUndim
+	heading := head + " " + activityui.Dim + strings.Repeat("─", rule) + stamp + activityui.Undim
 	if v.childrenOnly {
 		// The gutter already separates agents; a rule on every run is noise.
-		head = v.painter.agent(agent)
+		head = v.painter.Agent(agent)
 		if i := slices.IndexFunc(v.agents, func(a activityPaneAgent) bool { return a.Name == agent }); i >= 0 {
 			if role := liveActivityRole(v.agents[i]); role != "" {
-				head += liveActivityDim + " · " + role + liveActivityUndim
+				head += activityui.Dim + " · " + role + activityui.Undim
 			}
 		}
-		heading = head + strings.Repeat(" ", max(1, width-ansi.StringWidth(head)-ansi.StringWidth(stamp))) + liveActivityDim + stamp + liveActivityUndim
+		heading = head + strings.Repeat(" ", max(1, width-ansi.StringWidth(head)-ansi.StringWidth(stamp))) + activityui.Dim + stamp + activityui.Undim
 	}
 	run := liveActivityRun{
 		lines:     []string{ansi.Truncate(heading, width, "")},
@@ -1201,41 +1203,41 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		questions: make([]uint64, 1),
 		entryRows: make(map[uint64]int),
 	}
-	gutter := liveAgentGutter(agent, v.painter.theme) + "▎" + liveActivityReset + " "
+	gutter := activityui.Gutter(agent, v.painter.Theme) + "▎" + activityui.Reset + " "
 	if v.childrenOnly {
-		gutter = liveAgentGutter(agent, v.painter.theme) + "│" + liveActivityReset + " "
+		gutter = activityui.Gutter(agent, v.painter.Theme) + "│" + activityui.Reset + " "
 	}
 	previousMessage := false
-	operation := func(block liveActivityBlock) bool { return block.kind == "op" || block.kind == "reads" }
+	operation := func(block activityui.Block) bool { return block.Kind == "op" || block.Kind == "reads" }
 	rail := ""
 	for index, block := range blocks {
 		// Native Activity joins consecutive operations into one tree.
 		tree := v.childrenOnly && operation(block)
-		part := v.painter.block(block, width-2)
+		part := v.painter.Block(block, width-2)
 		switch {
 		case tree:
-			part = v.painter.event(block, width-4)
+			part = v.painter.Event(block, width-4)
 		case v.childrenOnly:
-			part = v.painter.event(block, width-2)
+			part = v.painter.Event(block, width-2)
 		}
 		if len(part) == 0 {
 			continue
 		}
-		message := slices.Contains([]string{"text", "message", "final", "summary", "start"}, block.kind)
+		message := slices.Contains([]string{"text", "message", "final", "summary", "start"}, block.Kind)
 		if len(run.lines) > 1 && (message || previousMessage) {
 			run.lines = append(run.lines, gutter)
 			run.snippets = append(run.snippets, liveActivitySnippet{})
 			run.questions = append(run.questions, 0)
 		}
 		previousMessage = message
-		if block.source != 0 {
-			if _, exists := run.entryRows[block.source]; !exists {
-				run.entryRows[block.source] = len(run.lines)
+		if block.Source != 0 {
+			if _, exists := run.entryRows[block.Source]; !exists {
+				run.entryRows[block.Source] = len(run.lines)
 			}
 		}
 		// Messages carry results, so they get twice the operation share.
 		limit := clip
-		if block.kind == "message" || block.kind == "final" {
+		if block.Kind == "message" || block.Kind == "final" {
 			limit *= 2
 		}
 		var snippet liveActivitySnippet
@@ -1246,29 +1248,29 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 				if snippet == v.snippet {
 					hint = "\x1b[4m" + hint + "\x1b[24m"
 				}
-				part = append(part[:limit-1:limit-1], liveActivityDim+hint+liveActivityUndim)
+				part = append(part[:limit-1:limit-1], activityui.Dim+hint+activityui.Undim)
 			}
 		}
 		switch {
 		case tree:
 			last := true
 			for _, next := range blocks[index+1:] {
-				if next.kind != "filter" {
+				if next.Kind != "filter" {
 					last = !operation(next)
 					break
 				}
 			}
-			tail := liveActivityTree([][]string{part, {""}})
+			tail := activityui.Tree([][]string{part, {""}})
 			if last {
-				tail = liveActivityTree([][]string{part})
+				tail = activityui.Tree([][]string{part})
 			}
 			part, rail = tail[:len(part)], "│ "
 			if last {
 				rail = "  "
 			}
-		case v.childrenOnly && block.kind == "filter" && rail != "":
+		case v.childrenOnly && block.Kind == "filter" && rail != "":
 			for k := range part {
-				part[k] = liveActivityDim + rail + liveActivityUndim + part[k]
+				part[k] = activityui.Dim + rail + activityui.Undim + part[k]
 			}
 		default:
 			rail = ""
@@ -1348,7 +1350,7 @@ func (v *liveActivityView) footer(width int) string {
 	if width < 60 {
 		keys = "n/p · o · j/k · End"
 	}
-	return ansi.Truncate("\x1b[1m"+mode+liveActivityUndim+liveActivityDim+" · "+keys+liveActivityUndim, width, "…")
+	return ansi.Truncate("\x1b[1m"+mode+activityui.Undim+activityui.Dim+" · "+keys+activityui.Undim, width, "…")
 }
 
 func liveActivityAge(age time.Duration) string {

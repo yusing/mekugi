@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // These are retained host observations, not guesses from the shell text. The
@@ -97,12 +98,12 @@ func TestAppServerCapturedEditReceipts(t *testing.T) {
 				continue
 			}
 			if !strings.Contains(entry.Text, "Edit `"+tc.path+"` +1 -1 · "+tc.program) ||
-				len(tc.view.blocks[i]) == 0 || tc.view.blocks[i][0].verb != "Edit" {
+				len(tc.view.blocks[i]) == 0 || tc.view.blocks[i][0].Verb != "Edit" {
 				t.Fatalf("receipt for %s: %+v, blocks %+v", tc.item, entry, tc.view.blocks[i])
 			}
 			for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
-				painted := strings.Join((&liveActivityPainter{theme: theme}).block(tc.view.blocks[i][0], 120), "\n")
-				muted := liveActivityDim + " · " + tc.program + liveActivityUndim + "\x1b[39m"
+				painted := strings.Join((&activityui.Painter{Theme: theme}).Block(tc.view.blocks[i][0], 120), "\n")
+				muted := activityui.Dim + " · " + tc.program + activityui.Undim + "\x1b[39m"
 				if !strings.Contains(painted, muted) || strings.Contains(painted, "with") {
 					t.Fatalf("source suffix lacks a muted foreground: %q", painted)
 				}
@@ -124,7 +125,7 @@ func assertCapturedCommand(t *testing.T, view *liveActivityView, thread, item, v
 		if entry.native == nil || entry.native.thread != thread || entry.native.item != item || entry.Kind != "tool" {
 			continue
 		}
-		if len(view.blocks[i]) == 0 || view.blocks[i][0].verb != verb || view.blocks[i][0].exitCode != exit {
+		if len(view.blocks[i]) == 0 || view.blocks[i][0].Verb != verb || view.blocks[i][0].ExitCode != exit {
 			t.Fatalf("%s: text %q, blocks %+v, want %s exit %d", item, entry.Text, view.blocks[i], verb, exit)
 		}
 		return

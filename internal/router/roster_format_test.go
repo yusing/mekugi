@@ -7,28 +7,29 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestRosterSummaryFormatting(t *testing.T) {
 	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
-		p := liveActivityPainter{theme: theme}
+		p := activityui.Painter{Theme: theme}
 		for _, source := range []string{"Run `git status --short`", "Run\n```bash\ngit status --short\n```"} {
-			summary := p.summary(parseLiveActivity(activityPaneEntry{Kind: "tool", Text: source}))
-			command := strings.TrimPrefix(summary, liveActivitySummaryVerb("Run"))
+			summary := p.Summary(parseLiveActivity(activityPaneEntry{Kind: "tool", Text: source}))
+			command := strings.TrimPrefix(summary, activityui.SummaryVerb("Run"))
 			if ansi.Strip(summary) != "Run git status --short" || command == ansi.Strip(command) {
 				t.Fatalf("command lost syntax highlighting: %q", summary)
 			}
 		}
-		summary := p.summary(parseLiveActivity(activityPaneEntry{Kind: "final", Text: "- **Herdr launch ownership:** preserved."}))
+		summary := p.Summary(parseLiveActivity(activityPaneEntry{Kind: "final", Text: "- **Herdr launch ownership:** preserved."}))
 		if summary != "Herdr launch ownership: preserved." {
 			t.Fatalf("list summary = %q", summary)
 		}
 		for _, recipient := range []string{"/root", "/root/worker", "/root/parent/worker"} {
 			blocks := parseLiveActivity(activityPaneEntry{Kind: "reply", Text: "[`/root/replier` -> `" + recipient + "`] Message received:\nDone."})
-			rows := strings.Join(p.block(blocks[0], 80), "\n")
-			summary := p.summary(blocks)
+			rows := strings.Join(p.Block(blocks[0], 80), "\n")
+			summary := p.Summary(blocks)
 			for _, text := range []string{ansi.Strip(rows), ansi.Strip(summary)} {
-				if strings.Contains(text, "/root") || strings.Contains(text, "replier") || !strings.Contains(text, "→ "+agentDisplayName(recipient)) {
+				if strings.Contains(text, "/root") || strings.Contains(text, "replier") || !strings.Contains(text, "→ "+activityui.AgentDisplayName(recipient)) {
 					t.Fatalf("reply = %q", text)
 				}
 			}
@@ -123,7 +124,7 @@ func TestRosterStripPreservesSelectionStyling(t *testing.T) {
 	v.selected, v.hovered = "/root/a", "/root/b"
 	line := v.renderStrip(v.roster(), 80)
 	for _, name := range []string{"a", "b"} {
-		if !strings.Contains(line, "\x1b[4m"+name+"\x1b[24m") || !strings.Contains(line, liveAgentColor("/root/"+name)) {
+		if !strings.Contains(line, "\x1b[4m"+name+"\x1b[24m") || !strings.Contains(line, activityui.Color("/root/"+name)) {
 			t.Fatalf("strip lost selection or color: %q", line)
 		}
 	}

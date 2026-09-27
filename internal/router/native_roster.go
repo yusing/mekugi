@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // nativeTitle names the Activity feed's filter and follow state for the
@@ -16,13 +17,13 @@ func (v *liveActivityView) nativeTitle() (string, string) {
 	if v.only {
 		rows := v.roster()
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
-		detail = v.painter.agent(v.selected) + liveActivityDim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + liveActivityUndim
+		detail = v.painter.Agent(v.selected) + activityui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + activityui.Undim
 	}
 	state := v.status
 	if state == "" {
 		state = scrollLabel(v)
 		if v.following {
-			state = strings.TrimSpace(state + " " + liveActivityDim + "FOLLOW" + liveActivityUndim)
+			state = strings.TrimSpace(state + " " + activityui.Dim + "FOLLOW" + activityui.Undim)
 		}
 	}
 	return detail, state
@@ -73,10 +74,10 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	}
 	detail := fmt.Sprintf("%d", len(rows))
 	if responding > 0 {
-		detail += liveActivityDim + " · " + liveActivityUndim + liveActivityAmber + fmt.Sprintf("%d working", responding) + liveActivityReset
+		detail += activityui.Dim + " · " + activityui.Undim + activityui.Amber + fmt.Sprintf("%d working", responding) + activityui.Reset
 	}
 	if errors > 0 {
-		detail += liveActivityDim + " · " + liveActivityUndim + liveActivityRed + fmt.Sprintf("%d error", errors) + liveActivityReset
+		detail += activityui.Dim + " · " + activityui.Undim + activityui.Red + fmt.Sprintf("%d error", errors) + activityui.Reset
 	}
 	var totals []string
 	if input+output > 0 {
@@ -91,7 +92,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	}
 	right := ""
 	if len(totals) > 0 {
-		right = liveActivityDim + strings.Join(totals, " · ") + liveActivityUndim
+		right = activityui.Dim + strings.Join(totals, " · ") + activityui.Undim
 	}
 	lines := []string{nativeRule("─", "─", "─", nativeTitle(4, "Agents", detail, focused), right, width, nativeBorder(focused))}
 
@@ -107,7 +108,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		if len(roles) > 0 {
 			var labels []string
 			for _, role := range roles {
-				labels = append(labels, v.roleColor(role)+"●"+liveActivityReset+" "+role)
+				labels = append(labels, v.roleColor(role)+"●"+activityui.Reset+" "+role)
 			}
 			// Keep the selected role discoverable when the full legend cannot fit.
 			if ansi.StringWidth(" Roles: "+strings.Join(labels, "  ")) > width {
@@ -143,9 +144,9 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		if item.finished != nil {
 			var names []string
 			for _, row := range item.finished {
-				names = append(names, liveAgentColor(row.agent.Name)+agentDisplayName(row.agent.Name)+liveActivityReset)
+				names = append(names, activityui.Color(row.agent.Name)+activityui.AgentDisplayName(row.agent.Name)+activityui.Reset)
 			}
-			line := " " + liveActivityGreen + "✓" + liveActivityReset + " " + liveActivityDim + fmt.Sprintf("%d finished · ", len(item.finished)) + liveActivityUndim + strings.Join(names, liveActivityDim+", "+liveActivityUndim)
+			line := " " + activityui.Green + "✓" + activityui.Reset + " " + activityui.Dim + fmt.Sprintf("%d finished · ", len(item.finished)) + activityui.Undim + strings.Join(names, activityui.Dim+", "+activityui.Undim)
 			lines = append(lines, ansi.Truncate(line, width, "…"))
 			continue
 		}
@@ -154,11 +155,11 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		tree, _ := rosterTree(rows, index, 0)
 		tree = strings.TrimRight(liveActivityMiddle(tree, nameWidth), " ")
 		split := strings.LastIndexAny(tree, " /") + 1
-		color := liveAgentColor(row.agent.Name)
+		color := activityui.Color(row.agent.Name)
 		if color == "" {
-			color = "\x1b[1m" + v.painter.theme.Accent()
+			color = "\x1b[1m" + v.painter.Theme.Accent()
 		}
-		name := liveActivityDim + tree[:split] + liveActivityUndim + color + v.hoverName(tree[split:], row.agent.Name) + liveActivityReset
+		name := activityui.Dim + tree[:split] + activityui.Undim + color + v.hoverName(tree[split:], row.agent.Name) + activityui.Reset
 		gap := "  "
 		if focused {
 			gap += strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(tree)))
@@ -176,7 +177,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		v.hits = append(v.hits, liveActivityHit{len(lines), 1, width, row.agent.Name})
 	}
 	if hidden := len(items) - end; hidden > 0 {
-		lines = append(lines, ansi.Truncate(liveActivityDim+fmt.Sprintf("   +%d more · ^B 4 shows all", hidden)+liveActivityUndim, width, "…"))
+		lines = append(lines, ansi.Truncate(activityui.Dim+fmt.Sprintf("   +%d more · ^B 4 shows all", hidden)+activityui.Undim, width, "…"))
 	}
 	if legend != "" {
 		lines = append(lines, legend)
@@ -190,11 +191,11 @@ func nativeRosterMetrics(v *liveActivityView, agent activityPaneAgent, now time.
 	_, timer := v.current(agent, now)
 	if timer != "" {
 		elapsed, last, _ := strings.Cut(timer, " · ")
-		timer = liveActivityMetricValues(elapsed) + liveActivityDim + " · " + liveActivityUndim + liveActivityMetricValues(last)
+		timer = liveActivityMetricValues(elapsed) + activityui.Dim + " · " + activityui.Undim + liveActivityMetricValues(last)
 	}
 	tokens := ""
 	if agent.InputTokens+agent.OutputTokens > 0 {
-		tokens = liveActivityDim + "↑" + liveActivityUndim + formatUsageTokens(agent.InputTokens) + liveActivityDim + " ↓" + liveActivityUndim + formatUsageTokens(agent.OutputTokens)
+		tokens = activityui.Dim + "↑" + activityui.Undim + formatUsageTokens(agent.InputTokens) + activityui.Dim + " ↓" + activityui.Undim + formatUsageTokens(agent.OutputTokens)
 	}
 	cells := []struct {
 		text  string
@@ -235,19 +236,19 @@ func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
 	if role := liveActivityRole(agent); role != "" {
 		return v.glyph(agent)
 	}
-	color := liveAgentColor(agent.Name)
+	color := activityui.Color(agent.Name)
 	if color == "" {
-		color = v.painter.theme.Accent()
+		color = v.painter.Theme.Accent()
 	}
 	switch v.agentStatus(agent) {
 	case '◐':
-		return color + "◐" + liveActivityReset
+		return color + "◐" + activityui.Reset
 	case '!':
-		return liveActivityRed + "!" + liveActivityReset
+		return activityui.Red + "!" + activityui.Reset
 	case '✓':
-		return liveActivityGreen + "✓" + liveActivityReset
+		return activityui.Green + "✓" + activityui.Reset
 	}
-	return color + "●" + liveActivityReset
+	return color + "●" + activityui.Reset
 }
 
 // agentState preserves lifecycle states when idle, and shares the detailed
@@ -257,7 +258,7 @@ func (v *liveActivityView) agentState(agent activityPaneAgent) string {
 	if agent.Name == "/root" && v.mainView != nil {
 		source, owner = v.mainView, "Main"
 	}
-	var blocks []liveActivityBlock
+	var blocks []activityui.Block
 	var kind string
 	for i, entry := range slices.Backward(source.entries) {
 		if entry.Agent == owner || source == v && entry.Agent == agent.Name {
@@ -267,11 +268,11 @@ func (v *liveActivityView) agentState(agent activityPaneAgent) string {
 	}
 	switch {
 	case kind == "error":
-		return liveActivityRed + "error" + liveActivityReset
+		return activityui.Red + "error" + activityui.Reset
 	case !agent.Responding && agent.Final:
-		return liveActivityDim + "done" + liveActivityUndim
+		return activityui.Dim + "done" + activityui.Undim
 	case !agent.Responding:
-		return liveActivityDim + "idle" + liveActivityUndim
+		return activityui.Dim + "idle" + activityui.Undim
 	case len(blocks) == 0:
 		return "working"
 	}

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestScrollablePaneKeysAgreeAtConsumers(t *testing.T) {
@@ -123,38 +124,38 @@ func TestLiveDiffStreamWheelPauseSurvivesUpdates(t *testing.T) {
 	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := controller.previewPane.render(t.Context(), "/workspace", livediff.TerminalTheme, 70, 12); err != nil {
+	if _, err := controller.previewPane.Render(t.Context(), "/workspace", livediff.TerminalTheme, 70, 12); err != nil {
 		t.Fatal(err)
 	}
 
 	for _, key := range []byte("\x1b[<64;1;1M") {
 		controller.handleKey(key)
 	}
-	stream := controller.previewPane.views["scroll-stream"]
-	if !stream.paused || stream.scrollRow != 26 {
-		t.Fatalf("wheel did not pause the stream at its previous row: paused=%v row=%d", stream.paused, stream.scrollRow)
+	stream := controller.previewPane.Views["scroll-stream"]
+	if !stream.Paused || stream.ScrollRow != 26 {
+		t.Fatalf("wheel did not pause the stream at its previous row: paused=%v row=%d", stream.Paused, stream.ScrollRow)
 	}
 
 	preview = terminalScrollStreamPreview(40)
 	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview}); err != nil {
 		t.Fatal(err)
 	}
-	lines, err := controller.previewPane.render(t.Context(), "/workspace", livediff.TerminalTheme, 70, 12)
+	lines, err := controller.previewPane.Render(t.Context(), "/workspace", livediff.TerminalTheme, 70, 12)
 	if err != nil {
 		t.Fatal(err)
 	}
 	visible := strings.Join(lines, "\n")
-	if !stream.paused || stream.scrollRow != 26 || !strings.Contains(visible, "stream_0027") || strings.Contains(visible, "stream_0040") {
-		t.Fatalf("stream update moved its paused viewport: row=%d paused=%v lines=%q", stream.scrollRow, stream.paused, visible)
+	if !stream.Paused || stream.ScrollRow != 26 || !strings.Contains(visible, "stream_0027") || strings.Contains(visible, "stream_0040") {
+		t.Fatalf("stream update moved its paused viewport: row=%d paused=%v lines=%q", stream.ScrollRow, stream.Paused, visible)
 	}
 
 	controller.handleKey('r')
-	lines, err = controller.previewPane.render(t.Context(), "/workspace", livediff.TerminalTheme, 70, 12)
+	lines, err = controller.previewPane.Render(t.Context(), "/workspace", livediff.TerminalTheme, 70, 12)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stream.paused || !strings.Contains(strings.Join(lines, "\n"), "stream_0040") {
-		t.Fatalf("resume did not return the stream viewport to its tip: paused=%v lines=%q", stream.paused, lines)
+	if stream.Paused || !strings.Contains(strings.Join(lines, "\n"), "stream_0040") {
+		t.Fatalf("resume did not return the stream viewport to its tip: paused=%v lines=%q", stream.Paused, lines)
 	}
 }
 
@@ -163,21 +164,21 @@ func newTerminalScrollTestController(offset int, following bool) *liveDiffTermin
 	lines := make([]string, 100)
 	controller.diffMode, controller.lines, controller.offset, controller.rows = true, lines, offset, 10
 	controller.lastWidth, controller.lastHeight = 80, 20
-	controller.rendering = liveDiffRender{Lines: lines, Starts: []int{0}}
-	controller.view = liveDiffView{
-		Files:     []liveDiffFile{{Path: "scroll.txt"}},
+	controller.rendering = livediff.Render{Lines: lines, Starts: []int{0}}
+	controller.view = livediff.View{
+		Files:     []livediff.File{{Path: "scroll.txt"}},
 		Scroll:    map[string]int{"scroll.txt": offset},
 		Following: following,
 	}
 	return controller
 }
 
-func terminalScrollStreamPreview(rows int) liveDiffPreview {
+func terminalScrollStreamPreview(rows int) diffview.Preview {
 	var input strings.Builder
 	for row := 1; row <= rows; row++ {
 		fmt.Fprintf(&input, "+stream_%04d\n", row)
 	}
-	return liveDiffPreview{
+	return diffview.Preview{
 		ID: "scroll-stream", Workspace: "/workspace", Thread: "thread", Input: input.String(),
 	}
 }

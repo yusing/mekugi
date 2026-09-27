@@ -48,8 +48,8 @@ func TestShellEditIntentClassification(t *testing.T) {
 				t.Fatalf("blocks = %+v; text = %q", blocks, got)
 			}
 			for i, want := range tc.wantVerbs {
-				if blocks[i].verb != want {
-					t.Errorf("block %d verb = %q, want %q: %q", i, blocks[i].verb, want, got)
+				if blocks[i].Verb != want {
+					t.Errorf("block %d verb = %q, want %q: %q", i, blocks[i].Verb, want, got)
 				}
 			}
 			for _, path := range tc.wantPaths {
@@ -68,10 +68,10 @@ func TestShellEditIntentKeepsUnknownHeredocNeighbor(t *testing.T) {
 	command := "cat >> a.go <<'EDIT'; unknown-tool <<'UNKNOWN'\nPRIVATE_EDIT_SOURCE\nEDIT\nPRIVATE_UNKNOWN_BODY\nUNKNOWN"
 	got := toolActivityShell(command)
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: got})
-	if len(blocks) != 2 || blocks[0].verb != "Edit" || blocks[1].verb != "Run" ||
+	if len(blocks) != 2 || blocks[0].Verb != "Edit" || blocks[1].Verb != "Run" ||
 		!strings.Contains(got, "Edit `a.go` · cat (requested)") ||
 		strings.Contains(got, "PRIVATE_EDIT_SOURCE") || !strings.Contains(got, "PRIVATE_UNKNOWN_BODY") ||
-		!strings.Contains(blocks[1].code, "unknown-tool <<'UNKNOWN'") {
+		!strings.Contains(blocks[1].Code, "unknown-tool <<'UNKNOWN'") {
 		t.Fatalf("mixed heredoc bodies were misattached: %q, blocks %+v", got, blocks)
 	}
 }
@@ -82,7 +82,7 @@ func TestCodeModeEditIntentBatchPreview(t *testing.T) {
 	item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
 	got := subagentToolActivityText(item, "exec")
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: got})
-	if len(blocks) != 3 || blocks[0].verb != "Edit" || blocks[1].verb != "Edit" || blocks[2].verb != "Run" ||
+	if len(blocks) != 3 || blocks[0].Verb != "Edit" || blocks[1].Verb != "Edit" || blocks[2].Verb != "Run" ||
 		!strings.Contains(got, "Edit `a.go` · python3 (requested)") ||
 		!strings.Contains(got, "Edit `b.go` · python3 (requested)") ||
 		!strings.Contains(got, "go test ./internal/router") || strings.Contains(got, "PRIVATE_BATCH_SOURCE") {
@@ -105,7 +105,7 @@ func TestLiveActivityRequestedEditReplacedByReceipt(t *testing.T) {
 		Seq: 3, Agent: "/root/worker", Kind: "tool", CallID: "edit-call", Text: "Edit `a.go` +1 -1 · cat",
 	}}})
 	if len(view.entries) != 1 || view.entries[0].Seq != 1 || view.entries[0].Text != "Edit `a.go` +1 -1 · cat" ||
-		len(view.blocks) != 1 || len(view.blocks[0]) != 1 || view.blocks[0][0].verb != "Edit" || view.blocks[0][0].exitCode != 2 {
+		len(view.blocks) != 1 || len(view.blocks[0]) != 1 || view.blocks[0][0].Verb != "Edit" || view.blocks[0][0].ExitCode != 2 {
 		t.Fatalf("confirmed receipt did not replace requested edit and retain exit: entries %+v, blocks %+v", view.entries, view.blocks)
 	}
 }

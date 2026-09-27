@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestLiveDiffPythonScriptPrefixesDoNotFlashSource(t *testing.T) {
@@ -148,16 +149,16 @@ func TestLiveDiffTerminalCatPythonScriptStreamsTargetDiff(t *testing.T) {
 		"s = s.replace('old', 'new', 1)\n" +
 		"p.write_text(s)\n"
 	worker.appendDelta(streamed)
-	preview := waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
-		return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 1 &&
+	preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
+		return preview.Status == diffview.PreviewEdit && len(preview.Files) == 1 &&
 			strings.Contains(preview.Files[0].Diff, "+new old")
 	})
 	if preview.Input != "" || !strings.Contains(preview.Files[0].Diff, "-old old") {
 		t.Fatalf("streamed Python body was not projected as a target diff: %+v", preview)
 	}
 	worker.appendDelta("s = s.replace('new',")
-	retained := waitExecScopePreview(t, broker, func(preview liveDiffPreview) bool {
-		return !preview.Complete && preview.Status == liveDiffPreviewEdit && len(preview.Files) == 1 &&
+	retained := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
+		return !preview.Complete && preview.Status == diffview.PreviewEdit && len(preview.Files) == 1 &&
 			strings.Contains(preview.Files[0].Diff, "+new old")
 	})
 	if retained.Input != "" || retained.Files[0].AfterPath != target {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/yusing/mekugi/internal/livediff"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +14,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func liveDiffTestBroker(t *testing.T, store *mekugiReplayStore, scope liveDiffScope) (string, *liveDiffBroker, context.CancelFunc) {
@@ -164,7 +165,7 @@ func TestLiveDiffPreviewMailboxOverflowResync(t *testing.T) {
 	<-sub.events
 	// Distinct removals cannot coalesce, so a stalled UI must resynchronize.
 	for i := range 33 {
-		broker.publishPreview(liveDiffPreview{ID: fmt.Sprint(i)}, true)
+		broker.publishPreview(diffview.Preview{ID: fmt.Sprint(i)}, true)
 	}
 	select {
 	case <-sub.gap:
@@ -178,7 +179,7 @@ func TestLiveDiffPreviewMailboxOverflowResync(t *testing.T) {
 	if len(batch) != 2 || !batch[0].Resync || batch[1].Preview == nil || batch[1].Preview.ID != "retained" {
 		t.Fatalf("resynchronization lost current display state: %+v", batch)
 	}
-	broker.publishPreview(liveDiffPreview{ID: "retained"}, true)
+	broker.publishPreview(diffview.Preview{ID: "retained"}, true)
 	batch = broker.takePreviews(next)
 	if len(batch) != 1 || batch[0].Preview == nil || batch[0].Preview.Workspace != "" {
 		t.Fatalf("resynchronized mailbox missed preview removal: %+v", batch)
@@ -315,7 +316,7 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 		t.Fatalf("one durable batch was split into display updates: %+v", event)
 	}
 	data := newLiveDiffData()
-	view := liveDiffView{Following: true}
+	view := livediff.View{Following: true}
 	view.Merge(nil) // The connected pane starts empty before this batch.
 	for _, change := range event.Changes {
 		if err := data.apply(t.Context(), store, change); err != nil {
@@ -347,14 +348,14 @@ func TestLiveDiffDelayedCaptureDoesNotFollowBackwards(t *testing.T) {
 	older.CaptureOrder, older.SnapshotOrder = 1, 1
 	newer := liveDiffHighlightChunk("newer", path, "@@ -90 +90 @@\n-old\n+NEWER90\n")
 	newer.CaptureOrder, newer.SnapshotOrder = 2, 2
-	view := liveDiffView{Following: true}
-	view.Merge([]liveDiffFile{{Path: path, Chunks: []liveDiffChunk{newer}}})
-	view.Merge([]liveDiffFile{{Path: path, Chunks: []liveDiffChunk{older, newer}}})
+	view := livediff.View{Following: true}
+	view.Merge([]livediff.File{{Path: path, Chunks: []livediff.Chunk{newer}}})
+	view.Merge([]livediff.File{{Path: path, Chunks: []livediff.Chunk{older, newer}}})
 	if view.Latest != "newer" || view.Files[view.Selected].Path != path {
 		t.Fatal("late publication of an older capture moved FOLLOW backwards")
 	}
 	view.RefreshVisible()
-	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.TerminalTheme, []liveDiffFile{view.Visible[view.Files[0].Key()]}, "", 90, 0, view.LatestChunk())
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{view.Visible[view.Files[0].Key()]}, "", 90, 0, view.LatestChunk())
 
 	if err != nil {
 		t.Fatal(err)
@@ -386,7 +387,7 @@ func TestLiveDiffPreviewMailboxCoalescesWithoutDelayingReceipts(t *testing.T) {
 		t.Fatalf("mailbox did not retain only latest snapshot: %+v", updates)
 	}
 	broker.publishPreview(previewViewFixture("one", 201), false)
-	broker.publishPreview(liveDiffPreview{ID: "one"}, true)
+	broker.publishPreview(diffview.Preview{ID: "one"}, true)
 	updates = broker.takePreviews(sub)
 	if len(updates) != 1 || updates[0].Preview == nil || updates[0].Preview.Workspace != "" {
 		t.Fatal("completion did not supersede pending frames")
@@ -481,7 +482,7 @@ func TestLiveDiffExpandedScopeBeforePreviewOnDelayedTransport(t *testing.T) {
 func TestLiveDiffPreviewScriptPayloadBound(t *testing.T) {
 	broker := newLiveDiffBroker(t.Context())
 	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{"/workspace": {"thread": true}}})
-	broker.publishPreview(liveDiffPreview{ID: "large-script", Workspace: "/workspace", Thread: "thread",
+	broker.publishPreview(diffview.Preview{ID: "large-script", Workspace: "/workspace", Thread: "thread",
 		Input: strings.Repeat("界\n", 50000) + "TAIL"}, false)
 	broker.mu.Lock()
 	preview := broker.previews["large-script"]

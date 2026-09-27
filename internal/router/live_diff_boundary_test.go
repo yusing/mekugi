@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestLiveDiffPreviewDeltaBoundaries(t *testing.T) {
@@ -76,17 +78,17 @@ func TestLiveDiffBurstRevealsStatementsSeparately(t *testing.T) {
 				// Both statements arrive in the same provider burst. No demo
 				// sleeps or separate appendDelta calls can manufacture this pass.
 				worker.appendDelta(input)
-				first := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+				first := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 					return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, source.first)
 				})
 				if strings.Contains(first.Files[0].Diff, source.second) {
 					t.Fatalf("two statements emitted together:\n%s", first.Files[0].Diff)
 				}
 				firstSeen := time.Now()
-				waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+				waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 					return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, source.second)
 				})
-				if elapsed := time.Since(firstSeen); elapsed < liveDiffPreviewUnitDelay-2*liveDiffPreviewFrameDelay {
+				if elapsed := time.Since(firstSeen); elapsed < diffview.PreviewUnitDelay-2*diffview.PreviewFrameDelay {
 					t.Fatalf("next statement overlapped the preceding fade: %v", elapsed)
 				}
 			})
@@ -203,15 +205,15 @@ func TestLiveDiffEmptyHeredocRetainsCompletedCard(t *testing.T) {
 	workspace := t.TempDir()
 	worker := liveDiffPreviewWorker{ctx: t.Context()}
 	for _, command := range []string{"cat >next.txt", "tee next.txt"} {
-		var pane liveDiffPreviewPane
+		var pane diffview.PreviewPane
 		first, _ := worker.projectStockPreview("*** Begin Patch\n*** Add File: first.txt\n+visible\n*** End Patch\n", workspace, true)
 		first.ID, first.Workspace = "first", workspace
-		pane.update(first)
+		pane.Update(first)
 		pending, _ := worker.project(command+" <<'EOF'\n", workspace, false)
 		pending.ID, pending.Workspace = "next", workspace
-		pane.update(pending)
-		if len(pane.order) != 1 || pane.order[0] != first.ID {
-			t.Fatalf("empty %s header replaced prior diff: %v", command, pane.order)
+		pane.Update(pending)
+		if len(pane.Order) != 1 || pane.Order[0] != first.ID {
+			t.Fatalf("empty %s header replaced prior diff: %v", command, pane.Order)
 		}
 		complete, _ := worker.project(command+" <<'EOF'\nEOF\n", workspace, true)
 		if len(complete.Files) != 1 {
@@ -235,7 +237,7 @@ func TestLiveDiffBufferedStatementKeepsMultiFileSnapshot(t *testing.T) {
 				}
 				return `{"cmd":` + strconv.Quote("cat >a.txt <<'EOF'\nfirst\nEOF\ncat >b.js <<'EOF'\nconst x = 1;\n"+strings.TrimPrefix(tail, "+")) + `}`
 			}
-			var pane liveDiffPreviewPane
+			var pane diffview.PreviewPane
 			for _, tail := range []string{"", "+const y = fn(\n"} {
 				preview, _ := worker.project(encode(tail), workspace, false)
 				preview.ID, preview.Workspace, preview.Thread = "call", workspace, "thread"
@@ -244,8 +246,8 @@ func TestLiveDiffBufferedStatementKeepsMultiFileSnapshot(t *testing.T) {
 				if len(batch) != 1 || batch[0].Preview == nil {
 					t.Fatalf("missing snapshot: %+v", batch)
 				}
-				pane.update(*batch[0].Preview)
-				current := pane.views["call"].current
+				pane.Update(*batch[0].Preview)
+				current := pane.Views["call"].Current
 				if len(current.Files) != 2 || !strings.Contains(current.Files[1].Diff, "+const x = 1;") || strings.Contains(current.Files[1].Diff, "+const y") {
 					t.Fatalf("buffered statement erased earlier files or leaked: %+v", current.Files)
 				}
@@ -299,7 +301,7 @@ func TestLiveDiffStatementsInsideOpenBlocks(t *testing.T) {
 		t.Run(tc.path, func(t *testing.T) {
 			workspace := t.TempDir()
 			worker := liveDiffPreviewWorker{ctx: t.Context(), kind: applyPatchToolName}
-			project := func(source string) liveDiffPreview {
+			project := func(source string) diffview.Preview {
 				input := "*** Begin Patch\n*** Add File: " + tc.path + "\n+" + strings.ReplaceAll(strings.TrimSuffix(source, "\n"), "\n", "\n+") + "\n"
 				preview, _ := worker.project(input, workspace, false)
 				return preview
@@ -412,8 +414,8 @@ func TestLiveDiffFinishedCallDrainIsBounded(t *testing.T) {
 	worker.appendDelta(input.String())
 	finished := time.Now()
 	worker.finish(input.String())
-	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool { return preview.Complete })
-	if elapsed := time.Since(finished); elapsed > liveDiffPreviewFinishDrain+liveDiffPreviewUnitDelay+4*liveDiffPreviewFrameDelay {
+	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool { return preview.Complete })
+	if elapsed := time.Since(finished); elapsed > diffview.PreviewFinishDrain+diffview.PreviewUnitDelay+4*diffview.PreviewFrameDelay {
 		t.Fatalf("finished call drained queued units for %v", elapsed)
 	}
 	if len(complete.Files) != 1 || !strings.Contains(complete.Files[0].Diff, "+line 29") {

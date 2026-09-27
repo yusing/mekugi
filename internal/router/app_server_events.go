@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/pathdisplay"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
@@ -155,7 +156,7 @@ func (s *appServerSession) next() uint64 {
 
 // sessionEvent handles what the session adapter owns. Main-thread turn
 // lifecycle and Main's own messages continue to the transcript handler.
-func (u *appServerUI) sessionEvent(m appServerMessage) (bool, error) {
+func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	s := &u.session
 	if s.paths == nil {
 		return false, nil

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func appServerTestNotify(t *testing.T, u *appServerUI, method string, params any) {
@@ -18,7 +20,7 @@ func appServerTestNotify(t *testing.T, u *appServerUI, method string, params any
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := u.message(appServerMessage{Method: method, Params: jsontext.Value(wire)}); err != nil {
+	if err := u.message(appserver.Message{Method: method, Params: jsontext.Value(wire)}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -91,9 +93,9 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 	u.shell.diff.scope = liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
 	// The router captures the source before host execution. App-server may
 	// deliver its notifications only after the workspace has already changed.
-	preview := projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{
+	preview := projectStockPatchPreview(t.Context(), workspace, diffview.Preview{
 		ID: "patch", Workspace: workspace, Thread: "main", Caller: "/root", Tool: applyPatchToolName,
-		Status: liveDiffPreviewEdit, Input: "*** Begin Patch\n*** Update File: a.go\n@@\n-package a\n+package b\n*** End Patch\n",
+		Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Update File: a.go\n@@\n-package a\n+package b\n*** End Patch\n",
 	})
 	if err := os.WriteFile(path, []byte("package b\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -101,34 +103,34 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 	change := map[string]any{"path": path, "kind": map[string]any{"type": "update"}, "diff": "@@ -1 +1 @@\n-package a\n+package b\n"}
 	appServerTestNotify(t, u, "item/fileChange/patchUpdated", map[string]any{"threadId": "main", "turnId": "t", "itemId": "patch", "changes": []any{change}})
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "patch", "type": "fileChange", "changes": []any{change}}})
-	if len(u.shell.mainDock.order) != 0 {
+	if len(u.shell.mainDock.Order) != 0 {
 		t.Fatal("app-server reconstructed a duplicate projection")
 	}
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
-	card := u.shell.mainDock.views["patch"].current
+	card := u.shell.mainDock.Views["patch"].Current
 	if len(card.Files) != 1 || !strings.Contains(card.Files[0].Diff, "+package b") || strings.Contains(card.Status, "cannot be projected") {
 		t.Fatalf("shared preview lost: %+v", card)
 	}
 	preview.Complete = true
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
-	if !u.shell.mainDock.views["patch"].complete {
+	if !u.shell.mainDock.Views["patch"].Complete {
 		t.Fatal("shared completion lost")
 	}
 	for _, status := range []string{"failed", "declined"} {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "patch", "type": "fileChange", "status": status, "changes": []any{change}}})
-		title := ansi.Strip(u.shell.mainDock.views["patch"].title(workspace, u.shell.diff.theme, 120))
+		title := ansi.Strip(u.shell.mainDock.Views["patch"].Title(workspace, u.shell.diff.theme, 120))
 		if strings.Contains(title, "✓") || !strings.Contains(title, "· preview") {
 			t.Fatalf("%s patch presented as applied: %s", status, title)
 		}
 	}
 	preview.ID, preview.Thread, preview.Caller, preview.Tool = "exec", "child", "/root/worker", nativeExecCommandToolName
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
-	if len(u.shell.agentDock.order) != 0 {
+	if len(u.shell.agentDock.Order) != 0 {
 		t.Fatal("completion-only shell preview flashed a dock")
 	}
 	preview.Complete = false
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
-	if len(u.shell.mainDock.order) != 1 || len(u.shell.agentDock.order) != 1 {
+	if len(u.shell.mainDock.Order) != 1 || len(u.shell.agentDock.Order) != 1 {
 		t.Fatal("shared previews not docked by caller")
 	}
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "turn", TurnRevision: 1, Status: "completed"})

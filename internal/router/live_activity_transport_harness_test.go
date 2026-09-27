@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"golang.org/x/term"
 )
 
@@ -20,7 +21,7 @@ func runLiveActivityTerminal(ctx context.Context, stdout *os.File, view *liveAct
 	ages := time.NewTicker(time.Second)
 	defer ages.Stop()
 	escape := ""
-	mouse := liveDiffMouse{}
+	mouse := terminalui.Mouse{}
 	redraw := true
 	for {
 		if redraw {
@@ -69,11 +70,11 @@ func runLiveActivityTerminal(ctx context.Context, stdout *os.File, view *liveAct
 			}
 			var quit bool
 			if key == 27 {
-				mouse = liveDiffMouse{}
+				mouse = terminalui.Mouse{}
 			}
-			if mouse.active || escape == "\x1b[" && key == '<' {
+			if mouse.Active || escape == "\x1b[" && key == '<' {
 				escape = ""
-				action, row, column := mouse.consume(key)
+				action, row, column := mouse.Consume(key)
 				redraw = view.handleMouse(action, row, column)
 			} else {
 				escape, quit = view.handleKey(escape, key)
@@ -161,6 +162,3 @@ func liveActivityStream(ctx context.Context, connection liveDiffConnection, outp
 		send(activityPaneEvent{Kind: "end"})
 	}
 }
-
-// liveActivityOSCByte reports whether key can occur in an OSC 11 reply such
-// as "11;rgb:ffff/ffff/ffff" with a BEL or ST terminator.

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func testLiveDiffShellWrite(ctx context.Context, input, directory string) ([]mekugi.ReviewFile, bool, error) {
@@ -150,8 +151,8 @@ func TestLiveDiffPreviewWorkerCatFragmentsRetainLastDiff(t *testing.T) {
 		worker.appendDelta(delta)
 		// Paced frames may show a prefix of the delta first.
 		line := strings.TrimPrefix(delta, "cat >file.txt <<'END'")
-		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-			return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 1 &&
+		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
+			return preview.Status == diffview.PreviewEdit && len(preview.Files) == 1 &&
 				(line == "END\n" || strings.Contains(preview.Files[0].Diff, "+"+strings.TrimSpace(line)))
 		})
 		if preview.Input != "" || !strings.Contains(preview.Files[0].Diff, "+first") {
@@ -159,8 +160,8 @@ func TestLiveDiffPreviewWorkerCatFragmentsRetainLastDiff(t *testing.T) {
 		}
 	}
 	worker.appendDelta("echo after\n")
-	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
-		return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 1
+	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
+		return preview.Status == diffview.PreviewEdit && len(preview.Files) == 1
 	})
 	if len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+second") || preview.Input != "" {
 		t.Fatalf("unsupported suffix lost last diff: %+v", preview)

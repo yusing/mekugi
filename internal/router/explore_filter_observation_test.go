@@ -11,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/tokenizer"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestExploreFilterPaneEmission(t *testing.T) {
@@ -110,15 +111,15 @@ func TestExploreFilterSubtleCommandAnnotation(t *testing.T) {
 		if preceding {
 			filterIndex = 1
 		}
-		if len(view.entries) != 1 || len(view.blocks[0]) != filterIndex+1 || view.blocks[0][filterIndex].kind != "filter" {
+		if len(view.entries) != 1 || len(view.blocks[0]) != filterIndex+1 || view.blocks[0][filterIndex].Kind != "filter" {
 			t.Fatal("metrics did not attach after command")
 		}
-		if strings.Contains(view.painter.summary(view.blocks[0]), "~tokens") {
+		if strings.Contains(view.painter.Summary(view.blocks[0]), "~tokens") {
 			t.Fatal("metrics replaced roster activity")
 		}
 		for _, width := range []int{35, 90, 120} {
-			muted := strings.Join(view.painter.block(view.blocks[0][filterIndex], width), "\n")
-			if !strings.Contains(muted, liveActivityDim+"~tokens") {
+			muted := strings.Join(view.painter.Block(view.blocks[0][filterIndex], width), "\n")
+			if !strings.Contains(muted, activityui.Dim+"~tokens") {
 				t.Fatal("metrics are not muted")
 			}
 			for _, line := range view.render(width, 20, now) {

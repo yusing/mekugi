@@ -5,10 +5,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"golang.org/x/term"
 	"os"
 	"os/signal"
 	"syscall"
+
+	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	"golang.org/x/term"
 )
 
 // RunLiveActivity is a test-only renderer harness, not a CLI command.
@@ -42,7 +44,7 @@ func RunLiveActivity(ctx context.Context, args []string, stdin, stdout, stderr *
 	if err != nil {
 		return fail(err)
 	}
-	err = withRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006h\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
+	err = terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006h\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 		streamCtx, cancelStream := context.WithCancel(ctx)
 		events := make(chan activityPaneEvent, 32)
 		streamDone := make(chan struct{})

@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestLiveActivityNativeItemsShareStateAndRendering(t *testing.T) {
@@ -21,12 +22,12 @@ func TestLiveActivityNativeItemsShareStateAndRendering(t *testing.T) {
 	}
 	v.applyAppServerItem("root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "complete"})
 	v.applyAppServerItem("root", "root", "turn", "answer", "item/agentMessage/delta", "late", appServerItem{})
-	if len(v.entries) != 1 || v.entries[0].Text != "complete" || v.entries[0].Seq != first || v.blocks[0][0].body != "complete" {
+	if len(v.entries) != 1 || v.entries[0].Text != "complete" || v.entries[0].Seq != first || v.blocks[0][0].Body != "complete" {
 		t.Fatal("activity identity/update diverged")
 	}
 	v.applyAppServerItem("root", "child", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "child"})
 	v.applyAppServerItem("root", "root", "turn", "cmd", "item/completed", "", appServerItem{Type: "commandExecution", Command: "printf ok", Status: "completed"})
-	if len(v.entries) != 3 || v.entries[1].Agent != "Thread child" || v.blocks[2][0].verb != "Run" || v.blocks[2][0].code != "printf ok" {
+	if len(v.entries) != 3 || v.entries[1].Agent != "Thread child" || v.blocks[2][0].Verb != "Run" || v.blocks[2][0].Code != "printf ok" {
 		t.Fatal("native items did not enter shared activity blocks")
 	}
 	// Main is the same activity viewport, not another row cache or renderer.
@@ -80,7 +81,7 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	v.applyJournal("root", nativeJournalPublication{item: journalItem{ID: "amber", Text: "Edited answer", Question: question}, terminal: true, batch: 2})
 	for _, blocks := range v.blocks {
 		for _, block := range blocks {
-			if block.journal != nil && block.journal.groups[0].target != 1 {
+			if block.Journal != nil && block.Journal.Groups[0].Target != 1 {
 				t.Fatal("answer edit changed its original question link")
 			}
 		}
@@ -142,7 +143,7 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	}
 	u.agents.agents = []activityPaneAgent{{Name: "/root/reviewer", Responding: true}}
 	live := strings.Join(u.agents.renderFeed(80, 20).lines, "\n")
-	if !strings.Contains(ansi.Strip(live), "Updated public summary") || !strings.Contains(live, liveActivityDim + "\x1b[3m") {
+	if !strings.Contains(ansi.Strip(live), "Updated public summary") || !strings.Contains(live, activityui.Dim+"\x1b[3m") {
 		t.Fatal("dim italic reasoning body is missing from Activity")
 	}
 	u.agents.agents[0].Responding = false
@@ -159,7 +160,7 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	}
 	u.agents.only, u.agents.selected = true, "/root/reviewer"
 	detail := strings.Join(u.agents.renderFeed(80, 20).lines, "\n")
-	if !strings.Contains(detail, "Updated public summary") || !strings.Contains(detail, liveActivityDim + "\x1b[3m") || strings.Contains(detail, "Reasoning summary") {
+	if !strings.Contains(detail, "Updated public summary") || !strings.Contains(detail, activityui.Dim+"\x1b[3m") || strings.Contains(detail, "Reasoning summary") {
 		t.Fatal("detailed summary must use Codex's dim italic body, not a labelled card")
 	}
 	if len(legacy.entries) != 0 || len(u.view.entries) != 0 {
@@ -243,7 +244,7 @@ func TestCodexReasoningSummaryPresentation(t *testing.T) {
 		{"**Checking tests**\n<!-- -->", "Checking tests", ""},
 		{"**Unfinished heading", "Thinking", "**Unfinished heading"},
 	} {
-		if reasoningSummaryHeader(tc.text) != tc.header || reasoningSummaryBody(tc.text) != tc.body {
+		if activityui.ReasoningSummaryHeader(tc.text) != tc.header || activityui.ReasoningSummaryBody(tc.text) != tc.body {
 			t.Fatalf("Codex summary parsing differs for %q", tc.text)
 		}
 	}
@@ -270,7 +271,7 @@ func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 	if !strings.Contains(main, assignment) || !strings.Contains(agents, assignment) || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
 		t.Fatalf("native NEW_TASK answer was not threaded under its assignment:\n%s\n%s", main, agents)
 	}
-	if groups := u.view.blocks[1][0].journal.groups; len(groups) != 1 || groups[0].target != u.view.entries[0].Seq {
+	if groups := u.view.blocks[1][0].Journal.Groups; len(groups) != 1 || groups[0].Target != u.view.entries[0].Seq {
 		t.Fatalf("native NEW_TASK assignment was not linked: %+v", groups)
 	}
 }
@@ -300,13 +301,13 @@ func TestLiveActivityQuestionLinksKeepIndividualPrompts(t *testing.T) {
 			if !strings.Contains(frame, "Steering prompt") || v.questionRows[2] < v.offset || v.questionRows[2] >= v.offset+v.feedRows || v.offset > max(0, v.feedLines-v.feedRows) {
 				t.Fatal("link did not navigate to the individual original steering prompt")
 			}
-			if v.flashQuestion != 2 || !strings.Contains(frame, v.painter.theme.SelectionBackground()) {
+			if v.flashQuestion != 2 || !strings.Contains(frame, v.painter.Theme.SelectionBackground()) {
 				t.Fatal("clicked original question did not flash")
 			}
 			if !v.expireFlash(v.flashUntil) {
 				t.Fatal("flash expiry did not request a repaint")
 			}
-			if restored := strings.Join(v.render(80, 12, time.Now()), "\n"); strings.Contains(restored, v.painter.theme.SelectionBackground()) || ansi.Strip(restored) != ansi.Strip(frame) {
+			if restored := strings.Join(v.render(80, 12, time.Now()), "\n"); strings.Contains(restored, v.painter.Theme.SelectionBackground()) || ansi.Strip(restored) != ansi.Strip(frame) {
 				t.Fatal("flash did not restore the original message without changing its contents")
 			}
 			return
@@ -360,7 +361,7 @@ func TestAppServerReusesTerminalShellAndJournalRenderer(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.view.applyJournal("root", nativeJournalPublication{item: journalItem{ID: "a", Text: "Milestone", Created: 1, Updated: 1}, terminal: true, batch: 3})
 	u.view.applyJournal("root", nativeJournalPublication{item: journalItem{ID: "b", Text: "Answer", Question: "Question", Created: 2, Updated: 2}, terminal: true, batch: 3})
-	if len(u.view.entries) != 1 || len(u.view.blocks[0]) != 1 || u.view.blocks[0][0].kind != "final" || len(u.view.blocks[0][0].journal.groups) != 2 {
+	if len(u.view.entries) != 1 || len(u.view.blocks[0]) != 1 || u.view.blocks[0][0].Kind != "final" || len(u.view.blocks[0][0].Journal.Groups) != 2 {
 		t.Fatal("native batch did not use the existing grouped Activity journal result")
 	}
 	if err := u.paint(&bytes.Buffer{}, 120, 30); err != nil {

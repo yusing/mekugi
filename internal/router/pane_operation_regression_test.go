@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestPaneOperationRegressionMCatReadLabels(t *testing.T) {
@@ -170,9 +171,9 @@ func TestPaneOperationRegressionNativePatchStreamsProvisionalDiff(t *testing.T) 
 		if visible, err := transform.TransformSSE(delta); err != nil || len(visible) != 1 || !bytes.Equal(visible[0], delta) {
 			t.Fatalf("stock patch delta changed: visible=%q err=%v", visible, err)
 		}
-		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview liveDiffPreview) bool {
+		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 			if step.want == "" {
-				return preview.Status == liveDiffPreviewEdit && len(preview.Files) == 0
+				return preview.Status == diffview.PreviewEdit && len(preview.Files) == 0
 			}
 			return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, step.want)
 		})
@@ -229,9 +230,9 @@ func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
 	}
 }
 
-func assertProvisionalPatchPreview(t *testing.T, preview liveDiffPreview) {
+func assertProvisionalPatchPreview(t *testing.T, preview diffview.Preview) {
 	t.Helper()
-	if preview.Status != liveDiffPreviewEdit || preview.Complete || len(preview.Files) == 0 && !preview.DiffText {
+	if preview.Status != diffview.PreviewEdit || preview.Complete || len(preview.Files) == 0 && !preview.DiffText {
 		t.Fatalf("patch fragment was not displayed as a provisional diff: %+v", preview)
 	}
 }

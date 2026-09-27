@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"golang.org/x/term"
 )
 
@@ -71,7 +72,7 @@ func TestAppServerComposerEditorTerminalHandoff(t *testing.T) {
 	u.draft = "original"
 	done := make(chan error, 1)
 	go func() {
-		err := withRawPane(ctx, slave, slave, "ENTER!", "LEAVE!", func(keys <-chan byte) error {
+		err := terminalui.WithRawPane(ctx, slave, slave, "ENTER!", "LEAVE!", func(keys <-chan byte) error {
 			select {
 			case key := <-keys:
 				_, err := u.key(key)
@@ -94,7 +95,7 @@ func TestAppServerComposerEditorTerminalHandoff(t *testing.T) {
 			done <- errors.New(u.notice)
 			return
 		}
-		done <- withRawPane(ctx, slave, slave, "RESUME!", "DONE!", func(keys <-chan byte) error {
+		done <- terminalui.WithRawPane(ctx, slave, slave, "RESUME!", "DONE!", func(keys <-chan byte) error {
 			select {
 			case key := <-keys:
 				_, err := u.key(key)

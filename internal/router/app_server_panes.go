@@ -22,7 +22,7 @@ type nativePaneState struct {
 }
 
 func (u *terminalUI) paneState() nativePaneState {
-	return nativePaneState{Version: 1, Focus: u.focus, Split: u.split, DiffOpen: u.diffOpen, NavigatorColumns: u.diff.navigation.columns}
+	return nativePaneState{Version: 1, Focus: u.focus, Split: u.split, DiffOpen: u.diffOpen, NavigatorColumns: u.diff.navigation.Columns}
 }
 
 type nativePanePersistence struct {
@@ -66,7 +66,7 @@ func (p *nativePanePersistence) open(u *terminalUI, workspace, thread string, re
 		return errors.New("invalid or unsupported pane state")
 	}
 	u.focus, u.split, u.diffOpen = state.Focus, state.Split, state.DiffOpen
-	u.diff.navigation.columns = state.NavigatorColumns
+	u.diff.navigation.Columns = state.NavigatorColumns
 	return nil
 }
 

@@ -20,7 +20,7 @@ import (
 type liveDiffAttempt struct {
 	change, correlation string
 	stream              int
-	chunks              []liveDiffChunk
+	chunks              []livediff.Chunk
 	receipt             *capturedActivityEdit
 }
 
@@ -87,7 +87,7 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			if d.bytes > maxChangeReadBytes {
 				return errors.New("live diff exceeds 64 MiB; use mchanges with a narrower range")
 			}
-			attempt.chunks = append(attempt.chunks, liveDiffChunk{
+			attempt.chunks = append(attempt.chunks, livediff.Chunk{
 				Key: key + "/" + strconv.Itoa(n), Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
 				CaptureOrder: record.CaptureOrder,
 				Review:       file, Origin: origin,
@@ -100,7 +100,7 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			if d.bytes > maxChangeReadBytes {
 				return errors.New("live diff exceeds 64 MiB; use mchanges with a narrower range")
 			}
-			attempt.chunks = append(attempt.chunks, liveDiffChunk{
+			attempt.chunks = append(attempt.chunks, livediff.Chunk{
 				Key: key + "/managed", Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
 				CaptureOrder: record.CaptureOrder,
 				Review:       mekugi.ReviewFile{BeforePath: label, AfterPath: label, Origin: "tool-managed", Incomplete: reason}, Origin: origin,
@@ -112,8 +112,8 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 	return nil
 }
 
-func (d *liveDiffData) files() []liveDiffFile {
-	var captures []liveDiffChunk
+func (d *liveDiffData) files() []livediff.File {
+	var captures []livediff.Chunk
 	for _, key := range d.order {
 		captures = append(captures, d.attempts[key].chunks...)
 	}

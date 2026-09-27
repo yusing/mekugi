@@ -1,4 +1,4 @@
-package router
+package dashboard
 
 import (
 	_ "embed"
@@ -8,7 +8,7 @@ import (
 //go:embed dashboard.html
 var dashboardHTML []byte
 
-func serveDashboard(writer http.ResponseWriter, request *http.Request) {
+func ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	if request.URL.Path != "/" {
 		http.NotFound(writer, request)
 		return

@@ -16,7 +16,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/rivo/uniseg"
+	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/ui/diffview"
+	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"golang.org/x/term"
 )
 
@@ -50,7 +54,7 @@ type appServerItem struct {
 }
 
 type appServerUI struct {
-	client                    *appServerClient
+	client                    *appserver.Client
 	view                      *liveActivityView
 	agents                    *liveActivityView
 	proxy                     *mekugiProxy
@@ -85,21 +89,21 @@ type appServerUI struct {
 	keybindings               bool
 	resumeThread              string
 	resumeConfig              map[string]any
-	resumePending             []appServerMessage
+	resumePending             []appserver.Message
 	panes                     *nativePanePersistence
 	restoring                 *appServerActivityRestore
 	starting                  bool
 }
 
-// StartAppServerUI is an opt-in feasibility frontend. It shares the activity
-// view and state, not a second transcript or the PTY/VT main screen. The launcher
+// StartAppServerUI starts the native terminal frontend without router observers.
+// Codex app-server owns execution; the launcher
 // still owns routing, environment, invocation-local configuration and cancellation.
 func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string) (func() error, error) {
 	return startAppServerUI(ctx, cmd, stdin, stdout, nil, resumeThread)
 }
 
 func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, resumeThread string) (func() error, error) {
-	c, err := startAppServer(cmd)
+	c, err := appserver.Start(cmd)
 	if err != nil {
 		return nil, err
 	}
@@ -107,8 +111,8 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	u.resumeConfig = appServerResumeConfig(cmd.Args)
 	u.panes = new(nativePanePersistence)
 	if err := u.request("initialize", nil); err != nil {
-		c.close()
-		<-c.done
+		c.Close()
+		<-c.Done
 		return nil, err
 	}
 	u.ensureShell()
@@ -119,13 +123,13 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 			defer func() { proxy.journals.detachNative(u.journal); proxy.journals.detachNative(u.unscopedJournal) }()
 			defer proxy.activity.releasePane()
 		}
-		defer c.input.Close()
+		defer c.Input.Close()
 		defer u.discardDraftImages()
-		defer c.output.Close()
+		defer c.Output.Close()
 		exited := false
 		var err error
 		for {
-			err = withRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
+			err = terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 				var sub *liveDiffSubscriber
 				var diffEvents <-chan liveDiffEvent
 				var diffGap, diffReady, autoChanged <-chan struct{}
@@ -151,7 +155,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						u.shell.auto.mu.Unlock()
 						u.dirty = true
 					case <-diffGap:
-						u.shell.mainDock, u.shell.agentDock = liveDiffPreviewPane{}, liveDiffPreviewPane{}
+						u.shell.mainDock, u.shell.agentDock = diffview.PreviewPane{}, diffview.PreviewPane{}
 						sub = u.shell.auto.events.subscribe()
 						diffEvents, diffGap, diffReady = sub.events, sub.gap, sub.previewReady
 						u.dirty = true
@@ -178,10 +182,10 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						u.shell.diff.escapeC = nil
 						u.shell.diff.escapeKey()
 						u.dirty = true
-					case message, ok := <-c.messages:
+					case message, ok := <-c.Messages:
 						if !ok {
 							exited = true
-							return errors.Join(errors.New("app-server disconnected; active work may be incomplete"), <-c.done)
+							return errors.Join(errors.New("app-server disconnected; active work may be incomplete"), <-c.Done)
 						}
 						if err := u.message(message); err != nil {
 							return err
@@ -263,10 +267,10 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		}
 		if !exited {
 			if err == nil {
-				err = c.shutdown()
+				err = c.Shutdown()
 			} else {
-				c.close()
-				<-c.done
+				c.Close()
+				<-c.Done
 			}
 		}
 		if u.draft != "" {
@@ -276,10 +280,10 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+livediff.Safe(u.submitted, false))
 		}
 		if err != nil {
-			c.diagnostics.Lock()
-			defer c.diagnostics.Unlock()
-			if len(c.diagnostics.text) > 0 {
-				fmt.Fprintln(stdout, livediff.Safe(string(c.diagnostics.text), false))
+			c.Diagnostics.Lock()
+			defer c.Diagnostics.Unlock()
+			if len(c.Diagnostics.Text) > 0 {
+				fmt.Fprintln(stdout, livediff.Safe(string(c.Diagnostics.Text), false))
 			}
 		}
 		return err
@@ -290,9 +294,9 @@ func (u *appServerUI) request(method string, params any) error {
 	var id string
 	var err error
 	if method == "initialize" {
-		id, err = u.client.initialize()
+		id, err = u.client.Initialize()
 	} else {
-		id, err = u.client.send(method, params, true)
+		id, err = u.client.Send(method, params, true)
 	}
 	if err == nil {
 		u.requests[id] = method
@@ -300,7 +304,7 @@ func (u *appServerUI) request(method string, params any) error {
 	return err
 }
 
-func (u *appServerUI) message(m appServerMessage) error {
+func (u *appServerUI) message(m appserver.Message) error {
 	// Input observations precede the output items that answer them. Drain
 	// before a completion, not just on the next paint tick, so links bind once.
 	u.applyObservedActivity()
@@ -336,7 +340,7 @@ func (u *appServerUI) message(m appServerMessage) error {
 		}
 		switch method {
 		case "initialize":
-			if _, err := u.client.send("initialized", map[string]any{}, false); err != nil {
+			if _, err := u.client.Send("initialized", map[string]any{}, false); err != nil {
 				return err
 			}
 			if u.resumeThread != "" {
@@ -657,7 +661,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 	paneEntries := slices.Clone(entries)
 	for i, entry := range paneEntries {
 		if entry.Kind == "reply" {
-			from, to, _, _, ok := parseLiveActivityEnvelope(entry.Text)
+			from, to, _, _, ok := activityui.ParseEnvelope(entry.Text)
 			if ok {
 				paneEntries[i].Agent = from
 				if from == "/root" {
@@ -682,7 +686,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 			}
 		}
 		if entry.Kind == "reply" {
-			from, to, _, _, ok := parseLiveActivityEnvelope(entry.Text)
+			from, to, _, _, ok := activityui.ParseEnvelope(entry.Text)
 			if ok {
 				main = from == "/root" || to == "/root"
 				entry.Agent = from
@@ -780,9 +784,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 			line = before + "\x1b[7m" + cell + "\x1b[27m" + rest
 		}
 		if boxed {
-			frame = append(frame, border+"│"+inputColor+" "+prefix+line+strings.Repeat(" ", textWidth-ansi.StringWidth(line))+border+"│"+liveActivityReset)
+			frame = append(frame, border+"│"+inputColor+" "+prefix+line+strings.Repeat(" ", textWidth-ansi.StringWidth(line))+border+"│"+activityui.Reset)
 		} else {
-			frame = append(frame, inputColor+prefix+line+liveActivityReset)
+			frame = append(frame, inputColor+prefix+line+activityui.Reset)
 		}
 	}
 	if boxed {
@@ -792,7 +796,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 		}
 		model = strings.ReplaceAll(livediff.Safe(model, false), "\n", " ")
 		if model != "" {
-			model = liveActivityDim + model + liveActivityReset
+			model = activityui.Dim + model + activityui.Reset
 		}
 		context := contextWindowLabel(activityPaneAgent{})
 		if agent := u.session.agent("/root"); agent != nil {
@@ -829,7 +833,7 @@ func composerBorder(open, close, left, right string, width int, color string) st
 		}
 	}
 	fill := max(0, inner-ansi.StringWidth(l)-ansi.StringWidth(r)-2)
-	return color + open + "─" + l + strings.Repeat("─", fill) + r + "─" + close + liveActivityReset
+	return color + open + "─" + l + strings.Repeat("─", fill) + r + "─" + close + activityui.Reset
 }
 
 // activeReasoning returns only the current Main item's public summary heading.
@@ -845,7 +849,7 @@ func (u *appServerUI) activeReasoning() string {
 	if entry.Kind != "reasoning" || entry.native == nil || entry.native.thread != u.thread || entry.native.turn != u.turn || entry.native.phase == "item/completed" {
 		return ""
 	}
-	return reasoningSummaryHeader(livediff.Safe(entry.Text, false))
+	return activityui.ReasoningSummaryHeader(livediff.Safe(entry.Text, false))
 }
 
 // Successful feedback is transient; actionable errors remain until editing.
@@ -873,14 +877,14 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 	case notice == "":
 		return label
 	case u.noticeAlert:
-		notice = liveActivityRed + "✗ " + notice + liveActivityReset
+		notice = activityui.Red + "✗ " + notice + activityui.Reset
 	default:
-		notice = "\x1b[39m" + notice + liveActivityReset
+		notice = "\x1b[39m" + notice + activityui.Reset
 	}
 	if label == "" {
 		return notice
 	}
-	return label + liveActivityDim + " · " + liveActivityUndim + notice
+	return label + activityui.Dim + " · " + activityui.Undim + notice
 }
 
 func (u *appServerUI) sessionAnimating() bool {
@@ -893,24 +897,24 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 	case status == "":
 		return ""
 	case u.alert:
-		return liveActivityRed + "✗ " + status + liveActivityReset
+		return activityui.Red + "✗ " + status + activityui.Reset
 	case u.turn != "":
-		label := "\x1b[39m◐ " + statusPulse(status, now, u.view.painter.colors) + liveActivityReset
+		label := "\x1b[39m◐ " + activityui.StatusPulse(status, now, u.view.painter.Colors) + activityui.Reset
 		if status == "Working" {
 			if summary := u.activeReasoning(); summary != "" {
 				status = summary
 			}
-			label = "\x1b[39m◐ " + reasoningShimmer(status, now.Sub(u.turnStarted), u.view.painter.colors) + liveActivityReset
+			label = "\x1b[39m◐ " + activityui.ReasoningShimmer(status, now.Sub(u.turnStarted), u.view.painter.Colors) + activityui.Reset
 		}
 		if !u.turnStarted.IsZero() {
-			label += liveActivityDim + " " + liveActivityAge(now.Sub(u.turnStarted)) + liveActivityUndim
+			label += activityui.Dim + " " + liveActivityAge(now.Sub(u.turnStarted)) + activityui.Undim
 		}
 		return label
 	case u.starting || u.submitted != "" || u.restoring != nil || u.thread == "":
-		return statusPulse(status, now, u.view.painter.colors) + liveActivityReset
+		return activityui.StatusPulse(status, now, u.view.painter.Colors) + activityui.Reset
 	}
 	// Idle states use default text; the border color would otherwise carry over.
-	return "\x1b[39m" + status + liveActivityReset
+	return "\x1b[39m" + status + activityui.Reset
 }
 
 // scrollLabel shows how much of the feed lies above the viewport and, once
@@ -923,9 +927,9 @@ func scrollLabel(v *liveActivityView) string {
 		if v.unseen > 0 {
 			label += fmt.Sprintf(" · %d new", v.unseen)
 		}
-		return liveActivityAmber + label + liveActivityReset
+		return activityui.Amber + label + activityui.Reset
 	case v.offset > 0:
-		return liveActivityDim + fmt.Sprintf("▲ %d", v.offset) + liveActivityUndim
+		return activityui.Dim + fmt.Sprintf("▲ %d", v.offset) + activityui.Undim
 	}
 	return ""
 }

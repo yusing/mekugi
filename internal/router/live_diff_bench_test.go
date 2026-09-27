@@ -2,9 +2,10 @@ package router
 
 import (
 	"fmt"
-	"github.com/yusing/mekugi/internal/livediff"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func BenchmarkLiveDiffWrappedRender(b *testing.B) {
@@ -12,10 +13,10 @@ func BenchmarkLiveDiffWrappedRender(b *testing.B) {
 		chunk := liveDiffHighlightChunk("edit", "file.go",
 			fmt.Sprintf("@@ -0,0 +1,%d @@\n", rows)+
 				strings.Repeat("+var value = \""+strings.Repeat("abcdefgh ", 15)+"\"\n", rows))
-		files := []liveDiffFile{{Path: "file.go", Chunks: []liveDiffChunk{chunk}}}
+		files := []livediff.File{{Path: "file.go", Chunks: []livediff.Chunk{chunk}}}
 		for _, warm := range []bool{false, true} {
 			b.Run(fmt.Sprintf("%d/warm=%t", rows, warm), func(b *testing.B) {
-				var renderer liveDiffRenderer
+				var renderer livediff.Renderer
 				if warm {
 					if _, err := renderer.Render(b.Context(), livediff.DarkTheme, files, "", 100, 0, chunk); err != nil {
 						b.Fatal(err)
@@ -24,7 +25,7 @@ func BenchmarkLiveDiffWrappedRender(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {
 					if !warm {
-						renderer = liveDiffRenderer{}
+						renderer = livediff.Renderer{}
 					}
 					if _, err := renderer.Render(b.Context(), livediff.DarkTheme, files, "", 100, 0, chunk); err != nil {
 						b.Fatal(err)

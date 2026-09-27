@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func (v *liveActivityView) applyJournal(thread string, publication nativeJournalPublication) {
@@ -22,10 +23,10 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 			targets[previous.journal.ID] = previous.native.question
 		}
 		for _, block := range v.blocks[i] {
-			if block.journal != nil {
-				for _, group := range block.journal.groups {
-					for _, answer := range group.answers {
-						targets[answer.id] = group.target
+			if block.Journal != nil {
+				for _, group := range block.Journal.Groups {
+					for _, answer := range group.Answers {
+						targets[answer.ID] = group.Target
 					}
 				}
 			}
@@ -84,23 +85,23 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 			continue
 		}
 		for _, block := range v.blocks[i] {
-			if block.journal == nil {
+			if block.Journal == nil {
 				continue
 			}
-			for j := range block.journal.groups {
-				group := &block.journal.groups[j]
-				for _, answer := range group.answers {
-					if target := targets[answer.id]; target != 0 {
-						group.target = target
+			for j := range block.Journal.Groups {
+				group := &block.Journal.Groups[j]
+				for _, answer := range group.Answers {
+					if target := targets[answer.ID]; target != 0 {
+						group.Target = target
 						break
 					}
 				}
-				if group.target != 0 || group.question == "" {
+				if group.Target != 0 || group.Question == "" {
 					continue
 				}
 				for _, question := range slices.Backward(v.entries[:i]) {
-					if question.Agent == "You" && question.Text == group.question {
-						group.target = question.Seq
+					if question.Agent == "You" && question.Text == group.Question {
+						group.Target = question.Seq
 						break
 					}
 				}
@@ -232,7 +233,7 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 		entry.native.question = previous.native.question
 		blocks := parseLiveActivity(entry)
 		for _, annotation := range v.blocks[i] {
-			if annotation.kind == "filter" {
+			if annotation.Kind == "filter" {
 				blocks = append(blocks, annotation)
 			}
 		}
@@ -263,17 +264,17 @@ func (v *liveActivityView) linkChildAnswers(seq uint64) {
 	}
 	owner := v.entries[index].Agent
 	known := make(map[string]uint64)
-	previousAnswers := make(map[string]*liveActivityAnswer)
+	previousAnswers := make(map[string]*activityui.Answer)
 	for i, entry := range v.entries[:index] {
 		if entry.Agent != owner {
 			continue
 		}
 		for _, block := range v.blocks[i] {
-			if block.journal != nil {
-				for _, group := range block.journal.groups {
-					for j, answer := range group.answers {
-						known[answer.id] = group.target
-						previousAnswers[answer.id] = &group.answers[j]
+			if block.Journal != nil {
+				for _, group := range block.Journal.Groups {
+					for j, answer := range group.Answers {
+						known[answer.ID] = group.Target
+						previousAnswers[answer.ID] = &group.Answers[j]
 					}
 				}
 			}
@@ -284,40 +285,40 @@ func (v *liveActivityView) linkChildAnswers(seq uint64) {
 		return strings.Trim(livediff.Safe(indentJournalText(text, ""), false), "\n")
 	}
 	for _, block := range v.blocks[index] {
-		if block.journal == nil {
+		if block.Journal == nil {
 			continue
 		}
-		var groups []liveActivityAnswerGroup
-		for _, group := range block.journal.groups {
+		var groups []activityui.AnswerGroup
+		for _, group := range block.Journal.Groups {
 			var current uint64
-			if group.question != "" {
+			if group.Question != "" {
 				for _, entry := range slices.Backward(v.entries[:index]) {
-					if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil && entry.assignment.id != "" && entry.assignment.to == owner && normalize(entry.assignment.text) == group.question ||
-						entry.Kind == "start" && entry.Agent == owner && strings.Contains(entry.Text, "\nSpawn assignment:\n") && normalize(parseLiveActivityStart(entry.Text).body) == group.question {
+					if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil && entry.assignment.id != "" && entry.assignment.to == owner && normalize(entry.assignment.text) == group.Question ||
+						entry.Kind == "start" && entry.Agent == owner && strings.Contains(entry.Text, "\nSpawn assignment:\n") && normalize(activityui.ParseStart(entry.Text).Body) == group.Question {
 						current = entry.Seq
 						break
 					}
 				}
 			}
 			first := len(groups)
-			for _, answer := range group.answers {
-				target, seen := known[answer.id]
-				if previous := previousAnswers[answer.id]; previous != nil {
-					previous.text = answer.text
+			for _, answer := range group.Answers {
+				target, seen := known[answer.ID]
+				if previous := previousAnswers[answer.ID]; previous != nil {
+					previous.Text = answer.Text
 					continue // A cumulative snapshot updates, rather than repeats, an earlier answer.
 				}
 				if !seen {
 					target = current
-					known[answer.id] = target
+					known[answer.ID] = target
 				}
-				if len(groups) == first || groups[len(groups)-1].target != target {
-					groups = append(groups, liveActivityAnswerGroup{question: group.question, target: target})
+				if len(groups) == first || groups[len(groups)-1].Target != target {
+					groups = append(groups, activityui.AnswerGroup{Question: group.Question, Target: target})
 				}
 				last := &groups[len(groups)-1]
-				last.answers = append(last.answers, answer)
+				last.Answers = append(last.Answers, answer)
 			}
 		}
-		block.journal.groups = groups
+		block.Journal.Groups = groups
 	}
 	v.runs = nil
 }

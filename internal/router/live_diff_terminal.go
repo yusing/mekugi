@@ -14,6 +14,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/ui/diffview"
+	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"golang.org/x/term"
 )
 
@@ -26,24 +29,24 @@ type liveDiffTerminalController struct {
 	data        *liveDiffData
 	scope       liveDiffScope
 	coverage    string
-	view        liveDiffView
-	previewPane liveDiffPreviewPane
+	view        livediff.View
+	previewPane diffview.PreviewPane
 
 	previewFrame      *time.Timer
 	previewFrameC     <-chan time.Time
 	previewFrameDue   time.Time
 	turnRevision      uint64
 	diffMode          bool
-	renderer          liveDiffRenderer
-	rendering         liveDiffRender
-	rendered          []liveDiffFile
-	renderedFocus     liveDiffChunk
+	renderer          livediff.Renderer
+	rendering         livediff.Render
+	rendered          []livediff.File
+	renderedFocus     livediff.Chunk
 	renderedFocusFile int
-	renderedTheme     liveDiffTheme
+	renderedTheme     livediff.Theme
 	lastWidth         int
 	lastHeight        int
 	diffWidth         int
-	navigation        liveDiffNavigation
+	navigation        diffview.Navigation
 	navigationFile    string
 	help              bool
 	escapeTimer       *time.Timer
@@ -59,7 +62,7 @@ type liveDiffTerminalController struct {
 	// switches what the pane shows.
 	native bool
 
-	files  []liveDiffFile
+	files  []livediff.File
 	lines  []string
 	offset int
 	rows   int
@@ -69,12 +72,12 @@ type liveDiffTerminalController struct {
 	stack   int
 	// back undoes the last list action on Esc.
 	back  liveDiffBack
-	theme liveDiffTheme
+	theme livediff.Theme
 	// A reported background replaces the theme's assumed fade canvas.
 	background   livediff.RGB
 	backgrounded bool
-	mouse        liveDiffMouse
-	osc          liveDiffOSC
+	mouse        terminalui.Mouse
+	osc          livediff.OSC
 	escape       string
 }
 
@@ -86,7 +89,7 @@ func newLiveDiffTerminalController(store *mekugiReplayStore, workspace string, s
 		store: store, workspace: workspace, stdout: stdout,
 		size: func() (int, int, error) { return term.GetSize(int(stdout.Fd())) },
 		data: newLiveDiffData(), coverage: "CONNECTING",
-		view:              liveDiffView{Scroll: make(map[string]int), Following: true},
+		view:              livediff.View{Scroll: make(map[string]int), Following: true},
 		previewFrame:      previewFrame,
 		renderedFocusFile: -1, dirty: true, followDirty: true,
 		theme: theme, renderedTheme: theme,
@@ -106,22 +109,22 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		return err
 	}
 	width, height = max(1, width), max(3, height)
-	files := make([]liveDiffFile, len(c.view.Files))
+	files := make([]livediff.File, len(c.view.Files))
 	focusFile := -1
 	for i, file := range c.view.Files {
 		files[i] = c.view.Visible[file.Key()]
-		if slices.ContainsFunc(file.Chunks, func(chunk liveDiffChunk) bool { return chunk.Key == c.view.Latest }) {
+		if slices.ContainsFunc(file.Chunks, func(chunk livediff.Chunk) bool { return chunk.Key == c.view.Latest }) {
 			focusFile = i
 		}
 	}
 	focus := c.view.LatestChunk()
 	focus.SnapshotOrder = 0 // Snapshot numbering does not change a capture's geometry.
-	navWidth := c.navigation.width(width)
-	if inline := width < 100; inline != c.navigation.changes.inline {
-		c.navigation.changes.inline = inline
-		c.navigation.changes.rebuild(&c.view, c.workspace)
+	navWidth := c.navigation.Width(width)
+	if inline := width < 100; inline != c.navigation.Changes.Inline {
+		c.navigation.Changes.Inline = inline
+		c.navigation.Changes.Rebuild(&c.view, c.workspace)
 	}
-	navigatorVisible := c.diffMode && (navWidth > 0 || c.navigation.focused && !c.navigation.hidden)
+	navigatorVisible := c.diffMode && (navWidth > 0 || c.navigation.Focused && !c.navigation.Hidden)
 	diffWidth := width
 	if navWidth > 0 {
 		diffWidth -= navWidth + 1
@@ -129,7 +132,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	sameFiles := reflect.DeepEqual(c.rendered, files)
 	if !sameFiles || c.renderedFocus != focus || c.renderedFocusFile != focusFile || diffWidth != c.diffWidth || c.theme != c.renderedTheme {
 		previous := c.rendering
-		c.renderer.Caller = liveDiffCallerStyle(c.theme)
+		c.renderer.Caller = diffview.CallerStyle(c.theme)
 		c.rendering, err = c.renderer.Render(ctx, c.theme, files, c.workspace, diffWidth, focusFile, focus)
 		if err != nil {
 			return err
@@ -159,14 +162,14 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	if c.native {
 		rows = height
 		n := &c.navigation
-		if c.diffMode && navWidth == 0 && !n.hidden && height >= 12 && (len(files) > 1 || n.focused || n.changesTab) {
+		if c.diffMode && navWidth == 0 && !n.Hidden && height >= 12 && (len(files) > 1 || n.Focused || n.ChangesTab) {
 			// Entries rebuild later in the frame; a tree adds about one folder per file.
-			entries := max(len(n.entries), 2*len(files))
-			if n.changesTab {
-				entries = len(n.changes.rows)
+			entries := max(len(n.Entries), 2*len(files))
+			if n.ChangesTab {
+				entries = len(n.Changes.Rows)
 			}
 			limit := min(12, height/3)
-			if n.focused {
+			if n.Focused {
 				limit = height / 2
 			}
 			stack = min(max(entries, 1)+2, limit)
@@ -204,20 +207,20 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	c.navRows = cmp.Or(stack, rows)
 	c.pinned = !titled
 	if !sameFiles {
-		c.navigation.rebuild(files, c.workspace)
+		c.navigation.Rebuild(files, c.workspace)
 		c.refreshChanges()
 	}
-	if resized && c.navigation.focused {
-		c.navigation.ensureVisible(c.navRows)
+	if resized && c.navigation.Focused {
+		c.navigation.EnsureVisible(c.navRows)
 	}
-	if selectionChanged && !c.navigation.focused {
+	if selectionChanged && !c.navigation.Focused {
 		c.revealFile()
 	}
 	if !c.dirty {
 		return nil
 	}
 
-	var active liveDiffFile
+	var active livediff.File
 	if len(lines) > 0 {
 		active = files[c.view.Selected]
 	}
@@ -253,23 +256,23 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		var nav []string
 		renderNav := func(width, rows int) []string {
 			n := &c.navigation
-			if n.changesTab {
-				return n.changes.render(n.focused, n.filtering, c.view.Caller, width, rows, c.theme)
+			if n.ChangesTab {
+				return n.Changes.Render(n.Focused, n.Filtering, c.view.Caller, width, rows, c.theme)
 			}
-			return n.render(files, c.rendering.Counts, c.view.Selected, width, rows, c.theme)
+			return n.Render(files, c.rendering.Counts, c.view.Selected, width, rows, c.theme)
 		}
 		if navWidth > 0 {
 			nav = renderNav(navWidth, rows)
 		}
-		overlay := c.navigation.focused && navWidth == 0 && stack == 0
+		overlay := c.navigation.Focused && navWidth == 0 && stack == 0
 		if overlay {
 			nav = renderNav(width-1, rows)
 		}
 		if stack > 0 {
-			if c.navigation.changesTab {
-				c.navigation.changes.ensureVisible(stack)
+			if c.navigation.ChangesTab {
+				c.navigation.Changes.EnsureVisible(stack)
 			} else {
-				c.navigation.ensureVisible(stack)
+				c.navigation.EnsureVisible(stack)
 			}
 			stacked := renderNav(width-1, stack)
 			for row := range stack {
@@ -322,12 +325,12 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		}
 	}
 	if !c.diffMode {
-		c.previewPane.motion.enabled = true
-		c.previewPane.motion.canvas = c.theme.Canvas()
+		c.previewPane.Motion.Enabled = true
+		c.previewPane.Motion.Canvas = c.theme.Canvas()
 		if c.backgrounded {
-			c.previewPane.motion.canvas.Background = c.background
+			c.previewPane.Motion.Canvas.Background = c.background
 		}
-		previewLines, err := c.previewPane.render(ctx, c.workspace, c.theme, width, rows)
+		previewLines, err := c.previewPane.Render(ctx, c.workspace, c.theme, width, rows)
 		if err != nil {
 			return err
 		}
@@ -341,11 +344,11 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	}
 	// A fade keeps frames coming until its rows reach their final colors.
 	now := time.Now()
-	if !c.diffMode && c.previewPane.animating(now) && (c.previewFrameC == nil || c.previewFrameDue.After(now.Add(liveDiffPreviewFrameDelay))) {
+	if !c.diffMode && c.previewPane.Animating(now) && (c.previewFrameC == nil || c.previewFrameDue.After(now.Add(diffview.PreviewFrameDelay))) {
 		c.previewFrame.Stop()
-		c.previewFrame.Reset(liveDiffPreviewFrameDelay)
+		c.previewFrame.Reset(diffview.PreviewFrameDelay)
 		c.previewFrameC = c.previewFrame.C
-		c.previewFrameDue = now.Add(liveDiffPreviewFrameDelay)
+		c.previewFrameDue = now.Add(diffview.PreviewFrameDelay)
 	}
 	mode := "FOLLOW"
 	if !c.view.Following {
@@ -362,12 +365,12 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	case c.native:
 	case c.diffMode:
 		stream := "v stream"
-		if live := c.previewPane.live(); live > 0 {
+		if live := c.previewPane.Live(); live > 0 {
 			stream += fmt.Sprintf(" (%d live)", live)
 		}
 		scope := ""
 		if c.view.Caller != "" {
-			name, _ := liveDiffCallerStyle(c.theme)(c.view.Caller)
+			name, _ := diffview.CallerStyle(c.theme)(c.view.Caller)
 			scope = " · @" + livediff.Safe(name, false) + " (0 all)"
 		}
 		writeRow(height, "DIFF · "+stream+" · "+mode+scope+" · s files · Tab changes · ? help")
@@ -406,11 +409,11 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 	case "coverage":
 		c.coverage, c.dirty = event.Status, true
 		if strings.HasPrefix(c.coverage, "RECONNECTING:") {
-			c.previewPane = liveDiffPreviewPane{}
+			c.previewPane = diffview.PreviewPane{}
 		}
 	case "preview":
 		if event.Preview.Workspace == "" || c.scope.Workspaces[event.Preview.Workspace][event.Preview.Thread] {
-			c.previewPane.update(*event.Preview)
+			c.previewPane.Update(*event.Preview)
 			// The producer already paces complete target units. A second
 			// debounce here merges adjacent statements back into one frame.
 			// Keep the timer only for animation after the new snapshot renders.
@@ -471,15 +474,15 @@ func (c *liveDiffTerminalController) escapeKey() {
 	back := c.back
 	c.back = liveDiffBack{}
 	switch {
-	case c.help || n.filtering:
+	case c.help || n.Filtering:
 		c.back = back
-		n.filtering, n.focused, c.help = false, false, false
-	case back.kind == 'b' && n.focused:
+		n.Filtering, n.Focused, c.help = false, false, false
+	case back.kind == 'b' && n.Focused:
 		c.filterCaller(back.caller)
-	case back.kind == 'f' && !n.focused:
-		n.hidden, n.focused, c.view.Following = false, true, false
+	case back.kind == 'f' && !n.Focused:
+		n.Hidden, n.Focused, c.view.Following = false, true, false
 	default:
-		n.focused = false
+		n.Focused = false
 	}
 	c.dirty = true
 }
@@ -487,28 +490,28 @@ func (c *liveDiffTerminalController) escapeKey() {
 // pointNav tracks the navigator row under the pointer.
 func (c *liveDiffTerminalController) pointNav(row int, inNav bool, firstRow int) {
 	n := &c.navigation
-	count, top := len(n.entries), n.top
-	if n.changesTab {
-		count, top = len(n.changes.rows), n.changes.top
+	count, top := len(n.Entries), n.Top
+	if n.ChangesTab {
+		count, top = len(n.Changes.Rows), n.Changes.Top
 	}
 	hover := 0
 	if index := top + row - firstRow - 2; inNav && row >= firstRow+2 && index < count {
 		hover = index + 1
 	}
-	before := [2]int{n.hover, n.changes.hover}
-	n.hover, n.changes.hover = 0, 0
-	if n.changesTab {
-		n.changes.hover = hover
+	before := [2]int{n.Hover, n.Changes.Hover}
+	n.Hover, n.Changes.Hover = 0, 0
+	if n.ChangesTab {
+		n.Changes.Hover = hover
 	} else {
-		n.hover = hover
+		n.Hover = hover
 	}
-	c.dirty = c.dirty || before != [2]int{n.hover, n.changes.hover}
+	c.dirty = c.dirty || before != [2]int{n.Hover, n.Changes.Hover}
 }
 
 // clearHover forgets the pointed row, reporting whether one was shown.
 func (c *liveDiffTerminalController) clearHover() bool {
-	shown := c.navigation.hover != 0 || c.navigation.changes.hover != 0
-	c.navigation.hover, c.navigation.changes.hover = 0, 0
+	shown := c.navigation.Hover != 0 || c.navigation.Changes.Hover != 0
+	c.navigation.Hover, c.navigation.Changes.Hover = 0, 0
 	return shown
 }
 
@@ -540,24 +543,24 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 			c.escapeTimer.Reset(40 * time.Millisecond)
 		}
 		c.escapeC = c.escapeTimer.C
-		c.mouse = liveDiffMouse{}
+		c.mouse = terminalui.Mouse{}
 		c.escape = "\x1b"
 		return false
 	}
-	if c.mouse.active || c.escape == "\x1b[" && key == '<' {
+	if c.mouse.Active || c.escape == "\x1b[" && key == '<' {
 		c.escape = ""
-		action, row, column := c.mouse.consume(key)
+		action, row, column := c.mouse.Consume(key)
 		if action == 0 || action == 'h' && !c.diffMode || c.help {
 			return false
 		}
 		if !c.diffMode {
-			c.scroll(paneWheelKey(action))
+			c.scroll(terminalui.PaneWheelKey(action))
 			c.dirty = true
 			return false
 		}
-		navWidth := c.navigation.width(c.lastWidth)
-		inNav := navWidth > 0 && column <= navWidth || navWidth == 0 && (c.stack > 0 && row <= c.stack || c.stack == 0 && c.navigation.focused)
-		navigatorVisible := navWidth > 0 || c.navigation.focused && !c.navigation.hidden
+		navWidth := c.navigation.Width(c.lastWidth)
+		inNav := navWidth > 0 && column <= navWidth || navWidth == 0 && (c.stack > 0 && row <= c.stack || c.stack == 0 && c.navigation.Focused)
+		navigatorVisible := navWidth > 0 || c.navigation.Focused && !c.navigation.Hidden
 		firstRow, lastRow := 2, c.lastHeight-1
 		if navigatorVisible || c.native {
 			firstRow = 1
@@ -573,15 +576,15 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 			return false
 		}
 		c.dirty = true
-		if inNav && c.navigation.changesTab {
-			l := &c.navigation.changes
+		if inNav && c.navigation.ChangesTab {
+			l := &c.navigation.Changes
 			if action == '\r' {
 				if row == firstRow+1 {
 					c.navigationKey('/')
 					return false
 				}
-				if index := l.top + row - firstRow - 2; row >= firstRow+2 && index < len(l.rows) {
-					l.cursor, c.navigation.focused, c.view.Following = index, true, false
+				if index := l.Top + row - firstRow - 2; row >= firstRow+2 && index < len(l.Rows) {
+					l.Cursor, c.navigation.Focused, c.view.Following = index, true, false
 					c.openChangeRow()
 				}
 			} else {
@@ -589,7 +592,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 				if action == 'k' {
 					delta = -1
 				}
-				l.top = max(0, min(l.top+delta, max(0, len(l.rows)-max(1, c.navRows-2))))
+				l.Top = max(0, min(l.Top+delta, max(0, len(l.Rows)-max(1, c.navRows-2))))
 			}
 			return false
 		}
@@ -600,9 +603,9 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 					c.navigationKey('/')
 					return false
 				}
-				index := n.top + row - firstRow - 2
-				if row >= firstRow+2 && index < len(n.entries) {
-					n.cursor, n.focused, c.view.Following = index, true, false
+				index := n.Top + row - firstRow - 2
+				if row >= firstRow+2 && index < len(n.Entries) {
+					n.Cursor, n.Focused, c.view.Following = index, true, false
 					c.openNavEntry()
 				}
 			} else {
@@ -611,12 +614,12 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 				if action == 'k' {
 					delta = -1
 				}
-				n.top = max(0, min(n.top+delta, max(0, len(n.entries)-max(1, c.navRows-2))))
+				n.Top = max(0, min(n.Top+delta, max(0, len(n.Entries)-max(1, c.navRows-2))))
 			}
 			return false
 		}
 		if action != '\r' {
-			c.scroll(paneWheelKey(action))
+			c.scroll(terminalui.PaneWheelKey(action))
 		}
 		return false
 	}
@@ -643,7 +646,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 			key = ' '
 		}
 		c.escape = ""
-		c.navigation.filtering = false
+		c.navigation.Filtering = false
 	}
 	if key != 'v' && !c.diffMode {
 		c.scroll(key)
@@ -652,7 +655,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	}
 	if c.diffMode {
 		c.dirty = true
-		if key == '?' && !c.navigation.filtering {
+		if key == '?' && !c.navigation.Filtering {
 			c.help = !c.help
 			return false
 		}
@@ -717,10 +720,10 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 // callerDots marks each file with the callers of its shown captures, once
 // more than one caller has changes.
 func (c *liveDiffTerminalController) callerDots() []string {
-	if len(liveDiffCallers(&c.view)) < 2 {
+	if len(diffview.Callers(&c.view)) < 2 {
 		return nil
 	}
-	style := liveDiffCallerStyle(c.theme)
+	style := diffview.CallerStyle(c.theme)
 	dots := make([]string, len(c.view.Files))
 	for i, file := range c.view.Files {
 		var seen []string
@@ -754,7 +757,7 @@ func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 		if len(c.files) == 1 {
 			left = "1 file"
 		}
-		left += liveDiffCountStats(total, c.theme)
+		left += diffview.CountStats(total, c.theme)
 	}
 	var right []string
 	if c.coverage != "" {
@@ -762,7 +765,7 @@ func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 		right = append(right, livediff.Safe(status, false))
 	}
 	if c.view.Caller != "" {
-		name, _ := liveDiffCallerStyle(c.theme)(c.view.Caller)
+		name, _ := diffview.CallerStyle(c.theme)(c.view.Caller)
 		right = append(right, "@"+livediff.Safe(name, false))
 	}
 	switch {
@@ -770,12 +773,12 @@ func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 	case c.view.Following:
 		right = append(right, "FOLLOW")
 	case c.view.UnseenUpdate:
-		right = append(right, liveActivityAmber+"PAUSED · new changes"+liveActivityReset)
+		right = append(right, activityui.Amber+"PAUSED · new changes"+activityui.Reset)
 	default:
-		right = append(right, liveActivityAmber+"PAUSED"+liveActivityReset)
+		right = append(right, activityui.Amber+"PAUSED"+activityui.Reset)
 	}
 	if len(c.files) > 1 {
 		right = append(right, fmt.Sprintf("%d/%d", c.view.Selected+1, len(c.files)))
 	}
-	return left, strings.Join(right, liveActivityDim+" · "+liveActivityUndim)
+	return left, strings.Join(right, activityui.Dim+" · "+activityui.Undim)
 }

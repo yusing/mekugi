@@ -3,12 +3,13 @@ package router
 import (
 	"bytes"
 	json "encoding/json/v2"
-	"github.com/charmbracelet/x/vt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestAppServerPublicSummaryNotifications(t *testing.T) {
@@ -154,7 +155,7 @@ func TestAppServerReasoningSurvivesDockComposition(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.draft = "one\ntwo\nthree\nfour"
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-	u.shell.preview(liveDiffPreview{ID: "p", Caller: "/root", Status: liveDiffPreviewEdit, Input: "package a\n"})
+	u.shell.preview(diffview.Preview{ID: "p", Caller: "/root", Status: diffview.PreviewEdit, Input: "package a\n"})
 	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Active summary**"})
 	var out bytes.Buffer
 	if err := u.paint(&out, 80, 14); err != nil {

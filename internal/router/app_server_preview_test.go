@@ -16,6 +16,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/internal/ui/diffview"
+	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"golang.org/x/term"
 )
 
@@ -33,7 +36,7 @@ func TestNativeUIPreview(t *testing.T) {
 	defer tty.Close()
 	p := newNativePreview(t)
 	defer p.close()
-	err = withRawPane(t.Context(), tty, tty, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
+	err = terminalui.WithRawPane(t.Context(), tty, tty, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 		tick := time.NewTicker(33 * time.Millisecond)
 		defer tick.Stop()
 		lastWidth, lastHeight := 0, 0
@@ -158,7 +161,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	if err := p.ui.shell.key('\t'); err != nil {
 		t.Fatal(err)
 	}
-	if !p.ui.shell.diff.navigation.focused || !p.ui.shell.diff.navigation.changesTab {
+	if !p.ui.shell.diff.navigation.Focused || !p.ui.shell.diff.navigation.ChangesTab {
 		t.Fatal("Tab did not focus the change list")
 	}
 	render("saved diff changes", "Unsubscribe", "─────")
@@ -171,7 +174,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		}
 	}
 	render("saved diff hidden list", "Unsubscribe")
-	if p.ui.shell.diff.stack != 0 || !p.ui.shell.diff.navigation.hidden {
+	if p.ui.shell.diff.stack != 0 || !p.ui.shell.diff.navigation.Hidden {
 		t.Fatal("s did not hide the focused stacked list")
 	}
 	// Picking an agent in the roster shows its Activity instead of the diff.
@@ -393,7 +396,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 			patchLines := strings.SplitAfter(edit.patch, "\n")
 			input := strings.Join(patchLines[:min(lines+2, len(patchLines))], "")
 			p.add("stream "+name, func() {
-				preview := projectStockPatchPreview(p.ui.ctx, p.workspace, liveDiffPreview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.path(edit.thread), Tool: applyPatchToolName, Status: liveDiffPreviewEdit, Input: input})
+				preview := projectStockPatchPreview(p.ui.ctx, p.workspace, diffview.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.path(edit.thread), Tool: applyPatchToolName, Status: diffview.PreviewEdit, Input: input})
 				p.ui.shell.applyDiff(p.ui.ctx, liveDiffEvent{Kind: "preview", Preview: &preview})
 			})
 		}
@@ -406,7 +409,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 // apply reports the call applied, writes the file, and records it the way
 // the router's capturer does, so the saved diff gains the change.
 func (p *nativePreview) apply(edit nativePreviewEdit) {
-	preview := projectStockPatchPreview(p.ui.ctx, p.workspace, liveDiffPreview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.path(edit.thread), Tool: applyPatchToolName, Status: liveDiffPreviewEdit, Input: edit.patch, Complete: true})
+	preview := projectStockPatchPreview(p.ui.ctx, p.workspace, diffview.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.path(edit.thread), Tool: applyPatchToolName, Status: diffview.PreviewEdit, Input: edit.patch, Complete: true})
 	p.ui.shell.applyDiff(p.ui.ctx, liveDiffEvent{Kind: "preview", Preview: &preview})
 	change := edit.change(-1)
 	item := map[string]any{"id": edit.item, "type": "fileChange", "status": "inProgress", "changes": []any{change}}
@@ -668,7 +671,7 @@ func (p *nativePreview) notify(method string, params any) {
 			}
 		}
 	}
-	if err := p.ui.message(appServerMessage{Method: method, Params: jsontext.Value(wire)}); err != nil {
+	if err := p.ui.message(appserver.Message{Method: method, Params: jsontext.Value(wire)}); err != nil {
 		p.t.Fatal(err)
 	}
 }
@@ -734,7 +737,7 @@ func (p *nativePreview) reply(id jsontext.Value, result any) {
 	if err != nil {
 		p.t.Fatal(err)
 	}
-	if err := p.ui.message(appServerMessage{ID: id, Result: jsontext.Value(wire)}); err != nil {
+	if err := p.ui.message(appserver.Message{ID: id, Result: jsontext.Value(wire)}); err != nil {
 		p.t.Fatal(err)
 	}
 }
@@ -779,44 +782,44 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 	}
 	keys("\x02" + "2\t")
 	frame := render()
-	l := &d.navigation.changes
-	single := slices.IndexFunc(l.rows, func(row liveDiffChangeRow) bool { return row.kind == 'c' && len(l.nodes[row.node].files) == 1 })
+	l := &d.navigation.Changes
+	single := slices.IndexFunc(l.Rows, func(row diffview.ChangeRow) bool { return row.Kind == 'c' && len(l.Nodes[row.Node].Files) == 1 })
 	if single < 0 || strings.Contains(frame, " 1f ") || !strings.Contains(frame, "broker_race_test.go") {
 		t.Fatalf("a single-file change does not name its file:\n%s", frame)
 	}
 	// The pointer underlines the row it rests on.
 	r := shell.layout.diff
-	keys(fmt.Sprintf("\x1b[<35;%d;%dM", r.x+3, r.y+3+single-l.top))
-	if l.hover != single+1 {
-		t.Fatalf("hover = %d, want row %d", l.hover, single)
+	keys(fmt.Sprintf("\x1b[<35;%d;%dM", r.x+3, r.y+3+single-l.Top))
+	if l.Hover != single+1 {
+		t.Fatalf("hover = %d, want row %d", l.Hover, single)
 	}
 	keys(fmt.Sprintf("\x1b[<35;%d;%dM", 2, 2))
-	if l.hover != 0 {
+	if l.Hover != 0 {
 		t.Fatal("leaving the diff pane kept its hover")
 	}
 	// Moving the cursor shows its file while the list keeps focus.
 	keys("G")
-	for l.cursor != single {
+	for l.Cursor != single {
 		keys("k")
 	}
-	if want := l.nodes[l.rows[single].node].files[0].file; d.view.Selected != want || !d.navigation.focused {
+	if want := l.Nodes[l.Rows[single].Node].Files[0].File; d.view.Selected != want || !d.navigation.Focused {
 		t.Fatalf("moving to a change showed file %d, want %d", d.view.Selected, want)
 	}
 	// Enter opens the file; Esc returns to the list.
 	keys("\r")
-	if d.navigation.focused || d.back.kind != 'f' {
+	if d.navigation.Focused || d.back.kind != 'f' {
 		t.Fatal("Enter on a single-file change did not open its file")
 	}
 	d.escapeKey()
-	if !d.navigation.focused || l.cursor != single {
+	if !d.navigation.Focused || l.Cursor != single {
 		t.Fatal("Esc did not return to the list")
 	}
 	// Enter on a branch filters its caller; Esc restores the previous filter.
-	branch := slices.IndexFunc(l.rows, func(row liveDiffChangeRow) bool { return row.kind == 'b' })
+	branch := slices.IndexFunc(l.Rows, func(row diffview.ChangeRow) bool { return row.Kind == 'b' })
 	if branch < 0 {
 		t.Fatal("no branch row")
 	}
-	for l.cursor < branch {
+	for l.Cursor < branch {
 		keys("j")
 	}
 	keys("\r")
@@ -824,20 +827,20 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 		t.Fatal("Enter on a branch did not filter its caller")
 	}
 	d.escapeKey()
-	if d.view.Caller != "" || !d.navigation.focused {
+	if d.view.Caller != "" || !d.navigation.Focused {
 		t.Fatal("Esc did not restore the caller filter")
 	}
 	// The file tree previews files the same way.
 	keys("\t")
 	n := &d.navigation
 	selected := d.view.Selected
-	for range len(n.entries) {
+	for range len(n.Entries) {
 		keys("j")
 		if d.view.Selected != selected {
 			break
 		}
 	}
-	if d.view.Selected == selected || n.entries[n.cursor].file != d.view.Selected {
+	if d.view.Selected == selected || n.Entries[n.Cursor].File != d.view.Selected {
 		t.Fatal("moving through the tree did not show the file under the cursor")
 	}
 }

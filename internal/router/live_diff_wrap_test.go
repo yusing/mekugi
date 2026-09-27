@@ -1,12 +1,12 @@
 package router
 
 import (
-	"github.com/yusing/mekugi/internal/livediff"
 	"strings"
 	"testing"
 
-	"github.com/alecthomas/chroma/v2"
+	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestLiveDiffWrapAndResize(t *testing.T) {
@@ -14,8 +14,8 @@ func TestLiveDiffWrapAndResize(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "file.txt",
 		"@@ -1,2 +1,2 @@\n "+source+"\n-old\n+new\n")
 	chunk.Status = ""
-	files := []liveDiffFile{{Path: "file.txt", Chunks: []liveDiffChunk{chunk}}}
-	wrapped, err := new(liveDiffRenderer).Render(t.Context(), livediff.DarkTheme, files, "", 22, 0, chunk)
+	files := []livediff.File{{Path: "file.txt", Chunks: []livediff.Chunk{chunk}}}
+	wrapped, err := new(livediff.Renderer).Render(t.Context(), livediff.DarkTheme, files, "", 22, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,11 +34,11 @@ func TestLiveDiffWrapAndResize(t *testing.T) {
 	if restored.String() != source {
 		t.Fatalf("wrapped source changed: %q, want %q", restored.String(), source)
 	}
-	wide, err := new(liveDiffRenderer).Render(t.Context(), livediff.DarkTheme, files, "", 200, 0, chunk)
+	wide, err := new(livediff.Renderer).Render(t.Context(), livediff.DarkTheme, files, "", 200, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	view := liveDiffView{Files: files, Scroll: map[string]int{"file.txt": wrapped.RowStarts[1] + 2}}
+	view := livediff.View{Files: files, Scroll: map[string]int{"file.txt": wrapped.RowStarts[1] + 2}}
 	view.Reflow(wrapped, wide)
 	if view.Scroll["file.txt"] != wide.RowStarts[1] {
 		t.Fatal("widening lost the logical source row")
@@ -54,8 +54,8 @@ func TestLiveDiffWrappedSyntaxAndFocus(t *testing.T) {
 		"@@ -0,0 +1 @@\n+\""+strings.Repeat("abcdefgh", 15)+"\"\n")
 	chunk.Status = ""
 	chunk.Highlighted = true
-	render, err := new(liveDiffRenderer).Render(t.Context(), livediff.DarkTheme,
-		[]liveDiffFile{{Path: "file.go", Chunks: []liveDiffChunk{chunk}}}, "", 30, 0, chunk)
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.DarkTheme,
+		[]livediff.File{{Path: "file.go", Chunks: []livediff.Chunk{chunk}}}, "", 30, 0, chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,26 +72,26 @@ func TestLiveDiffWrappedSyntaxAndFocus(t *testing.T) {
 }
 
 func TestLiveDiffResizeReflowsSavedFiles(t *testing.T) {
-	var files []liveDiffFile
+	var files []livediff.File
 	for _, name := range []string{"first", "second"} {
 		path := strings.Repeat(name+"/", 8) + "file.txt"
 		chunk := liveDiffHighlightChunk("edit", path,
 			"@@ -1,2 +1,2 @@\n "+strings.Repeat("long source ", 20)+"\n-old\n+new\n")
 		chunk.Status = strings.Repeat("prepared status ", 8)
-		files = append(files, liveDiffFile{Path: path, Chunks: []liveDiffChunk{chunk}})
+		files = append(files, livediff.File{Path: path, Chunks: []livediff.Chunk{chunk}})
 	}
-	wide, err := new(liveDiffRenderer).Render(t.Context(), livediff.DarkTheme, files, "", 90, 0, liveDiffChunk{})
+	wide, err := new(livediff.Renderer).Render(t.Context(), livediff.DarkTheme, files, "", 90, 0, livediff.Chunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	narrow, err := new(liveDiffRenderer).Render(t.Context(), livediff.DarkTheme, files, "", 22, 0, liveDiffChunk{})
+	narrow, err := new(livediff.Renderer).Render(t.Context(), livediff.DarkTheme, files, "", 22, 0, livediff.Chunk{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(wide.RowStarts) != len(narrow.RowStarts) {
 		t.Fatal("wrapped headings or status changed logical row identities")
 	}
-	view := liveDiffView{Files: files, Selected: 1, Scroll: make(map[string]int)}
+	view := livediff.View{Files: files, Selected: 1, Scroll: make(map[string]int)}
 	for i, file := range files {
 		end := len(wide.Lines)
 		if i+1 < len(files) {
