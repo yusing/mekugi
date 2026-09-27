@@ -12,7 +12,8 @@ import (
 func TestAppServerFrontendCommandClassification(t *testing.T) {
 	for _, tc := range []struct{ command, want string }{
 		{"inspect_file app.go; mcat app.go 1:20; rg -n needle src | head -30", "Inspect `app.go`\n\nRead `app.go 1:20`\n\nSearch `needle` in `src`"},
-		{"skills-mgr get js-ts-best-practices; skills-mgr get user-experience", "Skill Read `js-ts-best-practices`\n\nSkill Read `user-experience`"},
+		{"skills-mgr get js-ts-best-practices; skills-mgr get user-experience", "Skill `js-ts-best-practices`\n\nSkill `user-experience`"},
+		{"skills-mgr run use-modern-go/scripts/run-tool.sh list --go-version 1.27", "Skill `run use-modern-go/scripts/run-tool.sh list --go-version 1.27`"},
 		{"mcat app.go 1:20; go test ./...", "Read `app.go 1:20`\n\nRun `go test ./...`"},
 	} {
 		for _, wrapped := range []bool{false, true} {
@@ -96,6 +97,63 @@ func TestAppServerShellDisplayHighlight(t *testing.T) {
 			highlighted := strings.Join(p.highlight(block.lang, block.code), " ")
 			if !strings.Contains(got, highlighted) {
 				t.Fatalf("command lost shared highlighting: %q", got)
+			}
+		}
+	}
+}
+
+func TestAppServerImageViewLiveAndRestored(t *testing.T) {
+	workspace := t.TempDir()
+	item := appServerItem{ID: "image", Type: "imageView", Path: workspace + "/images/a.png"}
+	for _, child := range []bool{false, true} {
+		u := newAppServerSessionTestUI(t, workspace)
+		thread := "main"
+		view := u.view
+		if child {
+			thread = "child"
+			view = u.agents
+		}
+		for _, method := range []string{"item/started", "item/completed"} {
+			appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": item})
+		}
+		check := func(v *liveActivityView) {
+			t.Helper()
+			if len(v.entries) != 1 || v.entries[0].Text != "View `images/a.png`" {
+				t.Fatalf("image activity: %+v", v.entries)
+			}
+			blocks := parseLiveActivity(v.entries[0])
+			if len(blocks) != 1 || blocks[0].verb != "View" || len(blocks[0].reads) != 1 || blocks[0].reads[0].path != "images/a.png" {
+				t.Fatalf("image blocks: %+v", blocks)
+			}
+		}
+		check(view)
+		restored := newAppServerSessionTestUI(t, workspace)
+		turns := []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}}
+		if child {
+			restored.session.path(thread)
+			restored.restoreActivityThread(appServerThreadInfo{ID: thread, Cwd: workspace, Turns: turns})
+			check(restored.agents)
+		} else {
+			restored.restoreHistory(turns)
+			check(restored.view)
+		}
+	}
+}
+
+func TestLiveActivitySkillRendering(t *testing.T) {
+	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+		p := liveActivityPainter{theme: theme}
+		for _, command := range []string{"skills-mgr get golang-best-practices", "skills-mgr run use-modern-go/scripts/run-tool.sh list --go-version 1.27"} {
+			blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(command)})
+			if len(blocks) != 1 || blocks[0].verb != "Skill" {
+				t.Fatalf("skill blocks: %+v", blocks)
+			}
+			rows := strings.Join(p.block(blocks[0], 120), "\n")
+			if !strings.HasPrefix(rows, liveActivityVerbColor("Skill")) || liveActivityVerbColor("Skill") == "" {
+				t.Fatalf("uncolored skill: %q", rows)
+			}
+			if strings.Contains(command, " run ") && !strings.Contains(ansi.Strip(rows), "Skill  run use-modern-go/scripts/run-tool.sh list --go-version 1.27") {
+				t.Fatalf("skill run spacing: %q", rows)
 			}
 		}
 	}

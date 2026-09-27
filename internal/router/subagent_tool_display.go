@@ -127,7 +127,7 @@ func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, 
 			return "Still Running · operation unavailable"
 		}
 	case "view_image":
-		return toolActivityDetail("View image", jsonString(arguments, "path"))
+		return "View " + toolActivityCode(jsonString(arguments, "path"))
 	case "write_stdin":
 		return toolActivityWriteStdin(arguments)
 	case "apply_patch":

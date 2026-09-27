@@ -59,7 +59,7 @@ func TestAgentPaneInspectFileOptionsAndOperands(t *testing.T) {
 
 func TestAgentPaneSkillReadAndSkillCommandClassification(t *testing.T) {
 	command := "skills-mgr get golang-best-practices && skills-mgr run use-modern-go/scripts/run-tool.sh list --go-version 1.27"
-	want := "Skill Read `golang-best-practices`\n\nRun `skills-mgr run use-modern-go/scripts/run-tool.sh list --go-version 1.27`"
+	want := "Skill `golang-best-practices`\n\nSkill `run use-modern-go/scripts/run-tool.sh list --go-version 1.27`"
 	if got := toolActivityShell(command); got != want {
 		t.Fatalf("toolActivityShell(%q) = %q, want %q", command, got, want)
 	}

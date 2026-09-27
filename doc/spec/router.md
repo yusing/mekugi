@@ -381,7 +381,16 @@ Activity in place of the saved diff.
 
 Main and Activity share the activity view's block parsing, operation grouping
 and viewport logic; each keeps its own entries and follow/unseen state. Typed
-app-server items update entries in place. Main renders them as an unclipped transcript: user messages on a tinted
+app-server items update entries in place. Image-view items appear as `View`
+with their workspace-relative path, including restored history. Skill reads use
+the colored `Skill` label; skill scripts display as `Skill  run …`.
+Router-owned output-filter reductions remain muted annotations on their command
+when the host identity matches, otherwise standalone metrics without a duplicate
+command (including unmatched Code Mode calls).
+Search rows show a muted `(N results)` when complete, attributable output supplies
+a count: local result records (or explicit count totals), or a web result array.
+Missing, truncated, failed, or ambiguous local output has no inferred count.
+Main renders them as an unclipped transcript: user messages on a tinted
 band, assistant text under one `main` heading, tool runs drawn as a tree, agent
 start/message/finish events labelled `sender → recipient`, final answers as
 cards, and journal blocks. Its composer supports a new thread, submission, steering and

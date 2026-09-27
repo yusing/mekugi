@@ -115,6 +115,7 @@ type liveActivityNativeItem struct {
 	thread, turn, item string
 	phase              string
 	command, status    string
+	searchResults      *int
 	question           uint64 // Original user entry, retained even for a live journal publication.
 }
 
@@ -216,7 +217,13 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 			entry.journalItems = items
 		}
 		entry.Seq, entry.Observed = previous.Seq, previous.Observed
-		v.entries[i], v.blocks[i] = entry, parseLiveActivity(entry)
+		blocks := parseLiveActivity(entry)
+		for _, annotation := range v.blocks[i] {
+			if annotation.kind == "filter" {
+				blocks = append(blocks, annotation)
+			}
+		}
+		v.entries[i], v.blocks[i] = entry, blocks
 		v.runs = nil
 		return true
 	}

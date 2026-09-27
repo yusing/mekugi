@@ -23,7 +23,8 @@ type liveActivityBlock struct {
 	body     string
 	reads    []liveActivityRead
 	journal  *liveActivityJournal // A final answer in journal-result form.
-	exitCode int                  // Nonzero command exit; zero means no failure label.
+	results  *int
+	exitCode int // Nonzero command exit; zero means no failure label.
 }
 
 // liveActivityJournal is a child's journal result laid out by the router's
@@ -112,10 +113,7 @@ func parseLiveActivity(entry activityPaneEntry) []liveActivityBlock {
 		return []liveActivityBlock{{kind: "compaction", body: text}}
 	case "output_filter":
 		if entry.Filter != nil {
-			return []liveActivityBlock{
-				{kind: "op", verb: "Run", code: livediff.Safe(entry.Filter.Command, false), lang: "bash", fenced: true},
-				{kind: "filter", body: text},
-			}
+			return []liveActivityBlock{{kind: "filter", body: text}}
 		}
 	case "tool":
 		var blocks []liveActivityBlock
@@ -129,7 +127,11 @@ func parseLiveActivity(entry activityPaneEntry) []liveActivityBlock {
 			}
 			blocks = append(blocks, block)
 		}
-		return mergeLiveActivityReads(blocks)
+		blocks = mergeLiveActivityReads(blocks)
+		if len(blocks) == 1 && blocks[0].verb == "Search" && entry.native != nil {
+			blocks[0].results = entry.native.searchResults
+		}
+		return blocks
 	}
 	return []liveActivityBlock{{kind: "text", body: text}}
 }
@@ -233,7 +235,7 @@ func parseLiveActivityOperation(paragraph string) liveActivityBlock {
 			block.body = joined
 		}
 	}
-	if slices.Contains([]string{"Read", "Inspect", "List", "Search", "Skill Read", "Skill Reference Read", "Create", "Edit", "Delete", "Move", "Write"}, block.verb) && len(lines) == 1 {
+	if slices.Contains([]string{"Read", "View", "Inspect", "List", "Search", "Skill", "Skill Reference Read", "Create", "Edit", "Delete", "Move", "Write"}, block.verb) && len(lines) == 1 && !(block.verb == "Skill" && strings.HasPrefix(block.label, "`run ")) {
 		if reads, ok := parseLiveActivityReads(block.label); ok {
 			if block.verb != "Read" {
 				for i := range reads {
@@ -278,7 +280,7 @@ func mergeLiveActivityReads(blocks []liveActivityBlock) []liveActivityBlock {
 	var merged []liveActivityBlock
 	for _, block := range blocks {
 		n := len(merged)
-		if block.kind != "reads" || n == 0 || merged[n-1].kind != "reads" || merged[n-1].verb != block.verb {
+		if block.kind != "reads" || n == 0 || merged[n-1].kind != "reads" || merged[n-1].verb != block.verb || block.results != nil || merged[n-1].results != nil {
 			if block.kind == "reads" {
 				block.reads = slices.Clone(block.reads)
 				for i := range block.reads {

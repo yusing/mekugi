@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/internal/pathdisplay"
 )
 
 const appServerRestoreThreadLimit = 128
@@ -243,15 +245,18 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 		lastMessage := -1
 		for _, item := range turn.Items {
 			entry := activityPaneEntry{Seq: s.next(), Agent: name, Observed: observed, CallID: item.ID,
-				native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed"}}
+				native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", searchResults: appServerSearchResults(item)}}
 			switch item.Type {
 			case "reasoning":
 				entry.Kind, entry.Text = "reasoning", strings.Join(item.Summary, "\n\n")
 				if strings.TrimSpace(entry.Text) != "" {
 					entries = append(entries, entry)
 				}
-			case "commandExecution", "fileChange":
-				entry.Kind, entry.Text = "tool", appServerCommandText(item, info.Cwd)
+			case "imageView":
+				entry.Kind, entry.Text = "tool", "View "+commentaryCode(pathdisplay.ForWorkspace(info.Cwd, item.Path))
+				entries = append(entries, entry)
+			case "commandExecution", "fileChange", "webSearch":
+				entry.Kind, entry.Text = "tool", appServerToolText(item, info.Cwd)
 				if item.Type == "fileChange" {
 					entry.Text = appServerEditText(item, info.Cwd)
 				}

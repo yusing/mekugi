@@ -264,7 +264,7 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 		}
 		if binary.Op == syntax.Pipe && len(statement.Redirs) == 0 && len(argv) > 0 && argv[0] == "head" && toolActivitySearchFilter(argv) {
 			if source, valid := toolActivityPatternCall(script, binary.X); valid && source[0] == "cat" &&
-				(strings.HasPrefix(left, "Read ") || strings.HasPrefix(left, "Skill Read ")) {
+				(strings.HasPrefix(left, "Read ") || strings.HasPrefix(left, "Skill ")) {
 				return left, true
 			}
 		}
@@ -465,7 +465,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 			}
 			label, value := "Read", path
 			if filepath.Base(path) == "SKILL.md" && filepath.Dir(path) != "." {
-				label, value = "Skill Read", filepath.Base(filepath.Dir(path))
+				label, value = "Skill", filepath.Base(filepath.Dir(path))
 			}
 			add(label, value)
 		}
@@ -477,7 +477,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 		for _, spec := range specs {
 			label, value := "Read", spec.path
 			if filepath.Base(spec.path) == "SKILL.md" && filepath.Dir(spec.path) != "." {
-				label, value = "Skill Read", filepath.Base(filepath.Dir(spec.path))
+				label, value = "Skill", filepath.Base(filepath.Dir(spec.path))
 			}
 			if spec.span != "" {
 				value += " " + spec.span
@@ -634,10 +634,14 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 	case "rg", "grep":
 		return toolActivitySearch(argv)
 	case "skills-mgr":
+		if len(argv) >= 3 && argv[1] == "run" {
+			add("Skill", script[int(call.Args[1].Pos().Offset()):int(call.End().Offset())])
+			break
+		}
 		if (len(argv) != 3 && len(argv) != 4) || argv[1] != "get" {
 			return "", false
 		}
-		label := "Skill Read"
+		label := "Skill"
 		if strings.Contains(argv[2], "/") {
 			label = "Skill Reference Read"
 		}

@@ -106,14 +106,18 @@ func TestExploreFilterSubtleCommandAnnotation(t *testing.T) {
 			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "/root/a", CallID: "call", Kind: "tool", Text: "Run `rg needle`", Observed: now}}})
 		}
 		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Agent: "/root/a", CallID: "call", Kind: "output_filter", Text: event.text(), Filter: &event, Observed: now}}})
-		if len(view.entries) != 1 || len(view.blocks[0]) != 2 || view.blocks[0][1].kind != "filter" {
+		filterIndex := 0
+		if preceding {
+			filterIndex = 1
+		}
+		if len(view.entries) != 1 || len(view.blocks[0]) != filterIndex+1 || view.blocks[0][filterIndex].kind != "filter" {
 			t.Fatal("metrics did not attach after command")
 		}
 		if strings.Contains(view.painter.summary(view.blocks[0]), "~tokens") {
 			t.Fatal("metrics replaced roster activity")
 		}
 		for _, width := range []int{35, 90, 120} {
-			muted := strings.Join(view.painter.block(view.blocks[0][1], width), "\n")
+			muted := strings.Join(view.painter.block(view.blocks[0][filterIndex], width), "\n")
 			if !strings.Contains(muted, liveActivityDim+"~tokens") {
 				t.Fatal("metrics are not muted")
 			}

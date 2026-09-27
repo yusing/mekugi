@@ -35,7 +35,7 @@ func liveActivityVerbColor(verb string) string {
 	switch first {
 	case "Read", "Inspect", "View", "Open", "List", "Check":
 		return "\x1b[38;5;75m"
-	case "Search", "Find":
+	case "Search", "Find", "Skill":
 		return "\x1b[38;5;141m"
 	case "Run", "Send", "Sleep", "Wait", "Still", "Stop":
 		return liveActivityAmber
@@ -170,6 +170,11 @@ func liveActivityPath(path string) string {
 func (p *liveActivityPainter) code(verb, code string) string {
 	first, _, _ := strings.Cut(verb, " ")
 	switch first {
+	case "Skill":
+		if strings.HasPrefix(code, "run ") {
+			return strings.Join(p.highlight("bash", code), " ")
+		}
+		return liveActivityPath(code)
 	case "Run", "Send":
 		return strings.Join(p.highlight("bash", code), " ")
 	case "Search":
@@ -390,12 +395,12 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 			}
 			items = append(items, item)
 		}
-		return liveActivityHang(liveActivityVerb(block.verb), strings.Join(items, liveActivityDim+" · "+liveActivityUndim), width)
+		return liveActivityHang(liveActivityVerb(block.verb), strings.Join(items, liveActivityDim+" · "+liveActivityUndim)+liveActivityResultCount(block.results), width)
 	case "op":
-		label := p.label(block.verb, block.label)
+		label := p.label(block.verb, block.label) + liveActivityResultCount(block.results)
 		code, body := block.code, block.body
 		exit := ""
-		if block.exitCode != 0 && (block.verb == "Run" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.verb)) {
+		if block.exitCode != 0 && (block.verb == "Run" || block.verb == "Skill" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.verb)) {
 			exit = liveActivityRed + fmt.Sprintf("(exit %d)", block.exitCode) + liveActivityReset
 		}
 		if block.verb == "Run" && block.fenced && label == "" && strings.Contains(code, "\n") && width-ansi.StringWidth(liveActivityVerb(block.verb)) >= 4 {
@@ -694,7 +699,7 @@ func (p *liveActivityPainter) summary(blocks []liveActivityBlock) string {
 			}
 			detail = strings.TrimSpace(code + " " + detail)
 		}
-		if block.exitCode != 0 && (block.verb == "Run" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.verb)) {
+		if block.exitCode != 0 && (block.verb == "Run" || block.verb == "Skill" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.verb)) {
 			detail += " " + liveActivityRed + fmt.Sprintf("(exit %d)", block.exitCode) + liveActivityReset
 		}
 		return liveActivitySummaryVerb(block.verb) + detail + more
@@ -759,4 +764,11 @@ func (p liveActivityPainter) messageDirection(block liveActivityBlock) string {
 		direction, peer = "← ", block.from
 	}
 	return liveActivityDim + direction + liveActivityUndim + p.recipient(peer)
+}
+
+func liveActivityResultCount(count *int) string {
+	if count == nil {
+		return ""
+	}
+	return liveActivityDim + fmt.Sprintf(" (%d results)", *count) + liveActivityUndim
 }

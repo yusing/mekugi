@@ -21,14 +21,19 @@ import (
 )
 
 type appServerItem struct {
-	ID            string   `json:"id"`
-	Type          string   `json:"type"`
-	Text          string   `json:"text"`
-	Summary       []string `json:"summary"`
-	AgentThreadID string   `json:"agentThreadId"`
-	AgentPath     string   `json:"agentPath"`
-	Command       string   `json:"command"`
-	Status        string   `json:"status"`
+	ID               string                    `json:"id"`
+	Type             string                    `json:"type"`
+	Text             string                    `json:"text"`
+	Summary          []string                  `json:"summary"`
+	AgentThreadID    string                    `json:"agentThreadId"`
+	AgentPath        string                    `json:"agentPath"`
+	Command          string                    `json:"command"`
+	Path             string                    `json:"path"`
+	Status           string                    `json:"status"`
+	AggregatedOutput *string                   `json:"aggregatedOutput"`
+	Query            string                    `json:"query"`
+	Action           *appServerWebSearchAction `json:"action"`
+	Results          []jsontext.Value          `json:"results"`
 	// Content is variant-specific: user input blocks or raw reasoning strings.
 	// Decode only userMessage content; reasoning presentation uses Summary.
 	Content           jsontext.Value           `json:"content"`
@@ -191,6 +196,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						u.dirty = true
 					case <-tick.C:
+						u.applyFilterActivity()
 						u.paneError(u.panes.save(u.shell, time.Now(), false))
 						if u.view.expireFlash(time.Now()) {
 							u.dirty = true
@@ -904,4 +910,19 @@ func (u *appServerUI) paint(out io.Writer, width, height int) error {
 		ctx = context.Background()
 	}
 	return u.shell.paintNative(ctx, out)
+}
+
+// Provider output filtering is auxiliary router evidence, not an app-server item.
+func (u *appServerUI) applyFilterActivity() {
+	if u.proxy == nil {
+		return
+	}
+	entries := u.proxy.activity.takeNativeFilters(u.thread)
+	for i := range entries {
+		entries[i].Seq = u.session.next()
+	}
+	if len(entries) != 0 {
+		u.applyActivity(entries, nil)
+		u.dirty = true
+	}
 }

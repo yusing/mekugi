@@ -347,3 +347,28 @@ func (a *subagentActivity) syncPaneRoles(parent string, roles map[string]journal
 	}
 	a.wakePaneLocked()
 }
+
+// takeNativeFilters drains only router-owned annotations. App-server remains
+// the sole owner of native command, message, and roster lifecycle events.
+func (a *subagentActivity) takeNativeFilters(root string) []activityPaneEntry {
+ if a == nil { return nil }
+ a.mu.Lock()
+ defer a.mu.Unlock()
+ if a.closed || a.pane == nil || !a.pane.native || a.pane.state != activityPaneAttached || a.pane.root != root {
+  return nil
+ }
+ a.expireLocked(time.Now())
+ var entries []activityPaneEntry
+ kept := a.events[:0]
+ for _, event := range a.events {
+  node := a.threads[event.thread]
+  if event.kind != "output_filter" || node == nil || node.conflicted || a.rootLocked(event.thread) != root {
+   kept = append(kept, event)
+   continue
+  }
+  entries = append(entries, activityPaneEntry{Agent: node.name, Kind:event.kind, Text:event.raw, CallID:event.callID, Filter:event.filter, Observed:event.observed})
+ }
+ clear(a.events[len(kept):])
+ a.events = kept
+ return entries
+}

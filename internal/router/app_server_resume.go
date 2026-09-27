@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/yusing/mekugi/internal/pathdisplay"
 )
 
 // Codex merges saved model metadata after loading process CLI configuration.
@@ -56,13 +57,17 @@ func (u *appServerUI) restoreHistory(turns []appServerHistoryTurn) {
 				method = "item/started"
 			}
 			switch item.Type {
-			case "commandExecution", "fileChange":
-				text := appServerCommandText(item, u.session.cwd)
+			case "imageView":
+				entry := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + commentaryCode(pathdisplay.ForWorkspace(u.session.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
+					native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, searchResults: appServerSearchResults(item)}}
+				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+			case "commandExecution", "fileChange", "webSearch":
+				text := appServerToolText(item, u.session.cwd)
 				if item.Type == "fileChange" {
 					text = appServerEditText(item, u.session.cwd)
 				}
 				entry := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
-					native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method}}
+					native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, searchResults: appServerSearchResults(item)}}
 				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 				if item.ExitCode != nil && *item.ExitCode != 0 {
 					u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}}})

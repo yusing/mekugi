@@ -241,12 +241,15 @@ func (u *appServerUI) sessionEvent(m appServerMessage) (bool, error) {
 				s.reasoning[[3]string{p.ThreadID, p.TurnID, id}] = text
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "reasoning", Text: text, CallID: id, Observed: now, native: native})
 			}
-		case "commandExecution":
-			entry := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerCommandText(item, s.cwd), CallID: id, Observed: now, native: native}
+		case "commandExecution", "webSearch":
+			native.searchResults = appServerSearchResults(item)
+			entry := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerToolText(item, s.cwd), CallID: id, Observed: now, native: native}
 			entries = append(entries, entry)
 			if m.Method == "item/completed" && item.ExitCode != nil && *item.ExitCode != 0 {
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: id, Observed: now})
 			}
+		case "imageView":
+			entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: "View " + commentaryCode(pathdisplay.ForWorkspace(s.cwd, item.Path)), CallID: id, Observed: now, native: native})
 		case "fileChange":
 			if len(item.Changes) > 0 {
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerEditText(item, s.cwd), CallID: id, Observed: now, native: native})

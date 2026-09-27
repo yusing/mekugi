@@ -37,7 +37,7 @@ func TestSubagentToolDisplay(t *testing.T) {
 		{"exec_command", `{"cmd":"msymbol def a.go:42 Name refs a.go 42 Name","login":false}`, "Search `def a.go:42 Name refs a.go 42 Name`"},
 		{"exec_command", `{"cmd":"msymbol --max-tokens=4000 def a.go:42 Name","login":false}`, "Read `--max-tokens=4000 def a.go:42 Name`"},
 		{"exec_command", `{"cmd":"inspect_file a.go","login":false}`, "Inspect `a.go`"},
-		{"view_image", `{"path":"/tmp/a.png"}`, "View image\n`/tmp/a.png`"},
+		{"view_image", `{"path":"/tmp/a.png"}`, "View `/tmp/a.png`"},
 		{"exec", `await tools.exec_command({"cmd":"echo a\necho b"})`, "Run\n```bash\necho a\necho b\n```"},
 		{"exec", `const r = await tools.write_stdin({session_id: 52915, chars: "", yield_time_ms: 30000, max_output_tokens: 3000}); text(r);`, "Still Running"},
 		{"exec", `await tools.write_stdin({session_id: -12, chars: ""})`, "Still Running"},
@@ -276,7 +276,7 @@ func TestSubagentInlineAwaitDisplay(t *testing.T) {
 		},
 		{
 			`text(await tools.exec_command({cmd:"skills-mgr get golang-best-practices; sed -n '1,245p' internal/router/subagent_tool_display.go; sed -n '320,475p' internal/router/subagent_tool_display.go; git diff -- internal/router/subagent_tool_display_test.go",max_output_tokens:10100}));`,
-			"Skill Read `golang-best-practices`\n\nRead `internal/router/subagent_tool_display.go 1:245`\n\nRead `internal/router/subagent_tool_display.go 320:475`\n\nRun `git diff -- internal/router/subagent_tool_display_test.go`",
+			"Skill `golang-best-practices`\n\nRead `internal/router/subagent_tool_display.go 1:245`\n\nRead `internal/router/subagent_tool_display.go 320:475`\n\nRun `git diff -- internal/router/subagent_tool_display_test.go`",
 		},
 		{
 			`text(await tools.exec_command({cmd:"gopls references internal/router/subagent_tool_display.go:17:6; sed -n '60,135p' doc/spec/commentary.md; sed -n '1,65p' internal/router/subagent_tool_display_test.go; sed -n '540,650p' internal/router/subagent_tool_display.go",max_output_tokens:5000}));`,
@@ -552,7 +552,7 @@ func TestSubagentMixedSedReadGrouping(t *testing.T) {
 	item := stockExecDisplayItem(source)
 	want := "In `/root/dect_evidence`\n\n" +
 		"- Read `/project/COLLABORATION.md`\n\n" +
-		"- Skill Read `deltapath-go-common-patterns` `golang-best-practices`\n\n" +
+		"- Skill `deltapath-go-common-patterns` `golang-best-practices`\n\n" +
 		"- Read `source.go 1:260` `source file.go 261:520`"
 	got := toolActivityGroup("[`/root/dect_evidence`] ", subagentToolActivityText(item, "exec_command"))
 	if got != want {

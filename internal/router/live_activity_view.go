@@ -170,8 +170,8 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			for i, previous := range slices.Backward(v.entries) {
 				if previous.Kind == "tool" && previous.Agent == entry.Agent && previous.CallID == entry.CallID {
 					blocks := parseLiveActivity(entry)
-					if len(blocks) == 2 && blocks[1].kind == "filter" {
-						v.blocks[i] = append(v.blocks[i], blocks[1])
+					if len(blocks) == 1 && blocks[0].kind == "filter" {
+						v.blocks[i] = append(v.blocks[i], blocks[0])
 						v.runs = nil
 						matched = true
 					}
@@ -186,7 +186,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			for i, v0 := range slices.Backward(v.entries) {
 				if v0.Agent == entry.Agent && v0.CallID == entry.CallID && entry.CallID != "" {
 					for j := range v.blocks[i] {
-						if v.blocks[i][j].verb == "Run" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, v.blocks[i][j].verb) {
+						if v.blocks[i][j].verb == "Run" || v.blocks[i][j].verb == "Skill" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, v.blocks[i][j].verb) {
 							v.blocks[i][j].exitCode, _ = strconv.Atoi(entry.Text)
 						}
 					}
@@ -197,6 +197,24 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			continue
 		}
 		blocks := parseLiveActivity(entry)
+		if entry.Kind == "tool" && entry.CallID != "" {
+			for i, previous := range v.entries {
+				if previous.Kind == "output_filter" && previous.Agent == entry.Agent && previous.CallID == entry.CallID {
+					for _, annotation := range v.blocks[i] {
+						if annotation.kind == "filter" {
+							blocks = append(blocks, annotation)
+						}
+					}
+					entry.Seq = previous.Seq
+					v.entries[i], v.blocks[i], v.runs = entry, blocks, nil
+					blocks = nil
+					break
+				}
+			}
+			if blocks == nil {
+				continue
+			}
+		}
 		if entry.Kind == "tool" && entry.CallID != "" && len(blocks) > 0 &&
 			slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, blocks[0].verb) {
 			// A confirmed edit receipt replaces the provisional Run row for
