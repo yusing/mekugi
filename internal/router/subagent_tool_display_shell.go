@@ -672,15 +672,11 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 		if (len(argv) != 3 && len(argv) != 4) || argv[1] != "get" {
 			return "", false
 		}
-		label := "Skill"
-		if strings.Contains(argv[2], "/") {
-			label = "Skill Reference Read"
-		}
 		detail := argv[2]
 		if len(argv) == 4 {
 			detail += " " + argv[3]
 		}
-		add(label, detail)
+		add("Skill", detail)
 
 	default:
 		return "", false

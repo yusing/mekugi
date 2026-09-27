@@ -317,7 +317,11 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 					continue
 				}
 				if group.question != "" {
-					out.add(group.target, gutter+v.questionLinkLabel(group, index, body))
+					if question, ok := v.questionLink(group, index); ok {
+						v.assignmentExcerpt(out, question, gutter, body)
+					} else {
+						out.add(group.target, gutter+v.questionLinkLabel(group, index, body))
+					}
 				}
 				v.replyExcerpt(out, entry, group.answers[len(group.answers)-1].text, gutter, body)
 				break
@@ -333,7 +337,7 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 				// A plain answer links to the latest task it could answer.
 				for _, question := range slices.Backward(v.entries[:index]) {
 					if (question.Kind == "start" || question.Kind == "assignment") && question.assignment != nil && question.assignment.to == agent {
-						out.add(question.Seq, gutter+v.linkLabel(question, body))
+						v.assignmentExcerpt(out, question, gutter, body)
 						break
 					}
 				}
@@ -346,6 +350,23 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 			}
 			out.hang(gutter, gutter, p.block(block, body))
 		}
+	}
+}
+
+// assignmentExcerpt keeps the linked assignment separate from the response.
+func (v *liveActivityView) assignmentExcerpt(out *conversationLines, question activityPaneEntry, gutter string, width int) {
+	if question.assignment == nil {
+		out.add(question.Seq, gutter+v.linkLabel(question, width))
+		return
+	}
+	header := v.painter.theme.Accent() + "↩ re: assignment" + liveActivityReset + liveActivityDim + " " + question.Observed.Local().Format("15:04:05") + liveActivityUndim
+	out.add(question.Seq, gutter+ansi.Truncate(header, width, "…"))
+	rows := liveActivityWrap(livediff.Safe(question.assignment.text, false), max(1, width-2), false)
+	if len(rows) > 2 {
+		rows = append(rows[:2:2], "…")
+	}
+	for _, row := range rows {
+		out.add(question.Seq, gutter+liveActivityDim+"> "+row+liveActivityUndim)
 	}
 }
 

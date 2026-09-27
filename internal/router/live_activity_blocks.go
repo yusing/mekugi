@@ -236,7 +236,7 @@ func parseLiveActivityOperation(paragraph string) liveActivityBlock {
 			block.body = joined
 		}
 	}
-	if slices.Contains([]string{"Read", "View", "Inspect", "List", "Search", "Skill", "Skill Reference Read", "Create", "Edit", "Delete", "Move", "Write"}, block.verb) && len(lines) == 1 && !(block.verb == "Skill" && strings.HasPrefix(block.label, "`run ")) {
+	if slices.Contains([]string{"Read", "View", "Inspect", "List", "Search", "Skill", "Create", "Edit", "Delete", "Move", "Write"}, block.verb) && len(lines) == 1 && !(block.verb == "Skill" && strings.HasPrefix(block.label, "`run ")) {
 		if reads, ok := parseLiveActivityReads(block.label); ok {
 			if block.verb != "Read" {
 				for i := range reads {

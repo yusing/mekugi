@@ -121,3 +121,43 @@ func TestNativeUnretainedQuestionUsesActualText(t *testing.T) {
 		t.Fatalf("question replaced by a placeholder: %q", label)
 	}
 }
+
+func TestNativeAssignmentExcerptWrapsAndRetainsTarget(t *testing.T) {
+	v := newLiveActivityView()
+	var out conversationLines
+	v.assignmentExcerpt(&out, activityPaneEntry{Seq: 42, Kind: "assignment", assignment: &activityAssignment{text: "Review the response and verify the assignment excerpt wraps without losing its navigation target."}}, "│ ", 36)
+	v.replyExcerpt(&out, activityPaneEntry{Seq: 43}, "The response excerpt remains visible.", "│ ", 36)
+	if len(out.lines) < 6 || !strings.HasPrefix(ansi.Strip(out.lines[1]), "│ > Review") || !strings.HasPrefix(ansi.Strip(out.lines[2]), "│ > ") {
+		t.Fatalf("assignment was not separately quoted and wrapped: %q", out.lines)
+	}
+	for i, line := range out.lines {
+		if ansi.StringWidth(line) > 38 {
+			t.Fatalf("row %d overflows: %q", i, line)
+		}
+		if i < 4 && out.questions[i] != 42 {
+			t.Fatalf("assignment row %d lost its target", i)
+		}
+	}
+	if !strings.Contains(ansi.Strip(strings.Join(out.lines, "\n")), "The response excerpt") || out.questions[len(out.questions)-1] != 43 {
+		t.Fatal("response excerpt or its Activity target was lost")
+	}
+}
+
+func TestLiveActivitySkillNamesBold(t *testing.T) {
+	v := newLiveActivityView()
+	for _, operand := range []string{"golang-best-practices", "golang-best-practices/references/api.md 1:20", "run golang-best-practices/scripts/check.sh --all", "run  golang-best-practices/scripts/check.sh", "run\tgolang-best-practices/scripts/check.sh"} {
+		command := "skills-mgr get " + operand
+		if strings.HasPrefix(operand, "run ") || strings.HasPrefix(operand, "run\t") {
+			command = "skills-mgr " + operand
+		}
+		classified := toolActivityShell(command)
+		block := parseLiveActivityOperation(classified)
+		if block.verb != "Skill" {
+			t.Fatalf("skill command misclassified: %q", classified)
+		}
+		rendered := strings.Join(v.painter.block(block, 120), "\n")
+		if !strings.Contains(rendered, "\x1b[1mgolang-best-practices"+liveActivityUndim) || !strings.Contains(ansi.Strip(rendered), operand) {
+			t.Fatalf("skill name not bold or operand changed: %q", rendered)
+		}
+	}
+}

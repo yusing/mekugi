@@ -171,10 +171,16 @@ func (p *liveActivityPainter) code(verb, code string) string {
 	first, _, _ := strings.Cut(verb, " ")
 	switch first {
 	case "Skill":
-		if strings.HasPrefix(code, "run ") {
-			return strings.Join(p.highlight("bash", code), " ")
+		prefix := ""
+		if strings.HasPrefix(code, "run ") || strings.HasPrefix(code, "run\t") {
+			rest := strings.TrimLeft(code[3:], " \t")
+			prefix, code = code[:len(code)-len(rest)], rest
 		}
-		return liveActivityPath(code)
+		end := strings.IndexAny(code, "/ \t")
+		if end < 0 {
+			end = len(code)
+		}
+		return prefix + "\x1b[1m" + code[:end] + liveActivityUndim + code[end:]
 	case "Run", "Send":
 		return strings.Join(p.highlight("bash", code), " ")
 	case "Search":
@@ -387,7 +393,7 @@ func (p *liveActivityPainter) block(block liveActivityBlock, width int) []string
 		var items []string
 		for _, read := range block.reads {
 			item := liveActivityPath(read.path)
-			if block.verb == "Search" {
+			if block.verb == "Search" || block.verb == "Skill" {
 				item = p.code(block.verb, read.path)
 			}
 			if len(read.ranges) > 0 {

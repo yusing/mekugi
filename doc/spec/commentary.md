@@ -79,7 +79,8 @@ A simple `cat`, valid `mcat` read, bounded `sed -n` print, `nl -ba FILE`, or
 simple listings are `List`; and `inspect_file`, including its options and multiple
 paths, is `Inspect`. Read path globs are preserved without expansion; executable
 substitutions remain `Run`. A `cat` read piped to a bounded `head` retains its read
-label. `skills-mgr get` is `Skill Read` (or `Skill Reference Read` for a reference).
+label. `skills-mgr get` and `skills-mgr run` use `Skill`, including reference reads.
+The skill name is bold; reference paths and run arguments retain normal weight.
 `&&` chains show classified operations and unclassified `Run` neighbors in source
 order, without claiming execution or success. Other unsupported compound commands
 retain a `Run` preview instead of claiming a simpler operation. Mixed command scripts keep
@@ -362,7 +363,10 @@ with two spaces after the envelope because many fonts draw it wider than its cel
 relative to the entry's agent. Peers use `main` or the child display name; the owning
 agent is not repeated. The message body gutter retains the sender's color. Start
 blocks indent the assignment beneath `Started` without a `Spawn assignment:` label. Other final answers remain
-authored Markdown.
+authored Markdown. Main completion previews retain the response excerpt and show
+the linked assignment excerpt below its timestamp on separate, wrapped quote rows.
+Each excerpt shows up to two content rows with an ellipsis when truncated;
+Activity retains the complete response.
 
 The main agent and its children appear as a canonical-path tree in observation order, with each agent's
 current activity and an elapsed-time timer (`elapsed · age ago`, or `just now`; `—` until
