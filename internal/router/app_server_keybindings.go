@@ -16,7 +16,7 @@ func renderNativeKeybindings(width, height int) []string {
 	}{
 		{"Compose", [][2]string{
 			{"ctrl+j", "New line"},
-			{"arrows", "Move caret"},
+			{"arrows", "Move caret / input history"},
 			{"ctrl+← / ctrl+→", "Previous / next word"},
 			{"ctrl+↑ / ctrl+↓", "Start / end of line"},
 			{"alt+backspace / del", "Delete word"},
@@ -26,6 +26,8 @@ func renderNativeKeybindings(width, height int) []string {
 		}},
 		{"Session", [][2]string{
 			{"enter", "Send / steer"},
+			{"shift+↑ / shift+↓", "Raise / lower reasoning"},
+			{"/model /reasoning /tier", "Show choices or set VALUE"},
 			{"ctrl+c", "Clear / interrupt / quit"},
 			{"ctrl+b 1–4", "Focus pane"},
 			{"ctrl+b e", "Next live item"},

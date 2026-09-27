@@ -18,7 +18,7 @@ import (
 type Message struct {
 	ID     jsontext.Value `json:"id,omitempty"`
 	Method string         `json:"method,omitempty"`
-	Params jsontext.Value `json:"params,omitempty"`
+	Params jsontext.Value `json:"params,omitzero"`
 	Result jsontext.Value `json:"result,omitempty"`
 	Error  *Error         `json:"error,omitempty"`
 }

@@ -245,6 +245,9 @@ func (u *appServerUI) moveDraft(sequence string) {
 		}
 		if best >= 0 {
 			at = best
+		} else {
+			u.recallInput(strings.HasSuffix(sequence, "A"))
+			return
 		}
 	}
 	for _, attachment := range u.images {

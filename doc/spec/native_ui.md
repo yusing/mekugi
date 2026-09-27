@@ -45,7 +45,7 @@ starts a turn on the same thread; an active snapshot retains its steer/interrupt
 target. Resume keeps the returned workspace and effective model metadata, with
 journal sinks scoped to that thread. Explicit invocation model/effort settings
 and the routed provider are forwarded as resume overrides; Codex owns their
-precedence and reports the effective configuration. Picker and in-session switching remain outside this increment. Full-history
+precedence and reports the effective configuration. Thread picker and in-session thread switching remain outside this increment. Full-history
 resume is limited by the 16 MiB RPC frame cap; oversized histories fail rather
 than bypassing the transport bound. Paginated hydration remains unfinished.
 
@@ -201,7 +201,28 @@ path or HTTP(S) link copies its destination (a local path retains literal spaces
 and its line suffix), rather than opening it. Clipboard availability is controlled
 by the user's terminal.
 Arrow keys move the insertion caret across graphemes and displayed
-rows; Ctrl+Left/Right move by word and Ctrl+Up/Down move to logical line boundaries.
+rows. At the first/last displayed row, Up/Down recalls older/newer submitted
+input, restoring the draft and caret after the newest entry. History is bounded
+to 100 entries per thread; live entries retain attachments, while resume hydrates
+text only from Codex user messages. There is no additional durable input store.
+Ctrl+Left/Right move by word and Ctrl+Up/Down move to logical line boundaries.
+Shift+Up/Down steps through model-advertised reasoning levels without wrapping.
+`/model`, `/reasoning`, and `/tier` show choices in the scrollable transcript,
+or accept an explicit value;
+`/tier default` clears the requested service tier. Codex validates explicit values.
+The native app-server invocation enables Codex's `step_model_switching` and
+`reasoning_effort_override` features without writing user configuration.
+The client submits `thread/settings/update` and waits for the scoped
+`thread/settings/updated` notification before showing confirmed settings or
+starting dependent turns. When the same turn is still active, it also submits
+`turn/settings/update`; applied publication affects subsequent captures only,
+while `targetUnavailable` reports next-turn-only success. Errors remain visible;
+no optimistic setting is reported as confirmed. Unchanged defaults do not wait
+for a notification that Codex suppresses; an active turn can still be updated.
+Child threads are unchanged.
+`configuration_update` reasoning history items remain Codex-authored, subject to
+its model capability gate; the client never injects them or changes user config.
+
 Alt+Backspace/Delete remove the previous/next whitespace-delimited word without
 splitting image attachments. Editing and the visible composer window follow the
 caret. Ctrl+V reads a PNG

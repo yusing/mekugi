@@ -48,6 +48,7 @@ func TestAppServerResumeStartup(t *testing.T) {
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "saved", "tokenUsage": map[string]any{"last": map[string]any{"totalTokens": 120000}, "modelContextWindow": 400000}})
 	appServerTestMessage(t, u, `{"id":2,"result":{"data":[],"nextCursor":null}}`)
 	appServerTestMessage(t, u, `{"id":3,"result":{"data":[],"nextCursor":null}}`)
+	appServerTestMessage(t, u, `{"id":4,"result":{"data":[],"nextCursor":null}}`)
 	if u.thread != "saved" || u.status != "Ready" || u.model != "model" || u.reasoningEffort != "high" || len(u.view.entries) != 2 || u.view.entries[0].Text != "Saved question" || u.view.entries[1].Text != "Saved answer" {
 		t.Fatalf("resume state: %+v, entries=%+v", u, u.view.entries)
 	}

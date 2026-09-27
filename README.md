@@ -422,7 +422,9 @@ mekugi codex --yolo resume --last
 app-server conversation in the current directory, across model providers. If none
 exists, it reports an error without starting a new conversation.
 
-In the native composer, arrow keys move the caret, Ctrl+Left/Right jump words,
+In the native composer, Up/Down recall input history at the first/last displayed
+row and restore the unsent draft after the newest entry. Other arrow keys move
+the caret, Ctrl+Left/Right jump words,
 and Ctrl+Up/Down move to the start/end of a line. Alt+Backspace/Delete delete
 the previous/next word. Ctrl+V attaches a clipboard PNG
 as a highlighted, atomic `[Image N]` (Linux needs `wl-paste` on Wayland or `xclip` on X11; macOS uses
@@ -432,6 +434,14 @@ brings it back), then interrupts a running turn, or exits when nothing is runnin
 (falling back to `$VISUAL`, then `vi`). Saving and closing returns to the composer
 without sending. Keep image placeholders unchanged to retain their attachments.
 Submitted images remain in temporary storage for Codex history.
+
+Shift+Up/Down raises/lowers reasoning through the current model's advertised
+levels. `/model`, `/reasoning`, and `/tier` show scrollable choices above the
+composer; add a value to switch
+(for example `/reasoning high` or `/tier priority`). `/tier default` clears the
+explicit tier. Settings apply to future turns and are also published to a running
+turn's subsequent steps; already-running inference is unchanged. The composer
+shows host-confirmed settings. These controls do not edit your config file.
 
 The native UI requires explicit `--yolo` (no approvals or sandbox), restores Main's
 message and tool history, and continues the same thread. It also restores pane

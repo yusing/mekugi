@@ -73,13 +73,24 @@ type appServerUI struct {
 	noticeUntil               time.Time
 	turnStarted               time.Time // Shown as elapsed time while a turn runs.
 	model, reasoningEffort    string
+	serviceTier               string
+	models                    []appServerModel
+	modelsLoading             bool
+	reasoningKey              *bool
+	settingsChoices           string
+	settingsPending           bool
+	settingsChange            map[string]any
+	settingsTurn              string
 	requests                  map[string]string
 	draft, submitted          string
 	composerRect              terminalRect // Visible draft text, relative to Main.
 	cursorBack, composerWidth int
 	cursorColumn              *int
 	images, submittedImages   []composerImage
-	undoDrafts, redoDrafts    []composerDraft
+	undoDrafts, redoDrafts    []composerUndo
+	inputHistory              []composerDraft
+	historyDraft              composerDraft
+	historyBack               int
 	run                       composerRun // The edit that the next like keystroke extends.
 	ownedImages               map[string]bool
 	submissionSeq             uint64
@@ -113,6 +124,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 			return nil, fmt.Errorf("resolve resume workspace: %w", err)
 		}
 	}
+	// Live settings and trusted reasoning configuration_update items are Codex
+	// opt-ins. Enable them only for this native app-server invocation.
+	cmd.Args = append(cmd.Args, "-c", "features.step_model_switching=true", "-c", "features.reasoning_effort_override=true")
 	c, err := appserver.Start(cmd)
 	if err != nil {
 		return nil, err
@@ -333,6 +347,9 @@ func (u *appServerUI) message(m appserver.Message) error {
 		if method == "thread/list" && u.resumeThread == "--last" {
 			return u.resumeLastResponse(m)
 		}
+		if handled, err := u.settingsMessage(method, m); handled || err != nil {
+			return err
+		}
 		if method == "thread/read" && u.applyThreadMetadata(m) {
 			return nil
 		}
@@ -374,6 +391,7 @@ func (u *appServerUI) message(m appserver.Message) error {
 			var result struct {
 				Model           string              `json:"model"`
 				ReasoningEffort string              `json:"reasoningEffort"`
+				ServiceTier     string              `json:"serviceTier"`
 				Thread          appServerThreadInfo `json:"thread"`
 			}
 			if err := json.Unmarshal(m.Result, &result); err != nil {
@@ -386,7 +404,11 @@ func (u *appServerUI) message(m appserver.Message) error {
 				return errors.New("thread/resume returned a different thread identity")
 			}
 			u.thread, u.status = result.Thread.ID, "Ready"
-			u.model, u.reasoningEffort = result.Model, result.ReasoningEffort
+			u.model, u.reasoningEffort, u.serviceTier = result.Model, result.ReasoningEffort, result.ServiceTier
+			u.modelsLoading = true
+			if err := u.request("model/list", map[string]any{"includeHidden": true}); err != nil {
+				return err
+			}
 			u.session.start(u.thread, result.Thread.Cwd)
 			restoreContextUsage(u.session.agent("/root"), result.Thread)
 			if u.agents != nil {
@@ -413,6 +435,7 @@ func (u *appServerUI) message(m appserver.Message) error {
 				return u.restorePaneContent(result.Thread)
 			}
 		case "turn/start", "turn/steer":
+			u.rememberInput(composerDraft{text: u.submitted, images: slices.Clone(u.submittedImages)})
 			if u.status == "Sending…" && !u.alert {
 				if u.turn != "" {
 					u.status = "Working"
@@ -434,6 +457,9 @@ func (u *appServerUI) message(m appserver.Message) error {
 		u.status, u.alert = "Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Session", Kind: "text", Text: u.status, Observed: time.Now()}}})
 		return nil
+	}
+	if handled, err := u.settingsMessage("", m); handled || err != nil {
+		return err
 	}
 	if handled, err := u.sessionEvent(m); handled || err != nil {
 		return err
@@ -513,6 +539,12 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		}
 		if key >= 0x40 && key <= 0x7e || len(u.escape) > 32 {
 			switch u.escape {
+			case "\x1b[1;2A", "\x1b[1;2B":
+				sequence := u.escape
+				u.escape = ""
+				if !u.paste {
+					return false, u.stepReasoning(strings.HasSuffix(sequence, "A"))
+				}
 			case "\x1b[122;6u":
 				if !u.paste {
 					u.undoDraft(true)
@@ -604,11 +636,14 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			u.setNotice("Interrupt the active turn before quitting", false)
 			return false, nil
 		}
+		if handled, err := u.settingsCommand(text); handled {
+			return false, err
+		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · only /quit is available", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /model, /reasoning, /tier, /quit", true)
 			return false, nil
 		}
-		if text == "" || u.thread == "" || u.restoring != nil || u.starting || u.submitted != "" {
+		if text == "" || u.thread == "" || u.restoring != nil || u.starting || u.submitted != "" || u.settingsPending {
 			return false, nil
 		}
 		method := "turn/start"
@@ -629,6 +664,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			delete(u.ownedImages, u.images[i].path)
 		}
 		u.submittedImages, u.images = u.images, nil
+		u.historyBack, u.historyDraft = 0, composerDraft{}
 		u.undoDrafts, u.redoDrafts = nil, nil
 		u.run = runNone
 		u.pruneDraftImages()
@@ -815,6 +851,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 		model := u.model
 		if model != "" && u.reasoningEffort != "" {
 			model += " (" + u.reasoningEffort + ")"
+		}
+		if u.serviceTier != "" {
+			model += " · " + u.serviceTier
 		}
 		model = strings.ReplaceAll(livediff.Safe(model, false), "\n", " ")
 		context := contextWindowLabel(activityPaneAgent{})

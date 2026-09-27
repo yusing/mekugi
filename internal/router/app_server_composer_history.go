@@ -11,12 +11,55 @@ type composerDraft struct {
 	images     []composerImage
 }
 
+// History is local to this thread. Resume hydrates text from Codex history;
+// session entries retain attachments without creating a second durable store.
+func (u *appServerUI) rememberInput(draft composerDraft) {
+	if draft.text == "" {
+		return
+	}
+	u.inputHistory = append(u.inputHistory, draft)
+	if len(u.inputHistory) > 100 {
+		u.inputHistory = slices.Clone(u.inputHistory[len(u.inputHistory)-100:])
+	}
+}
+
+func (u *appServerUI) recallInput(backward bool) {
+	next := u.historyBack - 1
+	if backward {
+		next = u.historyBack + 1
+	}
+	if next < 0 || next > len(u.inputHistory) {
+		return
+	}
+	if u.historyBack == 0 {
+		u.historyDraft = u.draftSnapshot()
+	}
+	u.recordDraft()
+	u.historyBack = next
+	snapshot := u.historyDraft
+	if next > 0 {
+		snapshot = u.inputHistory[len(u.inputHistory)-next]
+	}
+	u.draft, u.cursorBack, u.images = snapshot.text, snapshot.cursorBack, slices.Clone(snapshot.images)
+	u.cursorColumn = nil
+}
+
 func (u *appServerUI) draftSnapshot() composerDraft {
 	return composerDraft{u.draft, u.cursorBack, slices.Clone(u.images)}
 }
 
+type composerUndo struct {
+	composerDraft
+	historyBack  int
+	historyDraft composerDraft
+}
+
+func (u *appServerUI) undoSnapshot() composerUndo {
+	return composerUndo{u.draftSnapshot(), u.historyBack, u.historyDraft}
+}
+
 func (u *appServerUI) recordDraft() {
-	u.undoDrafts = append(u.undoDrafts, u.draftSnapshot())
+	u.undoDrafts = append(u.undoDrafts, u.undoSnapshot())
 	if len(u.undoDrafts) > 100 {
 		u.undoDrafts = slices.Clone(u.undoDrafts[len(u.undoDrafts)-100:])
 	}
@@ -37,9 +80,10 @@ func (u *appServerUI) undoDraft(redo bool) {
 	if len(*from) == 0 {
 		return
 	}
-	*to = append(*to, u.draftSnapshot())
+	*to = append(*to, u.undoSnapshot())
 	snapshot := (*from)[len(*from)-1]
 	*from = (*from)[:len(*from)-1]
+	u.historyBack, u.historyDraft = snapshot.historyBack, snapshot.historyDraft
 	u.draft, u.cursorBack, u.images = snapshot.text, snapshot.cursorBack, slices.Clone(snapshot.images)
 }
 
@@ -50,7 +94,16 @@ func (u *appServerUI) pruneDraftImages() {
 	for _, image := range u.images {
 		used[image.path] = true
 	}
-	for _, history := range [][]composerDraft{u.undoDrafts, u.redoDrafts} {
+	for _, stack := range [][]composerUndo{u.undoDrafts, u.redoDrafts} {
+		for _, snapshot := range stack {
+			for _, draft := range []composerDraft{snapshot.composerDraft, snapshot.historyDraft} {
+				for _, image := range draft.images {
+					used[image.path] = true
+				}
+			}
+		}
+	}
+	for _, history := range [][]composerDraft{u.inputHistory, {u.historyDraft}} {
 		for _, snapshot := range history {
 			for _, image := range snapshot.images {
 				used[image.path] = true

@@ -55,6 +55,52 @@ func TestAppServerPreviewNativeJournal(t *testing.T) {
 }
 
 func runAppServerPreviewWithProxy(t *testing.T, provider responseProvider, proxy *mekugiProxy) {
+	runAppServerPreviewWithProxyAndHooks(t, provider, proxy, nil, nil)
+}
+
+func TestAppServerPreviewQuickSwitch(t *testing.T) {
+	write := func(t *testing.T, outer io.Writer, command string) {
+		t.Helper()
+		if _, err := io.WriteString(outer, command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := func(t *testing.T, outer io.Writer, await func(string), awaitFrame func(func(string) bool), screen *vt.Emulator) {
+		t.Helper()
+		write(t, outer, "/reasoning low\r")
+		await("gpt-6-astra (low)")
+		write(t, outer, "\x1b[1;2A")
+		await("gpt-6-astra (medium)")
+		write(t, outer, "\x1b[1;2B")
+		await("gpt-6-astra (low)")
+		write(t, outer, "/model gpt-6-sol\r")
+		await("gpt-6-sol (low)")
+		write(t, outer, "/tier priority\r")
+		await("gpt-6-sol (low) · priority")
+		write(t, outer, "/tier fast\r")
+		await("Settings unchanged")
+		write(t, outer, "/tier default\r")
+		awaitFrame(func(frame string) bool {
+			return strings.Contains(frame, "gpt-6-sol (low)") && !strings.Contains(frame, "gpt-6-sol (low) · priority")
+		})
+		write(t, outer, "/reasoning low\r/model gpt-6-sol\r/tier default\r")
+		await("Settings unchanged")
+	}
+	after := func(t *testing.T, outer io.Writer, await func(string), _ func(func(string) bool), screen *vt.Emulator) {
+		t.Helper()
+		write(t, outer, "unsent draft")
+		await("❯ unsent draft")
+		write(t, outer, "\x1b[A")
+		await("❯ A deterministic preview prompt")
+		write(t, outer, "\x1b[B")
+		await("❯ unsent draft")
+		write(t, outer, "\x03")
+		await("Draft cleared")
+	}
+	runAppServerPreviewWithProxyAndHooks(t, &appPreviewProvider{}, nil, before, after)
+}
+
+func runAppServerPreviewWithProxyAndHooks(t *testing.T, provider responseProvider, proxy *mekugiProxy, beforePrompt, afterPrompt func(*testing.T, io.Writer, func(string), func(func(string) bool), *vt.Emulator)) {
 	t.Helper()
 	codex, err := exec.LookPath("codex")
 	if err != nil {
@@ -106,6 +152,7 @@ func runAppServerPreviewWithProxy(t *testing.T, provider responseProvider, proxy
 	}()
 	screen := vt.NewEmulator(100, 30)
 	defer screen.Close()
+	go func() { _, _ = io.Copy(outer, screen) }()
 	await := func(needle string) {
 		t.Helper()
 		visible := func() bool {
@@ -129,8 +176,30 @@ func runAppServerPreviewWithProxy(t *testing.T, provider responseProvider, proxy
 			}
 		}
 	}
+	awaitFrame := func(visible func(string) bool) {
+		t.Helper()
+		for {
+			select {
+			case p, ok := <-frames:
+				if !ok {
+					t.Fatal("terminal closed")
+				}
+				screen.Write(p)
+				if visible(screen.String()) {
+					return
+				}
+			case err := <-done:
+				t.Fatalf("UI exited: %v\n%s", err, screen.String())
+			case <-ctx.Done():
+				t.Fatalf("expected updated terminal frame:\n%s", screen.String())
+			}
+		}
+	}
 	await("Ready")
 	await("4 Agents")
+	if beforePrompt != nil {
+		beforePrompt(t, outer, await, awaitFrame, screen)
+	}
 	var native *nativeJournalSink
 	if proxy != nil {
 		proxy.journals.nativeMu.Lock()
@@ -154,6 +223,9 @@ func runAppServerPreviewWithProxy(t *testing.T, provider responseProvider, proxy
 	io.WriteString(outer, "A deterministic preview prompt\r")
 	await("Recovered after a retry.")
 	await("completed")
+	if afterPrompt != nil {
+		afterPrompt(t, outer, await, awaitFrame, screen)
+	}
 	if strings.Contains(screen.String(), "Journal flush") || strings.Contains(screen.String(), "Question:") {
 
 		t.Fatalf("legacy flush carrier leaked into Main:\n%s", screen.String())

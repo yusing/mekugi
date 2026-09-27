@@ -291,6 +291,9 @@ func newNativePreview(t *testing.T) *nativePreview {
 	u.proxy.activity.observe("main", "", "/root", false)
 	u.proxy.activity.attachNativePane("main")
 	u.model, u.reasoningEffort = "gpt-6-luna", "medium"
+	if err := json.Unmarshal([]byte(`[{"model":"gpt-6-luna","defaultReasoningEffort":"medium","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"},{"reasoningEffort":"high"}],"serviceTiers":[{"id":"priority"}]}]`), &u.models); err != nil {
+		t.Fatal(err)
+	}
 	u.ensureShell()
 	u.shell.diff.close()
 	u.shell.diff = newLiveDiffTerminalController(store, workspace, os.Stdout)
@@ -689,7 +692,10 @@ func (p *nativePreview) serve() {
 			ID     jsontext.Value `json:"id"`
 			Method string         `json:"method"`
 			Params struct {
-				Input []map[string]any `json:"input"`
+				Input       []map[string]any `json:"input"`
+				Model       string           `json:"model"`
+				Effort      string           `json:"effort"`
+				ServiceTier jsontext.Value   `json:"serviceTier"`
 			} `json:"params"`
 		}
 		if err := json.Unmarshal(line, &request); err != nil || len(request.ID) == 0 {
@@ -698,6 +704,8 @@ func (p *nativePreview) serve() {
 		result := map[string]any{}
 		turn := ""
 		switch request.Method {
+		case "turn/settings/update":
+			result["status"] = "applied"
 		case "turn/start":
 			p.message++
 			turn = fmt.Sprintf("preview-turn-%d", p.message)
@@ -708,6 +716,20 @@ func (p *nativePreview) serve() {
 		}
 		p.reply(request.ID, result)
 		switch request.Method {
+		case "thread/settings/update":
+			model, effort, tier := p.ui.model, p.ui.reasoningEffort, p.ui.serviceTier
+			if request.Params.Model != "" {
+				model = request.Params.Model
+			}
+			if request.Params.Effort != "" {
+				effort = request.Params.Effort
+			}
+			if len(request.Params.ServiceTier) > 0 {
+				if err := json.Unmarshal(request.Params.ServiceTier, &tier); err != nil {
+					p.t.Fatal(err)
+				}
+			}
+			p.notify("thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": model, "effort": effort, "serviceTier": tier}})
 		case "turn/start":
 			p.notify("turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": turn}})
 			p.userMessage(turn, request.Params.Input)

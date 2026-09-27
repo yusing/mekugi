@@ -80,6 +80,21 @@ type appServerHistoryTurn struct {
 func (u *appServerUI) restoreHistory(turns []appServerHistoryTurn) {
 	for _, turn := range turns {
 		for _, item := range turn.Items {
+			if item.Type == "userMessage" {
+				var content []struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				}
+				if json.Unmarshal(item.Content, &content) == nil {
+					var text strings.Builder
+					for _, part := range content {
+						if part.Type == "text" {
+							text.WriteString(part.Text)
+						}
+					}
+					u.rememberInput(composerDraft{text: text.String()})
+				}
+			}
 			method := "item/completed"
 			if turn.Status == "inProgress" && (item.Type == "agentMessage" || item.Status == "inProgress") {
 				method = "item/started"
