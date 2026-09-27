@@ -162,7 +162,7 @@ func (v *liveActivityView) conversationItem(first, last, width int) liveActivity
 		if entry.native != nil && entry.native.question != 0 {
 			for _, question := range v.entries[:first] {
 				if question.Seq == entry.native.question {
-					out.add(question.Seq, gutter+v.linkLabel(question, width-2))
+					v.replyContext(&out, question, gutter, width-2)
 					break
 				}
 			}
@@ -317,11 +317,7 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 					continue
 				}
 				if group.question != "" {
-					if question, ok := v.questionLink(group, index); ok {
-						v.assignmentExcerpt(out, question, gutter, body)
-					} else {
-						out.add(group.target, gutter+v.questionLinkLabel(group, index, body))
-					}
+					v.journalReplyContext(out, group, index, gutter, body)
 				}
 				v.replyExcerpt(out, entry, group.answers[len(group.answers)-1].text, gutter, body)
 				break
@@ -337,7 +333,7 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 				// A plain answer links to the latest task it could answer.
 				for _, question := range slices.Backward(v.entries[:index]) {
 					if (question.Kind == "start" || question.Kind == "assignment") && question.assignment != nil && question.assignment.to == agent {
-						v.assignmentExcerpt(out, question, gutter, body)
+						v.replyContext(out, question, gutter, body)
 						break
 					}
 				}
@@ -353,17 +349,35 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 	}
 }
 
-// assignmentExcerpt keeps the linked assignment separate from the response.
-func (v *liveActivityView) assignmentExcerpt(out *conversationLines, question activityPaneEntry, gutter string, width int) {
-	if question.assignment == nil {
-		out.add(question.Seq, gutter+v.linkLabel(question, width))
-		return
+// replyContext gives every reply the same header and separately quoted prompt.
+// Both the header and excerpt navigate to the retained original, when loaded.
+func (v *liveActivityView) replyContext(out *conversationLines, question activityPaneEntry, gutter string, width int) {
+	target := "your message"
+	if question.Kind == "start" || question.Kind == "assignment" {
+		target = "assignment"
 	}
-	header := v.painter.theme.Accent() + "↩ re: assignment" + liveActivityReset + liveActivityDim + " " + question.Observed.Local().Format("15:04:05") + liveActivityUndim
+	text := question.Text
+	if question.assignment != nil {
+		text = question.assignment.text
+	}
+	header := v.painter.theme.Accent() + "↩ re: " + target + liveActivityReset
+	if question.Seq == 0 {
+		header = liveActivityDim + "↩ re: original message (not loaded)" + liveActivityUndim
+	} else if !question.Observed.IsZero() {
+		header += liveActivityDim + " " + question.Observed.Local().Format("15:04:05") + liveActivityUndim
+	}
 	out.add(question.Seq, gutter+ansi.Truncate(header, width, "…"))
-	for _, row := range liveActivityExcerpt(v.painter.quote(livediff.Safe(question.assignment.text, false), width), width) {
+	for _, row := range liveActivityExcerpt(v.painter.quote(livediff.Safe(text, false), width), width) {
 		out.add(question.Seq, gutter+row)
 	}
+}
+
+func (v *liveActivityView) journalReplyContext(out *conversationLines, group liveActivityAnswerGroup, index int, gutter string, width int) {
+	question, ok := v.questionLink(group, index)
+	if !ok {
+		question = activityPaneEntry{Text: group.question}
+	}
+	v.replyContext(out, question, gutter, width)
 }
 
 func (v *liveActivityView) replyExcerpt(out *conversationLines, entry activityPaneEntry, text, gutter string, width int) {
@@ -424,11 +438,7 @@ func (v *liveActivityView) journalItem(out *conversationLines, journal *liveActi
 			continue
 		}
 		gap()
-		target := uint64(0)
-		if question, ok := v.questionLink(group, index); ok {
-			target = question.Seq
-		}
-		out.add(target, lead+v.questionLinkLabel(group, index, body))
+		v.journalReplyContext(out, group, index, lead, body)
 		for _, item := range group.answers {
 			rows := p.markdown(item.text, body-ansi.StringWidth(answer))
 			for k := range rows {
@@ -458,29 +468,4 @@ func (v *liveActivityView) questionLink(group liveActivityAnswerGroup, before in
 		}
 	}
 	return activityPaneEntry{}, false
-}
-
-// questionLinkLabel names the linked prompt by kind and time. Main never
-// repeats the question text itself.
-func (v *liveActivityView) questionLinkLabel(group liveActivityAnswerGroup, before, width int) string {
-	question, ok := v.questionLink(group, before)
-	if !ok {
-		question := strings.Join(strings.Fields(group.question), " ")
-		return ansi.Truncate(liveActivityDim+"↩ re: "+question+liveActivityUndim, width, "…")
-	}
-	return v.linkLabel(question, width)
-}
-
-// linkLabel names a linked prompt by kind and time.
-func (v *liveActivityView) linkLabel(question activityPaneEntry, width int) string {
-	target := "your message"
-	if question.Kind == "start" || question.Kind == "assignment" {
-		target = "assignment"
-	}
-	text := question.Text
-	if question.assignment != nil {
-		text = question.assignment.text
-	}
-	label := v.painter.theme.Accent() + "↩ re: " + target + liveActivityReset + liveActivityDim + " " + question.Observed.Local().Format("15:04:05") + " · " + strings.Join(strings.Fields(livediff.Safe(text, false)), " ") + liveActivityUndim
-	return ansi.Truncate(label, width, "…")
 }

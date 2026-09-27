@@ -7,8 +7,10 @@ journal owner instead of the inline `Journal update`/`Journal flush` Markdown
 envelopes described below. IDs, author, original questions and revisions remain
 structured data. Main shows each milestone or answer set as a labeled journal
 block without repeated questions, Q/A labels or item IDs. An answer's reply link
-names what it answers (your message or an assignment) and its time, and jumps to
-that retained original. When the original is outside the loaded history, the link
+uses a shared layout for Main and agent replies: a `re:` header naming what it
+answers (your message or an assignment) and its time, then a separately quoted
+excerpt of up to two nonempty rows, followed by the answer. The header and excerpt
+jump to that retained original. When the original is outside the loaded history, the link
 says so instead of jumping to another prompt. Revisions keep their question
 association, and a retraction removes the milestone. Activity shows a child's
 answers under its run.

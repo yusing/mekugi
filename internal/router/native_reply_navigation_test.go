@@ -117,16 +117,22 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 
 func TestNativeUnretainedQuestionUsesActualText(t *testing.T) {
 	v := newLiveActivityView()
-	label := ansi.Strip(v.questionLinkLabel(liveActivityAnswerGroup{question: "Which exact assignment?"}, 0, 100))
-	if label != "↩ re: Which exact assignment?" {
-		t.Fatalf("question replaced by a placeholder: %q", label)
+	var out conversationLines
+	v.journalReplyContext(&out, liveActivityAnswerGroup{question: "Which exact assignment?", target: 99}, 0, "", 100)
+	if len(out.lines) != 2 || !strings.Contains(ansi.Strip(out.lines[0]), "not loaded") || ansi.Strip(out.lines[1]) != "│ Which exact assignment?" {
+		t.Fatalf("missing original lost its quoted excerpt: %q", out.lines)
+	}
+	for _, target := range out.questions {
+		if target != 0 {
+			t.Fatal("unretained question acquired a navigation target")
+		}
 	}
 }
 
 func TestNativeAssignmentExcerptWrapsAndRetainsTarget(t *testing.T) {
 	v := newLiveActivityView()
 	var out conversationLines
-	v.assignmentExcerpt(&out, activityPaneEntry{Seq: 42, Kind: "assignment", assignment: &activityAssignment{text: "Review the response and verify the assignment excerpt wraps without losing its navigation target."}}, "│ ", 36)
+	v.replyContext(&out, activityPaneEntry{Seq: 42, Kind: "assignment", assignment: &activityAssignment{text: "Review the response and verify the assignment excerpt wraps without losing its navigation target."}}, "│ ", 36)
 	v.replyExcerpt(&out, activityPaneEntry{Seq: 43}, "The response excerpt remains visible.", "│ ", 36)
 	if len(out.lines) < 5 || !strings.HasPrefix(ansi.Strip(out.lines[1]), "│ │ Review") || !strings.HasPrefix(ansi.Strip(out.lines[2]), "│ │ ") {
 		t.Fatalf("assignment was not separately quoted and wrapped: %q", out.lines)
@@ -183,7 +189,7 @@ func TestNativeReplyExcerptEllipsisStaysInline(t *testing.T) {
 func TestNativeExcerptEllipsisSkipsParagraphGaps(t *testing.T) {
 	v := newLiveActivityView()
 	var out conversationLines
-	v.assignmentExcerpt(&out, activityPaneEntry{Seq: 42, Kind: "assignment", assignment: &activityAssignment{text: "Fix the finding.\n\nThen rerun the tests.\n\nReport back."}}, "", 40)
+	v.replyContext(&out, activityPaneEntry{Seq: 42, Kind: "assignment", assignment: &activityAssignment{text: "Fix the finding.\n\nThen rerun the tests.\n\nReport back."}}, "", 40)
 	v.replyExcerpt(&out, activityPaneEntry{Seq: 43}, "APPROVE. No remaining actionable findings.\n\nVerified with make test.\n\nDone.", "", 60)
 	got := make([]string, len(out.lines))
 	for i, line := range out.lines {
@@ -199,5 +205,48 @@ func TestNativeExcerptEllipsisSkipsParagraphGaps(t *testing.T) {
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("excerpt rows:\n got %q\nwant %q", got, want)
+	}
+}
+
+func TestNativeRepliesShareHeaderQuoteAnswerLayout(t *testing.T) {
+	for _, width := range []int{32, 90} {
+		for _, kind := range []string{"main raw", "main journal", "agent raw", "agent journal", "agent excerpt"} {
+			t.Run(fmt.Sprintf("%s/%d", kind, width), func(t *testing.T) {
+				v := newLiveActivityView()
+				question := activityPaneEntry{Seq: 1, Agent: "You", Kind: "text", Text: "Original request.\n\nSecond detail.\n\nThird detail.", Observed: time.Now()}
+				entry := activityPaneEntry{Seq: 2, Agent: "Main", Kind: "text", Text: "Answer body.", native: &liveActivityNativeItem{question: 1}}
+				block := liveActivityBlock{kind: "text", body: entry.Text}
+				if strings.HasPrefix(kind, "agent") {
+					question.Kind = "assignment"
+					question.assignment = &activityAssignment{to: "/root/worker", text: question.Text}
+					entry.Agent, entry.Kind, block.kind = "/root/worker", "final", "final"
+				}
+				if strings.Contains(kind, "journal") || kind == "agent excerpt" {
+					entry.journal = &journalItem{}
+					block.journal = &liveActivityJournal{groups: []liveActivityAnswerGroup{{question: question.Text, target: 1, answers: []liveActivityAnswer{{text: entry.Text}}}}}
+				}
+				if kind == "agent excerpt" {
+					entry.activitySeq = 5
+				}
+				v.entries = []activityPaneEntry{question, entry}
+				v.blocks = [][]liveActivityBlock{nil, {block}}
+				run := v.conversationItem(1, 1, width)
+				if len(run.lines) < 5 {
+					t.Fatalf("missing reply rows: %q", run.lines)
+				}
+				for i, line := range run.lines {
+					plain := ansi.Strip(line)
+					if ansi.StringWidth(line) > width {
+						t.Fatalf("row %d exceeds width: %q", i, plain)
+					}
+					if i >= 1 && i <= 3 && run.questions[i] != question.Seq {
+						t.Fatalf("context row %d lost navigation", i)
+					}
+				}
+				if !strings.Contains(ansi.Strip(run.lines[1]), "↩ re:") || strings.Contains(ansi.Strip(run.lines[1]), "Original") || !strings.HasSuffix(ansi.Strip(run.lines[2]), "│ Original request.") || !strings.HasSuffix(ansi.Strip(run.lines[3]), "│ Second detail.…") || !strings.HasSuffix(ansi.Strip(run.lines[4]), "Answer body.") {
+					t.Fatalf("expected header, quoted excerpt, answer: %q", run.lines)
+				}
+			})
+		}
 	}
 }
