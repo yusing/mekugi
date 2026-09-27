@@ -266,8 +266,8 @@ Activity. Assignment excerpts sit below their link on separate, wrapped quote
 rows. Excerpts skip paragraph gaps, and truncated excerpts end their last text
 row with an inline ellipsis, not a separate ellipsis row.
 Adjacent Main items of traffic with one agent form a thread under that agent's
-gutter, with no spacer rows. Main reasoning summaries between those items stay
-inside the thread on its rail. Later items replace the agent heading with a
+gutter, with no spacer rows. Main reasoning summaries between those items do not
+end the thread; they render after it closes, outside its rail. Later items replace the agent heading with a
 connector naming the event: replies, completions and failures show how long the
 agent took, while follow-ups keep their time. The thread's latest item keeps the
 longer excerpt; items the thread has moved past shrink to two rows. A reply's

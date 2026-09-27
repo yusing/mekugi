@@ -57,3 +57,25 @@ func TestLiveActivityWrapPreservesTerminalStyles(t *testing.T) {
 		}
 	}
 }
+
+func TestReadsTakeOneRowEachWhenWrapped(t *testing.T) {
+	p := activityui.Painter{}
+	block := activityui.Block{Kind: "reads", Verb: "Read", Reads: []activityui.Read{
+		{Path: "internal/router/live_activity_view.go", Ranges: []string{"1:100"}},
+		{Path: "internal/router/app_server_ui.go"},
+		{Path: "internal/router/live_activity_conversation.go"},
+	}}
+	rows := p.Block(block, 60)
+	if len(rows) != 3 {
+		t.Fatalf("rows = %q", rows)
+	}
+	for i, row := range rows {
+		plain := ansi.Strip(row)
+		if strings.Contains(plain, "·") || !strings.HasSuffix(plain, ".go") && !strings.HasSuffix(plain, "1:100") || ansi.StringWidth(row) > 60 {
+			t.Fatalf("row %d = %q", i, plain)
+		}
+	}
+	if fits := p.Block(block, 200); len(fits) != 1 || strings.Count(ansi.Strip(fits[0]), "·") != 2 {
+		t.Fatalf("fitting reads = %q", fits)
+	}
+}

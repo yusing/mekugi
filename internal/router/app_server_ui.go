@@ -795,9 +795,6 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 			model += " (" + u.reasoningEffort + ")"
 		}
 		model = strings.ReplaceAll(livediff.Safe(model, false), "\n", " ")
-		if model != "" {
-			model = activityui.Dim + model + activityui.Reset
-		}
 		context := contextWindowLabel(activityPaneAgent{})
 		if agent := u.session.agent("/root"); agent != nil {
 			context = contextWindowLabel(*agent)
@@ -806,7 +803,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 		if room := width - 7 - ansi.StringWidth(context) - 3; model != "" && room > 0 {
 			caption = ansi.Truncate(model, room, "…") + " • " + context
 		}
-		caption = ansi.Truncate(caption, max(0, width-7), "…")
+		caption = activityui.Dim + ansi.Truncate(caption, max(0, width-7), "…") + activityui.Reset
 		frame = append(frame, composerBorder("╰", "╯", "", caption, width, border))
 	}
 	return frame, terminalRect{0, dockAt, width, dock}

@@ -69,8 +69,8 @@ func TestParseLiveActivityBlocks(t *testing.T) {
 	if len(message) != 1 || message[0].Kind != "message" || message[0].From != "/root/a" || message[0].To != "/root" || message[0].Body != "Done.\n- `x.go`" {
 		t.Fatalf("message = %+v", message)
 	}
-	start := parseLiveActivity(activityPaneEntry{Kind: "start", Text: "Started · `m` high · tier `fast`"})
-	if len(start) != 1 || start[0].Kind != "start" || start[0].Label != "`m` high · tier `fast`" || start[0].Body != "" {
+	start := parseLiveActivity(activityPaneEntry{Kind: "start", Text: "Started · `m` high `fast`"})
+	if len(start) != 1 || start[0].Kind != "start" || start[0].Label != "`m` high `fast`" || start[0].Body != "" {
 		t.Fatalf("start = %+v", start)
 	}
 	// Blank lines inside a fence do not split the operation.
@@ -386,21 +386,21 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 	search := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Search `create(MCat|MSymbol)|description:` in `plugins/mrun.ts`"})[0]
 	colored := strings.Join(painter.Block(search, 110), "\n")
 	if !strings.Contains(colored, painter.Theme.Accent()+"create(MCat|MSymbol)|description:\x1b[39m") ||
-		!strings.Contains(colored, activityui.VerbColor("Search")+activityui.Dim+"plugins/"+activityui.Undim+"\x1b[1mmrun.ts") ||
+		!strings.Contains(colored, activityui.Path("plugins/mrun.ts")) ||
 		!strings.HasPrefix(colored, activityui.VerbColor("Search")) {
 		t.Fatalf("search query/path colors = %q", colored)
 	}
 	search = parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(`rg needle src/a.go 'lib/with space.go'`)})[0]
 	colored = strings.Join(painter.Block(search, 110), "\n")
-	if !strings.Contains(colored, activityui.VerbColor("Search")+activityui.Dim+"src/"+activityui.Undim+"\x1b[1ma.go") ||
-		!strings.Contains(colored, activityui.VerbColor("Search")+activityui.Dim+"lib/"+activityui.Undim+"\x1b[1mwith space.go") {
+	if !strings.Contains(colored, activityui.Path("src/a.go")) ||
+		!strings.Contains(colored, activityui.Path("lib/with space.go")) {
 		t.Fatalf("multiple search targets lost emphasis: %q", colored)
 	}
 	search = parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(`rg -n 'create(MCat|MSymbol|InspectFile|MRead|MRun)|description:|--max-tokens' plugins/mrun.ts plugins/msymbol.ts plugins/inspect_file.ts`)})[0]
 	colored = strings.Join(painter.Block(search, 130), "\n")
 	for _, name := range []string{"mrun.ts", "msymbol.ts", "inspect_file.ts"} {
-		if !strings.Contains(colored, activityui.VerbColor("Search")+activityui.Dim+"plugins/"+activityui.Undim+"\x1b[1m"+name) {
-			t.Fatalf("search target %s is not purple: %q", name, colored)
+		if !strings.Contains(colored, activityui.Path("plugins/"+name)) {
+			t.Fatalf("search target %s is not styled as a path: %q", name, colored)
 		}
 	}
 }

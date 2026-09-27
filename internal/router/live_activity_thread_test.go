@@ -1,6 +1,7 @@
 package router
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -119,7 +120,7 @@ func TestConversationThreadQuotesEarlierAssignment(t *testing.T) {
 	}
 }
 
-func TestConversationThreadContinuesThroughReasoning(t *testing.T) {
+func TestConversationReasoningFollowsThread(t *testing.T) {
 	const width = 60
 	v := threadTestView()
 	reasoning := activityPaneEntry{Seq: 3, Agent: "Main", Kind: "reasoning", Text: "**Waiting on review**\n\nThe reviewer is still reading.", Observed: v.entries[0].Observed.Add(time.Second)}
@@ -131,19 +132,18 @@ func TestConversationThreadContinuesThroughReasoning(t *testing.T) {
 	if !strings.Contains(text, "├─← replied · 58s") || !strings.Contains(text, " lines") || strings.Contains(text, "← reviewer") {
 		t.Fatalf("reasoning split the thread:\n%s", text)
 	}
-	for i, row := range plain {
+	end := slices.IndexFunc(plain, func(row string) bool { return strings.HasPrefix(row, "╰─") })
+	reading := slices.IndexFunc(plain, func(row string) bool { return strings.Contains(row, "still reading") })
+	if end < 0 || reading < end || strings.HasPrefix(plain[reading], "│") {
+		t.Fatalf("reasoning is not after the thread:\n%s", text)
+	}
+	for i, row := range plain[:end+1] {
 		if ansi.StringWidth(feed.lines[i]) > width {
 			t.Fatalf("row %d overflows: %q", i, row)
 		}
 		if row == "" || !strings.HasPrefix(row, "▶") && !strings.HasPrefix(row, "│") && !strings.HasPrefix(row, "├─") && !strings.HasPrefix(row, "╰─") {
 			t.Fatalf("row %d left the thread rail:\n%s", i, text)
 		}
-		if strings.Contains(row, "still reading") && !strings.HasPrefix(row, "│ ") {
-			t.Fatalf("reasoning row lost the rail: %q", row)
-		}
-	}
-	if !strings.Contains(text, "still reading") {
-		t.Fatalf("reasoning summary was dropped:\n%s", text)
 	}
 
 	// Reasoning after the latest item is outside the thread until it continues.

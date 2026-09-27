@@ -40,8 +40,9 @@ func conversationMilestone(entry activityPaneEntry) bool {
 // renderConversation lays Main out as a transcript rather than an activity
 // feed: prompts on a tinted band, Main's own messages and milestones without
 // author headings, and agent traffic under one-line headings. Adjacent traffic
-// with one agent forms a thread, which Main's reasoning summaries continue
-// through. It reuses Activity's block parsing, painter and viewport logic.
+// with one agent forms a thread. Main's reasoning between a thread's items
+// neither breaks it nor enters its rail: it follows the thread instead. It
+// reuses Activity's block parsing, painter and viewport logic.
 func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 	type item struct {
 		first, last int
@@ -78,26 +79,37 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 	continues := func(a, b int) bool {
 		return a >= 0 && b < len(items) && items[a].agent != "" && items[a].agent == items[b].agent
 	}
-	start, previous := 0, -1 // Thread's first item, and the latest item that is not an aside.
+	// Hold reasoning the thread continues past until the thread ends.
+	ordered := make([]item, 0, len(items))
+	var held []item
+	previous := -1 // Latest item that is not an aside.
 	for k, it := range items {
 		next := k + 1
 		for next < len(items) && items[next].aside {
 			next++
 		}
-		var thread conversationThread
 		switch {
-		case it.aside:
-			if continues(previous, next) {
-				thread = conversationThread{joined: true, first: items[start].first, previous: items[previous].first, followed: true}
-			}
-		case continues(previous, k):
-			thread = conversationThread{joined: true, first: items[start].first, previous: items[previous].first}
-		default:
+		case it.aside && continues(previous, next):
+			held = append(held, it)
+			continue
+		case !it.aside:
+			previous = k
+		}
+		ordered = append(ordered, it)
+		if !it.aside && !continues(k, next) {
+			ordered, held = append(ordered, held...), held[:0]
+		}
+	}
+	items = append(ordered, held...)
+	start := 0 // Thread's first item.
+	for k, it := range items {
+		var thread conversationThread
+		if continues(k-1, k) {
+			thread = conversationThread{joined: true, first: items[start].first, previous: items[k-1].first}
+		} else {
 			start = k
 		}
-		if !it.aside {
-			thread.followed, previous = continues(k, next), k
-		}
+		thread.followed = continues(k, k+1)
 		key := liveActivityRunKey{v.entries[it.first].Seq, v.entries[it.last].Seq, width, 0, v.painter.Theme, -1, true, thread}
 		if v.snippet.run == key.first {
 			key.hover = v.snippet.block
@@ -131,7 +143,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 // conversationThread places an item in a thread: adjacent agent traffic with
 // one agent, which shares a gutter instead of repeating headings and quotes.
 type conversationThread struct {
-	joined          bool // Continues the thread item above, past any reasoning.
+	joined          bool // Continues the thread item above.
 	first, previous int  // Entry indexes of the thread's first item and the item above, when joined.
 	followed        bool // A later item continues the thread.
 }
@@ -227,14 +239,6 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	var out conversationLines
 	p := &v.painter
 	switch {
-	case entry.Agent == "Main" && entry.Kind == "reasoning" && thread.joined:
-		// A summary between a thread's items keeps the thread's rail.
-		rail := activityui.Gutter(v.threadAgent(thread.first), p.Theme) + "│" + activityui.Reset
-		out.add(0, rail)
-		for _, block := range blocks {
-			out.hang(rail+" ", rail+" ", p.Block(block, width-2))
-		}
-		out.add(0, rail)
 	case entry.Agent == "Main" && entry.Kind == "reasoning":
 		for _, block := range blocks {
 			out.add(0, p.Block(block, width)...)

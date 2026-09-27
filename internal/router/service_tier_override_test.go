@@ -170,7 +170,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 				wantModel = "gpt-6-astra"
 			}
 			start := subagentStartCommentary(&forwarded, "/root/child")
-			if !strings.Contains(start, "`"+wantModel+"`") || !strings.Contains(start, "tier `"+strings.ReplaceAll(want, "priority", "fast")+"`") {
+			if !strings.Contains(start, "`"+wantModel+"`") || !strings.Contains(start, "`"+strings.ReplaceAll(want, "priority", "fast")+"`") {
 				t.Fatalf("commentary=%s", start)
 			}
 		})
@@ -179,7 +179,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 
 func TestSubagentStartServiceTier(t *testing.T) {
 	for _, tc := range []struct{ tier, want string }{
-		{"priority", "tier `fast`"}, {"fast", "tier `fast`"}, {"default", "tier `default`"}, {"", ""},
+		{"priority", " `fast`"}, {"fast", " `fast`"}, {"default", " `default`"}, {"", ""},
 	} {
 		request := serverRequest(t, func(fields map[string]any) {
 			fields["model"] = "gpt-6-astra"
@@ -188,7 +188,7 @@ func TestSubagentStartServiceTier(t *testing.T) {
 			}
 		})
 		got := subagentStartCommentary(&request, "/root/child")
-		if !strings.Contains(got, "`gpt-6-astra`") || tc.want != "" && !strings.Contains(got, tc.want) || tc.want == "" && strings.Contains(got, "tier") {
+		if heading, _, _ := strings.Cut(got, "\n"); heading != "Started · `gpt-6-astra` `high`"+tc.want {
 			t.Fatalf("tier=%s commentary=%s", tc.tier, got)
 		}
 	}
@@ -274,7 +274,7 @@ func TestServiceTierJournalHandoffAndRootNotice(t *testing.T) {
 	notices := proxy.activity.drain("root", root.activityStarted, maxCommentaryPublicationBytes)
 	for _, notice := range notices {
 		text := commentaryText(t, notice)
-		if strings.Contains(text, "Started ·") && strings.Contains(text, "tier `fast`") {
+		if strings.Contains(text, "Started ·") && strings.Contains(text, " `fast`") {
 			return
 		}
 	}

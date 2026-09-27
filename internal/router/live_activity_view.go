@@ -1055,17 +1055,25 @@ func liveActivityRole(agent activityPaneAgent) string {
 	return strings.Join(strings.Fields(livediff.Safe(agent.Role, false)), " ")
 }
 
-// Keep numerical values bright while labels and units recede.
+// Keep numerical values bright while labels and units recede, including
+// every unit of a compound duration such as 1m34s.
 func liveActivityMetricValues(text string) string {
-	fields := strings.Fields(text)
-	for i, field := range fields {
-		n := 0
-		for n < len(field) && (field[n] >= '0' && field[n] <= '9' || field[n] == '.') {
-			n++
+	var b strings.Builder
+	dim := false
+	for _, r := range text {
+		if value := r >= '0' && r <= '9' || r == '.'; value == dim {
+			if dim = !value; dim {
+				b.WriteString(activityui.Dim)
+			} else {
+				b.WriteString(activityui.Undim)
+			}
 		}
-		fields[i] = field[:n] + activityui.Dim + field[n:] + activityui.Undim
+		b.WriteRune(r)
 	}
-	return strings.Join(fields, " ")
+	if dim {
+		b.WriteString(activityui.Undim)
+	}
+	return b.String()
 }
 
 func liveActivityCardMetrics(agent activityPaneAgent) string {

@@ -338,7 +338,9 @@ applies only to generated tool activity, not authored text. Output-reduction
 summaries align with command text and use muted, dimmed styling in either theme.
 Consecutive same-action target events by one agent collapse into one row, both
 within a call and across calls. Reads join ranges of the same file; Inspect,
-List, Search, and other target-only actions use the same grouping. Different
+List, Search, and other target-only actions use the same grouping. A group that
+does not fit on one row puts each target on its own row, without separators;
+Search targets use the same path emphasis as reads. Different
 actions and detail-bearing operations remain distinct. Child text is sanitized before layout, so it cannot emit terminal
 controls. Local absolute-path Markdown links show their label as a terminal
 hyperlink rather than exposing the raw destination syntax. A completed child
@@ -385,8 +387,9 @@ and activity, then its metrics inline in fixed-width columns: context usage (def
 by the native layout contract), the timer, `↑ in ↓ out` tokens, estimated USD cost
 to two decimal places, and provider-response turns as `T+N`.
 The roster shows no model label. When the row is too narrow for metrics beside a usable
-activity summary, the metrics are omitted. Units and separators are dim; metric
-values use normal brightness. Each observed role colors the existing centered status glyph without adding a
+activity summary, the metrics are omitted. Metrics are uniformly dim. Within a metric,
+the part before its separator is right-aligned and the part after it left-aligned,
+so separators line up across rows. Each observed role colors the existing centered status glyph without adding a
 column; its shape still identifies status. Missing or conflicting role evidence
 uses ordinary status colors. Timer, input,
 output, cost, and turn slots are reserved before data arrives and do not resize

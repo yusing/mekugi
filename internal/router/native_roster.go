@@ -72,7 +72,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			partial = true
 		}
 	}
-	detail := fmt.Sprintf("%d", len(rows))
+	detail := activityui.Dim + fmt.Sprintf("%d", len(rows)) + activityui.Undim
 	if responding > 0 {
 		detail += activityui.Dim + " · " + activityui.Undim + activityui.Amber + fmt.Sprintf("%d working", responding) + activityui.Reset
 	}
@@ -187,20 +187,26 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 }
 
 // nativeRosterMetrics retains context longest as lower-priority metrics drop.
+// Metrics are uniformly secondary text. Within a metric, the part before its
+// separator is right-aligned and the part after it left-aligned, so separators
+// line up across rows while each value stays next to its separator.
 func nativeRosterMetrics(v *liveActivityView, agent activityPaneAgent, now time.Time, room int) string {
+	context := contextWindowLabel(agent)
+	if used, percent, ok := strings.Cut(context, " • "); ok {
+		context = rosterAlign(used, 11) + " • " + liveActivityPad(percent, 3)
+	}
 	_, timer := v.current(agent, now)
-	if timer != "" {
-		elapsed, last, _ := strings.Cut(timer, " · ")
-		timer = liveActivityMetricValues(elapsed) + activityui.Dim + " · " + activityui.Undim + liveActivityMetricValues(last)
+	if elapsed, last, ok := strings.Cut(timer, " · "); ok {
+		timer = rosterAlign(elapsed, 6) + " · " + liveActivityPad(last, 10)
 	}
 	tokens := ""
 	if agent.InputTokens+agent.OutputTokens > 0 {
-		tokens = activityui.Dim + "↑" + activityui.Undim + formatUsageTokens(agent.InputTokens) + activityui.Dim + " ↓" + activityui.Undim + formatUsageTokens(agent.OutputTokens)
+		tokens = rosterAlign("↑"+formatUsageTokens(agent.InputTokens), 7) + " " + liveActivityPad("↓"+formatUsageTokens(agent.OutputTokens), 7)
 	}
 	cells := []struct {
 		text  string
 		width int
-	}{{contextWindowLabel(agent), 24}, {timer, 16}, {tokens, 14}, {liveActivityCost(agent), 7}, {liveActivityTurns(agent), 5}}
+	}{{context, 17}, {timer, 19}, {tokens, 15}, {liveActivityCost(agent), 7}, {ansi.Strip(liveActivityTurns(agent)), 5}}
 	for len(cells) > 0 {
 		total := 0
 		for _, cell := range cells {
@@ -216,7 +222,15 @@ func nativeRosterMetrics(v *liveActivityView, agent activityPaneAgent, now time.
 		text := ansi.Truncate(cell.text, cell.width, "…")
 		b.WriteString("  " + strings.Repeat(" ", cell.width-ansi.StringWidth(text)) + text)
 	}
-	return b.String()
+	if b.Len() == 0 {
+		return ""
+	}
+	return activityui.Dim + b.String() + activityui.Undim
+}
+
+// rosterAlign right-aligns text within width columns.
+func rosterAlign(text string, width int) string {
+	return strings.Repeat(" ", max(0, width-ansi.StringWidth(text))) + text
 }
 
 func contextWindowLabel(agent activityPaneAgent) string {

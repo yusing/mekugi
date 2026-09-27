@@ -69,7 +69,7 @@ func TestSubagentStartReportsObservedModelOnce(t *testing.T) {
 				t.Fatalf("start notice changed the child's result: %s", result)
 			}
 			result := emit(root)
-			for _, want := range []string{"[`/root/explorer`] Started · `gpt-effective` `high` · tier `fast`"} {
+			for _, want := range []string{"[`/root/explorer`] Started · `gpt-effective` `high` `fast`"} {
 				if !bytes.Contains(result, []byte(want)) {
 					t.Fatalf("missing %q in %s", want, result)
 				}

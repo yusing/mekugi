@@ -47,7 +47,7 @@ func subagentStartCommentary(request *parsedResponsesRequest, recipient string) 
 		text.WriteString(" " + commentaryCode(effort))
 	}
 	if tier != "" {
-		text.WriteString(" · tier " + commentaryCode(tier))
+		text.WriteString(" " + commentaryCode(tier))
 	}
 	assignment, found := subagentSpawnAssignment(request.fields["input"], recipient)
 	if !found || strings.TrimSpace(assignment) == "" {

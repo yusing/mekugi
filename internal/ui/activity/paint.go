@@ -218,7 +218,7 @@ func (p *Painter) Label(verb, label string) string {
 	for i := 0; i < len(label); {
 		if code, end, ok := liveActivityCodeSpan(label, i); ok {
 			if verb == "Search" && searchTargets {
-				out.WriteString(VerbColor(verb) + Path(code) + "\x1b[39m")
+				out.WriteString(Path(code))
 			} else {
 				out.WriteString(p.code(verb, code))
 			}
@@ -436,7 +436,23 @@ func (p *Painter) Block(block Block, width int) []string {
 			}
 			items = append(items, item)
 		}
-		return liveActivityHang(Verb(block.Verb), strings.Join(items, Dim+" · "+Undim)+ResultCount(block.Results), width)
+		lead, count := Verb(block.Verb), ResultCount(block.Results)
+		joined := strings.Join(items, Dim+" · "+Undim) + count
+		indent := ansi.StringWidth(lead)
+		if len(items) < 2 || indent+ansi.StringWidth(joined) <= width || indent > width/2 {
+			return liveActivityHang(lead, joined, width)
+		}
+		// Items that do not fit on one row take one row each, rather than
+		// leaving separators dangling at wrapped row ends.
+		items[len(items)-1] += count
+		var lines []string
+		for i, item := range items {
+			if i > 0 {
+				lead = strings.Repeat(" ", indent)
+			}
+			lines = append(lines, liveActivityHang(lead, item, width)...)
+		}
+		return lines
 	case "op":
 		label := p.Label(block.Verb, block.Label) + ResultCount(block.Results)
 		code, body := block.Code, block.Body

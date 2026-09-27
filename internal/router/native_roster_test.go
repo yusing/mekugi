@@ -188,3 +188,22 @@ func TestNativeRosterOverflowLegendKeepsSelectedRole(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeRosterMetricsAlignParts(t *testing.T) {
+	v := newLiveActivityView()
+	now := time.Now()
+	agents := []activityPaneAgent{
+		{Name: "/root", Started: now.Add(-37 * time.Minute), ContextKnown: true, ContextTokens: 171_300, ContextWindow: 285_000, InputTokens: 7_500_000, OutputTokens: 30_000, Turns: 3},
+		{Name: "/root/a", Started: now.Add(-94 * time.Second), ContextKnown: true, ContextTokens: 24_400, ContextWindow: 285_000, InputTokens: 411_600, OutputTokens: 4_000, Turns: 1},
+	}
+	v.apply(activityPaneEvent{Kind: "snapshot", Agents: agents})
+	var rows []string
+	for _, agent := range agents {
+		rows = append(rows, ansi.Strip(nativeRosterMetrics(v, agent, now, 200)))
+	}
+	for _, mark := range []string{"/", "•", "·", "T+"} {
+		if !strings.Contains(rows[0], mark) || ansi.StringWidth(rows[0][:strings.Index(rows[0], mark)]) != ansi.StringWidth(rows[1][:strings.Index(rows[1], mark)]) {
+			t.Fatalf("%q is not aligned:\n%s", mark, strings.Join(rows, "\n"))
+		}
+	}
+}
