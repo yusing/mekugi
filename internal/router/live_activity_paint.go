@@ -307,7 +307,13 @@ func liveActivityLink(s string) (label, target string, end int, ok bool) {
 // markdown renders authored text: fenced programs are highlighted under a
 // gutter, list items hang, and tables keep their rows instead of wrapping.
 func (p *liveActivityPainter) markdown(text string, width int) []string {
-	var lines, program []string
+	var lines, program, quote []string
+	flushQuote := func() {
+		if len(quote) > 0 {
+			lines = append(lines, p.quote(strings.Join(quote, "\n"), width)...)
+			quote = nil
+		}
+	}
 	fence, lang := "", ""
 	for line := range strings.SplitSeq(text, "\n") {
 		if fence != "" {
@@ -319,11 +325,16 @@ func (p *liveActivityPainter) markdown(text string, width int) []string {
 			fence, program = "", nil
 			continue
 		}
+		trimmed := strings.TrimLeft(line, " ")
+		if len(line)-len(trimmed) <= 3 && strings.HasPrefix(trimmed, ">") {
+			quote = append(quote, strings.TrimPrefix(trimmed[1:], " "))
+			continue
+		}
+		flushQuote()
 		if delimiter, ok := toolActivityFenceDelimiter(line); ok {
 			fence, lang = delimiter, strings.TrimSpace(line[len(delimiter):])
 			continue
 		}
-		trimmed := strings.TrimLeft(line, " ")
 		indent := line[:len(line)-len(trimmed)]
 		switch {
 		case strings.HasPrefix(trimmed, "|"):
@@ -336,6 +347,7 @@ func (p *liveActivityPainter) markdown(text string, width int) []string {
 			lines = append(lines, liveActivityWrap(p.inline(line), width, false)...)
 		}
 	}
+	flushQuote()
 	if fence != "" {
 		lines = append(lines, p.program(lang, strings.Join(program, "\n"), width)...)
 	}
@@ -343,6 +355,19 @@ func (p *liveActivityPainter) markdown(text string, width int) []string {
 		lines = lines[:len(lines)-1]
 	}
 	return lines
+}
+
+// quote keeps a visible rail on every wrapped row and renders the quoted
+// Markdown normally, including lists, nested quotes, and fenced code.
+func (p *liveActivityPainter) quote(text string, width int) []string {
+	rows := p.markdown(text, max(1, width-2))
+	if len(rows) == 0 {
+		rows = []string{""}
+	}
+	for i, row := range rows {
+		rows[i] = ansi.Truncate(liveActivityDim+"│"+liveActivityUndim+" "+row, max(1, width), "")
+	}
+	return rows
 }
 
 func (p *liveActivityPainter) program(lang, source string, width int) []string {

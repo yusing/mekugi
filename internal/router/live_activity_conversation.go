@@ -361,12 +361,12 @@ func (v *liveActivityView) assignmentExcerpt(out *conversationLines, question ac
 	}
 	header := v.painter.theme.Accent() + "↩ re: assignment" + liveActivityReset + liveActivityDim + " " + question.Observed.Local().Format("15:04:05") + liveActivityUndim
 	out.add(question.Seq, gutter+ansi.Truncate(header, width, "…"))
-	rows := liveActivityWrap(livediff.Safe(question.assignment.text, false), max(1, width-2), false)
+	rows := v.painter.quote(livediff.Safe(question.assignment.text, false), width)
 	if len(rows) > 2 {
-		rows = append(rows[:2:2], "…")
+		rows = append(rows[:2:2], v.painter.quote("…", width)...)
 	}
 	for _, row := range rows {
-		out.add(question.Seq, gutter+liveActivityDim+"> "+row+liveActivityUndim)
+		out.add(question.Seq, gutter+row)
 	}
 }
 

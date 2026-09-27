@@ -127,7 +127,7 @@ func TestNativeAssignmentExcerptWrapsAndRetainsTarget(t *testing.T) {
 	var out conversationLines
 	v.assignmentExcerpt(&out, activityPaneEntry{Seq: 42, Kind: "assignment", assignment: &activityAssignment{text: "Review the response and verify the assignment excerpt wraps without losing its navigation target."}}, "│ ", 36)
 	v.replyExcerpt(&out, activityPaneEntry{Seq: 43}, "The response excerpt remains visible.", "│ ", 36)
-	if len(out.lines) < 6 || !strings.HasPrefix(ansi.Strip(out.lines[1]), "│ > Review") || !strings.HasPrefix(ansi.Strip(out.lines[2]), "│ > ") {
+	if len(out.lines) < 6 || !strings.HasPrefix(ansi.Strip(out.lines[1]), "│ │ Review") || !strings.HasPrefix(ansi.Strip(out.lines[2]), "│ │ ") {
 		t.Fatalf("assignment was not separately quoted and wrapped: %q", out.lines)
 	}
 	for i, line := range out.lines {

@@ -472,7 +472,10 @@ assignments, including follow-ups, keep their own identities; spawn and its firs
 prompt form one event, and full-history requests do not replay them. In Main,
 child replies are short excerpts with a link that activates Activity, selects
 the owning agent, and scrolls to that exact reply. The full message stays in
-Activity. Child answers link (`↩ re:`) to their retained assignment, not to a
+Activity. Assignment excerpts sit below their link on separate, wrapped quote
+rows. Transcript blockquotes use a vertical rail rather than literal `>` markers,
+including on wrapped continuation rows, and retain inline Markdown styling.
+Child answers link (`↩ re:`) to their retained assignment, not to a
 previous answer or similar text. Main's ordinary replies link to the user input
 in their own turn. The `re:` label includes the target text; if only the question
 text is retained, it remains text rather than a fabricated navigation target.
