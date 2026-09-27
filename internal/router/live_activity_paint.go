@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/alecthomas/chroma/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 )
@@ -111,8 +112,8 @@ func (p *liveActivityPainter) highlight(lang, source string) []string {
 	return lines
 }
 
-// liveActivityWrap wraps styled text and restores the last color on
-// continuation rows, as the live diff renderer does.
+// liveActivityWrap restores the complete SGR state on continuation rows,
+// which may be painted independently after a gutter or terminal reset.
 func liveActivityWrap(text string, width int, hard bool) []string {
 	width = max(1, width)
 	var wrapped string
@@ -122,15 +123,26 @@ func liveActivityWrap(text string, width int, hard bool) []string {
 		wrapped = ansi.Wrap(text, width, "")
 	}
 	var lines []string
+	var style uv.Style
+	parser := ansi.GetParser()
+	defer func() {
+		parser.SetHandler(ansi.Handler{})
+		ansi.PutParser(parser)
+	}()
+	parser.SetHandler(ansi.Handler{HandleCsi: func(cmd ansi.Cmd, params ansi.Params) {
+		if cmd == 'm' {
+			uv.ReadStyle(params, &style)
+		}
+	}})
 	carry := ""
 	for line := range strings.SplitSeq(wrapped, "\n") {
-		line = carry + line
-		if start := strings.LastIndex(line, "\x1b["); start >= 0 {
-			if end := strings.IndexByte(line[start:], 'm'); end >= 0 {
-				carry = line[start : start+end+1]
-			}
+		lines = append(lines, carry+line)
+		parser.Parse([]byte(line))
+		carry = style.String()
+		if style.IsZero() {
+			// Enclosing bands recognize this canonical reset to reapply their background.
+			carry = liveActivityReset
 		}
-		lines = append(lines, line)
 	}
 	return lines
 }
