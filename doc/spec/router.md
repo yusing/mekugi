@@ -361,8 +361,11 @@ the durable records retain each path and its reason.
 The shell frames Main on the left and one right pane: the saved diff (2) or
 Activity (3), toggled and each filling the pane. A roster (4) above them fits its
 content, four rows unfocused and up to 40% of the screen when focused; finished
-agents fold into one row, and each row shows role, state, timer, tokens, cost
-and turns, dropping from the right when narrow. Every pane has a title bar with
+agents fold into one row. Collapsed rows place activity directly after the name
+without reserving name-column padding. Each row shows state, timer, tokens, cost
+and turns, dropping from the right when narrow. Observed roles color the status
+glyphs, with a color-to-role legend only in the expanded Agents pane; role labels
+are not repeated in each row. Agent names retain their identity colors. Every pane has a title bar with
 its tab number, focus and scroll state, and the status bar shows the tabs with
 contextual key hints. Ctrl-B + number focuses a pane.
 

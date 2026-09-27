@@ -36,7 +36,7 @@ type nativeRosterItem struct {
 
 // nativeRoster fits the roster to its content within limit rows, under a rule
 // carrying the counts and session totals. Unfocused, finished agents fold
-// into one row. Rows show role and state, then timer, tokens, cost and turns;
+// into one row. Rows show state, then timer, tokens, cost and turns;
 // turns drop first when narrow.
 func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused bool) []string {
 	rows := v.roster()
@@ -96,6 +96,34 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	lines := []string{nativeRule("─", "─", "─", nativeTitle(4, "Agents", detail, focused), right, width, nativeBorder(focused))}
 
 	limit = max(1, limit)
+	legend := ""
+	if focused && limit > 1 {
+		var roles []string
+		for _, row := range rows {
+			if role := liveActivityRole(row.agent); role != "" && !slices.Contains(roles, role) {
+				roles = append(roles, role)
+			}
+		}
+		if len(roles) > 0 {
+			var labels []string
+			for _, role := range roles {
+				labels = append(labels, v.roleColor(role)+"●"+liveActivityReset+" "+role)
+			}
+			// Keep the selected role discoverable when the full legend cannot fit.
+			if ansi.StringWidth(" Roles: "+strings.Join(labels, "  ")) > width {
+				for _, row := range rows {
+					if row.agent.Name == v.selected {
+						if index := slices.Index(roles, liveActivityRole(row.agent)); index > 0 {
+							labels[0], labels[index] = labels[index], labels[0]
+						}
+						break
+					}
+				}
+			}
+			legend = ansi.Truncate(" Roles: "+strings.Join(labels, "  "), width, "…")
+			limit--
+		}
+	}
 	selected := max(0, slices.IndexFunc(items, func(item nativeRosterItem) bool { return item.finished == nil && item.row.agent.Name == v.selected }))
 	start := 0
 	if len(items) > limit {
@@ -131,11 +159,12 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			color = "\x1b[1m" + v.painter.theme.Accent()
 		}
 		name := liveActivityDim + tree[:split] + liveActivityUndim + color + v.hoverName(tree[split:], row.agent.Name) + liveActivityReset
-		line := " " + v.nativeGlyph(row.agent) + " " + name + strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(tree))) + "  "
-		state := v.agentState(row.agent)
-		if role := liveActivityRole(row.agent); role != "" {
-			state = liveActivityDim + role + " · " + liveActivityUndim + state
+		gap := "  "
+		if focused {
+			gap += strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(tree)))
 		}
+		line := " " + v.nativeGlyph(row.agent) + " " + name + gap
+		state := v.agentState(row.agent)
 		metrics := nativeRosterMetrics(v, row.agent, now, width-ansi.StringWidth(line)-24)
 		room := width - ansi.StringWidth(line) - ansi.StringWidth(metrics) - 1
 		line += liveActivityPad(state, max(1, room)) + metrics
@@ -147,7 +176,10 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		v.hits = append(v.hits, liveActivityHit{len(lines), 1, width, row.agent.Name})
 	}
 	if hidden := len(items) - end; hidden > 0 {
-		lines = append(lines, liveActivityDim+fmt.Sprintf("   +%d more · ^B 4 shows all", hidden)+liveActivityUndim)
+		lines = append(lines, ansi.Truncate(liveActivityDim+fmt.Sprintf("   +%d more · ^B 4 shows all", hidden)+liveActivityUndim, width, "…"))
+	}
+	if legend != "" {
+		lines = append(lines, legend)
 	}
 	v.rosterOffset, v.rosterEnd = start, end
 	return lines
@@ -187,9 +219,12 @@ func nativeRosterMetrics(v *liveActivityView, agent activityPaneAgent, now time.
 	return b.String()
 }
 
-// nativeGlyph shows the agent's state in the agent's own color, so an agent
-// keeps one color in the roster, docks, Main and Activity.
+// nativeGlyph uses role colors when known; the glyph shape preserves status.
+// Names retain the agent identity colors shared with Main and Activity.
 func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
+	if role := liveActivityRole(agent); role != "" {
+		return v.glyph(agent)
+	}
 	color := liveAgentColor(agent.Name)
 	if color == "" {
 		color = v.painter.theme.Accent()
