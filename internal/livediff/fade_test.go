@@ -14,8 +14,8 @@ func TestFadeBlendsFromCanvas(t *testing.T) {
 		t.Fatalf("settled row changed: %q", got)
 	}
 	half := Fade(line, .5, canvas)
-	// The fill blends from the canvas; text blends toward the blended fill.
-	for _, want := range []string{"\x1b[48;2;50;0;0m", "\x1b[38;2;25;100;50m", "\x1b[38;2;125;100;100m", "\x1b[1m"} {
+	// The fill stays; text blends from it.
+	for _, want := range []string{"\x1b[48;2;100;0;0m", "\x1b[38;2;50;100;50m", "\x1b[38;2;150;100;100m", "\x1b[1m"} {
 		if !strings.Contains(half, want) {
 			t.Fatalf("half fade lacks %q: %q", want, half)
 		}
@@ -26,6 +26,17 @@ func TestFadeBlendsFromCanvas(t *testing.T) {
 	// Default text fades too, and a hidden row matches the background.
 	if got := Fade("plain", 0, canvas); got != "\x1b[38;2;0;0;0mplain" {
 		t.Fatalf("hidden default text: %q", got)
+	}
+}
+
+func TestTextCanvasUsesRowFill(t *testing.T) {
+	canvas := DarkTheme.Canvas()
+	if got := DarkTheme.TextCanvas(' ', canvas); got != canvas {
+		t.Fatalf("context row canvas: %+v", got)
+	}
+	added := DarkTheme.TextCanvas('+', canvas)
+	if added.Background != (RGB{22, 42, 29}) || added.Foreground == (RGB{}) {
+		t.Fatalf("added row canvas: %+v", added)
 	}
 }
 

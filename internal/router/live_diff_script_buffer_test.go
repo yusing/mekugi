@@ -33,6 +33,27 @@ func TestLiveDiffPythonScriptPrefixesDoNotFlashSource(t *testing.T) {
 	}
 }
 
+func TestLiveDiffPythonSourceStreamsAfterSetup(t *testing.T) {
+	directory := t.TempDir()
+	w := liveDiffPreviewWorker{ctx: t.Context()}
+	// Setup shared with edit scripts stays hidden, including open().read().
+	prefix := "cat >edit.py <<'PY'\n"
+	for _, line := range []string{"\"\"\"Tool.\"\"\"\n", "import sys\n", "from pathlib import Path\n", "ROOT = Path(__file__).resolve().parent\n",
+		"p = ROOT / 'target.txt'\n", "sys.path.insert(0, str(ROOT))\n", "s = open(p).read()\n"} {
+		prefix += line
+		if files, _, err := w.projectShell(prefix, directory, false); err != nil || len(files) != 0 {
+			t.Fatalf("setup prefix %q exposed script source: files=%+v err=%v", line, files, err)
+		}
+	}
+	// Ordinary source streams before its heredoc closes.
+	prefix = "cat >module.py <<'PY'\nimport os\n\nLIMIT = compute(3)\n"
+	files, recognized, err := w.projectShell(prefix, directory, false)
+	if err != nil || !recognized || len(files) != 1 || files[0].AfterPath != filepath.Join(directory, "module.py") ||
+		!strings.Contains(files[0].Diff, "+LIMIT = compute(3)") {
+		t.Fatalf("ordinary Python source was held: files=%+v err=%v", files, err)
+	}
+}
+
 func TestLiveDiffPythonBufferRejectsUnsupportedMutations(t *testing.T) {
 	for _, mutation := range []string{"s += '!'", "s, other = 'wrong', 'value'", "del s", "(s := 'wrong')"} {
 		t.Run(mutation, func(t *testing.T) {

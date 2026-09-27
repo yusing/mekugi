@@ -87,7 +87,7 @@ func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directo
 		if files, recognized, err := liveDiffInterpreterSource(ctx, input, content, path, true, true); recognized || err != nil {
 			return files, recognized, err
 		}
-		if partialLine && !final {
+		if partialLine && !final && liveDiffPythonSetup(ctx, content) {
 			// Imports and path setup cannot yet distinguish an edit script
 			// from ordinary Python source. Do not flash that transport source.
 			return nil, true, nil

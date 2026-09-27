@@ -262,6 +262,73 @@ func liveDiffPythonEditIntent(node *sitter.Node, source []byte, depth int) bool 
 	return false
 }
 
+// liveDiffPythonSetup reports whether received Python source is still only the
+// preamble an edit script shares with ordinary source: imports, docstrings,
+// and literal or path assignments. Any other statement makes it ordinary
+// source, which streams like any other file.
+func liveDiffPythonSetup(ctx context.Context, source string) bool {
+	data := []byte(source)
+	tree, err := parseExecSource(data, execPythonLanguage, func() bool { return ctx.Err() != nil })
+	if err != nil || tree == nil {
+		return true
+	}
+	defer tree.Close()
+	root := tree.RootNode()
+	for i := range root.NamedChildCount() {
+		node := root.NamedChild(i)
+		switch node.Kind() {
+		case "import_statement", "import_from_statement", "future_import_statement", "comment", "ERROR":
+			// An unfinished statement cannot yet show edit intent.
+			continue
+		case "expression_statement":
+			if node.NamedChildCount() != 1 {
+				return false
+			}
+			child := node.NamedChild(0)
+			if child.Kind() == "string" {
+				continue
+			}
+			if function, _ := sourceCall(child); function != nil && strings.HasPrefix(string(data[function.StartByte():function.EndByte()]), "sys.path.") {
+				continue
+			}
+			if child.Kind() == "assignment" && liveDiffPythonPathValue(child.ChildByFieldName("right"), data, 0) {
+				continue
+			}
+		}
+		return false
+	}
+	return true
+}
+
+func liveDiffPythonPathValue(node *sitter.Node, data []byte, depth int) bool {
+	if node == nil || depth > 16 {
+		return false
+	}
+	switch node.Kind() {
+	case "string", "concatenated_string", "identifier":
+		return true
+	case "attribute":
+		name := node.ChildByFieldName("attribute")
+		return name != nil && string(data[name.StartByte():name.EndByte()]) == "parent" &&
+			liveDiffPythonPathValue(node.ChildByFieldName("object"), data, depth+1)
+	case "binary_operator":
+		operator := node.ChildByFieldName("operator")
+		return operator != nil && operator.Kind() == "/" &&
+			liveDiffPythonPathValue(node.ChildByFieldName("left"), data, depth+1) &&
+			liveDiffPythonPathValue(node.ChildByFieldName("right"), data, depth+1)
+	}
+	function, _ := sourceCall(node)
+	if function == nil {
+		return false
+	}
+	name := string(data[function.StartByte():function.EndByte()])
+	switch name[strings.LastIndexByte(name, '.')+1:] {
+	case "Path", "PurePath", "join", "resolve", "absolute", "expanduser", "abspath", "realpath", "dirname", "getcwd", "cwd", "home", "open", "read":
+		return true
+	}
+	return false
+}
+
 func (s *execSourceScope) literalWrite(ctx context.Context, function *sitter.Node, args []*sitter.Node, texts map[string]liveDiffPythonText, arriving uint) (liveDiffPythonText, bool) {
 	name := s.text(function)
 	base := name[strings.LastIndexByte(name, '.')+1:]

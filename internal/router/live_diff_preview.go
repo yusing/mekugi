@@ -226,7 +226,7 @@ func (w *liveDiffPreviewWorker) run() {
 	revealed := -1
 	backlog := false
 	var lastFiles []mekugi.ReviewFile
-	var lastReveal, finishedAt time.Time
+	var lastReveal, lastAdvance, finishedAt time.Time
 	for {
 		if final {
 			return
@@ -270,7 +270,12 @@ func (w *liveDiffPreviewWorker) run() {
 		// reveal to catch up; a cancelled transport shows its final input at once.
 		shown := len(input)
 		if w.ctx.Err() == nil && !release {
-			shown = pacer.advance(input, final, encoded)
+			frames := 1
+			if !lastAdvance.IsZero() {
+				frames = int(time.Since(lastAdvance) / diffview.PreviewFrameDelay)
+			}
+			lastAdvance = time.Now()
+			shown = pacer.advance(input, frames, final, encoded)
 			if pacer.cursor == len(input) && liveDiffLineBoundary(input, shown, len(input), encoded) == shown {
 				// Envelope fields (such as workdir) may follow the last source
 				// newline. Decode them too; projection gates decoded source lines.

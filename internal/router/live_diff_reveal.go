@@ -20,9 +20,17 @@ type liveDiffPreviewPacer struct {
 
 const liveDiffPreviewMaxLag = 2 << 10
 
-// Encoded input is JSON or JavaScript source, where \n escapes a line break.
-func (p *liveDiffPreviewPacer) advance(input string, finishing, encoded bool) int {
-	p.rate += (float64(max(0, len(input)-p.received)) - p.rate) / 8
+// frames counts the display frames since the previous call; a reveal held
+// back between units spans several. Encoded input is JSON or JavaScript
+// source, where \n escapes a line break.
+func (p *liveDiffPreviewPacer) advance(input string, frames int, finishing, encoded bool) int {
+	if p.cursor >= p.received {
+		// Idle time is not arrival time: a burst after a stall is still paced.
+		frames = 1
+	}
+	frames = max(1, frames)
+	perFrame := float64(max(0, len(input)-p.received)) / float64(frames)
+	p.rate += (perFrame - p.rate) * min(1, float64(frames)/8)
 	p.received = len(input)
 	p.shown = min(p.shown, len(input))
 	if len(input)-p.shown > liveDiffPreviewMaxLag {
@@ -37,7 +45,9 @@ func (p *liveDiffPreviewPacer) advance(input string, finishing, encoded bool) in
 	if finishing {
 		share = 3 // The call is complete; converge on its final input promptly.
 	}
-	p.cursor += max(int(math.Ceil(p.rate)), (backlog+share-1)/share, 4)
+	// Each frame drains a share of the backlog, compounded over the frames.
+	drain := int(math.Ceil(float64(backlog) * (1 - math.Pow(1-1/float64(share), float64(frames)))))
+	p.cursor += max(int(math.Ceil(p.rate*float64(frames))), drain, 4*frames)
 	if p.cursor >= len(input) {
 		p.cursor = len(input)
 	}
@@ -49,6 +59,15 @@ func (p *liveDiffPreviewPacer) advance(input string, finishing, encoded bool) in
 		// bursts still reveal every queued statement even after completion.
 		p.shown = p.cursor
 	} else if boundary := liveDiffLineBoundary(input, p.shown, p.cursor, encoded); boundary > p.shown {
+		// One unit per elapsed frame, so a reveal held between target units
+		// covers what arrived meanwhile.
+		for range frames - 1 {
+			next := liveDiffLineBoundary(input, boundary, p.cursor, encoded)
+			if next == boundary {
+				break
+			}
+			boundary = next
+		}
 		p.shown = boundary
 	} else if finishing && p.cursor == len(input) {
 		p.shown = p.cursor

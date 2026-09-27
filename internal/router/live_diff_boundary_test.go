@@ -265,7 +265,7 @@ func TestLiveDiffBurstRevealsOneLinePerFrame(t *testing.T) {
 		var pacer liveDiffPreviewPacer
 		previous := 0
 		for range 200 {
-			next := pacer.advance(input, false, encoded)
+			next := pacer.advance(input, 1, false, encoded)
 			if next > previous {
 				unit := input[previous:next]
 				separator := "\n"

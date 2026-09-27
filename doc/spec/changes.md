@@ -310,7 +310,9 @@ read buffer can be shown before its final write statement. This is a provisional
 prediction only: script creation does not claim that its edits ran, and neither
 the script nor the host tool call is rewritten or executed by the preview.
 Before edit intent arrives, an unfinished Python heredoc has no source-file
-preview; ordinary Python file creation is displayed when the heredoc closes.
+preview while it holds only setup: imports, docstrings, `sys.path` calls, and
+literal or path assignments. Once any other statement arrives, it streams as
+ordinary Python source.
 Unsupported buffer mutations, including augmented assignment and tuple rebinding,
 are not predicted.
 Regex replacement is excluded. Literal target content can appear before the
@@ -321,7 +323,9 @@ delimiters inside target strings do not release unfinished statements. Only the
 write still arriving is gated, at the arriving text's position in its projected
 file, so replacement text that closes an enclosing block is judged in context.
 Consecutive target units remain visibly distinct: a later unit does not start
-its reveal while the preceding unit is still fading in.
+its reveal while the preceding unit is still fading in. When input arrives
+faster than that, one reveal covers several units, so the preview keeps pace
+with arrival instead of releasing a backlog at completion.
 While replacement text arrives, an interpreter replacement preview keeps removed
 rows before arriving added rows in one source-ordered region, rather than
 realigning matching lines on each frame. Once that text closes, the preview uses
@@ -375,10 +379,12 @@ Provider input arrives in bursts. The stream view reveals each call's received
 input at its recent arrival rate, so the preview grows steadily rather than
 jumping per burst; the reveal trails received input by at most a bounded
 window where a complete line is available and completes on the call's final
-input. Ordinary streaming frames advance one complete line at a time rather
-than draining all line boundaries in a provider burst. Bounded lag catch-up may
-skip ahead. After the call finishes, queued units keep distinct reveals for about
-one second; the remaining final input then appears at once. Shell/Code Mode input
+input. Streaming frames advance one complete line per elapsed frame rather
+than draining all line boundaries in a provider burst. A reveal held between
+target units counts the frames it waited, so it can cover several lines; idle
+time before a burst does not count. Bounded lag catch-up may skip ahead. After
+the call finishes, queued units keep distinct reveals for about one second; the
+remaining final input then appears at once. Shell/Code Mode input
 that finishes before any target diff was published skips this catch-up and
 publishes its final projection without manufacturing an active stream.
 The reveal advances by whole decoded lines. An unfinished line stays
@@ -392,9 +398,10 @@ with an unfinished statement retains the previous projection;
 unknown formats use complete lines. Completed input bypasses this display gate,
 including malformed source, without claiming execution success. Empty add-file
 and heredoc headers retain the preceding diff until source arrives or empty-file
-creation completes. Newly revealed rows fade in from partial visibility, and rows
-revealed together cascade in order; the fade is display-only and never delays
-the underlying projection. A completed snapshot displays at its final colors
+creation completes. Newly revealed changed rows fade their text in from partial
+visibility over a settled row fill, and rows revealed together cascade in order;
+context rows, line numbers, and diff markers appear settled. The fade is
+display-only and never delays the underlying projection. A completed snapshot displays at its final colors
 without re-fading retained rows. The first usable frame and completion redraw
 immediately; intermediate deltas may
 be coalesced. Card

@@ -505,7 +505,7 @@ func TestLiveDiffPreviewPacerIsSteadyAndBounded(t *testing.T) {
 		if frame%4 == 0 {
 			input += strings.Repeat("界x", 6) + "\n" + strings.Repeat("y", 10) + "\n"
 		}
-		next := pacer.advance(input, false, false)
+		next := pacer.advance(input, 1, false, false)
 		if next < shown || next > len(input) || next > 0 && input[next-1] != '\n' {
 			t.Fatalf("frame %d revealed %d of %d after %d", frame, next, len(input), shown)
 		}
@@ -522,16 +522,38 @@ func TestLiveDiffPreviewPacerIsSteadyAndBounded(t *testing.T) {
 	}
 	// A large backlog skips to the window at the tip.
 	input += strings.Repeat("y\n", 32<<10)
-	if next := pacer.advance(input, false, false); next < len(input)-liveDiffPreviewMaxLag {
+	if next := pacer.advance(input, 1, false, false); next < len(input)-liveDiffPreviewMaxLag {
 		t.Fatalf("lag exceeded its window: %d of %d", next, len(input))
 	}
 	// A finished call converges promptly, including an unterminated line.
 	input += "tail"
 	for range 20 {
-		shown = pacer.advance(input, true, false)
+		shown = pacer.advance(input, 1, true, false)
 	}
 	if shown != len(input) {
 		t.Fatalf("final input not reached: %d of %d", shown, len(input))
+	}
+}
+
+func TestLiveDiffPreviewPacerKeepsUpAcrossHeldFrames(t *testing.T) {
+	// A reveal held between target units spans several frames. The pacer must
+	// cover what arrived meanwhile rather than one unit per call, or the
+	// backlog grows until completion releases it at once.
+	var pacer liveDiffPreviewPacer
+	line := strings.Repeat("x", 39) + "\n"
+	input := ""
+	for step := range 40 {
+		input += strings.Repeat(line, 5)
+		shown := pacer.advance(input, 8, false, false)
+		if step > 8 && len(input)-shown > 10*len(line) {
+			t.Fatalf("step %d fell behind: %d of %d", step, shown, len(input))
+		}
+	}
+	// Idle frames are not arrival time: a burst after a stall is still paced.
+	pacer = liveDiffPreviewPacer{}
+	burst := strings.Repeat(line, 40) // Within the lag window.
+	if shown := pacer.advance(burst, 100, false, false); shown == 0 || shown > len(burst)/4 {
+		t.Fatalf("burst after idle was not paced: %d of %d", shown, len(burst))
 	}
 }
 
@@ -542,7 +564,7 @@ func TestLiveDiffPreviewPacerBuffersUnits(t *testing.T) {
 		var pacer liveDiffPreviewPacer
 		var shown []string
 		for i := min(step, len(input)); ; i = min(i+step, len(input)) {
-			if next := pacer.advance(input[:i], false, encoded); len(shown) == 0 && next > 0 || len(shown) > 0 && input[:next] != shown[len(shown)-1] {
+			if next := pacer.advance(input[:i], 1, false, encoded); len(shown) == 0 && next > 0 || len(shown) > 0 && input[:next] != shown[len(shown)-1] {
 				shown = append(shown, input[:next])
 			}
 			if i == len(input) {
@@ -568,7 +590,7 @@ func TestLiveDiffPreviewPacerBuffersUnits(t *testing.T) {
 	long := strings.Repeat("z", 64)
 	shown := 0
 	for range 100 {
-		shown = pacer.advance(long, false, false)
+		shown = pacer.advance(long, 1, false, false)
 	}
 	if shown != 0 {
 		t.Fatalf("unfinished line was released: %d of %d", shown, len(long))
@@ -660,16 +682,61 @@ func TestLiveDiffPreviewPacerKeepsEscapesWhole(t *testing.T) {
 	// An unfinished encoded line stays buffered.
 	shown := 0
 	for range 100 {
-		shown = pacer.advance(input, false, true)
+		shown = pacer.advance(input, 1, false, true)
 	}
 	if shown != 0 {
 		t.Fatalf("streaming reveal split an escape at %d", shown)
 	}
 	// Finished input is shown whole even when it ends in a backslash.
 	for range 3 {
-		pacer.advance(input, true, true)
+		pacer.advance(input, 1, true, true)
 	}
 	if pacer.shown != len(input) {
 		t.Fatalf("finished input stalled at %d of %d", pacer.shown, len(input))
+	}
+}
+
+func TestLiveDiffPreviewFadesOnlyChangedText(t *testing.T) {
+	path := "/workspace/a.txt"
+	view := diffview.PreviewView{Current: diffview.Preview{ID: "fade", Workspace: "/workspace", Thread: "thread", Status: diffview.PreviewEdit,
+		Files: []mekugi.ReviewFile{mekugi.RenderReviewFile(path, path, "keep\nold\n", "keep\nnew\n")}}}
+	motion := diffview.PreviewMotion{Enabled: true, Canvas: livediff.DarkTheme.Canvas(), Now: time.Now()}
+	fading, err := view.Render(t.Context(), "/workspace", livediff.DarkTheme, 60, 6, motion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	motion.Enabled = false
+	settled, err := view.Render(t.Context(), "/workspace", livediff.DarkTheme, 60, 6, motion)
+	if err != nil || len(fading) != len(settled) {
+		t.Fatalf("renders: %v %q %q", err, fading, settled)
+	}
+	changed := 0
+	for i := range settled {
+		plain := ansi.Strip(settled[i])
+		switch {
+		case strings.Contains(plain, "keep"):
+			if fading[i] != settled[i] {
+				t.Fatalf("context row faded: %q", fading[i])
+			}
+		case strings.Contains(plain, "+new"), strings.Contains(plain, "-old"):
+			changed++
+			kind := byte('+')
+			if strings.Contains(plain, "-old") {
+				kind = '-'
+			}
+			fill := livediff.DarkTheme.RowBackground(kind)
+			if fading[i] == settled[i] || ansi.Strip(fading[i]) != plain || strings.Count(fading[i], fill) != strings.Count(settled[i], fill) ||
+				strings.Count(fading[i], "\x1b[48;2;") != strings.Count(settled[i], "\x1b[48;2;") {
+				t.Fatalf("changed row did not fade its text only:\n%q\n%q", fading[i], settled[i])
+			}
+			// The line number and diff marker appear settled, before the text.
+			marker := strings.Index(settled[i], string(kind))
+			if marker < 0 || fading[i][:marker+1] != settled[i][:marker+1] {
+				t.Fatalf("changed row chrome faded:\n%q\n%q", fading[i], settled[i])
+			}
+		}
+	}
+	if changed != 2 {
+		t.Fatalf("missing changed rows: %q", settled)
 	}
 }

@@ -615,19 +615,20 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 			if n > 0 && numbers != "" {
 				prefix = livediff.Subtle + strings.Repeat(" ", digits) + "│" + livediff.SubtleReset
 			}
-			line := livediff.Gutter(i == p.Focus, theme) + livediff.SourceLine(theme, width, prefix, fragment, row.Kind)
-			line = ansi.Truncate(line, max(0, width-1), "")
-			// Completion can replace the streaming source with its final diff.
-			// That is a settled snapshot, not a pane full of newly arriving rows.
-			if until := p.born[i].Add(liveDiffPreviewFade); motion.Enabled && !p.Complete && until.After(motion.Now) {
+			// Only changed text fades in. Context, chrome, and row fills appear
+			// settled. Completion can replace the streaming source with its
+			// final diff; that is a settled snapshot, not newly arriving rows.
+			changed := row.Kind == '+' || row.Kind == '-' || p.Current.Input != ""
+			if until := p.born[i].Add(liveDiffPreviewFade); changed && motion.Enabled && !p.Complete && until.After(motion.Now) {
 				if until.After(p.Fading) {
 					p.Fading = until
 				}
 				progress := float64(motion.Now.Sub(p.born[i])) / float64(liveDiffPreviewFade)
 				progress = liveDiffPreviewFadeFloor + (1-liveDiffPreviewFadeFloor)*liveDiffPreviewEase(progress)
-				line = livediff.Fade(line, progress, motion.Canvas)
+				fragment = livediff.Fade(fragment, progress, theme.TextCanvas(row.Kind, motion.Canvas))
 			}
-			lines = append(lines, line)
+			line := livediff.Gutter(i == p.Focus, theme) + livediff.SourceLine(theme, width, prefix, fragment, row.Kind)
+			lines = append(lines, ansi.Truncate(line, max(0, width-1), ""))
 		}
 	}
 	return finish(lines), nil

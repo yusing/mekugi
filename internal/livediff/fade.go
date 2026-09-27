@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/alecthomas/chroma/v2"
 )
 
 // RGB is a truecolor terminal color.
@@ -18,6 +20,18 @@ func (theme Theme) Canvas() Canvas {
 		return Canvas{Background: RGB{255, 255, 255}, Foreground: RGB{31, 35, 40}}
 	}
 	return Canvas{Background: RGB{13, 17, 23}, Foreground: RGB{230, 237, 243}}
+}
+
+// TextCanvas is what a changed row's text emerges from: the row's own fill,
+// which stays put, and the default text color on that fill.
+func (theme Theme) TextCanvas(kind byte, canvas Canvas) Canvas {
+	if fill, ok := parseRGB(strings.TrimSuffix(strings.TrimPrefix(theme.RowBackground(kind), "\x1b[48;2;"), "m")); ok {
+		canvas.Background = fill
+		if text, ok := parseRGB(strings.TrimSuffix(strings.TrimPrefix(theme.Foreground(chroma.NameOther), "\x1b[38;2;"), "m")); ok {
+			canvas.Foreground = text
+		}
+	}
+	return canvas
 }
 
 func mix(from, to RGB, progress float64) RGB {
@@ -41,10 +55,10 @@ func parseRGB(params string) (RGB, bool) {
 	return RGB{rgb[0], rgb[1], rgb[2]}, true
 }
 
-// Fade renders an SGR-colored row partway through appearing. Truecolor
-// foregrounds and row fills blend from the canvas background, and default
-// text takes the canvas foreground so it fades too. Other attributes and
-// palette colors pass through. Progress 1 returns the row unchanged.
+// Fade renders SGR-colored text partway through appearing. Truecolor
+// foregrounds blend from the fill beneath them, and default text takes the
+// canvas foreground so it fades too. Fills, other attributes, and palette
+// colors pass through. Progress 1 returns the text unchanged.
 func Fade(line string, progress float64, canvas Canvas) string {
 	if progress >= 1 {
 		return line
@@ -91,11 +105,9 @@ func Fade(line string, progress float64, canvas Canvas) string {
 			}
 		case strings.HasPrefix(params, "48;2;"):
 			if color, ok := parseRGB(params[5:]); ok {
-				fill = mix(canvas.Background, color, progress)
-				fmt.Fprintf(&out, "\x1b[48;2;%d;%d;%dm", fill.R, fill.G, fill.B)
-			} else {
-				out.WriteString(sequence)
+				fill = color
 			}
+			out.WriteString(sequence)
 		default:
 			out.WriteString(sequence)
 		}
