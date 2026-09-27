@@ -1,0 +1,75 @@
+package router
+
+import (
+	"bytes"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
+	"io"
+	"os"
+	"path/filepath"
+)
+
+// Restore only observational context from the host-selected rollout. Reading a
+// child's history must not attach to or resume it. Live usage always wins.
+func restoreContextUsage(agent *activityPaneAgent, info appServerThreadInfo) {
+	if agent == nil || agent.ContextKnown || !filepath.IsAbs(info.Path) {
+		return
+	}
+	f, err := os.Open(info.Path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	stat, err := f.Stat()
+	if err != nil || !stat.Mode().IsRegular() {
+		return
+	}
+	var meta struct {
+		Type    string `json:"type"`
+		Payload struct {
+			ID string `json:"id"`
+		} `json:"payload"`
+	}
+	if json.UnmarshalDecode(jsontext.NewDecoder(io.LimitReader(f, 64<<10)), &meta) != nil || meta.Type != "session_meta" || meta.Payload.ID != info.ID {
+		return
+	}
+	// Bound startup I/O and memory independently of transcript size. A missing
+	// retained snapshot leaves the existing state alone, never a fabricated count.
+	const tailLimit = 8 << 20
+	start := max(int64(0), stat.Size()-tailLimit)
+	data, err := io.ReadAll(io.NewSectionReader(f, start, stat.Size()-start))
+	if err != nil {
+		return
+	}
+	if start > 0 {
+		_, data, _ = bytes.Cut(data, []byte{'\n'})
+	}
+	// Ignore a writer's unfinished final record.
+	end := bytes.LastIndexByte(data, '\n')
+	if end < 0 {
+		return
+	}
+	data = data[:end]
+	for len(data) > 0 {
+		previous := bytes.LastIndexByte(data, '\n')
+		line := data[previous+1:]
+		data = data[:max(0, previous)]
+		var event struct {
+			Type    string `json:"type"`
+			Payload struct {
+				Type string `json:"type"`
+				Info *struct {
+					Last *struct {
+						Total uint64 `json:"total_tokens"`
+					} `json:"last_token_usage"`
+					Window uint64 `json:"model_context_window"`
+				} `json:"info"`
+			} `json:"payload"`
+		}
+		if json.Unmarshal(line, &event) != nil || event.Type != "event_msg" || event.Payload.Type != "token_count" || event.Payload.Info == nil || event.Payload.Info.Last == nil {
+			continue
+		}
+		agent.ContextTokens, agent.ContextWindow, agent.ContextKnown = event.Payload.Info.Last.Total, event.Payload.Info.Window, true
+		return
+	}
+}

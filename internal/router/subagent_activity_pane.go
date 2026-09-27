@@ -82,6 +82,10 @@ type activityPaneAgent struct {
 	// Cumulative provider-reported tokens for the agent's responses.
 	InputTokens  uint64 `json:",omitzero"`
 	OutputTokens uint64 `json:",omitzero"`
+	// Latest host-reported context, not cumulative provider usage.
+	ContextTokens uint64 `json:",omitzero"`
+	ContextWindow uint64 `json:",omitzero"`
+	ContextKnown  bool   `json:",omitzero"`
 }
 
 type activityPaneEvent struct {

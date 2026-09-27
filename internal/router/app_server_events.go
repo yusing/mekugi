@@ -53,6 +53,7 @@ type appServerThreadInfo struct {
 	AgentNickname  string                 `json:"agentNickname"`
 	AgentRole      string                 `json:"agentRole"`
 	Cwd            string                 `json:"cwd"`
+	Path           string                 `json:"path"`
 	Source         jsontext.Value         `json:"source"`
 	CreatedAt      int64                  `json:"createdAt"`
 	UpdatedAt      int64                  `json:"updatedAt"`
@@ -60,6 +61,7 @@ type appServerThreadInfo struct {
 }
 
 type appServerTokenUsage struct {
+	TotalTokens  uint64 `json:"totalTokens"`
 	InputTokens  uint64 `json:"inputTokens"`
 	OutputTokens uint64 `json:"outputTokens"`
 }
@@ -72,7 +74,9 @@ type appServerEvent struct {
 	Item       appServerItem       `json:"item"`
 	Thread     appServerThreadInfo `json:"thread"`
 	TokenUsage struct {
-		Total appServerTokenUsage `json:"total"`
+		Total              appServerTokenUsage  `json:"total"`
+		Last               *appServerTokenUsage `json:"last"`
+		ModelContextWindow uint64               `json:"modelContextWindow"`
 	} `json:"tokenUsage"`
 	Turn struct {
 		ID     string `json:"id"`
@@ -117,6 +121,7 @@ func (s *appServerSession) registerThread(info appServerThreadInfo) {
 	}
 	s.paths[info.ID] = path
 	s.agent(path).Role = cmp.Or(info.AgentRole, spawn.AgentRole, s.agent(path).Role)
+	restoreContextUsage(s.agent(path), info)
 }
 
 func (s *appServerSession) agent(path string) *activityPaneAgent {
@@ -186,6 +191,12 @@ func (u *appServerUI) sessionEvent(m appServerMessage) (bool, error) {
 	case "thread/tokenUsage/updated":
 		agent := s.agent(s.path(p.ThreadID))
 		agent.InputTokens, agent.OutputTokens = p.TokenUsage.Total.InputTokens, p.TokenUsage.Total.OutputTokens
+		agent.ContextWindow = p.TokenUsage.ModelContextWindow
+		agent.ContextKnown = p.TokenUsage.Last != nil
+		agent.ContextTokens = 0
+		if p.TokenUsage.Last != nil {
+			agent.ContextTokens = p.TokenUsage.Last.TotalTokens
+		}
 		u.observeCost(p.ThreadID, agent)
 	case "turn/started":
 		agent := s.agent(s.path(p.ThreadID))

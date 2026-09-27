@@ -43,7 +43,7 @@ func TestAppServerComposerFrame(t *testing.T) {
 		"╭──────────────╮",
 		"│ ❯ first      │",
 		"│   你好       │",
-		"╰──────────────╯",
+		"╰───────── 0% ─╯",
 	}
 	if len(frame) != 8 || !slices.Equal(frame[len(frame)-len(want):], want) {
 		t.Fatalf("composer frame = %q, want final rows %q in 8-row frame", frame, want)
@@ -80,14 +80,14 @@ func TestAppServerComposerObservedModelCaption(t *testing.T) {
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"main"},"model":"actual-model","reasoningEffort":"high"}}`)
 	frame, _ := u.mainFrame(70, 8, 0)
 	bottom := ansi.Strip(frame[len(frame)-1])
-	if !strings.HasPrefix(bottom, "╰───") || !strings.HasSuffix(bottom, " actual-model (high) ─╯") || ansi.StringWidth(bottom) != 70 {
+	if !strings.HasPrefix(bottom, "╰───") || !strings.HasSuffix(bottom, " actual-model (high) • 0% ─╯") || ansi.StringWidth(bottom) != 70 {
 		t.Fatalf("observed model caption: %q", bottom)
 	}
 	u.requests["2"] = "thread/start"
 	appServerTestMessage(t, u, `{"id":2,"result":{"thread":{"id":"new"},"reasoningEffort":null}}`)
 	frame, _ = u.mainFrame(70, 8, 0)
 	bottom = ansi.Strip(frame[len(frame)-1])
-	if bottom != "╰"+strings.Repeat("─", 68)+"╯" {
+	if strings.Contains(bottom, "actual-model") || !strings.HasSuffix(bottom, " 0% ─╯") || ansi.StringWidth(bottom) != 70 {
 		t.Fatalf("unknown model retained stale caption: %q", bottom)
 	}
 }

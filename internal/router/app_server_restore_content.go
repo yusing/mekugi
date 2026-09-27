@@ -241,9 +241,11 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 	s := &u.session
 	name := s.paths[info.ID]
 	agent := s.agent(name)
+	restoreContextUsage(agent, info)
 	agent.Started, agent.LastResponse = historyTime(info.CreatedAt), historyTime(info.UpdatedAt)
 	agent.Turns, agent.Responding = uint64(len(info.Turns)), false
 	u.observeCost(info.ID, agent)
+	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(s.agents)})
 	for _, turn := range info.Turns {
 		observed := historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, info.UpdatedAt))
 		var entries []activityPaneEntry

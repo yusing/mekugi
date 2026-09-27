@@ -363,6 +363,7 @@ func (u *appServerUI) message(m appServerMessage) error {
 			u.thread, u.status = result.Thread.ID, "Ready"
 			u.model, u.reasoningEffort = result.Model, result.ReasoningEffort
 			u.session.start(u.thread, result.Thread.Cwd)
+			restoreContextUsage(u.session.agent("/root"), result.Thread)
 			if u.agents != nil {
 				u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
 			}
@@ -793,7 +794,16 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 		if model != "" {
 			model = liveActivityDim + model + liveActivityReset
 		}
-		frame = append(frame, composerBorder("╰", "╯", "", model, width, border))
+		context := contextWindowLabel(activityPaneAgent{})
+		if agent := u.session.agent("/root"); agent != nil {
+			context = contextWindowLabel(*agent)
+		}
+		caption := context
+		if room := width - 7 - ansi.StringWidth(context) - 3; model != "" && room > 0 {
+			caption = ansi.Truncate(model, room, "…") + " • " + context
+		}
+		caption = ansi.Truncate(caption, max(0, width-7), "…")
+		frame = append(frame, composerBorder("╰", "╯", "", caption, width, border))
 	}
 	return frame, terminalRect{0, dockAt, width, dock}
 }

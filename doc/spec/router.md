@@ -466,12 +466,26 @@ it. Non-error feedback clears after three seconds or the next draft edit;
 actionable errors remain until editing. Only
 `/quit` is a command, and only while idle;
 unknown commands are reported, never sent as prompts. The
-composer border carries turn state and the model; Main's title bar carries the
+composer border carries turn state, the model, and Main's context usage; Main's title bar carries the
 scroll position and unseen-message count. History
 beyond the retained window is not hydrated. Unexpected server requests stay
 visibly pending, never auto-approved.
 
 Activity shows only child agents; Main stays in the roster for status and usage.
+The composer and agent roster show `used/window • percent%` from the latest
+Codex `tokenUsage.last.totalTokens` and `modelContextWindow`, independently of
+cumulative usage totals. Before the first usage report, show `0%` used, equivalent
+to Codex's initial `100% context left`; a missing window shows `N used` without
+a percentage or placeholder. New host reports replace the context snapshot,
+including reductions after compaction and replayed usage on resume.
+Startup and child metadata also restore the latest saved context snapshot from
+the absolute rollout path supplied by Codex, validating its session identity.
+This observational read never resumes children or replaces newer live usage.
+Restoration reads at most the last 8 MiB and a 64 KiB metadata prefix; absent,
+unreadable, mismatched, or unavailable snapshots leave the initial display intact.
+Narrow roster rows retain context before other metrics;
+the composer's bottom border shows `model (effort) • used/window • percent%`
+as one right-aligned caption, shortening or omitting the model first when narrow.
 Working roster rows show the latest operation or public summary, including its
 target, rather than a generic running/working label. Child names use their canonical
 spawn paths and roles use Codex metadata even when no `thread/started` notification

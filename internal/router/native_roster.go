@@ -185,8 +185,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	return lines
 }
 
-// nativeRosterMetrics right-aligns timer, tokens, cost and turns within room,
-// dropping turns first, then tokens, then the timer.
+// nativeRosterMetrics retains context longest as lower-priority metrics drop.
 func nativeRosterMetrics(v *liveActivityView, agent activityPaneAgent, now time.Time, room int) string {
 	_, timer := v.current(agent, now)
 	if timer != "" {
@@ -200,7 +199,7 @@ func nativeRosterMetrics(v *liveActivityView, agent activityPaneAgent, now time.
 	cells := []struct {
 		text  string
 		width int
-	}{{timer, 16}, {tokens, 14}, {liveActivityCost(agent), 7}, {liveActivityTurns(agent), 5}}
+	}{{contextWindowLabel(agent), 24}, {timer, 16}, {tokens, 14}, {liveActivityCost(agent), 7}, {liveActivityTurns(agent), 5}}
 	for len(cells) > 0 {
 		total := 0
 		for _, cell := range cells {
@@ -217,6 +216,17 @@ func nativeRosterMetrics(v *liveActivityView, agent activityPaneAgent, now time.
 		b.WriteString("  " + strings.Repeat(" ", cell.width-ansi.StringWidth(text)) + text)
 	}
 	return b.String()
+}
+
+func contextWindowLabel(agent activityPaneAgent) string {
+	if !agent.ContextKnown {
+		return "0%"
+	}
+	used := formatUsageTokens(agent.ContextTokens)
+	if agent.ContextWindow == 0 {
+		return used + " used"
+	}
+	return fmt.Sprintf("%s/%s • %.0f%%", used, formatUsageTokens(agent.ContextWindow), 100*float64(agent.ContextTokens)/float64(agent.ContextWindow))
 }
 
 // nativeGlyph uses role colors when known; the glyph shape preserves status.

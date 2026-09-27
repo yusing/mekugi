@@ -510,6 +510,7 @@ func (p *nativePreview) think(thread, id, text string) {
 func (p *nativePreview) tokens(thread string, input, output uint64) {
 	p.usage.observation(thread, thread, "gpt-6-luna", "").observe(tokenCounts{InputTokens: input, UncachedInputTokens: input, OutputTokens: output})
 	p.notify("thread/tokenUsage/updated", map[string]any{"threadId": thread, "turnId": p.active[thread], "tokenUsage": map[string]any{
+		"last": map[string]any{"totalTokens": input/4 + output}, "modelContextWindow": 200000,
 		"total": map[string]any{"inputTokens": input, "outputTokens": output, "totalTokens": input + output}}})
 }
 

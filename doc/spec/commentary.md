@@ -381,7 +381,9 @@ observed requests, not unobserved native execution or completion. Sibling and an
 form a tree; rows whose parent is off-screen show their relative path instead. The roster stays in a separate region spanning the full width below Main
 and the right column, with its own resizable divider. It shares local selection with the activity feed on the right;
 no extra process, broker, or transport is needed. Each agent has one row: status, name,
-and activity, then its metrics inline in fixed-width columns: the timer, `↑ in ↓ out` tokens, estimated USD cost to two decimal places, and provider-response turns as `T+N`.
+and activity, then its metrics inline in fixed-width columns: context usage (defined
+by the native layout contract), the timer, `↑ in ↓ out` tokens, estimated USD cost
+to two decimal places, and provider-response turns as `T+N`.
 The roster shows no model label. When the row is too narrow for metrics beside a usable
 activity summary, the metrics are omitted. Units and separators are dim; metric
 values use normal brightness. Each observed role colors the existing centered status glyph without adding a

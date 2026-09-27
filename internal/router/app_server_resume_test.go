@@ -42,10 +42,14 @@ func TestAppServerResumeStartup(t *testing.T) {
 	}
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"saved","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
 	appServerTestMessage(t, u, `{"id":1,"result":{"model":"model","reasoningEffort":"high","thread":{"id":"saved","cwd":"/workspace","turns":[{"id":"old","status":"completed","items":[{"type":"userMessage","id":"question","content":[{"type":"text","text":"Saved question"}]},{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`)
+	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "saved", "tokenUsage": map[string]any{"last": map[string]any{"totalTokens": 120000}, "modelContextWindow": 400000}})
 	appServerTestMessage(t, u, `{"id":2,"result":{"data":[],"nextCursor":null}}`)
 	appServerTestMessage(t, u, `{"id":3,"result":{"data":[],"nextCursor":null}}`)
 	if u.thread != "saved" || u.status != "Ready" || u.model != "model" || u.reasoningEffort != "high" || len(u.view.entries) != 2 || u.view.entries[0].Text != "Saved question" || u.view.entries[1].Text != "Saved answer" {
 		t.Fatalf("resume state: %+v, entries=%+v", u, u.view.entries)
+	}
+	if got := contextWindowLabel(*u.session.agent("/root")); got != "120K/400K • 30%" {
+		t.Fatalf("startup lost replayed usage: %s", got)
 	}
 	if bytes.Contains(w.Bytes(), []byte("turn/start")) || bytes.Contains(w.Bytes(), []byte("thread/resume")) {
 		t.Fatal("history replay issued execution requests")
