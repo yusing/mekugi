@@ -1,13 +1,63 @@
 package router
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 )
+
+func TestNativeRosterClickSurvivesActivityPaint(t *testing.T) {
+	for _, width := range []int{80, 140} {
+		for _, focus := range []int{2, 3} {
+			t.Run(fmt.Sprintf("width%d/focus%d", width, focus), func(t *testing.T) {
+				u := newAppServerSessionTestUI(t, t.TempDir())
+				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker", "agentRole": "worker"}})
+				u.shell.focus = focus
+				for _, wantOnly := range []bool{true, false} {
+					var frame bytes.Buffer
+					u.shell.paintedRows = nil
+					if err := u.paint(&frame, width, 30); err != nil {
+						t.Fatal(err)
+					}
+					if u.shell.layout.agents.w == 0 {
+						t.Fatal("test did not paint Activity")
+					}
+					screen := vt.NewEmulator(width, 30)
+					_, err := screen.Write(frame.Bytes())
+					if err != nil {
+						t.Fatal(err)
+					}
+					rows := strings.Split(screen.String(), "\n")
+					screen.Close()
+					roster := u.shell.layout.roster
+					y := -1
+					for row := roster.y + 1; row < roster.y+roster.h; row++ {
+						if strings.Contains(rows[row], "worker") && !strings.Contains(rows[row], "Roles:") {
+							y = row
+							break
+						}
+					}
+					if y < 0 {
+						t.Fatalf("worker row not painted: %s", strings.Join(rows, "\n"))
+					}
+					for _, suffix := range []string{"M", "m"} {
+						if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", roster.x+5, y+1, suffix)); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if u.agents.selected != "/root/worker" || u.agents.only != wantOnly {
+						t.Fatalf("painted roster click lost: selected=%q only=%v, want only=%v", u.agents.selected, u.agents.only, wantOnly)
+					}
+				}
+			})
+		}
+	}
+}
 
 func TestAppServerChildMetadataWithoutThreadStarted(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())

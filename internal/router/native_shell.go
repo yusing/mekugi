@@ -337,7 +337,11 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			u.diffUnseen = false
 		} else {
 			l.agents = terminalRect{right.x + 1, right.y + 1, iw, content}
+			// The feed-only renderer clears pane-local hits. Keep the separate
+			// roster's targets, which were laid out before the Activity pane.
+			rosterHits := u.agents.hits
 			body = u.agents.render(iw, content, now)
+			u.agents.hits = rosterHits
 			detail, state := u.agents.nativeTitle()
 			title, label = nativeTitle(3, "Activity", detail, u.focus == 2), state
 		}
