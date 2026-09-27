@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -186,6 +187,62 @@ func TestTerminalUIIdleLiveLayout(t *testing.T) {
 	}
 	if frame = paint(); u.shell.layout.agents.h != 0 || !strings.Contains(frame, "3 Live") || !strings.Contains(frame, "unique-live-line") {
 		t.Fatalf("Live did not return:\n%s", frame)
+	}
+}
+
+func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
+	for _, child := range []bool{false, true} {
+		for _, saved := range []bool{false, true} {
+			for _, caller := range []string{"/root", "/root/worker"} {
+				t.Run(fmt.Sprintf("child=%t/diff=%t/caller=%s", child, saved, caller), func(t *testing.T) {
+					u, _ := newAppServerTestUI()
+					u.ensureShell()
+					defer u.shell.diffScreen.Close()
+					u.shell.diffOpen = saved
+					if child {
+						u.agents.agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
+					}
+					screen := vt.NewEmulator(120, 40)
+					defer screen.Close()
+					paint := func() {
+						t.Helper()
+						if err := u.paint(screen, 120, 40); err != nil {
+							t.Fatal(err)
+						}
+					}
+					assertCollapsed := func() {
+						t.Helper()
+						paint()
+						content := u.shell.layout.agents
+						if saved {
+							content = u.shell.layout.diff
+						}
+						if u.shell.layout.live.h != 0 || content.y != 1 || content.h != u.shell.layout.codex.h || strings.Contains(screen.String(), "LIVE") || strings.Contains(screen.String(), "3 Live") {
+							t.Fatalf("empty Live area did not collapse: %+v\n%s", u.shell.layout, screen.String())
+						}
+					}
+					assertCollapsed()
+					preview := diffview.Preview{ID: "edit", Caller: caller, Tool: applyPatchToolName, Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: live.txt\n+live\n*** End Patch", Complete: true}
+					preview.Workspace = t.TempDir()
+					preview = projectStockPatchPreview(t.Context(), preview.Workspace, preview)
+					u.shell.preview(preview)
+					now := time.Now()
+					u.shell.animating(now.Add(nativeDockLinger - time.Millisecond))
+					paint()
+					if u.shell.layout.live.h == 0 {
+						t.Fatal("Live disappeared before its linger elapsed")
+					}
+					u.shell.animating(now.Add(nativeDockLinger))
+					assertCollapsed()
+					preview.Complete = false
+					u.shell.preview(preview)
+					paint()
+					if u.shell.layout.live.h == 0 {
+						t.Fatal("new preview did not reopen Live")
+					}
+				})
+			}
+		}
 	}
 }
 

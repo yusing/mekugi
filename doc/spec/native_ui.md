@@ -141,8 +141,9 @@ right pane and Activity fills the rest. Opening Diff keeps this top Live dock
 and switches only the content below it, including when no child agents exist.
 Main's live edits move into this right-side Live view while no child is responding.
 With responding children, each owner's dock takes 30% of its pane, within 5 to
-14 rows. Cards linger briefly after
-the last card's animation settles. Shell or Code Mode projections first received
+14 rows. Cards linger for two seconds after
+the last card's animation settles. When no cards remain, the Live area collapses
+and Activity or Diff reclaims its space. Shell or Code Mode projections first received
 at completion do not open a transient dock; captured effects remain in their
 receipt and saved diff. Concurrent edits share the dock as an accordion: cards
 split evenly when each gets five rows, otherwise one stays open, chosen as the

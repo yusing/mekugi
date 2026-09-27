@@ -20,7 +20,7 @@ const (
 	nativeDockShare   = 0.3
 	nativeDockMin     = 5
 	nativeDockMax     = 14
-	nativeDockLinger  = 4 * time.Second // A finished dock stays readable this long.
+	nativeDockLinger  = 2 * time.Second // A finished dock stays readable this long.
 	nativeRosterRows  = 4               // Unfocused roster rows.
 	nativeRosterShare = 0.4             // Focused roster share of the screen.
 	nativeFramedRows  = 8               // Below this, panes drop their frames.
@@ -302,7 +302,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	default:
 		right = terminalRect{0, 0, width, top}
 	}
-	liveRight := !active && right.w >= 4 && right.h >= 3 && framed
+	liveRight := !active && (len(u.mainDock.Order) > 0 || len(u.agentDock.Order) > 0) && right.w >= 4 && right.h >= 3 && framed
 	rows := make([]string, height)
 	draw := func(r terminalRect, lines []string) {
 		for i, line := range lines {
@@ -477,7 +477,10 @@ func (u *terminalUI) nativeStatus() string {
 	if responding > 0 {
 		agentsBadge = activityui.Amber + superscript(responding) + activityui.Reset
 	}
-	activityName := "Live"
+	activityName := "Activity"
+	if len(u.mainDock.Order) > 0 || len(u.agentDock.Order) > 0 {
+		activityName = "Live"
+	}
 	for _, agent := range u.agents.agents {
 		if agent.Name != "/root" {
 			activityName = "Activity"
