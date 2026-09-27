@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -176,5 +177,27 @@ func TestNativeReplyExcerptEllipsisStaysInline(t *testing.T) {
 		if ansi.StringWidth(line) > 26 {
 			t.Fatalf("excerpt overflow: %q", line)
 		}
+	}
+}
+
+func TestNativeExcerptEllipsisSkipsParagraphGaps(t *testing.T) {
+	v := newLiveActivityView()
+	var out conversationLines
+	v.assignmentExcerpt(&out, activityPaneEntry{Seq: 42, Kind: "assignment", assignment: &activityAssignment{text: "Fix the finding.\n\nThen rerun the tests.\n\nReport back."}}, "", 40)
+	v.replyExcerpt(&out, activityPaneEntry{Seq: 43}, "APPROVE. No remaining actionable findings.\n\nVerified with make test.\n\nDone.", "", 60)
+	got := make([]string, len(out.lines))
+	for i, line := range out.lines {
+		got[i] = ansi.Strip(line)
+	}
+	want := []string{
+		got[0],
+		"│ Fix the finding.",
+		"│ Then rerun the tests.…",
+		"APPROVE. No remaining actionable findings.",
+		"Verified with make test.…",
+		"↩ Open reply in Activity",
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("excerpt rows:\n got %q\nwant %q", got, want)
 	}
 }

@@ -361,24 +361,32 @@ func (v *liveActivityView) assignmentExcerpt(out *conversationLines, question ac
 	}
 	header := v.painter.theme.Accent() + "↩ re: assignment" + liveActivityReset + liveActivityDim + " " + question.Observed.Local().Format("15:04:05") + liveActivityUndim
 	out.add(question.Seq, gutter+ansi.Truncate(header, width, "…"))
-	rows := v.painter.quote(livediff.Safe(question.assignment.text, false), width)
-	if len(rows) > 2 {
-		rows = rows[:2]
-		rows[1] = ansi.Truncate(rows[1], max(0, width-1), "") + liveActivityDim + "…" + liveActivityUndim
-	}
-	for _, row := range rows {
+	for _, row := range liveActivityExcerpt(v.painter.quote(livediff.Safe(question.assignment.text, false), width), width) {
 		out.add(question.Seq, gutter+row)
 	}
 }
 
 func (v *liveActivityView) replyExcerpt(out *conversationLines, entry activityPaneEntry, text, gutter string, width int) {
-	rows := v.painter.markdown(text, width)
-	if len(rows) > 2 {
-		rows = rows[:2]
-		rows[1] = ansi.Truncate(rows[1], max(0, width-1), "") + liveActivityDim + "…" + liveActivityUndim
-	}
-	out.hang(gutter, gutter, rows)
+	out.hang(gutter, gutter, liveActivityExcerpt(v.painter.markdown(text, width), width))
 	out.add(entry.Seq, gutter+ansi.Truncate(v.painter.theme.Accent()+"↩ Open reply in Activity"+liveActivityReset, width, "…"))
+}
+
+// liveActivityExcerpt keeps the first two rows with content. Paragraph gaps
+// and empty quote rows are skipped so a truncated excerpt always ends its last
+// visible text row with the ellipsis rather than leaving it on a row alone.
+func liveActivityExcerpt(rows []string, width int) []string {
+	var kept []string
+	for _, row := range rows {
+		if strings.Trim(ansi.Strip(row), " │") == "" {
+			continue
+		}
+		if len(kept) == 2 {
+			kept[1] = ansi.Truncate(kept[1], max(0, width-1), "") + liveActivityDim + "…" + liveActivityUndim
+			break
+		}
+		kept = append(kept, row)
+	}
+	return kept
 }
 
 // journalItem renders milestones with a diamond and each answer below a link
