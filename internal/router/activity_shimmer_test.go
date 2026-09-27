@@ -58,13 +58,21 @@ func TestCodexReasoningShimmerSweep(t *testing.T) {
 func TestReasoningShimmerWithoutReportedPalette(t *testing.T) {
 	const text = "Checking the answer target"
 	frame := reasoningShimmer(text, 500*time.Millisecond, terminalColors{})
-	if ansi.Strip(frame) != text || strings.Contains(frame, "38;2;") {
-		t.Fatalf("unknown palette used invented colors: %q", frame)
+	if ansi.Strip(frame) != text || !strings.HasSuffix(frame, "\x1b[39m") {
+		t.Fatalf("fallback changed text or leaked styling: %q", frame)
 	}
-	bold, dim := strings.Index(frame, "\x1b[22;1m"), strings.LastIndex(frame, "\x1b[22;2m")
-	if bold < 0 || dim < bold || !strings.HasSuffix(frame, "\x1b[22m") {
-		t.Fatalf("stepped sweep lacks a bright band ahead of dim text: %q", frame)
+	colors := regexp.MustCompile(`\x1b\[38;2;\d+;\d+;\d+m`)
+	levels := map[string]bool{}
+	for i := range 31 {
+		frame = reasoningShimmer(text, time.Duration(i)*33*time.Millisecond, terminalColors{})
+		for _, color := range colors.FindAllString(frame, -1) {
+			levels[color] = true
+		}
 	}
+	if len(levels) < 20 {
+		t.Fatalf("fallback shimmer has only %d brightness levels", len(levels))
+	}
+
 }
 
 func TestNativeUITerminalColorReports(t *testing.T) {
@@ -128,5 +136,20 @@ func TestStatusPulseReportedPalette(t *testing.T) {
 		if bright != want {
 			t.Fatalf("pulse peak = %q, want %q", bright, want)
 		}
+	}
+}
+
+func TestStatusPulseContinuousFallback(t *testing.T) {
+	start := time.Unix(0, 0)
+	levels := map[string]bool{}
+	for i := range 31 {
+		frame := statusPulse("Sending…", start.Add(time.Duration(i)*33*time.Millisecond), terminalColors{})
+		if ansi.Strip(frame) != "Sending…" {
+			t.Fatal("pulse changed text")
+		}
+		levels[frame] = true
+	}
+	if len(levels) < 20 {
+		t.Fatalf("breathing has only %d levels", len(levels))
 	}
 }

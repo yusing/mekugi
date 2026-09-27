@@ -88,7 +88,7 @@ func (u *terminalUI) selectionAction(action byte) {
 
 func (u *terminalUI) copyText(text string) {
 	u.clipboard = "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(text)) + "\x07"
-	u.main.notice, u.main.noticeAlert = "Copy sent to terminal clipboard", false
+	u.main.setNotice("Copy sent to terminal clipboard", false)
 }
 
 func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {

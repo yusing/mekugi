@@ -26,7 +26,7 @@ const (
 
 func (u *appServerUI) insertDraft(text string) {
 	u.cursorColumn = nil
-	u.notice, u.noticeAlert = "", false
+	u.setNotice("", false)
 	at := u.cursor()
 	// Typing undoes a word at a time: a word typed after whitespace starts a new edit.
 	wordStart := false
@@ -106,7 +106,7 @@ func (u *appServerUI) removeDraft(start, end int, run composerRun) {
 		u.recordDraft()
 	}
 	u.run = run
-	u.notice, u.noticeAlert = "", false
+	u.setNotice("", false)
 	u.cursorColumn = nil
 	kept := u.images[:0]
 	for _, attachment := range u.images {

@@ -69,6 +69,7 @@ func TestNativeUIPreview(t *testing.T) {
 					return err
 				}
 				flashExpired := p.ui.view.expireFlash(now)
+				noticeExpired := p.ui.expireNotice(now)
 				if now.Sub(lastStep) >= p.pace() && p.advance() {
 					lastStep = now
 					if err := paint(); err != nil {
@@ -80,7 +81,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.agents.hasLiveReasoning() || flashExpired || p.ui.shell.animating(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.sessionAnimating() || p.ui.agents.hasLiveReasoning() || flashExpired || noticeExpired || p.ui.shell.animating(now) {
 					if err := paint(); err != nil {
 						return err
 					}

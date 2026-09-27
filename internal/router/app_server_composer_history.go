@@ -22,7 +22,7 @@ func (u *appServerUI) recordDraft() {
 	}
 	u.redoDrafts = nil
 	u.run = runNone
-	u.notice, u.noticeAlert = "", false
+	u.setNotice("", false)
 	u.pruneDraftImages()
 }
 
@@ -33,7 +33,7 @@ func (u *appServerUI) undoDraft(redo bool) {
 	}
 	u.run = runNone
 	u.cursorColumn = nil
-	u.notice, u.noticeAlert = "", false
+	u.setNotice("", false)
 	if len(*from) == 0 {
 		return
 	}

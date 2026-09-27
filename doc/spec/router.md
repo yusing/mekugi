@@ -457,7 +457,8 @@ steer never becomes a new turn. Ctrl-C first clears a non-empty draft (Ctrl+Z
 restores it), then interrupts the active turn, and with no turn active or
 starting exits like `/quit`. Composer notices (command, paste, editor and
 Ctrl-C feedback) follow the turn state on the composer border without replacing
-it, and clear on the next draft edit. Only
+it. Non-error feedback clears after three seconds or the next draft edit;
+actionable errors remain until editing. Only
 `/quit` is a command, and only while idle;
 unknown commands are reported, never sent as prompts. The
 composer border carries turn state and the model; Main's title bar carries the
@@ -517,7 +518,9 @@ deltas or completed/history items. Main retains dim italic summary bodies in its
 transcript; its active summary heading replaces `Working` in the composer status
 until the item finishes or later Main activity supersedes it, without a separate
 pinned row. Working and active reasoning shimmer while the turn runs. Other ongoing
-states, such as sending and interrupting, pulse together from dim to light to dim.
+states, such as sending and interrupting, breathe smoothly together from dim to light to dim, using a continuous neutral
+color ramp until terminal colors are reported. Successful steering returns to
+the active turn state rather than remaining in Sending.
 Composer status (including Waiting), agent timers, and relative response ages share
 whole-second duration formatting: `82s` displays as `1m22s`, and `3682s` as `1h1m22s`.
 Trailing zero units are omitted (`5m`, `1h`), while elapsed timers start at `0s`;

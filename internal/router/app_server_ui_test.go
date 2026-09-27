@@ -335,3 +335,52 @@ func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 		t.Fatal("main completion not applied")
 	}
 }
+
+func TestAppServerSteerStatusAcknowledgement(t *testing.T) {
+	for _, completed := range []bool{false, true} {
+		u, _ := newAppServerTestUI()
+		appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"t"}}}`)
+		appServerTestKeys(t, u, "steer\r")
+		if u.status != "Sending…" {
+			t.Fatal(u.status)
+		}
+		if completed {
+			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"t","status":"completed"}}}`)
+		}
+		before := u.status
+		appServerTestMessage(t, u, `{"id":1,"result":{"turnId":"t"}}`)
+		if completed {
+			if u.status != before || u.turn != "" {
+				t.Fatal("late acknowledgement revived completed turn")
+			}
+		} else if u.status != "Working" || u.turn != "t" || u.submitted != "" {
+			t.Fatalf("steer stayed pending: status=%s turn=%s submitted=%s", u.status, u.turn, u.submitted)
+		}
+	}
+}
+
+func TestAppServerNoticeExpiry(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.ensureShell()
+	u.status = "Working"
+	u.shell.copyText("copied")
+	deadline := u.noticeUntil
+	if deadline.IsZero() || u.expireNotice(deadline.Add(-time.Millisecond)) {
+		t.Fatal("notice expired early")
+	}
+	u.shell.copyText("copied again")
+	if u.noticeUntil.Before(deadline) {
+		t.Fatal("repeat notice did not refresh deadline")
+	}
+	if !u.expireNotice(u.noticeUntil) || u.notice != "" || u.status != "Working" {
+		t.Fatal("notice did not expire independently of status")
+	}
+	u.setNotice("failure", true)
+	if u.expireNotice(time.Now().Add(time.Hour)) || u.notice != "failure" {
+		t.Fatal("error expired")
+	}
+	u.insertDraft("x")
+	if u.notice != "" || !u.noticeUntil.IsZero() {
+		t.Fatal("editing did not clear notice")
+	}
+}

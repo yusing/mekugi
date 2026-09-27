@@ -184,7 +184,7 @@ func (u *appServerUI) pasteImage() {
 	defer cancel()
 	path, err := clipboardImage(ctx)
 	if err != nil {
-		u.notice, u.noticeAlert = "Paste image: "+err.Error(), true
+		u.setNotice("Paste image: "+err.Error(), true)
 		return
 	}
 	// The highlighted placeholder is the feedback; it also clears any earlier notice.

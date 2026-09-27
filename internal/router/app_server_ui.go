@@ -63,8 +63,9 @@ type appServerUI struct {
 	mainContentPainted        bool
 	thread, turn, status      string
 	alert                     bool   // The status reports a failure or blocked request.
-	notice                    string // Composer feedback; cleared by the next draft edit.
+	notice                    string // Composer feedback; errors persist until the next draft edit.
 	noticeAlert               bool
+	noticeUntil               time.Time
 	turnStarted               time.Time // Shown as elapsed time while a turn runs.
 	model, reasoningEffort    string
 	requests                  map[string]string
@@ -198,6 +199,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 					case <-tick.C:
 						u.applyObservedActivity()
 						u.paneError(u.panes.save(u.shell, time.Now(), false))
+						if u.expireNotice(time.Now()) {
+							u.dirty = true
+						}
 						if u.view.expireFlash(time.Now()) {
 							u.dirty = true
 						}
@@ -383,6 +387,13 @@ func (u *appServerUI) message(m appServerMessage) error {
 				return u.restorePaneContent(result.Thread)
 			}
 		case "turn/start", "turn/steer":
+			if u.status == "Sending…" && !u.alert {
+				if u.turn != "" {
+					u.status = "Working"
+				} else if u.starting {
+					u.status = "Starting turn…"
+				}
+			}
 			u.submittedImages = nil
 			u.submitted = ""
 			u.submissionSeq = 0
@@ -539,9 +550,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		// then interrupts the active turn, and otherwise quits like /quit.
 		if u.draft != "" {
 			u.deleteDraftRange(0, len(u.draft))
-			u.notice = "Draft cleared · Ctrl+Z restores · Ctrl-C again quits"
+			u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again quits", false)
 			if u.turn != "" || u.starting || u.submitted != "" {
-				u.notice = "Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts"
+				u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
 			}
 			return false, nil
 		}
@@ -552,7 +563,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if !u.starting && u.submitted == "" {
 			return true, nil
 		}
-		u.notice = "Turn is starting · nothing to interrupt yet"
+		u.setNotice("Turn is starting · nothing to interrupt yet", false)
 	case 127, 8:
 		u.deleteDraft(true)
 	case '\n':
@@ -564,11 +575,11 @@ func (u *appServerUI) key(key byte) (bool, error) {
 				u.draft = ""
 				return true, nil
 			}
-			u.notice = "Interrupt the active turn before quitting"
+			u.setNotice("Interrupt the active turn before quitting", false)
 			return false, nil
 		}
 		if strings.HasPrefix(text, "/") {
-			u.notice, u.noticeAlert = "Unknown command "+strings.Fields(text)[0]+" · only /quit is available", true
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · only /quit is available", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil || u.starting || u.submitted != "" {
@@ -583,7 +594,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			u.starting = true
 		}
 		u.submitted, u.status, u.alert = u.draft, "Sending…", false
-		u.notice, u.noticeAlert = "", false
+		u.setNotice("", false)
 		u.view.follow()
 		u.submissionSeq = u.view.lastSeq + 1
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.submissionSeq, Agent: "You", Kind: "text", Text: u.draft, Observed: time.Now(),
@@ -825,6 +836,23 @@ func (u *appServerUI) activeReasoning() string {
 		return ""
 	}
 	return reasoningSummaryHeader(livediff.Safe(entry.Text, false))
+}
+
+// Successful feedback is transient; actionable errors remain until editing.
+func (u *appServerUI) setNotice(text string, alert bool) {
+ u.notice, u.noticeAlert = text, alert
+ u.noticeUntil = time.Time{}
+ if text != "" && !alert {
+  u.noticeUntil = time.Now().Add(3 * time.Second)
+ }
+}
+
+func (u *appServerUI) expireNotice(now time.Time) bool {
+ if u.noticeUntil.IsZero() || now.Before(u.noticeUntil) {
+  return false
+ }
+ u.setNotice("", false)
+ return true
 }
 
 // stateLabel is the session state followed by any composer notice.

@@ -17,14 +17,14 @@ var errOpenComposerEditor = errors.New("open composer editor")
 func (u *appServerUI) openComposerEditor(stdin, stdout *os.File) {
 	file, err := os.CreateTemp("", "mekugi-draft-*.txt")
 	if err != nil {
-		u.notice, u.noticeAlert = "Open editor: "+err.Error(), true
+		u.setNotice("Open editor: "+err.Error(), true)
 		return
 	}
 	path := file.Name()
 	_, writeErr := file.WriteString(u.draft)
 	if err = errors.Join(writeErr, file.Close()); err != nil {
 		_ = os.Remove(path)
-		u.notice, u.noticeAlert = "Open editor: "+err.Error(), true
+		u.setNotice("Open editor: "+err.Error(), true)
 		return
 	}
 	editor := strings.TrimSpace(os.Getenv("EDITOR"))
@@ -51,11 +51,11 @@ func (u *appServerUI) openComposerEditor(stdin, stdout *os.File) {
 		}
 	}
 	if err != nil {
-		u.notice, u.noticeAlert = fmt.Sprintf("Editor: %v · draft preserved at %s", err, path), true
+		u.setNotice(fmt.Sprintf("Editor: %v · draft preserved at %s", err, path), true)
 		return
 	}
 	_ = os.Remove(path)
-	u.notice, u.noticeAlert = "Draft updated from editor", false
+	u.setNotice("Draft updated from editor", false)
 }
 
 func (u *appServerUI) applyEditorDraft(text string) error {
