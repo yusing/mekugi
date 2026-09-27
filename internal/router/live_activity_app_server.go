@@ -116,7 +116,8 @@ type liveActivityNativeItem struct {
 	phase              string
 	command, status    string
 	searchResults      *int
-	question           uint64 // Original user entry, retained even for a live journal publication.
+	images             []composerImage // Attachment spans, not text resembling image labels.
+	question           uint64          // Original user entry, retained even for a live journal publication.
 }
 
 func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {
@@ -170,7 +171,9 @@ func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, de
 					entry.Text += content.Text
 				} else if content.Type == "image" || content.Type == "localImage" {
 					imageNumber++
+					start := len(entry.Text)
 					entry.Text += fmt.Sprintf("[Image %d]", imageNumber)
+					entry.native.images = append(entry.native.images, composerImage{start: start, end: len(entry.Text)})
 				}
 			}
 		case "commandExecution":

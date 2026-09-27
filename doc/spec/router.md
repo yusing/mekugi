@@ -399,7 +399,9 @@ Activity in place of the saved diff.
 Main and Activity share the activity view's block parsing, operation grouping
 and viewport logic; each keeps its own entries and follow/unseen state. Typed
 app-server items update entries in place. Image-view items appear as `View`
-with their workspace-relative path, including restored history. Skill reads use
+with their workspace-relative path, including restored history.
+Attached user images are inline model input, not image-view tool calls; they do
+not synthesize a `View` event or claim that the model inspected them. Skill reads use
 the colored `Skill` label; skill scripts display as `Skill  run …`.
 Router-owned output-filter reductions remain muted annotations on their command
 when the host identity matches, otherwise standalone metrics without a duplicate
@@ -449,6 +451,9 @@ removed in the editor; duplicate placeholders reject the edit. Editor failure
 keeps the original draft and reports the recovery file.
 Images are numbered in draft order and sent as `localImage` inputs, leaving image
 XML framing to Codex. Failed submissions restore attachments with the text.
+Submitted and restored attachments retain the composer's highlighted `[Image N]`
+labels. Attachment-bearing messages preserve literal composer text; text that
+only resembles an image label is not highlighted as an attachment.
 Unsubmitted image files remain while referenced by the draft or undo/redo history,
 then are removed, including on exit; submitted files
 remain in temporary storage for Codex history/resume. Submitted text appears immediately and is reconciled with the

@@ -356,7 +356,24 @@ func (v *liveActivityView) flushItem(out *conversationLines, entry activityPaneE
 
 func (v *liveActivityView) userItem(out *conversationLines, entry activityPaneEntry, width int) {
 	band := userBand(v.painter.theme)
-	rows := v.painter.markdown(livediff.Safe(entry.Text, false), width-2)
+	var rows []string
+	if entry.native != nil && len(entry.native.images) > 0 {
+		// Keep attachment-bearing input literal, like the composer: Markdown
+		// syntax must not consume an attachment as a link or code delimiter.
+		var text strings.Builder
+		at := 0
+		for _, image := range entry.native.images {
+			text.WriteString(livediff.Safe(entry.Text[at:image.start], false))
+			text.WriteString("\x1b[1;36m")
+			text.WriteString(livediff.Safe(entry.Text[image.start:image.end], false))
+			text.WriteString("\x1b[22;39m")
+			at = image.end
+		}
+		text.WriteString(livediff.Safe(entry.Text[at:], false))
+		rows = liveActivityWrap(text.String(), width-2, true)
+	} else {
+		rows = v.painter.markdown(livediff.Safe(entry.Text, false), width-2)
+	}
 	if len(rows) == 0 {
 		rows = []string{""}
 	}
@@ -366,7 +383,7 @@ func (v *liveActivityView) userItem(out *conversationLines, entry activityPaneEn
 		if k == 0 {
 			lead = liveActivityPrompt + "❯" + liveActivityReset + " "
 		}
-		line := ansi.Truncate(lead+row, width, "…")
+		line := liveActivityReset + ansi.Truncate(lead+row, width, "…") + liveActivityReset
 		if k == 0 && ansi.StringWidth(line)+2+ansi.StringWidth(stamp) <= width {
 			line += strings.Repeat(" ", width-ansi.StringWidth(line)-ansi.StringWidth(stamp)) + stamp
 		}

@@ -598,7 +598,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.view.follow()
 		u.submissionSeq = u.view.lastSeq + 1
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.submissionSeq, Agent: "You", Kind: "text", Text: u.draft, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.thread, item: fmt.Sprintf("input/%d", u.submissionSeq), phase: "input/pending"}}}})
+			native: &liveActivityNativeItem{thread: u.thread, item: fmt.Sprintf("input/%d", u.submissionSeq), phase: "input/pending", images: slices.Clone(u.images)}}}})
 		for i := range u.images {
 			delete(u.ownedImages, u.images[i].path)
 		}
@@ -840,19 +840,19 @@ func (u *appServerUI) activeReasoning() string {
 
 // Successful feedback is transient; actionable errors remain until editing.
 func (u *appServerUI) setNotice(text string, alert bool) {
- u.notice, u.noticeAlert = text, alert
- u.noticeUntil = time.Time{}
- if text != "" && !alert {
-  u.noticeUntil = time.Now().Add(3 * time.Second)
- }
+	u.notice, u.noticeAlert = text, alert
+	u.noticeUntil = time.Time{}
+	if text != "" && !alert {
+		u.noticeUntil = time.Now().Add(3 * time.Second)
+	}
 }
 
 func (u *appServerUI) expireNotice(now time.Time) bool {
- if u.noticeUntil.IsZero() || now.Before(u.noticeUntil) {
-  return false
- }
- u.setNotice("", false)
- return true
+	if u.noticeUntil.IsZero() || now.Before(u.noticeUntil) {
+		return false
+	}
+	u.setNotice("", false)
+	return true
 }
 
 // stateLabel is the session state followed by any composer notice.
