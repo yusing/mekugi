@@ -196,7 +196,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						u.dirty = true
 					case <-tick.C:
-						u.applyFilterActivity()
+						u.applyObservedActivity()
 						u.paneError(u.panes.save(u.shell, time.Now(), false))
 						if u.view.expireFlash(time.Now()) {
 							u.dirty = true
@@ -297,6 +297,9 @@ func (u *appServerUI) request(method string, params any) error {
 }
 
 func (u *appServerUI) message(m appServerMessage) error {
+	// Input observations precede the output items that answer them. Drain
+	// before a completion, not just on the next paint tick, so links bind once.
+	u.applyObservedActivity()
 	if u.resumeThread != "" && (u.thread == "" || u.restoring != nil) && m.Method != "" {
 		if len(u.resumePending) == 256 {
 			return errors.New("resume event capacity exceeded; session state is incomplete")
@@ -640,6 +643,23 @@ func (u *appServerUI) restoreSubmission() {
 // root activity stays in Main, but a directed message belongs at both ends.
 func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activityPaneAgent) {
 	paneEntries := slices.Clone(entries)
+	for i, entry := range paneEntries {
+		if entry.Kind == "reply" {
+			from, to, _, _, ok := parseLiveActivityEnvelope(entry.Text)
+			if ok {
+				paneEntries[i].Agent = from
+				if from == "/root" {
+					paneEntries[i].Agent = to
+				}
+			}
+		}
+	}
+	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: paneEntries, Agents: agents})
+	for _, entry := range paneEntries {
+		if entry.Kind == "final" {
+			u.agents.linkChildAnswers(u.agents.entrySeq(entry))
+		}
+	}
 	for i, entry := range entries {
 		main := entry.Agent == "/root" && (entry.Kind == "tool" || entry.Kind == "exit" || entry.Kind == "output_filter" || entry.Kind == "reasoning")
 		if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil {
@@ -653,25 +673,24 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 			from, to, _, _, ok := parseLiveActivityEnvelope(entry.Text)
 			if ok {
 				main = from == "/root" || to == "/root"
-				if from == "/root" && to != "/root" {
-					paneEntries[i].Agent = to
-					entry.Agent = "/root"
-				}
+				entry.Agent = from
 			}
 		}
 		main = main || (entry.Kind == "final" || entry.Kind == "start") && entry.Agent != "/root"
 		if main {
+			if entry.Kind == "final" || entry.Kind == "reply" {
+				entry.activitySeq = u.agents.entrySeq(paneEntries[i])
+			}
 			entry.Seq = u.view.lastSeq + 1
 			if entry.Agent == "/root" {
 				entry.Agent = "Main"
 			}
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 			if entry.Kind == "final" {
-				u.view.linkChildAnswers(entry.Seq)
+				u.view.linkChildAnswers(u.view.entrySeq(entry))
 			}
 		}
 	}
-	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: paneEntries, Agents: agents})
 	u.applyCapturedEdits()
 }
 
@@ -912,12 +931,13 @@ func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	return u.shell.paintNative(ctx, out)
 }
 
-// Provider output filtering is auxiliary router evidence, not an app-server item.
-func (u *appServerUI) applyFilterActivity() {
+// Router-owned annotations and authenticated directed inputs supplement the
+// native event stream without becoming assistant speech or execution events.
+func (u *appServerUI) applyObservedActivity() {
 	if u.proxy == nil {
 		return
 	}
-	entries := u.proxy.activity.takeNativeFilters(u.thread)
+	entries := u.proxy.activity.takeNativeActivity(u.thread)
 	for i := range entries {
 		entries[i].Seq = u.session.next()
 	}

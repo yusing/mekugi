@@ -607,12 +607,16 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 			activityThreadID = threadID
 		}
 	}
-	for _, message := range subagentDeferred {
+	for i, message := range subagentDeferred {
 		var content []struct {
 			Text string `json:"text"`
 		}
 		if json.Unmarshal(message["content"], &content) == nil && len(content) == 1 {
-			p.activity.collect(activityThreadID, jsonString(message, "id"), "reply", content[0].Text)
+			text := content[0].Text
+			if p.activity.nativeOwns(activityThreadID) {
+				text = envelopes.nativeText[i]
+			}
+			p.activity.collect(activityThreadID, jsonString(message, "id"), "reply", text)
 		}
 	}
 	if metadata.SubagentKind == "thread_spawn" {
@@ -623,7 +627,9 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	for _, final := range envelopes.finals {
 		p.activity.markFinal(activityThreadID, final)
 	}
-	if recipient == "/root" && activityThreadID != "" {
+	if p.activity.nativeOwns(activityThreadID) {
+		subagentDeferred = nil
+	} else if recipient == "/root" && activityThreadID != "" {
 		subagentDeferred = p.activity.divertRootReplies(activityThreadID, subagentDeferred, envelopes.senders)
 	}
 	if activityThreadID != "" {

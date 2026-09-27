@@ -54,6 +54,18 @@ type activityPaneEntry struct {
 	journal      *journalItem            // Native presentation keeps IDs/questions separate from rendered text.
 	journalItems []journalItem           // One terminal delivery uses Activity's existing grouped result renderer.
 	assignment   *activityAssignment     // Validated native NEW_TASK, not an ordinary message.
+	activitySeq  uint64                  // Main excerpt's exact entry in Activity, never a question target.
+}
+
+// Native sessions present authenticated message observations outside provider
+// output. Do not inject legacy envelopes into any member's assistant speech.
+func (a *subagentActivity) nativeOwns(thread string) bool {
+	if a == nil || thread == "" {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.pane != nil && a.pane.native && a.pane.state == activityPaneAttached && a.pane.root == a.rootLocked(thread)
 }
 
 type activityPaneAgent struct {
@@ -348,27 +360,33 @@ func (a *subagentActivity) syncPaneRoles(parent string, roles map[string]journal
 	a.wakePaneLocked()
 }
 
-// takeNativeFilters drains only router-owned annotations. App-server remains
-// the sole owner of native command, message, and roster lifecycle events.
-func (a *subagentActivity) takeNativeFilters(root string) []activityPaneEntry {
- if a == nil { return nil }
- a.mu.Lock()
- defer a.mu.Unlock()
- if a.closed || a.pane == nil || !a.pane.native || a.pane.state != activityPaneAttached || a.pane.root != root {
-  return nil
- }
- a.expireLocked(time.Now())
- var entries []activityPaneEntry
- kept := a.events[:0]
- for _, event := range a.events {
-  node := a.threads[event.thread]
-  if event.kind != "output_filter" || node == nil || node.conflicted || a.rootLocked(event.thread) != root {
-   kept = append(kept, event)
-   continue
-  }
-  entries = append(entries, activityPaneEntry{Agent: node.name, Kind:event.kind, Text:event.raw, CallID:event.callID, Filter:event.filter, Observed:event.observed})
- }
- clear(a.events[len(kept):])
- a.events = kept
- return entries
+func nativeObservedActivity(kind string) bool {
+	return kind == "output_filter" || kind == "reply" || kind == "start" || kind == "assignment"
+}
+
+// takeNativeActivity drains router-owned annotations and authenticated input
+// messages that V2 app-server does not expose. Lifecycle stays app-server owned.
+func (a *subagentActivity) takeNativeActivity(root string) []activityPaneEntry {
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || a.pane == nil || !a.pane.native || a.pane.state != activityPaneAttached || a.pane.root != root {
+		return nil
+	}
+	a.expireLocked(time.Now())
+	var entries []activityPaneEntry
+	kept := a.events[:0]
+	for _, event := range a.events {
+		node := a.threads[event.thread]
+		if !nativeObservedActivity(event.kind) || node == nil || node.conflicted || a.rootLocked(event.thread) != root {
+			kept = append(kept, event)
+			continue
+		}
+		entries = append(entries, activityPaneEntry{Agent: node.name, Kind: event.kind, Text: event.raw, CallID: event.callID, Filter: event.filter, Observed: event.observed, assignment: event.assignment})
+	}
+	clear(a.events[len(kept):])
+	a.events = kept
+	return entries
 }

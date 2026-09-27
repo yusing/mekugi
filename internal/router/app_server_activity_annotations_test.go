@@ -26,7 +26,7 @@ func TestAppServerNativeFilterActivity(t *testing.T) {
 				publish := func() {
 					event := exploreFilterEvent{Command: item.Command, LinesBefore: 10, LinesRemoved: 5}
 					activity.collectEvent(activityEvent{thread: thread, source: "filter", kind: "output_filter", callID: "cmd", text: event.text(), filter: &event})
-					u.applyFilterActivity()
+					u.applyObservedActivity()
 				}
 				if timing == "before" {
 					publish()
@@ -39,7 +39,7 @@ func TestAppServerNativeFilterActivity(t *testing.T) {
 				if timing == "after" {
 					publish()
 				}
-				u.applyFilterActivity()
+				u.applyObservedActivity()
 				if len(view.entries) != 1 || len(view.blocks[0]) != 2 || view.blocks[0][0].verb != "Search" || view.blocks[0][1].kind != "filter" {
 					t.Fatalf("filter lifecycle: entries=%+v blocks=%+v", view.entries, view.blocks)
 				}
@@ -47,7 +47,7 @@ func TestAppServerNativeFilterActivity(t *testing.T) {
 				if !strings.Contains(rows, liveActivityDim) || !strings.Contains(ansi.Strip(rows), "−5/10 lines") {
 					t.Fatalf("filter style: %q", rows)
 				}
-				if len(activity.takeNativeFilters("other")) != 0 {
+				if len(activity.takeNativeActivity("other")) != 0 {
 					t.Fatal("cross-thread annotations")
 				}
 			})
@@ -141,7 +141,7 @@ func TestAppServerCodeModeFilterDoesNotInventCommand(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	event := exploreFilterEvent{Command: item.Command, LinesBefore: 10, LinesRemoved: 5}
 	activity.collectEvent(activityEvent{thread: "main", source: "filtered", kind: "output_filter", callID: "outer-exec", text: event.text(), filter: &event})
-	u.applyFilterActivity()
+	u.applyObservedActivity()
 	if len(u.view.entries) != 2 || len(u.view.blocks[1]) != 1 || u.view.blocks[1][0].kind != "filter" {
 		t.Fatalf("invented command for unmatched Code Mode filter: %+v", u.view.blocks)
 	}

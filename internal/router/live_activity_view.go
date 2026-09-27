@@ -60,6 +60,7 @@ type liveActivityView struct {
 	feedSnippets        []liveActivitySnippet
 	feedQuestions       []uint64
 	questionRows        map[uint64]int
+	pendingTarget       uint64 // Cross-pane jump resolved after the destination layout is rendered.
 	// questionHover is the pointed feed line plus one; zero points at none.
 	questionHover                        int
 	flashQuestion                        uint64
@@ -81,6 +82,7 @@ type liveActivityRun struct {
 	lines     []string
 	snippets  []liveActivitySnippet // Aligned with lines.
 	questions []uint64              // Clickable question targets, aligned with lines.
+	entryRows map[uint64]int        // Exact Activity entry starts within a grouped run.
 }
 
 type liveActivityRosterRow struct {
@@ -137,6 +139,14 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			continue
 		}
 		v.lastSeq = entry.Seq
+		if entry.Agent == "Main" && entry.Kind == "text" && entry.native != nil && entry.journal == nil {
+			for _, question := range slices.Backward(v.entries) {
+				if question.Agent == "You" && question.native != nil && question.native.thread == entry.native.thread && question.native.turn == entry.native.turn {
+					entry.native.question = question.Seq
+					break
+				}
+			}
+		}
 		if entry.Kind != "reasoning" && v.mergeNative(entry) {
 			continue
 		}
@@ -1135,7 +1145,10 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 			var blocks []liveActivityBlock
 			for k := i; k <= last; k++ {
 				if v.visible(v.entries[k]) {
-					blocks = append(blocks, v.blocks[k]...)
+					for _, block := range v.blocks[k] {
+						block.source = v.entries[k].Seq
+						blocks = append(blocks, block)
+					}
 				}
 			}
 			observed := v.entries[last].Observed
@@ -1152,6 +1165,9 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 			feed.questions = append(feed.questions, 0)
 		}
 		head := len(feed.lines)
+		for seq, row := range run.entryRows {
+			v.questionRows[seq] = head + row
+		}
 		for range run.lines {
 			feed.heads = append(feed.heads, head)
 		}
@@ -1183,6 +1199,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		lines:     []string{ansi.Truncate(heading, width, "")},
 		snippets:  make([]liveActivitySnippet, 1),
 		questions: make([]uint64, 1),
+		entryRows: make(map[uint64]int),
 	}
 	gutter := liveAgentGutter(agent, v.painter.theme) + "▎" + liveActivityReset + " "
 	if v.childrenOnly {
@@ -1211,6 +1228,11 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			run.questions = append(run.questions, 0)
 		}
 		previousMessage = message
+		if block.source != 0 {
+			if _, exists := run.entryRows[block.source]; !exists {
+				run.entryRows[block.source] = len(run.lines)
+			}
+		}
 		// Messages carry results, so they get twice the operation share.
 		limit := clip
 		if block.kind == "message" || block.kind == "final" {
@@ -1263,6 +1285,13 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 // viewport returns exactly rows lines. When scrolled into a run, that run's
 // heading stays pinned on the first row.
 func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
+	if v.pendingTarget != 0 {
+		if target, ok := v.questionRows[v.pendingTarget]; ok {
+			v.offset, v.following = max(0, target-1), false // Leave room for the pinned run heading.
+			v.flashQuestion, v.flashUntil = v.pendingTarget, time.Now().Add(700*time.Millisecond)
+		}
+		v.pendingTarget = 0
+	}
 	rows = max(0, rows)
 	v.feedLines, v.feedRows = len(feed.lines), rows
 	if v.following {
@@ -1290,7 +1319,7 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 	}
 	if target, ok := v.questionRows[v.flashQuestion]; ok && time.Now().Before(v.flashUntil) {
 		for row := range lines {
-			if index := v.offset + row; index < len(feed.heads) && feed.heads[index] == target {
+			if index := v.offset + row; index < len(feed.heads) && (feed.heads[index] == target || !v.conversation && index == target) {
 				lines[row] = v.selectRow(lines[row], ansi.StringWidth(lines[row]))
 			}
 		}

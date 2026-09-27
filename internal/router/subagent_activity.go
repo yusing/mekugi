@@ -8,6 +8,10 @@ import (
 	"time"
 )
 
+// Native messages do not travel through the 16 KiB inline commentary envelope.
+// Bound their retained display independently; clipping is explicit in Activity.
+const maxNativeActivityMessageBytes = 64 << 10
+
 // Presentation state is independent of executable-call recovery. Identities and
 // delivered IDs remain available until shutdown. Bounded live queues drop only
 // auxiliary updates with a notice, without disabling later updates or exposing old commentary.
@@ -160,7 +164,14 @@ func (a *subagentActivity) collectEventLocked(event activityEvent) {
 		text = attributedCommentary(node.name, text)
 	}
 	if len(text) > maxCommentaryPublicationBytes {
-		return
+		if kind != "reply" || a.pane == nil || !a.pane.native || a.pane.root != a.rootLocked(thread) {
+			return
+		}
+		if len(raw) > maxNativeActivityMessageBytes {
+			const clipped = "\n… (message clipped at the native Activity 64 KiB display limit)"
+			raw = strings.ToValidUTF8(raw[:maxNativeActivityMessageBytes-len(clipped)], "") + clipped
+			text = raw
+		}
 	}
 	now := time.Now()
 	a.expireLocked(now)
@@ -187,9 +198,10 @@ func (a *subagentActivity) collectEventLocked(event activityEvent) {
 	if kind == "start" && event.assignment != nil && event.assignment.id != "" {
 		node.seen[commentaryMessageID(event.assignment.id)] = struct{}{}
 	}
-	// The native frontend reads this root's activity from app-server; its claim
-	// only keeps the activity out of Main's provider responses.
-	if a.pane != nil && a.pane.native && a.pane.root == a.rootLocked(thread) && kind != "output_filter" {
+	// V2 app-server owns execution/lifecycle, but its SubAgentActivity item
+	// carries no assignment or directed-message body. Keep those authenticated
+	// request observations for the native pane, never inject them as speech.
+	if a.pane != nil && a.pane.native && a.pane.root == a.rootLocked(thread) && !nativeObservedActivity(kind) {
 		return
 	}
 	event.source, event.callID, event.text, event.raw, event.observed = source, callID, text, raw, now

@@ -10,7 +10,7 @@ import (
 
 func TestNativeActivityFollowupAssignments(t *testing.T) {
 	// The native claim keeps child activity out of Main's provider responses
-	// without queueing it; app-server supplies the displayed activity.
+	// while retaining prompt bodies missing from V2 app-server notifications.
 	a := newSubagentActivity()
 	a.attachNativePane("main")
 	a.observe("child", "main", "/root/reviewer", true)
@@ -21,8 +21,12 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.collectSubagentStart("child", &request, "/root/reviewer")
-	if len(a.events) != 0 || len(a.drain("main", time.Time{}, maxCommentaryPublicationBytes)) != 0 {
+	if len(a.drain("main", time.Time{}, maxCommentaryPublicationBytes)) != 0 {
 		t.Fatal("native-claimed activity was queued for inline delivery")
+	}
+	observed := a.takeNativeActivity("main")
+	if len(observed) != 1 || observed[0].assignment == nil || observed[0].assignment.text != "Check the original answer." {
+		t.Fatal("native assignment body was lost")
 	}
 
 	u := newAppServerSessionTestUI(t, t.TempDir())
@@ -93,10 +97,13 @@ func TestNativeActivityCumulativeAnswerTargets(t *testing.T) {
 	assignment(3, "followup") // Identical wording, distinct actual question.
 	completion(4, first, journalItem{ID: "apple", Question: question, Text: "Follow-up review."})
 	groups := u.view.blocks[len(u.view.blocks)-1][0].journal.groups
-	if len(groups) != 2 || groups[0].target != 1 || groups[1].target != 3 {
+	if len(groups) != 1 || groups[0].target != 3 || u.view.blocks[1][0].journal.groups[0].target != 1 {
 		t.Fatalf("cumulative answers lost their original assignment targets: %+v", groups)
 	}
 	feed := u.view.renderFeed(100, 60)
+	if strings.Count(ansi.Strip(strings.Join(feed.lines, "\n")), "First review.") != 1 {
+		t.Fatal("cumulative snapshot repeated the previous reply")
+	}
 	if strings.Contains(ansi.Strip(strings.Join(feed.lines, "\n")), "not loaded") {
 		t.Fatal("normalized question text did not resolve to the original assignment")
 	}
@@ -107,6 +114,16 @@ func TestNativeActivityCumulativeAnswerTargets(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("rendered answer has no clickable target %d", target)
+		}
+	}
+	// Narrow Activity must use the same parsed, deduplicated answers, not
+	// fall back to the original cumulative wire body.
+	u.agents.only, u.agents.selected = true, "/root/reviewer"
+	for _, width := range []int{13, 80} {
+		text := ansi.Strip(strings.Join(u.agents.renderFeed(width, 100).lines, "\n"))
+		words := strings.Join(strings.Fields(strings.NewReplacer("│", "", "▎", "").Replace(text)), " ")
+		if strings.Count(words, "First review.") != 1 || strings.Contains(words, "Journal result") {
+			t.Fatalf("width %d bypassed parsed journal: %s", width, text)
 		}
 	}
 }

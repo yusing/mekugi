@@ -200,8 +200,11 @@ func (u *appServerUI) sessionEvent(m appServerMessage) (bool, error) {
 		u.observeCost(p.ThreadID, agent)
 		// A child whose provider omits the answer phase still finishes with
 		// its last message; Main shows it as the child's answer.
-		if last, ok := s.messages[p.ThreadID]; ok && !main && !s.finals[p.ThreadID] {
+		if last, ok := s.messages[p.ThreadID]; ok && !main && !s.finals[p.ThreadID] && p.Turn.Status == "completed" && last.native.turn == p.Turn.ID {
 			last.Seq, last.Kind = s.next(), "final"
+			native := *last.native
+			native.phase = "item/completed"
+			last.native = &native
 			entries = append(entries, last)
 		}
 		delete(s.messages, p.ThreadID)
@@ -255,7 +258,7 @@ func (u *appServerUI) sessionEvent(m appServerMessage) (bool, error) {
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerEditText(item, s.cwd), CallID: id, Observed: now, native: native})
 			}
 		case "collabAgentToolCall":
-			if m.Method == "item/completed" {
+			if m.Method == "item/completed" && (item.Status == "" || item.Status == "completed") {
 				entries = append(entries, s.collab(item, id, now)...)
 			}
 		case "agentMessage":
@@ -269,6 +272,7 @@ func (u *appServerUI) sessionEvent(m appServerMessage) (bool, error) {
 			entry := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "text", Text: item.Text, Observed: now, native: native}
 			if item.Phase == "final_answer" || item.Phase == "finalAnswer" {
 				entry.Kind = "final"
+				native.phase = "item/completed"
 				s.finals[p.ThreadID] = true
 			}
 			s.messages[p.ThreadID] = entry

@@ -397,7 +397,7 @@ command (including unmatched Code Mode calls).
 Search rows show a muted `(N results)` when complete, attributable output supplies
 a count: local result records (or explicit count totals), or a web result array.
 Missing, truncated, failed, or ambiguous local output has no inferred count.
-Main renders them as an unclipped transcript: user messages on a tinted
+Main renders user messages on a tinted
 band, assistant text under one `main` heading, tool runs drawn as a tree, agent
 start/message/finish events labelled `sender → recipient`, final answers as
 cards, and journal blocks. Its composer supports a new thread, submission, steering and
@@ -467,10 +467,23 @@ or answer, then the body at full width, separated by blank rows so narrow panes
 stay readable. Directed Main/agent messages appear at both ends. Native
 assignments, including follow-ups, keep their own identities; spawn and its first
 prompt form one event, and full-history requests do not replay them. In Main,
-child answers link (`↩ re:`) to their retained assignment, not to a message with
-similar text. Hovering a loaded link underlines it; clicking it scrolls to and
-briefly shades the linked message. A child turn that completes without a final answer promotes its
-last message to the answer.
+child replies are short excerpts with a link that activates Activity, selects
+the owning agent, and scrolls to that exact reply. The full message stays in
+Activity. Child answers link (`↩ re:`) to their retained assignment, not to a
+previous answer or similar text. Main's ordinary replies link to the user input
+in their own turn. The `re:` label includes the target text; if only the question
+text is retained, it remains text rather than a fabricated navigation target.
+Hovering a navigable link underlines it; clicking it scrolls to and briefly
+shades the target. Cumulative child journals display each answer ID once,
+preserving its original assignment across follow-ups. A successfully completed
+child turn without a final answer promotes only that same turn's last message.
+Codex V2 activity notifications carry no directed-message or assignment body.
+The native UI supplements them with the router's authenticated recipient-input
+observations, retaining plaintext message bodies and assignment identities
+exactly once. Native message display has a separate 64 KiB limit, with an explicit
+clipping marker above it, rather than the inline commentary excerpt limit.
+App-server still owns tool execution and agent lifecycle. Legacy
+received envelopes are not injected into either parent's or child's provider output.
 
 Native public reasoning summaries appear for Main and children, from summary
 deltas or completed/history items. Main retains dim italic summary bodies in its

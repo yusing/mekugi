@@ -12,6 +12,7 @@ import (
 // so it can lay them out natively. Unrecognized text stays a plain text block;
 // nothing is interpreted, expanded, or executed.
 type liveActivityBlock struct {
+	source   uint64 // Activity entry identity for exact cross-pane navigation.
 	kind     string // op, reads, message, start, error, text
 	verb     string // Operation verb, or a message headline.
 	label    string // Markdown remainder of the operation label.

@@ -123,6 +123,15 @@ func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {
 	return other != nil && n.thread == other.thread && n.turn == other.turn && n.item == other.item
 }
 
+func (v *liveActivityView) entrySeq(entry activityPaneEntry) uint64 {
+	for _, current := range v.entries {
+		if entry.native != nil && entry.native.sameItem(current.native) || entry.native == nil && current.Seq == entry.Seq {
+			return current.Seq
+		}
+	}
+	return 0
+}
+
 func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, delta string, item appServerItem) {
 	if thread == "" || turn == "" || id == "" {
 		return
@@ -217,6 +226,7 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 			entry.journalItems = items
 		}
 		entry.Seq, entry.Observed = previous.Seq, previous.Observed
+		entry.native.question = previous.native.question
 		blocks := parseLiveActivity(entry)
 		for _, annotation := range v.blocks[i] {
 			if annotation.kind == "filter" {
@@ -250,6 +260,7 @@ func (v *liveActivityView) linkChildAnswers(seq uint64) {
 	}
 	owner := v.entries[index].Agent
 	known := make(map[string]uint64)
+	previousAnswers := make(map[string]*liveActivityAnswer)
 	for i, entry := range v.entries[:index] {
 		if entry.Agent != owner {
 			continue
@@ -257,8 +268,9 @@ func (v *liveActivityView) linkChildAnswers(seq uint64) {
 		for _, block := range v.blocks[i] {
 			if block.journal != nil {
 				for _, group := range block.journal.groups {
-					for _, answer := range group.answers {
+					for j, answer := range group.answers {
 						known[answer.id] = group.target
+						previousAnswers[answer.id] = &group.answers[j]
 					}
 				}
 			}
@@ -287,6 +299,10 @@ func (v *liveActivityView) linkChildAnswers(seq uint64) {
 			first := len(groups)
 			for _, answer := range group.answers {
 				target, seen := known[answer.id]
+				if previous := previousAnswers[answer.id]; previous != nil {
+					previous.text = answer.text
+					continue // A cumulative snapshot updates, rather than repeats, an earlier answer.
+				}
 				if !seen {
 					target = current
 					known[answer.id] = target

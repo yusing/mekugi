@@ -107,6 +107,9 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 					} else {
 						index := s.startY - s.rect.y
 						if index < len(s.questions) && s.questions[index] != 0 {
+							if s.view == u.main.view && u.openActivityReply(s.questions[index]) {
+								return true
+							}
 							if target, ok := s.view.questionRows[s.questions[index]]; ok {
 								s.view.offset, s.view.following = target, false
 								s.view.flashQuestion = s.questions[index]

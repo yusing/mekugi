@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi"
 	"golang.org/x/term"
@@ -249,17 +250,19 @@ type nativePreviewStep struct {
 }
 
 type nativePreview struct {
-	t         *testing.T
-	ui        *appServerUI
-	input     *appServerTestInput
-	store     *mekugiReplayStore
-	usage     *threadUsage
-	workspace string
-	message   int
-	calls     int
-	steps     []nativePreviewStep
-	step      int
-	active    map[string]string // Running turn by thread.
+	t           *testing.T
+	ui          *appServerUI
+	input       *appServerTestInput
+	store       *mekugiReplayStore
+	usage       *threadUsage
+	workspace   string
+	message     int
+	calls       int
+	steps       []nativePreviewStep
+	step        int
+	active      map[string]string // Running turn by thread.
+	assignments map[string]string
+	answers     map[string][]journalItem
 }
 
 func newNativePreview(t *testing.T) *nativePreview {
@@ -279,7 +282,10 @@ func newNativePreview(t *testing.T) *nativePreview {
 		}
 	}
 	usage := newThreadUsage()
-	u.proxy = &mekugiProxy{usage: usage}
+	u.proxy = newManagedMekugiProxy(t)
+	u.proxy.usage = usage
+	u.proxy.activity.observe("main", "", "/root", false)
+	u.proxy.activity.attachNativePane("main")
 	u.model, u.reasoningEffort = "gpt-6-luna", "medium"
 	u.ensureShell()
 	u.shell.diff.close()
@@ -290,7 +296,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 		return max(1, u.shell.layout.diff.w), max(3, u.shell.layout.diff.h), nil
 	}
 	u.session.start("main", workspace)
-	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace, active: make(map[string]string)}
+	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace, active: make(map[string]string), assignments: make(map[string]string), answers: make(map[string][]journalItem)}
 	store.liveDiff = func(changes []liveDiffChange) {
 		u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "change", Changes: changes})
 	}
@@ -344,8 +350,9 @@ func (p *nativePreview) add(name string, run func()) {
 	p.steps = append(p.steps, nativePreviewStep{name, run})
 }
 
-// Each preview edit is one apply_patch call. The shared router preview streams
-// while the model writes; Codex applies it and reports the item.
+// Each preview edit simulates one apply_patch call: shared preview streaming,
+// temporary workspace effects, and the resulting app-server file-change item.
+// This fake session does not invoke Codex or execute model-written commands.
 type nativePreviewEdit struct {
 	thread, item, patch string
 }
@@ -402,7 +409,7 @@ func (p *nativePreview) apply(edit nativePreviewEdit) {
 	p.ui.shell.applyDiff(p.ui.ctx, liveDiffEvent{Kind: "preview", Preview: &preview})
 	change := edit.change(-1)
 	item := map[string]any{"id": edit.item, "type": "fileChange", "status": "inProgress", "changes": []any{change}}
-	p.notify("item/started", map[string]any{"threadId": edit.thread, "turnId": "turn-" + edit.thread, "item": item})
+	p.notify("item/started", map[string]any{"threadId": edit.thread, "turnId": p.active[edit.thread], "item": item})
 	path := change["path"].(string)
 	absolute := filepath.Join(p.workspace, path)
 	before, err := os.ReadFile(absolute)
@@ -427,40 +434,73 @@ func (p *nativePreview) apply(edit nativePreviewEdit) {
 		}})
 	}
 	item["status"] = "completed"
-	p.notify("item/completed", map[string]any{"threadId": edit.thread, "turnId": "turn-" + edit.thread, "item": item})
+	p.notify("item/completed", map[string]any{"threadId": edit.thread, "turnId": p.active[edit.thread], "item": item})
 }
 
 func (p *nativePreview) command(thread, id, command string, actions []map[string]any, exit int) {
 	item := map[string]any{"id": id, "type": "commandExecution", "command": command, "cwd": p.workspace, "status": "inProgress", "commandActions": actions}
-	p.notify("item/started", map[string]any{"threadId": thread, "turnId": "turn-" + thread, "item": item})
+	p.notify("item/started", map[string]any{"threadId": thread, "turnId": p.active[thread], "item": item})
 	item["status"], item["exitCode"] = "completed", exit
-	p.notify("item/completed", map[string]any{"threadId": thread, "turnId": "turn-" + thread, "item": item})
+	p.notify("item/completed", map[string]any{"threadId": thread, "turnId": p.active[thread], "item": item})
 }
 
 func (p *nativePreview) spawn(id, thread, path, role, prompt string) {
+	p.assignments[thread] = prompt
 	p.notify("thread/started", map[string]any{"thread": map[string]any{"id": thread, "parentThreadId": "main", "agentRole": role, "cwd": p.workspace,
 		"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"parent_thread_id": "main", "depth": 1, "agent_path": path, "agent_role": role}}}}})
-	p.notify("item/completed", map[string]any{"threadId": "main", "turnId": "turn-main", "item": map[string]any{"id": id, "type": "collabAgentToolCall", "tool": "spawnAgent", "status": "completed",
-		"senderThreadId": "main", "receiverThreadIds": []string{thread}, "prompt": prompt, "model": "gpt-6-luna", "reasoningEffort": "medium"}})
+	p.notify("item/completed", map[string]any{"threadId": "main", "turnId": p.active["main"], "item": map[string]any{"id": id, "type": "subAgentActivity", "agentThreadId": thread, "agentPath": path, "kind": "spawned"}})
+	p.receive(thread, "main", id, "NEW_TASK", prompt)
 	p.notify("turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn-" + thread}})
 }
 
+// V2 collaboration emits only a body-free activity item. The prompt becomes
+// visible when the router observes the authenticated recipient request.
 func (p *nativePreview) collab(id, tool, from, to, prompt string) {
-	p.notify("item/completed", map[string]any{"threadId": from, "turnId": "turn-" + from, "item": map[string]any{"id": id, "type": "collabAgentToolCall", "tool": tool, "status": "completed",
-		"senderThreadId": from, "receiverThreadIds": []string{to}, "prompt": prompt}})
+	p.notify("item/completed", map[string]any{"threadId": from, "turnId": p.active[from], "item": map[string]any{"id": id, "type": "subAgentActivity", "agentThreadId": to, "agentPath": p.ui.session.path(to), "kind": "interacted"}})
+	kind := "MESSAGE"
+	if tool == "followupTask" {
+		p.assignments[to] = prompt
+		kind = "NEW_TASK"
+	}
+	p.receive(to, from, id, kind, prompt)
+	if tool == "followupTask" {
+		p.notify("turn/started", map[string]any{"threadId": to, "turn": map[string]any{"id": "turn-" + to + "-" + id}})
+	}
+}
+
+func (p *nativePreview) receive(to, from, id, kind, body string) {
+	path, sender := p.ui.session.path(to), p.ui.session.path(from)
+	envelope := map[string]any{"type": "agent_message", "id": id, "author": sender, "recipient": path,
+		"content": []any{map[string]any{"type": "input_text", "text": "Message Type: " + kind + "\nTask name: " + path + "\nSender: " + sender + "\nPayload:\n" + body}}}
+	parent := "main"
+	if to == "main" {
+		parent = ""
+	}
+	transform, _ := prepareActivityTest(p.t, p.ui.proxy, "preview-"+to, to, parent, path, []any{envelope})
+	transform.Close()
+	p.ui.applyObservedActivity()
 }
 
 func (p *nativePreview) say(thread, id, phase, text string) {
+	// Child completions use the journal owner's cumulative result grammar,
+	// not hand-painted answer cards. Follow-ups must retain old answer IDs.
+	if thread != "main" && phase == "final_answer" {
+		p.answers[thread] = append(p.answers[thread], journalItem{ID: id, Question: p.assignments[thread], Text: text})
+		var result strings.Builder
+		result.WriteString("Journal result " + commentaryCode(p.ui.session.path(thread)))
+		writeJournalItems(&result, p.answers[thread])
+		text = result.String()
+	}
 	item := map[string]any{"id": id, "type": "agentMessage", "text": text}
 	if phase != "" {
 		item["phase"] = phase
 	}
-	p.notify("item/completed", map[string]any{"threadId": thread, "turnId": "turn-" + thread, "item": item})
+	p.notify("item/completed", map[string]any{"threadId": thread, "turnId": p.active[thread], "item": item})
 }
 
 func (p *nativePreview) think(thread, id, text string) {
 	for _, delta := range strings.SplitAfter(text, " ") {
-		p.notify("item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "turn-" + thread, "itemId": id, "delta": delta, "summaryIndex": 0})
+		p.notify("item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": p.active[thread], "itemId": id, "delta": delta, "summaryIndex": 0})
 	}
 }
 
@@ -468,12 +508,12 @@ func (p *nativePreview) think(thread, id, text string) {
 // router's accounting, which prices them.
 func (p *nativePreview) tokens(thread string, input, output uint64) {
 	p.usage.observation(thread, thread, "gpt-6-luna", "").observe(tokenCounts{InputTokens: input, UncachedInputTokens: input, OutputTokens: output})
-	p.notify("thread/tokenUsage/updated", map[string]any{"threadId": thread, "turnId": "turn-" + thread, "tokenUsage": map[string]any{
+	p.notify("thread/tokenUsage/updated", map[string]any{"threadId": thread, "turnId": p.active[thread], "tokenUsage": map[string]any{
 		"total": map[string]any{"inputTokens": input, "outputTokens": output, "totalTokens": input + output}}})
 }
 
 func (p *nativePreview) finish(thread string) {
-	p.notify("turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn-" + thread, "status": "completed"}})
+	p.notify("turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": p.active[thread], "status": "completed"}})
 }
 
 var nativePreviewFiles = map[string]string{
@@ -571,9 +611,12 @@ func (p *nativePreview) populate() {
 	})
 	p.add("test fails", func() {
 		p.command("t-tester", "cmd-5", "go test -race ./internal/broker", nil, 1)
+		p.say("t-tester", "answer-tester-first", "final_answer", "The initial race test exposed an Unsubscribe race. A follow-up is needed.")
+		p.finish("t-tester")
 	})
 	p.add("follow-up", func() {
 		p.collab("follow-1", "followupTask", "main", "t-tester", "Also cover Unsubscribe racing a publish; the reviewer's note suggests it is the next hole.")
+		p.collab("message-to-tester", "sendMessage", "main", "t-tester", "Keep the test focused; I will handle the integration coverage.")
 	})
 	p.stream("tester follow-up", followEdit)
 	p.add("tester applies", func() {
@@ -586,7 +629,7 @@ func (p *nativePreview) populate() {
 		p.finish("t-explorer")
 	})
 	p.add("reviewer answers", func() {
-		p.say("t-reviewer", "answer-reviewer", "", "The locking is correct. I added `doc.go` with package documentation.")
+		p.say("t-reviewer", "answer-reviewer", "final_answer", "The locking is correct. I added `doc.go` with package documentation.")
 		p.finish("t-reviewer")
 	})
 	p.add("tester answers", func() {
@@ -594,13 +637,11 @@ func (p *nativePreview) populate() {
 		p.finish("t-tester")
 	})
 	p.add("journal", func() {
-		p.ui.view.applyJournal("main", nativeJournalPublication{item: journalItem{ID: "done", Question: task, Author: "/root", Created: 1,
-			Text: "The broker is safe for concurrent publishers.\n\n1. `Publish` copies subscribers under the lock and sends outside it.\n2. Race tests cover publish and unsubscribe.\n3. The pane no longer blocks on its first frame."}, terminal: true, batch: 1})
+		p.say("main", "main-answer", "final_answer", "The broker is safe for concurrent publishers.\n\n1. `Publish` copies subscribers under the lock and sends outside it.\n2. Race tests cover publish and unsubscribe.\n3. The pane no longer blocks on its first frame.")
 	})
 	p.add("done", func() {
 		p.tokens("main", 305_000, 7_200)
 		p.finish("main")
-		p.notify("turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "preview-turn-1", "status": "completed"}})
 	})
 }
 
@@ -796,5 +837,40 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 	}
 	if d.view.Selected == selected || n.entries[n.cursor].file != d.view.Selected {
 		t.Fatal("moving through the tree did not show the file under the cursor")
+	}
+}
+
+// The fake session exercises production event projection, turn association,
+// cumulative journal grammar, and the real mouse path, not a separate mock UI.
+func TestNativeUIPreviewSessionReplyIdentity(t *testing.T) {
+	p := newNativePreview(t)
+	defer p.close()
+	for p.advance() {
+	}
+	main := p.ui.view
+	main.conversation = true
+	feed := main.renderFeed(100, 100)
+	text := ansi.Strip(strings.Join(feed.lines, "\n"))
+	if strings.Contains(text, "Message received:") || strings.Contains(text, "not loaded") || strings.Count(text, "The initial race test exposed") != 1 {
+		t.Fatalf("fake session repeated or misformatted reply: %s", text)
+	}
+	for _, entry := range main.entries {
+		if entry.Kind == "final" && entry.activitySeq == 0 {
+			t.Fatal("preview child reply has no real Activity target")
+		}
+		if entry.native != nil && entry.native.item == "main-answer" {
+			if entry.native.turn != "preview-turn-1" || entry.native.question == 0 {
+				t.Fatalf("preview used a fabricated turn or omitted ordinary reply link: %+v", entry.native)
+			}
+		}
+	}
+	var assignments int
+	for _, entry := range main.entries {
+		if entry.assignment != nil && entry.assignment.to == "/root/tester" {
+			assignments++
+		}
+	}
+	if assignments != 2 {
+		t.Fatalf("fake session did not retain distinct tester assignments: %d", assignments)
 	}
 }

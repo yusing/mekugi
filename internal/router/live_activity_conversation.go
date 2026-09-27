@@ -118,6 +118,9 @@ func (c *conversationLines) hang(lead, indent string, lines []string) {
 func (v *liveActivityView) conversationItem(first, last, width int) liveActivityRun {
 	entry := v.entries[first]
 	blocks := v.blocks[first]
+	if entry.activitySeq != 0 && entry.Kind == "final" && len(blocks) == 1 && blocks[0].journal != nil && len(blocks[0].journal.groups) == 0 {
+		return liveActivityRun{}
+	}
 	var out conversationLines
 	p := &v.painter
 	switch {
@@ -156,6 +159,14 @@ func (v *liveActivityView) conversationItem(first, last, width int) liveActivity
 	case entry.Agent == "Main" && entry.Kind == "text":
 		out.add(0, mainHeading(p, entry, width))
 		gutter := mainGutter(p)
+		if entry.native != nil && entry.native.question != 0 {
+			for _, question := range v.entries[:first] {
+				if question.Seq == entry.native.question {
+					out.add(question.Seq, gutter+v.linkLabel(question, width-2))
+					break
+				}
+			}
+		}
 		out.hang(gutter, gutter, p.markdown(livediff.Safe(entry.Text, false), width-2))
 	default:
 		v.agentItem(&out, entry, blocks, first, width)
@@ -290,9 +301,28 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 	body := width - 2
 	switch {
 	case block.kind == "start" || block.kind == "message":
-		out.hang(gutter, gutter, p.markdown(block.body, body))
+		if entry.activitySeq != 0 && block.from != "/root" {
+			v.replyExcerpt(out, entry, block.body, gutter, body)
+		} else {
+			out.hang(gutter, gutter, p.markdown(block.body, body))
+		}
 	case block.kind == "final" && block.journal != nil:
-		v.journalItem(out, block.journal, index, width, gutter, gutter)
+		if entry.activitySeq == 0 {
+			v.journalItem(out, block.journal, index, width, gutter, gutter)
+		} else {
+			// A completion is one excerpt, even when its journal contains
+			// several answers. Activity retains the complete result.
+			for _, group := range slices.Backward(block.journal.groups) {
+				if len(group.answers) == 0 {
+					continue
+				}
+				if group.question != "" {
+					out.add(group.target, gutter+v.questionLinkLabel(group, index, body))
+				}
+				v.replyExcerpt(out, entry, group.answers[len(group.answers)-1].text, gutter, body)
+				break
+			}
+		}
 	default:
 		for _, block := range blocks {
 			if block.kind == "error" {
@@ -307,12 +337,25 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 						break
 					}
 				}
-				out.hang(gutter, gutter, p.markdown(block.body, body))
+				if entry.activitySeq != 0 {
+					v.replyExcerpt(out, entry, block.body, gutter, body)
+				} else {
+					out.hang(gutter, gutter, p.markdown(block.body, body))
+				}
 				continue
 			}
 			out.hang(gutter, gutter, p.block(block, body))
 		}
 	}
+}
+
+func (v *liveActivityView) replyExcerpt(out *conversationLines, entry activityPaneEntry, text, gutter string, width int) {
+	rows := v.painter.markdown(text, width)
+	if len(rows) > 2 {
+		rows = append(rows[:2:2], liveActivityDim+"…"+liveActivityUndim)
+	}
+	out.hang(gutter, gutter, rows)
+	out.add(entry.Seq, gutter+ansi.Truncate(v.painter.theme.Accent()+"↩ Open reply in Activity"+liveActivityReset, width, "…"))
 }
 
 // journalItem renders milestones with a diamond and each answer below a link
@@ -391,7 +434,8 @@ func (v *liveActivityView) questionLink(group liveActivityAnswerGroup, before in
 func (v *liveActivityView) questionLinkLabel(group liveActivityAnswerGroup, before, width int) string {
 	question, ok := v.questionLink(group, before)
 	if !ok {
-		return ansi.Truncate(liveActivityDim+"↩ re: an earlier message · not loaded"+liveActivityUndim, width, "…")
+		question := strings.Join(strings.Fields(group.question), " ")
+		return ansi.Truncate(liveActivityDim+"↩ re: "+question+liveActivityUndim, width, "…")
 	}
 	return v.linkLabel(question, width)
 }
@@ -402,6 +446,10 @@ func (v *liveActivityView) linkLabel(question activityPaneEntry, width int) stri
 	if question.Kind == "start" || question.Kind == "assignment" {
 		target = "assignment"
 	}
-	label := v.painter.theme.Accent() + "↩ re: " + target + liveActivityReset + liveActivityDim + " " + question.Observed.Local().Format("15:04:05") + liveActivityUndim
+	text := question.Text
+	if question.assignment != nil {
+		text = question.assignment.text
+	}
+	label := v.painter.theme.Accent() + "↩ re: " + target + liveActivityReset + liveActivityDim + " " + question.Observed.Local().Format("15:04:05") + " · " + strings.Join(strings.Fields(livediff.Safe(text, false)), " ") + liveActivityUndim
 	return ansi.Truncate(label, width, "…")
 }

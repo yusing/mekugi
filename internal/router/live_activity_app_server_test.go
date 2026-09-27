@@ -386,7 +386,10 @@ func TestLiveActivityMainJournalContentOnly(t *testing.T) {
 	if !strings.Contains(agents, "✓ Final answer") || strings.Contains(main, "Final answer") {
 		t.Fatal("Main heading change affected Agents or reused stale cache")
 	}
-	for _, hidden := range []string{"Original question", "amber", "apple"} {
+	if !strings.Contains(main, "↩ re: Original question") {
+		t.Fatal("Main lost the actual question text")
+	}
+	for _, hidden := range []string{"amber", "apple"} {
 		if strings.Contains(main, hidden) || !strings.Contains(agents, hidden) {
 			t.Fatalf("journal metadata %q must stay in Agents, not Main", hidden)
 		}

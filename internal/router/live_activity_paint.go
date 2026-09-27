@@ -502,7 +502,7 @@ func (p *liveActivityPainter) event(block liveActivityBlock, width int) []string
 		// The answer is a card, so it stands apart from the work before it.
 		inner := width - 4
 		if inner < 8 {
-			return label(done, p.markdown(block.body, width))
+			inner = width
 		}
 		title := done
 		var rows []string
@@ -527,6 +527,9 @@ func (p *liveActivityPainter) event(block liveActivityBlock, width int) []string
 			tail := *block.journal
 			tail.groups, tail.empty = nil, false
 			rows = append(rows, p.journal(&tail, inner, false)...)
+		}
+		if width < 12 {
+			return label(title, rows)
 		}
 		return liveActivityCard(title, rows, width)
 	case "text":

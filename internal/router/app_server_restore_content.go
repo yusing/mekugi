@@ -227,6 +227,11 @@ func (u *appServerUI) applyRestoredActivity(entries []activityPaneEntry) {
 		}
 	}
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: entries, Agents: slices.Clone(u.session.agents)})
+	for _, entry := range entries {
+		if entry.Kind == "final" {
+			u.agents.linkChildAnswers(u.agents.entrySeq(entry))
+		}
+	}
 	u.applyCapturedEdits()
 }
 

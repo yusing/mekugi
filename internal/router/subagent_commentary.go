@@ -86,6 +86,7 @@ func subagentSpawnAssignment(raw json.RawMessage, recipient string) (string, boo
 // current plaintext final answers for the agents pane, not router commentary.
 type subagentInputEnvelopes struct {
 	commentary []map[string]json.RawMessage
+	nativeText []string // Full directed bodies for the native pane, not inline excerpts.
 	senders    []string
 	finals     []subagentFinal
 }
@@ -149,6 +150,7 @@ func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient 
 		if len(label) <= budget && len(envelopes.commentary) < maxCommentaryEventsPerRoute {
 			budget -= len(label)
 			envelopes.commentary = append(envelopes.commentary, assistantCommentaryMessage(id, label))
+			envelopes.nativeText = append(envelopes.nativeText, direction+"Message received:\n"+text)
 			envelopes.senders = append(envelopes.senders, sender)
 		}
 	}

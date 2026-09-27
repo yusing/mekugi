@@ -24,6 +24,27 @@ const (
 	nativeFramedRows  = 8               // Below this, panes drop their frames.
 )
 
+// A Main excerpt carries an Activity identity, not a nearby question or run.
+func (u *terminalUI) openActivityReply(seq uint64) bool {
+	v := u.main.view
+	for _, entry := range v.entries {
+		if entry.Seq != seq || entry.activitySeq == 0 {
+			continue
+		}
+		for _, target := range u.agents.entries {
+			if target.Seq != entry.activitySeq {
+				continue
+			}
+			u.side, u.activityOpen, u.diffOpen, u.focus = true, true, false, 2
+			u.agents.selected, u.agents.only = target.Agent, true
+			u.agents.runs = nil
+			u.agents.pendingTarget = target.Seq
+			return true
+		}
+	}
+	return false
+}
+
 // preview routes one edit card to its caller's dock.
 func (u *terminalUI) preview(preview liveDiffPreview) {
 	dock, seen := &u.agentDock, &u.dockSeen[1]
