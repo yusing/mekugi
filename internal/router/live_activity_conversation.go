@@ -363,7 +363,8 @@ func (v *liveActivityView) assignmentExcerpt(out *conversationLines, question ac
 	out.add(question.Seq, gutter+ansi.Truncate(header, width, "…"))
 	rows := v.painter.quote(livediff.Safe(question.assignment.text, false), width)
 	if len(rows) > 2 {
-		rows = append(rows[:2:2], v.painter.quote("…", width)...)
+		rows = rows[:2]
+		rows[1] = ansi.Truncate(rows[1], max(0, width-1), "") + liveActivityDim + "…" + liveActivityUndim
 	}
 	for _, row := range rows {
 		out.add(question.Seq, gutter+row)
@@ -373,7 +374,8 @@ func (v *liveActivityView) assignmentExcerpt(out *conversationLines, question ac
 func (v *liveActivityView) replyExcerpt(out *conversationLines, entry activityPaneEntry, text, gutter string, width int) {
 	rows := v.painter.markdown(text, width)
 	if len(rows) > 2 {
-		rows = append(rows[:2:2], liveActivityDim+"…"+liveActivityUndim)
+		rows = rows[:2]
+		rows[1] = ansi.Truncate(rows[1], max(0, width-1), "") + liveActivityDim + "…" + liveActivityUndim
 	}
 	out.hang(gutter, gutter, rows)
 	out.add(entry.Seq, gutter+ansi.Truncate(v.painter.theme.Accent()+"↩ Open reply in Activity"+liveActivityReset, width, "…"))

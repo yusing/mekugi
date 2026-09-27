@@ -127,14 +127,17 @@ func TestNativeAssignmentExcerptWrapsAndRetainsTarget(t *testing.T) {
 	var out conversationLines
 	v.assignmentExcerpt(&out, activityPaneEntry{Seq: 42, Kind: "assignment", assignment: &activityAssignment{text: "Review the response and verify the assignment excerpt wraps without losing its navigation target."}}, "│ ", 36)
 	v.replyExcerpt(&out, activityPaneEntry{Seq: 43}, "The response excerpt remains visible.", "│ ", 36)
-	if len(out.lines) < 6 || !strings.HasPrefix(ansi.Strip(out.lines[1]), "│ │ Review") || !strings.HasPrefix(ansi.Strip(out.lines[2]), "│ │ ") {
+	if len(out.lines) < 5 || !strings.HasPrefix(ansi.Strip(out.lines[1]), "│ │ Review") || !strings.HasPrefix(ansi.Strip(out.lines[2]), "│ │ ") {
 		t.Fatalf("assignment was not separately quoted and wrapped: %q", out.lines)
+	}
+	if !strings.HasSuffix(ansi.Strip(out.lines[2]), "…") || strings.TrimSpace(ansi.Strip(out.lines[2])) == "│ │ …" {
+		t.Fatalf("assignment ellipsis must end the last excerpt line: %q", out.lines)
 	}
 	for i, line := range out.lines {
 		if ansi.StringWidth(line) > 38 {
 			t.Fatalf("row %d overflows: %q", i, line)
 		}
-		if i < 4 && out.questions[i] != 42 {
+		if i < 3 && out.questions[i] != 42 {
 			t.Fatalf("assignment row %d lost its target", i)
 		}
 	}
@@ -158,6 +161,20 @@ func TestLiveActivitySkillNamesBold(t *testing.T) {
 		rendered := strings.Join(v.painter.block(block, 120), "\n")
 		if !strings.Contains(rendered, "\x1b[1mgolang-best-practices"+liveActivityUndim) || !strings.Contains(ansi.Strip(rendered), operand) {
 			t.Fatalf("skill name not bold or operand changed: %q", rendered)
+		}
+	}
+}
+
+func TestNativeReplyExcerptEllipsisStaysInline(t *testing.T) {
+	v := newLiveActivityView()
+	var out conversationLines
+	v.replyExcerpt(&out, activityPaneEntry{Seq: 43}, "First response line.\nSecond response line.\nThird response line.", "│ ", 24)
+	if len(out.lines) != 3 || ansi.Strip(out.lines[1]) != "│ Second response line.…" {
+		t.Fatalf("response ellipsis did not stay inline: %q", out.lines)
+	}
+	for _, line := range out.lines {
+		if ansi.StringWidth(line) > 26 {
+			t.Fatalf("excerpt overflow: %q", line)
 		}
 	}
 }
