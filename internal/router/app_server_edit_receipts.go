@@ -1,6 +1,9 @@
 package router
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // Retain only the display receipt and durable host identities, not scripts or
 // another filesystem snapshot. The live diff loader owns replay and scope.
@@ -55,24 +58,39 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 			continue
 		}
 		// Anchor the receipt to the first recorded host call, regardless of
-		// arrival order. Other grouped calls retain their status, not a second
-		// copy of the receipt or the interpreter source that produced it.
+		// arrival order. Other grouped calls retain actual non-edit operations
+		// and failures, not a duplicate receipt or a bookkeeping placeholder.
 		for index, call := range receipt.calls {
 			i, found := entries[[2]string{receipt.thread, call}]
 			if !found {
 				continue
 			}
 			entry := v.entries[i]
+			exit := 0
+			for _, block := range v.blocks[i] {
+				if block.exitCode != 0 {
+					exit = block.exitCode
+					break
+				}
+			}
 			text := receipt.text
 			if index > 0 {
-				text = "Run · included in grouped edit capture"
+				var remaining []string
+				for _, paragraph := range liveActivityParagraphs(entry.Text) {
+					block := parseLiveActivityOperation(paragraph)
+					if exit == 0 && slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.verb) {
+						continue
+					}
+					remaining = append(remaining, paragraph)
+				}
+				text = strings.Join(remaining, "\n\n")
 			}
 			if entry.Text != text {
 				entry.Text = text
 				blocks := parseLiveActivity(entry)
 				if len(v.blocks[i]) > 0 {
 					for j := range blocks {
-						blocks[j].exitCode = v.blocks[i][0].exitCode
+						blocks[j].exitCode = exit
 					}
 				}
 				v.entries[i], v.blocks[i], v.runs = entry, blocks, nil

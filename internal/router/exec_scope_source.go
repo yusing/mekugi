@@ -24,6 +24,7 @@ type execSourceScope struct {
 	aliases                     map[string]string
 	result                      execProviderResult
 	iterations                  []string
+	intentOnly                  bool // Display classification: no filesystem or nested provider inspection.
 	writes                      bool
 	walkDepth, pathDepth, nodes int
 }
@@ -166,6 +167,9 @@ func (s *execSourceScope) paths(node *sitter.Node) []string {
 		return nil
 	}
 	if value, ok := s.literal(node); ok {
+		if s.intentOnly {
+			return []string{value}
+		}
 		return []string{execProviderPath(s.input.cwd, value)}
 	}
 	if node.Kind() == "identifier" {
@@ -271,7 +275,7 @@ func joinExecPaths(paths []string, segment string) []string {
 }
 
 func (s *execSourceScope) glob(root, pattern string) []string {
-	if !filepath.IsAbs(root) {
+	if s.intentOnly || !filepath.IsAbs(root) {
 		return nil
 	}
 	if filepath.IsAbs(pattern) {
@@ -390,6 +394,34 @@ func (s *execSourceScope) call(function *sitter.Node, args []*sitter.Node) {
 	if alias := s.aliases[base]; alias != "" {
 		base = alias
 	}
+	if s.intentOnly {
+		// Capture deliberately over-approximates ambiguous methods such as
+		// list.remove and stream.write. Display only recognizes file-writing
+		// APIs; those conservative guesses must not hide ordinary commands.
+		if s.python {
+			switch base {
+			case "open":
+				if name != "open" && len(s.paths(function.ChildByFieldName("object"))) == 0 {
+					return
+				}
+			case "write_text", "write_bytes":
+			default:
+				return
+			}
+		} else {
+			switch strings.TrimSuffix(base, "Sync") {
+			case "writeFile", "appendFile", "truncate", "createWriteStream":
+			case "open":
+				if name != "fs.open" && name != "fs.openSync" && name != "fs.promises.open" {
+					return
+				}
+			default:
+				if name != "Bun.write" {
+					return
+				}
+			}
+		}
+	}
 	arg := func(index int) *sitter.Node {
 		if index < len(args) {
 			return args[index]
@@ -448,6 +480,9 @@ func (s *execSourceScope) call(function *sitter.Node, args []*sitter.Node) {
 }
 
 func (s *execSourceScope) subprocess(args []*sitter.Node) {
+	if s.intentOnly {
+		return
+	}
 	if len(args) == 0 {
 		s.result.open = true
 		return

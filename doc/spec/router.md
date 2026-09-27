@@ -342,14 +342,21 @@ Codex's shell recognition. The inner source uses the existing shell highlighting
 or dynamic wrapper words remain intact. This is display-only, including resumed items.
 When Codex cannot classify a command, the shared shell display classifier identifies
 frontend reads, inspections, searches and skill reads after removing a literal
-launch wrapper. Mixed batches retain their unclassified operations as Run entries.
+launch wrapper. Literal `cat` output redirections and recognized inline Python or
+JavaScript file writes show compact `Edit` intent rows marked `requested`, without
+exposing the edit source or claiming saved changes. Heredoc batches classify each
+operation, keeping trailing tests and other unclassified operations as Run entries.
+Display intent inspection never reads target files or runs nested providers.
 Captured shell effects replace the matching command row in Main and Activity
 using durable thread and host-call identities, including after resume. Both use
 the shared edit receipt formatter. Non-`apply_patch` receipts include a subdued
 `cat`, `python3`, or other captured source label, separated by a middle dot; commands without
-captured effects remain Run. A grouped capture is displayed once rather than
-claiming per-command attribution; its other host calls keep compact status rows
-instead of repeating interpreter source.
+captured effects retain their requested intent or ordinary Run classification. A grouped capture is displayed once rather than
+claiming per-command attribution. Successful sibling edit rows are omitted once
+the grouped receipt covers them; real non-edit operations and failures remain
+visible, without internal capture-bookkeeping placeholders. Incomplete capture paths are grouped in
+one coverage notice with a `mchanges` reference, not labeled as confirmed edits;
+the durable records retain each path and its reason.
 
 The shell frames Main on the left and one right pane: the saved diff (2) or
 Activity (3), toggled and each filling the pane. A roster (4) above them fits its

@@ -67,7 +67,7 @@ func TestAppServerCapturedEditReceipts(t *testing.T) {
 	// receives the retained change first, then its native command item.
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "m", "item": map[string]any{
 		"id": "cat-call", "type": "commandExecution", "command": "cat > direct.go <<'EOF'\nnew\nEOF", "exitCode": 2}})
-	assertCapturedCommand(t, u.view, "main", "cat-call", "Run", 2)
+	assertCapturedCommand(t, u.view, "main", "cat-call", "Edit", 2)
 	u.shell.diff.data = snapshot
 	u.applyCapturedEdits()
 	assertCapturedCommand(t, u.view, "main", "cat-call", "Edit", 2)
@@ -76,14 +76,14 @@ func TestAppServerCapturedEditReceipts(t *testing.T) {
 	assertCapturedCommand(t, u.agents, "child", "cat-call", "Read", 0)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
 		"id": "sibling-call", "type": "commandExecution", "command": "rg needle src; python3 - <<'PY'\nopen('nested.go', 'w').write('PRIVATE_EDIT_SOURCE')\nPY", "exitCode": 0}})
-	assertCapturedCommand(t, u.agents, "child", "sibling-call", "Run", 0)
+	assertCapturedCommand(t, u.agents, "child", "sibling-call", "Search", 0)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
 		"id": "python-call", "type": "commandExecution", "command": "python3 - <<'PY'\nopen('nested.go','w').write('new')\nPY", "exitCode": 0}})
 	assertCapturedCommand(t, u.agents, "child", "python-call", "Edit", 0)
-	assertCapturedCommand(t, u.agents, "child", "sibling-call", "Run", 0)
+	assertCapturedCommand(t, u.agents, "child", "sibling-call", "Search", 0)
 	assertCapturedCommand(t, u.view, "main", "cat-call", "Edit", 2)
 	feed := ansi.Strip(strings.Join(u.agents.renderFeed(120, 80).lines, "\n"))
-	if strings.Contains(feed, "PRIVATE_EDIT_SOURCE") || !strings.Contains(feed, "included in grouped edit capture") {
+	if strings.Contains(feed, "PRIVATE_EDIT_SOURCE") || strings.Contains(feed, "included in grouped edit capture") || !strings.Contains(feed, "Search") {
 		t.Fatalf("grouped capture leaked sibling source or lost its status row: %q", feed)
 	}
 	for _, tc := range []struct {
@@ -131,4 +131,42 @@ func assertCapturedCommand(t *testing.T, view *liveActivityView, thread, item, v
 		return
 	}
 	t.Fatalf("missing native command %s", item)
+}
+
+func TestAppServerGroupedReceiptOmitsBookkeeping(t *testing.T) {
+	v := newLiveActivityView()
+	calls := []string{"anchor", "edit", "tests", "failed-edit"}
+	for i, source := range []string{
+		"cat > a.go <<'EOF'\nfirst\nEOF",
+		"cat >> b.go <<'EOF'\nPRIVATE_GROUPED_BODY\nEOF",
+		"go test ./internal/router",
+		"python3 -c 'open(\"c.go\", \"w\").write(\"PRIVATE_FAILED_BODY\")'",
+	} {
+		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+			Seq: uint64(i + 1), Agent: "Main", Kind: "tool", CallID: calls[i], Text: toolActivityShell(source),
+			native: &liveActivityNativeItem{thread: "main", item: calls[i], phase: "item/completed"},
+		}}})
+	}
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+		{Seq: 5, Agent: "Main", Kind: "exit", CallID: "tests", Text: "2"},
+		{Seq: 6, Agent: "Main", Kind: "exit", CallID: "failed-edit", Text: "1"},
+	}})
+	data := newLiveDiffData()
+	data.order = []string{"group"}
+	data.attempts["group"] = liveDiffAttempt{receipt: &capturedActivityEdit{
+		thread: "main", calls: calls, text: "Edit `a.go` +1 -0\n\nEdit `b.go` +1 -0",
+	}}
+	for range 2 {
+		v.applyCapturedEdits(data)
+		if v.entries[1].Text != "" || len(v.blocks[1]) != 0 || v.visible(v.entries[1]) {
+			t.Fatalf("successful sibling retained a placeholder: %+v", v.entries[1])
+		}
+		assertCapturedCommand(t, v, "main", "tests", "Run", 2)
+		assertCapturedCommand(t, v, "main", "failed-edit", "Edit", 1)
+	}
+	feed := ansi.Strip(strings.Join(v.renderFeed(120, 80).lines, "\n"))
+	if strings.Contains(feed, "included in grouped") || strings.Contains(feed, "PRIVATE_") ||
+		!strings.Contains(feed, "go test") || !strings.Contains(feed, "exit 2") || !strings.Contains(feed, "exit 1") {
+		t.Fatalf("grouped receipt hid work/failures or exposed bookkeeping: %q", feed)
+	}
 }

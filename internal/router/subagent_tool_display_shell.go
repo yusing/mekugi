@@ -105,7 +105,16 @@ func toolActivityReads(script string) (string, bool) {
 		}
 		return !hasHeredoc
 	})
+	hasEdit := false
 	if hasHeredoc {
+		syntax.Walk(program, func(node syntax.Node) bool {
+			if statement, ok := node.(*syntax.Stmt); ok && !hasEdit {
+				_, hasEdit = toolActivityEditStatement(statement)
+			}
+			return !hasEdit
+		})
+	}
+	if hasHeredoc && !hasEdit {
 		var source strings.Builder
 		offset := 0
 		for _, statement := range program.Stmts {
@@ -148,12 +157,12 @@ func toolActivityReads(script string) (string, bool) {
 			}
 		} else {
 			start, end := int(statement.Pos().Offset()), toolActivityStatementDisplayEnd(script, statement)
-			source := script[start:end]
+			source := toolActivityStatementSource(script, statement)
 			if strings.ContainsAny(source, "\r\n") {
 				// Retain leading indentation, but not an earlier command on
 				// the same line separated by a semicolon.
 				lineStart := strings.LastIndex(script[:start], "\n") + 1
-				if strings.Trim(script[lineStart:start], " \t") == "" {
+				if !hasHeredoc && strings.Trim(script[lineStart:start], " \t") == "" {
 					source = script[lineStart:end]
 				}
 				display = "Run\n" + toolActivityFenced("bash", source)
@@ -169,6 +178,25 @@ func toolActivityReads(script string) (string, bool) {
 		return "", false
 	}
 	return strings.Join(displays, "\n\n"), true
+}
+
+// Heredoc bodies are deferred past Stmt.End(), sometimes past a sibling on
+// the same line. Print the owning AST instead of slicing off or borrowing bodies.
+func toolActivityStatementSource(script string, statement *syntax.Stmt) string {
+	hasHeredoc := false
+	syntax.Walk(statement, func(node syntax.Node) bool {
+		if redirect, ok := node.(*syntax.Redirect); ok && redirect.Hdoc != nil {
+			hasHeredoc = true
+		}
+		return !hasHeredoc
+	})
+	if hasHeredoc {
+		var source strings.Builder
+		if syntax.NewPrinter().Print(&source, statement) == nil {
+			return strings.TrimRight(source.String(), "\n")
+		}
+	}
+	return script[int(statement.Pos().Offset()):toolActivityStatementDisplayEnd(script, statement)]
 }
 
 // A statement's End includes its separator. Keep that separator in the
@@ -215,16 +243,19 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 	if statement.Background || statement.Negated || statement.Coprocess || statement.Disown {
 		return "", false
 	}
+	if display, ok := toolActivityEditStatement(statement); ok {
+		return display, true
+	}
 	if binary, ok := statement.Cmd.(*syntax.BinaryCmd); ok {
 		if binary.Op == syntax.AndStmt && len(statement.Redirs) == 0 {
 			left, leftOK := toolActivityStatement(script, binary.X)
 			right, rightOK := toolActivityStatement(script, binary.Y)
 			if leftOK || rightOK {
 				if !leftOK {
-					left = toolActivityUnclassifiedShell(script[int(binary.X.Pos().Offset()):toolActivityStatementDisplayEnd(script, binary.X)])
+					left = toolActivityUnclassifiedShell(toolActivityStatementSource(script, binary.X))
 				}
 				if !rightOK {
-					right = toolActivityUnclassifiedShell(script[int(binary.Y.Pos().Offset()):toolActivityStatementDisplayEnd(script, binary.Y)])
+					right = toolActivityUnclassifiedShell(toolActivityStatementSource(script, binary.Y))
 				}
 				return strings.Trim(strings.Join([]string{left, right}, "\n\n"), "\n"), true
 			}

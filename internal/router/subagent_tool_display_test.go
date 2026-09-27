@@ -511,6 +511,7 @@ func TestSubagentSearchReadRunGrouping(t *testing.T) {
 
 func TestSubagentMixedReadRunFallbacks(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
+		{"cat a\ncat b > c", "Read `a`\n\nEdit `c` · cat (requested)"},
 		{"cat a; git diff --check; git diff --stat;", "Read `a`\n\nRun `git diff --check`\n\nRun `git diff --stat`"},
 		{"cat a\ncat b && echo done", "Read `a`\n\nRead `b`\n\nRun `echo done`"},
 		{"cat a; printf '%s;' value;", "Read `a`\n\nRun `printf '%s;' value`"},
@@ -529,7 +530,6 @@ func TestSubagentMixedReadRunFallbacks(t *testing.T) {
 		}
 	}
 	for _, source := range []string{
-		"cat a\ncat b > c",
 		"cat a\nfor f in *.go; do cat \"$f\"; done",
 		"cat a\ncat b &",
 	} {

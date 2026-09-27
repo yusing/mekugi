@@ -66,6 +66,7 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 	exec := history.ExecOutcome
 	var summaries []string
 	var managed []string
+	incomplete := 0
 	budget := maxEditReceiptDiffBytes
 	for _, file := range history.ReviewFiles {
 		action := file.Action().Title()
@@ -74,12 +75,12 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 			path = file.BeforePath
 		}
 		path = pathdisplay.ForWorkspace(workspace, path)
-		if file.Origin != "" {
-			managed = append(managed, commentaryCode(path))
+		if file.Incomplete != "" {
+			incomplete++
 			continue
 		}
-		if file.Incomplete != "" {
-			summaries = append(summaries, fmt.Sprintf("%s %s: incomplete history; line counts unavailable", action, commentaryCode(path)))
+		if file.Origin != "" {
+			managed = append(managed, commentaryCode(path))
 			continue
 		}
 		summary := action + " " + commentaryCode(path)
@@ -112,6 +113,15 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 			label += ", …"
 		}
 		summaries = append(summaries, fmt.Sprintf("+ %d tool-managed files (%s)", len(managed), label))
+	}
+	if incomplete != 0 {
+		// Capture omissions are evidence gaps, not confirmed edits. Keep the
+		// full path/reason records in mchanges without flooding Activity.
+		summary := fmt.Sprintf("Capture · incomplete: evidence unavailable for %d paths", incomplete)
+		if history.ChangeID != "" {
+			summary += " · " + commentaryCode("mchanges "+history.ChangeID+" --summary")
+		}
+		summaries = append(summaries, summary)
 	}
 	return strings.Join(summaries, "\n\n")
 }

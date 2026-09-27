@@ -186,7 +186,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			for i, v0 := range slices.Backward(v.entries) {
 				if v0.Agent == entry.Agent && v0.CallID == entry.CallID && entry.CallID != "" {
 					for j := range v.blocks[i] {
-						if v.blocks[i][j].verb == "Run" || v.blocks[i][j].verb == "Skill" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, v.blocks[i][j].verb) {
+						if v.blocks[i][j].verb == "Run" || v.blocks[i][j].verb == "Skill" || v.blocks[i][j].verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, v.blocks[i][j].verb) {
 							v.blocks[i][j].exitCode, _ = strconv.Atoi(entry.Text)
 						}
 					}
@@ -217,13 +217,12 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 		}
 		if entry.Kind == "tool" && entry.CallID != "" && len(blocks) > 0 &&
 			slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, blocks[0].verb) {
-			// A confirmed edit receipt replaces the provisional Run row for
-			// this call. The capturer owns the action and counts; display does
-			// not classify the shell command a second time.
+			// A confirmed receipt replaces the provisional Run or requested
+			// Edit row for this call. Only the capturer supplies saved counts.
 			for i := len(v.entries) - 1; i >= 0; i-- {
 				prior := v.entries[i]
 				if prior.Kind != "tool" || prior.Agent != entry.Agent || prior.CallID != entry.CallID ||
-					len(v.blocks[i]) == 0 || v.blocks[i][0].verb != "Run" {
+					len(v.blocks[i]) == 0 || (v.blocks[i][0].verb != "Run" && v.blocks[i][0].verb != "Edit") {
 					continue
 				}
 				entry.Seq = prior.Seq
@@ -271,6 +270,9 @@ func (v *liveActivityView) keepSelection() {
 }
 
 func (v *liveActivityView) visible(entry activityPaneEntry) bool {
+	if entry.Kind == "tool" && entry.Text == "" {
+		return false
+	}
 	if entry.Kind == "reasoning" {
 		if v.conversation {
 			return entry.Agent == "Main"
@@ -691,6 +693,9 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (stri
 	}
 	for i, v0 := range slices.Backward(source.entries) {
 		blocks := source.blocks[i]
+		if len(blocks) == 0 {
+			continue
+		}
 		if v0.Agent == agent.Name || agent.Name == "/root" && source != v && v0.Agent == "Main" {
 			summary = v.painter.summary(blocks)
 			if v0.Kind == "reasoning" && agent.Responding {
