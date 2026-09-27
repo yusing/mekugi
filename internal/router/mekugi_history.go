@@ -479,23 +479,24 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 	releaseSnapshot()
 	// The native trace supplies per-tool outcomes even when JavaScript discards
 	// or catches a nested result. Never infer them from text printed by the cell.
-	ready := completedPatches[:0]
-	for _, completed := range completedPatches {
+	for i := range completedPatches {
+		completed := &completedPatches[i]
 		if completed.history.ToolName != applyPatchToolName && completed.history.ToolName != nativeExecCommandToolName {
 			source := completed.history.CarrierPayload
 			if source == "" {
 				source = completed.history.Script
 			}
 			completed.history.nativeCell = p.nativeTrace.readCell(completed.history.ExecutingThread, completed.callID, source)
-			if completed.history.nativeCell.pending() {
-				continue
-			}
 		}
-		ready = append(ready, completed)
 	}
-	completedPatches = ready
 	execGroups := make(map[string][]execCompletion)
 	for _, completed := range completedPatches {
+		// A yielded command owns its continuing process, not the completed
+		// patches in its Code Mode cell. Freeze those patches below before a
+		// later call can edit their files; only command capture waits here.
+		if completed.history.nativeCell.pending() {
+			continue
+		}
 		key := execSiblingKey(completed.history)
 		if key == "" {
 			key = completed.callID

@@ -20,6 +20,10 @@ retained as incomplete file evidence rather than an invented diff. Calls with
 no file differences remain in command history without a new change ID.
 An unfinished call has no completed record. Storage failure must not expose
 dependent review evidence as durable.
+When a Code Mode cell has completed, its patch captures finalize independently
+of any sibling command processes that are still running. A yielded command must
+not delay an already completed patch's filesystem snapshot or edit receipt until
+later edits have changed the same files.
 
 ### Command effects
 
