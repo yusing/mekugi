@@ -41,13 +41,17 @@ func conversationMilestone(entry activityPaneEntry) bool {
 // feed: prompts on a tinted band, Main's own messages and milestones without
 // author headings, and agent traffic under one-line headings. Adjacent traffic
 // with one agent forms a thread. Main's reasoning between a thread's items
-// neither breaks it nor enters its rail: it follows the thread instead. It
-// reuses Activity's block parsing, painter and viewport logic.
+// neither breaks it nor enters its rail: it follows the thread instead. Main's
+// tools never sit headless below agent traffic: the reasoning or commentary
+// they continue moves below the traffic, or, when it already heads earlier
+// tools, a continuation row names it. It reuses Activity's block parsing,
+// painter and viewport logic.
 func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 	type item struct {
 		first, last int
 		agent       string // Thread agent, or "" when the item cannot join one.
 		aside       bool   // Main reasoning, which neither starts nor ends a thread.
+		lead        int    // Entry index of the Main item a tool group continues, or -1.
 	}
 	var items []item
 	for i := 0; i < len(v.entries); {
@@ -69,7 +73,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		}
 		if !v.conversationEmpty(i) {
 			entry := v.entries[i]
-			items = append(items, item{i, last, v.threadAgent(i), entry.Agent == "Main" && entry.Kind == "reasoning"})
+			items = append(items, item{first: i, last: last, agent: v.threadAgent(i), aside: entry.Agent == "Main" && entry.Kind == "reasoning", lead: -1})
 		}
 		i = j
 	}
@@ -101,6 +105,30 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		}
 	}
 	items = append(ordered, held...)
+	traffic := func(it item) bool {
+		entry := v.entries[it.first]
+		return it.agent != "" || entry.Agent != "Main" && entry.Agent != "You"
+	}
+	lead, headed := -1, false // Latest lead's position, and whether tools follow it.
+	for k := 0; k < len(items); k++ {
+		switch entry := v.entries[items[k].first]; {
+		case entry.Agent == "You":
+			lead = -1
+		case v.conversationLead(items[k].first):
+			lead, headed = k, false
+		case conversationTool(entry):
+			if lead >= 0 && traffic(items[k-1]) {
+				if !headed && !slices.ContainsFunc(items[lead+1:k], func(it item) bool { return !traffic(it) }) {
+					moved := items[lead]
+					copy(items[lead:k-1], items[lead+1:k])
+					items[k-1], lead = moved, k-1
+				} else {
+					items[k].lead = items[lead].first
+				}
+			}
+			headed = true
+		}
+	}
 	start := 0 // Thread's first item.
 	for k, it := range items {
 		var thread conversationThread
@@ -110,13 +138,21 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			start = k
 		}
 		thread.followed = continues(k, k+1)
-		key := liveActivityRunKey{v.entries[it.first].Seq, v.entries[it.last].Seq, width, 0, v.painter.Theme, -1, true, thread}
+		key := liveActivityRunKey{first: v.entries[it.first].Seq, last: v.entries[it.last].Seq, width: width, theme: v.painter.Theme, hover: -1, main: true, thread: thread}
+		if it.lead >= 0 {
+			key.lead = v.entries[it.lead].Seq
+		}
 		if v.snippet.run == key.first {
 			key.hover = v.snippet.block
 		}
 		run, ok := v.runs[key]
 		if !ok {
 			run = v.conversationItem(it.first, it.last, width, thread)
+			if it.lead >= 0 {
+				run.lines = append([]string{v.continuation(it.lead, width)}, run.lines...)
+				run.snippets = append([]liveActivitySnippet{{}}, run.snippets...)
+				run.questions = append([]uint64{0}, run.questions...)
+			}
 		}
 		used[key] = run
 		if len(feed.lines) > 0 && !thread.joined {
@@ -142,6 +178,31 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 	}
 	v.runs = used
 	return feed
+}
+
+// conversationLead reports Main reasoning or commentary, which heads the
+// tools that follow it.
+func (v *liveActivityView) conversationLead(index int) bool {
+	entry, blocks := v.entries[index], v.blocks[index]
+	switch {
+	case entry.Agent != "Main" || entry.journal != nil:
+		return false
+	case entry.Kind == "reasoning":
+		return len(blocks) > 0 && activityui.ReasoningSummaryBody(blocks[0].Body) != ""
+	}
+	return entry.Kind == "text" && strings.TrimSpace(entry.Text) != ""
+}
+
+// continuation is one row naming the lead a tool group resumes after agent
+// traffic, so the tools cannot read as that traffic's.
+func (v *liveActivityView) continuation(index, width int) string {
+	entry, p := v.entries[index], &v.painter
+	if entry.Kind == "text" {
+		return conversationHeading(p.Theme.Accent()+"●"+activityui.Reset, "\x1b[1m"+p.Theme.Accent()+"main"+activityui.Reset, "continued", entry, width)
+	}
+	suffix := activityui.Dim + " · continued" + activityui.Undim
+	row := p.Block(v.blocks[index][0], width)[0]
+	return ansi.Truncate(row, max(0, width-ansi.StringWidth(suffix)), "…") + activityui.Reset + suffix
 }
 
 // conversationThread places an item in a thread: adjacent agent traffic with

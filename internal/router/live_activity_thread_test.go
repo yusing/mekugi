@@ -154,3 +154,51 @@ func TestConversationReasoningFollowsThread(t *testing.T) {
 		t.Fatalf("trailing reasoning joined an unanswered thread:\n%s", pending)
 	}
 }
+
+func TestConversationMainToolsFollowTheirLead(t *testing.T) {
+	const width = 70
+	at := time.Date(2026, 9, 27, 23, 21, 0, 0, time.Local)
+	reasoning := activityPaneEntry{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "**Preparing regression seed**", Observed: at}
+	read := activityPaneEntry{Seq: 2, Agent: "Main", Kind: "tool", Text: "Read `mchanges.go 470:491`", Observed: at}
+	done := activityPaneEntry{Seq: 3, Agent: "/root/lookup", Kind: "final", Text: "Evidence points to a namespace-context loss.", Observed: at.Add(time.Minute), activitySeq: 9}
+	edit := activityPaneEntry{Seq: 4, Agent: "Main", Kind: "tool", Text: "Edit `journal_child_changes_test.go` +65 -0", Observed: at.Add(2 * time.Minute)}
+	render := func(entries ...activityPaneEntry) []string {
+		v := newLiveActivityView()
+		v.conversation, v.feedOnly = true, true
+		v.entries = entries
+		for _, entry := range entries {
+			v.blocks = append(v.blocks, parseLiveActivity(entry))
+		}
+		return threadPlain(v.renderFeed(width, 40))
+	}
+	row := func(plain []string, text string) int {
+		return slices.IndexFunc(plain, func(row string) bool { return strings.Contains(row, text) })
+	}
+
+	// A lead with no tools yet moves below the traffic that interrupted it.
+	plain := render(reasoning, done, edit)
+	text := strings.Join(plain, "\n")
+	card, seed, tool := row(plain, "lookup"), row(plain, "Preparing regression seed"), row(plain, "Edit")
+	if card < 0 || seed < card || tool != seed+2 || strings.Contains(text, "continued") {
+		t.Fatalf("Main's tools are not under their reasoning:\n%s", text)
+	}
+
+	// A lead that already heads tools stays; the later tools name it.
+	plain = render(reasoning, read, done, edit)
+	text = strings.Join(plain, "\n")
+	card, seed, tool = row(plain, "lookup"), row(plain, "Preparing regression seed"), row(plain, "Edit")
+	resumed := row(plain, "continued")
+	if seed != 0 || row(plain, "Read") != 2 || resumed < card || !strings.Contains(plain[resumed], "Preparing regression seed") || tool != resumed+1 {
+		t.Fatalf("Main's later tools do not continue their reasoning:\n%s", text)
+	}
+	for _, line := range plain {
+		if ansi.StringWidth(line) > width {
+			t.Fatalf("row overflows: %q", line)
+		}
+	}
+
+	// Tools directly under their lead are unchanged.
+	if plain := render(reasoning, edit, done); row(plain, "Edit") != 2 || row(plain, "continued") >= 0 {
+		t.Fatalf("uninterrupted tools moved:\n%s", strings.Join(plain, "\n"))
+	}
+}
