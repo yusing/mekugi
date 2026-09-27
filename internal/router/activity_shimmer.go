@@ -73,3 +73,22 @@ func (v *liveActivityView) hasLiveReasoning() bool {
 	}
 	return false
 }
+
+// statusPulse brightens the entire pending label together over a two-second cycle.
+func statusPulse(text string, now time.Time, colors terminalColors) string {
+	phase := float64(now.UnixMilli()%2000) / 2000
+	intensity := .5 * (1 - math.Cos(2*math.Pi*phase))
+	if colors.hasForeground && colors.hasBackground {
+		alpha := .5 + .5*intensity
+		channel := func(fg, bg uint8) int { return int(math.Round(float64(bg) + (float64(fg)-float64(bg))*alpha)) }
+		fg, bg := colors.foreground, colors.background
+		return fmt.Sprintf("\x1b[38;2;%d;%d;%dm%s\x1b[39m", channel(fg.R, bg.R), channel(fg.G, bg.G), channel(fg.B, bg.B), text)
+	}
+	style := "\x1b[22;2m"
+	if intensity >= .6 {
+		style = "\x1b[22;1m"
+	} else if intensity >= .2 {
+		style = "\x1b[22m"
+	}
+	return "\x1b[39m" + style + text + "\x1b[22m"
+}

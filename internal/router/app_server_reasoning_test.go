@@ -3,7 +3,6 @@ package router
 import (
 	"bytes"
 	json "encoding/json/v2"
-	"fmt"
 	"github.com/charmbracelet/x/vt"
 	"strings"
 	"testing"
@@ -137,12 +136,12 @@ func TestAppServerActiveReasoningShimmers(t *testing.T) {
 }
 
 func TestAppServerCompletedElapsedTime(t *testing.T) {
-	for _, seconds := range []int{0, 12, 75} {
+	for seconds, elapsed := range map[int]string{0: "0s", 12: "12s", 60: "1m0s", 75: "1m15s", 82: "1m22s", 3600: "1h0m0s", 3682: "1h1m22s"} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
 		u.turnStarted = time.Now().Add(-time.Duration(seconds) * time.Second)
 		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "completed"}})
-		want := fmt.Sprintf("Completed in %ds", seconds)
+		want := "Completed in " + elapsed
 		for _, now := range []time.Time{time.Now(), time.Now().Add(time.Minute)} {
 			if got := ansi.Strip(u.sessionLabel(now)); got != want {
 				t.Fatalf("completion label = %q, want %q", got, want)
@@ -176,4 +175,40 @@ func TestAppServerReasoningSurvivesDockComposition(t *testing.T) {
 		}
 	}
 	t.Fatalf("composer missing:\n%s", screen.String())
+}
+
+func TestAppServerPendingStatusPulses(t *testing.T) {
+	for _, status := range []string{"Connecting…", "Starting thread…", "Resuming thread…", "Sending…", "Interrupting…", "Restoring roster and Activity…"} {
+		t.Run(status, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			u.status = status
+			u.thread = ""
+			if status == "Sending…" {
+				u.thread, u.submitted = "main", "hello"
+			}
+			if status == "Interrupting…" {
+				u.thread, u.turn = "main", "turn"
+			}
+			if strings.HasPrefix(status, "Restoring") {
+				u.thread = "main"
+				if err := u.restorePaneContent(appServerThreadInfo{ID: "main"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			start := time.Unix(0, 0)
+			dim, bright, dimAgain := u.sessionLabel(start), u.sessionLabel(start.Add(time.Second)), u.sessionLabel(start.Add(2*time.Second))
+			if !u.sessionAnimating() || dim == bright || dim != dimAgain || ansi.Strip(dim) != ansi.Strip(bright) {
+				t.Fatalf("pending status does not pulse: %q %q %q", dim, bright, dimAgain)
+			}
+			u.alert = true
+			if u.sessionAnimating() || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
+				t.Fatal("alert animates")
+			}
+			u.restoring = nil
+			u.alert, u.thread, u.turn, u.submitted, u.status = false, "main", "", "", "Ready"
+			if u.sessionAnimating() || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
+				t.Fatal("idle animates")
+			}
+		})
+	}
 }

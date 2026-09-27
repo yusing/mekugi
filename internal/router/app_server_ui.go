@@ -195,7 +195,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						if u.view.expireFlash(time.Now()) {
 							u.dirty = true
 						}
-						if u.turn != "" || u.shell.activityOpen && u.agents.hasLiveReasoning() {
+						if u.sessionAnimating() || u.shell.activityOpen && u.agents.hasLiveReasoning() {
 							u.dirty = true
 						}
 						if u.shell.activityOpen && time.Since(agePaint) >= time.Second {
@@ -424,7 +424,7 @@ func (u *appServerUI) message(m appServerMessage) error {
 			u.turn, u.starting = "", false
 			u.status, u.alert = strings.ToUpper(p.Turn.Status[:min(1, len(p.Turn.Status))])+p.Turn.Status[min(1, len(p.Turn.Status)):], p.Turn.Status == "failed"
 			if p.Turn.Status == "completed" && !u.turnStarted.IsZero() {
-				u.status += fmt.Sprintf(" in %ds", max(0, int(time.Since(u.turnStarted).Seconds())))
+				u.status += " in " + (time.Duration(max(0, int(time.Since(u.turnStarted).Seconds()))) * time.Second).String()
 			}
 			if p.Turn.Error != nil {
 				u.status, u.alert = u.status+": "+p.Turn.Error.Message, true
@@ -820,6 +820,10 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 	return label + liveActivityDim + " · " + liveActivityUndim + notice
 }
 
+func (u *appServerUI) sessionAnimating() bool {
+	return !u.alert && (u.turn != "" || u.starting || u.submitted != "" || u.restoring != nil || u.thread == "")
+}
+
 func (u *appServerUI) sessionLabel(now time.Time) string {
 	status := strings.ReplaceAll(livediff.Safe(u.status, false), "\n", " ")
 	switch {
@@ -828,7 +832,7 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 	case u.alert:
 		return liveActivityRed + "✗ " + status + liveActivityReset
 	case u.turn != "":
-		label := liveActivityAmber + "◐ " + status + liveActivityReset
+		label := "\x1b[39m◐ " + statusPulse(status, now, u.view.painter.colors) + liveActivityReset
 		if status == "Working" {
 			if summary := u.activeReasoning(); summary != "" {
 				status = summary
@@ -839,8 +843,8 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 			label += liveActivityDim + " " + liveActivityAge(now.Sub(u.turnStarted)) + liveActivityUndim
 		}
 		return label
-	case u.starting || u.submitted != "" || u.thread == "":
-		return liveActivityAmber + status + liveActivityReset
+	case u.starting || u.submitted != "" || u.restoring != nil || u.thread == "":
+		return statusPulse(status, now, u.view.painter.colors) + liveActivityReset
 	}
 	// Idle states use default text; the border color would otherwise carry over.
 	return "\x1b[39m" + status + liveActivityReset

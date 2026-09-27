@@ -460,8 +460,10 @@ Native public reasoning summaries appear for Main and children, from summary
 deltas or completed/history items. Main retains dim italic summary bodies in its
 transcript; its active summary heading replaces `Working` in the composer status
 until the item finishes or later Main activity supersedes it, without a separate
-pinned row. The status shimmers while the turn runs. Successful completion shows
-the frozen elapsed turn time, for example `Completed in 12s`. Activity retains the
+pinned row. Working and active reasoning shimmer while the turn runs. Other ongoing
+states, such as sending and interrupting, pulse together from dim to light to dim.
+Successful completion shows the frozen elapsed turn time in hours, minutes, and
+seconds as needed, for example `Completed in 12s` or `Completed in 1m22s`. Activity retains the
 same bodies for children in both the combined transcript
 and selected-agent detail, including after completion or later activity. The current
 summary updates the agent's roster status with a left-to-right brightness sweep

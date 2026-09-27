@@ -109,3 +109,24 @@ func TestAppServerReasoningAnimationLifecycle(t *testing.T) {
 		t.Fatal("completed reasoning animation or transcript retention is wrong")
 	}
 }
+
+func TestStatusPulseReportedPalette(t *testing.T) {
+	for _, palette := range []terminalColors{
+		{foreground: livediff.RGB{R: 220, G: 220, B: 220}, background: livediff.RGB{R: 20, G: 20, B: 20}, hasForeground: true, hasBackground: true},
+		{foreground: livediff.RGB{R: 20, G: 20, B: 20}, background: livediff.RGB{R: 220, G: 220, B: 220}, hasForeground: true, hasBackground: true},
+	} {
+		start := time.Unix(0, 0)
+		dim := statusPulse("Sending…", start, palette)
+		bright := statusPulse("Sending…", start.Add(time.Second), palette)
+		if dim != "\x1b[38;2;120;120;120mSending…\x1b[39m" || dim != statusPulse("Sending…", start.Add(2*time.Second), palette) {
+			t.Fatalf("pulse did not return to midpoint blend: %q", dim)
+		}
+		want := "\x1b[38;2;220;220;220mSending…\x1b[39m"
+		if palette.foreground.R == 20 {
+			want = "\x1b[38;2;20;20;20mSending…\x1b[39m"
+		}
+		if bright != want {
+			t.Fatalf("pulse peak = %q, want %q", bright, want)
+		}
+	}
+}
