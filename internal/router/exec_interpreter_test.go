@@ -1,15 +1,60 @@
 package router
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi"
 )
+
+func TestPythonPathJoinUnknownSegmentsStayOpen(t *testing.T) {
+	for _, source := range []string{
+		"name = 'a'\nname += '.txt'\n(Path('src') / name).write_text('new')",
+		"name = 'a.txt'\nname = unknown()\n(Path('src') / name).write_text('new')",
+		"for name in ['a.txt', unknown()]:\n (Path('src') / name).write_text('new')",
+	} {
+		result := inspectExecSource(execProviderInput{cwd: t.TempDir(), deadline: time.Now().Add(time.Second)}, source, "", execPythonLanguage, true)
+		if !result.open || len(result.scope) != 0 {
+			t.Fatalf("unknown path segment reused a stale or partial binding: %+v", result)
+		}
+	}
+}
+
+func TestPythonInterpreterLiteralLoopPathJoin(t *testing.T) {
+	workspace := t.TempDir()
+	files := []string{"src/a.txt", "src/b.txt", "absolute.txt", "last.txt"}
+	for _, file := range files {
+		writeTestFile(t, filepath.Join(workspace, file), "old\n")
+	}
+	script := fmt.Sprintf(`from pathlib import Path
+for name in ['a.txt', 'b.txt', %q]:
+ p = Path('src') / name; s = p.read_text().replace('old', 'new'); p.write_text(s)
+p = Path('last.txt'); p.write_text(p.read_text().replace('old', 'new'))
+`, filepath.Join(workspace, "absolute.txt"))
+	writeTestFile(t, filepath.Join(workspace, "edit.py"), script)
+	pythonName, pythonBinary := interpreterForTest("python3", "python")
+	observation := captureInterpreterTestObservation(t, workspace, pythonName+" edit.py")
+	for _, file := range files {
+		if !slices.ContainsFunc(observation.Files, func(b execFileSnapshot) bool { return b.Path == filepath.Join(workspace, file) }) {
+			t.Fatalf("missing pre-execution baseline for %s: %+v", file, observation.Files)
+		}
+	}
+	runOrSimulateInterpreter(t, pythonBinary, workspace, "edit.py", func() {
+		for _, file := range files {
+			writeTestFile(t, filepath.Join(workspace, file), "new\n")
+		}
+	})
+	assertExactInterpreterReviews(t, workspace, observation, map[string][]string{
+		"src/a.txt": {"-old", "+new"}, "src/b.txt": {"-old", "+new"},
+		"absolute.txt": {"-old", "+new"}, "last.txt": {"-old", "+new"},
+	})
+}
 
 func TestPythonInterpreterLiteralAndRecursiveWritesExact(t *testing.T) {
 	workspace := t.TempDir()

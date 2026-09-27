@@ -33,6 +33,14 @@ func TestShellEditIntentClassification(t *testing.T) {
 			wantVerbs: []string{"Edit", "Edit", "Run"}, wantPaths: []string{"a.go", "b.go"}, wantProgram: "python3", secret: "PRIVATE_PY_SOURCE",
 		},
 		{
+			name: "python literal filename loop", command: "python3 - <<'PY'\nfrom pathlib import Path\nfor name in ['app_server_preview_test.go', 'app_server_events_test.go']:\n p=Path('internal/router')/name; s=p.read_text().replace('old','PRIVATE_LOOP_SOURCE'); p.write_text(s)\np=Path('internal/router/app_server_edit_receipts_test.go'); s=p.read_text().replace('old','new'); p.write_text(s)\nPY",
+			wantVerbs: []string{"Edit", "Edit", "Edit"}, wantPaths: []string{"internal/router/app_server_preview_test.go", "internal/router/app_server_events_test.go", "internal/router/app_server_edit_receipts_test.go"}, wantProgram: "python3", secret: "PRIVATE_LOOP_SOURCE",
+		},
+		{
+			name: "python mutated filename remains unresolved", command: "python3 - <<'PY'\nfrom pathlib import Path\nname='a'\nname += '.txt'\n(Path('src') / name).write_text('new')\nPY",
+			wantVerbs: []string{"Edit"}, wantProgram: "python3", secret: "src/a",
+		},
+		{
 			name: "pathlib open", command: `python3 -c 'from pathlib import Path; p=Path("a.go"); p.open("w").write("PRIVATE_PATH_SOURCE")'`,
 			wantVerbs: []string{"Edit"}, wantPaths: []string{"a.go"}, wantProgram: "python3", secret: "PRIVATE_PATH_SOURCE",
 		},

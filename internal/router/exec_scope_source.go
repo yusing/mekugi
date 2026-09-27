@@ -19,6 +19,7 @@ type execSourceScope struct {
 	script                      string
 	python                      bool
 	vars                        map[string][]string
+	segments                    map[string][]string // Raw strings, before cwd resolution, for path joins.
 	texts                       map[string]bool
 	assigned                    map[string]int
 	aliases                     map[string]string
@@ -197,11 +198,16 @@ func (s *execSourceScope) paths(node *sitter.Node) []string {
 	}
 	if node.Kind() == "binary_operator" && s.text(node.ChildByFieldName("operator")) == "/" {
 		left := s.paths(node.ChildByFieldName("left"))
-		right, ok := s.literal(node.ChildByFieldName("right"))
-		if ok {
-			return joinExecPaths(left, right)
+		right := s.literalSegments(node.ChildByFieldName("right"), 0)
+		if len(left) != 0 && len(right) > maxExecListingEntries/len(left) {
+			s.result.open = true
+			return nil
 		}
-		return nil
+		var paths []string
+		for _, segment := range right {
+			paths = append(paths, joinExecPaths(left, segment)...)
+		}
+		return paths
 	}
 	function, args := sourceCall(node)
 	name := s.text(function)
@@ -260,6 +266,32 @@ func (s *execSourceScope) paths(node *sitter.Node) []string {
 		return paths
 	}
 	return nil
+}
+
+// literalSegments preserves relative and absolute string values separately from
+// filesystem operands. It never evaluates expressions or reads the filesystem.
+func (s *execSourceScope) literalSegments(node *sitter.Node, depth int) []string {
+	if node == nil || depth > 256 {
+		return nil
+	}
+	if value, ok := s.literal(node); ok {
+		return []string{value}
+	}
+	if node.Kind() == "identifier" {
+		return s.segments[s.text(node)]
+	}
+	if node.Kind() != "list" && node.Kind() != "tuple" && node.Kind() != "array" {
+		return nil
+	}
+	var values []string
+	for i := range node.NamedChildCount() {
+		part := s.literalSegments(node.NamedChild(uint(i)), depth+1)
+		if len(part) == 0 || len(values)+len(part) > maxExecListingEntries {
+			return nil
+		}
+		values = append(values, part...)
+	}
+	return values
 }
 
 func joinExecPaths(paths []string, segment string) []string {
@@ -349,6 +381,14 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 			s.aliases[s.text(value)] = s.text(key)
 		}
 	}
+	if node.Kind() == "augmented_assignment" {
+		if left := node.ChildByFieldName("left"); left != nil && left.Kind() == "identifier" {
+			name := s.text(left)
+			delete(s.vars, name)
+			delete(s.texts, name)
+			delete(s.segments, name)
+		}
+	}
 	if node.Kind() == "assignment" || node.Kind() == "variable_declarator" {
 		left, right := node.ChildByFieldName("left"), node.ChildByFieldName("right")
 		if !s.python {
@@ -365,18 +405,31 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 				statement.Parent() != nil && statement.Parent().Kind() == "module"
 			if s.assigned[name] == 1 || straightLine {
 				text := s.python && s.pythonText(right, 0)
-				s.vars[name] = s.paths(right)
+				segments := s.literalSegments(right, 0)
+				paths := s.paths(right)
+				if s.segments == nil {
+					s.segments = make(map[string][]string)
+				}
+				s.segments[name] = segments
+				s.vars[name] = paths
 				s.texts[name] = text
 			} else {
 				delete(s.vars, name)
 				delete(s.texts, name)
+				delete(s.segments, name)
 			}
 		}
 	}
 	if node.Kind() == "for_statement" || node.Kind() == "for_in_statement" {
 		left, right := node.ChildByFieldName("left"), node.ChildByFieldName("right")
 		if left != nil && left.Kind() == "identifier" {
-			s.vars[s.text(left)] = s.paths(right)
+			segments := s.literalSegments(right, 0)
+			paths := s.paths(right)
+			if s.segments == nil {
+				s.segments = make(map[string][]string)
+			}
+			s.segments[s.text(left)] = segments
+			s.vars[s.text(left)] = paths
 			delete(s.texts, s.text(left))
 		}
 	}
