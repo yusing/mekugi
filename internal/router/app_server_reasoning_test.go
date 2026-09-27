@@ -136,7 +136,7 @@ func TestAppServerActiveReasoningShimmers(t *testing.T) {
 }
 
 func TestAppServerCompletedElapsedTime(t *testing.T) {
-	for seconds, elapsed := range map[int]string{0: "0s", 12: "12s", 60: "1m0s", 75: "1m15s", 82: "1m22s", 3600: "1h0m0s", 3682: "1h1m22s"} {
+	for seconds, elapsed := range map[int]string{0: "0s", 12: "12s", 60: "1m", 75: "1m15s", 82: "1m22s", 3600: "1h", 3682: "1h1m22s"} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
 		u.turnStarted = time.Now().Add(-time.Duration(seconds) * time.Second)

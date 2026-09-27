@@ -527,7 +527,7 @@ func TestLiveActivityCombinedRosterShowsTimerCostAndUsage(t *testing.T) {
 	second := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "5m · ") })
 	// Idle agents stop their elapsed time at the last response. Unknown cost is
 	// omitted rather than shown as n/a or zero.
-	if first < 0 || second < 0 || first != second-1 || !strings.Contains(lines[first], "7m · 3s ago ↑ 1K ↓ 0") ||
+	if first < 0 || second < 0 || first != second-1 || !strings.Contains(lines[first], "7m57s · 3s ago ↑ 1K ↓ 0") ||
 		!strings.Contains(lines[first], "$1.20 T+2") || !strings.Contains(lines[second], "5m · 2m ago") ||
 		!strings.Contains(lines[second], "↑ 500 ↓ 0 T+1") || strings.Contains(lines[second], "$") || strings.Contains(lines[second], "n/a") {
 		t.Fatalf("combined roster metrics = %q", lines)

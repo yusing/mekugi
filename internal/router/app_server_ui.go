@@ -433,7 +433,7 @@ func (u *appServerUI) message(m appServerMessage) error {
 			u.turn, u.starting = "", false
 			u.status, u.alert = strings.ToUpper(p.Turn.Status[:min(1, len(p.Turn.Status))])+p.Turn.Status[min(1, len(p.Turn.Status)):], p.Turn.Status == "failed"
 			if p.Turn.Status == "completed" && !u.turnStarted.IsZero() {
-				u.status += " in " + (time.Duration(max(0, int(time.Since(u.turnStarted).Seconds()))) * time.Second).String()
+				u.status += " in " + liveActivityAge(time.Since(u.turnStarted))
 			}
 			if p.Turn.Error != nil {
 				u.status, u.alert = u.status+": "+p.Turn.Error.Message, true

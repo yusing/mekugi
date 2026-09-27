@@ -474,7 +474,8 @@ prompt form one event, and full-history requests do not replay them. In Main,
 child replies are short excerpts with a link that activates Activity, selects
 the owning agent, and scrolls to that exact reply. The full message stays in
 Activity. Assignment excerpts sit below their link on separate, wrapped quote
-rows. Truncated excerpts end with an inline ellipsis, not a separate ellipsis row.
+rows. Excerpts skip paragraph gaps, and truncated excerpts end their last text
+row with an inline ellipsis, not a separate ellipsis row.
 Transcript blockquotes use a vertical rail rather than literal `>` markers,
 including on wrapped continuation rows, and retain inline Markdown styling.
 Child answers link (`↩ re:`) to their retained assignment, not to a
@@ -499,6 +500,10 @@ transcript; its active summary heading replaces `Working` in the composer status
 until the item finishes or later Main activity supersedes it, without a separate
 pinned row. Working and active reasoning shimmer while the turn runs. Other ongoing
 states, such as sending and interrupting, pulse together from dim to light to dim.
+Composer status (including Waiting), agent timers, and relative response ages share
+whole-second duration formatting: `82s` displays as `1m22s`, and `3682s` as `1h1m22s`.
+Trailing zero units are omitted (`5m`, `1h`), while elapsed timers start at `0s`;
+response ages under two seconds remain `just now`.
 Successful completion shows the frozen elapsed turn time in hours, minutes, and
 seconds as needed, for example `Completed in 12s` or `Completed in 1m22s`. Activity retains the
 same bodies for children in both the combined transcript

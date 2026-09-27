@@ -1352,15 +1352,15 @@ func (v *liveActivityView) footer(width int) string {
 }
 
 func liveActivityAge(age time.Duration) string {
-	switch {
-	case age < 2*time.Second:
-		return "now"
-	case age < time.Minute:
-		return fmt.Sprintf("%ds", int(age.Seconds()))
-	case age < time.Hour:
-		return fmt.Sprintf("%dm", int(age.Minutes()))
+	age = max(0, age.Truncate(time.Second))
+	formatted := age.String()
+	if age >= time.Minute && age%time.Minute == 0 {
+		formatted = strings.TrimSuffix(formatted, "0s")
+		if age%time.Hour == 0 {
+			formatted = strings.TrimSuffix(formatted, "0m")
+		}
 	}
-	return fmt.Sprintf("%dh", int(age.Hours()))
+	return formatted
 }
 
 // liveActivityMiddle shortens a path while keeping its leaf name visible.
