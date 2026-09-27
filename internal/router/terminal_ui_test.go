@@ -119,3 +119,70 @@ func TestPaneScrollUnified(t *testing.T) {
 	}
 
 }
+
+func TestTerminalUIIdleLiveLayout(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.ensureShell()
+	defer u.shell.diffScreen.Close()
+	screen := vt.NewEmulator(120, 40)
+	defer screen.Close()
+	paint := func() string {
+		t.Helper()
+		if err := u.paint(screen, 120, 40); err != nil {
+			t.Fatal(err)
+		}
+		return screen.String()
+	}
+	workspace := t.TempDir()
+	u.shell.preview(projectStockPatchPreview(t.Context(), workspace, liveDiffPreview{Workspace: workspace, ID: "main-edit", Caller: "/root", Tool: applyPatchToolName, Status: liveDiffPreviewEdit, Input: "*** Begin Patch\n*** Add File: idle-live.txt\n+unique-live-line\n*** End Patch"}))
+	u.agents.agents = []activityPaneAgent{{Name: "/root", Responding: true}}
+	frame := paint()
+	if u.shell.layout.agents.h != 0 || !strings.Contains(frame, "3 Live") || !strings.Contains(frame, "unique-live-line") {
+		t.Fatalf("no children must show full Live:\n%s", frame)
+	}
+	if err := u.shell.mouse("\x1b[<0;70;4M"); err != nil {
+		t.Fatal(err)
+	}
+	if u.shell.focus != 2 {
+		t.Fatal("Live click did not focus the right pane")
+	}
+	frame = paint()
+	if strings.Contains(frame, "3 Activity") || strings.Contains(frame, "n/p agent") {
+		t.Fatalf("Live advertised hidden Activity controls:\n%s", frame)
+	}
+	u.agents.agents = append(u.agents.agents, activityPaneAgent{Name: "/root/worker", Final: true})
+	frame = paint()
+	activity := u.shell.layout.agents
+	innerHeight := u.shell.layout.codex.h
+	dockRows := max(1, int(float64(innerHeight)*.35+.5))
+	if activity.y != 1+dockRows || activity.h != innerHeight-dockRows || !strings.Contains(frame, "LIVE") {
+		t.Fatalf("idle child layout: activity=%+v inner=%d\n%s", activity, innerHeight, frame)
+	}
+	for _, key := range []byte{2, '2'} {
+		if err := u.shell.key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	frame = paint()
+	if u.shell.layout.diff != activity || !strings.Contains(frame, "unique-live-line") {
+		t.Fatalf("diff replaced live dock:\n%s", frame)
+	}
+	u.agents.agents[1].Responding = true
+	paint()
+	if u.shell.layout.diff.y != 1 {
+		t.Fatal("active child retained idle Live space")
+	}
+	u.agents.agents = u.agents.agents[:1]
+	frame = paint()
+	if u.shell.layout.diff.y <= 1 || !strings.Contains(frame, "LIVE") {
+		t.Fatalf("no-child diff replaced live dock:\n%s", frame)
+	}
+	for _, key := range []byte{2, '3'} {
+		if err := u.shell.key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if frame = paint(); u.shell.layout.agents.h != 0 || !strings.Contains(frame, "3 Live") || !strings.Contains(frame, "unique-live-line") {
+		t.Fatalf("Live did not return:\n%s", frame)
+	}
+}

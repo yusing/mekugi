@@ -42,7 +42,7 @@ type terminalUI struct {
 
 type terminalRect struct{ x, y, w, h int }
 type terminalLayout struct {
-	codex, diff, agents, roster            terminalRect
+	codex, diff, agents, roster, live      terminalRect
 	vertical, horizontal, rosterHorizontal int
 }
 
@@ -384,6 +384,15 @@ func (u *terminalUI) mouse(s string) error {
 			u.drag = 3
 			return nil
 		}
+	}
+	if u.layout.live.contains(x, y) {
+		if button&^28 == 0 && !release {
+			u.focus = 2
+			if u.diffOpen {
+				u.focus = 1
+			}
+		}
+		return nil // Live cards are not the Activity feed or saved diff beneath them.
 	}
 	pane := -1
 	var r terminalRect

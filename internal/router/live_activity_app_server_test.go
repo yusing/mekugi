@@ -363,7 +363,7 @@ func TestAppServerReusesTerminalShellAndJournalRenderer(t *testing.T) {
 	if err := u.paint(&bytes.Buffer{}, 120, 30); err != nil {
 		t.Fatal(err)
 	}
-	if u.shell.layout.codex.w != 58 || u.shell.layout.agents.x != 61 || u.shell.layout.vertical != 60 {
+	if u.shell.layout.codex.w != 58 || u.shell.layout.agents.h != 0 || u.shell.layout.vertical != 60 {
 		t.Fatalf("native UI changed the existing pane positions: %+v", u.shell.layout)
 	}
 	if err := u.paint(&bytes.Buffer{}, 100, 4); err != nil {

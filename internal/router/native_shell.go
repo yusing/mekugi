@@ -12,8 +12,8 @@ import (
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
-// Live edit docks sit at the bottom of the pane that owns the writer: Main's
-// edits above its composer, subagents' at the bottom of the right column.
+// With active subagents, live edits dock in their owning panes. Otherwise
+// Live occupies the right column, above the switchable Activity or Diff view.
 const (
 	nativeDockShare   = 0.3
 	nativeDockMin     = 5
@@ -162,6 +162,32 @@ func (u *terminalUI) renderDock(ctx context.Context, dock *liveDiffPreviewPane, 
 	return append([]string{nativeRule("╞", "╡", "═", left, right, width, nativeBorder(focused))}, cards...), nil
 }
 
+// renderIdleLive keeps both owners' cards visible without moving preview state.
+func (u *terminalUI) renderIdleLive(ctx context.Context, width, height int, focused bool) ([]string, error) {
+	docks := []*liveDiffPreviewPane{&u.mainDock, &u.agentDock}
+	if len(u.mainDock.order) == 0 {
+		docks = docks[1:]
+	} else if len(u.agentDock.order) == 0 {
+		docks = docks[:1]
+	}
+	var lines []string
+	for i, dock := range docks {
+		rows := (height - len(lines)) / (len(docks) - i)
+		if rows == 0 {
+			continue
+		}
+		card, err := u.renderDock(ctx, dock, width, rows, focused)
+		if err != nil {
+			return nil, err
+		}
+		// The dock is inside the pane frame, so its rule uses the inner width.
+		card[0] = ansi.Cut(card[0], 1, width-1)
+		card = append(card[:min(len(card), rows)], make([]string, max(0, rows-len(card)))...)
+		lines = append(lines, card...)
+	}
+	return lines, nil
+}
+
 func nativeBorder(focused bool) string {
 	if focused {
 		return "\x1b[38;2;130;170;255m"
@@ -240,6 +266,13 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	if u.agents.only {
 		u.agentDock.prefer = u.agents.selected
 	}
+	children, active := 0, false
+	for _, agent := range u.agents.agents {
+		if agent.Name != "/root" {
+			children++
+			active = active || agent.Responding
+		}
+	}
 	roster := u.agents.nativeRoster(width, u.rosterLimit(height), now, u.focus == 3)
 	if height-1-len(roster) < nativeFramedRows {
 		roster = nil // A short terminal keeps its rows for Main.
@@ -267,6 +300,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	default:
 		right = terminalRect{0, 0, width, top}
 	}
+	liveRight := !active && right.w >= 4 && right.h >= 3 && framed
 	rows := make([]string, height)
 	draw := func(r terminalRect, lines []string) {
 		for i, line := range lines {
@@ -281,7 +315,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			iw, ih = left.w, left.h
 		}
 		dockRows := nativeDockRows(&u.mainDock, ih-3)
-		if u.main.keybindings && u.focus == 0 {
+		if liveRight || u.main.keybindings && u.focus == 0 {
 			dockRows = 0
 		}
 		body, dockRect := u.main.mainFrame(iw, ih, dockRows)
@@ -311,12 +345,24 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	if right.w >= 4 && right.h >= 3 && framed {
 		iw, ih := right.w-2, right.h-2
 		dockRows := nativeDockRows(&u.agentDock, ih)
+		topDock := liveRight
+		if topDock {
+			dockRows = max(1, int(float64(ih)*.35+.5))
+			if children == 0 && !u.diffOpen {
+				dockRows = ih
+			}
+		}
 		content := ih - dockRows
+		contentY := right.y + 1
+		if topDock {
+			contentY += dockRows
+			l.live = terminalRect{right.x + 1, right.y + 1, iw, dockRows}
+		}
 		focused := u.focus == 1 || u.focus == 2
 		var body []string
 		var title, label string
 		if u.diffOpen {
-			l.diff = terminalRect{right.x + 1, right.y + 1, iw, content}
+			l.diff = terminalRect{right.x + 1, contentY, iw, content}
 			if u.diffScreen.Width() != iw || u.diffScreen.Height() != content {
 				u.diffScreen.Resize(iw, max(1, content))
 				u.diff.dirty = true
@@ -335,8 +381,8 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			summary, state := u.diff.nativeTitle()
 			title, label = nativeTitle(2, "Diff", "saved · "+summary, u.focus == 1), state
 			u.diffUnseen = false
-		} else {
-			l.agents = terminalRect{right.x + 1, right.y + 1, iw, content}
+		} else if content > 0 {
+			l.agents = terminalRect{right.x + 1, contentY, iw, content}
 			// The feed-only renderer clears pane-local hits. Keep the separate
 			// roster's targets, which were laid out before the Activity pane.
 			rosterHits := u.agents.hits
@@ -347,7 +393,16 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		}
 		body = append(body[:min(len(body), content)], make([]string, max(0, content-len(body)))...)
 		rules := map[int]string{}
-		if dockRows > 0 {
+		if content == 0 {
+			title = nativeTitle(3, "Live", "", focused)
+		}
+		if dockRows > 0 && topDock {
+			dock, err := u.renderIdleLive(ctx, right.w, dockRows, focused)
+			if err != nil {
+				return err
+			}
+			body = append(dock, body...)
+		} else if dockRows > 0 {
 			dock, err := u.renderDock(ctx, &u.agentDock, right.w, dockRows, focused)
 			if err != nil {
 				return err
@@ -420,8 +475,15 @@ func (u *terminalUI) nativeStatus() string {
 	if responding > 0 {
 		agentsBadge = liveActivityAmber + superscript(responding) + liveActivityReset
 	}
+	activityName := "Live"
+	for _, agent := range u.agents.agents {
+		if agent.Name != "/root" {
+			activityName = "Activity"
+			break
+		}
+	}
 	pair := liveActivityDim + "[" + liveActivityUndim + tab(2, "Diff", diffBadge, u.diffOpen) + liveActivityDim + "│" + liveActivityUndim +
-		tab(3, "Activity", "", !u.diffOpen) + liveActivityDim + "]" + liveActivityUndim
+		tab(3, activityName, "", !u.diffOpen) + liveActivityDim + "]" + liveActivityUndim
 	tabs := tab(1, "Main", "", true) + " " + pair + " " + tab(4, "Agents", agentsBadge, true)
 	var hints terminalHints
 	switch {
@@ -433,6 +495,8 @@ func (u *terminalUI) nativeStatus() string {
 		if u.diff.back.kind != 0 {
 			hints = append(terminalHints{{"esc", "back", 0}}, hints...)
 		}
+	case u.focus == 2 && activityName == "Live":
+		hints = terminalHints{{"^B 2", "diff", 0}, {"^B e", "next live", 0}}
 	case u.focus == 2:
 		hints = terminalHints{{"j/k", "scroll", 0}, {"n/p", "agent", 0}, {"o", "only", 0}, {"r", "follow", 0}, {"enter", "open", 0}}
 	case u.focus == 3:

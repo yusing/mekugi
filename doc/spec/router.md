@@ -372,7 +372,13 @@ contextual key hints. Ctrl-B + number focuses a pane.
 
 Streaming `apply_patch` edits dock at the bottom of the pane that owns them:
 Main's in Main above the composer, subagents' at the bottom of the right pane.
-A dock takes 30% of its pane, within 5 to 14 rows, and lingers briefly after
+When there are no child agents, Live replaces Activity across the right pane.
+When child agents exist but none is responding, Live takes the top 35% of the
+right pane and Activity fills the rest. Opening Diff keeps this top Live dock
+and switches only the content below it, including when no child agents exist.
+Main's live edits move into this right-side Live view while no child is responding.
+With responding children, each owner's dock takes 30% of its pane, within 5 to
+14 rows. Cards linger briefly after
 the last card's animation settles. Shell or Code Mode projections first received
 at completion do not open a transient dock; captured effects remain in their
 receipt and saved diff. Concurrent edits share the dock as an accordion: cards

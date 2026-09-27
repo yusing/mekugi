@@ -204,6 +204,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 		view := u.view
 		if activity {
 			view = u.agents
+			u.agents.agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 			u.shell.diffOpen = false
 		}
 		view.applyAppServerItem("main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "hello [report](</tmp/my project/report.go:12>)"})
