@@ -25,6 +25,9 @@ func TestAppServerComposerEditingKeys(t *testing.T) {
 		{"grapheme delete", "ae\u0301z\x1b[D\x1b[D\x1b[3~", "az"},
 		{"ctrl left", "one  two three\x1b[1;5D\x1b[1;5DX", "one  Xtwo three"},
 		{"ctrl right", "one  two three\x1b[H\x1b[1;5CX", "one  Xtwo three"},
+		{"ordinary meta letters", "before bf", "before bf"},
+		{"pasted meta letters are text", "one two\x1b[200~\x1bb\x1bf\x1b[201~X", "one twobfX"},
+		{"pasted alt arrows do not move", "one two\x1b[200~\x1b[1;3D\x1b[1;3C\x1b[201~X", "one twoX"},
 		{"left boundary", "a\x1b[D\x1b[D\x7fX", "Xa"},
 		{"right boundary", "a\x1b[C\x1b[3~X", "aX"},
 	} {
@@ -266,5 +269,66 @@ func TestAppServerComposerAltWordDeletion(t *testing.T) {
 		if u.draft != "before " || len(u.images) != 0 {
 			t.Fatalf("word deletion split image: %q, %v", u.draft, u.images)
 		}
+	}
+}
+
+// Exercise the terminal router as well as the composer: remote input arrives
+// byte-by-byte and Option arrows may be Meta letters or modified CSI arrows.
+func TestAppServerComposerOptionWordNavigation(t *testing.T) {
+	for _, encoding := range []struct{ name, left, right string }{
+		{"meta", "\x1bb", "\x1bf"},
+		{"alt arrows", "\x1b[1;3D", "\x1b[1;3C"},
+		{"ctrl arrows", "\x1b[1;5D", "\x1b[1;5C"},
+	} {
+		t.Run(encoding.name, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			u.ensureShell()
+			keys := func(input string) {
+				t.Helper()
+				for _, key := range []byte(input) {
+					if err := u.shell.key(key); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			keys("one  你好👩‍💻 three")
+			keys(encoding.left + encoding.left + "X")
+			if u.draft != "one  X你好👩‍💻 three" {
+				t.Fatalf("backward: %q", u.draft)
+			}
+			keys(encoding.right + "Y")
+			if u.draft != "one  X你好👩‍💻 Ythree" {
+				t.Fatalf("forward: %q", u.draft)
+			}
+			keys(strings.Repeat(encoding.left, 5))
+			if u.cursor() != 0 {
+				t.Fatalf("start boundary: %d", u.cursor())
+			}
+			keys(strings.Repeat(encoding.right, 5))
+			if u.cursor() != len(u.draft) {
+				t.Fatalf("end boundary: %d", u.cursor())
+			}
+			u.attachImage(filepath.Join(t.TempDir(), "image.png"))
+			end := u.cursor()
+			keys(encoding.left)
+			if u.cursor() != end-len("[Image 1]") {
+				t.Fatalf("split image moving left: %d", u.cursor())
+			}
+			keys(encoding.right)
+			if u.cursor() != end || len(u.images) != 1 {
+				t.Fatal("split image moving right")
+			}
+			if wire.Len() != 0 {
+				t.Fatalf("navigation submitted input: %s", wire.String())
+			}
+			screen := vt.NewEmulator(100, 30)
+			defer screen.Close()
+			if err := u.paint(screen, 100, 30); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(screen.String(), "X你好👩‍💻 Ythree") {
+				t.Fatalf("edited draft missing from frame:\n%s", screen.String())
+			}
+		})
 	}
 }

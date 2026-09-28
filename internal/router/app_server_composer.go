@@ -271,8 +271,8 @@ func (u *appServerUI) moveDraft(sequence string) {
 		at = u.draftBoundary(at, -1)
 	case "\x1b[C", "\x1bOC":
 		at = u.draftBoundary(at, 1)
-	case "\x1b[1;5D", "\x1b[1;5C":
-		at = u.wordBoundary(at, strings.HasSuffix(sequence, "D"))
+	case "\x1b[1;5D", "\x1b[1;5C", "\x1b[1;3D", "\x1b[1;3C", "\x1bb", "\x1bf":
+		at = u.wordBoundary(at, sequence == "\x1bb" || strings.HasSuffix(sequence, "D"))
 	case "\x1b[H", "\x1bOH", "\x1b[1~", "\x1b[1;5A":
 		at = strings.LastIndex(u.draft[:at], "\n") + 1
 	case "\x1b[F", "\x1bOF", "\x1b[4~", "\x1b[1;5B":

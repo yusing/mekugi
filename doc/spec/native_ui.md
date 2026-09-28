@@ -248,7 +248,9 @@ rows. At the first/last displayed row, Up/Down recalls older/newer submitted
 input, restoring the draft and caret after the newest entry. History is bounded
 to 100 entries per thread; live entries retain attachments, while resume hydrates
 text only from Codex user messages. There is no additional durable input store.
-Ctrl+Left/Right move by word and Ctrl+Up/Down move to logical line boundaries.
+Ctrl+Left/Right and Alt/Option+Left/Right move by word; Ctrl+Up/Down move to
+logical line boundaries. Word navigation accepts modified-arrow sequences and
+the Meta-b/f sequences emitted by macOS terminals, including over remote sessions.
 Shift+Up/Down steps through model-advertised reasoning levels without wrapping.
 `/model`, `/reasoning`, and `/tier` show choices in the scrollable transcript,
 or accept an explicit value;

@@ -272,3 +272,34 @@ func (s *appResumeTerminal) checkRestored() {
 	s.outer.Close()
 	s.inner.Close()
 }
+
+func TestAppServerOptionWordNavigationNativeCodex(t *testing.T) {
+	codex, err := exec.LookPath("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	environment := routerFaultCodexEnvironment(t)
+	workspace := t.TempDir()
+	provider := &appResumeProvider{}
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
+	defer server.Close()
+	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
+		cmd := exec.CommandContext(ctx, codex, "app-server",
+			"-c", `model_providers.keys={name="keys",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`,
+			"-c", `model_provider="keys"`, "-c", `model="gpt-6-astra"`)
+		cmd.Env, cmd.Dir = environment, workspace
+		return cmd
+	}, "")
+	terminal.await("Ready")
+	terminal.send("one two three\x1bb\x1bbX\x1bfY")
+	terminal.await("one Xtwo Ythree")
+	terminal.send("\x03")
+	terminal.send("alpha beta gamma\x1b[1;3D\x1b[1;3DX\x1b[1;3CY")
+	terminal.await("alpha Xbeta Ygamma")
+	terminal.send("\x03")
+	terminal.quit()
+	if got := provider.snapshot(); len(got) != 0 {
+		t.Fatalf("word navigation submitted a model request: %q", got)
+	}
+}

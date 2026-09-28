@@ -430,7 +430,7 @@ exists, it reports an error without starting a new conversation.
 
 In the native composer, Up/Down recall input history at the first/last displayed
 row and restore the unsent draft after the newest entry. Other arrow keys move
-the caret, Ctrl+Left/Right jump words,
+the caret, Ctrl+Left/Right or Alt/Option+Left/Right jump words,
 and Ctrl+Up/Down move to the start/end of a line. Alt+Backspace/Delete delete
 the previous/next word. Ctrl+V attaches a clipboard PNG
 as a highlighted, atomic `[Image N]` (Linux needs `wl-paste` on Wayland or `xclip` on X11; macOS uses

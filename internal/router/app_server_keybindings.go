@@ -19,6 +19,7 @@ func renderNativeKeybindings(width, height int) []string {
 			{"/ / @ / $", "Pick command / file / skill"},
 			{"arrows", "Move caret / input history"},
 			{"ctrl+← / ctrl+→", "Previous / next word"},
+			{"alt/option+← / →", "Previous / next word"},
 			{"ctrl+↑ / ctrl+↓", "Start / end of line"},
 			{"alt+backspace / del", "Delete word"},
 			{"ctrl+z / ctrl+y", "Undo / redo"},

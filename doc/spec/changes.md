@@ -346,7 +346,11 @@ displayed edit. A literal `workdir` resolves relative targets; when an edit's
 `workdir` is computed, the card reports that its target cannot be resolved.
 Scope cards list pending VCS restore, deletion, or switch targets when their
 targets are known. Ordinary command watches remain hidden until a captured
-file changes. A `may write` footer distinguishes scoped paths from unresolved targets on visible cards and stays anchored to the bottom of its card.
+file changes. A `may write` footer distinguishes captured paths from additional
+unknown write targets and stays anchored to the bottom of its card. Unknown
+targets describe incomplete command-wide coverage, not a failure to resolve the
+displayed file; for example, a literal edit followed by arbitrary test code
+retains its known edit target without claiming to know every test side effect.
 
 While a writer window is open, display-only polling runs about every 500 ms over
 captured paths, reading content only after a stat change. Polling is bounded by

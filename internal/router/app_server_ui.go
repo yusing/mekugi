@@ -547,6 +547,13 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.deleteWord(true)
 		return false, nil
 	}
+	// macOS terminals commonly encode Option+Left/Right as Meta-b/f.
+	if u.escape == "\x1b" && (key == 'b' || key == 'f') && !u.paste {
+		sequence := u.escape + string(key)
+		u.escape = ""
+		u.moveDraft(sequence)
+		return false, nil
+	}
 	// A bare Escape dismisses keybindings. Do not eat the next
 	// ordinary key while waiting for a CSI sequence that never arrives.
 	if u.escape == "\x1b" && key != '[' && key != 'O' {
