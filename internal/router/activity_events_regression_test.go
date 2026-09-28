@@ -62,6 +62,7 @@ func TestActivityWaitAndHostedMCPPreviews(t *testing.T) {
 	for _, tc := range []struct{ payload, want string }{
 		{`{"type":"function_call","namespace":"mekugi_collaboration","name":"wait_agent","arguments":"{}"}`, "Waiting for agent"},
 		{`{"type":"function_call","namespace":"collaboration","name":"thread_wait","arguments":"{}"}`, "Waiting for agent"},
+		{`{"type":"function_call","namespace":"collaboration","name":"wait_agent","arguments":"{\"targets\":[\"/root/review\",\"/root/tests\"]}"}`, "Waiting for agent · /root/review, /root/tests"},
 		{`{"type":"mcp_call","name":"lookup","server_label":"docs","arguments":"{}"}`, "MCP `docs.lookup`"},
 		{`{"type":"mcp_call","name":"wait_agent","server_label":"jobs","arguments":"{}"}`, "MCP `jobs.wait_agent`"},
 		{`{"type":"function_call","name":"request_user_input","namespace":"mcp__jobs","arguments":"{}"}`, "MCP `jobs.request_user_input`"},

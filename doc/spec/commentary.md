@@ -444,7 +444,8 @@ and never copied back into its conversation. Visible provider reasoning summarie
 are collected with bounded per-response storage but not rendered in the agents pane;
 raw and encrypted reasoning are not exposed. Agent wait, start, resume, interrupt,
 user-input waits, and MCP calls have explicit action labels. These describe
-observed requests, not unobserved native execution or completion. Sibling and ancestor continuation guides
+observed requests, not unobserved native execution or completion. Wait previews
+include targets explicitly supplied in the call. Sibling and ancestor continuation guides
 form a tree; rows whose parent is off-screen show their relative path instead. The roster stays in a separate region spanning the full width below Main
 and the right column, with its own resizable divider. It shares local selection with the activity feed on the right;
 no extra process, broker, or transport is needed. Each agent has one row: status, name,

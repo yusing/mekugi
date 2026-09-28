@@ -55,6 +55,7 @@ type appServerItem struct {
 	Prompt            string                         `json:"prompt"`
 	Model             string                         `json:"model"`
 	ReasoningEffort   string                         `json:"reasoningEffort"`
+	waitNames         map[string]string              // Presentation-only names for retained wait targets.
 }
 
 type appServerUI struct {
@@ -116,6 +117,7 @@ type appServerUI struct {
 	resumeConfig              map[string]any
 	resumePending             []appserver.Message
 	panes                     *nativePanePersistence
+	waitRelease               func()
 	restoring                 *appServerActivityRestore
 	starting                  bool
 }
@@ -154,6 +156,11 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	}
 	u.ensureShell()
 	return func() error {
+		defer func() {
+			if u.waitRelease != nil {
+				u.waitRelease()
+			}
+		}()
 		defer u.cancelPickerScan()
 		defer u.shell.diff.close()
 		defer u.shell.diffScreen.Close()
@@ -450,6 +457,15 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				return err
 			}
 			u.session.start(u.thread, result.Thread.Cwd)
+			if u.proxy != nil || u.panes != nil {
+				var waitStore *mekugiReplayStore
+				if u.proxy != nil {
+					waitStore = u.proxy.replayStore
+				}
+				if err := u.openWaitStore(waitStore); err != nil {
+					u.setNotice("Wait targets could not be retained: "+err.Error(), true)
+				}
+			}
 			restoreContextUsage(u.session.agent("/root"), result.Thread)
 			if u.agents != nil {
 				u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})

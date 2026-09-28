@@ -50,6 +50,9 @@ func appServerProgress(item appServerItem, method string) (text string, handled 
 		slices.Sort(extra)
 		receivers = append(receivers, extra...)
 		for i, id := range receivers {
+			if name := item.waitNames[id]; name != "" {
+				receivers[i] = name
+			}
 			if method == "item/completed" {
 				status := item.AgentsStates[id].Status
 				if status == "running" {

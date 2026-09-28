@@ -422,6 +422,16 @@ without a reply-context (`re:`) line. Turn completion, failure, or interruption
 clears an unfinished compaction without claiming it succeeded. Child compaction
 does not change Main’s composer. Agent wait starts and completions are transcript
 events, not composer overrides. Replayed events do not restart progress.
+Wait events show named targets. When the host omits receivers, the start event
+snapshots the caller's currently running descendants; completion retains that
+list even if those agents stop or other agents start. Explicit host targets and
+reported states remain authoritative. Presentation-only snapshots are retained
+in managed session storage, scoped by workspace, caller thread, turn, and item,
+so resume can restore the names without reviving agents. History predating these
+snapshots cannot infer missing targets from the current roster. Storage failures
+report a notice without blocking the wait or its live display.
+The ordinary session retention policy bounds these auxiliary records and protects
+them while the native UI is active; restoration does not resume any host work.
 An empty-stdin terminal poll replaces `Working` with `Still running` without
 adding a transcript row for every poll. Process completion, further agent
 activity, or turn termination clears it; ordinary input writes are not polls.

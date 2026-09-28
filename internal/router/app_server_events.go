@@ -2,6 +2,7 @@ package router
 
 import (
 	"cmp"
+	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
@@ -22,16 +23,19 @@ import (
 // session into the roster and Activity entries. Captured edits and previews
 // retain the shared router owners, as do journals and cost.
 type appServerSession struct {
-	seq       uint64
-	paths     map[string]string // Thread → canonical agent path.
-	agents    []activityPaneAgent
-	reasoning map[[3]string]string    // Summary text by thread, turn, item.
-	thinking  map[[3]string]time.Time // First delta of reasoning still streaming.
-	messages  map[string]activityPaneEntry
-	finals    map[string]bool                    // The thread's current turn already sent its answer.
-	metadata  map[string]string                  // Child thread → pending metadata request ID; empty when settled.
-	commands  map[[3]string]*appServerCommandRun // Live commands by thread, turn, item.
-	cwd       string
+	seq         uint64
+	paths       map[string]string // Thread → canonical agent path.
+	agents      []activityPaneAgent
+	reasoning   map[[3]string]string    // Summary text by thread, turn, item.
+	thinking    map[[3]string]time.Time // First delta of reasoning still streaming.
+	messages    map[string]activityPaneEntry
+	finals      map[string]bool                    // The thread's current turn already sent its answer.
+	metadata    map[string]string                  // Child thread → pending metadata request ID; empty when settled.
+	commands    map[[3]string]*appServerCommandRun // Live commands by thread, turn, item.
+	cwd         string
+	waits       map[[3]string][]appServerWaitTarget // Start-time targets by thread, turn, item.
+	waitStore   *mekugiReplayStore
+	waitContext context.Context
 }
 
 // appServerCommandRun is a started command whose streamed output tail is
@@ -107,6 +111,8 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.finals = make(map[string]bool)
 	s.metadata = make(map[string]string)
 	s.commands = make(map[[3]string]*appServerCommandRun)
+	s.waits = make(map[[3]string][]appServerWaitTarget)
+	s.waitStore, s.waitContext = nil, nil
 	s.cwd = cwd
 }
 
@@ -223,6 +229,11 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		s.finals[p.ThreadID] = false
 		delete(s.messages, p.ThreadID)
 	case "turn/completed":
+		for key := range s.waits {
+			if key[0] == p.ThreadID && key[1] == p.Turn.ID {
+				delete(s.waits, key)
+			}
+		}
 		entries = append(entries, s.endThinking(p.ThreadID, now)...)
 		agent := s.agent(s.path(p.ThreadID))
 		agent.Responding, agent.LastResponse = false, now
@@ -263,6 +274,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	case "item/started", "item/completed", "item/agentMessage/delta":
 		item := p.Item
 		id := cmp.Or(p.ItemID, item.ID)
+		item = u.waitItem(item, p.ThreadID, p.TurnID, id, m.Method == "item/started")
 		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method}
 		agent := s.path(p.ThreadID)
 		if text, handled := appServerProgress(item, m.Method); handled {

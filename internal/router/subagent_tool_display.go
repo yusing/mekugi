@@ -39,6 +39,13 @@ func subagentToolPreview(item map[string]json.RawMessage, qualifiedName string, 
 	if jsonString(item, "type") == "function_call" && (namespace == "" || namespace == "functions" || namespace == "collaboration" || namespace == "mekugi_collaboration") {
 		switch strings.TrimPrefix(name, "functions.") {
 		case "wait_agent", "thread_wait":
+			var args struct {
+				Targets []string `json:"targets"`
+			}
+			_ = json.Unmarshal([]byte(input), &args)
+			if len(args.Targets) > 0 {
+				return "Waiting for agent · " + strings.Join(args.Targets, ", ")
+			}
 			return "Waiting for agent"
 		case "spawn_agent", "thread_spawn":
 			return "Starting agent"
