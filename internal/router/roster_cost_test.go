@@ -3,6 +3,8 @@ package router
 import (
 	"math"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestNativeRosterCostMatchesCanonicalUsage(t *testing.T) {
@@ -52,6 +54,11 @@ func TestNativeRosterUsageGapShowsLowerBoundCost(t *testing.T) {
 	}
 	if got := liveActivityCost(agent); got != "≥$0.60" {
 		t.Fatalf("lower-bound cost = %q", got)
+	}
+	// T+N counts every forwarded provider request, including one without usage,
+	// rather than Codex turns.
+	if agent.Roundtrips != 3 || ansi.Strip(liveActivityTurns(agent)) != "T+3" {
+		t.Fatalf("roundtrips = %d, label %q", agent.Roundtrips, liveActivityTurns(agent))
 	}
 }
 

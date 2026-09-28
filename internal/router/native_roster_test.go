@@ -189,19 +189,62 @@ func TestNativeRosterOverflowLegendKeepsSelectedRole(t *testing.T) {
 	}
 }
 
+func TestNativeRosterUnfocusedMetricsRightAligned(t *testing.T) {
+	v := newLiveActivityView()
+	now := time.Now()
+	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
+		{Name: "/root", Responding: true, Started: now.Add(-13 * time.Second), ContextKnown: true, ContextTokens: 47_600, ContextWindow: 200_000, InputTokens: 182_000, OutputTokens: 2_100, Turns: 1, Roundtrips: 1},
+		{Name: "/root/tester", Responding: true, Started: now.Add(-10 * time.Second)},
+		{Name: "/root/explorer_agent", Responding: true, Started: now.Add(-10 * time.Second), ContextKnown: true, ContextTokens: 27_600, ContextWindow: 200_000},
+	}})
+	lines := v.nativeRoster(150, 8, now, false)
+	var rows []string
+	for _, line := range lines[1:] {
+		rows = append(rows, ansi.Strip(line))
+	}
+	// Compact columns stay flush with the right edge, and each separator
+	// lines up across rows.
+	for _, row := range rows {
+		if got := ansi.StringWidth(row); got != 149 {
+			t.Fatalf("row width = %d, want metrics ending at the edge:\n%s", got, strings.Join(rows, "\n"))
+		}
+	}
+	if !strings.HasSuffix(rows[0], "  13s · 13s ago  ↑182K ↓2.1K  T+1") {
+		t.Fatalf("metric columns pad beyond content: %q", rows[0])
+	}
+	want := ansi.StringWidth(rows[0][:strings.Index(rows[0], "·")])
+	for _, row := range rows[1:] {
+		if got := ansi.StringWidth(row[:strings.Index(row, "·")]); got != want {
+			t.Fatalf("timer is not aligned:\n%s", strings.Join(rows, "\n"))
+		}
+	}
+}
+
 func TestNativeRosterMetricsAlignParts(t *testing.T) {
 	v := newLiveActivityView()
 	now := time.Now()
 	agents := []activityPaneAgent{
-		{Name: "/root", Started: now.Add(-37 * time.Minute), ContextKnown: true, ContextTokens: 171_300, ContextWindow: 285_000, InputTokens: 7_500_000, OutputTokens: 30_000, Turns: 3},
-		{Name: "/root/a", Started: now.Add(-94 * time.Second), ContextKnown: true, ContextTokens: 24_400, ContextWindow: 285_000, InputTokens: 411_600, OutputTokens: 4_000, Turns: 1},
+		{Name: "/root", Started: now.Add(-37 * time.Minute), ContextKnown: true, ContextTokens: 171_300, ContextWindow: 285_000, InputTokens: 7_500_000, OutputTokens: 30_000, Turns: 3, Roundtrips: 3},
+		{Name: "/root/a", Started: now.Add(-94 * time.Second), ContextKnown: true, ContextTokens: 24_400, ContextWindow: 285_000, InputTokens: 411_600, OutputTokens: 4_000, Turns: 1, Roundtrips: 1},
 	}
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: agents})
-	var rows []string
+	var parts [][nativeMetricParts]string
 	for _, agent := range agents {
-		rows = append(rows, ansi.Strip(nativeRosterMetrics(v, agent, now, 200)))
+		parts = append(parts, nativeRosterMetricParts(v, agent, now))
 	}
-	for _, mark := range []string{"/", "•", "·", "T+"} {
+	var rows []string
+	for _, row := range nativeRosterColumns(parts, 200) {
+		rows = append(rows, ansi.Strip(row))
+	}
+	if ansi.StringWidth(rows[0]) != ansi.StringWidth(rows[1]) {
+		t.Fatalf("rows differ in width:\n%s", strings.Join(rows, "\n"))
+	}
+	// Columns fit their widest values: "171.3K/285K • 60%", "1m34s · 1m34s ago",
+	// "↑411.6K ↓30K" and "T+3", each after a two-column gap.
+	if got := ansi.StringWidth(rows[0]); got != 4*2+17+17+12+3 {
+		t.Fatalf("metric width = %d:\n%s", got, strings.Join(rows, "\n"))
+	}
+	for _, mark := range []string{"/", "•", "·", "↓", "T+"} {
 		if !strings.Contains(rows[0], mark) || ansi.StringWidth(rows[0][:strings.Index(rows[0], mark)]) != ansi.StringWidth(rows[1][:strings.Index(rows[1], mark)]) {
 			t.Fatalf("%q is not aligned:\n%s", mark, strings.Join(rows, "\n"))
 		}

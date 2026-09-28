@@ -189,14 +189,14 @@ func TestRequestedRosterMetricSlotsStableAcrossAvailabilityAndFormat(t *testing.
 	view.agents[0].Started = now.Add(-52 * time.Second)
 	view.agents[0].LastResponse = now
 	view.agents[0].InputTokens, view.agents[0].OutputTokens = 140_600, 789
-	view.agents[0].Turns, view.agents[0].Cost, view.agents[0].CostKnown = 7, .5171, true
+	view.agents[0].Turns, view.agents[0].Roundtrips, view.agents[0].Cost, view.agents[0].CostKnown = 7, 7, .5171, true
 	full := plainLines(view.metricTable(view.roster(), now))[0]
 	view.agents[0].InputTokens, view.agents[0].OutputTokens = 73_700, 844
-	view.agents[0].Turns, view.agents[0].Cost = 14, 12.0811
+	view.agents[0].Turns, view.agents[0].Roundtrips, view.agents[0].Cost = 14, 14, 12.0811
 	view.agents[0].LastResponse = now.Add(-4 * time.Second)
 	changed := plainLines(view.metricTable(view.roster(), now))[0]
 	view.agents[0].InputTokens, view.agents[0].OutputTokens = 0, 0
-	view.agents[0].Turns, view.agents[0].CostKnown = 0, false
+	view.agents[0].Turns, view.agents[0].Roundtrips, view.agents[0].CostKnown = 0, 0, false
 	empty := plainLines(view.metricTable(view.roster(), now))[0]
 	for _, marker := range []string{"·", "↑", "↓", "$", "T+"} {
 		a, b := strings.Index(full, marker), strings.Index(changed, marker)

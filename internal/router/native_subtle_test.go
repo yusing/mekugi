@@ -18,7 +18,7 @@ func TestNativeUISubtleForeground(t *testing.T) {
 	u := &appServerUI{model: "x", view: newLiveActivityView()}
 	frame, _ := u.mainFrame(40, 3, 0)
 	v := newLiveActivityView()
-	metrics := nativeRosterMetrics(v, activityPaneAgent{Name: "/root/a", ContextKnown: true, ContextTokens: 1000, ContextWindow: 4000, InputTokens: 2000, OutputTokens: 1000}, time.Now(), 200)
+	metrics := nativeRosterColumns([][nativeMetricParts]string{nativeRosterMetricParts(v, activityPaneAgent{Name: "/root/a", ContextKnown: true, ContextTokens: 1000, ContextWindow: 4000, InputTokens: 2000, OutputTokens: 1000}, time.Now())}, 200)[0]
 	for name, row := range map[string]string{
 		"roster context": strings.Replace(metrics, "1K/", "x/", 1),
 		"roster tokens":  strings.Replace(metrics, "↑2K", "↑x", 1),

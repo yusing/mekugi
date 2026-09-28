@@ -31,8 +31,17 @@ func TestLiveActivityElapsedFormatting(t *testing.T) {
 			}
 			v := liveActivityView{}
 			agent := activityPaneAgent{Name: "/root/worker", Started: start, Responding: true}
-			if _, got := v.current(agent, now); got != tc.want+" · —" {
+			// Before its first response, the agent's last activity is its start.
+			last := tc.want + " ago"
+			if tc.age < 2*time.Second {
+				last = "just now"
+			}
+			if _, got := v.current(agent, now); got != tc.want+" · "+last {
 				t.Fatalf("running agent timer = %q", got)
+			}
+			agent.LastResponse = now.Add(-time.Minute)
+			if _, got := v.current(agent, now); got != tc.want+" · 1m ago" {
+				t.Fatalf("responded agent timer = %q", got)
 			}
 			agent.Responding, agent.LastResponse = false, now
 			if _, got := v.current(agent, now.Add(time.Minute)); got != tc.want+" · 1m ago" {

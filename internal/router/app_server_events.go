@@ -222,6 +222,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			u.exitUsage = p.TokenUsage.Total
 		}
 		agent := s.agent(s.path(p.ThreadID))
+		agent.LastResponse = now // Usage arrives once per provider response.
 		agent.InputTokens, agent.OutputTokens = p.TokenUsage.Total.InputTokens, p.TokenUsage.Total.OutputTokens
 		agent.ContextWindow = p.TokenUsage.ModelContextWindow
 		agent.ContextKnown = p.TokenUsage.Last != nil
@@ -486,6 +487,7 @@ func (u *appServerUI) observeCost(thread string, agent *activityPaneAgent) {
 	agent.Cost = report.cost.cachedInput + report.cost.uncachedInput + report.cost.output
 	agent.CostKnown = observed && report.cost.known
 	agent.CostPartial = report.missingUsage != 0
+	agent.Roundtrips = u.proxy.usage.roundtrips(thread)
 }
 
 // appServerCommandText uses Codex's typed classification, then the shared

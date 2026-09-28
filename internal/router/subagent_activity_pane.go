@@ -33,9 +33,11 @@ type activityPaneAgent struct {
 	Started      time.Time `json:",omitzero"`
 	LastResponse time.Time `json:",omitzero"`
 	Turns        uint64    `json:",omitzero"`
-	Cost         float64   `json:",omitzero"`
-	CostKnown    bool      `json:",omitzero"`
-	CostPartial  bool      `json:",omitzero"`
+	// Provider requests forwarded for the agent, shown as T+N.
+	Roundtrips  uint64  `json:",omitzero"`
+	Cost        float64 `json:",omitzero"`
+	CostKnown   bool    `json:",omitzero"`
+	CostPartial bool    `json:",omitzero"`
 	// Cumulative provider-reported tokens for the agent's responses.
 	InputTokens  uint64 `json:",omitzero"`
 	OutputTokens uint64 `json:",omitzero"`

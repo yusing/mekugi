@@ -30,6 +30,7 @@ type threadUsageTotal struct {
 	counts         tokenCounts
 	complete       bool
 	missingUsage   uint64
+	roundtrips     uint64
 	models         []string
 }
 
@@ -91,6 +92,7 @@ func (u *threadUsage) add(thread, model, reasoning, serviceTier string, counts t
 
 func addThreadUsageTotal(total *threadUsageTotal, model, reasoning, serviceTier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
 	total.lastModel = model
+	total.roundtrips++ // Forwarded requests count whether or not usage arrived.
 	displayModel := usageModelLabel(model, reasoning, serviceTier)
 	if displayModel != "" && !slices.Contains(total.models, displayModel) {
 		total.models = append(total.models, displayModel)
@@ -234,6 +236,20 @@ func (u *threadUsage) snapshot(thread string) (tokenUsageReport, bool) {
 		return report, observed
 	}
 	return tokenUsageReport{}, false
+}
+
+// roundtrips counts the thread's forwarded provider requests, which remain
+// countable after its token totals become incomplete.
+func (u *threadUsage) roundtrips(thread string) uint64 {
+	if u == nil {
+		return 0
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.closed || u.threads[thread] == nil {
+		return 0
+	}
+	return u.threads[thread].roundtrips
 }
 
 func (u *threadUsage) close() {

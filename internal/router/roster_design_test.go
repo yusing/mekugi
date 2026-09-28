@@ -50,7 +50,7 @@ func TestRosterDesignSeparateHeaderTreeAndMetrics(t *testing.T) {
 	v := newLiveActivityView()
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 		{Name: "/root", Role: "root-role"},
-		{Name: "/root/a", Role: "explorer", Turns: 1},
+		{Name: "/root/a", Role: "explorer", Turns: 1, Roundtrips: 1},
 		{Name: "/root/b", Responding: true},
 		{Name: "/root/a/x"}, {Name: "/root/a/y"},
 	}, Entries: []activityPaneEntry{{Seq: 1, Agent: "/root/a/x", Kind: "error", Text: "failed", Observed: now}}})

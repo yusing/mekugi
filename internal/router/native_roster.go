@@ -140,6 +140,17 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		nameWidth = max(nameWidth, ansi.StringWidth(name))
 	}
 	nameWidth = min(nameWidth, max(8, width/4))
+	// Lay out agent rows first, so right-aligned metric columns fit their
+	// widest visible values rather than fixed widths.
+	type agentLine struct {
+		row          liveActivityRosterRow
+		prefix       string
+		state        string
+		finishedLine string
+	}
+	var laid []agentLine
+	var parts [][nativeMetricParts]string
+	widest := 0
 	for _, item := range items[start:end] {
 		if item.finished != nil {
 			var names []string
@@ -147,7 +158,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 				names = append(names, activityui.Color(row.agent.Name)+activityui.AgentDisplayName(row.agent.Name)+activityui.Reset)
 			}
 			line := " " + activityui.Green + "✓" + activityui.Reset + " " + activityui.Dim + fmt.Sprintf("%d finished · ", len(item.finished)) + activityui.Undim + strings.Join(names, activityui.Dim+", "+activityui.Undim)
-			lines = append(lines, ansi.Truncate(line, width, "…"))
+			laid = append(laid, agentLine{finishedLine: ansi.Truncate(line, width, "…")})
 			continue
 		}
 		row := item.row
@@ -164,17 +175,34 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		if focused {
 			gap += strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(tree)))
 		}
-		line := " " + v.nativeGlyph(row.agent) + " " + name + gap
-		state := v.agentState(row.agent)
-		metrics := nativeRosterMetrics(v, row.agent, now, width-ansi.StringWidth(line)-24)
-		room := width - ansi.StringWidth(line) - ansi.StringWidth(metrics) - 1
-		line += liveActivityPad(state, max(1, room)) + metrics
+		line := agentLine{row: row, prefix: " " + v.nativeGlyph(row.agent) + " " + name + gap, state: v.agentState(row.agent)}
+		laid = append(laid, line)
+		parts = append(parts, nativeRosterMetricParts(v, row.agent, now))
+		widest = max(widest, ansi.StringWidth(line.prefix))
+	}
+	metrics := nativeRosterColumns(parts, width-widest-24)
+	stateEnd := width - 1
+	if len(metrics) > 0 {
+		stateEnd -= ansi.StringWidth(metrics[0])
+	}
+	next := 0
+	for _, item := range laid {
+		if item.finishedLine != "" {
+			lines = append(lines, item.finishedLine)
+			continue
+		}
+		room := max(1, stateEnd-ansi.StringWidth(item.prefix))
+		line := item.prefix + liveActivityPad(item.state, room)
+		if next < len(metrics) {
+			line += metrics[next]
+		}
+		next++
 		line = ansi.Truncate(line, width, "…")
-		if row.agent.Name == v.selected && (focused || v.only) {
+		if item.row.agent.Name == v.selected && (focused || v.only) {
 			line = v.selectRow(line, width)
 		}
 		lines = append(lines, line)
-		v.hits = append(v.hits, liveActivityHit{len(lines), 1, width, row.agent.Name})
+		v.hits = append(v.hits, liveActivityHit{len(lines), 1, width, item.row.agent.Name})
 	}
 	if hidden := len(items) - end; hidden > 0 {
 		lines = append(lines, ansi.Truncate(activityui.Dim+fmt.Sprintf("   +%d more · ^B 4 shows all", hidden)+activityui.Undim, width, "…"))
@@ -186,46 +214,96 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	return lines
 }
 
-// nativeRosterMetrics retains context longest as lower-priority metrics drop.
-// Metrics are uniformly secondary text. Within a metric, the part before its
-// separator is right-aligned and the part after it left-aligned, so separators
-// line up across rows while each value stays next to its separator.
-func nativeRosterMetrics(v *liveActivityView, agent activityPaneAgent, now time.Time, room int) string {
+// Metric parts, in column order: context used and percent, elapsed and last
+// response, input and output tokens, cost, and roundtrips.
+const nativeMetricParts = 8
+
+func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now time.Time) [nativeMetricParts]string {
+	var parts [nativeMetricParts]string
 	context := contextWindowLabel(agent)
 	if used, percent, ok := strings.Cut(context, " • "); ok {
-		context = rosterAlign(used, 11) + " • " + liveActivityPad(percent, 3)
+		parts[0], parts[1] = used, percent
+	} else if strings.HasSuffix(context, "%") {
+		parts[1] = context
+	} else {
+		parts[0] = context
 	}
 	_, timer := v.current(agent, now)
-	if elapsed, last, ok := strings.Cut(timer, " · "); ok {
-		timer = rosterAlign(elapsed, 6) + " · " + liveActivityPad(last, 10)
-	}
-	tokens := ""
+	parts[2], parts[3], _ = strings.Cut(timer, " · ")
 	if agent.InputTokens+agent.OutputTokens > 0 {
-		tokens = rosterAlign("↑"+formatUsageTokens(agent.InputTokens), 7) + " " + liveActivityPad("↓"+formatUsageTokens(agent.OutputTokens), 7)
+		parts[4], parts[5] = "↑"+formatUsageTokens(agent.InputTokens), "↓"+formatUsageTokens(agent.OutputTokens)
 	}
-	cells := []struct {
-		text  string
-		width int
-	}{{context, 17}, {timer, 19}, {tokens, 15}, {liveActivityCost(agent), 7}, {ansi.Strip(liveActivityTurns(agent)), 5}}
-	for len(cells) > 0 {
+	parts[6], parts[7] = liveActivityCost(agent), ansi.Strip(liveActivityTurns(agent))
+	return parts
+}
+
+// nativeRosterColumns renders each row's metrics as columns sized to their
+// widest value. Context is retained longest as lower-priority columns drop to
+// fit room. Within a column, the part before its separator is right-aligned
+// and the part after it left-aligned, so separators line up across rows
+// while each value stays next to its separator. Metrics are uniformly
+// secondary text.
+func nativeRosterColumns(rows [][nativeMetricParts]string, room int) []string {
+	var widths [nativeMetricParts]int
+	for _, row := range rows {
+		for i, part := range row {
+			widths[i] = max(widths[i], ansi.StringWidth(part))
+		}
+	}
+	type column struct {
+		first, second int // Part indexes; second < 0 for a single part.
+		separator     string
+	}
+	var columns []column
+	for _, c := range []column{{0, 1, " • "}, {2, 3, " · "}, {4, 5, " "}, {6, -1, ""}, {7, -1, ""}} {
+		if widths[c.first] > 0 || c.second >= 0 && widths[c.second] > 0 {
+			columns = append(columns, c)
+		}
+	}
+	columnWidth := func(c column) int {
+		if c.second < 0 {
+			return widths[c.first]
+		}
+		if widths[c.first] == 0 || widths[c.second] == 0 {
+			return widths[c.first] + widths[c.second]
+		}
+		return widths[c.first] + ansi.StringWidth(c.separator) + widths[c.second]
+	}
+	for len(columns) > 0 {
 		total := 0
-		for _, cell := range cells {
-			total += cell.width + 2
+		for _, c := range columns {
+			total += 2 + columnWidth(c)
 		}
 		if total <= room {
 			break
 		}
-		cells = cells[:len(cells)-1]
+		columns = columns[:len(columns)-1]
 	}
-	var b strings.Builder
-	for _, cell := range cells {
-		text := ansi.Truncate(cell.text, cell.width, "…")
-		b.WriteString("  " + strings.Repeat(" ", cell.width-ansi.StringWidth(text)) + text)
+	if len(columns) == 0 {
+		return nil
 	}
-	if b.Len() == 0 {
-		return ""
+	lines := make([]string, len(rows))
+	for r, row := range rows {
+		var b strings.Builder
+		for _, c := range columns {
+			b.WriteString("  ")
+			switch {
+			case c.second < 0:
+				b.WriteString(rosterAlign(row[c.first], widths[c.first]))
+			case widths[c.first] == 0 || widths[c.second] == 0:
+				b.WriteString(rosterAlign(row[c.first]+row[c.second], columnWidth(c)))
+			case row[c.first] == "" && row[c.second] == "":
+				b.WriteString(strings.Repeat(" ", columnWidth(c)))
+			case row[c.first] == "":
+				// A lone second part, such as unknown context's 0%, keeps its column.
+				b.WriteString(strings.Repeat(" ", widths[c.first]+ansi.StringWidth(c.separator)) + liveActivityPad(row[c.second], widths[c.second]))
+			default:
+				b.WriteString(rosterAlign(row[c.first], widths[c.first]) + c.separator + liveActivityPad(row[c.second], widths[c.second]))
+			}
+		}
+		lines[r] = activityui.Dim + b.String() + activityui.Undim
 	}
-	return activityui.Dim + b.String() + activityui.Undim
+	return lines
 }
 
 // rosterAlign right-aligns text within width columns.

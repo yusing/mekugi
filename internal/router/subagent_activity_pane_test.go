@@ -203,11 +203,11 @@ func TestLiveActivityCombinedRosterShowsTimerCostAndUsage(t *testing.T) {
 	view.agents[0].Started = now.Add(-8 * time.Minute)
 	view.agents[0].LastResponse = now.Add(-3 * time.Second)
 	view.agents[0].InputTokens, view.agents[0].OutputTokens = 1_000, 0
-	view.agents[0].Turns, view.agents[0].Cost, view.agents[0].CostKnown = 2, 1.2, true
+	view.agents[0].Turns, view.agents[0].Roundtrips, view.agents[0].Cost, view.agents[0].CostKnown = 2, 2, 1.2, true
 	view.agents[1].Started = now.Add(-7 * time.Minute)
 	view.agents[1].LastResponse = now.Add(-2 * time.Minute)
 	view.agents[1].InputTokens, view.agents[1].OutputTokens = 500, 0
-	view.agents[1].Turns, view.agents[1].Cost, view.agents[1].CostKnown = 1, 0, false
+	view.agents[1].Turns, view.agents[1].Roundtrips, view.agents[1].Cost, view.agents[1].CostKnown = 1, 1, 0, false
 	lines := plainLines(view.render(90, 20, now))
 	for i := range lines {
 		lines[i] = strings.Join(strings.Fields(lines[i]), " ")

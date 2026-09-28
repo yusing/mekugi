@@ -41,7 +41,7 @@ func TestRosterMetricsInlineAndHitTargets(t *testing.T) {
 	v := liveActivityTestView("/root/a", "/root/b", "/root/c")
 	v.agents[0].Role = "explorer"
 	v.agents[0].InputTokens, v.agents[0].OutputTokens = 1000, 20
-	v.agents[0].Turns, v.agents[0].CostKnown, v.agents[0].Cost = 1, true, .25
+	v.agents[0].Turns, v.agents[0].Roundtrips, v.agents[0].CostKnown, v.agents[0].Cost = 1, 1, true, .25
 	lines := plainLines(v.renderRosterPane(120, 8, time.Now()))
 	// Metrics share the agent's row, in columns aligned across rows.
 	if !strings.Contains(lines[1], "Read a.go") || strings.Contains(lines[1], "explorer") || !strings.Contains(strings.Join(strings.Fields(lines[1]), " "), "↑ 1K ↓ 20 $0.25 T+1") ||

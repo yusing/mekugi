@@ -1,6 +1,7 @@
 package router
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"slices"
@@ -770,15 +771,14 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (stri
 			break
 		}
 	}
+	// Before its first response, an agent's last activity is its start.
+	last := cmp.Or(agent.LastResponse, agent.Started)
 	if agent.Started.IsZero() {
 		if latest := v.latest(agent.Name); latest >= 0 {
-			return summary, liveActivityAge(max(0, now.Sub(v.entries[latest].Observed))) + " · —"
+			observed := v.entries[latest].Observed
+			return summary, liveActivityAge(max(0, now.Sub(observed))) + " · " + liveActivityLast(cmp.Or(last, observed), now)
 		}
 		return summary, ""
-	}
-	last := "—"
-	if !agent.LastResponse.IsZero() {
-		last = liveActivityLast(agent.LastResponse, now)
 	}
 	// Elapsed time stops when the agent stops responding; the last-response
 	// age keeps counting.
@@ -786,7 +786,7 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (stri
 	if !agent.Responding && !agent.LastResponse.IsZero() {
 		end = agent.LastResponse
 	}
-	return summary, liveActivityAge(max(0, end.Sub(agent.Started))) + " · " + last
+	return summary, liveActivityAge(max(0, end.Sub(agent.Started))) + " · " + liveActivityLast(last, now)
 }
 
 // liveActivityTokens shows cumulative input (sent) and output (received) tokens.
@@ -809,12 +809,12 @@ func liveActivityCost(agent activityPaneAgent) string {
 	return fmt.Sprintf("$%.2f", agent.Cost)
 }
 
-// liveActivityTurns counts provider responses as T+N.
+// liveActivityTurns counts provider roundtrips as T+N.
 func liveActivityTurns(agent activityPaneAgent) string {
-	if agent.Turns == 0 {
+	if agent.Roundtrips == 0 {
 		return ""
 	}
-	return activityui.Dim + "T+" + activityui.Undim + fmt.Sprint(agent.Turns)
+	return activityui.Dim + "T+" + activityui.Undim + fmt.Sprint(agent.Roundtrips)
 }
 
 // selectRow fills the selected agent's rows, so selection takes no column of
@@ -1003,7 +1003,7 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 		prefix := " " + v.glyph(row.agent) + " "
 		switch {
 		case cards && !compact:
-			last := liveActivityLast(row.agent.LastResponse, now)
+			last := liveActivityLast(cmp.Or(row.agent.LastResponse, row.agent.Started), now)
 			gap := width - 3 - ansi.StringWidth(name) - ansi.StringWidth(last)
 			line := prefix + styled
 			if gap >= 2 {
@@ -1077,9 +1077,7 @@ func (v *liveActivityView) metricTable(rows []liveActivityRosterRow, now time.Ti
 			}
 			cost = prefix + "$" + fmt.Sprintf("%.2f", row.agent.Cost)
 		}
-		if row.agent.Turns > 0 {
-			turns = activityui.Dim + "T+" + activityui.Undim + fmt.Sprint(row.agent.Turns)
-		}
+		turns = liveActivityTurns(row.agent)
 		cells[i] = [columns]string{timerCell, tokens, cost, turns}
 	}
 	table := make([]string, len(rows))
