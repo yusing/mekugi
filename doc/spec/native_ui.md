@@ -613,6 +613,34 @@ The native client replaces the wrapped Codex terminal. The dashboard remains
 available at the invocation URL. Redirected and noninteractive commands do not
 start the native UI.
 
+### Terminal notifications and lifecycle titles
+
+The native client publishes Codex-compatible terminal lifecycle titles so pane
+managers can recognize working and action-required states without parsing the
+transcript. The Main turn supplies the work spinner; pending questions (including
+hidden or resumed async questions) and unsupported server requests take priority
+with `Action Required`. Settled Main turns remove the spinner; child completion
+does not mark Main done. Herdr owns the distinction between unseen completion
+and seen idle, including its blue and green indicators. Titles are cleared when
+the native client exits or yields the terminal to an external editor.
+
+Desktop notifications are separate from lifecycle titles. The native client
+reads Codex's effective `tui.notifications`, `tui.notification_method`, and
+`tui.notification_condition` through app-server for the selected workspace,
+without editing configuration. Events are `agent-turn-complete`,
+`approval-requested`, `plan-mode-prompt` (synchronous input), and `async-question`.
+Only successful live Main completion notifies; pending questions take priority.
+History restoration and duplicate question events do not notify again.
+
+Notifications default to enabled and unfocused-only; `always` also allows them
+while focused. Focus reports are terminal events, never composer or pane input.
+`osc9` emits OSC 9 and `bel` emits BEL. `auto` uses OSC 9 in supported terminals
+and Herdr, otherwise BEL; tmux receives passthrough-wrapped OSC 9 outside Herdr.
+Notification text is generic, excluding prompt, answer, tool and secret content.
+Disabling desktop notifications does not disable lifecycle titles. Configuration
+or notification-output failures report a notice without stopping host work.
+Redirected/noninteractive execution retains Codex's own behavior.
+
 ### User-input questions
 
 Root-thread questions use a shared dock above the composer, hiding the live-edit

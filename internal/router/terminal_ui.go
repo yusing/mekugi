@@ -123,6 +123,12 @@ func (u *terminalUI) key(key byte) error {
 			return nil
 		}
 		u.sequence = ""
+		if s == "\x1b[I" || s == "\x1b[O" {
+			if u.main != nil && u.main.notifications != nil {
+				u.main.notifications.focused = s == "\x1b[I"
+			}
+			return nil
+		}
 		if s == "\x1b[200~" {
 			u.paste = true
 			u.pasteEnd = 0

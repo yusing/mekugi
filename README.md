@@ -275,6 +275,12 @@ call never becomes a saved change.
   while a preview is open.
 - Browsing pauses following; `r` resumes.
 
+Native sessions publish working and pending-input terminal titles, including
+Herdr's working, blocked, done, and idle indicators. Desktop notifications follow
+Codex's `tui.notifications`, `tui.notification_method`, and
+`tui.notification_condition` settings (unfocused-only by default). Turning off
+desktop notifications leaves agent-state detection active.
+
 See [live view details](doc/spec/changes.md#live-terminal-view).
 
 ### Agents pane

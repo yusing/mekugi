@@ -62,6 +62,7 @@ type appServerItem struct {
 }
 
 type appServerUI struct {
+	notifications             *nativeNotifications
 	questions                 nativeQuestionDock
 	statusPanel               *appServerStatusReport
 	statusConfig              appServerStatusConfig
@@ -159,6 +160,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	}
 	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread}
 	u.resumeConfig = appServerResumeConfig(cmd.Args)
+	u.notifications = &nativeNotifications{out: stdout, focused: true}
 	u.resumeCwd = resumeCwd
 	u.panes = new(nativePanePersistence)
 	if err := u.request("initialize", nil); err != nil {
@@ -187,7 +189,8 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		exited := false
 		var err error
 		for {
-			err = terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
+			err = terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1003;1004;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1004;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
+				defer u.clearTerminalTitle()
 				var sub *liveDiffSubscriber
 				var diffEvents <-chan liveDiffEvent
 				var diffGap, diffReady, autoChanged <-chan struct{}
@@ -320,6 +323,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 							u.dirty = false
 						}
 					}
+					u.writeTerminalTitle(time.Now())
 				}
 			})
 			if !errors.Is(err, errOpenComposerEditor) {
@@ -406,6 +410,10 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	if m.Method == "" {
 		method := u.requests[string(m.ID)]
 		delete(u.requests, string(m.ID))
+		if method == "config/read" {
+			u.notificationConfig(m)
+			return nil
+		}
 		if handled, err := u.statusMessage(method, m); handled {
 			return err
 		}
@@ -486,6 +494,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				return err
 			}
 			u.session.start(u.thread, result.Thread.Cwd)
+			if u.notifications != nil {
+				if err := u.request("config/read", map[string]any{"cwd": result.Thread.Cwd, "includeLayers": false}); err != nil {
+					return err
+				}
+			}
 			if u.proxy != nil || u.panes != nil {
 				var waitStore *mekugiReplayStore
 				if u.proxy != nil {
@@ -522,6 +535,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 		return nil
 	}
+	u.resolveNotification(m)
 	if handled, err := u.questionMessage(m); handled {
 		return err
 	}
@@ -529,6 +543,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		// Never auto-approve an unexpected server request. Leave it pending,
 		// visibly blocked, until interrupted.
 		u.status, u.alert = "Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true
+		u.blockNotification(m)
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Session", Kind: "text", Text: u.status, Observed: time.Now()}}})
 		return nil
 	}
@@ -569,6 +584,13 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.turn, u.status, u.starting, u.alert, u.turnStarted = p.Turn.ID, "Working", false, false, time.Now()
 		}
 	case "turn/completed":
+		if u.notifications != nil {
+			for id, request := range u.notifications.blocked {
+				if request.Thread == p.ThreadID && (request.Turn == "" || request.Turn == p.Turn.ID) {
+					delete(u.notifications.blocked, id)
+				}
+			}
+		}
 		if p.ThreadID == u.thread && p.Turn.ID == u.turn {
 			u.shellStandalone = false
 			u.endSyncQuestions(p.Turn.ID)
@@ -581,6 +603,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				u.status, u.alert = u.status+": "+p.Turn.Error.Message, true
 			}
 			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
+			if p.Turn.Status == "completed" && u.questionCount() == 0 {
+				u.notify("agent-turn-complete", "Agent turn complete")
+			}
 			for _, c := range u.questions.calls {
 				if !c.resolved {
 					u.renderQuestionRecord(c)

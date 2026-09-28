@@ -178,6 +178,13 @@ func (u *appServerUI) addQuestions(c *nativeQuestionCall, replay bool) {
 	}
 	u.questions.inputTurns[c.turn] = true
 	u.questions.calls = append(u.questions.calls, c)
+	if !replay {
+		if len(c.request) > 0 {
+			u.notify("plan-mode-prompt", "Input requested")
+		} else {
+			u.notify("async-question", "Question pending")
+		}
+	}
 	u.renderQuestionRecord(c)
 	if !replay && len(c.request) > 0 && u.draft == "" && !u.paste && u.escape == "" && time.Since(u.questions.lastKey) >= time.Second && (u.shell == nil || u.shell.focus == 0 && !u.shell.paste && u.shell.sequence == "") {
 		u.openQuestionCall(c)
