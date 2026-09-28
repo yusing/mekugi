@@ -37,6 +37,7 @@ The linked contracts own interface details, exceptions, and acceptance cases.
 - **Visible-row alignment:** In scrollable lists and pickers, derive shared
   column widths only from currently visible rows. Off-screen items must not
   change alignment, truncation, or description visibility.
+- **Visible states:** No labels for no state / unknown.
 - **Session continuity:** Features remain correct across `/fork`, `/side`,
   agent switching through `/subagents`, model switches, and `codex resume`,
   including a fresh router process. Restore inherited authorization from
@@ -97,9 +98,10 @@ The linked contracts own interface details, exceptions, and acceptance cases.
   and [provider isolation](doc/spec/third_party.md).
 - **Evidence over apparent success:** Judge correctness by actual host
   results, path scope, and required graders, not model prose or transcript
-  labels. Provider usage owns model-consumption claims; local estimates and
-  transport expansion are different measures. Missing or incomplete
-  evidence is not zero or success. See [metrics](doc/spec/metrics.md),
+  labels. After implementation, run the narrowest relevant validation suite
+  and report its result before treating the work as complete. Provider usage
+  owns model-consumption claims; local estimates and transport expansion are
+  different measures. Missing or incomplete evidence is not zero or success. See [metrics](doc/spec/metrics.md),
   [E2E evidence](doc/codex-router-e2e.md), and the separate
   [codex-setup-ab](https://github.com/yusing/codex-setup-ab) repository for
   controlled comparisons.
@@ -115,8 +117,8 @@ Never run `make install`, `make install-binaries`, bare `make`, or other command
 binary into the installation path: bare `make` defaults to `install`, which replaces the installed
 `mekugi`.
 
-For tests or asset generation, read `CONTEXT-TESTS.md`.
-For automated live Codex tests, read `CONTEXT-AUTOMATED-TESTS.md`.
+Before running tests or generating assets, read `CONTEXT-TESTS.md`; before automated live Codex
+tests, also read `CONTEXT-AUTOMATED-TESTS.md`.
 
 ## Where to look
 
@@ -132,31 +134,3 @@ applicable `AGENTS.md` guidance loaded by the client or instructions supplied in
 
 Documentation references are one-way: this file may point to docs, but docs must not refer
 back here. Docs must stand on their own interface and architecture references.
-
-## Owners
-
-| Behavior | Authoritative area |
-| --- | --- |
-| Review-diff rendering used by observed change evidence | Root-package `review*.go` |
-| Shared quoted operands, logical rows, source capability, Go lexical, and shell-header semantics | `internal/quotedoperand`, `internal/logicalrow`, `internal/sourcekind`, `internal/golex`, `internal/shellsyntax` |
-| Versioned plugin shared-core adapter and private WASM bridge | `internal/router/toolplugin/core-v1.mjs`, `internal/router/toolplugin/core-v1.d.ts`, `internal/sharedwasm` |
-| Activity presentation, diff navigation/previews, terminal primitives, and dashboard | `internal/ui/activity`, `internal/ui/diffview`, `internal/ui/terminal`, `internal/ui/dashboard`; native session integration remains in `internal/router` |
-| Codex app-server stdio RPC and child-process lifecycle | `internal/appserver` |
-| Router lifecycle, launch flags, modes, and HTTP endpoints | `internal/router/server.go`, `internal/router/flags.go` |
-| Third-party native-agent projection, Grok authentication/translation, and model metadata | `internal/router/subagent_bridge.go`, `internal/router/grok_*.go` |
-| Automatic notices and root-visible child activity | `internal/router/commentary.go`, `internal/router/commentary_publisher.go`, `internal/router/subagent_activity.go`; details in `doc/architecture/commentary.md` |
-| Per-thread token/cost reports and final-answer stream ordering | `internal/router/thread_usage.go`, `internal/router/token_cost.go`, `internal/router/final_answer_stream.go` |
-| Mentor Handoff model schedule | `internal/router/mentor_handoff.go` |
-| Codex-facing WebSocket sessions, incremental history, and steering | `internal/router/server_websocket.go` |
-| Codex authentication and upstream Responses transport | `internal/router/client.go`, `internal/router/client_websocket.go` |
-| Stock tool preservation and response observation | `internal/router/mekugi_proxy.go`, `internal/router/mekugi_response_transform.go`, `internal/router/native_apply_patch.go` |
-| Journal state, router-owned CRUD, terminal delivery, and replay | `internal/router/journal.go`, `internal/router/journal_tool.go`, `internal/router/journal_delivery.go` |
-| AX runtime evidence and offline measurements | `capturer/ax.go`; authenticated reader dispatch in `internal/router/tool_plugin_worker.go` |
-| Offline logical session inspection | `internal/router/session_inspect.go`, dispatched by `cmd/mekugi/main.go` |
-| Observed review diffs, change IDs, and bounded reads | `review.go`, `internal/router/native_apply_patch.go`, `internal/router/mekugi_changes.go`, `internal/router/mchanges.go` |
-| Durable replay, request-visible history, and retained output | `internal/router/mekugi_store.go`, `internal/router/mekugi_history.go`, `internal/router/shell_output_read.go` |
-| Authenticated frontend registry, worker, and PATH | `internal/router/tool_registry.go`, `internal/router/tool_plugin_worker.go`, `internal/router/tool_wrapper.go`, `internal/runtimepath` |
-| Built-in tool sources, output tokenization, and plugin runtime | `plugins`, `internal/router/toolplugin` |
-| Router process signals, wrapped Codex lifecycle, and top-level exit | `cmd/mekugi/main.go`, `cmd/mekugi/wrap.go` |
-| Normative interface requirements | `doc/spec/index.md` and the listed requirement file |
-| Stable ownership contracts | `doc/architecture/index.md` and the listed contract file |
