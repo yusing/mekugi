@@ -117,7 +117,10 @@ func (u *appServerUI) editQueued() {
 // flushInput sends stacked input once nothing blocks it: unsent steers into
 // the running turn, otherwise unsent steers, then queued input, as a new turn.
 func (u *appServerUI) flushInput() error {
-	if u.thread == "" || u.restoring != nil || u.submission.text != "" || u.starting || u.settingsPending {
+	if u.shellOrigin != nil && u.turn != *u.shellOrigin {
+		return nil // Main ended before Codex identified the shell's turn.
+	}
+	if u.thread == "" || u.restoring != nil || u.submission.text != "" || u.starting || u.settingsPending || u.shellPending.text != "" || u.shellStandalone {
 		return nil
 	}
 	parts, steer := u.unsent, u.turn != ""
@@ -311,6 +314,8 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 	}
 	header := "Steering after the next tool call · ctrl+c interrupts and sends now"
 	switch {
+	case u.shellStandalone:
+		header = "Waiting for shell command to finish"
 	case u.interrupting != "" || u.submission.resend:
 		header = "Sending as the next turn once interrupted"
 	case u.turn != "" || u.starting:

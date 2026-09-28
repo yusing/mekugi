@@ -342,6 +342,22 @@ in the transcript immediately and is reconciled with the server's user message
 without a duplicate; rejection restores the draft, followed by any input stacked
 or queued behind it.
 
+Starting a draft with `!` selects Shell Mode, with an explicit label and red
+composer frame. Enter or Tab submits the command through Codex's native
+`thread/shellCommand` API, not as a model prompt. Shell syntax passes through
+unchanged after removing the leading `!` and surrounding whitespace. Shell mode
+disables file and skill completion; attached images and picker tokens must be
+removed before execution. An empty command stays in the composer with a hint.
+Codex runs it with full access using the thread's shell and workspace, streams
+its output, and owns interruption and durable command/result history. While
+Main is working, Codex injects the command and output into that turn. Otherwise
+they remain in history for the next user input without starting a model reply.
+Ordinary input submitted during a standalone shell run waits for its completion.
+Rejected submissions return to an empty composer with an error; if a later draft
+exists, the rejected command is saved separately in input history instead of
+turning that draft into executable shell text. Acknowledgements do
+not claim command completion. Removing `!` returns to normal compose mode.
+
 Busy input follows Codex's composer queue. Enter while a turn runs steers it;
 Tab queues input for the next turn and, while idle, sends like Enter. Input that
 cannot be sent yet stacks locally instead of being refused: steers typed while

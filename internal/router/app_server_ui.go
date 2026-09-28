@@ -34,6 +34,7 @@ type appServerItem struct {
 	AgentThreadID    string                    `json:"agentThreadId"`
 	AgentPath        string                    `json:"agentPath"`
 	Command          string                    `json:"command"`
+	Source           string                    `json:"source"`
 	ProcessID        string                    `json:"processId"`
 	Path             string                    `json:"path"`
 	Status           string                    `json:"status"`
@@ -92,6 +93,9 @@ type appServerUI struct {
 	settingsTurn              string
 	requests                  map[string]string
 	draft                     string
+	shellPending              composerDraft        // Awaiting thread/shellCommand acknowledgement, not completion.
+	shellStandalone           bool                 // User shell turn; ordinary input waits until it completes.
+	shellOrigin               *string              // Submitted turn, until Codex identifies the shell execution.
 	submission                composerSubmission   // The unresolved turn/start or turn/steer request.
 	steers                    []composerSubmission // Accepted steers the turn has not yet committed.
 	unsent, queued            []composerDraft      // Stacked steers and next-turn input.
@@ -338,6 +342,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		if unknown := joinDrafts(u.steerParts(unknown)...); unknown.text != "" {
 			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+livediff.Safe(unknown.text, false))
 		}
+		if u.shellPending.text != "" {
+			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+livediff.Safe(u.shellPending.text, false))
+		}
 		if err != nil {
 			c.Diagnostics.Lock()
 			defer c.Diagnostics.Unlock()
@@ -407,6 +414,10 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 		if method == "turn/start" || method == "turn/steer" {
 			u.submissionResponse(method, m.Error)
+			return nil
+		}
+		if method == "thread/shellCommand" {
+			u.shellResponse(m.Error)
 			return nil
 		}
 		if m.Error != nil {
@@ -533,10 +544,14 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	switch m.Method {
 	case "turn/started":
 		if p.ThreadID == u.thread {
+			if u.shellOrigin != nil && p.Turn.ID != *u.shellOrigin {
+				u.shellStandalone, u.shellOrigin = true, nil
+			}
 			u.turn, u.status, u.starting, u.alert, u.turnStarted = p.Turn.ID, "Working", false, false, time.Now()
 		}
 	case "turn/completed":
 		if p.ThreadID == u.thread && p.Turn.ID == u.turn {
+			u.shellStandalone = false
 			u.turn, u.starting = "", false
 			u.status, u.alert = strings.ToUpper(p.Turn.Status[:min(1, len(p.Turn.Status))])+p.Turn.Status[min(1, len(p.Turn.Status)):], p.Turn.Status == "failed"
 			if p.Turn.Status == "completed" && !u.turnStarted.IsZero() {
@@ -548,6 +563,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
 		}
 	case "item/started", "item/completed", "item/agentMessage/delta":
+		if m.Method == "item/started" {
+			u.observeShellItem(p.ThreadID, p.Item)
+		}
 		if p.ItemID == "" {
 			p.ItemID = p.Item.ID
 		}
@@ -721,6 +739,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.insertDraft("\n")
 	case '\r':
 		text := strings.TrimSpace(u.draft)
+		if u.shellMode() {
+			return false, u.submitShell()
+		}
 		if text == "/skills" {
 			u.deleteDraftRange(0, len(u.draft))
 			u.picker.modal, u.picker.open, u.picker.selected, u.picker.top = "menu", true, 0, 0
@@ -753,7 +774,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	case '\t':
 		// Tab queues busy input for the next turn; otherwise it sends like Enter.
 		text := strings.TrimSpace(u.draft)
-		if text == "" || strings.HasPrefix(text, "/") || u.turn == "" && !u.starting && u.submission.text == "" {
+		if u.shellMode() || text == "" || strings.HasPrefix(text, "/") || u.turn == "" && !u.starting && u.submission.text == "" {
 			return u.key('\r')
 		}
 		u.queued = append(u.queued, u.takeDraft())
@@ -898,7 +919,10 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 	// crates/codegen/xai-grok-pager/src/views/prompt_widget/mod.rs:217:240,3007:3078
 	// @be7ce6e8cffe46d20bef9834b211616082ee866b. Keep continuation rows aligned.
 	// Colors: xai-grok-pager-render/src/theme/oscura.rs, same revision.
-	const border = "\x1b[38;2;52;48;72m"
+	border := "\x1b[38;2;52;48;72m"
+	if u.shellMode() {
+		border = activityui.Red
+	}
 	const inputColor = "\x1b[39m"
 	focused := u.shell == nil || u.shell.focus == 0
 	if boxed {
@@ -999,6 +1023,9 @@ func (u *appServerUI) expireNotice(now time.Time) bool {
 // stateLabel is the session state followed by any composer notice.
 func (u *appServerUI) stateLabel(now time.Time) string {
 	label := u.sessionLabel(now)
+	if u.shellMode() {
+		label = activityui.Red + "Shell Mode" + activityui.Reset + " · " + label
+	}
 	notice := strings.ReplaceAll(livediff.Safe(u.notice, false), "\n", " ")
 	switch {
 	case notice == "":
@@ -1028,7 +1055,9 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 	case u.turn != "":
 		label := "\x1b[39m◐ " + activityui.StatusPulse(status, now, u.view.painter.Colors) + activityui.Reset
 		if status == "Working" {
-			if u.compacting != nil {
+			if u.shellStandalone {
+				status = "Running shell"
+			} else if u.compacting != nil {
 				status = "Compacting context"
 			} else if u.polling != nil {
 				status = "Still running"

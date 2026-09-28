@@ -15,6 +15,7 @@ func renderNativeKeybindings(width, height int) []string {
 		keys  [][2]string
 	}{
 		{"Compose", [][2]string{
+			{"!", "Shell Mode"},
 			{"ctrl+j", "New line"},
 			{"/ / @ / $", "Pick command / file / skill"},
 			{"arrows", "Move caret / input history"},

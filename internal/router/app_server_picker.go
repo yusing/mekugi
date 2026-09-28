@@ -78,6 +78,9 @@ type composerPicker struct {
 }
 
 func (u *appServerUI) completionTarget() composerTarget {
+	if u.shellMode() {
+		return composerTarget{}
+	}
 	at := u.cursor()
 	if strings.HasPrefix(u.draft, "/") && at > 0 && !strings.ContainsFunc(u.draft, unicode.IsSpace) {
 		return composerTarget{kind: '/', end: len(u.draft), query: u.draft[1:]}

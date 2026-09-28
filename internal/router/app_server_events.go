@@ -194,6 +194,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		return true, fmt.Errorf("%s: %w", m.Method, err)
 	}
 	u.observeProgress(m.Method, p)
+	if m.Method == "item/started" {
+		u.observeShellItem(p.ThreadID, p.Item)
+	}
 	main := p.ThreadID == u.thread
 	if p.ThreadID != "" && !main {
 		if err := u.requestThreadMetadata(p.ThreadID); err != nil {
