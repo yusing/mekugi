@@ -17,7 +17,6 @@ func TestChildTokenUsageProjectsToRoot(t *testing.T) {
 				other, _ := prepareActivityTest(t, proxy, "other-session", "other", "", "/root", nil)
 				child, _ := prepareActivityTest(t, proxy, "shared-session", "child", "root", "/root/worker", nil)
 				child.usageTracker.model = "gpt-5.6-sol"
-				root.drainActivity()
 				root.Close()
 				if missing {
 					child.usageTracker.finish()

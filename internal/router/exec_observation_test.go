@@ -455,10 +455,6 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 			transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session")
 			arguments := string(mustMarshalJSON(map[string]any{"cmd": "rm a.txt", "workdir": workspace, "yield_time_ms": 1000}))
 			streamNativeExecCommand(t, transform, "exec-call", arguments)
-			pane := newActivityPane(t.Context(), nil)
-			pane.state, pane.root = activityPaneAttached, "stock-thread"
-			proxy.activity.attachPane(pane)
-			proxy.activity.collect("stock-thread", "tool-call\x00exec-call-item", "tool", "Run `rm a.txt`")
 			if history := transform.local["exec-call"]; history.ExecObservation == nil || history.CarrierPayload != arguments {
 				t.Fatalf("stock exec_command was not retained before exposure: %+v", history)
 			}
@@ -487,19 +483,6 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 			}
 			if history.ExecOutcome == nil || !strings.Contains(history.ExecOutcome.text(), test.wantOutcome) {
 				t.Fatalf("host outcome = %+v, want %q", history.ExecOutcome, test.wantOutcome)
-			}
-			if test.name == "completed" {
-				var entries []activityPaneEntry
-				for _, event := range proxy.activity.events {
-					if event.kind == "tool" && event.callID == "exec-call-item" {
-						entries = append(entries, activityPaneEntry{Seq: uint64(len(entries) + 1), Agent: "/root", Kind: event.kind, CallID: event.callID, Text: event.raw})
-					}
-				}
-				view := newLiveActivityView()
-				view.apply(activityPaneEvent{Kind: "entries", Entries: entries})
-				if len(entries) != 2 || len(view.blocks) != 1 || view.blocks[0][0].Verb != "Delete" {
-					t.Fatalf("observed exec receipt did not replace Run: entries=%+v blocks=%+v events=%+v", entries, view.blocks, proxy.activity.events)
-				}
 			}
 			changes, err := proxy.replayStore.readChanges(next.ctx, changeReadOptions{
 				workspace: workspace, ids: []string{history.ChangeID}, view: "history", maxTokens: 4000,

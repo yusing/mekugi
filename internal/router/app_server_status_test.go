@@ -322,8 +322,8 @@ func TestAppServerStatusSelectionCopy(t *testing.T) {
 			defer u.shell.diffScreen.Close()
 			x, y := -1, -1
 			for i, row := range strings.Split(screen.String(), "\n") {
-				if at := strings.Index(row, "gpt-6-sol"); at >= 0 {
-					x, y = ansi.StringWidth(row[:at]), i
+				if before, _, ok := strings.Cut(row, "gpt-6-sol"); ok {
+					x, y = ansi.StringWidth(before), i
 					break
 				}
 			}

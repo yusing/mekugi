@@ -35,7 +35,7 @@ and implicit command boundaries preserve command arguments.
 In Mekugi mode, the Codex request keeps its stock Code Mode JavaScript
 `functions.exec` tool or native `apply_patch` and `exec_command` tools. The
 router does not replace their names, schemas, arguments, results, or execution
-path. Code Mode batching, including `Promise.all`, remains available. Codex
+path. Code Mode batching, including `Promise.allSettled`, remains available. Codex
 owns permissions, sandboxing, command processes, yielded sessions, and
 `write_stdin` continuation. Mekugi never reruns a stock call while observing,
 replaying, or displaying it.

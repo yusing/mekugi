@@ -135,7 +135,8 @@ func (u *appServerUI) flushInput() error {
 	if u.waitingQuestion() || u.thread == "" || u.restoring != nil || u.submission.text != "" || u.starting || u.settingsPending || u.shellPending.text != "" || u.shellStandalone {
 		return nil
 	}
-	parts, steer := u.unsent, u.turn != ""
+	var parts []composerDraft
+	steer := u.turn != ""
 	switch {
 	case steer && u.turn == u.interrupting:
 		return nil // The interrupted turn cannot take it; the next turn will.

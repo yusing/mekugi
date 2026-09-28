@@ -203,14 +203,17 @@ explicit `-c model_catalog_json=...` instead.
 
 Codex owns editing and execution. Mekugi passes stock `apply_patch` and
 `exec_command` arguments and results through unchanged. In Code Mode,
-`Promise.all` runs independent calls in parallel:
+`Promise.allSettled` runs independent calls in parallel and retains each outcome:
 
 ```js
-const results = await Promise.all([
+const results = await Promise.allSettled([
   tools.exec_command({cmd: "rg -n 'TODO' src"}),
   tools.exec_command({cmd: "mcat README.md 1:80"}),
 ]);
-for (const result of results) text(result.output);
+for (const result of results) {
+  if (result.status === "fulfilled") text(result.value.output);
+  else text(String(result.reason));
+}
 ```
 
 Long-running commands continue through Codex's `write_stdin` session IDs.

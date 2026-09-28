@@ -333,9 +333,6 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 			continue
 		}
 		delete(t.journalDeliveries, id)
-		if !delivery.terminal {
-			t.proxy.activity.collect(t.threadID, id, "journal", commentaryMessageText(item))
-		}
 	}
 }
 

@@ -293,17 +293,14 @@ func TestExecuteRequestForwardsCompactionWithoutRouterRewrite(t *testing.T) {
 	if output.String() != responseBody {
 		t.Fatalf("visible response = %s, want %s", output.String(), responseBody)
 	}
-	if len(proxy.activity.events) != 1 || proxy.activity.events[0].kind != "compaction" || proxy.activity.events[0].thread != "agent-thread" {
-		t.Fatalf("child compaction activity = %+v", proxy.activity.events)
-	}
 	provider = &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(responseBody)}}}
 	provider.results[0].response.Header.Set("Content-Type", "text/event-stream")
 	output.Reset()
 	if err := executeRequest(t.Context(), t.Context(), parsed, headers, "session", provider, &output, nil, proxy, nil); err != nil {
 		t.Fatal(err)
 	}
-	if len(proxy.activity.events) != 2 {
-		t.Fatalf("repeated successful compaction was lost: %+v", proxy.activity.events)
+	if len(provider.forwarded) != 1 || !bytes.Equal(provider.forwarded[0], originalBody) || output.String() != responseBody {
+		t.Fatalf("repeated compaction changed native forwarding or response: requests=%d output=%q", len(provider.forwarded), output.String())
 	}
 }
 

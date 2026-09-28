@@ -300,7 +300,8 @@ func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 	child.WriteString("Journal result `/root/reviewer`")
 	writeJournalItems(&child, []journalItem{{ID: "amber", Question: assignment, Text: "The question link is correct."}})
 	u.applyActivity([]activityPaneEntry{
-		{Seq: 1, Agent: "/root/reviewer", Kind: "start", Text: subagentStartCommentary(&request, "/root/reviewer")},
+		{Seq: 1, Agent: "/root/reviewer", Kind: "start", Text: nativeSubagentStart(&request),
+			assignment: &activityAssignment{id: "task-1", from: "/root", to: "/root/reviewer", text: assignment}},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "final", Text: child.String()},
 	}, nil)
 	u.view.conversation = true

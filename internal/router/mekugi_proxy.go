@@ -15,7 +15,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
@@ -136,7 +135,7 @@ type mekugiProxy struct {
 	mu              sync.RWMutex
 	replayStore     *mekugiReplayStore
 	sessions        map[string]*mekugiHistorySession
-	noticeSink      func(string, string, string)
+	noticeSink      func(string, string, string, string)
 	storageTurns    map[string]uint64
 	storageSequence uint64
 	storageLeases   map[string]func()
@@ -158,7 +157,7 @@ func (p *mekugiProxy) writeTokenMetrics(thread string, report tokenUsageReport) 
 	defer p.metricMu.Unlock()
 	file, err := os.CreateTemp(os.TempDir(), ".mekugi-token-metrics-*.md")
 	if err != nil {
-		p.notice(thread, "token_metrics", "Token metrics could not be saved: "+err.Error())
+		p.notice("", thread, "token_metrics", "Token metrics could not be saved: "+err.Error())
 		return
 	}
 	defer os.Remove(file.Name())
@@ -169,7 +168,7 @@ func (p *mekugiProxy) writeTokenMetrics(thread string, report tokenUsageReport) 
 		err = os.Rename(file.Name(), path)
 	}
 	if err != nil {
-		p.notice(thread, "token_metrics", "Token metrics could not be saved: "+err.Error())
+		p.notice("", thread, "token_metrics", "Token metrics could not be saved: "+err.Error())
 		return
 	}
 	if p.metricPaths == nil {
@@ -200,7 +199,6 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 	activity := newSubagentActivity()
 	activity.usage = newThreadUsage()
 	broker := newCommentaryBroker()
-	broker.activity = activity
 	proxy := &mekugiProxy{
 		registry:       registry,
 		titles:         titles,
@@ -212,7 +210,7 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 		sessions:       make(map[string]*mekugiHistorySession),
 		activeSessions: make(map[string]int),
 	}
-	broker.notice = func(category, message string) { proxy.notice("", category, message) }
+	broker.notice = func(category, message string) { proxy.notice("", "", category, message) }
 	activity.notice = broker.notice
 	broker.journalPublisher = func(ctx context.Context, session, thread, receipt string, mutations []journalMutation) ([]string, error) {
 		workspace, _, ok := strings.Cut(session, "\x00")
@@ -234,9 +232,9 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 	return proxy
 }
 
-func (p *mekugiProxy) notice(session, category, message string) {
+func (p *mekugiProxy) notice(session, thread, category, message string) {
 	if p != nil && p.noticeSink != nil {
-		p.noticeSink(session, category, message)
+		p.noticeSink(session, thread, category, message)
 	}
 }
 
@@ -272,16 +270,6 @@ type mekugiPendingCall struct {
 	argumentsDone []byte
 }
 
-type mekugiActivityState struct {
-	activityStarted        time.Time
-	activityBytes          int
-	activityMessages       []map[string]json.RawMessage
-	activityShellSessions  map[string]string
-	activityCellOperations map[string]string
-	activityReasoning      map[string]string
-	activityReasoningBytes int
-}
-
 type mekugiTranslationState struct {
 	pending         map[string]mekugiPendingCall
 	previews        map[string]*liveDiffPreviewWorker
@@ -300,8 +288,6 @@ type mekugiCommentaryState struct {
 	commentarySubscriptions []commentarySubscription
 	deferredCommentary      []publishedCommentary
 	commentaryEmitted       map[string]struct{}
-	subagentDeferred        []map[string]json.RawMessage
-	subagentResponses       []map[string]json.RawMessage
 	subagentTurn            bool
 	activityResponding      bool // Counted in the agents-pane roster until Close.
 }
@@ -354,8 +340,6 @@ type mekugiResponseTransform struct {
 	historySessionID string
 	sessionActive    bool
 	threadID         string
-
-	mekugiActivityState
 
 	originalTools             json.RawMessage
 	originalToolsPresent      bool
@@ -477,9 +461,6 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 // Prewarm shares model projection but cannot initialize execution, replay, or
 // agent lifecycle state. Only the non-generating WebSocket path selects it.
 func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedResponsesRequest, sessionID, threadID string, metadata codexTurnMetadata, metadataValid, prewarm bool) (*mekugiResponseTransform, error) {
-	if p != nil {
-		request.filterInput(p.activity.stripInput)
-	}
 	if metadataValid && metadata.RequestKind == responseevents.Compaction {
 		if err := validateMekugiCompactionRequest(request, metadata); err != nil {
 			return nil, err
@@ -530,7 +511,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	// Projection deduplication needs the original visible messages. Keep this
 	// request-local result until replay validation succeeds and strips known copies.
 	envelopes := prepareSubagentInputEnvelopes(request.fields, recipient)
-	subagentDeferred := envelopes.commentary
 
 	tools := request.responseTools()
 	directory, _ := usableRoutingDirectory(metadata.Directories)
@@ -604,17 +584,15 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 			activityThreadID = threadID
 		}
 	}
-	for i, message := range subagentDeferred {
-		var content []struct {
-			Text string `json:"text"`
-		}
-		if json.Unmarshal(message["content"], &content) == nil && len(content) == 1 {
-			text := content[0].Text
-			if p.activity.nativeOwns(activityThreadID) {
-				text = envelopes.nativeText[i]
+	for _, reply := range envelopes.replies {
+		thread := activityThreadID
+		if recipient == "/root" {
+			// Display directed replies under the proven sender when available.
+			if child := p.activity.childThread(activityThreadID, reply.sender); child != "" {
+				thread = child
 			}
-			p.activity.collect(activityThreadID, jsonString(message, "id"), "reply", text)
 		}
+		p.activity.collect(thread, reply.source, "reply", reply.text)
 	}
 	if metadata.SubagentKind == "thread_spawn" {
 		// The collector deduplicates this source by stable child thread, including
@@ -623,11 +601,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	}
 	for _, final := range envelopes.finals {
 		p.activity.markFinal(activityThreadID, final)
-	}
-	if p.activity.nativeOwns(activityThreadID) {
-		subagentDeferred = nil
-	} else if recipient == "/root" && activityThreadID != "" {
-		subagentDeferred = p.activity.divertRootReplies(activityThreadID, subagentDeferred, envelopes.senders)
 	}
 	if activityThreadID != "" {
 		p.activity.beginResponse(activityThreadID)
@@ -645,7 +618,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		sessionActive:    true,
 		threadID:         activityThreadID,
 
-		activityStarted:           time.Now(),
 		originalTools:             originalTools,
 		originalToolsPresent:      originalToolsPresent,
 		originalToolChoice:        originalToolChoice,
@@ -656,8 +628,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		local:                     make(map[string]mekugiHistory),
 		commentaryAuthor:          metadata.commentaryAuthor(),
 		commentaryTools:           commentaryTools,
-		subagentDeferred:          subagentDeferred,
-		subagentResponses:         subagentDeferred,
 		subagentTurn:              metadata.SubagentKind != "",
 		activityResponding:        activityThreadID != "",
 		deferredCommentary:        deferredCommentary,
@@ -717,10 +687,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	// Continuation advice is appended to the output the model will see.
 	p.exploreFilter.project(p.exploreContext(ctx, threadID, activityThreadID), request, visible, directory, transform.sessionShell, recipient, p.replayStore)
 	projectExecutionContinuations(request, tools, codeModeToolName, visible)
-	if transform.subagentTurn {
-		transform.prepareShellActivity(request.fields["input"])
-		transform.collectShellExits(request.fields["input"])
-	}
 	return transform, nil
 }
 

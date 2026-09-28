@@ -68,14 +68,14 @@ capturer, not by the router, engine, plugin, comparison report, or dashboard. Th
    predecessor chain rather than reuse older evidence;
 4. client-request, provider-attempt-request, complete provider-response-stream, and complete
    client-response-stream payload totals, plus terminal provider and client `output` arrays measured once;
-   router-generated commentary MUST be excluded from model-origin output accounting by its reserved
+   router-authored journal output MUST be excluded from model-origin output accounting by its reserved
    message identity, never by matching text or the commentary phase. This exclusion applies only
-   to router-generated client output, not provider output or passthrough responses. All bytes
+   to router-authored client output, not provider output or passthrough responses. All bytes
    remain in transport totals. Chat Completions streams reconstruct their terminal assistant-message
    array and preserve actual function names and argument measurements. Streamed responses whose
-   terminal output is empty, omitted, null, or contains only generated commentary MUST reconstruct
+   terminal output is empty, omitted, null, or contains only router-authored output MUST reconstruct
    model-origin output in `output_index` order from finalized `response.output_item.done` items,
-   excluding generated commentary there as well. A missing terminal event MUST NOT be treated as a
+   excluding router-authored output there as well. A missing terminal event MUST NOT be treated as a
    completed output;
 5. provider-emitted and client-delivered tool aggregates;
 6. a bounded recent window of per-logical-request exchanges containing every provider attempt and

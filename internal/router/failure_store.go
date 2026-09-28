@@ -59,7 +59,7 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 		// Passthrough has no replay lifecycle; a failure-only store still needs
 		// the shared, hourly-throttled age sweep as well as publication quotas.
 		if sweepErr := store.cleanupSessions(ctx); sweepErr != nil {
-			c.addNotice(f.sessionID, "failure_cleanup", "Mekugi could not complete failure-record retention cleanup.")
+			c.addThreadNotice(f.sessionID, f.threadID, "failure_cleanup", "Mekugi could not complete failure-record retention cleanup.")
 		}
 		record := failureRecord{Version: 1, Time: time.Now().UTC(), Thread: f.threadID,
 			Phase: f.failurePhase, Code: f.diagnosticCode, Reference: f.diagnosticReference,
@@ -72,7 +72,7 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 		}
 	}
 	if err != nil {
-		c.addNotice(f.sessionID, "failure_storage", "Mekugi could not retain the failure reference. Relaunch with --debug to capture a future failure.")
+		c.addThreadNotice(f.sessionID, f.threadID, "failure_storage", "Mekugi could not retain the failure reference. Relaunch with --debug to capture a future failure.")
 	}
 }
 

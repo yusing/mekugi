@@ -1,44 +1,11 @@
 package router
 
 import (
-	"context"
-	"encoding/json"
-	"strings"
 	"time"
 )
 
-// Streamed output is estimated at this ratio until the provider reports usage.
-const activityBytesPerToken = 4
-
-// An initial view attachment that never completes returns activity inline.
-const activityPaneLaunchWindow = 15 * time.Second
-
-type activityPaneState int
-
-const (
-	activityPaneIdle activityPaneState = iota
-	activityPaneClaimed
-	activityPaneAttached
-	activityPaneReleased
-)
-
-// The agents pane owns one root's child activity while it is claimed or
-// attached. Events stay in the collector queue until a viewer write flushes,
-// so a failed launch or closed viewer falls back to ordinary root drains.
-type activityPane struct {
-	ctx    context.Context
-	launch func() bool
-
-	state      activityPaneState
-	root       string
-	deadline   time.Time
-	generation uint64
-	sequence   uint64
-	wake       chan struct{}
-	announced  bool
-	farewell   bool
-	native     bool // The owning frontend renders its own pane state, not inline notices.
-}
+// The only activity frontend is the native app-server UI.
+type activityPane struct{ root string }
 
 type activityPaneEntry struct {
 	Seq      uint64
@@ -49,7 +16,6 @@ type activityPaneEntry struct {
 	Filter   *exploreFilterEvent `json:",omitempty"`
 	Observed time.Time
 
-	event        activityEvent           // Original queue entry, requeued if the write fails.
 	native       *liveActivityNativeItem // In-process app-server lifecycle input, not a provider observation.
 	journal      *journalItem            // Native presentation keeps IDs/questions separate from rendered text.
 	journalItems []journalItem           // One terminal delivery uses Activity's existing grouped result renderer.
@@ -57,17 +23,6 @@ type activityPaneEntry struct {
 	activitySeq  uint64                  // Main excerpt's exact entry in Activity, never a question target.
 	outputTail   []string                // Failed command's sanitized final output lines, on an exit entry.
 	outputOmit   int                     // Output lines before outputTail.
-}
-
-// Native sessions present authenticated message observations outside provider
-// output. Do not inject legacy envelopes into any member's assistant speech.
-func (a *subagentActivity) nativeOwns(thread string) bool {
-	if a == nil || thread == "" {
-		return false
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.pane != nil && a.pane.native && a.pane.state == activityPaneAttached && a.pane.root == a.rootLocked(thread)
 }
 
 type activityPaneAgent struct {
@@ -96,102 +51,20 @@ type activityPaneEvent struct {
 	Entries []activityPaneEntry `json:",omitempty"`
 }
 
-func newActivityPane(ctx context.Context, launch func() bool) *activityPane {
-	return &activityPane{
-		ctx: ctx, launch: launch,
-		wake: make(chan struct{}, 1),
-	}
-}
-
-func (a *subagentActivity) attachPane(pane *activityPane) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.pane = pane
-}
-
-// paneOwnsLocked reports whether the pane currently holds this root's child
-// activity. An expired initial attachment window releases ownership lazily.
-func (a *subagentActivity) paneOwnsLocked(root string, now time.Time) bool {
-	pane := a.pane
-	if pane == nil || root == "" || pane.root != root {
-		return false
-	}
-	if pane.state == activityPaneClaimed && !now.Before(pane.deadline) {
-		pane.state = activityPaneReleased
-	}
-	return pane.state == activityPaneClaimed || pane.state == activityPaneAttached
-}
-
-// claimPaneLocked requests one launch for the first eligible activity under a root.
-// A released pane is not relaunched in the same router session.
-func (a *subagentActivity) claimPaneLocked(thread string, now time.Time) {
-	pane := a.pane
-	if pane == nil || pane.state != activityPaneIdle || pane.launch == nil {
-		return
-	}
-	root := a.rootLocked(thread)
-	if root == "" {
-		return
-	}
-	if !pane.launch() {
-		return
-	}
-	pane.state, pane.root, pane.deadline = activityPaneClaimed, root, now.Add(activityPaneLaunchWindow)
-}
-
-// releasePane returns ownership to inline delivery after a failed launch.
 func (a *subagentActivity) releasePane() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.pane != nil && a.pane.state != activityPaneIdle {
-		a.pane.state = activityPaneReleased
-	}
-}
-
-func (a *subagentActivity) wakePaneLocked() {
-	if a.pane == nil {
-		return
-	}
-	select {
-	case a.pane.wake <- struct{}{}:
-	default:
-	}
-}
-
-// paneNoticesLocked returns the one-time root notices for pane ownership changes.
-func (a *subagentActivity) paneNoticesLocked(root string) []map[string]json.RawMessage {
-	pane := a.pane
-	if pane == nil || pane.root != root || pane.native {
-		return nil
-	}
-	var text, key string
-	switch {
-	case pane.state == activityPaneAttached && !pane.announced:
-		pane.announced = true
-		text, key = "Agent activity is shown in the Mekugi agents pane beside this session.", "announce"
-	case pane.state == activityPaneReleased && pane.announced && !pane.farewell:
-		pane.farewell = true
-		text, key = "The Mekugi agents pane closed; subagent activity resumes here.", "farewell"
-	default:
-		return nil
-	}
-	id := commentaryMessageID("activity-pane\x00" + root + "\x00" + key)
-	a.copies[id] = struct{}{}
-	return []map[string]json.RawMessage{assistantCommentaryMessage(id, text)}
+	a.pane = nil
 }
 
 // Main already knows its app-server thread before the first provider request.
-// The native frontend claims the root so its child activity is never injected
-// inline; app-server notifications supply what the frontend displays.
+// The native frontend binds supplemental observations to its active root.
+// App-server notifications supply the live tool and lifecycle display.
 func (a *subagentActivity) attachNativePane(root string) {
 	a.observe(root, "", "/root", false)
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.pane == nil {
-		a.pane = newActivityPane(context.Background(), nil)
-	}
-	a.pane.root, a.pane.state, a.pane.native = root, activityPaneAttached, true
-	a.pane.generation++
+	a.pane = &activityPane{root: root}
 }
 
 // beginResponse and endResponse track open provider responses for the roster.
@@ -206,8 +79,6 @@ func (a *subagentActivity) beginResponse(thread string) {
 		node.responding++
 		node.turns++
 		node.final = false
-		a.claimPaneLocked(thread, time.Now())
-		a.wakePaneLocked()
 	}
 }
 
@@ -224,7 +95,6 @@ func (a *subagentActivity) endResponse(thread string) {
 		if node.responding == 0 {
 			node.streamed = 0
 		}
-		a.wakePaneLocked()
 	}
 }
 
@@ -238,7 +108,6 @@ func (a *subagentActivity) syncUsage(thread string) {
 	defer a.mu.Unlock()
 	if node := a.threads[thread]; node != nil && !node.conflicted && !a.closed {
 		node.streamed = 0
-		a.wakePaneLocked()
 	}
 }
 
@@ -255,8 +124,8 @@ func (a *subagentActivity) streamOutput(thread string, bytes int) {
 	}
 }
 
-// markFinal records a plaintext FINAL_ANSWER under the recipient's root. Its
-// body is pane-only; native Codex already delivers the substantive completion.
+// markFinal records the observed plaintext FINAL_ANSWER marker under its root.
+// App-server delivers the substantive completion body.
 func (a *subagentActivity) markFinal(recipientThread string, final subagentFinal) {
 	if a == nil {
 		return
@@ -267,64 +136,12 @@ func (a *subagentActivity) markFinal(recipientThread string, final subagentFinal
 		a.mu.Unlock()
 		return
 	}
-	var threads []string
 	for thread, node := range a.threads {
 		if node.child && !node.conflicted && node.name == final.sender && a.rootLocked(thread) == root {
 			node.final = true
-			threads = append(threads, thread)
-			a.wakePaneLocked()
 		}
 	}
 	a.mu.Unlock()
-	body := final.text
-	if len(body) > maxCommentaryPublicationBytes/2 {
-		body = strings.ToValidUTF8(body[:maxCommentaryPublicationBytes/2], "") + "\n… (full answer in Codex completion)"
-	}
-	for _, thread := range threads {
-		a.collect(thread, final.source, "final", body)
-	}
-}
-
-// divertRootReplies moves envelopes addressed to a pane-owned root into the
-// pane queue. They return to inline delivery if the pane is released.
-func (a *subagentActivity) divertRootReplies(root string, messages []map[string]json.RawMessage, senders []string) []map[string]json.RawMessage {
-	if a == nil || len(messages) == 0 {
-		return messages
-	}
-	a.mu.Lock()
-	owned := a.paneOwnsLocked(root, time.Now())
-	a.mu.Unlock()
-	var kept []map[string]json.RawMessage
-	for i, message := range messages {
-		thread := a.childThread(root, senders[i])
-		// A retried request must not repeat a reply the collector already holds.
-		if !owned {
-			if !a.collected(thread, jsonString(message, "id")) {
-				kept = append(kept, message)
-			}
-			continue
-		}
-		var content []struct {
-			Text string `json:"text"`
-		}
-		if thread == "" || json.Unmarshal(message["content"], &content) != nil || len(content) != 1 {
-			kept = append(kept, message)
-			continue
-		}
-		a.collect(thread, jsonString(message, "id"), "reply", content[0].Text)
-	}
-	return kept
-}
-
-func (a *subagentActivity) collected(thread, source string) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	node := a.threads[thread]
-	if node == nil || source == "" {
-		return false
-	}
-	_, exists := node.seen[commentaryMessageID(source)]
-	return exists
 }
 
 func (a *subagentActivity) childThread(root, name string) string {
@@ -336,15 +153,6 @@ func (a *subagentActivity) childThread(root, name string) string {
 		}
 	}
 	return ""
-}
-
-// activityPaneText removes the collector's author prefix; the pane shows the
-// agent separately. Directed envelope headers remain part of the text.
-func activityPaneText(name, text string) string {
-	if hasCommentaryAuthor(text, name) {
-		return strings.TrimPrefix(text, "["+commentaryCode(name)+"] ")
-	}
-	return text
 }
 
 func (a *subagentActivity) syncPaneRoles(parent string, roles map[string]journalSpawnRole) {
@@ -363,7 +171,6 @@ func (a *subagentActivity) syncPaneRoles(parent string, roles map[string]journal
 			node.role = evidence.Role
 		}
 	}
-	a.wakePaneLocked()
 }
 
 func nativeObservedActivity(kind string) bool {
@@ -378,7 +185,7 @@ func (a *subagentActivity) takeNativeActivity(root string) []activityPaneEntry {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed || a.pane == nil || !a.pane.native || a.pane.state != activityPaneAttached || a.pane.root != root {
+	if a.closed || a.pane == nil || a.pane.root != root {
 		return nil
 	}
 	a.expireLocked(time.Now())

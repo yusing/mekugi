@@ -63,7 +63,7 @@ func TestAnswerSSEFraming(t *testing.T) {
 					reader = io.MultiReader(reader, finalAnswerErrorReader{disconnected})
 				}
 				var output bytes.Buffer
-				chain := composeResponseTransformers(transform, &criticalErrorTransform{})
+				chain := composeResponseTransformers(transform, &webSocketCountingTransform{})
 				_, err := copySSETransformed(&output, reader, chain, &responseHooks{onUsage: transform.observeResponseUsage})
 				switch stop {
 				case "read_error":

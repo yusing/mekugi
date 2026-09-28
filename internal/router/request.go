@@ -139,32 +139,6 @@ func (r *parsedResponsesRequest) setInput(input json.RawMessage) {
 	r.toolCatalog.inputItems = items
 }
 
-// filterInput retains the cached-prefix boundary through deletion-only projections.
-func (r *parsedResponsesRequest) filterInput(filter func(map[string]json.RawMessage)) {
-	if r.cachedInput == 0 {
-		filter(r.fields)
-		return
-	}
-	var before []json.RawMessage
-	_ = json.Unmarshal(r.fields["input"], &before)
-	filter(r.fields)
-	var after []json.RawMessage
-	_ = json.Unmarshal(r.fields["input"], &after)
-	// These filters only remove items. Match the retained subsequence before
-	// later projections rewrite item content.
-	retained := 0
-	next := 0
-	for index, item := range before {
-		if next < len(after) && sameJSONValue(item, after[next]) {
-			if index < r.cachedInput {
-				retained++
-			}
-			next++
-		}
-	}
-	r.cachedInput = retained
-}
-
 // incrementalBody removes only the projected prefix already cached upstream.
 // Preparation still sees that prefix; HTTP and Chat Completions providers do not use
 // the provider's connection-local Responses cache.

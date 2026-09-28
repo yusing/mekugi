@@ -484,7 +484,7 @@ func (u *appServerUI) observeCost(thread string, agent *activityPaneAgent) {
 	}
 	report, observed := u.proxy.usage.snapshot(thread)
 	agent.Cost = report.cost.cachedInput + report.cost.uncachedInput + report.cost.output
-	agent.CostKnown = observed && report.cost.known && !report.Incomplete
+	agent.CostKnown = observed && report.cost.known
 	agent.CostPartial = report.missingUsage != 0
 }
 

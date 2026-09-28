@@ -102,7 +102,7 @@ Mekugi does not:
 - promise crash-atomic multi-file filesystem updates;
 - infer missing evidence, equate local token estimates with provider billing,
   or judge correctness from a model's final prose;
-- make generated commentary, diagnostics, or metrics part of task execution
+- make activity presentation, diagnostics, or metrics part of task execution
   semantics; or
 - promise that an optimization lowers latency, cost, or error rates without a
   matching controlled measurement.

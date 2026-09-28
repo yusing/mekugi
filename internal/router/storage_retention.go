@@ -758,7 +758,7 @@ func (s *mekugiReplayStore) maintainStorage(replacement string, size int64, expi
 	removed, legacy, freed := 0, 0, int64(0)
 	defer func() {
 		if (removed != 0 || legacy != 0) && s.storageNotice != nil {
-			s.storageNotice(s.session.Routing, fmt.Sprintf(
+			s.storageNotice(s.session.Routing, s.session.Thread, fmt.Sprintf(
 				"Mekugi storage cleanup removed %d inactive session records and %d legacy records (%d bytes). Data expires after 14 days without activity; storage pressure removes the oldest inactive sessions first. Codex chats are unchanged. Removed recovery references are no longer available.",
 				removed, legacy, freed))
 		}

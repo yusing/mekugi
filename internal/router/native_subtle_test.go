@@ -77,11 +77,11 @@ func TestNativeUIFaintOutputPolicy(t *testing.T) {
 				if !strings.Contains(text, "Waiting for agent") {
 					continue
 				}
-				offset := strings.Index(text, "agent1")
-				if offset < 0 {
+				before, _, ok := strings.Cut(text, "agent1")
+				if !ok {
 					t.Fatal("wait target missing")
 				}
-				x := ansi.StringWidth(text[:offset])
+				x := ansi.StringWidth(before)
 				cell := screen.CellAt(x, y)
 				want := ansi.IndexedColor(133)
 				if faint {

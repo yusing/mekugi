@@ -16,7 +16,6 @@ import (
 const maxLiveDiffEventBytes = 1 << 20
 
 const liveDiffEventsPath = "/internal/live-diff"
-const liveActivityEventsPath = "/internal/live-activity"
 
 // Test-only bridges let existing subprocess rendering tests drive local state.
 // The bootstrap file is a private connection capability, not changing view data.
@@ -37,12 +36,6 @@ func (b *liveDiffBroker) setEndpoint(endpoint string) {
 	testLiveConnections.Store(b, c)
 }
 func (b *liveDiffBroker) descriptor() liveDiffConnection { return testLiveConnection(b) }
-func (a *subagentActivity) setPaneEndpoint(endpoint string) {
-	c := testLiveConnection(a)
-	c.Endpoint = endpoint
-	testLiveConnections.Store(a, c)
-}
-func (a *subagentActivity) paneDescriptor() liveDiffConnection { return testLiveConnection(a) }
 func (b *liveDiffBroker) serveEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Authorization") != "Bearer "+b.descriptor().Token {
 		http.Error(w, "invalid live diff capability", http.StatusUnauthorized)

@@ -25,9 +25,6 @@ func (m MessageFacts) Assistant() bool { return m.Kind == Message && m.Role == "
 func (m MessageFacts) FinalAnswerCandidate() bool {
 	return m.Assistant() && (m.Phase == "" || m.Phase == "final_answer")
 }
-func (m MessageFacts) CompletedCommentary() bool {
-	return m.Assistant() && m.Phase == "commentary" && m.Status == "completed"
-}
 
 // TerminalStatus recognizes body statuses for evidence capture, including
 // cancellation. Transport acceptance is deliberately stricter (ObserveTerminal).

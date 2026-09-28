@@ -68,35 +68,6 @@ func TestRosterMetricsInlineAndHitTargets(t *testing.T) {
 	}
 }
 
-func TestRosterSharesTokenReportCost(t *testing.T) {
-	a := newSubagentActivity()
-	a.observe("root", "", "/root", false)
-	a.attachPane(newActivityPane(t.Context(), func() bool { return true }))
-	a.pane.root = "root"
-	usage := newThreadUsage()
-	a.usage = usage
-	for _, tier := range []string{"priority", "default"} {
-		request, err := parseResponsesRequest([]byte(`{"model":"gpt-6-sol","reasoning":{"effort":"high"},"service_tier":"priority","input":[]}`))
-		if err != nil {
-			t.Fatal(err)
-		}
-		observation := usage.observation("root", "root", request.model(), "priority")
-		observation.reasoning = request.reasoningEffort()
-		counts := tokenCounts{InputTokens: 100, UncachedInputTokens: 100, OutputTokens: 10, ServiceTier: tier}
-		observation.observe(counts)
-		report, _ := usage.snapshot("root")
-		a.syncUsage("root")
-		agent := a.paneAgentsLocked()[0]
-		want := "gpt-6-sol high"
-		if tier == "priority" {
-			want += " [fast]"
-		}
-		if !strings.Contains(report.model, want) || agent.Cost != report.cost.cachedInput+report.cost.uncachedInput+report.cost.output {
-			t.Fatalf("agent=%+v report=%+v", agent, report)
-		}
-	}
-}
-
 func TestRosterRoleUsesDurableSpawnEvidence(t *testing.T) {
 	p := newManagedMekugiProxy(t)
 	root, _ := prepareActivityTest(t, p, "root-session", "root", "", "/root", nil)

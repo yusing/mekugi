@@ -85,35 +85,8 @@ func (t *mekugiResponseTransform) transformSSE(payload []byte) ([][]byte, error)
 		}
 		prefix = events
 	}
-	visible, err := t.transformNonJournalSSE(payload)
-	return append(prefix, visible...), err
-}
-
-func (t *mekugiResponseTransform) transformNonJournalSSE(payload []byte) ([][]byte, error) {
-	if len(t.subagentDeferred) != 0 {
-		t.subagentDeferred = t.retainCommentary(t.subagentDeferred...)
-		if len(t.subagentDeferred) == 0 {
-			t.subagentResponses = nil
-		}
-	}
-	messages := t.retainCommentary(t.drainActivity()...)
-	t.activityMessages = append(t.activityMessages, messages...)
 	visible, err := t.transformActivitySSE(payload)
-	if err != nil || len(messages) == 0 {
-		return visible, err
-	}
-	var generated [][]byte
-	for _, message := range messages {
-		generated = append(generated, assistantCommentaryDoneEvent(message))
-	}
-	var event struct {
-		Type string `json:"type"`
-	}
-	_ = json.Unmarshal(payload, &event)
-	if event.Type == responseevents.Created && len(visible) != 0 {
-		return append(append(visible[:1:1], generated...), visible[1:]...), nil
-	}
-	return append(generated, visible...), nil
+	return append(prefix, visible...), err
 }
 
 func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte, error) {
@@ -140,30 +113,12 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 	if envelope.Delta != "" && t.threadID != "" && strings.HasSuffix(string(envelope.Type), ".delta") {
 		t.proxy.activity.streamOutput(t.threadID, len(envelope.Delta))
 	}
-	if envelope.Type == "response.reasoning_summary_part.added" && t.activityReasoning[envelope.ItemID] != "" {
-		t.collectReasoningDelta(envelope.ItemID, "\n\n")
-	}
-	if envelope.Type == "response.reasoning_summary_text.delta" {
-		t.collectReasoningDelta(envelope.ItemID, envelope.Delta)
-	}
-	if envelope.Type == responseevents.OutputItemDone {
-		var item map[string]json.RawMessage
-		if json.Unmarshal(envelope.Item, &item) == nil {
-			t.collectProviderCommentary(item)
-			t.collectProviderReasoning(item)
-		}
-	}
 	if visible, buffered := t.finalAnswer.observe(payload); buffered {
 		return visible, nil
 	}
 	switch {
 	case envelope.Type == responseevents.Created:
 		visible := [][]byte{payload}
-		for _, message := range t.subagentDeferred {
-			visible = append(visible, assistantCommentaryDoneEvent(message))
-			t.commentaryEmitted[jsonString(message, "id")] = struct{}{}
-		}
-		t.subagentDeferred = nil
 		for _, publication := range t.deferredCommentary {
 			if message := t.runtimeCommentaryMessage(publication); message != nil {
 				visible = append(visible, assistantCommentaryDoneEvent(message))
@@ -283,7 +238,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if !ok {
 			return [][]byte{payload}, nil //nolint:nilerr // Malformed unrelated output remains the upstream's responsibility.
 		}
-		activityFields := maps.Clone(item.fields)
 		if _, delivered := t.local[item.CallID]; item.Status == "incomplete" && !delivered {
 			t.endPreview(item.ID)
 			// Item completion can report interrupted generation, not complete input.
@@ -350,7 +304,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			if err := t.commitLocalCall(callID); err != nil {
 				return nil, err
 			}
-			t.collectSubagentToolCall(activityFields)
 			if message != nil {
 				return [][]byte{assistantCommentaryDoneEvent(message), addedEvent, argumentsDone, itemDone}, nil
 			}
@@ -369,7 +322,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if err := t.commitLocalCall(callID); err != nil {
 			return nil, err
 		}
-		t.collectSubagentToolCall(activityFields)
 		if !changed && message == nil && string(item.fields["arguments"]) == originalArguments {
 			return [][]byte{payload}, nil
 		}
@@ -519,7 +471,6 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 	if observed && t.usageObserved {
 		t.proxy.writeTokenMetrics(t.shellThreadID, counts)
 	}
-	t.subagentResponses = t.retainCommentary(t.subagentResponses...)
 	// SSE terminal events own completion even when the embedded status is absent.
 	// JSON responses have no event envelope and retain body-status semantics.
 	status := cmp.Or(terminalStatus, jsonString(object, "status"))
@@ -555,17 +506,13 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 				}
 			}
 		}
-		activityMessages := t.retainCommentary(t.drainActivity()...)
-		t.activityMessages = append(t.activityMessages, activityMessages...)
-		transformedOutput := append([]map[string]json.RawMessage{}, t.activityMessages...)
+		transformedOutput := make([]map[string]json.RawMessage, 0, len(output))
 		for _, publication := range t.deferredCommentary {
 			if message := t.runtimeCommentaryMessage(publication); message != nil {
 				transformedOutput = append(transformedOutput, message)
 			}
 		}
 		t.deferredCommentary = nil
-		transformedOutput = append(transformedOutput, t.subagentResponses...)
-		t.subagentDeferred = nil
 		for _, fields := range output {
 			if t.journalActive && isRouterLocalCall(fields) {
 				// A completed stream event can omit status. Its already-executed
@@ -587,9 +534,6 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 				transformedOutput = append(transformedOutput, fields)
 				continue
 			}
-			t.collectProviderCommentary(item.fields)
-			t.collectProviderReasoning(item.fields)
-			activityFields := maps.Clone(item.fields)
 			message, err := t.transformStructuredCommentary(item.fields)
 			if err != nil {
 				return nil, err
@@ -601,7 +545,6 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 			if _, err := t.transformOutputItem(&item); err != nil {
 				return nil, err
 			}
-			t.collectSubagentToolCall(activityFields)
 			transformedOutput = append(transformedOutput, item.fields)
 		}
 		encoded, err := marshalProtocolJSON(transformedOutput)

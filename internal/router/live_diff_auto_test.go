@@ -126,47 +126,6 @@ func TestAutoLiveDiffChildShellWaitsForRootWorkspace(t *testing.T) {
 	}
 }
 
-func TestAutoLiveDiffActivityRequestLifecycle(t *testing.T) {
-	a, stop := newAutoLiveDiff(t.Context(), t.TempDir())
-	defer stop()
-	if a.requestActivity() {
-		t.Fatal("disabled integrated UI accepted agents pane request")
-	}
-	a.enable()
-	if a.requestActivity() {
-		t.Fatal("agents pane request succeeded before root workspace selection")
-	}
-	workspace := t.TempDir()
-	a.observe(workspace, "root", codexTurnMetadata{RequestKind: "turn"})
-	select {
-	case <-a.changed:
-	default:
-		t.Fatal("root observation did not notify the integrated UI")
-	}
-	if !a.requestActivity() || !a.activityRequested {
-		t.Fatal("agents pane request was not recorded")
-	}
-	select {
-	case <-a.changed:
-	default:
-		t.Fatal("agents pane request did not notify the integrated UI")
-	}
-	if a.requestActivity() {
-		t.Fatal("agents pane request was accepted twice")
-	}
-	stop()
-	if a.enabled.Load() || !a.stopped {
-		t.Fatalf("stop state: enabled=%v stopped=%v", a.enabled.Load(), a.stopped)
-	}
-	if a.requestActivity() {
-		t.Fatal("agents pane request was accepted after UI shutdown")
-	}
-	a.requestLaunch(workspace, "root")
-	if a.requested {
-		t.Fatal("shell request was accepted after UI shutdown")
-	}
-}
-
 func TestAutoLiveDiffScopeCapacity(t *testing.T) {
 	// This fixture exercises scope accounting without starting the integrated UI.
 	a := &autoLiveDiff{

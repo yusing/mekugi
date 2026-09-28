@@ -34,24 +34,3 @@ func TestCommentaryReplayFilteringRequiresExactRetainedID(t *testing.T) {
 		t.Fatalf("unretained prefix-matching message was removed: %s", request.fields["input"])
 	}
 }
-
-func TestSubagentProjectionPreservesUnretainedPrefixMessage(t *testing.T) {
-	envelope := map[string]any{
-		"type": "agent_message", "id": "reply", "author": "/root/a", "recipient": "/root/b",
-		"content": []any{map[string]any{
-			"type": "input_text",
-			"text": "Message Type: MESSAGE\nTask name: /root/b\nSender: /root/a\nPayload:\nresult",
-		}},
-	}
-	projectedID := subagentCommentaryMessageID("response\x00reply\x00/root/a\x00result")
-	unknown := assistantCommentaryMessage(projectedID, "model-authored")
-	fields := map[string]json.RawMessage{"input": mustTestJSON(t, []any{unknown, envelope})}
-	original := bytes.Clone(fields["input"])
-
-	if messages := prepareSubagentInputEnvelopes(fields, "/root/b").commentary; len(messages) != 0 {
-		t.Fatalf("visible exact ID was projected twice: %s", mustTestJSON(t, messages))
-	}
-	if !bytes.Equal(fields["input"], original) {
-		t.Fatalf("projection changed original envelopes: %s", fields["input"])
-	}
-}

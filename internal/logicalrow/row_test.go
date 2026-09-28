@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestLines(t *testing.T) {
+func TestCountAndAt(t *testing.T) {
 	tests := []struct {
 		name string
 		text string
@@ -26,14 +26,17 @@ func TestLines(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := Lines(test.text)
-			if len(got) != len(test.want) {
-				t.Fatalf("Lines(%q) = %#v, want %#v", test.text, got, test.want)
+			if got := Count(test.text); got != len(test.want) {
+				t.Fatalf("Count(%q) = %d, want %d", test.text, got, len(test.want))
 			}
-			for index := range got {
-				if got[index] != test.want[index] {
-					t.Fatalf("Lines(%q)[%d] = %#v, want %#v", test.text, index, got[index], test.want[index])
+			for index, want := range test.want {
+				got, ok := At(test.text, index+1)
+				if !ok || got != want {
+					t.Fatalf("At(%q,%d) = %#v, %v; want %#v", test.text, index+1, got, ok, want)
 				}
+			}
+			if got, ok := At(test.text, len(test.want)+1); ok || got != (Line{}) {
+				t.Fatalf("out-of-range At = %#v, %v", got, ok)
 			}
 		})
 	}

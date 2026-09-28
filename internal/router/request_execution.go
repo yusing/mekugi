@@ -3,7 +3,6 @@ package router
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -55,7 +54,6 @@ type requestAttempt struct {
 	metadata      codexTurnMetadata
 	metadataValid bool
 	threadID      string
-	notices       *criticalErrorTransform
 	handoff       *mentorRequest
 	prewarm       bool
 
@@ -180,16 +178,6 @@ func (a *requestAttempt) prepare() error {
 	a.threadID = codexThreadID(a.headers)
 	a.finalization.threadID = a.threadID
 	a.finalization.turnID = a.metadata.TurnID
-	if a.executor.mekugiCalls != nil && a.metadataValid && !a.metadata.activityIdentityInvalid &&
-		(a.metadata.ThreadID == "" || a.metadata.ThreadID == a.threadID) {
-		a.finalization.observeCriticalNotice = func(source, text string) {
-			a.executor.mekugiCalls.activity.collect(a.threadID, source, "error", text)
-		}
-	}
-	a.request.filterInput(func(map[string]json.RawMessage) {
-		a.executor.issues.stripInput(&a.request, a.sessionID)
-	})
-	a.notices = a.executor.issues.transform(a.sessionID, a.metadata.SubagentKind != "")
 	handoff, err := a.executor.mentor.prepare(a.headers, a.metadata, a.metadataValid, &a.request)
 	if err != nil {
 		return fmt.Errorf("prepare Mentor Handoff: %w", err)
@@ -263,19 +251,6 @@ func (a *requestAttempt) prepare() error {
 		)
 		if err != nil {
 			return fmt.Errorf("prepare mekugi response proxy: %w", err)
-		}
-	}
-	if a.executor.mekugiCalls != nil {
-		workspace, usable := usableRoutingDirectory(a.metadata.Directories)
-		if a.mekugiTransform != nil {
-			workspace, usable = a.mekugiTransform.directory, true
-		}
-		if usable {
-			a.notices.retain(a.startCtx, a.executor.mekugiCalls.replayStore, workspace)
-		} else {
-			// Without a canonical namespace the notice cannot be stripped from a
-			// later ordinary turn, so leave it queued instead of emitting it.
-			a.notices.suppress()
 		}
 	}
 	if a.mekugiTransform != nil && a.metadataValid {
@@ -450,9 +425,6 @@ func (a *requestAttempt) prepareResponse() error {
 		if a.mekugiTransform != nil {
 			a.responseTransform = composeResponseTransformers(a.responseTransform, a.mekugiTransform)
 		}
-		if a.notices != nil {
-			a.responseTransform = composeResponseTransformers(a.responseTransform, a.notices)
-		}
 	}
 	if a.mekugiTransform != nil && a.responseTransform == nil {
 		a.finalization.failurePhase = requestFailureTransform
@@ -619,9 +591,6 @@ func (a *requestAttempt) finish(requestErr error) error {
 	if a.mekugiTransform != nil {
 		a.mekugiTransform.Close()
 	}
-	if a.notices != nil {
-		a.notices.finish(requestErr == nil)
-	}
 
 	requestErr = errors.Join(
 		requestErr,
@@ -649,18 +618,6 @@ func (a *requestAttempt) finish(requestErr error) error {
 		}
 	}
 	a.hooks.finish(a.finalization.completion())
-	if a.executor.mekugiCalls != nil && a.metadataValid && a.metadata.RequestKind == responses.Compaction &&
-		a.metadata.SubagentKind != "" && a.finalization.completion().succeeded() {
-		activity := a.executor.mekugiCalls.activity
-		thread := a.threadID
-		if activity.observe(thread, a.metadata.ParentThreadID, a.metadata.AgentName, true) {
-			id := a.hooks.deliveredResponseID
-			if id == "" {
-				id = rand.Text()
-			}
-			activity.collect(thread, "agent-compaction\x00"+id, "compaction", "Context compacted")
-		}
-	}
 	fields := map[string]any{
 		"event": "request_complete", "request_id": a.debugID,
 		"client_request_id": a.headers.Get("x-client-request-id"),

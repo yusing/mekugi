@@ -183,21 +183,6 @@ func TestRequestedRootRosterOwnActivityAndAddressedMessage(t *testing.T) {
 	}
 }
 
-func TestRequestedPaneLaunchesOnResponseBegin(t *testing.T) {
-	f := newActivityPaneFixture(t, true)
-	if f.launches != 0 {
-		t.Fatalf("pane launched before response: %d", f.launches)
-	}
-	f.activity.beginResponse("explorer")
-	if f.launches != 1 {
-		t.Fatalf("pane did not launch at response begin, before tools: %d", f.launches)
-	}
-	f.activity.collect("explorer", "tool", "tool", "Read `x.go`")
-	if f.launches != 1 {
-		t.Fatalf("tool relaunched pane: %d", f.launches)
-	}
-}
-
 func TestRequestedRosterMetricSlotsStableAcrossAvailabilityAndFormat(t *testing.T) {
 	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 	view := liveActivityTestView("/root/a")

@@ -28,7 +28,7 @@ type mekugiReplayStore struct {
 	directory          string
 	maxBytes           int64
 	session            storageSessionIdentity
-	storageNotice      func(string, string)
+	storageNotice      func(string, string, string)
 	liveDiff           func([]liveDiffChange)
 	maxCommentaryBytes int64
 }

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/ui/diffview"
@@ -295,14 +294,6 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 			proxy.activity.observe("root", "", "/root", false)
 			proxy.activity.observe("thread-1", "root", "/root/editor", true)
 			reconcile(items)
-			receipts := proxy.activity.drain("root", time.Now(), maxCommentaryPublicationBytes)
-			if test.change {
-				if len(receipts) != 1 || commentaryText(t, receipts[0]) != "[`/root/editor`] Edit `file.txt` +1 -1 · apply_patch\n```diff\n@@ -1,1 +1,1 @@\n-old\n+new\n```" {
-					t.Fatalf("observed Code Mode edit receipt = %v", receipts)
-				}
-			} else if len(receipts) != 0 {
-				t.Fatalf("unchanged Code Mode edit published a receipt: %v", receipts)
-			}
 			history, found, err := proxy.replayStore.lookup(transform.ctx, workspace, nativePatchDerivedCallID("code-call", 0))
 			if err != nil || !found {
 				t.Fatalf("completed patch missing: found=%v err=%v", found, err)

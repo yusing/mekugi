@@ -169,7 +169,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 			if mentorEnabled {
 				wantModel = "gpt-6-astra"
 			}
-			start := subagentStartCommentary(&forwarded, "/root/child")
+			start := nativeSubagentStart(&forwarded)
 			if !strings.Contains(start, "`"+wantModel+"`") || !strings.Contains(start, "`"+strings.ReplaceAll(want, "priority", "fast")+"`") {
 				t.Fatalf("commentary=%s", start)
 			}
@@ -187,7 +187,7 @@ func TestSubagentStartServiceTier(t *testing.T) {
 				fields["service_tier"] = tc.tier
 			}
 		})
-		got := subagentStartCommentary(&request, "/root/child")
+		got := nativeSubagentStart(&request)
 		if heading, _, _ := strings.Cut(got, "\n"); heading != "Started · `gpt-6-astra` `high`"+tc.want {
 			t.Fatalf("tier=%s commentary=%s", tc.tier, got)
 		}
@@ -230,6 +230,7 @@ func TestServiceTierSurvivesProviderTranslation(t *testing.T) {
 func TestServiceTierJournalHandoffAndRootNotice(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	root, _ := prepareActivityTest(t, proxy, "root-session", "root", "", "/root", nil)
+	proxy.activity.attachNativePane("root")
 	defer root.Close()
 	headers := mentorTestHeaders(t, "child")
 	headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, codexTurnMetadata{
@@ -271,14 +272,10 @@ func TestServiceTierJournalHandoffAndRootNotice(t *testing.T) {
 			t.Fatalf("attempt %d tier=%s want=%s", index, got, want)
 		}
 	}
-	notices := proxy.activity.drain("root", root.activityStarted, maxCommentaryPublicationBytes)
-	for _, notice := range notices {
-		text := commentaryText(t, notice)
-		if strings.Contains(text, "Started ·") && strings.Contains(text, " `fast`") {
-			return
-		}
+	entries := proxy.activity.takeNativeActivity("root")
+	if len(entries) != 1 || entries[0].Kind != "start" || !strings.Contains(entries[0].Text, " `fast`") {
+		t.Fatalf("native start did not retain effective tier: %+v", entries)
 	}
-	t.Fatalf("root did not receive effective start tier: %s", mustTestJSON(t, notices))
 }
 
 func TestServiceTierRequestAliases(t *testing.T) {

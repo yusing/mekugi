@@ -28,14 +28,13 @@ func TestSearchDisplayQueryAndTarget(t *testing.T) {
 		{`rg -n first src | grep -v second | head -n 5`, "Search `first` in `src`\n\nSearch `second`"},
 	} {
 		t.Run(tc.source, func(t *testing.T) {
-			item := stockExecDisplayItem(tc.source)
-			if got := subagentToolActivityText(item, "exec_command"); got != tc.want {
+			if got := toolActivityShell(tc.source); got != tc.want {
 				t.Fatalf("native display = %q, want %q", got, tc.want)
 			}
 			source := `text(await tools.exec_command({cmd:` + string(mustMarshalJSON(tc.source)) + `}));`
 			calls, ok := toolActivityUnwrapExecCalls(source, false)
-			if !ok || len(calls) != 1 || subagentToolActivityText(calls[0], "exec_command") != tc.want {
-				t.Fatalf("Code Mode display did not preserve query/target: %v", calls)
+			if !ok || len(calls) != 1 || jsonString(calls[0], "arguments") != string(mustMarshalJSON(map[string]string{"cmd": tc.source})) {
+				t.Fatalf("Code Mode capture did not preserve command: %v", calls)
 			}
 		})
 	}

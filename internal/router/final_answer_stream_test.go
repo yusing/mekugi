@@ -214,7 +214,7 @@ func TestFinalAnswerStreamFlushesWithoutUsage(t *testing.T) {
 			}
 			var output bytes.Buffer
 			// Include a real downstream transform to exercise composed draining.
-			chain := composeResponseTransformers(transform, &criticalErrorTransform{})
+			chain := composeResponseTransformers(transform, &webSocketCountingTransform{})
 			_, err := copySSETransformed(&output, reader, chain, &responseHooks{onUsage: transform.observeResponseUsage})
 			if stop == "read_error" {
 				if !errors.Is(err, failure) {

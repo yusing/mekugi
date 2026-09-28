@@ -132,7 +132,7 @@ and cached replays emit no compaction event. Pane unavailability never adds thes
 metrics to model-visible commentary or changes filtering.
 
 TypeSafe consumption is accumulated separately per originating transport thread
-for the router lifetime and included in the [token usage report](commentary.md).
+for the router lifetime and included in the [token usage report](usage.md).
 Every HTTP attempt counts, including retries and judgments whose results are
 kept or whose answers are unusable. Missing or invalid provider usage creates an
 explicit gap; local token estimates never replace it. Cached decisions make no

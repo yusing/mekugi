@@ -2,7 +2,6 @@ package router
 
 import (
 	"bytes"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -26,22 +25,9 @@ func TestPaneOperationRegressionMCatReadLabels(t *testing.T) {
 				t.Fatalf("display = %q, want %q", got, tc.want)
 			}
 		})
-		t.Run(tc.name+"/code-mode", func(t *testing.T) {
-			source := "text(await tools.exec_command({cmd:" + string(mustMarshalJSON(tc.command)) + "}));"
-			item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
-			if got := subagentToolPreview(item, "functions.exec", nil); got != tc.want {
-				t.Fatalf("display = %q, want %q", got, tc.want)
-			}
-		})
+
 	}
 
-	const batch = `const r=await Promise.allSettled([
-	tools.exec_command({cmd:"mcat --max-tokens 500 a.go 1:3 b.go"}),
-	]); for(let i=0;i<r.length;i++)text(JSON.stringify({i,...r[i]}));`
-	item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(batch)}
-	if got, want := subagentToolPreview(item, "functions.exec", nil), "Read `a.go 1:3`\n\nRead `b.go`"; got != want {
-		t.Fatalf("Code Mode batch display = %q, want %q", got, want)
-	}
 }
 
 func TestPaneOperationRegressionMReadIsOmitted(t *testing.T) {
@@ -62,20 +48,6 @@ func TestPaneOperationRegressionMReadIsOmitted(t *testing.T) {
 		})
 	}
 
-	for _, test := range []struct{ source, want string }{
-		{`text(await tools.exec_command({cmd:"mread amber"}));`, ""},
-		{`const r=await Promise.allSettled([tools.exec_command({cmd:"mread amber"}),tools.exec_command({cmd:"mcat source.go"})]);for(let i=0;i<r.length;i++)text(JSON.stringify({i,...r[i]}));`, "Read `source.go`"},
-	} {
-		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(test.source)}
-		originalInput := bytes.Clone(item["input"])
-		got := subagentToolPreview(item, "functions.exec", nil)
-		if !bytes.Equal(item["input"], originalInput) {
-			t.Fatal("mread activity projection changed the original Code Mode input")
-		}
-		if got != test.want {
-			t.Fatalf("Code Mode display = %q, want %q", got, test.want)
-		}
-	}
 }
 
 func TestPaneOperationRegressionDecorativePrintf(t *testing.T) {
@@ -111,28 +83,15 @@ func TestPaneOperationRegressionApplyPatchDisplay(t *testing.T) {
 		"text(await tools.apply_patch(`" + patch + "`));",
 		"const patch = `*** Begin Patch\n*** Add File: pane.txt\n+Use \\`mcat\\` and \\${literal}\n*** End Patch\n`; text(await tools.apply_patch(patch));",
 	}
-	for _, input := range append([]string{patch}, codeModes...) {
-		name := "apply_patch"
-		if input != patch {
-			name = "exec"
-		}
-		item := map[string]json.RawMessage{"name": mustMarshalJSON(name), "input": mustMarshalJSON(input)}
-		originalInput := bytes.Clone(item["input"])
-		if got := subagentToolPreview(item, "functions."+name, nil); got != "" {
-			t.Errorf("patch operation display = %q, want no bare label", got)
-		}
-		if !bytes.Equal(item["input"], originalInput) {
-			t.Fatal("patch activity projection changed the original tool input")
+	for _, source := range codeModes {
+		if patches := stockLiteralPatchInputs(source); len(patches) != 1 {
+			t.Fatalf("static patch was not captured: %q", patches)
 		}
 	}
 	for _, source := range []string{
 		"const patch = `*** Begin Patch\n${dynamic}`; text(await tools.apply_patch(patch));",
 		"text(await tools.apply_patch(`*** Begin Patch\n${dynamic}`));",
 	} {
-		item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
-		if got := subagentToolPreview(item, "functions.exec", nil); !strings.HasPrefix(got, "Run JavaScript") {
-			t.Fatalf("dynamic template was treated as a static patch: %q", got)
-		}
 		if patches := stockLiteralPatchInputs(source); len(patches) != 0 {
 			t.Fatalf("dynamic template entered patch capture: %q", patches)
 		}

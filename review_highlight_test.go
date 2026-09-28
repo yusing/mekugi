@@ -106,7 +106,7 @@ func TestReviewLineCounts(t *testing.T) {
 		}
 	}
 	file := composeCapture("same\nold\n", "same\nnew\nextra\n")
-	if !strings.HasSuffix(ReviewStat([]ReviewFile{file}), " 1 file changed, 2 insertions(+), 1 deletion(-)\n") {
-		t.Fatalf("structured counts changed summary output: %q", ReviewStat([]ReviewFile{file}))
+	if added, removed := file.LineCounts(); added != 2 || removed != 1 {
+		t.Fatalf("structured counts = +%d -%d", added, removed)
 	}
 }

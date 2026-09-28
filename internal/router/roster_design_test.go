@@ -30,10 +30,6 @@ func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 			}
 		}
 	}
-	start := parseLiveActivity(activityPaneEntry{Kind: "start", Text: "Started · model high\nSpawn assignment:\nInspect parser.\n\n- Preserve behavior."})
-	if len(start) != 1 || start[0].Body != "Inspect parser.\n\n- Preserve behavior." {
-		t.Fatalf("assignment body = %+v", start)
-	}
 	now := time.Now()
 	v := liveActivityTestView("/root", "/root/a")
 	if empty, _ := v.current(v.agents[0], now); ansi.Strip(empty) != "Read root.go" {

@@ -12,13 +12,11 @@ type activityAssignment struct {
 
 // The native pane keeps every observed NEW_TASK, including follow-ups, keyed by
 // the host item and payload. Full-history requests cannot replay its display.
-// Legacy starts retain their existing bounded assignment excerpt.
 func (a *subagentActivity) collectSubagentStart(thread string, request *parsedResponsesRequest, recipient string) {
 	if a == nil {
 		return
 	}
 	a.mu.Lock()
-	native := a.pane != nil && a.pane.native && a.pane.state == activityPaneAttached && a.rootLocked(thread) == a.pane.root
 	from := ""
 	if node := a.threads[thread]; node != nil {
 		if parent := a.threads[node.parent]; parent != nil {
@@ -26,12 +24,7 @@ func (a *subagentActivity) collectSubagentStart(thread string, request *parsedRe
 		}
 	}
 	a.mu.Unlock()
-	start := subagentStartCommentary(request, recipient)
-	if !native {
-		a.collect(thread, "subagent-start\x00"+thread, "start", start)
-		return
-	}
-	heading, _, _ := strings.Cut(start, "\n")
+	heading := nativeSubagentStart(request)
 	var items []map[string]jsonv1.RawMessage
 	if json.Unmarshal(request.fields["input"], &items) != nil {
 		items = nil

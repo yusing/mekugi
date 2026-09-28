@@ -17,31 +17,29 @@ import (
 func TestExploreFilterPaneEmission(t *testing.T) {
 	for _, thread := range []string{"root", "probe"} {
 		t.Run(thread, func(t *testing.T) {
-			pane := newActivityPaneFixture(t, true)
+			activity := newSubagentActivity()
+			activity.attachNativePane("root")
+			activity.observe("root", "", "/root", false)
+			activity.observe("probe", "root", "/root/explorer/probe", true)
 			dir, body := exploreFixture(t)
 			store, err := openMekugiReplayStore(t.TempDir())
 			if err != nil {
 				t.Fatal(err)
 			}
-			proxy := &mekugiProxy{activity: pane.activity, usage: newThreadUsage()}
+			proxy := &mekugiProxy{activity: activity, usage: newThreadUsage()}
 			ctx := proxy.exploreContext(t.Context(), thread, thread)
 			judge := &fakeExploreJudge{score: func(exploreUnitState) float64 { return .01 }}
 			filter := newExploreFilter(judge)
 			header := "Wall time: 0.1 seconds\nProcess exited with code 0\nOutput:\n"
 			request := exploreRequest(t, dir, "rg -n snapshot", header+body)
 			filter.project(ctx, request, nil, dir, "", "/root", store)
-			client := pane.connect(t)
-			snapshot := client.next(t, "snapshot")
 			wantAgent := "/root/explorer/probe"
 			if thread == "root" {
 				wantAgent = "/root"
 			}
-			if !slices.ContainsFunc(snapshot.Agents, func(a activityPaneAgent) bool { return a.Name == wantAgent }) {
-				t.Fatal("origin missing from pane roster")
-			}
-			entries := client.next(t, "entries").Entries
+			entries := activity.takeNativeActivity("root")
 			if len(entries) != 1 || entries[0].Kind != "output_filter" || entries[0].Agent != wantAgent || entries[0].CallID != "call-1" {
-				t.Fatalf("unexpected event: %+v", entries)
+				t.Fatalf("unexpected native annotation: %+v", entries)
 			}
 			event := entries[0].Filter
 			if event == nil || event.Command != "rg -n snapshot" || event.Family != "paths" || event.LinesBefore != 49 || event.LinesRemoved != 24 || event.UnitsBefore != 6 || event.UnitsRemoved != 3 {
@@ -85,8 +83,8 @@ func TestExploreFilterPaneEmission(t *testing.T) {
 			if judge.calls.Load() != 1 || usage.typesafe.Requests != 1 || usage.typesafe.InputTokens != 10 {
 				t.Fatal("replay duplicated usage")
 			}
-			if got := drainText(pane.activity.drain("root", time.Time{}, maxCommentaryPublicationBytes)); strings.Contains(got, "Output filtered") || strings.Contains(got, "o200k_base") {
-				t.Fatal("filter metrics leaked into model context")
+			if got := activity.takeNativeActivity("root"); len(got) != 0 {
+				t.Fatalf("filter replay duplicated native annotation: %+v", got)
 			}
 		})
 	}
@@ -139,6 +137,7 @@ func TestExploreFilterObservationKeptAndCodeMode(t *testing.T) {
 	}
 	for _, keep := range []bool{true, false} {
 		activity := newSubagentActivity()
+		activity.attachNativePane("root")
 		activity.observe("root", "", "/root", false)
 		proxy := &mekugiProxy{activity: activity, usage: newThreadUsage()}
 		judge := &fakeExploreJudge{score: func(exploreUnitState) float64 {
@@ -175,40 +174,33 @@ func TestExploreFilterObservationKeptAndCodeMode(t *testing.T) {
 				t.Fatal("counted JSON wrapper as stdout")
 			}
 		}
-		if got := activity.drain("root", time.Time{}, maxCommentaryPublicationBytes); len(got) != 0 {
-			t.Fatal("pane-only metrics fell back inline")
+		if got := activity.takeNativeActivity("root"); len(got) != map[bool]int{true: 0, false: 1}[keep] {
+			t.Fatalf("native filter annotations = %+v", got)
 		}
 	}
 }
 
-func TestExploreFilterPanePayloadRestoreAndIsolation(t *testing.T) {
-	f := newActivityPaneFixture(t, true)
+func TestExploreFilterNativePayloadDedupAndIsolation(t *testing.T) {
+	a := newSubagentActivity()
+	a.attachNativePane("root")
+	a.observe("root", "", "/root", false)
+	a.observe("other", "", "/root", false)
 	event := activityEvent{thread: "root", source: "filter-one", kind: "output_filter", callID: "call-1", text: "Output filtered", filter: &exploreFilterEvent{Command: "rg needle"}}
-	f.activity.collectEvent(event)
-	f.activity.collectEvent(event)
-	f.activity.observe("other", "", "/root", false)
+	a.collectEvent(event)
+	a.collectEvent(event)
 	event.thread, event.source = "other", "filter-other"
-	f.activity.collectEvent(event)
-	generation, _, ok := f.activity.subscribePane()
-	if !ok {
-		t.Fatal("root filter did not claim pane")
+	a.collectEvent(event)
+	entries := a.takeNativeActivity("root")
+	if len(entries) != 1 || entries[0].Filter == nil || entries[0].Filter.Command != "rg needle" || entries[0].CallID != "call-1" {
+		t.Fatalf("duplicate or cross-root annotation: %+v", entries)
 	}
-	entries, _, ok := f.activity.takePane(generation)
-	if !ok || len(entries) != 1 || entries[0].Filter == nil || entries[0].CallID != "call-1" {
-		t.Fatal("duplicate or cross-root event")
+	if got := a.takeNativeActivity("root"); len(got) != 0 {
+		t.Fatalf("native annotation repeated: %+v", got)
 	}
-	f.activity.restorePane(entries)
-	restored, _, _ := f.activity.takePane(generation)
-	if len(restored) != 1 || restored[0].Filter.Command != "rg needle" {
-		t.Fatal("failed write lost payload")
-	}
-	if len(f.activity.drain("other", time.Time{}, maxCommentaryPublicationBytes)) != 0 {
-		t.Fatal("other root fallback leaked metrics")
-	}
-	f.activity.invalidate("root")
+	a.invalidate("root")
 	event.thread, event.source = "root", "conflicted-filter"
-	f.activity.collectEvent(event)
-	if len(f.activity.events) != 0 {
-		t.Fatal("conflicted thread emitted metrics")
+	a.collectEvent(event)
+	if got := a.takeNativeActivity("root"); len(got) != 0 {
+		t.Fatalf("conflicted annotation escaped: %+v", got)
 	}
 }

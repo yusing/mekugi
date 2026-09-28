@@ -59,7 +59,7 @@ The linked contracts own interface details, exceptions, and acceptance cases.
   ancestry from that request, not durable records needed by other branches.
   Cleanup is limited to owned resources. See
   [history ownership](doc/architecture/boundary.md) and
-  [commentary identity](doc/architecture/commentary.md).
+  [activity identity](doc/architecture/activity.md).
 - **Host authority:** Codex owns stock `apply_patch`, `exec_command`, Code
   Mode JavaScript, permissions, sandboxing, native agents, and yielded-session
   continuation. Router observation and display must not execute effects again
@@ -96,12 +96,12 @@ The linked contracts own interface details, exceptions, and acceptance cases.
   shared dependencies. Replay validates retained facts without rerunning
   tools. See [changes](doc/spec/changes.md) and
   [store ownership](doc/architecture/boundary.md).
-- **Auxiliary means non-invasive:** Commentary, capture, and diagnostics must
+- **Auxiliary means non-invasive:** Activity presentation, capture, and diagnostics must
   not replace tool results, alter execution, or replay effects. Bound their
   resources independently of correctness state; remove generated history
   only by retained provenance, not text resemblance. Keep secrets and
   content out of sanitized metrics, with credentials separated by provider.
-  See [commentary](doc/spec/commentary.md), [metrics](doc/spec/metrics.md),
+  See [activity](doc/spec/activity.md) and [notices](doc/spec/notices.md), [metrics](doc/spec/metrics.md),
   and [provider isolation](doc/spec/third_party.md).
 - **Evidence over apparent success:** Judge correctness by actual host
   results, path scope, and required graders, not model prose or transcript

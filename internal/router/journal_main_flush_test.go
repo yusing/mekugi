@@ -80,7 +80,6 @@ func TestJournalMainFlushOnlyOwnJournalAfterRestart(t *testing.T) {
 			}
 			root.ReleaseDelivery()
 			root.journalLiveBytes = maxCommentaryPublicationBytes
-			root.activityBytes = maxCommentaryPublicationBytes
 			messages, err := root.prepareJournalDelivery(true)
 			if err != nil || len(messages) != 1 {
 				t.Fatalf("main snapshot: %v, %v", messages, err)

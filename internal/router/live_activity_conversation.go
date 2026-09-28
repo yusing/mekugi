@@ -517,10 +517,6 @@ func (v *liveActivityView) flushItem(out *conversationLines, entry activityPaneE
 	}
 }
 
-func (v *liveActivityView) userItem(out *conversationLines, entry activityPaneEntry, width int) {
-	v.userItemContinued(out, entry, width, false)
-}
-
 func (v *liveActivityView) userItemContinued(out *conversationLines, entry activityPaneEntry, width int, continued bool) {
 	band := userBand(v.painter.Theme)
 	var rows []string

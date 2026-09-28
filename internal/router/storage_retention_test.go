@@ -77,7 +77,7 @@ func TestStorageRetentionExpiresInactiveSessionsOnly(t *testing.T) {
 	retentionTestAge(t, store, "active", 30*24*time.Hour)
 	current, _ := retentionTestSession(t, store, "current", 0)
 	var notices []string
-	store.storageNotice = func(_ string, message string) { notices = append(notices, message) }
+	store.storageNotice = func(_, _ string, message string) { notices = append(notices, message) }
 	if err := store.cleanupSessions(current); err != nil {
 		t.Fatal(err)
 	}

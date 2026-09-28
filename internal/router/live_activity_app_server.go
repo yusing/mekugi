@@ -362,8 +362,7 @@ func (v *liveActivityView) linkChildAnswers(seq uint64) {
 			var current uint64
 			if group.Question != "" {
 				for _, entry := range slices.Backward(v.entries[:index]) {
-					if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil && entry.assignment.id != "" && entry.assignment.to == owner && normalize(entry.assignment.text) == group.Question ||
-						entry.Kind == "start" && entry.Agent == owner && strings.Contains(entry.Text, "\nSpawn assignment:\n") && normalize(activityui.ParseStart(entry.Text).Body) == group.Question {
+					if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil && entry.assignment.id != "" && entry.assignment.to == owner && normalize(entry.assignment.text) == group.Question {
 						current = entry.Seq
 						break
 					}

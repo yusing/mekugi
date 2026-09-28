@@ -4,7 +4,7 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "64"
+  revision: "65"
   files:
     - journal.md
     - router.md
@@ -13,7 +13,10 @@ pjdoc:
     - third_party.md
     - grok.md
     - opencode.md
-    - commentary.md
+    - notices.md
+    - activity.md
+    - activity_display.md
+    - usage.md
     - read.md
     - symbol.md
     - inspect.md
@@ -44,7 +47,10 @@ linked, not copied.
 - [`REQ-THIRD-PARTY-001`](third_party.md): shared third-party native-agent routing
 - [`REQ-GROK-001`](grok.md): Grok provider route
 - [`REQ-OPENCODE-001`](opencode.md): OpenCode Go and Zen provider routes
-- [`REQ-COMMENTARY-001`](commentary.md): user-only subagent activity details
+- [`REQ-NOTICES-001`](notices.md): native diagnostic delivery and recovery
+- [`REQ-ACTIVITY-001`](activity.md): observed tool classification
+- [`REQ-ACTIVITY-DISPLAY-001`](activity_display.md): native operation rows and agent feeds
+- [`REQ-USAGE-001`](usage.md): per-thread provider accounting and usage files
 - [`REQ-READ-001`](read.md): authenticated raw-row reading and managed continuation
 - [`REQ-SYMBOL-001`](symbol.md): routed semantic symbol lookup with raw source rows
 - [`REQ-INSPECT-001`](inspect.md): executable structural file inspection with numeric spans

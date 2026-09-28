@@ -19,7 +19,7 @@ import (
 )
 
 func queueCritical(c *CriticalErrors, session string) {
-	c.record(&requestFinalization{sessionID: session, failurePhase: requestFailurePrepare,
+	c.record(&requestFinalization{sessionID: session, threadID: session, failurePhase: requestFailurePrepare,
 		observation: requestObservation{outcome: requestOutcomeFailed}}, incompatibleRequest("unsupported_tool_catalog", "Enable supported tools."))
 }
 
@@ -30,25 +30,21 @@ func TestCriticalErrorsDeduplicateReserveAndRetainUntilDelivery(t *testing.T) {
 	if pending := c.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "2 times") {
 		t.Fatalf("pending = %v", pending)
 	}
-	first := c.transform("one", false)
-	if len(first.messages) != 1 || len(c.transform("two", false).messages) != 0 || len(c.transform("one", false).messages) != 0 {
+	first := c.takeNative("one", nil)
+	if first == nil || len(first.notices) != 1 || c.takeNative("two", nil) != nil || c.takeNative("one", nil) != nil {
 		t.Fatal("notice crossed a session or concurrent response")
 	}
 	first.finish(false)
-	retry := c.transform("one", false)
-	if len(retry.messages) != 1 {
+	retry := c.takeNative("one", nil)
+	if len(retry.notices) != 1 || !strings.Contains(noticeText(retry.notices[0]), "Enable supported tools.") {
 		t.Fatal("failed delivery lost notice")
-	}
-	body, err := retry.TransformJSON([]byte(`{"status":"completed","output":[{"type":"message","id":"answer","content":[]}]}`))
-	if err != nil || !strings.Contains(string(body), "Enable supported tools.") {
-		t.Fatalf("JSON = %s, %v", body, err)
 	}
 	retry.finish(true)
 	if len(c.Pending()) != 0 {
 		t.Fatal("delivered notice still pending")
 	}
 	queueCritical(c, "one")
-	if len(c.transform("one", false).messages) != 0 {
+	if c.takeNative("one", nil) != nil {
 		t.Fatal("repeat flooded the session")
 	}
 	if pending := c.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "3 times") {
@@ -106,50 +102,27 @@ func TestCriticalErrorsIdentifyEveryGenericFailurePhaseWithCompleteCauses(t *tes
 	}
 }
 
-func TestCriticalErrorsReplayRemovesOnlyOwnedSessionMessages(t *testing.T) {
+func TestCriticalErrorsNativeOwnershipAndRouterWideNotice(t *testing.T) {
 	c := NewCriticalErrors()
 	queueCritical(c, "one")
 	queueCritical(c, "two")
-	first := c.transform("one", false)
-	other := c.transform("two", false)
-	authored := assistantCommentaryMessage("model-owned", "Enable supported tools.")
-	request := serverRequest(t, func(fields map[string]any) { fields["input"] = []any{first.messages[0], other.messages[0], authored} })
-	c.stripInput(&request, "one")
-	var input []map[string]json.RawMessage
-	if err := json.Unmarshal(request.fields["input"], &input); err != nil {
-		t.Fatal(err)
+	queueCritical(c, "child")
+	c.addNotice("", "router-capacity", "router-wide capacity warning")
+	activity := newSubagentActivity()
+	if !activity.observe("one", "", "/root", false) || !activity.observe("child", "one", "/root/child", true) {
+		t.Fatal("failed to establish ancestry")
 	}
-	if len(input) != 2 || jsonString(input[0], "id") != jsonString(other.messages[0], "id") || jsonString(input[1], "id") != "model-owned" {
-		t.Fatalf("input = %s", request.fields["input"])
+	child := c.takeNative("child", activity)
+	if child != nil {
+		t.Fatal("child stole native root notices")
 	}
-}
-
-func TestCriticalErrorsStreamingPreservesSubagentResult(t *testing.T) {
-	for _, subagent := range []bool{false, true} {
-		c := NewCriticalErrors()
-		queueCritical(c, "one")
-		tr := c.transform("one", subagent)
-		events, err := tr.TransformSSE([]byte(`{"type":"response.created","response":{"id":"response"}}`))
-		if err != nil || len(events) != map[bool]int{false: 2, true: 1}[subagent] {
-			t.Fatalf("created: %d, %v", len(events), err)
-		}
-		events, err = tr.TransformSSE([]byte(`{"type":"response.completed","response":{"status":"completed","output":[{"type":"message","id":"answer","content":[]}]}}`))
-		if err != nil || len(events) != 1 {
-			t.Fatalf("terminal: %d, %v", len(events), err)
-		}
-		var terminal struct {
-			Response struct{ Output []map[string]json.RawMessage }
-		}
-		if err := json.Unmarshal(events[0], &terminal); err != nil {
-			t.Fatal(err)
-		}
-		if len(terminal.Response.Output) != 2 || jsonString(terminal.Response.Output[1], "id") != "answer" {
-			t.Fatalf("substantive result replaced: %s", events[0])
-		}
-		tr.finish(true)
-		if len(c.Pending()) != 0 {
-			t.Fatal("stream delivery not acknowledged")
-		}
+	root := c.takeNative("one", activity)
+	if root == nil || len(root.notices) != 3 {
+		t.Fatalf("root notices = %d, want own, child, and router-wide", len(root.notices))
+	}
+	root.finish(true)
+	if len(c.Pending()) != 1 {
+		t.Fatalf("unrelated session notice was acknowledged: %v", c.Pending())
 	}
 }
 

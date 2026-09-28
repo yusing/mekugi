@@ -29,7 +29,7 @@ func TestUnderlinePreservesStyledRows(t *testing.T) {
 			for x := range width + 1 {
 				expected := *want.CellAt(x, 0)
 				if x < width {
-					expected.Style.Underline = uv.UnderlineStyleSingle
+					expected.Style.Underline = uv.UnderlineSingle
 				}
 				cell := got.CellAt(x, 0)
 				if cell.Content != expected.Content || !cell.Style.Equal(&expected.Style) || cell.Link != expected.Link {

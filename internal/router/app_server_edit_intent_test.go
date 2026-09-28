@@ -95,17 +95,21 @@ func TestShellEditIntentKeepsUnknownHeredocNeighbor(t *testing.T) {
 func TestCodeModeEditIntentBatchPreview(t *testing.T) {
 	command := "python3 - <<'PY'\np='a.go';s=open(p).read().replace('before','PRIVATE_BATCH_SOURCE');open(p,'w').write(s)\np='b.go';s=open(p).read().replace('before','after');open(p,'w').write(s)\nPY\nenv -u BASH_ENV rtk go test ./internal/router -run 'TestEditIntent'"
 	source := "const r = await tools.exec_command({cmd:" + string(mustMarshalJSON(command)) + "}); text(r);"
-	item := map[string]json.RawMessage{"name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
-	got := subagentToolActivityText(item, "exec")
+	calls, ok := toolActivityUnwrapExecCalls(source, true)
+	if !ok || len(calls) != 1 {
+		t.Fatalf("Code Mode call was not recognized: %+v", calls)
+	}
+	var arguments map[string]string
+	if err := json.Unmarshal([]byte(jsonString(calls[0], "arguments")), &arguments); err != nil || arguments["cmd"] != command {
+		t.Fatalf("Code Mode call changed command: %+v, %v", arguments, err)
+	}
+	got := toolActivityShell(command)
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: got})
 	if len(blocks) != 3 || blocks[0].Verb != "Edit" || blocks[1].Verb != "Edit" || blocks[2].Verb != "Run" ||
 		!strings.Contains(got, "Edit `a.go` · python3 (requested)") ||
 		!strings.Contains(got, "Edit `b.go` · python3 (requested)") ||
 		!strings.Contains(got, "go test ./internal/router") || strings.Contains(got, "PRIVATE_BATCH_SOURCE") {
 		t.Fatalf("Code Mode batch preview = %q, blocks %+v", got, blocks)
-	}
-	if jsonString(item, "input") != source {
-		t.Fatal("preview modified executable Code Mode input")
 	}
 }
 

@@ -2,11 +2,8 @@ package mekugi
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
-	"unicode"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/pmezard/go-difflib/difflib"
 )
 
@@ -101,99 +98,6 @@ func (file ReviewFile) LineCounts() (added, removed int) {
 		}
 	}
 	return added, removed
-}
-
-// ReviewStat renders a diffstat for one evaluation, not a net diff across calls.
-// Bars share a scale and are capped at 40 characters; totals remain exact.
-func ReviewStat(files []ReviewFile) string {
-	if len(files) == 0 {
-		return ""
-	}
-	var complete []ReviewFile
-	var unavailable strings.Builder
-	for _, file := range files {
-		if file.Incomplete == "" {
-			complete = append(complete, file)
-		} else {
-			path := file.AfterPath
-			if path == "" {
-				path = file.BeforePath
-			}
-			fmt.Fprintf(&unavailable, " %q | unavailable (incomplete history: %s)\n", path, file.Incomplete)
-		}
-	}
-	if unavailable.Len() != 0 {
-		return ReviewStat(complete) + unavailable.String()
-	}
-	type entry struct {
-		path           string
-		added, removed int
-		binary         bool
-	}
-	entries := make([]entry, 0, len(files))
-	pathWidth, largest, added, removed := 0, 0, 0, 0
-	displayPath := func(path string) string {
-		if strings.IndexFunc(path, unicode.IsControl) >= 0 {
-			return strconv.Quote(path)
-		}
-		return path
-	}
-	for _, file := range files {
-		path := displayPath(file.AfterPath)
-		switch {
-		case file.AfterPath == "":
-			path = displayPath(file.BeforePath)
-		case file.BeforePath != "" && file.BeforePath != file.AfterPath:
-			path = displayPath(file.BeforePath) + " => " + path
-		}
-		a, r := file.LineCounts()
-		entries = append(entries, entry{path, a, r, file.Binary})
-		pathWidth = max(pathWidth, ansi.StringWidth(path))
-		largest = max(largest, a+r)
-		added += a
-		removed += r
-	}
-	var output strings.Builder
-	countWidth := len(strconv.Itoa(largest))
-	for _, entry := range entries {
-		if entry.binary {
-			fmt.Fprintf(&output, " %s%s | Bin\n", entry.path, strings.Repeat(" ", pathWidth-ansi.StringWidth(entry.path)))
-			continue
-		}
-		a, r := entry.added, entry.removed
-		if largest > 40 {
-			width := max(1, (a+r)*40/largest)
-			if a > 0 && r > 0 {
-				width = max(2, width)
-				a = max(1, min(width-1, a*width/(a+r)))
-				r = width - a
-			} else if a > 0 {
-				a = width
-			} else if r > 0 {
-				r = width
-			}
-		}
-		fmt.Fprintf(&output, " %s%s | %*d", entry.path, strings.Repeat(" ", pathWidth-ansi.StringWidth(entry.path)), countWidth, entry.added+entry.removed)
-		if a+r > 0 {
-			fmt.Fprintf(&output, " %s%s", strings.Repeat("+", a), strings.Repeat("-", r))
-		}
-		output.WriteByte('\n')
-	}
-	plural := func(count int) string {
-		if count == 1 {
-			return ""
-		}
-		return "s"
-	}
-	fmt.Fprintf(&output, " %d file%s changed", len(files), plural(len(files)))
-	if added > 0 {
-		fmt.Fprintf(&output, ", %d insertion%s(+)", added, plural(added))
-	}
-	if removed > 0 {
-		fmt.Fprintf(&output, ", %d deletion%s(-)", removed, plural(removed))
-	}
-	output.WriteByte('\n')
-	return output.String()
 }
 
 // RenderReviewFile captures an operation-owned before/after pair using the same

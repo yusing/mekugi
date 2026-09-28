@@ -1,25 +1,23 @@
 package router
 
 import (
-	"encoding/json"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 )
 
-// Native messages do not travel through the 16 KiB inline commentary envelope.
-// Bound their retained display independently; clipping is explicit in Activity.
+// Bound native message display independently of authored journal publications.
+// Clipping is explicit in Activity.
 const maxNativeActivityMessageBytes = 64 << 10
 
 // Presentation state is independent of executable-call recovery. Identities and
 // delivered IDs remain available until shutdown. Bounded live queues drop only
-// auxiliary updates with a notice, without disabling later updates or exposing old commentary.
+// auxiliary updates with a notice, without disabling later updates or replaying expired activity.
 type subagentActivity struct {
 	notice  func(string, string)
 	mu      sync.Mutex
 	threads map[string]*activityThread
-	copies  map[string]struct{}
 	events  []activityEvent
 	closed  bool
 	order   int
@@ -51,7 +49,7 @@ type activityEvent struct {
 }
 
 func newSubagentActivity() *subagentActivity {
-	return &subagentActivity{threads: make(map[string]*activityThread), copies: make(map[string]struct{})}
+	return &subagentActivity{threads: make(map[string]*activityThread)}
 }
 
 func (a *subagentActivity) observe(thread, parent, name string, child bool) bool {
@@ -97,7 +95,7 @@ func (a *subagentActivity) rootLocked(thread string) string {
 // Shell workers share stable thread capabilities across requests. Once an
 // accepted request makes that thread's identity ambiguous, later publications
 // cannot safely use its earlier ancestry, even after another valid turn.
-// Keep local runtime authors and replay provenance intact; suppress root copies.
+// Keep local runtime authors and replay provenance intact; suppress ambiguous activity.
 func (a *subagentActivity) invalidate(thread string) {
 	if a == nil || thread == "" || len(thread) > maxCommentaryPublicationBytes {
 		return
@@ -137,51 +135,22 @@ func (a *subagentActivity) collectEventLocked(event activityEvent) {
 	if a.closed || node == nil || node.conflicted {
 		return
 	}
-	// Main activity and visible reasoning belong only to the terminal pane.
-	if (!node.child && kind != "output_filter" || kind == "reasoning") && (a.pane == nil || a.pane.state == activityPaneReleased) {
+	// The native app-server owns commands, reasoning, authored messages and
+	// lifecycle. Only annotations and authenticated input bodies need the router.
+	if !nativeObservedActivity(kind) {
 		return
-	}
-	callID := event.callID
-	if kind == "tool" {
-		if id, found := strings.CutPrefix(source, "tool-call\x00"); found {
-			callID = id
-		} else if callID == "" && strings.HasPrefix(source, "edit-receipt\x00") {
-			_, callID, _ = strings.CutLast(source, "\x00")
-		}
-	} else if kind == "exit" {
-		callID, _ = strings.CutPrefix(source, "tool-exit\x00")
 	}
 	source = commentaryMessageID(source)
-	if _, exists := node.seen[source]; exists && kind != "reasoning" {
+	if _, exists := node.seen[source]; exists {
 		return
 	}
-	header, _, directed := strings.Cut(text, "] ")
-	raw := activityPaneText(node.name, text)
-	directed = directed && strings.HasPrefix(header, "[") &&
-		(strings.HasPrefix(header, "["+commentaryCode(node.name)+" -> ") ||
-			strings.HasSuffix(header, " -> "+commentaryCode(node.name)))
-	if kind == "operation" || !directed {
-		text = attributedCommentary(node.name, text)
-	}
-	if len(text) > maxCommentaryPublicationBytes {
-		if kind != "reply" || a.pane == nil || !a.pane.native || a.pane.root != a.rootLocked(thread) {
-			return
-		}
-		if len(raw) > maxNativeActivityMessageBytes {
-			const clipped = "\n… (message clipped at the native Activity 64 KiB display limit)"
-			raw = strings.ToValidUTF8(raw[:maxNativeActivityMessageBytes-len(clipped)], "") + clipped
-			text = raw
-		}
+	raw := text
+	if len(raw) > maxNativeActivityMessageBytes {
+		const clipped = "\n… (message clipped at the native Activity 64 KiB display limit)"
+		raw = strings.ToValidUTF8(raw[:maxNativeActivityMessageBytes-len(clipped)], "") + clipped
 	}
 	now := time.Now()
 	a.expireLocked(now)
-	// Keep the latest ordinary operation, but preserve distinct notices. Appending
-	// the replacement after notices preserves each child's observation order.
-	if kind == "operation" || kind == "reasoning" {
-		a.events = slices.DeleteFunc(a.events, func(e activityEvent) bool {
-			return e.thread == thread && e.kind == kind && (kind != "reasoning" || e.source == source)
-		})
-	}
 	count := 0
 	for _, event := range a.events {
 		if event.thread == thread {
@@ -198,138 +167,12 @@ func (a *subagentActivity) collectEventLocked(event activityEvent) {
 	if kind == "start" && event.assignment != nil && event.assignment.id != "" {
 		node.seen[commentaryMessageID(event.assignment.id)] = struct{}{}
 	}
-	// V2 app-server owns execution/lifecycle, but its SubAgentActivity item
-	// carries no assignment or directed-message body. Keep those authenticated
-	// request observations for the native pane, never inject them as speech.
-	if a.pane != nil && a.pane.native && a.pane.root == a.rootLocked(thread) && !nativeObservedActivity(kind) {
-		return
-	}
-	event.source, event.callID, event.text, event.raw, event.observed = source, callID, text, raw, now
+	event.source, event.text, event.raw, event.observed = source, raw, raw, now
 	a.events = append(a.events, event)
-	a.claimPaneLocked(thread, now)
-	if a.paneOwnsLocked(a.rootLocked(thread), now) {
-		a.wakePaneLocked()
-	}
 }
 
 func (a *subagentActivity) expireLocked(now time.Time) {
 	a.events = slices.DeleteFunc(a.events, func(e activityEvent) bool { return now.Sub(e.observed) >= commentaryRouteTTL })
-}
-
-func (a *subagentActivity) drain(root string, started time.Time, budget int) []map[string]json.RawMessage {
-	if a == nil {
-		return nil
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	node := a.threads[root]
-	if node == nil || node.child || a.rootLocked(root) != root {
-		return nil
-	}
-	now := time.Now()
-	a.expireLocked(now)
-	// Pane-owned child activity stays queued for the viewer; the root receives
-	// only one-time ownership notices until the pane is released.
-	owned := a.paneOwnsLocked(root, now)
-	messages := a.paneNoticesLocked(root)
-	if owned {
-		return messages
-	}
-	for _, message := range messages {
-		budget -= len(message["content"])
-	}
-	kept := a.events[:0]
-	blocked := make(map[string]bool)
-	for index := 0; index < len(a.events); index++ {
-		event := a.events[index]
-		if a.rootLocked(event.thread) != root {
-			kept = append(kept, event)
-			continue
-		}
-		if !a.threads[event.thread].child || event.kind == "reasoning" || event.kind == "final" || event.kind == "exit" || event.kind == "output_filter" {
-			continue // Final is native; exit and filter metrics are pane-only.
-		}
-		text := event.text
-		author := "[" + commentaryCode(a.threads[event.thread].name) + "] "
-		// Omit oversized events rather than blocking later activity until expiry.
-		if len(text) > maxCommentaryPublicationBytes {
-			continue
-		}
-		if blocked[event.thread] || len(text) > budget {
-			blocked[event.thread] = true
-			kept = append(kept, event)
-			continue
-		}
-		// Group ready calls by author without waiting for more activity.
-		if event.kind == "tool" {
-			grouped := strings.TrimPrefix(event.text, author)
-			text = toolActivityGroup(author, grouped)
-			if len(text) > budget || len(text) > maxCommentaryPublicationBytes {
-				text = event.text
-			}
-			for index+1 < len(a.events) {
-				next := a.events[index+1]
-				if next.thread != event.thread || next.kind != "tool" || next.observed.Before(started) != event.observed.Before(started) {
-					break
-				}
-				combined := grouped + "\n\n" + strings.TrimPrefix(next.text, author)
-				rendered := toolActivityGroup(author, combined)
-				if len(rendered) > budget || len(rendered) > maxCommentaryPublicationBytes {
-					break
-				}
-				text = rendered
-				grouped = combined
-				index++
-			}
-		}
-		id := commentaryMessageID("root-copy\x00" + root + "\x00" + event.thread + "\x00" + event.source)
-		a.copies[id] = struct{}{}
-		messages = append(messages, assistantCommentaryMessage(id, text))
-		budget -= len(text)
-	}
-	clear(a.events[len(kept):])
-	a.events = kept
-	return messages
-}
-
-// Root copies can be inherited by a newly forked child before its first request
-// establishes ancestry. Exact generated IDs are user-only in every replay, even
-// though delivery itself always requires an observed root relationship.
-func (a *subagentActivity) stripInput(fields map[string]json.RawMessage) {
-	if a == nil {
-		return
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if len(a.copies) == 0 {
-		return
-	}
-	var items []map[string]json.RawMessage
-	if json.Unmarshal(fields["input"], &items) != nil {
-		return
-	}
-	original := len(items)
-	items = slices.DeleteFunc(items, func(item map[string]json.RawMessage) bool {
-		_, owned := a.copies[jsonString(item, "id")]
-		return owned && jsonString(item, "type") == "message" && jsonString(item, "role") == "assistant"
-	})
-	if len(items) != original {
-		fields["input"] = mustMarshalJSON(items)
-	}
-}
-
-func (t *mekugiResponseTransform) drainActivity() []map[string]json.RawMessage {
-	messages := t.proxy.activity.drain(t.threadID, t.activityStarted, maxCommentaryPublicationBytes-t.activityBytes)
-	for _, message := range messages {
-		t.featureTrace.record("commentary", "router_activity", "render", "prepared", "", jsonString(message, "id"))
-		var content []struct {
-			Text string `json:"text"`
-		}
-		if json.Unmarshal(message["content"], &content) == nil && len(content) == 1 {
-			t.activityBytes += len(content[0].Text)
-		}
-	}
-	return messages
 }
 
 func (a *subagentActivity) close() {
@@ -340,6 +183,5 @@ func (a *subagentActivity) close() {
 	defer a.mu.Unlock()
 	a.closed = true
 	clear(a.threads)
-	clear(a.copies)
 	a.events = nil
 }

@@ -7,209 +7,63 @@ import (
 	"testing"
 )
 
-func TestReceivedReplyExcerptInCommentaryPreservesInputAndFinalAnswer(t *testing.T) {
-	for _, messageType := range []string{"MESSAGE", "FINAL_ANSWER"} {
-		t.Run(messageType, func(t *testing.T) {
-			for _, stream := range []bool{false, true} {
-				t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-					proxy := newManagedMekugiProxy(t)
-					root, _ := prepareActivityTest(t, proxy, "root", "r", "", "/root", nil)
-					body := strings.Repeat("完整🙂", 200) + "FINAL DETAIL"
-					bodyRunes := []rune(body)
-					wantExcerpt := string(bodyRunes[:511]) + "…"
-					envelope := map[string]any{
-						"type": "agent_message", "id": "reply", "author": "/root/a", "recipient": "/root/b",
-						"content": []any{map[string]any{"type": "input_text", "text": "Message Type: " + messageType + "\nTask name: /root/b\nSender: /root/a\nPayload:\n" + body}},
-					}
-					child, request := prepareActivityTest(t, proxy, "child", "b", "r", "/root/b", []any{envelope})
-					if !bytes.Contains(request.fields["input"], []byte(body)) {
-						t.Fatal("original model-visible reply changed")
-					}
-					response := mustTestJSON(t, map[string]any{"status": "completed", "output": []any{assistantCommentaryMessage("answer", "Substantive answer.")}})
-					for _, transform := range []*mekugiResponseTransform{child, root} {
-						var output []byte
-						if stream {
-							events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.completed", "response": json.RawMessage(response)}))
-							if err != nil {
-								t.Fatal(err)
-							}
-							output = bytes.Join(events, nil)
-						} else {
-							var err error
-							output, err = transform.TransformJSON(response)
-							if err != nil {
-								t.Fatal(err)
-							}
-						}
-						notice := []byte("[`/root/a` -> `/root/b`] Message received:")
-						if messageType == "FINAL_ANSWER" {
-							notice = []byte("[`/root/a` -> `/root/b`] Completed.")
-						}
-						if bytes.Contains(output, notice) != (messageType == "MESSAGE") ||
-							bytes.Contains(output, []byte(wantExcerpt)) != (messageType == "MESSAGE") ||
-							bytes.Contains(output, []byte(body)) || bytes.Contains(output, []byte("[excerpt]")) {
-							t.Fatal("receipt did not preserve the message/completion display contract")
-						}
-						if bytes.LastIndex(output, []byte("Substantive answer.")) < bytes.LastIndex(output, notice) {
-							t.Fatal("commentary replaced the substantive answer")
-						}
-					}
-				})
-			}
-		})
-	}
-}
-
-func TestReceivedReplyExcerptIsCappedWithoutChangingInputOrBudgetingOutNextMessage(t *testing.T) {
-	body := strings.Repeat("界🙂", 400)
-	bodyRunes := []rune(body)
-	wantExcerpt := string(bodyRunes[:511]) + "…"
-	envelope := func(id, payload string) map[string]any {
+func TestReceivedRepliesRemainNativeAndKeepFullBodies(t *testing.T) {
+	body := strings.Repeat("完整🙂", 300) + " FINAL DETAIL"
+	envelope := func(id, kind, text string) map[string]any {
 		return map[string]any{
 			"type": "agent_message", "id": id, "author": "/root/a", "recipient": "/root/b",
-			"content": []any{map[string]any{"type": "input_text", "text": "Message Type: MESSAGE\nTask name: /root/b\nSender: /root/a\nPayload:\n" + payload}},
+			"content": []any{map[string]any{"type": "input_text", "text": "Message Type: " + kind + "\nTask name: /root/b\nSender: /root/a\nPayload:\n" + text}},
 		}
 	}
-	original := mustMarshalJSON([]any{envelope("oversized", body), envelope("small", "Complete small reply.")})
-	fields := map[string]json.RawMessage{"input": original}
-	messages := prepareSubagentInputEnvelopes(fields, "/root/b").commentary
-	if !bytes.Equal(fields["input"], original) {
-		t.Fatal("oversized reply changed model-visible input")
+	input := mustTestJSON(t, []any{envelope("long", "MESSAGE", body), envelope("short", "MESSAGE", "Next reply."), envelope("done", "FINAL_ANSWER", body)})
+	fields := map[string]json.RawMessage{"input": input}
+	got := prepareSubagentInputEnvelopes(fields, "/root/b")
+	if !bytes.Equal(fields["input"], input) {
+		t.Fatal("native envelopes changed")
 	}
-	if len(messages) != 2 || commentaryText(t, messages[0]) != "[`/root/a` -> `/root/b`] Message received:\n"+wantExcerpt {
-		t.Fatalf("large reply excerpt = %q", commentaryText(t, messages[0]))
-	}
-	if got := []rune(strings.TrimPrefix(commentaryText(t, messages[0]), "[`/root/a` -> `/root/b`] Message received:\n")); len(got) != 512 || got[len(got)-1] != '…' {
-		t.Fatalf("excerpt rune count/ellipsis = %d, %q", len(got), string(got))
-	}
-	if got := commentaryText(t, messages[1]); got != "[`/root/a` -> `/root/b`] Message received:\nComplete small reply." {
-		t.Fatalf("large excerpt consumed the next reply's budget: %q", got)
-	}
-	final := envelope("final", body)
-	final["content"] = []any{map[string]any{"type": "input_text", "text": "Message Type: FINAL_ANSWER\nTask name: /root/b\nSender: /root/a\nPayload:\n" + body}}
-	finalOriginal := mustMarshalJSON([]any{final})
-	finalFields := map[string]json.RawMessage{"input": finalOriginal}
-	finals := prepareSubagentInputEnvelopes(finalFields, "/root/b")
-	if !bytes.Equal(finalFields["input"], finalOriginal) || len(finals.commentary) != 0 || len(finals.finals) != 1 || finals.finals[0].text != body {
-		t.Fatal("final answer was excerpted or changed in model input")
+	if len(got.replies) != 2 || got.replies[0].sender != "/root/a" || got.replies[0].text != "[`/root/a` -> `/root/b`] Message received:\n"+body ||
+		got.replies[0].source == "" || got.replies[1].text != "[`/root/a` -> `/root/b`] Message received:\nNext reply." ||
+		len(got.finals) != 1 || got.finals[0].text != body {
+		t.Fatalf("native replies and finals = %+v", got)
 	}
 }
 
-func TestReceivedReplyResumeProjectsOnlyCurrentInput(t *testing.T) {
+func TestReceivedReplyCurrentInputBoundary(t *testing.T) {
 	envelope := func(id string) map[string]any {
-		return map[string]any{
-			"type": "agent_message", "id": id, "author": "/root/worker", "recipient": "/root",
-			"content": []any{map[string]any{"type": "input_text", "text": "Message Type: MESSAGE\nTask name: /root\nSender: /root/worker\nPayload:\n" + id}},
-		}
+		return map[string]any{"type": "agent_message", "id": id, "author": "/root/worker", "recipient": "/root",
+			"content": []any{map[string]any{"type": "input_text", "text": "Message Type: MESSAGE\nTask name: /root\nSender: /root/worker\nPayload:\n" + id}}}
 	}
 	for name, boundary := range map[string]map[string]any{
-		"user":        {"type": "message", "role": "user", "content": "Next question"},
-		"short_user":  {"role": "user", "content": "Next question"},
-		"answer":      {"type": "message", "role": "assistant", "content": "Previous answer"},
-		"tool_call":   {"type": "function_call", "id": "call-item", "call_id": "call", "name": "lookup", "arguments": "{}"},
-		"custom_call": {"type": "custom_tool_call", "id": "custom-item", "call_id": "custom", "name": "lookup", "input": "{}"},
-		"reasoning":   {"type": "reasoning", "id": "reasoning-item", "summary": []any{}},
+		"user":      {"type": "message", "role": "user", "content": "Next question"},
+		"assistant": {"type": "message", "role": "assistant", "content": "Previous answer"},
+		"tool":      {"type": "function_call", "id": "call", "name": "lookup", "arguments": "{}"},
+		"reasoning": {"type": "reasoning", "id": "thought", "summary": []any{}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			for _, stream := range []bool{false, true} {
-				t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-					// A fresh proxy has neither live deduplication nor previously
-					// emitted commentary for the resumed historical envelopes.
-					input := []any{envelope("old-reply"), boundary, envelope("fresh-reply")}
-					transform, _, request := newSubagentCommentaryTestTransform(t, input)
-					if !bytes.Contains(request.fields["input"], []byte("old-reply")) ||
-						!bytes.Contains(request.fields["input"], []byte("fresh-reply")) {
-						t.Fatal("original envelopes disappeared from model input")
-					}
-					response := mustTestJSON(t, map[string]any{
-						"status": "completed", "output": []any{map[string]any{
-							"type": "message", "id": "answer", "role": "assistant", "phase": "final_answer",
-							"content": []any{map[string]any{"type": "output_text", "text": "Current answer"}},
-						}},
-					})
-					var output []byte
-					if stream {
-						events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
-							"type": "response.completed", "response": json.RawMessage(response),
-						}))
-						if err != nil {
-							t.Fatal(err)
-						}
-						output = bytes.Join(events, nil)
-					} else {
-						var err error
-						output, err = transform.TransformJSON(response)
-						if err != nil {
-							t.Fatal(err)
-						}
-					}
-					freshID := subagentCommentaryMessageID("response\x00fresh-reply\x00/root/worker\x00fresh-reply")
-					oldID := subagentCommentaryMessageID("response\x00old-reply\x00/root/worker\x00old-reply")
-					if bytes.Contains(output, []byte(oldID)) || !bytes.Contains(output, []byte(freshID)) ||
-						!bytes.Contains(output, []byte("fresh-reply")) || bytes.Contains(output, []byte("old-reply")) ||
-						!bytes.Contains(output, []byte("[`/root/worker` -> `/root`] Message received:")) ||
-						!bytes.Contains(output, []byte("Current answer")) {
-						t.Fatalf("resumed reply projection: %s", output)
-					}
-				})
+			input := mustTestJSON(t, []any{envelope("old"), boundary, envelope("fresh")})
+			fields := map[string]json.RawMessage{"input": input}
+			got := prepareSubagentInputEnvelopes(fields, "/root")
+			if len(got.replies) != 1 || got.replies[0].text != "[`/root/worker` -> `/root`] Message received:\nfresh" || !bytes.Equal(fields["input"], input) {
+				t.Fatalf("current native reply = %+v; input = %s", got.replies, fields["input"])
 			}
 		})
 	}
 }
 
-func TestReceivedEncryptedReplyNativeContent(t *testing.T) {
+func TestReceivedEncryptedReplyDoesNotExposeCiphertext(t *testing.T) {
 	header := map[string]any{"type": "input_text", "text": "Message Type: MESSAGE\nTask name: /root\nSender: /root/worker\nPayload:\n"}
 	ciphertext := map[string]any{"type": "encrypted_content", "encrypted_content": "opaque-test-value"}
 	for name, content := range map[string][]any{
-		"native":           {header, ciphertext},
-		"single_encrypted": {ciphertext},
-		"reversed":         {ciphertext, header},
-		"extra_part":       {header, ciphertext, header},
-		"two_text_parts":   {header, header},
-		"empty":            {},
+		"native": {header, ciphertext}, "single encrypted": {ciphertext},
+		"reversed": {ciphertext, header}, "extra part": {header, ciphertext, header},
 	} {
 		t.Run(name, func(t *testing.T) {
-			for _, stream := range []bool{false, true} {
-				t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-					envelope := map[string]any{
-						"type": "agent_message", "id": "encrypted-reply", "author": "/root/worker",
-						"recipient": "/root", "content": content,
-					}
-					transform, _, request := newSubagentCommentaryTestTransform(t, []any{envelope})
-					var input []map[string]json.RawMessage
-					if err := json.Unmarshal(request.fields["input"], &input); err != nil {
-						t.Fatal(err)
-					}
-					if len(input) == 0 || jsonString(input[len(input)-1], "id") != "encrypted-reply" ||
-						!bytes.Equal(input[len(input)-1]["content"], mustTestJSON(t, content)) {
-						t.Fatal("original envelope content changed")
-					}
-					response := mustTestJSON(t, map[string]any{"status": "completed", "output": []any{}})
-					var output []byte
-					if stream {
-						events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
-							"type": "response.completed", "response": json.RawMessage(response),
-						}))
-						if err != nil {
-							t.Fatal(err)
-						}
-						output = bytes.Join(events, nil)
-					} else {
-						var err error
-						output, err = transform.TransformJSON(response)
-						if err != nil {
-							t.Fatal(err)
-						}
-					}
-					wantReceipt := name == "native" || name == "single_encrypted"
-					notice := []byte("[`/root/worker` -> `/root`] Message received.")
-					if bytes.Contains(output, notice) != wantReceipt {
-						t.Fatalf("receipt=%v, output=%s", wantReceipt, output)
-					}
-					if bytes.Contains(output, []byte("opaque-test-value")) || bytes.Contains(output, []byte("Message Type:")) {
-						t.Fatal("encrypted envelope content leaked into commentary")
-					}
-				})
+			input := mustTestJSON(t, []any{map[string]any{"type": "agent_message", "id": name, "author": "/root/worker", "recipient": "/root", "content": content}})
+			fields := map[string]json.RawMessage{"input": input}
+			got := prepareSubagentInputEnvelopes(fields, "/root")
+			want := name == "native" || name == "single encrypted"
+			if (len(got.replies) == 1) != want || want && got.replies[0].text != "[`/root/worker` -> `/root`] Message received." || !bytes.Equal(fields["input"], input) {
+				t.Fatalf("encrypted reply = %+v; input = %s", got.replies, fields["input"])
 			}
 		})
 	}

@@ -401,40 +401,6 @@ func hasCommentaryAuthor(text, author string) bool {
 	return strings.HasPrefix(text, "["+commentaryCode(author)+"] ")
 }
 
-// Completed provider commentary is copied to the root without rewriting the
-// child's original message. Router-owned messages already have their own paths.
-func (t *mekugiResponseTransform) collectProviderCommentary(message map[string]json.RawMessage) {
-	facts := responseMessageFacts(message)
-	facts.Status = jsonString(message, "status")
-	if !facts.CompletedCommentary() {
-		return
-	}
-	id := jsonString(message, "id")
-	t.featureTrace.record("commentary", "provider_message", "authored", "observed", "", id)
-	if t.threadID == "" {
-		return
-	}
-	if id == "" || len(id) > maxCommentaryPublicationBytes-len("provider-message\x00") || commentaryid.Generated(id) {
-		return
-	}
-	var content []map[string]json.RawMessage
-	if json.Unmarshal(message["content"], &content) != nil {
-		return
-	}
-	var text strings.Builder
-	for _, part := range content {
-		if jsonString(part, "type") != "output_text" {
-			continue
-		}
-		value := jsonString(part, "text")
-		if len(value) > maxCommentaryPublicationBytes-text.Len() {
-			return
-		}
-		text.WriteString(value)
-	}
-	t.proxy.activity.collect(t.threadID, "provider-message\x00"+id, "commentary", text.String())
-}
-
 // retainCommentary is called only at router-authored message construction sites.
 // A provider's use of a reserved-looking ID is not proof of router provenance.
 func (t *mekugiResponseTransform) retainCommentary(messages ...map[string]json.RawMessage) []map[string]json.RawMessage {
@@ -467,31 +433,9 @@ func (t *mekugiResponseTransform) retainCommentary(messages ...map[string]json.R
 	}
 	if len(ids) != 0 {
 		if err := t.proxy.replayStore.putCommentary(t.ctx, t.directory, ids); err != nil {
-			t.proxy.notice(t.sessionID, "commentary_storage", "Mekugi could not retain progress-message provenance. New auxiliary progress messages were suppressed; tool execution and provider answers are unchanged. Check session storage space and permissions.")
+			t.proxy.notice(t.sessionID, t.shellThreadID, "commentary_storage", "Mekugi could not retain progress-message provenance. New auxiliary progress messages were suppressed; tool execution and provider answers are unchanged. Check session storage space and permissions.")
 			return nil
 		}
 	}
 	return messages
-}
-
-// Completed/JSON reasoning uses the same visible-summary channel as streaming.
-func (t *mekugiResponseTransform) collectProviderReasoning(item map[string]json.RawMessage) {
-	if jsonString(item, "type") != "reasoning" {
-		return
-	}
-	id := jsonString(item, "id")
-	if t.activityReasoning[id] != "" {
-		return
-	}
-	var summary []map[string]json.RawMessage
-	if json.Unmarshal(item["summary"], &summary) != nil {
-		return
-	}
-	var parts []string
-	for _, part := range summary {
-		if jsonString(part, "type") == "summary_text" {
-			parts = append(parts, jsonString(part, "text"))
-		}
-	}
-	t.collectReasoningDelta(id, strings.Join(parts, "\n\n"))
 }

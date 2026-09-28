@@ -51,16 +51,10 @@ func TestReviewPresentation(t *testing.T) {
 		RenderReviewFile("empty-old.txt", "", "", ""),
 		RenderReviewFile("old.txt", "renamed.txt", "same\n", "same\n"),
 	}
-	for i, want := range []string{
-		" file.txt | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n",
-		" new.txt | 1 +\n 1 file changed, 1 insertion(+)\n",
-		" gone.txt | 1 -\n 1 file changed, 1 deletion(-)\n",
-		" empty.txt | 0\n 1 file changed\n",
-		" empty-old.txt | 0\n 1 file changed\n",
-		" old.txt => renamed.txt | 0\n 1 file changed\n",
-	} {
-		if got := ReviewStat(files[i : i+1]); got != want {
-			t.Errorf("summary %d = %q; want %q", i, got, want)
+	for i, want := range [][2]int{{1, 1}, {1, 0}, {0, 1}, {0, 0}, {0, 0}, {0, 0}} {
+		added, removed := files[i].LineCounts()
+		if added != want[0] || removed != want[1] {
+			t.Errorf("counts %d = +%d -%d, want +%d -%d", i, added, removed, want[0], want[1])
 		}
 		diff := files[i].UnifiedDiff()
 		if i < 3 && !strings.HasPrefix(diff, "--- ") {
@@ -72,42 +66,9 @@ func TestReviewPresentation(t *testing.T) {
 		// Already compact records must render identically.
 		file := files[i]
 		file.Diff = diff
-		if file.UnifiedDiff() != diff || ReviewStat([]ReviewFile{file}) != want {
+		if file.UnifiedDiff() != diff {
 			t.Errorf("presentation is not stable: %#v", file)
 		}
-	}
-}
-
-func TestReviewStatAlignmentAndScaling(t *testing.T) {
-	files := []ReviewFile{
-		RenderReviewFile("", "large.txt", "", strings.Repeat("new\n", 100)),
-		RenderReviewFile("small", "small", "old\n", "new\n"),
-		RenderReviewFile("", "empty", "", ""),
-	}
-	want := " large.txt | 100 " + strings.Repeat("+", 40) + "\n" +
-		" small     |   2 +-\n empty     |   0\n" +
-		" 3 files changed, 101 insertions(+), 1 deletion(-)\n"
-	if got := ReviewStat(files); got != want {
-		t.Fatalf("stat = %q; want %q", got, want)
-	}
-	if got := ReviewStat(nil); got != "" {
-		t.Fatalf("empty stat = %q", got)
-	}
-	file := ReviewFile{AfterPath: "bad\n\t\x1b.txt"}
-	if got := ReviewStat([]ReviewFile{file}); got != " \"bad\\n\\t\\x1b.txt\" | 0\n 1 file changed\n" {
-		t.Fatalf("unsafe path stat = %q", got)
-	}
-}
-
-func TestReviewStatUnicodeAlignment(t *testing.T) {
-	files := []ReviewFile{
-		{AfterPath: "界.txt"},
-		{AfterPath: "a.txt"},
-		{AfterPath: "e\u0301.txt"},
-	}
-	want := " 界.txt | 0\n a.txt  | 0\n e\u0301.txt  | 0\n 3 files changed\n"
-	if got := ReviewStat(files); got != want {
-		t.Fatalf("stat = %q; want %q", got, want)
 	}
 }
 
@@ -118,9 +79,6 @@ func TestIncompleteReview(t *testing.T) {
 	}
 	if !strings.Contains(file.Diff, "incomplete history") || strings.Contains(file.Diff, "@@") {
 		t.Fatalf("invented content: %s", file.Diff)
-	}
-	if stat := ReviewStat([]ReviewFile{file}); !strings.Contains(stat, "unavailable") || strings.Contains(stat, "+0") {
-		t.Fatalf("stat: %s", stat)
 	}
 	var composition ReviewComposition
 	if err := composition.ApplyWithHighlight(file, false, false); err == nil || len(composition.FilesWithHighlights()) != 0 {

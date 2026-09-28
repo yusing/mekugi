@@ -9,21 +9,29 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func TestNativePaneOwnsOnlyAttachedRootFamily(t *testing.T) {
+func TestNativeActivityKeepsAttachedRootFamilyIsolated(t *testing.T) {
 	a := newSubagentActivity()
 	a.attachNativePane("main")
 	a.observe("child", "main", "/root/worker", true)
 	a.observe("grandchild", "child", "/root/worker/helper", true)
 	a.observe("other", "", "/root", false)
-	for _, thread := range []string{"main", "child", "grandchild"} {
-		if !a.nativeOwns(thread) {
-			t.Fatalf("attached native pane did not own %s", thread)
+	for _, thread := range []string{"main", "child", "grandchild", "other"} {
+		a.collect(thread, "reply-"+thread, "reply", "Native reply from "+thread)
+	}
+	entries := a.takeNativeActivity("main")
+	if len(entries) != 3 {
+		t.Fatalf("attached root family = %+v", entries)
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Text, "other") {
+			t.Fatalf("borrowed unrelated root: %+v", entries)
 		}
 	}
-	for _, thread := range []string{"", "other", "unknown"} {
-		if a.nativeOwns(thread) {
-			t.Fatalf("attached native pane borrowed unrelated %s", thread)
-		}
+	a.releasePane()
+	a.attachNativePane("other")
+	entries = a.takeNativeActivity("other")
+	if len(entries) != 1 || entries[0].Text != "Native reply from other" {
+		t.Fatalf("other root lost its activity: %+v", entries)
 	}
 }
 

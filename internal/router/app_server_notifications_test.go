@@ -169,7 +169,7 @@ func TestAppServerNotificationHistorySilent(t *testing.T) {
 }
 
 func TestTerminalUINotificationFocusReports(t *testing.T) {
-	for pane := 0; pane < 4; pane++ {
+	for pane := range 4 {
 		t.Run(fmt.Sprint(pane), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			notificationTestOutput(t, u)

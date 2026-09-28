@@ -433,7 +433,7 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 				}) {
 					continue
 				}
-				visible, err := t.transformNonJournalSSE(mustMarshalJSON(map[string]any{
+				visible, err := t.transformActivitySSE(mustMarshalJSON(map[string]any{
 					"type": responseevents.OutputItemDone, "item": item,
 				}))
 				if err != nil {

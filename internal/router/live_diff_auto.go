@@ -28,9 +28,7 @@ type autoLiveDiff struct {
 	turnComplete bool
 	changed      chan struct{}
 
-	// The agents view shares this session; its ownership lives in the collector.
-	activityRequested bool
-	stopped           bool // The UI session ended; later requests cannot be served.
+	stopped bool // The UI session ended; later requests cannot be served.
 }
 
 func newAutoLiveDiff(ctx context.Context, replay string) (*autoLiveDiff, func()) {
@@ -73,27 +71,6 @@ func (a *autoLiveDiff) requestLaunch(workspace, thread string) {
 	case a.changed <- struct{}{}:
 	default:
 	}
-}
-
-// requestActivity asks for the one-shot agents pane. It never blocks and
-// reports false when the integrated UI is unavailable.
-func (a *autoLiveDiff) requestActivity() bool {
-	if a == nil || !a.enabled.Load() {
-		return false
-	}
-	a.mu.Lock()
-	// Without a root workspace or an active UI, delivery stays inline.
-	if a.activityRequested || a.stopped || a.workspace == "" {
-		a.mu.Unlock()
-		return false
-	}
-	a.activityRequested = true
-	a.mu.Unlock()
-	select {
-	case a.changed <- struct{}{}:
-	default:
-	}
-	return true
 }
 
 func (a *autoLiveDiff) observe(workspace, thread string, metadata codexTurnMetadata) {

@@ -42,7 +42,7 @@ func TestEditHoverDecoratesOnlyPointedText(t *testing.T) {
 				for x := range ansi.StringWidth(row) + 1 {
 					expected := *want.CellAt(x, 0)
 					if y == hover && x < ansi.StringWidth(row)-8 && !strings.ContainsAny(expected.Content, " │└") {
-						expected.Style.Underline = uv.UnderlineStyleSingle
+						expected.Style.Underline = uv.UnderlineSingle
 					}
 					cell := got.CellAt(x, 0)
 					if cell.Content != expected.Content || !cell.Style.Equal(&expected.Style) {
@@ -104,7 +104,7 @@ func TestLiveActivityJavaScriptStableIndent(t *testing.T) {
 				"text(1);\ntext(2);",
 				`const tool = ALL_TOOLS.find(x => /search_openai_docs$/.test(x.name)); text(tool);`,
 			} {
-				blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityJavaScript(source)})
+				blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Run JavaScript\n" + toolActivityFenced("javascript", source)})
 				if len(blocks) != 1 {
 					t.Fatalf("blocks = %+v", blocks)
 				}
@@ -162,7 +162,8 @@ func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
 	now := time.Now()
 	view := newLiveActivityView()
 	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/explorer"}}, Entries: []activityPaneEntry{{
-		Seq: 1, Agent: "/root/explorer", Kind: "start", Text: subagentStartCommentary(&request, "/root/explorer"), Observed: now,
+		Seq: 1, Agent: "/root/explorer", Kind: "start", Text: nativeSubagentStart(&request), Observed: now,
+		assignment: &activityAssignment{id: "task-1", from: "/root", to: "/root/explorer", text: "Inspect parser.\n\n- Preserve behavior."},
 	}}})
 	view.only, view.selected = true, "/root/explorer"
 	frame := strings.Join(plainLines(view.render(100, 20, now)), "\n")

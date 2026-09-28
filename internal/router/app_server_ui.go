@@ -74,6 +74,8 @@ type appServerUI struct {
 	view                      *liveActivityView
 	agents                    *liveActivityView
 	proxy                     *mekugiProxy
+	issues                    *CriticalErrors
+	noticeEntries             map[string]bool
 	journal                   *nativeJournalSink
 	unscopedJournal           *nativeJournalSink
 	shell                     *terminalUI
@@ -139,10 +141,10 @@ type appServerUI struct {
 // still owns routing, environment, invocation-local configuration and cancellation.
 func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
-	return startAppServerUI(ctx, cmd, stdin, stdout, nil, resumeThread, faint)
+	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint)
 }
 
-func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, resumeThread string, faint bool) (func() error, error) {
+func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool) (func() error, error) {
 	var resumeCwd string
 	if resumeThread == "--last" {
 		var err error
@@ -158,7 +160,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread}
+	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread}
 	u.resumeConfig = appServerResumeConfig(cmd.Args)
 	u.notifications = &nativeNotifications{out: stdout, focused: true}
 	u.resumeCwd = resumeCwd
@@ -288,6 +290,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						if err := u.shell.flushEscape(); err != nil {
 							return err
 						}
+						notices := u.applyCriticalNotices()
 						journalPending := make(map[*nativeJournalSink][]nativeJournalPublication)
 						for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
 							if sink == nil {
@@ -305,13 +308,16 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						w, h, err := term.GetSize(int(stdout.Fd()))
 						if err != nil {
+							notices.finish(false)
 							return err
 						}
 						if u.dirty || w != width || h != height {
 							width, height = w, h
 							if err := u.paint(stdout, w, h); err != nil {
+								notices.finish(false)
 								return err
 							}
+							notices.finish(u.mainContentPainted)
 							for sink, items := range journalPending {
 								if !u.mainContentPainted {
 									continue
@@ -1276,4 +1282,39 @@ func (u *appServerUI) interruptTurn() error {
 		u.status = "Interrupting to send steer…"
 	}
 	return u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
+}
+
+// applyCriticalNotices presents router diagnostics without creating assistant
+// messages. The caller acknowledges the reserved batch only after terminal paint.
+func (u *appServerUI) applyCriticalNotices() *criticalNoticeDelivery {
+	var activity *subagentActivity
+	if u.proxy != nil {
+		activity = u.proxy.activity
+	}
+	delivery := u.issues.takeNative(u.thread, activity)
+	if delivery == nil {
+		return nil
+	}
+	if u.noticeEntries == nil {
+		u.noticeEntries = make(map[string]bool)
+	}
+	for _, notice := range delivery.snapshots {
+		if u.noticeEntries[notice.id] {
+			continue
+		}
+		text := noticeText(&notice)
+		if notice.thread != "" && notice.thread != u.thread && activity != nil {
+			activity.mu.Lock()
+			if node := activity.threads[notice.thread]; node != nil {
+				text = node.name + ": " + text
+			}
+			activity.mu.Unlock()
+		}
+		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+			Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "error", Text: text, Observed: time.Now(),
+		}}})
+		u.noticeEntries[notice.id] = true
+	}
+	u.dirty = true
+	return delivery
 }

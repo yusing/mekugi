@@ -172,7 +172,7 @@ func runAuthenticatedToolWorker(
 		if err != nil {
 			return fail(err)
 		}
-		store.storageNotice = func(_ string, message string) { _, _ = fmt.Fprintln(stderr, message) }
+		store.storageNotice = func(_, _ string, message string) { _, _ = fmt.Fprintln(stderr, message) }
 		var release func()
 		ctx, release, err = store.beginSession(ctx, os.Getenv("CODEX_THREAD_ID"), "")
 		if err != nil {

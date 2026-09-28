@@ -265,14 +265,15 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		if *flags.exploreFilter {
 			mekugiCalls.exploreFilter = newExploreFilter(newTypesafeClient(typesafeKey))
 		}
-		mekugiCalls.noticeSink = issues.addNotice
-		replayStore.storageNotice = func(session, message string) { issues.addNotice(session, "storage_cleanup", message) }
+		mekugiCalls.noticeSink = issues.addThreadNotice
+		replayStore.storageNotice = func(session, thread, message string) {
+			issues.addThreadNotice(session, thread, "storage_cleanup", message)
+		}
 		mekugiCalls.commentary.debug = debug
 		var stopLiveDiff func()
 		mekugiCalls.autoLiveDiff, stopLiveDiff = newAutoLiveDiff(ctx, replayDirectory)
 		mekugiCalls.autoLiveDiff.notice = func(category, message string) { issues.addNotice("", category, message) }
 		replayStore.liveDiff = mekugiCalls.autoLiveDiff.events.publish
-		mekugiCalls.activity.attachPane(newActivityPane(ctx, mekugiCalls.autoLiveDiff.requestActivity))
 		defer stopLiveDiff()
 		mekugiCalls.replayStore = replayStore
 		if issues != nil {
@@ -340,7 +341,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if ready != nil && ctx.Err() == nil {
 		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, SkillsManagerAvailable: skillsManagerAvailable}
 		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string) (func() error, error) {
-			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, resumeThread, faint)
+			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory
@@ -598,7 +599,6 @@ const (
 )
 
 type requestFinalization struct {
-	observeCriticalNotice func(source, text string)
 	observation           requestObservation
 	sessionID             string
 	threadID              string

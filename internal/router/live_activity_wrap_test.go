@@ -13,7 +13,7 @@ func TestLiveActivityWrappedUserBand(t *testing.T) {
 	for _, theme := range []livediff.Theme{livediff.LightTheme, livediff.DarkTheme} {
 		v := liveActivityView{painter: activityui.Painter{Theme: theme}}
 		var out conversationLines
-		v.userItem(&out, activityPaneEntry{Text: "one two three four five six seven eight"}, 12)
+		v.userItemContinued(&out, activityPaneEntry{Text: "one two three four five six seven eight"}, 12, false)
 		if len(out.lines) < 2 {
 			t.Fatal("expected wrapped user message")
 		}

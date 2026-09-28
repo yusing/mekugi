@@ -8,18 +8,6 @@ type Line struct {
 	End        int
 }
 
-// Lines splits text into targetable logical lines. CR, LF, and CRLF terminate
-// a line, and a final terminator does not create another empty line.
-func Lines(text string) []Line {
-	var lines []Line
-	for start := 0; start < len(text); {
-		line := lineAt(text, start)
-		lines = append(lines, line)
-		start = line.End
-	}
-	return lines
-}
-
 // Count returns the number of targetable logical lines in text.
 func Count(text string) int {
 	count := 0

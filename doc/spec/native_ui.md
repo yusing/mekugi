@@ -2,6 +2,10 @@
 
 ## REQ-NATIVE-UI-001 — Native app-server UI
 
+Operation-row formatting and feed controls are specified by
+[native activity presentation](activity_display.md); shared classification belongs to
+[activity observation](activity.md), and router cost totals to [usage reporting](usage.md).
+
 ### Native app-server UI
 
 `mekugi codex` uses the native client of `codex app-server` for interactive
@@ -110,9 +114,10 @@ responses: subagent activity and thread metadata name children by spawn path and
 typed items supply commands, edits, collaboration calls, messages and reasoning
 summaries, turn events drive each agent's state, and
 `thread/tokenUsage/updated` supplies token counts. Cost stays with the router's
-usage accounting. The client claims Main's thread in the router's activity
-collector only so child activity is never injected into Main's provider
-responses; the collector does not queue that activity.
+usage accounting. The client binds Main's thread in the router's activity collector for scoped
+assignment/message and filter observations. Tool and lifecycle activity comes from
+app-server, never generated commentary. [Router notices](notices.md) render directly
+in Main and leave provider responses unchanged.
 
 Run cards omit literal Bash, Zsh, or Sh `-c`/`-lc` launch wrappers and PowerShell
 `-Command`/`-c` wrappers (optionally preceded by `-NoLogo`/`-NoProfile`), matching
@@ -517,7 +522,7 @@ Codex V2 activity notifications carry no directed-message or assignment body.
 The native UI supplements them with the router's authenticated recipient-input
 observations, retaining plaintext message bodies and assignment identities
 exactly once. Native message display has a separate 64 KiB limit, with an explicit
-clipping marker above it, rather than the inline commentary excerpt limit.
+clipping marker above it. There is no inline commentary excerpt path.
 App-server still owns tool execution and agent lifecycle. Legacy
 received envelopes are not injected into either parent's or child's provider output.
 
@@ -578,7 +583,7 @@ summary updates the agent's roster status with a left-to-right brightness sweep
 that stops when superseded or finished. The sweep blends between
 the terminal's reported (OSC 10/11) foreground and background; without both
 reports it steps through dim, normal and bold. Raw and encrypted
-reasoning stay excluded; the legacy pane keeps its reasoning policy.
+reasoning stay excluded.
 Summaries without a leading bold title are third-party provider reasoning and
 render as thinking blocks, following grok-build: a dim `• Thinking…` header
 over the latest three text rows while it streams, with `· +N lines` counting

@@ -5,18 +5,15 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"slices"
 	"strings"
 	"sync"
 	"syscall"
 
 	"github.com/coder/websocket"
-	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 // CriticalErrors retains bounded, actionable session notices with complete error text,
@@ -222,20 +219,13 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 	}
 	noticeID := commentaryMessageID("critical:" + f.sessionID + ":" + category)
 	c.mu.Lock()
-	observe := false
-	defer func() {
-		c.mu.Unlock()
-		if observe && f.observeCriticalNotice != nil {
-			f.observeCriticalNotice(noticeID, message)
-		}
-	}()
+	defer c.mu.Unlock()
 	for _, notice := range c.entries {
 		if f.turnID != "" && notice.thread == f.threadID && notice.turn == f.turnID && notice.reference == f.diagnosticReference {
 			f.diagnosticNotice = notice
 			return
 		}
 	}
-	observe = true
 	for _, notice := range c.entries {
 		if notice.session == f.sessionID && notice.category == category {
 			notice.count++
@@ -258,13 +248,17 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 // successful work into a failed request. Messages here are producer-owned text,
 // not arbitrary request data. Empty session denotes a router-wide notice.
 func (c *CriticalErrors) addNotice(session, category, message string) {
+	c.addThreadNotice(session, "", category, message)
+}
+
+func (c *CriticalErrors) addThreadNotice(session, thread, category, message string) {
 	if c == nil {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, notice := range c.entries {
-		if notice.session == session && notice.category == category {
+		if notice.session == session && notice.thread == thread && notice.category == category {
 			notice.count++
 			return
 		}
@@ -274,8 +268,8 @@ func (c *CriticalErrors) addNotice(session, category, message string) {
 		return
 	}
 	c.entries = append(c.entries, &criticalNotice{
-		session: session, category: category, message: message,
-		id: commentaryMessageID("notice:" + session + ":" + category), count: 1,
+		session: session, thread: thread, category: category, message: message,
+		id: commentaryMessageID("notice:" + session + ":" + thread + ":" + category), count: 1,
 	})
 }
 
@@ -328,153 +322,69 @@ func (c *CriticalErrors) Pending() []string {
 	return result
 }
 
-// stripInput removes exact router-owned IDs for this session, including notices
-// replayed after a client disconnected before delivery could be confirmed.
-func (c *CriticalErrors) stripInput(request *parsedResponsesRequest, session string) {
-	if c == nil {
-		return
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	var items []map[string]json.RawMessage
-	if json.Unmarshal(request.fields["input"], &items) != nil {
-		return
-	}
-	before := len(items)
-	items = slices.DeleteFunc(items, func(item map[string]json.RawMessage) bool {
-		if jsonString(item, "type") != "message" {
-			return false
-		}
-		for _, n := range c.entries {
-			if (n.session == session || n.session == "") && n.id == jsonString(item, "id") {
-				return true
-			}
-		}
-		return false
-	})
-	if len(items) != before {
-		request.fields["input"] = mustMarshalJSON(items)
-	}
+// criticalNoticeDelivery reserves native display notices until the terminal write
+// succeeds. It never modifies provider responses or model-visible history.
+type criticalNoticeDelivery struct {
+	owner     *CriticalErrors
+	notices   []*criticalNotice
+	snapshots []criticalNotice
 }
 
-type criticalErrorTransform struct {
-	owner    *CriticalErrors
-	notices  []*criticalNotice
-	counts   []uint64
-	messages []map[string]json.RawMessage
-	subagent bool
-	emitted  bool
-}
-
-func (c *CriticalErrors) transform(session string, subagent bool) *criticalErrorTransform {
-	if c == nil {
+func (c *CriticalErrors) takeNative(root string, activity *subagentActivity) *criticalNoticeDelivery {
+	if c == nil || root == "" {
 		return nil
 	}
+	// Snapshot ancestry before locking the notice queue: activity producers may
+	// enqueue capacity notices while holding their own lock.
+	scopedThreads := map[string]bool{root: true}
+	if activity != nil {
+		activity.mu.Lock()
+		if node := activity.threads[root]; node != nil && activity.rootLocked(root) != root {
+			activity.mu.Unlock()
+			return nil
+		}
+		for thread := range activity.threads {
+			if activity.rootLocked(thread) == root {
+				scopedThreads[thread] = true
+			}
+		}
+		activity.mu.Unlock()
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	t := &criticalErrorTransform{owner: c, subagent: subagent}
-	for _, n := range c.entries {
-		// Repeats after the first visible notice are summarized only at shutdown.
-		if n.session != session && (n.session != "" || subagent) || n.delivered != 0 || n.inFlight {
+	delivery := &criticalNoticeDelivery{owner: c}
+	for _, notice := range c.entries {
+		if notice.delivered != 0 || notice.inFlight {
 			continue
 		}
-		n.inFlight = true
-		t.notices = append(t.notices, n)
-		t.counts = append(t.counts, n.count)
-		t.messages = append(t.messages, assistantCommentaryMessage(n.id, noticeText(n)))
+		scoped := scopedThreads[notice.thread] || notice.thread == "" && notice.session == ""
+		if !scoped {
+			continue
+		}
+		notice.inFlight = true
+		delivery.notices = append(delivery.notices, notice)
+		delivery.snapshots = append(delivery.snapshots, *notice)
 	}
-	return t
+	if len(delivery.notices) == 0 {
+		return nil
+	}
+	return delivery
 }
 
-// retain records the exact router-authored IDs before they can become visible.
-// Failure suppresses only these auxiliary notices; finish leaves them queued
-// because emitted remains false.
-func (t *criticalErrorTransform) retain(ctx context.Context, store *mekugiReplayStore, workspace string) {
-	if t == nil || store == nil || len(t.messages) == 0 {
+func (d *criticalNoticeDelivery) finish(success bool) {
+	if d == nil {
 		return
 	}
-	ids := make([]string, 0, len(t.messages))
-	for _, message := range t.messages {
-		ids = append(ids, jsonString(message, "id"))
-	}
-	if store.putCommentary(ctx, workspace, ids) != nil {
-		t.messages = nil
-	}
-}
-
-func (t *criticalErrorTransform) suppress() {
-	if t != nil {
-		t.messages = nil
-	}
-}
-
-func (t *criticalErrorTransform) finish(success bool) {
-	if t == nil {
-		return
-	}
-	t.owner.mu.Lock()
-	defer t.owner.mu.Unlock()
-	for i, n := range t.notices {
-		n.inFlight = false
-		if success && t.emitted {
-			n.delivered = t.counts[i]
+	d.owner.mu.Lock()
+	defer d.owner.mu.Unlock()
+	for i, notice := range d.notices {
+		notice.inFlight = false
+		if success {
+			notice.delivered = d.snapshots[i].count
 		}
 	}
 }
 
-func (t *criticalErrorTransform) TransformJSON(body []byte) ([]byte, error) {
-	if t == nil || len(t.messages) == 0 {
-		return body, nil
-	}
-	var object map[string]json.RawMessage
-	if json.Unmarshal(body, &object) != nil {
-		return body, nil
-	}
-	var output []map[string]json.RawMessage
-	if json.Unmarshal(object["output"], &output) != nil {
-		return body, nil
-	}
-	object["output"] = mustMarshalJSON(append(slices.Clone(t.messages), output...))
-	result, err := marshalProtocolJSON(object)
-	if err == nil {
-		t.emitted = true
-	}
-	return result, err
-}
-
-func (t *criticalErrorTransform) TransformSSE(body []byte) ([][]byte, error) {
-	if t == nil || len(t.messages) == 0 {
-		return [][]byte{body}, nil
-	}
-	var object map[string]json.RawMessage
-	if json.Unmarshal(body, &object) != nil {
-		return [][]byte{body}, nil
-	}
-	kind := responseevents.Kind(jsonString(object, "type"))
-	switch {
-	case kind == responseevents.Created:
-		// A child's last standalone assistant item must remain its substantive result.
-		if !t.subagent {
-			result := [][]byte{body}
-			for _, message := range t.messages {
-				result = append(result, assistantCommentaryDoneEvent(message))
-			}
-			t.emitted = true
-			return result, nil
-		}
-	case kind.Terminal():
-		response, err := t.TransformJSON(object["response"])
-		if err != nil {
-			return nil, err
-		}
-		result, err := replaceRawField(body, "response", response)
-		return [][]byte{result}, err
-	}
-	return [][]byte{body}, nil
-}
-func (*criticalErrorTransform) Finish(bool) error { return nil }
-
-// Permanent local incompatibilities must not masquerade as retryable upstream 502s.
 type requestCompatibilityError struct{ code, message string }
 
 func (e *requestCompatibilityError) Error() string { return "Mekugi " + e.code + ": " + e.message }

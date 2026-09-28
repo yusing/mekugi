@@ -256,21 +256,19 @@ func TestFeatureUsageDoesNotInferRuntimeExecution(t *testing.T) {
 			t.Fatalf("non-call was instrumented: %q, %v", input, err)
 		}
 	}
-	// A provider message is authored evidence, even with a generated-looking ID,
-	// but never proves runtime publication or router origin.
-	if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
-		"status": "completed", "output": []any{assistantCommentaryMessage(commentaryMessageID("automatic"), "progress")},
-	})); err != nil {
-		t.Fatal(err)
+	// Provider speech is passed through but does not prove router runtime publication.
+	provider := mustTestJSON(t, map[string]any{"status": "completed", "output": []any{assistantCommentaryMessage(commentaryMessageID("automatic"), "progress")}})
+	if visible, err := transform.TransformJSON(provider); err != nil || !bytes.Equal(visible, provider) {
+		t.Fatalf("provider speech changed: %s, %v", visible, err)
 	}
-	if events := readFeatureUsage(t, d); len(events) != 1 || events[0]["source"] != "provider_message" || events[0]["stage"] != "authored" {
-		t.Fatalf("provider origin was not distinguished from runtime execution: %v", events)
+	if events := readFeatureUsage(t, d); len(events) != 0 {
+		t.Fatalf("provider speech inferred router execution: %v", events)
 	}
 	if _, changed, err := transform.lowerCodeModeCommentary("call-syntax", `await journal({op: "add", text: "one"}); await journal({op: "add", text: "two"});`); err != nil || !changed {
 		t.Fatalf("lowering failed: %v", err)
 	}
 	got := readFeatureUsage(t, d)
-	if len(got) != 2 || got[1]["stage"] != "lowering" || got[1]["outcome"] != "prepared" {
+	if len(got) != 1 || got[0]["stage"] != "lowering" || got[0]["outcome"] != "prepared" {
 		t.Fatalf("lowering inferred runtime execution or counted expressions: %v", got)
 	}
 }

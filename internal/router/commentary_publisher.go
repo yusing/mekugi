@@ -57,7 +57,6 @@ type commentaryBroker struct {
 	journalLister    func(context.Context, string, string, string) ([]journalItem, error)
 	notice           func(string, string)
 	debug            *debugOutput
-	activity         *subagentActivity
 	mu               sync.Mutex
 	routes           map[string]*commentaryRoute
 	eventCount       int
@@ -141,7 +140,6 @@ func (b *commentaryBroker) publish(token, text string, complete bool) bool {
 			text:      attributedCommentary(route.author, text),
 		}
 		messageID = event.messageID
-		b.activity.collect(route.originThread, event.messageID, "operation", event.text)
 		route.events = append(route.events, event)
 		b.eventCount++
 	}

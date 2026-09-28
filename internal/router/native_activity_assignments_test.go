@@ -3,7 +3,6 @@ package router
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -21,9 +20,6 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.collectSubagentStart("child", &request, "/root/reviewer")
-	if len(a.drain("main", time.Time{}, maxCommentaryPublicationBytes)) != 0 {
-		t.Fatal("native-claimed activity was queued for inline delivery")
-	}
 	observed := a.takeNativeActivity("main")
 	if len(observed) != 1 || observed[0].assignment == nil || observed[0].assignment.text != "Check the original answer." {
 		t.Fatal("native assignment body was lost")

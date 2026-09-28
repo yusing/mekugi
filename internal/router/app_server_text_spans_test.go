@@ -39,7 +39,7 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 			t.Fatalf("wrong spans: %+v", entry.native.spans)
 		}
 		var out conversationLines
-		v.userItem(&out, entry, 24)
+		v.userItemContinued(&out, entry, 24, false)
 		shown := ansi.Strip(strings.Join(out.lines, "\n"))
 		for _, span := range spans {
 			if !strings.Contains(shown, text[span.Start:span.End]) {

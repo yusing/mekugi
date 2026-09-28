@@ -47,14 +47,13 @@ func TestCapacityNoticesAreVisibleAndDoNotConsumeTools(t *testing.T) {
 	if broker.subscribe("session", "overflow", "") != "" {
 		t.Fatal("publisher accepted beyond concurrency limit")
 	}
-	visible := issues.transform("any-root", false)
-	if len(visible.messages) != 1 {
+	visible := issues.takeNative("any-root", nil)
+	if len(visible.notices) != 1 {
 		t.Fatal("capacity notice is not available to the root")
 	}
-	body, err := visible.TransformJSON([]byte(`{"status":"completed","output":[{"type":"message","content":[]}]}`))
-	if err != nil || !strings.Contains(string(body), "256 concurrent publisher routes") ||
-		strings.Contains(string(body), "functions.journal") {
-		t.Fatalf("capacity diagnostic: %s %v", body, err)
+	message := noticeText(visible.notices[0])
+	if !strings.Contains(message, "256 concurrent publisher routes") || strings.Contains(message, "functions.journal") {
+		t.Fatalf("capacity diagnostic: %s", message)
 	}
 }
 
