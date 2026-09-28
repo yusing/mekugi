@@ -26,11 +26,13 @@ type liveDiffTerminalController struct {
 	stdout    io.Writer
 	size      func() (int, int, error)
 
-	data        *liveDiffData
-	scope       liveDiffScope
-	coverage    string
-	view        livediff.View
-	previewPane diffview.PreviewPane
+	data *liveDiffData
+	// callerCounts totals captured edit lines by caller key for the roster.
+	callerCounts map[string]livediff.Counts
+	scope        liveDiffScope
+	coverage     string
+	view         livediff.View
+	previewPane  diffview.PreviewPane
 
 	previewFrame      *time.Timer
 	previewFrameC     <-chan time.Time
@@ -451,11 +453,32 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 	if event.Kind == "scope" || event.Kind == "change" {
 		c.view.Merge(c.data.files())
 		c.view.RefreshVisible()
+		c.callerCounts = liveDiffCallerCounts(c.view.Files)
 		// The Changes tab holds view indexes; keys may arrive before a repaint.
 		c.refreshChanges()
 		c.dirty = true
 	}
 	return false, nil
+}
+
+// liveDiffCallerCounts totals each caller's captured edit lines, regardless of
+// the caller filter. Any incomplete capture makes that caller's counts unknown.
+func liveDiffCallerCounts(files []livediff.File) map[string]livediff.Counts {
+	counts := make(map[string]livediff.Counts)
+	for _, file := range files {
+		for _, chunk := range file.Chunks {
+			key := livediff.CallerKey(chunk.Caller)
+			count := counts[key]
+			added, removed := chunk.Review.LineCounts()
+			if added < 0 || count.Added < 0 {
+				count = livediff.Counts{Added: -1, Removed: -1}
+			} else {
+				count.Added, count.Removed = count.Added+added, count.Removed+removed
+			}
+			counts[key] = count
+		}
+	}
+	return counts
 }
 
 // liveDiffBack is what Esc returns to after Enter in the navigator: the list

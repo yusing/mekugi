@@ -22,9 +22,9 @@ const (
 	nativeDockMin     = 5
 	nativeDockMax     = 14
 	nativeDockMinimum = 1500 * time.Millisecond // A new card shows at least this long, so small edits do not flash.
-	nativeRosterRows  = 4               // Unfocused roster rows.
-	nativeRosterShare = 0.4             // Focused roster share of the screen.
-	nativeFramedRows  = 8               // Below this, panes drop their frames.
+	nativeRosterRows  = 4                       // Unfocused roster rows.
+	nativeRosterShare = 0.4                     // Focused roster share of the screen.
+	nativeFramedRows  = 8                       // Below this, panes drop their frames.
 )
 
 // A Main excerpt carries an Activity identity, not a nearby question or run.
@@ -259,6 +259,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 				u.liveDock.Prefer = "/root"
 			}
 		}
+	}
+	if u.diff != nil {
+		u.agents.lineCounts = u.diff.callerCounts
 	}
 	roster := u.agents.nativeRoster(width, u.rosterLimit(height), now, u.focus == 3)
 	if height-1-len(roster) < nativeFramedRows {

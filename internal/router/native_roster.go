@@ -6,7 +6,9 @@ import (
 	"strings"
 	"time"
 
+	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -37,8 +39,8 @@ type nativeRosterItem struct {
 
 // nativeRoster fits the roster to its content within limit rows, under a rule
 // carrying the counts and session totals. Unfocused, finished agents fold
-// into one row. Rows show state, then timer, tokens, cost and turns;
-// turns drop first when narrow.
+// into one row. Rows show state, then timer, edited lines, tokens, cost and
+// turns; turns drop first when narrow.
 func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused bool) []string {
 	rows := v.roster()
 	if len(rows) == 0 || width < 20 {
@@ -61,8 +63,17 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	responding, errors := v.statusCounts(rows)
 	var input, output uint64
 	var cost float64
-	costKnown, partial := false, false
+	var edited livediff.Counts
+	costKnown, partial, editedKnown := false, false, false
 	for _, row := range rows {
+		if count, ok := v.lineCounts[row.agent.Name]; ok {
+			editedKnown = true
+			if count.Added < 0 || edited.Added < 0 {
+				edited = livediff.Counts{Added: -1, Removed: -1}
+			} else {
+				edited.Added, edited.Removed = edited.Added+count.Added, edited.Removed+count.Removed
+			}
+		}
 		input += row.agent.InputTokens
 		output += row.agent.OutputTokens
 		if row.agent.CostKnown {
@@ -80,6 +91,10 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		detail += activityui.Dim + " · " + activityui.Undim + activityui.Red + fmt.Sprintf("%d error", errors) + activityui.Reset
 	}
 	var totals []string
+	if editedKnown {
+		added, removed := v.lineCountParts(edited)
+		totals = append(totals, strings.TrimSpace(added+" "+removed))
+	}
 	if input+output > 0 {
 		totals = append(totals, "↑"+formatUsageTokens(input)+" ↓"+formatUsageTokens(output))
 	}
@@ -215,8 +230,9 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 }
 
 // Metric parts, in column order: context used and percent, elapsed and last
-// response, input and output tokens, cost, and roundtrips.
-const nativeMetricParts = 8
+// response, added and removed lines, input and output tokens, cost, and
+// roundtrips.
+const nativeMetricParts = 10
 
 func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now time.Time) [nativeMetricParts]string {
 	var parts [nativeMetricParts]string
@@ -230,11 +246,25 @@ func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now t
 	}
 	_, timer := v.current(agent, now)
 	parts[2], parts[3], _ = strings.Cut(timer, " · ")
-	if agent.InputTokens+agent.OutputTokens > 0 {
-		parts[4], parts[5] = "↑"+formatUsageTokens(agent.InputTokens), "↓"+formatUsageTokens(agent.OutputTokens)
+	if count, ok := v.lineCounts[agent.Name]; ok {
+		parts[4], parts[5] = v.lineCountParts(count)
 	}
-	parts[6], parts[7] = liveActivityCost(agent), ansi.Strip(liveActivityTurns(agent))
+	if agent.InputTokens+agent.OutputTokens > 0 {
+		parts[6], parts[7] = "↑"+formatUsageTokens(agent.InputTokens), "↓"+formatUsageTokens(agent.OutputTokens)
+	}
+	parts[8], parts[9] = liveActivityCost(agent), ansi.Strip(liveActivityTurns(agent))
 	return parts
+}
+
+// lineCountParts colors known added and removed line counts like the Diff
+// pane; unknown counts show as "?", not zero.
+func (v *liveActivityView) lineCountParts(count livediff.Counts) (string, string) {
+	if count.Added < 0 || count.Removed < 0 {
+		return "?", ""
+	}
+	theme := v.painter.Theme
+	return theme.Foreground(chroma.GenericInserted) + fmt.Sprintf("+%d", count.Added) + "\x1b[39m",
+		theme.Foreground(chroma.GenericDeleted) + fmt.Sprintf("-%d", count.Removed) + "\x1b[39m"
 }
 
 // nativeRosterColumns renders each row's metrics as columns sized to their
@@ -255,7 +285,7 @@ func nativeRosterColumns(rows [][nativeMetricParts]string, room int) []string {
 		separator     string
 	}
 	var columns []column
-	for _, c := range []column{{0, 1, " • "}, {2, 3, " · "}, {4, 5, " "}, {6, -1, ""}, {7, -1, ""}} {
+	for _, c := range []column{{0, 1, " • "}, {2, 3, " · "}, {4, 5, " "}, {6, 7, " "}, {8, -1, ""}, {9, -1, ""}} {
 		if widths[c.first] > 0 || c.second >= 0 && widths[c.second] > 0 {
 			columns = append(columns, c)
 		}

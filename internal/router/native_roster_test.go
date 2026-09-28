@@ -9,6 +9,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -248,5 +250,43 @@ func TestNativeRosterMetricsAlignParts(t *testing.T) {
 		if !strings.Contains(rows[0], mark) || ansi.StringWidth(rows[0][:strings.Index(rows[0], mark)]) != ansi.StringWidth(rows[1][:strings.Index(rows[1], mark)]) {
 			t.Fatalf("%q is not aligned:\n%s", mark, strings.Join(rows, "\n"))
 		}
+	}
+}
+
+func TestNativeRosterShowsEditedLines(t *testing.T) {
+	v := newLiveActivityView()
+	now := time.Now()
+	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
+		{Name: "/root", Started: now.Add(-time.Minute), InputTokens: 2000, OutputTokens: 100},
+		{Name: "/root/a", Started: now.Add(-time.Minute), InputTokens: 1000, OutputTokens: 100},
+		{Name: "/root/b", Started: now.Add(-time.Minute)},
+	}})
+	chunk := func(caller, diff string, incomplete string) livediff.Chunk {
+		return livediff.Chunk{Origin: livediff.Origin{Caller: caller}, Review: mekugi.ReviewFile{Diff: diff, Incomplete: incomplete}}
+	}
+	v.lineCounts = liveDiffCallerCounts([]livediff.File{
+		{Chunks: []livediff.Chunk{chunk("/root", "@@ -1 +1,2 @@\n-a\n+b\n+c", ""), chunk("/root/a", "@@ -1 +1 @@\n-x\n+y", "")}},
+		{Chunks: []livediff.Chunk{chunk("/root", "@@ -0,0 +1 @@\n+d", ""), chunk("/root/b", "", "truncated")}},
+	})
+	lines := v.nativeRoster(150, 8, now, true)
+	var rows []string
+	for _, line := range lines {
+		rows = append(rows, ansi.Strip(line))
+	}
+	if !strings.Contains(rows[0], "?") || strings.Contains(rows[0], "+4 -2") {
+		t.Fatalf("session total hides an incomplete capture: %q", rows[0])
+	}
+	for i, want := range []string{"+3 -1  ↑2K", "+1 -1  ↑1K", "?"} {
+		if !strings.Contains(rows[i+1], want) {
+			t.Fatalf("row %d lacks %q:\n%s", i+1, want, strings.Join(rows, "\n"))
+		}
+	}
+	// The added and removed counts share a separator column across rows.
+	if at := strings.Index(rows[1], " -1"); ansi.StringWidth(rows[1][:at]) != ansi.StringWidth(rows[2][:strings.Index(rows[2], " -1")]) {
+		t.Fatalf("line counts are not aligned:\n%s", strings.Join(rows, "\n"))
+	}
+	delete(v.lineCounts, "/root/b")
+	if header := ansi.Strip(v.nativeRoster(150, 8, now, true)[0]); !strings.Contains(header, "+4 -2 · ↑3K") {
+		t.Fatalf("session total missing: %q", header)
 	}
 }

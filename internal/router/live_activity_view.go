@@ -45,19 +45,20 @@ type liveActivityView struct {
 	status         string
 	roleColors     map[string]string
 	feedOnly       bool
-	conversation   bool              // Main uses the same feed/state with full, unclipped messages.
-	pinMainReply   bool              // Active Main turn may pin its latest off-screen reply.
-	childrenOnly   bool              // Native Main already owns root activity; keep it out of the auxiliary feed.
-	bare           bool              // The shell's pane title replaces the heading and footer rows.
-	focused        bool              // Native Activity shows its key hints only while it has keyboard focus.
-	returning      bool              // A click-through preview is open here; Esc restores the previous view.
-	mainView       *liveActivityView // Roster reads Main's state without duplicating its feed entries.
+	conversation   bool                       // Main uses the same feed/state with full, unclipped messages.
+	pinMainReply   bool                       // Active Main turn may pin its latest off-screen reply.
+	childrenOnly   bool                       // Native Main already owns root activity; keep it out of the auxiliary feed.
+	bare           bool                       // The shell's pane title replaces the heading and footer rows.
+	focused        bool                       // Native Activity shows its key hints only while it has keyboard focus.
+	returning      bool                       // A click-through preview is open here; Esc restores the previous view.
+	lineCounts     map[string]livediff.Counts // Captured edit lines by caller key, for the native roster.
+	mainView       *liveActivityView          // Roster reads Main's state without duplicating its feed entries.
 	painter        activityui.Painter
 	osc            livediff.OSC
 	runs           map[liveActivityRunKey]liveActivityRun
-	paced          map[uint64]liveActivityPace // Live invocations still revealing their operations, by entry.
+	paced          map[uint64]liveActivityPace  // Live invocations still revealing their operations, by entry.
 	events         map[string]liveActivityEvent // Each agent's latest standalone event, which settles its output.
-	pacedSeq       uint64                      // Entries up to this sequence have been considered for pacing.
+	pacedSeq       uint64                       // Entries up to this sequence have been considered for pacing.
 
 	// expanded snippets show in full in the shared feed; snippet is the
 	// hovered collapsed one.
