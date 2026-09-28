@@ -44,6 +44,7 @@ type appServerCommandRun struct {
 	entry  activityPaneEntry
 	output activityui.OutputTail
 	dirty  bool
+	done   []activityPaneEntry // Completion, held until streamed output has rolled through.
 }
 
 type appServerFileChange struct {
@@ -260,7 +261,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		delete(s.messages, p.ThreadID)
 	case "item/commandExecution/outputDelta":
 		// Bounded as it arrives; the next frame shows it, so bursts cost one render.
-		if run := s.commands[[3]string{p.ThreadID, p.TurnID, p.ItemID}]; run != nil {
+		if run := s.commands[[3]string{p.ThreadID, p.TurnID, p.ItemID}]; run != nil && run.done == nil {
 			run.output.Write(p.Delta)
 			run.dirty = true
 		}
@@ -332,21 +333,32 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			native.searchResults = appServerSearchResults(item)
 			entry := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerToolText(item, s.cwd), CallID: id, Observed: now, native: native}
 			key := [3]string{p.ThreadID, p.TurnID, id}
-			if m.Method == "item/completed" {
-				delete(s.commands, key)
-				appServerSucceededOutput(&entry, item, now.Add(activityui.OutputLinger))
-			} else if item.Type == "commandExecution" {
-				native.running = true
-				if s.commands[key] == nil {
-					s.commands[key] = &appServerCommandRun{entry: entry}
+			if m.Method != "item/completed" {
+				if item.Type == "commandExecution" {
+					native.running = true
+					if s.commands[key] == nil {
+						s.commands[key] = &appServerCommandRun{entry: entry}
+					}
 				}
+				entries = append(entries, entry)
+				break
 			}
-			entries = append(entries, entry)
-			if m.Method == "item/completed" && item.ExitCode != nil && *item.ExitCode != 0 {
+			appServerSucceededOutput(&entry, item, now.Add(activityui.OutputLinger))
+			done := []activityPaneEntry{entry}
+			if item.ExitCode != nil && *item.ExitCode != 0 {
 				exit := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: id, Observed: now}
 				exit.outputTail, exit.outputOmit = appServerOutputTail(item.AggregatedOutput)
-				entries = append(entries, exit)
+				done = append(done, exit)
 			}
+			// A burst that arrived just before completion, as from a command
+			// that prints only when it exits, rolls through before the final
+			// tail replaces it.
+			if run := s.commands[key]; run != nil && run.output.Pending() > 0 {
+				run.done = done
+				break
+			}
+			delete(s.commands, key)
+			entries = append(entries, done...)
 		case "imageView":
 			entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: "View " + commentaryCode(pathdisplay.ForWorkspace(s.cwd, item.Path)), CallID: id, Observed: now, native: native})
 		case "fileChange":
@@ -408,13 +420,14 @@ func (s *appServerSession) endThinking(thread string, now time.Time) []activityP
 }
 
 // flushCommandOutput re-sends each live command whose output changed since
-// the last frame, with its current tail. Late output cannot reopen a
-// completed command, whose entry it would otherwise replace.
+// the last frame, with its current tail, rolling a burst through a share at a
+// time. A held completion follows once nothing is pending. Late output cannot
+// reopen a completed command, whose entry it would otherwise replace.
 func (u *appServerUI) flushCommandOutput() {
 	s := &u.session
 	var entries []activityPaneEntry
-	for _, run := range s.commands {
-		if !run.dirty {
+	for key, run := range s.commands {
+		if rolled := run.output.Roll(); !run.dirty && !rolled {
 			continue
 		}
 		run.dirty = false
@@ -425,6 +438,13 @@ func (u *appServerUI) flushCommandOutput() {
 		entry.native, entry.Agent = &native, s.path(native.thread)
 		entry.outputTail, entry.outputOmit = run.output.Lines()
 		entries = append(entries, entry)
+		if run.done != nil && run.output.Pending() == 0 {
+			for _, done := range run.done {
+				done.Agent = entry.Agent
+				entries = append(entries, done)
+			}
+			delete(s.commands, key)
+		}
 	}
 	if len(entries) == 0 {
 		return

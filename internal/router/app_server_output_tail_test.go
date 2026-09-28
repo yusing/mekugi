@@ -116,6 +116,10 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 		t.Fatalf("output rendered before its frame:\n%s", got)
 	}
 	u.flushCommandOutput()
+	if got := main(); !strings.Contains(got, "┆ ok 1") || strings.Contains(got, "ok 2") {
+		t.Fatalf("burst jumped to its tail instead of rolling:\n%s", got)
+	}
+	rollCommandOutput(u)
 	want := "└ Running go test ./...\n          ┆ … 4 earlier lines\n          ┆ ok 4\n          ┆ ok 5\n          ┆ ok 6\n          ┆ ok 7\n          ┆ --- partial"
 	if got := main(); !strings.Contains(got, want) {
 		t.Fatalf("live tail missing %q:\n%s", want, got)
@@ -126,7 +130,7 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	// A rename after the start must not move the running row back.
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child",
 		"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/linter"}}}}})
-	u.flushCommandOutput()
+	rollCommandOutput(u)
 	agents := ansi.Strip(strings.Join(u.agents.renderFeed(90, 60).lines, "\n"))
 	if !strings.Contains(agents, "linter") || !strings.Contains(agents, "Running make lint\n") || !strings.Contains(agents, "┆ linting") || strings.Contains(agents, "ok 7") {
 		t.Fatalf("Agents lacks the child's live tail:\n%s", agents)
@@ -134,7 +138,7 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, "ok 1\nok 2\nPASS\n"
 	notify("item/completed", map[string]any{"item": item})
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "late\n"})
-	u.flushCommandOutput()
+	rollCommandOutput(u)
 	// The host's output stays readable for the linger, then collapses.
 	open := "└ Ran go test ./...\n      ┆ ok 1\n      ┆ ok 2\n      ┆ PASS"
 	if got := main(); !strings.Contains(got, open) || strings.Contains(got, "Running") || strings.Contains(got, "late") {
@@ -217,7 +221,7 @@ func TestAppServerMixedCommandOutputFollowsFinalRead(t *testing.T) {
 			notify("item/started", map[string]any{"item": item})
 			finishPacing(u.view)
 			notify("item/commandExecution/outputDelta", map[string]any{"itemId": "mixed", "delta": "first\nsecond\n"})
-			u.flushCommandOutput()
+			rollCommandOutput(u)
 			check("┆ second")
 			item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", exit, "first\nsecond\n"
 			notify("item/completed", map[string]any{"item": item})
@@ -264,5 +268,45 @@ func TestAppServerAdjacentReadOutputsStayWithInvocation(t *testing.T) {
 				previous = index
 			}
 		})
+	}
+}
+
+// rollCommandOutput plays frames until every output burst has rolled through
+// and held completions have followed.
+func rollCommandOutput(u *appServerUI) {
+	for range activityui.OutputPendingLines {
+		u.flushCommandOutput()
+	}
+}
+
+func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.conversation = true
+	notify := func(method string, params map[string]any) {
+		t.Helper()
+		params["threadId"], params["turnId"] = "main", "t"
+		appServerTestNotify(t, u, method, params)
+	}
+	main := func() string { return ansi.Strip(strings.Join(u.view.renderFeed(90, 60).lines, "\n")) }
+	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "mrun -n 50 go test ./...", "status": "inProgress"}
+	notify("item/started", map[string]any{"item": item})
+	var output strings.Builder
+	for i := range 20 {
+		fmt.Fprintf(&output, "ok %d\n", i)
+	}
+	// A buffering command prints everything as it exits.
+	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": output.String()})
+	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 1, output.String()
+	notify("item/completed", map[string]any{"item": item})
+	u.flushCommandOutput()
+	if got := main(); !strings.Contains(got, "Running") || strings.Contains(got, "ok 19") {
+		t.Fatalf("completion replaced the output before it rolled:\n%s", got)
+	}
+	rollCommandOutput(u)
+	if got := main(); !strings.Contains(got, "Ran") || !strings.Contains(got, "exit 1") || !strings.Contains(got, "┆ ok 19") {
+		t.Fatalf("held completion did not follow its rolled output:\n%s", got)
+	}
+	if len(u.session.commands) != 0 {
+		t.Fatalf("completed command still tracked: %v", u.session.commands)
 	}
 }

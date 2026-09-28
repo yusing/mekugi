@@ -83,8 +83,12 @@ command under a muted dashed `┆` gutter, distinct from the code gutter, saniti
 and bounded per line, with a count of earlier lines. While a command is
 `Running`, the host's streamed output shows the same way as a rolling tail,
 including an unfinished last line; a carriage return restarts its line, as a
-progress line redraws. The tail's memory stays bounded by what it shows,
-however much the command prints, and at most one update per frame is drawn.
+progress line redraws. A burst rolls through rather than jumping to its end: each frame reveals a
+quarter of the waiting lines, at least one, and an unfinished line shows once
+nothing waits. Only a burst's latest 64 lines roll, so the tail's memory stays
+bounded however much the command prints, and at most one update per frame is
+drawn. A completion that arrives while a burst is still rolling, as from a
+command that prints only when it exits, is held until the burst has rolled.
 The host supplies one combined output stream per shell invocation. Its tail follows
 the final displayed operation, including a Read or Skill row, rather than an earlier
 Run row; it does not claim per-command output attribution.

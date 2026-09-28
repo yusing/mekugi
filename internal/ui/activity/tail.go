@@ -18,6 +18,8 @@ import (
 const (
 	OutputTailLines = 5
 	OutputTailBytes = 512 // Per line, before sanitizing.
+	// A burst rolls through at most this many of its latest lines.
+	OutputPendingLines = 64
 )
 
 // BlankRow reports a painted row without text: a paragraph gap or an empty
@@ -115,12 +117,14 @@ func UnderlineEdit(text string) string {
 
 // OutputTail keeps the display tail of command output as it arrives, in
 // memory bounded by the tail regardless of output size. A carriage return
-// starts its line over, as a terminal redraws a progress line.
+// starts its line over, as a terminal redraws a progress line. Complete lines
+// wait until revealed, so a burst can scroll through rather than jump.
 type OutputTail struct {
-	lines []outputLine // Last non-blank complete lines, sanitized.
-	line  []byte       // Current line's head, one byte past the display bound.
-	count int          // Lines before the current line.
-	cr    bool         // A carriage return awaits the next byte.
+	lines   []outputLine // Last revealed non-blank complete lines, sanitized.
+	pending []outputLine // Complete lines awaiting a reveal, oldest first.
+	line    []byte       // Current line's head, one byte past the display bound.
+	count   int          // Lines before the current line.
+	cr      bool         // A carriage return awaits the next byte.
 }
 
 type outputLine struct {
@@ -132,6 +136,7 @@ type outputLine struct {
 func TailOutput(output string) ([]string, int) {
 	var tail OutputTail
 	tail.Write(output)
+	tail.Reveal(len(tail.pending))
 	return tail.Lines()
 }
 
@@ -147,9 +152,9 @@ func (t *OutputTail) Write(output string) {
 			t.cr = true
 		case c == '\n':
 			if text := outputText(t.line); text != "" {
-				t.lines = append(t.lines, outputLine{t.count, text})
-				if len(t.lines) > OutputTailLines {
-					t.lines = slices.Delete(t.lines, 0, 1)
+				t.pending = append(t.pending, outputLine{t.count, text})
+				if len(t.pending) > OutputPendingLines {
+					t.pending = slices.Delete(t.pending, 0, 1)
 				}
 			}
 			t.count++
@@ -160,11 +165,37 @@ func (t *OutputTail) Write(output string) {
 	}
 }
 
-// Lines is the last non-blank lines, including an unfinished one, and the
-// count of lines before the first of them.
+// Pending counts complete lines awaiting a reveal.
+func (t *OutputTail) Pending() int {
+	return len(t.pending)
+}
+
+// Reveal shows up to n pending lines, oldest first, and reports whether it
+// showed any.
+func (t *OutputTail) Reveal(n int) bool {
+	n = min(n, len(t.pending))
+	for _, line := range t.pending[:n] {
+		t.lines = append(t.lines, line)
+		if len(t.lines) > OutputTailLines {
+			t.lines = slices.Delete(t.lines, 0, 1)
+		}
+	}
+	t.pending = slices.Delete(t.pending, 0, n)
+	return n > 0
+}
+
+// Roll reveals one frame's share of pending lines: a quarter of the backlog,
+// at least one. A burst scrolls through in a few hundred milliseconds at the
+// frame rate, while steady output stays within a few lines of live.
+func (t *OutputTail) Roll() bool {
+	return t.Reveal((len(t.pending) + 3) / 4)
+}
+
+// Lines is the last revealed non-blank lines, then an unfinished one once
+// nothing is pending, and the count of lines before the first of them.
 func (t *OutputTail) Lines() ([]string, int) {
 	lines := t.lines
-	if text := outputText(t.line); text != "" {
+	if text := outputText(t.line); text != "" && len(t.pending) == 0 {
 		lines = append(slices.Clip(lines), outputLine{t.count, text})
 	}
 	lines = lines[max(0, len(lines)-OutputTailLines):]

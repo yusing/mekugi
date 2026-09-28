@@ -80,6 +80,11 @@ func TestNativeUIPreview(t *testing.T) {
 				flashExpired := p.ui.view.expireFlash(now)
 				settled := p.ui.view.settle(now)
 				settled = p.ui.agents.settle(now) || settled
+				settled = p.ui.view.pace(now) || settled
+				settled = p.ui.agents.pace(now) || settled
+				p.ui.dirty = false
+				p.ui.flushCommandOutput() // Rolls output bursts, as each real frame does.
+				settled = p.ui.dirty || settled
 				noticeExpired := p.ui.expireNotice(now)
 				if p.pump(0) {
 					lastStep = now // The script resumes a pace after the command ends.
@@ -142,6 +147,8 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		screen := vt.NewEmulator(160, 48)
 		defer screen.Close()
 		p.ui.shell.paintedRows = nil // A new screen needs every row.
+		rollCommandOutput(p.ui)
+		finishPacing(p.ui.view, p.ui.agents)
 		if err := p.ui.paint(screen, 160, 48); err != nil {
 			t.Fatal(err)
 		}
@@ -174,7 +181,11 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
 		t.Fatal("the saved diff replaced Activity without being opened")
 	}
-	agents := func() string { return ansi.Strip(strings.Join(p.ui.agents.renderFeed(120, 80).lines, "\n")) }
+	agents := func() string {
+		rollCommandOutput(p.ui)
+		finishPacing(p.ui.agents)
+		return ansi.Strip(strings.Join(p.ui.agents.renderFeed(120, 80).lines, "\n"))
+	}
 	p.until("tester reruns")
 	if got := agents(); !strings.Contains(got, "exit 1") || !strings.Contains(got, "┆ --- FAIL: TestUnsubscribeRace (0.37s)") {
 		t.Fatalf("failed test run lacks its failure tail:\n%s", got)
