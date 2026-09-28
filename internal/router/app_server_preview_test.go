@@ -225,10 +225,14 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	keys("also check Unsubscribe\r")
-	if p.ui.submitted != "" || p.ui.turn == "" || !slices.ContainsFunc(p.ui.view.entries, func(e activityPaneEntry) bool {
+	if p.ui.submission.text != "" || p.ui.turn == "" || !slices.ContainsFunc(p.ui.view.entries, func(e activityPaneEntry) bool {
 		return e.Agent == "You" && e.Text == "also check Unsubscribe"
 	}) {
-		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.submitted, p.ui.turn)
+		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.submission.text, p.ui.turn)
+	}
+	keys("queued follow-up\t")
+	if len(p.ui.queued) != 1 || p.ui.draft != "" {
+		t.Fatal("Tab did not queue during playback")
 	}
 	keys("scratch\x03")
 	if p.ui.draft != "" || p.ui.turn == "" || p.ui.quitRequested {
@@ -238,6 +242,10 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 	if p.ui.turn != "" || p.ui.status != "Interrupted" || p.advance() || len(p.active) != 0 {
 		t.Fatalf("interrupt left playback running: turn=%q status=%q active=%v", p.ui.turn, p.ui.status, p.active)
 	}
+	if p.ui.draft != "queued follow-up" || len(p.ui.queued) != 0 {
+		t.Fatalf("interrupt did not return queued input: %q", p.ui.draft)
+	}
+	keys("\x03")
 	for _, agent := range p.ui.agents.agents {
 		if agent.Responding {
 			t.Fatalf("%s still responding after interrupt", agent.Name)
@@ -699,6 +707,7 @@ func (p *nativePreview) serve() {
 			Method string         `json:"method"`
 			Params struct {
 				Input       []map[string]any `json:"input"`
+				ClientID    string           `json:"clientUserMessageId"`
 				Model       string           `json:"model"`
 				Effort      string           `json:"effort"`
 				ServiceTier jsontext.Value   `json:"serviceTier"`
@@ -749,7 +758,7 @@ func (p *nativePreview) serve() {
 			p.notify("thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": model, "effort": effort, "serviceTier": tier}})
 		case "turn/start":
 			p.notify("turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": turn}})
-			p.userMessage(turn, request.Params.Input)
+			p.userMessage(turn, request.Params.ClientID, request.Params.Input)
 			var text []string
 			for _, input := range request.Params.Input {
 				if s, ok := input["text"].(string); ok {
@@ -761,7 +770,7 @@ func (p *nativePreview) serve() {
 			}})
 			p.notify("turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": turn, "status": "completed"}})
 		case "turn/steer":
-			p.userMessage(turn, request.Params.Input)
+			p.userMessage(turn, request.Params.ClientID, request.Params.Input)
 		case "turn/interrupt":
 			p.step = len(p.steps)
 			for _, thread := range slices.Sorted(maps.Keys(p.active)) {
@@ -781,9 +790,9 @@ func (p *nativePreview) reply(id jsontext.Value, result any) {
 	}
 }
 
-func (p *nativePreview) userMessage(turn string, content any) {
+func (p *nativePreview) userMessage(turn, clientID string, content any) {
 	p.notify("item/completed", map[string]any{"threadId": "main", "turnId": turn, "item": map[string]any{
-		"id": fmt.Sprintf("preview-user-%d-%d", p.message, len(p.ui.view.entries)), "type": "userMessage", "content": content,
+		"id": fmt.Sprintf("preview-user-%d-%d", p.message, len(p.ui.view.entries)), "type": "userMessage", "clientId": clientID, "content": content,
 	}})
 }
 
@@ -792,7 +801,7 @@ func (p *nativePreview) beginMessage(body string) {
 	p.message++
 	turn := fmt.Sprintf("preview-turn-%d", p.message)
 	p.notify("turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": turn}})
-	p.userMessage(turn, []map[string]string{{"type": "text", "text": body}})
+	p.userMessage(turn, "", []map[string]string{{"type": "text", "text": body}})
 }
 
 func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {

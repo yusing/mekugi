@@ -27,6 +27,7 @@ import (
 
 type appServerItem struct {
 	ID               string                    `json:"id"`
+	ClientID         string                    `json:"clientId"` // userMessage: the submission's clientUserMessageId.
 	Type             string                    `json:"type"`
 	Text             string                    `json:"text"`
 	Summary          []string                  `json:"summary"`
@@ -56,8 +57,8 @@ type appServerItem struct {
 
 type appServerUI struct {
 	picker                    composerPicker
-	files, submittedFiles     []composerFile
-	skills, submittedSkills   []composerSkill
+	files                     []composerFile
+	skills                    []composerSkill
 	client                    *appserver.Client
 	view                      *liveActivityView
 	agents                    *liveActivityView
@@ -85,18 +86,22 @@ type appServerUI struct {
 	settingsChange            map[string]any
 	settingsTurn              string
 	requests                  map[string]string
-	draft, submitted          string
-	composerRect              terminalRect // Visible draft text, relative to Main.
+	draft                     string
+	submission                composerSubmission   // The unresolved turn/start or turn/steer request.
+	steers                    []composerSubmission // Accepted steers the turn has not yet committed.
+	unsent, queued            []composerDraft      // Stacked steers and next-turn input.
+	interrupting              string               // The turn Ctrl-C interrupted.
+	resendSteers              bool                 // The interrupt sends pending steers as the next turn.
+	composerRect              terminalRect         // Visible draft text, relative to Main.
 	cursorBack, composerWidth int
 	cursorColumn              *int
-	images, submittedImages   []composerImage
+	images                    []composerImage
 	undoDrafts, redoDrafts    []composerUndo
 	inputHistory              []composerDraft
 	historyDraft              composerDraft
 	historyBack               int
 	run                       composerRun // The edit that the next like keystroke extends.
 	ownedImages               map[string]bool
-	submissionSeq             uint64
 	escape                    string
 	paste                     bool
 	pasted                    []byte // Bracketed paste text, inserted when the paste ends.
@@ -306,11 +311,15 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 				<-c.Done
 			}
 		}
-		if u.draft != "" {
-			fmt.Fprintln(stdout, "Unsent draft:\n"+livediff.Safe(u.draft, false))
+		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
+			fmt.Fprintln(stdout, "Unsent draft:\n"+livediff.Safe(unsent.text, false))
 		}
-		if u.submitted != "" {
-			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+livediff.Safe(u.submitted, false))
+		unknown := slices.Clone(u.steers)
+		if !u.submission.committed {
+			unknown = append(unknown, u.submission)
+		}
+		if unknown := joinDrafts(u.steerParts(unknown)...); unknown.text != "" {
+			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+livediff.Safe(unknown.text, false))
 		}
 		if err != nil {
 			c.Diagnostics.Lock()
@@ -337,8 +346,15 @@ func (u *appServerUI) request(method string, params any) error {
 	return err
 }
 
-func (u *appServerUI) message(m appserver.Message) error {
+func (u *appServerUI) message(m appserver.Message) (err error) {
 	defer u.refreshPicker()
+	// Any event can make stacked input sendable: an acknowledgement, a turn
+	// start or end, or settled settings.
+	defer func() {
+		if err == nil {
+			err = u.flushInput()
+		}
+	}()
 	if m.Method == "skills/changed" {
 		u.picker.skillsLoaded = false
 		u.picker.resolved = composerTarget{}
@@ -372,17 +388,17 @@ func (u *appServerUI) message(m appserver.Message) error {
 		if method == "thread/list" || method == "thread/read" {
 			return u.restoreActivityResponse(method, m)
 		}
+		if method == "turn/start" || method == "turn/steer" {
+			u.submissionResponse(method, m.Error)
+			return nil
+		}
 		if m.Error != nil {
 			u.status, u.alert = method+": "+m.Error.Message, true
 			if method == "initialize" || method == "thread/start" || method == "thread/resume" {
 				return errors.New(u.status)
 			}
-			if method == "turn/start" || method == "turn/steer" {
-				u.starting = false
-				u.view.removePendingInput(u.submissionSeq)
-				u.restoreSubmission()
-				u.submitted = ""
-				u.submissionSeq = 0
+			if method == "turn/interrupt" {
+				u.interrupting, u.resendSteers = "", false
 			}
 			return nil
 		}
@@ -450,22 +466,6 @@ func (u *appServerUI) message(m appserver.Message) error {
 			if method == "thread/resume" {
 				return u.restorePaneContent(result.Thread)
 			}
-		case "turn/start", "turn/steer":
-			u.rememberInput(composerDraft{text: u.submitted, images: slices.Clone(u.submittedImages), skills: slices.Clone(u.submittedSkills), files: slices.Clone(u.submittedFiles)})
-			if u.status == "Sending…" && !u.alert {
-				if u.turn != "" {
-					u.status = "Working"
-				} else if u.starting {
-					u.status = "Starting turn…"
-				}
-			}
-			u.submittedImages = nil
-			u.submittedSkills = nil
-			u.submittedFiles = nil
-			u.submitted = ""
-			u.submissionSeq = 0
-			// turn/started may precede or follow the response. Do not clear the
-			// active turn here or allow another start during that race.
 		}
 		return nil
 	}
@@ -519,10 +519,15 @@ func (u *appServerUI) message(m appserver.Message) error {
 			if p.Turn.Error != nil {
 				u.status, u.alert = u.status+": "+p.Turn.Error.Message, true
 			}
+			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
 		}
 	case "item/started", "item/completed", "item/agentMessage/delta":
 		if p.ItemID == "" {
 			p.ItemID = p.Item.ID
+		}
+		// Only completion commits, so one message cannot match two identical steers.
+		if p.ThreadID == u.thread && p.Item.Type == "userMessage" && m.Method == "item/completed" {
+			u.commitSteer(p.Item)
 		}
 		if p.ThreadID == u.thread && (u.journal != nil && u.journal.hides(p.ItemID) || u.unscopedJournal != nil && u.unscopedJournal.hides(p.ItemID)) {
 			return nil
@@ -571,6 +576,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 				u.escape = ""
 				if !u.paste {
 					return false, u.stepReasoning(strings.HasSuffix(sequence, "A"))
+				}
+			case "\x1b[1;3A", "\x1b[1;2D":
+				if !u.paste {
+					u.editQueued()
 				}
 			case "\x1b[122;6u":
 				if !u.paste {
@@ -644,16 +653,23 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.draft != "" {
 			u.deleteDraftRange(0, len(u.draft))
 			u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again quits", false)
-			if u.turn != "" || u.starting || u.submitted != "" {
+			if u.turn != "" || u.starting || u.submission.text != "" {
 				u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
 			}
 			return false, nil
 		}
 		if u.turn != "" {
+			// As in Codex, interrupting with pending steers sends them now as
+			// the next turn instead of after the next tool call.
+			u.interrupting = u.turn
+			u.resendSteers = len(u.steers) > 0 || len(u.unsent) > 0 || u.submission.turn != ""
 			u.status = "Interrupting…"
+			if u.resendSteers {
+				u.status = "Interrupting to send steer…"
+			}
 			return false, u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
 		}
-		if !u.starting && u.submitted == "" {
+		if !u.starting && u.submission.text == "" {
 			return true, nil
 		}
 		u.setNotice("Turn is starting · nothing to interrupt yet", false)
@@ -669,7 +685,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		if text == "/quit" {
-			if u.turn == "" && !u.starting && u.submitted == "" {
+			if u.turn == "" && !u.starting && u.submission.text == "" {
 				u.draft = ""
 				return true, nil
 			}
@@ -683,87 +699,30 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /skills, /model, /reasoning, /tier, /quit", true)
 			return false, nil
 		}
-		if text == "" || u.thread == "" || u.restoring != nil || u.starting || u.submitted != "" || u.settingsPending {
+		if text == "" || u.thread == "" || u.restoring != nil {
 			return false, nil
 		}
-		method := "turn/start"
-		params := map[string]any{"threadId": u.thread, "input": u.composerInput()}
-		if u.turn != "" {
-			method = "turn/steer"
-			params["expectedTurnId"] = u.turn
-		} else {
-			u.starting = true
-		}
-		u.submitted, u.status, u.alert = u.draft, "Sending…", false
+		// A draft that cannot be sent yet stacks with earlier unsent steers.
+		u.unsent = append(u.unsent, u.takeDraft())
+		u.pruneDraftImages()
 		u.setNotice("", false)
 		u.view.follow()
-		u.submissionSeq = u.view.lastSeq + 1
-		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.submissionSeq, Agent: "You", Kind: "text", Text: u.draft, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.thread, item: fmt.Sprintf("input/%d", u.submissionSeq), phase: "input/pending", images: slices.Clone(u.images)}}}})
-		for i := range u.images {
-			delete(u.ownedImages, u.images[i].path)
+		return false, u.flushInput()
+	case '\t':
+		// Tab queues busy input for the next turn; otherwise it sends like Enter.
+		text := strings.TrimSpace(u.draft)
+		if text == "" || strings.HasPrefix(text, "/") || u.turn == "" && !u.starting && u.submission.text == "" {
+			return u.key('\r')
 		}
-		u.submittedImages, u.images = u.images, nil
-		u.submittedSkills, u.skills = u.skills, nil
-		u.submittedFiles, u.files = u.files, nil
-		u.historyBack, u.historyDraft = 0, composerDraft{}
-		u.undoDrafts, u.redoDrafts = nil, nil
-		u.run = runNone
+		u.queued = append(u.queued, u.takeDraft())
 		u.pruneDraftImages()
-		u.draft = ""
-		u.cursorBack = 0
-		err := u.request(method, params)
-		if err != nil {
-			u.view.removePendingInput(u.submissionSeq)
-			u.restoreSubmission()
-			u.submitted = ""
-			u.submissionSeq = 0
-			u.starting = false
-		}
-		return false, err
+		u.setNotice("", false)
 	default:
 		if key >= 32 {
 			u.insertDraft(string([]byte{key}))
 		}
 	}
 	return false, nil
-}
-
-func (u *appServerUI) restoreSubmission() {
-	u.undoDrafts, u.redoDrafts = nil, nil
-	u.run = runNone
-	u.cursorBack = 0
-	if u.submitted == "" {
-		return
-	}
-	shift := len(u.submitted) + 1
-	if u.draft == "" {
-		shift = len(u.submitted)
-	}
-	for i := range u.images {
-		u.images[i].start += shift
-		u.images[i].end += shift
-	}
-	for i := range u.skills {
-		u.skills[i].start += shift
-		u.skills[i].end += shift
-	}
-	for i := range u.files {
-		u.files[i].start += shift
-		u.files[i].end += shift
-	}
-	u.files = append(u.submittedFiles, u.files...)
-	u.submittedFiles = nil
-	u.skills = append(u.submittedSkills, u.skills...)
-	u.submittedSkills = nil
-	u.images = append(u.submittedImages, u.images...)
-	u.submittedImages = nil
-	if u.draft == "" {
-		u.draft = u.submitted
-	} else {
-		u.draft = u.submitted + "\n" + u.draft
-	}
-	u.renumberImages()
 }
 
 // applyActivity projects the collector once into the two audiences. Ordinary
@@ -850,8 +809,14 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 	draft = draft[firstRow:min(len(draft), firstRow+visible)]
 
 	room := max(0, height-len(draft)-borderRows)
+	var pending []string
 	if u.pickerVisible() {
 		dock = 0
+	} else {
+		// Waiting input yields to the transcript beyond half the room.
+		pending = u.pendingInputPreview(width)
+		pending = pending[:min(len(pending), room/2)]
+		room -= len(pending)
 	}
 	dock = min(dock, max(0, room-1))
 	room -= dock
@@ -879,6 +844,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 	}
 	dockAt := len(frame)
 	frame = append(frame, make([]string, dock)...)
+	frame = append(frame, pending...)
 	// Visual reference: Grok CLI PromptStyle / PromptWidget::draw, source
 	// crates/codegen/xai-grok-pager/src/views/prompt_widget/mod.rs:217:240,3007:3078
 	// @be7ce6e8cffe46d20bef9834b211616082ee866b. Keep continuation rows aligned.
@@ -1016,7 +982,7 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 }
 
 func (u *appServerUI) sessionAnimating() bool {
-	return !u.alert && (u.turn != "" || u.starting || u.submitted != "" || u.restoring != nil || u.thread == "")
+	return !u.alert && (u.turn != "" || u.starting || u.submission.text != "" || u.restoring != nil || u.thread == "")
 }
 
 func (u *appServerUI) sessionLabel(now time.Time) string {
@@ -1038,7 +1004,7 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 			label += activityui.Dim + " " + liveActivityAge(now.Sub(u.turnStarted)) + activityui.Undim
 		}
 		return label
-	case u.starting || u.submitted != "" || u.restoring != nil || u.thread == "":
+	case u.starting || u.submission.text != "" || u.restoring != nil || u.thread == "":
 		return activityui.StatusPulse(status, now, u.view.painter.Colors) + activityui.Reset
 	}
 	// Idle states use default text; the border color would otherwise carry over.

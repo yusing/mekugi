@@ -66,12 +66,12 @@ func TestAppServerSettingsSlashControls(t *testing.T) {
 				u.turn, u.model, u.reasoningEffort, u.serviceTier = turn, "original", "low", "flex"
 				appServerTestKeys(t, u, tt.command+"\r")
 				assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", tt.field: tt.value})
-				if u.model != "original" || u.reasoningEffort != "low" || u.serviceTier != "flex" || u.submitted != "" || !u.settingsPending {
+				if u.model != "original" || u.reasoningEffort != "low" || u.serviceTier != "flex" || u.submission.text != "" || !u.settingsPending {
 					t.Fatal("command submitted conversation or changed metadata before notification")
 				}
 				appServerTestKeys(t, u, "next prompt\r")
-				if w.Len() != 0 || u.draft != "next prompt" {
-					t.Fatal("pending settings allowed conversation submission or lost draft")
+				if w.Len() != 0 || u.draft != "" || len(u.unsent) != 1 || u.unsent[0].text != "next prompt" {
+					t.Fatal("pending settings allowed conversation submission or lost stacked input")
 				}
 			})
 		}
@@ -106,7 +106,7 @@ func TestAppServerSettingsAuthoritativeLiveUpdate(t *testing.T) {
 			if u.settingsPending || !strings.Contains(u.notice, tt.notice) || u.reasoningEffort != "high" {
 				t.Fatalf("live result state: pending=%v effort=%s notice=%q", u.settingsPending, u.reasoningEffort, u.notice)
 			}
-			if w.Len() != 0 || u.submitted != "" {
+			if w.Len() != 0 || u.submission.text != "" {
 				t.Fatal("live settings response submitted conversation")
 			}
 		})
@@ -192,7 +192,7 @@ func TestAppServerSettingsUnchangedDoesNotWaitForNotification(t *testing.T) {
 			t.Fatal("no-op command remains pending")
 		}
 		appServerTestKeys(t, u, "prompt\r")
-		if u.submitted != "prompt" {
+		if u.submission.text != "prompt" {
 			t.Fatal("no-op blocked prompt")
 		}
 	}
@@ -209,7 +209,7 @@ func TestAppServerSettingsChoicesRenderedInScrollableTranscript(t *testing.T) {
 	if !strings.Contains(rendered, "first-choice") || !strings.Contains(rendered, "last-choice-that-would-not-fit") {
 		t.Fatalf("missing choices: %s", rendered)
 	}
-	if len(u.inputHistory) != 0 || u.submitted != "" {
+	if len(u.inputHistory) != 0 || u.submission.text != "" {
 		t.Fatal("local choices submitted to host")
 	}
 }
@@ -226,7 +226,7 @@ func TestAppServerSettingsTierAliasNoop(t *testing.T) {
 			t.Fatal("alias queued unchanged thread settings")
 		}
 		appServerTestKeys(t, u, "prompt\r")
-		if u.settingsPending || u.submitted != "prompt" {
+		if u.settingsPending || u.submission.text != "prompt" {
 			t.Fatal("alias no-op blocked prompt")
 		}
 	}

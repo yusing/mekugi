@@ -1,6 +1,7 @@
 package router
 
 import (
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
 	"slices"
@@ -164,28 +165,14 @@ func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, de
 			}
 		case "agentMessage":
 		case "userMessage":
-			var contents []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			}
-			if len(item.Content) > 0 && json.Unmarshal(item.Content, &contents) != nil {
+			var ok bool
+			if entry.Text, entry.native.images, ok = appServerUserText(item.Content); !ok {
 				return
 			}
 			if thread == main {
 				entry.Agent = "You"
 			} else {
 				entry.Agent += " · user"
-			}
-			imageNumber := 0
-			for _, content := range contents {
-				if content.Type == "text" {
-					entry.Text += content.Text
-				} else if content.Type == "image" || content.Type == "localImage" {
-					imageNumber++
-					start := len(entry.Text)
-					entry.Text += fmt.Sprintf("[Image %d]", imageNumber)
-					entry.native.images = append(entry.native.images, composerImage{start: start, end: len(entry.Text)})
-				}
 			}
 		case "commandExecution":
 			entry.Kind = "command"
@@ -194,6 +181,30 @@ func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, de
 		}
 	}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+}
+
+// appServerUserText renders userMessage content as the composer wrote it,
+// with each image as its "[Image N]" label.
+func appServerUserText(content jsontext.Value) (string, []composerImage, bool) {
+	var contents []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if len(content) > 0 && json.Unmarshal(content, &contents) != nil {
+		return "", nil, false
+	}
+	var text string
+	var images []composerImage
+	for _, content := range contents {
+		if content.Type == "text" {
+			text += content.Text
+		} else if content.Type == "image" || content.Type == "localImage" {
+			start := len(text)
+			text += fmt.Sprintf("[Image %d]", len(images)+1)
+			images = append(images, composerImage{start: start, end: len(text)})
+		}
+	}
+	return text, images, true
 }
 
 // mergeNative updates the owning activity entry in place. Completed snapshots

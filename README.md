@@ -435,11 +435,22 @@ and Ctrl+Up/Down move to the start/end of a line. Alt+Backspace/Delete delete
 the previous/next word. Ctrl+V attaches a clipboard PNG
 as a highlighted, atomic `[Image N]` (Linux needs `wl-paste` on Wayland or `xclip` on X11; macOS uses
 `osascript`). Pasting the path of a PNG, JPEG or GIF file, such as a dropped
-or copied file, attaches it the same way. Ctrl-C clears the draft first (Ctrl+Z
-brings it back), then interrupts a running turn, or exits when nothing is running. Ctrl+Z/Ctrl+Y undo/redo; Ctrl+G edits the draft in `$EDITOR`
+or copied file, attaches it the same way. Ctrl+Z/Ctrl+Y undo/redo; Ctrl+G edits the draft in `$EDITOR`
 (falling back to `$VISUAL`, then `vi`). Saving and closing returns to the composer
 without sending. Keep image placeholders unchanged to retain their attachments.
 Submitted images remain in temporary storage for Codex history.
+
+While a turn runs, Enter steers it and Tab queues the message for the next turn
+(when idle, Tab sends like Enter). Messages that have to wait, such as steers
+typed while an earlier one is still sending, or everything you queue, are
+combined and sent as one message, one entry per line. Waiting steers and queued
+messages are listed above the composer until Codex takes them; Alt+Up or
+Shift+Left brings the last queued message back for editing.
+
+Ctrl-C clears the draft first (Ctrl+Z brings it back), then interrupts a running
+turn, or exits when nothing is running. Interrupting while steers are still
+waiting sends them right away as the next turn; otherwise queued messages return
+to the composer.
 
 Shift+Up/Down raises/lowers reasoning through the current model's advertised
 levels. `/model`, `/reasoning`, and `/tier` show scrollable choices above the
@@ -462,8 +473,8 @@ To review the native app-server UI without Codex or model requests, run
 real panes and renderer: streaming and long messages, journal edits, retraction
 and flush, agent summaries, and Main/agent communication. Scroll, resize, and
 click reply links to inspect them. Keys behave as in the real UI: Enter steers the playing
-turn or, once idle, starts a new one that echoes your prompt; Ctrl-C clears the draft, then
-interrupts playback, then exits, as does `/quit`.
+turn or, once idle, starts a new one that echoes your prompt; Tab queues for the next turn;
+Ctrl-C clears the draft, then interrupts playback, then exits, as does `/quit`.
 
 Bun is required to regenerate and test plugin assets:
 

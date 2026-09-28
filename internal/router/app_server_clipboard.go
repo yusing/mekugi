@@ -28,35 +28,41 @@ type composerImage struct {
 }
 
 func (u *appServerUI) renumberImages() {
-	slices.SortFunc(u.images, func(a, b composerImage) int { return a.start - b.start })
-	at := u.cursor()
-	for i := range u.images {
-		attachment := &u.images[i]
+	d := u.draftSnapshot()
+	d.renumberImages()
+	u.loadDraft(d)
+}
+
+func (d *composerDraft) renumberImages() {
+	slices.SortFunc(d.images, func(a, b composerImage) int { return a.start - b.start })
+	at := len(d.text) - min(d.cursorBack, len(d.text))
+	for i := range d.images {
+		attachment := &d.images[i]
 		label := fmt.Sprintf("[Image %d]", i+1)
 		delta := len(label) - (attachment.end - attachment.start)
-		u.draft = u.draft[:attachment.start] + label + u.draft[attachment.end:]
+		d.text = d.text[:attachment.start] + label + d.text[attachment.end:]
 		if at >= attachment.end {
 			at += delta
 		}
-		for j := range u.skills {
-			if u.skills[j].start >= attachment.end {
-				u.skills[j].start += delta
-				u.skills[j].end += delta
+		for j := range d.skills {
+			if d.skills[j].start >= attachment.end {
+				d.skills[j].start += delta
+				d.skills[j].end += delta
 			}
 		}
-		for j := range u.files {
-			if u.files[j].start >= attachment.end {
-				u.files[j].start += delta
-				u.files[j].end += delta
+		for j := range d.files {
+			if d.files[j].start >= attachment.end {
+				d.files[j].start += delta
+				d.files[j].end += delta
 			}
 		}
 		attachment.end += delta
-		for j := i + 1; j < len(u.images); j++ {
-			u.images[j].start += delta
-			u.images[j].end += delta
+		for j := i + 1; j < len(d.images); j++ {
+			d.images[j].start += delta
+			d.images[j].end += delta
 		}
 	}
-	u.cursorBack = len(u.draft) - at
+	d.cursorBack = len(d.text) - at
 }
 
 // attachImage takes ownership of a clipboard file for cleanup.
@@ -173,20 +179,20 @@ func shellWord(text string) (string, bool) {
 	return word.String(), quote == 0 && word.Len() > 0
 }
 
-func (u *appServerUI) composerInput() []map[string]any {
+func (d composerDraft) input() []map[string]any {
 	var input []map[string]any
 	at := 0
-	for _, attachment := range u.images {
+	for _, attachment := range d.images {
 		if attachment.start > at {
-			input = append(input, appserver.Input(u.draft[at:attachment.start])...)
+			input = append(input, appserver.Input(d.text[at:attachment.start])...)
 		}
 		input = append(input, map[string]any{"type": "localImage", "path": attachment.path})
 		at = attachment.end
 	}
-	if at < len(u.draft) || len(input) == 0 {
-		input = append(input, appserver.Input(u.draft[at:])...)
+	if at < len(d.text) || len(input) == 0 {
+		input = append(input, appserver.Input(d.text[at:])...)
 	}
-	for _, skill := range u.skills {
+	for _, skill := range d.skills {
 		input = append(input, map[string]any{"type": "skill", "name": skill.name, "path": skill.path})
 	}
 	return input

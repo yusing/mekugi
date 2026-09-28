@@ -11,6 +11,7 @@ type composerDraft struct {
 	images     []composerImage
 	skills     []composerSkill
 	files      []composerFile
+	inHistory  bool // An accepted steer being resent is already in input history.
 }
 
 // History is local to this thread. Resume hydrates text from Codex history;
@@ -49,7 +50,12 @@ func (u *appServerUI) recallInput(backward bool) {
 }
 
 func (u *appServerUI) draftSnapshot() composerDraft {
-	return composerDraft{u.draft, u.cursorBack, slices.Clone(u.images), slices.Clone(u.skills), slices.Clone(u.files)}
+	return composerDraft{text: u.draft, cursorBack: u.cursorBack, images: slices.Clone(u.images), skills: slices.Clone(u.skills), files: slices.Clone(u.files)}
+}
+
+func (u *appServerUI) loadDraft(d composerDraft) {
+	u.draft, u.cursorBack, u.images = d.text, d.cursorBack, slices.Clone(d.images)
+	u.skills, u.files = slices.Clone(d.skills), slices.Clone(d.files)
 }
 
 type composerUndo struct {
@@ -109,7 +115,7 @@ func (u *appServerUI) pruneDraftImages() {
 			}
 		}
 	}
-	for _, history := range [][]composerDraft{u.inputHistory, {u.historyDraft}} {
+	for _, history := range [][]composerDraft{u.inputHistory, {u.historyDraft}, u.unsent, u.queued} {
 		for _, snapshot := range history {
 			for _, image := range snapshot.images {
 				used[image.path] = true

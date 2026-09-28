@@ -27,6 +27,8 @@ func renderNativeKeybindings(width, height int) []string {
 		}},
 		{"Session", [][2]string{
 			{"enter", "Send / steer"},
+			{"tab", "Queue for next turn"},
+			{"alt+↑ / shift+←", "Edit last queued"},
 			{"shift+↑ / shift+↓", "Raise / lower reasoning"},
 			{"/model /reasoning /tier", "Show choices or set VALUE"},
 			{"ctrl+c", "Clear / interrupt / quit"},

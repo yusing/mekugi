@@ -24,8 +24,8 @@ func TestComposerFileTokenHistoryAndRejectedSubmission(t *testing.T) {
 	if !strings.Contains(w.String(), `@\"file name.go\"`) {
 		t.Fatalf("wire input lost visible @ prefix: %s", w.String())
 	}
-	if len(u.submittedFiles) != 1 || len(u.files) != 0 {
-		t.Fatalf("submission lost file binding: submitted=%+v draft=%+v", u.submittedFiles, u.files)
+	if len(u.submission.files) != 1 || len(u.files) != 0 {
+		t.Fatalf("submission lost file binding: submitted=%+v draft=%+v", u.submission.files, u.files)
 	}
 	appServerTestMessage(t, u, `{"id":2,"error":{"code":-1,"message":"rejected"}}`)
 	if u.draft != `@"file name.go" ` || len(u.files) != 1 || u.files[0].path != "file name.go" {

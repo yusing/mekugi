@@ -185,7 +185,7 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 			u.status = status
 			u.thread = ""
 			if status == "Sending…" {
-				u.thread, u.submitted = "main", "hello"
+				u.thread, u.submission.text = "main", "hello"
 			}
 			if status == "Interrupting…" {
 				u.thread, u.turn = "main", "turn"
@@ -206,7 +206,7 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 				t.Fatal("alert animates")
 			}
 			u.restoring = nil
-			u.alert, u.thread, u.turn, u.submitted, u.status = false, "main", "", "", "Ready"
+			u.alert, u.thread, u.turn, u.submission.text, u.status = false, "main", "", "", "Ready"
 			if u.sessionAnimating() || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("idle animates")
 			}

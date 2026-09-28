@@ -180,7 +180,7 @@ Missing, truncated, failed, or ambiguous local output has no inferred count.
 Main renders user messages on a tinted
 band, assistant text under one `main` heading, tool runs drawn as a tree, agent
 start/message/finish events labelled `sender → recipient`, final answers as
-cards, and journal blocks. Its composer supports a new thread, submission, steering and
+cards, and journal blocks. Its composer supports a new thread, submission, steering, queueing and
 interruption. Typing `?` in the empty, focused composer opens keyboard shortcuts.
 The view docks directly above the composer, temporarily hiding Main's live-edit
 dock. It uses bold group headings and blue key labels, with Compose, Session,
@@ -289,11 +289,37 @@ labels. Attachment-bearing messages preserve literal composer text; text that
 only resembles an image label is not highlighted as an attachment.
 Unsubmitted image files remain while referenced by the draft or undo/redo history,
 then are removed, including on exit; submitted files
-remain in temporary storage for Codex history/resume. Submitted text appears immediately and is reconciled with the
-server's user message without a duplicate; rejection restores the draft; a
-steer never becomes a new turn. Ctrl-C first clears a non-empty draft (Ctrl+Z
-restores it), then interrupts the active turn, and with no turn active or
-starting exits like `/quit`. Composer notices (command, paste, editor and
+remain in temporary storage for Codex history/resume. A started turn's text appears
+in the transcript immediately and is reconciled with the server's user message
+without a duplicate; rejection restores the draft, followed by any input stacked
+or queued behind it.
+
+Busy input follows Codex's composer queue. Enter while a turn runs steers it;
+Tab queues input for the next turn and, while idle, sends like Enter. Input that
+cannot be sent yet stacks locally instead of being refused: steers typed while
+another submission is unresolved, the turn is starting, settings are applying,
+or an interrupt is pending; and every queued entry. Each stack is sent as one
+message whose entries are separated by newlines, keeping each entry's
+attachments and tokens. Unsent steers go before queued input, and queued input
+starts only after the running turn ends. Waiting and uncommitted steers, then
+queued entries, are listed above the composer (at most three rows per entry and
+half of Main) until Codex's completed user message commits them by
+`clientUserMessageId`, or by text when the server does not echo one. Alt+Up or Shift+Left moves the last queued
+entry, or else the last stacked steer, back into the composer ahead of the draft.
+Stacked image files stay owned until sent.
+
+Ctrl-C first clears a non-empty draft (Ctrl+Z restores it), then interrupts the
+active turn, and with no turn active or starting exits like `/quit`. Interrupting
+with uncommitted or stacked steers sends them at once as the next turn, since
+Codex discards uncommitted input on interrupt; a steer committed before the
+interrupt is not resent, and queued input waits for that turn to end. A plain
+interrupt returns queued entries to the composer. A rejected steer returns to
+the composer, and a steer the turn ended without committing does too, because
+its delivery is unknown; neither becomes a new turn. A turn's steers settle only
+after any steer still being sent to it resolves, so resent or restored steers
+keep their typed order. On exit, stacked input is
+printed with the unsent draft, and unresolved or uncommitted submissions as
+outcome unknown, never resent. Composer notices (command, paste, editor and
 Ctrl-C feedback) follow the turn state on the composer border without replacing
 it. Non-error feedback clears after three seconds or the next draft edit;
 actionable errors remain until editing. Only
@@ -420,7 +446,7 @@ namespace; the app-server cwd never grants it filesystem authority.
 notifications through this frontend: delegation, concurrent child edits in both
 docks, a failing test and follow-up, answers and a saved diff. Input takes the
 real composer path, and the preview answers its turn start, steer and interrupt
-requests as app-server would; an interrupt ends every running turn and the
+requests as app-server would, echoing each user message's client ID; an interrupt ends every running turn and the
 remaining playback.
 
 The native client replaces the wrapped Codex terminal. The dashboard remains
