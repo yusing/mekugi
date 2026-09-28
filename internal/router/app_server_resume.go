@@ -95,16 +95,22 @@ func (u *appServerUI) restoreHistory(turns []appServerHistoryTurn) {
 						}
 					}
 					draft := composerDraft{text: text.String()}
-                    paths := make(map[string]string)
-                    for _, part := range content {
-                        if part.Type == "skill" {
-                            if previous, ok := paths[part.Name]; ok && previous != part.Path { paths[part.Name] = "" } else if !ok { paths[part.Name] = part.Path }
-                        }
-                    }
-                    for name,path := range paths {
-                        if path != "" { draft.skills = append(draft.skills, restoredSkillBindings(draft.text,name,path)...) }
-                    }
-                    u.rememberInput(draft)
+					paths := make(map[string]string)
+					for _, part := range content {
+						if part.Type == "skill" {
+							if previous, ok := paths[part.Name]; ok && previous != part.Path {
+								paths[part.Name] = ""
+							} else if !ok {
+								paths[part.Name] = part.Path
+							}
+						}
+					}
+					for name, path := range paths {
+						if path != "" {
+							draft.skills = append(draft.skills, restoredSkillBindings(draft.text, name, path)...)
+						}
+					}
+					u.rememberInput(draft)
 				}
 			}
 			method := "item/completed"

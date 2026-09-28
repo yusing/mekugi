@@ -31,7 +31,7 @@ type journalCodexProvider struct {
 	childRequests     int
 }
 
-func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byte, headers http.Header, _ string) (*http.Response, error) {
+func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []byte, headers http.Header, _ string) (*http.Response, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	metadata, _ := decodeCodexTurnMetadata(headers)
@@ -74,11 +74,18 @@ func (p *journalCodexProvider) forwardExecution(_, _ context.Context, body []byt
 		}
 		if turn == 1 {
 			workspace, _ := usableRoutingDirectory(metadata.Directories)
-			id, err := p.store.reserveChange(context.Background(), workspace, thread, "native-child-edit")
+			// Fixture writes must use the child's durable handle namespace,
+			// just like captures made by the prepared response transform.
+			ctx, release, err := p.store.beginSession(ctx, thread, thread)
 			if err != nil {
 				return nil, err
 			}
-			err = p.store.put(context.Background(), workspace, map[string]mekugiHistory{"native-child-edit": {
+			defer release()
+			id, err := p.store.reserveChange(ctx, workspace, thread, "native-child-edit")
+			if err != nil {
+				return nil, err
+			}
+			err = p.store.put(ctx, workspace, map[string]mekugiHistory{"native-child-edit": {
 				ChangeID: id, CorrelationID: "native-child-edit", ExecutingThread: thread, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("native-child.txt", "native-child.txt", "before\n", "after\n")},
 			}})
 			if err != nil {

@@ -89,7 +89,10 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 	second.send("\x022")
 	second.await("restored.go")
 	second.send("\x021")
-	second.await("⏎ send")
+	// Prove Main accepts input without depending on an obsolete footer hint.
+	second.send("restored composer draft")
+	second.await("restored composer draft")
+	second.send("\x03") // Clear without submitting a new turn.
 	second.quit()
 
 	provider.mu.Lock()

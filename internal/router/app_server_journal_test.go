@@ -30,11 +30,15 @@ func TestNativeJournalPrecedesNextHostCommand(t *testing.T) {
 			t.Fatalf("milestone must precede check: %+v", u.view.entries)
 		}
 		var frame bytes.Buffer
-		if err := u.paint(&frame, 160, 40); err != nil { t.Fatal(err) }
+		if err := u.paint(&frame, 160, 40); err != nil {
+			t.Fatal(err)
+		}
 		screen.Write(frame.Bytes())
 		visible := screen.String()
 		milestone, command := strings.Index(visible, "Checked the implementation"), strings.Index(visible, "git diff --check")
-		if milestone < 0 || command <= milestone { t.Fatalf("rendered milestone out of order:\n%s", visible) }
+		if milestone < 0 || command <= milestone {
+			t.Fatalf("rendered milestone out of order:\n%s", visible)
+		}
 	}
 	assertOrder()
 	items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, u.thread)
@@ -100,12 +104,20 @@ func TestNativeJournalUnlinkedAnswerWaitsForTerminal(t *testing.T) {
 	sink := proxy.journals.attachNative(workspace, "thread-1")
 	defer proxy.journals.detachNative(sink)
 	ids, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "answer", []journalMutation{{Op: "add", Text: new("Unlinked final answer"), Answer: new(true)}})
-	if err != nil { t.Fatal(err) }
-	if len(sink.snapshot()) != 0 { t.Fatal("answer exposed before terminal delivery") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sink.snapshot()) != 0 {
+		t.Fatal("answer exposed before terminal delivery")
+	}
 	items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	sink.publish(threadJournal{Sequence: items[0].Updated, Items: items}, true)
-	if got := sink.snapshot(); len(got) != 1 || got[0].item.ID != ids[0] || !got[0].terminal { t.Fatalf("missing terminal answer: %+v", got) }
+	if got := sink.snapshot(); len(got) != 1 || got[0].item.ID != ids[0] || !got[0].terminal {
+		t.Fatalf("missing terminal answer: %+v", got)
+	}
 }
 
 func TestNativeJournalSilentDeleteRetractsPendingMilestone(t *testing.T) {
@@ -113,12 +125,20 @@ func TestNativeJournalSilentDeleteRetractsPendingMilestone(t *testing.T) {
 	sink := proxy.journals.attachNative(workspace, "thread-1")
 	defer proxy.journals.detachNative(sink)
 	ids, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "milestone", []journalMutation{{Op: "add", Text: new("Superseded")}})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	view := newLiveActivityView()
 	view.applyJournal("thread-1", sink.snapshot()[0])
-	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "delete", []journalMutation{{Op: "delete", ID: ids[0]}}); err != nil { t.Fatal(err) }
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "delete", []journalMutation{{Op: "delete", ID: ids[0]}}); err != nil {
+		t.Fatal(err)
+	}
 	pending := sink.snapshot()
-	if len(pending) != 1 || !pending[0].retracted { t.Fatalf("missing native retraction: %+v", pending) }
+	if len(pending) != 1 || !pending[0].retracted {
+		t.Fatalf("missing native retraction: %+v", pending)
+	}
 	view.applyJournal("thread-1", pending[0])
-	if len(view.entries) != 0 { t.Fatal("deleted native milestone remained visible") }
+	if len(view.entries) != 0 {
+		t.Fatal("deleted native milestone remained visible")
+	}
 }
