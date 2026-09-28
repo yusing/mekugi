@@ -384,6 +384,8 @@ queued entries, are listed above the composer (at most three rows per entry and
 half of Main) until Codex's completed user message commits them by
 `clientUserMessageId`, or by text when the server does not echo one. Alt+Up or Shift+Left moves the last queued
 entry, or else the last stacked steer, back into the composer ahead of the draft.
+Consecutive user items in one turn appear as one prompt in the transcript,
+with each item's own navigation target retained.
 Stacked image files stay owned until sent.
 
 Escape in the focused composer interrupts an active turn without clearing its draft

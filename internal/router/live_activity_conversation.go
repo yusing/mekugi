@@ -60,6 +60,17 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			continue
 		}
 		last, j := i, i+1
+		// Codex can report consecutive steers as separate user items even
+		// though they form one uninterrupted input in the transcript.
+		if first := v.entries[i]; first.Agent == "You" && first.native != nil && first.native.turn != "" {
+			for ; j < len(v.entries); j++ {
+				next := v.entries[j]
+				if !v.visible(next) || next.Agent != "You" || next.native == nil || next.native.thread != first.native.thread || next.native.turn != first.native.turn {
+					break
+				}
+				last = j
+			}
+		}
 		for _, same := range []func(activityPaneEntry) bool{conversationTool, conversationMilestone} {
 			if !same(v.entries[i]) {
 				continue
@@ -173,11 +184,23 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			feed.mainReply = entry
 			feed.mainReplyStart, feed.mainReplyEnd = head, head+len(run.lines)
 		}
-		if entry := v.entries[it.first]; entry.Agent == "You" || entry.Kind == "start" || entry.Kind == "assignment" {
+		if entry := v.entries[it.first]; entry.Agent == "You" {
+			for seq, row := range run.entryRows {
+				v.questionRows[seq] = head + row
+			}
+		} else if entry.Kind == "start" || entry.Kind == "assignment" {
 			v.questionRows[entry.Seq] = head
 		}
-		for range run.lines {
-			feed.heads = append(feed.heads, head)
+		owner := it.first
+		for row := range run.lines {
+			start := head
+			if v.entries[it.first].Agent == "You" {
+				for owner < it.last && run.entryRows[v.entries[owner+1].Seq] <= row {
+					owner++
+				}
+				start += run.entryRows[v.entries[owner].Seq]
+			}
+			feed.heads = append(feed.heads, start)
 		}
 		feed.lines = append(feed.lines, run.lines...)
 		feed.snippets = append(feed.snippets, run.snippets...)
@@ -309,6 +332,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		return liveActivityRun{}
 	}
 	var out conversationLines
+	entryRows := make(map[uint64]int)
 	p := &v.painter
 	switch {
 	case entry.Agent == "Main" && entry.Kind == "progress":
@@ -328,7 +352,11 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			}
 		}
 	case entry.Agent == "You":
-		v.userItem(&out, entry, width)
+		for k := first; k <= last; k++ {
+			next := v.entries[k]
+			entryRows[next.Seq] = len(out.lines)
+			v.userItemContinued(&out, next, width, k != first)
+		}
 	case conversationTool(entry):
 		var group []activityui.Block
 		for k := first; k <= last; k++ {
@@ -393,7 +421,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	default:
 		v.agentItem(&out, entry, blocks, first, width, thread)
 	}
-	return liveActivityRun{lines: out.lines, snippets: out.snippets, questions: out.questions}
+	return liveActivityRun{lines: out.lines, snippets: out.snippets, questions: out.questions, entryRows: entryRows}
 }
 
 // conversationHeading is one item heading: a glyph, a name, optional dim
@@ -490,6 +518,10 @@ func (v *liveActivityView) flushItem(out *conversationLines, entry activityPaneE
 }
 
 func (v *liveActivityView) userItem(out *conversationLines, entry activityPaneEntry, width int) {
+	v.userItemContinued(out, entry, width, false)
+}
+
+func (v *liveActivityView) userItemContinued(out *conversationLines, entry activityPaneEntry, width int, continued bool) {
 	band := userBand(v.painter.Theme)
 	var rows []string
 	if entry.native != nil && len(entry.native.spans) > 0 {
@@ -504,11 +536,11 @@ func (v *liveActivityView) userItem(out *conversationLines, entry activityPaneEn
 	stamp := activityui.Dim + entry.Observed.Local().Format("15:04:05") + activityui.Undim
 	for k, row := range rows {
 		lead := "  "
-		if k == 0 {
+		if k == 0 && !continued {
 			lead = liveActivityPrompt + "❯" + activityui.Reset + " "
 		}
 		line := activityui.Reset + ansi.Truncate(lead+row, width, "…") + activityui.Reset
-		if k == 0 && ansi.StringWidth(line)+2+ansi.StringWidth(stamp) <= width {
+		if k == 0 && !continued && ansi.StringWidth(line)+2+ansi.StringWidth(stamp) <= width {
 			line += strings.Repeat(" ", width-ansi.StringWidth(line)-ansi.StringWidth(stamp)) + stamp
 		}
 		if band != "" {

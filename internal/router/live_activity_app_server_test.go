@@ -9,8 +9,46 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
+
+func TestConversationJoinsConsecutiveUserMessagesInTurn(t *testing.T) {
+	v := newLiveActivityView()
+	v.conversation = true
+	user := func(turn, id, text string) {
+		v.applyAppServerItem("main", "main", turn, id, "item/completed", "", appServerItem{
+			Type: "userMessage", Content: []byte(fmt.Sprintf(`[{"type":"text","text":%q}]`, text)),
+		})
+	}
+	user("t", "one", strings.Repeat("Also make sure different unit types have different colors.\n", 20))
+	user("t", "two", "I do not want blue for everything")
+	feed := v.renderConversation(100)
+	shown := ansi.Strip(strings.Join(feed.lines, "\n"))
+	if strings.Count(shown, "❯") != 1 || !strings.Contains(shown, "  I do not want blue for everything") || len(feed.questions) == 0 {
+		t.Fatalf("stacked input did not render as one prompt: %q", shown)
+	}
+	if v.questionRows[v.entries[1].Seq] <= v.questionRows[v.entries[0].Seq]+10 {
+		t.Fatalf("stacked input lost its own navigation row: %+v", v.questionRows)
+	}
+	second := v.questionRows[v.entries[1].Seq]
+	if feed.heads[second] != second || feed.heads[second-1] == second {
+		t.Fatalf("continued prompt lost its flash range: heads=%+v target=%d", feed.heads, second)
+	}
+	v.painter.Theme = livediff.DarkTheme
+	v.feedOnly = true
+	v.flashQuestion, v.flashUntil = v.entries[1].Seq, time.Now().Add(time.Second)
+	v.offset = second
+	frame := strings.Join(v.render(100, 12, time.Now()), "\n")
+	if !strings.Contains(frame, "I do not want blue for everything") || !strings.Contains(frame, v.painter.Theme.SelectionBackground()) {
+		t.Fatalf("continued prompt not visible and shaded: %q", frame)
+	}
+	user("next", "three", "A separate turn")
+	shown = ansi.Strip(strings.Join(v.renderConversation(100).lines, "\n"))
+	if strings.Count(shown, "❯") != 2 {
+		t.Fatalf("different turns were joined: %q", shown)
+	}
+}
 
 func TestLiveActivityNativeItemsShareStateAndRendering(t *testing.T) {
 	v := newLiveActivityView()
