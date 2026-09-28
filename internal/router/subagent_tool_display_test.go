@@ -415,6 +415,7 @@ func TestSubagentBuiltinToolDisplay(t *testing.T) {
 func TestSubagentSedReadDisplay(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
 		{"sed -n '1,260p' source.go", "Read `source.go 1:260`"},
+		{"sed -i -n '1,260p' source.go", "Edit `source.go` · sed (requested)"},
 		{"sed -n '1,260p' source.go && echo done", "Read `source.go 1:260`\n\nRun `echo done`"},
 		{"sed -n '261,520p' 'source file.go'", "Read `source file.go 261:520`"},
 	} {
@@ -424,7 +425,6 @@ func TestSubagentSedReadDisplay(t *testing.T) {
 	}
 	for _, source := range []string{
 		"sed -n '1,260p;d' source.go",
-		"sed -i -n '1,260p' source.go",
 		"sed -n '1,$p' source.go",
 		"sed -n '0,260p' source.go",
 		"sed -n '260,1p' source.go",

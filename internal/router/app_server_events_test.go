@@ -103,35 +103,35 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 	change := map[string]any{"path": path, "kind": map[string]any{"type": "update"}, "diff": "@@ -1 +1 @@\n-package a\n+package b\n"}
 	appServerTestNotify(t, u, "item/fileChange/patchUpdated", map[string]any{"threadId": "main", "turnId": "t", "itemId": "patch", "changes": []any{change}})
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "patch", "type": "fileChange", "changes": []any{change}}})
-	if len(u.shell.mainDock.Order) != 0 {
+	if len(u.shell.liveDock.Order) != 0 {
 		t.Fatal("app-server reconstructed a duplicate projection")
 	}
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
-	card := u.shell.mainDock.Views["patch"].Current
+	card := u.shell.liveDock.Views["patch"].Current
 	if len(card.Files) != 1 || !strings.Contains(card.Files[0].Diff, "+package b") || strings.Contains(card.Status, "cannot be projected") {
 		t.Fatalf("shared preview lost: %+v", card)
 	}
 	preview.Complete = true
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
-	if !u.shell.mainDock.Views["patch"].Complete {
+	if !u.shell.liveDock.Views["patch"].Complete {
 		t.Fatal("shared completion lost")
 	}
 	for _, status := range []string{"failed", "declined"} {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "patch", "type": "fileChange", "status": status, "changes": []any{change}}})
-		title := ansi.Strip(u.shell.mainDock.Views["patch"].Title(workspace, u.shell.diff.theme, 120))
+		title := ansi.Strip(u.shell.liveDock.Views["patch"].Title(workspace, u.shell.diff.theme, 120))
 		if strings.Contains(title, "✓") || !strings.Contains(title, "· preview") {
 			t.Fatalf("%s patch presented as applied: %s", status, title)
 		}
 	}
 	preview.ID, preview.Thread, preview.Caller, preview.Tool = "exec", "child", "/root/worker", nativeExecCommandToolName
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
-	if len(u.shell.agentDock.Order) != 0 {
+	if u.shell.liveDock.Views["exec"] != nil {
 		t.Fatal("completion-only shell preview flashed a dock")
 	}
 	preview.Complete = false
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
-	if len(u.shell.mainDock.Order) != 1 || len(u.shell.agentDock.Order) != 1 {
-		t.Fatal("shared previews not docked by caller")
+	if u.shell.liveDock.Views["exec"] == nil {
+		t.Fatal("child preview missing from shared dock")
 	}
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "turn", TurnRevision: 1, Status: "completed"})
 	if u.shell.diffOpen {

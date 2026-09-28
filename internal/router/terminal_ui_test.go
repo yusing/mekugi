@@ -16,20 +16,20 @@ import (
 func TestTerminalUIDockLingersAfterLastAnimation(t *testing.T) {
 	u := &terminalUI{}
 	now := time.Now()
-	u.mainDock = diffview.PreviewPane{
+	u.liveDock = diffview.PreviewPane{
 		Order: []string{"edit"}, Motion: diffview.PreviewMotion{Enabled: true},
 		Views: map[string]*diffview.PreviewView{"edit": {Complete: true, Fading: now.Add(time.Second)}},
 	}
-	u.dockSeen[0] = now.Add(-nativeDockLinger)
-	if !u.animating(now) || len(u.mainDock.Order) == 0 {
+	u.dockSeen = now.Add(-nativeDockLinger)
+	if !u.animating(now) || len(u.liveDock.Order) == 0 {
 		t.Fatal("animated completed preview disappeared")
 	}
 	u.animating(now.Add(time.Second))
-	if len(u.mainDock.Order) == 0 {
+	if len(u.liveDock.Order) == 0 {
 		t.Fatal("preview closed immediately after animation")
 	}
 	u.animating(now.Add(nativeDockLinger))
-	if len(u.mainDock.Order) != 0 {
+	if len(u.liveDock.Order) != 0 {
 		t.Fatal("finished preview did not expire")
 	}
 }
@@ -123,7 +123,7 @@ func TestPaneScrollUnified(t *testing.T) {
 
 }
 
-func TestTerminalUIIdleLiveLayout(t *testing.T) {
+func TestTerminalUIMainLivePreservesActivity(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
@@ -140,25 +140,24 @@ func TestTerminalUIIdleLiveLayout(t *testing.T) {
 	u.shell.preview(projectStockPatchPreview(t.Context(), workspace, diffview.Preview{Workspace: workspace, ID: "main-edit", Caller: "/root", Tool: applyPatchToolName, Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: idle-live.txt\n+unique-live-line\n*** End Patch"}))
 	u.agents.agents = []activityPaneAgent{{Name: "/root", Responding: true}}
 	frame := paint()
-	if u.shell.layout.agents.h != 0 || !strings.Contains(frame, "3 Live") || !strings.Contains(frame, "unique-live-line") {
-		t.Fatalf("no children must show full Live:\n%s", frame)
+	if u.shell.layout.agents.h == 0 || !strings.Contains(frame, "3 Activity") || !strings.Contains(frame, "unique-live-line") {
+		t.Fatalf("Main live edit replaced Activity:\n%s", frame)
 	}
 	if err := u.shell.mouse("\x1b[<0;70;4M"); err != nil {
 		t.Fatal(err)
 	}
 	if u.shell.focus != 2 {
-		t.Fatal("Live click did not focus the right pane")
+		t.Fatal("Activity click did not focus the right pane")
 	}
 	frame = paint()
-	if strings.Contains(frame, "3 Activity") || strings.Contains(frame, "n/p agent") {
-		t.Fatalf("Live advertised hidden Activity controls:\n%s", frame)
+	if !strings.Contains(frame, "3 Activity") || !strings.Contains(frame, "n/p agent") {
+		t.Fatalf("Main edit hid Activity controls:\n%s", frame)
 	}
 	u.agents.agents = append(u.agents.agents, activityPaneAgent{Name: "/root/worker", Final: true})
 	frame = paint()
 	activity := u.shell.layout.agents
 	innerHeight := u.shell.layout.codex.h
-	dockRows := max(1, int(float64(innerHeight)*.35+.5))
-	if activity.y != 1+dockRows || activity.h != innerHeight-dockRows || !strings.Contains(frame, "LIVE") {
+	if activity.y != 1 || activity.h != innerHeight || !strings.Contains(frame, "LIVE") {
 		t.Fatalf("idle child layout: activity=%+v inner=%d\n%s", activity, innerHeight, frame)
 	}
 	for _, key := range []byte{2, '2'} {
@@ -172,12 +171,12 @@ func TestTerminalUIIdleLiveLayout(t *testing.T) {
 	}
 	u.agents.agents[1].Responding = true
 	paint()
-	if u.shell.layout.diff.y != 1 {
-		t.Fatal("active child retained idle Live space")
+	if u.shell.layout.diff != activity {
+		t.Fatal("child activity moved the shared Live dock")
 	}
 	u.agents.agents = u.agents.agents[:1]
 	frame = paint()
-	if u.shell.layout.diff.y <= 1 || !strings.Contains(frame, "LIVE") {
+	if u.shell.layout.diff.y != 1 || !strings.Contains(frame, "LIVE") {
 		t.Fatalf("no-child diff replaced live dock:\n%s", frame)
 	}
 	for _, key := range []byte{2, '3'} {
@@ -185,7 +184,7 @@ func TestTerminalUIIdleLiveLayout(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if frame = paint(); u.shell.layout.agents.h != 0 || !strings.Contains(frame, "3 Live") || !strings.Contains(frame, "unique-live-line") {
+	if frame = paint(); u.shell.layout.agents.h == 0 || !strings.Contains(frame, "3 Activity") || !strings.Contains(frame, "unique-live-line") {
 		t.Fatalf("Live did not return:\n%s", frame)
 	}
 }
@@ -229,7 +228,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					now := time.Now()
 					u.shell.animating(now.Add(nativeDockLinger - time.Millisecond))
 					paint()
-					if u.shell.layout.live.h == 0 {
+					if !strings.Contains(screen.String(), "LIVE ·") {
 						t.Fatal("Live disappeared before its linger elapsed")
 					}
 					u.shell.animating(now.Add(nativeDockLinger))
@@ -237,7 +236,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					preview.Complete = false
 					u.shell.preview(preview)
 					paint()
-					if u.shell.layout.live.h == 0 {
+					if !strings.Contains(screen.String(), "LIVE ·") {
 						t.Fatal("new preview did not reopen Live")
 					}
 				})

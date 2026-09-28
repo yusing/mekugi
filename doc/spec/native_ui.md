@@ -138,22 +138,21 @@ are not repeated in each row. Agent names retain their identity colors. Every pa
 its tab number, focus and scroll state, and the status bar shows the tabs with
 contextual key hints. Ctrl-B + number focuses a pane.
 
-Streaming `apply_patch` edits dock at the bottom of the pane that owns them:
-Main's in Main above the composer, subagents' at the bottom of the right pane.
-When there are no child agents, Live replaces Activity across the right pane.
-When child agents exist but none is responding, Live takes the top 35% of the
-right pane and Activity fills the rest. Opening Diff keeps this top Live dock
-and switches only the content below it, including when no child agents exist.
-Main's live edits move into this right-side Live view while no child is responding.
-With responding children, each owner's dock takes 30% of its pane, within 5 to
-14 rows. Cards linger for two seconds after
-the last card's animation settles. When no cards remain, the Live area collapses
-and Activity or Diff reclaims its space. Shell or Code Mode projections first received
-at completion do not open a transient dock; captured effects remain in their
-receipt and saved diff. Concurrent edits share the dock as an accordion: cards
-split evenly when each gets five rows, otherwise one stays open, chosen as the
-roster-selected agent's card, then the current card, then the newest; Ctrl-B e
-cycles and pins it. Router previews of exec and Code Mode edits dock the same
+Streaming edits share one Live dock across Main and child agents, keyed by call
+ID so caller-less completion and removal events reach the existing card.
+Main's edits stay above Main's composer and never replace or shrink Activity.
+While Main has a card, concurrent child edits share that dock. A child-only dock
+occupies the top 35% of the right pane, leaving Activity or saved Diff below it.
+When only Main fits on screen, the shared dock sits above its composer.
+Cards linger for two seconds after the last card's animation settles. When no
+cards remain, Activity or Diff reclaims the space. Shell or Code Mode projections
+first received at completion do not open a transient dock; captured effects
+remain in their receipt and saved diff. Concurrent edits use one accordion.
+Main's live card wins automatic selection over the roster-selected child; Ctrl-B e
+can explicitly cycle and pin another card until it completes. Pending exec scope
+uses “may write”; once file differences are observed it uses “observed changes”,
+without claiming exclusive attribution or successful command completion.
+Router previews of exec and Code Mode edits dock the same
 way. All docks use the shared router preview owner, including its pre-execution
 source snapshots; app-server file-change notifications never reconstruct patches
 or re-read already edited files. A completed input stream remains explicitly

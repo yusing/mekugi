@@ -199,7 +199,8 @@ func TestExecRunningPreviewShowsScopedVCSAndCancelsWithoutEvidence(t *testing.T)
 		return strings.Contains(plain, "observed so far") && strings.Contains(plain, "+restored bytes")
 	})
 	plainRunning := ansi.Strip(running)
-	if !strings.Contains(plainRunning, "bounded scope") || !strings.Contains(plainRunning, "unresolved targets") ||
+	if strings.Contains(plainRunning, "may write") || !strings.Contains(plainRunning, "observed changes") ||
+		!strings.Contains(plainRunning, "bounded scope") || !strings.Contains(plainRunning, "unresolved targets") ||
 		strings.Contains(plainRunning, "outside secret marker") || strings.Contains(plainRunning, "outside.txt") {
 		t.Fatalf("running preview escaped its captured scope or lost its qualification: %s", plainRunning)
 	}

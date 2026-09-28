@@ -148,7 +148,7 @@ func TestLiveDiffCompletionOnlyShellDoesNotOpenNativeDock(t *testing.T) {
 			u := &terminalUI{}
 			preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
 				u.preview(preview)
-				if len(u.mainDock.Order) != 0 {
+				if len(u.liveDock.Order) != 0 {
 					t.Fatal("completion-only worker manufactured a live dock")
 				}
 				return preview.Complete

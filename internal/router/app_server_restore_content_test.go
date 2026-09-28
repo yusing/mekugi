@@ -129,7 +129,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 			t.Fatalf("observational history triggered execution: %+v", request)
 		}
 	}
-	if len(u.shell.mainDock.Order) != 0 || len(u.shell.agentDock.Order) != 0 {
+	if len(u.shell.liveDock.Order) != 0 {
 		t.Fatal("historical edit reopened a live preview")
 	}
 }

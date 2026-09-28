@@ -223,6 +223,10 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 		}
 		updated = updated || preview.Status != status || preview.Input != input
 		preview.Status, preview.Input = status, input
+		preview.Footer = execScopePreviewFooter(observation)
+		if status == diffview.PreviewRunning {
+			preview.Footer = strings.Replace(preview.Footer, "may write", "observed changes", 1)
+		}
 		if !updated {
 			// Admission can reject a new card while the broker is full. Keep
 			// retrying until it is visible, even if its files remain unchanged.

@@ -30,8 +30,8 @@ type terminalUI struct {
 	side, activityOpen                             bool
 	diffOpen                                       bool
 	diffUnseen                                     bool // Saved changes arrived while Activity held the right column.
-	mainDock, agentDock                            diffview.PreviewPane
-	dockSeen                                       [2]time.Time // Last card update in each dock.
+	liveDock                                       diffview.PreviewPane
+	dockSeen                                       time.Time // Last card update in the shared dock.
 	prefix                                         bool
 	sequenceAt                                     time.Time
 	sequence, agentEscape                          string

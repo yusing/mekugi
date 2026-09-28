@@ -1,6 +1,7 @@
 package router
 
 import (
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,6 +18,28 @@ func toolActivityEditStatement(statement *syntax.Stmt) (string, bool) {
 	command, literal := shellCatLiteral(call.Args[0])
 	if !literal {
 		return "", false
+	}
+	if filepath.Base(command) == "sed" && len(statement.Redirs) == 0 {
+		// Reuse capture's option/script parser without resolving or reading
+		// files. The operation is requested; only its later receipt has counts.
+		for _, arg := range call.Args[1:] {
+			if _, glob, literal := execWordOperand(arg); !literal || glob {
+				return "", false
+			}
+		}
+		plan := execPlan{}
+		walker := execShellWalker{cwd: ".", plan: &plan}
+		walker.sed(call.Args[1:])
+		if plan.Class != execDeclared || len(plan.Scope) == 0 {
+			return "", false
+		}
+		var paths []string
+		for _, scope := range plan.Scope {
+			for _, operand := range scope.Operands {
+				paths = append(paths, "Edit "+toolActivityCode(operand.Path)+" · sed (requested)")
+			}
+		}
+		return strings.Join(paths, "\n\n"), true
 	}
 	if command == "cat" {
 		var paths []string

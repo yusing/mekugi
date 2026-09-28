@@ -17,6 +17,14 @@ func TestShellEditIntentClassification(t *testing.T) {
 		secret        string
 	}{
 		{
+			name: "sed in-place", command: `sed -i 's/Answers\[0\]\.Id/Answers[0].ID/' internal/router/live_activity_view_test.go`,
+			wantVerbs: []string{"Edit"}, wantPaths: []string{"internal/router/live_activity_view_test.go"}, wantProgram: "sed", secret: "Answers",
+		},
+		{
+			name: "sed backup and tests", command: `/usr/bin/sed --in-place=.bak -e 's/PRIVATE_SED_SOURCE/new/' 'a file.go' b.go; go test ./...`,
+			wantVerbs: []string{"Edit", "Edit", "Edit", "Edit", "Run"}, wantPaths: []string{"a file.go", "b.go", "a file.go.bak", "b.go.bak"}, wantProgram: "sed", secret: "PRIVATE_SED_SOURCE",
+		},
+		{
 			name: "cat append and test", command: "cat >> a.go <<'EOF'\nPRIVATE_CAT_SOURCE\nEOF\ngo test ./internal/router",
 			wantVerbs: []string{"Edit", "Run"}, wantPaths: []string{"a.go"}, wantProgram: "cat", secret: "PRIVATE_CAT_SOURCE",
 		},
@@ -120,6 +128,11 @@ func TestLiveActivityRequestedEditReplacedByReceipt(t *testing.T) {
 
 func TestShellEditIntentDoesNotInventWrites(t *testing.T) {
 	for _, command := range []string{
+		`sed 's/old/new/' a.go`,
+		`sed -n '/-i/p' a.go`,
+		`sed -i "$SCRIPT" "$TARGET"`,
+		`sed -i 's/old/new/' *.go`,
+		`sed -i.bak 's/old/new/' *.go`,
 		`node -e 'process.stdout.write("hello")'`,
 		`node -e 'document.open()'`,
 		`python3 -c 'items=["x"];items.remove("x");print(items)'`,
@@ -132,6 +145,36 @@ func TestShellEditIntentDoesNotInventWrites(t *testing.T) {
 		if strings.Contains(got, "Edit ") || !strings.HasPrefix(got, "Run") {
 			t.Errorf("read-only or unknown program projected as edit: %q", got)
 		}
+	}
+}
+
+func TestAppServerSedStartsAsEditBeforeReceipt(t *testing.T) {
+	const command = `sed -i 's/Answers\[0\]\.Id/Answers[0].ID/' internal/router/live_activity_view_test.go`
+	for _, thread := range []string{"main", "child"} {
+		t.Run(thread, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			view := u.view
+			if thread == "child" {
+				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": thread, "agentNickname": "worker"}})
+				view = u.agents
+			}
+			item := appServerItem{ID: "sed-call", Type: "commandExecution", Command: command,
+				CommandActions: []appServerCommandAction{{Type: "unknown", Command: command}}}
+			for _, method := range []string{"item/started", "item/completed"} {
+				appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "turn", "item": item})
+				assertCapturedCommand(t, view, thread, "sed-call", "Edit", 0)
+			}
+			data := newLiveDiffData()
+			data.order = []string{"sed-change"}
+			data.attempts["sed-change"] = liveDiffAttempt{receipt: &capturedActivityEdit{
+				thread: thread, calls: []string{"sed-call"}, text: "Edit `internal/router/live_activity_view_test.go` +1 -1 · sed",
+			}}
+			view.applyCapturedEdits(data)
+			assertCapturedCommand(t, view, thread, "sed-call", "Edit", 0)
+			if len(view.entries) != 1 || !strings.Contains(view.entries[0].Text, "+1 -1") || strings.Contains(view.entries[0].Text, "requested") {
+				t.Fatalf("receipt failed to replace requested edit in place: %+v", view.entries)
+			}
+		})
 	}
 }
 

@@ -47,6 +47,7 @@ type PreviewPane struct {
 	open, pinned string
 	openedAt     time.Time
 	Accordion    bool // The last frame folded cards.
+	Compact      bool // Keep concurrent cards folded even when an even split fits.
 }
 
 // liveDiffDockRows is the least a card needs to be worth an even split: its
@@ -180,7 +181,7 @@ func (p *PreviewPane) Render(ctx context.Context, workspace string, theme livedi
 		p.Motion.Now = time.Now()
 	}
 	count := len(p.Order)
-	p.Accordion = count > 1 && height < count*liveDiffDockRows
+	p.Accordion = count > 1 && (p.Compact || height < count*liveDiffDockRows)
 	if p.Accordion {
 		return p.renderAccordion(ctx, workspace, theme, width, height)
 	}

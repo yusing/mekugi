@@ -107,6 +107,11 @@ wrapper. This same projector supplies provisional streaming previews and final
 generated commentary. It never evaluates shell expansions or implies that a
 command succeeded. Source line breaks and indentation remain intact.
 
+Literal, statically scoped `sed -i` edits use the shared capture parser to show
+`Edit` intent immediately, without waiting for a retained receipt. This requested
+operation has no applied counts; the captured `mchanges` evidence later replaces
+it in place with the observed file changes. Read-only `sed` is not an edit.
+
 Stock `apply_patch`, including transparent Code Mode calls using immutable
 literal patch bindings, does not emit a bare `Edit` label, a generic `Run`
 preview, or its patch body into child activity. After the host result and
