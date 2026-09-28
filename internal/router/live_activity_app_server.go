@@ -129,12 +129,13 @@ type liveActivityNativeItem struct {
 	wait               *activityui.Block // Structured wait progress is an aside in Main.
 	command, status    string
 	searchResults      *int
-	running            bool            // Started live and not yet completed; replay never sets it.
-	collapseAt         time.Time       // A settled live block stays open until then.
-	collapsed          bool            // A settled block shows collapsed: after its linger, or restored.
-	images             []composerImage // Attachment spans, not text resembling image labels.
-	question           uint64          // Original user entry, retained even for a live journal publication.
-	thought            time.Duration   // Reasoning time from its first summary delta to completion.
+	running            bool               // Started live and not yet completed; replay never sets it.
+	collapseAt         time.Time          // A settled live block stays open until then.
+	collapsed          bool               // A settled block shows collapsed: after its linger, or restored.
+	images             []composerImage    // Attachment spans, not text resembling image labels.
+	question           uint64             // Original user entry, retained even for a live journal publication.
+	thought            time.Duration      // Reasoning time from its first summary delta to completion.
+	attachments        []activityui.Block // Submitted file snapshot outcomes, recovered from host history.
 }
 
 func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {
@@ -194,6 +195,18 @@ func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, de
 		}
 	}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+	if item.Type == "userMessage" {
+		if blocks := appServerAttachmentBlocks(item.Content); len(blocks) > 0 {
+			if thread == main {
+				entry.Agent = "Main"
+			} else {
+				entry.Agent = "Thread " + thread
+			}
+			entry.Seq, entry.Kind, entry.Text = v.lastSeq+1, "attachments", ""
+			entry.native = &liveActivityNativeItem{thread: thread, turn: turn, item: id + "/attachments", phase: method, attachments: blocks}
+			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+		}
+	}
 }
 
 // appServerUserText renders userMessage content as the composer wrote it,
@@ -210,6 +223,9 @@ func appServerUserText(content jsontext.Value) (string, []composerImage, bool) {
 	var images []composerImage
 	for _, content := range contents {
 		if content.Type == "text" {
+			if _, attached := decodeFileAttachments(content.Text); attached {
+				continue
+			}
 			text += content.Text
 		} else if content.Type == "image" || content.Type == "localImage" {
 			start := len(text)

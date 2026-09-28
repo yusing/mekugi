@@ -92,6 +92,9 @@ func (u *appServerUI) restoreHistory(turns []appServerHistoryTurn) {
 					var text strings.Builder
 					for _, part := range content {
 						if part.Type == "text" {
+							if _, attached := decodeFileAttachments(part.Text); attached {
+								continue
+							}
 							text.WriteString(part.Text)
 						}
 					}

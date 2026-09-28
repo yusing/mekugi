@@ -6,12 +6,14 @@ import (
 )
 
 type composerDraft struct {
-	text       string
-	cursorBack int
-	images     []composerImage
-	skills     []composerSkill
-	files      []composerFile
-	inHistory  bool // An accepted steer being resent is already in input history.
+	text             string
+	cursorBack       int
+	images           []composerImage
+	skills           []composerSkill
+	files            []composerFile
+	attachments      []string // Immutable snapshots captured when queued/submitted.
+	attachmentNotice string
+	inHistory        bool // An accepted steer being resent is already in input history.
 }
 
 // History is local to this thread. Resume hydrates text from Codex history;

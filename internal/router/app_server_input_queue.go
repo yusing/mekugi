@@ -45,6 +45,10 @@ func joinDrafts(parts ...composerDraft) composerDraft {
 		}
 		shift := len(joined.text)
 		joined.text += part.text
+		joined.attachments = append(joined.attachments, part.attachments...)
+		if part.attachmentNotice != "" {
+			joined.attachmentNotice = part.attachmentNotice
+		}
 		for _, image := range part.images {
 			image.start, image.end = image.start+shift, image.end+shift
 			joined.images = append(joined.images, image)
@@ -75,6 +79,7 @@ func (u *appServerUI) steerParts(steers []composerSubmission) []composerDraft {
 // image files until sent.
 func (u *appServerUI) takeDraft() composerDraft {
 	d := u.draftSnapshot()
+	d.snapshotFileAttachments(u.session.cwd)
 	d.cursorBack = 0
 	u.loadDraft(composerDraft{})
 	u.cursorColumn = nil
@@ -131,7 +136,18 @@ func (u *appServerUI) flushInput() error {
 
 func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	s := composerSubmission{composerDraft: joinDrafts(parts...), parts: parts, id: rand.Text()}
-	params := map[string]any{"threadId": u.thread, "input": s.input(), "clientUserMessageId": s.id}
+	input := s.input()
+	textBytes := 0
+	for _, part := range input {
+		text, _ := part["text"].(string)
+		textBytes += len(text)
+	}
+	if len(s.attachments) > 0 && textBytes > composerTextLimit {
+		u.restoreDrafts(parts...)
+		u.setNotice("Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.", true)
+		return nil
+	}
+	params := map[string]any{"threadId": u.thread, "input": input, "clientUserMessageId": s.id}
 	method := "turn/start"
 	if steer {
 		// The pending-input preview shows a steer until Codex commits it.
@@ -147,6 +163,9 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		delete(u.ownedImages, image.path)
 	}
 	u.submission, u.status, u.alert = s, "Sending…", false
+	if s.attachmentNotice != "" {
+		u.setNotice(s.attachmentNotice, true)
+	}
 	if err := u.request(method, params); err != nil {
 		u.submission = composerSubmission{}
 		u.withdraw(s)

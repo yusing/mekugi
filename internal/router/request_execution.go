@@ -325,9 +325,13 @@ func (a *requestAttempt) prepareWire() error {
 			return fmt.Errorf("prepare collaboration bridge: %w", err)
 		}
 	}
+	attachmentsProjected := projectFileAttachments(&a.request)
 	nativeBody, err := a.request.wireBody(a.request.fields)
 	if err != nil {
 		return fmt.Errorf("encode native Responses request: %w", err)
+	}
+	if attachmentsProjected && len(nativeBody) > responsesRequestBufferBytes {
+		return fmt.Errorf("request with file attachments exceeds the %d-byte request limit; reduce attachments or conversation context", responsesRequestBufferBytes)
 	}
 	a.forwardBody = nativeBody
 	if exchange, ok := a.executor.provider.(*webSocketExchange); ok {

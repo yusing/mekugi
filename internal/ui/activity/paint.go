@@ -33,6 +33,10 @@ type Painter struct {
 func VerbColor(verb string) string {
 	first, _, _ := strings.Cut(verb, " ")
 	switch first {
+	case "Attached":
+		return Green
+	case "Attach":
+		return Red
 	case "Read", "Inspect", "View", "Open", "List", "Check":
 		return "\x1b[38;5;75m"
 	case "Search", "Find", "Skill":

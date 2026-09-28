@@ -212,10 +212,38 @@ Tab or Enter inserts the selected result without sending, and Escape dismisses
 without deleting the token. Bracketed paste does not open a picker. File paths
 with spaces are quoted. Selected files retain the `@` prefix as highlighted,
 atomic composer tokens, including navigation, deletion, undo, local input
-history, and rejected submissions. They submit as ordinary text, not image
-attachments. Supported images attach through the existing image composer;
+history, and rejected submissions. On submission or queueing, selected text files
+are snapshotted from the active thread's absolute workspace. The model receives
+the prompt with its inline `@` tokens, followed by separate user messages with
+path and byte-range frames containing the file contents. Repeated paths in a
+draft attach once. Line boundaries are preferred when splitting; long rows split
+only at UTF-8 boundaries, without dropping bytes. Supported images attach through
+the existing image composer;
 skill selections retain their exact path as structured
 Codex skill input through undo, local input history, and rejected submissions.
+
+File snapshots travel in Codex-owned input history, not a router-lifetime lookup.
+Queued input, accepted steering resends, fork/resume, and provider switches retain
+the submitted content without reopening files. The native transcript and recalled
+prompt hide transport framing. A recalled draft with live file bindings takes a
+fresh snapshot when submitted again. Attachment contents are not journal question
+text and never become developer or system instructions.
+
+Each draft has a 192 KiB encoded attachment budget, with half reserved for omission
+notices; file reads are bounded to 96 KiB and framed content chunks to 24 KiB.
+Unreadable, non-regular, non-UTF-8, NUL-containing, and oversized files are not
+silently truncated: the model receives explicit omission notices and the composer
+reports the first omission. Each submitted user item shows file outcomes before
+agent activity: an `Attached` operation per included file, or `Attach failed`
+with the file and omission reason. Chunked files appear once. These operations
+are restored from submitted snapshots on resume, without reopening files or
+displaying their contents; rejected submissions do not claim attachment success.
+A stacked submission with attachments must fit a conservative
+1 MiB UTF-8 text budget, including encoded snapshots. Larger submissions remain
+unsent and return to the composer with an actionable notice. These bounds limit
+attachment growth; they do not promise that an arbitrary pre-existing conversation
+fits a provider's context window.
+
 Ordinary file lookup uses Codex's ignore-aware file-search API. `@!` includes
 ignored files using a cancellable, debounced, read-only scan because Codex's API
 does not expose an ignore bypass. Both modes exclude VCS metadata directories

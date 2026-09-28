@@ -23,6 +23,10 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 		}
 	}
 	switch entry.Kind {
+	case "attachments":
+		if entry.native != nil {
+			return entry.native.attachments
+		}
 	case "progress":
 		if entry.native != nil && entry.native.wait != nil {
 			return []activityui.Block{*entry.native.wait}

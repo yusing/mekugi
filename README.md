@@ -26,6 +26,10 @@ sessions, and patch review. No fork, no config edits, no daemon.
   [agents pane](#agents-pane). Encrypted messages stay private.
 - **Live diffs.** Mekugi’s [live diff pane](#live-diff-pane) streams tool calls
   and provisional diffs as they arrive, then shows the saved edits.
+- **File attachments.** [Select files with `@`](#usage) to send text contents
+  directly to the agent, without a separate file-read tool call. **Attached**
+  events confirm included files; **Attach failed**
+  events explain omissions, such as oversized or unreadable files.
 - **Recoverable output and change review.** [Session helpers](#wrapped-session-helpers)
   continue truncated output without rerunning, and track edits from
   `apply_patch` and shell commands, with any gaps in coverage labeled. Edits can
@@ -107,6 +111,9 @@ mekugi --mentor-handoff=false codex --yolo
 In Main, type `@` to find a file, `@!` to include ignored files, or `$` to
 pick a skill. Both file modes exclude VCS metadata such as `.git`, `.svn`,
 and `.hg`. Use ↑/↓ to choose, Tab or Enter to insert, and Escape to dismiss.
+Selected text files attach their contents when you submit or queue the prompt;
+large or unreadable files produce explicit omission notices instead of truncated
+content. Images use image attachments.
 `/skills` opens the skills menu, including searchable enable/disable controls
 whose changes save automatically. Type `?` in an empty composer for shortcuts.
 

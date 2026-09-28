@@ -63,6 +63,9 @@ func journalQuestionFromInput(raw json.RawMessage, recipient string) string {
 				continue
 			}
 			if part.Type == "input_text" || part.Type == "text" {
+				if _, attached := decodeFileAttachments(part.Text); attached {
+					continue
+				}
 				if !strings.HasPrefix(kind, "user.") && journalContextText(part.Text) {
 					continue
 				}
