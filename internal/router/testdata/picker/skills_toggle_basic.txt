@@ -1,0 +1,12 @@
+                                                                        
+  Enable/Disable Skills                                                 
+  Turn skills on or off. Your changes are saved automatically.          
+                                                                        
+  Type to search skills                                                 
+                                                                        
+› [x] Repo Scout        Summarize the repo layout                       
+  [ ] Changelog Writer  Draft release notes                             
+                                                                        
+                                                                        
+                                                                        
+  space/enter toggle · esc close

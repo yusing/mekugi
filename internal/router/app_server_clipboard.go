@@ -38,6 +38,18 @@ func (u *appServerUI) renumberImages() {
 		if at >= attachment.end {
 			at += delta
 		}
+		for j := range u.skills {
+			if u.skills[j].start >= attachment.end {
+				u.skills[j].start += delta
+				u.skills[j].end += delta
+			}
+		}
+		for j := range u.files {
+			if u.files[j].start >= attachment.end {
+				u.files[j].start += delta
+				u.files[j].end += delta
+			}
+		}
 		attachment.end += delta
 		for j := i + 1; j < len(u.images); j++ {
 			u.images[j].start += delta
@@ -173,6 +185,9 @@ func (u *appServerUI) composerInput() []map[string]any {
 	}
 	if at < len(u.draft) || len(input) == 0 {
 		input = append(input, appserver.Input(u.draft[at:])...)
+	}
+	for _, skill := range u.skills {
+		input = append(input, map[string]any{"type": "skill", "name": skill.name, "path": skill.path})
 	}
 	return input
 }

@@ -110,7 +110,8 @@ evaluation. Literal eval arguments, stdin heredocs, and bounded script files are
 supported. They derive literal filesystem writes, single-assignment path values,
 and sequential top-level Python path reassignments. Known Python string
 replacement is not treated as a filesystem rename. They also derive
-path joins, including Python literal filename loops joined beneath a `Path` base
+path joins, including Python literal filename loops and dictionary `.items()`
+key/value unpacking joined beneath a `Path` base
 (absolute filename values replace that base), and iteration scopes, including Python `Path.glob/rglob` and JavaScript
 directory enumeration. Literal subprocess arguments are classified recursively
 with a depth bound. Unresolved targets, dynamic evaluation/loading, and unknown

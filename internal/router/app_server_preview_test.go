@@ -89,6 +89,11 @@ func TestNativeUIPreview(t *testing.T) {
 						return err
 					}
 				}
+			case result := <-p.ui.picker.scanResults:
+				p.ui.applyPickerScan(result)
+				if err := paint(); err != nil {
+					return err
+				}
 			case key, ok := <-keys:
 				if !ok {
 					return io.EOF
@@ -319,6 +324,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 }
 
 func (p *nativePreview) close() {
+	p.ui.cancelPickerScan()
 	p.ui.shell.diff.close()
 	p.ui.shell.diffScreen.Close()
 }
@@ -704,6 +710,17 @@ func (p *nativePreview) serve() {
 		result := map[string]any{}
 		turn := ""
 		switch request.Method {
+		case "skills/list":
+			result["data"] = []any{map[string]any{"cwd": p.ui.session.cwd, "skills": []any{
+				map[string]any{"name": "code-review", "description": "Review a change for correctness", "path": filepath.Join(p.ui.session.cwd, "skills/code-review/SKILL.md"), "enabled": true},
+				map[string]any{"name": "test-plan", "description": "Plan focused validation", "path": filepath.Join(p.ui.session.cwd, "skills/test-plan/SKILL.md"), "enabled": true},
+			}}}
+		case "fuzzyFileSearch":
+			files := []any{}
+			for _, path := range slices.Sorted(maps.Keys(nativePreviewFiles)) {
+				files = append(files, map[string]any{"root": p.ui.session.cwd, "path": path})
+			}
+			result["files"] = files
 		case "turn/settings/update":
 			result["status"] = "applied"
 		case "turn/start":

@@ -12,7 +12,7 @@ import (
 )
 
 // execSourceScope derives path values from syntax, never from evaluation. Unknown
-// expressions remain open; the post-call sweep is required even for closed scopes.
+// expressions remain open; only derived paths are compared after execution.
 type execSourceScope struct {
 	input                       execProviderInput
 	source                      []byte
@@ -20,6 +20,7 @@ type execSourceScope struct {
 	python                      bool
 	vars                        map[string][]string
 	segments                    map[string][]string // Raw strings, before cwd resolution, for path joins.
+	pythonItems                 map[string][2]execPythonValues
 	texts                       map[string]bool
 	assigned                    map[string]int
 	aliases                     map[string]string
@@ -382,11 +383,18 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 		}
 	}
 	if node.Kind() == "augmented_assignment" {
+		if s.python {
+			left := node.ChildByFieldName("left")
+			if left != nil && left.Kind() == "subscript" {
+				delete(s.pythonItems, s.text(left.ChildByFieldName("value")))
+			}
+		}
 		if left := node.ChildByFieldName("left"); left != nil && left.Kind() == "identifier" {
 			name := s.text(left)
 			delete(s.vars, name)
 			delete(s.texts, name)
 			delete(s.segments, name)
+			delete(s.pythonItems, name)
 		}
 	}
 	if node.Kind() == "assignment" || node.Kind() == "variable_declarator" {
@@ -413,11 +421,28 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 				s.segments[name] = segments
 				s.vars[name] = paths
 				s.texts[name] = text
+				if s.python {
+					delete(s.pythonItems, name)
+					if items, ok := s.pythonDictionaryItems(right); ok {
+						if s.pythonItems == nil {
+							s.pythonItems = make(map[string][2]execPythonValues)
+						}
+						s.pythonItems[name] = items
+					}
+				}
 			} else {
 				delete(s.vars, name)
 				delete(s.texts, name)
 				delete(s.segments, name)
+				delete(s.pythonItems, name)
 			}
+		}
+		if s.python && left != nil && left.Kind() == "subscript" {
+			delete(s.pythonItems, s.text(left.ChildByFieldName("value")))
+		}
+		if s.python && right != nil && right.Kind() == "identifier" {
+			// Do not retain a snapshot once the mutable dictionary is aliased.
+			delete(s.pythonItems, s.text(right))
 		}
 	}
 	if node.Kind() == "for_statement" || node.Kind() == "for_in_statement" {
@@ -431,6 +456,9 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 			s.segments[s.text(left)] = segments
 			s.vars[s.text(left)] = paths
 			delete(s.texts, s.text(left))
+			delete(s.pythonItems, s.text(left))
+		} else if s.python && left != nil {
+			s.bindPythonItems(left, right)
 		}
 	}
 	if function, args := sourceCall(node); function != nil {

@@ -85,23 +85,43 @@ func TestAppServerComposerRedoInvalidatedAndSubmitClearsHistory(t *testing.T) {
 	}
 }
 
-func TestAppServerComposerImageIsOneNavigationUnit(t *testing.T) {
-	for _, tt := range []struct{ name, keys, want string }{
-		{"left", "\x1b[D\x1b[DX", "aX[Image 1]b"},
-		{"right", "\x1b[H\x1b[C\x1b[CX", "a[Image 1]Xb"},
-		{"delete", "\x1b[D\x1b[D\x1b[3~", "ab"},
-		{"ctrl left", "\x1b[1;5D\x1b[1;5DX", "aX[Image 1]b"},
-		{"ctrl right", "\x1b[H\x1b[1;5C\x1b[1;5CX", "a[Image 1]Xb"},
-		{"alt backspace", "\x1b[D\x1b\x7f", "ab"},
-		{"alt delete", "\x1b[D\x1b[D\x1b[3;3~", "ab"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			u, _ := newAppServerTestUI()
-			appServerTestKeys(t, u, "a")
+func TestAppServerComposerTokenIsOneNavigationUnit(t *testing.T) {
+	for _, token := range []struct {
+		name, label string
+		attach      func(*testing.T, *appServerUI)
+	}{
+		{"image", "[Image 1]", func(t *testing.T, u *appServerUI) {
 			u.attachImage(filepath.Join(t.TempDir(), "image.png"))
-			appServerTestKeys(t, u, "b"+tt.keys)
-			if u.draft != tt.want {
-				t.Fatalf("draft = %q, want %q", u.draft, tt.want)
+		}},
+		{"skill", "$review", func(_ *testing.T, u *appServerUI) {
+			start := len(u.draft)
+			u.draft += "$review"
+			u.skills = append(u.skills, composerSkill{start: start, end: len(u.draft), name: "review", path: "/work/review/SKILL.md"})
+		}},
+		{"file", `@"file name.go"`, func(_ *testing.T, u *appServerUI) {
+			bindComposerFile(u, `@"file name.go"`, "file name.go")
+		}},
+	} {
+		t.Run(token.name, func(t *testing.T) {
+			for _, tt := range []struct{ name, keys, want string }{
+				{"left", "\x1b[D\x1b[DX", "aX" + token.label + "b"},
+				{"right", "\x1b[H\x1b[C\x1b[CX", "a" + token.label + "Xb"},
+				{"delete", "\x1b[D\x1b[D\x1b[3~", "ab"},
+				{"ctrl left", "\x1b[1;5D\x1b[1;5DX", "aX" + token.label + "b"},
+				{"ctrl right", "\x1b[H\x1b[1;5C\x1b[1;5CX", "a" + token.label + "Xb"},
+				{"alt backspace", "\x1b[D\x1b\x7f", "ab"},
+				{"alt delete", "\x1b[D\x1b[D\x1b[3;3~", "ab"},
+				{"backspace undo", "\x1b[D\x7f\x1a", "a" + token.label + "b"},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					u, _ := newAppServerTestUI()
+					appServerTestKeys(t, u, "a")
+					token.attach(t, u)
+					appServerTestKeys(t, u, "b"+tt.keys)
+					if u.draft != tt.want {
+						t.Fatalf("draft = %q, want %q", u.draft, tt.want)
+					}
+				})
 			}
 		})
 	}

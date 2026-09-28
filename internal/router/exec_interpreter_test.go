@@ -56,6 +56,92 @@ p = Path('last.txt'); p.write_text(p.read_text().replace('old', 'new'))
 	})
 }
 
+func TestPythonInterpreterDictionaryItemsInitialAdditions(t *testing.T) {
+	for _, shadow := range []bool{false, true} {
+		t.Run(fmt.Sprintf("shadow=%v", shadow), func(t *testing.T) {
+			workspace := t.TempDir()
+			writeTestFile(t, filepath.Join(workspace, "source.snap"), "---\nheader\n---\nfixture body\n")
+			script := `from pathlib import Path
+root = Path('.')
+out = Path('fixtures')
+out.mkdir(parents=True, exist_ok=True)
+sources = {
+    'first.txt': root / 'source.snap',
+    'second.txt': root / 'source.snap',
+}
+
+for name, source in sources.items():
+    raw = source.read_bytes()
+    body = raw.split(b'---\n', 2)[2]
+    (out / name).write_bytes(body)
+`
+			if shadow {
+				script = strings.ReplaceAll(script, "for name, source", "for sources, source")
+				script = strings.ReplaceAll(script, "out / name", "out / sources")
+			}
+			pythonName, pythonBinary := interpreterForTest("python3", "python")
+			command := pythonName + " <<'PY'\n" + script + "PY"
+			observation := captureInterpreterTestObservation(t, workspace, command)
+			for _, name := range []string{"first.txt", "second.txt"} {
+				path := filepath.Join(workspace, "fixtures", name)
+				if !slices.ContainsFunc(observation.Files, func(file execFileSnapshot) bool { return file.Path == path }) {
+					t.Fatalf("initial addition has no pre-execution baseline: %s; %+v", name, observation.Files)
+				}
+			}
+			if pythonBinary == "" {
+				t.Skip("Python runtime unavailable")
+			}
+			cmd := exec.Command(pythonBinary, "-c", script)
+			cmd.Dir = workspace
+			if output, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("run Python: %v: %s", err, output)
+			}
+			assertExactInterpreterReviews(t, workspace, observation, map[string][]string{
+				"fixtures/first.txt": {"+fixture body"}, "fixtures/second.txt": {"+fixture body"},
+			})
+		})
+	}
+}
+
+func TestPythonDictionaryItemsScope(t *testing.T) {
+	for _, tt := range []struct {
+		name, source string
+		open         bool
+		want         []string
+	}{
+		{"inline", "for name, value in {'a.txt': unknown()}.items():\n (Path('out') / name).write_text('new')", false, []string{"out/a.txt"}},
+		{"values", "targets = {'a': Path('out/a.txt'), 'b': Path('out/b.txt')}\nfor name, target in targets.items():\n target.write_text('new')", false, []string{"out/a.txt", "out/b.txt"}},
+		{"shadow dictionary", "targets = {'a.txt': 'body'}\nfor targets, body in targets.items():\n (Path('out') / targets).write_text(body)", false, []string{"out/a.txt"}},
+		{"absolute key", "targets = {'/tmp/absolute.txt': 1}\nfor name, value in targets.items():\n (Path('out') / name).write_text('new')", false, []string{"/tmp/absolute.txt"}},
+		{"unknown key", "targets = {'a.txt': 1, unknown(): 2}\nfor name, value in targets.items():\n (Path('out') / name).write_text('new')", true, nil},
+		{"dictionary unpack", "targets = {'a.txt': 1, **unknown()}\nfor name, value in targets.items():\n (Path('out') / name).write_text('new')", true, nil},
+		{"reassigned", "targets = {'a.txt': 1}\ntargets = unknown()\nfor name, value in targets.items():\n (Path('out') / name).write_text('new')", true, nil},
+		{"mutated", "targets = {'a.txt': 1}\ntargets.update(unknown())\nfor name, value in targets.items():\n (Path('out') / name).write_text('new')", true, nil},
+		{"subscript", "targets = {'a.txt': 1}\ntargets[unknown()] = 2\nfor name, value in targets.items():\n (Path('out') / name).write_text('new')", true, nil},
+		{"stale unpacked name", "name = 'old.txt'\nfor name, value in unknown():\n (Path('out') / name).write_text('new')", true, nil},
+		{"alias", "targets = {'a.txt': 1}\nother = targets\nother[unknown()] = 2\nfor name, value in targets.items():\n (Path('out') / name).write_text('new')", true, nil},
+		{"passed to function", "targets = {'a.txt': 1}\nmutate(targets)\nfor name, value in targets.items():\n (Path('out') / name).write_text('new')", true, nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			result := inspectExecSource(execProviderInput{cwd: workspace, deadline: time.Now().Add(time.Second)}, tt.source, "", execPythonLanguage, true)
+			var got []string
+			for _, scope := range result.scope {
+				for _, operand := range scope.Operands {
+					got = append(got, operand.Path)
+				}
+			}
+			var want []string
+			for _, path := range tt.want {
+				want = append(want, execProviderPath(workspace, path))
+			}
+			if result.open != tt.open || !slices.Equal(got, want) {
+				t.Fatalf("scope = %v open=%v; want %v open=%v", got, result.open, want, tt.open)
+			}
+		})
+	}
+}
+
 func TestPythonInterpreterLiteralAndRecursiveWritesExact(t *testing.T) {
 	workspace := t.TempDir()
 	writeTestFile(t, filepath.Join(workspace, "src", "one.py"), "old one\n")

@@ -9,6 +9,90 @@ import (
 
 var execPythonLanguage = sitter.NewLanguage(python.Language())
 
+type execPythonValues struct {
+	paths, segments []string
+}
+
+// Keep keys and values separate: an unknown value need not hide literal output
+// names. These are bounded syntax-derived candidates, not evaluated Python.
+func (s *execSourceScope) pythonDictionaryItems(node *sitter.Node) ([2]execPythonValues, bool) {
+	var items [2]execPythonValues
+	if node == nil || node.Kind() != "dictionary" {
+		return items, false
+	}
+	unknownPaths, unknownSegments := [2]bool{}, [2]bool{}
+	for i := range node.NamedChildCount() {
+		pair := node.NamedChild(uint(i))
+		if pair.Kind() == "comment" {
+			continue
+		}
+		if pair.Kind() != "pair" || i >= maxExecListingEntries {
+			return [2]execPythonValues{}, false
+		}
+		for column, field := range []string{"key", "value"} {
+			value := pair.ChildByFieldName(field)
+			paths, segments := s.paths(value), s.literalSegments(value, 0)
+			unknownPaths[column] = unknownPaths[column] || len(paths) == 0
+			unknownSegments[column] = unknownSegments[column] || len(segments) == 0
+			if len(items[column].paths)+len(paths) > maxExecListingEntries || len(items[column].segments)+len(segments) > maxExecListingEntries {
+				return [2]execPythonValues{}, false
+			}
+			items[column].paths = append(items[column].paths, paths...)
+			items[column].segments = append(items[column].segments, segments...)
+		}
+	}
+	for column := range items {
+		if unknownPaths[column] {
+			items[column].paths = nil
+		}
+		if unknownSegments[column] {
+			items[column].segments = nil
+		}
+	}
+	return items, true
+}
+
+func (s *execSourceScope) bindPythonItems(left, right *sitter.Node) {
+	// Python evaluates the iterable before assigning loop targets, which may
+	// themselves shadow the dictionary's name.
+	function, args := sourceCall(right)
+	var items [2]execPythonValues
+	ok := false
+	if function != nil {
+		object := function.ChildByFieldName("object")
+		items, ok = s.pythonItems[s.text(object)]
+		if !ok {
+			items, ok = s.pythonDictionaryItems(object)
+		}
+	}
+	// Clear old bindings even when the new iterable cannot be resolved.
+	for i := range left.NamedChildCount() {
+		name := s.text(left.NamedChild(uint(i)))
+		delete(s.vars, name)
+		delete(s.segments, name)
+		delete(s.texts, name)
+		delete(s.pythonItems, name)
+	}
+	if function == nil || s.text(function.ChildByFieldName("attribute")) != "items" || len(args) != 0 || left.NamedChildCount() != 2 {
+		return
+	}
+	for i := range left.NamedChildCount() {
+		if left.NamedChild(uint(i)).Kind() != "identifier" {
+			return
+		}
+	}
+	if !ok {
+		return
+	}
+	if s.segments == nil {
+		s.segments = make(map[string][]string)
+	}
+	for column, values := range items {
+		name := s.text(left.NamedChild(uint(column)))
+		s.vars[name], s.segments[name] = values.paths, values.segments
+	}
+}
+
 // Distinguish string replacement from Path.replace without evaluating content.
 func (s *execSourceScope) pythonText(node *sitter.Node, depth int) bool {
 	if node == nil || depth >= 32 {
@@ -61,6 +145,16 @@ func (s *execSourceScope) pythonCall(function *sitter.Node, base string, args []
 	}
 	object := function.ChildByFieldName("object")
 	name := s.text(object)
+	if base != "items" {
+		// Mutating or unknown dictionary methods invalidate the snapshot.
+		delete(s.pythonItems, name)
+	}
+	for _, argument := range args {
+		if argument.Kind() == "keyword_argument" {
+			argument = argument.ChildByFieldName("value")
+		}
+		delete(s.pythonItems, s.text(argument))
+	}
 	module := object == nil || name == "os" || name == "shutil"
 	switch base {
 	case "open":

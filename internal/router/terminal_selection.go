@@ -133,6 +133,7 @@ func (u *terminalUI) selectionAction(action byte) {
 	case 'r':
 		u.main.run = runNone
 		u.main.insertDraft("> " + u.selection.text() + "\n\n")
+		u.main.refreshPicker()
 		u.main.run = runNone
 		u.focus = 0
 	case 'c':

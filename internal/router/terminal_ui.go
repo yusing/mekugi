@@ -294,6 +294,9 @@ func (u *terminalUI) terminalColor(reply string) {
 }
 
 func (u *terminalUI) send(s string) error {
+	if s == "\x1b" && u.main != nil && u.focus == 0 && u.main.pickerKey(s) {
+		return nil
+	}
 	if s == "\x1b" && u.main != nil && !u.main.keybindings {
 		var transcript *liveActivityView
 		if u.focus == 0 {
@@ -364,6 +367,25 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	button, x, y := v[0], v[1]-1, v[2]-1
 	release := s[len(s)-1] == 'm'
+	if u.main != nil && u.main.pickerVisible() && u.main.picker.rect.contains(x-u.layout.codex.x, y-u.layout.codex.y) {
+		if !release {
+			switch button &^ 28 {
+			case 0:
+				p := &u.main.picker
+				row := y - u.layout.codex.y - p.rect.y - p.rowStart
+				if row >= 0 && row < p.rowCount {
+					p.selected = p.top + row
+					u.main.pickerKey("\r")
+					u.main.refreshPicker()
+				}
+			case 64:
+				u.main.pickerKey("\x10")
+			case 65:
+				u.main.pickerKey("\x0e")
+			}
+		}
+		return nil
+	}
 	if u.selectionMouse(button, x, y, release) {
 		return nil
 	}

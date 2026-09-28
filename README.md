@@ -104,6 +104,12 @@ mekugi codex --yolo resume 'CONVERSATION_ID'
 mekugi --mentor-handoff=false codex --yolo
 ```
 
+In Main, type `@` to find a file, `@!` to include ignored files, or `$` to
+pick a skill. Both file modes exclude VCS metadata such as `.git`, `.svn`,
+and `.hg`. Use ↑/↓ to choose, Tab or Enter to insert, and Escape to dismiss.
+`/skills` opens the skills menu, including searchable enable/disable controls
+whose changes save automatically. Type `?` in an empty composer for shortcuts.
+
 Each invocation:
 
 - starts a private router on a random loopback port and stops it when Codex

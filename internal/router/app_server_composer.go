@@ -2,6 +2,7 @@ package router
 
 import (
 	"iter"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -39,7 +40,25 @@ func (u *appServerUI) insertDraft(text string) {
 		u.recordDraft()
 		u.run = runInsert
 	}
+	u.insertDraftText(text)
+}
+
+// Insert into an already-recorded edit, such as one picker replacement.
+func (u *appServerUI) insertDraftText(text string) {
+	at := u.cursor()
 	u.draft = u.draft[:at] + text + u.draft[at:]
+	for i := range u.files {
+		if u.files[i].start >= at {
+			u.files[i].start += len(text)
+			u.files[i].end += len(text)
+		}
+	}
+	for i := range u.skills {
+		if u.skills[i].start >= at {
+			u.skills[i].start += len(text)
+			u.skills[i].end += len(text)
+		}
+	}
 	for i := range u.images {
 		if u.images[i].start >= at {
 			u.images[i].start += len(text)
@@ -48,13 +67,35 @@ func (u *appServerUI) insertDraft(text string) {
 	}
 }
 
-func (u *appServerUI) draftBoundary(at, direction int) int {
-	for _, attachment := range u.images {
-		if direction < 0 && at > attachment.start && at <= attachment.end {
-			return attachment.start
+// draftTokenSpans is the shared editing and presentation boundary for every
+// atomic composer token. Payload and lifetime remain owned by each token kind.
+func (u *appServerUI) draftTokenSpans() iter.Seq2[int, int] {
+	return func(yield func(int, int) bool) {
+		for _, token := range u.images {
+			if !yield(token.start, token.end) {
+				return
+			}
 		}
-		if direction > 0 && at >= attachment.start && at < attachment.end {
-			return attachment.end
+		for _, token := range u.skills {
+			if !yield(token.start, token.end) {
+				return
+			}
+		}
+		for _, token := range u.files {
+			if !yield(token.start, token.end) {
+				return
+			}
+		}
+	}
+}
+
+func (u *appServerUI) draftBoundary(at, direction int) int {
+	for start, end := range u.draftTokenSpans() {
+		if direction < 0 && at > start && at <= end {
+			return start
+		}
+		if direction > 0 && at >= start && at < end {
+			return end
 		}
 	}
 	previous := 0
@@ -120,6 +161,30 @@ func (u *appServerUI) removeDraft(start, end int, run composerRun) {
 		kept = append(kept, attachment)
 	}
 	u.images = kept
+	keptSkills := u.skills[:0]
+	for _, skill := range u.skills {
+		if skill.start < end && skill.end > start {
+			continue
+		}
+		if skill.start >= end {
+			skill.start -= end - start
+			skill.end -= end - start
+		}
+		keptSkills = append(keptSkills, skill)
+	}
+	u.skills = keptSkills
+	keptFiles := u.files[:0]
+	for _, file := range u.files {
+		if file.start < end && file.end > start {
+			continue
+		}
+		if file.start >= end {
+			file.start -= end - start
+			file.end -= end - start
+		}
+		keptFiles = append(keptFiles, file)
+	}
+	u.files = keptFiles
 	u.draft = u.draft[:start] + u.draft[end:]
 	u.cursorBack = len(u.draft) - start
 	u.renumberImages()
@@ -131,10 +196,12 @@ func (u *appServerUI) removeDraft(start, end int, run composerRun) {
 func (u *appServerUI) draftGraphemes() iter.Seq2[int, string] {
 	return func(yield func(int, string) bool) {
 		boundaries := []int{0}
-		for _, attachment := range u.images {
-			boundaries = append(boundaries, attachment.start, attachment.end)
+		for start, end := range u.draftTokenSpans() {
+			boundaries = append(boundaries, start, end)
 		}
 		boundaries = append(boundaries, len(u.draft))
+		slices.Sort(boundaries)
+		boundaries = slices.Compact(boundaries)
 		for i := 1; i < len(boundaries); i++ {
 			start, end := boundaries[i-1], boundaries[i]
 			g := uniseg.NewGraphemes(u.draft[start:end])
@@ -159,7 +226,6 @@ func (u *appServerUI) draftLayout() ([]string, []composerPoint) {
 	rows := []string{""}
 	points := []composerPoint{}
 	column := 0
-	imageIndex := 0
 	for start, cluster := range u.draftGraphemes() {
 		text := livediff.Safe(cluster, false)
 		size := ansi.StringWidth(text)
@@ -172,11 +238,11 @@ func (u *appServerUI) draftLayout() ([]string, []composerPoint) {
 			rows = append(rows, "")
 			column = 0
 		} else {
-			for imageIndex < len(u.images) && start >= u.images[imageIndex].end {
-				imageIndex++
-			}
-			if imageIndex < len(u.images) && start >= u.images[imageIndex].start {
-				text = "\x1b[1;36m" + text + "\x1b[22;39m"
+			for tokenStart, tokenEnd := range u.draftTokenSpans() {
+				if start >= tokenStart && start < tokenEnd {
+					text = "\x1b[1;36m" + text + "\x1b[22;39m"
+					break
+				}
 			}
 			rows[len(rows)-1] += text
 			column += size
@@ -250,12 +316,12 @@ func (u *appServerUI) moveDraft(sequence string) {
 			return
 		}
 	}
-	for _, attachment := range u.images {
-		if at > attachment.start && at < attachment.end {
+	for start, end := range u.draftTokenSpans() {
+		if at > start && at < end {
 			if at > u.cursor() {
-				at = attachment.end
+				at = end
 			} else {
-				at = attachment.start
+				at = start
 			}
 			break
 		}
@@ -265,19 +331,18 @@ func (u *appServerUI) moveDraft(sequence string) {
 
 func (u *appServerUI) wordBoundary(at int, backward bool) int {
 	low, high := 0, len(u.draft)
-	for _, image := range u.images {
-		if backward && at == image.end {
-			return image.start
+	for start, end := range u.draftTokenSpans() {
+		if backward && at == end {
+			return start
 		}
-		if !backward && at == image.start {
-			return image.end
+		if !backward && at == start {
+			return end
 		}
-		if image.end <= at {
-			low = image.end
+		if end <= at {
+			low = max(low, end)
 		}
-		if image.start >= at {
-			high = image.start
-			break
+		if start >= at {
+			high = min(high, start)
 		}
 	}
 	if backward {

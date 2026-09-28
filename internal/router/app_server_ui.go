@@ -55,6 +55,9 @@ type appServerItem struct {
 }
 
 type appServerUI struct {
+	picker                    composerPicker
+	files, submittedFiles     []composerFile
+	skills, submittedSkills   []composerSkill
 	client                    *appserver.Client
 	view                      *liveActivityView
 	agents                    *liveActivityView
@@ -142,6 +145,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	}
 	u.ensureShell()
 	return func() error {
+		defer u.cancelPickerScan()
 		defer u.shell.diff.close()
 		defer u.shell.diffScreen.Close()
 		if proxy != nil {
@@ -207,6 +211,8 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						u.shell.diff.escapeC = nil
 						u.shell.diff.escapeKey()
 						u.dirty = true
+					case result := <-u.picker.scanResults:
+						u.applyPickerScan(result)
 					case message, ok := <-c.Messages:
 						if !ok {
 							exited = true
@@ -332,6 +338,11 @@ func (u *appServerUI) request(method string, params any) error {
 }
 
 func (u *appServerUI) message(m appserver.Message) error {
+	defer u.refreshPicker()
+	if m.Method == "skills/changed" {
+		u.picker.skillsLoaded = false
+		u.picker.resolved = composerTarget{}
+	}
 	// Input observations precede the output items that answer them. Drain
 	// before a completion, not just on the next paint tick, so links bind once.
 	u.applyObservedActivity()
@@ -346,6 +357,9 @@ func (u *appServerUI) message(m appserver.Message) error {
 	if m.Method == "" {
 		method := u.requests[string(m.ID)]
 		delete(u.requests, string(m.ID))
+		if u.pickerMessage(method, m) {
+			return nil
+		}
 		if method == "thread/list" && u.resumeThread == "--last" {
 			return u.resumeLastResponse(m)
 		}
@@ -437,7 +451,7 @@ func (u *appServerUI) message(m appserver.Message) error {
 				return u.restorePaneContent(result.Thread)
 			}
 		case "turn/start", "turn/steer":
-			u.rememberInput(composerDraft{text: u.submitted, images: slices.Clone(u.submittedImages)})
+			u.rememberInput(composerDraft{text: u.submitted, images: slices.Clone(u.submittedImages), skills: slices.Clone(u.submittedSkills), files: slices.Clone(u.submittedFiles)})
 			if u.status == "Sending…" && !u.alert {
 				if u.turn != "" {
 					u.status = "Working"
@@ -446,6 +460,8 @@ func (u *appServerUI) message(m appserver.Message) error {
 				}
 			}
 			u.submittedImages = nil
+			u.submittedSkills = nil
+			u.submittedFiles = nil
 			u.submitted = ""
 			u.submissionSeq = 0
 			// turn/started may precede or follow the response. Do not clear the
@@ -517,6 +533,10 @@ func (u *appServerUI) message(m appserver.Message) error {
 }
 
 func (u *appServerUI) key(key byte) (bool, error) {
+	defer u.refreshPicker()
+	if !u.paste && u.escape == "" && key != 27 && u.pickerKey(string([]byte{key})) {
+		return false, nil
+	}
 	if u.escape == "\x1b" && (key == 127 || key == 8) && !u.paste {
 		u.escape = ""
 		u.deleteWord(true)
@@ -525,6 +545,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	// A bare Escape dismisses keybindings. Do not eat the next
 	// ordinary key while waiting for a CSI sequence that never arrives.
 	if u.escape == "\x1b" && key != '[' && key != 'O' {
+		u.pickerKey("\x1b")
 		u.escape = ""
 	}
 	if !u.paste && u.escape == "" {
@@ -540,6 +561,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		if key >= 0x40 && key <= 0x7e || len(u.escape) > 32 {
+			if !u.paste && u.pickerKey(u.escape) {
+				u.escape = ""
+				return false, nil
+			}
 			switch u.escape {
 			case "\x1b[1;2A", "\x1b[1;2B":
 				sequence := u.escape
@@ -568,7 +593,15 @@ func (u *appServerUI) key(key byte) (bool, error) {
 				u.run = runNone
 			case "\x1b[201~":
 				u.paste = false
-				u.finishPaste()
+				if u.picker.modal == "manage" {
+					u.picker.query += string(u.pasted)
+					u.pasted = nil
+				} else if u.picker.modal == "menu" {
+					u.pasted = nil
+				} else {
+					u.finishPaste()
+				}
+				u.picker.dismissed, u.picker.open = u.completionTarget(), false
 			case "\x1b[5~":
 				if !u.paste {
 					u.view.scrollKey('b')
@@ -630,6 +663,11 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.insertDraft("\n")
 	case '\r':
 		text := strings.TrimSpace(u.draft)
+		if text == "/skills" {
+			u.deleteDraftRange(0, len(u.draft))
+			u.picker.modal, u.picker.open, u.picker.selected, u.picker.top = "menu", true, 0, 0
+			return false, nil
+		}
 		if text == "/quit" {
 			if u.turn == "" && !u.starting && u.submitted == "" {
 				u.draft = ""
@@ -642,7 +680,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /model, /reasoning, /tier, /quit", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /skills, /model, /reasoning, /tier, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil || u.starting || u.submitted != "" || u.settingsPending {
@@ -666,6 +704,8 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			delete(u.ownedImages, u.images[i].path)
 		}
 		u.submittedImages, u.images = u.images, nil
+		u.submittedSkills, u.skills = u.skills, nil
+		u.submittedFiles, u.files = u.files, nil
 		u.historyBack, u.historyDraft = 0, composerDraft{}
 		u.undoDrafts, u.redoDrafts = nil, nil
 		u.run = runNone
@@ -704,6 +744,18 @@ func (u *appServerUI) restoreSubmission() {
 		u.images[i].start += shift
 		u.images[i].end += shift
 	}
+	for i := range u.skills {
+		u.skills[i].start += shift
+		u.skills[i].end += shift
+	}
+	for i := range u.files {
+		u.files[i].start += shift
+		u.files[i].end += shift
+	}
+	u.files = append(u.submittedFiles, u.files...)
+	u.submittedFiles = nil
+	u.skills = append(u.submittedSkills, u.skills...)
+	u.submittedSkills = nil
 	u.images = append(u.submittedImages, u.images...)
 	u.submittedImages = nil
 	if u.draft == "" {
@@ -774,6 +826,10 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 // between the two, in the returned rectangle, for the live edit dock.
 func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect) {
 	width, height = max(1, width), max(1, height)
+	u.picker.rect = terminalRect{}
+	if u.pickerVisible() && u.picker.modal != "" {
+		return u.skillsModalFrame(width, height), terminalRect{}
+	}
 	boxed := width >= 12 && height >= 3
 	borderRows, inset := 0, min(2, width-1)
 	if boxed {
@@ -794,6 +850,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 	draft = draft[firstRow:min(len(draft), firstRow+visible)]
 
 	room := max(0, height-len(draft)-borderRows)
+	if u.pickerVisible() {
+		dock = 0
+	}
 	dock = min(dock, max(0, room-1))
 	room -= dock
 	u.mainContentPainted = room > 1
@@ -807,6 +866,15 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 		if u.keybindings && (u.shell == nil || u.shell.focus == 0) {
 			u.mainContentPainted = false
 			frame = renderNativeKeybindings(width, room)
+		}
+		if u.pickerVisible() {
+			// The publication may occupy precisely the rows hidden by the picker.
+			// Defer journal presentation receipts until the overlay closes.
+			u.mainContentPainted = false
+			popupHeight := min(room, u.pickerHeight(width))
+			popup := u.renderPicker(width, popupHeight)
+			u.picker.rect = terminalRect{0, len(frame) - popupHeight, width, popupHeight}
+			copy(frame[len(frame)-popupHeight:], popup)
 		}
 	}
 	dockAt := len(frame)

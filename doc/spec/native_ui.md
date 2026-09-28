@@ -189,7 +189,43 @@ and Transcript columns that stack when the pane is too narrow.
 `?` or Escape closes them, and other keyboard input dismisses them while retaining
 its normal behavior. A mouse event dismisses help without acting on the hidden
 transcript. Question marks in non-empty drafts and bracketed paste remain
-literal input. Dragging across text in Main, the composer, or Activity selects the visible text
+literal input.
+
+At a composer word boundary, `@` opens the file picker and `$` opens the skill
+completion picker. Both dock above the composer and hide its live-edit dock
+while focused. Up/Down or Ctrl-P/Ctrl-N wrap selection,
+Tab or Enter inserts the selected result without sending, and Escape dismisses
+without deleting the token. Bracketed paste does not open a picker. File paths
+with spaces are quoted. Selected files retain the `@` prefix as highlighted,
+atomic composer tokens, including navigation, deletion, undo, local input
+history, and rejected submissions. They submit as ordinary text, not image
+attachments. Supported images attach through the existing image composer;
+skill selections retain their exact path as structured
+Codex skill input through undo, local input history, and rejected submissions.
+Ordinary file lookup uses Codex's ignore-aware file-search API. `@!` includes
+ignored files using a cancellable, debounced, read-only scan because Codex's API
+does not expose an ignore bypass. Both modes exclude VCS metadata directories
+(`.git`, `.svn`, `.hg`, `.bzr`, `_darcs`, and `CVS`). Lookup is always rooted in
+the active thread's absolute workspace, never the router working directory.
+The native scan does not traverse directory symlinks. Search updates coalesce
+while a request is pending; stale or canceled responses never replace current
+results. Loading, empty, and failure states remain visible without polluting
+the conversation.
+
+`/skills` replaces the composer with Codex's numbered Skills action menu:
+List skills inserts `$`; Enable/Disable Skills opens a searchable management
+view showing enabled and disabled skills. Arrow keys navigate, printable text
+filters by display or canonical name, and Space or Enter saves a toggle through
+Codex's path-scoped skills configuration API. Checkboxes change only after a
+successful response, failures remain visible, and Escape closes the view.
+The catalog reloads after management closes. Column widths use only the current
+visible rows; off-screen names never widen columns or hide descriptions.
+Selected rows, aligned columns,
+overflow indicators, descriptions, and footer hints follow the stock picker;
+the menu and management layouts are checked against Codex snapshot fixtures.
+Plugin browsing is outside this file/skills picker scope.
+
+Dragging across text in Main, the composer, or Activity selects the visible text
 and offers Reference (R), Copy (Ctrl+C, also C), and Clear (Escape) in the status bar.
 Selection actions and the existing pane shortcut bar share bold key labels and
 bullet separators. Composer selection excludes its prompt and borders.

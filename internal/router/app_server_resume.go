@@ -84,6 +84,8 @@ func (u *appServerUI) restoreHistory(turns []appServerHistoryTurn) {
 				var content []struct {
 					Type string `json:"type"`
 					Text string `json:"text"`
+					Name string `json:"name"`
+					Path string `json:"path"`
 				}
 				if json.Unmarshal(item.Content, &content) == nil {
 					var text strings.Builder
@@ -92,7 +94,17 @@ func (u *appServerUI) restoreHistory(turns []appServerHistoryTurn) {
 							text.WriteString(part.Text)
 						}
 					}
-					u.rememberInput(composerDraft{text: text.String()})
+					draft := composerDraft{text: text.String()}
+                    paths := make(map[string]string)
+                    for _, part := range content {
+                        if part.Type == "skill" {
+                            if previous, ok := paths[part.Name]; ok && previous != part.Path { paths[part.Name] = "" } else if !ok { paths[part.Name] = part.Path }
+                        }
+                    }
+                    for name,path := range paths {
+                        if path != "" { draft.skills = append(draft.skills, restoredSkillBindings(draft.text,name,path)...) }
+                    }
+                    u.rememberInput(draft)
 				}
 			}
 			method := "item/completed"

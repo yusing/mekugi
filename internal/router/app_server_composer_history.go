@@ -9,6 +9,8 @@ type composerDraft struct {
 	text       string
 	cursorBack int
 	images     []composerImage
+	skills     []composerSkill
+	files      []composerFile
 }
 
 // History is local to this thread. Resume hydrates text from Codex history;
@@ -41,11 +43,13 @@ func (u *appServerUI) recallInput(backward bool) {
 		snapshot = u.inputHistory[len(u.inputHistory)-next]
 	}
 	u.draft, u.cursorBack, u.images = snapshot.text, snapshot.cursorBack, slices.Clone(snapshot.images)
+	u.skills = slices.Clone(snapshot.skills)
+	u.files = slices.Clone(snapshot.files)
 	u.cursorColumn = nil
 }
 
 func (u *appServerUI) draftSnapshot() composerDraft {
-	return composerDraft{u.draft, u.cursorBack, slices.Clone(u.images)}
+	return composerDraft{u.draft, u.cursorBack, slices.Clone(u.images), slices.Clone(u.skills), slices.Clone(u.files)}
 }
 
 type composerUndo struct {
@@ -85,6 +89,8 @@ func (u *appServerUI) undoDraft(redo bool) {
 	*from = (*from)[:len(*from)-1]
 	u.historyBack, u.historyDraft = snapshot.historyBack, snapshot.historyDraft
 	u.draft, u.cursorBack, u.images = snapshot.text, snapshot.cursorBack, slices.Clone(snapshot.images)
+	u.skills = slices.Clone(snapshot.skills)
+	u.files = slices.Clone(snapshot.files)
 }
 
 // Images referenced by undo/redo remain usable. Submission transfers file
