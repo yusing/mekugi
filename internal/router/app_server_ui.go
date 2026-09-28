@@ -862,13 +862,13 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 	draft, points := u.draftLayout()
 	caret := points[len(points)-1]
 	for _, point := range points {
-		if point.offset == u.cursor() {
+		if point.Offset == u.cursor() {
 			caret = point
 			break
 		}
 	}
 	visible := min(6, height-borderRows)
-	firstRow := max(0, caret.row-visible+1)
+	firstRow := max(0, caret.Row-visible+1)
 	draft = draft[firstRow:min(len(draft), firstRow+visible)]
 
 	room := max(0, height-len(draft)-borderRows)
@@ -939,15 +939,15 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 			prefix = liveActivityPrompt + "❯ " + inputColor
 		}
 		line = ansi.Truncate(line, textWidth, "")
-		if focused && textWidth > 1 && i+firstRow == caret.row {
-			before := ansi.Cut(line, 0, caret.column)
+		if focused && textWidth > 1 && i+firstRow == caret.Row {
+			before := ansi.Cut(line, 0, caret.Column)
 			cluster, _, _, _ := uniseg.FirstGraphemeClusterInString(u.draft[u.cursor():], -1)
 			cellWidth := max(1, ansi.StringWidth(livediff.Safe(cluster, false)))
-			cell := ansi.Cut(line, caret.column, caret.column+cellWidth)
+			cell := ansi.Cut(line, caret.Column, caret.Column+cellWidth)
 			if ansi.StringWidth(cell) == 0 {
 				cell = " "
 			}
-			rest := ansi.Cut(line, caret.column+cellWidth, textWidth)
+			rest := ansi.Cut(line, caret.Column+cellWidth, textWidth)
 			line = before + "\x1b[7m" + cell + "\x1b[27m" + rest
 		}
 		if boxed {

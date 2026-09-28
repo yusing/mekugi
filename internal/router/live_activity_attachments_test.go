@@ -33,14 +33,20 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 		t.Fatalf("missing, duplicated, or reordered receipts: %+v", u.view.entries)
 	}
 	blocks := u.view.blocks[1]
+	if blocks[0].Path != path {
+		t.Fatalf("attachment path is not literal: %+v", blocks[0])
+	}
 	if len(blocks) != 2 || blocks[0].Verb != "Attached" || blocks[1].Verb != "Attach failed" || !strings.Contains(blocks[1].Label, "no such file") {
 		t.Fatalf("incorrect outcomes: %+v", blocks)
 	}
 	var screen bytes.Buffer
-	if err := u.paint(&screen, 140, 35); err != nil {
+	if err := u.paint(&screen, 300, 35); err != nil {
 		t.Fatal(err)
 	}
 	plain := ansi.Strip(screen.String())
+	if !strings.Contains(plain, path) || strings.Contains(plain, `"`+path+`"`) {
+		t.Fatalf("attachment path not displayed unquoted: %s", plain)
+	}
 	attached, failed, response := strings.Index(plain, "Attached"), strings.Index(plain, "Attach failed"), strings.Index(plain, "Agent response")
 	if attached < 0 || failed < attached || response < failed || strings.Contains(plain, "private file contents") || strings.Contains(plain, fileAttachmentPrefix) {
 		t.Fatalf("incorrect receipt rendering/order: %s", plain)

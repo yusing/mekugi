@@ -492,20 +492,9 @@ func (v *liveActivityView) flushItem(out *conversationLines, entry activityPaneE
 func (v *liveActivityView) userItem(out *conversationLines, entry activityPaneEntry, width int) {
 	band := userBand(v.painter.Theme)
 	var rows []string
-	if entry.native != nil && len(entry.native.images) > 0 {
-		// Keep attachment-bearing input literal, like the composer: Markdown
-		// syntax must not consume an attachment as a link or code delimiter.
-		var text strings.Builder
-		at := 0
-		for _, image := range entry.native.images {
-			text.WriteString(livediff.Safe(entry.Text[at:image.start], false))
-			text.WriteString("\x1b[1;36m")
-			text.WriteString(livediff.Safe(entry.Text[image.start:image.end], false))
-			text.WriteString("\x1b[22;39m")
-			at = image.end
-		}
-		text.WriteString(livediff.Safe(entry.Text[at:], false))
-		rows = activityui.Wrap(text.String(), width-2, true)
+	if entry.native != nil && len(entry.native.spans) > 0 {
+		// Bound input stays literal; Markdown must not consume token text.
+		rows, _ = activityui.LayoutSpans(entry.Text, entry.native.spans, width-2)
 	} else {
 		rows = v.painter.Markdown(livediff.Safe(entry.Text, false), width-2)
 	}

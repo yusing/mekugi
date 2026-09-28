@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/appserver"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 type composerImage struct {
@@ -181,16 +182,30 @@ func shellWord(text string) (string, bool) {
 
 func (d composerDraft) input() []map[string]any {
 	var input []map[string]any
+	appendText := func(start, end int) {
+		part := appserver.Input(d.text[start:end])[0]
+		var elements []composerTextElement
+		for _, span := range d.displaySpans() {
+			if span.Kind != activityui.ImageToken && span.Start >= start && span.End <= end {
+				elements = append(elements, composerTextElement{
+					ByteRange:   composerByteRange{Start: span.Start - start, End: span.End - start},
+					Placeholder: d.text[span.Start:span.End],
+				})
+			}
+		}
+		part["textElements"] = elements
+		input = append(input, part)
+	}
 	at := 0
 	for _, attachment := range d.images {
 		if attachment.start > at {
-			input = append(input, appserver.Input(d.text[at:attachment.start])...)
+			appendText(at, attachment.start)
 		}
 		input = append(input, map[string]any{"type": "localImage", "path": attachment.path})
 		at = attachment.end
 	}
 	if at < len(d.text) || len(input) == 0 {
-		input = append(input, appserver.Input(d.text[at:])...)
+		appendText(at, len(d.text))
 	}
 	for _, skill := range d.skills {
 		input = append(input, map[string]any{"type": "skill", "name": skill.name, "path": skill.path})

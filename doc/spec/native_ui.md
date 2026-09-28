@@ -223,6 +223,17 @@ the existing image composer;
 skill selections retain their exact path as structured
 Codex skill input through undo, local input history, and rejected submissions.
 
+Single-unit spans use shared logic for every bound token kind, including file
+references, skill references, and `[Image N]` placeholders. Navigation and deletion
+never split a token. Composer and submitted-input rendering keep a token on one
+row when it fits; oversized tokens wrap only at grapheme boundaries without losing
+content. Token types have distinct colors: images are magenta, files green, and
+skills amber, consistently across composer and transcript. Literal lookalikes do
+not acquire attachment identity.
+File and skill span byte ranges travel in Codex text elements, relative to each
+text part, so host echoes and restored history retain their presentation without
+guessing from prompt text. Missing historical span metadata stays literal.
+
 File snapshots travel in Codex-owned input history, not a router-lifetime lookup.
 Queued input, accepted steering resends, fork/resume, and provider switches retain
 the submitted content without reopening files. The native transcript and recalled
@@ -237,6 +248,8 @@ silently truncated: the model receives explicit omission notices and the compose
 reports the first omission. Each submitted user item shows file outcomes before
 agent activity: an `Attached` operation per included file, or `Attach failed`
 with the file and omission reason. Chunked files appear once. These operations
+render paths without surrounding quotes, using the existing shared path formatting
+(subdued directories and emphasized filename), not transport-envelope syntax. They
 are restored from submitted snapshots on resume, without reopening files or
 displaying their contents; rejected submissions do not claim attachment success.
 A stacked submission with attachments must fit a conservative

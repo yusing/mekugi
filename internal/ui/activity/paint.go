@@ -571,6 +571,13 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			return p.ranRow(block, width)
 		}
 		label := p.Label(block.Verb, block.Label) + ResultCount(block.Results)
+		if block.Path != "" {
+			path := Path(livediff.Safe(block.Path, false))
+			if label != "" {
+				path += Dim + " · " + Undim + label
+			}
+			label = path
+		}
 		if row, ok := p.editRow(block, width, block.cell(block.Verb)); ok {
 			label = row
 		}

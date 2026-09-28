@@ -160,7 +160,7 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		u.starting = true
 		s.seq = u.view.lastSeq + 1
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: s.seq, Agent: "You", Kind: "text", Text: s.text, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.thread, item: fmt.Sprintf("input/%d", s.seq), phase: "input/pending", images: slices.Clone(s.images)}}}})
+			native: &liveActivityNativeItem{thread: u.thread, item: fmt.Sprintf("input/%d", s.seq), phase: "input/pending", spans: s.composerDraft.displaySpans()}}}})
 	}
 	for _, image := range s.images {
 		delete(u.ownedImages, image.path)

@@ -19,6 +19,7 @@ type Block struct {
 	Kind        string // op, reads, message, start, error, text
 	Verb        string // Operation verb, or a message headline.
 	Label       string // Markdown remainder of the operation label.
+	Path        string // Literal operation target, rendered with shared path styling.
 	Code        string // Inline code or fenced program under the label.
 	Lang        string
 	Fenced      bool

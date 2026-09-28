@@ -37,6 +37,9 @@ func TestAppServerImageTranscriptHighlight(t *testing.T) {
 					if ansi.StringWidth(line) > width {
 						t.Fatalf("row exceeds viewport: %q", line)
 					}
+					if strings.Contains(ansi.Strip(line), "[Image") && strings.Contains(line, "\x1b[1;35m") && !strings.Contains(ansi.Strip(line), "]") {
+						t.Fatalf("split image placeholder: %q", line)
+					}
 					for x := range width {
 						cell := screen.CellAt(x, y)
 						if cell != nil && cell.Style.Attrs&uv.AttrBold != 0 {

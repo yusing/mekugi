@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 )
 
@@ -103,6 +104,14 @@ func TestAppServerComposerTokenIsOneNavigationUnit(t *testing.T) {
 		}},
 	} {
 		t.Run(token.name, func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			appServerTestKeys(t, u, "prefix ")
+			token.attach(t, u)
+			u.composerWidth = 16
+			rows, _ := u.draftLayout()
+			if !strings.Contains(ansi.Strip(strings.Join(rows, "\n")), token.label) {
+				t.Fatalf("split atomic token: %q", rows)
+			}
 			for _, tt := range []struct{ name, keys, want string }{
 				{"left", "\x1b[D\x1b[DX", "aX" + token.label + "b"},
 				{"right", "\x1b[H\x1b[C\x1b[CX", "a" + token.label + "Xb"},

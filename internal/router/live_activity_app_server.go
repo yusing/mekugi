@@ -129,13 +129,13 @@ type liveActivityNativeItem struct {
 	wait               *activityui.Block // Structured wait progress is an aside in Main.
 	command, status    string
 	searchResults      *int
-	running            bool               // Started live and not yet completed; replay never sets it.
-	collapseAt         time.Time          // A settled live block stays open until then.
-	collapsed          bool               // A settled block shows collapsed: after its linger, or restored.
-	images             []composerImage    // Attachment spans, not text resembling image labels.
-	question           uint64             // Original user entry, retained even for a live journal publication.
-	thought            time.Duration      // Reasoning time from its first summary delta to completion.
-	attachments        []activityui.Block // Submitted file snapshot outcomes, recovered from host history.
+	running            bool                  // Started live and not yet completed; replay never sets it.
+	collapseAt         time.Time             // A settled live block stays open until then.
+	collapsed          bool                  // A settled block shows collapsed: after its linger, or restored.
+	spans              []activityui.TextSpan // Attachment spans, not text resembling image labels.
+	question           uint64                // Original user entry, retained even for a live journal publication.
+	thought            time.Duration         // Reasoning time from its first summary delta to completion.
+	attachments        []activityui.Block    // Submitted file snapshot outcomes, recovered from host history.
 }
 
 func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {
@@ -180,7 +180,7 @@ func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, de
 		case "agentMessage":
 		case "userMessage":
 			var ok bool
-			if entry.Text, entry.native.images, ok = appServerUserText(item.Content); !ok {
+			if entry.Text, entry.native.spans, ok = appServerUserText(item.Content); !ok {
 				return
 			}
 			if thread == main {
@@ -211,29 +211,37 @@ func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, de
 
 // appServerUserText renders userMessage content as the composer wrote it,
 // with each image as its "[Image N]" label.
-func appServerUserText(content jsontext.Value) (string, []composerImage, bool) {
+func appServerUserText(content jsontext.Value) (string, []activityui.TextSpan, bool) {
 	var contents []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+		Type     string                `json:"type"`
+		Text     string                `json:"text"`
+		Elements []composerTextElement `json:"textElements"`
 	}
 	if len(content) > 0 && json.Unmarshal(content, &contents) != nil {
 		return "", nil, false
 	}
 	var text string
-	var images []composerImage
+	var spans []activityui.TextSpan
+	imageCount := 0
 	for _, content := range contents {
 		if content.Type == "text" {
 			if _, attached := decodeFileAttachments(content.Text); attached {
 				continue
 			}
+			for _, span := range composerElementSpans(content.Text, content.Elements) {
+				span.Start += len(text)
+				span.End += len(text)
+				spans = append(spans, span)
+			}
 			text += content.Text
 		} else if content.Type == "image" || content.Type == "localImage" {
 			start := len(text)
-			text += fmt.Sprintf("[Image %d]", len(images)+1)
-			images = append(images, composerImage{start: start, end: len(text)})
+			imageCount++
+			text += fmt.Sprintf("[Image %d]", imageCount)
+			spans = append(spans, activityui.TextSpan{Start: start, End: len(text), Kind: activityui.ImageToken})
 		}
 	}
-	return text, images, true
+	return text, spans, true
 }
 
 // mergeNative updates the owning activity entry in place. Completed snapshots

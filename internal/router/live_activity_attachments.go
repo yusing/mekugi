@@ -31,12 +31,12 @@ func appServerAttachmentBlocks(content jsontext.Value) []activityui.Block {
 			continue
 		}
 		for _, frame := range frames {
-			verb, label := "Attached", ""
+			verb, label, path := "Attached", "", ""
 			rest := strings.TrimPrefix(frame, "Attached file ")
 			quoted, err := strconv.QuotedPrefix(rest)
 			if err == nil {
 				rest = rest[len(quoted):]
-				label = quoted
+				path, _ = strconv.Unquote(quoted)
 				switch {
 				case strings.HasPrefix(rest, " (UTF-8 bytes "):
 					// Multiple content chunks represent one attached file.
@@ -46,7 +46,7 @@ func appServerAttachmentBlocks(content jsontext.Value) []activityui.Block {
 						continue
 					}
 					message, _ := strconv.Unquote(reason)
-					verb, label = "Attach failed", label+" · "+message
+					verb, label = "Attach failed", message
 				default:
 					continue
 				}
@@ -55,10 +55,10 @@ func appServerAttachmentBlocks(content jsontext.Value) []activityui.Block {
 			} else {
 				continue
 			}
-			key := verb + "\x00" + label
+			key := verb + "\x00" + path + "\x00" + label
 			if !seen[key] {
 				seen[key] = true
-				blocks = append(blocks, activityui.Block{Kind: "op", Verb: verb, Label: livediff.Safe(label, false)})
+				blocks = append(blocks, activityui.Block{Kind: "op", Verb: verb, Path: path, Label: livediff.Safe(label, false)})
 			}
 		}
 	}

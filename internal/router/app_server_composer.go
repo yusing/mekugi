@@ -7,9 +7,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
-	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // cursorBack counts bytes after the caret, so an untouched draft starts at its end.
@@ -67,22 +66,27 @@ func (u *appServerUI) insertDraftText(text string) {
 	}
 }
 
-// draftTokenSpans is the shared editing and presentation boundary for every
+// displaySpans is the shared editing and presentation boundary for every
 // atomic composer token. Payload and lifetime remain owned by each token kind.
+func (d composerDraft) displaySpans() []activityui.TextSpan {
+	var spans []activityui.TextSpan
+	for _, token := range d.images {
+		spans = append(spans, activityui.TextSpan{Start: token.start, End: token.end, Kind: activityui.ImageToken})
+	}
+	for _, token := range d.skills {
+		spans = append(spans, activityui.TextSpan{Start: token.start, End: token.end, Kind: activityui.SkillToken})
+	}
+	for _, token := range d.files {
+		spans = append(spans, activityui.TextSpan{Start: token.start, End: token.end, Kind: activityui.FileToken})
+	}
+	slices.SortFunc(spans, func(a, b activityui.TextSpan) int { return a.Start - b.Start })
+	return spans
+}
+
 func (u *appServerUI) draftTokenSpans() iter.Seq2[int, int] {
 	return func(yield func(int, int) bool) {
-		for _, token := range u.images {
-			if !yield(token.start, token.end) {
-				return
-			}
-		}
-		for _, token := range u.skills {
-			if !yield(token.start, token.end) {
-				return
-			}
-		}
-		for _, token := range u.files {
-			if !yield(token.start, token.end) {
+		for _, token := range (composerDraft{images: u.images, skills: u.skills, files: u.files}).displaySpans() {
+			if !yield(token.Start, token.End) {
 				return
 			}
 		}
@@ -215,44 +219,18 @@ func (u *appServerUI) draftGraphemes() iter.Seq2[int, string] {
 	}
 }
 
-type composerPoint struct{ offset, row, column int }
-
-// Layout and navigation share display-cell positions, including soft wraps.
-func (u *appServerUI) draftLayout() ([]string, []composerPoint) {
+// Layout and navigation share the same atomic-span layout as submitted input.
+func (u *appServerUI) draftLayout() ([]string, []activityui.TextPoint) {
 	width := u.composerWidth
 	if width == 0 {
 		width = 80
 	}
-	rows := []string{""}
-	points := []composerPoint{}
-	column := 0
-	for start, cluster := range u.draftGraphemes() {
-		text := livediff.Safe(cluster, false)
-		size := ansi.StringWidth(text)
-		if column >= width || text != "\n" && column > 0 && column+size > width {
-			rows = append(rows, "")
-			column = 0
-		}
-		points = append(points, composerPoint{start, len(rows) - 1, column})
-		if text == "\n" {
-			rows = append(rows, "")
-			column = 0
-		} else {
-			for tokenStart, tokenEnd := range u.draftTokenSpans() {
-				if start >= tokenStart && start < tokenEnd {
-					text = "\x1b[1;36m" + text + "\x1b[22;39m"
-					break
-				}
-			}
-			rows[len(rows)-1] += text
-			column += size
-		}
-	}
-	if width > 1 && column >= width {
+	rows, points := activityui.LayoutSpans(u.draft, (composerDraft{images: u.images, skills: u.skills, files: u.files}).displaySpans(), width)
+	last := points[len(points)-1]
+	if width > 1 && last.Column >= width {
 		rows = append(rows, "")
-		column = 0
+		points[len(points)-1] = activityui.TextPoint{Offset: len(u.draft), Row: len(rows) - 1}
 	}
-	points = append(points, composerPoint{len(u.draft), len(rows) - 1, column})
 	if width > 1 {
 		rows[len(rows)-1] += " "
 	}
@@ -285,28 +263,28 @@ func (u *appServerUI) moveDraft(sequence string) {
 		_, points := u.draftLayout()
 		current := points[len(points)-1]
 		for _, point := range points {
-			if point.offset == at {
+			if point.Offset == at {
 				current = point
 				break
 			}
 		}
 		if u.cursorColumn == nil {
-			u.cursorColumn = new(current.column)
+			u.cursorColumn = new(current.Column)
 		}
-		row := current.row + 1
+		row := current.Row + 1
 		if strings.HasSuffix(sequence, "A") {
-			row = current.row - 1
+			row = current.Row - 1
 		}
 		best := -1
 		for _, point := range points {
-			if point.row != row {
+			if point.Row != row {
 				continue
 			}
 			if best < 0 {
-				best = point.offset
+				best = point.Offset
 			}
-			if point.column <= *u.cursorColumn {
-				best = point.offset
+			if point.Column <= *u.cursorColumn {
+				best = point.Offset
 			}
 		}
 		if best >= 0 {
