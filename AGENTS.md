@@ -34,6 +34,9 @@ Report types:
 
 The linked contracts own interface details, exceptions, and acceptance cases.
 
+- **Visible-row alignment:** In scrollable lists and pickers, derive shared
+  column widths only from currently visible rows. Off-screen items must not
+  change alignment, truncation, or description visibility.
 - **Session continuity:** Features remain correct across `/fork`, `/side`,
   agent switching through `/subagents`, model switches, and `codex resume`,
   including a fresh router process. Restore inherited authorization from
