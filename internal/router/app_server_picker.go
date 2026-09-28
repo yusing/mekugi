@@ -130,6 +130,10 @@ func (u *appServerUI) completionTarget() composerTarget {
 }
 
 func (u *appServerUI) refreshPicker() {
+	if u.currentQuestion() != nil {
+		u.picker.open = false
+		return
+	}
 	if u.paste || u.escape != "" || !utf8.ValidString(u.draft) {
 		return
 	}

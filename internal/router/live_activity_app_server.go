@@ -124,6 +124,7 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 // Native items extend the activity model rather than creating another transcript
 // cache. Their identities are deliberately not joined to provider call IDs.
 type liveActivityNativeItem struct {
+	questions          []activityui.Question
 	thread, turn, item string
 	phase              string
 	wait               *activityui.Block // Structured wait progress is roster-only.
@@ -152,6 +153,9 @@ func (v *liveActivityView) entrySeq(entry activityPaneEntry) uint64 {
 }
 
 func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, delta string, item appServerItem) {
+	if item.Delivery == "async" && len(item.Questions) > 0 {
+		return
+	}
 	if thread == "" || turn == "" || id == "" {
 		return
 	}
@@ -181,6 +185,9 @@ func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, de
 		case "userMessage":
 			var ok bool
 			if entry.Text, entry.native.spans, ok = appServerUserText(item.Content); !ok {
+				return
+			}
+			if len(questionReplies(entry.Text)) > 0 {
 				return
 			}
 			if thread == main {

@@ -352,6 +352,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				entries = append(entries, s.collab(item, id, now)...)
 			}
 		case "agentMessage":
+			if item.Delivery == "async" && len(item.Questions) > 0 {
+				return !main, nil
+			}
 			if main {
 				return false, nil // Main's messages belong to the transcript handler.
 			}

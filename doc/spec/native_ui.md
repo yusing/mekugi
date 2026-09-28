@@ -601,3 +601,96 @@ remaining playback.
 The native client replaces the wrapped Codex terminal. The dashboard remains
 available at the invocation URL. Redirected and noninteractive commands do not
 start the native UI.
+
+### User-input questions
+
+Root-thread questions use a shared dock above the composer, hiding the live-edit
+dock. `request_user_input` arrives as `item/tool/requestUserInput`; unexpected
+server requests retain the visibly blocked fallback. Async questions arrive as
+`agentMessage` items with `delivery: "async"` and `questions`, not as server
+requests. They never become final-answer cards, journal finals, or final-answer
+bookkeeping and do not complete a turn.
+
+The dock shows question position, header, pending state (`waiting` for sync,
+`open` for async), full wrapped question text, numbered options and descriptions,
+and an always-present Other choice. It occupies at most half of Main. Long option
+lists scroll with `option N/M`; only visible options determine column widths.
+Descriptions drop when less than 24 columns remain. Key hints wrap into bands,
+with compact hints in narrow panes. Long question bodies remain accessible through
+PgUp/PgDn rather than ellipsis truncation.
+
+Up/Down and Ctrl-P/Ctrl-N wrap option selection. Digits choose options; other
+printable input selects Other and edits the answer. Tab on a sync option edits a
+note; async answers have no separate note. Enter records an answer and advances;
+on the last question it submits the call. Left/Right navigate questions freely.
+Ctrl-] skips. A submission with gaps requires the inline confirmation
+`Submit with N unanswered? · enter submit · esc back`. Escape closes a note,
+then hides the dock while retaining drafts; with it hidden, Escape retains its
+usual interrupt behavior. Ctrl-C retains clear/interrupt/quit behavior.
+
+Async arrival never takes focus. Sync arrival takes focus only if the composer
+is empty and has had no keystroke for one second. Otherwise a one-row banner
+appears and editing continues. Keystrokes received before the dock is painted do
+not select or submit an answer. Clicking the banner or Ctrl+B Q opens the dock;
+Session help lists the key. Main's title shows `?N` while another pane has focus.
+Alt+Up and Shift+Left retain their queued-input editing meaning.
+
+Opening the dock parks the whole main editor: text, caret, undo/redo, history
+position, file/skill tokens, images and Shell Mode. Hiding or submitting restores
+it unchanged. The frame says `draft kept` when the parked draft is non-empty.
+Each question has its own editor across navigation and hide/reopen. Answer text
+never merges into the main draft. Answer editors accept literal text, Unicode,
+paste, undo and Ctrl-G, but disable completion, Shell Mode and image attachment;
+Ctrl-V reports `answers are text only`. Secret answers are masked with `•` and
+never enter input history. If resolution, interruption or supersession discards
+an unsent non-secret answer draft, it is saved to local input history with
+`unsent answer saved to input history`, not inserted into the main draft. Secret
+drafts are discarded. Neither main nor answer drafts survive router restart.
+
+Synchronous requests are keyed by thread and JSON-RPC request ID. Exactly one
+response is sent, preserving the original ID. Its `answers` object maps question
+IDs to `{answers: [string]}`: an option sends `[label]`; a note sends
+`[label, "user_note: …"]`; Other sends `["user_note: …"]`; skipped questions
+are omitted. All-skipped sends `{answers: {}}`. Resolution notifications,
+turn completion and interruption close the request, and stale responses are
+never sent. While the dock is hidden and a sync request waits, Enter queues the
+main draft instead of steering it. The open composer says
+`answering · turn waiting`.
+
+Async answers are batched per tool call, in a single ordinary user-input envelope:
+
+```text
+<send_user_message_question_reply>[{"answer":"…","question":"…","questionItemId":"[\"request_user_input_async\",\"ITEM_ID\",0]"}]</send_user_message_question_reply>
+```
+
+The existing submission path steers during an active turn, starts a turn when
+idle, or queues until input is accepted. Different calls are never merged into
+one envelope; skipped questions send nothing. Reply envelopes do not enter prompt
+history or create duplicate user-message bands. Answers appear only beneath their
+Asked record; pending-input previews show question submission progress without
+transport framing or repeated answers. Between submission and committed user-message observation the card reads
+`sending`. Rejection reopens the question with its draft, without changing the
+main editor. A committed reply from any client resolves the matching
+`(threadId, itemId, index)`; replay uses the same identities and never resends.
+
+Async questions remain open across turn end, noting that an answer starts a new
+turn. An ordinary prompt committed in a new turn supersedes older open questions;
+a steer does not. Before sending a new-turn draft, the banner says
+`enter starts a new turn · dismisses N questions`. Resume reconstructs unmatched
+questions from history, subject to that supersession rule, without taking focus.
+
+Main groups adjacent question records without repeated Main headings. The dock
+uses padded question and option rows, an accented position header, right-aligned
+state when space permits, theme-aware selection, and subdued hints with accented
+keys. Main and Activity use the shared `Asked` operation with full question text and
+observed answers. Pending records say `waiting` or `open`; observed outcomes are
+`answered`, `skipped`, `interrupted`, `superseded`, or `answered elsewhere`.
+Answers sit directly under their questions with a distinct reply marker and
+stronger weight; observed completion states use a light/dark-aware success color.
+Secrets are excluded from these answer records. The scripted native preview
+includes an async question and a sync question. In-process acceptance covers
+encoding, batching, stale IDs, interruption, focus/draft isolation, secret masking
+and history exclusion, external commits, rejection, replay and supersession.
+Installed-Codex PTY acceptance answers an async question mid-turn and checks one
+provider envelope, then answers and resolves a sync request with
+`default_mode_request_user_input` enabled.

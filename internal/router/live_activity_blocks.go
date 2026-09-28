@@ -22,6 +22,13 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 		}
 	}
 	switch entry.Kind {
+	case "question":
+		label, body, _ := strings.Cut(text, "\n")
+		block := activityui.Block{Kind: "op", Verb: "Asked", Label: label, Body: body}
+		if entry.native != nil {
+			block.Questions = entry.native.questions
+		}
+		return []activityui.Block{block}
 	case "attachments":
 		if entry.native != nil {
 			return entry.native.attachments

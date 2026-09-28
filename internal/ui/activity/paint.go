@@ -567,6 +567,9 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		return lines
 	case "op":
+		if len(block.Questions) > 0 {
+			return p.questionRows(block, width)
+		}
 		if block.Verb == "Run" {
 			return p.ranRow(block, width)
 		}

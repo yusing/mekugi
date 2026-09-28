@@ -27,7 +27,7 @@ func userBand(theme livediff.Theme) string {
 // conversationTool reports Main's own operations, which render as one
 // indented group so adjacent reads merge exactly as they do in Activity.
 func conversationTool(entry activityPaneEntry) bool {
-	return entry.Agent == "Main" && entry.journal == nil && slices.Contains([]string{"tool", "command", "output_filter", "attachments"}, entry.Kind)
+	return entry.Agent == "Main" && entry.journal == nil && slices.Contains([]string{"tool", "command", "output_filter", "attachments", "question"}, entry.Kind)
 }
 
 // conversationMilestone reports a live Main journal milestone. Adjacent ones

@@ -321,7 +321,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			draw(left, body)
 		} else {
 			l.codex = terminalRect{left.x + 1, left.y + 1, iw, ih}
-			draw(left, nativeBox(left.w, left.h, nativeTitle(1, "Main", "", u.focus == 0), scrollLabel(u.main.view), u.focus == 0, body, rules))
+			draw(left, nativeBox(left.w, left.h, nativeTitle(1, "Main", u.main.questionBadge(), u.focus == 0), scrollLabel(u.main.view), u.focus == 0, body, rules))
 		}
 	}
 	if right.w >= 4 && right.h >= 3 && framed {

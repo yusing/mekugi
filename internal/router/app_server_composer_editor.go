@@ -63,6 +63,9 @@ func (u *appServerUI) openComposerEditor(stdin, stdout *os.File) {
 func (u *appServerUI) applyEditorDraft(text string) error {
 	defer u.refreshPicker()
 	u.run = runNone
+	if q := u.currentQuestion(); q != nil && !q.note {
+		q.selected = len(q.choices)
+	}
 	if text == u.draft {
 		return nil
 	}

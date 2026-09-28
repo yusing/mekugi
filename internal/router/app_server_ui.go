@@ -26,6 +26,8 @@ import (
 )
 
 type appServerItem struct {
+	Delivery         string                    `json:"delivery"`
+	Questions        []nativeQuestion          `json:"questions"`
 	ID               string                    `json:"id"`
 	ClientID         string                    `json:"clientId"` // userMessage: the submission's clientUserMessageId.
 	Type             string                    `json:"type"`
@@ -60,6 +62,7 @@ type appServerItem struct {
 }
 
 type appServerUI struct {
+	questions                 nativeQuestionDock
 	statusPanel               *appServerStatusReport
 	statusConfig              appServerStatusConfig
 	statusReports             map[string]*appServerStatusReport
@@ -335,6 +338,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 				<-c.Done
 			}
 		}
+		u.hideQuestions()
 		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
 			fmt.Fprintln(stdout, "Unsent draft:\n"+livediff.Safe(unsent.text, false))
 		}
@@ -516,9 +520,12 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 		return nil
 	}
+	if handled, err := u.questionMessage(m); handled {
+		return err
+	}
 	if len(m.ID) != 0 {
 		// Never auto-approve an unexpected server request. Leave it pending,
-		// visibly blocked, until interrupted. Questions get their own UI next.
+		// visibly blocked, until interrupted.
 		u.status, u.alert = "Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Session", Kind: "text", Text: u.status, Observed: time.Now()}}})
 		return nil
@@ -562,6 +569,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	case "turn/completed":
 		if p.ThreadID == u.thread && p.Turn.ID == u.turn {
 			u.shellStandalone = false
+			u.endSyncQuestions(p.Turn.ID)
 			u.turn, u.starting = "", false
 			u.status, u.alert = strings.ToUpper(p.Turn.Status[:min(1, len(p.Turn.Status))])+p.Turn.Status[min(1, len(p.Turn.Status)):], p.Turn.Status == "failed"
 			if p.Turn.Status == "completed" && !u.turnStarted.IsZero() {
@@ -571,6 +579,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				u.status, u.alert = u.status+": "+p.Turn.Error.Message, true
 			}
 			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
+			for _, c := range u.questions.calls {
+				if !c.resolved {
+					u.renderQuestionRecord(c)
+				}
+			}
 		}
 	case "item/started", "item/completed", "item/agentMessage/delta":
 		if m.Method == "item/started" {
@@ -582,9 +595,18 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		// Only completion commits, so one message cannot match two identical steers.
 		if p.ThreadID == u.thread && p.Item.Type == "userMessage" && m.Method == "item/completed" {
 			u.commitSteer(p.Item)
+			u.commitQuestionReplies(p.Item, p.TurnID)
 		}
 		if p.ThreadID == u.thread && (u.journal != nil && u.journal.hides(p.ItemID) || u.unscopedJournal != nil && u.unscopedJournal.hides(p.ItemID)) {
 			return nil
+		}
+		if u.observeQuestionItem(p.ThreadID, p.TurnID, p.Item, false) {
+			return nil
+		}
+		for _, c := range u.questions.calls {
+			if c.thread == p.ThreadID && c.item == p.ItemID && len(c.request) == 0 && m.Method == "item/agentMessage/delta" {
+				return nil
+			}
 		}
 		u.view.applyAppServerItem(u.thread, p.ThreadID, p.TurnID, p.ItemID, m.Method, p.Delta, p.Item)
 	}
@@ -592,6 +614,15 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 }
 
 func (u *appServerUI) key(key byte) (bool, error) {
+	u.questions.lastKey = time.Now()
+	if u.questions.active != nil && !u.questions.painted {
+		u.hideQuestions()
+	}
+	if !u.paste && u.escape == "" && key != 27 {
+		if handled, err := u.questionKey(string([]byte{key})); handled {
+			return false, err
+		}
+	}
 	defer u.refreshPicker()
 	if u.statusPanelKey(string([]byte{key})) {
 		return false, nil
@@ -618,7 +649,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.escape = ""
 	}
 	if !u.paste && u.escape == "" {
-		if key == '?' && u.draft == "" && (u.shell == nil || u.shell.focus == 0) {
+		if u.currentQuestion() == nil && key == '?' && u.draft == "" && (u.shell == nil || u.shell.focus == 0) {
 			u.keybindings = !u.keybindings
 			return false, nil
 		}
@@ -630,6 +661,12 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		if key >= 0x40 && key <= 0x7e || len(u.escape) > 32 {
+			if !u.paste {
+				if handled, err := u.questionKey(u.escape); handled {
+					u.escape = ""
+					return false, err
+				}
+			}
 			if !u.paste && u.pickerKey(u.escape) {
 				u.escape = ""
 				return false, nil
@@ -782,7 +819,11 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		// A draft that cannot be sent yet stacks with earlier unsent steers.
-		u.unsent = append(u.unsent, u.takeDraft())
+		if u.waitingQuestion() {
+			u.queued = append(u.queued, u.takeDraft())
+		} else {
+			u.unsent = append(u.unsent, u.takeDraft())
+		}
 		u.pruneDraftImages()
 		u.setNotice("", false)
 		u.view.follow()
@@ -865,6 +906,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect) {
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalRect{}
+	u.questions.rect = terminalRect{}
 	if u.statusPanel != nil {
 		return u.statusPanelFrame(width, height), terminalRect{}
 	}
@@ -879,6 +921,11 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 	textWidth := width - inset
 	u.composerWidth = textWidth
 	draft, points := u.draftLayout()
+	if q := u.currentQuestion(); q != nil && q.IsSecret {
+		for i, line := range draft {
+			draft[i] = strings.Repeat("•", ansi.StringWidth(line))
+		}
+	}
 	caret := points[len(points)-1]
 	for _, point := range points {
 		if point.Offset == u.cursor() {
@@ -892,6 +939,11 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 
 	room := max(0, height-len(draft)-borderRows)
 	var pending []string
+	questionRows := u.questionRows(width, max(1, min(height/2, room)))
+	if len(questionRows) > 0 {
+		dock = 0
+		room -= len(questionRows)
+	}
 	if u.pickerVisible() {
 		dock = 0
 	} else {
@@ -934,12 +986,19 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 	dockAt := len(frame)
 	frame = append(frame, make([]string, dock)...)
 	frame = append(frame, pending...)
+	u.questions.rect = terminalRect{0, len(frame), width, len(questionRows)}
+	frame = append(frame, questionRows...)
+	if u.questions.active != nil {
+		u.questions.painted = true
+	}
 	// Visual reference: Grok CLI PromptStyle / PromptWidget::draw, source
 	// crates/codegen/xai-grok-pager/src/views/prompt_widget/mod.rs:217:240,3007:3078
 	// @be7ce6e8cffe46d20bef9834b211616082ee866b. Keep continuation rows aligned.
 	// Colors: xai-grok-pager-render/src/theme/oscura.rs, same revision.
 	border := "\x1b[38;2;52;48;72m"
-	if u.shellMode() {
+	if u.currentQuestion() != nil {
+		border = u.view.painter.Theme.Accent()
+	} else if u.shellMode() {
 		border = activityui.Red
 	}
 	const inputColor = "\x1b[39m"
@@ -1042,6 +1101,18 @@ func (u *appServerUI) expireNotice(now time.Time) bool {
 // stateLabel is the session state followed by any composer notice.
 func (u *appServerUI) stateLabel(now time.Time) string {
 	label := u.sessionLabel(now)
+	if u.questions.active != nil {
+		label = "answering"
+		if u.currentQuestion().note {
+			label += " · note"
+		}
+		if len(u.questions.active.request) > 0 {
+			label += " · turn waiting"
+		}
+		if u.questions.parked.snapshot.text != "" {
+			label += " · draft kept"
+		}
+	}
 	if u.shellMode() {
 		label = activityui.Red + "Shell Mode" + activityui.Reset + " · " + label
 	}
@@ -1170,6 +1241,7 @@ func (u *appServerUI) applyObservedActivity() {
 func (u *appServerUI) interruptTurn() error {
 	// As in Codex, interrupting with pending steers sends them now as
 	// the next turn instead of after the next tool call.
+	u.endSyncQuestions(u.turn)
 	u.interrupting = u.turn
 	u.resendSteers = len(u.steers) > 0 || len(u.unsent) > 0 || u.submission.turn != ""
 	u.status = "Interrupting…"

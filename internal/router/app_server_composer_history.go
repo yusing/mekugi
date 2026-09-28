@@ -6,6 +6,7 @@ import (
 )
 
 type composerDraft struct {
+	questionCall     *nativeQuestionCall
 	text             string
 	cursorBack       int
 	images           []composerImage
@@ -19,7 +20,7 @@ type composerDraft struct {
 // History is local to this thread. Resume hydrates text from Codex history;
 // session entries retain attachments without creating a second durable store.
 func (u *appServerUI) rememberInput(draft composerDraft) {
-	if draft.text == "" {
+	if draft.text == "" || draft.questionCall != nil || len(questionReplies(draft.text)) > 0 {
 		return
 	}
 	u.inputHistory = append(u.inputHistory, draft)
@@ -108,7 +109,12 @@ func (u *appServerUI) pruneDraftImages() {
 	for _, image := range u.images {
 		used[image.path] = true
 	}
-	for _, stack := range [][]composerUndo{u.undoDrafts, u.redoDrafts} {
+	stacks := [][]composerUndo{u.undoDrafts, u.redoDrafts}
+	if u.questions.active != nil {
+		e := u.questions.parked
+		stacks = append(stacks, e.undo, e.redo, []composerUndo{e.snapshot})
+	}
+	for _, stack := range stacks {
 		for _, snapshot := range stack {
 			for _, draft := range []composerDraft{snapshot.composerDraft, snapshot.historyDraft} {
 				for _, image := range draft.images {

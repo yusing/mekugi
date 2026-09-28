@@ -892,6 +892,31 @@ printf 'PASS\nok  \texample.com/broker/internal/broker\t1.2s\n'`)
 		p.tokens("main", 305_000, 7_200)
 		p.finish("main")
 	})
+	// A separate turn demonstrates both question surfaces without changing the
+	// broker walkthrough's final-answer assertions.
+	p.add("questions turn", func() { p.beginMessage("Decide who receives the release update") })
+	p.add("async question", func() {
+		p.notify("item/completed", map[string]any{"threadId": "main", "turnId": p.active["main"], "item": map[string]any{
+			"id": "preview-async-question", "type": "agentMessage", "text": "Who should receive the release update?",
+			"phase": "finalAnswer", "delivery": "async", "questions": []any{map[string]any{
+				"title": "Who should receive the release update?", "options": []string{"Customers", "Internal team"},
+			}},
+		}})
+	})
+	p.add("sync question", func() {
+		params, err := json.Marshal(map[string]any{
+			"threadId": "main", "turnId": p.active["main"], "itemId": "preview-sync-question", "isBlocking": false,
+			"questions": []any{map[string]any{"id": "scope", "header": "Scope", "question": "Which release scope?", "isOther": true,
+				"options": []any{map[string]any{"label": "Narrow", "description": "Only the affected path"}, map[string]any{"label": "Broad", "description": "Every path"}},
+			}},
+		})
+		if err != nil {
+			p.t.Fatal(err)
+		}
+		if err := p.ui.message(appserver.Message{ID: jsontext.Value(`"preview-sync-request"`), Method: "item/tool/requestUserInput", Params: jsontext.Value(params)}); err != nil {
+			p.t.Fatal(err)
+		}
+	})
 }
 
 func (p *nativePreview) notify(method string, params any) {
@@ -941,6 +966,12 @@ func (p *nativePreview) serve() {
 			} `json:"params"`
 		}
 		if err := json.Unmarshal(line, &request); err != nil || len(request.ID) == 0 {
+			continue
+		}
+		if request.Method == "" {
+			if string(request.ID) == `"preview-sync-request"` {
+				p.notify("serverRequest/resolved", map[string]any{"threadId": "main", "requestId": request.ID})
+			}
 			continue
 		}
 		result := map[string]any{}
@@ -1240,4 +1271,39 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 
 		})
 	}
+}
+
+func TestNativeUIPreviewQuestions(t *testing.T) {
+	p := newNativePreview(t)
+	defer p.close()
+	p.ui.draft = "Keep my draft"
+	p.until("sync question")
+	p.ui.openQuestions()
+	rows, _ := p.ui.mainFrame(72, 28, 0)
+	t.Logf("question dock:\n%s", ansi.Strip(strings.Join(rows, "\n")))
+	appServerTestKeys(t, p.ui, "1\r")
+	p.serve()
+	p.ui.openQuestions()
+	p.ui.mainFrame(72, 28, 0)
+	appServerTestKeys(t, p.ui, "2\r")
+	p.serve()
+	if p.ui.questionCount() != 0 || p.ui.draft != "Keep my draft" {
+		t.Fatal("preview did not resolve both questions and restore its draft")
+	}
+	for _, width := range []int{24, 40, 72} {
+		rows, _ = p.ui.mainFrame(width, 28, 0)
+		if len(rows) > 28 {
+			t.Fatalf("width %d: frame has %d rows", width, len(rows))
+		}
+		for _, row := range rows {
+			if ansi.StringWidth(row) > width {
+				t.Fatalf("width %d: overflowing row %q", width, row)
+			}
+		}
+	}
+	frame := ansi.Strip(strings.Join(rows, "\n"))
+	if strings.Count(frame, "Who should receive the release update?") != 1 || strings.Count(frame, "Which release scope?") != 1 || strings.Contains(frame, questionReplyStart) {
+		t.Fatalf("duplicate or leaked answer records:\n%s", frame)
+	}
+	t.Logf("answered records:\n%s", frame)
 }

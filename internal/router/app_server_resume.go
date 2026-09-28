@@ -80,6 +80,12 @@ type appServerHistoryTurn struct {
 func (u *appServerUI) restoreHistory(turns []appServerHistoryTurn) {
 	for _, turn := range turns {
 		for _, item := range turn.Items {
+			if u.observeQuestionItem(u.thread, turn.ID, item, true) {
+				continue
+			}
+			if item.Type == "userMessage" {
+				u.commitQuestionReplies(item, turn.ID)
+			}
 			item = u.waitItem(item, u.thread, turn.ID, item.ID, false)
 			if item.Type == "userMessage" {
 				var content []struct {

@@ -40,6 +40,7 @@ func renderNativeKeybindings(width, height int) []string {
 			{"esc", "Interrupt, keep draft"},
 			{"ctrl+b 1–4", "Focus pane"},
 			{"ctrl+b e", "Next live item"},
+			{"ctrl+b q", "Answer questions"},
 			{"ctrl+b ← / →", "Resize panes"},
 		}},
 		{"Transcript", [][2]string{

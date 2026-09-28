@@ -91,6 +91,16 @@ func (u *appServerUI) takeDraft() composerDraft {
 
 // restoreDrafts returns input to the composer ahead of the current draft.
 func (u *appServerUI) restoreDrafts(parts ...composerDraft) {
+	parts = u.rejectQuestionParts(parts)
+	if u.questions.active != nil {
+		c, index := u.questions.active, u.questions.index
+		u.hideQuestions()
+		u.restoreDrafts(parts...)
+		u.questions.parked = u.saveQuestionEditor()
+		u.questions.active, u.questions.index = c, index
+		u.loadQuestionEditor(u.currentQuestion().editor)
+		return
+	}
 	if len(parts) == 0 {
 		return
 	}
@@ -117,10 +127,12 @@ func (u *appServerUI) editQueued() {
 // flushInput sends stacked input once nothing blocks it: unsent steers into
 // the running turn, otherwise unsent steers, then queued input, as a new turn.
 func (u *appServerUI) flushInput() error {
+	u.unsent = pendingQuestionReplies(u.unsent)
+	u.queued = pendingQuestionReplies(u.queued)
 	if u.shellOrigin != nil && u.turn != *u.shellOrigin {
 		return nil // Main ended before Codex identified the shell's turn.
 	}
-	if u.thread == "" || u.restoring != nil || u.submission.text != "" || u.starting || u.settingsPending || u.shellPending.text != "" || u.shellStandalone {
+	if u.waitingQuestion() || u.thread == "" || u.restoring != nil || u.submission.text != "" || u.starting || u.settingsPending || u.shellPending.text != "" || u.shellStandalone {
 		return nil
 	}
 	parts, steer := u.unsent, u.turn != ""
@@ -128,9 +140,9 @@ func (u *appServerUI) flushInput() error {
 	case steer && u.turn == u.interrupting:
 		return nil // The interrupted turn cannot take it; the next turn will.
 	case len(u.unsent) > 0:
-		u.unsent = nil
+		parts, u.unsent = questionSubmissionBatch(u.unsent)
 	case !steer && len(u.queued) > 0:
-		parts, u.queued = u.queued, nil
+		parts, u.queued = questionSubmissionBatch(u.queued)
 	default:
 		return nil
 	}
@@ -158,9 +170,11 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		params["expectedTurnId"] = u.turn
 	} else {
 		u.starting = true
-		s.seq = u.view.lastSeq + 1
-		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: s.seq, Agent: "You", Kind: "text", Text: s.text, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.thread, item: fmt.Sprintf("input/%d", s.seq), phase: "input/pending", spans: s.composerDraft.displaySpans()}}}})
+		if len(questionReplies(s.text)) == 0 {
+			s.seq = u.view.lastSeq + 1
+			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: s.seq, Agent: "You", Kind: "text", Text: s.text, Observed: time.Now(),
+				native: &liveActivityNativeItem{thread: u.thread, item: fmt.Sprintf("input/%d", s.seq), phase: "input/pending", spans: s.composerDraft.displaySpans()}}}})
+		}
 	}
 	for _, image := range s.images {
 		delete(u.ownedImages, image.path)
@@ -173,6 +187,11 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		u.submission = composerSubmission{}
 		u.withdraw(s)
 		return err
+	}
+	for _, part := range parts {
+		if part.questionCall != nil {
+			part.questionCall.submissionID = s.id
+		}
 	}
 	return nil
 }
@@ -200,6 +219,11 @@ func (u *appServerUI) submissionResponse(method string, failure *appserver.Error
 				s.parts[i].inHistory = true
 			}
 		}
+	}
+	if failure != nil && len(s.parts) == 1 && s.parts[0].questionCall != nil {
+		u.status, u.alert = method+": "+failure.Message, true
+		u.withdraw(s)
+		return
 	}
 	if s.ended {
 		// Settle the ended turn with this steer in its place after earlier steers.
@@ -295,7 +319,11 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 		}
 		lines = append(lines, ansi.Truncate(activityui.Dim+"• "+activityui.Undim+header, width, "…")+activityui.Reset)
 		for _, part := range parts {
-			rows := strings.Split(livediff.Safe(part.text, false), "\n")
+			text := part.text
+			if replies := questionReplies(text); len(replies) > 0 {
+				text = fmt.Sprintf("Answering %d question(s)", len(replies))
+			}
+			rows := strings.Split(livediff.Safe(text, false), "\n")
 			for i, row := range rows[:min(3, len(rows))] {
 				prefix := "    "
 				if i == 0 {
@@ -327,4 +355,15 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 	section(header, append(steers, u.unsent...))
 	section("Queued for the next turn · alt+↑ edits", u.queued)
 	return lines
+}
+
+// A tool call's reply is one submission, never joined with another call or prompt.
+func questionSubmissionBatch(stack []composerDraft) ([]composerDraft, []composerDraft) {
+	n := 1
+	if stack[0].questionCall == nil {
+		for n < len(stack) && stack[n].questionCall == nil {
+			n++
+		}
+	}
+	return stack[:n], stack[n:]
 }

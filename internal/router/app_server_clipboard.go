@@ -93,6 +93,14 @@ func (u *appServerUI) insertImage(path string) {
 func (u *appServerUI) finishPaste() {
 	text := string(u.pasted)
 	u.pasted = nil
+	if q := u.currentQuestion(); q != nil {
+		if !q.note {
+			q.selected = len(q.choices)
+		}
+		u.insertDraft(text)
+		u.run = runNone
+		return
+	}
 	path, ok := pastedImagePath(text)
 	if !ok {
 		if text != "" {

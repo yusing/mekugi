@@ -191,6 +191,10 @@ func (u *terminalUI) key(key byte) error {
 			u.activityOpen = true
 			// Native Diff and Activity share the right column.
 			u.diffOpen = u.diffOpen && key == '4'
+		case 'q':
+			if u.main != nil {
+				u.main.openQuestions()
+			}
 		case 'e':
 			u.nextLive()
 		default:
@@ -312,6 +316,11 @@ func (u *terminalUI) send(s string) error {
 		return nil
 	}
 
+	if s == "\x1b" && u.main != nil && u.focus == 0 && !u.main.paste {
+		if handled, err := u.main.questionKey(s); handled {
+			return err
+		}
+	}
 	if s == "\x1b" && u.main != nil && u.focus == 0 && u.main.keybindings {
 		u.main.keybindings = false
 		return nil
@@ -413,6 +422,12 @@ func (u *terminalUI) mouse(s string) error {
 			case 65:
 				u.main.statusPanelKey("\x1b[B")
 			}
+		}
+		return nil
+	}
+	if u.main != nil && u.main.questions.rect.contains(x-u.layout.codex.x, y-u.layout.codex.y) {
+		if !release && button&^28 == 0 {
+			u.main.openQuestions()
 		}
 		return nil
 	}

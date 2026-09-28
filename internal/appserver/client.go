@@ -119,6 +119,20 @@ func (c *Client) Send(method string, params any, request bool) (string, error) {
 	return string(m.ID), err
 }
 
+// Respond answers a server-originated request using its original JSON-RPC ID.
+func (c *Client) Respond(id jsontext.Value, result any) error {
+	data, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(&Message{ID: id, Result: data})
+	if err != nil {
+		return err
+	}
+	_, err = c.Input.Write(append(encoded, '\n'))
+	return err
+}
+
 func (c *Client) Close() {
 	_ = c.Input.Close()
 	_ = c.cmd.Process.Kill()

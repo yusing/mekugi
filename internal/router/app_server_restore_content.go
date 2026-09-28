@@ -288,6 +288,9 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 					entries = append(entries, exit)
 				}
 			case "agentMessage":
+				if item.Delivery == "async" && len(item.Questions) > 0 {
+					continue
+				}
 				entry.Kind, entry.Text = "text", item.Text
 				if item.Phase == "final_answer" || item.Phase == "finalAnswer" {
 					entry.Kind = "final"
