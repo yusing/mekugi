@@ -2,8 +2,11 @@ package activity
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -51,7 +54,63 @@ func MoreLines(n int) string {
 
 // Underline marks a row's toggle under the pointer.
 func Underline(text string) string {
-	return "\x1b[4m" + text + "\x1b[24m"
+	var out strings.Builder
+	out.WriteString("\x1b[4m")
+	var state byte
+	for len(text) > 0 {
+		seq, _, n, next := ansi.DecodeSequence(text, state, nil)
+		out.WriteString(seq)
+		// Nested colors and syntax highlighting can reset all attributes or
+		// explicitly end an underline. Keep the hover decoration throughout.
+		if strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
+			out.WriteString("\x1b[4m")
+		}
+		text, state = text[n:], next
+	}
+	out.WriteString("\x1b[24m")
+	return out.String()
+}
+
+// Match the statBar producer's styled span, not bar-like filename text.
+var editStatBarPattern = regexp.MustCompile(regexp.QuoteMeta(Green) + "━*" + regexp.QuoteMeta(Red) + "━*" + regexp.QuoteMeta("\x1b[39m"+Dim) + "━*" + regexp.QuoteMeta(Undim))
+var editGutterPattern = regexp.MustCompile(`^ *(?:[│└├]─? )? *`)
+
+// UnderlineEdit marks text, not the tree gutter, alignment gaps, or stat bar.
+func UnderlineEdit(text string) string {
+	var out strings.Builder
+	var state byte
+	plain := ansi.Strip(text)
+	gutter := ansi.StringWidth(editGutterPattern.FindString(plain))
+	bar := -1
+	if span := editStatBarPattern.FindStringIndex(text); span != nil {
+		bar = ansi.StringWidth(text[:span[0]])
+	}
+	column := 0
+	underlined := false
+	for len(text) > 0 {
+		seq, width, n, next := ansi.DecodeSequence(text, state, nil)
+		if width > 0 {
+			r, _ := utf8.DecodeRuneInString(seq)
+			mark := !unicode.IsSpace(r) && column >= gutter && !(bar >= 0 && column >= bar && column < bar+statBarCells)
+			if mark != underlined {
+				if mark {
+					out.WriteString("\x1b[4m")
+				} else {
+					out.WriteString("\x1b[24m")
+				}
+				underlined = mark
+			}
+			column += width
+		}
+		out.WriteString(seq)
+		if strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
+			out.WriteString("\x1b[24m")
+			underlined = false
+		}
+		text, state = text[n:], next
+	}
+	out.WriteString("\x1b[24m")
+	return out.String()
 }
 
 // OutputTail keeps the display tail of command output as it arrives, in

@@ -66,6 +66,7 @@ type liveActivityView struct {
 	pendingTarget       uint64 // Cross-pane jump resolved after the destination layout is rendered.
 	// questionHover is the pointed feed line plus one; zero points at none.
 	questionHover                        int
+	editHover                            int // Pointed viewport row plus one, not the whole capture.
 	flashQuestion                        uint64
 	flashUntil                           time.Time
 	feedTop, feedLeft, feedRight         int
@@ -407,6 +408,7 @@ func (v *liveActivityView) selectAgent(step int) {
 func (v *liveActivityView) handleMouse(action byte, row, column int) bool {
 	if action == 'j' || action == 'k' {
 		v.questionHover = 0 // Scrolling moves the link from under the pointer.
+		v.editHover = 0
 		if !v.feedOnly && row >= v.rosterTop && row <= v.rosterBottom && column >= 1 && column <= v.rosterRight {
 			if v.rosterTop == v.rosterBottom {
 				return true
@@ -469,10 +471,15 @@ func underlineLink(line string) string {
 // collapsed snippet or collapses an expanded one.
 func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 	var snippet liveActivitySnippet
+	editHover := 0
 	if index := row - v.feedTop; index >= 0 && index < len(v.feedSnippets) && column >= v.feedLeft && column <= v.feedRight {
 		snippet = v.feedSnippets[index]
+		if snippet.block == editNavigationSnippet {
+			editHover = index + 1
+		}
 	}
-	redraw := false
+	redraw := editHover != v.editHover
+	v.editHover = editHover
 	if action == '\r' && snippet != (liveActivitySnippet{}) {
 		v.toggleSnippet(snippet)
 		redraw = true
@@ -1384,8 +1391,8 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 		if index := v.offset + row; index < len(feed.lines) {
 			lines[row], v.feedSnippets[row] = feed.lines[index], feed.snippets[index]
 			v.feedQuestions[row] = feed.questions[index]
-			if target := feed.snippets[index]; target.block == editNavigationSnippet && target == v.snippet {
-				lines[row] = activityui.Underline(lines[row])
+			if target := feed.snippets[index]; row == v.editHover-1 && target.block == editNavigationSnippet && target == v.snippet {
+				lines[row] = activityui.UnderlineEdit(lines[row])
 			}
 			if index == v.questionHover-1 && feed.questions[index] != 0 {
 				lines[row] = underlineLink(lines[row])

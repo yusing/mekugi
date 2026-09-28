@@ -168,8 +168,9 @@ again hides it. A roster pick that changes Activity's agent filter shows
 Activity in place of the saved diff.
 
 Clicking a compact Edit event opens the Diff pane’s changes-by-caller navigation
-and scrolls to its captured change. Edit rows underline on hover in Main and
-Activity. Click-through navigation (Edit, Open in Activity, question links, and
+and scrolls to its captured change. Only the pointed edit row's text underlines
+on hover in Main and Activity, not its gutter, alignment gaps, stat bar, or other
+rows in the same capture. Click-through navigation (Edit, Open in Activity, question links, and
 roster picks) is a temporary preview. Escape restores the previous pane, filters,
 and scroll position, with a visible “esc back to previous view” hint. Nested
 previews return one level at a time; diff help, filters, and nested diff actions

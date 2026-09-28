@@ -6,11 +6,69 @@ import (
 	"testing"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
+
+func TestEditHoverDecoratesOnlyPointedText(t *testing.T) {
+	for _, main := range []bool{false, true} {
+		v := newLiveActivityView()
+		v.conversation = main
+		v.feedTop, v.feedLeft, v.feedRight = 1, 1, 100
+		target := liveActivitySnippet{run: 1, block: editNavigationSnippet}
+		bar := activityui.Green + "━━━━━━━━" + activityui.Red + "\x1b[39m" + activityui.Dim + activityui.Undim
+		feed := liveActivityFeed{
+			lines: []string{
+				"│ " + activityui.Green + "Edited" + activityui.Reset + "  src/a ━━━━━━━━.go   +15 -1  " + bar,
+				"└         ─file.go   +30     " + bar,
+			},
+			heads: []int{0, 0}, snippets: []liveActivitySnippet{target, target}, questions: []uint64{0, 0},
+		}
+		v.viewport(feed, 2)
+		for _, hover := range []int{0, 1, -1} {
+			if !v.pointSnippet('h', hover+1, 10) {
+				t.Fatalf("moving hover to row %d did not request redraw", hover)
+			}
+			rows := v.viewport(feed, 2)
+			for y, row := range rows {
+				want := vt.NewEmulator(100, 1)
+				got := vt.NewEmulator(100, 1)
+				_, _ = want.Write([]byte(feed.lines[y] + "!"))
+				_, _ = got.Write([]byte(row + "!"))
+				for x := range ansi.StringWidth(row) + 1 {
+					expected := *want.CellAt(x, 0)
+					if y == hover && x < ansi.StringWidth(row)-8 && !strings.ContainsAny(expected.Content, " │└") {
+						expected.Style.Underline = uv.UnderlineStyleSingle
+					}
+					cell := got.CellAt(x, 0)
+					if cell.Content != expected.Content || !cell.Style.Equal(&expected.Style) {
+						t.Errorf("main=%t hover=%d cell (%d,%d) = %#v, want %#v", main, hover, x, y, cell, expected)
+					}
+				}
+				want.Close()
+				got.Close()
+			}
+		}
+		// A stationary pointer stays on its screen row when content scrolls.
+		v.pointSnippet('h', 2, 10)
+		feed.lines = append(feed.lines, "unrelated output")
+		feed.heads = append(feed.heads, 2)
+		feed.snippets = append(feed.snippets, liveActivitySnippet{})
+		feed.questions = append(feed.questions, 0)
+		for _, following := range []bool{false, true} {
+			v.following, v.offset = following, 1
+			for _, row := range v.viewport(feed, 2) {
+				if strings.Contains(row, "\x1b[4m") {
+					t.Fatal("hover followed the edit away from the pointer")
+				}
+			}
+		}
+	}
+}
 
 func TestLiveActivityScrollStopsAtLastFullViewport(t *testing.T) {
 	v := newLiveActivityView()
