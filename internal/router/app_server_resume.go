@@ -117,6 +117,9 @@ func (u *appServerUI) restoreHistory(turns []appServerHistoryTurn) {
 			if turn.Status == "inProgress" && (item.Type == "agentMessage" || item.Status == "inProgress") {
 				method = "item/started"
 			}
+			if _, progress := appServerProgress(item, method); progress {
+				method = appServerHistoryProgressPhase(item)
+			}
 			switch item.Type {
 			case "imageView":
 				entry := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + commentaryCode(pathdisplay.ForWorkspace(u.session.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),

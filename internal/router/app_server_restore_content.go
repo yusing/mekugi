@@ -255,6 +255,15 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 		for _, item := range turn.Items {
 			entry := activityPaneEntry{Seq: s.next(), Agent: name, Observed: observed, CallID: item.ID,
 				native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", searchResults: appServerSearchResults(item)}}
+			progressPhase := appServerHistoryProgressPhase(item)
+			if text, handled := appServerProgress(item, progressPhase); handled {
+				if text != "" {
+					entry.Kind, entry.Text = "progress", text
+					entry.native.phase = progressPhase
+					entries = append(entries, entry)
+				}
+				continue
+			}
 			switch item.Type {
 			case "reasoning":
 				entry.Kind, entry.Text = "reasoning", strings.Join(item.Summary, "\n\n")

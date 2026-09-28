@@ -34,6 +34,7 @@ type appServerItem struct {
 	AgentThreadID    string                    `json:"agentThreadId"`
 	AgentPath        string                    `json:"agentPath"`
 	Command          string                    `json:"command"`
+	ProcessID        string                    `json:"processId"`
 	Path             string                    `json:"path"`
 	Status           string                    `json:"status"`
 	AggregatedOutput *string                   `json:"aggregatedOutput"`
@@ -42,17 +43,18 @@ type appServerItem struct {
 	Results          []jsontext.Value          `json:"results"`
 	// Content is variant-specific: user input blocks or raw reasoning strings.
 	// Decode only userMessage content; reasoning presentation uses Summary.
-	Content           jsontext.Value           `json:"content"`
-	Phase             string                   `json:"phase"`
-	ExitCode          *int                     `json:"exitCode"`
-	CommandActions    []appServerCommandAction `json:"commandActions"`
-	Changes           []appServerFileChange    `json:"changes"`
-	Tool              string                   `json:"tool"`
-	SenderThreadID    string                   `json:"senderThreadId"`
-	ReceiverThreadIDs []string                 `json:"receiverThreadIds"`
-	Prompt            string                   `json:"prompt"`
-	Model             string                   `json:"model"`
-	ReasoningEffort   string                   `json:"reasoningEffort"`
+	Content           jsontext.Value                 `json:"content"`
+	Phase             string                         `json:"phase"`
+	ExitCode          *int                           `json:"exitCode"`
+	CommandActions    []appServerCommandAction       `json:"commandActions"`
+	Changes           []appServerFileChange          `json:"changes"`
+	Tool              string                         `json:"tool"`
+	SenderThreadID    string                         `json:"senderThreadId"`
+	ReceiverThreadIDs []string                       `json:"receiverThreadIds"`
+	AgentsStates      map[string]appServerAgentState `json:"agentsStates"`
+	Prompt            string                         `json:"prompt"`
+	Model             string                         `json:"model"`
+	ReasoningEffort   string                         `json:"reasoningEffort"`
 }
 
 type appServerUI struct {
@@ -71,8 +73,10 @@ type appServerUI struct {
 	quitRequested             bool
 	mainContentPainted        bool
 	thread, turn, status      string
-	alert                     bool   // The status reports a failure or blocked request.
-	notice                    string // Composer feedback; errors persist until the next draft edit.
+	compacting                *[2]string // Main turn and compaction item.
+	polling                   *[2]string // Main turn and polled process.
+	alert                     bool       // The status reports a failure or blocked request.
+	notice                    string     // Composer feedback; errors persist until the next draft edit.
 	noticeAlert               bool
 	noticeUntil               time.Time
 	turnStarted               time.Time // Shown as elapsed time while a turn runs.
@@ -754,7 +758,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 		}
 	}
 	for i, entry := range entries {
-		main := entry.Agent == "/root" && (entry.Kind == "tool" || entry.Kind == "exit" || entry.Kind == "output_filter" || entry.Kind == "reasoning")
+		main := entry.Agent == "/root" && (entry.Kind == "tool" || entry.Kind == "exit" || entry.Kind == "output_filter" || entry.Kind == "reasoning" || entry.Kind == "progress")
 		if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil {
 			main = true
 			entry.Agent = entry.assignment.from
@@ -1002,7 +1006,11 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 	case u.turn != "":
 		label := "\x1b[39m◐ " + activityui.StatusPulse(status, now, u.view.painter.Colors) + activityui.Reset
 		if status == "Working" {
-			if summary := u.activeReasoning(); summary != "" {
+			if u.compacting != nil {
+				status = "Compacting context"
+			} else if u.polling != nil {
+				status = "Still running"
+			} else if summary := u.activeReasoning(); summary != "" {
 				status = summary
 			}
 			label = "\x1b[39m◐ " + activityui.ReasoningShimmer(status, now.Sub(u.turnStarted), u.view.painter.Colors) + activityui.Reset

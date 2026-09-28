@@ -312,6 +312,8 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	var out conversationLines
 	p := &v.painter
 	switch {
+	case entry.Agent == "Main" && entry.Kind == "progress":
+		out.add(0, activityui.Wrap(activityui.Dim+"• "+livediff.Safe(entry.Text, false)+activityui.Undim, width, false)...)
 	case entry.Agent == "Main" && entry.Kind == "reasoning" && first == last:
 		for _, block := range blocks {
 			out.add(0, p.Block(block, width)...)

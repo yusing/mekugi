@@ -154,6 +154,13 @@ func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, de
 	if thread != main {
 		entry.Agent = "Thread " + thread
 	}
+	if text, handled := appServerProgress(item, method); handled {
+		if text != "" {
+			entry.Kind, entry.Text = "progress", text
+			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+		}
+		return
+	}
 	if method == "item/agentMessage/delta" {
 		entry.Text = delta
 	} else {

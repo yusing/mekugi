@@ -412,6 +412,20 @@ Native UI subtle and dimmed text share the composer model-name foreground
 metadata, secondary labels, separators, and diff coordinates; semantic status
 colors, syntax highlighting, and animated status ramps remain distinct.
 
+Host progress has one presentation mapping for live events and restored history.
+Compaction start replaces Main’s `Working` label with `Compacting context`;
+completion restores ordinary turn status and adds a `Context compacted` event,
+without a reply-context (`re:`) line. Turn completion, failure, or interruption
+clears an unfinished compaction without claiming it succeeded. Child compaction
+does not change Main’s composer. Agent wait starts and completions are transcript
+events, not composer overrides. Replayed events do not restart progress.
+An empty-stdin terminal poll replaces `Working` with `Still running` without
+adding a transcript row for every poll. Process completion, further agent
+activity, or turn termination clears it; ordinary input writes are not polls.
+Compaction takes precedence over polling. Completed agent waits show `Still
+running` only for agents whose reported state is running, without claiming
+that missing state means success or continued work.
+
 Native public reasoning summaries appear for Main and children, from summary
 deltas or completed/history items. Main retains dim italic summary bodies in its
 transcript; its active summary heading replaces `Working` in the composer status

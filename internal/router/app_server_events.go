@@ -73,6 +73,8 @@ type appServerEvent struct {
 	TurnID     string              `json:"turnId"`
 	ItemID     string              `json:"itemId"`
 	Delta      string              `json:"delta"`
+	ProcessID  string              `json:"processId"`
+	Stdin      string              `json:"stdin"`
 	Item       appServerItem       `json:"item"`
 	Thread     appServerThreadInfo `json:"thread"`
 	TokenUsage struct {
@@ -164,7 +166,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	}
 	switch m.Method {
 	case "thread/started", "thread/tokenUsage/updated", "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded",
-		"turn/started", "turn/completed", "item/started", "item/completed", "item/agentMessage/delta":
+		"turn/started", "turn/completed", "item/started", "item/completed", "item/agentMessage/delta", "item/commandExecution/terminalInteraction":
 	default:
 		return false, nil
 	}
@@ -172,6 +174,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	if err := json.Unmarshal(m.Params, &p); err != nil {
 		return true, fmt.Errorf("%s: %w", m.Method, err)
 	}
+	u.observeProgress(m.Method, p)
 	main := p.ThreadID == u.thread
 	if p.ThreadID != "" && !main {
 		if err := u.requestThreadMetadata(p.ThreadID); err != nil {
@@ -239,6 +242,12 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		id := cmp.Or(p.ItemID, item.ID)
 		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method}
 		agent := s.path(p.ThreadID)
+		if text, handled := appServerProgress(item, m.Method); handled {
+			if text != "" {
+				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "progress", Text: text, Observed: now, native: native})
+			}
+			break
+		}
 		switch item.Type {
 		case "subAgentActivity":
 			if item.AgentThreadID != "" && item.AgentThreadID != u.thread {
