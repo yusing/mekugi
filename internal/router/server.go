@@ -341,6 +341,14 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if ready != nil && ctx.Err() == nil {
 		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, SkillsManagerAvailable: skillsManagerAvailable}
 		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string) (func() error, error) {
+			if mekugiCalls != nil && frontendDirectory != "" {
+				// Without the socket, command shells find no router and run
+				// their scripts untracked.
+				socket, directory := ExecTrackPaths(frontendDirectory)
+				if hub, err := listenExecTrack(ctx, socket, directory); err == nil {
+					mekugiCalls.execTrack = hub
+				}
+			}
 			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {

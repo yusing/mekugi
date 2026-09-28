@@ -51,3 +51,16 @@ PATH directory. Its frontend workers implement bounded readers and output
 retention inside Codex-started processes; they do not own Codex command
 sessions or continuation handles. Each configured frontend runs its declared
 executor under the same worker authentication.
+
+Segment tracking (`REQ-EXECUTION-002`) has four owners:
+
+- `internal/execsegment` owns the split, the instrumented rewrite, the Bash
+  hook, and the report protocol. The helper and the router share it, so they
+  always agree on segment indices.
+- `mekugi-exec` runs inside the Codex-started shell as its coprocess. It owns
+  only the relay of that shell's output and the report; it never starts,
+  signals, or continues a command.
+- The router's report hub matches each report to a live host item and bounds
+  what it retains. Matching is session-scoped and process-local.
+- The native UI presents a report only after it ended with the host's exit
+  status, and otherwise presents the host's own result.

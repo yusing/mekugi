@@ -5,10 +5,10 @@ GO ?= go
 install:
 	bun install --cwd plugins --frozen-lockfile
 	go generate ./internal/router/toolplugin
-	$(GO) install ./cmd/mekugi
+	$(GO) install ./cmd/mekugi ./cmd/mekugi-exec
 
 uninstall:
-	$(GO) clean -i ./cmd/mekugi
+	$(GO) clean -i ./cmd/mekugi ./cmd/mekugi-exec
 
 preview-assets:
 	bun install --cwd plugins --frozen-lockfile

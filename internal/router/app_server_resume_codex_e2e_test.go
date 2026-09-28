@@ -166,7 +166,7 @@ func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Conte
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(ctx, newCommand(ctx), inner, inner, proxy, resumeThread, true)
+	wait, err := startAppServerUI(ctx, newCommand(ctx), inner, inner, proxy, nil, resumeThread, true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -94,7 +94,12 @@ drawn. A completion that arrives while a burst is still rolling, as from a
 command that prints only when it exits, is held until the burst has rolled.
 The host supplies one combined output stream per shell invocation. Its tail follows
 the final displayed operation, including a Read or Skill row, rather than an earlier
-Run row; it does not claim per-command output attribution.
+Run row; it does not claim per-command output attribution. A command list tracked under
+[REQ-EXECUTION-002](execution.md) instead shows each segment as its own operations,
+appearing as it starts, with its own `Running` state, output tail, and exit. A failed
+read or listing segment names its exit after its row. A segment the list never reached shows muted with
+`· skipped`. A tracked terminal command keeps the host's combined tail after its last
+segment shown. Each successful segment's output collapses independently.
 Completion replaces it with the tail of the host's aggregated output. A
 failure keeps that tail open. After a zero exit it stays open until the same
 agent's next standalone event, such as a separate command, Skill or Read, then

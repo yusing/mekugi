@@ -127,6 +127,7 @@ type mekugiProxy struct {
 	metricPaths        map[string]string
 	autoLiveDiff       *autoLiveDiff
 	activity           *subagentActivity
+	execTrack          *execTrackHub // Set for the native UI when command shells are tracked.
 	skillsManager      bool
 	execWindows        *execWindowRegistry
 	nativeTrace        *nativeToolTrace

@@ -4,7 +4,7 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "65"
+  revision: "66"
   files:
     - journal.md
     - router.md
@@ -61,6 +61,7 @@ linked, not copied.
 - [`REQ-METRICS-001`](metrics.md): in-process captured Responses metrics
 - [`REQ-CHANGES-001`](changes.md): observed stock edits and command effects, durable change IDs, and bounded review reads
 - [`REQ-EXECUTION-001`](execution.md): stock editing, execution, and executable frontends
+- [`REQ-EXECUTION-002`](execution.md): per-segment tracking of Bash command lists
 - [`REQ-MENTOR-001`](mentor.md): main and subagent Mentor Handoff schedule
 - [`REQ-GUIDE-001`](guide.md): caller-preserving additive tool guidance
 - [`REQ-EXPLORE-FILTER-001`](explore_filter.md): decision-model filtering of search output

@@ -102,6 +102,13 @@ func TestAppServerPreviewQuickSwitch(t *testing.T) {
 
 func runAppServerPreviewWithProxyAndHooks(t *testing.T, provider responseProvider, proxy *mekugiProxy, beforePrompt, afterPrompt func(*testing.T, io.Writer, func(string), func(func(string) bool), *vt.Emulator)) {
 	t.Helper()
+	runAppServerPreviewWithEnvironment(t, provider, proxy, nil, beforePrompt, afterPrompt)
+}
+
+// runAppServerPreviewWithEnvironment appends environment to Codex's isolated
+// environment.
+func runAppServerPreviewWithEnvironment(t *testing.T, provider responseProvider, proxy *mekugiProxy, environment []string, beforePrompt, afterPrompt func(*testing.T, io.Writer, func(string), func(func(string) bool), *vt.Emulator)) {
+	t.Helper()
 	codex, err := exec.LookPath("codex")
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +118,7 @@ func runAppServerPreviewWithProxyAndHooks(t *testing.T, provider responseProvide
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
-	cmd.Env = routerFaultCodexEnvironment(t)
+	cmd.Env = append(routerFaultCodexEnvironment(t), environment...)
 	cmd.Dir = t.TempDir()
 	outer, terminal, err := pty.Open()
 	if err != nil {
@@ -126,7 +133,7 @@ func runAppServerPreviewWithProxyAndHooks(t *testing.T, provider responseProvide
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(ctx, cmd, terminal, terminal, proxy, "", true)
+	wait, err := startAppServerUI(ctx, cmd, terminal, terminal, proxy, nil, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}

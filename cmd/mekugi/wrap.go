@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/router"
 	"golang.org/x/term"
 )
@@ -135,7 +136,11 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		cmd.Env = append(cmd.Env, capturer.AXReadOutputEnvironment+"="+session.AXReadOutput)
 	}
 	if session.FrontendDirectory != "" {
-		cmd.Env, err = frontendShellEnvironment(cmd.Env, session.FrontendDirectory)
+		helper := ""
+		if appUI {
+			helper = execTrackHelper()
+		}
+		cmd.Env, err = frontendShellEnvironment(cmd.Env, session.FrontendDirectory, helper)
 		if err != nil {
 			cancel()
 			return 1, errors.Join(err, <-routerDone)
@@ -194,7 +199,23 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	return 0, nil
 }
 
-func frontendShellEnvironment(environment []string, directory string) ([]string, error) {
+// execTrackHelper is the installed command-segment helper beside this
+// executable, or empty when it is missing and commands run untracked.
+func execTrackHelper() string {
+	executable, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	helper := filepath.Join(filepath.Dir(executable), "mekugi-exec")
+	if info, err := os.Stat(helper); err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+		return ""
+	}
+	return helper
+}
+
+// frontendShellEnvironment restores the frontend PATH in Codex's Bash command
+// shells and, with a helper, reports each command's segments to the router.
+func frontendShellEnvironment(environment []string, directory, helper string) ([]string, error) {
 	// Login Bash may replace inherited PATH while reading /etc/profile. Its
 	// noninteractive startup file runs afterward, including for `bash -lc`.
 	previous := ""
@@ -213,6 +234,14 @@ func frontendShellEnvironment(environment []string, directory string) ([]string,
 		startup = ". " + quote(previous) + "\n"
 	}
 	startup += "PATH=" + quote(directory) + ":\"$PATH\"; export PATH\n"
+	if helper != "" {
+		socket, trackDirectory := router.ExecTrackPaths(directory)
+		tracker := filepath.Join(filepath.Dir(directory), "exec-track.bash")
+		if err := os.WriteFile(tracker, []byte(execsegment.Tracker(helper, socket, trackDirectory)), 0o600); err != nil {
+			return nil, fmt.Errorf("prepare command tracking: %w", err)
+		}
+		startup += execsegment.Hook(tracker)
+	}
 	path := filepath.Join(filepath.Dir(directory), "frontend-bash-env")
 	if err := os.WriteFile(path, []byte(startup), 0o600); err != nil {
 		return nil, fmt.Errorf("prepare frontend shell environment: %w", err)

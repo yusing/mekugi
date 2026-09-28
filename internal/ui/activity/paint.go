@@ -462,7 +462,34 @@ func liveActivityIndent(lines []string, prefix string) []string {
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
 	lines := p.blockRows(block, width)
+	if trailer := segmentTrailer(block); trailer != "" && len(lines) > 0 {
+		if last := len(lines) - 1; ansi.StringWidth(lines[last])+1+ansi.StringWidth(trailer) <= width {
+			lines[last] += " " + trailer
+		} else {
+			lines = append(lines, strings.Repeat(" ", block.cell(RowVerb(block)))+trailer)
+		}
+	}
+	if block.Skipped {
+		for i, line := range lines {
+			lines[i] = Dim + ansi.Strip(line) + Reset
+		}
+	}
 	return outputRows(block, lines, width)
+}
+
+// segmentTrailer names a tracked segment's outcome where its row would not:
+// a list that never reached it, or the exit of an operation whose row shows
+// no exit, such as a failed read.
+func segmentTrailer(block Block) string {
+	switch {
+	case block.Skipped:
+		return "· skipped"
+	case !block.Segment || block.ExitCode == 0 || block.GroupHeader != "" || block.Kind != "op" && block.Kind != "reads":
+		return ""
+	case block.Kind == "op" && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)):
+		return "" // The row already shows the exit.
+	}
+	return Dim + "· " + Undim + exitText(block.ExitCode)
 }
 
 func (p *Painter) blockRows(block Block, width int) []string {

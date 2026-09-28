@@ -82,7 +82,7 @@ Requirements:
 - Any interpreter your agent picks, such as `python3`, on the executor's `PATH`.
 
 ```sh
-go install github.com/yusing/mekugi/cmd/mekugi@latest
+go install github.com/yusing/mekugi/cmd/mekugi@latest github.com/yusing/mekugi/cmd/mekugi-exec@latest
 codex login
 mekugi codex --yolo
 ```
@@ -90,11 +90,14 @@ mekugi codex --yolo
 Add `$GOBIN`, or `$(go env GOPATH)/bin` if that is unset, to your `PATH`. Mekugi
 prints a dashboard URL, then opens its native Main, Diff, Activity, and Agents UI.
 Interactive launches currently require explicit `--yolo` (no approvals or sandbox).
-Codex remains the agent runtime and tool executor.
+Codex remains the agent runtime and tool executor. With `mekugi-exec` installed
+beside `mekugi`, a command list such as `cd app && make && make test` shows each
+command with its own output and exit status. Without it, the list shows as one
+command.
 
 From a checkout with **Bun** and **Make**, run `make install`. It regenerates the
-embedded plugins and installs the binary. `make uninstall` removes only that
-binary. Running sessions keep their worker executable, so start a new session
+embedded plugins and installs `mekugi` and `mekugi-exec`. `make uninstall` removes
+only those binaries. Running sessions keep their worker executable, so start a new session
 to pick up an update.
 
 ## Usage

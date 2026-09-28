@@ -139,6 +139,7 @@ type liveActivityNativeItem struct {
 	question           uint64                // Original user entry, retained even for a live journal publication.
 	thought            time.Duration         // Reasoning time from its first summary delta to completion.
 	attachments        []activityui.Block    // Submitted file snapshot outcomes, recovered from host history.
+	segments           []commandSegment      // A tracked command's own segments, replacing its single row.
 }
 
 func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {

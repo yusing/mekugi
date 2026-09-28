@@ -84,7 +84,7 @@ func TestFrontendPathSurvivesLoginBash(t *testing.T) {
 	if err := os.WriteFile(prior, []byte("export MEKUGI_PRIOR_BASH_ENV=preserved\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "BASH_ENV=" + prior}, frontend)
+	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "BASH_ENV=" + prior}, frontend, "")
 	if err != nil {
 		t.Fatal(err)
 	}

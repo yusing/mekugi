@@ -45,6 +45,10 @@ type appServerCommandRun struct {
 	output activityui.OutputTail
 	dirty  bool
 	done   []activityPaneEntry // Completion, held until streamed output has rolled through.
+	// A tracked command's completion waits for its segment report to end.
+	completion  *activityPaneEntry
+	completed   appServerItem
+	completedAt time.Time
 }
 
 type appServerFileChange struct {
@@ -200,6 +204,18 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	if m.Method == "item/started" {
 		u.observeShellItem(p.ThreadID, p.Item)
 	}
+	if p.Item.Type == "commandExecution" {
+		// Every command is offered for matching, including ones Activity hides,
+		// so their shells never wait for an item that will not arrive.
+		key := [3]string{p.ThreadID, p.TurnID, cmp.Or(p.ItemID, p.Item.ID)}
+		switch {
+		case m.Method == "item/started":
+			u.execTrack.start(key, p.Item.Command)
+		case m.Method == "item/completed" && (u.session.commands[key] == nil || !u.execTrack.tracking(key)):
+			// Only a command Activity presents holds its report until it ends.
+			u.execTrack.finish(key)
+		}
+	}
 	main := p.ThreadID == u.thread
 	if p.ThreadID != "" && !main {
 		if err := u.requestThreadMetadata(p.ThreadID); err != nil {
@@ -343,13 +359,11 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				entries = append(entries, entry)
 				break
 			}
-			appServerSucceededOutput(&entry, item, now)
-			done := []activityPaneEntry{entry}
-			if item.ExitCode != nil && *item.ExitCode != 0 {
-				exit := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: id, Observed: now}
-				exit.outputTail, exit.outputOmit = appServerOutputTail(item.AggregatedOutput)
-				done = append(done, exit)
+			if run := s.commands[key]; run != nil && u.execTrack.tracking(key) {
+				run.completion, run.completed, run.completedAt = &entry, item, now
+				break
 			}
+			done := s.commandDone(entry, item, now)
 			// A burst that arrived just before completion, as from a command
 			// that prints only when it exits, rolls through before the final
 			// tail replaces it.
@@ -400,6 +414,19 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	return !main || !strings.HasPrefix(m.Method, "turn/"), nil
 }
 
+// commandDone is a completed command's entry with its output, and a failure's
+// exit with the host's combined output tail.
+func (s *appServerSession) commandDone(entry activityPaneEntry, item appServerItem, now time.Time) []activityPaneEntry {
+	appServerSucceededOutput(&entry, item, now)
+	done := []activityPaneEntry{entry}
+	if item.ExitCode != nil && *item.ExitCode != 0 {
+		exit := activityPaneEntry{Seq: s.next(), Agent: entry.Agent, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: entry.CallID, Observed: now}
+		exit.outputTail, exit.outputOmit = appServerOutputTail(item.AggregatedOutput)
+		done = append(done, exit)
+	}
+	return done
+}
+
 // endThinking completes reasoning a finished turn never completed, such as
 // after an interrupt, so it stops presenting as streaming.
 func (s *appServerSession) endThinking(thread string, now time.Time) []activityPaneEntry {
@@ -427,6 +454,10 @@ func (u *appServerUI) flushCommandOutput() {
 	s := &u.session
 	var entries []activityPaneEntry
 	for key, run := range s.commands {
+		if tracked, handled := u.flushTrackedCommand(key, run); handled {
+			entries = append(entries, tracked...)
+			continue
+		}
 		if rolled := run.output.Roll(); !run.dirty && !rolled {
 			continue
 		}
@@ -570,27 +601,9 @@ func appServerOutputTail(output *string) ([]string, int) {
 // Source: codex-rs/shell-command/src/powershell.rs:43:73@86be5320 extract_powershell_command
 // Unlike Codex's argv helper, preserve PowerShell's extra script arguments.
 func appServerDisplayCommand(command string) string {
-	program, err := syntax.NewParser().Parse(strings.NewReader(command), "")
-	if err != nil || len(program.Stmts) != 1 {
+	args, ok := appServerCommandArgs(command)
+	if !ok {
 		return command
-	}
-	stmt := program.Stmts[0]
-	call, ok := stmt.Cmd.(*syntax.CallExpr)
-	if !ok || stmt.Background || stmt.Negated || stmt.Coprocess || stmt.Disown || len(stmt.Redirs) != 0 || len(call.Assigns) != 0 || len(call.Args) < 3 {
-		return command
-	}
-	args := make([]string, 0, len(call.Args))
-	for _, word := range call.Args {
-		if !shellCatLiteralParts(word.Parts, false) {
-			return command
-		}
-		// Fields removes shell quoting without consulting the environment or
-		// executing substitutions. Reject words that expand to multiple args.
-		fields, err := expand.Fields(&expand.Config{}, word)
-		if err != nil || len(fields) != 1 {
-			return command
-		}
-		args = append(args, fields[0])
 	}
 	name := filepath.Base(args[0])
 	name = strings.TrimSuffix(name, filepath.Ext(name))
@@ -614,6 +627,44 @@ func appServerDisplayCommand(command string) string {
 		}
 	}
 	return command
+}
+
+// appServerShellScript is the script of a host Bash command, exactly as the
+// shell receives it with -c or -lc.
+func appServerShellScript(command string) (string, bool) {
+	args, ok := appServerCommandArgs(command)
+	if !ok || len(args) != 3 || args[1] != "-lc" && args[1] != "-c" {
+		return "", false
+	}
+	name := filepath.Base(args[0])
+	return args[2], strings.TrimSuffix(name, filepath.Ext(name)) == "bash"
+}
+
+// appServerCommandArgs unquotes a host command made only of literal words.
+func appServerCommandArgs(command string) ([]string, bool) {
+	program, err := syntax.NewParser().Parse(strings.NewReader(command), "")
+	if err != nil || len(program.Stmts) != 1 {
+		return nil, false
+	}
+	stmt := program.Stmts[0]
+	call, ok := stmt.Cmd.(*syntax.CallExpr)
+	if !ok || stmt.Background || stmt.Negated || stmt.Coprocess || stmt.Disown || len(stmt.Redirs) != 0 || len(call.Assigns) != 0 || len(call.Args) < 3 {
+		return nil, false
+	}
+	args := make([]string, 0, len(call.Args))
+	for _, word := range call.Args {
+		if !shellCatLiteralParts(word.Parts, false) {
+			return nil, false
+		}
+		// Fields removes shell quoting without consulting the environment or
+		// executing substitutions. Reject words that expand to multiple args.
+		fields, err := expand.Fields(&expand.Config{}, word)
+		if err != nil || len(fields) != 1 {
+			return nil, false
+		}
+		args = append(args, fields[0])
+	}
+	return args, true
 }
 
 // appServerEditText is one Activity operation per changed file, with its

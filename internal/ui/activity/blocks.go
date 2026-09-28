@@ -43,6 +43,8 @@ type Block struct {
 	StatAlign   int  // Widest line-count text in this row's group.
 	StatScale   int  // Largest changed-line total in a multi-row group; 0 omits bars.
 	Running     bool // A live command the host has not completed.
+	Segment     bool // Ends one tracked segment of a command list; shows that segment's exit.
+	Skipped     bool // A tracked segment the command list never reached.
 	Tail        []string
 	TailOmitted int    // Output lines before Tail.
 	SourceRows  int    // Rows a command or program preview may use; 0 shows it whole.
@@ -72,7 +74,7 @@ func (b Block) Collapsible() bool {
 	case "summary":
 		return !b.Live && !ReasoningTitled(b.Body)
 	case "op", "reads":
-		return !b.Running && b.ExitCode == 0 && len(b.Tail)+b.TailOmitted > 1
+		return !b.Running && !b.Skipped && b.ExitCode == 0 && len(b.Tail)+b.TailOmitted > 1
 	}
 	return false
 }
@@ -153,7 +155,7 @@ func RowVerb(b Block) string {
 	switch {
 	case b.Kind == "op" && b.Verb == "Run" && b.Running:
 		return "Running"
-	case b.Kind == "op" && b.Verb == "Run":
+	case b.Kind == "op" && b.Verb == "Run" && !b.Skipped:
 		return "Ran"
 	case b.GroupHeader != "":
 		return EditVerb(b)

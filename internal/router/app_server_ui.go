@@ -74,6 +74,7 @@ type appServerUI struct {
 	view                      *liveActivityView
 	agents                    *liveActivityView
 	proxy                     *mekugiProxy
+	execTrack                 *execTrackHub // Per-segment command reports; nil when not tracking.
 	issues                    *CriticalErrors
 	noticeEntries             map[string]bool
 	journal                   *nativeJournalSink
@@ -161,6 +162,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		return nil, err
 	}
 	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread}
+	if proxy != nil {
+		u.execTrack = proxy.execTrack
+	}
 	u.resumeConfig = appServerResumeConfig(cmd.Args)
 	u.notifications = &nativeNotifications{out: stdout, focused: true}
 	u.resumeCwd = resumeCwd

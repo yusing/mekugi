@@ -35,7 +35,9 @@ and implicit command boundaries preserve command arguments.
 In Mekugi mode, the Codex request keeps its stock Code Mode JavaScript
 `functions.exec` tool or native `apply_patch` and `exec_command` tools. The
 router does not replace their names, schemas, arguments, results, or execution
-path. Code Mode batching, including `Promise.allSettled`, remains available. Codex
+path. The only exception is the in-shell segment tracking of
+[REQ-EXECUTION-002](#req-execution-002--track-each-segment-of-a-command-list), which
+keeps the result and the Codex-owned process lifecycle unchanged. Code Mode batching, including `Promise.allSettled`, remains available. Codex
 owns permissions, sandboxing, command processes, yielded sessions, and
 `write_stdin` continuation. Mekugi never reruns a stock call while observing,
 replaying, or displaying it.
@@ -131,3 +133,70 @@ Acceptance:
    arguments pass through without router-imposed floors.
 6. Configured and built-in frontends use one authenticated snapshot and the
    Codex-owned executor, with no alternate tool carrier or MCP layer.
+
+## REQ-EXECUTION-002 — Track each segment of a command list
+
+In the native app-server UI, a Bash command whose script is a top-level list
+(`;`, newline, `&&`, `||`) reports each segment's own output and exit status, so
+Activity can show every segment with its own state. Pipelines and compound
+commands are single segments. Command text, stdin, output bytes, exit status,
+PTY/yield behavior, and `write_stdin` continuation stay those of the stock
+command. Codex's startup, cancellation, sandbox, and process group apply
+unchanged.
+
+The launcher adds a hook to the Bash startup file that the frontend PATH
+already uses. The hook runs in the command shell Codex started, after login
+startup, so profile functions and aliases remain available. It never evaluates
+the script or starts a second shell for it. The helper `mekugi-exec`, installed
+beside `mekugi`, splits the script with the router's own splitter and asks the
+router to match it to a live `commandExecution` item by thread and exact script.
+Only after a match does the shell run an instrumented copy in place of the
+script and exit. A one-time trap runs the copy before the script's first
+command, so Bash's own error messages, line numbers, and fatal errors are those
+of the original. The copy wraps each segment in hooks that preserve its status,
+`$?`, and `set -e`. In every other case the hook returns before any segment runs
+and Bash runs the original script, so no script runs twice.
+
+A script stays untracked when:
+
+- it is a single command;
+- it starts with a subshell or a timed command, which would run before the trap;
+- it uses job control, traps, `coproc`, a top-level `return`, `exec` with a
+  program, command tracing, or variables that name the running command;
+- it is a Codex shell-snapshot script or wrapper (the wrapper's inner shell is
+  tracked instead);
+- it runs in a nested shell started by a command;
+- it does not match a live item within 150 ms, for example because Codex
+  redacted a secret-like word in the displayed command;
+- the helper, socket, or router is unavailable.
+
+The helper relays the shell's output to Codex's original descriptors while it
+reports each segment's share. The shell waits for the helper to acknowledge
+each segment's end, so the reported output of consecutive segments is exact.
+Output a background descendant writes later is attributed to the segment that
+is running when it arrives. A terminal command is not relayed, because
+programs would detect a pipe; it reports statuses only and keeps the host's
+combined output. The helper never blocks on the router. When reporting falls
+behind or exceeds 4 MiB, it stops reporting output and continues relaying
+unchanged.
+
+A completed command shows its segments only when its report ended with the
+host's own exit status. Otherwise, including a report that ends when the shell
+replaces itself or is killed, Activity falls back to the host's combined result.
+Reports are live-only; restored history and `codex resume` show the combined
+result. The per-command overhead is one helper start and one acknowledgment per
+segment. Single commands start no helper.
+
+Acceptance:
+
+1. Tracked and untracked runs of the same list produce byte-identical stdout
+   and stderr and the same exit status. Covered cases: `$?` across segments,
+   `cd`, `exit N`, `set -e` with `||` and `!`, heredocs, short-circuited
+   `&&`/`||`, Bash error messages, and fatal expansion errors.
+2. Each segment's report carries only its own output and status. A
+   short-circuited segment is reported as never run, and a shell that exits
+   inside a segment attributes that exit to it.
+3. Codex snapshot scripts, nested shells, unmatched scripts, and untrackable
+   scripts run unmodified.
+4. Terminal commands keep their terminal, and only statuses are reported.
+5. An incomplete report never replaces the host's combined output or exit.

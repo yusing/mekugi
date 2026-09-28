@@ -96,38 +96,10 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 			return []activityui.Block{{Kind: "filter", Body: text}}
 		}
 	case "tool":
-		var blocks []activityui.Block
-		previousSource := ""
-		for _, paragraph := range activityui.Paragraphs(text) {
-			block := activityui.ParseOperation(paragraph)
-			if match := liveActivityManagedFiles.FindStringSubmatch(paragraph); match != nil {
-				// A receipt's tool-managed files are confirmed edits of its source.
-				source := cmp.Or(match[3], previousSource)
-				block = activityui.Block{Kind: "op", Verb: "Edit", Label: match[1] + " tool-managed files (" + match[2] + ")"}
-				if source != "" {
-					block.Label += " · " + source
-					block.EditSource, block.EditHeader = source, source != previousSource
-				}
-			}
-			switch block.Verb {
-			case "Create", "Edit", "Delete", "Move":
-				if source, ok := strings.CutPrefix(block.Label, "· "); ok {
-					// A targetless edit still belongs to its invocation, but must
-					// retain the fact that its paths could not be resolved.
-					block.Label = "paths unavailable · " + source
-				}
-				if _, source, ok := strings.CutLast(block.Label, " · "); ok {
-					block.EditSource = source
-					block.EditHeader = source != previousSource
-				}
-				if block.Fenced && block.Lang == "diff" {
-					block.Code, block.Lang, block.Fenced = "", "", false
-				}
-			}
-			previousSource = block.EditSource
-			blocks = append(blocks, block)
+		if entry.native != nil && len(entry.native.segments) > 0 {
+			return commandSegmentBlocks(entry)
 		}
-		blocks = activityui.MergeLiveActivityReads(blocks)
+		blocks := toolOperationBlocks(text)
 		if len(blocks) == 1 && blocks[0].Verb == "Search" && entry.native != nil {
 			blocks[0].Results = entry.native.searchResults
 		}
@@ -146,4 +118,74 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 		return activityui.GroupOperations(blocks)
 	}
 	return []activityui.Block{{Kind: "text", Body: text}}
+}
+
+// toolOperationBlocks parses a tool entry's operations, one per paragraph,
+// merging adjacent reads.
+func toolOperationBlocks(text string) []activityui.Block {
+	var blocks []activityui.Block
+	previousSource := ""
+	for _, paragraph := range activityui.Paragraphs(text) {
+		block := activityui.ParseOperation(paragraph)
+		if match := liveActivityManagedFiles.FindStringSubmatch(paragraph); match != nil {
+			// A receipt's tool-managed files are confirmed edits of its source.
+			source := cmp.Or(match[3], previousSource)
+			block = activityui.Block{Kind: "op", Verb: "Edit", Label: match[1] + " tool-managed files (" + match[2] + ")"}
+			if source != "" {
+				block.Label += " · " + source
+				block.EditSource, block.EditHeader = source, source != previousSource
+			}
+		}
+		switch block.Verb {
+		case "Create", "Edit", "Delete", "Move":
+			if source, ok := strings.CutPrefix(block.Label, "· "); ok {
+				// A targetless edit still belongs to its invocation, but must
+				// retain the fact that its paths could not be resolved.
+				block.Label = "paths unavailable · " + source
+			}
+			if _, source, ok := strings.CutLast(block.Label, " · "); ok {
+				block.EditSource = source
+				block.EditHeader = source != previousSource
+			}
+			if block.Fenced && block.Lang == "diff" {
+				block.Code, block.Lang, block.Fenced = "", "", false
+			}
+		}
+		previousSource = block.EditSource
+		blocks = append(blocks, block)
+	}
+	return activityui.MergeLiveActivityReads(blocks)
+}
+
+// commandSegmentBlocks shows each segment of a tracked command as its own
+// operations, with that segment's state, exit status, and output after its
+// last operation. Without per-segment output, the host's combined output
+// follows the last segment shown.
+func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
+	var blocks []activityui.Block
+	for _, segment := range entry.native.segments {
+		operations := toolOperationBlocks(livediff.Safe(segment.text, false))
+		for i := range operations {
+			operations[i].Running, operations[i].Skipped = segment.running, segment.skipped
+		}
+		if len(operations) == 0 {
+			continue
+		}
+		last := &operations[len(operations)-1]
+		last.ExitCode, last.Segment = segment.exit, true
+		last.Tail, last.TailOmitted = segment.tail, segment.omit
+		blocks = append(blocks, operations...)
+	}
+	if len(entry.outputTail) > 0 {
+		for i := len(blocks) - 1; i >= 0; i-- {
+			if !blocks[i].Skipped {
+				blocks[i].Tail, blocks[i].TailOmitted = entry.outputTail, entry.outputOmit
+				break
+			}
+		}
+	}
+	for i := range blocks {
+		blocks[i].Collapsed = entry.native.collapsed && blocks[i].Collapsible()
+	}
+	return activityui.GroupOperations(blocks)
 }
