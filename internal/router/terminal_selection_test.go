@@ -62,6 +62,31 @@ func TestTerminalUISelectionDragText(t *testing.T) {
 	}
 }
 
+func TestTerminalUISelectionSkipsFrames(t *testing.T) {
+	u := selectionTestUI(
+		"│ ╭─ ✓ answer ───────────╮",
+		"│ │ The native preview   │",
+		"│ │ renders here.        │",
+		"│ │                      │",
+		"│ │   indented code      │",
+		"│ ╰──────────────────────╯",
+	)
+	selectionTestDrag(t, u, 0, 1, 39, 5)
+	if got, want := u.selection.text(), "The native preview\nrenders here.\n\n  indented code"; got != want {
+		t.Fatalf("selected text = %q, want %q", got, want)
+	}
+	for y, want := range map[int][2]int{0: {0, 0}, 1: {4, 22}, 2: {4, 17}, 3: {0, 0}, 4: {4, 19}, 5: {0, 0}} {
+		if left, right := u.selection.bounds(y); left != want[0] || right != want[1] {
+			t.Fatalf("row %d highlights [%d,%d), want %v", y, left, right, want)
+		}
+	}
+	// A drag that starts on the frame begins at the text beside it.
+	selectionTestDrag(t, u, 0, 0, 6, 1)
+	if got := u.selection.text(); got != "✓ answer\nThe" {
+		t.Fatalf("frame-started selection = %q", got)
+	}
+}
+
 func TestTerminalUISelectionReferencePreservesDraftAndUndo(t *testing.T) {
 	u := selectionTestUI("hello world")
 	u.main.insertDraft("before after")

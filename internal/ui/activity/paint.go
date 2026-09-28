@@ -986,8 +986,9 @@ func shellWrap(styled, plain string, width int, shell bool) []wrapRow {
 // Operations keep their ordinary one-row-per-operation layout.
 func (p *Painter) Event(block Block, width int) []string {
 	width = max(8, width)
+	// A flashed entry highlights its text, never its label row.
 	label := func(head string, body []string) []string {
-		return append([]string{ansi.Truncate(head, width, "…")}, body...)
+		return append([]string{ansi.Truncate(head, width, "…")}, p.flash(block, body)...)
 	}
 	done := Green + "✓" + Reset + Dim + " answer" + Undim
 	switch block.Kind {
@@ -1032,11 +1033,25 @@ func (p *Painter) Event(block Block, width int) []string {
 		if width < 12 {
 			return label(title, rows)
 		}
-		return liveActivityCard(title, rows, width)
+		return liveActivityCard(title, p.flash(block, rows), width, block.Flash)
 	case "text":
-		return p.Markdown(block.Body, width)
+		return p.flash(block, p.Markdown(block.Body, width))
 	}
-	return p.Block(block, width)
+	return p.flash(block, p.Block(block, width))
+}
+
+// flash highlights the text of a flashed block's rows, leaving padding and
+// frames plain.
+func (p *Painter) flash(block Block, rows []string) []string {
+	if !block.Flash {
+		return rows
+	}
+	fill := p.Theme.SelectionBackground()
+	flashed := make([]string, len(rows))
+	for i, row := range rows {
+		flashed[i] = fill + strings.ReplaceAll(row, Reset, Reset+fill) + "\x1b[49m"
+	}
+	return flashed
 }
 
 // journal lays out a final journal result: a heading with its answer and
@@ -1242,9 +1257,13 @@ func (p Painter) route(block Block) string {
 	return p.recipient(block.From) + Dim + " → " + Undim + p.recipient(block.To)
 }
 
-// liveActivityCard frames rows under a titled top edge.
-func liveActivityCard(title string, rows []string, width int) []string {
-	const edge = "\x1b[38;2;80;120;90m"
+// liveActivityCard frames rows under a titled top edge. A glowing card was
+// just opened from another pane.
+func liveActivityCard(title string, rows []string, width int, glow bool) []string {
+	edge := "\x1b[38;2;80;120;90m"
+	if glow {
+		edge = "\x1b[1m" + Green
+	}
 	inner := width - 4
 	top := edge + "╭─ " + Reset + title + edge + " " + strings.Repeat("─", max(0, width-5-ansi.StringWidth(title))) + "╮" + Reset
 	lines := []string{ansi.Truncate(top, width, "")}

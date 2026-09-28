@@ -231,8 +231,10 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						if u.expireNotice(time.Now()) {
 							u.dirty = true
 						}
-						if u.view.expireFlash(time.Now()) {
-							u.dirty = true
+						for _, view := range []*liveActivityView{u.view, u.agents} {
+							if view.expireFlash(time.Now()) {
+								u.dirty = true
+							}
 						}
 						if u.sessionAnimating() || u.shell.activityOpen && u.agents.hasLiveReasoning() {
 							u.dirty = true

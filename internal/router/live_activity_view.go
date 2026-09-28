@@ -106,6 +106,7 @@ type liveActivityRunKey struct {
 	main        bool
 	thread      conversationThread // Main transcript thread placement.
 	lead        uint64             // Main item a transcript tool group continues, or 0.
+	flash       uint64             // Flashed Activity entry in this run, or 0.
 }
 
 func newLiveActivityView() *liveActivityView {
@@ -1145,6 +1146,14 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 	if !v.only {
 		clip = min(12, max(3, rows/3))
 	}
+	// A cross-pane jump flashes its target from the first frame that shows it.
+	if v.pendingTarget != 0 && slices.ContainsFunc(v.entries, func(entry activityPaneEntry) bool { return entry.Seq == v.pendingTarget && v.visible(entry) }) {
+		v.flashQuestion, v.flashUntil = v.pendingTarget, time.Now().Add(700*time.Millisecond)
+	}
+	flash := uint64(0)
+	if time.Now().Before(v.flashUntil) {
+		flash = v.flashQuestion
+	}
 	var feed liveActivityFeed
 	v.questionRows = make(map[uint64]int)
 	used := make(map[liveActivityRunKey]liveActivityRun)
@@ -1164,7 +1173,10 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 			}
 			last = j
 		}
-		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.Theme, -1, false, conversationThread{}, 0}
+		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.Theme, -1, false, conversationThread{}, 0, 0}
+		if key.first <= flash && flash <= key.last {
+			key.flash = flash
+		}
 		if v.snippet.run == key.first {
 			key.hover = v.snippet.block
 		}
@@ -1175,6 +1187,7 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 				if v.visible(v.entries[k]) {
 					for _, block := range v.blocks[k] {
 						block.Source = v.entries[k].Seq
+						block.Flash = block.Source == key.flash
 						blocks = append(blocks, block)
 					}
 				}
@@ -1335,12 +1348,7 @@ func (v *liveActivityView) viewportPosition(feed liveActivityFeed, rows int) (in
 func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 	rows = max(0, rows)
 	v.offset, v.following = v.viewportPosition(feed, rows)
-	if v.pendingTarget != 0 {
-		if _, ok := v.questionRows[v.pendingTarget]; ok {
-			v.flashQuestion, v.flashUntil = v.pendingTarget, time.Now().Add(700*time.Millisecond)
-		}
-		v.pendingTarget = 0
-	}
+	v.pendingTarget = 0
 	v.feedLines, v.feedRows = len(feed.lines), rows
 	if v.following {
 		v.unseen = 0
@@ -1363,9 +1371,10 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 		lines[0], v.feedSnippets[0] = feed.lines[feed.heads[v.offset]], liveActivitySnippet{}
 		v.feedQuestions[0] = 0
 	}
-	if target, ok := v.questionRows[v.flashQuestion]; ok && time.Now().Before(v.flashUntil) {
+	// Activity's painter flashes its own entries; Main flashes whole items.
+	if target, ok := v.questionRows[v.flashQuestion]; ok && v.conversation && time.Now().Before(v.flashUntil) {
 		for row := range lines {
-			if index := v.offset + row; index < len(feed.heads) && (feed.heads[index] == target || !v.conversation && index == target) {
+			if index := v.offset + row; index < len(feed.heads) && feed.heads[index] == target {
 				lines[row] = v.selectRow(lines[row], ansi.StringWidth(lines[row]))
 			}
 		}

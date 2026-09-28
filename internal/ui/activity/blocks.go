@@ -39,7 +39,8 @@ type Block struct {
 	StatAlign   int // Widest line-count text in this row's group.
 	StatScale   int // Largest changed-line total in a multi-row group; 0 omits bars.
 	Tail        []string
-	TailOmitted int // Output lines before Tail.
+	TailOmitted int  // Output lines before Tail.
+	Flash       bool // Presentation-only: another pane just opened this entry.
 }
 
 // GroupOperations groups adjacent edits from one source and outcome, across

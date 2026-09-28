@@ -112,6 +112,13 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	if u.agents.following || u.agents.selected != "/root/worker" || u.agents.flashQuestion != activity || !strings.Contains(screen.String(), "The requested reply.") {
 		t.Fatalf("jump did not reach exact reply: offset=%d target=%d\n%s", u.agents.offset, u.agents.questionRows[activity], screen.String())
 	}
+	// The opened reply flashes its text, not the route label above it.
+	fill := u.agents.painter.Theme.SelectionBackground()
+	flashed := u.agents.renderFeed(80, 100).lines
+	body := slices.IndexFunc(flashed, func(line string) bool { return strings.Contains(ansi.Strip(line), "The requested reply.") })
+	if body < 1 || !strings.Contains(flashed[body], fill) || strings.Contains(flashed[body-1], fill) {
+		t.Fatalf("reply flash missed its text or lit its label: %q", flashed[max(0, body-1):body+1])
+	}
 	full := ansi.Strip(strings.Join(u.agents.renderFeed(80, 100).lines, "\n"))
 	if !strings.Contains(full, "End of requested reply.") {
 		t.Fatal("Activity lost the full message")

@@ -24,20 +24,67 @@ type terminalSelection struct {
 	snippets                   []liveActivitySnippet
 }
 
-func (s *terminalSelection) bounds(y int) (int, int) {
+// selectionSpan is the text a row offers for selection within [left, right).
+// Leading frames and gutters, each with the space after it, and trailing
+// frames and padding are decoration. Indentation inside the text is kept, so
+// Main, Activity, the pinned reply and the composer select alike.
+func selectionSpan(row string, left, right int) (int, int) {
+	start, end := left, left
+	leading, decorated := true, false
+	column := 0
+	for g := uniseg.NewGraphemes(ansi.Strip(row)); g.Next() && column < right; {
+		next := column + g.Width()
+		if column >= left {
+			cell := g.Str()
+			switch {
+			case selectionDecoration(cell):
+				if leading {
+					start, decorated = next, true
+				}
+			case cell == " ":
+				if leading && decorated {
+					start, decorated = next, false
+				}
+			default:
+				leading, decorated, end = false, false, next
+			}
+		}
+		column = next
+	}
+	return start, max(start, min(end, right))
+}
+
+// selectionDecoration reports frame, gutter, rail and rule glyphs: box
+// drawing and block elements.
+func selectionDecoration(cell string) bool {
+	r := []rune(cell)
+	return len(r) == 1 && r[0] >= 0x2500 && r[0] <= 0x259f
+}
+
+// ordered returns the selection's first and last rows.
+func (s *terminalSelection) ordered() (int, int, int, int) {
 	ax, ay, bx, by := s.startX, s.startY, s.endX, s.endY
 	if ay > by || ay == by && ax > bx {
 		ax, ay, bx, by = bx, by, ax, ay
 	}
+	return ax, ay, bx, by
+}
+
+// bounds is the selected text of row y, as a half-open column range.
+func (s *terminalSelection) bounds(y int) (int, int) {
+	ax, ay, bx, by := s.ordered()
 	if y < ay || y > by {
 		return 0, 0
 	}
-	left, right := s.rect.x, s.rect.x+s.rect.w
+	left, right := selectionSpan(s.rows[y], s.rect.x, s.rect.x+s.rect.w)
 	if y == ay {
-		left = ax
+		left = max(left, ax)
 	}
 	if y == by {
-		right = bx + 1
+		right = min(right, bx+1)
+	}
+	if right <= left {
+		return 0, 0
 	}
 	// Include the entire grapheme when either endpoint lands on a wide cell.
 	column := 0
@@ -57,13 +104,23 @@ func (s *terminalSelection) bounds(y int) (int, int) {
 	return left, right
 }
 
+// text joins the selected rows. Rows without text inside the selection keep
+// one paragraph break, so frame edges add no blank lines of their own.
 func (s *terminalSelection) text() string {
+	_, first, _, last := s.ordered()
 	var lines []string
-	for y, row := range s.rows {
-		left, right := s.bounds(y)
-		if right > left {
-			lines = append(lines, strings.TrimRight(ansi.Strip(ansi.Cut(row, left, right)), " "))
+	for y := first; y <= last && y < len(s.rows); y++ {
+		line := ""
+		if left, right := s.bounds(y); right > left {
+			line = strings.TrimRight(ansi.Strip(ansi.Cut(s.rows[y], left, right)), " ")
 		}
+		if line == "" && (len(lines) == 0 || lines[len(lines)-1] == "") {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
 	}
 	return strings.Join(lines, "\n")
 }

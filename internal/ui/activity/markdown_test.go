@@ -79,3 +79,26 @@ func plainLines(lines []string) []string {
 	}
 	return plain
 }
+
+func TestFlashedAnswerCardGlowsAndLightsText(t *testing.T) {
+	p := activityui.Painter{Theme: livediff.DarkTheme}
+	block := activityui.Block{Kind: "final", Body: "The answer text."}
+	plain := p.Event(block, 40)
+	block.Flash = true
+	lines := p.Event(block, 40)
+	fill := p.Theme.SelectionBackground()
+	if len(lines) != 3 || len(plain) != 3 {
+		t.Fatalf("card rows: %q", lines)
+	}
+	if strings.Contains(lines[0], fill) || !strings.Contains(lines[1], fill) || strings.Contains(lines[2], fill) {
+		t.Fatalf("flash must light the answer text only: %q", lines)
+	}
+	for k := range lines {
+		if ansi.Strip(lines[k]) != ansi.Strip(plain[k]) || lines[k] == plain[k] {
+			t.Fatalf("row %d did not glow in place: %q, plain %q", k, lines[k], plain[k])
+		}
+	}
+	if !strings.HasPrefix(ansi.Strip(lines[1]), "│ The answer text.") {
+		t.Fatalf("answer text moved: %q", ansi.Strip(lines[1]))
+	}
+}
