@@ -15,6 +15,7 @@ import (
 // The native shell owns terminal presentation; Codex app-server owns execution.
 type terminalUI struct {
 	selection                                      *terminalSelection
+	navigationReturns                              []nativeNavigationReturn
 	clipboard                                      string
 	pasteEnd                                       int
 	hostReply                                      []byte
@@ -301,6 +302,10 @@ func (u *terminalUI) send(s string) error {
 	if s == "\x1b" && u.main != nil && u.focus == 0 && u.main.pickerKey(s) {
 		return nil
 	}
+	if s == "\x1b" && u.selection == nil && u.popNavigationReturn() {
+		return nil
+	}
+
 	if s == "\x1b" && u.main != nil && !u.main.keybindings {
 		var transcript *liveActivityView
 		if u.focus == 0 {

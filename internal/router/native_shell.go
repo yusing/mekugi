@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+ "slices"
 	"strings"
 	"time"
 
@@ -37,6 +38,7 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 			if target.Seq != entry.activitySeq {
 				continue
 			}
+			u.pushNavigationReturn()
 			u.side, u.activityOpen, u.diffOpen, u.focus = true, true, false, 2
 			u.agents.selected, u.agents.only = target.Agent, true
 			u.agents.runs = nil
@@ -458,6 +460,9 @@ func (u *terminalUI) nativeStatus() string {
 	}
 	if u.liveDock.Live() > 1 {
 		hints = append(hints, terminalHint{"^B e", "next live", 0})
+	}
+	if len(u.navigationReturns) > 0 {
+		hints = append(terminalHints{{"esc", "back to previous view", 0}}, slices.DeleteFunc(hints, func(h terminalHint) bool { return h.key == "esc" })...)
 	}
 	hints = append(hints, terminalHint{"^B 1-4", "panes", 0})
 	return tabs + "  " + hints.render()

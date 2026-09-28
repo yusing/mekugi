@@ -519,9 +519,9 @@ func (p *nativePreview) apply(edit nativePreviewEdit) {
 	p.calls++
 	id := fmt.Sprintf("call-%d", p.calls)
 	caller := p.ui.session.path(edit.thread)
-	if change, err := p.store.reserveChange(p.ui.ctx, p.workspace, edit.thread, id); err == nil {
+	if change, err := p.store.reserveChange(p.ui.ctx, p.workspace, edit.thread, edit.item+"\x000"); err == nil {
 		_ = p.store.put(p.ui.ctx, p.workspace, map[string]mekugiHistory{id: {
-			ToolName: applyPatchToolName, Caller: caller, ChangeID: change, CorrelationID: id, ExecutingThread: edit.thread,
+			ToolName: applyPatchToolName, Caller: caller, ChangeID: change, CorrelationID: edit.item + "\x000", ExecutingThread: edit.thread,
 			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(beforePath, absolute, string(before), after)},
 		}})
 	}
@@ -1152,5 +1152,92 @@ func TestNativeUIPreviewSessionReplyIdentity(t *testing.T) {
 	}
 	if assignments != 2 {
 		t.Fatalf("fake session did not retain distinct tester assignments: %d", assignments)
+	}
+}
+
+func TestNativePreviewEditMouseNavigation(t *testing.T) {
+	for _, activity := range []bool{false, true} {
+		t.Run(fmt.Sprint(activity), func(t *testing.T) {
+			p := newNativePreview(t)
+			defer p.close()
+			p.until("agents apply")
+			u := p.ui
+			view, item := u.view, "patch-main"
+			if activity {
+				view, item = u.agents, "patch-tester"
+				view.selected, view.only = "/root/tester", true
+			}
+			u.shell.side, u.shell.activityOpen, u.shell.diffOpen = activity, activity, false
+			paint := func() {
+				t.Helper()
+				if err := u.paint(io.Discard, 160, 160); err != nil {
+					t.Fatal(err)
+				}
+			}
+			paint()
+			var seq uint64
+			for _, entry := range view.entries {
+				if entry.native != nil && entry.native.item == item {
+					seq = entry.Seq
+				}
+			}
+			if seq == 0 {
+				t.Fatal("preview edit missing")
+			}
+			row := slices.IndexFunc(view.feedSnippets, func(s liveActivitySnippet) bool { return s.run == seq && s.block == editNavigationSnippet })
+			if row < 0 {
+				t.Fatalf("preview edit has no click target: %v", view.feedSnippets)
+			}
+			rect := u.shell.layout.codex
+			if activity {
+				rect = u.shell.layout.agents
+			}
+			x, y := rect.x+view.feedLeft+1, rect.y+view.feedTop+row
+			if err := u.shell.mouse(fmt.Sprintf("\x1b[<35;%d;%dM", x, y)); err != nil {
+				t.Fatal(err)
+			}
+			paint()
+			if !strings.Contains(u.shell.paintedRows[y-1], "\x1b[4m") {
+				t.Fatal("edit has no hover underline")
+			}
+			for _, ending := range []string{"M", "m"} {
+				if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", x, y, ending)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			d := u.shell.diff
+			if !u.shell.diffOpen || !d.navigation.ChangesTab || u.shell.focus != 1 {
+				t.Fatal("preview edit did not open branched diff")
+			}
+			found := false
+			for _, attempt := range d.data.attempts {
+				if attempt.correlation == item+"\x000" && attempt.change == d.navigation.Changes.Target.Change {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("preview clicked wrong change: %+v", d.navigation.Changes.Target)
+			}
+			paint()
+			l := &d.navigation.Changes
+			if l.Cursor < l.Top || l.Cursor >= l.Top+d.navRows {
+				t.Fatal("preview target is off screen")
+			}
+			if err := u.shell.key(27); err != nil {
+				t.Fatal(err)
+			}
+			u.shell.sequenceAt = time.Now().Add(-time.Second)
+			if err := u.shell.flushEscape(); err != nil {
+				t.Fatal(err)
+			}
+			wantFocus := 0
+			if activity {
+				wantFocus = 2
+			}
+			if u.shell.diffOpen || u.shell.activityOpen != activity || u.shell.side != activity || u.shell.focus != wantFocus {
+				t.Fatal("Escape did not return to the originating pane")
+			}
+
+		})
 	}
 }

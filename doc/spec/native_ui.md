@@ -168,7 +168,9 @@ again hides it. A roster pick that changes Activity's agent filter shows
 Activity in place of the saved diff.
 
 Clicking a compact Edit event opens the Diff pane’s changes-by-caller navigation
-and scrolls to its captured change. Navigation uses the exact host invocation,
+and scrolls to its captured change. Edit rows underline on hover in Main and
+Activity. Escape returns to the originating pane after closing any diff help,
+filter, or nested navigation action. Navigation uses the exact host invocation,
 including grouped shell captures, rather than matching nearby paths or edits.
 
 Successful single-line Ran output remains visible rather than collapsing to a

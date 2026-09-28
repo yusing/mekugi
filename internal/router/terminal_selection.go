@@ -169,6 +169,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 								return true
 							}
 							if target, ok := s.view.questionRows[s.questions[index]]; ok {
+								u.pushNavigationReturn()
 								s.view.offset, s.view.following = target, false
 								s.view.flashQuestion = s.questions[index]
 								s.view.flashUntil = time.Now().Add(700 * time.Millisecond)

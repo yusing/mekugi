@@ -1318,6 +1318,9 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 				part = append(part[:limit-1:limit-1], activityui.Dim+hint+activityui.Undim)
 			}
 		}
+		if block.EditSource != "" {
+			snippet = liveActivitySnippet{block.Source, editNavigationSnippet}
+		}
 		switch {
 		case tree:
 			last := true
@@ -1381,6 +1384,9 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 		if index := v.offset + row; index < len(feed.lines) {
 			lines[row], v.feedSnippets[row] = feed.lines[index], feed.snippets[index]
 			v.feedQuestions[row] = feed.questions[index]
+			if target := feed.snippets[index]; target.block == editNavigationSnippet && target == v.snippet {
+				lines[row] = activityui.Underline(lines[row])
+			}
 			if index == v.questionHover-1 && feed.questions[index] != 0 {
 				lines[row] = underlineLink(lines[row])
 			}

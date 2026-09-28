@@ -31,6 +31,8 @@ func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64) bool {
 				if node.Change != attempt.change || len(node.Files) == 0 {
 					continue
 				}
+				u.pushNavigationReturn()
+				c.back = liveDiffBack{}
 				u.side, u.diffOpen, u.activityOpen, u.focus = true, true, false, 1
 				c.diffMode, c.dirty = true, true
 				c.navigation.Hidden, c.navigation.Filtering = false, false
