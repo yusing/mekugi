@@ -433,7 +433,6 @@ func TestSubagentSedReadDisplay(t *testing.T) {
 		"sed -n '1,260p' --version",
 		"sed -n '1,260p' ''",
 		"sed -n '1,260p' a.go b.go",
-		"sed -n '1,260p' \"$file\"",
 		"sed -n '1,260p' source.go > copy.go",
 	} {
 		want := "Run\n" + toolActivityFenced("bash", source)
@@ -472,7 +471,6 @@ func TestSubagentNumberedReadDisplay(t *testing.T) {
 	}
 	for _, invalid := range []string{
 		"nl -b a source.go | sed -n '1,2p'",
-		"nl -ba \"$file\" | sed -n '1,2p'",
 		"nl -ba source.go | sed -n '1,$p'",
 		"nl -ba source.go | sed -n '1,2p' > copy.go",
 		"nl -ba source.go | sed -n '1,2p' | head -n 1",
@@ -519,7 +517,7 @@ func TestSubagentMixedReadRunFallbacks(t *testing.T) {
 		{"cat a; sleep 1 &", "Read `a`\n\nRun `sleep 1 &`"},
 		{"git status --short\ncat a", "Run `git status --short`\n\nRead `a`"},
 		{"cat a\nsed -n '1,$p' b", "Read `a`\n\nRun `sed -n '1,$p' b`"},
-		{"cat a\ncat \"$file\"", "Read `a`\n\nRun `cat \"$file\"`"},
+		{"cat a\ncat \"$file\"", "Read `a`\n\nRead `\"$file\"`"},
 		{"cat a\ncat good -n", "Read `a`\n\nRun `cat good -n`"},
 		{"cat a\necho 'first\n\nlast'", "Read `a`\n\nRun\n```bash\necho 'first\n\nlast'\n```"},
 		{"cat a\n  printf '%s\\n' \\\n    value", "Read `a`\n\nRun\n```bash\n  printf '%s\\n' \\\n    value\n```"},
@@ -940,6 +938,38 @@ func TestSubagentMappedPreviewDoesNotAmplifySharedOptions(t *testing.T) {
 	for _, call := range calls {
 		if len(call["arguments"]) > 100 {
 			t.Fatal("shared options amplified in preview")
+		}
+	}
+}
+
+func TestSubagentSymbolicReadPaths(t *testing.T) {
+	for _, tc := range []struct{ source, want string }{
+		{`mcat "$HOME/.codex/INSTRUCTION-AUTHORING.md" AGENTS.md`, "Read `\"$HOME/.codex/INSTRUCTION-AUTHORING.md\"`\n\nRead `AGENTS.md`"},
+		{`mcat "${HOME}/a b.go" 1:20 other.go`, "Read `\"${HOME}/a b.go\" 1:20`\n\nRead `other.go`"},
+		{`cat $ROOT/*.go`, "Read `$ROOT/*.go`"},
+		{`sed -n '1,260p' "$file"`, "Read `\"$file\" 1:260`"},
+		{`nl -ba "$file" | sed -n '1,2p'`, "Read `\"$file\" 1:2`"},
+		{`inspect_file "$ROOT/a.go"`, "Inspect `\"$ROOT/a.go\"`"},
+		{`rg needle "$ROOT"`, "Search `needle` in `\"$ROOT\"`"},
+	} {
+		if got := toolActivityShell(tc.source); got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.source, got, tc.want)
+		}
+	}
+	for _, source := range []string{
+		`mcat "$(touch sentinel)/a" AGENTS.md`,
+		`mcat "$(touch sentinel)$HOME/a"`,
+		`mcat "${HOME:=/tmp}$HOME/a"`,
+		`mcat "${paths[index++]}$HOME/a"`,
+		"mcat \"`touch sentinel`/a\" AGENTS.md",
+		`mcat "${HOME:-$(touch sentinel)}/a"`,
+		`mcat "${HOME:=/tmp}/a"`,
+		`mcat "${paths[index++]}/a"`,
+		`mcat <(cat a)`,
+		`"$READER" a.go`,
+	} {
+		if got := toolActivityShell(source); got != "Run\n"+toolActivityFenced("bash", source) {
+			t.Errorf("%s: unexpected classification %q", source, got)
 		}
 	}
 }

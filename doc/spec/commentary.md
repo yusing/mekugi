@@ -77,8 +77,9 @@ These presentation rules do not change tool input, result, or replay payload.
 A simple `cat`, valid `mcat` read, bounded `sed -n` print, `nl -ba FILE`, or
 `nl -ba FILE | sed -n RANGES` selection is labeled `Read`; literal `rg` is `Search`;
 simple listings are `List`; and `inspect_file`, including its options and multiple
-paths, is `Inspect`. Read path globs are preserved without expansion; executable
-substitutions remain `Run`. A `cat` read piped to a bounded `head` retains its read
+paths, is `Inspect`. Path globs and simple shell parameter references such as
+`$HOME` and `${HOME}` are preserved as source without expansion; parameter
+operators and executable substitutions remain `Run`. A `cat` read piped to a bounded `head` retains its read
 label. `skills-mgr get` and `skills-mgr run` use `Skill`, including reference reads.
 The skill name is bold; reference paths and run arguments retain normal weight.
 `&&` chains show classified operations and unclassified `Run` neighbors in source

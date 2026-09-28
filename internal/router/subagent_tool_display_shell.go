@@ -446,13 +446,19 @@ func toolActivitySearchFilter(argv []string) bool {
 	return false
 }
 
-// Search and list details preserve shell patterns verbatim. Accept word
-// patterns without expanding them; never treat substitutions as literal paths.
+// Preserve shell patterns and simple parameter references verbatim, without
+// expanding them. Parameter operators and executable substitutions stay opaque.
 func toolActivityPatternWord(word *syntax.Word) bool {
 	valid := true
 	syntax.Walk(word, func(node syntax.Node) bool {
-		switch node.(type) {
+		switch node := node.(type) {
 		case *syntax.Word, *syntax.Lit, *syntax.SglQuoted, *syntax.DblQuoted, nil:
+		case *syntax.ParamExp:
+			valid = valid && node.Param != nil && node.Flags == nil &&
+				!node.Excl && !node.Length && !node.Width && !node.IsSet &&
+				node.Split == syntax.OptUnset && node.GlobSubst == syntax.OptUnset && node.RcExpand == syntax.OptUnset &&
+				node.NestedParam == nil && node.Index == nil && len(node.Modifiers) == 0 &&
+				node.Slice == nil && node.Repl == nil && node.Names == 0 && node.Exp == nil
 		default:
 			valid = false
 		}

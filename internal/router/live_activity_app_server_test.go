@@ -443,3 +443,21 @@ func TestAppServerActivityHeadingShowsLateRole(t *testing.T) {
 		t.Fatalf("heading kept a stale role:\n%s", frame)
 	}
 }
+
+func TestLiveActivityMainSymbolicReadPaths(t *testing.T) {
+	for _, phase := range []string{"item/started", "item/completed"} {
+		t.Run(phase, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			command := `mcat "$HOME/.codex/INSTRUCTION-AUTHORING.md" AGENTS.md`
+			appServerTestNotify(t, u, phase, map[string]any{"threadId": "main", "turnId": "turn", "item": appServerItem{ID: "read", Type: "commandExecution", Command: command}})
+			var frame bytes.Buffer
+			if err := u.paint(&frame, 140, 25); err != nil {
+				t.Fatal(err)
+			}
+			plain := ansi.Strip(frame.String())
+			if !strings.Contains(plain, "Read") || !strings.Contains(plain, "$HOME/.codex/INSTRUCTION-AUTHORING.md") || !strings.Contains(plain, "AGENTS.md") || strings.Contains(plain, "Ran") {
+				t.Fatalf("symbolic read leaked as command: %s", plain)
+			}
+		})
+	}
+}
