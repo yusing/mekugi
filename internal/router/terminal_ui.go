@@ -72,6 +72,11 @@ func (u *terminalUI) key(key byte) error {
 			u.paste = false
 			u.pasteEnd = 0
 		}
+		// The status panel is not an input destination. Keep paste termination
+		// entirely in this decoder, including the final marker byte.
+		if u.main != nil && u.main.statusPanel != nil {
+			return nil
+		}
 		if u.focus == 0 {
 			return u.send(string([]byte{key}))
 		}
@@ -296,6 +301,17 @@ func (u *terminalUI) terminalColor(reply string) {
 }
 
 func (u *terminalUI) send(s string) error {
+	if u.main != nil && u.focus == 0 && u.main.statusPanel != nil {
+		if u.selection != nil && !u.selection.dragging {
+			u.selection = nil
+			if s == "\x1b" {
+				return nil
+			}
+		}
+		u.main.statusPanelKey(s)
+		return nil
+	}
+
 	if s == "\x1b" && u.main != nil && u.focus == 0 && u.main.keybindings {
 		u.main.keybindings = false
 		return nil
@@ -384,6 +400,22 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	button, x, y := v[0], v[1]-1, v[2]-1
 	release := s[len(s)-1] == 'm'
+	if u.main != nil && u.main.statusPanel != nil && u.layout.codex.contains(x, y) {
+		if u.selectionMouse(button, x, y, release) {
+			return nil
+		}
+		if !release {
+			switch button &^ 28 {
+			case 0:
+				u.focus = 0
+			case 64:
+				u.main.statusPanelKey("\x1b[A")
+			case 65:
+				u.main.statusPanelKey("\x1b[B")
+			}
+		}
+		return nil
+	}
 	if u.main != nil && u.main.pickerVisible() && u.main.picker.rect.contains(x-u.layout.codex.x, y-u.layout.codex.y) {
 		if !release {
 			switch button &^ 28 {

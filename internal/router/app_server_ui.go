@@ -60,6 +60,9 @@ type appServerItem struct {
 }
 
 type appServerUI struct {
+	statusPanel               *appServerStatusReport
+	statusConfig              appServerStatusConfig
+	statusReports             map[string]*appServerStatusReport
 	picker                    composerPicker
 	files                     []composerFile
 	skills                    []composerSkill
@@ -397,6 +400,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	if m.Method == "" {
 		method := u.requests[string(m.ID)]
 		delete(u.requests, string(m.ID))
+		if handled, err := u.statusMessage(method, m); handled {
+			return err
+		}
 		if u.pickerMessage(method, m) {
 			return nil
 		}
@@ -462,6 +468,10 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			if method == "thread/resume" && result.Thread.ID != u.resumeThread {
 				return errors.New("thread/resume returned a different thread identity")
+			}
+			u.statusConfig = appServerStatusConfig{}
+			if err := json.Unmarshal(m.Result, &u.statusConfig); err != nil {
+				return err
 			}
 			u.thread, u.status = result.Thread.ID, "Ready"
 			u.model, u.reasoningEffort, u.serviceTier = result.Model, result.ReasoningEffort, result.ServiceTier
@@ -583,6 +593,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 
 func (u *appServerUI) key(key byte) (bool, error) {
 	defer u.refreshPicker()
+	if u.statusPanelKey(string([]byte{key})) {
+		return false, nil
+	}
 	if !u.paste && u.escape == "" && key != 27 && u.pickerKey(string([]byte{key})) {
 		return false, nil
 	}
@@ -742,6 +755,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.shellMode() {
 			return false, u.submitShell()
 		}
+		if text == "/status" {
+			return false, u.showStatus()
+		}
 		if text == "/skills" {
 			u.deleteDraftRange(0, len(u.draft))
 			u.picker.modal, u.picker.open, u.picker.selected, u.picker.top = "menu", true, 0, 0
@@ -759,7 +775,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /skills, /model, /reasoning, /tier, /quit", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /status, /skills, /model, /reasoning, /tier, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil {
@@ -849,6 +865,9 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect) {
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalRect{}
+	if u.statusPanel != nil {
+		return u.statusPanelFrame(width, height), terminalRect{}
+	}
 	if u.pickerVisible() && u.picker.modal != "" {
 		return u.skillsModalFrame(width, height), terminalRect{}
 	}

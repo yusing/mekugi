@@ -269,12 +269,36 @@ results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
 Typing `/` at the start of an otherwise single-token draft opens a local command
-catalog with descriptions for `/model`, `/reasoning`, `/tier`, `/skills`, and
+catalog with descriptions for `/status`, `/model`, `/reasoning`, `/tier`, `/skills`, and
 `/quit`. Typing filters commands with fuzzy matching; Up/Down selects, Tab
 completes without executing, Enter runs the selected command, and Escape closes
 the catalog without changing the draft. Arguments close completion. Pasted text
 does not activate the catalog. The catalog uses the shared picker viewport and
 visible-row column sizing; it never submits a command to the model.
+
+`/status` opens a temporary, bordered session panel with fixed close/scroll
+controls, grouped sections, aligned values, and colored remaining-usage gauges.
+The layout adapts to narrow panes; long values wrap and the body scrolls without
+moving its controls. Drag-select visible text and use the shared Copy action
+(`c` or Ctrl-C); selection excludes panel borders and gauges. Escape first clears
+an active selection, then closes the panel. Closing also discards its selection.
+Colors follow the terminal light/dark theme, while numeric
+percentages keep gauges readable without color. The panel includes known model,
+reasoning, service tier, provider, directory, session identity, approval policy,
+sandbox, loaded instruction sources, and context remaining. It works during a
+turn without sending or steering model input. Missing values are omitted, not
+represented as zero usage or an unknown-state label. Account information refreshes
+through `account/read` without refreshing credentials; ChatGPT accounts additionally
+refresh `account/rateLimits/read`. The same panel updates asynchronously with the
+account/plan, each reported quota window's percentage remaining and local reset
+time, credits, and the usage-page link. Non-ChatGPT sessions show observed input
+and output tokens instead. Refresh failures stay on the panel without replacing
+turn status. Escape, Enter, q, or Ctrl-C closes the panel without interrupting a turn.
+Closing leaves no transcript entry; late responses cannot reopen or update a
+new panel. Arrow keys, mouse wheel, and PgUp/PgDn scroll the panel independently
+of the transcript. Status is presentation only and does not change configuration,
+permissions, or router cost accounting. Detailed usage-based billing, spend-control
+banners, and reset-credit redemption are outside this command's scope.
 
 `/skills` replaces the composer with Codex's numbered Skills action menu:
 List skills inserts `$`; Enable/Disable Skills opens a searchable management

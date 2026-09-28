@@ -237,6 +237,12 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 			questions, snippets = nil, nil
 		}
 	}
+	if view == u.main.view && u.main.statusPanel != nil {
+		rect = u.main.statusPanel.rect
+		rect.x += pane.x
+		rect.y += pane.y
+		questions, snippets = nil, nil
+	}
 	if !rect.contains(x, y) || len(u.paintedRows) != u.height {
 		return false
 	}

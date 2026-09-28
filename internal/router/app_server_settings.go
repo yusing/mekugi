@@ -1,6 +1,7 @@
 package router
 
 import (
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
 	"maps"
@@ -255,6 +256,12 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	var event struct {
 		ThreadID string `json:"threadId"`
 		Settings struct {
+			Provider string         `json:"modelProvider"`
+			Approval jsontext.Value `json:"approvalPolicy"`
+			Sandbox  *struct {
+				Type string `json:"type"`
+			} `json:"sandboxPolicy"`
+			Cwd         string `json:"cwd"`
 			Model       string `json:"model"`
 			Effort      string `json:"effort"`
 			ServiceTier string `json:"serviceTier"`
@@ -265,6 +272,18 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	}
 	if event.ThreadID != u.thread {
 		return true, nil
+	}
+	if event.Settings.Provider != "" {
+		u.statusConfig.Provider = event.Settings.Provider
+	}
+	if len(event.Settings.Approval) > 0 {
+		u.statusConfig.Approval = event.Settings.Approval
+	}
+	if event.Settings.Sandbox != nil {
+		u.statusConfig.Sandbox.Type = event.Settings.Sandbox.Type
+	}
+	if event.Settings.Cwd != "" {
+		u.session.cwd = event.Settings.Cwd
 	}
 	u.model, u.reasoningEffort, u.serviceTier = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
 	if !u.settingsPending || u.settingsChange == nil {
