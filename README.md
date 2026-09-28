@@ -449,8 +449,9 @@ combined and sent as one message, one entry per line. Waiting steers and queued
 messages are listed above the composer until Codex takes them; Alt+Up or
 Shift+Left brings the last queued message back for editing.
 
-Ctrl-C clears the draft first (Ctrl+Z brings it back), then interrupts a running
-turn, or exits when nothing is running. Interrupting while steers are still
+Esc interrupts a running turn without clearing your draft (after dismissing open
+menus or returning scrollback to the bottom). Ctrl-C clears the draft first
+(Ctrl+Z brings it back), then interrupts a running turn, or exits when nothing is running. Interrupting while steers are still
 waiting sends them right away as the next turn; otherwise queued messages return
 to the composer.
 

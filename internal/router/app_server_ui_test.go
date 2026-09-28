@@ -337,3 +337,38 @@ func TestAppServerNoticeExpiry(t *testing.T) {
 		t.Fatal("editing did not clear notice")
 	}
 }
+
+func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
+	for _, active := range []bool{false, true} {
+		u, w := newAppServerTestUI()
+		u.ensureShell()
+		u.draft = "unfinished draft"
+		if active {
+			u.turn = "turn"
+		}
+		if err := u.shell.key(27); err != nil {
+			t.Fatal(err)
+		}
+		u.shell.sequenceAt = time.Now().Add(-time.Second)
+		if err := u.shell.flushEscape(); err != nil {
+			t.Fatal(err)
+		}
+		if u.draft != "unfinished draft" || u.quitRequested {
+			t.Fatalf("Escape changed draft or quit: %+v", u.draft)
+		}
+		if active {
+			appServerOneRequest(t, w, "turn/interrupt", "")
+			if u.interrupting != "turn" {
+				t.Fatal("turn not interrupting")
+			}
+		} else if w.Len() != 0 {
+			t.Fatalf("idle Escape sent %q", w.String())
+		}
+		if err := u.shell.key('x'); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(u.draft, "x") {
+			t.Fatal("Escape swallowed subsequent input")
+		}
+	}
+}

@@ -294,6 +294,10 @@ func (u *terminalUI) terminalColor(reply string) {
 }
 
 func (u *terminalUI) send(s string) error {
+	if s == "\x1b" && u.main != nil && u.focus == 0 && u.main.keybindings {
+		u.main.keybindings = false
+		return nil
+	}
 	if s == "\x1b" && u.main != nil && u.focus == 0 && u.main.pickerKey(s) {
 		return nil
 	}
@@ -318,6 +322,13 @@ func (u *terminalUI) send(s string) error {
 		}
 		// Editing or navigating dismisses the contextual actions.
 		u.selection = nil
+	}
+
+	if s == "\x1b" && u.focus == 0 && u.main != nil && !u.main.paste {
+		if u.main.turn != "" {
+			return u.main.interruptTurn()
+		}
+		return nil
 	}
 
 	if u.focus == 0 {

@@ -65,7 +65,7 @@ func (b Block) Collapsible() bool {
 	case "summary":
 		return !b.Live && !ReasoningTitled(b.Body)
 	case "op":
-		return b.Verb == "Run" && !b.Running && b.ExitCode == 0 && len(b.Tail) > 0
+		return b.Verb == "Run" && !b.Running && b.ExitCode == 0 && len(b.Tail)+b.TailOmitted > 1
 	}
 	return false
 }

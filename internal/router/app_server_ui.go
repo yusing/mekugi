@@ -95,7 +95,7 @@ type appServerUI struct {
 	submission                composerSubmission   // The unresolved turn/start or turn/steer request.
 	steers                    []composerSubmission // Accepted steers the turn has not yet committed.
 	unsent, queued            []composerDraft      // Stacked steers and next-turn input.
-	interrupting              string               // The turn Ctrl-C interrupted.
+	interrupting              string               // The interrupted turn.
 	resendSteers              bool                 // The interrupt sends pending steers as the next turn.
 	composerRect              terminalRect         // Visible draft text, relative to Main.
 	cursorBack, composerWidth int
@@ -707,15 +707,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		if u.turn != "" {
-			// As in Codex, interrupting with pending steers sends them now as
-			// the next turn instead of after the next tool call.
-			u.interrupting = u.turn
-			u.resendSteers = len(u.steers) > 0 || len(u.unsent) > 0 || u.submission.turn != ""
-			u.status = "Interrupting…"
-			if u.resendSteers {
-				u.status = "Interrupting to send steer…"
-			}
-			return false, u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
+			return false, u.interruptTurn()
 		}
 		if !u.starting && u.submission.text == "" {
 			return true, nil
@@ -1122,4 +1114,17 @@ func (u *appServerUI) applyObservedActivity() {
 		u.applyActivity(entries, nil)
 		u.dirty = true
 	}
+}
+
+// interruptTurn preserves the composer while interrupting the active turn.
+func (u *appServerUI) interruptTurn() error {
+	// As in Codex, interrupting with pending steers sends them now as
+	// the next turn instead of after the next tool call.
+	u.interrupting = u.turn
+	u.resendSteers = len(u.steers) > 0 || len(u.unsent) > 0 || u.submission.turn != ""
+	u.status = "Interrupting…"
+	if u.resendSteers {
+		u.status = "Interrupting to send steer…"
+	}
+	return u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
 }

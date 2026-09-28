@@ -35,6 +35,7 @@ func renderNativeKeybindings(width, height int) []string {
 			{"shift+↑ / shift+↓", "Raise / lower reasoning"},
 			{"/model /reasoning /tier", "Show choices or set VALUE"},
 			{"ctrl+c", "Clear / interrupt / quit"},
+			{"esc", "Interrupt, keep draft"},
 			{"ctrl+b 1–4", "Focus pane"},
 			{"ctrl+b e", "Next live item"},
 			{"ctrl+b ← / →", "Resize panes"},

@@ -169,3 +169,24 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 		t.Fatalf("completed command still tracked: %v", u.session.commands)
 	}
 }
+
+func TestAppServerSingleLineOutputStaysVisible(t *testing.T) {
+	for _, conversation := range []bool{false, true} {
+		u := newAppServerSessionTestUI(t, t.TempDir())
+		u.view.conversation = conversation
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+			"id": "cmd", "type": "commandExecution", "command": "echo done", "status": "completed", "exitCode": 0, "aggregatedOutput": "done\n",
+		}})
+		u.view.settle(time.Now().Add(activityui.OutputLinger))
+		feed := u.view.renderFeed(90, 60)
+		got := ansi.Strip(strings.Join(feed.lines, "\n"))
+		if !strings.Contains(got, "┆ done") || strings.Contains(got, "+1 lines") {
+			t.Fatalf("single output line hidden: %s", got)
+		}
+		for _, snippet := range feed.snippets {
+			if snippet != (liveActivitySnippet{}) {
+				t.Fatal("single output line has a collapse toggle")
+			}
+		}
+	}
+}
