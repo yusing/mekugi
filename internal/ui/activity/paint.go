@@ -463,30 +463,20 @@ func (p *Painter) Block(block Block, width int) []string {
 		// the latest rows while it streams.
 		header := ""
 		if !titled {
-			header = Dim + "• " + ThinkingHeader(block.Live, block.Elapsed)
+			header = ThinkingHeader(block.Live, block.Elapsed)
 			if block.Live {
-				// The tail skips paragraph gaps so it always shows text.
-				var tail []string
-				hidden := 0
-				for _, row := range slices.Backward(rows) {
-					switch {
-					case strings.TrimSpace(ansi.Strip(row)) == "":
-					case len(tail) < ThinkingTailRows:
-						tail = append(tail, row)
-					default:
-						hidden++
-					}
-				}
-				slices.Reverse(tail)
-				rows = tail
-				switch {
-				case hidden == 1:
-					header += " · +1 line"
-				case hidden > 1:
-					header += " · +" + strconv.Itoa(hidden) + " lines"
+				var hidden int
+				if rows, hidden = TailRows(rows, ThinkingTailRows); hidden > 0 {
+					header += " · " + MoreLines(hidden)
 				}
 			}
-			header += Undim
+			if block.Collapsed {
+				if block.Hovered {
+					header = Underline(header)
+				}
+				return []string{Dim + "• " + header + Undim}
+			}
+			header = Dim + "• " + header + Undim
 		}
 		for i, row := range rows {
 			row = strings.NewReplacer(Reset, Reset+style, "\x1b[22m", "\x1b[22m"+style, "\x1b[24;39m", "\x1b[24m"+Dim, "\x1b[39m", Dim, "\x1b[23m", style).Replace(row)
@@ -498,9 +488,6 @@ func (p *Painter) Block(block Block, width int) []string {
 		}
 		if header == "" {
 			return rows
-		}
-		if block.Folded {
-			return []string{header}
 		}
 		return append([]string{header}, rows...)
 	case "final":
@@ -883,13 +870,10 @@ func (p *Painter) ranRow(block Block, width int) []string {
 		lines = append(lines, liveActivityIndent(p.Markdown(block.Body, width-indent-2), padding+"  ")...)
 	}
 	// Output uses a dashed gutter, distinct from the program gutter above it.
-	if block.TailCollapsed && len(block.Tail) > 0 {
-		hint := "… +1 line"
-		if n := block.TailOmitted + len(block.Tail); n > 1 {
-			hint = fmt.Sprintf("… +%d lines", n)
-		}
-		if block.TailHovered {
-			hint = "\x1b[4m" + hint + "\x1b[24m"
+	if block.Collapsed && len(block.Tail) > 0 {
+		hint := "… " + MoreLines(block.TailOmitted+len(block.Tail))
+		if block.Hovered {
+			hint = Underline(hint)
 		}
 		return append(lines, padding+ansi.Truncate(Dim+"┆ "+hint+Undim, width-indent, "…"))
 	}

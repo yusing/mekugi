@@ -31,7 +31,7 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 		block := activityui.Block{Kind: "summary", Body: text}
 		if entry.native != nil {
 			block.Live = entry.native.phase == "summary"
-			block.Done = entry.native.done
+			block.Collapsed = entry.native.collapsed && block.Collapsible()
 			if entry.native.thought > 0 {
 				block.Elapsed = liveActivityAge(entry.native.thought)
 			}
@@ -125,7 +125,7 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 					blocks[i].Running = entry.native.running
 					if tail {
 						blocks[i].Tail, blocks[i].TailOmitted, tail = entry.outputTail, entry.outputOmit, false
-						blocks[i].TailCollapsed = !entry.native.running && entry.native.collapseAt.IsZero()
+						blocks[i].Collapsed = entry.native.collapsed && blocks[i].Collapsible()
 					}
 				}
 			}

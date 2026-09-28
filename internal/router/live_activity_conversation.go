@@ -1,10 +1,8 @@
 package router
 
 import (
-	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -316,22 +314,15 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	case entry.Agent == "Main" && entry.Kind == "progress":
 		out.add(0, activityui.Wrap(activityui.Dim+"• "+livediff.Safe(entry.Text, false)+activityui.Undim, width, false)...)
 	case entry.Agent == "Main" && entry.Kind == "reasoning" && first == last:
-		for _, block := range blocks {
-			// Finished provider thinking folds to its header shortly after
-			// it completes, as in grok-build; a click toggles it.
-			if !activityui.ThinkingFolds(block, time.Now()) {
-				out.add(0, p.Block(block, width)...)
-				continue
-			}
-			snippet := liveActivitySnippet{entry.Seq, 0}
-			block.Folded = !v.expanded[snippet]
-			rows := p.Block(block, width)
-			if len(rows) > 0 && v.snippet == snippet {
-				rows[0] = "\x1b[4m" + rows[0] + "\x1b[24m"
-			}
-			for _, row := range rows {
+		for index, block := range blocks {
+			// Settled provider thinking shows its header; a click toggles it.
+			snippet := liveActivitySnippet{entry.Seq, index}
+			toggle := v.collapseToggle(&block, snippet)
+			for _, row := range p.Block(block, width) {
 				out.add(0, row)
-				out.snippets[len(out.snippets)-1] = snippet
+				if toggle {
+					out.snippets[len(out.snippets)-1] = snippet
+				}
 			}
 		}
 	case entry.Agent == "You":
@@ -350,7 +341,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		// Its connectors sit beneath the reasoning bullet.
 		for index, block := range activityui.AlignVerbs(activityui.MergeEdits(activityui.GroupOperations(activityui.MergeLiveActivityReads(group)))) {
 			snippet := liveActivitySnippet{entry.Seq, index}
-			toggle := v.outputToggle(&block, snippet)
+			toggle := v.collapseToggle(&block, snippet)
 			if len(parts) > 0 && (block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart) {
 				parts[len(parts)-1] = append(parts[len(parts)-1], p.Block(block, width-2)...)
 				continue
@@ -696,7 +687,7 @@ func (v *liveActivityView) replyExcerpt(out *conversationLines, entry activityPa
 	out.hang(gutter, gutter, rows)
 	link := v.painter.Theme.Accent() + "↩ Open reply in Activity" + activityui.Reset
 	if hidden > 0 {
-		link += activityui.Dim + " · " + moreLines(hidden) + activityui.Undim
+		link += activityui.Dim + " · " + activityui.MoreLines(hidden) + activityui.Undim
 	}
 	out.add(entry.Seq, tail+ansi.Truncate(link, width, "…"))
 }
@@ -708,9 +699,9 @@ func (v *liveActivityView) collapsedItem(out *conversationLines, entry activityP
 	snippet := liveActivitySnippet{entry.Seq, 0}
 	_, hidden := liveActivityExcerpt(rows, width, conversationEarlierRows)
 	if hidden > 0 && !v.expanded[snippet] {
-		hint := moreLines(hidden)
+		hint := activityui.MoreLines(hidden)
 		if v.snippet == snippet {
-			hint = "\x1b[4m" + hint + "\x1b[24m"
+			hint = activityui.Underline(hint)
 		}
 		room := width - ansi.StringWidth(hint) - 1
 		rows, _ = liveActivityExcerpt(rows, room, conversationEarlierRows)
@@ -725,13 +716,6 @@ func (v *liveActivityView) collapsedItem(out *conversationLines, entry activityP
 	}
 }
 
-func moreLines(n int) string {
-	if n == 1 {
-		return "+1 line"
-	}
-	return fmt.Sprintf("+%d lines", n)
-}
-
 // liveActivityExcerpt keeps the first limit rows with content and counts the
 // content rows left out. Paragraph gaps and empty quote rows are skipped so a
 // truncated excerpt always ends its last visible text row with the ellipsis
@@ -740,7 +724,7 @@ func liveActivityExcerpt(rows []string, width, limit int) ([]string, int) {
 	var kept []string
 	hidden := 0
 	for _, row := range rows {
-		if strings.Trim(ansi.Strip(row), " │▎") == "" {
+		if activityui.BlankRow(row) {
 			continue
 		}
 		if len(kept) < limit {

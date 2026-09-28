@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/appserver"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/pathdisplay"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -38,7 +38,7 @@ type appServerSession struct {
 // re-sent on the next frame. Completion, not the stream, ends it.
 type appServerCommandRun struct {
 	entry  activityPaneEntry
-	output appServerOutputTailer
+	output activityui.OutputTail
 	dirty  bool
 }
 
@@ -241,7 +241,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	case "item/commandExecution/outputDelta":
 		// Bounded as it arrives; the next frame shows it, so bursts cost one render.
 		if run := s.commands[[3]string{p.ThreadID, p.TurnID, p.ItemID}]; run != nil {
-			run.output.write(p.Delta)
+			run.output.Write(p.Delta)
 			run.dirty = true
 		}
 	case "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":
@@ -288,7 +288,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			key := [3]string{p.ThreadID, p.TurnID, id}
 			text := strings.Join(item.Summary, "\n\n")
 			if m.Method == "item/completed" {
-				native.done = now
+				native.collapseAt = now.Add(activityui.ThinkingLinger)
 				if started, ok := s.thinking[key]; ok {
 					delete(s.thinking, key)
 					native.thought = now.Sub(started)
@@ -312,7 +312,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			key := [3]string{p.ThreadID, p.TurnID, id}
 			if m.Method == "item/completed" {
 				delete(s.commands, key)
-				appServerSucceededOutput(&entry, item, now.Add(appServerOutputLinger))
+				appServerSucceededOutput(&entry, item, now.Add(activityui.OutputLinger))
 			} else if item.Type == "commandExecution" {
 				native.running = true
 				if s.commands[key] == nil {
@@ -376,7 +376,7 @@ func (s *appServerSession) endThinking(thread string, now time.Time) []activityP
 	var entries []activityPaneEntry
 	for _, key := range keys {
 		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(thread), Kind: "reasoning", Text: s.reasoning[key], CallID: key[2], Observed: now,
-			native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], phase: "item/completed", thought: now.Sub(s.thinking[key]), done: now}})
+			native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], phase: "item/completed", thought: now.Sub(s.thinking[key]), collapseAt: now.Add(activityui.ThinkingLinger)}})
 		delete(s.thinking, key)
 	}
 	return entries
@@ -398,7 +398,7 @@ func (u *appServerUI) flushCommandOutput() {
 		native.phase = "item/commandExecution/outputDelta"
 		// The thread may have been renamed since the command started.
 		entry.native, entry.Agent = &native, s.path(native.thread)
-		entry.outputTail, entry.outputOmit = run.output.tail()
+		entry.outputTail, entry.outputOmit = run.output.Lines()
 		entries = append(entries, entry)
 	}
 	if len(entries) == 0 {
@@ -494,14 +494,6 @@ func appServerCommandText(item appServerItem, cwd string) string {
 	return strings.Join(parts, "\n\n")
 }
 
-const (
-	appServerTailLines = 5
-	appServerTailBytes = 512 // Per line, before sanitizing.
-	// A successful command's output stays open this long after it completes,
-	// then collapses to one row that reopens it.
-	appServerOutputLinger = 3 * time.Second
-)
-
 // appServerSucceededOutput keeps a successful command's output tail on its
 // entry, open until collapse; a zero collapse time starts it collapsed.
 // Failures carry their tail on the exit entry instead.
@@ -510,89 +502,17 @@ func appServerSucceededOutput(entry *activityPaneEntry, item appServerItem, coll
 		return
 	}
 	entry.outputTail, entry.outputOmit = appServerOutputTail(item.AggregatedOutput)
-	entry.native.collapseAt = collapse
+	entry.native.collapseAt, entry.native.collapsed = collapse, collapse.IsZero()
 }
 
-// appServerOutputTail keeps the last non-blank lines of a failed command's
-// host output for display. It never reads beyond the host's aggregate, and
-// counts the lines it leaves out.
+// appServerOutputTail keeps the last non-blank lines of a command's host
+// output for display. It never reads beyond the host's aggregate, and counts
+// the lines it leaves out.
 func appServerOutputTail(output *string) ([]string, int) {
 	if output == nil {
 		return nil, 0
 	}
-	var tail appServerOutputTailer
-	tail.write(*output)
-	return tail.tail()
-}
-
-// appServerOutputTailer keeps the display tail of command output as it
-// arrives, in memory bounded by the tail regardless of output size. A carriage
-// return starts its line over, as a terminal redraws a progress line.
-type appServerOutputTailer struct {
-	lines []appServerTailLine // Last non-blank complete lines, sanitized.
-	line  []byte              // Current line's head, one byte past the display bound.
-	count int                 // Lines before the current line.
-	cr    bool                // A carriage return awaits the next byte.
-}
-
-type appServerTailLine struct {
-	index int
-	text  string
-}
-
-func (t *appServerOutputTailer) write(output string) {
-	for i := range len(output) {
-		c := output[i]
-		if t.cr && c != '\n' {
-			t.line = t.line[:0]
-		}
-		t.cr = false
-		switch {
-		case c == '\r':
-			t.cr = true
-		case c == '\n':
-			if text := appServerTailText(t.line); text != "" {
-				t.lines = append(t.lines, appServerTailLine{t.count, text})
-				if len(t.lines) > appServerTailLines {
-					t.lines = slices.Delete(t.lines, 0, 1)
-				}
-			}
-			t.count++
-			t.line = t.line[:0]
-		case len(t.line) <= appServerTailBytes:
-			t.line = append(t.line, c)
-		}
-	}
-}
-
-// tail is the last non-blank lines, including an unfinished one, and the
-// count of lines before the first of them.
-func (t *appServerOutputTailer) tail() ([]string, int) {
-	lines := t.lines
-	if text := appServerTailText(t.line); text != "" {
-		lines = append(slices.Clip(lines), appServerTailLine{t.count, text})
-	}
-	lines = lines[max(0, len(lines)-appServerTailLines):]
-	if len(lines) == 0 {
-		return nil, 0
-	}
-	tail := make([]string, len(lines))
-	for i, line := range lines {
-		tail[i] = line.text
-	}
-	return tail, lines[0].index
-}
-
-// appServerTailText sanitizes one bounded line; blank lines carry nothing.
-func appServerTailText(raw []byte) string {
-	line := string(raw)
-	if len(line) > appServerTailBytes {
-		line = strings.ToValidUTF8(line[:appServerTailBytes], "") + "…"
-	}
-	if line = strings.TrimRight(livediff.Safe(line, false), " "); strings.TrimSpace(line) != "" {
-		return line
-	}
-	return ""
+	return activityui.TailOutput(*output)
 }
 
 // Hide only the host's literal shell command wrapper, never evaluate its words

@@ -41,15 +41,33 @@ type Block struct {
 	StatScale   int  // Largest changed-line total in a multi-row group; 0 omits bars.
 	Running     bool // A live command the host has not completed.
 	Tail        []string
-	TailOmitted int // Output lines before Tail.
-	// TailCollapsed shows Tail as one row that opens it; TailHovered
+	TailOmitted int    // Output lines before Tail.
+	Flash       bool   // Presentation-only: another pane just opened this entry.
+	Live        bool   // Reasoning still streaming.
+	Elapsed     string // Formatted reasoning time, when observed from its first delta.
+	// Collapsed shows a settled block as one row that opens it; Hovered
 	// underlines that row under the pointer. Both are presentation-only.
-	TailCollapsed, TailHovered bool
-	Flash                      bool      // Presentation-only: another pane just opened this entry.
-	Live                       bool      // Reasoning still streaming.
-	Elapsed                    string    // Formatted reasoning time, when observed from its first delta.
-	Done                       time.Time // Reasoning completion, when observed live; zero for history.
-	Folded                     bool      // Presentation-only: finished thinking shows only its header.
+	Collapsed, Hovered bool
+}
+
+// A settled block stays open this long after it completes live, then
+// collapses to one row. Restored history starts settled.
+const (
+	ThinkingLinger = time.Second
+	OutputLinger   = 3 * time.Second
+)
+
+// Collapsible reports a settled block that can show as one row: finished
+// provider thinking as its header, or a successful command's output as its
+// line count.
+func (b Block) Collapsible() bool {
+	switch b.Kind {
+	case "summary":
+		return !b.Live && !ReasoningTitled(b.Body)
+	case "op":
+		return b.Verb == "Run" && !b.Running && b.ExitCode == 0 && len(b.Tail) > 0
+	}
+	return false
 }
 
 // GroupOperations groups adjacent edits from one source and outcome, across

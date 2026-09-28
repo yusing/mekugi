@@ -54,9 +54,7 @@ type liveActivityView struct {
 	// expanded snippets show in full in the shared feed; snippet is the
 	// hovered collapsed one.
 	expanded map[liveActivitySnippet]bool
-	// thinkingChecked is when finished thinking folds were last checked.
-	thinkingChecked time.Time
-	snippet         liveActivitySnippet
+	snippet  liveActivitySnippet
 
 	// Geometry of the last frame, used by scrolling keys and the pointer.
 	// feedSnippets holds each feed row's snippet, from screen row feedTop
@@ -485,15 +483,14 @@ func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 	return redraw
 }
 
-// outputToggle opens a collapsed output tail its reader expanded, and
-// underlines it under the pointer. It reports whether the block's rows toggle
-// the output.
-func (v *liveActivityView) outputToggle(block *activityui.Block, snippet liveActivitySnippet) bool {
-	if !block.TailCollapsed {
+// collapseToggle opens a collapsed block its reader expanded, and underlines
+// its row under the pointer. It reports whether the block's rows toggle it.
+func (v *liveActivityView) collapseToggle(block *activityui.Block, snippet liveActivitySnippet) bool {
+	if !block.Collapsed {
 		return false
 	}
-	block.TailCollapsed = !v.expanded[snippet]
-	block.TailHovered = block.TailCollapsed && v.snippet == snippet
+	block.Collapsed = !v.expanded[snippet]
+	block.Hovered = block.Collapsed && v.snippet == snippet
 	return true
 }
 
@@ -810,7 +807,7 @@ func (v *liveActivityView) selectRow(line string, width int) string {
 
 func (v *liveActivityView) hoverName(name, agent string) string {
 	if agent == v.hovered {
-		return "\x1b[4m" + name + "\x1b[24m"
+		return activityui.Underline(name)
 	}
 	return name
 }
@@ -1127,7 +1124,7 @@ func (v *liveActivityView) renderStrip(rows []liveActivityRosterRow, width int) 
 	for _, row := range rows {
 		name := activityui.AgentDisplayName(row.agent.Name)
 		if row.agent.Name == v.selected || row.agent.Name == v.hovered {
-			name = "\x1b[4m" + name + "\x1b[24m"
+			name = activityui.Underline(name)
 		}
 		part := v.glyph(row.agent) + " " + activityui.Color(row.agent.Name) + name + activityui.Reset
 		if last := min(width, column+ansi.StringWidth(part)-1); column <= last {
@@ -1267,18 +1264,11 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		return block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart
 	}
 	rail := ""
-	now := time.Now()
 	blocks = activityui.AlignVerbs(activityui.GroupOperations(blocks))
 	for index, block := range blocks {
-		// Finished provider thinking folds to its header shortly after it
-		// completes; a click toggles it.
-		folds := activityui.ThinkingFolds(block, now)
-		if folds {
-			block.Folded = !v.expanded[liveActivitySnippet{first, index}]
-		}
 		// Native Activity joins consecutive operations into one tree.
 		tree := v.childrenOnly && operation(block) && !continued(block)
-		toggle := v.outputToggle(&block, liveActivitySnippet{first, index})
+		toggle := v.collapseToggle(&block, liveActivitySnippet{first, index})
 		part := v.painter.Block(block, width-2)
 		switch {
 		case tree:
@@ -1309,18 +1299,15 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			limit *= 2
 		}
 		var snippet liveActivitySnippet
-		if folds || toggle {
+		if toggle {
 			snippet = liveActivitySnippet{first, index}
-			if folds && block.Folded && snippet == v.snippet {
-				part[0] = "\x1b[4m" + part[0] + "\x1b[24m"
-			}
 		}
 		if limit > 0 && len(part) > limit {
 			snippet = liveActivitySnippet{first, index}
 			if !v.expanded[snippet] {
-				hint := fmt.Sprintf("… +%d lines", len(part)-limit+1)
+				hint := "… " + activityui.MoreLines(len(part)-limit+1)
 				if snippet == v.snippet {
-					hint = "\x1b[4m" + hint + "\x1b[24m"
+					hint = activityui.Underline(hint)
 				}
 				part = append(part[:limit-1:limit-1], activityui.Dim+hint+activityui.Undim)
 			}
@@ -1410,24 +1397,6 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 	return lines
 }
 
-// expireThinking re-renders when a finished thinking block reaches its fold.
-func (v *liveActivityView) expireThinking(now time.Time) bool {
-	checked := v.thinkingChecked
-	v.thinkingChecked = now
-	for _, blocks := range slices.Backward(v.blocks) {
-		for _, block := range blocks {
-			if block.Kind != "summary" || block.Done.IsZero() {
-				continue
-			}
-			if fold := block.Done.Add(activityui.ThinkingFoldDelay); fold.After(checked) && !fold.After(now) {
-				v.runs = nil
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func (v *liveActivityView) expireFlash(now time.Time) bool {
 	if v.flashQuestion == 0 || now.Before(v.flashUntil) {
 		return false
@@ -1436,24 +1405,23 @@ func (v *liveActivityView) expireFlash(now time.Time) bool {
 	return true
 }
 
-// collapseOutput collapses successful commands' output once it has stayed
-// open for its linger. Entries are shared between views, so each view
-// replaces rather than modifies an entry's native state.
-func (v *liveActivityView) collapseOutput(now time.Time) bool {
+// settle collapses settled live blocks whose linger has passed: finished
+// provider thinking and successful command output. Entries are shared between
+// views, so each view replaces rather than modifies an entry's native state.
+func (v *liveActivityView) settle(now time.Time) bool {
 	changed := false
 	for i, entry := range v.entries {
 		if entry.native == nil || entry.native.collapseAt.IsZero() || now.Before(entry.native.collapseAt) {
 			continue
 		}
 		native := *entry.native
-		native.collapseAt = time.Time{}
+		native.collapseAt, native.collapsed = time.Time{}, true
 		v.entries[i].native = &native
 		for j := range v.blocks[i] {
-			if block := &v.blocks[i][j]; block.Verb == "Run" && len(block.Tail) > 0 && block.ExitCode == 0 {
-				block.TailCollapsed = true
+			if block := &v.blocks[i][j]; block.Collapsible() {
+				block.Collapsed, changed = true, true
 			}
 		}
-		changed = true
 	}
 	if changed {
 		v.runs = nil

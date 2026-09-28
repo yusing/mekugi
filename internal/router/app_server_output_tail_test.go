@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	mekugi "github.com/yusing/mekugi"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestAppServerOutputTailKeepsFinalLines(t *testing.T) {
@@ -22,8 +23,8 @@ func TestAppServerOutputTailKeepsFinalLines(t *testing.T) {
 	if want := []string{"line 3", "line 4", "line 5", "line 6", "line 7"}; !reflect.DeepEqual(tail, want) || omitted != 3 {
 		t.Fatalf("tail = %q omitted %d", tail, omitted)
 	}
-	long := strings.Repeat("é", appServerTailBytes)
-	if tail, _ := appServerOutputTail(&long); len(tail) != 1 || len(tail[0]) > appServerTailBytes+len("…") || !strings.HasSuffix(tail[0], "…") {
+	long := strings.Repeat("é", activityui.OutputTailBytes)
+	if tail, _ := appServerOutputTail(&long); len(tail) != 1 || len(tail[0]) > activityui.OutputTailBytes+len("…") || !strings.HasSuffix(tail[0], "…") {
 		t.Fatalf("long line tail = %q", tail)
 	}
 	for _, output := range []*string{nil, new(""), new(" \n\n")} {
@@ -93,33 +94,6 @@ func TestManagedFilesJoinEditedGroupInMain(t *testing.T) {
 	}
 }
 
-func TestAppServerOutputTailerStreamsBoundedTail(t *testing.T) {
-	output := "build\r\n\r\n10%\r50%\r100%\ndone\x1b[2K\n" + strings.Repeat("x", 3*appServerTailBytes) + "\nnext"
-	whole, wholeOmit := appServerOutputTail(&output)
-	var chunked appServerOutputTailer
-	for chunk := range slices.Values(strings.SplitAfter(output, "")) {
-		chunked.write(chunk) // One byte at a time splits CRLF and escapes.
-	}
-	tail, omitted := chunked.tail()
-	if !reflect.DeepEqual(tail, whole) || omitted != wholeOmit {
-		t.Fatalf("chunked tail = %q, %d; whole = %q, %d", tail, omitted, whole, wholeOmit)
-	}
-	want := []string{"build", "100%", "done", strings.Repeat("x", appServerTailBytes) + "…", "next"}
-	if !reflect.DeepEqual(tail, want) || omitted != 0 {
-		t.Fatalf("tail = %q omitted %d, want %q", tail, omitted, want)
-	}
-	var long appServerOutputTailer
-	for i := range 10000 {
-		long.write(strings.Repeat("y", 100) + fmt.Sprintf(" %d\n", i))
-	}
-	if len(long.lines) > appServerTailLines || len(long.line) > appServerTailBytes+1 {
-		t.Fatalf("tailer retained %d lines and a %d-byte line", len(long.lines), len(long.line))
-	}
-	if tail, omitted := long.tail(); len(tail) != appServerTailLines || omitted != 10000-appServerTailLines || tail[4] != strings.Repeat("y", 100)+" 9999" {
-		t.Fatalf("long tail = %q omitted %d", tail, omitted)
-	}
-}
-
 func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.conversation = true
@@ -166,10 +140,10 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	if got := main(); !strings.Contains(got, open) || strings.Contains(got, "Running") || strings.Contains(got, "late") {
 		t.Fatalf("completed command lacks its settled output %q:\n%s", open, got)
 	}
-	if u.view.collapseOutput(time.Now().Add(appServerOutputLinger - time.Second)) {
+	if u.view.settle(time.Now().Add(activityui.OutputLinger - time.Second)) {
 		t.Fatal("output collapsed before its linger")
 	}
-	if !u.view.collapseOutput(time.Now().Add(appServerOutputLinger)) {
+	if !u.view.settle(time.Now().Add(activityui.OutputLinger)) {
 		t.Fatal("output did not collapse after its linger")
 	}
 	feed := u.view.renderFeed(90, 60)

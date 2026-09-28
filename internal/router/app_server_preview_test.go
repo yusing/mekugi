@@ -78,10 +78,8 @@ func TestNativeUIPreview(t *testing.T) {
 					return err
 				}
 				flashExpired := p.ui.view.expireFlash(now)
-				flashExpired = p.ui.view.expireThinking(now) || flashExpired
-				flashExpired = p.ui.agents.expireThinking(now) || flashExpired
-				outputCollapsed := p.ui.view.collapseOutput(now)
-				outputCollapsed = p.ui.agents.collapseOutput(now) || outputCollapsed
+				settled := p.ui.view.settle(now)
+				settled = p.ui.agents.settle(now) || settled
 				noticeExpired := p.ui.expireNotice(now)
 				if p.pump(0) {
 					lastStep = now // The script resumes a pace after the command ends.
@@ -101,7 +99,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.sessionAnimating() || p.ui.agents.hasLiveReasoning() || flashExpired || outputCollapsed || noticeExpired || p.ui.shell.animating(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.sessionAnimating() || p.ui.agents.hasLiveReasoning() || flashExpired || settled || noticeExpired || p.ui.shell.animating(now) {
 					if err := paint(); err != nil {
 						return err
 					}
@@ -167,12 +165,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	p.until("explorer thought")
 	render("grok thought", "• Thought for", "I should read launch.go first")
 	// A second later the finished block folds to its header.
-	for i, blocks := range p.ui.agents.blocks {
-		if len(blocks) == 1 && blocks[0].Kind == "summary" && !blocks[0].Done.IsZero() {
-			p.ui.agents.blocks[i][0].Done = time.Now().Add(-activityui.ThinkingFoldDelay)
-		}
-	}
-	p.ui.agents.expireThinking(time.Now())
+	p.ui.agents.settle(time.Now().Add(activityui.ThinkingLinger))
 	if frame := render("grok thought folded", "• Thought for"); strings.Contains(frame, "The pane blocks on its first frame") {
 		t.Fatalf("finished thinking did not fold:\n%s", frame)
 	}
@@ -198,7 +191,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	if got := agents(); strings.Contains(got, "Running") || !strings.Contains(got, "┆ ok      example.com") || !regexp.MustCompile(`Ran +│ for test in`).MatchString(got) {
 		t.Fatalf("passed test run lacks its settled output:\n%s", got)
 	}
-	p.ui.agents.collapseOutput(time.Now().Add(appServerOutputLinger))
+	p.ui.agents.settle(time.Now().Add(activityui.OutputLinger))
 	if got := agents(); strings.Contains(got, "┆ ok ") || !strings.Contains(got, "┆ … +6 lines") {
 		t.Fatalf("passed test run output did not collapse:\n%s", got)
 	}

@@ -232,15 +232,11 @@ func TestAppServerThinkingFolds(t *testing.T) {
 			if got := plain(render()); !strings.Contains(got, "• Thought for 0s") || !strings.Contains(got, "Delta.") {
 				t.Fatalf("thinking folded before its delay: %q", got)
 			}
-			if view.expireThinking(time.Now()) {
+			if view.settle(time.Now()) {
 				t.Fatal("fold fired before its delay")
 			}
-			for i, blocks := range view.blocks {
-				if len(blocks) == 1 && blocks[0].Kind == "summary" {
-					view.blocks[i][0].Done = time.Now().Add(-activityui.ThinkingFoldDelay)
-				}
-			}
-			if !view.expireThinking(time.Now()) || view.expireThinking(time.Now()) {
+			later := time.Now().Add(activityui.ThinkingLinger)
+			if !view.settle(later) || view.settle(later) {
 				t.Fatal("fold did not fire exactly once")
 			}
 			feed := render()

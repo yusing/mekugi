@@ -30,7 +30,7 @@ func TestThinkingBlock(t *testing.T) {
 	if got[0] != "• Thought for 12s" || len(got) != 10 || got[9] != "  five" {
 		t.Fatalf("finished thinking = %q", got)
 	}
-	if got := plain(activityui.Block{Kind: "summary", Body: body, Elapsed: "12s", Folded: true}); strings.Join(got, "|") != "• Thought for 12s" {
+	if got := plain(activityui.Block{Kind: "summary", Body: body, Elapsed: "12s", Collapsed: true}); strings.Join(got, "|") != "• Thought for 12s" {
 		t.Fatalf("folded thinking = %q", got)
 	}
 	if got := plain(activityui.Block{Kind: "summary", Body: "one"}); strings.Join(got, "|") != "• Thought|  one" {
