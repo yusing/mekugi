@@ -3,7 +3,6 @@ package router
 import (
 	"cmp"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/livediff"
@@ -126,17 +125,15 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 			blocks[0].Results = entry.native.searchResults
 		}
 		if entry.native != nil && (entry.native.running || len(entry.outputTail) > 0) {
-			// One output stream follows the command's last Run row: live while
-			// it runs, then collapsed once a successful command has settled.
-			tail := true
-			for i := range slices.Backward(blocks) {
-				if blocks[i].Verb == "Run" {
-					blocks[i].Running = entry.native.running
-					if tail {
-						blocks[i].Tail, blocks[i].TailOmitted, tail = entry.outputTail, entry.outputOmit, false
-						blocks[i].Collapsed = entry.native.collapsed && blocks[i].Collapsible()
-					}
-				}
+			// The host provides one stream for the whole invocation. Place it
+			// after the final displayed operation, not an earlier Run row.
+			for i := range blocks {
+				blocks[i].Running = entry.native.running
+			}
+			if len(blocks) > 0 {
+				last := &blocks[len(blocks)-1]
+				last.Tail, last.TailOmitted = entry.outputTail, entry.outputOmit
+				last.Collapsed = entry.native.collapsed && last.Collapsible()
 			}
 		}
 		return activityui.GroupOperations(blocks)

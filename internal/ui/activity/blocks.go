@@ -65,8 +65,8 @@ func (b Block) Collapsible() bool {
 	switch b.Kind {
 	case "summary":
 		return !b.Live && !ReasoningTitled(b.Body)
-	case "op":
-		return b.Verb == "Run" && !b.Running && b.ExitCode == 0 && len(b.Tail)+b.TailOmitted > 1
+	case "op", "reads":
+		return !b.Running && b.ExitCode == 0 && len(b.Tail)+b.TailOmitted > 1
 	}
 	return false
 }
@@ -441,7 +441,7 @@ func MergeLiveActivityReads(blocks []Block) []Block {
 	var merged []Block
 	for _, block := range blocks {
 		n := len(merged)
-		if block.Kind != "reads" || n == 0 || merged[n-1].Kind != "reads" || merged[n-1].Verb != block.Verb || block.Results != nil || merged[n-1].Results != nil {
+		if block.Kind != "reads" || n == 0 || merged[n-1].Kind != "reads" || merged[n-1].Verb != block.Verb || block.Results != nil || merged[n-1].Results != nil || len(block.Tail) > 0 || block.TailOmitted > 0 || len(merged[n-1].Tail) > 0 || merged[n-1].TailOmitted > 0 {
 			if block.Kind == "reads" {
 				block.Reads = slices.Clone(block.Reads)
 				for i := range block.Reads {

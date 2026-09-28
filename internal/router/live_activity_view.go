@@ -209,8 +209,10 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 						if v.blocks[i][j].Verb == "Run" || v.blocks[i][j].Verb == "Skill" || v.blocks[i][j].Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, v.blocks[i][j].Verb) {
 							v.blocks[i][j].ExitCode, _ = strconv.Atoi(entry.Text)
 						}
-						if v.blocks[i][j].Verb == "Run" {
+						if j == len(v.blocks[i])-1 {
+							v.blocks[i][j].ExitCode, _ = strconv.Atoi(entry.Text)
 							v.blocks[i][j].Tail, v.blocks[i][j].TailOmitted = entry.outputTail, entry.outputOmit
+							v.blocks[i][j].Collapsed = false
 						}
 					}
 					v.runs = nil

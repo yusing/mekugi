@@ -412,6 +412,9 @@ and bounded per line, with a count of earlier lines. While a command is
 including an unfinished last line; a carriage return restarts its line, as a
 progress line redraws. The tail's memory stays bounded by what it shows,
 however much the command prints, and at most one update per frame is drawn.
+The host supplies one combined output stream per shell invocation. Its tail follows
+the final displayed operation, including a Read or Skill row, rather than an earlier
+Run row; it does not claim per-command output attribution.
 Completion replaces it with the tail of the host's aggregated output. A
 failure keeps that tail open. After a zero exit it stays open for three seconds,
 then collapses to one muted `┆ … +N lines` row; a click on the command opens

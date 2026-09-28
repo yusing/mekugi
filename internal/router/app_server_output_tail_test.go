@@ -190,3 +190,78 @@ func TestAppServerSingleLineOutputStaysVisible(t *testing.T) {
 		}
 	}
 }
+
+func TestAppServerMixedCommandOutputFollowsFinalRead(t *testing.T) {
+	for _, exit := range []int{0, 1} {
+		t.Run(fmt.Sprint(exit), func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			u.view.conversation = true
+			item := map[string]any{
+				"id": "mixed", "type": "commandExecution",
+				"command": "pwd; skills-mgr get mekugi-owners; cat a.go",
+				"status":  "inProgress",
+			}
+			notify := func(method string, params map[string]any) {
+				t.Helper()
+				params["threadId"], params["turnId"] = "main", "t"
+				appServerTestNotify(t, u, method, params)
+			}
+			check := func(output string) {
+				t.Helper()
+				got := ansi.Strip(strings.Join(u.view.renderFeed(100, 60).lines, "\n"))
+				read, tail := strings.Index(got, "Read"), strings.Index(got, output)
+				if read < 0 || tail < read || strings.Count(got, output) != 1 {
+					t.Fatalf("output must appear once after final Read:\n%s", got)
+				}
+			}
+			notify("item/started", map[string]any{"item": item})
+			notify("item/commandExecution/outputDelta", map[string]any{"itemId": "mixed", "delta": "first\nsecond\n"})
+			u.flushCommandOutput()
+			check("┆ second")
+			item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", exit, "first\nsecond\n"
+			notify("item/completed", map[string]any{"item": item})
+			check("┆ second")
+			u.view.settle(time.Now().Add(activityui.OutputLinger))
+			if exit != 0 {
+				check("┆ second")
+				return
+			}
+			check("┆ … +2 lines")
+			feed := u.view.renderFeed(100, 60)
+			index := slices.IndexFunc(feed.lines, func(line string) bool { return strings.Contains(line, "… +2 lines") })
+			snippet := feed.snippets[index]
+			if snippet == (liveActivitySnippet{}) {
+				t.Fatal("final Read output has no toggle")
+			}
+			u.view.toggleSnippet(snippet)
+			check("┆ second")
+		})
+	}
+}
+
+func TestAppServerAdjacentReadOutputsStayWithInvocation(t *testing.T) {
+	for _, conversation := range []bool{false, true} {
+		t.Run(fmt.Sprint(conversation), func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			u.view.conversation = conversation
+			for i, output := range []string{"", "first-output\n", "second-output\n"} {
+				appServerTestNotify(t, u, "item/completed", map[string]any{
+					"threadId": "main", "turnId": "t", "item": map[string]any{
+						"id": fmt.Sprint(i), "type": "commandExecution",
+						"command": fmt.Sprintf("cat file%d.go", i),
+						"status":  "completed", "exitCode": 0, "aggregatedOutput": output,
+					},
+				})
+			}
+			got := ansi.Strip(strings.Join(u.view.renderFeed(100, 60).lines, "\n"))
+			previous := -1
+			for _, token := range []string{"file0.go", "file1.go", "┆ first-output", "file2.go", "┆ second-output"} {
+				index := strings.Index(got, token)
+				if index <= previous {
+					t.Fatalf("missing or misplaced %q:\n%s", token, got)
+				}
+				previous = index
+			}
+		})
+	}
+}

@@ -446,9 +446,14 @@ func liveActivityIndent(lines []string, prefix string) []string {
 	return lines
 }
 
-// block renders one parsed block within width columns.
+// Block renders one parsed block within width columns.
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
+	lines := p.blockRows(block, width)
+	return outputRows(block, lines, width)
+}
+
+func (p *Painter) blockRows(block Block, width int) []string {
 	if block.GroupHeader != "" && block.Kind == "op" {
 		return p.editGroupRow(block, width)
 	}
@@ -875,6 +880,13 @@ func (p *Painter) ranRow(block Block, width int) []string {
 	if block.Body != "" {
 		lines = append(lines, liveActivityIndent(p.Markdown(block.Body, width-indent-2), padding+"  ")...)
 	}
+	return lines
+}
+
+// outputRows attaches the invocation's output to its final operation.
+func outputRows(block Block, lines []string, width int) []string {
+	indent := block.cell(RowVerb(block))
+	padding := strings.Repeat(" ", indent)
 	// Output uses a dashed gutter, distinct from the program gutter above it.
 	if block.Collapsed && len(block.Tail) > 0 {
 		hint := "… " + MoreLines(block.TailOmitted+len(block.Tail))
