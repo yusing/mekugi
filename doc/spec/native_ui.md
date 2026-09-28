@@ -444,7 +444,7 @@ Activity. Assignment excerpts sit below their link on separate, wrapped quote
 rows. Excerpts skip paragraph gaps, and truncated excerpts end their last text
 row with an inline ellipsis, not a separate ellipsis row.
 Adjacent Main items of traffic with one agent form a thread under that agent's
-gutter, with no spacer rows. Main reasoning summaries and agent-wait notices between those items do not
+gutter, with no spacer rows. Main reasoning summaries between those items do not
 end the thread; they render after it closes, outside its rail. Main's tools
 never follow agent traffic headless: when traffic arrives between Main's
 reasoning or commentary and its first tools, that item moves below the traffic
@@ -499,9 +499,10 @@ Compaction start replaces Main’s `Working` label with `Compacting context`;
 completion restores ordinary turn status and adds a `Context compacted` event,
 without a reply-context (`re:`) line. Turn completion, failure, or interruption
 clears an unfinished compaction without claiming it succeeded. Child compaction
-does not change Main’s composer. Agent wait starts and completions are transcript
-events, not composer overrides. Replayed events do not restart progress.
-Wait events show named targets using the shared agent display format (`main`,
+does not change Main’s composer. Agent wait starts, completions, and failures appear
+only as the working caller's latest roster status, never in Main or Activity transcripts
+or as composer overrides. Replayed events do not restart progress.
+Wait status shows named targets using the shared agent display format (`main`,
 or the spawn path below `/root/`) and static muted variants of their identity
 colors when faint is unsupported, or their normal identity colors with ANSI
 faint otherwise. When the host omits receivers, the start event

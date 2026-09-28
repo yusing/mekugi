@@ -295,6 +295,11 @@ func (v *liveActivityView) keepSelection() {
 }
 
 func (v *liveActivityView) visible(entry activityPaneEntry) bool {
+	// Wait lifecycle belongs in the roster's latest summary, not either feed.
+	// Keep the entries so live updates and restored history share that summary.
+	if entry.native != nil && entry.native.wait != nil {
+		return false
+	}
 	if entry.Kind == "tool" && entry.Text == "" {
 		return false
 	}

@@ -55,9 +55,11 @@ func TestNativeUIFaintOutputPolicy(t *testing.T) {
 	for _, faint := range []bool{true, false} {
 		t.Run(fmt.Sprint(faint), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
+			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
 			waitTargetTestAgent(t, u, "a", "/root/agent1", true)
 			waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
 			u.ensureShell()
+			u.shell.focus = 3 // Inspect the roster, the sole wait-status surface.
 			u.shell.faint = faint
 			var wire bytes.Buffer
 			if err := u.paint(&wire, 120, 30); err != nil {

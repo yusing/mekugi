@@ -126,7 +126,7 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 type liveActivityNativeItem struct {
 	thread, turn, item string
 	phase              string
-	wait               *activityui.Block // Structured wait progress is an aside in Main.
+	wait               *activityui.Block // Structured wait progress is roster-only.
 	command, status    string
 	searchResults      *int
 	running            bool                  // Started live and not yet completed; replay never sets it.

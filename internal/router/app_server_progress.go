@@ -20,7 +20,7 @@ func appServerHistoryProgressPhase(item appServerItem) string {
 }
 
 // appServerProgress owns host progress presentation for live and restored items.
-// Only compaction replaces Working; collaboration waits are transcript events.
+// Only compaction replaces Working; collaboration waits are roster-only status.
 // Source: codex-rs/tui/src/chatwidget/compaction.rs:6:56@1cc7e236
 // and codex-rs/tui/src/multi_agents.rs:375:414@1cc7e236.
 func appServerProgress(item appServerItem, method string) (text string, wait *activityui.Block, handled bool) {

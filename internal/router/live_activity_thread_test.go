@@ -140,7 +140,10 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 			}
 			end := slices.IndexFunc(plain, func(row string) bool { return strings.HasPrefix(row, "╰─") })
 			reading := slices.IndexFunc(plain, func(row string) bool { return strings.Contains(row, "still reading") })
-			if end < 0 || reading < end || strings.HasPrefix(plain[reading], "│") {
+			if kind != "reasoning" && reading != -1 {
+				t.Fatalf("wait leaked into transcript:\n%s", text)
+			}
+			if end < 0 || kind == "reasoning" && (reading < end || strings.HasPrefix(plain[reading], "│")) {
 				t.Fatalf("reasoning is not after the thread:\n%s", text)
 			}
 			for i, row := range plain[:end+1] {

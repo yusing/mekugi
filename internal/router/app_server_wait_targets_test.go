@@ -59,13 +59,16 @@ func TestAppServerWaitTargetsSnapshotAndRender(t *testing.T) {
 	waitTargetTestAgent(t, u, "nested", "/root/alpha/nested", true)
 	waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
 	if u.view.entries[0].native.wait == nil {
-		t.Fatal("live wait is not an aside")
+		t.Fatal("live wait lacks structured roster status")
 	}
 	want := "Waiting for agent · alpha, alpha/nested"
 	if got := u.view.entries[0].Text; got != want {
 		t.Fatalf("start = %q, want %q", got, want)
 	}
-	rendered := strings.Join(u.view.renderFeed(120, 30).lines, "\n")
+	if rendered := u.view.renderFeed(120, 30).lines; len(rendered) != 0 {
+		t.Fatalf("wait leaked into transcript: %q", rendered)
+	}
+	rendered, _ := u.agents.current(activityPaneAgent{Name: "/root"}, time.Now())
 	if !strings.Contains(rendered, activityui.DimColor("/root/alpha")+"alpha") || !strings.Contains(rendered, activityui.DimColor("/root/alpha/nested")+"alpha/nested") {
 		t.Fatalf("missing muted targets: %q", rendered)
 	}
@@ -139,12 +142,15 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 	waitTargetTestStore(t, restored, store)
 	restored.restoreHistory(history)
 	if restored.view.entries[0].native.wait == nil {
-		t.Fatal("restored wait is not an aside")
+		t.Fatal("restored wait lacks structured roster status")
 	}
 	if got := restored.view.entries[0].Text; got != "Finished waiting · alpha, alpha/nested" {
 		t.Fatalf("main replay lost targets: %q", got)
 	}
-	rendered := strings.Join(restored.view.renderFeed(120, 30).lines, "\n")
+	if rendered := restored.view.renderFeed(120, 30).lines; len(rendered) != 0 {
+		t.Fatalf("restored wait leaked into transcript: %q", rendered)
+	}
+	rendered, _ := restored.agents.current(activityPaneAgent{Name: "/root"}, time.Now())
 	if !strings.Contains(rendered, activityui.DimColor("/root/alpha")+"alpha") {
 		t.Fatalf("restored wait lost color: %q", rendered)
 	}

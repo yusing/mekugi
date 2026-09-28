@@ -102,6 +102,60 @@ func TestAppServerProgressUnfinishedChildWait(t *testing.T) {
 	}
 }
 
+func TestAppServerWaitRosterOnly(t *testing.T) {
+	for _, caller := range []string{"main", "child"} {
+		t.Run(caller, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			u.session.registerThread(appServerThreadInfo{ID: "child"})
+			feed := u.view
+			name := "/root"
+			if caller == "child" {
+				feed, name = u.agents, u.session.path(caller)
+			}
+			check := func(want string) {
+				t.Helper()
+				if rows := feed.renderFeed(100, 30).lines; len(rows) != 0 {
+					t.Fatalf("wait leaked into transcript: %q", rows)
+				}
+				if got, _ := u.agents.current(activityPaneAgent{Name: name}, time.Now()); !strings.Contains(ansi.Strip(got), want) {
+					t.Fatalf("roster = %q, want %q", got, want)
+				}
+			}
+			var items []appServerItem
+			for _, id := range []string{"w1", "w2", "w3"} {
+				wait := appServerItem{ID: id, Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress", ReceiverThreadIDs: []string{"target"}}
+				notify := func(method string) {
+					appServerTestNotify(t, u, method, map[string]any{"threadId": caller, "turnId": "t", "item": wait})
+				}
+				notify("item/started")
+				check("Waiting for agent · target")
+				wait.Status = "completed"
+				want := "Finished waiting · target: Still running"
+				wait.AgentsStates = map[string]appServerAgentState{"target": {Status: "running"}}
+				if id == "w3" {
+					wait.Status, want = "failed", "Wait failed · target: Still running"
+				}
+				notify("item/completed")
+				notify("item/completed")
+				check(want)
+				items = append(items, wait)
+				if len(feed.entries) != len(items) {
+					t.Fatalf("same-item duplicate not reconciled: %d entries", len(feed.entries))
+				}
+			}
+			// Full history and repeated live delivery must preserve roster-only
+			// presentation without resurrecting work or creating feed rows.
+			history := []appServerHistoryTurn{{ID: "t", Status: "completed", Items: items}}
+			if caller == "main" {
+				u.restoreHistory(history)
+			} else {
+				u.restoreActivityThread(appServerThreadInfo{ID: caller, Turns: history})
+			}
+			check("Wait failed · target: Still running")
+		})
+	}
+}
+
 func TestAppServerProgressTerminalPolling(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
