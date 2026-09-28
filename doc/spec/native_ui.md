@@ -169,8 +169,11 @@ Activity in place of the saved diff.
 
 Clicking a compact Edit event opens the Diff pane’s changes-by-caller navigation
 and scrolls to its captured change. Edit rows underline on hover in Main and
-Activity. Escape returns to the originating pane after closing any diff help,
-filter, or nested navigation action. Navigation uses the exact host invocation,
+Activity. Click-through navigation (Edit, Open in Activity, question links, and
+roster picks) is a temporary preview. Escape restores the previous pane, filters,
+and scroll position, with a visible “esc back to previous view” hint. Nested
+previews return one level at a time; diff help, filters, and nested diff actions
+close first. Restoring presentation never rolls back new events or captures. Navigation uses the exact host invocation,
 including grouped shell captures, rather than matching nearby paths or edits.
 
 Successful single-line Ran output remains visible rather than collapsing to a
@@ -383,7 +386,7 @@ Activity. Assignment excerpts sit below their link on separate, wrapped quote
 rows. Excerpts skip paragraph gaps, and truncated excerpts end their last text
 row with an inline ellipsis, not a separate ellipsis row.
 Adjacent Main items of traffic with one agent form a thread under that agent's
-gutter, with no spacer rows. Main reasoning summaries between those items do not
+gutter, with no spacer rows. Main reasoning summaries and agent-wait notices between those items do not
 end the thread; they render after it closes, outside its rail. Main's tools
 never follow agent traffic headless: when traffic arrives between Main's
 reasoning or commentary and its first tools, that item moves below the traffic
@@ -435,7 +438,8 @@ without a reply-context (`re:`) line. Turn completion, failure, or interruption
 clears an unfinished compaction without claiming it succeeded. Child compaction
 does not change Main’s composer. Agent wait starts and completions are transcript
 events, not composer overrides. Replayed events do not restart progress.
-Wait events show named targets. When the host omits receivers, the start event
+Wait events show named targets using the shared agent display format (`main`,
+or the spawn path below `/root/`). When the host omits receivers, the start event
 snapshots the caller's currently running descendants; completion retains that
 list even if those agents stop or other agents start. Explicit host targets and
 reported states remain authoritative. Presentation-only snapshots are retained

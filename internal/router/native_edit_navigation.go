@@ -25,13 +25,14 @@ func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64) bool {
 				continue
 			}
 			c := u.diff
+			previous := u.navigationReturn()
 			c.navigation.Changes.Query = ""
 			c.filterCaller("")
 			for _, node := range c.navigation.Changes.Nodes {
 				if node.Change != attempt.change || len(node.Files) == 0 {
 					continue
 				}
-				u.pushNavigationReturn()
+				u.navigationReturns = append(u.navigationReturns, previous)
 				c.back = liveDiffBack{}
 				u.side, u.diffOpen, u.activityOpen, u.focus = true, true, false, 1
 				c.diffMode, c.dirty = true, true
@@ -41,6 +42,7 @@ func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64) bool {
 				c.navigation.Changes.FocusChange(node.Change, c.navRows)
 				return true
 			}
+			u.restoreNavigationReturn(previous)
 		}
 	}
 	return false

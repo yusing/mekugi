@@ -34,7 +34,12 @@ func TestNativeEditClickOpensBranchedDiff(t *testing.T) {
 				}
 				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `" + path + "` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "earlier"}}}})
 				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Agent: "Main", Kind: "tool", Text: "Edit `file19.go` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "call"}}}})
-				u.shell.side = false
+				u.shell.side, u.shell.diffOpen = true, true
+				c.filterCaller("/root")
+				c.navigation.Changes.Query = "amber1"
+				c.navigation.ChangesTab = true
+				c.openChange("amber1", 0)
+				c.refreshChanges()
 				if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
 					t.Fatal(err)
 				}
@@ -65,6 +70,37 @@ func TestNativeEditClickOpensBranchedDiff(t *testing.T) {
 				l := &c.navigation.Changes
 				if l.Cursor < l.Top || l.Cursor >= l.Top+c.navRows || l.Nodes[l.Rows[l.Cursor].Node].Change != "amber20" {
 					t.Fatalf("target not visible: cursor=%d top=%d rows=%d", l.Cursor, l.Top, c.navRows)
+				}
+				// New captures rendered during the preview must remain navigable on return.
+				captures = append(captures, liveDiffCapture("later", "later.go", 21, "", "new\n", livediff.Origin{Change: "amber21", Caller: "/root"}))
+				c.view.Merge(livediff.GroupCaptures(captures))
+				c.view.RefreshVisible()
+				if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
+					t.Fatal(err)
+				}
+				// Help closes before the temporary preview returns.
+				c.help = true
+				if err := u.shell.send("\x1b"); err != nil {
+					t.Fatal(err)
+				}
+				c.escapeKey()
+				if c.help || len(u.shell.navigationReturns) != 1 {
+					t.Fatal("help consumed preview return")
+				}
+				if err := u.shell.send("\x1b"); err != nil {
+					t.Fatal(err)
+				}
+				if c.view.Caller != "/root" || c.navigation.Changes.Query != "amber1" || c.navigation.Changes.Target.Change != "amber1" || !u.shell.diffOpen {
+					t.Fatal("Edit preview lost prior diff filters or target")
+				}
+				present := false
+				for _, entry := range c.navigation.Entries {
+					if entry.Label == "later.go" {
+						present = true
+					}
+				}
+				if !present {
+					t.Fatal("return restored a stale Files navigator")
 				}
 
 			})

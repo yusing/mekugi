@@ -3,6 +3,8 @@ package router
 import (
 	"slices"
 	"strings"
+
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 type appServerAgentState struct {
@@ -51,7 +53,7 @@ func appServerProgress(item appServerItem, method string) (text string, handled 
 		receivers = append(receivers, extra...)
 		for i, id := range receivers {
 			if name := item.waitNames[id]; name != "" {
-				receivers[i] = name
+				receivers[i] = activityui.AgentDisplayName(name)
 			}
 			if method == "item/completed" {
 				status := item.AgentsStates[id].Status

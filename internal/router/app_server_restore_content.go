@@ -260,6 +260,7 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 			if text, handled := appServerProgress(item, progressPhase); handled {
 				if text != "" {
 					entry.Kind, entry.Text = "progress", text
+					entry.native.wait = item.Type == "collabAgentToolCall" && item.Tool == "wait"
 					entry.native.phase = progressPhase
 					entries = append(entries, entry)
 				}

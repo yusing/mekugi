@@ -39,7 +39,7 @@ func conversationMilestone(entry activityPaneEntry) bool {
 // renderConversation lays Main out as a transcript rather than an activity
 // feed: prompts on a tinted band, Main's own messages and milestones without
 // author headings, and agent traffic under one-line headings. Adjacent traffic
-// with one agent forms a thread. Main's reasoning between a thread's items
+// with one agent forms a thread. Main's reasoning and waits between a thread's items
 // neither breaks it nor enters its rail: it follows the thread instead. Main's
 // tools never sit headless below agent traffic: the reasoning or commentary
 // they continue moves below the traffic, or, when it already heads earlier
@@ -49,7 +49,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 	type item struct {
 		first, last int
 		agent       string // Thread agent, or "" when the item cannot join one.
-		aside       bool   // Main reasoning, which neither starts nor ends a thread.
+		aside       bool   // Main reasoning or wait, which neither starts nor ends a thread.
 		lead        int    // Entry index of the Main item a tool group continues, or -1.
 		attached    bool   // Tools branching from the reasoning directly above, with no gap.
 	}
@@ -73,7 +73,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		}
 		if !v.conversationEmpty(i) {
 			entry := v.entries[i]
-			items = append(items, item{first: i, last: last, agent: v.threadAgent(i), aside: entry.Agent == "Main" && entry.Kind == "reasoning", lead: -1})
+			items = append(items, item{first: i, last: last, agent: v.threadAgent(i), aside: entry.Agent == "Main" && (entry.Kind == "reasoning" || entry.Kind == "progress" && entry.native != nil && entry.native.wait), lead: -1})
 		}
 		i = j
 	}
@@ -83,7 +83,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 	continues := func(a, b int) bool {
 		return a >= 0 && b < len(items) && items[a].agent != "" && items[a].agent == items[b].agent
 	}
-	// Hold reasoning the thread continues past until the thread ends.
+	// Hold asides the thread continues past until the thread ends.
 	ordered := make([]item, 0, len(items))
 	var held []item
 	previous := -1 // Latest item that is not an aside.

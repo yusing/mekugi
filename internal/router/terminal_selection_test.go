@@ -199,6 +199,9 @@ func TestTerminalUISelectionReplacementKeepsCleanLinks(t *testing.T) {
 func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 	for _, question := range []bool{false, true} {
 		u := selectionTestUI("click target")
+		u.agents = newLiveActivityView()
+		u.diff = newLiveDiffTerminalController(nil, "", nil)
+		t.Cleanup(u.diff.close)
 		old, next := liveActivitySnippet{run: 1}, liveActivitySnippet{run: 2}
 		if question {
 			u.main.view.feedQuestions = []uint64{1}
@@ -216,6 +219,13 @@ func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 			if u.main.view.flashQuestion != 1 || u.main.view.offset != 3 {
 				t.Fatal("clicked an advancing question target")
 			}
+			if err := u.send("\x1b"); err != nil {
+				t.Fatal(err)
+			}
+			if u.main.view.offset != 0 || !u.main.view.following {
+				t.Fatal("question preview did not restore transcript")
+			}
+
 		} else if !u.main.view.expanded[old] || u.main.view.expanded[next] {
 			t.Fatal("clicked an advancing snippet target")
 		}

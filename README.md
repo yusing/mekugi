@@ -255,6 +255,10 @@ call never becomes a saved change.
   one caller's changes at a time, and `0` shows all callers. In the tab, `Enter`
   on a caller filters to it, and `Enter` or `h`/`l` on a change expands or
   collapses its files.
+- Click an Edit to preview its captured change in the branched navigator.
+  Edit, reply, question, and agent links are temporary previews: `Esc` returns
+  to your previous pane, filters, and scroll position. A back hint appears
+  while a preview is open.
 - Browsing pauses following; `r` resumes.
 
 See [live view details](doc/spec/changes.md#live-terminal-view).

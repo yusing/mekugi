@@ -120,38 +120,46 @@ func TestConversationThreadQuotesEarlierAssignment(t *testing.T) {
 	}
 }
 
-func TestConversationReasoningFollowsThread(t *testing.T) {
-	const width = 60
-	v := threadTestView()
-	reasoning := activityPaneEntry{Seq: 3, Agent: "Main", Kind: "reasoning", Text: "**Waiting on review**\n\nThe reviewer is still reading.", Observed: v.entries[0].Observed.Add(time.Second)}
-	v.entries = []activityPaneEntry{v.entries[0], reasoning, v.entries[1]}
-	v.blocks = [][]activityui.Block{v.blocks[0], parseLiveActivity(reasoning), v.blocks[1]}
-	feed := v.renderFeed(width, 40)
-	plain := threadPlain(feed)
-	text := strings.Join(plain, "\n")
-	if !strings.Contains(text, "├─← replied · 58s") || !strings.Contains(text, " lines") || strings.Contains(text, "← reviewer") {
-		t.Fatalf("reasoning split the thread:\n%s", text)
-	}
-	end := slices.IndexFunc(plain, func(row string) bool { return strings.HasPrefix(row, "╰─") })
-	reading := slices.IndexFunc(plain, func(row string) bool { return strings.Contains(row, "still reading") })
-	if end < 0 || reading < end || strings.HasPrefix(plain[reading], "│") {
-		t.Fatalf("reasoning is not after the thread:\n%s", text)
-	}
-	for i, row := range plain[:end+1] {
-		if ansi.StringWidth(feed.lines[i]) > width {
-			t.Fatalf("row %d overflows: %q", i, row)
-		}
-		if row == "" || !strings.HasPrefix(row, "▶") && !strings.HasPrefix(row, "│") && !strings.HasPrefix(row, "├─") && !strings.HasPrefix(row, "╰─") {
-			t.Fatalf("row %d left the thread rail:\n%s", i, text)
-		}
-	}
+func TestConversationAsidesFollowThread(t *testing.T) {
+	for _, kind := range []string{"reasoning", "Waiting for agent", "Finished waiting", "Wait failed"} {
+		t.Run(kind, func(t *testing.T) {
+			const width = 60
+			v := threadTestView()
+			reasoning := activityPaneEntry{Seq: 3, Agent: "Main", Kind: "reasoning", Text: "**Waiting on review**\n\nThe reviewer is still reading.", Observed: v.entries[0].Observed.Add(time.Second)}
+			if kind != "reasoning" {
+				reasoning.Kind, reasoning.Text = "progress", kind+" · reviewer still reading"
+				reasoning.native = &liveActivityNativeItem{wait: true}
+			}
+			v.entries = []activityPaneEntry{v.entries[0], reasoning, v.entries[1]}
+			v.blocks = [][]activityui.Block{v.blocks[0], parseLiveActivity(reasoning), v.blocks[1]}
+			feed := v.renderFeed(width, 40)
+			plain := threadPlain(feed)
+			text := strings.Join(plain, "\n")
+			if !strings.Contains(text, "├─← replied · 58s") || !strings.Contains(text, " lines") || strings.Contains(text, "← reviewer") {
+				t.Fatalf("reasoning split the thread:\n%s", text)
+			}
+			end := slices.IndexFunc(plain, func(row string) bool { return strings.HasPrefix(row, "╰─") })
+			reading := slices.IndexFunc(plain, func(row string) bool { return strings.Contains(row, "still reading") })
+			if end < 0 || reading < end || strings.HasPrefix(plain[reading], "│") {
+				t.Fatalf("reasoning is not after the thread:\n%s", text)
+			}
+			for i, row := range plain[:end+1] {
+				if ansi.StringWidth(feed.lines[i]) > width {
+					t.Fatalf("row %d overflows: %q", i, row)
+				}
+				if row == "" || !strings.HasPrefix(row, "▶") && !strings.HasPrefix(row, "│") && !strings.HasPrefix(row, "├─") && !strings.HasPrefix(row, "╰─") {
+					t.Fatalf("row %d left the thread rail:\n%s", i, text)
+				}
+			}
 
-	// Reasoning after the latest item is outside the thread until it continues.
-	v.entries, v.blocks = v.entries[:2], v.blocks[:2]
-	v.runs = nil
-	pending := strings.Join(threadPlain(v.renderFeed(width, 40)), "\n")
-	if strings.Contains(pending, " lines") || strings.Contains(pending, "│ The reviewer") {
-		t.Fatalf("trailing reasoning joined an unanswered thread:\n%s", pending)
+			// Reasoning after the latest item is outside the thread until it continues.
+			v.entries, v.blocks = v.entries[:2], v.blocks[:2]
+			v.runs = nil
+			pending := strings.Join(threadPlain(v.renderFeed(width, 40)), "\n")
+			if strings.Contains(pending, " lines") || strings.Contains(pending, "│ The reviewer") {
+				t.Fatalf("trailing reasoning joined an unanswered thread:\n%s", pending)
+			}
+		})
 	}
 }
 

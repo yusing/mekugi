@@ -57,18 +57,21 @@ func TestAppServerWaitTargetsSnapshotAndRender(t *testing.T) {
 	waitTargetTestAgent(t, u, "b", "/root/beta", false)
 	waitTargetTestAgent(t, u, "nested", "/root/alpha/nested", true)
 	waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
-	want := "Waiting for agent · /root/alpha, /root/alpha/nested"
+	if !u.view.entries[0].native.wait {
+		t.Fatal("live wait is not an aside")
+	}
+	want := "Waiting for agent · alpha, alpha/nested"
 	if got := u.view.entries[0].Text; got != want {
 		t.Fatalf("start = %q, want %q", got, want)
 	}
 	frame := ansi.Strip(strings.Join(u.view.renderFeed(120, 30).lines, "\n"))
-	if !strings.Contains(frame, "/root/alpha/nested") {
+	if !strings.Contains(frame, "alpha/nested") {
 		t.Fatalf("target absent from frame: %q", frame)
 	}
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "a", "turn": map[string]any{"id": "work", "status": "completed"}})
 	waitTargetTestAgent(t, u, "new", "/root/new", true)
 	waitTargetTestEvent(t, u, "item/completed", "main", "t", "w")
-	if len(u.view.entries) != 1 || u.view.entries[0].Text != "Finished waiting · /root/alpha, /root/alpha/nested" {
+	if len(u.view.entries) != 1 || u.view.entries[0].Text != "Finished waiting · alpha, alpha/nested" {
 		t.Fatalf("completion changed start targets: %+v", u.view.entries)
 	}
 }
@@ -112,7 +115,7 @@ func TestAppServerWaitTargetsExplicitStatusMapping(t *testing.T) {
 	item.AgentsStates = map[string]appServerAgentState{"a": {Status: "running"}, "unregistered": {Status: "completed"}}
 	got := u.waitItem(item, "main", "t", "w", false)
 	text, _ := appServerProgress(got, "item/completed")
-	if text != "Finished waiting · /root/alpha: Still running, unregistered: completed" {
+	if text != "Finished waiting · alpha: Still running, unregistered: completed" {
 		t.Fatalf("explicit targets/statuses changed: %q", text)
 	}
 }
@@ -130,12 +133,15 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 	restored := newAppServerSessionTestUI(t, workspace)
 	waitTargetTestStore(t, restored, store)
 	restored.restoreHistory(history)
-	if got := restored.view.entries[0].Text; got != "Finished waiting · /root/alpha, /root/alpha/nested" {
+	if !restored.view.entries[0].native.wait {
+		t.Fatal("restored wait is not an aside")
+	}
+	if got := restored.view.entries[0].Text; got != "Finished waiting · alpha, alpha/nested" {
 		t.Fatalf("main replay lost targets: %q", got)
 	}
 	restored.session.registerThread(appServerThreadInfo{ID: "a", AgentNickname: "alpha"})
 	restored.restoreActivityThread(appServerThreadInfo{ID: "a", Turns: history})
-	if got := restored.agents.entries[0].Text; got != "Finished waiting · /root/alpha/nested" {
+	if got := restored.agents.entries[0].Text; got != "Finished waiting · alpha/nested" {
 		t.Fatalf("child replay lost targets: %q", got)
 	}
 	if restored.turn != "" {
@@ -185,14 +191,14 @@ func TestAppServerWaitTargetsStorageFailureKeepsLiveDisplay(t *testing.T) {
 				waitTargetTestAgent(t, u, "a", "/root/alpha", true)
 			}
 			waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
-			if got := u.view.entries[0].Text; got != "Waiting for agent · /root/alpha" {
+			if got := u.view.entries[0].Text; got != "Waiting for agent · alpha" {
 				t.Fatalf("storage blocked live start: %q", got)
 			}
 			if !strings.Contains(u.notice, "Wait targets could not") {
 				t.Fatalf("storage failure missing notice: %q", u.notice)
 			}
 			waitTargetTestEvent(t, u, "item/completed", "main", "t", "w")
-			if got := u.view.entries[0].Text; got != "Finished waiting · /root/alpha" {
+			if got := u.view.entries[0].Text; got != "Finished waiting · alpha" {
 				t.Fatalf("storage blocked live completion: %q", got)
 			}
 		})
