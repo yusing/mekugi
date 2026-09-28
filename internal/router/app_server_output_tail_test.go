@@ -139,16 +139,20 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	notify("item/completed", map[string]any{"item": item})
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "late\n"})
 	rollCommandOutput(u)
-	// The host's output stays readable for the linger, then collapses.
+	// The host's output stays readable until Main's next event, then collapses.
 	open := "└ Ran go test ./...\n      ┆ ok 1\n      ┆ ok 2\n      ┆ PASS"
 	if got := main(); !strings.Contains(got, open) || strings.Contains(got, "Running") || strings.Contains(got, "late") {
 		t.Fatalf("completed command lacks its settled output %q:\n%s", open, got)
 	}
-	if u.view.settle(time.Now().Add(activityui.OutputLinger - time.Second)) {
-		t.Fatal("output collapsed before its linger")
+	if u.view.settle(time.Now().Add(time.Hour)) {
+		t.Fatal("output collapsed before a later event")
 	}
-	if !u.view.settle(time.Now().Add(activityui.OutputLinger)) {
-		t.Fatal("output did not collapse after its linger")
+	nextEvent(t, u, "main")
+	if u.view.settle(time.Now()) {
+		t.Fatal("output collapsed before events paused")
+	}
+	if !u.view.settle(time.Now().Add(activityui.OutputDebounce)) {
+		t.Fatal("output did not collapse after the next event")
 	}
 	feed := u.view.renderFeed(90, 60)
 	got := ansi.Strip(strings.Join(feed.lines, "\n"))
@@ -181,7 +185,8 @@ func TestAppServerSingleLineOutputStaysVisible(t *testing.T) {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 			"id": "cmd", "type": "commandExecution", "command": "echo done", "status": "completed", "exitCode": 0, "aggregatedOutput": "done\n",
 		}})
-		u.view.settle(time.Now().Add(activityui.OutputLinger))
+		nextEvent(t, u, "main")
+		u.view.settle(time.Now().Add(activityui.OutputDebounce))
 		feed := u.view.renderFeed(90, 60)
 		got := ansi.Strip(strings.Join(feed.lines, "\n"))
 		if !strings.Contains(got, "┆ done") || strings.Contains(got, "+1 lines") {
@@ -226,7 +231,8 @@ func TestAppServerMixedCommandOutputFollowsFinalRead(t *testing.T) {
 			item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", exit, "first\nsecond\n"
 			notify("item/completed", map[string]any{"item": item})
 			check("┆ second")
-			u.view.settle(time.Now().Add(activityui.OutputLinger))
+			nextEvent(t, u, "main")
+			u.view.settle(time.Now().Add(activityui.OutputDebounce))
 			if exit != 0 {
 				check("┆ second")
 				return
@@ -308,5 +314,42 @@ func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 	}
 	if len(u.session.commands) != 0 {
 		t.Fatalf("completed command still tracked: %v", u.session.commands)
+	}
+}
+
+// nextEvent adds finished thinking in thread, a standalone event that settles
+// the agent's earlier output.
+func nextEvent(t *testing.T, u *appServerUI, thread string) {
+	t.Helper()
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{
+		"id": "next-" + thread, "type": "reasoning", "summary": []string{"**Next step**"}}})
+}
+
+func TestAppServerOutputCollapsesTogetherAfterEventsPause(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.conversation = true
+	run := func(id string) {
+		t.Helper()
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+			"id": id, "type": "commandExecution", "command": "echo " + id, "status": "completed", "exitCode": 0, "aggregatedOutput": id + " 1\n" + id + " 2\n"}})
+	}
+	run("first")
+	run("second")
+	start := time.Now()
+	// Rapid commands keep deferring the collapse rather than folding one by one.
+	if u.view.settle(start.Add(activityui.OutputDebounce / 2)) {
+		t.Fatal("output collapsed while events were still arriving")
+	}
+	run("third")
+	third := u.view.events["Main"].at
+	if u.view.settle(third.Add(activityui.OutputDebounce / 2)) {
+		t.Fatal("a later event did not restart the pause")
+	}
+	if !u.view.settle(third.Add(activityui.OutputDebounce)) {
+		t.Fatal("settled output did not collapse after events paused")
+	}
+	got := ansi.Strip(strings.Join(u.view.renderFeed(100, 60).lines, "\n"))
+	if strings.Contains(got, "first 1") || strings.Contains(got, "second 1") || !strings.Contains(got, "third 1") {
+		t.Fatalf("only the output with a later event should collapse:\n%s", got)
 	}
 }

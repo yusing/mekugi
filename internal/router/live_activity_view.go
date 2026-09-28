@@ -55,6 +55,7 @@ type liveActivityView struct {
 	osc            livediff.OSC
 	runs           map[liveActivityRunKey]liveActivityRun
 	paced          map[uint64]liveActivityPace // Live invocations still revealing their operations, by entry.
+	events         map[string]liveActivityEvent // Each agent's latest standalone event, which settles its output.
 	pacedSeq       uint64                      // Entries up to this sequence have been considered for pacing.
 
 	// expanded snippets show in full in the shared feed; snippet is the
@@ -96,6 +97,12 @@ type liveActivityRun struct {
 	snippets  []liveActivitySnippet // Aligned with lines.
 	questions []uint64              // Clickable question targets, aligned with lines.
 	entryRows map[uint64]int        // Exact Activity entry starts within a grouped run.
+}
+
+// liveActivityEvent is an agent's latest standalone entry and when it arrived.
+type liveActivityEvent struct {
+	seq uint64
+	at  time.Time
 }
 
 // liveActivityPace reveals a live invocation's operations one at a time.
@@ -279,6 +286,12 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 		}
 		v.entries = append(v.entries, entry)
 		v.blocks = append(v.blocks, blocks)
+		if v.standalone(entry) {
+			if v.events == nil {
+				v.events = make(map[string]liveActivityEvent)
+			}
+			v.events[entry.Agent] = liveActivityEvent{entry.Seq, cmp.Or(entry.Observed, time.Now())}
+		}
 		if !v.following && v.visible(entry) {
 			v.unseen++
 		}
@@ -1507,17 +1520,33 @@ func (v *liveActivityView) expireFlash(now time.Time) bool {
 	return true
 }
 
-// settle collapses settled live blocks whose linger has passed: finished
-// provider thinking and successful command output. Entries are shared between
-// views, so each view replaces rather than modifies an entry's native state.
+// standalone reports a new event that settles its agent's earlier output: a
+// separate operation, message or thinking, not roster-only wait progress.
+func (v *liveActivityView) standalone(entry activityPaneEntry) bool {
+	return !(entry.native != nil && entry.native.wait != nil) && !(entry.Kind == "tool" && entry.Text == "")
+}
+
+// settle collapses settled live blocks that are due: finished provider
+// thinking after its linger, and successful command output once its agent's
+// next standalone event has been followed by a pause. Entries are shared
+// between views, so each view replaces rather than modifies native state.
 func (v *liveActivityView) settle(now time.Time) bool {
 	changed := false
 	for i, entry := range v.entries {
-		if entry.native == nil || entry.native.collapseAt.IsZero() || now.Before(entry.native.collapseAt) {
+		if entry.native == nil {
+			continue
+		}
+		thought := !entry.native.collapseAt.IsZero() && !now.Before(entry.native.collapseAt)
+		// A later row by the same agent settles the output, a pause after the
+		// latest of it and the output's own completion.
+		next := v.events[entry.Agent]
+		settled := entry.native.settled
+		output := !settled.IsZero() && next.seq > entry.Seq && !now.Before(maxTime(next.at, settled).Add(activityui.OutputDebounce))
+		if !thought && !output {
 			continue
 		}
 		native := *entry.native
-		native.collapseAt, native.collapsed = time.Time{}, true
+		native.collapseAt, native.settled, native.collapsed = time.Time{}, time.Time{}, true
 		v.entries[i].native = &native
 		for j := range v.blocks[i] {
 			if block := &v.blocks[i][j]; block.Collapsible() {
@@ -1529,6 +1558,13 @@ func (v *liveActivityView) settle(now time.Time) bool {
 		v.runs = nil
 	}
 	return changed
+}
+
+func maxTime(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }
 
 func (v *liveActivityView) footer(width int) string {

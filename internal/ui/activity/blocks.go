@@ -53,11 +53,14 @@ type Block struct {
 	Collapsed, Hovered bool
 }
 
-// A settled block stays open this long after it completes live, then
-// collapses to one row. Restored history starts settled.
+// Finished thinking stays open for ThinkingLinger after it completes live,
+// then collapses to one row. Successful output stays open until its agent's
+// next standalone event, then collapses once events pause for
+// OutputDebounce, so a quick run of commands collapses together rather than
+// one row at a time. Restored history starts settled.
 const (
 	ThinkingLinger = time.Second
-	OutputLinger   = 3 * time.Second
+	OutputDebounce = 750 * time.Millisecond
 )
 
 // Collapsible reports a settled block that can show as one row: finished

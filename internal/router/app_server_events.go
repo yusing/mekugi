@@ -343,7 +343,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				entries = append(entries, entry)
 				break
 			}
-			appServerSucceededOutput(&entry, item, now.Add(activityui.OutputLinger))
+			appServerSucceededOutput(&entry, item, now)
 			done := []activityPaneEntry{entry}
 			if item.ExitCode != nil && *item.ExitCode != 0 {
 				exit := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: id, Observed: now}
@@ -441,6 +441,9 @@ func (u *appServerUI) flushCommandOutput() {
 		if run.done != nil && run.output.Pending() == 0 {
 			for _, done := range run.done {
 				done.Agent = entry.Agent
+				if done.native != nil && !done.native.settled.IsZero() {
+					done.native.settled = time.Now() // Output settles once it has shown.
+				}
 				entries = append(entries, done)
 			}
 			delete(s.commands, key)
@@ -541,14 +544,14 @@ func appServerCommandText(item appServerItem, cwd string) string {
 }
 
 // appServerSucceededOutput keeps a successful command's output tail on its
-// entry, open until collapse; a zero collapse time starts it collapsed.
-// Failures carry their tail on the exit entry instead.
-func appServerSucceededOutput(entry *activityPaneEntry, item appServerItem, collapse time.Time) {
+// entry, open from settled until its agent's next event; a zero settled time
+// starts it collapsed. Failures carry their tail on the exit entry instead.
+func appServerSucceededOutput(entry *activityPaneEntry, item appServerItem, settled time.Time) {
 	if item.Type != "commandExecution" || item.ExitCode == nil || *item.ExitCode != 0 {
 		return
 	}
 	entry.outputTail, entry.outputOmit = appServerOutputTail(item.AggregatedOutput)
-	entry.native.collapseAt, entry.native.collapsed = collapse, collapse.IsZero()
+	entry.native.settled, entry.native.collapsed = settled, settled.IsZero()
 }
 
 // appServerOutputTail keeps the last non-blank lines of a command's host

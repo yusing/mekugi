@@ -93,8 +93,11 @@ The host supplies one combined output stream per shell invocation. Its tail foll
 the final displayed operation, including a Read or Skill row, rather than an earlier
 Run row; it does not claim per-command output attribution.
 Completion replaces it with the tail of the host's aggregated output. A
-failure keeps that tail open. After a zero exit it stays open for three seconds,
-then collapses to one muted `┆ … +N lines` row; a click on the command opens
+failure keeps that tail open. After a zero exit it stays open until the same
+agent's next standalone event, such as a separate command, Skill or Read, then
+collapses to one muted `┆ … +N lines` row once events pause for 750 ms after the
+later of that event and the output's completion, so a quick run of commands
+collapses together; a click on the command opens
 it again and another collapses it. Restored history shows zero-exit output
 already collapsed. Output arriving after completion is ignored.
 Unknown and zero exits add no failure label, and an unknown exit no output. Python, JavaScript (Node and Bun), and Perl interpreter previews use

@@ -133,6 +133,7 @@ type liveActivityNativeItem struct {
 	running            bool                  // Started live and not yet completed; replay never sets it.
 	live               bool                  // From a live notification; restored history never sets it.
 	collapseAt         time.Time             // A settled live block stays open until then.
+	settled            time.Time             // Successful output stays open from then until its agent's next event.
 	collapsed          bool                  // A settled block shows collapsed: after its linger, or restored.
 	spans              []activityui.TextSpan // Attachment spans, not text resembling image labels.
 	question           uint64                // Original user entry, retained even for a live journal publication.

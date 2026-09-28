@@ -202,7 +202,8 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	if got := agents(); strings.Contains(got, "Running") || !strings.Contains(got, "┆ ok      example.com") || !regexp.MustCompile(`Ran +│ for test in`).MatchString(got) {
 		t.Fatalf("passed test run lacks its settled output:\n%s", got)
 	}
-	p.ui.agents.settle(time.Now().Add(activityui.OutputLinger))
+	nextEvent(t, p.ui, p.ui.agents.entries[len(p.ui.agents.entries)-1].native.thread)
+	p.ui.agents.settle(time.Now().Add(activityui.OutputDebounce))
 	if got := agents(); strings.Contains(got, "┆ ok ") || !strings.Contains(got, "┆ … +6 lines") {
 		t.Fatalf("passed test run output did not collapse:\n%s", got)
 	}
