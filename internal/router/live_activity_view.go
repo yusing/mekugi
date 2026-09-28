@@ -50,6 +50,7 @@ type liveActivityView struct {
 	childrenOnly   bool              // Native Main already owns root activity; keep it out of the auxiliary feed.
 	bare           bool              // The shell's pane title replaces the heading and footer rows.
 	focused        bool              // Native Activity shows its key hints only while it has keyboard focus.
+	returning      bool              // A click-through preview is open here; Esc restores the previous view.
 	mainView       *liveActivityView // Roster reads Main's state without duplicating its feed entries.
 	painter        activityui.Painter
 	osc            livediff.OSC
@@ -695,7 +696,7 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 	}
 	switch {
 	case v.feedOnly:
-		hint := !v.following && body > 1
+		hint := (!v.following || v.returning) && body > 1
 		feedRows := body
 		if hint {
 			feedRows--
@@ -713,8 +714,11 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 		}
 		lines = append(lines, v.viewport(feed, feedRows)...)
 		if hint {
-			label := ansi.Truncate("↓ Back to bottom · esc", text, "")
-			lines = append(lines, strings.Repeat(" ", max(0, (text-ansi.StringWidth(label))/2))+v.painter.Theme.Accent()+label+activityui.Reset)
+			label := "↓ Back to bottom · esc"
+			if v.returning {
+				label = liveActivityReturnHint
+			}
+			lines = append(lines, liveActivityHint(v.painter.Theme, label, text))
 		}
 	case len(rows) > 0 && text >= liveActivitySideColumns && body >= 6:
 		cardWidth := min(44, max(28, text*3/10))
@@ -746,6 +750,16 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 		lines = append(lines, v.footer(text))
 	}
 	return lines
+}
+
+// liveActivityReturnHint replaces a pane's bottom hint while Esc returns from
+// a click-through preview rather than resuming following.
+const liveActivityReturnHint = "↩ Back to previous view · esc"
+
+// liveActivityHint centers an accented key hint on a pane's bottom row.
+func liveActivityHint(theme livediff.Theme, label string, width int) string {
+	label = ansi.Truncate(label, width, "")
+	return strings.Repeat(" ", max(0, (width-ansi.StringWidth(label))/2)) + theme.Accent() + label + activityui.Reset
 }
 
 func liveActivityPad(line string, width int) string {

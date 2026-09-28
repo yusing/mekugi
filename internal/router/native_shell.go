@@ -243,6 +243,8 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	width, height := max(1, u.width), max(1, u.height)
 	now := time.Now()
 	u.agents.feedOnly, u.agents.focused = true, u.focus == 2
+	returning := len(u.navigationReturns) > 0
+	u.agents.returning = returning && !u.diffOpen
 	u.liveDock.Prefer = ""
 	if u.agents.only {
 		u.liveDock.Prefer = u.agents.selected
@@ -344,9 +346,13 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		var body []string
 		var title, label string
 		if u.diffOpen {
-			l.diff = terminalRect{right.x + 1, contentY, iw, content}
-			if u.diffScreen.Width() != iw || u.diffScreen.Height() != content {
-				u.diffScreen.Resize(iw, max(1, content))
+			diffRows := content
+			if returning && content > 1 {
+				diffRows-- // The return hint takes the pane's bottom row, as in Activity.
+			}
+			l.diff = terminalRect{right.x + 1, contentY, iw, diffRows}
+			if u.diffScreen.Width() != iw || u.diffScreen.Height() != diffRows {
+				u.diffScreen.Resize(iw, max(1, diffRows))
 				u.diff.dirty = true
 			}
 			u.layout = l // The diff controller sizes itself from the layout.
@@ -359,6 +365,10 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 				body = []string{"Diff unavailable", livediff.Safe(u.diffFailure, false), "Use mchanges to review captured edits."}
 			} else {
 				body = strings.Split(u.diffScreen.Render(), "\n")
+			}
+			if diffRows < content {
+				body = append(body[:min(len(body), diffRows)], make([]string, max(0, diffRows-len(body)))...)
+				body = append(body, liveActivityHint(u.agents.painter.Theme, liveActivityReturnHint, iw))
 			}
 			summary, state := u.diff.nativeTitle()
 			title, label = nativeTitle(2, "Diff", "saved · "+summary, u.focus == 1), state
@@ -469,7 +479,8 @@ func (u *terminalUI) nativeStatus() string {
 		hints = append(hints, terminalHint{"^B e", "next live", 0})
 	}
 	if len(u.navigationReturns) > 0 {
-		hints = append(terminalHints{{"esc", "back to previous view", 0}}, slices.DeleteFunc(hints, func(h terminalHint) bool { return h.key == "esc" })...)
+		// The previewed pane's bottom row carries Esc's return hint.
+		hints = slices.DeleteFunc(hints, func(h terminalHint) bool { return h.key == "esc" })
 	}
 	hints = append(hints, terminalHint{"^B 1-4", "panes", 0})
 	return tabs + "  " + hints.render()

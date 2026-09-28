@@ -189,7 +189,9 @@ and scrolls to its captured change. Only the pointed edit row's text underlines
 on hover in Main and Activity, not its gutter, alignment gaps, stat bar, or other
 rows in the same capture. Click-through navigation (Edit, Open in Activity, question links, and
 roster picks) is a temporary preview. Escape restores the previous pane, filters,
-and scroll position, with a visible “esc back to previous view” hint. Nested
+and scroll position. While a preview is open, the previewed pane's bottom row
+shows a centered “↩ Back to previous view · esc” hint, like a paused
+transcript's “Back to bottom”, in place of any Esc hint in the status bar. Nested
 previews return one level at a time; diff help, filters, and nested diff actions
 close first. Restoring presentation never rolls back new events or captures. Navigation uses the exact host invocation,
 including grouped shell captures, rather than matching nearby paths or edits.

@@ -91,8 +91,15 @@ func TestNativeReplyPreviewReturnsToScrolledDiff(t *testing.T) {
 		t.Fatal("reply did not open Activity")
 	}
 	paint()
-	if !strings.Contains(screen.String(), "back to previous view") {
-		t.Fatal("missing return hint")
+	// Like Main's “Back to bottom”, the hint sits centered on the previewed
+	// pane's bottom row rather than in the status bar.
+	lines := strings.Split(screen.String(), "\n")
+	pane := u.shell.layout.agents
+	if hint := lines[pane.y+pane.h-1]; !strings.Contains(hint, "↩ Back to previous view · esc") {
+		t.Fatalf("return hint missing from Activity's bottom row: %q", hint)
+	}
+	if strings.Contains(lines[len(lines)-1], "previous view") {
+		t.Fatal("return hint stayed in the status bar")
 	}
 	// A nested roster click must restore the outer reply preview first.
 	before := u.agents.offset
@@ -136,7 +143,16 @@ func TestNativeReplyPreviewReturnsToScrolledDiff(t *testing.T) {
 	if c.view.Scroll[key] != saved {
 		t.Fatal("paint lost restored scroll")
 	}
-	if strings.Contains(screen.String(), "back to previous view") {
+	if strings.Contains(screen.String(), "previous view") {
 		t.Fatal("return hint survived final return")
+	}
+	// A previewed diff gives up its bottom row to the same hint.
+	rows := u.shell.layout.diff.h
+	u.shell.pushNavigationReturn()
+	paint()
+	lines = strings.Split(screen.String(), "\n")
+	pane = u.shell.layout.diff
+	if hint := lines[pane.y+pane.h]; pane.h != rows-1 || !strings.Contains(hint, "↩ Back to previous view · esc") {
+		t.Fatalf("return hint missing below the previewed diff (%d of %d rows): %q", pane.h, rows, hint)
 	}
 }
