@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"sync"
 )
@@ -13,6 +14,8 @@ import (
 type liveDiffSources struct {
 	mu    sync.Mutex
 	files map[liveDiffSourceKey]liveDiffSource
+	// Captured-only projections must not learn their baseline after execution.
+	capturedOnly bool
 }
 
 type liveDiffSourceKey struct {
@@ -83,6 +86,9 @@ func liveDiffSourceRead(ctx context.Context, path string, read func(string) (str
 	sources.mu.Unlock()
 	if cached {
 		return source.content, source.exists, nil
+	}
+	if sources.capturedOnly {
+		return "", false, errors.New("preview source was not captured")
 	}
 	content, exists, err := read(path)
 	if err != nil {

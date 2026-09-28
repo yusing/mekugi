@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -64,7 +65,7 @@ func execScopePreviewFooter(observation execObservation) string {
 		footer += " · " + strings.Join(names, ", ")
 	}
 	if observation.Reason != "" || observation.Class == execOpaque.String() {
-		footer += " · unresolved targets"
+		footer += " · other writes unknown"
 	}
 	if len(observation.Omitted) > 0 {
 		footer += " · bounded scope"
@@ -131,10 +132,67 @@ func execPendingScope(observation execObservation) string {
 	return body.String()
 }
 
+// Reuse literal edit projection against the pre-call capture, never a fresh
+// read of a file the host may already have edited. Unprojectable effects keep
+// the normal host-result lifecycle; tests acquire no predicted write targets.
+func execPreviewExpected(ctx context.Context, observation execObservation) map[string]mekugi.ReviewFile {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	sources := &liveDiffSources{capturedOnly: true, files: make(map[liveDiffSourceKey]liveDiffSource)}
+	reader := reflect.ValueOf(liveDiffPreviewFile).Pointer()
+	for _, file := range observation.Files {
+		if file.Error == "" && (file.Kind == execFileText || file.Kind == execFileAbsent) && len(file.Content) <= liveDiffPreviewFileLimit {
+			sources.files[liveDiffSourceKey{reader, file.Path}] = liveDiffSource{file.Content, file.Kind != execFileAbsent}
+		}
+	}
+	worker := liveDiffPreviewWorker{ctx: context.WithValue(ctx, liveDiffSourcesContext{}, sources)}
+	expected := make(map[string]mekugi.ReviewFile)
+	for _, command := range observation.Commands {
+		if ctx.Err() != nil {
+			return nil
+		}
+		if shell := shellInterpreterName(command.Shell); shell != "" && shell != "bash" && shell != "sh" {
+			return nil
+		}
+		files, _, err := worker.projectShell(command.Command, command.Workdir, true)
+		if err != nil {
+			return nil
+		}
+		for _, file := range files {
+			path := file.AfterPath
+			if path == "" {
+				path = file.BeforePath
+			}
+			if _, duplicate := expected[path]; duplicate || file.Incomplete != "" || file.Binary || file.Link {
+				return nil
+			}
+			expected[path] = file
+		}
+	}
+	// Only retire the watcher when its entire captured edit scope is known.
+	if len(expected) != len(observation.Files) {
+		return nil
+	}
+	for _, file := range observation.Files {
+		if _, exists := expected[file.Path]; !exists {
+			return nil
+		}
+	}
+	return expected
+}
+
 func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observation execObservation, preview diffview.Preview) {
 	defer broker.discardRunningPreview(preview)
+	expected := execPreviewExpected(ctx, observation)
+	matched := make(map[string]bool)
 	pending := execPendingScope(observation)
-	preview.Footer = execScopePreviewFooter(observation)
+	footer := execScopePreviewFooter(observation)
+	if len(expected) > 0 {
+		// This card belongs to the projected edit, not arbitrary side effects
+		// of a later test or other command sharing its host invocation.
+		footer = execScopePreviewFooter(execObservation{Files: observation.Files})
+	}
+	preview.Footer = footer
 	if pending != "" {
 		preview.Status, preview.Input = diffview.PreviewPending, pending
 		broker.publishPreview(preview, false)
@@ -178,6 +236,23 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 			}
 			stamps[before.Path] = stamp
 			var file mekugi.ReviewFile
+			if target, ok := expected[before.Path]; ok {
+				beforePath, afterPath := before.Path, before.Path
+				if !execFilePresent(before) {
+					beforePath = ""
+				}
+				if !execFilePresent(after) {
+					afterPath = ""
+				}
+				if before.Error == "" && after.Error == "" {
+					file = renderExecReview(beforePath, afterPath, before, after)
+				}
+				if file == target {
+					matched[before.Path] = true
+				} else {
+					delete(matched, before.Path)
+				}
+			}
 			if before.Error != "" || after.Error != "" {
 				if before.watchStamp != "" && before.watchStamp == stamp {
 					_, existed := changed[before.Path]
@@ -199,7 +274,9 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 				if !execFilePresent(after) {
 					afterPath = ""
 				}
-				file = renderExecReview(beforePath, afterPath, before, after)
+				if file.Diff == "" {
+					file = renderExecReview(beforePath, afterPath, before, after)
+				}
 			}
 			if previous, exists := changed[before.Path]; !exists || previous != file {
 				changed[before.Path] = file
@@ -212,6 +289,18 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 				preview.Files = append(preview.Files, file)
 			}
 		}
+		// The literal edit has landed. A following test keeps the host command
+		// alive, not this edit's live card. This does not close the observation
+		// window or persist a command outcome or completed change receipt.
+		if len(expected) > 0 && len(matched) == len(expected) {
+			if len(preview.Files) > 0 && ctx.Err() == nil {
+				preview.Status, preview.Complete = diffview.PreviewRunning, true
+				preview.Tool = nativeExecCommandToolName
+				preview.Footer = "observed edit"
+				broker.publishPreview(preview, false)
+			}
+			return
+		}
 		status, input := diffview.PreviewRunning, ""
 		if len(preview.Files) == 0 {
 			if pending == "" {
@@ -223,7 +312,7 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 		}
 		updated = updated || preview.Status != status || preview.Input != input
 		preview.Status, preview.Input = status, input
-		preview.Footer = execScopePreviewFooter(observation)
+		preview.Footer = footer
 		if status == diffview.PreviewRunning {
 			preview.Footer = strings.Replace(preview.Footer, "may write", "observed changes", 1)
 		}

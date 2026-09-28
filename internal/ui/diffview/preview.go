@@ -661,17 +661,22 @@ func (p *PreviewView) Title(workspace string, theme livediff.Theme, width int) s
 	default:
 		label = "edit"
 	}
-	if p.Current.Status == PreviewRunning {
+	if p.Current.Status == PreviewRunning && !p.Complete {
 		label += " " + livediff.Subtle + "· observed so far" + livediff.SubtleReset
 	}
 	if p.Current.Input != "" && p.Current.Truncated {
 		label += " " + livediff.Subtle + "· tail" + livediff.SubtleReset
 	}
 	if p.Complete && !unavailable {
-		// Complete means the input stream ended, not that the host applied it.
-		// Keep predicted edits visibly provisional even after a host rejection.
+		// Input completion keeps predictions provisional. Running observations
+		// can finish when the projected file effect is seen, independently of
+		// command success; neither case earns a success checkmark.
 		glyph = activityui.Dim + "○" + activityui.Reset
-		label += " " + livediff.Subtle + "· preview" + livediff.SubtleReset
+		if p.Current.Status == PreviewRunning {
+			label += " " + livediff.Subtle + "· observed" + livediff.SubtleReset
+		} else {
+			label += " " + livediff.Subtle + "· preview" + livediff.SubtleReset
+		}
 	}
 	label = glyph + " " + label
 	caller := activityui.AgentDisplayName(p.Current.Caller)

@@ -152,6 +152,9 @@ Main's live card wins automatic selection over the roster-selected child; Ctrl-B
 can explicitly cycle and pin another card until it completes. Pending exec scope
 uses “may write”; once file differences are observed it uses “observed changes”,
 without claiming exclusive attribution or successful command completion.
+A recognized literal edit finishes its live card once the observed files match
+the projected edit. A following test in the same shell command keeps its own
+running status, not the edit's dock; test-only work opens no edit card.
 Router previews of exec and Code Mode edits dock the same
 way. All docks use the shared router preview owner, including its pre-execution
 source snapshots; app-server file-change notifications never reconstruct patches

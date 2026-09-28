@@ -356,9 +356,14 @@ While a writer window is open, display-only polling runs about every 500 ms over
 captured paths, reading content only after a stat change. Polling is bounded by
 path, time, and content budgets; it never runs a workspace sweep or provider query.
 Changed-file cards say `observed so far` and disappear if the files
-return to their captured state. Terminal results, background transition, or
-viewer shutdown remove their live preview. Running previews and predictions
-never become durable evidence, and replay does not restart polling.
+return to their captured state. A literal edit's card finishes when its captured
+targets match the fully projected edit, independently of a following test or
+other non-edit statement in the same command. The completed card says `observed`;
+it does not claim that the shell command or tests succeeded. Matching uses the
+pre-call baseline, never a fresh baseline read after execution. Unprojectable
+effects still require terminal results, background transition, or viewer shutdown
+to remove their live preview. Running previews and predictions never become
+durable evidence, and replay does not restart polling.
 
 Query-based Mercurial scoping and literal `sed`/`perl` substitution prediction are
 outside this delivery. Original stock result content remains unchanged alongside

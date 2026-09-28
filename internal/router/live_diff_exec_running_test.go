@@ -66,7 +66,7 @@ func TestExecScopePreviewFooterDeduplicatesBoundedTargets(t *testing.T) {
 		},
 		Omitted: []execOmission{{Path: "/scope/also.txt", Reason: "fixture capture bound"}},
 	}
-	if got, want := execScopePreviewFooter(observation), "may write · 2 scoped paths · tracked.txt, also.txt · unresolved targets · bounded scope"; got != want {
+	if got, want := execScopePreviewFooter(observation), "may write · 2 scoped paths · tracked.txt, also.txt · other writes unknown · bounded scope"; got != want {
 		t.Fatalf("bounded VCS scope footer = %q, want %q", got, want)
 	}
 }
@@ -93,7 +93,7 @@ func TestExecWatchWithoutCapturedPathsDoesNotCrowdStreamingInput(t *testing.T) {
 	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "cat /tmp/example") })
 	plain := ansi.Strip(frame)
 	if strings.Count(plain, "same-caller ·") != 1 || strings.Contains(plain, "No scoped changes") ||
-		strings.Contains(plain, "unresolved targets") || !strings.Contains(plain, "cat /tmp/example") {
+		strings.Contains(plain, "other writes unknown") || !strings.Contains(plain, "cat /tmp/example") {
 		t.Fatalf("empty exec watches crowded streaming input: %s", plain)
 	}
 	broker.mu.Lock()
@@ -177,7 +177,7 @@ func TestExecRunningPreviewShowsScopedVCSAndCancelsWithoutEvidence(t *testing.T)
 			strings.Contains(plain, "will restore (pending)") && strings.Contains(plain, tracked)
 	})
 	if !strings.Contains(ansi.Strip(pending), "may write") ||
-		!strings.Contains(ansi.Strip(pending), "unresolved targets") ||
+		!strings.Contains(ansi.Strip(pending), "other writes unknown") ||
 		!strings.Contains(ansi.Strip(pending), "bounded scope") {
 		t.Fatalf("pending VCS card omitted bounded/unresolved scope qualification: %s", ansi.Strip(pending))
 	}
@@ -200,7 +200,7 @@ func TestExecRunningPreviewShowsScopedVCSAndCancelsWithoutEvidence(t *testing.T)
 	})
 	plainRunning := ansi.Strip(running)
 	if strings.Contains(plainRunning, "may write") || !strings.Contains(plainRunning, "observed changes") ||
-		!strings.Contains(plainRunning, "bounded scope") || !strings.Contains(plainRunning, "unresolved targets") ||
+		!strings.Contains(plainRunning, "bounded scope") || !strings.Contains(plainRunning, "other writes unknown") ||
 		strings.Contains(plainRunning, "outside secret marker") || strings.Contains(plainRunning, "outside.txt") {
 		t.Fatalf("running preview escaped its captured scope or lost its qualification: %s", plainRunning)
 	}
@@ -304,5 +304,23 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 				t.Fatalf("%s lifecycle kept publishing a running preview", lifecycle)
 			}
 		})
+	}
+}
+
+func TestExecPreviewEditThenTestKeepsKnownTarget(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "source.go")
+	writeTestFile(t, path, "before\n")
+	command := "python3 - <<'PY'\np='source.go'\ns=open(p).read().replace('before', 'after')\nopen(p,'w').write(s)\nPY\nenv -u BASH_ENV go test ./..."
+	observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: workspace, Shell: "bash"}}, false, true, execCaptureEnv{directory: workspace})
+	if !observed || observation == nil || len(observation.Files) != 1 || observation.Files[0].Path != path || observation.Files[0].Content != "before\n" {
+		t.Fatalf("lost literal edit target: %+v", observation)
+	}
+	if observation.Class != execOpaque.String() || !strings.Contains(observation.Reason, "go") {
+		t.Fatalf("test side effects incorrectly treated as fully scoped: %+v", observation)
+	}
+	footer := execScopePreviewFooter(*observation)
+	if !strings.Contains(footer, "source.go") || !strings.Contains(footer, "other writes unknown") {
+		t.Fatalf("footer confuses known edit with unknown test effects: %q", footer)
 	}
 }
