@@ -375,6 +375,9 @@ func (u *terminalUI) mouse(s string) error {
 				row := y - u.layout.codex.y - p.rect.y - p.rowStart
 				if row >= 0 && row < p.rowCount {
 					p.selected = p.top + row
+					if p.target.kind == '/' {
+						return u.send("\r")
+					}
 					u.main.pickerKey("\r")
 					u.main.refreshPicker()
 				}

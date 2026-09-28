@@ -211,6 +211,14 @@ while a request is pending; stale or canceled responses never replace current
 results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
+Typing `/` at the start of an otherwise single-token draft opens a local command
+catalog with descriptions for `/model`, `/reasoning`, `/tier`, `/skills`, and
+`/quit`. Typing filters commands with fuzzy matching; Up/Down selects, Tab
+completes without executing, Enter runs the selected command, and Escape closes
+the catalog without changing the draft. Arguments close completion. Pasted text
+does not activate the catalog. The catalog uses the shared picker viewport and
+visible-row column sizing; it never submits a command to the model.
+
 `/skills` replaces the composer with Codex's numbered Skills action menu:
 List skills inserts `$`; Enable/Disable Skills opens a searchable management
 view showing enabled and disabled skills. Arrow keys navigate, printable text

@@ -109,6 +109,9 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 	}
 	first, last := 0, height
 	footer := "  " + bold + "enter" + reset + dim + " insert · " + reset + bold + "esc" + reset + dim + " close" + reset
+	if p.target.kind == '/' {
+		footer = "  " + bold + "↑/↓" + reset + dim + " navigate · " + reset + bold + "enter" + reset + dim + " select · " + reset + bold + "tab" + reset + dim + " complete · " + reset + bold + "esc" + reset + dim + " close" + reset
+	}
 	if p.target.kind == '@' {
 		footer = "  " + bold + "@!" + reset + dim + " include excluded files" + reset
 	}
@@ -195,7 +198,7 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 			} else if p.target.kind == '$' {
 				label = pickerTruncateName(label, 28)
 				description = "[Skill] " + description
-			} else {
+			} else if p.target.kind == '@' {
 				label = pickerFileLabel(choice.path, max(1, width-2))
 			}
 			prefix := "  "

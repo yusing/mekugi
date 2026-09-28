@@ -79,6 +79,9 @@ type composerPicker struct {
 
 func (u *appServerUI) completionTarget() composerTarget {
 	at := u.cursor()
+	if strings.HasPrefix(u.draft, "/") && at > 0 && !strings.ContainsFunc(u.draft, unicode.IsSpace) {
+		return composerTarget{kind: '/', end: len(u.draft), query: u.draft[1:]}
+	}
 	start := at
 	for start > 0 {
 		r, n := utf8.DecodeLastRuneInString(u.draft[:start])
@@ -153,6 +156,11 @@ func (u *appServerUI) refreshPicker() {
 		p.problem = ""
 	}
 	p.open = true
+	if target.kind == '/' {
+		u.cancelPickerScan()
+		u.filterCommands(target.query)
+		return
+	}
 	cwd := u.session.cwd
 	if !filepath.IsAbs(cwd) {
 		p.loading, p.problem = false, "Waiting for the thread workspace…"
@@ -369,6 +377,13 @@ func (u *appServerUI) pickerKey(key string) bool {
 			return key == "\t" || p.target.kind == '$'
 		}
 		choice, target := p.choices[p.selected], p.target
+		if target.kind == '/' {
+			u.deleteDraftRange(target.start, target.end)
+			u.insertDraftText(choice.name + " ")
+			u.run, p.open = runNone, false
+			// Enter continues through the existing local command dispatcher.
+			return key == "\t"
+		}
 		text := choice.path
 		if target.kind == '$' {
 			text = "$" + choice.name
