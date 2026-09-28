@@ -446,6 +446,15 @@ that stops when superseded or finished. The sweep blends between
 the terminal's reported (OSC 10/11) foreground and background; without both
 reports it steps through dim, normal and bold. Raw and encrypted
 reasoning stay excluded; the legacy pane keeps its reasoning policy.
+Summaries without a leading bold title are third-party provider reasoning and
+render as thinking blocks, following grok-build: a dim `• Thinking…` header
+over the latest three text rows while it streams, with `· +N lines` counting
+the rows above them, then `• Thought for 12s` (or `• Thought` when no delta
+was observed) over the complete body. Time runs from the first summary delta
+to item completion; a turn that ends first completes its unfinished blocks.
+One second after an observed completion, the block folds to its header row in
+Main and Activity; a click expands and collapses it. Restored history keeps
+its body. Titled summaries keep the Codex rendering.
 
 Main and Activity follow new transcript content until manual scrollback or an
 explicit jump to earlier content. Opening or closing Live/Diff, resizing, and

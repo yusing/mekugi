@@ -3,6 +3,7 @@ package activity
 import (
 	"slices"
 	"strings"
+	"time"
 )
 
 // Source: codex-rs/tui/src/chatwidget/streaming.rs:9:24@86be5320 latest_summary_line.
@@ -45,4 +46,36 @@ func ReasoningSummaryBody(text string) string {
 		return ""
 	}
 	return text
+}
+
+// ReasoningTitled reports a Codex summary, which opens with a bold heading.
+// Third-party providers stream untitled plaintext reasoning instead.
+// A heading still streaming counts, so the block never flips style.
+func ReasoningTitled(text string) bool {
+	return strings.HasPrefix(strings.TrimSpace(text), "**")
+}
+
+// ThinkingTailRows is how much of untitled reasoning stays visible while it
+// streams, following grok-build's truncated thinking blocks.
+const ThinkingTailRows = 3
+
+// ThinkingFoldDelay is how long a finished thinking block stays open.
+const ThinkingFoldDelay = time.Second
+
+// ThinkingFolds reports untitled reasoning, observed finishing live, that
+// should now collapse to its header. History keeps its body.
+func ThinkingFolds(block Block, now time.Time) bool {
+	return block.Kind == "summary" && !block.Live && !block.Done.IsZero() && !ReasoningTitled(block.Body) &&
+		now.Sub(block.Done) >= ThinkingFoldDelay
+}
+
+// ThinkingHeader labels untitled reasoning the way grok-build does.
+func ThinkingHeader(live bool, elapsed string) string {
+	switch {
+	case live:
+		return "Thinking…"
+	case elapsed != "":
+		return "Thought for " + elapsed
+	}
+	return "Thought"
 }

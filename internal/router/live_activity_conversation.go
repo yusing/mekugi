@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -316,7 +317,22 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		out.add(0, activityui.Wrap(activityui.Dim+"• "+livediff.Safe(entry.Text, false)+activityui.Undim, width, false)...)
 	case entry.Agent == "Main" && entry.Kind == "reasoning" && first == last:
 		for _, block := range blocks {
-			out.add(0, p.Block(block, width)...)
+			// Finished provider thinking folds to its header shortly after
+			// it completes, as in grok-build; a click toggles it.
+			if !activityui.ThinkingFolds(block, time.Now()) {
+				out.add(0, p.Block(block, width)...)
+				continue
+			}
+			snippet := liveActivitySnippet{entry.Seq, 0}
+			block.Folded = !v.expanded[snippet]
+			rows := p.Block(block, width)
+			if len(rows) > 0 && v.snippet == snippet {
+				rows[0] = "\x1b[4m" + rows[0] + "\x1b[24m"
+			}
+			for _, row := range rows {
+				out.add(0, row)
+				out.snippets[len(out.snippets)-1] = snippet
+			}
 		}
 	case entry.Agent == "You":
 		v.userItem(&out, entry, width)

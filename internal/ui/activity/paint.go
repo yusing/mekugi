@@ -458,15 +458,51 @@ func (p *Painter) Block(block Block, width int) []string {
 		}
 		style := Dim + "\x1b[3m"
 		rows := p.Markdown(body, width-2)
+		titled := ReasoningTitled(block.Body)
+		// Untitled provider reasoning is a thinking block: a header, then only
+		// the latest rows while it streams.
+		header := ""
+		if !titled {
+			header = Dim + "• " + ThinkingHeader(block.Live, block.Elapsed)
+			if block.Live {
+				// The tail skips paragraph gaps so it always shows text.
+				var tail []string
+				hidden := 0
+				for _, row := range slices.Backward(rows) {
+					switch {
+					case strings.TrimSpace(ansi.Strip(row)) == "":
+					case len(tail) < ThinkingTailRows:
+						tail = append(tail, row)
+					default:
+						hidden++
+					}
+				}
+				slices.Reverse(tail)
+				rows = tail
+				switch {
+				case hidden == 1:
+					header += " · +1 line"
+				case hidden > 1:
+					header += " · +" + strconv.Itoa(hidden) + " lines"
+				}
+			}
+			header += Undim
+		}
 		for i, row := range rows {
 			row = strings.NewReplacer(Reset, Reset+style, "\x1b[22m", "\x1b[22m"+style, "\x1b[24;39m", "\x1b[24m"+Dim, "\x1b[39m", Dim, "\x1b[23m", style).Replace(row)
 			prefix := "  "
-			if i == 0 {
+			if i == 0 && titled {
 				prefix = "• "
 			}
 			rows[i] = style + prefix + row + Reset
 		}
-		return rows
+		if header == "" {
+			return rows
+		}
+		if block.Folded {
+			return []string{header}
+		}
+		return append([]string{header}, rows...)
 	case "final":
 		if block.Journal != nil {
 			return p.Journal(block.Journal, width, true)

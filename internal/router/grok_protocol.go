@@ -246,6 +246,13 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 			if err != nil {
 				return nil, err
 			}
+			// Streamed reasoning precedes its response's text, so the
+			// assistant it opened receives that text.
+			if last := len(messages) - 1; role == "assistant" && last >= 0 && messages[last].role == "assistant" &&
+				messages[last].content == nil && len(messages[last].calls) == 0 {
+				messages[last].content = content
+				continue
+			}
 			messages = append(messages, providerMessage{role: role, content: content})
 		case "agent_message":
 			content, err := grokContent(item["content"])
@@ -313,7 +320,8 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 					if len(messages) == 0 || messages[len(messages)-1].role != "assistant" {
 						messages = append(messages, providerMessage{role: "assistant"})
 					}
-					messages[len(messages)-1].reasoning = reasoning.String()
+					// Reasoning resumed after text is a second item; keep both.
+					messages[len(messages)-1].reasoning += reasoning.String()
 				}
 			}
 			// Unencrypted reasoning summaries are explanatory metadata, not messages.

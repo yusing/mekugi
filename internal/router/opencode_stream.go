@@ -186,8 +186,12 @@ func normalizeAnthropicStream(reader io.Reader, send func(grokChunk) error) erro
 					return false, send(openCodeDelta(grokDelta{Content: text}))
 				}
 			case "thinking":
-				block.text.WriteString(textField(block.raw, "thinking"))
+				thinking := textField(block.raw, "thinking")
+				block.text.WriteString(thinking)
 				block.signature.WriteString(textField(block.raw, "signature"))
+				if thinking != "" {
+					return false, send(openCodeDelta(grokDelta{ReasoningContent: thinking}))
+				}
 			case "redacted_thinking", "tool_use":
 			default:
 				return false, openCodeStreamError("Unsupported OpenCode content block")
@@ -204,7 +208,9 @@ func normalizeAnthropicStream(reader io.Reader, send func(grokChunk) error) erro
 				block.text.WriteString(text)
 				return false, send(openCodeDelta(grokDelta{Content: text}))
 			case kind == "thinking_delta" && block.kind == "thinking":
-				block.text.WriteString(textField(event.Delta, "thinking"))
+				thinking := textField(event.Delta, "thinking")
+				block.text.WriteString(thinking)
+				return false, send(openCodeDelta(grokDelta{ReasoningContent: thinking}))
 			case kind == "signature_delta" && block.kind == "thinking":
 				block.signature.WriteString(textField(event.Delta, "signature"))
 			case kind == "input_json_delta" && block.kind == "tool_use":
@@ -293,6 +299,7 @@ func normalizeResponsesStream(reader io.Reader, send func(grokChunk) error) erro
 	texts := map[int]string{}
 	refusals := map[int]bool{}
 	items := map[int]jsontext.Value{}
+	reasoned := map[int]bool{} // Items whose visible reasoning already streamed.
 	nextTool := 0
 	consumeItem := func(index int, raw jsontext.Value) error {
 		if previous, ok := items[index]; ok {
@@ -309,6 +316,30 @@ func normalizeResponsesStream(reader io.Reader, send func(grokChunk) error) erro
 		_ = json.Unmarshal(item["type"], &kind)
 		switch kind {
 		case "reasoning":
+			// Providers populate a summary or raw text, not both; either is
+			// visible when the stream carried no deltas for it.
+			if !reasoned[index] {
+				var parts []string
+				for _, field := range []string{"summary", "content"} {
+					var texts []struct {
+						Text string `json:"text"`
+					}
+					_ = json.Unmarshal(item[field], &texts)
+					for _, text := range texts {
+						if text.Text != "" {
+							parts = append(parts, text.Text)
+						}
+					}
+					if len(parts) > 0 {
+						break
+					}
+				}
+				if len(parts) > 0 {
+					if err := send(openCodeDelta(grokDelta{ReasoningContent: strings.Join(parts, "\n\n")})); err != nil {
+						return err
+					}
+				}
+			}
 			if err := send(grokChunk{RetainedReasoning: mustMarshalJSON(item)}); err != nil {
 				return err
 			}
@@ -357,11 +388,12 @@ func normalizeResponsesStream(reader io.Reader, send func(grokChunk) error) erro
 	}
 	return readOpenCodeSSE(reader, func(data []byte) (bool, error) {
 		var event struct {
-			Type        string         `json:"type"`
-			OutputIndex int            `json:"output_index"`
-			Delta       string         `json:"delta"`
-			Item        jsontext.Value `json:"item"`
-			Response    struct {
+			Type         string         `json:"type"`
+			OutputIndex  int            `json:"output_index"`
+			SummaryIndex int            `json:"summary_index"`
+			Delta        string         `json:"delta"`
+			Item         jsontext.Value `json:"item"`
+			Response     struct {
 				Model  string           `json:"model"`
 				Output []jsontext.Value `json:"output"`
 				Usage  *struct {
@@ -395,6 +427,17 @@ func normalizeResponsesStream(reader io.Reader, send func(grokChunk) error) erro
 				refusals[event.OutputIndex] = true
 			}
 			return false, send(openCodeText(event.Delta, refusal))
+		case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
+			if _, completed := items[event.OutputIndex]; completed {
+				return false, openCodeStreamError("OpenCode reasoning followed a completed item")
+			}
+			reasoned[event.OutputIndex] = true
+			return false, send(openCodeDelta(grokDelta{ReasoningContent: event.Delta}))
+		case "response.reasoning_summary_part.added":
+			if event.SummaryIndex > 0 && reasoned[event.OutputIndex] {
+				return false, send(openCodeDelta(grokDelta{ReasoningContent: "\n\n"}))
+			}
+			return false, send(grokChunk{})
 		case "response.output_item.done":
 			return false, consumeItem(event.OutputIndex, event.Item)
 		case "response.failed", "error":
@@ -432,9 +475,8 @@ func normalizeResponsesStream(reader io.Reader, send func(grokChunk) error) erro
 			return true, send(openCodeFinish(finish))
 		case "response.in_progress", "response.output_item.added", "response.content_part.added",
 			"response.content_part.done", "response.output_text.done", "response.refusal.done", "response.function_call_arguments.delta",
-			"response.function_call_arguments.done", "response.reasoning_summary_part.added",
-			"response.reasoning_summary_part.done", "response.reasoning_summary_text.delta",
-			"response.reasoning_summary_text.done", "response.reasoning_text.delta", "response.reasoning_text.done":
+			"response.function_call_arguments.done", "response.reasoning_summary_part.done",
+			"response.reasoning_summary_text.done", "response.reasoning_text.done":
 			return false, send(grokChunk{})
 		default:
 			return false, openCodeStreamError("Unsupported OpenCode Responses event")

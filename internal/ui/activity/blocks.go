@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -39,8 +40,12 @@ type Block struct {
 	StatAlign   int // Widest line-count text in this row's group.
 	StatScale   int // Largest changed-line total in a multi-row group; 0 omits bars.
 	Tail        []string
-	TailOmitted int  // Output lines before Tail.
-	Flash       bool // Presentation-only: another pane just opened this entry.
+	TailOmitted int       // Output lines before Tail.
+	Flash       bool      // Presentation-only: another pane just opened this entry.
+	Live        bool      // Reasoning still streaming.
+	Elapsed     string    // Formatted reasoning time, when observed from its first delta.
+	Done        time.Time // Reasoning completion, when observed live; zero for history.
+	Folded      bool      // Presentation-only: finished thinking shows only its header.
 }
 
 // GroupOperations groups adjacent edits from one source and outcome, across

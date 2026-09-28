@@ -61,6 +61,11 @@ matching Codex's native handler. This prevents the provider from serializing the
 floating-point values that Codex rejects; submitted argument bytes are not rewritten.
 
 Text and content-free progress stream while complete tool arguments are buffered and validated.
+Plaintext `delta.reasoning_content` streams as a Responses reasoning summary item: it is added
+before its first delta and completes before the answer text starts, so reasoning precedes the
+message in output order. Reasoning received after text has started completes after the message
+instead of interleaving items. Replay ignores these unencrypted summaries; they never reach the
+provider again.
 Validated calls emit the Responses tool lifecycle in order: item added, input or arguments done,
 then item done, with stable item/call identities and output indexes. Function argument-completion
 events include the restored function name.

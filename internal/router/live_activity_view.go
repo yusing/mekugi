@@ -54,7 +54,9 @@ type liveActivityView struct {
 	// expanded snippets show in full in the shared feed; snippet is the
 	// hovered collapsed one.
 	expanded map[liveActivitySnippet]bool
-	snippet  liveActivitySnippet
+	// thinkingChecked is when finished thinking folds were last checked.
+	thinkingChecked time.Time
+	snippet         liveActivitySnippet
 
 	// Geometry of the last frame, used by scrolling keys and the pointer.
 	// feedSnippets holds each feed row's snippet, from screen row feedTop
@@ -1253,8 +1255,15 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		return block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart
 	}
 	rail := ""
+	now := time.Now()
 	blocks = activityui.AlignVerbs(activityui.GroupOperations(blocks))
 	for index, block := range blocks {
+		// Finished provider thinking folds to its header shortly after it
+		// completes; a click toggles it.
+		folds := activityui.ThinkingFolds(block, now)
+		if folds {
+			block.Folded = !v.expanded[liveActivitySnippet{first, index}]
+		}
 		// Native Activity joins consecutive operations into one tree.
 		tree := v.childrenOnly && operation(block) && !continued(block)
 		part := v.painter.Block(block, width-2)
@@ -1287,6 +1296,12 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			limit *= 2
 		}
 		var snippet liveActivitySnippet
+		if folds {
+			snippet = liveActivitySnippet{first, index}
+			if block.Folded && snippet == v.snippet {
+				part[0] = "\x1b[4m" + part[0] + "\x1b[24m"
+			}
+		}
 		if limit > 0 && len(part) > limit {
 			snippet = liveActivitySnippet{first, index}
 			if !v.expanded[snippet] {
@@ -1380,6 +1395,24 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 		}
 	}
 	return lines
+}
+
+// expireThinking re-renders when a finished thinking block reaches its fold.
+func (v *liveActivityView) expireThinking(now time.Time) bool {
+	checked := v.thinkingChecked
+	v.thinkingChecked = now
+	for _, blocks := range slices.Backward(v.blocks) {
+		for _, block := range blocks {
+			if block.Kind != "summary" || block.Done.IsZero() {
+				continue
+			}
+			if fold := block.Done.Add(activityui.ThinkingFoldDelay); fold.After(checked) && !fold.After(now) {
+				v.runs = nil
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (v *liveActivityView) expireFlash(now time.Time) bool {

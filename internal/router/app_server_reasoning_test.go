@@ -3,12 +3,14 @@ package router
 import (
 	"bytes"
 	json "encoding/json/v2"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
@@ -180,6 +182,82 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 			u.alert, u.thread, u.turn, u.submission.text, u.status = false, "main", "", "", "Ready"
 			if u.sessionAnimating() || u.sessionLabel(start) != u.sessionLabel(start.Add(time.Second)) {
 				t.Fatal("idle animates")
+			}
+		})
+	}
+}
+
+// Third-party reasoning arrives untitled; it streams as a thinking block and
+// completes with its time, including when the turn ends without completing it.
+func TestAppServerProviderThinking(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t"}})
+	u.agents.only, u.agents.selected = false, "/root/worker"
+	feed := func() string { return ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n")) }
+	for _, delta := range []string{"First ", "thought.\n\nSecond.\n\nThird.\n\nFourth."} {
+		appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r1", "delta": delta})
+	}
+	if got := feed(); !strings.Contains(got, "• Thinking… · +1 line") || strings.Contains(got, "First thought.") || !strings.Contains(got, "Fourth.") {
+		t.Fatalf("live thinking: %q", got)
+	}
+	// A route without a replayable summary completes with an empty one.
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "r1", "type": "reasoning", "summary": []string{}}})
+	if got := feed(); !strings.Contains(got, "• Thought for 0s") || !strings.Contains(got, "First thought.") || strings.Contains(got, "Thinking…") {
+		t.Fatalf("completed thinking: %q", got)
+	}
+	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r2", "delta": "Interrupted thought."})
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t", "status": "interrupted"}})
+	if got := feed(); strings.Contains(got, "Thinking…") || strings.Count(got, "• Thought for") != 2 || !strings.Contains(got, "Interrupted thought.") {
+		t.Fatalf("turn end left thinking live: %q", got)
+	}
+}
+
+// Finished thinking stays open for a second, then folds to its header in
+// Main and Activity; a click toggles it.
+func TestAppServerThinkingFolds(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+	u.agents.only, u.agents.selected = false, "/root/worker"
+	body := "Alpha.\n\nBravo.\n\nCharlie.\n\nDelta."
+	for _, thread := range []string{"main", "child"} {
+		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
+		appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": body})
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{body}}})
+	}
+	for name, view := range map[string]*liveActivityView{"Main": u.view, "Activity": u.agents} {
+		t.Run(name, func(t *testing.T) {
+			render := func() liveActivityFeed { return view.renderFeed(90, 40) }
+			plain := func(feed liveActivityFeed) string { return ansi.Strip(strings.Join(feed.lines, "\n")) }
+			if got := plain(render()); !strings.Contains(got, "• Thought for 0s") || !strings.Contains(got, "Delta.") {
+				t.Fatalf("thinking folded before its delay: %q", got)
+			}
+			if view.expireThinking(time.Now()) {
+				t.Fatal("fold fired before its delay")
+			}
+			for i, blocks := range view.blocks {
+				if len(blocks) == 1 && blocks[0].Kind == "summary" {
+					view.blocks[i][0].Done = time.Now().Add(-activityui.ThinkingFoldDelay)
+				}
+			}
+			if !view.expireThinking(time.Now()) || view.expireThinking(time.Now()) {
+				t.Fatal("fold did not fire exactly once")
+			}
+			feed := render()
+			if got := plain(feed); !strings.Contains(got, "• Thought for 0s") || strings.Contains(got, "Alpha.") {
+				t.Fatalf("finished thinking did not fold: %q", got)
+			}
+			row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
+			if row < 0 || !strings.Contains(ansi.Strip(feed.lines[row]), "Thought for") {
+				t.Fatal("folded thinking cannot expand")
+			}
+			view.toggleSnippet(feed.snippets[row])
+			if got := plain(render()); !strings.Contains(got, "Alpha.") || !strings.Contains(got, "Delta.") {
+				t.Fatalf("expanded thinking: %q", got)
+			}
+			view.toggleSnippet(feed.snippets[row])
+			if got := plain(render()); strings.Contains(got, "Alpha.") {
+				t.Fatalf("thinking did not fold again: %q", got)
 			}
 		})
 	}

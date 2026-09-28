@@ -1,6 +1,7 @@
 package router
 
 import (
+	"cmp"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
@@ -17,6 +18,8 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/appserver"
+	responseevents "github.com/yusing/mekugi/internal/responses"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"golang.org/x/term"
@@ -71,7 +74,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err := p.ui.shell.flushEscape(); err != nil {
 					return err
 				}
-				flashExpired := p.ui.view.expireFlash(now)
+				flashExpired := p.ui.view.expireFlash(now) || p.ui.view.expireThinking(now) || p.ui.agents.expireThinking(now)
 				noticeExpired := p.ui.expireNotice(now)
 				if now.Sub(lastStep) >= p.pace() && p.advance() {
 					lastStep = now
@@ -141,6 +144,24 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	render("main dock", "LIVE · main", "M internal/broker/broker.go", "1 Main", "3 Activity", "4 Agents", "├ Read   internal/broker/broker.go")
+	// Grok reasoning streams through the router's translation into Activity.
+	p.until("children start")
+	for range 12 {
+		p.advance()
+	}
+	render("grok thinking", "started · grok:grok-4.7-build-fast", "• Thinking…")
+	p.until("explorer thought")
+	render("grok thought", "• Thought for", "I should read launch.go first")
+	// A second later the finished block folds to its header.
+	for i, blocks := range p.ui.agents.blocks {
+		if len(blocks) == 1 && blocks[0].Kind == "summary" && !blocks[0].Done.IsZero() {
+			p.ui.agents.blocks[i][0].Done = time.Now().Add(-activityui.ThinkingFoldDelay)
+		}
+	}
+	p.ui.agents.expireThinking(time.Now())
+	if frame := render("grok thought folded", "• Thought for"); strings.Contains(frame, "The pane blocks on its first frame") {
+		t.Fatalf("finished thinking did not fold:\n%s", frame)
+	}
 	p.until("three agents edit at once")
 	frame := render("agent dock accordion", "LIVE · 3 agents", "^B e next", "▸", "reviewer → main", "2 Diff●")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
@@ -279,6 +300,7 @@ type nativePreview struct {
 	step        int
 	active      map[string]string // Running turn by thread.
 	assignments map[string]string
+	models      map[string]string // Provider model by thread, when not the default.
 	answers     map[string][]journalItem
 }
 
@@ -316,7 +338,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 		return max(1, u.shell.layout.diff.w), max(3, u.shell.layout.diff.h), nil
 	}
 	u.session.start("main", workspace)
-	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace, active: make(map[string]string), assignments: make(map[string]string), answers: make(map[string][]journalItem)}
+	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace, active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}, answers: make(map[string][]journalItem)}
 	store.liveDiff = func(changes []liveDiffChange) {
 		u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "change", Changes: changes})
 	}
@@ -497,7 +519,7 @@ func (p *nativePreview) receive(to, from, id, kind, body string) {
 	if to == "main" {
 		parent = ""
 	}
-	transform, _ := prepareActivityTest(p.t, p.ui.proxy, "preview-"+to, to, parent, path, []any{envelope})
+	transform, _ := prepareActivityModelTest(p.t, p.ui.proxy, cmp.Or(p.models[to], "gpt-test"), "preview-"+to, to, parent, path, []any{envelope})
 	transform.Close()
 	p.ui.applyObservedActivity()
 }
@@ -522,6 +544,69 @@ func (p *nativePreview) say(thread, id, phase, text string) {
 func (p *nativePreview) think(thread, id, text string) {
 	for _, delta := range strings.SplitAfter(text, " ") {
 		p.notify("item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": p.active[thread], "itemId": id, "delta": delta, "summaryIndex": 0})
+	}
+}
+
+const nativePreviewGrokModel = "grok:grok-4.7-build-fast"
+
+// Grok streams plaintext reasoning rather than titled summaries.
+const nativePreviewGrokReasoning = "The pane blocks on its first frame, so Launch probably waits on a channel only the render loop fills. " +
+	"If it receives from p.ready before returning, the caller deadlocks whenever rendering needs the caller's goroutine.\n\n" +
+	"The signature must stay the same. I could start the render loop before waiting, or return a pending state and let the first frame arrive asynchronously. " +
+	"Returning pending is simpler and never blocks callers.\n\n" +
+	"I should read launch.go first to confirm where it waits."
+
+// grokThink plays a Grok Chat Completions reasoning stream through the
+// router's own translation, one provider chunk per step, and reports the
+// resulting reasoning item the way Codex app-server does.
+func (p *nativePreview) grokThink(thread, reasoning string) {
+	tr, err := translateChatRequest(mustTestJSON(p.t, map[string]any{"model": nativePreviewGrokModel, "stream": true,
+		"input": []any{map[string]string{"role": "user", "content": "Unblock the pane"}}}), nil)
+	if err != nil {
+		p.t.Fatal(err)
+	}
+	var chunks []any
+	words := strings.SplitAfter(reasoning, " ")
+	for len(words) > 0 {
+		n := min(3, len(words))
+		chunks = append(chunks, map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{"reasoning_content": strings.Join(words[:n], "")}}}})
+		words = words[n:]
+	}
+	chunks = append(chunks, map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{}, "finish_reason": "stop"}}})
+	var events []map[string]any
+	if _, err := tr.readGrokStream(strings.NewReader(grokTestSSE(chunks...)), func(event map[string]any) error {
+		events = append(events, event)
+		return nil
+	}); err != nil {
+		p.t.Fatal(err)
+	}
+	for _, event := range events {
+		item, _ := event["item"].(map[string]any)
+		appServerItem := func() map[string]any {
+			var summary []string
+			for _, part := range item["summary"].([]any) {
+				summary = append(summary, part.(map[string]string)["text"])
+			}
+			return map[string]any{"id": item["id"], "type": "reasoning", "summary": summary, "content": []string{}}
+		}
+		switch event["type"] {
+		case responseevents.OutputItemAdded:
+			if item["type"] == "reasoning" {
+				p.add("stream explorer thinking", func() {
+					p.notify("item/started", map[string]any{"threadId": thread, "turnId": p.active[thread], "item": appServerItem()})
+				})
+			}
+		case responseevents.ReasoningTextDelta:
+			p.add("stream explorer thinking", func() {
+				p.notify("item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": p.active[thread], "itemId": event["item_id"], "delta": event["delta"], "summaryIndex": event["summary_index"]})
+			})
+		case responseevents.OutputItemDone:
+			if item["type"] == "reasoning" {
+				p.add("stream explorer thinking", func() {
+					p.notify("item/completed", map[string]any{"threadId": thread, "turnId": p.active[thread], "item": appServerItem()})
+				})
+			}
+		}
 	}
 }
 
@@ -611,8 +696,12 @@ func (p *nativePreview) populate() {
 	p.add("main streams its patch", func() {})
 	p.add("children start", func() {
 		p.think("t-tester", "think-1", "**Planning the race test**\n\nEight publishers against one subscriber is enough to trip -race.")
-		p.command("t-explorer", "cmd-3", "cat internal/pane/launch.go", []map[string]any{{"type": "read", "command": "cat", "name": "launch.go", "path": filepath.Join(p.workspace, "internal/pane/launch.go")}}, 0)
 		p.command("t-reviewer", "cmd-4", "sed -n 1,40p internal/broker/broker.go", []map[string]any{{"type": "read", "command": "sed", "name": "broker.go", "path": filepath.Join(p.workspace, "internal/broker/broker.go")}}, 0)
+	})
+	p.grokThink("t-explorer", nativePreviewGrokReasoning)
+	p.add("explorer thought", func() {})
+	p.add("explorer reads", func() {
+		p.command("t-explorer", "cmd-3", "cat internal/pane/launch.go", []map[string]any{{"type": "read", "command": "cat", "name": "launch.go", "path": filepath.Join(p.workspace, "internal/pane/launch.go")}}, 0)
 	})
 	p.add("main applies", func() {
 		p.apply(mainEdit)

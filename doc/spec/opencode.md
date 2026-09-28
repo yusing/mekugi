@@ -90,6 +90,14 @@ discarded like optional OpenAI summaries. Messages thinking/signature/redacted b
 and Responses reasoning items are carried in versioned, service/model-bound opaque
 replay envelopes, then restored only on that route. Foreign encrypted history remains
 a local compatibility error and directs the caller to fresh context.
+Visible reasoning streams on every format as it arrives: Chat `reasoning_content`,
+Messages `thinking_delta`, and Responses summary or reasoning-text deltas (or, without
+deltas, the completed item's summary or text). It uses the Grok route's streaming
+lifecycle, so an item streamed before the answer precedes that message in history and
+replay attaches it to the assistant message that follows. On Messages and Responses
+routes the visible text is the summary of the same item that carries the opaque replay
+envelope; a visible block that closes without one keeps no summary, because those
+routes cannot replay summary-only reasoning.
 
 Unlike xAI, OpenCode's `completion_tokens` already includes reasoning. Responses output
 usage retains that total unchanged and exposes reasoning only as a breakdown. Missing

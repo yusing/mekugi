@@ -25,7 +25,8 @@ type appServerSession struct {
 	seq       uint64
 	paths     map[string]string // Thread → canonical agent path.
 	agents    []activityPaneAgent
-	reasoning map[[3]string]string // Summary text by thread, turn, item.
+	reasoning map[[3]string]string    // Summary text by thread, turn, item.
+	thinking  map[[3]string]time.Time // First delta of reasoning still streaming.
 	messages  map[string]activityPaneEntry
 	finals    map[string]bool   // The thread's current turn already sent its answer.
 	metadata  map[string]string // Child thread → pending metadata request ID; empty when settled.
@@ -92,6 +93,7 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.paths = map[string]string{thread: "/root"}
 	s.agents = []activityPaneAgent{{Name: "/root", Role: "main", Started: time.Now()}}
 	s.reasoning = make(map[[3]string]string)
+	s.thinking = make(map[[3]string]time.Time)
 	s.messages = make(map[string]activityPaneEntry)
 	s.finals = make(map[string]bool)
 	s.metadata = make(map[string]string)
@@ -210,6 +212,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		s.finals[p.ThreadID] = false
 		delete(s.messages, p.ThreadID)
 	case "turn/completed":
+		entries = append(entries, s.endThinking(p.ThreadID, now)...)
 		agent := s.agent(s.path(p.ThreadID))
 		agent.Responding, agent.LastResponse = false, now
 		agent.Final = p.Turn.Status == "completed"
@@ -235,6 +238,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		}
 		text += p.Delta
 		s.reasoning[key] = text
+		if _, ok := s.thinking[key]; !ok {
+			s.thinking[key] = now
+		}
 		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(p.ThreadID), Kind: "reasoning", Text: text, CallID: p.ItemID, Observed: now,
 			native: &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: p.ItemID, phase: "summary"}})
 	case "item/started", "item/completed", "item/agentMessage/delta":
@@ -262,8 +268,22 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				}
 			}
 		case "reasoning":
-			if text := strings.Join(item.Summary, "\n\n"); strings.TrimSpace(text) != "" {
-				s.reasoning[[3]string{p.ThreadID, p.TurnID, id}] = text
+			key := [3]string{p.ThreadID, p.TurnID, id}
+			text := strings.Join(item.Summary, "\n\n")
+			if m.Method == "item/completed" {
+				native.done = now
+				if started, ok := s.thinking[key]; ok {
+					delete(s.thinking, key)
+					native.thought = now.Sub(started)
+					// A route whose history cannot replay it completes the
+					// streamed text without a summary.
+					if strings.TrimSpace(text) == "" {
+						text = s.reasoning[key]
+					}
+				}
+			}
+			if strings.TrimSpace(text) != "" {
+				s.reasoning[key] = text
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "reasoning", Text: text, CallID: id, Observed: now, native: native})
 			}
 		case "commandExecution", "webSearch":
@@ -314,6 +334,25 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	u.applyActivity(entries, slices.Clone(s.agents))
 	// Main's turn lifecycle also drives the composer state.
 	return !main || !strings.HasPrefix(m.Method, "turn/"), nil
+}
+
+// endThinking completes reasoning a finished turn never completed, such as
+// after an interrupt, so it stops presenting as streaming.
+func (s *appServerSession) endThinking(thread string, now time.Time) []activityPaneEntry {
+	var keys [][3]string
+	for key := range s.thinking {
+		if key[0] == thread {
+			keys = append(keys, key)
+		}
+	}
+	slices.SortFunc(keys, func(a, b [3]string) int { return cmp.Compare(a[1]+"\x00"+a[2], b[1]+"\x00"+b[2]) })
+	var entries []activityPaneEntry
+	for _, key := range keys {
+		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(thread), Kind: "reasoning", Text: s.reasoning[key], CallID: key[2], Observed: now,
+			native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], phase: "item/completed", thought: now.Sub(s.thinking[key]), done: now}})
+		delete(s.thinking, key)
+	}
+	return entries
 }
 
 // collab turns one completed collaboration call into the assignment, message

@@ -53,6 +53,12 @@ type grokUsage struct {
 		ReasoningTokens int64 `json:"reasoning_tokens"`
 	} `json:"completion_tokens_details"`
 }
+type streamedReasoning struct {
+	id    string
+	text  strings.Builder
+	index int
+	open  bool // Emitted as the active item; closes before any other item starts.
+}
 type grokStreamCall struct {
 	id              string
 	name, arguments strings.Builder
@@ -90,8 +96,57 @@ func (tr *grokTranslation) consumeProviderStream(source func(func(grokChunk) err
 	id := "resp_" + rand.Text()
 	messageID := "msg_" + rand.Text()
 	model, _ := tr.body["model"].(string)
+	// Visible provider reasoning streams as one summary item per provider
+	// reasoning block. Codex tracks one active item, so the block closes
+	// before text starts; reasoning seen after text is held for the end.
+	// Replay-bound routes attach it to the retained provider item, since
+	// their history cannot replay summary-only reasoning.
+	output := []any{}
+	var thinking *streamedReasoning
 	var retainedReasoning []any
-	reasoning := strings.Builder{}
+	summaryOnly := tr.openCode == nil || tr.format == "chat"
+	reasoningItem := func(r *streamedReasoning, retained json.RawMessage) map[string]any {
+		item := map[string]any{"type": "reasoning", "id": "rs_" + rand.Text(), "summary": []any{}}
+		if r != nil {
+			item["id"] = r.id
+			if r.text.Len() > 0 && (summaryOnly || retained != nil) {
+				item["summary"] = []any{map[string]string{"type": "summary_text", "text": r.text.String()}}
+			}
+		}
+		if retained != nil {
+			requested, _ := tr.body["model"].(string)
+			item["encrypted_content"] = sealOpenCodeReasoning(tr.openCode, requested, retained)
+		}
+		return item
+	}
+	closeReasoning := func(item map[string]any) error {
+		r := thinking
+		thinking = nil
+		if item == nil {
+			if r == nil {
+				return nil
+			}
+			item = reasoningItem(r, nil)
+		}
+		if r == nil || !r.open {
+			if len(item["summary"].([]any)) > 0 || item["encrypted_content"] != nil {
+				retainedReasoning = append(retainedReasoning, item)
+			}
+			return nil
+		}
+		part := map[string]string{"type": "summary_text", "text": r.text.String()}
+		output = append(output, item)
+		for _, event := range []map[string]any{
+			{"type": responseevents.ReasoningTextDone, "item_id": r.id, "output_index": r.index, "summary_index": 0, "text": part["text"]},
+			{"type": responseevents.ReasoningPartDone, "item_id": r.id, "output_index": r.index, "summary_index": 0, "part": part},
+			{"type": responseevents.OutputItemDone, "output_index": r.index, "item": item},
+		} {
+			if err := emit(event); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	refusal := false
 	textPart := func(value string) map[string]any {
 		if refusal {
@@ -109,8 +164,8 @@ func (tr *grokTranslation) consumeProviderStream(source func(func(grokChunk) err
 	calls := map[int]*grokStreamCall{}
 	var finish chat.FinishReason
 	var usage any
-	output := []any{}
 	messageStarted := false
+	messageIndex := 0
 	response := func(status string) map[string]any {
 		r := map[string]any{"id": id, "object": "response", "status": status, "model": model, "output": output}
 		if usage != nil {
@@ -162,11 +217,9 @@ func (tr *grokTranslation) consumeProviderStream(source func(func(grokChunk) err
 			if json.Unmarshal(chunk.RetainedReasoning, &item) != nil {
 				return openCodeStreamError("Invalid retained OpenCode reasoning")
 			}
-			model, _ := tr.body["model"].(string)
-			retainedReasoning = append(retainedReasoning, map[string]any{
-				"type": "reasoning", "id": "rs_" + rand.Text(), "summary": []any{},
-				"encrypted_content": sealOpenCodeReasoning(tr.openCode, model, chunk.RetainedReasoning),
-			})
+			if err := closeReasoning(reasoningItem(thinking, chunk.RetainedReasoning)); err != nil {
+				return err
+			}
 		}
 		if chunk.Model != "" {
 			model = chunk.Model
@@ -196,8 +249,28 @@ func (tr *grokTranslation) consumeProviderStream(source func(func(grokChunk) err
 			if choice.FinishReason != "" {
 				finish = choice.FinishReason
 			}
-			if tr.openCode != nil {
-				reasoning.WriteString(choice.Delta.ReasoningContent)
+			if delta := choice.Delta.ReasoningContent; delta != "" {
+				if thinking == nil {
+					thinking = &streamedReasoning{id: "rs_" + rand.Text()}
+				}
+				thinking.text.WriteString(delta)
+				if !messageStarted {
+					if !thinking.open {
+						thinking.open, thinking.index = true, len(output)
+						for _, event := range []map[string]any{
+							{"type": responseevents.OutputItemAdded, "output_index": thinking.index, "item": map[string]any{"type": "reasoning", "id": thinking.id, "summary": []any{}}},
+							{"type": responseevents.ReasoningPartAdded, "item_id": thinking.id, "output_index": thinking.index, "summary_index": 0, "part": map[string]string{"type": "summary_text", "text": ""}},
+						} {
+							if err := emit(event); err != nil {
+								return err
+							}
+						}
+					}
+					if err := emit(map[string]any{"type": responseevents.ReasoningTextDelta, "item_id": thinking.id, "output_index": thinking.index, "summary_index": 0, "delta": delta}); err != nil {
+						return err
+					}
+					textEmitted = true
+				}
 			}
 			value := choice.Delta.Content
 			if choice.Delta.Refusal != "" {
@@ -211,18 +284,24 @@ func (tr *grokTranslation) consumeProviderStream(source func(func(grokChunk) err
 			}
 			if value != "" {
 				if !messageStarted {
+					if thinking != nil && thinking.open {
+						if err := closeReasoning(nil); err != nil {
+							return err
+						}
+					}
+					messageIndex = len(output)
 					messageStarted = true
 					item := map[string]any{"type": "message", "id": messageID, "role": "assistant", "status": "in_progress", "phase": "final_answer", "content": []any{}}
-					if err := emit(map[string]any{"type": responseevents.OutputItemAdded, "output_index": 0, "item": item}); err != nil {
+					if err := emit(map[string]any{"type": responseevents.OutputItemAdded, "output_index": messageIndex, "item": item}); err != nil {
 						return err
 					}
-					if err := emit(map[string]any{"type": responseevents.ContentPartAdded, "item_id": messageID, "output_index": 0, "content_index": 0, "part": textPart("")}); err != nil {
+					if err := emit(map[string]any{"type": responseevents.ContentPartAdded, "item_id": messageID, "output_index": messageIndex, "content_index": 0, "part": textPart("")}); err != nil {
 						return err
 					}
 				}
 				text.WriteString(value)
 				textEmitted = true
-				if err := emit(map[string]any{"type": textEvent("delta"), "item_id": messageID, "output_index": 0, "content_index": 0, "delta": value}); err != nil {
+				if err := emit(map[string]any{"type": textEvent("delta"), "item_id": messageID, "output_index": messageIndex, "content_index": 0, "delta": value}); err != nil {
 					return err
 				}
 			}
@@ -263,6 +342,9 @@ func (tr *grokTranslation) consumeProviderStream(source func(func(grokChunk) err
 	if len(calls) > 0 && finish != chat.ToolCalls {
 		return nil, staticCriticalDiagnostic("grok_stream_incomplete_calls", "Grok tool arguments were not completed")
 	}
+	if err := closeReasoning(nil); err != nil {
+		return nil, err
+	}
 	if messageStarted {
 		part := textPart(text.String())
 		item := map[string]any{"type": "message", "id": messageID, "role": "assistant", "status": "completed", "phase": "final_answer", "content": []any{part}}
@@ -275,9 +357,9 @@ func (tr *grokTranslation) consumeProviderStream(source func(func(grokChunk) err
 			doneField = "refusal"
 		}
 		for _, event := range []map[string]any{
-			{"type": textEvent("done"), "item_id": messageID, "output_index": 0, "content_index": 0, doneField: text.String()},
-			{"type": responseevents.ContentPartDone, "item_id": messageID, "output_index": 0, "content_index": 0, "part": part},
-			{"type": responseevents.OutputItemDone, "output_index": 0, "item": item},
+			{"type": textEvent("done"), "item_id": messageID, "output_index": messageIndex, "content_index": 0, doneField: text.String()},
+			{"type": responseevents.ContentPartDone, "item_id": messageID, "output_index": messageIndex, "content_index": 0, "part": part},
+			{"type": responseevents.OutputItemDone, "output_index": messageIndex, "item": item},
 		} {
 			if err := emit(event); err != nil {
 				return nil, err
@@ -322,18 +404,6 @@ func (tr *grokTranslation) consumeProviderStream(source func(func(grokChunk) err
 			item["input"] = *input
 		}
 		callItems = append(callItems, item)
-	}
-	if reasoning.Len() > 0 {
-		index := len(output)
-		item := map[string]any{"type": "reasoning", "id": "rs_" + rand.Text(), "summary": []any{
-			map[string]string{"type": "summary_text", "text": reasoning.String()},
-		}}
-		output = append(output, item)
-		for _, kind := range []string{responseevents.OutputItemAdded, responseevents.OutputItemDone} {
-			if err := emit(map[string]any{"type": kind, "output_index": index, "item": item}); err != nil {
-				return nil, err
-			}
-		}
 	}
 	for _, item := range retainedReasoning {
 		index := len(output)

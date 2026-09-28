@@ -130,6 +130,8 @@ type liveActivityNativeItem struct {
 	searchResults      *int
 	images             []composerImage // Attachment spans, not text resembling image labels.
 	question           uint64          // Original user entry, retained even for a live journal publication.
+	thought            time.Duration   // Reasoning time from its first summary delta to completion.
+	done               time.Time       // Observed reasoning completion; zero for history.
 }
 
 func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {

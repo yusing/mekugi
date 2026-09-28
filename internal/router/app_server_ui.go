@@ -247,7 +247,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 							u.dirty = true
 						}
 						for _, view := range []*liveActivityView{u.view, u.agents} {
-							if view.expireFlash(time.Now()) {
+							if view.expireFlash(time.Now()) || view.expireThinking(time.Now()) {
 								u.dirty = true
 							}
 						}
