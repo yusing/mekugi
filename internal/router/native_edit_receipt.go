@@ -87,7 +87,7 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 			continue
 		}
 		summary := action + " " + commentaryCode(path)
-		if file.OriginNote != "" {
+		if file.OriginNote != "" && !receiptNamesSharedOrigin(exec, file.OriginNote) {
 			summary += " (" + file.OriginNote + ")"
 		}
 		if file.CopyFrom != "" {
@@ -245,4 +245,20 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 		summary = summary[:end+1] + truncated
 	}
 	return header + summary, nil
+}
+
+// receiptNamesSharedOrigin reports whether the receipt's command labels
+// already name every tool in a shared-origin note, which then only repeats
+// them on each row.
+func receiptNamesSharedOrigin(exec *execOutcome, note string) bool {
+	tools, ok := strings.CutSuffix(note, sharedOriginSuffix)
+	if !ok || exec == nil {
+		return false
+	}
+	for tool := range strings.SplitSeq(tools, ", ") {
+		if !slices.Contains(exec.Labels, tool) {
+			return false
+		}
+	}
+	return true
 }

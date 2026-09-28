@@ -49,6 +49,11 @@ type execCommandInput struct {
 	Shell   string `json:",omitempty"`
 }
 
+// sharedOriginSuffix follows the managed tools whose scope also held a direct
+// path. One snapshot pair spans the whole command, so the note says the tool
+// ran, not that it changed the file.
+const sharedOriginSuffix = " also ran"
+
 type execFileKind string
 
 const (
@@ -479,7 +484,11 @@ func (c *execCapture) addCopy(path, source string) {
 		if c.origin != "" {
 			for i := range c.files {
 				if c.files[i].Path == path && c.files[i].Origin == "" {
-					c.files[i].AlsoManaged = c.origin
+					// A direct path may fall in several managed scopes.
+					file := &c.files[i]
+					if !slices.Contains(strings.Split(file.AlsoManaged, ", "), c.origin) {
+						file.AlsoManaged = strings.TrimPrefix(file.AlsoManaged+", "+c.origin, ", ")
+					}
 					break
 				}
 			}
@@ -1089,7 +1098,7 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 			}
 			file.Origin = meta.Origin
 			if meta.AlsoManaged != "" {
-				file.OriginNote = "also changed by " + meta.AlsoManaged
+				file.OriginNote = meta.AlsoManaged + sharedOriginSuffix
 			}
 		} else {
 			for _, omission := range observation.Omitted {

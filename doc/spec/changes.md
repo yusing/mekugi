@@ -151,7 +151,10 @@ possible `.orig` backups only; Jujutsu uses operands without snapshotting querie
 Known formatter scopes expand operands by supported file extension. Dependency
 manager scopes include their local manifests and lockfiles. These are tool-managed
 effects. Direct paths take capture priority; a path also in a managed scope stays
-direct with shared-origin attribution.
+direct with a note that names the managed tools as having also run. One
+before/after pair spans the command, so the note does not claim those tools
+changed the file. Edit receipts omit the note when the command labels already
+name every noted tool; `mchanges` keeps it.
 
 Explicit `go fix` package operands scope existing Go source files, within the
 shared byte, enumeration, and capture-time limits. Tests and generators do

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi"
 )
@@ -169,6 +170,38 @@ func TestManagedExecReceiptGroupsFiles(t *testing.T) {
 	want := "+ 5 tool-managed files (`generated-01.txt`, `generated-02.txt`, `generated-03.txt`, …)"
 	if got != want {
 		t.Fatalf("grouped receipt = %q, want %q", got, want)
+	}
+}
+
+func TestExecCaptureNamesEverySharedOrigin(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a.go")
+	writeTestFile(t, path, "package a\n")
+	capture := newExecCapture(time.Now().Add(time.Minute))
+	for _, origin := range []string{"", "gofmt", "goimports", "gofmt"} {
+		capture.origin = origin
+		capture.add(path)
+	}
+	if len(capture.files) != 1 || capture.files[0].Origin != "" || capture.files[0].AlsoManaged != "gofmt, goimports" {
+		t.Fatalf("shared capture = %+v, want one direct file also managed by gofmt, goimports", capture.files)
+	}
+}
+
+func TestExecReceiptOmitsSharedOriginNamedByLabels(t *testing.T) {
+	workspace := t.TempDir()
+	file := mekugi.RenderReviewFile("a.go", "a.go", "package a\n\nfunc A() {}\n", "package a\n")
+	file.OriginNote = "goimports" + sharedOriginSuffix
+	for _, test := range []struct {
+		labels []string
+		note   bool
+	}{
+		{labels: []string{"python3", "goimports"}},
+		{labels: []string{"python3"}, note: true},
+		{note: true},
+	} {
+		got := editReceiptText(workspace, mekugiHistory{ReviewFiles: []mekugi.ReviewFile{file}, ExecOutcome: &execOutcome{Labels: test.labels}})
+		if strings.Contains(got, "(goimports also ran)") != test.note {
+			t.Errorf("labels %q receipt = %q, want note %v", test.labels, got, test.note)
+		}
 	}
 }
 

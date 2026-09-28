@@ -173,7 +173,7 @@ func TestExecMixedPythonAndGoModKeepsDirectPathOrigin(t *testing.T) {
 	for _, review := range reviews {
 		byPath[filepath.Base(cmpOrPath(review.AfterPath, review.BeforePath))] = review
 	}
-	if review := byPath["go.mod"]; review.Origin != "" || review.OriginNote != "also changed by go mod tidy" ||
+	if review := byPath["go.mod"]; review.Origin != "" || review.OriginNote != "go mod tidy also ran" ||
 		!strings.Contains(review.Diff, "+// direct edit") {
 		t.Fatalf("mixed go.mod review = %+v; want direct origin with go mod tidy note", review)
 	}
