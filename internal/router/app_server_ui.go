@@ -126,10 +126,11 @@ type appServerUI struct {
 // Codex app-server owns execution; the launcher
 // still owns routing, environment, invocation-local configuration and cancellation.
 func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string) (func() error, error) {
-	return startAppServerUI(ctx, cmd, stdin, stdout, nil, resumeThread)
+	faint, _ := terminalui.SupportsFaint(ctx, "auto")
+	return startAppServerUI(ctx, cmd, stdin, stdout, nil, resumeThread, faint)
 }
 
-func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, resumeThread string) (func() error, error) {
+func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, resumeThread string, faint bool) (func() error, error) {
 	var resumeCwd string
 	if resumeThread == "--last" {
 		var err error
@@ -155,6 +156,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		return nil, err
 	}
 	u.ensureShell()
+	u.shell.faint = faint
 	return func() error {
 		defer func() {
 			if u.waitRelease != nil {

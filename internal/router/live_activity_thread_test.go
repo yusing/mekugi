@@ -128,7 +128,7 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 			reasoning := activityPaneEntry{Seq: 3, Agent: "Main", Kind: "reasoning", Text: "**Waiting on review**\n\nThe reviewer is still reading.", Observed: v.entries[0].Observed.Add(time.Second)}
 			if kind != "reasoning" {
 				reasoning.Kind, reasoning.Text = "progress", kind+" · reviewer still reading"
-				reasoning.native = &liveActivityNativeItem{wait: true}
+				reasoning.native = &liveActivityNativeItem{wait: &activityui.Block{Kind: "progress", Body: reasoning.Text}}
 			}
 			v.entries = []activityPaneEntry{v.entries[0], reasoning, v.entries[1]}
 			v.blocks = [][]activityui.Block{v.blocks[0], parseLiveActivity(reasoning), v.blocks[1]}

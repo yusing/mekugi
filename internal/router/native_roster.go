@@ -159,7 +159,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		if color == "" {
 			color = "\x1b[1m" + v.painter.Theme.Accent()
 		}
-		name := activityui.Dim + tree[:split] + activityui.Undim + color + v.hoverName(tree[split:], row.agent.Name) + activityui.Reset
+		name := activityui.DimColor(row.agent.Name) + tree[:split] + activityui.Undim + color + v.hoverName(tree[split:], row.agent.Name) + activityui.Reset
 		gap := "  "
 		if focused {
 			gap += strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(tree)))

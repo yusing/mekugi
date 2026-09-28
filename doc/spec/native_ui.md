@@ -426,10 +426,15 @@ clipping marker above it, rather than the inline commentary excerpt limit.
 App-server still owns tool execution and agent lifecycle. Legacy
 received envelopes are not injected into either parent's or child's provider output.
 
-Native UI subtle and dimmed text share the composer model-name foreground
-(RGB 115, 115, 116), rather than terminal-dependent faint intensity. This includes
-metadata, secondary labels, separators, and diff coordinates; semantic status
-colors, syntax highlighting, and animated status ramps remain distinct.
+Native UI dimming uses ANSI faint when supported. `--ansi-faint=auto|on|off`
+selects the terminal-local policy: `auto` disables faint when `mosh-server`
+appears in the process ancestry, otherwise enables it; explicit `on` or `off`
+overrides detection. Detached multiplexers can hide transport ancestry and
+require `off`. No unrelated sessions are scanned. Unsupported output uses
+256-color index 243 for ordinary dimmed text and static muted variants for
+agent identity colors. This applies to metadata, secondary labels, separators,
+and diff coordinates; non-dimmed semantic colors, syntax highlighting and
+animated status ramps stay unchanged.
 
 Host progress has one presentation mapping for live events and restored history.
 Compaction start replaces Main’s `Working` label with `Compacting context`;
@@ -439,7 +444,9 @@ clears an unfinished compaction without claiming it succeeded. Child compaction
 does not change Main’s composer. Agent wait starts and completions are transcript
 events, not composer overrides. Replayed events do not restart progress.
 Wait events show named targets using the shared agent display format (`main`,
-or the spawn path below `/root/`). When the host omits receivers, the start event
+or the spawn path below `/root/`) and static muted variants of their identity
+colors when faint is unsupported, or their normal identity colors with ANSI
+faint otherwise. When the host omits receivers, the start event
 snapshots the caller's currently running descendants; completion retains that
 list even if those agents stop or other agents start. Explicit host targets and
 reported states remain authoritative. Presentation-only snapshots are retained

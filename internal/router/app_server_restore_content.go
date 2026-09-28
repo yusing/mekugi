@@ -257,10 +257,10 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 				native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", searchResults: appServerSearchResults(item)}}
 			progressPhase := appServerHistoryProgressPhase(item)
 			item = u.waitItem(item, info.ID, turn.ID, item.ID, false)
-			if text, handled := appServerProgress(item, progressPhase); handled {
+			if text, wait, handled := appServerProgress(item, progressPhase); handled {
 				if text != "" {
 					entry.Kind, entry.Text = "progress", text
-					entry.native.wait = item.Type == "collabAgentToolCall" && item.Tool == "wait"
+					entry.native.wait = wait
 					entry.native.phase = progressPhase
 					entries = append(entries, entry)
 				}

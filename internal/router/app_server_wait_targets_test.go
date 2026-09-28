@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func waitTargetTestAgent(t *testing.T, u *appServerUI, id, path string, running bool) {
@@ -57,14 +58,18 @@ func TestAppServerWaitTargetsSnapshotAndRender(t *testing.T) {
 	waitTargetTestAgent(t, u, "b", "/root/beta", false)
 	waitTargetTestAgent(t, u, "nested", "/root/alpha/nested", true)
 	waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
-	if !u.view.entries[0].native.wait {
+	if u.view.entries[0].native.wait == nil {
 		t.Fatal("live wait is not an aside")
 	}
 	want := "Waiting for agent · alpha, alpha/nested"
 	if got := u.view.entries[0].Text; got != want {
 		t.Fatalf("start = %q, want %q", got, want)
 	}
-	frame := ansi.Strip(strings.Join(u.view.renderFeed(120, 30).lines, "\n"))
+	rendered := strings.Join(u.view.renderFeed(120, 30).lines, "\n")
+	if !strings.Contains(rendered, activityui.DimColor("/root/alpha")+"alpha") || !strings.Contains(rendered, activityui.DimColor("/root/alpha/nested")+"alpha/nested") {
+		t.Fatalf("missing muted targets: %q", rendered)
+	}
+	frame := ansi.Strip(rendered)
 	if !strings.Contains(frame, "alpha/nested") {
 		t.Fatalf("target absent from frame: %q", frame)
 	}
@@ -114,7 +119,7 @@ func TestAppServerWaitTargetsExplicitStatusMapping(t *testing.T) {
 	u.waitItem(item, "main", "t", "w", true)
 	item.AgentsStates = map[string]appServerAgentState{"a": {Status: "running"}, "unregistered": {Status: "completed"}}
 	got := u.waitItem(item, "main", "t", "w", false)
-	text, _ := appServerProgress(got, "item/completed")
+	text, _, _ := appServerProgress(got, "item/completed")
 	if text != "Finished waiting · alpha: Still running, unregistered: completed" {
 		t.Fatalf("explicit targets/statuses changed: %q", text)
 	}
@@ -133,11 +138,15 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 	restored := newAppServerSessionTestUI(t, workspace)
 	waitTargetTestStore(t, restored, store)
 	restored.restoreHistory(history)
-	if !restored.view.entries[0].native.wait {
+	if restored.view.entries[0].native.wait == nil {
 		t.Fatal("restored wait is not an aside")
 	}
 	if got := restored.view.entries[0].Text; got != "Finished waiting · alpha, alpha/nested" {
 		t.Fatalf("main replay lost targets: %q", got)
+	}
+	rendered := strings.Join(restored.view.renderFeed(120, 30).lines, "\n")
+	if !strings.Contains(rendered, activityui.DimColor("/root/alpha")+"alpha") {
+		t.Fatalf("restored wait lost color: %q", rendered)
 	}
 	restored.session.registerThread(appServerThreadInfo{ID: "a", AgentNickname: "alpha"})
 	restored.restoreActivityThread(appServerThreadInfo{ID: "a", Turns: history})

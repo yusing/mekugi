@@ -12,6 +12,7 @@ type routerFlags struct {
 	timeout                  *time.Duration
 	streamIdleTimeout        *time.Duration
 	mode                     *string
+	ansiFaint                *string
 	mainMentorHandoffEnabled *bool
 	mentorHandoffEnabled     *bool
 	postCompactRecovery      *bool
@@ -32,6 +33,7 @@ func newRouterFlags(stderr io.Writer) routerFlags {
 	}
 	return routerFlags{
 		FlagSet:                  flags,
+		ansiFaint:                flags.String("ansi-faint", "auto", "dim text: auto (detect mosh), on (ANSI faint), or off (fixed colors)"),
 		timeout:                  flags.Duration("timeout", defaultRequestTimeout, "upstream response-start timeout"),
 		streamIdleTimeout:        flags.Duration("stream-idle-timeout", defaultStreamIdleTimeout, "maximum upstream inactivity between WebSocket messages or HTTP response bytes"),
 		mode:                     flags.String("mode", defaultRewriteMode, "response mode: mekugi or passthrough"),

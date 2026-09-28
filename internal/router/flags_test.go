@@ -9,6 +9,9 @@ func TestSplitCommand(t *testing.T) {
 	for _, prefix := range [][]string{
 		nil,
 		{"--debug"},
+		{"--ansi-faint=off"},
+		{"--ansi-faint", "on"},
+		{"--ansi-faint=auto"},
 		{"--debug", "--capture-output", "capture.jsonl"},
 		{"--main-mentor-handoff", "--mentor-handoff=false"},
 		{"--grok"},

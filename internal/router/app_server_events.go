@@ -277,9 +277,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		item = u.waitItem(item, p.ThreadID, p.TurnID, id, m.Method == "item/started")
 		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method}
 		agent := s.path(p.ThreadID)
-		if text, handled := appServerProgress(item, m.Method); handled {
+		if text, wait, handled := appServerProgress(item, m.Method); handled {
 			if text != "" {
-				native.wait = item.Type == "collabAgentToolCall" && item.Tool == "wait"
+				native.wait = wait
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "progress", Text: text, Observed: now, native: native})
 			}
 			break

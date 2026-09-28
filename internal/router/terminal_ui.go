@@ -40,6 +40,7 @@ type terminalUI struct {
 	layout                                         terminalLayout
 	paintedRows                                    []string
 	paintedWidth                                   int
+	faint                                          bool // Output capability is local to this terminal, not request or global state.
 }
 
 type terminalRect struct{ x, y, w, h int }

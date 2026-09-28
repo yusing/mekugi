@@ -519,7 +519,7 @@ func TestLiveActivityFilterAlignmentAndDimStyle(t *testing.T) {
 				if !strings.HasPrefix(ansi.Strip(row), strings.Repeat(" ", indent)) || ansi.StringWidth(row) > width {
 					t.Fatalf("filter alignment width %d: %q", width, row)
 				}
-				if !strings.Contains(row, activityui.Dim) || !strings.Contains(row, "\x1b[38;2;") || !strings.HasSuffix(row, activityui.Reset) {
+				if !strings.Contains(row, activityui.Dim) || !strings.HasSuffix(row, activityui.Reset) {
 					t.Fatalf("filter is not muted and isolated: %q", row)
 				}
 			}

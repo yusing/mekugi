@@ -400,7 +400,11 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[2K%s", row+1, line)
 	}
 	b.WriteString("\x1b[?2026l")
-	_, err := io.WriteString(out, b.String())
+	frame := b.String()
+	if !u.faint {
+		frame = activityui.FaintFallback(frame)
+	}
+	_, err := io.WriteString(out, frame)
 	if err == nil {
 		u.clipboard = ""
 		u.paintedRows, u.paintedWidth = rows, u.width

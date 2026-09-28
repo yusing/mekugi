@@ -118,7 +118,7 @@ func (u *appServerUI) restoreHistory(turns []appServerHistoryTurn) {
 			if turn.Status == "inProgress" && (item.Type == "agentMessage" || item.Status == "inProgress") {
 				method = "item/started"
 			}
-			if _, progress := appServerProgress(item, method); progress {
+			if _, _, progress := appServerProgress(item, method); progress {
 				method = appServerHistoryProgressPhase(item)
 			}
 			switch item.Type {

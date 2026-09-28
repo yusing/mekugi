@@ -126,7 +126,7 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 type liveActivityNativeItem struct {
 	thread, turn, item string
 	phase              string
-	wait               bool // Collaboration wait progress is an aside in Main.
+	wait               *activityui.Block // Structured wait progress is an aside in Main.
 	command, status    string
 	searchResults      *int
 	running            bool            // Started live and not yet completed; replay never sets it.
@@ -159,10 +159,10 @@ func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, de
 	if thread != main {
 		entry.Agent = "Thread " + thread
 	}
-	if text, handled := appServerProgress(item, method); handled {
+	if text, wait, handled := appServerProgress(item, method); handled {
 		if text != "" {
 			entry.Kind, entry.Text = "progress", text
-			entry.native.wait = item.Type == "collabAgentToolCall" && item.Tool == "wait"
+			entry.native.wait = wait
 			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 		}
 		return

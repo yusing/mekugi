@@ -23,6 +23,11 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 		}
 	}
 	switch entry.Kind {
+	case "progress":
+		if entry.native != nil && entry.native.wait != nil {
+			return []activityui.Block{*entry.native.wait}
+		}
+		return []activityui.Block{{Kind: "progress", Body: text}}
 	case "assignment":
 		if entry.assignment != nil {
 			return []activityui.Block{{Kind: "message", From: entry.assignment.from, To: entry.assignment.to, Owner: entry.Agent, Body: livediff.Safe(entry.assignment.text, false)}}

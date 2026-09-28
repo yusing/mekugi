@@ -126,7 +126,7 @@ func runAppServerPreviewWithProxyAndHooks(t *testing.T, provider responseProvide
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(ctx, cmd, terminal, terminal, proxy, "")
+	wait, err := startAppServerUI(ctx, cmd, terminal, terminal, proxy, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}

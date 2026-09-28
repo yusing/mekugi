@@ -26,7 +26,8 @@ type Block struct {
 	Owner       string
 	Body        string
 	Reads       []Read
-	Journal     *Journal // A final answer in journal-result form.
+	Journal     *Journal     // A final answer in journal-result form.
+	WaitTargets []WaitTarget // Canonical identity and observed status, not parsed display text.
 	Results     *int
 	ExitCode    int    // Nonzero command exit; zero means no failure label.
 	EditSource  string // Editing source shared by this invocation's file rows.

@@ -20,6 +20,7 @@ import (
 
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/ui/dashboard"
+	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
 
 const (
@@ -65,6 +66,10 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}
 	if *flags.mode != "mekugi" && *flags.mode != "passthrough" {
 		return errors.New("--mode must be mekugi or passthrough")
+	}
+	faint, err := terminalui.SupportsFaint(ctx, *flags.ansiFaint)
+	if err != nil {
+		return err
 	}
 	mainMentorSet := false
 	mentorSet := false
@@ -334,13 +339,11 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}()
 	if ready != nil && ctx.Err() == nil {
 		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, SkillsManagerAvailable: skillsManagerAvailable}
-		if mekugiCalls != nil {
-			session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string) (func() error, error) {
-				return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, resumeThread)
-			}
-			if mekugiCalls.nativeTrace != nil {
-				session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory
-			}
+		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string) (func() error, error) {
+			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, resumeThread, faint)
+		}
+		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
+			session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory
 		}
 		if debug != nil {
 			session.AXReadOutput = debug.paths[4]

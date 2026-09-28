@@ -2,7 +2,6 @@ package router
 
 import (
 	"slices"
-	"strings"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
@@ -24,53 +23,55 @@ func appServerHistoryProgressPhase(item appServerItem) string {
 // Only compaction replaces Working; collaboration waits are transcript events.
 // Source: codex-rs/tui/src/chatwidget/compaction.rs:6:56@1cc7e236
 // and codex-rs/tui/src/multi_agents.rs:375:414@1cc7e236.
-func appServerProgress(item appServerItem, method string) (text string, handled bool) {
+func appServerProgress(item appServerItem, method string) (text string, wait *activityui.Block, handled bool) {
 	switch item.Type {
 	case "contextCompaction":
 		if method == "item/completed" {
-			return "Context compacted", true
+			return "Context compacted", nil, true
 		}
-		return "", true
-	case "collabAgentToolCall":
-		if item.Tool != "wait" {
-			return "", false
-		}
-		text = "Waiting for agent"
-		if method == "item/completed" {
-			text = "Finished waiting"
-			if item.Status == "failed" {
-				text = "Wait failed"
-			}
-		}
-		receivers := slices.Clone(item.ReceiverThreadIDs)
-		var extra []string
-		for id := range item.AgentsStates {
-			if !slices.Contains(receivers, id) {
-				extra = append(extra, id)
-			}
-		}
-		slices.Sort(extra)
-		receivers = append(receivers, extra...)
-		for i, id := range receivers {
-			if name := item.waitNames[id]; name != "" {
-				receivers[i] = activityui.AgentDisplayName(name)
-			}
-			if method == "item/completed" {
-				status := item.AgentsStates[id].Status
-				if status == "running" {
-					status = "Still running"
-				}
-				if status != "" {
-					receivers[i] += ": " + status
-				}
-			}
-		}
-		if len(receivers) > 0 {
-			text += " · " + strings.Join(receivers, ", ")
-		}
-		return text, true
+		return "", nil, true
 	}
-	return "", false
+	if block := appServerWaitProgress(item, method); block != nil {
+		return block.ProgressText(), block, true
+	}
+	return "", nil, false
+}
+
+func appServerWaitProgress(item appServerItem, method string) *activityui.Block {
+	if item.Type != "collabAgentToolCall" || item.Tool != "wait" {
+		return nil
+	}
+	text := "Waiting for agent"
+	if method == "item/completed" {
+		text = "Finished waiting"
+		if item.Status == "failed" {
+			text = "Wait failed"
+		}
+	}
+	block := &activityui.Block{Kind: "progress", Body: text}
+	receivers := slices.Clone(item.ReceiverThreadIDs)
+	var extra []string
+	for id := range item.AgentsStates {
+		if !slices.Contains(receivers, id) {
+			extra = append(extra, id)
+		}
+	}
+	slices.Sort(extra)
+	for _, id := range append(receivers, extra...) {
+		name := item.waitNames[id]
+		if name == "" {
+			name = id
+		}
+		status := ""
+		if method == "item/completed" {
+			status = item.AgentsStates[id].Status
+			if status == "running" {
+				status = "Still running"
+			}
+		}
+		block.WaitTargets = append(block.WaitTargets, activityui.WaitTarget{Name: name, Status: status})
+	}
+	return block
 }
 
 // Compaction is scoped to the active Main turn and exact item. A completion for

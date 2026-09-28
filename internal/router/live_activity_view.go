@@ -985,7 +985,7 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 		}
 		name = strings.TrimRight(liveActivityMiddle(name, available), " ")
 		split := strings.LastIndexAny(name, " /") + 1
-		styled := activityui.Dim + name[:split] + activityui.Undim + activityui.Color(row.agent.Name) + v.hoverName(name[split:], row.agent.Name) + activityui.Reset
+		styled := activityui.DimColor(row.agent.Name) + name[:split] + activityui.Undim + activityui.Color(row.agent.Name) + v.hoverName(name[split:], row.agent.Name) + activityui.Reset
 		prefix := " " + v.glyph(row.agent) + " "
 		switch {
 		case cards && !compact:

@@ -73,7 +73,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		}
 		if !v.conversationEmpty(i) {
 			entry := v.entries[i]
-			items = append(items, item{first: i, last: last, agent: v.threadAgent(i), aside: entry.Agent == "Main" && (entry.Kind == "reasoning" || entry.Kind == "progress" && entry.native != nil && entry.native.wait), lead: -1})
+			items = append(items, item{first: i, last: last, agent: v.threadAgent(i), aside: entry.Agent == "Main" && (entry.Kind == "reasoning" || entry.Kind == "progress" && entry.native != nil && entry.native.wait != nil), lead: -1})
 		}
 		i = j
 	}
@@ -312,7 +312,9 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	p := &v.painter
 	switch {
 	case entry.Agent == "Main" && entry.Kind == "progress":
-		out.add(0, activityui.Wrap(activityui.Dim+"• "+livediff.Safe(entry.Text, false)+activityui.Undim, width, false)...)
+		for _, block := range blocks {
+			out.add(0, p.Block(block, width)...)
+		}
 	case entry.Agent == "Main" && entry.Kind == "reasoning" && first == last:
 		for index, block := range blocks {
 			// Settled provider thinking shows its header; a click toggles it.

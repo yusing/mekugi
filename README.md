@@ -138,6 +138,7 @@ These overrides last only for the invocation; no configuration files change.
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
+| `--ansi-faint` | `auto` | Dimming: `auto` detects mosh ancestry, `on` uses ANSI faint, `off` uses fixed muted colors |
 | `--mode` | `mekugi` | Use `passthrough` to forward traffic without mekugi tools, plugins, or Mentor Handoff |
 | `--main-mentor-handoff` | `true` | Enable mentor handoff for eligible main sessions and ordinary forks |
 | `--mentor-handoff` | `true` | Use `false` to keep subagents on their configured models |
@@ -152,6 +153,10 @@ These overrides last only for the invocation; no configuration files change.
 
 `mekugi --mode passthrough codex --yolo` forwards traffic only. It doesn't need Node.js,
 and capture still works.
+
+If a detached multiplexer hides your mosh connection, use
+`mekugi --ansi-faint=off codex` for readable dimmed text. The setting applies only
+to that invocation and does not modify terminal configuration.
 
 ### Grok models
 

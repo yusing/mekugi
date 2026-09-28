@@ -15,7 +15,7 @@ import (
 
 const (
 	Dim   = livediff.Subtle
-	Undim = "\x1b[22m" + livediff.SubtleReset
+	Undim = livediff.SubtleReset
 	Reset = "\x1b[0m"
 	Green = "\x1b[38;5;114m"
 	Red   = "\x1b[38;5;203m"
@@ -449,6 +449,8 @@ func (p *Painter) Block(block Block, width int) []string {
 		return p.editGroupRow(block, width)
 	}
 	switch block.Kind {
+	case "progress":
+		return Wrap(Dim+"• "+block.progressText(true)+Reset, width, false)
 	case "summary":
 		// Codex keeps summary bodies in detailed transcript, dim and italic,
 		// with a bullet rather than a separate "Reasoning summary" card.
@@ -1229,6 +1231,8 @@ func (p *Painter) Summary(blocks []Block) string {
 		return ""
 	}
 	switch block.Kind {
+	case "progress":
+		return Dim + block.progressText(true) + Reset
 	case "summary":
 		return Dim + ReasoningSummaryHeader(block.Body) + Undim
 	case "final":
