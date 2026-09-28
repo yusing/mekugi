@@ -485,6 +485,18 @@ func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 	return redraw
 }
 
+// outputToggle opens a collapsed output tail its reader expanded, and
+// underlines it under the pointer. It reports whether the block's rows toggle
+// the output.
+func (v *liveActivityView) outputToggle(block *activityui.Block, snippet liveActivitySnippet) bool {
+	if !block.TailCollapsed {
+		return false
+	}
+	block.TailCollapsed = !v.expanded[snippet]
+	block.TailHovered = block.TailCollapsed && v.snippet == snippet
+	return true
+}
+
 func (v *liveActivityView) toggleSnippet(snippet liveActivitySnippet) {
 	if v.expanded[snippet] {
 		delete(v.expanded, snippet)
@@ -1266,6 +1278,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		}
 		// Native Activity joins consecutive operations into one tree.
 		tree := v.childrenOnly && operation(block) && !continued(block)
+		toggle := v.outputToggle(&block, liveActivitySnippet{first, index})
 		part := v.painter.Block(block, width-2)
 		switch {
 		case tree:
@@ -1296,9 +1309,9 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			limit *= 2
 		}
 		var snippet liveActivitySnippet
-		if folds {
+		if folds || toggle {
 			snippet = liveActivitySnippet{first, index}
-			if block.Folded && snippet == v.snippet {
+			if folds && block.Folded && snippet == v.snippet {
 				part[0] = "\x1b[4m" + part[0] + "\x1b[24m"
 			}
 		}
@@ -1421,6 +1434,31 @@ func (v *liveActivityView) expireFlash(now time.Time) bool {
 	}
 	v.flashQuestion, v.flashUntil = 0, time.Time{}
 	return true
+}
+
+// collapseOutput collapses successful commands' output once it has stayed
+// open for its linger. Entries are shared between views, so each view
+// replaces rather than modifies an entry's native state.
+func (v *liveActivityView) collapseOutput(now time.Time) bool {
+	changed := false
+	for i, entry := range v.entries {
+		if entry.native == nil || entry.native.collapseAt.IsZero() || now.Before(entry.native.collapseAt) {
+			continue
+		}
+		native := *entry.native
+		native.collapseAt = time.Time{}
+		v.entries[i].native = &native
+		for j := range v.blocks[i] {
+			if block := &v.blocks[i][j]; block.Verb == "Run" && len(block.Tail) > 0 && block.ExitCode == 0 {
+				block.TailCollapsed = true
+			}
+		}
+		changed = true
+	}
+	if changed {
+		v.runs = nil
+	}
+	return changed
 }
 
 func (v *liveActivityView) footer(width int) string {

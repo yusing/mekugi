@@ -37,7 +37,7 @@ func VerbColor(verb string) string {
 		return "\x1b[38;5;75m"
 	case "Search", "Find", "Skill":
 		return "\x1b[38;5;141m"
-	case "Run", "Send", "Sleep", "Wait", "Still", "Stop":
+	case "Run", "Running", "Send", "Sleep", "Wait", "Still", "Stop":
 		return Amber
 	case "Edit", "Create", "Delete", "Update", "Write", "Move", "Rename":
 		return Green
@@ -825,8 +825,9 @@ func lineRanges(ranges []string) string {
 	return strings.Join(shown, ", ")
 }
 
-// ranRow lays out one command after Ran: a one-line command beside the verb,
-// or a program beside its gutter, then any failure's exit and output.
+// ranRow lays out one command after Running or Ran: a one-line command beside
+// the verb, or a program beside its gutter, then any failure's exit and the
+// live or failed output tail.
 func (p *Painter) ranRow(block Block, width int) []string {
 	code, label := block.Code, strings.TrimSpace(p.Label(block.Verb, block.Label)+ResultCount(block.Results))
 	if code == "" {
@@ -838,7 +839,8 @@ func (p *Painter) ranRow(block Block, width int) []string {
 	if block.ExitCode != 0 {
 		color, exit = Red, Dim+"· "+Undim+exitText(block.ExitCode)
 	}
-	lead, indent := block.lead(color, "Ran"), block.cell("Ran")
+	verb := RowVerb(block)
+	lead, indent := block.lead(color, verb), block.cell(verb)
 	padding := strings.Repeat(" ", indent)
 	// suffix follows the last row when it fits, and otherwise takes its own.
 	suffix := func(lines []string, text string) []string {
@@ -881,6 +883,16 @@ func (p *Painter) ranRow(block Block, width int) []string {
 		lines = append(lines, liveActivityIndent(p.Markdown(block.Body, width-indent-2), padding+"  ")...)
 	}
 	// Output uses a dashed gutter, distinct from the program gutter above it.
+	if block.TailCollapsed && len(block.Tail) > 0 {
+		hint := "… +1 line"
+		if n := block.TailOmitted + len(block.Tail); n > 1 {
+			hint = fmt.Sprintf("… +%d lines", n)
+		}
+		if block.TailHovered {
+			hint = "\x1b[4m" + hint + "\x1b[24m"
+		}
+		return append(lines, padding+ansi.Truncate(Dim+"┆ "+hint+Undim, width-indent, "…"))
+	}
 	if block.TailOmitted > 0 {
 		lines = append(lines, padding+ansi.Truncate(Dim+"┆ "+fmt.Sprintf("… %d earlier lines", block.TailOmitted)+Undim, width-indent, "…"))
 	}
@@ -1272,7 +1284,11 @@ func (p *Painter) Summary(blocks []Block) string {
 		if block.ExitCode != 0 && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)) {
 			detail += " " + Red + fmt.Sprintf("(exit %d)", block.ExitCode) + Reset
 		}
-		return SummaryVerb(block.Verb) + detail + more
+		verb := block.Verb
+		if block.Running {
+			verb = "Running"
+		}
+		return SummaryVerb(verb) + detail + more
 	case "message":
 		text := firstLine(block.Body)
 		if text == "" {

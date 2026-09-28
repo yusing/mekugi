@@ -71,7 +71,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 		t.Fatal(err)
 	}
 	frame := nextFrame()
-	for _, want := range []string{"Edit", "a.go", "b.go", "requested", "Ran", "go test"} {
+	for _, want := range []string{"Edit", "a.go", "b.go", "requested", "Running", "go test"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("requested edit missing %q from terminal frame:\n%s", want, frame)
 		}

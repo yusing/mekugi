@@ -346,15 +346,28 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		// The operations form a tree under the reasoning above them. An edit
 		// group's later rows and output notes continue their operation's branch.
 		var parts [][]string
+		var toggles []liveActivitySnippet // Each part's output toggle, if any.
 		// Its connectors sit beneath the reasoning bullet.
-		for _, block := range activityui.AlignVerbs(activityui.MergeEdits(activityui.GroupOperations(activityui.MergeLiveActivityReads(group)))) {
+		for index, block := range activityui.AlignVerbs(activityui.MergeEdits(activityui.GroupOperations(activityui.MergeLiveActivityReads(group)))) {
+			snippet := liveActivitySnippet{entry.Seq, index}
+			toggle := v.outputToggle(&block, snippet)
 			if len(parts) > 0 && (block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart) {
 				parts[len(parts)-1] = append(parts[len(parts)-1], p.Block(block, width-2)...)
 				continue
 			}
 			parts = append(parts, p.Block(block, width-2))
+			toggles = append(toggles, liveActivitySnippet{})
+			if toggle {
+				toggles[len(toggles)-1] = snippet
+			}
 		}
-		out.add(0, activityui.Tree(parts)...)
+		rows := activityui.Tree(parts)
+		for i, part := range parts {
+			for range part {
+				out.add(0, rows[0])
+				out.snippets[len(out.snippets)-1], rows = toggles[i], rows[1:]
+			}
+		}
 	case entry.Agent == "Main" && entry.journal != nil && len(blocks) == 1 && blocks[0].Journal != nil:
 		v.flushItem(&out, entry, blocks[0].Journal, first, width)
 	case conversationMilestone(entry):

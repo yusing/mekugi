@@ -388,7 +388,11 @@ controls. Local absolute-path Markdown links show their label as a terminal
 hyperlink rather than exposing the raw destination syntax. A completed child
 compaction appears as an event in the feed and as the agent's latest roster
 activity; an attempted or failed compaction does not claim completion.
-Read line spans display as `L25–46`. Each `Run` operation is its own `Ran` row.
+Read line spans display as `L25–46`. Each `Run` operation is its own row. In
+the native app-server UI it reads `Running` from the host's command start, in
+Main and in the agent's feed and roster summary, and `Ran` once the host
+completes it. A yielded process stays `Running` across turns until it exits;
+replayed history never shows `Running`.
 A single-line command follows the verb. When it does not fit, each top-level
 statement after `;`, `&&`, or `||` starts a row aligned with the first, and a
 statement that is still too wide breaks at unquoted blanks with a muted ` \`
@@ -401,8 +405,17 @@ the command, or on its own row when it does not fit or follows a multiline
 program; the roster summary keeps a red `(exit N)`. When the host reports
 aggregated output for that failure, the last five non-blank lines follow the
 command under a muted dashed `┆` gutter, distinct from the code gutter, sanitized
-and bounded per line, with a count of earlier lines.
-Unknown and zero exits add no failure label and no output. Python, JavaScript (Node and Bun), and Perl interpreter previews use
+and bounded per line, with a count of earlier lines. While a command is
+`Running`, the host's streamed output shows the same way as a rolling tail,
+including an unfinished last line; a carriage return restarts its line, as a
+progress line redraws. The tail's memory stays bounded by what it shows,
+however much the command prints, and at most one update per frame is drawn.
+Completion replaces it with the tail of the host's aggregated output. A
+failure keeps that tail open. After a zero exit it stays open for three seconds,
+then collapses to one muted `┆ … +N lines` row; a click on the command opens
+it again and another collapses it. Restored history shows zero-exit output
+already collapsed. Output arriving after completion is ignored.
+Unknown and zero exits add no failure label, and an unknown exit no output. Python, JavaScript (Node and Bun), and Perl interpreter previews use
 their own syntax colors. `Search` patterns are styled as literal patterns,
 not shell commands, while every target path uses the Search violet with path emphasis.
 A final answer in journal-result form is laid out natively: a heading with its

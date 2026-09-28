@@ -278,6 +278,7 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 				if item.Type == "fileChange" {
 					entry.Text = appServerEditText(item, info.Cwd)
 				}
+				appServerSucceededOutput(&entry, item, time.Time{})
 				entries = append(entries, entry)
 				if item.ExitCode != nil && *item.ExitCode != 0 {
 					exit := activityPaneEntry{Seq: s.next(), Agent: name, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID, Observed: observed}

@@ -33,19 +33,23 @@ type Block struct {
 	EditHeader  bool   // First row of a contiguous source group.
 	GroupHeader string // Presentation-only edit outcome shared by a group's rows.
 	GroupStart  bool
-	GroupCount  int // Edit invocations in this group.
-	VerbAlign   int // Widest row verb in this row's group.
-	VerbColumn  int // Verb column shared with adjacent operations; 0 uses the default.
-	PathAlign   int // Widest aligned edit path in this row's group.
-	StatAlign   int // Widest line-count text in this row's group.
-	StatScale   int // Largest changed-line total in a multi-row group; 0 omits bars.
+	GroupCount  int  // Edit invocations in this group.
+	VerbAlign   int  // Widest row verb in this row's group.
+	VerbColumn  int  // Verb column shared with adjacent operations; 0 uses the default.
+	PathAlign   int  // Widest aligned edit path in this row's group.
+	StatAlign   int  // Widest line-count text in this row's group.
+	StatScale   int  // Largest changed-line total in a multi-row group; 0 omits bars.
+	Running     bool // A live command the host has not completed.
 	Tail        []string
-	TailOmitted int       // Output lines before Tail.
-	Flash       bool      // Presentation-only: another pane just opened this entry.
-	Live        bool      // Reasoning still streaming.
-	Elapsed     string    // Formatted reasoning time, when observed from its first delta.
-	Done        time.Time // Reasoning completion, when observed live; zero for history.
-	Folded      bool      // Presentation-only: finished thinking shows only its header.
+	TailOmitted int // Output lines before Tail.
+	// TailCollapsed shows Tail as one row that opens it; TailHovered
+	// underlines that row under the pointer. Both are presentation-only.
+	TailCollapsed, TailHovered bool
+	Flash                      bool      // Presentation-only: another pane just opened this entry.
+	Live                       bool      // Reasoning still streaming.
+	Elapsed                    string    // Formatted reasoning time, when observed from its first delta.
+	Done                       time.Time // Reasoning completion, when observed live; zero for history.
+	Folded                     bool      // Presentation-only: finished thinking shows only its header.
 }
 
 // GroupOperations groups adjacent edits from one source and outcome, across
@@ -122,6 +126,8 @@ func AlignVerbs(blocks []Block) []Block {
 // RowVerb is the verb a row shows.
 func RowVerb(b Block) string {
 	switch {
+	case b.Kind == "op" && b.Verb == "Run" && b.Running:
+		return "Running"
 	case b.Kind == "op" && b.Verb == "Run":
 		return "Ran"
 	case b.GroupHeader != "":

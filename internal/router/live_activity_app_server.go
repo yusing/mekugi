@@ -128,6 +128,8 @@ type liveActivityNativeItem struct {
 	phase              string
 	command, status    string
 	searchResults      *int
+	running            bool            // Started live and not yet completed; replay never sets it.
+	collapseAt         time.Time       // A successful command's output stays open until then; zero keeps it collapsed.
 	images             []composerImage // Attachment spans, not text resembling image labels.
 	question           uint64          // Original user entry, retained even for a live journal publication.
 	thought            time.Duration   // Reasoning time from its first summary delta to completion.

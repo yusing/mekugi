@@ -8,7 +8,9 @@ import (
 	"io"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -39,6 +41,7 @@ func TestNativeUIPreview(t *testing.T) {
 	defer tty.Close()
 	p := newNativePreview(t)
 	defer p.close()
+	p.delay = "0.6"
 	err = terminalui.WithRawPane(t.Context(), tty, tty, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 		tick := time.NewTicker(33 * time.Millisecond)
 		defer tick.Stop()
@@ -74,9 +77,20 @@ func TestNativeUIPreview(t *testing.T) {
 				if err := p.ui.shell.flushEscape(); err != nil {
 					return err
 				}
-				flashExpired := p.ui.view.expireFlash(now) || p.ui.view.expireThinking(now) || p.ui.agents.expireThinking(now)
+				flashExpired := p.ui.view.expireFlash(now)
+				flashExpired = p.ui.view.expireThinking(now) || flashExpired
+				flashExpired = p.ui.agents.expireThinking(now) || flashExpired
+				outputCollapsed := p.ui.view.collapseOutput(now)
+				outputCollapsed = p.ui.agents.collapseOutput(now) || outputCollapsed
 				noticeExpired := p.ui.expireNotice(now)
-				if now.Sub(lastStep) >= p.pace() && p.advance() {
+				if p.pump(0) {
+					lastStep = now // The script resumes a pace after the command ends.
+					if err := paint(); err != nil {
+						return err
+					}
+					continue
+				}
+				if p.live == nil && now.Sub(lastStep) >= p.pace() && p.advance() {
 					lastStep = now
 					if err := paint(); err != nil {
 						return err
@@ -87,7 +101,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.sessionAnimating() || p.ui.agents.hasLiveReasoning() || flashExpired || noticeExpired || p.ui.shell.animating(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.sessionAnimating() || p.ui.agents.hasLiveReasoning() || flashExpired || outputCollapsed || noticeExpired || p.ui.shell.animating(now) {
 					if err := paint(); err != nil {
 						return err
 					}
@@ -166,6 +180,27 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	frame := render("agent dock accordion", "LIVE · 3 agents", "^B e next", "▸", "reviewer → main", "2 Diff●")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
 		t.Fatal("the saved diff replaced Activity without being opened")
+	}
+	agents := func() string { return ansi.Strip(strings.Join(p.ui.agents.renderFeed(120, 80).lines, "\n")) }
+	p.until("tester reruns")
+	if got := agents(); !strings.Contains(got, "exit 1") || !strings.Contains(got, "┆ --- FAIL: TestUnsubscribeRace (0.37s)") {
+		t.Fatalf("failed test run lacks its failure tail:\n%s", got)
+	}
+	for p.live != nil && !strings.Contains(agents(), "┆ === RUN   TestConcurrentPublish") {
+		p.pump(time.Second)
+	}
+	if got := agents(); p.live == nil || !regexp.MustCompile(`Running +│ for test in`).MatchString(got) {
+		t.Fatalf("streamed test run lacks its live tail:\n%s", got)
+	}
+	for p.live != nil {
+		p.pump(time.Second)
+	}
+	if got := agents(); strings.Contains(got, "Running") || !strings.Contains(got, "┆ ok      example.com") || !regexp.MustCompile(`Ran +│ for test in`).MatchString(got) {
+		t.Fatalf("passed test run lacks its settled output:\n%s", got)
+	}
+	p.ui.agents.collapseOutput(time.Now().Add(appServerOutputLinger))
+	if got := agents(); strings.Contains(got, "┆ ok ") || !strings.Contains(got, "┆ … +6 lines") {
+		t.Fatalf("passed test run output did not collapse:\n%s", got)
 	}
 	for p.advance() {
 	}
@@ -302,6 +337,22 @@ type nativePreview struct {
 	assignments map[string]string
 	models      map[string]string // Provider model by thread, when not the default.
 	answers     map[string][]journalItem
+	delay       string                // Seconds each preview command sleeps between outputs.
+	live        *nativePreviewProcess // The running command; the script waits for it.
+}
+
+// nativePreviewProcess is a real local process whose output reaches the UI
+// only as app-server command notifications.
+type nativePreviewProcess struct {
+	thread string
+	item   map[string]any
+	output string
+	events chan nativePreviewOutput
+}
+
+type nativePreviewOutput struct {
+	chunk string
+	exit  *int // Set on the final event, after all output.
 }
 
 func newNativePreview(t *testing.T) *nativePreview {
@@ -338,7 +389,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 		return max(1, u.shell.layout.diff.w), max(3, u.shell.layout.diff.h), nil
 	}
 	u.session.start("main", workspace)
-	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace, active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}, answers: make(map[string][]journalItem)}
+	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace, delay: "0", active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}, answers: make(map[string][]journalItem)}
 	store.liveDiff = func(changes []liveDiffChange) {
 		u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "change", Changes: changes})
 	}
@@ -367,7 +418,12 @@ func (p *nativePreview) pace() time.Duration {
 	return 650 * time.Millisecond
 }
 
+// advance runs the next step, or first relays the live command's output.
 func (p *nativePreview) advance() bool {
+	if p.live != nil {
+		p.pump(time.Second)
+		return true
+	}
 	if p.step >= len(p.steps) {
 		return false
 	}
@@ -380,9 +436,9 @@ func (p *nativePreview) advance() bool {
 func (p *nativePreview) until(name string) {
 	p.t.Helper()
 	for p.step < len(p.steps) {
-		current := p.steps[p.step].name
+		current, step := p.steps[p.step].name, p.step
 		p.advance()
-		if current == name {
+		if p.step > step && current == name {
 			return
 		}
 	}
@@ -481,8 +537,82 @@ func (p *nativePreview) apply(edit nativePreviewEdit) {
 }
 
 func (p *nativePreview) command(thread, id, command string, actions []map[string]any, exit int) {
+	p.finishCommand(thread, p.startCommand(thread, id, command, actions), exit)
+}
+
+func (p *nativePreview) startCommand(thread, id, command string, actions []map[string]any) map[string]any {
 	item := map[string]any{"id": id, "type": "commandExecution", "command": command, "cwd": p.workspace, "status": "inProgress", "commandActions": actions}
 	p.notify("item/started", map[string]any{"threadId": thread, "turnId": p.active[thread], "item": item})
+	return item
+}
+
+// run starts script as a real shell process. Its output and exit reach the UI
+// through app-server notifications, as a model's command would.
+func (p *nativePreview) run(thread, id, script string) {
+	script = strings.ReplaceAll(script, "$DELAY", p.delay)
+	cmd := exec.CommandContext(p.t.Context(), "sh", "-c", script)
+	cmd.Dir = p.workspace
+	read, write, err := os.Pipe()
+	if err != nil {
+		p.t.Fatal(err)
+	}
+	cmd.Stdout, cmd.Stderr = write, write
+	if err := cmd.Start(); err != nil {
+		p.t.Fatal(err)
+	}
+	write.Close()
+	live := &nativePreviewProcess{thread: thread, item: p.startCommand(thread, id, script, nil), events: make(chan nativePreviewOutput, 16)}
+	go func() {
+		buffer := make([]byte, 4096)
+		for {
+			n, err := read.Read(buffer)
+			if n > 0 {
+				live.events <- nativePreviewOutput{chunk: string(buffer[:n])}
+			}
+			if err != nil {
+				break
+			}
+		}
+		read.Close()
+		_ = cmd.Wait()
+		live.events <- nativePreviewOutput{exit: new(cmd.ProcessState.ExitCode())}
+	}()
+	p.live = live
+}
+
+// pump relays one event of the live command, waiting up to wait for it, and
+// shows it as the next frame would.
+func (p *nativePreview) pump(wait time.Duration) bool {
+	if p.live == nil {
+		return false
+	}
+	var event nativePreviewOutput
+	select {
+	case event = <-p.live.events:
+	default:
+		if wait == 0 {
+			return false
+		}
+		select {
+		case event = <-p.live.events:
+		case <-time.After(wait):
+			return false
+		}
+	}
+	live := p.live
+	if event.exit == nil {
+		live.output += event.chunk
+		p.notify("item/commandExecution/outputDelta", map[string]any{"threadId": live.thread, "turnId": p.active[live.thread], "itemId": live.item["id"], "delta": event.chunk})
+	} else {
+		live.item["aggregatedOutput"] = live.output
+		p.finishCommand(live.thread, live.item, *event.exit)
+		p.live = nil
+	}
+	p.ui.flushCommandOutput()
+	return true
+}
+
+func (p *nativePreview) finishCommand(thread string, item map[string]any, exit int) {
 	item["status"], item["exitCode"] = "completed", exit
 	p.notify("item/completed", map[string]any{"threadId": thread, "turnId": p.active[thread], "item": item})
 }
@@ -707,6 +837,9 @@ func (p *nativePreview) populate() {
 		p.apply(mainEdit)
 		p.tokens("main", 241_000, 4_800)
 	})
+	p.add("main builds", func() {
+		p.run("main", "cmd-build", `for pkg in broker pane cmd/broker; do echo "compiling ./internal/$pkg"; sleep $DELAY; done; echo "build ok: 3 packages"`)
+	})
 	p.add("reviewer reports", func() {
 		p.collab("msg-1", "sendMessage", "t-reviewer", "main", "The lock covers Subscribe and Publish, and Publish now sends outside it, so a slow subscriber no longer blocks other publishers.")
 	})
@@ -721,7 +854,13 @@ func (p *nativePreview) populate() {
 		p.tokens("t-reviewer", 38_000, 700)
 	})
 	p.add("test fails", func() {
-		p.command("t-tester", "cmd-5", "go test -race ./internal/broker", nil, 1)
+		p.run("t-tester", "cmd-5", `echo "=== RUN   TestConcurrentPublish"; sleep $DELAY
+echo "--- PASS: TestConcurrentPublish (0.41s)"
+echo "=== RUN   TestUnsubscribeRace"; sleep $DELAY
+printf 'WARNING: DATA RACE\nWrite at broker.go:41 by goroutine 9\n'; sleep $DELAY
+echo "--- FAIL: TestUnsubscribeRace (0.37s)"; echo FAIL; exit 1`)
+	})
+	p.add("tester reports the race", func() {
 		p.say("t-tester", "answer-tester-first", "final_answer", "The initial race test exposed an Unsubscribe race. A follow-up is needed.")
 		p.finish("t-tester")
 	})
@@ -732,8 +871,14 @@ func (p *nativePreview) populate() {
 	p.stream("tester follow-up", followEdit)
 	p.add("tester applies", func() {
 		p.apply(followEdit)
-		p.command("t-tester", "cmd-6", "go test -race ./internal/broker", nil, 0)
 		p.tokens("t-tester", 97_000, 3_400)
+	})
+	p.add("tester reruns", func() {
+		p.run("t-tester", "cmd-6", `for test in TestConcurrentPublish TestUnsubscribeRace; do
+  echo "=== RUN   $test"; sleep $DELAY
+  echo "--- PASS: $test (0.4s)"
+done
+printf 'PASS\nok  \texample.com/broker/internal/broker\t1.2s\n'`)
 	})
 	p.add("explorer answers", func() {
 		p.say("t-explorer", "answer-explorer", "final_answer", "Launch now returns `pending` instead of waiting on the first frame. The signature is unchanged.")

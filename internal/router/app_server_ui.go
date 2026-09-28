@@ -242,12 +242,16 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						u.dirty = true
 					case <-tick.C:
 						u.applyObservedActivity()
+						u.flushCommandOutput()
 						u.paneError(u.panes.save(u.shell, time.Now(), false))
 						if u.expireNotice(time.Now()) {
 							u.dirty = true
 						}
 						for _, view := range []*liveActivityView{u.view, u.agents} {
 							if view.expireFlash(time.Now()) || view.expireThinking(time.Now()) {
+								u.dirty = true
+							}
+							if view.collapseOutput(time.Now()) {
 								u.dirty = true
 							}
 						}
