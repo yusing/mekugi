@@ -324,7 +324,7 @@ func liveActivityLink(s string) (label, target string, end int, ok bool) {
 }
 
 // markdown renders authored text: fenced programs are highlighted on a
-// fill, list items hang, and tables keep their rows instead of wrapping.
+// fill, list items hang, and tables lay out within the available width.
 func (p *Painter) Markdown(text string, width int) []string {
 	var lines, program, quote []string
 	flushQuote := func() {
@@ -334,7 +334,9 @@ func (p *Painter) Markdown(text string, width int) []string {
 		}
 	}
 	fence, lang := "", ""
-	for line := range strings.SplitSeq(text, "\n") {
+	source := strings.Split(text, "\n")
+	for i := 0; i < len(source); i++ {
+		line := source[i]
 		if fence != "" {
 			if line != fence {
 				program = append(program, line)
@@ -354,10 +356,13 @@ func (p *Painter) Markdown(text string, width int) []string {
 			fence, lang = delimiter, strings.TrimSpace(line[len(delimiter):])
 			continue
 		}
+		if table, consumed := parseMarkdownTable(source[i:]); consumed > 0 {
+			lines = append(lines, p.markdownTable(table, max(1, width))...)
+			i += consumed - 1
+			continue
+		}
 		indent := line[:len(line)-len(trimmed)]
 		switch {
-		case strings.HasPrefix(trimmed, "|"):
-			lines = append(lines, ansi.Truncate(Dim+line+Undim, width, "…"))
 		case strings.HasPrefix(trimmed, "#"):
 			lines = append(lines, Wrap("\x1b[1m"+p.Inline(strings.TrimLeft(trimmed, "# "))+Undim, width, false)...)
 		case strings.HasPrefix(trimmed, "- "), strings.HasPrefix(trimmed, "* "):
@@ -1309,6 +1314,29 @@ func (p *Painter) Summary(blocks []Block) string {
 		more = Dim + fmt.Sprintf(" · +%d more", len(blocks)-1) + Undim
 	}
 	firstLine := func(text string) string {
+		// Summaries describe table content, not its decorative top border.
+		source := strings.Split(strings.TrimSpace(text), "\n")
+		source = source[:min(len(source), 3)]
+		for i, line := range source {
+			for {
+				trimmed := strings.TrimLeft(line, " ")
+				if len(line)-len(trimmed) > 3 || !strings.HasPrefix(trimmed, ">") {
+					break
+				}
+				line = strings.TrimPrefix(trimmed[1:], " ")
+			}
+			source[i] = line
+		}
+		if table, consumed := parseMarkdownTable(source); consumed > 0 {
+			cells := make([]string, len(table.align))
+			for c, header := range table.rows[0] {
+				cells[c] = header
+				if len(table.rows) > 1 {
+					cells[c] += ": " + table.rows[1][c]
+				}
+			}
+			return ansi.Strip(p.Inline(strings.Join(cells, " · ")))
+		}
 		for _, line := range p.Markdown(text, 1<<16) {
 			if plain := strings.TrimSpace(strings.TrimPrefix(ansi.Strip(line), "│")); plain != "" {
 				return strings.TrimSpace(strings.TrimPrefix(plain, "• "))

@@ -128,6 +128,17 @@ the linked assignment excerpt below its timestamp on separate, wrapped quote row
 Each excerpt shows up to two content rows with an ellipsis when truncated;
 Activity retains the complete response.
 
+Authored Markdown tables render as compact bordered grids with emphasized headers,
+column alignment, inline styles and links, and wrapped cells rather than clipped
+source rows. Optional outer pipes, escaped pipes, and code spans are supported;
+recognition requires a complete matching header delimiter row. Fenced code stays
+literal, and blockquoted tables retain the quote rail. At widths too narrow for a
+readable grid, body rows become separated header/value records so all columns remain
+available. Record values and their wrapped continuations share a display-width-aware
+label column; when that column would take more than half the pane, all labels
+stack above their values. Rendering is derived from the current text and pane width, including
+streaming updates and restored messages.
+
 ### Agents roster and navigation
 
 The main agent and its children appear as a canonical-path tree in observation order, with each agent's
