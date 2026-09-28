@@ -156,7 +156,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			start = k
 		}
 		thread.followed = continues(k, k+1)
-		key := liveActivityRunKey{first: v.entries[it.first].Seq, last: v.entries[it.last].Seq, width: width, theme: v.painter.Theme, hover: -1, main: true, thread: thread}
+		key := liveActivityRunKey{first: v.entries[it.first].Seq, last: v.entries[it.last].Seq, width: width, theme: v.painter.Theme, hover: -1, main: true, thread: thread, excerpt: v.passed[v.entries[it.first].Seq]}
 		if it.lead >= 0 {
 			key.lead = v.entries[it.lead].Seq
 		}
@@ -180,6 +180,13 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			feed.questions = append(feed.questions, 0)
 		}
 		head := len(feed.lines)
+		// A sent message shrinking above a scrolled viewport keeps its rows still.
+		if full := key; !ok && key.excerpt && !v.following && head < v.offset {
+			full.excerpt = false
+			if shown, ok := v.runs[full]; ok {
+				v.offset -= len(shown.lines) - len(run.lines)
+			}
+		}
 		if entry := &v.entries[it.first]; entry.Agent == "Main" && entry.Kind == "text" && entry.journal == nil && strings.TrimSpace(entry.Text) != "" {
 			feed.mainReply = entry
 			feed.mainReplyStart, feed.mainReplyEnd = head, head+len(run.lines)
@@ -205,9 +212,22 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		feed.lines = append(feed.lines, run.lines...)
 		feed.snippets = append(feed.snippets, run.snippets...)
 		feed.questions = append(feed.questions, run.questions...)
+		if v.sentMessage(it.first) {
+			feed.sent = append(feed.sent, liveActivitySent{v.entries[it.first].Seq, len(feed.lines)})
+		}
 	}
 	v.runs = used
 	return feed
+}
+
+// sentMessage reports a spawn, follow-up or Main message with an Activity
+// entry, which becomes an excerpt once it has scrolled out of view.
+func (v *liveActivityView) sentMessage(index int) bool {
+	entry, blocks := v.entries[index], v.blocks[index]
+	if entry.activitySeq == 0 || len(blocks) == 0 {
+		return false
+	}
+	return blocks[0].Kind == "start" || entry.Kind == "assignment" || blocks[0].Kind == "message" && blocks[0].From == "/root"
 }
 
 // conversationLead reports Main reasoning or commentary, which heads the
@@ -562,7 +582,7 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 	if agent == "" {
 		agent = entry.Agent
 	}
-	reply := block.From != "/root" && block.Kind != "start"
+	reply := block.From != "/root" && block.Kind != "start" && entry.Kind != "assignment"
 	switch {
 	case block.Kind == "start":
 		glyph, detail = activityui.Green+"▶"+activityui.Reset, "started"
@@ -602,8 +622,9 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 	switch {
 	case block.Kind == "start" || block.Kind == "message":
 		switch {
-		case entry.activitySeq != 0 && block.From != "/root":
+		case entry.activitySeq != 0 && reply:
 			v.replyExcerpt(out, entry, block.Body, gutter, tail, body, limit)
+		case v.passed[entry.Seq] && v.sentExcerpt(out, entry, block, gutter, tail, body, limit):
 		case thread.followed:
 			v.collapsedItem(out, entry, p.Markdown(block.Body, body), gutter, body)
 		default:
@@ -709,9 +730,29 @@ func (v *liveActivityView) journalReplyContext(out *conversationLines, group act
 // replyExcerpt keeps up to limit rows of a reply above a link to the whole
 // reply in Activity, which counts the rows left out. tail leads the link row.
 func (v *liveActivityView) replyExcerpt(out *conversationLines, entry activityPaneEntry, text, gutter, tail string, width, limit int) {
-	rows, hidden := liveActivityExcerpt(v.painter.Markdown(text, width), width, limit)
+	v.linkedExcerpt(out, entry, "reply", v.painter.Markdown(text, width), gutter, tail, width, limit)
+}
+
+// sentExcerpt shortens a sent message that has scrolled out of view the way a
+// reply is shortened. It adds nothing and reports false when the excerpt would
+// omit nothing, since the link would then only add a row.
+func (v *liveActivityView) sentExcerpt(out *conversationLines, entry activityPaneEntry, block activityui.Block, gutter, tail string, width, limit int) bool {
+	rows := v.painter.Markdown(block.Body, width)
+	if _, hidden := liveActivityExcerpt(rows, width, limit); entry.activitySeq == 0 || hidden == 0 {
+		return false
+	}
+	noun := "message"
+	if block.Kind == "start" || entry.Kind == "assignment" {
+		noun = "assignment"
+	}
+	v.linkedExcerpt(out, entry, noun, rows, gutter, tail, width, limit)
+	return true
+}
+
+func (v *liveActivityView) linkedExcerpt(out *conversationLines, entry activityPaneEntry, noun string, rows []string, gutter, tail string, width, limit int) {
+	rows, hidden := liveActivityExcerpt(rows, width, limit)
 	out.hang(gutter, gutter, rows)
-	link := v.painter.Theme.Accent() + "↩ Open reply in Activity" + activityui.Reset
+	link := v.painter.Theme.Accent() + "↩ Open " + noun + " in Activity" + activityui.Reset
 	if hidden > 0 {
 		link += activityui.Dim + " · " + activityui.MoreLines(hidden) + activityui.Undim
 	}

@@ -502,7 +502,12 @@ longer excerpt; items the thread has moved past shrink to two rows. A reply's
 Activity link counts its omitted rows and closes the thread when nothing follows
 it. A shrunk assignment ends with a right-aligned count of its omitted rows;
 clicking it expands the assignment in place, and clicking again collapses it.
-An unanswered assignment stays in full.
+An unanswered assignment stays in full while in view. Once a spawn, follow-up
+or Main message has scrolled above the viewport, it becomes an excerpt in the
+reply format: the same row budget and a link (`↩ Open assignment in Activity`
+or `↩ Open message in Activity`) that counts the omitted rows and opens that
+exact entry. A message the excerpt would not shorten stays in full. Shrinking
+above a scrolled-up viewport does not move the visible rows.
 Transcript blockquotes use a vertical rail rather than literal `>` markers,
 including on wrapped continuation rows, and retain inline Markdown styling.
 Child answers link (`↩ re:`) to their retained assignment, not to a

@@ -67,6 +67,9 @@ type liveActivityView struct {
 	// hovered collapsed one.
 	expanded map[liveActivitySnippet]bool
 	snippet  liveActivitySnippet
+	// passed holds Main's sent messages that have scrolled above the viewport,
+	// which then show as excerpts linking to Activity.
+	passed map[uint64]bool
 
 	// Geometry of the last frame, used by scrolling keys and the pointer.
 	// feedSnippets holds each feed row's snippet, from screen row feedTop
@@ -135,6 +138,7 @@ type liveActivityRunKey struct {
 	thread      conversationThread // Main transcript thread placement.
 	lead        uint64             // Main item a transcript tool group continues, or 0.
 	flash       uint64             // Flashed Activity entry in this run, or 0.
+	excerpt     bool               // Main sent message shown as a linked excerpt.
 }
 
 func newLiveActivityView() *liveActivityView {
@@ -308,6 +312,11 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 		for snippet := range v.expanded {
 			if snippet.run < v.entries[0].Seq {
 				delete(v.expanded, snippet)
+			}
+		}
+		for seq := range v.passed {
+			if seq < v.entries[0].Seq {
+				delete(v.passed, seq)
 			}
 		}
 	}
@@ -1270,6 +1279,13 @@ type liveActivityFeed struct {
 	questions                    []uint64
 	mainReply                    *activityPaneEntry
 	mainReplyStart, mainReplyEnd int // Half-open rendered range, excluding inter-item gaps.
+	sent                         []liveActivitySent
+}
+
+// liveActivitySent is a Main sent message's entry and the feed row after it.
+type liveActivitySent struct {
+	seq uint64
+	end int
 }
 
 // renderFeed groups consecutive entries of one agent under a heading with a
@@ -1311,7 +1327,7 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 			}
 			last = j
 		}
-		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.Theme, -1, false, conversationThread{}, 0, 0}
+		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.Theme, -1, false, conversationThread{}, 0, 0, false}
 		if key.first <= flash && flash <= key.last {
 			key.flash = flash
 		}
@@ -1497,6 +1513,14 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 	v.feedLines, v.feedRows = len(feed.lines), rows
 	if v.following {
 		v.unseen = 0
+	}
+	for _, sent := range feed.sent {
+		if sent.end <= v.offset {
+			if v.passed == nil {
+				v.passed = make(map[uint64]bool)
+			}
+			v.passed[sent.seq] = true
+		}
 	}
 	lines := make([]string, rows)
 	v.feedSnippets = make([]liveActivitySnippet, rows)

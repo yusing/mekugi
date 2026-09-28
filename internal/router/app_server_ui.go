@@ -920,7 +920,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 		}
 		main = main || (entry.Kind == "final" || entry.Kind == "start") && entry.Agent != "/root"
 		if main {
-			if entry.Kind == "final" || entry.Kind == "reply" {
+			if entry.Kind == "final" || entry.Kind == "reply" || entry.assignment != nil {
 				entry.activitySeq = u.agents.entrySeq(paneEntries[i])
 			}
 			entry.Seq = u.view.lastSeq + 1
