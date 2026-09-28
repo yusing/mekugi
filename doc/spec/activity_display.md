@@ -164,7 +164,8 @@ pauses following so it stays put, and clicking it again clips it. Roster rows ar
 clickable: hovering highlights an agent; clicking it shows only that agent,
 and clicking it again restores the shared feed. In the roster, `↑`/`↓` or
 `k`/`j` move through all agents followed by each individual agent, stopping at
-either end. `o` toggles the filter. `n`/`Tab` and `p` also select agents. The roster mouse wheel
+either end. Main's activity belongs to Main, so Activity neither shows nor counts
+Main: roster navigation skips its row, and clicking it restores the shared feed. `o` toggles the filter. `n`/`Tab` and `p` also select agents. The roster mouse wheel
 scrolls its viewport without changing selection, filtering, or feed follow state.
 Hover underlines only the name; selection shades the row. Feed scrolling follows the same
 line/page/home/end/follow contract as the [live diff](changes.md#live-terminal-view).

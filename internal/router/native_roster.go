@@ -15,7 +15,7 @@ import (
 func (v *liveActivityView) nativeTitle() (string, string) {
 	detail := ""
 	if v.only {
-		rows := v.roster()
+		rows := v.feedAgents()
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
 		detail = v.painter.Agent(v.selected) + activityui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + activityui.Undim
 	}

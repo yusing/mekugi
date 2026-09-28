@@ -288,11 +288,23 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 
 // keepSelection falls back to the first agent when the selection is unknown.
 func (v *liveActivityView) keepSelection() {
-	if v.selected == "" || !slices.ContainsFunc(v.agents, func(a activityPaneAgent) bool { return a.Name == v.selected }) {
-		if rows := v.roster(); len(rows) > 0 {
+	rows := v.feedAgents()
+	if v.selected == "" || !slices.ContainsFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected }) {
+		v.selected = ""
+		if len(rows) > 0 {
 			v.selected = rows[0].agent.Name
 		}
 	}
+}
+
+// feedAgents are the roster rows the feed can filter to. Native Activity
+// never shows Main's entries, so it neither counts nor selects Main.
+func (v *liveActivityView) feedAgents() []liveActivityRosterRow {
+	rows := v.roster()
+	if v.childrenOnly {
+		rows = slices.DeleteFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == "/root" })
+	}
+	return rows
 }
 
 func (v *liveActivityView) visible(entry activityPaneEntry) bool {
@@ -399,7 +411,7 @@ func (v *liveActivityView) statusCounts(rows []liveActivityRosterRow) (respondin
 }
 
 func (v *liveActivityView) selectAgent(step int) {
-	rows := v.roster()
+	rows := v.feedAgents()
 	if len(rows) == 0 {
 		return
 	}
@@ -539,8 +551,13 @@ func (v *liveActivityView) pointAgent(action byte, row, column int) bool {
 		if hit.row == row && column >= hit.first && column <= hit.last {
 			v.hovered = hit.agent
 			if action == '\r' {
-				v.only = !v.only || v.selected != hit.agent
-				v.selected = hit.agent
+				if v.childrenOnly && hit.agent == "/root" {
+					// Main's activity lives in Main; picking it shows every child.
+					v.only = false
+				} else {
+					v.only = !v.only || v.selected != hit.agent
+					v.selected = hit.agent
+				}
 				v.rosterManual = false
 				v.hovered = ""
 				v.follow()
@@ -724,6 +741,7 @@ func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int,
 func (v *liveActivityView) activityHeader(rows []liveActivityRosterRow, width int) string {
 	left := "\x1b[1m" + v.painter.Theme.Accent() + "Activity" + activityui.Reset
 	if v.only {
+		rows = v.feedAgents()
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
 		left += activityui.Dim + " · only " + activityui.Undim + v.painter.Agent(v.selected) + activityui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + activityui.Undim
 	}
@@ -1496,7 +1514,7 @@ func liveActivityMiddle(name string, width int) string {
 
 // showAgent keeps the original roster navigation: all agents precedes the list.
 func (v *liveActivityView) showAgent(step int) {
-	rows := v.roster()
+	rows := v.feedAgents()
 	if len(rows) == 0 {
 		return
 	}

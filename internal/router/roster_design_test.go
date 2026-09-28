@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -234,5 +235,41 @@ func TestRosterDesignScrolledTreeCardsAndSelection(t *testing.T) {
 	v.selectAgent(1)
 	if v.only {
 		t.Error("selecting an agent enabled the feed filter")
+	}
+}
+
+func TestNativeActivitySkipsMainInNavigationAndCounts(t *testing.T) {
+	v := newLiveActivityView()
+	v.childrenOnly = true
+	v.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{{Name: "/root"}, {Name: "/root/a"}, {Name: "/root/b"}}})
+	if v.selected != "/root/a" {
+		t.Fatalf("default selection = %q, want the first child", v.selected)
+	}
+	var picks []string
+	for range 4 {
+		v.showAgent(1)
+		picks = append(picks, v.selected)
+	}
+	if !slices.Equal(picks, []string{"/root/a", "/root/b", "/root/b", "/root/b"}) {
+		t.Fatalf("roster navigation picks = %q, want children only", picks)
+	}
+	if detail, _ := v.nativeTitle(); !strings.Contains(ansi.Strip(detail), "b 2/2") {
+		t.Fatalf("Activity title counted Main: %q", ansi.Strip(detail))
+	}
+	for range 3 {
+		v.showAgent(-1)
+	}
+	if v.only || v.selected != "/root/a" {
+		t.Fatalf("stepping back reached %q (only=%v), want the unfiltered feed", v.selected, v.only)
+	}
+	v.selectAgent(-1)
+	if v.selected != "/root/b" {
+		t.Fatalf("n/p selection wrapped to %q, want the last child", v.selected)
+	}
+	v.hits = []liveActivityHit{{row: 1, first: 1, last: 10, agent: "/root"}}
+	v.only = true
+	v.pointAgent('\r', 1, 1)
+	if v.only || v.selected != "/root/b" {
+		t.Fatalf("clicking Main filtered Activity to %q (only=%v)", v.selected, v.only)
 	}
 }
