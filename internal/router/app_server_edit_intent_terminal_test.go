@@ -67,6 +67,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	command := "cat >> a.go <<'EOF'\nPRIVATE_CAT_BODY\nEOF\npython3 - <<'PY'\np='b.go';open(p,'w').write('PRIVATE_PY_BODY')\nPY\ngo test ./internal/router"
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "cmd", "type": "commandExecution", "command": command, "status": "inProgress"}})
+	finishPacing(u.view, u.agents)
 	if err := u.paint(slave, width, height); err != nil {
 		t.Fatal(err)
 	}

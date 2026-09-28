@@ -500,3 +500,43 @@ func TestLiveActivityMainSymbolicReadPaths(t *testing.T) {
 		})
 	}
 }
+
+func TestAppServerPacesBatchedOperations(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	item := map[string]any{"id": "batch", "type": "commandExecution", "command": "ls; rg needle; cat a.go", "commandActions": []map[string]any{
+		{"type": "listFiles", "path": "."}, {"type": "search", "query": "needle"}, {"type": "read", "path": "a.go"}}}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	frame := func() string { return ansi.Strip(strings.Join(u.view.render(100, 20, time.Now()), "\n")) }
+	if got := frame(); !strings.Contains(got, "List") || strings.Contains(got, "needle") || strings.Contains(got, "a.go") {
+		t.Fatalf("batch did not start with its first operation:\n%s", got)
+	}
+	now := time.Now()
+	if u.view.pace(now) {
+		t.Fatal("paced before the step elapsed")
+	}
+	if !u.view.pace(now.Add(liveActivityPaceStep)) {
+		t.Fatal("second operation did not reveal after one step")
+	}
+	if got := frame(); !strings.Contains(got, "needle") || strings.Contains(got, "a.go") {
+		t.Fatalf("second step revealed the wrong operations:\n%s", got)
+	}
+	u.view.pace(now.Add(3 * liveActivityPaceStep))
+	if got := frame(); !strings.Contains(got, "a.go") || len(u.view.paced) != 0 {
+		t.Fatalf("batch did not finish revealing (paced=%v):\n%s", u.view.paced, got)
+	}
+
+	// Restored history shows at once.
+	restored := newLiveActivityView()
+	restored.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "List `.`\n\nSearch `needle`",
+		native: &liveActivityNativeItem{thread: "main", turn: "t", item: "old", phase: "item/completed"}}}})
+	if len(restored.paced) != 0 {
+		t.Fatal("restored history was paced")
+	}
+}
+
+// finishPacing reveals every paced operation, as frames eventually do.
+func finishPacing(views ...*liveActivityView) {
+	for _, view := range views {
+		view.pace(time.Now().Add(time.Hour))
+	}
+}

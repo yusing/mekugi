@@ -19,6 +19,9 @@ const (
 	liveActivityFeedLimit = 2000
 	// Panes at least this wide place agent cards beside the feed.
 	liveActivitySideColumns = 100
+	// Operations one live invocation reports together, such as a shell
+	// call's Skill, Read and Search, appear this far apart.
+	liveActivityPaceStep = 80 * time.Millisecond
 )
 
 // Main and Activity each own one of these views, sharing the renderer. Entries carry
@@ -51,6 +54,8 @@ type liveActivityView struct {
 	painter        activityui.Painter
 	osc            livediff.OSC
 	runs           map[liveActivityRunKey]liveActivityRun
+	paced          map[uint64]liveActivityPace // Live invocations still revealing their operations, by entry.
+	pacedSeq       uint64                      // Entries up to this sequence have been considered for pacing.
 
 	// expanded snippets show in full in the shared feed; snippet is the
 	// hovered collapsed one.
@@ -91,6 +96,12 @@ type liveActivityRun struct {
 	snippets  []liveActivitySnippet // Aligned with lines.
 	questions []uint64              // Clickable question targets, aligned with lines.
 	entryRows map[uint64]int        // Exact Activity entry starts within a grouped run.
+}
+
+// liveActivityPace reveals a live invocation's operations one at a time.
+type liveActivityPace struct {
+	shown int
+	next  time.Time
 }
 
 type liveActivityRosterRow struct {
@@ -282,8 +293,57 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			}
 		}
 	}
+	v.trackPace(time.Now())
 	v.keepSelection()
 	return false
+}
+
+// trackPace starts pacing new live invocations that report several
+// operations at once. Restored history and in-place updates show at once.
+func (v *liveActivityView) trackPace(now time.Time) {
+	for i := len(v.entries) - 1; i >= 0 && v.entries[i].Seq > v.pacedSeq; i-- {
+		entry := v.entries[i]
+		if entry.Kind != "tool" || entry.native == nil || !entry.native.live || len(v.blocks[i]) < 2 {
+			continue
+		}
+		if v.paced == nil {
+			v.paced = make(map[uint64]liveActivityPace)
+		}
+		v.paced[entry.Seq] = liveActivityPace{shown: 1, next: now.Add(liveActivityPaceStep)}
+	}
+	v.pacedSeq = max(v.pacedSeq, v.lastSeq)
+}
+
+// pace reveals the next operation of each paced invocation that is due.
+func (v *liveActivityView) pace(now time.Time) bool {
+	changed := false
+	for seq, pace := range v.paced {
+		i := slices.IndexFunc(v.entries, func(entry activityPaneEntry) bool { return entry.Seq == seq })
+		if i >= 0 && now.Before(pace.next) {
+			continue
+		}
+		// A late frame catches up on every step that fell due.
+		for i >= 0 && pace.shown < len(v.blocks[i]) && !now.Before(pace.next) {
+			pace.shown, pace.next, changed = pace.shown+1, pace.next.Add(liveActivityPaceStep), true
+		}
+		if i < 0 || pace.shown >= len(v.blocks[i]) {
+			delete(v.paced, seq)
+		} else {
+			v.paced[seq] = pace
+		}
+	}
+	if changed {
+		v.runs = nil
+	}
+	return changed
+}
+
+// shownBlocks is an entry's blocks as far as its pace has revealed them.
+func (v *liveActivityView) shownBlocks(i int) []activityui.Block {
+	if pace, ok := v.paced[v.entries[i].Seq]; ok && pace.shown < len(v.blocks[i]) {
+		return v.blocks[i][:pace.shown]
+	}
+	return v.blocks[i]
 }
 
 // keepSelection falls back to the first agent when the selection is unknown.
@@ -771,7 +831,7 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (stri
 		}
 	}
 	for i, v0 := range slices.Backward(source.entries) {
-		blocks := source.blocks[i]
+		blocks := source.shownBlocks(i)
 		if len(blocks) == 0 {
 			continue
 		}
@@ -1232,7 +1292,7 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 			var blocks []activityui.Block
 			for k := i; k <= last; k++ {
 				if v.visible(v.entries[k]) {
-					for _, block := range v.blocks[k] {
+					for _, block := range v.shownBlocks(k) {
 						block.Source = v.entries[k].Seq
 						block.Flash = block.Source == key.flash
 						blocks = append(blocks, block)

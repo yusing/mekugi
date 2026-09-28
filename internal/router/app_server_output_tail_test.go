@@ -215,6 +215,7 @@ func TestAppServerMixedCommandOutputFollowsFinalRead(t *testing.T) {
 				}
 			}
 			notify("item/started", map[string]any{"item": item})
+			finishPacing(u.view)
 			notify("item/commandExecution/outputDelta", map[string]any{"itemId": "mixed", "delta": "first\nsecond\n"})
 			u.flushCommandOutput()
 			check("┆ second")

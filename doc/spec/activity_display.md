@@ -55,7 +55,10 @@ within a call and across calls. Reads join ranges of the same file; Inspect,
 List, Search, and other target-only actions use the same grouping. A group that
 does not fit on one row puts each target on its own row, without separators;
 Search targets use the same path emphasis as reads. Different
-actions and detail-bearing operations remain distinct. Child text is sanitized before layout, so it cannot emit terminal
+actions and detail-bearing operations remain distinct. When one live invocation
+reports several operations at once, such as a shell call classified as Skill,
+Read and Search, they appear one at a time, 80 ms apart, in Main, Activity and the
+roster summary; restored history shows at once. Child text is sanitized before layout, so it cannot emit terminal
 controls. Local absolute-path Markdown links show their label as a terminal
 hyperlink rather than exposing the raw destination syntax. A completed child
 compaction appears as an event in the feed and as the agent's latest roster

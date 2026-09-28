@@ -279,6 +279,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 							if view.settle(time.Now()) {
 								u.dirty = true
 							}
+							if view.pace(time.Now()) {
+								u.dirty = true
+							}
 						}
 						if u.sessionAnimating() || u.shell.activityOpen && u.agents.hasLiveReasoning() {
 							u.dirty = true

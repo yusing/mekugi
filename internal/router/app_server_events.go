@@ -284,7 +284,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		item := p.Item
 		id := cmp.Or(p.ItemID, item.ID)
 		item = u.waitItem(item, p.ThreadID, p.TurnID, id, m.Method == "item/started")
-		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method}
+		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method, live: true}
 		agent := s.path(p.ThreadID)
 		if text, wait, handled := appServerProgress(item, m.Method); handled {
 			if text != "" {

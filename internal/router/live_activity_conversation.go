@@ -361,7 +361,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		var group []activityui.Block
 		for k := first; k <= last; k++ {
 			if v.visible(v.entries[k]) {
-				for _, block := range v.blocks[k] {
+				for _, block := range v.shownBlocks(k) {
 					block.Source = v.entries[k].Seq
 					group = append(group, block)
 				}

@@ -131,6 +131,7 @@ type liveActivityNativeItem struct {
 	command, status    string
 	searchResults      *int
 	running            bool                  // Started live and not yet completed; replay never sets it.
+	live               bool                  // From a live notification; restored history never sets it.
 	collapseAt         time.Time             // A settled live block stays open until then.
 	collapsed          bool                  // A settled block shows collapsed: after its linger, or restored.
 	spans              []activityui.TextSpan // Attachment spans, not text resembling image labels.
