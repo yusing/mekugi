@@ -402,18 +402,26 @@ func (p *Painter) program(lang, source string, width int) []string {
 }
 
 // fenced sets authored code on a padded fill so it cannot be mistaken for a
-// quote. Without a known background it is indented instead of guessing a fill.
+// quote. An undetected theme (as behind mosh, which answers no OSC 11 query)
+// gets a self-contained dark block: highlighting already assumes dark, and an
+// explicit foreground keeps plain text readable on either terminal theme.
 func (p *Painter) fenced(lang, source string, width int) []string {
-	fill := p.codeBackground()
+	fill, ink := p.codeBackground(), ""
+	if fill == "" {
+		fill, ink = "\x1b[48;2;32;35;40m", "\x1b[38;2;230;237;243m"
+	}
 	var lines []string
 	for _, line := range p.Highlight(lang, source) {
 		for _, part := range Wrap(line, width-2, true) {
-			if fill == "" {
-				lines = append(lines, "  "+part)
-				continue
+			if ink != "" {
+				part = strings.ReplaceAll(part, "\x1b[39m", ink)
 			}
 			pad := strings.Repeat(" ", max(0, width-1-ansi.StringWidth(part)))
-			lines = append(lines, fill+" "+strings.ReplaceAll(part, Reset, Reset+fill)+pad+"\x1b[49m")
+			row := fill + ink + " " + strings.ReplaceAll(part, Reset, Reset+fill+ink) + pad + "\x1b[49m"
+			if ink != "" {
+				row += "\x1b[39m"
+			}
+			lines = append(lines, row)
 		}
 	}
 	return lines

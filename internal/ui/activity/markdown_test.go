@@ -20,8 +20,8 @@ func TestLiveActivityMarkdownQuotes(t *testing.T) {
 		{"blank", "> one\n>\n> two", []string{"▎ one", "▎ ", "▎ two"}},
 		{"empty", ">", []string{"▎ "}},
 		{"list", "> - first\n> - second", []string{"▎ • first", "▎ • second"}},
-		{"quoted code", "> ```text\n> > literal\n> ```", []string{"▎   > literal"}},
-		{"code unchanged", "```text\n> literal\n```", []string{"  > literal"}},
+		{"quoted code", "> ```text\n> > literal\n> ```", []string{"▎  > literal" + strings.Repeat(" ", 28)}},
+		{"code unchanged", "```text\n> literal\n```", []string{" > literal" + strings.Repeat(" ", 30)}},
 		{"inline unchanged", "value > threshold", []string{"value > threshold"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -49,6 +49,7 @@ func TestLiveActivityMarkdownQuotes(t *testing.T) {
 
 func TestLiveActivityMarkdownCodeFill(t *testing.T) {
 	for _, p := range []activityui.Painter{
+		{}, // Undetected theme, as behind mosh.
 		{Theme: livediff.DarkTheme},
 		{Theme: livediff.LightTheme},
 		{Theme: livediff.DarkTheme, Colors: activityui.Colors{Background: livediff.RGB{R: 40, G: 44, B: 52}, HasBackground: true}},
@@ -69,6 +70,14 @@ func TestLiveActivityMarkdownCodeFill(t *testing.T) {
 	}
 	if got := (&activityui.Painter{Colors: activityui.Colors{Background: livediff.RGB{R: 40, G: 44, B: 52}, HasBackground: true}, Theme: livediff.DarkTheme}).Markdown("```\nx\n```", 8)[0]; !strings.HasPrefix(got, "\x1b[48;2;55;59;66m") {
 		t.Fatalf("fill does not follow the reported background: %q", got)
+	}
+	// Without a detected theme the block carries its own foreground, so plain
+	// text stays readable on the dark fill in a light terminal.
+	const ink = "\x1b[38;2;230;237;243m"
+	for _, row := range (&activityui.Painter{}).Markdown("```go\nfmt.Println(x)\n```", 30) {
+		if !strings.HasPrefix(row, "\x1b[48;2;32;35;40m"+ink) || strings.Contains(strings.TrimSuffix(row, "\x1b[39m"), "\x1b[39m") || !strings.HasSuffix(row, "\x1b[49m\x1b[39m") {
+			t.Fatalf("undetected theme code row lost its fill or foreground: %q", row)
+		}
 	}
 }
 
