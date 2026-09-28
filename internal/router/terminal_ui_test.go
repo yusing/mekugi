@@ -13,24 +13,37 @@ import (
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
 
-func TestTerminalUIDockLingersAfterLastAnimation(t *testing.T) {
+func TestTerminalUIDockKeepsMinimumDisplayTime(t *testing.T) {
 	u := &terminalUI{}
 	now := time.Now()
 	u.liveDock = diffview.PreviewPane{
 		Order: []string{"edit"}, Motion: diffview.PreviewMotion{Enabled: true},
 		Views: map[string]*diffview.PreviewView{"edit": {Complete: true, Fading: now.Add(time.Second)}},
 	}
-	u.dockSeen = now.Add(-nativeDockLinger)
+	u.dockShown = now
 	if !u.animating(now) || len(u.liveDock.Order) == 0 {
 		t.Fatal("animated completed preview disappeared")
 	}
+	// A quick edit that settles early stays for the minimum time.
 	u.animating(now.Add(time.Second))
 	if len(u.liveDock.Order) == 0 {
-		t.Fatal("preview closed immediately after animation")
+		t.Fatal("quick edit closed before its minimum display time")
 	}
-	u.animating(now.Add(nativeDockLinger))
+	u.animating(now.Add(nativeDockMinimum))
 	if len(u.liveDock.Order) != 0 {
-		t.Fatal("finished preview did not expire")
+		t.Fatal("finished preview did not close at its minimum display time")
+	}
+	// A long edit closes as soon as its animation settles, without lingering.
+	u.liveDock = diffview.PreviewPane{
+		Order: []string{"edit"}, Motion: diffview.PreviewMotion{Enabled: true},
+		Views: map[string]*diffview.PreviewView{"edit": {Complete: true, Fading: now.Add(5 * time.Second)}},
+	}
+	if !u.animating(now.Add(4*time.Second)) || len(u.liveDock.Order) == 0 {
+		t.Fatal("animating preview closed")
+	}
+	u.animating(now.Add(5 * time.Second))
+	if len(u.liveDock.Order) != 0 {
+		t.Fatal("settled long edit lingered past its minimum display time")
 	}
 }
 
@@ -226,12 +239,12 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					preview = projectStockPatchPreview(t.Context(), preview.Workspace, preview)
 					u.shell.preview(preview)
 					now := time.Now()
-					u.shell.animating(now.Add(nativeDockLinger - time.Millisecond))
+					u.shell.animating(now.Add(nativeDockMinimum - time.Millisecond))
 					paint()
 					if !strings.Contains(screen.String(), "LIVE ·") {
-						t.Fatal("Live disappeared before its linger elapsed")
+						t.Fatal("Live disappeared before its minimum display time")
 					}
-					u.shell.animating(now.Add(nativeDockLinger))
+					u.shell.animating(now.Add(nativeDockMinimum))
 					assertCollapsed()
 					preview.Complete = false
 					u.shell.preview(preview)

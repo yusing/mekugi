@@ -159,7 +159,9 @@ Main's edits stay above Main's composer and never replace or shrink Activity.
 While Main has a card, concurrent child edits share that dock. A child-only dock
 occupies the top 35% of the right pane, leaving Activity or saved Diff below it.
 When only Main fits on screen, the shared dock sits above its composer.
-Cards linger for two seconds after the last card's animation settles. When no
+A new card shows for at least 1.5 seconds, so a quick, small edit does not flash;
+once the last card's animation settles after that, the dock closes without
+lingering. When no
 cards remain, Activity or Diff reclaims the space. Shell or Code Mode projections
 first received at completion do not open a transient dock; captured effects
 remain in their receipt and saved diff. Concurrent edits use one accordion.

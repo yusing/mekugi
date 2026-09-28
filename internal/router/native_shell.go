@@ -21,7 +21,7 @@ const (
 	nativeDockShare   = 0.3
 	nativeDockMin     = 5
 	nativeDockMax     = 14
-	nativeDockLinger  = 2 * time.Second // A finished dock stays readable this long.
+	nativeDockMinimum = 1500 * time.Millisecond // A new card shows at least this long, so small edits do not flash.
 	nativeRosterRows  = 4               // Unfocused roster rows.
 	nativeRosterShare = 0.4             // Focused roster share of the screen.
 	nativeFramedRows  = 8               // Below this, panes drop their frames.
@@ -60,8 +60,11 @@ func (u *terminalUI) preview(preview diffview.Preview) {
 	if preview.Complete && (preview.Tool == nativeExecCommandToolName || preview.Tool == "exec") && dock.Views[preview.ID] == nil {
 		return
 	}
+	added := dock.Views[preview.ID] == nil
 	dock.Update(preview)
-	u.dockSeen = time.Now()
+	if added && dock.Views[preview.ID] != nil {
+		u.dockShown = time.Now()
+	}
 }
 
 // applyNativeDiff sends saved changes to the diff pane and live edit cards to
@@ -95,17 +98,17 @@ func (u *terminalUI) applyNativeDiff(ctx context.Context, event liveDiffEvent) {
 }
 
 // animating reports whether a dock needs another frame: a call is still
-// arriving, a row is fading in, or a finished dock is due to close.
+// arriving, a row is fading in, or a finished dock is due to close. A settled
+// dock closes as soon as its newest card has shown for the minimum time.
 func (u *terminalUI) animating(now time.Time) bool {
 	dock := &u.liveDock
 	if len(dock.Order) == 0 {
 		return false
 	}
 	if dock.Live() > 0 || dock.Animating(now) {
-		u.dockSeen = now
 		return true
 	}
-	if now.Sub(u.dockSeen) >= nativeDockLinger {
+	if now.Sub(u.dockShown) >= nativeDockMinimum {
 		*dock = diffview.PreviewPane{}
 		return true
 	}
