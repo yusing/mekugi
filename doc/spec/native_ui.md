@@ -249,7 +249,8 @@ reports the first omission. Each submitted user item shows file outcomes before
 agent activity: an `Attached` operation per included file, or `Attach failed`
 with the file and omission reason. Chunked files appear once. These operations
 render paths without surrounding quotes, using the existing shared path formatting
-(subdued directories and emphasized filename), not transport-envelope syntax. They
+(workspace-relative paths, subdued directories and emphasized filename), not
+transport-envelope syntax. Paths outside the owning workspace stay absolute. They
 are restored from submitted snapshots on resume, without reopening files or
 displaying their contents; rejected submissions do not claim attachment success.
 A stacked submission with attachments must fit a conservative

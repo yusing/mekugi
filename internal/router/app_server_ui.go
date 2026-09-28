@@ -608,7 +608,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				return nil
 			}
 		}
-		u.view.applyAppServerItem(u.thread, p.ThreadID, p.TurnID, p.ItemID, m.Method, p.Delta, p.Item)
+		u.view.applyAppServerItem(u.session.cwd, u.thread, p.ThreadID, p.TurnID, p.ItemID, m.Method, p.Delta, p.Item)
 	}
 	return nil
 }

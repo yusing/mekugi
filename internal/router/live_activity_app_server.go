@@ -152,7 +152,7 @@ func (v *liveActivityView) entrySeq(entry activityPaneEntry) uint64 {
 	return 0
 }
 
-func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, delta string, item appServerItem) {
+func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, method, delta string, item appServerItem) {
 	if item.Delivery == "async" && len(item.Questions) > 0 {
 		return
 	}
@@ -203,7 +203,11 @@ func (v *liveActivityView) applyAppServerItem(main, thread, turn, id, method, de
 	}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	if item.Type == "userMessage" {
-		if blocks := appServerAttachmentBlocks(item.Content); len(blocks) > 0 {
+		workspace := ""
+		if thread == main {
+			workspace = cwd
+		}
+		if blocks := appServerAttachmentBlocks(workspace, item.Content); len(blocks) > 0 {
 			if thread == main {
 				entry.Agent = "Main"
 			} else {

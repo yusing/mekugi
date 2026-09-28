@@ -153,7 +153,7 @@ func (u *appServerUI) restoreHistory(turns []appServerHistoryTurn) {
 					u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{exit}})
 				}
 			default:
-				u.view.applyAppServerItem(u.thread, u.thread, turn.ID, item.ID, method, "", item)
+				u.view.applyAppServerItem(u.session.cwd, u.thread, u.thread, turn.ID, item.ID, method, "", item)
 			}
 		}
 		if turn.Status == "inProgress" {

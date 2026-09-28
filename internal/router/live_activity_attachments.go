@@ -7,12 +7,13 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // Derive receipts from the submitted envelope, never from current filesystem
 // state or file-body text. The same host user item supplies live and replay UI.
-func appServerAttachmentBlocks(content jsontext.Value) []activityui.Block {
+func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.Block {
 	var parts []struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
@@ -58,7 +59,7 @@ func appServerAttachmentBlocks(content jsontext.Value) []activityui.Block {
 			key := verb + "\x00" + path + "\x00" + label
 			if !seen[key] {
 				seen[key] = true
-				blocks = append(blocks, activityui.Block{Kind: "op", Verb: verb, Path: path, Label: livediff.Safe(label, false)})
+				blocks = append(blocks, activityui.Block{Kind: "op", Verb: verb, Path: pathdisplay.ForWorkspace(cwd, path), Label: livediff.Safe(label, false)})
 			}
 		}
 	}

@@ -38,6 +38,10 @@ The linked contracts own interface details, exceptions, and acceptance cases.
   column widths only from currently visible rows. Off-screen items must not
   change alignment, truncation, or description visibility.
 - **Visible states:** No labels for no state / unknown.
+- **Display paths:** Reuse existing shared path formatting for user-visible paths,
+  including attachment receipts. Shorten paths within the owning workspace using
+  `internal/pathdisplay.ForWorkspace`; preserve paths outside it and keep literal
+  filesystem paths unchanged for operations. Use the shared UI path styling.
 - **Rich UI**: Implement proper UI, no text dump. Propose one to user when they
   did not specify what thinks should look like AND codex has no counterpart to 
   reference from.

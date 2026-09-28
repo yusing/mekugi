@@ -54,9 +54,9 @@ func TestNativeMainReplyPinLifecycle(t *testing.T) {
 func TestNativeMainReplyPinBoundsAndSelection(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.turn = "t"
-	u.view.applyAppServerItem("main", "main", "t", "reply", "item/completed", "", appServerItem{Type: "agentMessage", Text: strings.Repeat("Long reply content.\n", 40)})
+	u.view.applyAppServerItem("", "main", "main", "t", "reply", "item/completed", "", appServerItem{Type: "agentMessage", Text: strings.Repeat("Long reply content.\n", 40)})
 	for i := range 30 {
-		u.view.applyAppServerItem("main", "main", "t", fmt.Sprint(i), "item/completed", "", appServerItem{Type: "commandExecution", Command: fmt.Sprint("echo activity-", i)})
+		u.view.applyAppServerItem("", "main", "main", "t", fmt.Sprint(i), "item/completed", "", appServerItem{Type: "commandExecution", Command: fmt.Sprint("echo activity-", i)})
 	}
 	for _, size := range [][2]int{{80, 24}, {24, 12}, {12, 6}} {
 		frame, _ := u.mainFrame(size[0], size[1], 0)
@@ -88,11 +88,11 @@ func TestNativeMainReplyPinViewportTransitions(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.turn = "t"
 	for i := range 10 {
-		u.view.applyAppServerItem("main", "main", "t", fmt.Sprint(i), "item/completed", "", appServerItem{Type: "commandExecution", Command: fmt.Sprint("echo before-", i)})
+		u.view.applyAppServerItem("", "main", "main", "t", fmt.Sprint(i), "item/completed", "", appServerItem{Type: "commandExecution", Command: fmt.Sprint("echo before-", i)})
 	}
-	u.view.applyAppServerItem("main", "main", "t", "reply", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Unique reply body.\nSecond reply line."})
+	u.view.applyAppServerItem("", "main", "main", "t", "reply", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Unique reply body.\nSecond reply line."})
 	for i := range 30 {
-		u.view.applyAppServerItem("main", "main", "t", fmt.Sprint("after-", i), "item/completed", "", appServerItem{Type: "commandExecution", Command: fmt.Sprint("echo after-", i)})
+		u.view.applyAppServerItem("", "main", "main", "t", fmt.Sprint("after-", i), "item/completed", "", appServerItem{Type: "commandExecution", Command: fmt.Sprint("echo after-", i)})
 	}
 	feed := u.view.renderConversation(79)
 	u.view.following = false
