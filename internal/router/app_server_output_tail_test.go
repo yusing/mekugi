@@ -353,3 +353,31 @@ func TestAppServerOutputCollapsesTogetherAfterEventsPause(t *testing.T) {
 		t.Fatalf("only the output with a later event should collapse:\n%s", got)
 	}
 }
+
+func TestAppServerMainClipsLongCommandSourceUntilOpened(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.conversation = true
+	command := "python3 - <<'PY'\n" + strings.Repeat("print('row')\n", 30) + "PY"
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+		"id": "cmd", "type": "commandExecution", "command": command, "status": "failed", "exitCode": 1, "aggregatedOutput": "boom\n"}})
+	render := func() liveActivityFeed { return u.view.renderFeed(90, 60) }
+	feed := render()
+	got := ansi.Strip(strings.Join(feed.lines, "\n"))
+	if strings.Count(got, "print('row')") != conversationSourceRows-1 || !strings.Contains(got, "│ … +") ||
+		!strings.Contains(got, "exit 1") || !strings.Contains(got, "┆ boom") {
+		t.Fatalf("long command source is not bounded with its exit and output:\n%s", got)
+	}
+	index := slices.IndexFunc(feed.lines, func(line string) bool { return strings.Contains(ansi.Strip(line), "│ … +") })
+	snippet := feed.snippets[index]
+	if snippet == (liveActivitySnippet{}) {
+		t.Fatalf("clipped source has no toggle: %v", feed.snippets)
+	}
+	u.view.toggleSnippet(snippet)
+	if got := ansi.Strip(strings.Join(render().lines, "\n")); strings.Count(got, "print('row')") != 30 || strings.Contains(got, "│ … +") {
+		t.Fatalf("opened source is not whole:\n%s", got)
+	}
+	u.view.toggleSnippet(snippet)
+	if got := ansi.Strip(strings.Join(render().lines, "\n")); !strings.Contains(got, "│ … +") {
+		t.Fatalf("source did not clip again:\n%s", got)
+	}
+}

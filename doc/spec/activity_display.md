@@ -73,7 +73,10 @@ statement after `;`, `&&`, or `||` starts a row aligned with the first, and a
 statement that is still too wide breaks at unquoted blanks with a muted ` \`
 shell continuation, or after a pipe, two columns deeper; a word wider than the
 row is cut without one. Fenced multiline `Run` previews sit beside the verb with
-the code gutter. `Run JavaScript` Code Mode previews always place source beneath
+the code gutter. In Main a command or program preview keeps at most eight wrapped rows, the
+last a muted `… +N lines` count (under the code gutter for a program), so a one-line
+command that wraps is bounded too; a click opens the whole source and any collapsed
+output, and another closes both. Tabs in previews expand to four spaces. `Run JavaScript` Code Mode previews always place source beneath
 the heading with the same code gutter, whether the source has one line or many.
 A confirmed nonzero command exit makes the verb red and adds `· exit N` after
 the command, or on its own row when it does not fit or follows a multiline
@@ -114,7 +117,8 @@ with two spaces after the envelope because many fonts draw it wider than its cel
 relative to the entry's agent. Peers use `main` or the child display name; the owning
 agent is not repeated. The message body gutter retains the sender's color. Start
 blocks indent the assignment beneath `Started` without a `Spawn assignment:` label. Other final answers remain
-authored Markdown. Main completion previews retain the response excerpt and show
+authored Markdown. Blank lines opening or closing a message, as some providers stream,
+add no rows. Main completion previews retain the response excerpt and show
 the linked assignment excerpt below its timestamp on separate, wrapped quote rows.
 Each excerpt shows up to two content rows with an ellipsis when truncated;
 Activity retains the complete response.

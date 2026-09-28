@@ -176,7 +176,7 @@ func (a *subagentActivity) syncPaneRoles(parent string, roles map[string]journal
 }
 
 func nativeObservedActivity(kind string) bool {
-	return kind == "output_filter" || kind == "reply" || kind == "start" || kind == "assignment"
+	return kind == "output_filter" || kind == "error" || kind == "reply" || kind == "start" || kind == "assignment"
 }
 
 // takeNativeActivity drains router-owned annotations and authenticated input

@@ -390,3 +390,53 @@ func TestAlignVerbsPadsOnlyToAdjacentVerbs(t *testing.T) {
 		t.Fatalf("rows = %q, want %q", got, want)
 	}
 }
+
+func TestRanRowBoundsSourceRows(t *testing.T) {
+	p := activityui.Painter{}
+	// A python3 -c program built with JSON.stringify: one line of literal \n escapes.
+	oneLine := "python3 -c " + strings.Repeat(`"import json\nfrom pathlib import Path\nprint(1)\n" `, 20)
+	program := strings.Repeat("print('row')\n", 30) + "print('last')"
+	for _, tc := range []struct {
+		name  string
+		block activityui.Block
+		hint  string
+	}{
+		{"one line", activityui.Block{Kind: "op", Verb: "Run", Code: oneLine, Lang: "bash", Fenced: true, ExitCode: 1, Tail: []string{"SyntaxError"}}, "       … +"},
+		{"program", activityui.Block{Kind: "op", Verb: "Run", Code: program, Lang: "python", Fenced: true}, "       │ … +"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			whole := plainLines(p.Block(tc.block, 60))
+			tc.block.SourceRows = 8
+			plain := plainLines(p.Block(tc.block, 60))
+			source := plain
+			if tc.block.ExitCode != 0 {
+				// The exit follows the hint; the failure output follows the source.
+				source = plain[:len(plain)-1]
+				if !strings.HasSuffix(source[len(source)-1], "· exit 1") || !strings.HasSuffix(plain[len(plain)-1], "SyntaxError") {
+					t.Fatalf("exit or output lost after clipping: %q", plain)
+				}
+			}
+			if len(source) != 8 || !strings.HasPrefix(source[7], tc.hint) {
+				t.Fatalf("clipped rows = %q", plain)
+			}
+			omitted := len(whole) - len(plain) + 1
+			if !strings.Contains(source[7], activityui.MoreLines(omitted)) {
+				t.Fatalf("hint %q does not count the %d omitted rows", source[7], omitted)
+			}
+		})
+	}
+	short := activityui.Block{Kind: "op", Verb: "Run", Code: "git diff --cc", Lang: "bash", Fenced: true, SourceRows: 8}
+	if plain := plainLines(p.Block(short, 60)); len(plain) != 1 {
+		t.Fatalf("a command within its rows was clipped: %q", plain)
+	}
+}
+
+func TestRanRowExpandsSourceTabs(t *testing.T) {
+	p := activityui.Painter{}
+	block := activityui.Block{Kind: "op", Verb: "Run", Code: "print('a')\nsub['msymbol\t' + x] += 1", Lang: "python", Fenced: true}
+	for _, row := range p.Block(block, 40) {
+		if strings.Contains(row, "\t") {
+			t.Fatalf("raw tab reached a painted row: %q", row)
+		}
+	}
+}

@@ -215,13 +215,21 @@ func toolActivityStatementDisplayEnd(script string, statement *syntax.Stmt) int 
 // Keep dynamic output, redirections, and headings-only scripts visible.
 func toolActivityReadSeparator(statement *syntax.Stmt) bool {
 	argv, ok := toolActivityLiteralCall(statement)
-	if !ok || len(argv) < 2 || argv[0] != "printf" {
+	if !ok || len(argv) < 2 {
 		return false
 	}
 	heading := argv[1]
-	if len(argv) == 3 && (heading == `%s\n` || heading == `\n%s\n`) {
+	switch {
+	case argv[0] == "echo" && len(argv) == 2:
+		// Escape handling differs between shells' echo builtins.
+		if strings.Contains(heading, `\`) {
+			return false
+		}
+	case argv[0] != "printf":
+		return false
+	case len(argv) == 3 && (heading == `%s\n` || heading == `\n%s\n`):
 		heading = argv[2]
-	} else if len(argv) != 2 || strings.Contains(heading, "%") {
+	case len(argv) != 2 || strings.Contains(heading, "%"):
 		return false
 	}
 	heading = strings.TrimSpace(strings.ReplaceAll(heading, `\n`, "\n"))

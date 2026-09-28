@@ -111,3 +111,15 @@ func TestFlashedAnswerCardGlowsAndLightsText(t *testing.T) {
 		t.Fatalf("answer text moved: %q", ansi.Strip(lines[1]))
 	}
 }
+
+func TestLiveActivityMarkdownTrimsOuterBlankLines(t *testing.T) {
+	p := activityui.Painter{}
+	got := plainLines(p.Markdown("\n\n\nFirst paragraph.\n\nSecond paragraph.\n\n", 40))
+	want := []string{"First paragraph.", "", "Second paragraph."}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("outer blank lines kept: %q, want %q", got, want)
+	}
+	if rows := p.Markdown("\n\n", 40); len(rows) != 0 {
+		t.Fatalf("blank message rows: %q", rows)
+	}
+}

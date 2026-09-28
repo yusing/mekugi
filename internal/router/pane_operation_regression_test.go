@@ -75,6 +75,32 @@ func TestPaneOperationRegressionDecorativePrintf(t *testing.T) {
 	}
 }
 
+func TestPaneOperationRegressionDecorativeEcho(t *testing.T) {
+	for _, source := range []string{
+		"mcat source.go; echo '---plugins---'; mcat other.go",
+		"rg -n 'mcat|mread' internal/router/tool_registry.go | head -n 40; echo '---plugins---'; mcat plugins.go",
+		"mcat source.go\necho '=== source context ==='",
+	} {
+		got := toolActivityShell(source)
+		if strings.Contains(got, "echo") || strings.Contains(got, "---plugins---") {
+			t.Errorf("decorative echo was not omitted beside a classified operation: %q", got)
+		}
+	}
+
+	for _, source := range []string{
+		"mcat source.go; echo done",
+		"mcat source.go; echo \"--- $heading ---\"",
+		"mcat source.go; echo -e '\\n--- source context ---'",
+		"mcat source.go; echo '--- source context ---' > /tmp/activity.log",
+		"echo '--- source context ---'",
+	} {
+		got := toolActivityShell(source)
+		if !strings.Contains(got, "echo") || !strings.Contains(got, "Run") {
+			t.Errorf("non-decorative echo was omitted: %q", got)
+		}
+	}
+}
+
 func TestPaneOperationRegressionApplyPatchDisplay(t *testing.T) {
 	const patch = "*** Begin Patch\n*** Add File: pane.txt\n+first\n*** End Patch\n"
 	codeModes := []string{

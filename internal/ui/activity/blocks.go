@@ -45,6 +45,7 @@ type Block struct {
 	Running     bool // A live command the host has not completed.
 	Tail        []string
 	TailOmitted int    // Output lines before Tail.
+	SourceRows  int    // Rows a command or program preview may use; 0 shows it whole.
 	Flash       bool   // Presentation-only: another pane just opened this entry.
 	Live        bool   // Reasoning still streaming.
 	Elapsed     string // Formatted reasoning time, when observed from its first delta.

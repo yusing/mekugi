@@ -270,6 +270,10 @@ const (
 	conversationLatestRows  = 4
 )
 
+// conversationSourceRows bounds a command or program preview in Main until
+// the reader opens it; Activity keeps its own per-block clip.
+const conversationSourceRows = 8
+
 // threadAgent names the agent an item of agent traffic concerns, or "" when
 // the item cannot join a thread.
 func (v *liveActivityView) threadAgent(index int) string {
@@ -396,6 +400,17 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		for index, block := range activityui.AlignVerbs(activityui.GroupOperations(activityui.MergeLiveActivityReads(group))) {
 			snippet := liveActivitySnippet{entry.Seq, index}
 			toggle := v.collapseToggle(&block, snippet)
+			if block.Kind == "op" && block.Code != "" && !v.expanded[snippet] {
+				// The same click that opens collapsed output shows the whole source.
+				whole := len(p.Block(block, width-2))
+				block.SourceRows = conversationSourceRows
+				if len(p.Block(block, width-2)) < whole {
+					toggle = true
+					block.Hovered = v.snippet == snippet
+				} else {
+					block.SourceRows = 0
+				}
+			}
 			target := liveActivitySnippet{}
 			if block.EditSource != "" {
 				target = liveActivitySnippet{block.Source, editNavigationSnippet}

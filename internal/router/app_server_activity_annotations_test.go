@@ -1,6 +1,7 @@
 package router
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -146,5 +147,46 @@ func TestAppServerCodeModeFilterDoesNotInventCommand(t *testing.T) {
 	u.applyObservedActivity()
 	if len(u.view.entries) != 2 || len(u.view.blocks[1]) != 1 || u.view.blocks[1][0].Kind != "filter" {
 		t.Fatalf("invented command for unmatched Code Mode filter: %+v", u.view.blocks)
+	}
+}
+
+func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
+	for _, child := range []bool{false, true} {
+		t.Run(map[bool]string{false: "main", true: "child"}[child], func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			u.view.conversation = true
+			activity := newSubagentActivity()
+			activity.attachNativePane("main")
+			proxy := &mekugiProxy{activity: activity}
+			u.proxy = proxy
+			thread, view := "main", u.view
+			if child {
+				thread, view = "child", u.agents
+				activity.observe("child", "main", "/root/worker", true)
+				u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
+			}
+			failed := `[{"type":"input_text","text":"Script failed\nWall time 0.0 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nSyntaxError: Unexpected token '<<'\n    at cell:1"}]`
+			completed := `[{"type":"input_text","text":"Script completed\nWall time 0.1 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nprinted by the program"}]`
+			input := `[{"type":"custom_tool_call","call_id":"bad","name":"exec","input":"python3 - << 'PY'"},` +
+				`{"type":"custom_tool_call","call_id":"ok","name":"exec","input":"text('x')"},` +
+				`{"type":"custom_tool_call_output","call_id":"bad","output":` + failed + `},` +
+				`{"type":"custom_tool_call_output","call_id":"ok","output":` + completed + `}]`
+			request := &parsedResponsesRequest{fields: map[string]json.RawMessage{"input": json.RawMessage(input)}}
+			// A repeated request carries the same output again; it is still one row.
+			for range 2 {
+				proxy.observeCodeModeFailures(thread, "exec", request, nil)
+				u.applyObservedActivity()
+			}
+			if len(view.entries) != 1 || view.entries[0].Kind != "error" ||
+				view.entries[0].Text != "Code Mode script failed: SyntaxError: Unexpected token '<<'" {
+				t.Fatalf("failed cell entries: %+v", view.entries)
+			}
+			if !child {
+				got := ansi.Strip(strings.Join(view.renderFeed(90, 40).lines, "\n"))
+				if !strings.Contains(got, "✗ Main") || !strings.Contains(got, "│ Code Mode script failed: SyntaxError: Unexpected token '<<'") {
+					t.Fatalf("Main lacks the failed cell:\n%s", got)
+				}
+			}
+		})
 	}
 }

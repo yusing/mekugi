@@ -20,6 +20,11 @@ Nested Code Mode tool activity follows the host's event stream. Independent
 `Promise.allSettled` calls remain parallel; presentation cannot serialize their
 execution. Static source recognition used for [execution previews](execution.md)
 and [change capture](changes.md) remains separate from native activity delivery.
+The host emits no item for a Code Mode cell itself. When a new cell result carries
+the host's `Script failed` header, the router adds one error row to that agent's
+activity with the first line of the host's trailing script error, so a script that
+fails before any nested tool call still shows. The result reaches the model
+unchanged, and failures from earlier requests are not shown again.
 
 ### Shell command labels
 
@@ -42,8 +47,9 @@ effectful pipeline stages retain the original `Run` preview. Shell execution
 still receives the exact original command, including flags and pipes.
 Per-command `Run` excerpts omit statement-terminating semicolons; quoted
 semicolons and other executable syntax remain visible.
-Literal `printf` section headings alongside classified operations are omitted as
-display decoration; standalone or dynamic headings remain `Run` operations.
+Literal `printf` and `echo` section headings alongside classified operations are
+omitted as display decoration; standalone, redirected, escaped, or dynamic headings
+remain `Run` operations.
 Literal `mread` recovery calls omit activity entries rather than appearing as `Run`.
 Wait and input presentation follows typed host events and their command/item
 identity. The activity observer does not reconstruct process or Code Mode cell

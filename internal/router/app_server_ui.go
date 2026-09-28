@@ -903,7 +903,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 		}
 	}
 	for i, entry := range entries {
-		main := entry.Agent == "/root" && (entry.Kind == "tool" || entry.Kind == "exit" || entry.Kind == "output_filter" || entry.Kind == "reasoning" || entry.Kind == "progress")
+		main := entry.Agent == "/root" && (entry.Kind == "tool" || entry.Kind == "exit" || entry.Kind == "output_filter" || entry.Kind == "error" || entry.Kind == "reasoning" || entry.Kind == "progress")
 		if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil {
 			main = true
 			entry.Agent = entry.assignment.from

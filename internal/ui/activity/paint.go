@@ -370,8 +370,12 @@ func (p *Painter) Markdown(text string, width int) []string {
 	if fence != "" {
 		lines = append(lines, p.fenced(lang, strings.Join(program, "\n"), width)...)
 	}
+	// Providers may open or close a message with blank lines; they only pad the block.
 	for len(lines) > 0 && ansi.Strip(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
+	}
+	for len(lines) > 0 && ansi.Strip(lines[0]) == "" {
+		lines = lines[1:]
 	}
 	return lines
 }
@@ -612,7 +616,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			if !block.Fenced && (block.Verb == "MCP" || strings.HasPrefix(block.Verb, "Tool")) {
 				lang = "json"
 			}
-			lines = append(lines, liveActivityIndent(p.program(lang, code, width-2), "  ")...)
+			lines = append(lines, clipSource(liveActivityIndent(p.program(lang, sourceTabs(code), width-2), "  "), block, "  "+Dim+"│"+Undim+" ")...)
 		}
 		if body != "" {
 			lines = append(lines, liveActivityIndent(p.Markdown(body, width-2), "  ")...)
@@ -845,7 +849,7 @@ func lineRanges(ranges []string) string {
 // the verb, or a program beside its gutter, then any failure's exit and the
 // live or failed output tail.
 func (p *Painter) ranRow(block Block, width int) []string {
-	code, label := block.Code, strings.TrimSpace(p.Label(block.Verb, block.Label)+ResultCount(block.Results))
+	code, label := sourceTabs(block.Code), strings.TrimSpace(p.Label(block.Verb, block.Label)+ResultCount(block.Results))
 	if code == "" {
 		if span, end, ok := liveActivityCodeSpan(block.Label, 0); ok && end == len(block.Label) {
 			code, label = span, ""
@@ -873,12 +877,12 @@ func (p *Painter) ranRow(block Block, width int) []string {
 		if block.Fenced && block.Lang != "" {
 			lang = block.Lang
 		}
-		lines = p.command(lead, lang, code, width)
+		lines = clipSource(p.command(lead, lang, code, width), block, padding)
 		if label != "" {
 			lines = suffix(lines, label)
 		}
 	case code != "":
-		program := liveActivityIndent(p.program(block.Lang, code, width-indent), padding)
+		program := clipSource(liveActivityIndent(p.program(block.Lang, code, width-indent), padding), block, padding+Dim+"│"+Undim+" ")
 		if label != "" {
 			lines = liveActivityHang(lead, label, width)
 		} else {
@@ -899,6 +903,27 @@ func (p *Painter) ranRow(block Block, width int) []string {
 		lines = append(lines, liveActivityIndent(p.Markdown(block.Body, width-indent-2), padding+"  ")...)
 	}
 	return lines
+}
+
+// sourceTabs expands tabs as livediff.Safe does; a raw tab has no cell width,
+// so wrapping would misjudge its row.
+func sourceTabs(code string) string {
+	return strings.ReplaceAll(code, "\t", "    ")
+}
+
+// clipSource keeps a command or program preview within block.SourceRows,
+// counting wrapped rows, so a one-line command wider than many rows is bounded
+// too. The last kept row counts the rows left out, under lead.
+func clipSource(rows []string, block Block, lead string) []string {
+	if block.SourceRows <= 0 || len(rows) <= block.SourceRows {
+		return rows
+	}
+	keep := max(1, block.SourceRows-1)
+	hint := "… " + MoreLines(len(rows)-keep)
+	if block.Hovered {
+		hint = Underline(hint)
+	}
+	return append(rows[:keep:keep], lead+Dim+hint+Undim)
 }
 
 // outputRows attaches the invocation's output to its final operation.
