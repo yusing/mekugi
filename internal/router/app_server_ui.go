@@ -81,6 +81,7 @@ type appServerUI struct {
 	quitRequested             bool
 	mainContentPainted        bool
 	thread, turn, status      string
+	exitUsage                 appServerTokenUsage
 	compacting                *[2]string // Main turn and compaction item.
 	polling                   *[2]string // Main turn and polled process.
 	alert                     bool       // The status reports a failure or blocked request.
@@ -359,7 +360,8 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 				fmt.Fprintln(stdout, livediff.Safe(string(c.Diagnostics.Text), false))
 			}
 		}
-		return err
+		color := term.IsTerminal(int(stdout.Fd())) && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
+		return errors.Join(err, u.writeExitSummary(stdout, color))
 	}, nil
 }
 

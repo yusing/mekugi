@@ -13,6 +13,16 @@ Router readiness, provider catalogs, invocation overrides, native recovery hooks
 and frontend environment keep their owners; redirected and noninteractive
 commands keep their original path. The client speaks newline-delimited stdio RPC.
 
+After restoring the terminal on exit, the native client preserves existing draft,
+diagnostic, and wrapper notices and prints a Codex-style token summary and
+`mekugi codex --yolo resume THREAD_ID` hint for the established session, highlighted
+in cyan on color-capable terminals (respecting `NO_COLOR`). The summary uses the
+main thread's latest cumulative app-server usage, including restored usage on
+resume, not child-thread or router cost totals. Displayed input and total exclude
+cached input; cached and reasoning counts appear separately when nonzero.
+Zero or unavailable usage omits the token line; no established thread omits the
+resume hint. Noninteractive commands retain Codex's own exit output.
+
 The client replaces presentation, not projection policy. Codex remains the agent
 runtime and execution authority, and Mekugi's router stays in the model-request
 path; UI plumbing adds no model calls. The client connects to app-server, never

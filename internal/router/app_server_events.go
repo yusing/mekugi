@@ -77,9 +77,11 @@ type appServerThreadInfo struct {
 }
 
 type appServerTokenUsage struct {
-	TotalTokens  uint64 `json:"totalTokens"`
-	InputTokens  uint64 `json:"inputTokens"`
-	OutputTokens uint64 `json:"outputTokens"`
+	TotalTokens           uint64 `json:"totalTokens"`
+	InputTokens           uint64 `json:"inputTokens"`
+	OutputTokens          uint64 `json:"outputTokens"`
+	CachedInputTokens     uint64 `json:"cachedInputTokens"`
+	ReasoningOutputTokens uint64 `json:"reasoningOutputTokens"`
 }
 
 type appServerEvent struct {
@@ -216,6 +218,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		u.renameThreadActivity(old, s.paths[info.ID])
 
 	case "thread/tokenUsage/updated":
+		if main {
+			u.exitUsage = p.TokenUsage.Total
+		}
 		agent := s.agent(s.path(p.ThreadID))
 		agent.InputTokens, agent.OutputTokens = p.TokenUsage.Total.InputTokens, p.TokenUsage.Total.OutputTokens
 		agent.ContextWindow = p.TokenUsage.ModelContextWindow
