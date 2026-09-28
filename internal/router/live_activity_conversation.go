@@ -331,33 +331,40 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		var group []activityui.Block
 		for k := first; k <= last; k++ {
 			if v.visible(v.entries[k]) {
-				group = append(group, v.blocks[k]...)
+				for _, block := range v.blocks[k] {
+					block.Source = v.entries[k].Seq
+					group = append(group, block)
+				}
 			}
 		}
 		// The operations form a tree under the reasoning above them. An edit
 		// group's later rows and output notes continue their operation's branch.
 		var parts [][]string
-		var toggles []liveActivitySnippet // Each part's output toggle, if any.
-		// Its connectors sit beneath the reasoning bullet.
-		for index, block := range activityui.AlignVerbs(activityui.MergeEdits(activityui.GroupOperations(activityui.MergeLiveActivityReads(group)))) {
+		var toggles []liveActivitySnippet // Aligned with every rendered row, including grouped edits.
+		// Its connectors sit beneath the reasoning bullet. Keep invocation identities
+		// even when adjacent edits share a heading or edit the same path.
+		for index, block := range activityui.AlignVerbs(activityui.GroupOperations(activityui.MergeLiveActivityReads(group))) {
 			snippet := liveActivitySnippet{entry.Seq, index}
 			toggle := v.collapseToggle(&block, snippet)
-			if len(parts) > 0 && (block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart) {
-				parts[len(parts)-1] = append(parts[len(parts)-1], p.Block(block, width-2)...)
-				continue
+			target := liveActivitySnippet{}
+			if block.EditSource != "" {
+				target = liveActivitySnippet{block.Source, editNavigationSnippet}
+			} else if toggle {
+				target = snippet
 			}
-			parts = append(parts, p.Block(block, width-2))
-			toggles = append(toggles, liveActivitySnippet{})
-			if toggle {
-				toggles[len(toggles)-1] = snippet
+			rows := p.Block(block, width-2)
+			if len(parts) > 0 && (block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart) {
+				parts[len(parts)-1] = append(parts[len(parts)-1], rows...)
+			} else {
+				parts = append(parts, rows)
+			}
+			for range rows {
+				toggles = append(toggles, target)
 			}
 		}
-		rows := activityui.Tree(parts)
-		for i, part := range parts {
-			for range part {
-				out.add(0, rows[0])
-				out.snippets[len(out.snippets)-1], rows = toggles[i], rows[1:]
-			}
+		for i, row := range activityui.Tree(parts) {
+			out.add(0, row)
+			out.snippets[len(out.snippets)-1] = toggles[i]
 		}
 	case entry.Agent == "Main" && entry.journal != nil && len(blocks) == 1 && blocks[0].Journal != nil:
 		v.flushItem(&out, entry, blocks[0].Journal, first, width)

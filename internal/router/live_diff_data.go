@@ -19,6 +19,7 @@ import (
 
 type liveDiffAttempt struct {
 	change, correlation string
+	thread              string
 	stream              int
 	chunks              []livediff.Chunk
 	receipt             *capturedActivityEdit
@@ -59,7 +60,7 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			return fmt.Errorf("change %s has a missing or inconsistent attempt", event.ID)
 		}
 		history := record.History
-		attempt := liveDiffAttempt{change: event.ID, correlation: event.Change.Correlation, stream: event.Stream}
+		attempt := liveDiffAttempt{thread: cmp.Or(history.ExecutingThread, event.Thread), change: event.ID, correlation: event.Change.Correlation, stream: event.Stream}
 		if history.ExecOutcome != nil && history.ExecutingThread != "" {
 			attempt.receipt = capturedEditActivity(event.Workspace, history)
 			if attempt.receipt != nil {

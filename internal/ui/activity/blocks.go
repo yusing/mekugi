@@ -267,56 +267,6 @@ func EditStat(label string) (path string, added, removed int, tail string, ok bo
 	return path, added, removed, match[3], true
 }
 
-// MergeEdits folds repeated edits of one path under one Edited heading into a
-// single row with summed counts. It drops rows, so only views that do not
-// navigate by row identity use it.
-func MergeEdits(blocks []Block) []Block {
-	var merged []Block
-	rows := make(map[string]int)
-	for _, block := range blocks {
-		if block.GroupStart || block.GroupHeader != "Edited" || block.Verb == "Delete" || block.Verb == "Move" {
-			// A later row after a delete or move describes a new file state.
-			clear(rows)
-		}
-		path, added, removed, tail, ok := EditStat(editLabel(block))
-		mergeable := ok && block.GroupHeader == "Edited" && block.Kind == "op" && block.ExitCode == 0 && tail == ""
-		if !mergeable {
-			merged = append(merged, block)
-			continue
-		}
-		if k, found := rows[path]; found && (block.Verb == "Edit" || block.Verb == merged[k].Verb) {
-			last := &merged[k]
-			_, a, r, _, _ := EditStat(editLabel(*last))
-			last.Label = fmt.Sprintf("%s +%d -%d · %s", codeSpan(path), a+added, r+removed, last.EditSource)
-			continue
-		}
-		if block.Verb == "Edit" || block.Verb == "Create" {
-			rows[path] = len(merged)
-		}
-		merged = append(merged, block)
-	}
-	measureGroups(merged)
-	return merged
-}
-
-// codeSpan encloses text in a Markdown code span that liveActivityCodeSpan reads back.
-func codeSpan(text string) string {
-	run, longest := 0, 0
-	for _, r := range text {
-		if r == '`' {
-			run++
-			longest = max(longest, run)
-		} else {
-			run = 0
-		}
-	}
-	fence := strings.Repeat("`", longest+1)
-	if longest > 0 || strings.HasPrefix(text, " ") && strings.HasSuffix(text, " ") && len(text) > 1 {
-		return fence + " " + text + " " + fence
-	}
-	return fence + text + fence
-}
-
 // Journal is a child's journal result laid out by the router's
 // journal delivery grammar: answer groups, then this agent's recorded changes.
 type Journal struct {

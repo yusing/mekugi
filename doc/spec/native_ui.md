@@ -167,6 +167,13 @@ narrow; focusing that list (Tab, s) enlarges it without covering the diff, and s
 again hides it. A roster pick that changes Activity's agent filter shows
 Activity in place of the saved diff.
 
+Clicking a compact Edit event opens the Diff pane’s changes-by-caller navigation
+and scrolls to its captured change. Navigation uses the exact host invocation,
+including grouped shell captures, rather than matching nearby paths or edits.
+
+Successful single-line Ran output remains visible rather than collapsing to a
+line-count toggle.
+
 Main and Activity share the activity view's block parsing, operation grouping
 and viewport logic; each keeps its own entries and follow/unseen state. Typed
 app-server items update entries in place. Image-view items appear as `View`
@@ -315,6 +322,10 @@ half of Main) until Codex's completed user message commits them by
 `clientUserMessageId`, or by text when the server does not echo one. Alt+Up or Shift+Left moves the last queued
 entry, or else the last stacked steer, back into the composer ahead of the draft.
 Stacked image files stay owned until sent.
+
+Escape in the focused composer interrupts an active turn without clearing its draft
+and never quits. Dismissing a picker, help, or selection and returning a paused
+transcript to the bottom take precedence.
 
 Ctrl-C first clears a non-empty draft (Ctrl+Z restores it), then interrupts the
 active turn, and with no turn active or starting exits like `/quit`. Interrupting

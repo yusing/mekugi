@@ -31,13 +31,9 @@ func TestRequestedEditGroupsMergeAdjacentInvocations(t *testing.T) {
 		if strings.Count(got, "Edited  a.go") != 1 || strings.Count(got, "via python3 ×2") != 1 || strings.Count(got, "Edit    c.go") != 1 || strings.Count(got, "· failed") != 1 || strings.Contains(got, "apply_patch") || strings.Contains(got, " · python3") {
 			t.Fatalf("%s invocation grouping:\n%s", agent, got)
 		}
-		// Main folds repeated paths; Activity keeps each invocation's rows for navigation.
-		rows := []string{"a.go  +4 -2", "b.go  +6"}
-		if agent != "Main" {
-			rows = []string{"a.go  +2 -1", "b.go  +3"}
-		}
-		for _, row := range rows {
-			if count := strings.Count(got, row); agent == "Main" && count != 1 || agent != "Main" && count != 2 {
+		// Both navigable views keep each invocation's rows, even for repeated paths.
+		for _, row := range []string{"a.go  +2 -1", "b.go  +3"} {
+			if count := strings.Count(got, row); count != 2 {
 				t.Fatalf("%s shows %q %d times:\n%s", agent, row, count, got)
 			}
 		}

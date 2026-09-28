@@ -76,6 +76,9 @@ type liveActivityView struct {
 // liveActivitySnippet names a clippable block in the shared feed: the
 // sequence of its run's first entry and its index in the run. Sequences start
 // at one, so the zero value names no snippet.
+// editNavigationSnippet routes a compact edit row to its captured change.
+const editNavigationSnippet = -1
+
 type liveActivitySnippet struct {
 	run   uint64
 	block int
@@ -495,6 +498,9 @@ func (v *liveActivityView) collapseToggle(block *activityui.Block, snippet liveA
 }
 
 func (v *liveActivityView) toggleSnippet(snippet liveActivitySnippet) {
+	if snippet.block == editNavigationSnippet {
+		return
+	}
 	if v.expanded[snippet] {
 		delete(v.expanded, snippet)
 	} else {

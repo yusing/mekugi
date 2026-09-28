@@ -99,36 +99,7 @@ func TestEditGroupsSplitBySourceAndOutcome(t *testing.T) {
 			t.Errorf("block %d group = %q start=%t count=%d", i, block.GroupHeader, block.GroupStart, block.GroupCount)
 		}
 	}
-	if merged := activityui.MergeEdits(blocks); len(merged) != len(blocks) {
-		t.Fatalf("edits from different sources or outcomes merged: %d rows", len(merged))
-	}
-}
 
-func TestMergeEditsSumsRepeatedPaths(t *testing.T) {
-	blocks := activityui.GroupOperations([]activityui.Block{
-		{Source: 1, Kind: "op", Verb: "Edit", Label: "`a.go` · +2 −1 · apply_patch", EditSource: "apply_patch", EditHeader: true},
-		{Source: 1, Kind: "op", Verb: "Create", Label: "`b.go` · +4 −0 · apply_patch", EditSource: "apply_patch"},
-		{Kind: "filter", Body: "annotation"},
-		{Source: 2, Kind: "op", Verb: "Edit", Label: "`a.go` · +0 −0 · apply_patch", EditSource: "apply_patch", EditHeader: true},
-		{Source: 3, Kind: "op", Verb: "Edit", Label: "`b.go` · +5 −3 · apply_patch", EditSource: "apply_patch", EditHeader: true},
-		{Source: 4, Kind: "op", Verb: "Edit", Label: "`a.go` · +1 −1 · apply_patch", EditSource: "apply_patch", EditHeader: true, ExitCode: 1},
-	})
-	merged := activityui.MergeEdits(blocks)
-	var labels []string
-	for _, block := range merged {
-		labels = append(labels, block.Label)
-	}
-	want := []string{"`a.go` +2 -1 · apply_patch", "`b.go` +9 -3 · apply_patch", "annotation", "`a.go` · +1 −1 · apply_patch"}
-	labels[2] = merged[2].Body
-	if !reflect.DeepEqual(labels, want) {
-		t.Fatalf("merged labels = %q, want %q", labels, want)
-	}
-	if merged[0].GroupCount != 4 || merged[1].Verb != "Create" {
-		t.Fatalf("merge lost heading count or verb: %+v", merged[:2])
-	}
-	if again := activityui.MergeEdits(activityui.GroupOperations(merged)); !reflect.DeepEqual(again, activityui.GroupOperations(merged)) {
-		t.Fatal("merging is not idempotent")
-	}
 }
 
 func TestEditRowsAlignCounts(t *testing.T) {
@@ -345,17 +316,6 @@ func TestFitPathKeepsFileName(t *testing.T) {
 	}
 }
 
-func TestMergeEditsRestartsAfterDelete(t *testing.T) {
-	blocks := activityui.GroupOperations([]activityui.Block{
-		{Source: 1, Kind: "op", Verb: "Create", Label: "`a.go` · +10 −0 · apply_patch", EditSource: "apply_patch", EditHeader: true},
-		{Source: 2, Kind: "op", Verb: "Delete", Label: "`a.go` · +0 −10 · apply_patch", EditSource: "apply_patch", EditHeader: true},
-		{Source: 3, Kind: "op", Verb: "Create", Label: "`a.go` · +3 −0 · apply_patch", EditSource: "apply_patch", EditHeader: true},
-	})
-	if merged := activityui.MergeEdits(blocks); len(merged) != 3 || merged[2].Verb != "Create" {
-		t.Fatalf("recreate merged across its delete: %+v", merged)
-	}
-}
-
 func TestOperationRowsNameTheirOutcome(t *testing.T) {
 	p := activityui.Painter{}
 	for _, tc := range []struct {
@@ -380,17 +340,13 @@ func TestOperationRowsNameTheirOutcome(t *testing.T) {
 		}, []string{"Edit   c.go  +1 -1 · failed", "       d.go  +1"}},
 		{"requested", []activityui.Block{{Kind: "op", Verb: "Edit", Label: "`a.go` · cat (requested)", EditSource: "cat (requested)", EditHeader: true}},
 			[]string{"Edit   a.go via cat · requested"}},
-		{"merged", []activityui.Block{
-			{Kind: "op", Verb: "Edit", Label: "`a.go` +1 -1 · python3", EditSource: "python3", EditHeader: true},
-			{Kind: "op", Verb: "Edit", Label: "`a.go` +2 -0 · python3", EditSource: "python3", EditHeader: true},
-		}, []string{"Edited a.go +3 -1 via python3 ×2"}},
 		// Reasoning stays its own row, which heads the operations after it.
 		{"reasoning", []activityui.Block{{Kind: "summary", Body: "**Checking**"}, {Kind: "op", Verb: "Read", Label: "`Makefile`"}},
 			[]string{"• Checking", "Read   Makefile"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var rows []string
-			for _, block := range activityui.MergeEdits(activityui.GroupOperations(tc.blocks)) {
+			for _, block := range activityui.GroupOperations(tc.blocks) {
 				rows = append(rows, p.Block(block, 80)...)
 			}
 			if got := plainLines(rows); !reflect.DeepEqual(got, tc.want) {

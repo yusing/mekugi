@@ -174,7 +174,12 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 								s.view.flashUntil = time.Now().Add(700 * time.Millisecond)
 							}
 						} else if index < len(s.snippets) && s.snippets[index] != (liveActivitySnippet{}) {
-							s.view.toggleSnippet(s.snippets[index])
+							snippet := s.snippets[index]
+							if snippet.block == editNavigationSnippet {
+								u.openActivityEdit(s.view, snippet.run)
+							} else {
+								s.view.toggleSnippet(snippet)
+							}
 						}
 					}
 				}
