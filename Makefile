@@ -1,17 +1,13 @@
 GO ?= go
 
-.PHONY: install install-binaries uninstall uninstall-binaries preview-assets preview-native-ui
+.PHONY: install uninstall preview-assets preview-native-ui
 
-install: install-binaries
-
-install-binaries:
+install:
 	bun install --cwd plugins --frozen-lockfile
 	go generate ./internal/router/toolplugin
 	$(GO) install ./cmd/mekugi
 
-uninstall: uninstall-binaries
-
-uninstall-binaries:
+uninstall:
 	$(GO) clean -i ./cmd/mekugi
 
 preview-assets:

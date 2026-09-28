@@ -38,6 +38,9 @@ The linked contracts own interface details, exceptions, and acceptance cases.
   column widths only from currently visible rows. Off-screen items must not
   change alignment, truncation, or description visibility.
 - **Visible states:** No labels for no state / unknown.
+- **Rich UI**: Implement proper UI, no text dump. Propose one to user when they
+  did not specify what thinks should look like AND codex has no counterpart to 
+  reference from.
 - **Session continuity:** Features remain correct across `/fork`, `/side`,
   agent switching through `/subagents`, model switches, and `codex resume`,
   including a fresh router process. Restore inherited authorization from
@@ -113,7 +116,7 @@ The model guidance owner is [guide](doc/spec/guide.md).
 
 ## Build and installation constraints
 
-Never run `make install`, `make install-binaries`, bare `make`, or other commands that build the
+Never run `make install`, bare `make`, or other commands that build the
 binary into the installation path: bare `make` defaults to `install`, which replaces the installed
 `mekugi`.
 
