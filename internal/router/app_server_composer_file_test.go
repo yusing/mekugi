@@ -91,3 +91,21 @@ func TestComposerFileTokenEditorPreservesExistingAdjacency(t *testing.T) {
 		t.Fatalf("unrelated editor change lost selected token: %q %+v", u.draft, u.files)
 	}
 }
+
+func TestComposerKillLineKeepsMultilineFileAtomic(t *testing.T) {
+	u, w := newAppServerTestUI()
+	u.session.cwd = "/work"
+	appServerTestKeys(t, u, "@f")
+	requests := pickerRequests(t, w)
+	pickerReply(t, u, requests[0].ID, `{"files":[{"root":"/work","path":"foo\nbar.txt"}]}`)
+	appServerTestKeys(t, u, "\t")
+	original := u.draft
+	appServerTestKeys(t, u, "\x1b[D\x1b[D\x0b")
+	if u.draft != " " || len(u.files) != 0 {
+		t.Fatalf("split token: %q, %+v", u.draft, u.files)
+	}
+	appServerTestKeys(t, u, "\x1a")
+	if u.draft != original || len(u.files) != 1 {
+		t.Fatalf("undo: %q, %+v", u.draft, u.files)
+	}
+}

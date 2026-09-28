@@ -332,3 +332,69 @@ func TestAppServerComposerOptionWordNavigation(t *testing.T) {
 		})
 	}
 }
+
+func TestAppServerComposerKillShortcutsThroughTerminal(t *testing.T) {
+	for _, tt := range []struct{ name, draft, movement, key, want string }{
+		{"option DEL", "one two", "", "\x1b\x7f", "one "},
+		{"option BS", "one two", "", "\x1b\x08", "one "},
+		{"option CSI", "one two", "", "\x1b[127;3u", "one "},
+		{"macOS ctrl W", "one 你好👩‍💻  ", "", "\x17", "one "},
+		{"word middle", "one two three", "\x1b[1;5D", "\x17", "one three"},
+		{"word start", "one", "\x1b[H", "\x17", "one"},
+		{"kill suffix", "abc你好👩‍💻\nnext", "\x1b[H\x1b[D\x1b[D\x1b[D\x1b[D", "\x0b", "abc\nnext"},
+		{"kill newline", "one\ntwo", "\x1b[H\x1b[D", "\x0b", "onetwo"},
+		{"kill last line", "one two", "\x1b[1;5D", "\x0b", "one "},
+		{"kill end", "one", "", "\x0b", "one"},
+		{"empty", "", "", "\x0b", ""},
+		{"paste ignores controls", "one two", "", "\x1b[200~\x17\x0b\x1b[201~", "one two"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			u.ensureShell()
+			keys := func(s string) {
+				t.Helper()
+				for _, b := range []byte(s) {
+					if err := u.shell.key(b); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			keys(tt.draft)
+			keys(tt.movement)
+			at := u.cursor()
+			keys(tt.key)
+			if u.draft != tt.want {
+				t.Fatalf("draft=%q, want %q", u.draft, tt.want)
+			}
+			if tt.want != tt.draft {
+				keys("\x1a")
+				if u.draft != tt.draft || u.cursor() != at {
+					t.Fatalf("undo=%q at %d", u.draft, u.cursor())
+				}
+				keys("\x19")
+				if u.draft != tt.want {
+					t.Fatalf("redo=%q", u.draft)
+				}
+			}
+			if wire.Len() != 0 {
+				t.Fatalf("shortcut submitted: %s", wire.String())
+			}
+		})
+	}
+	for _, key := range []string{"\x17", "\x0b"} {
+		u, _ := newAppServerTestUI()
+		appServerTestKeys(t, u, "before ")
+		u.attachImage(filepath.Join(t.TempDir(), "image.png"))
+		if key == "\x0b" {
+			appServerTestKeys(t, u, "\x1b[D")
+		}
+		appServerTestKeys(t, u, key)
+		if u.draft != "before " || len(u.images) != 0 {
+			t.Fatalf("split attachment: %q", u.draft)
+		}
+		appServerTestKeys(t, u, "\x1a")
+		if u.draft != "before [Image 1]" || len(u.images) != 1 {
+			t.Fatalf("attachment undo: %q", u.draft)
+		}
+	}
+}

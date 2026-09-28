@@ -432,7 +432,9 @@ In the native composer, Up/Down recall input history at the first/last displayed
 row and restore the unsent draft after the newest entry. Other arrow keys move
 the caret, Ctrl+Left/Right or Alt/Option+Left/Right jump words,
 and Ctrl+Up/Down move to the start/end of a line. Alt+Backspace/Delete delete
-the previous/next word. Ctrl+V attaches a clipboard PNG
+the previous/next word (Option+Backspace or Ctrl+W also deletes the previous word).
+Ctrl+K deletes to the end of the line, or joins the next line when already at its end.
+Ctrl+V attaches a clipboard PNG
 as a highlighted, atomic `[Image N]` (Linux needs `wl-paste` on Wayland or `xclip` on X11; macOS uses
 `osascript`). Pasting the path of a PNG, JPEG or GIF file, such as a dropped
 or copied file, attaches it the same way. Ctrl+Z/Ctrl+Y undo/redo; Ctrl+G edits the draft in `$EDITOR`

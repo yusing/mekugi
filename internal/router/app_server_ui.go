@@ -654,6 +654,23 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		return false, nil
 	}
 	switch key {
+	case 23: // macOS terminals may encode Option+Backspace as Ctrl+W.
+		u.deleteWord(true)
+	case 11: // Ctrl+K kills to the logical line end, or joins at its newline.
+		at := u.cursor()
+		end := len(u.draft)
+		if next := strings.IndexByte(u.draft[at:], '\n'); next >= 0 {
+			end = at + next
+			if next == 0 {
+				end++
+			}
+		}
+		for start, tokenEnd := range u.draftTokenSpans() {
+			if end > start && end < tokenEnd {
+				end = tokenEnd
+			}
+		}
+		u.deleteDraftRange(at, end)
 	case 26:
 		u.undoDraft(false)
 	case 25:

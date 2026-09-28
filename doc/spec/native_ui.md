@@ -272,7 +272,10 @@ Child threads are unchanged.
 its model capability gate; the client never injects them or changes user config.
 
 Alt+Backspace/Delete remove the previous/next whitespace-delimited word without
-splitting image attachments. Editing and the visible composer window follow the
+splitting image attachments. Option+Backspace also accepts the Ctrl+W encoding
+used by macOS terminals. Ctrl+K removes text to the logical line end, or removes
+the following newline when already at the line end; each press is undoable.
+Editing and the visible composer window follow the
 caret. Ctrl+V reads a PNG
 image from the desktop clipboard and inserts a highlighted, atomic `[Image N]`
 attachment. A bracketed paste that is exactly one absolute path to a PNG, JPEG

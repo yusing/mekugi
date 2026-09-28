@@ -125,7 +125,7 @@ func TestNativeUIKeybindingsColumns(t *testing.T) {
 			if !strings.Contains(frame[heading-2], "\x1b[1m") || !strings.Contains(frame[heading+1], "\x1b[38;2;80;155;225m") {
 				t.Fatal("missing bold title or blue keys")
 			}
-			if strings.Index(plain[heading+1], "New line") != strings.Index(plain[heading+10], "External editor") {
+			if strings.Index(plain[heading+1], "New line") != strings.Index(plain[heading+12], "External editor") {
 				t.Fatal("Compose descriptions are not aligned")
 			}
 		}
