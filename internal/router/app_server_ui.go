@@ -831,6 +831,12 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 	}
 	dock = min(dock, max(0, room-1))
 	room -= dock
+	// A blank row separates the latest message from the composer.
+	gap := 0
+	if !u.pickerVisible() && room > 2 {
+		gap = 1
+		room--
+	}
 	u.mainContentPainted = room > 1
 	u.view.conversation, u.view.feedOnly, u.view.status = true, true, livediff.Safe(u.status, false)
 	u.view.pinMainReply = u.turn != ""
@@ -853,6 +859,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 			copy(frame[len(frame)-popupHeight:], popup)
 		}
 	}
+	frame = append(frame, make([]string, gap)...)
 	dockAt := len(frame)
 	frame = append(frame, make([]string, dock)...)
 	frame = append(frame, pending...)
@@ -941,22 +948,6 @@ func composerBorder(open, close, left, right string, width int, color string) st
 	return color + open + "─" + l + strings.Repeat("─", fill) + r + "─" + close + activityui.Reset
 }
 
-// activeReasoning returns only the current Main item's public summary heading.
-func (u *appServerUI) activeReasoning() string {
-	if u.turn == "" {
-		return ""
-	}
-	i := u.view.latest("Main")
-	if i < 0 {
-		return ""
-	}
-	entry := u.view.entries[i]
-	if entry.Kind != "reasoning" || entry.native == nil || entry.native.thread != u.thread || entry.native.turn != u.turn || entry.native.phase == "item/completed" {
-		return ""
-	}
-	return activityui.ReasoningSummaryHeader(livediff.Safe(entry.Text, false))
-}
-
 // Successful feedback is transient; actionable errors remain until editing.
 func (u *appServerUI) setNotice(text string, alert bool) {
 	u.notice, u.noticeAlert = text, alert
@@ -1010,8 +1001,6 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 				status = "Compacting context"
 			} else if u.polling != nil {
 				status = "Still running"
-			} else if summary := u.activeReasoning(); summary != "" {
-				status = summary
 			}
 			label = "\x1b[39m◐ " + activityui.ReasoningShimmer(status, now.Sub(u.turnStarted), u.view.painter.Colors) + activityui.Reset
 		}

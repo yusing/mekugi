@@ -455,8 +455,6 @@ func (u *terminalUI) nativeStatus() string {
 		hints = terminalHints{{"j/k", "scroll", 0}, {"n/p", "agent", 0}, {"o", "only", 0}, {"esc", "bottom", 0}, {"enter", "open", 0}}
 	case u.focus == 3:
 		hints = terminalHints{{"j/k", "agent", 0}, {"o", "only", 0}, {"esc", "back", 0}}
-	default:
-		hints = terminalHints{{"PgUp/PgDn", "scroll", 0}, {"/quit", "exits", 0}}
 	}
 	if u.liveDock.Live() > 1 {
 		hints = append(hints, terminalHint{"^B e", "next live", 0})

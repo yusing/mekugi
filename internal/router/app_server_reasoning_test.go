@@ -70,15 +70,15 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 	}
 }
 
-func TestAppServerActiveReasoningInComposer(t *testing.T) {
+func TestAppServerComposerKeepsWorkingDuringReasoning(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
 	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Checking layout**"})
 	for _, dock := range []int{0, 3} {
 		frame, dockRect := u.mainFrame(70, 12, dock)
 		border := u.composerRect.y - 1
-		if len(frame) != 12 || !strings.Contains(ansi.Strip(frame[border]), "◐ Checking layout") || strings.Contains(ansi.Strip(frame[border]), "Working") || dockRect.y+dockRect.h != border {
-			t.Fatalf("reasoning not in composer: dock=%d frame=%q", dock, frame)
+		if len(frame) != 12 || !strings.Contains(ansi.Strip(frame[border]), "◐ Working") || strings.Contains(ansi.Strip(frame[border]), "Checking layout") || dockRect.y+dockRect.h != border {
+			t.Fatalf("reasoning replaced Working: dock=%d frame=%q", dock, frame)
 		}
 	}
 	for _, size := range [][2]int{{1, 1}, {7, 3}, {12, 4}} {
@@ -92,24 +92,6 @@ func TestAppServerActiveReasoningInComposer(t *testing.T) {
 			}
 		}
 	}
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{"Checking layout"}}})
-	if u.activeReasoning() != "" {
-		t.Fatal("completed reasoning still active")
-	}
-	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "completed"}})
-	if u.activeReasoning() != "" {
-		t.Fatal("completed turn still active")
-	}
-}
-
-func TestAppServerReasoningStatusSuperseded(t *testing.T) {
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Checking layout**"})
-	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "tool", "type": "commandExecution", "command": "pwd"}})
-	if got := ansi.Strip(u.sessionLabel(u.turnStarted)); strings.Contains(got, "Checking layout") || !strings.Contains(got, "Working") {
-		t.Fatalf("superseded summary remains in status: %q", got)
-	}
 }
 
 func TestAppServerWorkingShimmers(t *testing.T) {
@@ -122,17 +104,6 @@ func TestAppServerWorkingShimmers(t *testing.T) {
 	u.turn = ""
 	if u.sessionLabel(u.turnStarted) != u.sessionLabel(u.turnStarted.Add(500*time.Millisecond)) {
 		t.Fatal("idle label animates")
-	}
-}
-
-func TestAppServerActiveReasoningShimmers(t *testing.T) {
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Checking layout**"})
-	a := u.sessionLabel(u.turnStarted)
-	b := u.sessionLabel(u.turnStarted.Add(500 * time.Millisecond))
-	if a == b || !strings.Contains(ansi.Strip(a), "◐ Checking layout") || ansi.Strip(a) != ansi.Strip(b) {
-		t.Fatalf("no text-preserving reasoning shimmer: %q %q", a, b)
 	}
 }
 
@@ -151,7 +122,7 @@ func TestAppServerCompletedElapsedTime(t *testing.T) {
 	}
 }
 
-func TestAppServerReasoningSurvivesDockComposition(t *testing.T) {
+func TestAppServerWorkingSurvivesDockComposition(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.draft = "one\ntwo\nthree\nfour"
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
@@ -168,9 +139,9 @@ func TestAppServerReasoningSurvivesDockComposition(t *testing.T) {
 	}
 	rows := strings.Split(screen.String(), "\n")
 	for i, row := range rows {
-		if strings.Contains(row, "╭─") && strings.Contains(row, "Active summary") {
-			if i == 0 || strings.Contains(rows[i-1], "Active summary") || strings.Contains(row, "Working") {
-				t.Fatalf("dock hid reasoning:\n%s", screen.String())
+		if strings.Contains(row, "╭─") && strings.Contains(row, "Working") {
+			if i == 0 || strings.Contains(row, "Active summary") {
+				t.Fatalf("dock hid Working:\n%s", screen.String())
 			}
 			return
 		}

@@ -1129,20 +1129,21 @@ func (p *Painter) Journal(journal *Journal, width int, heading bool) []string {
 		lines = append(lines, "  "+Dim+"… full answer in Codex completion"+Undim)
 	}
 	if len(journal.Stats) > 0 || journal.Changes != "" && len(journal.notes) > 0 {
-		lines = append(lines, "  "+Verb("Changes")+Dim+journal.Changes+Undim)
-		addedWidth, removedWidth := 0, 0
+		lines = append(lines, "", Verb("Changes")+Dim+journal.Changes+Undim)
+		statusWidth, addedWidth, removedWidth := 0, 0, 0
 		for _, stat := range journal.Stats {
+			statusWidth = max(statusWidth, len(stat.Status))
 			addedWidth, removedWidth = max(addedWidth, len(stat.Added)), max(removedWidth, len(stat.Removed))
 		}
 		for _, stat := range journal.Stats {
-			counts := Green + fmt.Sprintf("%*s", addedWidth+1, "+"+stat.Added) + "\x1b[39m " + Red + fmt.Sprintf("%-*s", removedWidth+1, "-"+stat.Removed) + "\x1b[39m "
-			lines = append(lines, "    "+ansi.Truncate(counts+Path(stat.Path), width-4, "…"))
+			counts := fmt.Sprintf("%-*s", statusWidth, stat.Status) + "  " + Green + fmt.Sprintf("%*s", addedWidth+1, "+"+stat.Added) + "\x1b[39m " + Red + fmt.Sprintf("%-*s", removedWidth+1, "-"+stat.Removed) + "\x1b[39m  "
+			lines = append(lines, ansi.Truncate(counts+Path(stat.Path), width, "…"))
 		}
 	}
 	// "No recorded changes." is the ordinary read-only outcome, not news.
 	for _, note := range journal.notes {
 		if note != "No recorded changes." && note != "No recorded file changes." {
-			lines = append(lines, liveActivityIndent(Wrap(Dim+note+Undim, width-4, false), "    ")...)
+			lines = append(lines, Wrap(Dim+note+Undim, width, false)...)
 		}
 	}
 	return lines

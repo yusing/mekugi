@@ -428,9 +428,8 @@ that missing state means success or continued work.
 
 Native public reasoning summaries appear for Main and children, from summary
 deltas or completed/history items. Main retains dim italic summary bodies in its
-transcript; its active summary heading replaces `Working` in the composer status
-until the item finishes or later Main activity supersedes it, without a separate
-pinned row. Working and active reasoning shimmer while the turn runs. Other ongoing
+transcript; reasoning does not replace `Working` in the composer status.
+Working and its progress overrides shimmer while the turn runs. Other ongoing
 states, such as sending and interrupting, breathe smoothly together from dim to light to dim, using a continuous neutral
 color ramp until terminal colors are reported. Successful steering returns to
 the active turn state rather than remaining in Sending.

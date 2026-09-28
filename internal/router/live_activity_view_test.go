@@ -465,13 +465,13 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 		{ID: "misc", Text: "Nothing else."},
 	})
 	text.WriteString("\n\n**Changes:** amber3..amber4\n\nAggregated numstat (this agent's recorded evaluations, not a net diff):\n\n" +
-		indentJournalText("10\t2\tinternal/a.go\n2\t2\tb.go", "    "))
+		indentJournalText("M\t10\t2\tinternal/a.go\nA\t2\t2\tb.go", "    "))
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "final", Text: text.String()})
 	journal := blocks[0].Journal
 	if len(blocks) != 1 || journal == nil || len(journal.Groups) != 2 || journal.Groups[0].Question != question ||
 		len(journal.Groups[0].Answers) != 2 || journal.Groups[0].Answers[0].Text != "Yes.\n\n- `node -e` covered" ||
 		journal.Groups[1].Question != "" || journal.Groups[1].Answers[0].ID != "misc" ||
-		journal.Changes != "amber3..amber4" || len(journal.Stats) != 2 || journal.Stats[0] != (activityui.Stat{"10", "2", "internal/a.go"}) {
+		journal.Changes != "amber3..amber4" || len(journal.Stats) != 2 || journal.Stats[0] != (activityui.Stat{"M", "10", "2", "internal/a.go"}) {
 		t.Fatalf("journal = %+v", journal)
 	}
 	painter := activityui.Painter{Theme: livediff.DarkTheme}
@@ -480,7 +480,7 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 		"✓ Final answer · 3 answers · 2 files +12 -4",
 		"  ↩ Does the preview color interpreter bodies?",
 		"  • verdict\n    Yes.", "  • risk\n    Nested templates stay plain.", "  • misc\n    Nothing else.",
-		"  Changes amber3..amber4\n    +10 -2 internal/a.go\n     +2 -2 b.go",
+		"Nothing else.\n\nChanges amber3..amber4\nM  +10 -2  internal/a.go\nA   +2 -2  b.go",
 	} {
 		if !strings.Contains(full, want) {
 			t.Fatalf("full layout missing %q:\n%s", want, full)

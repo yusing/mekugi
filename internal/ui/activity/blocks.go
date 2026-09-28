@@ -307,7 +307,7 @@ type AnswerGroup struct {
 
 type Answer struct{ ID, Text string }
 
-type Stat struct{ Added, Removed, Path string }
+type Stat struct{ Status, Added, Removed, Path string }
 
 type Read struct {
 	Path   string
@@ -536,8 +536,8 @@ func ParseJournal(text string) (*Journal, bool) {
 			journal.Changes = strings.TrimSpace(strings.TrimPrefix(line, "**Changes:**"))
 		case inChanges && strings.HasPrefix(line, "    "):
 			// Numstat columns are tabs, expanded by the sanitizer.
-			if fields := strings.SplitN(strings.TrimPrefix(line, "    "), "    ", 3); len(fields) == 3 {
-				journal.Stats = append(journal.Stats, Stat{fields[0], fields[1], fields[2]})
+			if fields := strings.SplitN(strings.TrimPrefix(line, "    "), "    ", 4); len(fields) == 4 {
+				journal.Stats = append(journal.Stats, Stat{fields[0], fields[1], fields[2], fields[3]})
 			}
 		case inChanges && strings.HasPrefix(line, "Aggregated numstat"):
 		case inChanges:

@@ -109,7 +109,7 @@ func TestNativeMainReplyPinViewportTransitions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u.view.offset = tc.offset
 			for range 3 {
-				u.mainFrame(80, 12, 0)
+				u.mainFrame(80, 13, 0)
 				if got := u.view.feedTop > 1; got != tc.pinned {
 					t.Fatalf("pin=%v, want %v at offset %d", got, tc.pinned, u.view.offset)
 				}
