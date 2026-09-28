@@ -75,7 +75,8 @@ finishes through `wait`, not from program output.
 These presentation rules do not change tool input, result, or replay payload.
 
 A simple `cat`, valid `mcat` read, bounded `sed -n` print, `nl -ba FILE`, or
-`nl -ba FILE | sed -n RANGES` selection is labeled `Read`; literal `rg` is `Search`;
+single-file `cat FILE | sed -n RANGES` or `nl -ba FILE | sed -n RANGES`
+selection is labeled `Read`; literal `rg` is `Search`;
 simple listings are `List`; and `inspect_file`, including its options and multiple
 paths, is `Inspect`. Path globs and simple shell parameter references such as
 `$HOME` and `${HOME}` are preserved as source without expansion; parameter

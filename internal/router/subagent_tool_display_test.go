@@ -459,6 +459,35 @@ func TestSubagentCatHeadReadDisplay(t *testing.T) {
 	}
 }
 
+func TestSubagentCatSedReadDisplay(t *testing.T) {
+	for _, tc := range []struct{ source, want string }{
+		{"cat source.go | sed -n '45,150p'", "Read `source.go 45:150`"},
+		{"cat 'source file.go' | sed -n '1,2p;4,8p'", "Read `source file.go 1:2 4:8`"},
+		{"cat source.go | sed \\\n -n '45,150p'", "Read `source.go 45:150`"},
+		{`cat "$file" | sed -n '1,2p'`, "Read `\"$file\" 1:2`"},
+	} {
+		if got := toolActivityShell(tc.source); got != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.source, got, tc.want)
+		}
+	}
+	for _, source := range []string{
+		"cat a.go b.go | sed -n '1,2p'",
+		"cat -s source.go | sed -n '1,2p'",
+		"cat source.go | sed -n '1,$p'",
+		"cat source.go | sed -n '1,2p;w out'",
+		"cat source.go | sed -n '1,2p' > out",
+		"cat source.go | sed -n '1,2p' other.go",
+		"cat $(generate) | sed -n '1,2p'",
+		"cat source.go | sed -n \"$range\"",
+		"cat source.go |& sed -n '1,2p'",
+		"cat source.go | sed -n '1,2p' | head -1",
+	} {
+		if got := toolActivityShell(source); got != "Run\n"+toolActivityFenced("bash", source) {
+			t.Errorf("unsupported pipeline %q changed meaning: %q", source, got)
+		}
+	}
+}
+
 func TestSubagentNumberedReadDisplay(t *testing.T) {
 	source := "nl -ba semantic-assessment.ts | sed -n '58,154p'; printf '\\n--- judge validations ---\\n'; " +
 		"nl -ba judge.ts | sed -n '79,162p'; printf '\\n--- run grading / assessment lifecycle ---\\n'; " +

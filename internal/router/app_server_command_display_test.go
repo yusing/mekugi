@@ -12,6 +12,7 @@ import (
 
 func TestAppServerFrontendCommandClassification(t *testing.T) {
 	for _, tc := range []struct{ command, want string }{
+		{"cat /home/yusing/projects/codex/codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs | sed -n '45,150p'", "Read `/home/yusing/projects/codex/codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs 45:150`"},
 		{"inspect_file app.go; mcat app.go 1:20; rg -n needle src | head -30", "Inspect `app.go`\n\nRead `app.go 1:20`\n\nSearch `needle` in `src`"},
 		{"skills-mgr get js-ts-best-practices; skills-mgr get user-experience", "Skill `js-ts-best-practices`\n\nSkill `user-experience`"},
 		{"skills-mgr run use-modern-go/scripts/run-tool.sh list --go-version 1.27", "Skill `run use-modern-go/scripts/run-tool.sh list --go-version 1.27`"},
@@ -21,7 +22,7 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/wrapped=%t", tc.command, wrapped), func(t *testing.T) {
 				command := tc.command
 				if wrapped {
-					command = "/usr/bin/bash -lc '" + command + "'"
+					command = workerCommand("/usr/bin/bash", []string{"-lc", command})
 				}
 				u := newAppServerSessionTestUI(t, t.TempDir())
 				item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command,

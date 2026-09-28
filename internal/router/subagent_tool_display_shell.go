@@ -260,7 +260,7 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 				return strings.Trim(strings.Join([]string{left, right}, "\n\n"), "\n"), true
 			}
 		}
-		if display, ok := toolActivityNumberedRead(script, statement, binary); ok {
+		if display, ok := toolActivityPipedRead(script, statement, binary); ok {
 			return display, true
 		}
 		right, ok := binary.Y.Cmd.(*syntax.CallExpr)
@@ -341,26 +341,34 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 	return display, ok
 }
 
-// Recognize the common line-numbered source read produced by `nl -ba FILE |
-// sed -n RANGES`. Both sides are deliberately strict: other nl numbering modes
-// do not preserve a one-to-one mapping between source and output line numbers,
-// and arbitrary sed programs may do more than select bounded source lines.
-func toolActivityNumberedRead(script string, statement *syntax.Stmt, binary *syntax.BinaryCmd) (string, bool) {
+// A single-file cat or nl -ba preserves source line positions through a bounded
+// sed print. Multiple inputs, other numbering modes, and arbitrary sed programs
+// cannot be represented as the same source ranges.
+func toolActivityPipedRead(script string, statement *syntax.Stmt, binary *syntax.BinaryCmd) (string, bool) {
 	if binary.Op != syntax.Pipe || len(statement.Redirs) != 0 {
 		return "", false
 	}
 	left, leftOK := toolActivityPatternCall(script, binary.X)
 	right, rightOK := toolActivityLiteralCall(binary.Y)
-	if !leftOK || !rightOK || len(left) != 3 || left[0] != "nl" || left[1] != "-ba" ||
-		left[2] == "" || strings.HasPrefix(left[2], "-") || len(right) != 3 ||
+	if !leftOK || !rightOK || len(right) != 3 ||
 		right[0] != "sed" || right[1] != "-n" {
+		return "", false
+	}
+	path := ""
+	switch {
+	case len(left) == 3 && left[0] == "nl" && left[1] == "-ba":
+		path = left[2]
+	case len(left) == 2 && left[0] == "cat":
+		path = left[1]
+	}
+	if path == "" || strings.HasPrefix(path, "-") {
 		return "", false
 	}
 	spans, ok := toolActivityPrintSpans(right[2])
 	if !ok {
 		return "", false
 	}
-	return "Read " + toolActivityCode(left[2]+" "+strings.Join(spans, " ")), true
+	return "Read " + toolActivityCode(path+" "+strings.Join(spans, " ")), true
 }
 
 func toolActivityLiteralCall(statement *syntax.Stmt) ([]string, bool) {
