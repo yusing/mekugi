@@ -25,7 +25,8 @@ sessions, and patch review. No fork, no config edits, no daemon.
   message excerpts appear in the main conversation, or live in Mekugi’s
   [agents pane](#agents-pane). Encrypted messages stay private.
 - **Live diffs.** Mekugi’s [live diff pane](#live-diff-pane) streams tool calls
-  and provisional diffs as they arrive, then shows the saved edits.
+  and provisional diffs as they arrive, then shows the saved edits. Click an
+  Edit event to jump to its captured change.
 - **File attachments.** [Select files with `@`](#usage) to send text contents
   directly to the agent, without a separate file-read tool call. **Attached**
   events confirm included files; **Attach failed**
@@ -33,7 +34,8 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Recoverable output and change review.** [Session helpers](#wrapped-session-helpers)
   continue truncated output without rerunning, and track edits from
   `apply_patch` and shell commands, with any gaps in coverage labeled. Edits can
-  be reverted and reapplied by ID.
+  be reverted and reapplied by ID. Captured edits give the agent their durable
+  change IDs and compact summaries in the completed tool result.
 - **Fewer tokens and round trips.** Bounded and batched reads, semantic symbol
   lookup, structural outlines, scoped change IDs, and child change handoffs.
 - **Search output filtering.** With a TypeSafe API key configured, large search results
