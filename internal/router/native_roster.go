@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -47,6 +48,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		return nil
 	}
 	v.hits = v.hits[:0]
+	v.paceRosterMetrics(rows, now)
 	var items []nativeRosterItem
 	fold := -1
 	for _, row := range rows {
@@ -66,7 +68,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	var edited livediff.Counts
 	costKnown, partial, editedKnown := false, false, false
 	for _, row := range rows {
-		if count, ok := v.lineCounts[row.agent.Name]; ok {
+		if count, ok := v.rosterLines[row.agent.Name]; ok {
 			editedKnown = true
 			if count.Added < 0 || edited.Added < 0 {
 				edited = livediff.Counts{Added: -1, Removed: -1}
@@ -246,7 +248,7 @@ func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now t
 	}
 	_, timer := v.current(agent, now)
 	parts[2], parts[3], _ = strings.Cut(timer, " · ")
-	if count, ok := v.lineCounts[agent.Name]; ok {
+	if count, ok := v.rosterLines[agent.Name]; ok {
 		parts[4], parts[5] = v.lineCountParts(count)
 	}
 	if agent.InputTokens+agent.OutputTokens > 0 {
@@ -254,6 +256,68 @@ func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now t
 	}
 	parts[8], parts[9] = liveActivityCost(agent), ansi.Strip(liveActivityTurns(agent))
 	return parts
+}
+
+// rosterMetricEase is how long a changed roster metric takes to reach its new
+// value, so usage and edit reports count up rather than jump.
+const rosterMetricEase = 500 * time.Millisecond
+
+// rosterMetrics are the roster's paced values. Negative line counts are
+// unknown and never interpolate.
+type rosterMetrics struct {
+	input, output, context, cost, added, removed float64
+}
+
+// rosterMetricPace eases one agent's metrics from where they were shown when
+// the latest change arrived toward that change.
+type rosterMetricPace struct {
+	from, to rosterMetrics
+	start    time.Time
+}
+
+func (p rosterMetricPace) at(now time.Time) rosterMetrics {
+	t := min(1, max(0, float64(now.Sub(p.start))/float64(rosterMetricEase)))
+	e := 1 - (1-t)*(1-t)*(1-t) // Ease out: fast start, gentle landing.
+	lerp := func(from, to float64) float64 {
+		if t >= 1 || from < 0 || to < 0 {
+			return to
+		}
+		return from + (to-from)*e
+	}
+	return rosterMetrics{
+		lerp(p.from.input, p.to.input), lerp(p.from.output, p.to.output),
+		lerp(p.from.context, p.to.context), lerp(p.from.cost, p.to.cost),
+		lerp(p.from.added, p.to.added), lerp(p.from.removed, p.to.removed),
+	}
+}
+
+// paceRosterMetrics replaces rows' usage with eased values and records the
+// line counts to show. A first observation, such as restored history, shows
+// its values at once; later changes ease from the value on screen.
+func (v *liveActivityView) paceRosterMetrics(rows []liveActivityRosterRow, now time.Time) {
+	pace := make(map[string]rosterMetricPace, len(rows))
+	v.rosterLines, v.rosterEasing = make(map[string]livediff.Counts), false
+	for i, row := range rows {
+		agent := &rows[i].agent
+		lines, hasLines := v.lineCounts[agent.Name]
+		target := rosterMetrics{float64(agent.InputTokens), float64(agent.OutputTokens), float64(agent.ContextTokens), agent.Cost, float64(lines.Added), float64(lines.Removed)}
+		p, seen := v.rosterPace[row.agent.Name]
+		switch {
+		case !seen:
+			p = rosterMetricPace{from: target, to: target} // Settled.
+		case p.to != target:
+			p = rosterMetricPace{p.at(now), target, now}
+		}
+		pace[agent.Name] = p
+		v.rosterEasing = v.rosterEasing || now.Sub(p.start) < rosterMetricEase
+		shown := p.at(now)
+		agent.InputTokens, agent.OutputTokens = uint64(math.Round(shown.input)), uint64(math.Round(shown.output))
+		agent.ContextTokens, agent.Cost = uint64(math.Round(shown.context)), shown.cost
+		if hasLines {
+			v.rosterLines[agent.Name] = livediff.Counts{Added: int(math.Round(shown.added)), Removed: int(math.Round(shown.removed))}
+		}
+	}
+	v.rosterPace = pace
 }
 
 // lineCountParts colors known added and removed line counts like the Diff

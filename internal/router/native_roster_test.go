@@ -290,3 +290,40 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 		t.Fatalf("session total missing: %q", header)
 	}
 }
+
+func TestNativeRosterMetricsEaseToNewValues(t *testing.T) {
+	v := newLiveActivityView()
+	now := time.Now()
+	agent := activityPaneAgent{Name: "/root", Started: now.Add(-time.Minute), Turns: 1, CostKnown: true, Cost: 1, InputTokens: 100_000, OutputTokens: 1000}
+	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
+	v.lineCounts = map[string]livediff.Counts{"/root": {Added: 10, Removed: 2}}
+	row := func(at time.Time) string {
+		t.Helper()
+		return ansi.Strip(v.nativeRoster(150, 8, at, true)[1])
+	}
+	// Restored or first-seen values show at once.
+	if got := row(now); !strings.Contains(got, "+10 -2") || !strings.Contains(got, "↑100K") || !strings.Contains(got, "$1.00") || v.rosterEasing {
+		t.Fatalf("first frame eased: %q", got)
+	}
+	agent.InputTokens, agent.Cost = 200_000, 2
+	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
+	v.lineCounts = map[string]livediff.Counts{"/root": {Added: 110, Removed: 2}}
+	row(now)
+	mid := row(now.Add(rosterMetricEase / 4))
+	if strings.Contains(mid, "↑100K") || strings.Contains(mid, "↑200K") || strings.Contains(mid, "+10 ") || strings.Contains(mid, "+110") || strings.Contains(mid, "$1.00") || strings.Contains(mid, "$2.00") || !v.rosterEasing {
+		t.Fatalf("metrics jumped instead of easing: %q", mid)
+	}
+	if got := row(now.Add(rosterMetricEase)); !strings.Contains(got, "+110 -2") || !strings.Contains(got, "↑200K") || !strings.Contains(got, "$2.00") || v.rosterEasing {
+		t.Fatalf("metrics did not settle: %q", got)
+	}
+	// A change mid-ease continues from the value on screen.
+	agent.InputTokens = 300_000
+	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
+	later := now.Add(rosterMetricEase)
+	row(later)
+	agent.InputTokens = 400_000
+	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
+	if got := row(later.Add(time.Millisecond)); !strings.Contains(got, "↑200K") && !strings.Contains(got, "↑200.") {
+		t.Fatalf("retarget restarted from the new value: %q", got)
+	}
+}

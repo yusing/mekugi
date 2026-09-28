@@ -141,6 +141,10 @@ to two decimal places, and provider-response turns as `T+N`. Edit lines total ev
 capture attributed to the agent, independent of the Diff caller filter; an incomplete
 capture shows `?` rather than a partial count, and an agent without captures leaves
 the column blank. The roster rule totals them with the other session totals.
+A changed token, cost, context, or edit-line value counts toward its new value over
+half a second, easing out from the value on screen, and the rule's totals follow the
+eased rows. Values seen for the first time, including restored history, show at once;
+unknown line counts never interpolate.
 The roster shows no model label. When the row is too narrow for metrics beside a usable
 activity summary, the metrics are omitted. Metrics are uniformly dim. Within a metric,
 the part before its separator is right-aligned and the part after it left-aligned,

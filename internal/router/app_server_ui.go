@@ -306,7 +306,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 							}
 							u.dirty = u.dirty || len(items) > 0
 						}
-						if u.shell.animating(time.Now()) {
+						if u.shell.animating(time.Now()) || u.agents.rosterEasing {
 							u.dirty = true
 						}
 						w, h, err := term.GetSize(int(stdout.Fd()))
