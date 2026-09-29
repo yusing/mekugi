@@ -180,7 +180,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 		v.lastSeq = entry.Seq
 		if entry.Agent == "Main" && entry.Kind == "text" && entry.native != nil && entry.journal == nil {
 			for _, question := range slices.Backward(v.entries) {
-				if question.Agent == "You" && question.native != nil && question.native.thread == entry.native.thread && question.native.turn == entry.native.turn {
+				if (question.Agent == "You" || question.Kind == "question_reply") && question.native != nil && question.native.thread == entry.native.thread && question.native.turn == entry.native.turn {
 					entry.native.question = question.Seq
 					break
 				}
@@ -454,6 +454,9 @@ func (v *liveActivityView) removeThinking(native *liveActivityNativeItem) {
 }
 
 func (v *liveActivityView) visible(entry activityPaneEntry) bool {
+	if entry.Kind == "question_reply" {
+		return false
+	}
 	// Wait lifecycle belongs in the roster's latest summary, not either feed.
 	// Keep the entries so live updates and restored history share that summary.
 	if entry.native != nil && entry.native.wait != nil {

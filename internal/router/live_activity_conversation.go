@@ -170,6 +170,9 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 				run.lines = append([]string{v.continuation(it.lead, width)}, run.lines...)
 				run.snippets = append([]liveActivitySnippet{{}}, run.snippets...)
 				run.questions = append([]uint64{0}, run.questions...)
+				for seq, row := range run.entryRows {
+					run.entryRows[seq] = row + 1
+				}
 			}
 		}
 		used[key] = run
@@ -191,11 +194,10 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			feed.mainReply = entry
 			feed.mainReplyStart, feed.mainReplyEnd = head, head+len(run.lines)
 		}
-		if entry := v.entries[it.first]; entry.Agent == "You" {
-			for seq, row := range run.entryRows {
-				v.questionRows[seq] = head + row
-			}
-		} else if entry.Kind == "start" || entry.Kind == "assignment" {
+		for seq, row := range run.entryRows {
+			v.questionRows[seq] = head + row
+		}
+		if entry := v.entries[it.first]; entry.Kind == "start" || entry.Kind == "assignment" {
 			v.questionRows[entry.Seq] = head
 		}
 		owner := it.first
@@ -214,6 +216,13 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		feed.questions = append(feed.questions, run.questions...)
 		if v.sentMessage(it.first) {
 			feed.sent = append(feed.sent, liveActivitySent{v.entries[it.first].Seq, len(feed.lines)})
+		}
+	}
+	for _, entry := range v.entries {
+		if entry.Kind == "question_reply" && entry.native != nil {
+			if row, ok := v.questionRows[entry.native.question]; ok {
+				v.questionRows[entry.Seq] = row
+			}
 		}
 	}
 	v.runs = used
@@ -419,6 +428,9 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 				target = snippet
 			}
 			rows := p.Block(block, width-2)
+			if len(block.Questions) > 0 {
+				entryRows[block.Source] = len(toggles)
+			}
 			if len(parts) > 0 && (block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart) {
 				parts[len(parts)-1] = append(parts[len(parts)-1], rows...)
 			} else {
@@ -733,6 +745,8 @@ func (v *liveActivityView) replyContext(out *conversationLines, question activit
 	target := "your message"
 	if question.Kind == "start" || question.Kind == "assignment" {
 		target = "assignment"
+	} else if question.Kind == "question_reply" {
+		target = "your answer"
 	}
 	text := question.Text
 	if question.assignment != nil {

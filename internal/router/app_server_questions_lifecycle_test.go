@@ -185,5 +185,144 @@ func TestQuestionRecordPreservesLiteralNotePrefix(t *testing.T) {
 		if got := entry.native.questions[0].Answer; got != literal {
 			t.Fatalf("sync=%v: displayed %q, want literal %q", sync, got, literal)
 		}
+		questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": appServerItem{ID: "ack", Type: "agentMessage", Text: "I will use that answer."}})
+		u.view.conversation = true
+		if frame := mainFeed(u, 100); !strings.Contains(frame, "re: your answer") || strings.Count(frame, literal) != 2 {
+			t.Fatalf("sync=%v: reply changed the literal answer:\n%s", sync, frame)
+		}
+	}
+}
+
+func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
+	for _, replay := range []bool{false, true} {
+		t.Run(map[bool]string{false: "live", true: "resume"}[replay], func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			u.view.conversation = true
+			u.turn = "turn"
+			content := func(text string) []byte {
+				data, err := json.Marshal([]map[string]string{{"type": "text", "text": text}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return data
+			}
+			items := []appServerItem{
+				{ID: "prompt", Type: "userMessage", Content: content("Original task")},
+				{ID: "ask", Type: "agentMessage", Delivery: "async", Questions: []nativeQuestion{{Title: "Which audience?"}}},
+				{ID: "reply", Type: "userMessage", Content: content(lifecycleReply(t, "ask", 0, "Which audience?", "Customers"))},
+				{ID: "ack", Type: "agentMessage", Text: "I will notify them."},
+			}
+			if replay {
+				u.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: items}})
+			} else {
+				for _, item := range items {
+					questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+				}
+			}
+			var reply, ack activityPaneEntry
+			for _, entry := range u.view.entries {
+				if entry.Kind == "question_reply" {
+					reply = entry
+				}
+				if entry.native != nil && entry.native.item == "ack" {
+					ack = entry
+				}
+			}
+			if reply.Seq == 0 || ack.native == nil || ack.native.question != reply.Seq || reply.Text != "Customers" {
+				t.Fatalf("reply not bound to answer: reply=%+v ack=%+v", reply, ack)
+			}
+			frame := mainFeed(u, 100)
+			if !strings.Contains(frame, "re: your answer") || strings.Contains(frame, "re: your message") || strings.Contains(frame, questionReplyStart) {
+				t.Fatalf("incorrect reply context:\n%s", frame)
+			}
+			if _, ok := u.view.questionRows[reply.Seq]; !ok {
+				t.Fatal("answer link has no Asked navigation target")
+			}
+		})
+	}
+}
+
+func TestQuestionReplyJournalUsesAnswerAnchor(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.conversation = true
+	questionTestAsync(t, u, "ask", "Which audience?")
+	envelope := lifecycleReply(t, "ask", 0, "Which audience?", "Customers")
+	lifecycleUserMessage(t, u, "turn", "reply", envelope)
+	publication := nativeJournalPublication{item: journalItem{ID: "answer", Text: "I will notify them.", Question: envelope}, terminal: true, batch: 1}
+	u.view.applyJournal("main", publication)
+	assert := func() {
+		t.Helper()
+		frame := mainFeed(u, 100)
+		if strings.Contains(frame, questionReplyStart) || !strings.Contains(frame, "re: your answer") || strings.Contains(frame, "not loaded") {
+			t.Fatalf("journal answer context incorrect:\n%s", frame)
+		}
+	}
+	assert()
+	// An identical answer in another call must not move a published link.
+	var original uint64
+	for _, entry := range u.view.entries {
+		if entry.Kind == "question_reply" {
+			original = entry.Seq
+		}
+	}
+	questionTestAsync(t, u, "later", "Which audience?")
+	lifecycleUserMessage(t, u, "turn", "later-reply", lifecycleReply(t, "later", 0, "Which audience?", "Customers"))
+	publication.item.Text = "I will notify the selected audience."
+	u.view.applyJournal("main", publication)
+	assert()
+	for _, blocks := range u.view.blocks {
+		for _, block := range blocks {
+			if block.Journal != nil {
+				for _, group := range block.Journal.Groups {
+					if group.Target != original {
+						t.Fatalf("journal target moved: %d != %d", group.Target, original)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestQuestionReplyLinkSkipsContinuationHeading(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.conversation = true
+	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+		{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "Check the audience"},
+		{Seq: 2, Agent: "Main", Kind: "tool", Text: "Read `config.go`"},
+		{Seq: 3, Agent: "/root/worker", Kind: "final", Text: "Checked"},
+	}})
+	questionTestAsync(t, u, "ask", "Which audience?")
+	lifecycleUserMessage(t, u, "turn", "reply", lifecycleReply(t, "ask", 0, "Which audience?", "Customers"))
+	var reply uint64
+	for _, entry := range u.view.entries {
+		if entry.Kind == "question_reply" {
+			reply = entry.Seq
+		}
+	}
+	feed := u.view.renderFeed(100, 60)
+	row, ok := u.view.questionRows[reply]
+	if !ok || row >= len(feed.lines) || !strings.Contains(feed.lines[row], "Asked") {
+		t.Fatalf("answer target is not Asked: row=%d frame=%s", row, strings.Join(feed.lines, "\n"))
+	}
+}
+
+func TestSyncQuestionReplyBecomesMainAndJournalAnchor(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.conversation = true
+	u.turn = "turn"
+	lifecycleUserMessage(t, u, "turn", "prompt", "Original task")
+	questionTestSync(t, u, "sync", false)
+	questionTestPaint(t, u, 70)
+	appServerTestKeys(t, u, "1\r")
+	questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "sync"})
+	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": appServerItem{ID: "ack", Type: "agentMessage", Text: "I will use that scope."}})
+	frame := mainFeed(u, 100)
+	if !strings.Contains(frame, "re: your answer") || strings.Contains(frame, "re: your message") {
+		t.Fatalf("sync answer not used for reply:\n%s", frame)
+	}
+	u.view.applyJournal("main", nativeJournalPublication{item: journalItem{ID: "answer", Text: "Scope applied.", Question: "Original task"}, terminal: true, batch: 1})
+	frame = mainFeed(u, 100)
+	if strings.Count(frame, "re: your answer") != 2 || strings.Contains(frame, "re: your message") {
+		t.Fatalf("sync answer not used for journal reply:\n%s", frame)
 	}
 }

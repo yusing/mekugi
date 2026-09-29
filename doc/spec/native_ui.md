@@ -543,6 +543,9 @@ duplicate messages on screen. The copy
 is bounded to leave activity visible; the full reply and its links remain in the
 transcript. Very short panes omit the copy. A newer reply replaces it, and ending
 the Main turn (completion, interruption, or failure) removes the pin.
+Replies following a committed question answer quote `re: your answer` and link
+to its Asked record, not the earlier task prompt. The answer envelope never
+creates a duplicate user-message band, including after resume.
 The `re:` label includes the target text; if only the question
 text is retained, it remains text rather than a fabricated navigation target.
 Hovering a navigable link underlines it; clicking it scrolls to and briefly

@@ -34,6 +34,10 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 		}
 	}
 	item := publication.item
+	questionSource := item.Question
+	if replies := questionReplies(questionSource); len(replies) > 0 {
+		item.Question = questionReplyText(replies)
+	}
 	// A terminal flush acknowledges milestones without moving their existing
 	// live transcript position past the work they preceded.
 	if publication.terminal && !item.TerminalOnly && item.Question == "" {
@@ -48,7 +52,7 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 		native: &liveActivityNativeItem{thread: thread, turn: "journal", item: item.ID, phase: "journal"}}
 	if targets[item.ID] == 0 && item.Question != "" {
 		for _, question := range slices.Backward(v.entries) {
-			if question.Agent == "You" && question.Text == item.Question {
+			if (question.native == nil || question.native.thread == thread) && journalQuestionMatches(question, questionSource) {
 				targets[item.ID] = question.Seq
 				break
 			}
@@ -111,7 +115,7 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 					continue
 				}
 				for _, question := range slices.Backward(v.entries[:i]) {
-					if question.Agent == "You" && question.Text == group.Question {
+					if (question.native == nil || question.native.thread == thread) && journalQuestionMatches(question, group.Question) {
 						group.Target = question.Seq
 						break
 					}
@@ -121,10 +125,29 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 	}
 }
 
+func questionReplyText(replies []nativeQuestionReply) string {
+	answers := make([]string, 0, len(replies))
+	for _, reply := range replies {
+		answers = append(answers, reply.Answer)
+	}
+	return strings.Join(answers, "\n")
+}
+
+func journalQuestionMatches(entry activityPaneEntry, source string) bool {
+	if replies := questionReplies(source); len(replies) > 0 {
+		return entry.Kind == "question_reply" && entry.native != nil && slices.Equal(replies, questionReplies(entry.native.replySource))
+	}
+	if entry.Kind == "question_reply" && entry.native != nil && entry.native.replySource == source {
+		return true
+	}
+	return (entry.Agent == "You" || entry.Kind == "question_reply") && entry.Text == source
+}
+
 // Native items extend the activity model rather than creating another transcript
 // cache. Their identities are deliberately not joined to provider call IDs.
 type liveActivityNativeItem struct {
 	questions          []activityui.Question
+	replySource        string // Stock async envelope or sync turn prompt used to bind journal publications.
 	thread, turn, item string
 	phase              string
 	wait               *activityui.Block // Structured wait progress is roster-only.
@@ -192,7 +215,24 @@ func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, metho
 			if entry.Text, entry.native.spans, ok = appServerUserText(item.Content); !ok {
 				return
 			}
-			if len(questionReplies(entry.Text)) > 0 {
+			if replies := questionReplies(entry.Text); len(replies) > 0 {
+				// Keep a chronological reply anchor without duplicating the
+				// answer already displayed under Asked.
+				entry.Kind = "question_reply"
+				entry.native.replySource = entry.Text
+				for _, reply := range replies {
+					questionID, _, ok := questionReplyIdentity(reply)
+					if ok && entry.native.question == 0 {
+						for _, question := range v.entries {
+							if question.Kind == "question" && question.native != nil && question.native.thread == thread && question.native.item == questionID {
+								entry.native.question = question.Seq
+								break
+							}
+						}
+					}
+				}
+				entry.Text = questionReplyText(replies)
+				v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 				return
 			}
 			if thread == main {

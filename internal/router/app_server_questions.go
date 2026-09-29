@@ -262,6 +262,51 @@ func (u *appServerUI) resolveQuestionCall(c *nativeQuestionCall, outcome string)
 	}
 	c.resolved = true
 	u.renderQuestionRecord(c)
+	if len(c.request) > 0 && c.sent {
+		u.recordSyncQuestionAnswer(c)
+	}
+}
+
+// Synchronous answers have no user-message envelope. Retain their committed
+// response as the same hidden chronological anchor used by async answers.
+func (u *appServerUI) recordSyncQuestionAnswer(c *nativeQuestionCall) {
+	var answers []string
+	for _, q := range c.questions {
+		if q.outcome != "answered" {
+			continue
+		}
+		if q.IsSecret {
+			answers = append(answers, "•••")
+			continue
+		}
+		for i, answer := range q.answer {
+			if i > 0 || q.selected == len(q.choices) {
+				answer = strings.TrimPrefix(answer, "user_note: ")
+			}
+			answers = append(answers, answer)
+		}
+	}
+	if len(answers) == 0 {
+		return
+	}
+	for _, v := range []*liveActivityView{u.view, u.agents} {
+		if v == nil {
+			continue
+		}
+		native := &liveActivityNativeItem{thread: c.thread, turn: c.turn, item: "question-answer/" + string(c.request), phase: "item/completed"}
+		for _, previous := range slices.Backward(v.entries) {
+			if previous.native == nil || previous.native.thread != c.thread {
+				continue
+			}
+			if previous.Kind == "question" && previous.native.item == "question/"+string(c.request) {
+				native.question = previous.Seq
+			}
+			if native.replySource == "" && previous.Agent == "You" && previous.native.turn == c.turn {
+				native.replySource = previous.Text
+			}
+		}
+		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.lastSeq + 1, Agent: "Main", Kind: "question_reply", Text: strings.Join(answers, "\n"), Observed: time.Now(), native: native}}})
+	}
 }
 func (u *appServerUI) endSyncQuestions(turn string) {
 	for _, c := range u.questions.calls {
