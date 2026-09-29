@@ -479,6 +479,14 @@ combined and sent as one message, one entry per line. Waiting steers and queued
 messages are listed above the composer until Codex takes them; Alt+Up or
 Shift+Left brings the last queued message back for editing.
 
+`/btw QUESTION` asks a side question using a snapshot of the current conversation,
+even while Main is working. The answer streams in a separate panel above the
+composer. Repeat `/btw QUESTION` for a follow-up in that side conversation;
+PgUp/PgDn scroll its answer and Esc closes it without interrupting Main or
+clearing your draft. Ordinary messages still go to Main. Closing discards the
+temporary side conversation; it is not a session switch or a resumable fork.
+Main keeps its cache identity; side-answer cache reuse is provider-dependent.
+
 Esc interrupts a running turn without clearing your draft (after dismissing open
 menus or returning scrollback to the bottom). Ctrl-C clears the draft first
 (Ctrl+Z brings it back), then interrupts a running turn, or exits when nothing is running. Interrupting while steers are still

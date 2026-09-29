@@ -345,6 +345,11 @@ func (u *terminalUI) send(s string) error {
 	if s == "\x1b" && u.main != nil && u.focus == 0 && u.main.pickerKey(s) {
 		return nil
 	}
+	if u.main != nil && u.focus == 0 && !u.main.paste {
+		if handled, err := u.main.btwKey(s); handled {
+			return err
+		}
+	}
 	if s == "\x1b" && u.selection == nil && u.popNavigationReturn() {
 		return nil
 	}

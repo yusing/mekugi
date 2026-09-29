@@ -62,6 +62,9 @@ type appServerItem struct {
 }
 
 type appServerUI struct {
+	btw                       *appServerBTW
+	btwRequests               map[string]btwRequest
+	btwThreads                map[string]*appServerBTW
 	notifications             *nativeNotifications
 	questions                 nativeQuestionDock
 	statusPanel               *appServerStatusReport
@@ -398,11 +401,18 @@ func (u *appServerUI) request(method string, params any) error {
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
 	defer u.refreshPicker()
+	// Side-thread traffic never reaches Main's lifecycle, questions or roster.
+	if handled, err := u.btwMessage(m); handled {
+		return err
+	}
 	// Any event can make stacked input sendable: an acknowledgement, a turn
 	// start or end, or settled settings.
 	defer func() {
 		if err == nil {
 			err = u.flushInput()
+		}
+		if err == nil {
+			err = u.flushBTW()
 		}
 	}()
 	if m.Method == "skills/changed" {
@@ -836,6 +846,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.insertDraft("\n")
 	case '\r':
 		text := strings.TrimSpace(u.draft)
+		if text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
+			return false, u.submitBTW()
+		}
 		if u.shellMode() {
 			return false, u.submitShell()
 		}
@@ -863,7 +876,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /status, /copy, /skills, /model, /reasoning, /tier, /quit", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /btw, /status, /copy, /skills, /model, /reasoning, /tier, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil {
@@ -1019,6 +1032,11 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 		dock = 0
 		room -= len(questionRows)
 	}
+	btwRows := u.btwRows(width, max(0, min(height/2, room)))
+	if len(btwRows) > 0 {
+		dock = 0
+		room -= len(btwRows)
+	}
 	if u.pickerVisible() {
 		dock = 0
 	} else {
@@ -1061,6 +1079,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 	dockAt := len(frame)
 	frame = append(frame, make([]string, dock)...)
 	frame = append(frame, pending...)
+	frame = append(frame, btwRows...)
 	u.questions.rect = terminalRect{0, len(frame), width, len(questionRows)}
 	frame = append(frame, questionRows...)
 	if u.questions.active != nil {

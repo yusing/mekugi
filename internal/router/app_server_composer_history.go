@@ -109,6 +109,11 @@ func (u *appServerUI) pruneDraftImages() {
 	for _, image := range u.images {
 		used[image.path] = true
 	}
+	if u.btw != nil {
+		for _, image := range u.btw.pending.images {
+			used[image.path] = true
+		}
+	}
 	stacks := [][]composerUndo{u.undoDrafts, u.redoDrafts}
 	if u.questions.active != nil {
 		e := u.questions.parked

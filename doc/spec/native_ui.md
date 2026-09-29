@@ -306,7 +306,7 @@ results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
 Typing `/` at the start of an otherwise single-token draft opens a local command
-catalog with descriptions for `/status`, `/copy`, `/model`, `/reasoning`, `/tier`, `/skills`, and
+catalog with descriptions for `/btw`, `/status`, `/copy`, `/model`, `/reasoning`, `/tier`, `/skills`, and
 `/quit`. Typing filters commands with fuzzy matching; Up/Down selects, Tab
 completes without executing, Enter runs the selected command, and Escape closes
 the catalog without changing the draft. Arguments close completion. Pasted text
@@ -322,6 +322,54 @@ an empty history reports that there is no response to copy. Copying remains
 available during a turn without interrupting it. The picker, selection Copy
 (`c` or Ctrl-C), and link copying share terminal clipboard delivery and feedback.
 Delivery uses OSC 52 and reports a request sent, not confirmed clipboard access.
+
+### Side questions
+
+`/btw QUESTION` asks a temporary side question without switching away from Main,
+steering it, interrupting it, or adding side messages to its conversation. This is
+not `/fork` or `/side`: only the side question and streamed answer appear in a
+bounded Markdown dock above the composer, alongside queued input. Ordinary
+composer input continues to target Main. `/btw QUESTION` after completion follows
+up in the same side conversation and replaces the dock's displayed exchange.
+While the side answer is running, another `/btw` remains an unsent draft with a
+notice. Bare `/btw` explains the required question rather than submitting input.
+
+Codex owns the ephemeral snapshot through `thread/fork` with `excludeTurns`.
+A main submission awaiting acknowledgement settles before the fork request;
+an already-active turn is neither awaited nor canceled. The boundary is the
+history Codex snapshots when it handles the fork, not the keystroke time or an
+unfinished streamed token. Later Main activity does not enter side follow-ups.
+The fork uses Main's effective model, reasoning effort and service tier, including
+live setting changes and resumed sessions, rather than launch-time defaults.
+The side turn asks for a context-only answer, disables environment access, and
+uses read-only permissions with no approvals. App-server does not expose a
+general no-tools policy; non-environment tools are not guaranteed to be absent.
+
+Side responses, errors, usage and server requests do not enter Main's transcript,
+status, questions, notifications or roster. Fork and submission failures stay in
+the dock. Rejected input returns ahead of any newer composer draft, preserving
+attachment tokens for editing; file omission notices remain visible in the dock.
+Main keeps its request history, settings and cache identity. Codex owns
+side cache affinity, which may share Main's key despite a distinct thread identity;
+actual cache reuse is provider-dependent. No router cache-key rewrite or reconstructed
+conversation is used to simulate a branch.
+
+The fork alone disables its provider's Codex-facing WebSocket capability using a
+thread-local config override. This skips Codex's redundant startup model prewarm
+when the side question is already ready and streams the turn to the router over
+HTTP. Main's transport, provider/auth configuration, and the router's upstream
+WebSocket support remain unchanged. No warmup response is fabricated or discarded.
+
+PgUp/PgDn scroll the side answer while the dock is open. Esc, after dismissing
+active questions or command menus, closes the dock without changing the main
+draft or canceling Main. It cancels only a running side turn and unsubscribes its
+thread; delayed fork/start acknowledgements still finish that cleanup and cannot
+replace a newer dock. The display retains at most 256 KiB across 256 answer items
+and reports truncation; Codex retains the full side context for follow-ups.
+The dock is not persisted or restored on resume, and closing it makes the next
+`/btw` take a new snapshot. No processes or handles are replayed.
+
+### Session status
 
 `/status` opens a temporary, bordered session panel with fixed close/scroll
 controls, grouped sections, aligned values, and colored remaining-usage gauges.
