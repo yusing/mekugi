@@ -185,9 +185,25 @@ unchanged.
 A completed command shows its segments only when its report ended with the
 host's own exit status. Otherwise, including a report that ends when the shell
 replaces itself or is killed, Activity falls back to the host's combined result.
-Reports are live-only; restored history and `codex resume` show the combined
-result. The per-command overhead is one helper start and two acknowledgments per
-segment. Single commands start no helper.
+Completed, host-validated reports are retained in the managed replay store,
+scoped to the workspace and exact host turn/item identity. Restored history,
+including inherited fork history and `codex resume`, uses them only when the
+command, aggregate output and terminal exit still match. Replay restores
+settled output and states, never a process or continuation. Reading inherited
+reports retains them for the requesting thread independently of the original
+thread. Storage failure leaves live presentation available without promising
+restoration.
+
+Old history without reports, missing or mismatched records, and incomplete
+reports keep the combined host result. Terminal and lossy reports retain their
+observed segment statuses but not separate output. If any segment's bounded
+output was truncated or released before persistence, restored output likewise
+stays combined rather than presenting a partial stream as complete. The combined
+output dialog hides only the literal host shell wrapper, using the same display
+rules as Activity; stored commands and executed arguments remain unchanged.
+The per-command overhead is one helper start and two acknowledgments per
+segment, plus managed storage of a completed report. Single commands start no
+helper.
 
 Acceptance:
 
@@ -207,3 +223,7 @@ Acceptance:
    for later non-edit commands. Preview matching requires exact thread, turn and
    script identity and rejects ambiguous matches. These live observations never
    finalize the host command or create durable change receipts.
+7. Completed segment output, failure and skipped states survive a fresh router
+   and inherited host history. Changed workspace, turn, item, command, aggregate
+   or exit cannot borrow another invocation's report. Missing evidence cannot
+   manufacture output boundaries.

@@ -12,17 +12,18 @@ import (
 // a count of the lines before them. A Retention bounds what a session keeps
 // across commands. Outputs belong to the UI goroutine.
 type Output struct {
-	lines    []string
-	line     []byte // Current line's head, one byte past OutputLineBytes.
-	cr       bool   // A carriage return awaits the next byte.
-	bytes    int    // Retained line bytes, charged to the retention.
-	dropped  int    // Lines before lines.
-	released bool
-	done     bool
-	exited   bool // The host reported an exit status.
-	exit     int
-	version  int
-	owner    *Retention
+	lines     []string
+	line      []byte // Current line's head, one byte past OutputLineBytes.
+	cr        bool   // A carriage return awaits the next byte.
+	bytes     int    // Retained line bytes, charged to the retention.
+	dropped   int    // Lines before lines.
+	truncated bool   // At least one completed line exceeded OutputLineBytes.
+	released  bool
+	done      bool
+	exited    bool // The host reported an exit status.
+	exit      int
+	version   int
+	owner     *Retention
 }
 
 // Host aggregates stop at 1 MiB; a live stream keeps as much of its latest
@@ -96,6 +97,7 @@ func (o *Output) Write(output string) {
 func (o *Output) endLine() {
 	line := string(o.line)
 	if len(line) > OutputLineBytes {
+		o.truncated = true
 		line = strings.ToValidUTF8(line[:OutputLineBytes], "") + "…"
 	}
 	line = strings.TrimRight(livediff.Safe(line, false), " ")
@@ -124,6 +126,7 @@ func (o *Output) Finish(aggregate *string, exit *int) {
 	if aggregate != nil && !o.released {
 		before := o.bytes + len(o.line)
 		o.lines, o.line, o.cr, o.bytes, o.dropped = nil, nil, false, 0, 0
+		o.truncated = false
 		if o.owner != nil {
 			o.owner.bytes -= before
 		}
@@ -160,12 +163,13 @@ func (o *Output) Release() {
 
 // OutputView is what an Output retains at one moment.
 type OutputView struct {
-	Lines    []string // Retained lines, then an unfinished one.
-	Dropped  int      // Lines before Lines no longer retained.
-	Released bool     // The session released this output for newer output.
-	Done     bool
-	Exited   bool // Exit is the host's reported status.
-	Exit     int
+	Lines     []string // Retained lines, then an unfinished one.
+	Dropped   int      // Lines before Lines no longer retained.
+	Truncated bool     // A retained line lost bytes to the per-line limit.
+	Released  bool     // The session released this output for newer output.
+	Done      bool
+	Exited    bool // Exit is the host's reported status.
+	Exit      int
 }
 
 // Version changes whenever the output's view does.
@@ -187,5 +191,5 @@ func (o *Output) View() OutputView {
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
 	}
-	return OutputView{Lines: lines, Dropped: o.dropped, Released: o.released, Done: o.done, Exited: o.exited, Exit: o.exit}
+	return OutputView{Lines: lines, Dropped: o.dropped, Truncated: o.truncated || len(o.line) > OutputLineBytes, Released: o.released, Done: o.done, Exited: o.exited, Exit: o.exit}
 }

@@ -418,8 +418,9 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 		}
 		s.retainOutput(entry.native, item)
 		appServerSucceededOutput(&entry, item, time.Time{})
+		u.restoreCommandSegments(&entry, item, u.session.cwd)
 		*entries = append(*entries, entry)
-		if item.ExitCode != nil && *item.ExitCode != 0 {
+		if len(entry.native.segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
 			exit := activityPaneEntry{Seq: s.next(), Agent: name, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID, Observed: observed}
 			exit.outputTail, exit.outputOmit = appServerOutputTail(item.AggregatedOutput)
 			*entries = append(*entries, exit)

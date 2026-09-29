@@ -632,6 +632,7 @@ func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry,
 	}
 	native := *entry.native
 	native.segments = view.segments
+	u.retainCommandSegments(entry, item, view)
 	// Successful segments' output stays open until the agent's next event.
 	native.settled, native.collapsed = now, false
 	entry.native = &native

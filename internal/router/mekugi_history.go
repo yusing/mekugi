@@ -39,6 +39,7 @@ type mekugiHistory struct {
 	ExecObservation *execObservation         `json:",omitempty"`
 	ExecOutcome     *execOutcome             `json:",omitempty"`
 	HostResults     []nativeToolResult       `json:",omitempty"`
+	CommandSegments *retainedCommandSegments `json:",omitempty"`
 	CarrierName     string
 	CarrierKind     codeModeCarrierKind
 	CarrierPayload  string

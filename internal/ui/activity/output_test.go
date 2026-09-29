@@ -59,6 +59,20 @@ func TestOutputFinishAggregateReplacement(t *testing.T) {
 	}
 }
 
+func TestOutputReportsLineTruncation(t *testing.T) {
+	for _, ending := range []string{"", "\n"} {
+		var o Output
+		o.Write(strings.Repeat("x", OutputLineBytes+1) + ending)
+		if !o.View().Truncated || o.View().Dropped != 0 {
+			t.Fatal("line truncation was not reported independently of dropped rows")
+		}
+		o.Finish(new("complete aggregate"), new(0))
+		if o.View().Truncated {
+			t.Fatal("replacement aggregate inherited discarded truncation")
+		}
+	}
+}
+
 func TestOutputRetentionReleasesSettledNotLive(t *testing.T) {
 	var r Retention
 	payload := strings.Repeat(strings.Repeat("x", OutputLineBytes)+"\n", OutputBytes/OutputLineBytes)
