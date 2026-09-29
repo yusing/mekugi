@@ -60,7 +60,8 @@ reports several operations at once, such as a shell call classified as Skill,
 Read and Search, they appear one at a time, 80 ms apart, in Main, Activity and the
 roster summary; restored history shows at once. Child text is sanitized before layout, so it cannot emit terminal
 controls. Local absolute-path Markdown links show their label as a terminal
-hyperlink rather than exposing the raw destination syntax. A completed child
+hyperlink rather than exposing the raw destination syntax. Wrapped links retain their
+destination and underline only on their text, never on row padding or gutters. A completed child
 compaction appears as an event in the feed and as the agent's latest roster
 activity; an attempted or failed compaction does not claim completion.
 Read line spans display as `L25–46`. Each `Run` operation is its own row. In

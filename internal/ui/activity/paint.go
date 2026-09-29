@@ -127,6 +127,7 @@ func Wrap(text string, width int, hard bool) []string {
 	}
 	var lines []string
 	var style uv.Style
+	var link uv.Link
 	parser := ansi.GetParser()
 	defer func() {
 		parser.SetHandler(ansi.Handler{})
@@ -136,6 +137,10 @@ func Wrap(text string, width int, hard bool) []string {
 		if cmd == 'm' {
 			uv.ReadStyle(params, &style)
 		}
+	}, HandleOsc: func(cmd int, data []byte) {
+		if cmd == 8 {
+			uv.ReadLink(data, &link)
+		}
 	}})
 	carry := ""
 	for line := range strings.SplitSeq(wrapped, "\n") {
@@ -144,12 +149,23 @@ func Wrap(text string, width int, hard bool) []string {
 			// ansi.Wrap keeps the blank it breaks at; drop it, keeping escapes.
 			line = ansi.Truncate(line, ansi.StringWidth(plain)-blanks, "")
 		}
-		lines = append(lines, carry+line)
+		row := carry + line
 		parser.Parse([]byte(line))
+		// Padding and the next row's gutter are outside the styled content.
+		if !style.IsZero() {
+			row += Reset
+		}
+		if !link.IsZero() {
+			row += "\x1b]8;;\x1b\\"
+		}
+		lines = append(lines, row)
 		carry = style.String()
 		if style.IsZero() {
 			// Enclosing bands recognize this canonical reset to reapply their background.
 			carry = Reset
+		}
+		if !link.IsZero() {
+			carry += ansi.SetHyperlink(link.URL, link.Params)
 		}
 	}
 	return lines

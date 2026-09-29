@@ -109,3 +109,33 @@ func TestReadsTakeOneRowEachWhenWrapped(t *testing.T) {
 		t.Fatalf("fitting reads = %q", fits)
 	}
 }
+
+func TestWrappedLinksDoNotStylePaddingOrGutters(t *testing.T) {
+	p := activityui.Painter{}
+	for _, hard := range []bool{false, true} {
+		rows := activityui.Wrap(p.Inline("see [timestamp assignment](https://example.com) end"), 15, hard)
+		screen := vt.NewEmulator(20, len(rows))
+		defer screen.Close()
+		var linked strings.Builder
+		for y, row := range rows {
+			_, _ = fmt.Fprintf(screen, "\x1b[%d;1H| %s%s", y+1, row, strings.Repeat(" ", 18-ansi.StringWidth(row)))
+			for x := range 20 {
+				cell := screen.CellAt(x, y)
+				if x < 2 || x >= 2+ansi.StringWidth(row) {
+					if cell.Style.Underline != uv.UnderlineNone || cell.Link.URL != "" {
+						t.Fatalf("styled gutter/padding at %d,%d: %#v", x, y, cell)
+					}
+				}
+				if cell.Link.URL != "" {
+					if cell.Style.Underline != uv.UnderlineSingle {
+						t.Fatalf("lost underline: %#v", cell)
+					}
+					linked.WriteString(cell.Content)
+				}
+			}
+		}
+		if strings.ReplaceAll(linked.String(), " ", "") != "timestampassignment" {
+			t.Fatalf("lost link content: %q", linked.String())
+		}
+	}
+}

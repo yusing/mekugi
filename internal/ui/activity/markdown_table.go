@@ -219,28 +219,8 @@ func (p *Painter) markdownTableRecords(rows [][]string, width int) []string {
 // restore them on continuations, so neither borders nor adjacent cells link.
 func tableCellLines(cell string, width int) []string {
 	rows := Wrap(cell, width, false)
-	link := ""
-	const open = "\x1b]8;;"
-	const end = "\x1b\\"
 	for i, row := range rows {
-		prefix := link
-		rest := row
-		for {
-			_, after, ok := strings.Cut(rest, open)
-			if !ok {
-				break
-			}
-			target, after, ok := strings.Cut(after, end)
-			if !ok {
-				break
-			}
-			link = ""
-			if target != "" {
-				link = open + target + end
-			}
-			rest = after
-		}
-		rows[i] = prefix + ansi.Truncate(row, width, "…") + Reset + open + end
+		rows[i] = ansi.Truncate(row, width, "…") + Reset + "\x1b]8;;\x1b\\"
 	}
 	return rows
 }
