@@ -125,9 +125,9 @@ func TestAppServerQueuedInputStacksIntoNextTurn(t *testing.T) {
 	if len(frame) != 20 {
 		t.Fatalf("frame height = %d", len(frame))
 	}
-	// The preview sits directly above the composer's top border.
-	above := ansi.Strip(strings.Join(frame[len(frame)-6:len(frame)-3], "\n"))
-	if above != "• Queued for the next turn · alt+↑ edits\n  ↳ one\n  ↳ two" || !strings.HasPrefix(frame[len(frame)-3], "\x1b[38;2;52;48;72m╭") {
+	// A blank row separates the preview from the composer's top border.
+	above := ansi.Strip(strings.Join(frame[len(frame)-7:len(frame)-4], "\n"))
+	if frame[len(frame)-4] != "" || above != "• Queued for the next turn · alt+↑ edits\n  ↳ one\n  ↳ two" || !strings.HasPrefix(frame[len(frame)-3], "\x1b[38;2;52;48;72m╭") {
 		t.Fatalf("queued input not previewed above composer: %q", above)
 	}
 	appServerTestTurnEnd(t, u, "t", "completed")

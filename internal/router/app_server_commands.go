@@ -14,6 +14,7 @@ var nativeCommands = []composerChoice{
 	{name: "/model", description: "Choose the model"},
 	{name: "/reasoning", description: "Choose the reasoning effort"},
 	{name: "/effort", description: "Choose the reasoning effort"},
+	{name: "/live", description: "Show or hide Live edits for this session"},
 	{name: "/tier", description: "Choose the service tier"},
 	{name: "/skills", description: "List or manage skills"},
 	{name: "/btw", description: "Ask a side question without changing Main"},

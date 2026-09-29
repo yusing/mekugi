@@ -33,6 +33,7 @@ type terminalUI struct {
 	diffOpen                                       bool
 	diffUnseen                                     bool // Saved changes arrived while Activity held the right column.
 	liveDock                                       diffview.PreviewPane
+	liveHidden                                     bool      // Presentation only, local to this frontend session.
 	dockShown                                      time.Time // When the shared dock's newest card appeared.
 	prefix                                         bool
 	sequenceAt                                     time.Time

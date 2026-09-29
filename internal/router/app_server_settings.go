@@ -128,7 +128,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 		return false, nil
 	}
 	command := fields[0]
-	if command != "/model" && command != "/reasoning" && command != "/effort" && command != "/tier" {
+	if command != "/model" && command != "/reasoning" && command != "/effort" && command != "/tier" && command != "/live" {
 		return false, nil
 	}
 	if u.clearing {
@@ -137,6 +137,8 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 	}
 	var choices []string
 	switch command {
+	case "/live":
+		choices = []string{"on", "off"}
 	case "/model":
 		for _, model := range u.models {
 			if !model.Hidden {
@@ -160,6 +162,16 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 	}
 	if len(fields) != 2 {
 		u.setNotice("Use "+command+" or "+command+" VALUE", true)
+		return true, nil
+	}
+	if command == "/live" {
+		if fields[1] != "on" && fields[1] != "off" {
+			u.setNotice("Use /live, /live on, or /live off", true)
+			return true, nil
+		}
+		u.setLivePane(fields[1])
+		u.recordDraft()
+		u.draft, u.cursorBack, u.images = "", 0, nil
 		return true, nil
 	}
 	if u.settingsPending {
@@ -193,7 +205,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	if method == "model/list" {
 		if m.Error != nil {
 			u.modelsLoading, u.reasoningKey = false, nil
-			if u.picker.modal == "settings" {
+			if u.picker.modal == "settings" && u.settingsChoices != "/live" {
 				u.picker.loading = false
 				u.picker.problem = "Model choices unavailable · Esc to close; use an explicit VALUE"
 			}
@@ -214,7 +226,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		u.modelsLoading = false
 		if u.settingsChoices != "" {
 			command := u.settingsChoices
-			if u.picker.modal == "settings" {
+			if u.picker.modal == "settings" && u.settingsChoices != "/live" {
 				_, _ = u.settingsCommand(command)
 			}
 		}
@@ -315,6 +327,12 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 	u.settingsChoices = command
 	current := u.model
 	switch command {
+	case "/live":
+		p.loading = false
+		current = "on"
+		if u.shell != nil && u.shell.liveHidden {
+			current = "off"
+		}
 	case "/reasoning", "/effort":
 		current = u.reasoningEffort
 	case "/tier":
@@ -367,6 +385,12 @@ func (u *appServerUI) settingsPickerKey(key string) bool {
 		if p.loading || len(p.choices) == 0 {
 			return true
 		}
+		if u.settingsChoices == "/live" {
+			u.setLivePane(p.choices[p.selected].name)
+			p.modal, p.open, p.choices = "", false, nil
+			u.settingsChoices = ""
+			return true
+		}
 		field := "model"
 		switch u.settingsChoices {
 		case "/effort", "/reasoning":
@@ -390,4 +414,12 @@ func (u *appServerUI) settingsPickerKey(key string) bool {
 		}
 	}
 	return true
+}
+
+// setLivePane changes presentation without stopping preview or capture updates.
+func (u *appServerUI) setLivePane(value string) {
+	u.ensureShell()
+	u.shell.liveHidden = value == "off"
+	u.dirty = true
+	u.setNotice("Live pane "+value+" for this session", false)
 }

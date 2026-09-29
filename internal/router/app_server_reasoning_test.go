@@ -79,7 +79,7 @@ func TestAppServerComposerKeepsWorkingDuringReasoning(t *testing.T) {
 	for _, dock := range []int{0, 3} {
 		frame, dockRect := u.mainFrame(70, 12, dock)
 		border := u.composerRect.y - 1
-		if len(frame) != 12 || !strings.Contains(ansi.Strip(frame[border]), "◐ Working") || strings.Contains(ansi.Strip(frame[border]), "Checking layout") || dockRect.y+dockRect.h != border {
+		if len(frame) != 12 || !strings.Contains(ansi.Strip(frame[border]), "◐ Working") || strings.Contains(ansi.Strip(frame[border]), "Checking layout") || dockRect.y+dockRect.h != border-1 || frame[border-1] != "" {
 			t.Fatalf("reasoning replaced Working: dock=%d frame=%q", dock, frame)
 		}
 	}

@@ -175,15 +175,25 @@ one coverage notice with a `mchanges` reference, not labeled as confirmed edits;
 the durable records retain each path and its reason.
 
 The shell frames Main on the left and one right pane: the saved diff (2) or
-Activity (3), toggled and each filling the pane. A roster (4) above them fits its
+Activity (3), toggled and each filling the pane. A roster (4) below them fits its
 content, four rows unfocused and up to 40% of the screen when focused; finished
-agents fold into one row. Collapsed rows place activity directly after the name
+agents fold into one row. One blank row above and below separates the roster
+from the panes and status bar when terminal height permits. Collapsed rows place activity directly after the name
 without reserving name-column padding. Each row shows state, timer, tokens, cost
 and turns, dropping from the right when narrow. Observed roles color the status
 glyphs, with a color-to-role legend only in the expanded Agents pane; role labels
 are not repeated in each row. Agent names retain their identity colors. Every pane has a title bar with
 its tab number, focus and scroll state, and the status bar shows the tabs with
 contextual key hints. Ctrl-B + number focuses a pane.
+
+A blank row immediately above the composer separates it from the latest message
+or auxiliary content, including the journal plan strip, when height permits.
+
+`/live` opens an on/off picker for the Live pane; `/live on` and `/live off`
+apply directly. This presentation-only preference lasts for the current frontend
+session, defaults to on at launch (including resume), and never stops activity,
+preview updates, or capture. Hidden docks reserve no space. Showing the pane
+again displays any still-current cards, not expired work.
 
 Streaming edits share one Live dock across Main and child agents, keyed by call
 ID so caller-less completion and removal events reach the existing card.
@@ -321,8 +331,9 @@ results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
 Typing `/` at the start of an otherwise single-token draft opens a local command
-catalog with descriptions for `/btw`, `/status`, `/copy`, `/model`, `/effort`, `/reasoning`, `/tier`, `/skills`, and
-`/quit`. Typing filters commands with fuzzy matching; Up/Down selects, Tab
+catalog with descriptions for `/compact`, `/clear`, `/btw`, `/status`, `/copy`,
+`/model`, `/effort`, `/reasoning`, `/tier`, `/live`, `/skills`, and `/quit`.
+Typing filters commands with fuzzy matching; Up/Down selects, Tab
 completes without executing, Enter runs the selected command, and Escape closes
 the catalog without changing the draft. Arguments close completion. Pasted text
 does not activate the catalog. The catalog uses the shared picker viewport and

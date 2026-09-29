@@ -960,7 +960,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /compact, /clear, /btw, /status, /copy, /skills, /model, /effort, /reasoning, /tier, /quit", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /compact, /clear, /btw, /status, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil {
@@ -1149,7 +1149,8 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	}
 	dock = min(dock, max(0, room-1))
 	room -= dock
-	// A blank row separates the latest message from the composer.
+	// Reserve a blank row immediately above the composer, including below
+	// any journal strip, pending input, or live dock.
 	gap := 0
 	if !u.pickerVisible() && room > 2 {
 		gap = 1
@@ -1177,7 +1178,6 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			copy(frame[len(frame)-popupHeight:], popup)
 		}
 	}
-	frame = append(frame, make([]string, gap)...)
 	dockAt := len(frame)
 	frame = append(frame, make([]string, dock)...)
 	frame = append(frame, pending...)
@@ -1187,6 +1187,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	if strip != "" {
 		frame = append(frame, strip)
 	}
+	frame = append(frame, make([]string, gap)...)
 	if u.questions.active != nil {
 		u.questions.painted = true
 	}

@@ -287,6 +287,9 @@ Mekugi differs in these ways:
   available while idle and does not delete saved sessions or filesystem changes.
   Interrupt returns unsent input to the composer without automatically resending
   it. Interrupting an uncommitted first message leaves an empty transcript.
+- **Live pane.** `/live` opens an on/off picker; `/live on` or `/live off`
+  applies directly for the current session. Hiding it frees its space without
+  stopping activity or edit capture. New launches, including resume, show it again.
 - **Setting pickers.** `/model`, `/effort` (also `/reasoning`), and `/tier` open
   a picker: Up/Down and Enter apply a choice, Esc cancels, and neither the
   command nor its choices enter the transcript. A value switches directly, such

@@ -262,12 +262,16 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	if height-1-len(roster) < nativeFramedRows {
 		roster = nil // A short terminal keeps its rows for Main.
 	}
-	top := max(0, height-1-len(roster))
+	padding := 0
+	if len(roster) > 0 && height-1-len(roster)-2 >= nativeFramedRows {
+		padding = 1
+	}
+	top := max(0, height-1-len(roster)-2*padding)
 	framed := top >= nativeFramedRows
 	l := terminalLayout{vertical: -1, horizontal: -1, rosterHorizontal: -1}
 	if len(roster) > 0 {
-		l.rosterHorizontal = top
-		l.roster = terminalRect{0, top, width, len(roster)}
+		l.rosterHorizontal = top + padding
+		l.roster = terminalRect{0, top + padding, width, len(roster)}
 	}
 	var left, right terminalRect
 	wide := width >= 100 && top >= 12
@@ -285,7 +289,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	default:
 		right = terminalRect{0, 0, width, top}
 	}
-	liveRight := !mainEdit && len(u.liveDock.Order) > 0 && right.w >= 4 && right.h >= 3 && framed
+	liveRight := !u.liveHidden && !mainEdit && len(u.liveDock.Order) > 0 && right.w >= 4 && right.h >= 3 && framed
 	rows := make([]string, height)
 	draw := func(r terminalRect, lines []string) {
 		for i, line := range lines {
@@ -300,7 +304,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			iw, ih = left.w, left.h
 		}
 		dockRows := nativeDockRows(&u.liveDock, ih-3)
-		if liveRight || (u.main.keybindings || u.main.picker.open) && u.focus == 0 {
+		if u.liveHidden || liveRight || (u.main.keybindings || u.main.picker.open) && u.focus == 0 {
 			dockRows = 0
 		}
 		body, dockRect := u.main.mainFrame(iw, ih, dockRows)
