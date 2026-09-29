@@ -665,6 +665,9 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		transform.Close()
 		return nil, err
 	}
+	if err := p.journals.beginJournalTurn(ctx, p.replayStore, directory, threadID, metadata.TurnID); err != nil {
+		p.notice(sessionID, threadID, "journal_reset", "Slice continuation unavailable: turn boundary could not be retained.")
+	}
 	if metadata.ParentThreadID != "" && activityThreadID != "" {
 		if err := p.journals.observeLifecycle(ctx, p.replayStore, directory, threadID, "working", ""); err != nil {
 			transform.Close()

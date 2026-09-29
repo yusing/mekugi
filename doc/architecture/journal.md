@@ -37,6 +37,19 @@ For native compaction's missing workspace metadata, the session ownership catalo
 proves the unique prior selected workspace from exact thread-owned records. This
 lookup remains valid after restart and rejects multiple historical workspaces.
 
+Slice reset state belongs to the journal record: turn-start sequence, handled
+turn ID and one intent bound to the completed turn. Intent transitions persist
+before dependent app-server RPCs. A manual standalone compaction consumes only
+an armed intent in the requesting thread/workspace, recording its response ID.
+Fork initialization does not copy turn checkpoints or intents.
+
+The shared app-server reset driver owns countdown cancellation, goal pause and
+revision-checked restoration, compaction acknowledgement and matching host turn
+completion, then `turn/start`. Terminal presentation does not implement a second
+policy. A continuation's reserved client-message ID identifies its transcript row;
+its acknowledged host turn ID gates pending input. Dispatched intents never replay
+RPCs after restart; retained pause evidence keeps uncertain goal outcomes visible.
+
 The router intercepts the dedicated journal tool and returns its result through
 the current response flow rather than a host executor. A valid direct finish
 can select terminal delivery when no client-dispatched work remains. Code Mode

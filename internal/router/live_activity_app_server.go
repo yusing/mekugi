@@ -220,6 +220,11 @@ func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, metho
 			if entry.Text, entry.native.spans, ok = appServerUserText(item.Content); !ok {
 				return
 			}
+			if strings.HasPrefix(item.ClientID, journalContinuationPrefix) {
+				entry.Agent, entry.Kind, entry.Text = "Main", "text", "↻ Auto-continue · "+entry.Text
+				v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+				return
+			}
 			if replies := questionReplies(entry.Text); len(replies) > 0 {
 				// Keep a chronological reply anchor without duplicating the
 				// answer already displayed under Asked.

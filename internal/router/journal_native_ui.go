@@ -251,7 +251,7 @@ func (u *appServerUI) applyPendingJournal() {
 }
 
 func (u *appServerUI) applyJournalPublication(sink *nativeJournalSink, publication nativeJournalPublication) {
-	if publication.event != nil && publication.event.Fields.Kind == "note" && u.journalPanePresents(sink) {
+	if publication.event != nil && publication.event.Op != "reset" && publication.event.Fields.Kind == "note" && u.journalPanePresents(sink) {
 		return
 	}
 	if publication.event == nil || publication.item.Text != "" { // Non-transition edits render no row.

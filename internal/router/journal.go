@@ -100,6 +100,10 @@ type journalSpawnRole struct {
 }
 
 type threadJournal struct {
+	TurnID               string                      `json:"turn_id,omitempty"`
+	TurnStartSeq         uint64                      `json:"turn_start_seq,omitzero"`
+	ResetHandledTurn     string                      `json:"reset_handled_turn,omitempty"`
+	ResetIntent          *journalResetIntent         `json:"reset_intent,omitempty"`
 	EvidenceKnown        bool                        `json:"evidence_known,omitzero"`
 	EvidenceChangeSeq    uint64                      `json:"evidence_change_seq,omitzero"`
 	EvidenceCaptureOrder uint64                      `json:"evidence_capture_order,omitzero"`
@@ -137,6 +141,10 @@ type threadJournal struct {
 }
 
 func (j threadJournal) clone() threadJournal {
+	if j.ResetIntent != nil {
+		intent := *j.ResetIntent
+		j.ResetIntent = &intent
+	}
 	j.LegacyLive = maps.Clone(j.LegacyLive)
 	j.LegacyFlush = maps.Clone(j.LegacyFlush)
 	j.Events = slices.Clone(j.Events)

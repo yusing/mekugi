@@ -325,6 +325,11 @@ func (u *terminalUI) terminalColor(reply string) {
 }
 
 func (u *terminalUI) send(s string) error {
+	if s == "\x1b" && u.main != nil && u.main.reset.cancellable() && !u.main.reset.cancelled {
+		err := u.main.reset.cancel()
+		u.main.showResetNotice()
+		return err
+	}
 	if u.output != nil {
 		u.outputKey(s)
 		return nil

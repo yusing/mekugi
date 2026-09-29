@@ -113,7 +113,7 @@ Neither recovery path acknowledges events or replays effects.
 compaction requests, including child threads. The default remains `off` until the
 offline harness and separately authorized paid evaluation establish the proposed
 success, redo and token-cost gate. `slice` is reset-only, with ordinary compactions
-forwarded to the provider; slice-reset driving is not yet delivered.
+forwarded to the provider.
 
 Synthesis requires one selected workspace, an unambiguous requesting thread and
 durable journal or executing-thread-owned change evidence. Conflicted identities,
@@ -140,6 +140,32 @@ compacted transcript record identifies that persisted response. Missing or
 unreadable transcript evidence, older host records without response IDs, and
 provider-written summaries keep normal hook recovery. Failed or interrupted local
 responses cannot suppress recovery for another compaction.
+
+### Slice continuation
+
+A plan marked `reset: "slice"` can continue between successful native Main turns.
+When a task becomes done during the completed turn and has a pending sibling,
+the frontend offers a three-second countdown to the next pending sibling. Escape
+or queued user input cancels it. Failed and interrupted turns do not continue;
+child completion cannot drive a Main reset.
+
+With `slice` or `auto`, the frontend asks Codex to compact before continuing.
+Only a router-answered, successfully completed compaction permits the automatic
+continuation. Provider fallback leaves the plan available for manual continuation.
+With `off`, the same countdown continues the plan without resetting context.
+This keeps the continuing-context comparison separate from compaction policy.
+
+An active Codex goal is paused before the countdown and restored after the
+continuation is accepted, or after cancellation. Restoration applies only if
+that goal's identity and paused revision are unchanged. Interrupted or uncertain
+RPC outcomes are not retried; the frontend reports that manual continuation and
+possibly manual goal resumption are needed. That retained evidence never blocks a
+later slice, and an uncertain compaction dispatch cannot make a later manual
+compaction count as the reset: only an intent armed for the latest ordinary turn
+is answered. Escape cancels until compaction or continuation is dispatched. A
+still-pending countdown for the latest turn whose next slice is still pending can
+recover on resume; resume reports and discards any other intent. A fork copies
+the plan without its live continuation intent.
 
 ## REQ-JOURNAL-001 — Durable work journals
 

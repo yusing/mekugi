@@ -651,6 +651,12 @@ agent identity colors. This applies to metadata, secondary labels, separators,
 and diff coordinates; non-dimmed semantic colors, syntax highlighting and
 animated status ramps stay unchanged.
 
+Slice plans use the [journal continuation policy](journal.md#slice-continuation).
+The pinned countdown names the next path and title and shows `Esc cancels`.
+Context-reset events remain visible even with the Journal pane open. Router-authored
+continuations appear as auto-continue rows, not user bubbles. Pending user input
+cancels an undispatched continuation rather than competing with it.
+
 Host progress has one presentation mapping for live events and restored history.
 Compaction start replaces Main’s `Working` label with `Compacting context`;
 completion restores ordinary turn status and adds a `Context compacted` event,

@@ -41,6 +41,13 @@ The non-repository fixture emitted no compaction workspace metadata. The router
 can recover only a unique prior selected workspace from durable requesting-thread
 records, never its process cwd. Ambiguous retained workspaces keep provider fallback.
 
+`TestJournalSliceResetNativeCodexE2E` also passed with CLI 0.158.0. The shared
+app-server driver requested manual local compaction, accepted the router summary,
+then started the next planned turn. The continuation carried the pending path and
+recovered task states, and the durable reset intent was consumed. The mock provider
+saw two ordinary turns and no compaction request. The fixture seeds journal facts;
+it does not measure model adherence to slice planning or context-size improvement.
+
 ### Codex workspace metadata
 
 - A session started inside this Git repository declared the enclosing

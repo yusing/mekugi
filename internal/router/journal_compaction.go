@@ -41,7 +41,7 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 	}
 	capturer.ObserveCompaction(a.startCtx, "provider", 0, 0, 0)
 	p := a.executor.mekugiCalls
-	if p == nil || p.replayStore == nil || p.journalCompaction != "auto" ||
+	if p == nil || p.replayStore == nil || p.journalCompaction != "auto" && p.journalCompaction != "slice" ||
 		a.threadID == "" || a.metadata.activityIdentityInvalid ||
 		a.metadata.ThreadID != "" && a.metadata.ThreadID != a.threadID ||
 		slices.ContainsFunc(a.headers.Values(threadIDHeader), func(value string) bool {
@@ -77,6 +77,18 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 			// executing-thread ownership, not the request's prose, supplies it.
 			j = threadJournal{Workspace: workspace, Thread: a.threadID, IdentityKnown: true}
 		}
+		var metadata struct {
+			Trigger string `json:"trigger"`
+			Phase   string `json:"phase"`
+		}
+		_ = json.Unmarshal(a.metadata.Compaction, &metadata)
+		// Compaction turns do not begin a journal turn, so an intent armed
+		// after the completed slice still names the latest ordinary turn.
+		reset := j.ResetIntent != nil && j.ResetIntent.Phase == "armed" && j.ResetIntent.Turn == j.TurnID &&
+			metadata.Trigger == "manual" && metadata.Phase == "standalone_turn"
+		if p.journalCompaction == "slice" && !reset {
+			return errJournalUnchanged
+		}
 		summary, err = store.journalSummaryLocked(ctx, j)
 		if err != nil {
 			return err
@@ -94,11 +106,20 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 		if err != nil {
 			return err
 		}
-		return store.writeManagedFile(journalCompactionName(workspace, a.threadID), "compaction-pending-", data)
+		if err := store.writeManagedFile(journalCompactionName(workspace, a.threadID), "compaction-pending-", data); err != nil {
+			return err
+		}
+		if reset {
+			j.ResetIntent.Phase, j.ResetIntent.ResponseID = "consumed", id
+			return writeThreadJournal(store, j)
+		}
+		return nil
 	})
 	if err != nil {
 		release()
-		p.notice(a.sessionID, a.threadID, "journal_compaction_fallback", "Journal compaction unavailable; using the provider summary.")
+		if !errors.Is(err, errJournalUnchanged) {
+			p.notice(a.sessionID, a.threadID, "journal_compaction_fallback", "Journal compaction unavailable; using the provider summary.")
+		}
 		return false
 	}
 	a.compactionRelease = release

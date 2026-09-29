@@ -62,6 +62,7 @@ type appServerItem struct {
 }
 
 type appServerUI struct {
+	reset                     *journalResetDriver
 	btw                       *appServerBTW
 	btwRequests               map[string]btwRequest
 	btwThreads                map[string]*appServerBTW
@@ -274,6 +275,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						u.dirty = true
 					case <-tick.C:
+						if err := u.tickJournalReset(time.Now()); err != nil {
+							u.setNotice(err.Error(), true)
+						}
 						u.applyObservedActivity()
 						u.flushCommandOutput()
 						u.paneError(u.panes.save(u.shell, time.Now(), false))
@@ -406,6 +410,17 @@ func (u *appServerUI) request(method string, params any) error {
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
 	defer u.refreshPicker()
+	u.ensureJournalReset()
+	if u.reset != nil {
+		handled, resetErr := u.reset.message(m, time.Now())
+		if resetErr != nil {
+			u.setNotice("Journal slice: "+resetErr.Error(), true)
+		}
+		u.showResetNotice()
+		if handled {
+			return u.flushInput()
+		}
+	}
 	// Side-thread traffic never reaches Main's lifecycle, questions or roster.
 	if handled, err := u.btwMessage(m); handled {
 		return err
@@ -646,6 +661,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
 			if p.Turn.Status == "completed" && u.questionCount() == 0 {
 				u.notify("agent-turn-complete", "Agent turn complete")
+				if u.reset != nil && len(u.unsent) == 0 && len(u.queued) == 0 {
+					if err := u.reset.completed(p.Turn.ID); err != nil {
+						u.setNotice("Slice continuation: "+err.Error(), true)
+					}
+				}
 			}
 			for _, c := range u.questions.calls {
 				if !c.resolved {
@@ -1037,6 +1057,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 
 	room := max(0, height-len(draft)-borderRows)
 	strip := u.journalPlanStrip(width)
+	if reset := u.journalResetStrip(width); reset != "" {
+		strip = reset
+	}
 	if strip != "" && room > 0 {
 		room--
 	} else {

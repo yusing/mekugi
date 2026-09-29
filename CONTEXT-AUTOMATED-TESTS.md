@@ -11,6 +11,7 @@ go test -tags journal_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWr
 go test -tags journal_e2e ./internal/router -run '^TestJournalNativeCodexSpawnE2E$'
 go test -tags journal_e2e ./internal/router -run '^TestPostCompactNativeCodexE2E$'
 go test -tags journal_e2e ./internal/router -run '^TestJournalCompactionNativeCodexE2E$'
+go test -tags journal_e2e ./internal/router -run '^TestJournalSliceResetNativeCodexE2E$'
 go test -tags journal_e2e ./internal/router -run '^(TestRouterTransformFaultNativeCodexE2E|TestRetryablePrestream5xxStillRetriesInNativeCodexE2E)$'
 ```
 
@@ -36,6 +37,9 @@ trust UI or manual `/compact` command.
 The journal-compaction fixture additionally verifies that a router-authored
 summary is accepted by installed Codex, never reaches the mock provider, restores
 task/change evidence, and suppresses only the matching recovery hook injection.
+The slice-reset fixture drives manual app-server compaction followed by the next
+planned turn through the shared reset policy. It verifies the continuation path,
+recovered summary and consumed intent without a provider compaction request.
 
 The fixtures are the `internal/router/*_codex_e2e_test.go` files. A tagged compile-only check is
 `go test -tags journal_e2e ./internal/router -run '^$'`.

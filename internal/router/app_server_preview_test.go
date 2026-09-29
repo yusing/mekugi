@@ -44,6 +44,9 @@ func TestNativeUIPreview(t *testing.T) {
 	if os.Getenv("MEKUGI_JOURNAL_PREVIEW") == "1" {
 		seedNativeJournalPreview(p)
 	}
+	if os.Getenv("MEKUGI_JOURNAL_RESET_PREVIEW") == "1" {
+		seedNativeJournalResetPreview(p)
+	}
 	p.delay = "0.6"
 	err = terminalui.WithRawPane(t.Context(), tty, tty, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 		tick := time.NewTicker(33 * time.Millisecond)
@@ -77,6 +80,11 @@ func TestNativeUIPreview(t *testing.T) {
 				}
 			case <-tick.C:
 				now := time.Now()
+				if p.ui.reset != nil {
+					if err := p.ui.tickJournalReset(now); err != nil {
+						return err
+					}
+				}
 				if err := p.ui.shell.flushEscape(); err != nil {
 					return err
 				}
