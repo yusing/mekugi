@@ -487,7 +487,9 @@ This observational read never resumes children or replaces newer live usage.
 Restoration reads at most the last 8 MiB and a 64 KiB metadata prefix; absent,
 unreadable, mismatched, or unavailable snapshots leave the initial display intact.
 Roster edit counts use green for additions and red for removals, independent of
-the syntax theme. Omit each zero count, including in session totals.
+the syntax theme. Show known captured edits only: incomplete captures must not
+hide confirmed counts from the same agent or other agents. Omit each zero or
+unknown count, including in session totals; detailed capture gaps remain in Diff.
 Narrow roster rows retain context before other metrics;
 the composer's bottom border shows `model (effort) • used/window • percent%`
 as one right-aligned caption, shortening or omitting the model first when narrow.

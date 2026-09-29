@@ -265,7 +265,7 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 		return livediff.Chunk{Origin: livediff.Origin{Caller: caller}, Review: mekugi.ReviewFile{Diff: diff, Incomplete: incomplete}}
 	}
 	v.lineCounts = liveDiffCallerCounts([]livediff.File{
-		{Chunks: []livediff.Chunk{chunk("/root", "@@ -1 +1,2 @@\n-a\n+b\n+c", ""), chunk("/root/a", "@@ -1 +1 @@\n-x\n+y", "")}},
+		{Chunks: []livediff.Chunk{chunk("/root", "@@ -1 +1,2 @@\n-a\n+b\n+c", ""), chunk("/root/a", "@@ -1 +1 @@\n-x\n+y", ""), chunk("/root/a", "", "tool-managed coverage")}},
 		{Chunks: []livediff.Chunk{chunk("/root", "@@ -0,0 +1 @@\n+d", ""), chunk("/root/b", "", "truncated")}},
 	})
 	lines := v.nativeRoster(150, 8, now, true)
@@ -273,13 +273,16 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 	for _, line := range lines {
 		rows = append(rows, ansi.Strip(line))
 	}
-	if !strings.Contains(rows[0], "?") || strings.Contains(rows[0], "+4 -2") {
-		t.Fatalf("session total hides an incomplete capture: %q", rows[0])
+	if strings.Contains(rows[0], "?") || !strings.Contains(rows[0], "+4 -2") {
+		t.Fatalf("session total lost confirmed counts: %q", rows[0])
 	}
-	for i, want := range []string{"+3 -1  ↑2K", "+1 -1  ↑1K", "?"} {
+	for i, want := range []string{"+3 -1  ↑2K", "+1 -1  ↑1K"} {
 		if !strings.Contains(rows[i+1], want) {
 			t.Fatalf("row %d lacks %q:\n%s", i+1, want, strings.Join(rows, "\n"))
 		}
+	}
+	if strings.Contains(rows[3], "?") {
+		t.Fatalf("unknown-only agent has a placeholder: %q", rows[3])
 	}
 	// The added and removed counts share a separator column across rows.
 	if at := strings.Index(rows[1], " -1"); ansi.StringWidth(rows[1][:at]) != ansi.StringWidth(rows[2][:strings.Index(rows[2], " -1")]) {
@@ -357,6 +360,7 @@ func TestNativeRosterLineCountColorsAndZeros(t *testing.T) {
 		added, removed string
 	}{
 		{livediff.Counts{}, "", ""},
+		{livediff.Counts{Added: -1, Removed: -1}, "", ""},
 		{livediff.Counts{Added: 3}, activityui.Green + "+3\x1b[39m", ""},
 		{livediff.Counts{Removed: 2}, "", activityui.Red + "-2\x1b[39m"},
 		{livediff.Counts{Added: 3, Removed: 2}, activityui.Green + "+3\x1b[39m", activityui.Red + "-2\x1b[39m"},

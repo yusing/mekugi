@@ -67,13 +67,9 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	var edited livediff.Counts
 	costKnown, partial, editedKnown := false, false, false
 	for _, row := range rows {
-		if count, ok := v.rosterLines[row.agent.Name]; ok {
+		if count, ok := v.rosterLines[row.agent.Name]; ok && count.Added >= 0 && count.Removed >= 0 {
 			editedKnown = true
-			if count.Added < 0 || edited.Added < 0 {
-				edited = livediff.Counts{Added: -1, Removed: -1}
-			} else {
-				edited.Added, edited.Removed = edited.Added+count.Added, edited.Removed+count.Removed
-			}
+			edited.Added, edited.Removed = edited.Added+count.Added, edited.Removed+count.Removed
 		}
 		input += row.agent.InputTokens
 		output += row.agent.OutputTokens
@@ -322,10 +318,10 @@ func (v *liveActivityView) paceRosterMetrics(rows []liveActivityRosterRow, now t
 }
 
 // lineCountParts uses semantic green/red colors, independent of the syntax
-// theme. Zero counts are omitted; unknown counts show as "?", not zero.
+// theme. Zero and unknown counts are omitted.
 func (v *liveActivityView) lineCountParts(count livediff.Counts) (string, string) {
 	if count.Added < 0 || count.Removed < 0 {
-		return "?", ""
+		return "", ""
 	}
 	var added, removed string
 	if count.Added > 0 {

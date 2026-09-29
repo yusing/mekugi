@@ -462,13 +462,18 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 }
 
 // liveDiffCallerCounts totals each caller's captured edit lines, regardless of
-// the caller filter. Any incomplete capture makes that caller's counts unknown.
+// the caller filter. Incomplete captures contribute no counts, rather than
+// hiding confirmed edits from the same caller behind an unknown total.
 // Files outside the capturing workspace, such as rewritten scratch files, are
 // not project edits and stay out of the totals.
 func liveDiffCallerCounts(files []livediff.File) map[string]livediff.Counts {
 	counts := make(map[string]livediff.Counts)
 	for _, file := range files {
 		for _, chunk := range file.Chunks {
+			added, removed := chunk.Review.LineCounts()
+			if added < 0 || removed < 0 {
+				continue
+			}
 			if review := chunk.Review; chunk.Workspace != "" && review.Origin == "" &&
 				!slices.ContainsFunc([]string{review.BeforePath, review.AfterPath}, func(path string) bool {
 					return path != "" && execPathWithin(path, chunk.Workspace)
@@ -477,12 +482,7 @@ func liveDiffCallerCounts(files []livediff.File) map[string]livediff.Counts {
 			}
 			key := livediff.CallerKey(chunk.Caller)
 			count := counts[key]
-			added, removed := chunk.Review.LineCounts()
-			if added < 0 || count.Added < 0 {
-				count = livediff.Counts{Added: -1, Removed: -1}
-			} else {
-				count.Added, count.Removed = count.Added+added, count.Removed+removed
-			}
+			count.Added, count.Removed = count.Added+added, count.Removed+removed
 			counts[key] = count
 		}
 	}
