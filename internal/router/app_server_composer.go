@@ -326,14 +326,14 @@ func (u *appServerUI) wordBoundary(at int, backward bool) int {
 	if backward {
 		for at > low {
 			r, size := utf8.DecodeLastRuneInString(u.draft[:at])
-			if !unicode.IsSpace(r) {
+			if !composerWordSeparator(r) {
 				break
 			}
 			at -= size
 		}
 		for at > low {
 			r, size := utf8.DecodeLastRuneInString(u.draft[:at])
-			if unicode.IsSpace(r) {
+			if composerWordSeparator(r) {
 				break
 			}
 			at -= size
@@ -341,18 +341,35 @@ func (u *appServerUI) wordBoundary(at int, backward bool) int {
 	} else {
 		for at < high {
 			r, size := utf8.DecodeRuneInString(u.draft[at:])
-			if unicode.IsSpace(r) {
+			if !composerWordSeparator(r) {
 				break
 			}
 			at += size
 		}
 		for at < high {
 			r, size := utf8.DecodeRuneInString(u.draft[at:])
-			if !unicode.IsSpace(r) {
+			if composerWordSeparator(r) {
 				break
 			}
 			at += size
 		}
 	}
+	// Punctuation can be the base of a grapheme, such as a keycap emoji.
+	// Never leave the caret or a deletion boundary inside that grapheme.
+	for start, text := range u.draftGraphemes() {
+		if start >= at {
+			break
+		}
+		if end := start + len(text); at < end {
+			if backward {
+				return start
+			}
+			return end
+		}
+	}
 	return at
+}
+
+func composerWordSeparator(r rune) bool {
+	return unicode.IsSpace(r) || unicode.IsPunct(r)
 }

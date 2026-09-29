@@ -24,7 +24,10 @@ func TestAppServerComposerEditingKeys(t *testing.T) {
 		{"grapheme backspace", "ae\u0301👩‍💻z\x1b[D\x7f", "ae\u0301z"},
 		{"grapheme delete", "ae\u0301z\x1b[D\x1b[D\x1b[3~", "az"},
 		{"ctrl left", "one  two three\x1b[1;5D\x1b[1;5DX", "one  Xtwo three"},
-		{"ctrl right", "one  two three\x1b[H\x1b[1;5CX", "one  Xtwo three"},
+		{"ctrl right", "one  two three\x1b[H\x1b[1;5CX", "oneX  two three"},
+		{"comma left", "abc,def\x1b[1;3DX", "abc,Xdef"},
+		{"comma right", "abc,def\x1b[H\x1b[1;3CX", "abcX,def"},
+		{"comma right twice", "abc,def\x1b[H\x1b[1;3C\x1b[1;3CX", "abc,defX"},
 		{"ordinary meta letters", "before bf", "before bf"},
 		{"pasted meta letters are text", "one two\x1b[200~\x1bb\x1bf\x1b[201~X", "one twobfX"},
 		{"pasted alt arrows do not move", "one two\x1b[200~\x1b[1;3D\x1b[1;3C\x1b[201~X", "one twoX"},
@@ -241,6 +244,9 @@ func TestAppServerComposerImageAdjacentCombiningMark(t *testing.T) {
 
 func TestAppServerComposerAltWordDeletion(t *testing.T) {
 	for _, tt := range []struct{ name, keys, want string }{
+		{"comma backward", "abc,def\x1b\x7f", "abc,"},
+		{"comma forward", "abc,def\x1b[H\x1b[3;3~", ",def"},
+		{"comma preceding backward", "abc,\x1b\x7f", ""},
 		{"alt backspace DEL", "one two\x1b\x7f", "one "},
 		{"alt backspace BS", "one two\x1b\x08", "one "},
 		{"alt backspace trailing whitespace", "one two  \x1b\x7f", "one "},
@@ -248,7 +254,7 @@ func TestAppServerComposerAltWordDeletion(t *testing.T) {
 		{"alt backspace CSI u BS", "one two\x1b[8;3u", "one "},
 		{"alt delete", "one two three\x1b[H\x1b[1;5C\x1b[3;3~", "one three"},
 		{"unicode previous word", "one 你好👩‍💻\x1b\x7f", "one "},
-		{"unicode next word", "你好👩‍💻 next\x1b[H\x1b[3;3~", "next"},
+		{"unicode next word", "你好👩‍💻 next\x1b[H\x1b[3;3~", " next"},
 		{"start boundary", "one\x1b[H\x1b\x7f", "one"},
 		{"end boundary", "one\x1b[3;3~", "one"},
 		{"paste is not shortcut", "one\x1b[200~\x1b[3;3~\x1b\x7f\x1b[201~", "one\x7f"},
@@ -297,7 +303,7 @@ func TestAppServerComposerOptionWordNavigation(t *testing.T) {
 				t.Fatalf("backward: %q", u.draft)
 			}
 			keys(encoding.right + "Y")
-			if u.draft != "one  X你好👩‍💻 Ythree" {
+			if u.draft != "one  X你好👩‍💻Y three" {
 				t.Fatalf("forward: %q", u.draft)
 			}
 			keys(strings.Repeat(encoding.left, 5))
@@ -326,7 +332,7 @@ func TestAppServerComposerOptionWordNavigation(t *testing.T) {
 			if err := u.paint(screen, 100, 30); err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(screen.String(), "X你好👩‍💻 Ythree") {
+			if !strings.Contains(screen.String(), "X你好👩‍💻Y three") {
 				t.Fatalf("edited draft missing from frame:\n%s", screen.String())
 			}
 		})
@@ -395,6 +401,23 @@ func TestAppServerComposerKillShortcutsThroughTerminal(t *testing.T) {
 		appServerTestKeys(t, u, "\x1a")
 		if u.draft != "before [Image 1]" || len(u.images) != 1 {
 			t.Fatalf("attachment undo: %q", u.draft)
+		}
+	}
+}
+
+func TestAppServerComposerKeycapWordBoundaries(t *testing.T) {
+	for _, emoji := range []string{"#️⃣", "*️⃣"} {
+		for _, tt := range []struct{ keys, want string }{
+			{emoji + "\x1b[1;3DX", "X" + emoji},
+			{emoji + "\x1b[H\x1b[1;3CX", emoji + "X"},
+			{emoji + "\x1b\x7f", ""},
+			{emoji + "\x1b[H\x1b[3;3~", ""},
+		} {
+			u, _ := newAppServerTestUI()
+			appServerTestKeys(t, u, tt.keys)
+			if u.draft != tt.want {
+				t.Fatalf("keys %q: got %q, want %q", tt.keys, u.draft, tt.want)
+			}
 		}
 	}
 }

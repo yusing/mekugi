@@ -349,8 +349,9 @@ rows. At the first/last displayed row, Up/Down recalls older/newer submitted
 input, restoring the draft and caret after the newest entry. History is bounded
 to 100 entries per thread; live entries retain attachments, while resume hydrates
 text only from Codex user messages. There is no additional durable input store.
-Ctrl+Left/Right and Alt/Option+Left/Right move by word; Ctrl+Up/Down move to
-logical line boundaries. Word navigation accepts modified-arrow sequences and
+Ctrl+Left/Right and Alt/Option+Left/Right move to the previous word start or next
+word end, skipping whitespace and punctuation in the travel direction.
+Ctrl+Up/Down move to logical line boundaries. Word navigation accepts modified-arrow sequences and
 the Meta-b/f sequences emitted by macOS terminals, including over remote sessions.
 Shift+Up/Down steps through model-advertised reasoning levels without wrapping.
 `/model`, `/reasoning`, and `/tier` show choices in the scrollable transcript,
@@ -369,8 +370,8 @@ Child threads are unchanged.
 `configuration_update` reasoning history items remain Codex-authored, subject to
 its model capability gate; the client never injects them or changes user config.
 
-Alt+Backspace/Delete remove the previous/next whitespace-delimited word without
-splitting image attachments. Option+Backspace also accepts the Ctrl+W encoding
+Alt+Backspace/Delete remove the previous/next word using the same punctuation-aware
+boundaries without splitting image attachments. Option+Backspace also accepts the Ctrl+W encoding
 used by macOS terminals. Ctrl+K removes text to the logical line end, or removes
 the following newline when already at the line end; each press is undoable.
 Editing and the visible composer window follow the
