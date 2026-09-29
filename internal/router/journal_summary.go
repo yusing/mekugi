@@ -178,15 +178,16 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	for _, node := range slices.Backward(established) {
 		text.WriteString(node)
 	}
-	text.WriteString("\nRetained changes:\n")
-	text.WriteString(boundCompactSection(s.childJournalChanges(ctx, j.Workspace, j.Thread), "mchanges --list"))
-	sinceChange, sinceCapture := uint64(0), uint64(0)
-	if j.EvidenceKnown {
-		sinceChange, sinceCapture = j.EvidenceChangeSeq, j.EvidenceCaptureOrder
-	}
 	index, err := s.readChangeIndex(j.Workspace)
 	if err != nil {
 		return result, err
+	}
+	text.WriteString("\nRetained changes:\n")
+	changes, _ := s.renderChildJournalChanges(ctx, index, j.Thread, 0, false)
+	text.WriteString(boundCompactSection(changes, "mchanges --list"))
+	sinceChange, sinceCapture := uint64(0), uint64(0)
+	if j.EvidenceKnown {
+		sinceChange, sinceCapture = j.EvidenceChangeSeq, j.EvidenceCaptureOrder
 	}
 	for id, change := range index.Changes {
 		streamName, _, _ := parseChangeID(id)
@@ -211,7 +212,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	if result.Changes > 0 || len(failures) > 0 {
 		text.WriteString("\nSince the last journal event:\n")
 		if result.Changes > 0 {
-			changes, _ := s.childJournalChangesSince(ctx, j.Workspace, j.Thread, sinceChange, true)
+			changes, _ := s.renderChildJournalChanges(ctx, index, j.Thread, sinceChange, true)
 			text.WriteString(boundCompactSection(changes, "mchanges --list"))
 		}
 		// Keep the newest failures within the remaining capacity.

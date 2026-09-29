@@ -298,8 +298,5 @@ func (d *journalResetDriver) label(now time.Time) string {
 		}
 		return fmt.Sprintf("%s in %ds · starting %s %s · Esc cancels", verb, max(0, int(d.deadline.Sub(now).Seconds()+1)), d.intent.Path, d.intent.Title)
 	}
-	if d.cancellable() && !d.cancelled {
-		return "Journal slice · " + d.phase + " · Esc cancels"
-	}
 	return "Journal slice · " + d.phase
 }

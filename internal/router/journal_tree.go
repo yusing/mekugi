@@ -64,10 +64,6 @@ func (j *threadJournal) ensureTree() {
 		}
 		j.NextOrdinal[""]++
 		item.Path = "/" + strconv.FormatUint(j.NextOrdinal[""], 10)
-		item.Kind = "note"
-		if item.TerminalOnly {
-			item.Kind = "answer"
-		}
 		setLegacyJournalContent(item)
 	}
 	if j.Version == 1 {

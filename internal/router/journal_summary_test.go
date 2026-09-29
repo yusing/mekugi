@@ -123,6 +123,27 @@ func TestJournalSummarySeparatesEarlierEvidenceFromUnreportedFailure(t *testing.
 			t.Errorf("missing failure recovery fact %q: %s", fact, after.Text)
 		}
 	}
+	retained, delta, ok := strings.Cut(after.Text, "Since the last journal event:")
+	if !ok || !strings.Contains(retained, "render.go") || !strings.Contains(retained, "new.go") ||
+		strings.Contains(delta, "render.go") || !strings.Contains(delta, "new.go") {
+		t.Fatalf("cumulative and delta changes lost their evidence boundary: %s", after.Text)
+	}
+}
+
+func TestJournalSummaryRejectsCorruptChangeIndex(t *testing.T) {
+	transform, proxy, _, workspace := newDurableTreeTransform(t)
+	store, thread, ctx := proxy.replayStore, transform.shellThreadID, transform.ctx
+	if _, err := proxy.journals.apply(ctx, store, workspace, thread, "", []journalMutation{{Op: "add", Kind: "task", Title: new("Repair renderer")}}); err != nil {
+		t.Fatal(err)
+	}
+	scoped := store.scoped(ctx)
+	if err := os.WriteFile(filepath.Join(scoped.directory, changeIndexName(workspace, scoped.handleNamespace())), []byte("bad"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := summaryForTest(t, ctx, store, workspace, thread)
+	if err == nil || summary.Text != "" {
+		t.Fatalf("corrupt evidence produced a recovery summary: %+v, %v", summary, err)
+	}
 }
 
 func TestJournalSummaryListsFailureWithoutRetainedOutput(t *testing.T) {

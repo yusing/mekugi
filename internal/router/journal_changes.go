@@ -8,6 +8,8 @@ import (
 	"strings"
 )
 
+const journalChangesUnavailable = "\n\n**Changes:**\nChanges unavailable: "
+
 // childJournalChanges runs under store.lock with the journal snapshot. It uses
 // durable executing-thread ownership, including recoveries in another stream,
 // rather than the current router's activity tree or model-authored handoffs.
@@ -17,16 +19,20 @@ func (s *mekugiReplayStore) childJournalChanges(ctx context.Context, workspace, 
 }
 
 func (s *mekugiReplayStore) childJournalChangesSince(ctx context.Context, workspace, thread string, since uint64, delivered bool) (result string, cursor uint64) {
-	const unavailable = "\n\n**Changes:**\nChanges unavailable: "
 	if s == nil || thread == "" {
-		return unavailable + "change storage or thread identity is unavailable.\n", since
+		return journalChangesUnavailable + "change storage or thread identity is unavailable.\n", since
 	}
 	s = s.scoped(ctx)
 	index, err := s.readChangeIndex(workspace)
 	if err != nil {
-		return unavailable + err.Error() + "\n", since
+		return journalChangesUnavailable + err.Error() + "\n", since
 	}
-	selected := changeIndex{Workspace: workspace, Changes: make(map[string]trackedChange)}
+	return s.renderChildJournalChanges(ctx, index, thread, since, delivered)
+}
+
+// renderChildJournalChanges reuses a validated index under the replay lock.
+func (s *mekugiReplayStore) renderChildJournalChanges(ctx context.Context, index changeIndex, thread string, since uint64, delivered bool) (result string, cursor uint64) {
+	selected := changeIndex{Workspace: index.Workspace, Changes: make(map[string]trackedChange)}
 	var ids, ranges []string
 	retired := false
 	totalCalls, totalChanges := 0, 0
@@ -99,7 +105,7 @@ func (s *mekugiReplayStore) childJournalChangesSince(ctx context.Context, worksp
 	}
 	if len(ids) == 0 {
 		if retired {
-			return unavailable + "older change records were removed by session cleanup.\n", index.Sequence
+			return journalChangesUnavailable + "older change records were removed by session cleanup.\n", index.Sequence
 		}
 		return "\n\n**Changes:**\nNo recorded changes.\n", index.Sequence
 	}
@@ -109,7 +115,7 @@ func (s *mekugiReplayStore) childJournalChangesSince(ctx context.Context, worksp
 		output.WriteString("Stat unavailable: older change records were removed by session cleanup.\n")
 		return output.String(), index.Sequence
 	}
-	stat, err := s.renderChanges(ctx, changeReadOptions{workspace: workspace, ids: ids, view: "summary"}, selected)
+	stat, err := s.renderChanges(ctx, changeReadOptions{workspace: index.Workspace, ids: ids, view: "summary"}, selected)
 	if err != nil {
 		fmt.Fprintf(&output, "Stat unavailable: %s\n", err)
 	} else if stat == "" {
