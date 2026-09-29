@@ -843,7 +843,8 @@ func statBar(added, removed, scale int) string {
 		Dim + strings.Repeat("━", statBarCells-filled) + Undim
 }
 
-// fitPath elides the middle of a path wider than width, keeping its file name.
+// fitPath shortens a path wider than width from its start, dropping whole
+// leading directories so its nearest directories and file name remain.
 func fitPath(path string, width int) string {
 	// Below this, eliding leaves too little of the name; rows wrap instead.
 	if width < 16 || ansi.StringWidth(path) <= width {
@@ -851,8 +852,13 @@ func fitPath(path string, width int) string {
 	}
 	i := strings.LastIndex(strings.TrimSuffix(path, "/"), "/")
 	base := path[i+1:]
-	if room := width - ansi.StringWidth(base) - 2; i >= 0 && room >= 1 {
-		return ansi.Truncate(path[:i], room, "") + "…/" + base
+	if i >= 0 && ansi.StringWidth(base)+2 <= width {
+		// The last separator always fits, so this finds a cut.
+		for cut := 1; cut <= i; cut++ {
+			if path[cut] == '/' && 1+ansi.StringWidth(path[cut:]) <= width {
+				return "…" + path[cut:]
+			}
+		}
 	}
 	// The name alone is too wide: keep its start and its extension.
 	if i >= 0 && width > 4 {

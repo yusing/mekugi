@@ -38,9 +38,10 @@ File rows' line counts share one column within a group of more than one row when
 the row fits, and zero counts are omitted. In an `Edited` group of more than one
 row, an eight-cell bar after the counts scales each row's changed lines against
 the group's largest.
-A path too wide for its row keeps its file name and elides the middle of its
-directory, or of the name itself when that alone is too wide; below a readable
-width it wraps instead. A receipt's tool-managed files are one row in the
+A path too wide for its row gives way before the row's other parts: it drops
+whole leading directories behind `…/`, keeping its nearest directories and file
+name, or elides the middle of the name itself when that alone is too wide; below
+a readable width it wraps instead. A receipt's tool-managed files are one row in the
 receipt source's `Edited` group. Unresolved edit targets remain an explicit
 `paths unavailable` row in the same group. Main also folds repeated confirmed edits of one path within
 a group into one row with summed counts; Activity keeps each invocation's rows,

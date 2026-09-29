@@ -317,6 +317,22 @@ func TestFitPathKeepsFileName(t *testing.T) {
 	}
 }
 
+func TestFitPathDropsLeadingDirectories(t *testing.T) {
+	p := activityui.Painter{}
+	path := "internal/router/toolplugin/tests/tools.test.ts"
+	for width, want := range map[int]string{
+		60: "Read   internal/router/toolplugin/tests/tools.test.ts L1–85",
+		50: "Read   …/toolplugin/tests/tools.test.ts L1–85",
+		44: "Read   …/tests/tools.test.ts L1–85",
+		33: "Read   …/tools.test.ts L1–85",
+	} {
+		block := activityui.Block{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: path, Ranges: []string{"1:85"}}}}
+		if got := strings.Join(plainLines(p.Block(block, width)), "\n"); got != want {
+			t.Errorf("width %d: got %q, want %q", width, got, want)
+		}
+	}
+}
+
 func TestOperationRowsNameTheirOutcome(t *testing.T) {
 	p := activityui.Painter{}
 	for _, tc := range []struct {
