@@ -14,6 +14,7 @@ import (
 type terminalSelection struct {
 	rect                       terminalRect
 	rows                       []string
+	contentLeft                []int // Optional per-row start after numbered gutters.
 	startX, startY, endX, endY int
 	dragging, moved            bool
 	link                       string
@@ -75,7 +76,15 @@ func (s *terminalSelection) bounds(y int) (int, int) {
 	if y < ay || y > by {
 		return 0, 0
 	}
-	left, right := selectionSpan(s.rows[y], s.rect.x, s.rect.x+s.rect.w)
+	var left, right int
+	if y < len(s.contentLeft) {
+		// Dialog rows have explicit gutters; glyphs inside their content are
+		// literal output, including box drawing and block characters.
+		left = max(s.rect.x, s.contentLeft[y])
+		right = min(s.rect.x+s.rect.w, ansi.StringWidth(strings.TrimRight(ansi.Strip(s.rows[y]), " ")))
+	} else {
+		left, right = selectionSpan(s.rows[y], s.rect.x, s.rect.x+s.rect.w)
+	}
 	if y == ay {
 		left = max(left, ax)
 	}
@@ -124,6 +133,25 @@ func (s *terminalSelection) text() string {
 	return strings.Join(lines, "\n")
 }
 
+// move follows a drag within its snapshot, including a release outside it.
+func (s *terminalSelection) move(x, y int, release bool) {
+	s.endX = min(max(x, s.rect.x), s.rect.x+s.rect.w-1)
+	s.endY = min(max(y, s.rect.y), s.rect.y+s.rect.h-1)
+	s.moved = s.moved || s.endX != s.startX || s.endY != s.startY
+	if release {
+		s.dragging = false
+	}
+}
+
+// row paints the selection without retaining highlight escapes in its snapshot.
+func (s *terminalSelection) row(y int) string {
+	row := s.rows[y]
+	if left, right := s.bounds(y); s.moved && right > left {
+		return ansi.Cut(row, 0, left) + "\x1b[7m" + ansi.Strip(ansi.Cut(row, left, right)) + "\x1b[27m" + ansi.Cut(row, right, ansi.StringWidth(row))
+	}
+	return row
+}
+
 func (u *terminalUI) selectionAction(action byte) {
 	if u.selection == nil {
 		return
@@ -147,9 +175,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	previous := u.selection
 	if s := u.selection; s != nil {
 		if s.dragging && (release || button&32 != 0 && button&3 == 0) {
-			s.endX = min(max(x, s.rect.x), s.rect.x+s.rect.w-1)
-			s.endY = min(max(y, s.rect.y), s.rect.y+s.rect.h-1)
-			s.moved = s.moved || s.endX != s.startX || s.endY != s.startY
+			s.move(x, y, release)
 			if release {
 				s.dragging = false
 				if !s.moved {
@@ -276,10 +302,7 @@ func (u *terminalUI) paintSelection(rows []string) {
 		return
 	}
 	for y := s.rect.y; y < s.rect.y+s.rect.h; y++ {
-		line := ansi.Cut(s.rows[y], s.rect.x, s.rect.x+s.rect.w)
-		if left, right := s.bounds(y); s.moved && right > left {
-			line = ansi.Cut(s.rows[y], s.rect.x, left) + "\x1b[7m" + ansi.Strip(ansi.Cut(s.rows[y], left, right)) + "\x1b[27m" + ansi.Cut(s.rows[y], right, s.rect.x+s.rect.w)
-		}
+		line := ansi.Cut(s.row(y), s.rect.x, s.rect.x+s.rect.w)
 		rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", s.rect.x+1, line)
 	}
 	if !s.dragging {

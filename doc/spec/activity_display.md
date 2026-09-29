@@ -141,7 +141,12 @@ and End or scrolling back to the bottom resumes. Opening or scrolling the
 dialog does not change transcript follow state.
 `/` starts a case-insensitive substring search, Enter finds, and `n`/`N` find
 next/previous matching lines. `y` copies the retained output of the current
-page, or source when there is no output. Mouse text selection is not provided.
+page, or source when there is no output. Dragging within the body selects visible
+text without line numbers, gutters, or frame padding. Selection uses a stable
+snapshot while live output continues to arrive; dragging pauses dialog follow.
+With a selection, `y`, `c`, or Ctrl-C copies just that text through the shared
+terminal clipboard path, and Esc clears it before closing the dialog. Scrolling,
+page navigation, or resizing clears the selection; End resumes live following.
 Output retention is separate from the animated display tail: each command has
 a 1 MiB budget including line slots, with lines capped at 16 KiB. Older lines
 are dropped with a visible count. The session has a 16 MiB retention budget,
