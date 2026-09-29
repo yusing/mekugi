@@ -58,6 +58,15 @@ is one JSON object per line: host `appserver.Message` objects plus
 idle, not a task state. Content is not sanitized. Errors use stderr and nonzero
 exit; successful task completion does not mask a later host-shutdown error.
 
+Journal counters persist with the owning thread, separate from event and delivery
+cursors. Mutation counters share accepted-batch receipt deduplication. Public
+read carriers and provider-final observation add measurements without work events;
+a bounded window of recent read-call and final-response identities deduplicates
+repeated observation without joining the permanent call receipts. Metrics snapshot these
+content-free counters at request preparation, mutation acceptance and answer observation, including
+runtime helper mutations completed between requests. Counter-only persistence
+failure is advisory and cannot replace a successful tool result or final answer.
+
 The router intercepts the dedicated journal tool and returns its result through
 the current response flow rather than a host executor. A valid direct finish
 can select terminal delivery when no client-dispatched work remains. Code Mode

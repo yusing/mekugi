@@ -26,6 +26,24 @@ func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) er
 	if len(output) == 0 {
 		output = t.journalProviderOutput
 	}
+	standalone := false
+	for _, item := range output {
+		if isJournalCall(item) {
+			standalone = true
+		} else if kind := jsonString(item, "type"); kind != "message" && kind != "reasoning" {
+			// Completed hosted work can accompany a final answer, but it is
+			// still useful tool work rather than journal-only overhead.
+			standalone = false
+			break
+		}
+	}
+	if standalone && response.ID != "" {
+		t.proxy.journalCounters(t.ctx, t.directory, t.shellThreadID, "counter-request:"+response.ID, func(j *threadJournal) {
+			counts := j.journalCounters()
+			counts.StandaloneRequests++
+			counts.Sequence++
+		})
+	}
 	for _, item := range output {
 		if isRouterLocalCall(item) {
 			if len(t.journalResults) == 0 {
@@ -47,6 +65,7 @@ func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) er
 	}
 	var answer strings.Builder
 	var ids []string
+	capturable := true
 	for _, item := range output {
 		if !isSubstantiveAnswer(item) && !(isFinalAnswerMessage(item) && jsonString(item, "phase") == "final_answer" && strings.TrimSpace(commentaryMessageText(item)) == "") {
 			continue
@@ -55,9 +74,7 @@ func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) er
 		if jsonString(item, "id") == "" || t.finalAnswer.disabled {
 			// Streaming may already have exposed an oversized answer. Do not
 			// duplicate it under a new journal-owned identity.
-			answer.Reset()
-			ids = nil
-			break
+			capturable = false
 		}
 		if answer.Len() != 0 {
 			answer.WriteString("\n\n")
@@ -66,6 +83,21 @@ func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) er
 		ids = append(ids, jsonString(item, "id"))
 	}
 	emptyOutcome := strings.TrimSpace(answer.String()) == "" || strings.EqualFold(strings.TrimSuffix(strings.TrimSpace(answer.String()), "."), "done")
+	if len(ids) != 0 && response.ID != "" {
+		t.proxy.journalCounters(t.ctx, t.directory, t.shellThreadID, "counter-outcome:"+response.ID, func(j *threadJournal) {
+			counts := j.journalCounters()
+			counts.FinalAnswers++
+			counts.FinalAnswerBytes += uint64(answer.Len())
+			counts.LastOutcomeEmpty = new(emptyOutcome)
+			if emptyOutcome {
+				counts.EmptyOutcomes++
+			}
+			counts.Sequence++
+		})
+	}
+	if !capturable {
+		return nil
+	}
 	if len(ids) != 0 && emptyOutcome {
 		tree, err := t.proxy.journals.treeAuthored(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID)
 		if err != nil {
@@ -115,6 +147,7 @@ func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) er
 	if len(ids) != 0 {
 		t.journalFinishRequested = true
 	}
+	t.proxy.journalCounters(t.ctx, t.directory, t.shellThreadID, "", nil)
 	return nil
 }
 

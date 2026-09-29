@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gofrs/flock"
+	"github.com/yusing/mekugi/capturer"
 )
 
 const (
@@ -100,6 +101,8 @@ type journalSpawnRole struct {
 }
 
 type threadJournal struct {
+	Counters             *capturer.JournalMetrics    `json:"counters,omitempty"`
+	CounterReceipts      []string                    `json:"counter_receipts,omitempty"`
 	TurnID               string                      `json:"turn_id,omitempty"`
 	TurnStartSeq         uint64                      `json:"turn_start_seq,omitzero"`
 	ResetHandledTurn     string                      `json:"reset_handled_turn,omitempty"`
@@ -141,6 +144,8 @@ type threadJournal struct {
 }
 
 func (j threadJournal) clone() threadJournal {
+	j.Counters = j.Counters.Clone()
+	j.CounterReceipts = slices.Clone(j.CounterReceipts)
 	if j.ResetIntent != nil {
 		intent := *j.ResetIntent
 		j.ResetIntent = &intent
@@ -589,10 +594,12 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 	}
 	digest := fmt.Sprintf("%x", sha256.Sum256(encoded))
 	var ids []string
+	var counters *capturer.JournalMetrics
 	err = s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
 		if !exists {
 			return fmt.Errorf("journal state is missing for thread %q in workspace %q; initialization did not complete or session data was cleaned up; retry the request to initialize it", thread, workspace)
 		}
+		counters = j.Counters.Clone()
 		if receipt, ok := j.Receipts[receiptID]; receiptID != "" && ok {
 			if receipt.Digest != digest {
 				return errors.New("journal call changed its mutations")
@@ -728,8 +735,17 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 		if receiptID != "" {
 			j.Receipts[receiptID] = journalReceipt{Digest: digest, IDs: slices.Clone(ids)}
 		}
+		for _, mutation := range mutations {
+			if mutation.Answer == nil || !*mutation.Answer {
+				j.countJournalOperation(mutation.Op)
+			}
+		}
+		counters = j.Counters.Clone()
 		return nil
 	})
+	if err == nil {
+		capturer.ObserveJournal(ctx, counters)
+	}
 	return ids, err
 }
 

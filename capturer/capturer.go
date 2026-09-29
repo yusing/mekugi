@@ -69,6 +69,7 @@ type toolCallMetrics struct {
 
 type captureRecord struct {
 	CompactionMetrics
+	Journal              *JournalMetrics                    `json:"journal,omitempty"`
 	Transport            string                             `json:"transport,omitempty"`
 	ControlDirection     ResponsesWebSocketControlDirection `json:"control_direction,omitempty"`
 	ProviderResponse     *providerResponseEvidence          `json:"provider_response,omitempty"`
@@ -120,6 +121,7 @@ type Recorder struct {
 }
 
 type requestState struct {
+	journal               *JournalMetrics
 	compaction            CompactionMetrics
 	requestKind           string
 	predecessorSequence   uint64
@@ -405,6 +407,9 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 	state.mu.Lock()
 	record.RequestKind = state.requestKind
 	record.CompactionMetrics = state.compaction
+	if boundary == "codex" {
+		record.Journal = state.journal.Clone()
+	}
 	state.mu.Unlock()
 	if boundary == "codex" && record.CompactionAnswer == "router" {
 		record.ProviderExpected = new(false)

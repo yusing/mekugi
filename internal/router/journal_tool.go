@@ -164,6 +164,9 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 				}
 				result = map[string]any{"ok": true, "items": listed}
 			}
+			if err == nil {
+				t.proxy.countJournalRead(t.ctx, t.directory, t.shellThreadID, "counter-read:"+callID, args.Op)
+			}
 		} else if args.Agent != "" && args.Op != "set" {
 			err = errors.New("agent is only supported by journal read, list, and set")
 		} else {

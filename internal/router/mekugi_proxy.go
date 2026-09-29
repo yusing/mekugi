@@ -226,17 +226,28 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 		if !ok {
 			return nil, errors.New("journal workspace is unavailable")
 		}
+		var items []journalItem
+		var err error
 		if agent != "" {
-			return proxy.journals.listAgent(ctx, proxy.replayStore, workspace, thread, agent)
+			items, err = proxy.journals.listAgent(ctx, proxy.replayStore, workspace, thread, agent)
+		} else {
+			items, err = proxy.journals.list(ctx, proxy.replayStore, workspace, thread)
 		}
-		return proxy.journals.list(ctx, proxy.replayStore, workspace, thread)
+		if err == nil {
+			proxy.countJournalRead(ctx, workspace, thread, "", "list")
+		}
+		return items, err
 	}
 	broker.journalReader = func(ctx context.Context, session, thread, agent, path string, depth *int) ([]journalNode, error) {
 		workspace, _, ok := strings.Cut(session, "\x00")
 		if !ok {
 			return nil, errors.New("journal workspace is unavailable")
 		}
-		return proxy.journals.readTree(ctx, proxy.replayStore, workspace, thread, agent, path, depth)
+		nodes, err := proxy.journals.readTree(ctx, proxy.replayStore, workspace, thread, agent, path, depth)
+		if err == nil {
+			proxy.countJournalRead(ctx, workspace, thread, "", "read")
+		}
+		return nodes, err
 	}
 	return proxy
 }
@@ -668,6 +679,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	if err := p.journals.beginJournalTurn(ctx, p.replayStore, directory, threadID, metadata.TurnID); err != nil {
 		p.notice(sessionID, threadID, "journal_reset", "Slice continuation unavailable: turn boundary could not be retained.")
 	}
+	p.journalCounters(ctx, directory, threadID, "", nil)
 	if metadata.ParentThreadID != "" && activityThreadID != "" {
 		if err := p.journals.observeLifecycle(ctx, p.replayStore, directory, threadID, "working", ""); err != nil {
 			transform.Close()

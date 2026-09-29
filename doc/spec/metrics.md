@@ -61,8 +61,9 @@ If the projected-request observation is missing, the provider record MUST have
 a capture error and no `projected_request`, rather than substituting the
 provider wire request.
 
-`GET /api/metrics` MUST return `mekugi.capture.metrics.v6`. Its calculations MUST be made by the
-capturer, not by the router, engine, plugin, comparison report, or dashboard.
+`GET /api/metrics` MUST return `mekugi.capture.metrics.v6`. Provider and transport
+calculations belong to the capturer, not the router, engine, plugin, comparison
+report or dashboard. Journal operation evidence comes from its durable owner.
 
 Exchange details retain wall-clock duration in milliseconds, including local
 compaction, without treating local token estimates as provider usage or savings.
@@ -92,6 +93,28 @@ The snapshot MUST expose:
    its usage, while cumulative totals remain process-lifetime totals; and
 7. capture health for record failures, incomplete records, missing provider records,
    provider-attempt gaps, durable-write errors, skipped requests, and dropped exchange detail.
+
+Client exchanges optionally include `journal`, a cumulative snapshot for their
+`thread_id`: `started_at`, counter `sequence`, `operations` by accepted operation
+kind, `standalone_requests`, `final_answers`, total `final_answer_bytes`,
+`empty_outcomes`, and optional `last_outcome_empty`. Absent means unobserved, not
+zero. Zero counts and a known false Outcome flag remain explicit. Provider-attempt
+records do not duplicate the snapshot. No journal text, titles or questions appear.
+
+Tracking begins at `started_at`; migration does not reconstruct historical counts.
+Within that tracking period consumers select the latest counter sequence instead
+of summing snapshots across exchanges. A fork starts its own counts, not a copy
+of the source's performed operations. A new tracking period after retained-state
+cleanup cannot be mistaken for complete history.
+
+Operations count top-level accepted mutations, not the events or tasks expanded
+by a plan; receipt replay and rejected batches do not increment them. Public
+reads count successful executions; presentation and recovery reads do not count.
+Standalone requests are completed model responses containing journal calls but
+no other tool work, once per response, not once per call. Final-answer bytes are
+decoded UTF-8 bytes before journal rendering, including `Done.` and answers too
+large to capture. Empty Outcome follows the journal rule. These are observed
+response measurements, not acknowledgements of downstream delivery or savings.
 
 Cache attribution is a previous-input-length estimate, not a measurement of matching
 provider-token prefixes or cache eligibility. `cache.attribution_basis` is

@@ -111,6 +111,7 @@ type providerAttemptMetrics struct {
 
 type exchangeMetrics struct {
 	CompactionMetrics
+	Journal             *JournalMetrics          `json:"journal,omitempty"`
 	DurationMillis      uint64                   `json:"duration_ms"`
 	PredecessorSequence uint64                   `json:"predecessor_sequence,omitempty"`
 	RequestKind         string                   `json:"request_kind,omitempty"`
@@ -190,6 +191,7 @@ func (r *Recorder) addExchange(front captureRecord, state *requestState, provide
 	}
 
 	exchange := exchangeMetrics{
+		Journal:           front.Journal.Clone(),
 		CompactionMetrics: front.CompactionMetrics,
 		DurationMillis:    front.DurationMillis,
 		RequestKind:       front.RequestKind,
@@ -311,6 +313,7 @@ func cloneMetricsSnapshot(source metricsSnapshot) metricsSnapshot {
 	clone.Exchanges = make([]exchangeMetrics, len(source.Exchanges))
 	for index, exchange := range source.Exchanges {
 		clone.Exchanges[index] = exchange
+		clone.Exchanges[index].Journal = exchange.Journal.Clone()
 		clone.Exchanges[index].ClientFingerprint = cloneFingerprint(exchange.ClientFingerprint)
 		clone.Exchanges[index].DeliveredTools = slices.Clone(exchange.DeliveredTools)
 		clone.Exchanges[index].ProviderAttempts = make([]providerAttemptMetrics, len(exchange.ProviderAttempts))
