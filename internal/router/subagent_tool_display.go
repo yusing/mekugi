@@ -22,12 +22,6 @@ func toolActivityBuiltinLabel(name string) string {
 		return "Check remaining context"
 	case "new_context":
 		return "Start new context"
-	case "create_goal":
-		return "Create goal"
-	case "get_goal":
-		return "Read goal"
-	case "update_goal":
-		return "Update goal"
 	case "web.run", "web__run":
 		return "Browse web"
 	case "image_gen.imagegen", "image_gen__imagegen":

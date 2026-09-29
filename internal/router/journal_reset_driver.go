@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -11,25 +10,9 @@ import (
 	"github.com/yusing/mekugi/internal/appserver"
 )
 
-type resetGoal struct {
-	Objective   string `json:"objective"`
-	Status      string `json:"status"`
-	CreatedAt   int64  `json:"createdAt"`
-	UpdatedAt   int64  `json:"updatedAt"`
-	TokenBudget *int64 `json:"tokenBudget"`
-}
-
-func samePausedGoal(a, b *resetGoal) bool {
-	if a == nil || b == nil || a.Status != "paused" || b.Status != "paused" ||
-		a.Objective != b.Objective || a.CreatedAt != b.CreatedAt || a.UpdatedAt != b.UpdatedAt {
-		return false
-	}
-	return a.TokenBudget == nil && b.TokenBudget == nil || a.TokenBudget != nil && b.TokenBudget != nil && *a.TokenBudget == *b.TokenBudget
-}
-
 // journalResetDriver is the shared app-server policy. It observes host events
 // and sends native RPCs; neither the terminal nor a headless adapter owns a
-// second continuation, compaction, or goal policy.
+// second continuation or compaction policy.
 type journalResetDriver struct {
 	ctx                                   context.Context
 	proxy                                 *mekugiProxy
@@ -44,7 +27,6 @@ type journalResetDriver struct {
 	startPending                          bool
 	continuationTurn, lastStartedTurn     string
 	cancelled                             bool
-	paused                                *resetGoal
 	notice                                string
 	pendingCompleted                      string
 }
@@ -56,7 +38,7 @@ func (d *journalResetDriver) send(phase, method string, params any) error {
 	if err != nil {
 		d.startPending = false
 		d.phase, d.requestID = "", ""
-		d.notice = "Slice request outcome unknown; not retried. A goal paused for it may still be paused."
+		d.notice = "Slice request outcome unknown; not retried."
 		if d.intent != nil {
 			// Keep the evidence, but an armed intent must not answer a later,
 			// unrelated manual compaction.
@@ -95,22 +77,22 @@ func (d *journalResetDriver) completed(turn string) error {
 		return err
 	}
 	d.intent, d.cancelled, d.notice = intent, false, ""
-	return d.send("goal", "thread/goal/get", map[string]any{"threadId": d.thread})
+	return d.countdown(time.Now())
 }
 
 // Only a not-yet-dispatched countdown that still matches the journal is
 // replayable. An interrupted process never repeats an RPC whose acceptance is
-// unknown, nor resumes a paused goal; it reports and discards that intent.
+// unknown; it reports and discards that intent.
 func (d *journalResetDriver) restore() error {
 	intent, interrupted, err := d.proxy.journals.restorableReset(d.ctx, d.proxy.replayStore, d.workspace, d.thread)
 	if interrupted {
-		d.notice = "Slice continuation was interrupted; continue the plan manually. A goal paused for it may still be paused."
+		d.notice = "Slice continuation was interrupted; continue the plan manually."
 	}
 	if err != nil || intent == nil {
 		return err
 	}
 	d.intent = intent
-	return d.send("goal", "thread/goal/get", map[string]any{"threadId": d.thread})
+	return d.countdown(time.Now())
 }
 
 func (d *journalResetDriver) countdown(now time.Time) error {
@@ -123,7 +105,7 @@ func (d *journalResetDriver) countdown(now time.Time) error {
 
 // cancellable reports whether nothing context-changing has been dispatched yet.
 func (d *journalResetDriver) cancellable() bool {
-	return d.active() && (d.phase == "countdown" || d.phase == "goal" || d.phase == "pause")
+	return d.active() && d.phase == "countdown"
 }
 
 func (d *journalResetDriver) cancel() error {
@@ -134,16 +116,10 @@ func (d *journalResetDriver) cancel() error {
 	if err := d.change(func(_ *threadJournal, intent *journalResetIntent) error { intent.Phase = "cancelled"; return nil }); err != nil {
 		return err
 	}
-	if d.phase == "countdown" {
-		return d.finish()
-	}
-	return nil // Resolve an in-flight goal pause before restoring only our pause.
+	return d.finish()
 }
 
 func (d *journalResetDriver) finish() error {
-	if d.paused != nil {
-		return d.send("resume-check", "thread/goal/get", map[string]any{"threadId": d.thread})
-	}
 	if d.intent != nil {
 		if err := d.change(func(j *threadJournal, _ *journalResetIntent) error { j.ResetIntent = nil; return nil }); err != nil {
 			d.notice += "; " + err.Error()
@@ -229,7 +205,7 @@ func (d *journalResetDriver) maybeContinue() error {
 
 // message consumes only this driver's RPC acknowledgements. Lifecycle events
 // are observed, never swallowed, so the normal UI/host turn state remains true.
-func (d *journalResetDriver) message(m appserver.Message, now time.Time) (bool, error) {
+func (d *journalResetDriver) message(m appserver.Message) (bool, error) {
 	if d == nil {
 		return false, nil
 	}
@@ -237,60 +213,9 @@ func (d *journalResetDriver) message(m appserver.Message, now time.Time) (bool, 
 		d.requestID = ""
 		phase := d.phase
 		if m.Error != nil {
-			// Codex rejects this optional RPC when there can be no active goal.
-			if phase == "goal" && m.Error.Code == -32600 && m.Error.Message == "goals feature is disabled" {
-				return true, d.countdown(now)
-			}
-			if phase == "resume" || phase == "resume-check" {
-				d.startPending = false
-				d.notice, d.phase = "Goal remains paused: "+m.Error.Message, ""
-				return true, nil
-			}
 			return true, d.fail("Slice continuation: " + m.Error.Message)
 		}
-		var goal *resetGoal
-		if phase == "goal" || phase == "pause" || phase == "resume-check" || phase == "resume" {
-			var result struct {
-				Goal jsontext.Value `json:"goal"`
-			}
-			err := json.Unmarshal(m.Result, &result)
-			if err == nil {
-				err = json.Unmarshal(result.Goal, &goal)
-			}
-			if err != nil {
-				if phase != "goal" {
-					d.startPending = false
-					d.phase, d.notice = "", "Goal state unavailable; the goal may remain paused: "+err.Error()
-					return true, nil
-				}
-				return true, d.fail("Goal state unavailable: " + err.Error())
-			}
-		}
 		switch phase {
-		case "goal":
-			if !d.cancelled && goal != nil && goal.Status == "active" {
-				if err := d.change(func(_ *threadJournal, intent *journalResetIntent) error { intent.Phase = "pausing"; return nil }); err != nil {
-					return true, d.fail(err.Error())
-				}
-				return true, d.send("pause", "thread/goal/set", map[string]any{"threadId": d.thread, "status": "paused"})
-			}
-			return true, d.countdown(now)
-		case "pause":
-			if goal == nil || goal.Status != "paused" {
-				d.phase, d.notice = "", "Goal pause could not be confirmed; slice reset was not sent"
-				return true, nil
-			}
-			d.paused = goal
-			if err := d.change(func(_ *threadJournal, intent *journalResetIntent) error {
-				intent.PausedGoal = goal
-				if !d.cancelled {
-					intent.Phase = "pending"
-				}
-				return nil
-			}); err != nil {
-				return true, d.fail(err.Error())
-			}
-			return true, d.countdown(now)
 		case "compacting":
 			d.compactAck = true
 			return true, d.maybeContinue()
@@ -308,20 +233,6 @@ func (d *journalResetDriver) message(m appserver.Message, now time.Time) (bool, 
 				d.pendingCompleted = ""
 			}
 			d.startPending = d.lastStartedTurn != d.continuationTurn && d.pendingCompleted == ""
-			return true, d.finish()
-		case "resume-check":
-			if samePausedGoal(d.paused, goal) {
-				return true, d.send("resume", "thread/goal/set", map[string]any{"threadId": d.thread, "status": "active"})
-			}
-			d.paused, d.phase = nil, ""
-			return true, d.finish()
-		case "resume":
-			if goal == nil || goal.Status != "active" {
-				d.startPending = false
-				d.phase, d.notice = "", "Goal restoration could not be confirmed; the goal may remain paused"
-				return true, nil
-			}
-			d.paused, d.phase = nil, ""
 			return true, d.finish()
 		}
 		return true, nil
@@ -357,7 +268,7 @@ func (d *journalResetDriver) message(m appserver.Message, now time.Time) (bool, 
 				return false, d.fail("Another turn started during slice compaction; continuation was not sent")
 			}
 			d.compactTurn = p.Turn.ID
-		} else if d.phase == "countdown" || d.phase == "goal" || d.phase == "pause" {
+		} else if d.phase == "countdown" {
 			return false, d.cancel()
 		}
 	}

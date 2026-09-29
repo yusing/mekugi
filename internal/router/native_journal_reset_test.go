@@ -11,7 +11,6 @@ import (
 func seedNativeJournalResetPreview(p *nativePreview) {
 	p.steps = nil
 	d, _ := resetDriverFixture(p.t, "slice")
-	resetDriverReply(p.t, d, `{"goal":null}`)
 	// Leave enough time to inspect a terminal frame and press Escape.
 	d.deadline = time.Now().Add(30 * time.Second)
 	p.ui.ctx, p.ui.proxy, p.ui.client, p.ui.thread, p.ui.reset = p.t.Context(), d.proxy, d.client, d.thread, d
@@ -22,7 +21,6 @@ func seedNativeJournalResetPreview(p *nativePreview) {
 
 func TestNativeJournalResetCountdownEscape(t *testing.T) {
 	d, wire := resetDriverFixture(t, "slice")
-	resetDriverReply(t, d, `{"goal":null}`)
 	d.deadline = time.Now().Add(3 * time.Second)
 	u, _ := newAppServerTestUI()
 	u.ctx, u.proxy, u.client, u.thread, u.reset = t.Context(), d.proxy, d.client, d.thread, d
@@ -37,29 +35,10 @@ func TestNativeJournalResetCountdownEscape(t *testing.T) {
 	if err := d.tick(time.Now().Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	resetDriverRequireMethods(t, wire, "thread/goal/get")
+	resetDriverRequireMethods(t, wire)
 	intent, err := d.proxy.replayStore.resetIntent(t.Context(), d.workspace, d.thread)
 	if err != nil || intent != nil || d.active() {
 		t.Fatalf("Esc left active intent: %+v %v", intent, err)
-	}
-}
-
-func TestNativeJournalResetEscapeDuringGoalCheck(t *testing.T) {
-	d, wire := resetDriverFixture(t, "slice")
-	u, _ := newAppServerTestUI()
-	u.ctx, u.proxy, u.client, u.thread, u.reset = t.Context(), d.proxy, d.client, d.thread, d
-	u.ensureShell()
-	frame, _ := u.mainFrame(100, 24, 0)
-	if text := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(text, "Journal slice · goal · Esc cancels") {
-		t.Fatalf("goal check does not offer Esc: %s", text)
-	}
-	if err := u.shell.send("\x1b"); err != nil {
-		t.Fatal(err)
-	}
-	resetDriverReply(t, d, `{"goal":null}`)
-	resetDriverRequireMethods(t, wire, "thread/goal/get")
-	if d.active() {
-		t.Fatalf("Esc during goal check left driver active: %+v", d)
 	}
 }
 
@@ -79,10 +58,9 @@ func TestNativeJournalResetRequiresSuccessfulHostCompletion(t *testing.T) {
 			u.ctx, u.proxy, u.thread, u.turn = t.Context(), proxy, thread, "turn"
 			u.reset = &journalResetDriver{ctx: t.Context(), proxy: proxy, client: u.client, workspace: workspace, thread: thread}
 			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"`+thread+`","turn":{"id":"turn","status":"`+status+`"}}}`)
-			if status == "completed" {
-				resetDriverRequireMethods(t, wire, "thread/goal/get")
-			} else {
-				resetDriverRequireMethods(t, wire)
+			resetDriverRequireMethods(t, wire)
+			if u.reset.active() != (status == "completed") {
+				t.Fatalf("status=%s active=%t", status, u.reset.active())
 			}
 		})
 	}

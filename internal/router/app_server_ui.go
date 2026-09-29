@@ -412,7 +412,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	defer u.refreshPicker()
 	u.ensureJournalReset()
 	if u.reset != nil {
-		handled, resetErr := u.reset.message(m, time.Now())
+		handled, resetErr := u.reset.message(m)
 		if resetErr != nil {
 			u.setNotice("Journal slice: "+resetErr.Error(), true)
 		}

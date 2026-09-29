@@ -43,12 +43,12 @@ before dependent app-server RPCs. A manual standalone compaction consumes only
 an armed intent in the requesting thread/workspace, recording its response ID.
 Fork initialization does not copy turn checkpoints or intents.
 
-The shared app-server reset driver owns countdown cancellation, goal pause and
-revision-checked restoration, compaction acknowledgement and matching host turn
+The shared app-server reset driver owns countdown cancellation,
+compaction acknowledgement and matching host turn
 completion, then `turn/start`. Terminal presentation does not implement a second
 policy. A continuation's reserved client-message ID identifies its transcript row;
 its acknowledged host turn ID gates pending input. Dispatched intents never replay
-RPCs after restart; retained pause evidence keeps uncertain goal outcomes visible.
+RPCs after restart; uncertain outcomes require manual continuation.
 
 The headless adapter uses the same driver with zero countdown delay. Its stdout
 is one JSON object per line: host `appserver.Message` objects plus

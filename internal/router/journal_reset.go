@@ -10,13 +10,12 @@ import (
 const journalContinuationPrefix = "mekugi-journal-continue-"
 
 type journalResetIntent struct {
-	ID         string     `json:"id"`
-	Turn       string     `json:"turn"`
-	Path       string     `json:"path"`
-	Title      string     `json:"title"`
-	Phase      string     `json:"phase"` // pending, pausing, armed, consumed, starting, cancelled, failed, unknown
-	ResponseID string     `json:"response_id,omitempty"`
-	PausedGoal *resetGoal `json:"paused_goal,omitempty"`
+	ID         string `json:"id"`
+	Turn       string `json:"turn"`
+	Path       string `json:"path"`
+	Title      string `json:"title"`
+	Phase      string `json:"phase"` // pending, armed, consumed, starting, cancelled, failed, unknown
+	ResponseID string `json:"response_id,omitempty"`
 }
 
 func (s *journalStore) beginJournalTurn(ctx context.Context, store *mekugiReplayStore, workspace, thread, turn string) error {
@@ -78,14 +77,14 @@ func (s *journalStore) changeReset(ctx context.Context, store *mekugiReplayStore
 // not-yet-dispatched countdown for the journal's latest turn whose next slice is
 // still pending. Any other retained intent is removed so it cannot block later
 // slices or answer an unrelated compaction; interrupted reports whether it
-// carried uncertain dispatch or goal evidence the user must be told about.
+// carried uncertain dispatch evidence the user must be told about.
 func (s *journalStore) restorableReset(ctx context.Context, store *mekugiReplayStore, workspace, thread string) (intent *journalResetIntent, interrupted bool, err error) {
 	err = s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
 		if !exists || j.ResetIntent == nil {
 			return errJournalUnchanged
 		}
 		current := j.ResetIntent
-		if current.Phase == "pending" && current.PausedGoal == nil {
+		if current.Phase == "pending" {
 			if i := j.treeIndex(current.Path); current.Turn == j.TurnID && i >= 0 && j.Items[i].State == "pending" {
 				copy := *current
 				intent = &copy

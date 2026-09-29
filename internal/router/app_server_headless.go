@@ -66,7 +66,6 @@ type headlessAppServer struct {
 	prompt, request, requestID string
 	thread, turn               string
 	completed                  bool
-	failure                    error
 	reset                      *journalResetDriver
 	resetPhase                 string
 }
@@ -133,9 +132,6 @@ func (h *headlessAppServer) run() (runErr error) {
 				}
 			}
 		}
-		if h.failure != nil && !h.reset.active() {
-			return h.failure
-		}
 		if h.completed && h.requestID == "" && !h.reset.active() {
 			return h.emit("mekugi/headless/completed", map[string]any{"threadId": h.thread})
 		}
@@ -155,7 +151,7 @@ func headlessHostError(client *appserver.Client, err error) error {
 }
 
 func (h *headlessAppServer) message(m appserver.Message) error {
-	if handled, err := h.reset.message(m, time.Now()); handled || err != nil {
+	if handled, err := h.reset.message(m); handled || err != nil {
 		return err
 	}
 	if m.Method != "" && len(m.ID) != 0 {
@@ -216,11 +212,7 @@ func (h *headlessAppServer) message(m appserver.Message) error {
 		return nil
 	}
 	if p.Turn.Status != "completed" {
-		h.failure = fmt.Errorf("headless turn %s: %s", p.Turn.ID, p.Turn.Status)
-		if !h.reset.active() {
-			return h.failure
-		}
-		return nil // Let an outstanding goal restoration settle before shutdown.
+		return fmt.Errorf("headless turn %s: %s", p.Turn.ID, p.Turn.Status)
 	}
 	h.completed = true
 	return h.reset.completed(p.Turn.ID)

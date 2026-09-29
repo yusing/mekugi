@@ -24,10 +24,13 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 	forwarded := []string{"exec", "-c", "model=\"example\"", "--", "a prompt with spaces"}
 	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true)
 	index := slices.Index(forwarded, "--")
-	if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[index+10:], forwarded[index:]) {
+	if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[index+14:], forwarded[index:]) {
 		t.Fatalf("forwarded arguments changed: %q", args)
 	}
 	var config struct {
+		Features struct {
+			Goals *bool `toml:"goals"`
+		} `toml:"features"`
 		IncludeCollaborationModeInstructions *bool `toml:"include_collaboration_mode_instructions"`
 		Skills                               struct {
 			IncludeInstructions *bool `toml:"include_instructions"`
@@ -41,8 +44,14 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 			Auth       bool   `toml:"requires_openai_auth"`
 		} `toml:"model_providers"`
 	}
+	if !slices.Equal(args[index+2:index+4], []string{"--disable", "goals"}) {
+		t.Fatalf("goal feature toggle not disabled: %q", args)
+	}
 	var settings []string
-	for i := index; i < index+10; i += 2 {
+	for i := index; i < index+14; i += 2 {
+		if args[i] == "--disable" {
+			continue
+		}
 		if args[i] != "-c" {
 			t.Fatalf("not a config override: %q", args)
 		}
@@ -56,6 +65,9 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 	}
 	if config.Skills.IncludeInstructions == nil || *config.Skills.IncludeInstructions {
 		t.Fatalf("skill instructions not disabled: %q", args)
+	}
+	if config.Features.Goals == nil || *config.Features.Goals {
+		t.Fatalf("goals not disabled: %q", args)
 	}
 	provider := config.Providers[config.ModelProvider]
 	if provider.Name == "" || provider.BaseURL != "http://127.0.0.1:12345/v1" || provider.WireAPI != "responses" || !provider.Auth || !provider.WebSockets {

@@ -31,22 +31,23 @@ func resetDriverFixture(t *testing.T, mode string) (*journalResetDriver, *appSer
 	if err := d.completed("first-turn"); err != nil {
 		t.Fatal(err)
 	}
-	if d.intent == nil || d.phase != "goal" {
-		t.Fatalf("completed slice did not start goal check: %+v", d)
+	if d.intent == nil || d.phase != "countdown" {
+		t.Fatalf("completed slice did not start countdown: %+v", d)
 	}
+	d.deadline = time.Unix(101, 0)
 	return d, wire
 }
 
 func resetDriverReply(t *testing.T, d *journalResetDriver, result string) {
 	t.Helper()
-	handled, err := d.message(appserver.Message{ID: jsontext.Value(d.requestID), Result: jsontext.Value(result)}, time.Unix(100, 0))
+	handled, err := d.message(appserver.Message{ID: jsontext.Value(d.requestID), Result: jsontext.Value(result)})
 	if err != nil || !handled {
 		t.Fatalf("RPC reply: handled=%v err=%v", handled, err)
 	}
 }
 func resetDriverEvent(t *testing.T, d *journalResetDriver, method, params string) {
 	t.Helper()
-	handled, err := d.message(appserver.Message{Method: method, Params: jsontext.Value(params)}, time.Unix(101, 0))
+	handled, err := d.message(appserver.Message{Method: method, Params: jsontext.Value(params)})
 	if err != nil || handled {
 		t.Fatalf("lifecycle %s: handled=%v err=%v", method, handled, err)
 	}
@@ -81,29 +82,28 @@ func resetDriverRequireMethods(t *testing.T, wire *appServerTestInput, want ...s
 
 func TestJournalResetDriverCompactionRequiresOwnSuccessfulTurnAndAcknowledgement(t *testing.T) {
 	d, wire := resetDriverFixture(t, "slice")
-	resetDriverReply(t, d, `{"goal":null}`)
 	if d.phase != "countdown" {
 		t.Fatalf("phase %q", d.phase)
 	}
 	if err := d.tick(time.Unix(102, 0)); err != nil {
 		t.Fatal(err)
 	}
-	resetDriverRequireMethods(t, wire, "thread/goal/get", "thread/compact/start")
+	resetDriverRequireMethods(t, wire, "thread/compact/start")
 	resetDriverEvent(t, d, "turn/started", `{"threadId":"other","turn":{"id":"compaction"}}`)
 	resetDriverEvent(t, d, "item/completed", `{"threadId":"other","turnId":"compaction","item":{"type":"contextCompaction"}}`)
 	resetDriverEvent(t, d, "turn/started", `{"threadId":"`+d.thread+`","turn":{"id":"compaction"}}`)
 	resetDriverEvent(t, d, "item/completed", `{"threadId":"`+d.thread+`","turnId":"stale","item":{"type":"contextCompaction"}}`)
 	resetDriverEvent(t, d, "turn/completed", `{"threadId":"other","turn":{"id":"compaction","status":"completed"}}`)
-	resetDriverRequireMethods(t, wire, "thread/goal/get", "thread/compact/start")
+	resetDriverRequireMethods(t, wire, "thread/compact/start")
 	// Router synthesis durably consumes the intent before Codex emits its item.
 	if err := d.change(func(_ *threadJournal, intent *journalResetIntent) error { intent.Phase = "consumed"; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	resetDriverEvent(t, d, "item/completed", `{"threadId":"`+d.thread+`","turnId":"compaction","item":{"type":"contextCompaction"}}`)
 	resetDriverEvent(t, d, "turn/completed", `{"threadId":"`+d.thread+`","turn":{"id":"compaction","status":"completed"}}`)
-	resetDriverRequireMethods(t, wire, "thread/goal/get", "thread/compact/start")
+	resetDriverRequireMethods(t, wire, "thread/compact/start")
 	resetDriverReply(t, d, `{}`)
-	resetDriverRequireMethods(t, wire, "thread/goal/get", "thread/compact/start", "turn/start")
+	resetDriverRequireMethods(t, wire, "thread/compact/start", "turn/start")
 	resetDriverReply(t, d, `{"turn":{"id":"continued"}}`)
 	intent, err := d.proxy.replayStore.resetIntent(t.Context(), d.workspace, d.thread)
 	if err != nil || intent != nil {
@@ -113,63 +113,29 @@ func TestJournalResetDriverCompactionRequiresOwnSuccessfulTurnAndAcknowledgement
 
 func TestJournalResetDriverOffContinuesWithoutCompaction(t *testing.T) {
 	d, wire := resetDriverFixture(t, "off")
-	resetDriverReply(t, d, `{"goal":null}`)
 	if err := d.tick(time.Unix(102, 0)); err != nil {
 		t.Fatal(err)
 	}
-	resetDriverRequireMethods(t, wire, "thread/goal/get", "turn/start")
-}
-
-func TestJournalResetDriverCancelRestoresOnlyOwnUnchangedGoal(t *testing.T) {
-	for _, changed := range []bool{false, true} {
-		t.Run(map[bool]string{false: "unchanged", true: "changed"}[changed], func(t *testing.T) {
-			d, wire := resetDriverFixture(t, "slice")
-			resetDriverReply(t, d, `{"goal":{"objective":"task","status":"active","createdAt":1,"updatedAt":2}}`)
-			resetDriverRequireMethods(t, wire, "thread/goal/get", "thread/goal/set")
-			resetDriverReply(t, d, `{"goal":{"objective":"task","status":"paused","createdAt":1,"updatedAt":3}}`)
-			if err := d.cancel(); err != nil {
-				t.Fatal(err)
-			}
-			if d.phase != "resume-check" {
-				t.Fatalf("phase %q", d.phase)
-			}
-			reply := `{"goal":{"objective":"task","status":"paused","createdAt":1,"updatedAt":3}}`
-			if changed {
-				reply = `{"goal":{"objective":"other","status":"paused","createdAt":1,"updatedAt":4}}`
-			}
-			resetDriverReply(t, d, reply)
-			if changed {
-				resetDriverRequireMethods(t, wire, "thread/goal/get", "thread/goal/set", "thread/goal/get")
-			} else {
-				resetDriverRequireMethods(t, wire, "thread/goal/get", "thread/goal/set", "thread/goal/get", "thread/goal/set")
-				resetDriverReply(t, d, `{"goal":{"status":"active"}}`)
-			}
-			intent, err := d.proxy.replayStore.resetIntent(t.Context(), d.workspace, d.thread)
-			if err != nil || intent != nil {
-				t.Fatalf("cancel intent: %+v %v", intent, err)
-			}
-		})
-	}
+	resetDriverRequireMethods(t, wire, "turn/start")
 }
 
 func TestJournalResetDriverRejectedCompactDoesNotRetry(t *testing.T) {
 	d, wire := resetDriverFixture(t, "slice")
-	resetDriverReply(t, d, `{"goal":null}`)
 	if err := d.tick(time.Unix(102, 0)); err != nil {
 		t.Fatal(err)
 	}
-	handled, err := d.message(appserver.Message{ID: jsontext.Value(d.requestID), Error: &appserver.Error{Code: -1, Message: "rejected"}}, time.Unix(103, 0))
+	handled, err := d.message(appserver.Message{ID: jsontext.Value(d.requestID), Error: &appserver.Error{Code: -1, Message: "rejected"}})
 	if err != nil || !handled {
 		t.Fatalf("rejection: %v %v", handled, err)
 	}
 	if err := d.tick(time.Unix(104, 0)); err != nil {
 		t.Fatal(err)
 	}
-	resetDriverRequireMethods(t, wire, "thread/goal/get", "thread/compact/start")
+	resetDriverRequireMethods(t, wire, "thread/compact/start")
 }
 
 func TestJournalResetDriverRestartOnlyReplaysPendingIntent(t *testing.T) {
-	for _, phase := range []string{"pending", "armed", "pausing"} {
+	for _, phase := range []string{"pending", "armed", "starting"} {
 		t.Run(phase, func(t *testing.T) {
 			d, wire := resetDriverFixture(t, "slice")
 			if phase != "pending" {
@@ -183,7 +149,10 @@ func TestJournalResetDriverRestartOnlyReplaysPendingIntent(t *testing.T) {
 				t.Fatal(err)
 			}
 			if phase == "pending" {
-				resetDriverRequireMethods(t, wire, "thread/goal/get")
+				if restarted.phase != "countdown" {
+					t.Fatalf("restored phase %q", restarted.phase)
+				}
+				resetDriverRequireMethods(t, wire)
 			} else {
 				resetDriverRequireMethods(t, wire)
 			}
@@ -193,43 +162,40 @@ func TestJournalResetDriverRestartOnlyReplaysPendingIntent(t *testing.T) {
 
 func TestJournalResetDriverFailedCompactionNeverStartsContinuation(t *testing.T) {
 	d, wire := resetDriverFixture(t, "slice")
-	resetDriverReply(t, d, `{"goal":null}`)
 	if err := d.tick(time.Unix(102, 0)); err != nil {
 		t.Fatal(err)
 	}
 	resetDriverReply(t, d, `{}`)
 	resetDriverEvent(t, d, "turn/started", `{"threadId":"`+d.thread+`","turn":{"id":"compaction"}}`)
 	resetDriverEvent(t, d, "turn/completed", `{"threadId":"`+d.thread+`","turn":{"id":"compaction","status":"failed"}}`)
-	resetDriverRequireMethods(t, wire, "thread/goal/get", "thread/compact/start")
+	resetDriverRequireMethods(t, wire, "thread/compact/start")
 	if err := d.tick(time.Unix(104, 0)); err != nil {
 		t.Fatal(err)
 	}
-	resetDriverRequireMethods(t, wire, "thread/goal/get", "thread/compact/start")
+	resetDriverRequireMethods(t, wire, "thread/compact/start")
 }
 
 func TestJournalResetDriverRejectedContinuationDoesNotRetry(t *testing.T) {
 	d, wire := resetDriverFixture(t, "off")
-	resetDriverReply(t, d, `{"goal":null}`)
 	if err := d.tick(time.Unix(102, 0)); err != nil {
 		t.Fatal(err)
 	}
-	handled, err := d.message(appserver.Message{ID: jsontext.Value(d.requestID), Error: &appserver.Error{Code: -1, Message: "busy"}}, time.Unix(103, 0))
+	handled, err := d.message(appserver.Message{ID: jsontext.Value(d.requestID), Error: &appserver.Error{Code: -1, Message: "busy"}})
 	if err != nil || !handled {
 		t.Fatalf("rejection: %v %v", handled, err)
 	}
 	if err := d.tick(time.Unix(104, 0)); err != nil {
 		t.Fatal(err)
 	}
-	resetDriverRequireMethods(t, wire, "thread/goal/get", "turn/start")
+	resetDriverRequireMethods(t, wire, "turn/start")
 }
 
-func TestJournalResetDriverCancelBeforeGoalReplyClearsIntent(t *testing.T) {
+func TestJournalResetDriverCancelCountdownClearsIntent(t *testing.T) {
 	d, wire := resetDriverFixture(t, "slice")
 	if err := d.cancel(); err != nil {
 		t.Fatal(err)
 	}
-	resetDriverReply(t, d, `{"goal":null}`)
-	resetDriverRequireMethods(t, wire, "thread/goal/get")
+	resetDriverRequireMethods(t, wire)
 	intent, err := d.proxy.replayStore.resetIntent(t.Context(), d.workspace, d.thread)
 	if err != nil || intent != nil {
 		t.Fatalf("cancel intent: %+v %v", intent, err)
@@ -238,7 +204,6 @@ func TestJournalResetDriverCancelBeforeGoalReplyClearsIntent(t *testing.T) {
 
 func TestJournalResetDriverDoesNotReplaceCompactionTurn(t *testing.T) {
 	d, wire := resetDriverFixture(t, "slice")
-	resetDriverReply(t, d, `{"goal":null}`)
 	if err := d.tick(time.Unix(102, 0)); err != nil {
 		t.Fatal(err)
 	}
@@ -251,14 +216,13 @@ func TestJournalResetDriverDoesNotReplaceCompactionTurn(t *testing.T) {
 	if d.compactTurn != "compact" || d.active() {
 		t.Fatalf("conflicting turn did not stop reset: %+v", d)
 	}
-	resetDriverRequireMethods(t, wire, "thread/goal/get", "thread/compact/start")
+	resetDriverRequireMethods(t, wire, "thread/compact/start")
 }
 
 func TestJournalResetDriverContinuationStartIdentity(t *testing.T) {
 	for _, beforeReply := range []bool{false, true} {
 		t.Run(map[bool]string{false: "after reply", true: "before reply"}[beforeReply], func(t *testing.T) {
 			d, _ := resetDriverFixture(t, "off")
-			resetDriverReply(t, d, `{"goal":null}`)
 			if err := d.tick(time.Unix(102, 0)); err != nil {
 				t.Fatal(err)
 			}
@@ -297,10 +261,13 @@ func (resetFailingInput) Close() error              { return nil }
 
 func TestJournalResetDriverUncertainIntentDoesNotBlockLaterSlice(t *testing.T) {
 	d, wire := resetDriverFixture(t, "slice")
-	resetDriverReply(t, d, resetLifecycleActiveGoal)
-	resetDriverReply(t, d, `{"goal":`) // Uncertain pause retains its evidence.
+	d.client = &appserver.Client{Input: resetFailingInput{}}
+	if err := d.tick(time.Unix(102, 0)); err == nil {
+		t.Fatal("send failure was swallowed")
+	}
+	d.client = &appserver.Client{Input: wire}
 	if d.active() {
-		t.Fatal("uncertain pause left driver active")
+		t.Fatal("uncertain dispatch left driver active")
 	}
 	if _, err := d.proxy.journals.apply(t.Context(), d.proxy.replayStore, d.workspace, d.thread, "", []journalMutation{{Op: "add", Kind: "task", Title: new("Third"), State: new("pending")}}); err != nil {
 		t.Fatal(err)
@@ -314,10 +281,10 @@ func TestJournalResetDriverUncertainIntentDoesNotBlockLaterSlice(t *testing.T) {
 	if err := d.completed("second-turn"); err != nil {
 		t.Fatal(err)
 	}
-	if d.intent == nil || d.intent.Path != "/3" || d.phase != "goal" {
+	if d.intent == nil || d.intent.Path != "/3" || d.phase != "countdown" {
 		t.Fatalf("later slice blocked by retained intent: intent=%+v phase=%q", d.intent, d.phase)
 	}
-	resetDriverRequireMethods(t, wire, "thread/goal/get", "thread/goal/set", "thread/goal/get")
+	resetDriverRequireMethods(t, wire)
 }
 
 func TestJournalResetDriverRestoreDropsStaleIntents(t *testing.T) {
@@ -357,7 +324,6 @@ func TestJournalResetDriverRestoreDropsStaleIntents(t *testing.T) {
 
 func TestJournalResetDriverUnknownCompactDispatchDisarmsIntent(t *testing.T) {
 	d, _ := resetDriverFixture(t, "slice")
-	resetDriverReply(t, d, `{"goal":null}`)
 	d.client = &appserver.Client{Input: resetFailingInput{}}
 	if err := d.tick(time.Unix(102, 0)); err == nil {
 		t.Fatal("send failure was swallowed")
@@ -372,7 +338,6 @@ func TestJournalCompactionConsumesOnlyCurrentTurnResetIntent(t *testing.T) {
 	for _, stale := range []bool{false, true} {
 		t.Run(map[bool]string{false: "current", true: "later-turn"}[stale], func(t *testing.T) {
 			d, _ := resetDriverFixture(t, "slice")
-			resetDriverReply(t, d, `{"goal":null}`)
 			if err := d.tick(time.Unix(102, 0)); err != nil {
 				t.Fatal(err)
 			}
@@ -410,26 +375,6 @@ func TestJournalCompactionConsumesOnlyCurrentTurnResetIntent(t *testing.T) {
 			if !stale && (len(provider.forwarded) != 0 || intent.Phase != "consumed") {
 				t.Fatalf("current reset not answered: forwards=%d phase=%s", len(provider.forwarded), intent.Phase)
 			}
-		})
-	}
-}
-
-func TestJournalResetDriverGoalsDisabledStillContinues(t *testing.T) {
-	for _, mode := range []string{"off", "slice"} {
-		t.Run(mode, func(t *testing.T) {
-			d, wire := resetDriverFixture(t, mode)
-			handled, err := d.message(appserver.Message{ID: jsontext.Value(d.requestID), Error: &appserver.Error{Code: -32600, Message: "goals feature is disabled"}}, time.Unix(100, 0))
-			if err != nil || !handled || d.phase != "countdown" {
-				t.Fatalf("disabled goals: handled=%t err=%v phase=%s", handled, err, d.phase)
-			}
-			if err := d.tick(time.Unix(102, 0)); err != nil {
-				t.Fatal(err)
-			}
-			next := "thread/compact/start"
-			if mode == "off" {
-				next = "turn/start"
-			}
-			resetDriverRequireMethods(t, wire, "thread/goal/get", next)
 		})
 	}
 }

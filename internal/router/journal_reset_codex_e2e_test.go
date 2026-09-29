@@ -88,15 +88,7 @@ func (p *journalResetCodexProvider) forwardExecution(ctx, _ context.Context, bod
 // Uses the installed app-server and the same reset policy as native/headless UI.
 // Only the local mock provider is contacted; compaction must be router-answered.
 func TestJournalSliceResetNativeCodexE2E(t *testing.T) {
-	for _, goals := range []bool{true, false} {
-		t.Run(fmt.Sprintf("goals=%t", goals), func(t *testing.T) {
-			testJournalSliceResetNativeCodex(t, goals)
-		})
-	}
-}
-
-func testJournalSliceResetNativeCodex(t *testing.T, goals bool) {
-	ctx, cmd, provider := journalResetCodexFixture(t, goals)
+	ctx, cmd, provider := journalResetCodexFixture(t)
 	proxy, workspace := provider.proxy, provider.workspace
 	client, err := appserver.Start(cmd)
 	if err != nil {
@@ -124,9 +116,8 @@ func testJournalSliceResetNativeCodex(t *testing.T, goals bool) {
 			if !ok {
 				t.Fatal("app-server closed before slice continuation")
 			}
-			now := time.Now()
 			if driver != nil {
-				if handled, err := driver.message(m, now); err != nil {
+				if handled, err := driver.message(m); err != nil {
 					t.Fatalf("reset driver %s: %v", m.Method, err)
 				} else if handled {
 					continue
@@ -224,7 +215,7 @@ func testJournalSliceResetNativeCodex(t *testing.T, goals bool) {
 	}
 }
 
-func journalResetCodexFixture(t *testing.T, goals bool) (context.Context, *exec.Cmd, *journalResetCodexProvider) {
+func journalResetCodexFixture(t *testing.T) (context.Context, *exec.Cmd, *journalResetCodexProvider) {
 	t.Helper()
 	codex, err := exec.LookPath("codex")
 	if err != nil {
@@ -245,8 +236,7 @@ func journalResetCodexFixture(t *testing.T, goals bool) (context.Context, *exec.
 	t.Cleanup(server.Close)
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	t.Cleanup(cancel)
-	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.reset_fixture={name="reset_fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="reset_fixture"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
-	cmd.Args = append(cmd.Args, "-c", fmt.Sprintf("features.goals=%t", goals))
+	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.reset_fixture={name="reset_fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="reset_fixture"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "features.goals=false", "-c", "include_collaboration_mode_instructions=false")
 	cmd.Env = routerFaultCodexEnvironment(t)
 	cmd.Dir = workspace
 	return ctx, cmd, provider

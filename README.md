@@ -487,11 +487,10 @@ Every section is optional. Settings are read at startup and never rewritten.
   The default remains `off` pending comparative evaluation; this is not evidence
   of improved model success or token savings. In the native UI, sliced plans show
   a countdown between successful turns; Esc cancels. `slice` and `auto` reset
-  context before continuing, while `off` continues without resetting. Active
-  goals are paused during the reset and restored when unchanged. An interrupted
-  reset may require manual continuation or goal resumption. See [compaction behavior](doc/spec/journal.md#router-answered-compaction).
-- **Instructions:** Mekugi keeps Codex's base instructions and adds its guidance
-  through tool descriptions. Anything between `<!-- mekugi:omit -->` and
+  context before continuing, while `off` continues without resetting. An interrupted
+  reset may require manual continuation. See [compaction behavior](doc/spec/journal.md#router-answered-compaction).
+- **Instructions:** Wrapped sessions disable Codex's `/goal` feature. Mekugi keeps
+  Codex's base instructions and adds its guidance through tool descriptions. Anything between `<!-- mekugi:omit -->` and
   `<!-- /mekugi:omit -->` in instructions, including `AGENTS.md`, is removed before
   forwarding. When `skills-mgr` is on the `PATH`, Mekugi turns off Codex's stock
   skill catalog for the session and sends each selected skill as

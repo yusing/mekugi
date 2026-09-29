@@ -40,13 +40,6 @@ func TestHeadlessFailureHostProcess(t *testing.T) {
 			} else {
 				fmt.Fprintf(os.Stdout, `{"id":%s,"error":{"code":-1,"message":"fixture compaction rejected"}}`+"\n", request.ID)
 			}
-		case "thread/goal/get":
-			fmt.Fprintf(os.Stdout, `{"id":%s,"result":%s}`+"\n", request.ID, resetLifecyclePausedGoal)
-		case "thread/goal/set":
-			if !bytes.Contains(request.Params, []byte(`"active"`)) {
-				os.Exit(4)
-			}
-			fmt.Fprintf(os.Stdout, `{"id":%s,"result":%s}`+"\n", request.ID, resetLifecycleActiveGoal)
 		default:
 			os.Exit(5)
 		}
@@ -54,17 +47,17 @@ func TestHeadlessFailureHostProcess(t *testing.T) {
 	os.Exit(0)
 }
 
-func TestHeadlessAppServerRestoresGoalBeforeReturningResetFailure(t *testing.T) {
-	for _, mode := range []string{"restore", "failed", "interrupted"} {
-		t.Run(mode, func(t *testing.T) { testHeadlessGoalRestoration(t, mode) })
+func TestHeadlessAppServerReturnsResetFailure(t *testing.T) {
+	for _, mode := range []string{"rejected", "failed", "interrupted"} {
+		t.Run(mode, func(t *testing.T) { testHeadlessResetFailure(t, mode) })
 	}
 }
 
-func testHeadlessGoalRestoration(t *testing.T, mode string) {
+func testHeadlessResetFailure(t *testing.T, mode string) {
 	t.Setenv("MEKUGI_HEADLESS_FAILURE_HOST", mode)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	d, _ := resetLifecyclePaused(t, "slice")
+	d, _ := resetDriverFixture(t, "slice")
 	t.Setenv("MEKUGI_HEADLESS_FAILURE_THREAD", d.thread)
 	client, err := appserver.Start(exec.CommandContext(ctx, os.Args[0], "-test.run=^TestHeadlessFailureHostProcess$"))
 	if err != nil {
@@ -74,19 +67,17 @@ func testHeadlessGoalRestoration(t *testing.T, mode string) {
 	var output bytes.Buffer
 	h := &headlessAppServer{ctx: ctx, client: client, proxy: d.proxy, output: jsontext.NewEncoder(&output), thread: d.thread, turn: "first-turn", completed: true, reset: d}
 	err = h.run()
-	if err == nil || mode == "restore" && !strings.Contains(err.Error(), "fixture compaction rejected") {
+	if err == nil || mode == "rejected" && !strings.Contains(err.Error(), "fixture compaction rejected") {
 		t.Fatalf("run error: %v", err)
 	}
 	intent, readErr := d.proxy.replayStore.resetIntent(t.Context(), d.workspace, d.thread)
-	if readErr != nil || intent != nil || d.paused != nil || d.active() {
-		t.Fatalf("restoration abandoned: intent=%+v paused=%+v active=%t err=%v", intent, d.paused, d.active(), readErr)
+	if readErr != nil || intent != nil || d.active() {
+		t.Fatalf("failed reset still active: intent=%+v active=%t err=%v", intent, d.active(), readErr)
 	}
 	if bytes.Contains(output.Bytes(), []byte("mekugi/headless/completed")) {
 		t.Fatalf("failed run claimed completion: %s", &output)
 	}
-	if !bytes.Contains(output.Bytes(), []byte(`"status":"active"`)) {
-		t.Fatalf("restoration not acknowledged: %s", &output)
-	}
+
 }
 
 func TestHeadlessAppServerStartupDiagnosticStaysOutOfJSONL(t *testing.T) {

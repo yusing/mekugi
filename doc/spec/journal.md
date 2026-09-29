@@ -157,11 +157,8 @@ continuation. Provider fallback leaves the plan available for manual continuatio
 With `off`, the same countdown continues the plan without resetting context.
 This keeps the continuing-context comparison separate from compaction policy.
 
-An active Codex goal is paused before the countdown and restored after the
-continuation is accepted, or after cancellation. Restoration applies only if
-that goal's identity and paused revision are unchanged. Interrupted or uncertain
-RPC outcomes are not retried; the frontend reports that manual continuation and
-possibly manual goal resumption are needed. That retained evidence never blocks a
+Interrupted or uncertain RPC outcomes are not retried; the frontend reports that
+manual continuation is needed. That retained evidence never blocks a
 later slice, and an uncertain compaction dispatch cannot make a later manual
 compaction count as the reset: only an intent armed for the latest ordinary turn
 is answered. Escape cancels until compaction or continuation is dispatched. A

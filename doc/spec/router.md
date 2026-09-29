@@ -16,6 +16,9 @@ Interactive terminal arguments follow the native client mapping below.
 The wrapper also enforces `include_collaboration_mode_instructions=false` in the
 final command's invocation-only config layer, after user overrides and before `--`.
 This disables Codex's collaboration-mode instruction injection without editing config files.
+Wrapped sessions disable Codex goals through invocation-only feature and config
+overrides. The host does not expose `/goal`, goal tools or goal instructions;
+journal slice continuation does not coordinate with goals.
 
 ChatGPT requests explicitly select `access_programs.cyber="standard"`, including
 prewarming and continuations over either transport. This overrides client Daybreak
@@ -251,7 +254,7 @@ and offline comparisons. It reuses invocation-local routing and the native clien
 slice-reset policy with a zero-duration countdown; it does not own a second reset
 or continuation implementation. `off` keeps the continuing-context control arm,
 while `slice` compacts at planned boundaries. Successful completion requires a
-successful Main turn and settled continuation/goal coordination.
+successful Main turn and settled slice continuation.
 
 The frontend emits JSONL session evidence on stdout and diagnostics on stderr.
 It rejects empty/oversized prompts, resume and unsupported CLI options before

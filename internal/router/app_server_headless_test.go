@@ -137,13 +137,11 @@ func TestHeadlessAppServerContinuationStaysPendingUntilMatchingStart(t *testing.
 	d, wire := resetDriverFixture(t, "off")
 	d.delay = 0
 	h := &headlessAppServer{ctx: t.Context(), client: d.client, proxy: d.proxy, reset: d, thread: d.thread, turn: "first-turn", completed: true, output: jsontext.NewEncoder(io.Discard)}
-	if err := h.message(appserver.Message{ID: jsontext.Value(d.requestID), Result: jsontext.Value(`{"goal":null}`)}); err != nil {
-		t.Fatal(err)
-	}
+
 	if err := d.tick(time.Now().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	resetDriverRequireMethods(t, wire, "thread/goal/get", "turn/start")
+	resetDriverRequireMethods(t, wire, "turn/start")
 	if err := h.message(appserver.Message{ID: jsontext.Value(d.requestID), Result: jsontext.Value(`{"turn":{"id":"second-turn"}}`)}); err != nil {
 		t.Fatal(err)
 	}

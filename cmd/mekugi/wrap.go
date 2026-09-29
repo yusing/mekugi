@@ -306,6 +306,8 @@ func codexArgs(baseURL string, args []string, journal, skillsManagerAvailable bo
 		index += 2
 	}
 	overrides := []string{
+		"--disable", "goals",
+		"-c", "features.goals=false",
 		"-c", `model_provider="mekugi_wrap"`,
 		"-c", fmt.Sprintf(`model_providers.mekugi_wrap={name="mekugi",base_url=%q,wire_api="responses",requires_openai_auth=true,supports_websockets=true}`, baseURL),
 		"-c", `include_collaboration_mode_instructions=false`,
