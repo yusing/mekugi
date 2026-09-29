@@ -35,6 +35,7 @@ type appServerSession struct {
 	finals          map[string]bool                    // The thread's current turn already sent its answer.
 	metadata        map[string]string                  // Child thread → pending metadata request ID; empty when settled.
 	commands        map[[3]string]*appServerCommandRun // Live commands by thread, turn, item.
+	outputs         activityui.Retention               // Command output the output dialog reads, bounded across the session.
 	cwd             string
 	waits           map[[3]string][]appServerWaitTarget // Start-time targets by thread, turn, item.
 	waitStore       *mekugiReplayStore
@@ -286,6 +287,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		// Bounded as it arrives; the next frame shows it, so bursts cost one render.
 		if run := s.commands[[3]string{p.ThreadID, p.TurnID, p.ItemID}]; run != nil && run.done == nil {
 			run.output.Write(p.Delta)
+			if output := run.entry.native.output; output != nil {
+				output.Write(p.Delta)
+			}
 			run.dirty = true
 		}
 	case "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":
@@ -376,13 +380,17 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			if m.Method != "item/completed" {
 				if item.Type == "commandExecution" {
 					native.running = true
-					if s.commands[key] == nil {
+					if run := s.commands[key]; run == nil {
+						native.output = s.outputs.New()
 						s.commands[key] = &appServerCommandRun{entry: entry, instant: instantOperations(entry.Text)}
+					} else {
+						native.output = run.entry.native.output
 					}
 				}
 				entries = append(entries, entry)
 				break
 			}
+			s.retainOutput(native, item)
 			if run := s.commands[key]; run != nil && u.execTrack.tracking(key) {
 				run.completion, run.completed, run.completedAt = &entry, item, now
 				break
@@ -638,6 +646,21 @@ func appServerCommandText(item appServerItem, cwd string) string {
 		return toolActivityShell(appServerDisplayCommand(item.Command))
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// retainOutput keeps a completed command's host output for the output dialog,
+// continuing what its stream retained.
+func (s *appServerSession) retainOutput(native *liveActivityNativeItem, item appServerItem) {
+	if item.Type != "commandExecution" {
+		return
+	}
+	if run := s.commands[[3]string{native.thread, native.turn, native.item}]; run != nil {
+		native.output = run.entry.native.output
+	}
+	if native.output == nil {
+		native.output = s.outputs.New()
+	}
+	native.output.Finish(item.AggregatedOutput, item.ExitCode)
 }
 
 // appServerSucceededOutput keeps a successful command's output tail on its

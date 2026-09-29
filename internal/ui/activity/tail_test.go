@@ -73,9 +73,6 @@ func TestTailRowsSkipsGaps(t *testing.T) {
 	if tail, hidden := TailRows(rows[:1], 3); !reflect.DeepEqual(tail, []string{"one"}) || hidden != 0 {
 		t.Fatalf("short tail = %q hidden %d", tail, hidden)
 	}
-	if MoreLines(1) != "+1 line" || MoreLines(4) != "+4 lines" {
-		t.Fatal("line counts")
-	}
 }
 
 func TestOutputRowsCountEarlierLinesInVerbColumn(t *testing.T) {

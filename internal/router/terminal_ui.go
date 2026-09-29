@@ -21,6 +21,7 @@ type terminalUI struct {
 	hostReply                                      []byte
 	hostReplyDiscard, hostReplyEscape              bool
 	diffFailure                                    string
+	output                                         *outputDialog // Open over both panes, taking every key.
 	diffScreen                                     *vt.Emulator
 	diff                                           *liveDiffTerminalController
 	agents                                         *liveActivityView
@@ -57,6 +58,9 @@ func (r terminalRect) contains(x, y int) bool {
 // Decode once before routing. In particular, mouse reports and bracketed paste
 // must never leak their payload into pane commands or layout shortcuts.
 func (u *terminalUI) key(key byte) error {
+	if u.output != nil {
+		u.prefix = false
+	}
 	// Paste payload is opaque, including incomplete OSC/CSI and shortcut bytes.
 	// Forward it immediately; only the exact end marker changes parser state.
 	if u.paste {
@@ -72,9 +76,9 @@ func (u *terminalUI) key(key byte) error {
 			u.paste = false
 			u.pasteEnd = 0
 		}
-		// The status panel is not an input destination. Keep paste termination
-		// entirely in this decoder, including the final marker byte.
-		if u.main != nil && u.main.statusPanel != nil {
+		// The status panel and output dialog are not input destinations. Keep
+		// paste termination entirely in this decoder, including the final marker byte.
+		if u.output != nil || u.main != nil && u.main.statusPanel != nil {
 			return nil
 		}
 		if u.focus == 0 {
@@ -179,6 +183,9 @@ func (u *terminalUI) key(key byte) error {
 		u.sequence = "\x1b"
 		u.sequenceAt = time.Now()
 		return nil
+	}
+	if u.output != nil {
+		return u.send(string([]byte{key}))
 	}
 	if u.prefix {
 		u.prefix = false
@@ -311,6 +318,10 @@ func (u *terminalUI) terminalColor(reply string) {
 }
 
 func (u *terminalUI) send(s string) error {
+	if u.output != nil {
+		u.outputKey(s)
+		return nil
+	}
 	if u.main != nil && u.focus == 0 && u.main.statusPanel != nil {
 		if u.selection != nil && !u.selection.dragging {
 			u.selection = nil
@@ -415,6 +426,10 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	button, x, y := v[0], v[1]-1, v[2]-1
 	release := s[len(s)-1] == 'm'
+	if u.output != nil {
+		u.outputMouse(button, x, y, release)
+		return nil
+	}
 	if u.main != nil && u.main.statusPanel != nil && u.layout.codex.contains(x, y) {
 		if u.selectionMouse(button, x, y, release) {
 			return nil
@@ -550,6 +565,7 @@ func (u *terminalUI) mouse(s string) error {
 				action = 'j'
 			}
 			u.main.view.handleMouse(action, y-r.y+1, x-r.x+1)
+			u.openRequested(u.main.view)
 		}
 		return nil
 	}
@@ -588,6 +604,7 @@ func (u *terminalUI) mouse(s string) error {
 		}
 	} else {
 		u.agents.handleMouse(action, y-r.y+1, x-r.x+1)
+		u.openRequested(u.agents)
 	}
 	return nil
 }

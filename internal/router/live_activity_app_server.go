@@ -165,6 +165,7 @@ type liveActivityNativeItem struct {
 	replaces           string                 // Pending thinking block this reasoning item takes over.
 	attachments        []activityui.Block     // Submitted file snapshot outcomes, recovered from host history.
 	segments           []commandSegment       // A tracked command's own segments, replacing its single row.
+	output             *activityui.Output     // A command's retained host output, which the output dialog reads.
 }
 
 func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {

@@ -403,6 +403,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	if len(roster) > 0 {
 		draw(l.roster, roster)
 	}
+	if u.output != nil {
+		u.paintOutput(rows[:height-1], width, height-1)
+	}
 	rows[height-1] += "\x1b[1G\x1b[0m" + ansi.Truncate(u.nativeStatus(), width, "")
 	u.layout = l
 	u.paintSelection(rows)

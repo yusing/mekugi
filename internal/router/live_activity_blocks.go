@@ -104,6 +104,9 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 		if len(blocks) == 1 && blocks[0].Verb == "Search" && entry.native != nil {
 			blocks[0].Results = entry.native.searchResults
 		}
+		if entry.native != nil && len(blocks) > 0 {
+			blocks[len(blocks)-1].Output = entry.native.output
+		}
 		if entry.native != nil && (entry.native.running || len(entry.outputTail) > 0) {
 			// The host provides one stream for the whole invocation. Place it
 			// after the final displayed operation, not an earlier Run row.
@@ -157,7 +160,13 @@ func toolOperationBlocks(text string) []activityui.Block {
 		previousSource = block.EditSource
 		blocks = append(blocks, block)
 	}
-	return activityui.MergeLiveActivityReads(blocks)
+	blocks = activityui.MergeLiveActivityReads(blocks)
+	// These targets share one invocation's aggregate. Dialog pages are
+	// formed only when separate invocations merge later in the feed.
+	for i := range blocks {
+		blocks[i].Members = nil
+	}
+	return blocks
 }
 
 // instantOperations reports tool text whose every operation prints what it
@@ -171,7 +180,9 @@ func instantOperations(text string) bool {
 // operations: without a complete segment report none owns the batch's exit.
 func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitted int) []activityui.Block {
 	last, count, batch := -1, 0, -1
+	var output *activityui.Output
 	for i, block := range blocks {
+		output = cmp.Or(output, block.Output)
 		if block.Segment {
 			return blocks // Confirmed segment outcomes already own their statuses.
 		}
@@ -191,12 +202,12 @@ func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitt
 		}
 		// Any streamed tail was combined too; move it to the batch result.
 		for i := range blocks {
-			blocks[i].Tail, blocks[i].TailOmitted = nil, 0
+			blocks[i].Tail, blocks[i].TailOmitted, blocks[i].Output = nil, 0, nil
 		}
 		last = batch
 	}
 	blocks[last].ExitCode = code
-	blocks[last].Tail, blocks[last].TailOmitted = tail, omitted
+	blocks[last].Tail, blocks[last].TailOmitted, blocks[last].Output = tail, omitted, output
 	blocks[last].Collapsed = false
 	return blocks
 }
@@ -228,14 +239,14 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 		}
 		last := &operations[len(operations)-1]
 		last.ExitCode, last.Segment = segment.exit, true
-		last.Tail, last.TailOmitted = segment.tail, segment.omit
+		last.Tail, last.TailOmitted, last.Output = segment.tail, segment.omit, segment.output
 		last.Changes = segment.changes
 		blocks = append(blocks, operations...)
 	}
 	if len(entry.outputTail) > 0 {
 		for i := len(blocks) - 1; i >= 0; i-- {
 			if !blocks[i].Skipped {
-				blocks[i].Tail, blocks[i].TailOmitted = entry.outputTail, entry.outputOmit
+				blocks[i].Tail, blocks[i].TailOmitted, blocks[i].Output = entry.outputTail, entry.outputOmit, entry.native.output
 				blocks[i].Changes = entry.native.changes
 				break
 			}

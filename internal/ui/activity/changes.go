@@ -1,7 +1,6 @@
 package activity
 
 import (
-	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -81,7 +80,7 @@ func changeRows(rows []ChangeRow, padding string, width int) []string {
 		lines = append(lines, padding+ansi.Truncate(strings.TrimRight(line, " "), width, "…"))
 	}
 	if more := len(rows) - len(shown); more > 0 {
-		lines = append(lines, padding+Dim+"… +"+strconv.Itoa(more)+" more"+Undim)
+		lines = append(lines, padding+Elision{Hidden: more, Unit: "more"}.String())
 	}
 	return lines
 }

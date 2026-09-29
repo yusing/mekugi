@@ -51,13 +51,14 @@ type Block struct {
 	TailOmitted int         // Output lines before Tail.
 	TailRows    int         // Tail lines open output shows; 0 shows all of Tail.
 	Changes     []ChangeRow // Change history rows open output shows instead of Tail.
+	Output      *Output     // The invocation's retained output, which the output dialog reads.
 	// Members are the invocations a merged read row stands for, each with its
-	// own output. Opened, the row shows them as they were.
-	Members []Block
-	SourceRows  int         // Rows a command or program preview may use; 0 shows it whole.
-	Flash       bool        // Presentation-only: another pane just opened this entry.
-	Live        bool        // Reasoning still streaming.
-	Elapsed     string      // Formatted reasoning time, when observed from its first delta.
+	// own output, which the output dialog pages through.
+	Members    []Block
+	SourceRows int    // Rows a command or program preview may use; 0 shows it whole.
+	Flash      bool   // Presentation-only: another pane just opened this entry.
+	Live       bool   // Reasoning still streaming.
+	Elapsed    string // Formatted reasoning time, when observed from its first delta.
 	// Collapsed shows a settled block as one row that opens it; Hovered
 	// underlines that row under the pointer. Both are presentation-only.
 	Collapsed, Hovered bool
@@ -511,12 +512,6 @@ func (b *Block) countContent() {
 		b.Reads[0].Lines = b.TailOmitted + len(b.Tail)
 		b.Tail, b.TailOmitted = nil, 0
 	}
-}
-
-// Opened reports a merged read row whose reader opened its content, which
-// then shows as the invocations it stands for.
-func (b Block) Opened() bool {
-	return len(b.Members) > 0 && !b.Collapsed && slices.ContainsFunc(b.Reads, func(r Read) bool { return r.Lines > 0 })
 }
 
 const liveActivityClippedAnswer = "… (full answer in Codex completion)"

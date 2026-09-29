@@ -57,9 +57,8 @@ List, Search, and other target-only actions use the same grouping. A group that
 does not fit on one row puts each target on its own row, without separators;
 Search targets use the same path emphasis as reads. Reads whose collapsed
 content came from one target join as well: each target counts the lines read
-from it as `(N lines)`, and a click opens the row as the invocations it stands
-for, each with its output, and another closes it. A read still streaming,
-failed, or left open stays its own row until it settles. Different actions and
+from it as `(N lines)`, and a click opens a dialog with one page per invocation and `←`/`→`
+for previous/next result. A read still streaming or failed stays its own row until it settles. Different actions and
 other detail-bearing operations remain distinct. When one live invocation
 reports several operations at once, such as a shell call classified as Skill,
 Read and Search, they appear one at a time, 80 ms apart, in Main, Activity and the
@@ -81,8 +80,8 @@ shell continuation, or after a pipe, two columns deeper; a word wider than the
 row is cut without one. Fenced multiline `Run` previews sit beside the verb with
 the code gutter. In Main a command or program preview keeps at most eight wrapped rows, the
 last a muted `… +N lines` count (under the code gutter for a program), so a one-line
-command that wraps is bounded too; a click opens the whole source and any collapsed
-output, and another closes both. Tabs in previews expand to four spaces. `Run JavaScript` Code Mode previews always place source beneath
+command that wraps is bounded too; a click opens the whole source and retained
+output in the output dialog, without expanding the transcript. Tabs in previews expand to four spaces. `Run JavaScript` Code Mode previews always place source beneath
 the heading with the same code gutter, whether the source has one line or many.
 A confirmed nonzero command exit makes the verb red and adds `· exit N` after
 the command, or on its own row when it does not fit or follows a multiline
@@ -122,13 +121,38 @@ failure keeps that tail open. After a zero exit it stays open until the same
 agent's next standalone event, such as a separate command, Skill or Read, then
 collapses to one muted `┆ … +N lines` row once events pause for 750 ms after the
 later of that event and the output's completion, so a quick run of commands
-collapses together; a click on the command opens
-it again and another collapses it. Output following a file or skill read
+collapses together; a click on the command opens its retained output in the dialog. Output following a file or skill read
 (`Read`, or `Skill` other than `skills-mgr run`) is collapsed as soon as the read
 succeeds. Being what the agent read rather than a result to watch, it takes no
 row of its own: a muted `(N lines)` follows the read's target, and a row too
 narrow for it shortens the path rather than the count. Restored history shows zero-exit output
 already collapsed. Output arriving after completion is ignored.
+The output dialog captures keys and pointer events above both panes. It takes
+at most 90% of each dimension, or the available screen below 60 columns.
+`Esc`/`q` or a click outside closes it. `↑`/`↓`, `j`/`k`, `PgUp`/`PgDn`,
+`b`/space and `g`/`G` (Home/End) scroll; the wheel scrolls only the dialog.
+Command titles and source bodies use syntax colors for their language; file-read
+output uses the file type, including when it ends in blank lines. Copying remains
+plain text. Source uses a numbered solid gutter, command output a dashed gutter, and a
+single-range read starts numbering at the requested first line. The header
+shows the target, result position, ranges, retained line count and known exit.
+Live output is marked `● live` and follows its tail; scrolling up pauses it,
+and End or scrolling back to the bottom resumes. Opening or scrolling the
+dialog does not change transcript follow state.
+`/` starts a case-insensitive substring search, Enter finds, and `n`/`N` find
+next/previous matching lines. `y` copies the retained output of the current
+page, or source when there is no output. Mouse text selection is not provided.
+Output retention is separate from the animated display tail: each command has
+a 1 MiB budget including line slots, with lines capped at 16 KiB. Older lines
+are dropped with a visible count. The session has a 16 MiB retention budget,
+releasing the oldest completed output first; running commands are never released
+and can temporarily exceed the session budget. A released page says so and
+shows its bounded display tail instead. Tracked segment output that exceeds the
+between-frame buffer or loses attribution is released, and the feed uses the
+host's combined output instead. Completion replaces streamed content
+with the host aggregate when supplied. Restored commands retain their available
+host aggregates, not streams that were never persisted.
+
 A successful `mchanges --list` or `--summary` read shows its host output as
 change rows laid out like confirmed edit rows rather than a tail: summary files
 under their status verb (`Edited`, `Created`, `Deleted`, `Moved`, `Conflict`, or
@@ -232,8 +256,9 @@ The separate roster header omits feed follow state; the feed header is `ACTIVITY
 with its filter and follow state. Feed-only controls do not offer clicking agents. The feed groups
 consecutive entries by agent under a colored heading. In the shared view it clips
 long entries, and its only mode shows one agent in full. Hovering a clipped
-snippet underlines its hidden-line count; clicking it expands it in place and
-pauses following so it stays put, and clicking it again clips it. Roster rows are
+snippet underlines its hidden-line count. Clicking an operation opens the output
+dialog; narrative text, including thinking and delegation assignments, expands
+in place and another click clips it. Neither action changes transcript following. Roster rows are
 clickable: hovering highlights an agent; clicking it shows only that agent,
 and clicking it again restores the shared feed. In the roster, `↑`/`↓` or
 `k`/`j` move through all agents followed by each individual agent, stopping at

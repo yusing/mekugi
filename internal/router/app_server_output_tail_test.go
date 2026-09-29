@@ -159,19 +159,23 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	if collapsed := "└ Ran go test ./...\n      ┆ … +3 lines"; !strings.Contains(got, collapsed) || strings.Contains(got, "ok 1") {
 		t.Fatalf("settled output is not collapsed to %q:\n%s", collapsed, got)
 	}
-	// Either row of the command opens its output, and again closes it.
+	// Either row of the command opens its full retained output in the dialog.
 	index := slices.IndexFunc(feed.lines, func(line string) bool { return strings.Contains(line, "… +3 lines") })
 	snippet := feed.snippets[index]
 	if snippet == (liveActivitySnippet{}) || feed.snippets[index-1] != snippet {
-		t.Fatalf("collapsed output has no toggle: %v", feed.snippets)
+		t.Fatalf("collapsed output has no opening target: %v", feed.snippets)
 	}
-	u.view.toggleSnippet(snippet)
-	if got := main(); !strings.Contains(got, open) {
-		t.Fatalf("expanded output = \n%s", got)
+	terminal := &terminalUI{main: u}
+	if !terminal.openOutput(u.view, snippet) {
+		t.Fatal("command did not open output dialog")
 	}
-	u.view.toggleSnippet(snippet)
-	if got := main(); !strings.Contains(got, "┆ … +3 lines") {
-		t.Fatalf("output did not collapse again:\n%s", got)
+	terminal.output.layout(76)
+	if got := terminal.output.laid.Text; got != "ok 1\nok 2\nPASS" {
+		t.Fatalf("dialog output = %q", got)
+	}
+	terminal.outputKey("\x1b")
+	if terminal.output != nil || !strings.Contains(main(), "┆ … +3 lines") {
+		t.Fatal("closing output dialog changed the command row")
 	}
 	if _, tracked := u.session.commands[[3]string{"main", "t", "cmd"}]; tracked || len(u.session.commands) != 1 {
 		t.Fatalf("completed command still tracked: %v", u.session.commands)
@@ -192,10 +196,14 @@ func TestAppServerSingleLineOutputStaysVisible(t *testing.T) {
 		if !strings.Contains(got, "┆ done") || strings.Contains(got, "+1 lines") {
 			t.Fatalf("single output line hidden: %s", got)
 		}
-		for _, snippet := range feed.snippets {
-			if snippet != (liveActivitySnippet{}) {
-				t.Fatal("single output line has a collapse toggle")
-			}
+		index := slices.IndexFunc(feed.lines, func(line string) bool { return strings.Contains(ansi.Strip(line), "┆ done") })
+		terminal := &terminalUI{main: u}
+		if index < 0 || !terminal.openOutput(u.view, feed.snippets[index]) {
+			t.Fatal("single output line has no dialog target")
+		}
+		terminal.output.layout(76)
+		if terminal.output.laid.Text != "done" {
+			t.Fatalf("dialog output = %q", terminal.output.laid.Text)
 		}
 	}
 }
@@ -245,8 +253,14 @@ func TestAppServerMixedCommandOutputFollowsFinalRead(t *testing.T) {
 			if snippet == (liveActivitySnippet{}) {
 				t.Fatal("final Read output has no toggle")
 			}
-			u.view.toggleSnippet(snippet)
-			check("┆ second")
+			terminal := &terminalUI{main: u}
+			if !terminal.openOutput(u.view, snippet) {
+				t.Fatal("final Read did not open output dialog")
+			}
+			terminal.output.layout(80)
+			if got := terminal.output.laid.Text; got != "first\nsecond" {
+				t.Fatalf("read dialog output = %q", got)
+			}
 		})
 	}
 }
@@ -373,13 +387,17 @@ func TestAppServerMainClipsLongCommandSourceUntilOpened(t *testing.T) {
 	if snippet == (liveActivitySnippet{}) {
 		t.Fatalf("clipped source has no toggle: %v", feed.snippets)
 	}
-	u.view.toggleSnippet(snippet)
-	if got := ansi.Strip(strings.Join(render().lines, "\n")); strings.Count(got, "print('row')") != 30 || strings.Contains(got, "│ … +") {
-		t.Fatalf("opened source is not whole:\n%s", got)
+	terminal := &terminalUI{main: u}
+	if !terminal.openOutput(u.view, snippet) {
+		t.Fatal("clipped source did not open output dialog")
 	}
-	u.view.toggleSnippet(snippet)
+	terminal.output.layout(76)
+	if got := terminal.output.laid; strings.Count(ansi.Strip(fmt.Sprint(got.Lines)), "print('row')") != 30 || got.Text != "boom" {
+		t.Fatalf("dialog lost source or output: %+v", got)
+	}
+	terminal.outputKey("q")
 	if got := ansi.Strip(strings.Join(render().lines, "\n")); !strings.Contains(got, "│ … +") {
-		t.Fatalf("source did not clip again:\n%s", got)
+		t.Fatalf("source row changed after dialog closed:\n%s", got)
 	}
 }
 
@@ -459,7 +477,7 @@ func TestAppServerInstantOperationOutputDoesNotRoll(t *testing.T) {
 }
 
 // Consecutive reads whose content collapsed share one row that counts each
-// target's lines; a click opens every invocation's output, another closes it.
+// target's lines; the dialog pages through each invocation's output.
 func TestAppServerCollapsedReadsMerge(t *testing.T) {
 	for _, conversation := range []bool{false, true} {
 		t.Run(fmt.Sprint(conversation), func(t *testing.T) {
@@ -483,12 +501,20 @@ func TestAppServerCollapsedReadsMerge(t *testing.T) {
 			if snippet == (liveActivitySnippet{}) {
 				t.Fatal("merged read row has no toggle")
 			}
-			u.view.toggleSnippet(snippet)
-			opened := ansi.Strip(strings.Join(u.view.renderFeed(100, 60).lines, "\n"))
-			if strings.Count(opened, "Read") != 3 || strings.Index(opened, "read-0") > strings.Index(opened, "b.go") || !strings.Contains(opened, "┆ more-2") {
-				t.Fatalf("opened reads lost their invocations:\n%s", opened)
+			terminal := &terminalUI{main: u}
+			if !terminal.openOutput(u.view, snippet) || len(terminal.output.pages) != 3 {
+				t.Fatal("merged reads did not open three dialog pages")
 			}
-			u.view.toggleSnippet(snippet)
+			for i := range 3 {
+				terminal.output.layout(80)
+				if page := terminal.output.laid.Text; !strings.Contains(page, fmt.Sprintf("read-%d\nmore-%d", i, i)) {
+					t.Fatalf("read page %d = %q", i, page)
+				}
+				if i < 2 {
+					terminal.outputKey("\x1b[C")
+				}
+			}
+			terminal.outputKey("q")
 			if again := ansi.Strip(strings.Join(u.view.renderFeed(100, 60).lines, "\n")); again != got {
 				t.Fatalf("closed reads =\n%s\nwant\n%s", again, got)
 			}

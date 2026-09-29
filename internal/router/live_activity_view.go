@@ -63,10 +63,12 @@ type liveActivityView struct {
 	events         map[string]liveActivityEvent // Each agent's latest standalone event, which settles its output.
 	pacedSeq       uint64                       // Entries up to this sequence have been considered for pacing.
 
-	// expanded snippets show in full in the shared feed; snippet is the
-	// hovered collapsed one.
+	// expanded snippets of narrative text show in full in the shared feed;
+	// snippet is the hovered one, and opening names an operation clicked to
+	// open in the output dialog, until the shell opens it.
 	expanded map[liveActivitySnippet]bool
 	snippet  liveActivitySnippet
+	opening  liveActivitySnippet
 	// passed holds Main's sent messages that have scrolled above the viewport,
 	// which then show as excerpts linking to Activity.
 	passed map[uint64]bool
@@ -102,6 +104,7 @@ type liveActivitySnippet struct {
 
 type liveActivityRun struct {
 	lines     []string
+	blocks    []activityui.Block    // Laid-out blocks, indexed by the snippets naming them.
 	snippets  []liveActivitySnippet // Aligned with lines.
 	questions []uint64              // Clickable question targets, aligned with lines.
 	entryRows map[uint64]int        // Exact Activity entry starts within a grouped run.
@@ -636,7 +639,8 @@ func underlineLink(line string) string {
 	return lead + "\x1b[4m" + strings.ReplaceAll("↩"+link, activityui.Reset, activityui.Reset+"\x1b[4m") + "\x1b[24m"
 }
 
-// pointSnippet underlines a hovered collapsed snippet. A click expands a
+// pointSnippet underlines a hovered snippet's count. A click on an operation
+// asks to open it in the output dialog; on narrative text it expands a
 // collapsed snippet or collapses an expanded one.
 func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 	var snippet liveActivitySnippet
@@ -650,7 +654,11 @@ func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 	redraw := editHover != v.editHover
 	v.editHover = editHover
 	if action == '\r' && snippet != (liveActivitySnippet{}) {
-		v.toggleSnippet(snippet)
+		if v.opensOutput(snippet) {
+			v.opening = snippet
+		} else {
+			v.toggleSnippet(snippet)
+		}
 		redraw = true
 	}
 	if v.expanded[snippet] {
@@ -662,15 +670,45 @@ func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 	return redraw
 }
 
-// collapseToggle opens a collapsed block its reader expanded, and underlines
-// its row under the pointer. It reports whether the block's rows toggle it.
-func (v *liveActivityView) collapseToggle(block *activityui.Block, snippet liveActivitySnippet) bool {
+// clickTarget prepares a block whose rows a click acts on, and reports whether
+// they do: an operation opens the output dialog, and collapsed narrative text
+// opens in place. Under the pointer, the block underlines its count.
+func (v *liveActivityView) clickTarget(block *activityui.Block, snippet liveActivitySnippet) bool {
+	if outputBlock(*block) {
+		block.Hovered = v.snippet == snippet
+		return true
+	}
 	if !block.Collapsed {
 		return false
 	}
 	block.Collapsed = !v.expanded[snippet]
 	block.Hovered = block.Collapsed && v.snippet == snippet
 	return true
+}
+
+// outputBlock reports an operation the output dialog opens: one with output,
+// still running, carrying source a row may clip, or standing for several
+// reads. Edits open their captured change instead, and questions their dock.
+func outputBlock(block activityui.Block) bool {
+	if block.Kind != "op" && block.Kind != "reads" || block.EditSource != "" || len(block.Questions) > 0 {
+		return false
+	}
+	return block.Output != nil || len(block.Tail)+block.TailOmitted > 0 || len(block.Changes) > 0 || block.Code != "" || len(block.Members) > 0
+}
+
+// snippetBlock is the block a snippet names in the last frame.
+func (v *liveActivityView) snippetBlock(snippet liveActivitySnippet) (activityui.Block, bool) {
+	for key, run := range v.runs {
+		if key.first == snippet.run && snippet.block >= 0 && snippet.block < len(run.blocks) {
+			return run.blocks[snippet.block], true
+		}
+	}
+	return activityui.Block{}, false
+}
+
+func (v *liveActivityView) opensOutput(snippet liveActivitySnippet) bool {
+	block, ok := v.snippetBlock(snippet)
+	return ok && outputBlock(block)
 }
 
 func (v *liveActivityView) toggleSnippet(snippet liveActivitySnippet) {
@@ -1471,10 +1509,11 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 	}
 	rail := ""
 	blocks = activityui.AlignVerbs(activityui.GroupOperations(blocks))
+	run.blocks = blocks
 	for index, block := range blocks {
 		// Native Activity joins consecutive operations into one tree.
 		tree := v.childrenOnly && operation(block) && !continued(block)
-		toggle := v.collapseToggle(&block, liveActivitySnippet{first, index})
+		toggle := v.clickTarget(&block, liveActivitySnippet{first, index})
 		part := v.painter.Block(block, width-2)
 		switch {
 		case tree:
@@ -1512,13 +1551,11 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			snippet = liveActivitySnippet{first, index}
 		}
 		if limit > 0 && len(part) > limit {
+			// An operation shows in full in the output dialog.
 			snippet = liveActivitySnippet{first, index}
-			if !v.expanded[snippet] {
-				hint := "… " + activityui.MoreLines(len(part)-limit+1)
-				if snippet == v.snippet {
-					hint = activityui.Underline(hint)
-				}
-				part = append(part[:limit-1:limit-1], activityui.Dim+hint+activityui.Undim)
+			if outputBlock(block) || !v.expanded[snippet] {
+				hint := activityui.Elision{Hidden: len(part) - limit + 1, Hovered: snippet == v.snippet}
+				part = append(part[:limit-1:limit-1], hint.String())
 			}
 		}
 		if block.EditSource != "" {

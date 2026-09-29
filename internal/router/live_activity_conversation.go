@@ -365,6 +365,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		return liveActivityRun{}
 	}
 	var out conversationLines
+	var laid []activityui.Block // Tool blocks, indexed by the snippets naming them.
 	entryRows := make(map[uint64]int)
 	p := &v.painter
 	switch {
@@ -376,7 +377,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		for index, block := range blocks {
 			// Settled provider thinking shows its header; a click toggles it.
 			snippet := liveActivitySnippet{entry.Seq, index}
-			toggle := v.collapseToggle(&block, snippet)
+			toggle := v.clickTarget(&block, snippet)
 			for _, row := range p.Block(block, width) {
 				out.add(0, row)
 				if toggle {
@@ -407,19 +408,13 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		var toggles []liveActivitySnippet // Aligned with every rendered row, including grouped edits.
 		// Its connectors sit beneath the reasoning bullet. Keep invocation identities
 		// even when adjacent edits share a heading or edit the same path.
-		for index, block := range activityui.AlignVerbs(activityui.GroupOperations(activityui.MergeLiveActivityReads(group))) {
+		laid = activityui.AlignVerbs(activityui.GroupOperations(activityui.MergeLiveActivityReads(group)))
+		for index, block := range laid {
 			snippet := liveActivitySnippet{entry.Seq, index}
-			toggle := v.collapseToggle(&block, snippet)
-			if block.Kind == "op" && block.Code != "" && !v.expanded[snippet] {
-				// The same click that opens collapsed output shows the whole source.
-				whole := len(p.Block(block, width-2))
+			toggle := v.clickTarget(&block, snippet)
+			if block.Kind == "op" && block.Code != "" {
+				// The output dialog shows the whole source.
 				block.SourceRows = conversationSourceRows
-				if len(p.Block(block, width-2)) < whole {
-					toggle = true
-					block.Hovered = v.snippet == snippet
-				} else {
-					block.SourceRows = 0
-				}
 			}
 			target := liveActivitySnippet{}
 			if block.EditSource != "" {
@@ -469,7 +464,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	default:
 		v.agentItem(&out, entry, blocks, first, width, thread)
 	}
-	return liveActivityRun{lines: out.lines, snippets: out.snippets, questions: out.questions, entryRows: entryRows}
+	return liveActivityRun{lines: out.lines, blocks: laid, snippets: out.snippets, questions: out.questions, entryRows: entryRows}
 }
 
 // conversationHeading is one item heading: a glyph, a name, optional dim
@@ -800,26 +795,23 @@ func (v *liveActivityView) linkedExcerpt(out *conversationLines, entry activityP
 	out.hang(gutter, gutter, rows)
 	link := v.painter.Theme.Accent() + "↩ Open " + noun + " in Activity" + activityui.Reset
 	if hidden > 0 {
-		link += activityui.Dim + " · " + activityui.MoreLines(hidden) + activityui.Undim
+		link += activityui.Dim + " · " + activityui.Undim + activityui.Elision{Hidden: hidden, Form: activityui.ElisionSuffix}.String()
 	}
 	out.add(entry.Seq, tail+ansi.Truncate(link, width, "…"))
 }
 
 // collapsedItem shortens an item its thread has moved past. Assignments have
 // no Activity entry to open, so a click expands the item in place and another
-// collapses it, as Activity does with long blocks.
+// collapses it, as Activity does with long narrative blocks.
 func (v *liveActivityView) collapsedItem(out *conversationLines, entry activityPaneEntry, rows []string, gutter string, width int) {
 	snippet := liveActivitySnippet{entry.Seq, 0}
 	_, hidden := liveActivityExcerpt(rows, width, conversationEarlierRows)
 	if hidden > 0 && !v.expanded[snippet] {
-		hint := activityui.MoreLines(hidden)
-		if v.snippet == snippet {
-			hint = activityui.Underline(hint)
-		}
+		hint := activityui.Elision{Hidden: hidden, Form: activityui.ElisionSuffix, Hovered: v.snippet == snippet}.String()
 		room := width - ansi.StringWidth(hint) - 1
 		rows, _ = liveActivityExcerpt(rows, room, conversationEarlierRows)
 		last := &rows[len(rows)-1]
-		*last += strings.Repeat(" ", max(1, width-ansi.StringWidth(*last)-ansi.StringWidth(hint))) + activityui.Dim + hint + activityui.Undim
+		*last += strings.Repeat(" ", max(1, width-ansi.StringWidth(*last)-ansi.StringWidth(hint))) + hint
 	}
 	for _, row := range rows {
 		out.add(0, gutter+row)

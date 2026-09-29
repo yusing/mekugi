@@ -416,6 +416,7 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 		if item.Type == "fileChange" {
 			entry.Text = appServerEditText(item, info.Cwd)
 		}
+		s.retainOutput(entry.native, item)
 		appServerSucceededOutput(&entry, item, time.Time{})
 		*entries = append(*entries, entry)
 		if item.ExitCode != nil && *item.ExitCode != 0 {

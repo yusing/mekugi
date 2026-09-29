@@ -172,7 +172,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 							snippet := s.snippets[index]
 							if snippet.block == editNavigationSnippet {
 								u.openActivityEdit(s.view, snippet.run)
-							} else {
+							} else if !u.openOutput(s.view, snippet) {
 								s.view.toggleSnippet(snippet)
 							}
 						}

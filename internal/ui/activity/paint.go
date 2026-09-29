@@ -482,15 +482,6 @@ func liveActivityIndent(lines []string, prefix string) []string {
 // Block renders one parsed block within width columns.
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
-	if block.Opened() {
-		var lines []string
-		for _, member := range block.Members {
-			member.Collapsed, member.Hovered, member.Flash = false, false, block.Flash
-			member.VerbColumn, member.TailRows = block.VerbColumn, block.TailRows
-			lines = append(lines, p.Block(member, width)...)
-		}
-		return lines
-	}
 	lines := p.blockRows(block, width)
 	if trailer := segmentTrailer(block); trailer != "" && len(lines) > 0 {
 		if last := len(lines) - 1; ansi.StringWidth(lines[last])+1+ansi.StringWidth(trailer) <= width {
@@ -551,7 +542,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			if block.Live {
 				var hidden int
 				if rows, hidden = TailRows(rows, ThinkingTailRows); hidden > 0 {
-					header += " · " + MoreLines(hidden)
+					header += " · " + Elision{Hidden: hidden, Form: ElisionSuffix}.String() + Dim
 				}
 			}
 			if block.Collapsed {
@@ -980,11 +971,7 @@ func clipSource(rows []string, block Block, lead string) []string {
 		return rows
 	}
 	keep := max(1, block.SourceRows-1)
-	hint := "… " + MoreLines(len(rows)-keep)
-	if block.Hovered {
-		hint = Underline(hint)
-	}
-	return append(rows[:keep:keep], lead+Dim+hint+Undim)
+	return append(rows[:keep:keep], lead+Elision{Hidden: len(rows) - keep, Hovered: block.Hovered}.String())
 }
 
 // readLines counts collapsed read output after the target it came from: a
@@ -1002,11 +989,7 @@ func lineSuffix(n int, hovered bool) string {
 	if n <= 0 {
 		return ""
 	}
-	count := "(" + LineCount(n) + ")"
-	if hovered {
-		count = Underline(count)
-	}
-	return " " + Dim + count + Undim
+	return " " + Elision{Hidden: n, Form: ElisionContent, Hovered: hovered}.String()
 }
 
 // outputRows attaches the invocation's output to its final operation. Open
@@ -1034,20 +1017,18 @@ func outputRows(block Block, lines []string, width int) []string {
 	}
 	// Output uses a dashed gutter, distinct from the program gutter above it.
 	if block.Collapsed && len(tail) > 0 {
-		hint := "… " + MoreLines(omitted+len(tail))
-		if block.Hovered {
-			hint = Underline(hint)
-		}
-		return append(lines, padding+ansi.Truncate(Dim+"┆ "+hint+Undim, width-indent, "…"))
+		hint := Elision{Hidden: omitted + len(tail), Hovered: block.Hovered}
+		return append(lines, padding+ansi.Truncate(Dim+"┆ "+Undim+hint.String(), width-indent, "…"))
 	}
 	for i, line := range tail {
 		lead := padding
-		if count := "+" + strconv.Itoa(omitted); i == 0 && omitted > 0 {
-			if len(count) < indent {
-				lead = Dim + count + Undim + padding[len(count):]
+		if count := (Elision{Hidden: omitted, Form: ElisionLead, Hovered: block.Hovered}); i == 0 && omitted > 0 {
+			if cells := ansi.StringWidth(count.Text()); cells < indent {
+				lead = count.String() + padding[cells:]
 			} else {
 				// A count wider than the verb column keeps its own row.
-				lines = append(lines, padding+ansi.Truncate(Dim+"┆ "+fmt.Sprintf("… %d earlier lines", omitted)+Undim, width-indent, "…"))
+				count.Form = ElisionEarlier
+				lines = append(lines, padding+ansi.Truncate(Dim+"┆ "+Undim+count.String(), width-indent, "…"))
 			}
 		}
 		lines = append(lines, lead+ansi.Truncate(Dim+"┆"+Undim+" "+line, width-indent, "…"))
@@ -1387,7 +1368,7 @@ func (p *Painter) Summary(blocks []Block) string {
 	block := blocks[len(blocks)-1]
 	more := ""
 	if len(blocks) > 1 {
-		more = Dim + fmt.Sprintf(" · +%d more", len(blocks)-1) + Undim
+		more = Dim + " · " + Undim + Elision{Hidden: len(blocks) - 1, Unit: "more", Form: ElisionSuffix}.String()
 	}
 	firstLine := func(text string) string {
 		// Summaries describe table content, not its decorative top border.

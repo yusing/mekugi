@@ -1,7 +1,6 @@
 package activity
 
 import (
-	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -44,22 +43,6 @@ func TailRows(rows []string, limit int) ([]string, int) {
 	}
 	slices.Reverse(tail)
 	return tail, hidden
-}
-
-// MoreLines labels n rows left out of view.
-func MoreLines(n int) string {
-	if n == 1 {
-		return "+1 line"
-	}
-	return fmt.Sprintf("+%d lines", n)
-}
-
-// LineCount labels n lines of content.
-func LineCount(n int) string {
-	if n == 1 {
-		return "1 line"
-	}
-	return fmt.Sprintf("%d lines", n)
 }
 
 // Underline marks a row's toggle under the pointer.

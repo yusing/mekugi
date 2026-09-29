@@ -437,7 +437,7 @@ func TestRanRowBoundsSourceRows(t *testing.T) {
 				t.Fatalf("clipped rows = %q", plain)
 			}
 			omitted := len(whole) - len(plain) + 1
-			if !strings.Contains(source[7], activityui.MoreLines(omitted)) {
+			if !strings.Contains(source[7], activityui.Elision{Hidden: omitted}.Text()) {
 				t.Fatalf("hint %q does not count the %d omitted rows", source[7], omitted)
 			}
 		})
@@ -459,7 +459,7 @@ func TestRanRowExpandsSourceTabs(t *testing.T) {
 }
 
 // Collapsed read content no longer keeps each read on its own row: targets
-// count their lines, and opening the row shows each invocation's output.
+// count their lines, and the row keeps each invocation's output.
 func TestMergedReadsCountContentPerTarget(t *testing.T) {
 	p := activityui.Painter{}
 	test := "internal/router/toolplugin/tests/tools.test.ts"
@@ -486,10 +486,11 @@ func TestMergedReadsCountContentPerTarget(t *testing.T) {
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("merged rows =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	blocks[0].Collapsed = false
-	opened := strings.Join(plainLines(p.Block(blocks[0], 100)), "\n")
-	if strings.Count(opened, "Read") != 4 || strings.Count(opened, "┆") != 119 {
-		t.Fatalf("opened rows =\n%s", opened)
+	// The output dialog pages through each invocation's own output.
+	for i, lines := range []int{19, 50, 50, 0} {
+		if member := blocks[0].Members[i]; member.Source != uint64(i+1) || len(member.Tail) != lines {
+			t.Fatalf("member %d = %+v", i, member)
+		}
 	}
 	// Streaming or failed reads stay their own rows.
 	running := read(6, "a.go", "1:2", 2)

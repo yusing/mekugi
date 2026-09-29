@@ -75,6 +75,8 @@ type execTrackSegment struct {
 	ended   bool
 	code    int
 	output  activityui.OutputTail
+	fresh   []byte             // Output since the last view, bounded like a retained output.
+	full    *activityui.Output // Retained by the UI, which alone reads and writes it.
 }
 
 func listenExecTrack(ctx context.Context, socket, directory string) (*execTrackHub, error) {
@@ -437,7 +439,15 @@ func (t *execTrack) apply(message execsegment.Message) {
 		}
 	case execsegment.Output:
 		if valid && !t.lossy {
-			t.segments[message.Index].output.Write(message.Data)
+			segment := &t.segments[message.Index]
+			segment.output.Write(message.Data)
+			segment.fresh = append(segment.fresh, message.Data...)
+			if over := len(segment.fresh) - activityui.OutputBytes; over > 0 {
+				// Without a complete pending stream, use the host aggregate
+				// rather than splice unrelated byte ranges into retained output.
+				segment.fresh = nil
+				t.lossy = true
+			}
 		}
 	case execsegment.End:
 		if valid && message.Code != nil {
@@ -465,6 +475,7 @@ type commandSegment struct {
 	tail    []string
 	omit    int
 	changes []activityui.ChangeRow
+	output  *activityui.Output
 }
 
 // execTrackView is a report as presented at one frame.
@@ -479,8 +490,9 @@ type execTrackView struct {
 // view reports the command's segments, and whether they changed since the
 // last view. While live, a segment appears once it starts. Final views mark
 // segments the list never reached as skipped; a segment still open when the
-// shell finished is the one the shell exited in.
-func (h *execTrackHub) view(key [3]string, final bool, text func(string) string) (execTrackView, bool) {
+// shell finished is the one the shell exited in. Segment output is retained
+// in outputs, when given, on the UI goroutine that views it.
+func (h *execTrackHub) view(key [3]string, final bool, text func(string) string, outputs *activityui.Retention) (execTrackView, bool) {
 	if h == nil {
 		return execTrackView{}, false
 	}
@@ -491,10 +503,17 @@ func (h *execTrackHub) view(key [3]string, final bool, text func(string) string)
 		return execTrackView{}, false
 	}
 	changed := track.dirty
-	view := execTrackView{output: !track.terminal && !track.lossy, ended: track.ended, complete: track.ended && track.done, code: track.code}
+	view := execTrackView{output: !track.terminal && !track.lossy && !(track.ended && !track.done), ended: track.ended, complete: track.ended && track.done, code: track.code}
 	last := track.lastStarted()
 	for i := range track.segments {
 		segment := &track.segments[i]
+		if !view.output {
+			segment.fresh = nil
+			if segment.full != nil {
+				segment.full.Release()
+				segment.full = nil
+			}
+		}
 		if segment.text == "" {
 			segment.text = text(segment.source)
 			segment.instant = instantOperations(segment.text)
@@ -521,12 +540,23 @@ func (h *execTrackHub) view(key [3]string, final bool, text func(string) string)
 			if final {
 				segment.output.Flush()
 			}
+			if outputs != nil && !shown.skipped {
+				if segment.full == nil {
+					segment.full = outputs.New()
+				}
+				segment.full.Write(string(segment.fresh))
+				segment.fresh = segment.fresh[:0]
+				if !shown.running {
+					segment.full.Finish(nil, &shown.exit)
+				}
+				shown.output = segment.full
+			}
 			shown.tail, shown.omit = segment.output.Lines()
 			if final && !shown.skipped && shown.exit == 0 {
 				output := strings.Join(shown.tail, "\n")
 				shown.changes = mchangesOutputRows(appServerItem{Command: segment.source, AggregatedOutput: &output})
 				if len(shown.changes) > 0 && shown.omit > 0 {
-					shown.changes = append([]activityui.ChangeRow{{Note: "… " + activityui.MoreLines(shown.omit)}}, shown.changes...)
+					shown.changes = append([]activityui.ChangeRow{{Note: activityui.Elision{Hidden: shown.omit}.Text()}}, shown.changes...)
 				}
 			}
 		}
@@ -551,7 +581,7 @@ func execSegmentText(source string) string {
 func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRun) ([]activityPaneEntry, bool) {
 	s := &u.session
 	if run.completion != nil {
-		view, _ := u.execTrack.view(key, false, execSegmentText)
+		view, _ := u.execTrack.view(key, false, execSegmentText, &s.outputs)
 		if !view.ended && time.Since(run.completedAt) < execTrackCompletionWait {
 			return nil, true
 		}
@@ -563,7 +593,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 		u.execTrack.finish(key)
 		return done, true
 	}
-	view, changed := u.execTrack.view(key, false, execSegmentText)
+	view, changed := u.execTrack.view(key, false, execSegmentText, &s.outputs)
 	if !u.execTrack.tracking(key) {
 		return nil, false
 	}
@@ -596,7 +626,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 // command falls back to the host's combined result.
 func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry, item appServerItem) []activityPaneEntry {
 	now := time.Now()
-	view, _ := u.execTrack.view(key, true, execSegmentText)
+	view, _ := u.execTrack.view(key, true, execSegmentText, &u.session.outputs)
 	if !view.complete || item.ExitCode == nil || view.code != *item.ExitCode || len(view.segments) == 0 {
 		return u.session.commandDone(entry, item, now)
 	}

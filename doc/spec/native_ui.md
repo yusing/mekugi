@@ -647,7 +647,7 @@ its body. Titled summaries keep the Codex rendering.
 
 Main and Activity follow new transcript content until manual scrollback or an
 explicit jump to earlier content. Opening or closing Live/Diff, resizing, and
-expanding a snippet do not disable following. Scrolling to the last full viewport
+expanding a narrative snippet or opening the output dialog do not disable following. Scrolling to the last full viewport
 (including End), or pressing Esc in a paused transcript, resumes following and
 clears its unseen count. Activity has no `r` follow binding. A paused transcript shows “↓ Back to bottom · esc”
 above Main's composer or at the bottom of Activity. Scrolling stops at the last

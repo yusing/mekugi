@@ -1,0 +1,320 @@
+package activity
+
+import (
+	"context"
+	"strconv"
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/livediff"
+)
+
+// DialogPage is one invocation's source and output as the output dialog
+// shows them. Lines stay unwrapped, so a long live stream costs a layout only
+// for the rows in view.
+type DialogPage struct {
+	Title  string // Styled verb and target.
+	Live   bool   // Output is still streaming.
+	Detail string // Styled facts: line spans, line count, exit.
+	Lines  []DialogLine
+	Text   string // Plain output, or source without output, for copying.
+	digits int    // Width of the line-number column.
+}
+
+// DialogLine is one numbered source or output line, or an unnumbered row
+// such as a note or rendered Markdown.
+type DialogLine struct {
+	Number int    // Zero leaves the number column blank.
+	Gutter string // "│" before source, "┆" before output, empty for other rows.
+	Text   string // Styled.
+}
+
+// dialogHighlightBytes bounds the content the dialog colors; larger content
+// shows plain rather than stalling a frame.
+const dialogHighlightBytes = 256 << 10
+
+// DialogPage lays out a block's whole source and retained output. Source keeps
+// the code gutter and output the dashed one, as in the feed; a read's content
+// is source, numbered from the first line it read. Markdown bodies wrap to
+// width; numbered lines wrap as they are shown.
+func (p *Painter) DialogPage(block Block, width int) DialogPage {
+	width = max(8, width)
+	view := OutputView{Lines: block.Tail, Dropped: block.TailOmitted, Done: !block.Running, Exited: !block.Running, Exit: block.ExitCode}
+	if block.Output != nil {
+		view = block.Output.View()
+		if view.Released {
+			view.Lines, view.Dropped = block.Tail, block.TailOmitted
+		}
+		block.Running = !view.Done
+	}
+	page := DialogPage{Title: VerbColor(block.Verb) + "\x1b[1m" + RowVerb(block) + Reset, Live: !view.Done}
+	if target := dialogTarget(p, block); target != "" {
+		page.Title += Dim + " · " + Undim + target
+	}
+	var detail []string
+	if len(block.Reads) == 1 && len(block.Reads[0].Ranges) > 0 {
+		detail = append(detail, lineRanges(block.Reads[0].Ranges))
+	}
+	if total := view.Dropped + len(view.Lines); total > 0 {
+		detail = append(detail, lineCount(total))
+	}
+	switch {
+	case view.Exited && view.Exit != 0:
+		detail = append(detail, Red+"exit "+strconv.Itoa(view.Exit)+Reset+Dim)
+	case view.Exited && block.Verb == "Run":
+		detail = append(detail, "exit 0")
+	}
+	page.Detail = Dim + strings.Join(detail, " · ") + Undim
+	add := func(line DialogLine) {
+		page.Lines = append(page.Lines, line)
+		if line.Number > 0 {
+			page.digits = max(page.digits, len(strconv.Itoa(line.Number)))
+		}
+	}
+	gap := func() {
+		if len(page.Lines) > 0 {
+			add(DialogLine{})
+		}
+	}
+
+	code := livediff.Safe(block.Code, false)
+	page.Text = code
+	if code != "" && (strings.Contains(code, "\n") || ansi.StringWidth(code) > width/2) {
+		colored := strings.Split(code, "\n")
+		if len(code) <= dialogHighlightBytes {
+			colored = p.dialogHighlight(block, code)
+		}
+		for i, line := range colored {
+			add(DialogLine{Number: i + 1, Gutter: "│", Text: line})
+		}
+		page.Text = code
+	}
+	if block.Body != "" {
+		gap()
+		for _, row := range p.Markdown(block.Body, width) {
+			add(DialogLine{Text: row})
+		}
+	}
+	var notes []string
+	switch {
+	case view.Released:
+		notes = append(notes, "Full output was released; its last available lines follow.")
+	case view.Dropped > 0:
+		notes = append(notes, Elision{Hidden: view.Dropped, Form: ElisionEarlier}.Text()+" not retained")
+	}
+	if len(view.Lines) == 0 {
+		switch {
+		case !view.Done:
+			notes = append(notes, "Waiting for output…")
+		case len(page.Lines) == 0:
+			notes = append(notes, "No output")
+		}
+	}
+	if len(notes) > 0 || len(view.Lines) > 0 {
+		gap()
+	}
+	for _, note := range notes {
+		for _, row := range Wrap(Dim+note+Undim, width, false) {
+			add(DialogLine{Text: row})
+		}
+	}
+	if len(view.Lines) == 0 {
+		return page
+	}
+	content := strings.Join(view.Lines, "\n")
+	page.Text = content
+	colored, first, gutter := view.Lines, view.Dropped+1, "┆"
+	if block.ReadOutput() && len(block.Reads) == 1 {
+		// A read's output is the file it read.
+		gutter = "│"
+		if ranges := block.Reads[0].Ranges; len(ranges) == 1 {
+			if from, _, ok := strings.Cut(ranges[0], ":"); ok {
+				if n, err := strconv.Atoi(from); err == nil && n > 0 {
+					first = n + view.Dropped
+				}
+			}
+		}
+		if len(content) <= dialogHighlightBytes {
+			// ColorSource consumes a final newline as a line terminator. Supply
+			// one so a retained trailing blank row is not lost with its colors.
+			if lines, err := p.syntax.ColorSource(context.Background(), p.Theme, block.Reads[0].Path, content+"\n"); err == nil && len(lines) == len(view.Lines) {
+				colored = lines
+			}
+		}
+	}
+	for i, line := range colored {
+		add(DialogLine{Number: first + i, Gutter: gutter, Text: line})
+	}
+	return page
+}
+
+// dialogLanguage uses the same source language for the title and body.
+func dialogLanguage(block Block) string {
+	if !block.Fenced && (block.Verb == "MCP" || strings.HasPrefix(block.Verb, "Tool")) {
+		return "json"
+	}
+	if block.Lang == "" && block.Verb == "Run" {
+		return "bash"
+	}
+	return block.Lang
+}
+
+func (p *Painter) dialogHighlight(block Block, source string) []string {
+	lang := dialogLanguage(block)
+	if !strings.EqualFold(lang, "diff") {
+		source += "\n" // The source renderer consumes one line terminator; diff does not.
+	}
+	return p.Highlight(lang, source)
+}
+
+// dialogTarget styles what the operation acted on.
+func dialogTarget(p *Painter, block Block) string {
+	switch {
+	case block.Kind == "reads":
+		var paths []string
+		for _, read := range block.Reads {
+			paths = append(paths, Path(livediff.Safe(read.Path, false)))
+		}
+		return strings.Join(paths, ", ")
+	case block.Path != "":
+		return Path(livediff.Safe(block.Path, false))
+	case block.Code != "":
+		first, _, _ := strings.Cut(livediff.Safe(block.Code, false), "\n")
+		if len(first) <= dialogHighlightBytes {
+			return strings.Join(p.dialogHighlight(block, first), " ")
+		}
+		return first
+	}
+	return strings.TrimSpace(ansi.Strip(p.Label(block.Verb, block.Label)))
+}
+
+// textWidth is the width numbered lines wrap within.
+func (d DialogPage) textWidth(width int) int {
+	if d.digits == 0 {
+		return max(1, width)
+	}
+	return max(1, width-d.digits-3)
+}
+
+// Indent is the cells line i's rows spend on its number and gutter.
+func (d DialogPage) Indent(i int) int {
+	if d.Lines[i].Gutter == "" {
+		return 0
+	}
+	return d.digits + 3
+}
+
+// RowCount is how many rows line i takes at width.
+func (d DialogPage) RowCount(i, width int) int {
+	line := d.Lines[i]
+	if line.Gutter == "" {
+		return 1 // Notes and Markdown rows are laid out already.
+	}
+	return wrappedRows(line.Text, d.textWidth(width))
+}
+
+// wrappedRows counts the rows Wrap's hard wrap gives text, without laying them
+// out: a character that does not fit its row starts the next.
+func wrappedRows(text string, width int) int {
+	rows, column := 1, 0
+	var state byte
+	for len(text) > 0 {
+		_, cells, n, next := ansi.DecodeSequence(text, state, nil)
+		if cells > 0 {
+			if column+cells > width {
+				rows, column = rows+1, 0
+			}
+			column += cells
+		}
+		text, state = text[n:], next
+	}
+	return rows
+}
+
+// Rows lays out line i at width: numbered lines wrap under their gutter, and
+// continuation rows leave the number blank.
+func (d DialogPage) Rows(i, width int) []string {
+	line := d.Lines[i]
+	if line.Gutter == "" {
+		return []string{line.Text}
+	}
+	parts := Wrap(line.Text, d.textWidth(width), true)
+	rows := make([]string, len(parts))
+	for k, part := range parts {
+		number := ""
+		if k == 0 && line.Number > 0 {
+			number = strconv.Itoa(line.Number)
+		}
+		rows[k] = Dim + strings.Repeat(" ", d.digits-len(number)) + number + " " + line.Gutter + Undim + " " + part
+	}
+	return rows
+}
+
+// DialogFrame is one frame of the output dialog, before layout.
+type DialogFrame struct {
+	Page     DialogPage
+	Position string   // Page position among a merged row's invocations, such as "2 / 4".
+	Paused   bool     // Live output the reader scrolled away from.
+	Rows     []string // Visible body rows.
+	Top      int      // Index of the first visible body row, for the scroll thumb.
+	Total    int      // Body rows in all.
+	Footer   string   // Styled controls.
+}
+
+// DialogChrome is the rows a dialog frame takes beyond its body: the top
+// edge, the detail row, its rule and the bottom edge.
+const DialogChrome = 4
+
+// Dialog boxes a frame width by height: the title and page position on the
+// top edge, the detail row and a rule, the body with a scroll thumb on its
+// right edge, and controls on the bottom edge.
+func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
+	if width < 12 || height < DialogChrome+1 {
+		return nil
+	}
+	edge := func(s string) string { return Dim + s + Undim }
+	inner := width - 4
+	right := f.Position
+	if f.Page.Live {
+		live := Green + "● live" + Reset
+		if f.Paused {
+			live += Dim + " · paused" + Undim
+		}
+		right = strings.TrimSpace(live + " " + right)
+	}
+	if right != "" {
+		right = " " + right + " "
+	}
+	room := width - 6 - ansi.StringWidth(right)
+	if room < 8 {
+		right, room = "", width-6
+	}
+	title := ansi.Truncate(f.Page.Title, room, "…") + Reset
+	fill := max(0, width-6-ansi.StringWidth(title)-ansi.StringWidth(right))
+	lines := []string{edge("╭─ ") + title + " " + edge(strings.Repeat("─", fill)) + right + edge("─╮")}
+	row := func(text string, thumb bool) string {
+		text = ansi.Truncate(text, inner, "…")
+		closing := edge("│")
+		if thumb {
+			closing = p.Theme.Accent() + "▌" + Reset
+		}
+		return edge("│") + " " + text + Reset + strings.Repeat(" ", max(0, inner-ansi.StringWidth(text))) + " " + closing
+	}
+	lines = append(lines, row(f.Page.Detail, false), edge("├"+strings.Repeat("─", width-2)+"┤"))
+	body := height - DialogChrome
+	thumbFrom, thumbTo := 0, -1
+	if f.Total > body && body > 0 {
+		size := max(1, body*body/f.Total)
+		thumbFrom = (body - size) * f.Top / max(1, f.Total-body)
+		thumbTo = thumbFrom + size - 1
+	}
+	for i := range body {
+		text := ""
+		if i < len(f.Rows) {
+			text = f.Rows[i]
+		}
+		lines = append(lines, row(text, i >= thumbFrom && i <= thumbTo))
+	}
+	footer := ansi.Truncate(f.Footer, max(0, width-6), "…")
+	return append(lines, edge("╰─ ")+footer+Reset+" "+edge(strings.Repeat("─", max(0, width-5-ansi.StringWidth(footer)))+"╯"))
+}
