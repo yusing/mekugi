@@ -2,12 +2,14 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/yusing/mekugi"
@@ -228,9 +230,12 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 			stamp := "absent"
 			if err == nil {
 				stamp = execWatchFileStamp(before.Path, info)
-			} else if !os.IsNotExist(err) {
+			} else if !os.IsNotExist(err) && !errors.Is(err, syscall.ENOTDIR) {
 				continue
 			}
+			// Copy scope includes both dst and dst/basename until the host
+			// resolves file-vs-directory semantics. Once dst is a regular file,
+			// its child candidate is absent, as in snapshotExecFile, not pending.
 			if previous, ok := stamps[before.Path]; ok && previous == stamp {
 				if settled {
 					settledPaths[before.Path] = true

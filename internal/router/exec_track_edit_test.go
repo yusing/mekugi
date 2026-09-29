@@ -20,13 +20,18 @@ import (
 )
 
 func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
-	for _, edit := range []string{"gofmt -w source.go", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go"} {
+	for _, edit := range []string{"gofmt -w source.go", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go"} {
 		t.Run(filepath.Base(strings.Fields(edit)[0]), func(t *testing.T) {
 			shell := newExecTrackShell(t)
 			workspace := t.TempDir()
 			before, after, completedText := "before\n", "+after", "completed"
 			if filepath.Base(strings.Fields(edit)[0]) == "gofmt" {
 				before, after, completedText = "package p; var A=1\n", "+var A = 1", "Ran"
+			}
+			binaryCopy := strings.HasPrefix(edit, "cp ")
+			if binaryCopy {
+				writeTestFile(t, filepath.Join(workspace, "image.png"), "\x89PNG\r\n\x1a\n\x00binary image")
+				completedText = "Ran"
 			}
 			writeTestFile(t, filepath.Join(workspace, "source.go"), before)
 			// The following command cannot exit until the test has inspected a
@@ -109,8 +114,11 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 					t.Fatal("edit preview waited for the following command")
 				}
 			}
-			if len(completed.Files) != 1 || !strings.Contains(completed.Files[0].Diff, after) || completed.Footer != "observed edit" {
+			if len(completed.Files) != 1 || completed.Footer != "observed edit" {
 				t.Fatalf("completion lacks actual observed edit: %+v", completed)
+			}
+			if binaryCopy && !completed.Files[0].Binary || !binaryCopy && !strings.Contains(completed.Files[0].Diff, after) {
+				t.Fatalf("completion lost copied content: %+v", completed.Files)
 			}
 			awaitMain(t, u, "Running")
 			u.shell.dockShown = time.Now().Add(-nativeDockMinimum - time.Second)
@@ -323,12 +331,22 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 }
 
 func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
-	for _, script := range []string{"gofmt -w source.go", "sed -i 's/A/B/' source.go"} {
+	for _, script := range []string{"gofmt -w source.go", "sed -i 's/A/B/' source.go", "cp", "install"} {
 		t.Run(strings.Fields(script)[0], func(t *testing.T) {
 			u, hub := newTrackedAppServerUI(t)
 			workspace := t.TempDir()
 			path := filepath.Join(workspace, "source.go")
-			writeTestFile(t, path, "package p; var A=1\n")
+			binaryCopy := script == "cp" || script == "install"
+			if binaryCopy {
+				// The session's stuck card copied a PNG outside its workspace.
+				// Binary copies have no projected text edit to end the watcher.
+				original := filepath.Join(t.TempDir(), "image.png")
+				path = filepath.Join(t.TempDir(), "stall-question.png")
+				writeTestFile(t, original, "\x89PNG\r\n\x1a\n\x00binary image")
+				script += " " + quoteShellWord(original) + " " + quoteShellWord(path)
+			} else {
+				writeTestFile(t, path, "package p; var A=1\n")
+			}
 			// Two nested calls in one cell. The edit is a single command, so
 			// there is no shell segment report. The sibling test stays pending.
 			source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q}); await tools.exec_command({cmd:'go test ./...',workdir:%q});", script, workspace, workspace)
@@ -365,6 +383,9 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 						if event.Preview != nil && event.Preview.Complete {
 							if len(event.Preview.Files) != 1 || event.Preview.Footer != "observed edit" {
 								t.Fatalf("completion lost actual edit: %+v", event.Preview)
+							}
+							if binaryCopy && (!event.Preview.Files[0].Binary || event.Preview.Files[0].AfterPath != path) {
+								t.Fatalf("completion lost binary copy: %+v", event.Preview.Files)
 							}
 							if !proxy.execWindows.find("cell").closed.IsZero() || u.session.commands[[3]string{"main", "turn", "test"}] == nil {
 								t.Fatal("edit completion ended enclosing cell or sibling test")

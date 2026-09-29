@@ -301,10 +301,11 @@ func (h *execTrackHub) signal() {
 }
 
 func execSegmentEdits(source string) bool {
-	// Formatters have tool-managed scope, so the Activity label is Run rather
-	// than Edit. Their write segments still own a live edit's lifetime.
+	// Formatters and file copies can be shown as Run rather than Edit.
+	// Their write segments still own a live edit's lifetime, including binary
+	// copies for which text projection cannot establish completion.
 	program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(source), "")
-	formats := false
+	writes := false
 	if err == nil {
 		syntax.Walk(program, func(node syntax.Node) bool {
 			if _, declaration := node.(*syntax.FuncDecl); declaration {
@@ -312,13 +313,14 @@ func execSegmentEdits(source string) bool {
 			}
 			if call, ok := node.(*syntax.CallExpr); ok {
 				if words, literal := literalArgs(call.Args); literal && len(words) > 0 {
-					formats = formats || execGoFormatterWrites(filepath.Base(words[0]), words[1:])
+					name := filepath.Base(words[0])
+					writes = writes || name == "cp" || name == "install" || execGoFormatterWrites(name, words[1:])
 				}
 			}
-			return !formats
+			return !writes
 		})
 	}
-	if formats {
+	if writes {
 		return true
 	}
 	for _, block := range toolOperationBlocks(execSegmentText(source)) {

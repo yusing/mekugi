@@ -374,7 +374,7 @@ Changed-file cards say `observed so far` and disappear if the files
 return to their captured state. When a live segment report uniquely matches the
 writer's thread, turn and exact script, and the host invocation started after
 the writer window opened, the card finishes after all recognized
-edit segments (including Go formatter writes) end or are skipped, independently
+edit segments (including file copies and Go formatter writes) end or are skipped, independently
 of a following test or other non-edit segment. A uniquely matched native command
 completion also finishes its card when no segment report exists, without waiting
 for later commands in the same Code Mode cell. Its final frame uses observed
