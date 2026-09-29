@@ -9,7 +9,7 @@ Codex. Codex keeps editing, execution, the sandbox, permissions, command
 sessions, and patch review. No fork, no config edits, no daemon.
 
 [Features](#features) · [Install](#install) · [Usage](#usage) ·
-[Metrics](#metrics) · [Settings](#mekugi-settings) ·
+[Native UI](#native-ui) · [Metrics](#metrics) · [Settings](#mekugi-settings) ·
 [Troubleshooting](#configuration-and-troubleshooting) · [Documentation](#documentation)
 
 ## Features
@@ -17,20 +17,30 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Stock Codex workflow.** Code Mode JavaScript, `exec_command`, and
   `apply_patch` behave as usual. Mekugi never re-runs an edit and changes no
   configuration or instruction files. A persistent WebSocket lets a supporting
-  Codex client [steer a running turn](#usage).
+  Codex client [steer a running turn](#composer).
+- **Native terminal UI.** [Main, Diff, Activity, and Agents](#native-ui) share
+  one terminal without an external pane manager. The composer works like
+  Codex's and adds [`/btw` side questions](#composer) that don't interrupt
+  Main, plus direct `/reasoning` and `/tier` switches.
 - **Milestone journal.** Agents keep a revisable journal. You see live updates,
   and answers are grouped at completion. A final answer goes into the journal
   without an extra model request.
 - **Live subagent activity.** Start notices show model and effort. Progress and
   message excerpts appear in the main conversation, or live in Mekugi’s
-  [agents pane](#agents-pane). Encrypted messages stay private.
+  [agents pane](#agents-pane), whose roster shows each agent's elapsed time,
+  provider round trips, and edited lines. Encrypted messages stay private.
 - **Live diffs.** Mekugi’s [live diff pane](#live-diff-pane) streams tool calls
   and provisional diffs as they arrive, then shows the saved edits. Click an
-  Edit event to jump to its captured change.
-- **File attachments.** [Select files with `@`](#usage) to send text contents
+  Edit event to jump to its captured file and hunk.
+- **Readable command output.** With `mekugi-exec` installed, each command in a
+  list such as `cd app && make && make test` shows its own output and exit
+  status. Click a command or read to open its retained output in an
+  [output dialog](#output-dialog) with one tab per command, search, and text
+  selection.
+- **File attachments.** [Select files with `@`](#composer) to send text contents
   directly to the agent, without a separate file-read tool call. **Attached**
-  events confirm included files; **Attach failed**
-  events explain omissions, such as oversized or unreadable files.
+  events confirm included files; **Attach failed** events explain omissions,
+  such as oversized or unreadable files.
 - **Recoverable output and change review.** [Session helpers](#wrapped-session-helpers)
   continue truncated output without rerunning, and track edits from
   `apply_patch` and shell commands, with any gaps in coverage labeled. Edits can
@@ -38,14 +48,14 @@ sessions, and patch review. No fork, no config edits, no daemon.
   change IDs and compact summaries in the completed tool result.
 - **Fewer tokens and round trips.** Bounded and batched reads, semantic symbol
   lookup, structural outlines, scoped change IDs, and child change handoffs.
-- **Search output filtering.** With a TypeSafe API key configured, large search results
-  (`rg`, `grep`, `find`, `fd`, `git grep`), linter and compiler diagnostics,
-  `git log`, `git diff`, `git show`, and `--help` pages drop the files, commits,
-  or entries that TypeSafe's Jev model judges unrelated to the task, including
-  inside combined commands such as `rg … | head; mcat …`. The agent sees what
-  was omitted and can `mread` the full output. Your
-  latest request, the agent's preceding message, the command, and sampled result
-  rows are sent to TypeSafe. If TypeSafe fails, the output passes through unchanged.
+- **Search output filtering.** With a TypeSafe API key configured, large search
+  results (`rg`, `grep`, `find`, `fd`, `git grep`), linter and compiler
+  diagnostics, `git log`, `git diff`, `git show`, and `--help` pages drop the
+  files, commits, or entries that TypeSafe's Jev model judges unrelated to the
+  task, including inside combined commands such as `rg … | head; mcat …`. The
+  agent sees what was omitted and can `mread` the full output. Your latest
+  request, the agent's preceding message, the command, and sampled result rows
+  are sent to TypeSafe. If TypeSafe fails, the output passes through unchanged.
   Opt out with `--explore-filter=false`.
 - **Leaner instructions.** Blocks marked with `<!-- mekugi:omit -->` are
   [stripped](#configuration-and-troubleshooting) before forwarding. With
@@ -57,9 +67,9 @@ sessions, and patch review. No fork, no config edits, no daemon.
   `--post-compact-recovery=false`.
 - **Custom tools.** Add your own [plugins](doc/spec/plugin.md) as JavaScript
   modules.
-- **Usage and cost.** Eligible main completions update a Markdown usage snapshot. A per-launch
-  browser dashboard shows request metrics and cache diagnostics. Costs are API
-  estimates, not subscription charges.
+- **Usage and cost.** Eligible main completions update a Markdown usage
+  snapshot. A per-launch browser dashboard shows request metrics and cache
+  diagnostics. Costs are API estimates, not subscription charges.
 - **Diagnostics.** [Inspect past sessions](#inspect-a-session) offline, record
   debug evidence, or let agents [report issues](#configuration-and-troubleshooting)
   to your own command.
@@ -96,15 +106,16 @@ command with its own output and exit status. Without it, the list shows as one
 command.
 
 From a checkout with **Bun** and **Make**, run `make install`. It regenerates the
-embedded plugins and installs `mekugi` and `mekugi-exec`. `make uninstall` removes
-only those binaries. Running sessions keep their worker executable, so start a new session
-to pick up an update.
+embedded plugins and installs `mekugi` and `mekugi-exec`. `make uninstall`
+removes only those binaries. Running sessions keep their worker executable, so
+start a new session to pick up an update.
 
 ## Usage
 
 Mekugi flags go **before** `codex`. Interactive launches accept `--yolo`, model
-and config options, and `resume THREAD_ID` or `resume --last`; enter prompts in Main. Noninteractive
-commands keep their ordinary Codex arguments and output:
+and config options, and [`resume THREAD_ID` or `resume --last`](#resume); enter
+prompts in the [native UI](#native-ui). Noninteractive commands keep their
+ordinary Codex arguments and output:
 
 ```sh
 mekugi codex --yolo --model gpt-6-sol
@@ -112,15 +123,6 @@ mekugi codex exec "Explain this repository"
 mekugi codex --yolo resume 'CONVERSATION_ID'
 mekugi --mentor-handoff=false codex --yolo
 ```
-
-In Main, type `@` to find a file, `@!` to include ignored files, or `$` to
-pick a skill. Both file modes exclude VCS metadata such as `.git`, `.svn`,
-and `.hg`. Use ↑/↓ to choose, Tab or Enter to insert, and Escape to dismiss.
-Selected text files attach their contents when you submit or queue the prompt;
-large or unreadable files produce explicit omission notices instead of truncated
-content. Images use image attachments.
-`/skills` opens the skills menu, including searchable enable/disable controls
-whose changes save automatically. Type `?` in an empty composer for shortcuts.
 
 Each invocation:
 
@@ -202,6 +204,124 @@ are added to Codex's catalog for the invocation. That can't be combined with
 `--profile` or `exec --ignore-user-config`; use the default configuration or an
 explicit `-c model_catalog_json=...` instead.
 
+## Native UI
+
+An interactive `mekugi codex --yolo` launch lays out Main, Diff, Activity, and
+Agents panes in one terminal without an external pane manager. Main holds the
+conversation and composer. Markdown tables render as aligned grids that switch
+to a record layout in narrow panes.
+
+- `Ctrl-B`, then `1`/`2`/`3`/`4`, focuses Main, Diff, Activity, or Agents. Diff
+  and Activity share the right column. Click a pane to focus it.
+- Drag the dividers to resize panes or the file navigator. `Ctrl-B`, then arrow
+  keys, resizes the main splits (up/down in the roster adjusts its height);
+  `Ctrl-B`, then `[`/`]`, resizes the file navigator. Narrow terminals show the
+  focused pane full-width.
+- `Ctrl-B`, then `PageUp`/`PageDown`, browses Main history. The wheel scrolls
+  the pane under the pointer.
+- `Ctrl-C` in an auxiliary pane returns focus to Main.
+
+Terminal titles and desktop notifications work as in Codex and follow its
+`tui.notifications` settings. Inside Herdr, its working, blocked, done, and
+idle indicators update even with notifications off.
+
+See the [native UI contract](doc/spec/native_ui.md).
+
+### Composer
+
+The composer works like Codex's: input history and editing keys, `@` file and
+`$` skill pickers, `/skills`, Ctrl+V image paste, Ctrl+G to edit in `$EDITOR`,
+Enter to steer and Tab to queue during a turn, Esc or Ctrl-C to interrupt,
+Shift+Up/Down for reasoning, `/model`, and `/copy`. Type `?` in an empty
+composer for the full shortcut list. Mekugi differs in these ways:
+
+- **File contents attach.** `@!` also finds ignored files; neither picker lists
+  VCS metadata such as `.git`. Selected text files attach their contents when
+  you submit or queue the prompt, and large or unreadable files produce an
+  explicit omission notice instead of truncated content.
+- **Waiting messages combine.** Steers typed while an earlier one is still
+  sending, and queued messages, are sent together as one message, one entry per
+  line. Alt+Up or Shift+Left brings back the last queued message.
+- **Direct switches.** `/model`, `/reasoning`, and `/tier` take a value, such as
+  `/reasoning high` or `/tier priority`; `/tier default` clears the tier.
+  Changes also reach a running turn's next steps and never edit your config file.
+- **Terminal requirements.** `/copy` and text selection copy through OSC 52,
+  which your terminal must allow. Pasting a clipboard image on Linux needs
+  `wl-paste` (Wayland) or `xclip` (X11).
+
+`/btw QUESTION` asks a side question about a snapshot of the conversation, even
+while Main is working. The answer streams in a panel above the composer. Repeat
+`/btw QUESTION` to follow up, use PgUp/PgDn to scroll, and press Esc to close;
+Main keeps working and your draft stays. Closing discards the side
+conversation, and it can't be resumed.
+
+### Resume
+
+`resume THREAD_ID` and `resume --last` work as in Codex. Resuming also restores
+pane layout, keyboard focus, the agent roster, Activity history, and the
+session's retained Diff changes. Scroll positions, filters, selections, and
+drafts are not restored. The resume picker and switching threads inside the UI
+are not supported yet, and threads with more than 16 MiB of history can't
+resume in the native UI.
+
+### Live diff pane
+
+The live diff viewer opens at the first edit or command; read-only turns don't
+open it. Main-agent and subagent calls get labeled cards that stream input as it
+arrives. When a turn finishes, the viewer switches to the saved diff. A failed
+or unfinished call never becomes a saved change.
+
+- `v` switches views; `?` lists diff shortcuts.
+- `s` shows or hides the file tree, `t` toggles tree/flat paths, `/` filters
+  files.
+- `n`/`p` change files, `[`/`]` jump between hunks, and `j`/`k`, `Space`/`b`,
+  and `g`/`G` scroll. Opening a file starts at its header.
+- `Tab` switches the navigator to **Changes**: a graph of changes by caller
+  (`main` or the agent's name) with each change's source, such as
+  `apply_patch`, `sed`, or `python3`. `{`/`}` step through changes, `a` shows
+  one caller's changes at a time, and `0` shows all callers. In the tab, `Enter`
+  on a caller filters to it, and `Enter` or `h`/`l` on a change expands or
+  collapses its files.
+- Click an Edit to preview its captured file and hunk in the branched
+  navigator. Edit, reply, question, and agent links are temporary previews:
+  `Esc` returns to your previous pane, filters, and scroll position. A back hint
+  appears while a preview is open.
+- Browsing pauses following; `r` resumes.
+
+See [live view details](doc/spec/changes.md#live-terminal-view).
+
+### Agents pane
+
+The **Activity** pane streams child activity, messages, and replies, including
+while Main waits. The **Agents** roster below the main columns shows children
+with their elapsed time, provider round trips, and edited lines; Main's
+conversation and progress stay in Main. Token and cost figures come from the
+router's usage accounting, not an additional app-server total.
+
+- Click an agent to inspect its activity; reply links address that agent.
+- Scrolling pauses following; `r` resumes it. The mouse wheel scrolls without
+  changing keyboard focus.
+
+Redirected sessions keep ordinary Codex input/output and inline agent activity.
+Inside Herdr, Mekugi advertises the invocation through Herdr's agent hint.
+Herdr is optional and does not control Mekugi's internal panes.
+
+### Output dialog
+
+Click a command, program, or read in Main or Activity to open its full retained
+output in a dialog above the panes, without expanding the transcript. When
+`mekugi-exec` recorded a command list, each command gets its own tab with its
+output and exit status; otherwise the dialog labels the output as combined.
+
+- Left/Right or a click switches tabs. `j`/`k`, `PgUp`/`PgDn`, and `g`/`G`
+  scroll; live output follows its tail until you scroll up.
+- `/` searches, and `n`/`N` step through matches.
+- `y` copies the page's output. Drag to select text, then `y`, `c`, or Ctrl-C
+  copies the selection.
+- `Esc`, `q`, or a click outside closes it.
+
+See [activity display](doc/spec/activity_display.md).
+
 ## Editing and execution
 
 Codex owns editing and execution. Mekugi passes stock `apply_patch` and
@@ -250,63 +370,6 @@ mrun --tail -n 20 go test ./internal/router
 conflict markers. The revert is recorded as a new change, so it can be undone
 too. See the [change record](doc/spec/changes.md), [reader](doc/spec/read.md),
 and [execution contract](doc/spec/execution.md).
-
-### Live diff pane
-
-In an interactive terminal, `mekugi codex --yolo` owns its layout without an external
-pane manager. It opens a live diff viewer at the first edit or command. Read-only turns don't open it. Main-agent
-and subagent calls get labeled cards that stream input as it arrives. When a
-turn finishes, the viewer switches to the saved diff. A failed or unfinished
-call never becomes a saved change.
-
-- `Ctrl-B`, then `1`/`2`/`3`/`4`, focuses Main, Diff, Activity, or Agents. Diff and Activity share the right column. Click a pane to focus it.
-- Drag the dividers to resize panes or the file navigator. `Ctrl-B`, then arrow
-  keys, resizes the main splits (up/down in the roster adjusts its height); `Ctrl-B`, then `[`/`]`, resizes the file navigator.
-  Narrow terminals show the focused pane full-width.
-- `Ctrl-B`, then `PageUp`/`PageDown`, browses Main history. The wheel scrolls the pane under the pointer.
-- `v` switches views; `?` lists diff shortcuts. `Ctrl-C` in an auxiliary pane
-  returns focus to Main; in Main it interrupts the active turn.
-- `s` shows or hides the file tree, `t` toggles tree/flat paths, `/` filters files.
-- `n`/`p` change files, `[`/`]` jump between hunks, and `j`/`k`, `Space`/`b`,
-  and `g`/`G` scroll. Opening a file starts at its header.
-- `Tab` switches the navigator to **Changes**: a graph of changes by caller
-  (`main` or the agent's name) with each change's source, such as
-  `apply_patch`, `sed`, or `python3`. `{`/`}` step through changes, `a` shows
-  one caller's changes at a time, and `0` shows all callers. In the tab, `Enter`
-  on a caller filters to it, and `Enter` or `h`/`l` on a change expands or
-  collapses its files.
-- Click an Edit to preview its captured change in the branched navigator.
-  Edit, reply, question, and agent links are temporary previews: `Esc` returns
-  to your previous pane, filters, and scroll position. A back hint appears
-  while a preview is open.
-- Browsing pauses following; `r` resumes.
-
-Native sessions publish working and pending-input terminal titles, including
-Herdr's working, blocked, done, and idle indicators. Desktop notifications follow
-Codex's `tui.notifications`, `tui.notification_method`, and
-`tui.notification_condition` settings (unfocused-only by default). Turning off
-desktop notifications leaves agent-state detection active.
-
-See [live view details](doc/spec/changes.md#live-terminal-view).
-
-### Agents pane
-
-The **Activity** pane streams child activity, messages, and replies, including
-while Main waits. The **Agents** roster below the main columns shows children;
-Main's conversation and progress stay in Main. Token and cost figures come from
-the router's usage accounting, not an additional app-server total.
-
-- `Ctrl-B`, then `3`/`4`, focuses Activity or Agents.
-- Click an agent to inspect its activity; reply links address that agent.
-- Scrolling pauses following; `r` resumes it. The mouse wheel scrolls without
-  changing keyboard focus.
-- `Ctrl-C` in an auxiliary pane returns focus to Main.
-
-Redirected sessions keep ordinary Codex input/output and inline agent activity.
-Inside Herdr, Mekugi advertises the invocation through Herdr's agent hint.
-Herdr is optional and does not control Mekugi's internal panes.
-
-See the [native UI contract](doc/spec/native_ui.md).
 
 ## Metrics
 
@@ -447,81 +510,14 @@ change evidence.
 
 ## Development
 
-The native UI can resume a known Codex thread or the latest conversation in the current directory:
-
-```sh
-mekugi codex --yolo resume THREAD_ID
-mekugi codex --yolo resume --last
-```
-
-`--last` selects the most recently updated non-archived CLI, VS Code or native
-app-server conversation in the current directory, across model providers. If none
-exists, it reports an error without starting a new conversation.
-
-In the native composer, Up/Down recall input history at the first/last displayed
-row and restore the unsent draft after the newest entry. Other arrow keys move
-the caret, Ctrl+Left/Right or Alt/Option+Left/Right jump words,
-and Ctrl+Up/Down move to the start/end of a line. Alt+Backspace/Delete delete
-the previous/next word (Option+Backspace or Ctrl+W also deletes the previous word).
-Ctrl+K deletes to the end of the line, or joins the next line when already at its end.
-Ctrl+V attaches a clipboard PNG
-as a highlighted, atomic `[Image N]` (Linux needs `wl-paste` on Wayland or `xclip` on X11; macOS uses
-`osascript`). Pasting the path of a PNG, JPEG or GIF file, such as a dropped
-or copied file, attaches it the same way. Ctrl+Z/Ctrl+Y undo/redo; Ctrl+G edits the draft in `$EDITOR`
-(falling back to `$VISUAL`, then `vi`). Saving and closing returns to the composer
-without sending. Keep image placeholders unchanged to retain their attachments.
-Submitted images remain in temporary storage for Codex history.
-
-While a turn runs, Enter steers it and Tab queues the message for the next turn
-(when idle, Tab sends like Enter). Messages that have to wait, such as steers
-typed while an earlier one is still sending, or everything you queue, are
-combined and sent as one message, one entry per line. Waiting steers and queued
-messages are listed above the composer until Codex takes them; Alt+Up or
-Shift+Left brings the last queued message back for editing.
-
-`/btw QUESTION` asks a side question using a snapshot of the current conversation,
-even while Main is working. The answer streams in a separate panel above the
-composer. Repeat `/btw QUESTION` for a follow-up in that side conversation;
-PgUp/PgDn scroll its answer and Esc closes it without interrupting Main or
-clearing your draft. Ordinary messages still go to Main. Closing discards the
-temporary side conversation; it is not a session switch or a resumable fork.
-Main keeps its cache identity; side-answer cache reuse is provider-dependent.
-
-Esc interrupts a running turn without clearing your draft (after dismissing open
-menus or returning scrollback to the bottom). Ctrl-C clears the draft first
-(Ctrl+Z brings it back), then interrupts a running turn, or exits when nothing is running. Interrupting while steers are still
-waiting sends them right away as the next turn; otherwise queued messages return
-to the composer.
-
-Shift+Up/Down raises/lowers reasoning through the current model's advertised
-levels. `/model`, `/reasoning`, and `/tier` show scrollable choices above the
-composer; add a value to switch
-(for example `/reasoning high` or `/tier priority`). `/tier default` clears the
-explicit tier. Settings apply to future turns and are also published to a running
-turn's subsequent steps; already-running inference is unchanged. The composer
-shows host-confirmed settings. These controls do not edit your config file.
-
-`/copy` lets you copy the last completed response, a code block, or a blockquote.
-Use Up/Down and Enter to choose, or Esc to cancel. Like selecting text and pressing
-Ctrl-C, it sends a clipboard request to your terminal, which must allow OSC 52.
-You can copy while a response is still streaming; the previous completed response
-remains available.
-
-The native UI requires explicit `--yolo` (no approvals or sandbox), restores Main's
-message and tool history, and continues the same thread. It also restores pane
-layout and keyboard focus, adapting the saved sizes to the current terminal.
-The child roster and Activity history return too, and Diff reloads retained
-changes for the resumed session without restarting child work. Scroll positions,
-filters, selections and drafts are not restored. The resume picker and switching threads inside the UI are not yet supported. Resume currently loads history in one response, so threads whose
-history exceeds the 16 MiB transport limit cannot resume in the native UI.
-
 To review the native app-server UI without Codex or model requests, run
 `make preview-native-ui` in a terminal. It plays a synthetic session through the
 real panes and renderer: streaming and long messages, journal edits, retraction
 and flush, agent summaries, and Main/agent communication. Scroll, resize, and
-click reply links to inspect them. Keys behave as in the real UI: Enter steers the playing
-turn or, once idle, starts a new one that echoes your prompt; Tab queues for the next turn;
-Ctrl-C clears the draft, then interrupts playback, then exits, as does `/quit`.
+click reply links to inspect them. Keys behave as in the real UI: Enter steers
+the playing turn or, once idle, starts a new one that echoes your prompt; Tab
+queues for the next turn; Ctrl-C clears the draft, then interrupts playback,
+then exits, as does `/quit`.
 
 Bun is required to regenerate and test plugin assets:
 
