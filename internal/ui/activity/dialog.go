@@ -132,7 +132,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		}
 		return page
 	}
-	colored, first, gutter := view.Lines, view.Dropped+1, "┆"
+	colored, first, gutter := p.outputColors(block, view.Lines), view.Dropped+1, "┆"
 	if block.ReadOutput() && len(block.Reads) == 1 {
 		// A read's output is the file it read.
 		gutter = "│"
@@ -142,20 +142,6 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 					first = n + view.Dropped
 				}
 			}
-		}
-		if len(content) <= dialogHighlightBytes {
-			// ColorSource consumes a final newline as a line terminator. Supply
-			// one so a retained trailing blank row is not lost with its colors.
-			if lines, err := p.syntax.ColorSource(context.Background(), p.Theme, block.Reads[0].Path, content+"\n"); err == nil && len(lines) == len(view.Lines) {
-				colored = lines
-			}
-		}
-	} else if len(content) <= dialogHighlightBytes && strings.Contains(content, "\n+++ ") && strings.Contains(content, "\n@@ ") {
-		colored = p.Highlight("diff", content)
-	} else if block.Verb == "Search" && len(content) <= dialogHighlightBytes {
-		colored = make([]string, len(view.Lines))
-		for i, line := range view.Lines {
-			colored[i] = p.dialogSearchLine(block, line)
 		}
 	}
 	for i, line := range colored {

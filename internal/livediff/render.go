@@ -87,6 +87,7 @@ type syntaxKey struct {
 const maxSyntaxCacheBytes = 8 << 20
 const maxSyntaxCacheEntries = 128
 
+// ColorSource uses the filename when supplied, otherwise content analysis.
 func (r *Renderer) ColorSource(ctx context.Context, theme Theme, path, source string) ([]string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -98,6 +99,11 @@ func (r *Renderer) ColorSource(ctx context.Context, theme Theme, path, source st
 	var lexer chroma.Lexer
 	matched := false
 	lines, err := colorSourceWithMatcher(ctx, theme, path, source, func(path string) chroma.Lexer {
+		if path == "" {
+			// A detected lexer belongs to this content, not the empty path.
+			// The rendered-source cache below also retains negative detections.
+			return lexers.Analyse(source)
+		}
 		var cached bool
 		lexer, cached = r.lexers[path]
 		if !cached {

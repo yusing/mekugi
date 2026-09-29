@@ -506,6 +506,9 @@ func (p *Painter) Block(block Block, width int) []string {
 			lines[i] = Dim + ansi.Strip(line) + Reset
 		}
 	}
+	if !block.Collapsed {
+		block.Tail = p.outputColors(block, block.Tail)
+	}
 	return outputRows(block, lines, width)
 }
 

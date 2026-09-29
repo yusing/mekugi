@@ -146,7 +146,12 @@ at most 90% of each dimension, or the available screen below 60 columns, over
 the panes faded to faint uncolored text; its frame keeps full strength.
 The top-right `[×]` close button, `Esc`/`q`, or a click outside closes it. `↑`/`↓`, `j`/`k`, `PgUp`/`PgDn`,
 `b`/space and `g`/`G` (Home/End) scroll; the wheel scrolls only the dialog.
-Unified diff output, including `mchanges`, colors additions, deletions and hunk headers.
+All command output uses shared best-effort content-based syntax detection in
+inline tails and dialogs, independently of the producing command. Known file
+types and numbered search matches retain their explicit syntax hints. Unified
+diffs color additions, deletions and hunk headers whether produced by `git diff`,
+`mchanges`, or another command. Unrecognized content and buffers above 256 KiB
+remain plain text; inferred syntax never changes output bytes or line numbering.
 Command titles and source bodies use syntax colors for their language; file-read
 output uses the file type, including when it ends in blank lines. Copying remains
 plain text. Skill-read output renders as Markdown, wrapping to the dialog width
