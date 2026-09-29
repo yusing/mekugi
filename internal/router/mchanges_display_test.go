@@ -38,7 +38,7 @@ func TestMChangesSummaryShowsEditRows(t *testing.T) {
 		"      Deleted gone.go                  -9     ━━━━━━━━",
 		"      ?       unknown.bin              missing capture",
 		"              amber3                   retired (partial history)",
-		"      Edited  tool-managed files       +30 -2 ━━━━━━━━",
+		"      Edited  tool-managed files       +30 -2 ━━━━━━━━ 1 counts unavailable",
 		"      ?       tool-managed files       2 missing capture",
 	}, "\n")
 	if got := mainFeed(u, 100); !strings.Contains(got, want) {

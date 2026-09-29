@@ -69,7 +69,12 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 			}
 			entry := v.entries[i]
 			exit := 0
+			var batch *activityui.Block
 			for _, block := range v.blocks[i] {
+				if block.BatchExit {
+					batch = new(block)
+					continue
+				}
 				if block.ExitCode != 0 {
 					exit = block.ExitCode
 					break
@@ -80,7 +85,7 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 				var remaining []string
 				for _, paragraph := range activityui.Paragraphs(entry.Text) {
 					block := activityui.ParseOperation(paragraph)
-					if exit == 0 && slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) {
+					if exit == 0 && batch == nil && slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) {
 						continue
 					}
 					remaining = append(remaining, paragraph)
@@ -90,10 +95,15 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 			if entry.Text != text {
 				entry.Text = text
 				blocks := parseLiveActivity(entry)
-				if len(v.blocks[i]) > 0 {
+				// Reparsed tracked blocks already carry each segment's own exit.
+				// A receipt must not spread one failure to successful siblings.
+				if len(v.blocks[i]) > 0 && len(entry.native.segments) == 0 {
 					for j := range blocks {
 						blocks[j].ExitCode = exit
 					}
+				}
+				if batch != nil {
+					blocks = append(blocks, *batch)
 				}
 				v.entries[i], v.blocks[i], v.runs = entry, blocks, nil
 			}

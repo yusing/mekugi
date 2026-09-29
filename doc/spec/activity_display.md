@@ -108,6 +108,10 @@ appearing as it starts, with its own `Running` state, output tail, and exit. A f
 read or listing segment names its exit after its row. A segment the list never reached shows muted with
 `· skipped`. A tracked terminal command keeps the host's combined tail after its last
 segment shown. Each successful segment's output collapses independently.
+Without a complete segment report, a failure spanning multiple displayed
+operations shows one `Ran shell batch · exit N` row with the combined output.
+It does not mark individual operations as failed. Restored history follows the
+same rule because it has no live segment report.
 Completion replaces it with the tail of the host's aggregated output. A
 failure keeps that tail open. After a zero exit it stays open until the same
 agent's next standalone event, such as a separate command, Skill or Read, then

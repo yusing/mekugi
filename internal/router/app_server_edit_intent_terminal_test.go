@@ -120,7 +120,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 		t.Fatal(err)
 	}
 	frame = nextFrame()
-	if !strings.Contains(frame, "Capture") || !strings.Contains(frame, "exit 2") || strings.Contains(frame, "PRIVATE_UNKNOWN_FILE") {
+	if !strings.Contains(frame, "Capture") || !strings.Contains(frame, "shell batch · exit 2") || strings.Count(frame, "exit 2") != 1 || strings.Contains(frame, "PRIVATE_UNKNOWN_FILE") {
 		t.Fatalf("incomplete-only receipt hid command failure:\n%s", frame)
 	}
 }

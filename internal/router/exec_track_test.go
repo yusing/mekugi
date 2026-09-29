@@ -367,7 +367,7 @@ func TestAppServerTrackedCommandShowsSkippedSegments(t *testing.T) {
 
 func TestAppServerIncompleteReportFallsBackToHostOutput(t *testing.T) {
 	u, hub := newTrackedAppServerUI(t)
-	script := "echo a; echo b"
+	script := "echo a; cat b"
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	report := dialExecTrackReport(t, hub, script)
@@ -382,6 +382,9 @@ func TestAppServerIncompleteReportFallsBackToHostOutput(t *testing.T) {
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "failed", 2, "a\nb\n"
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	main := awaitMain(t, u, "exit 2")
+	if strings.Count(main, "exit 2") != 1 || !strings.Contains(main, "shell batch · exit 2") {
+		t.Fatalf("incomplete report attributed the batch exit to segments:\n%s", main)
+	}
 	if !strings.Contains(main, "┆ a\n") || !strings.Contains(main, "┆ b") || strings.Contains(main, "skipped") {
 		t.Fatalf("Main does not show the host's combined result:\n%s", main)
 	}

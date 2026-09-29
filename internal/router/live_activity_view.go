@@ -234,16 +234,8 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 		if entry.Kind == "exit" {
 			for i, v0 := range slices.Backward(v.entries) {
 				if v0.Agent == entry.Agent && v0.CallID == entry.CallID && entry.CallID != "" {
-					for j := range v.blocks[i] {
-						if v.blocks[i][j].Verb == "Run" || v.blocks[i][j].Verb == "Skill" || v.blocks[i][j].Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, v.blocks[i][j].Verb) {
-							v.blocks[i][j].ExitCode, _ = strconv.Atoi(entry.Text)
-						}
-						if j == len(v.blocks[i])-1 {
-							v.blocks[i][j].ExitCode, _ = strconv.Atoi(entry.Text)
-							v.blocks[i][j].Tail, v.blocks[i][j].TailOmitted = entry.outputTail, entry.outputOmit
-							v.blocks[i][j].Collapsed = false
-						}
-					}
+					code, _ := strconv.Atoi(entry.Text)
+					v.blocks[i] = commandExitBlocks(v.blocks[i], code, entry.outputTail, entry.outputOmit)
 					v.runs = nil
 					break
 				}
@@ -282,7 +274,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 				entry.Seq = prior.Seq
 				blocks[0].ExitCode = v.blocks[i][0].ExitCode
 				for _, annotation := range v.blocks[i][1:] {
-					if annotation.Kind == "filter" {
+					if annotation.Kind == "filter" || annotation.BatchExit {
 						blocks = append(blocks, annotation)
 					}
 				}

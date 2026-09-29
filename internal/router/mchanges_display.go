@@ -17,7 +17,7 @@ import (
 var (
 	mchangesListRow       = regexp.MustCompile(`^(\S+?)((?: (?:pending|retired|unknown|history:partial))?)(?: \+(\d+) -(\d+))?( \?)?(?: managed:(\d+))?$`)
 	mchangesStatusRow     = regexp.MustCompile(`^(\S+) (retired \(partial history\)|pending \(no completed result\)|retired|unknown)$`)
-	mchangesManagedRow    = regexp.MustCompile(`^M \+(\d+) -(\d+)(?:; \d+ counts unavailable)?$`)
+	mchangesManagedRow    = regexp.MustCompile(`^M \+(\d+) -(\d+)(?:; (\d+ counts unavailable))?$`)
 	mchangesManagedGapRow = regexp.MustCompile(`^\? tool-managed: (.+); use --history for paths and full reasons$`)
 	mchangesSummaryVerbs  = map[string]string{"A": "Created", "M": "Edited", "D": "Deleted", "R": "Moved", "RM": "Moved", "UU": "Conflict", "?": "?"}
 )
@@ -102,7 +102,7 @@ func mchangesListOutputRow(line string) (activityui.ChangeRow, bool) {
 // counts, the compact tool-managed rows, or an ID's status.
 func mchangesSummaryRow(line string) (activityui.ChangeRow, bool) {
 	if match := mchangesManagedRow.FindStringSubmatch(line); match != nil {
-		row := activityui.ChangeRow{Verb: "Edited", Label: mchangesManagedFiles}
+		row := activityui.ChangeRow{Verb: "Edited", Label: mchangesManagedFiles, Note: match[3]}
 		row.Added, _ = strconv.Atoi(match[1])
 		row.Removed, _ = strconv.Atoi(match[2])
 		return row, true

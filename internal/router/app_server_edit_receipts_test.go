@@ -137,6 +137,34 @@ func assertCapturedCommand(t *testing.T, view *liveActivityView, thread, item, v
 	t.Fatalf("missing native command %s", item)
 }
 
+func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
+	v := newLiveActivityView()
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+		Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: "Run `git show`; Skill `mekugi-owners`; Run `git cherry-pick`",
+		native: &liveActivityNativeItem{thread: "main", item: "cmd", phase: "item/completed", segments: []commandSegment{
+			{text: "Run `git show`", tail: []string{"commit summary"}},
+			{text: "Skill `mekugi-owners`", tail: []string{"owners"}},
+			{text: "Run `git cherry-pick`", exit: 1, tail: []string{"conflict"}},
+		}},
+	}}})
+	data := newLiveDiffData()
+	data.order = []string{"receipt"}
+	data.attempts["receipt"] = liveDiffAttempt{receipt: &capturedActivityEdit{
+		thread: "main", calls: []string{"cmd"}, text: "Edit `a.go` +1 -1",
+	}}
+	for range 2 {
+		v.applyCapturedEdits(data)
+		blocks := v.blocks[0]
+		if len(blocks) != 3 || blocks[0].ExitCode != 0 || blocks[1].ExitCode != 0 || blocks[2].ExitCode != 1 {
+			t.Fatalf("receipt overwrote per-command statuses: %+v", blocks)
+		}
+	}
+	got := mainFeed(&appServerUI{view: v}, 100)
+	if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "git cherry-pick · exit 1") {
+		t.Fatalf("receipt changed rendered failure ownership:\n%s", got)
+	}
+}
+
 func TestAppServerGroupedReceiptOmitsBookkeeping(t *testing.T) {
 	v := newLiveActivityView()
 	calls := []string{"anchor", "edit", "tests", "failed-edit"}

@@ -199,13 +199,17 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 			}
 			for _, method := range []string{"item/started", "item/completed"} {
 				current := item
-				wantExit := 0
 				if method == "item/completed" {
 					current.ExitCode = new(2)
-					wantExit = 2
 				}
 				appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": current})
-				assertCapturedCommand(t, view, thread, "cmd", "Edit", wantExit)
+				assertCapturedCommand(t, view, thread, "cmd", "Edit", 0)
+				if method == "item/completed" {
+					finishPacing(u.view, u.agents)
+					if got := mainFeed(&appServerUI{view: view}, 100); !strings.Contains(got, "shell batch · exit 2") {
+						t.Fatalf("batch failure missing: %s", got)
+					}
+				}
 			}
 			if item.ExitCode != nil || item.Command != command {
 				t.Fatal("classification modified the native command item")

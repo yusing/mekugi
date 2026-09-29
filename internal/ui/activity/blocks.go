@@ -32,6 +32,7 @@ type Block struct {
 	WaitTargets []WaitTarget // Canonical identity and observed status, not parsed display text.
 	Results     *int
 	ExitCode    int    // Nonzero command exit; zero means no failure label.
+	BatchExit   bool   // This row owns an invocation-wide exit, not an individual operation's.
 	EditSource  string // Editing source shared by this invocation's file rows.
 	EditOutcome string // Live segment outcome, distinct from captured file evidence.
 	EditHeader  bool   // First row of a contiguous source group.

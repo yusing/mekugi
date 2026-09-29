@@ -167,6 +167,40 @@ func instantOperations(text string) bool {
 	return len(blocks) > 0 && !slices.ContainsFunc(blocks, func(block activityui.Block) bool { return !block.Instant() })
 }
 
+// commandExitBlocks keeps a combined shell failure separate from classified
+// operations: without a complete segment report none owns the batch's exit.
+func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitted int) []activityui.Block {
+	last, count, batch := -1, 0, -1
+	for i, block := range blocks {
+		if block.Segment {
+			return blocks // Confirmed segment outcomes already own their statuses.
+		}
+		if block.BatchExit {
+			batch = i
+		} else if block.Kind == "op" || block.Kind == "reads" {
+			last, count = i, count+1
+		}
+	}
+	if last < 0 {
+		return blocks
+	}
+	if count > 1 || batch >= 0 {
+		if batch < 0 {
+			batch = len(blocks)
+			blocks = append(blocks, activityui.Block{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true})
+		}
+		// Any streamed tail was combined too; move it to the batch result.
+		for i := range blocks {
+			blocks[i].Tail, blocks[i].TailOmitted = nil, 0
+		}
+		last = batch
+	}
+	blocks[last].ExitCode = code
+	blocks[last].Tail, blocks[last].TailOmitted = tail, omitted
+	blocks[last].Collapsed = false
+	return blocks
+}
+
 // commandSegmentBlocks shows each segment of a tracked command as its own
 // operations, with that segment's state, exit status, and output after its
 // last operation. Without per-segment output, the host's combined output
