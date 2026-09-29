@@ -4,10 +4,12 @@ import (
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
 	"strings"
+	"time"
 )
 
 type activityAssignment struct {
 	id, from, to, text string
+	created            time.Time
 }
 
 // The native pane keeps every observed NEW_TASK, including follow-ups, keyed by
@@ -37,7 +39,17 @@ func (a *subagentActivity) collectSubagentStart(thread string, request *parsedRe
 		}
 		from := jsonString(item, "author")
 		id := subagentCommentaryMessageID("assignment\x00" + jsonString(item, "id") + "\x00" + from + "\x00" + recipient + "\x00" + text)
-		assignments = append(assignments, &activityAssignment{id: id, from: from, to: recipient, text: text})
+		var metadata struct {
+			Created jsonv1.Number `json:"create_time"`
+		}
+		// Codex stamps authored messages before recording them in history.
+		// Replayed input retains that timestamp; request arrival is not send time.
+		_ = json.Unmarshal(item["internal_chat_message_metadata_passthrough"], &metadata)
+		var created time.Time
+		if elapsed, err := time.ParseDuration(metadata.Created.String() + "s"); err == nil {
+			created = time.Unix(0, int64(elapsed))
+		}
+		assignments = append(assignments, &activityAssignment{id: id, from: from, to: recipient, text: text, created: created})
 	}
 	// Publish spawn and its first prompt atomically as one navigable event.
 	// The collector marks that assignment seen along with the lifecycle start.
@@ -47,8 +59,8 @@ func (a *subagentActivity) collectSubagentStart(thread string, request *parsedRe
 	if len(assignments) > 0 {
 		spawn = assignments[0]
 	}
-	a.collectEventLocked(activityEvent{thread: thread, source: "subagent-start\x00" + thread, kind: "start", text: heading, assignment: spawn})
+	a.collectEventLocked(activityEvent{thread: thread, source: "subagent-start\x00" + thread, kind: "start", text: heading, observed: spawn.created, assignment: spawn})
 	for _, assignment := range assignments {
-		a.collectEventLocked(activityEvent{thread: thread, source: assignment.id, kind: "assignment", text: assignment.text, assignment: assignment})
+		a.collectEventLocked(activityEvent{thread: thread, source: assignment.id, kind: "assignment", text: assignment.text, observed: assignment.created, assignment: assignment})
 	}
 }

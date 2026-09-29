@@ -3,6 +3,7 @@ package router
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -110,5 +111,71 @@ func TestNativeActivityCumulativeAnswerTargets(t *testing.T) {
 		if strings.Count(words, "First review.") != 1 || strings.Contains(words, "Journal result") {
 			t.Fatalf("width %d bypassed parsed journal: %s", width, text)
 		}
+	}
+}
+
+func TestNativeActivityAssignmentsPreserveOriginalTime(t *testing.T) {
+	var items []any
+	for i, text := range []string{"Original assignment", "First follow-up", "Second follow-up", "Third follow-up"} {
+		item := journalTestAssignment("/root/reviewer", "NEW_TASK", text)
+		item["id"] = text
+		item["internal_chat_message_metadata_passthrough"] = map[string]any{"create_time": 1700000000.125 + float64(i*60)}
+		items = append(items, item)
+	}
+	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"input": items}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Both initial observation and a fresh router's full-history replay must
+	// display original timestamps, even when they are older than queue retention.
+	for range 2 {
+		a := newSubagentActivity()
+		a.attachNativePane("main")
+		a.observe("child", "main", "/root/reviewer", true)
+		a.collectSubagentStart("child", &request, "/root/reviewer")
+		entries := a.takeNativeActivity("main")
+		if len(entries) != 4 {
+			t.Fatalf("lost historical assignments: %+v", entries)
+		}
+		u, _ := newAppServerTestUI()
+		u.ensureShell()
+		u.view.conversation = true
+		for i := range entries {
+			want := time.Unix(1700000000+int64(i*60), 125000000)
+			if !entries[i].Observed.Equal(want) {
+				t.Fatalf("assignment %d time = %v, want %v", i, entries[i].Observed, want)
+			}
+			entries[i].Seq = uint64(i + 1)
+		}
+		u.applyActivity(entries, nil)
+		rendered := ansi.Strip(strings.Join(u.view.renderFeed(100, 60).lines, "\n"))
+		for _, entry := range entries {
+			if !strings.Contains(rendered, entry.Observed.Local().Format("15:04:05")) {
+				t.Fatalf("original timestamp missing from feed: %s", rendered)
+			}
+		}
+		a.collectSubagentStart("child", &request, "/root/reviewer")
+		if got := a.takeNativeActivity("main"); len(got) != 0 {
+			t.Fatalf("repeated history duplicated assignments: %+v", got)
+		}
+	}
+}
+
+func TestNativeActivityRetentionUsesQueueTime(t *testing.T) {
+	a := newSubagentActivity()
+	a.observe("child", "main", "/root/reviewer", true)
+	original := time.Unix(1700000000, 0)
+	a.collectEvent(activityEvent{thread: "child", source: "old-assignment", kind: "assignment", text: "Historical task", observed: original})
+	if len(a.events) != 1 {
+		t.Fatal("event not queued")
+	}
+	queued := a.events[0].queued
+	a.expireLocked(queued.Add(commentaryRouteTTL - time.Nanosecond))
+	if len(a.events) != 1 || !a.events[0].observed.Equal(original) {
+		t.Fatal("retention used original message time")
+	}
+	a.expireLocked(queued.Add(commentaryRouteTTL))
+	if len(a.events) != 0 {
+		t.Fatal("queue did not expire")
 	}
 }

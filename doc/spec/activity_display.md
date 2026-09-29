@@ -121,7 +121,10 @@ Roster operation summaries retain syntax highlighting. Messages show `✉  to <r
 with two spaces after the envelope because many fonts draw it wider than its cell,
 relative to the entry's agent. Peers use `main` or the child display name; the owning
 agent is not repeated. The message body gutter retains the sender's color. Start
-blocks indent the assignment beneath `Started` without a `Spawn assignment:` label. Other final answers remain
+blocks indent the assignment beneath `Started` without a `Spawn assignment:` label.
+Assignment timestamps retain Codex’s original message creation time across follow-ups
+and replay; collecting historical input does not reset those times. Queue retention
+uses arrival time independently of the timestamp shown to the user. Other final answers remain
 authored Markdown. Blank lines opening or closing a message, as some providers stream,
 add no rows. Main completion previews retain the response excerpt and show
 the linked assignment excerpt below its timestamp on separate, wrapped quote rows.

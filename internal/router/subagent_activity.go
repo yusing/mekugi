@@ -44,6 +44,7 @@ type activityEvent struct {
 	callID                     string
 	raw                        string // Unattributed text for the agents pane.
 	observed                   time.Time
+	queued                     time.Time // Queue retention is independent of original message time.
 	filter                     *exploreFilterEvent
 	assignment                 *activityAssignment
 }
@@ -167,12 +168,15 @@ func (a *subagentActivity) collectEventLocked(event activityEvent) {
 	if kind == "start" && event.assignment != nil && event.assignment.id != "" {
 		node.seen[commentaryMessageID(event.assignment.id)] = struct{}{}
 	}
-	event.source, event.text, event.raw, event.observed = source, raw, raw, now
+	event.source, event.text, event.raw, event.queued = source, raw, raw, now
+	if event.observed.IsZero() {
+		event.observed = now
+	}
 	a.events = append(a.events, event)
 }
 
 func (a *subagentActivity) expireLocked(now time.Time) {
-	a.events = slices.DeleteFunc(a.events, func(e activityEvent) bool { return now.Sub(e.observed) >= commentaryRouteTTL })
+	a.events = slices.DeleteFunc(a.events, func(e activityEvent) bool { return now.Sub(e.queued) >= commentaryRouteTTL })
 }
 
 func (a *subagentActivity) close() {
