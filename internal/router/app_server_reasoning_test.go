@@ -325,7 +325,23 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	if got := feed(u.agents); thinkingRows(u.agents) != 1 || strings.Contains(got, "Thinking…") {
 		t.Fatalf("empty thinking block kept after other output: %q", got)
 	}
+	// The previous request's late command completion keeps the next block.
+	start("child", 0)
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "ls", "status": "completed"}})
+	if got := feed(u.agents); !strings.Contains(got, "• Thinking…") {
+		t.Fatalf("late command completion removed the next request's block: %q", got)
+	}
+	appServerTestNotify(t, u, "item/agentMessage/delta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "a1", "delta": "Done."})
+	if got := feed(u.agents); strings.Contains(got, "Thinking…") {
+		t.Fatalf("empty thinking block kept after an answer delta: %q", got)
+	}
+	// Main's answer, handled by the transcript, also removes its block.
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "m", "item": map[string]any{"id": "a2", "type": "agentMessage", "text": ""}})
+	if got := feed(u.view); thinkingRows(u.view) != 0 || strings.Contains(got, "Thinking…") {
+		t.Fatalf("empty thinking block kept after Main's answer: %q", got)
+	}
 	// Main's pending block ends with its turn.
+	start("main", 0)
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "m", "status": "completed"}})
 	if got := feed(u.view); thinkingRows(u.view) != 0 || strings.Contains(got, "Thinking…") || strings.Contains(got, "Thought") {
 		t.Fatalf("turn end kept an empty thinking block: %q", got)

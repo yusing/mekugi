@@ -314,9 +314,13 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		item = u.waitItem(item, p.ThreadID, p.TurnID, id, m.Method == "item/started")
 		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method, live: true}
 		agent := s.path(p.ThreadID)
-		if item.Type != "reasoning" && item.Type != "userMessage" {
-			// Other output first: that request streamed no reasoning.
-			entries = append(entries, s.dropThinking(p.ThreadID)...)
+		if m.Method != "item/completed" && item.Type != "reasoning" && item.Type != "userMessage" {
+			// Other output started first: that request streamed no reasoning.
+			// A completion can be the previous request's command, notified late.
+			// Applied now: the item's own handling may return without applying.
+			if dropped := s.dropThinking(p.ThreadID); len(dropped) != 0 {
+				u.applyActivity(dropped, nil)
+			}
 		}
 		if text, wait, handled := appServerProgress(item, m.Method); handled {
 			if text != "" {

@@ -607,7 +607,8 @@ the rows above them, then `• Thought for 12s` (or `• Thought` when it lasted
 delta was observed) over the complete body. As in grok-build, each forwarded request
 to such a provider shows `• Thinking…` from the request start, so the wait for the
 first delta is not silent; the request's first reasoning item takes over that block.
-Other output first, or the turn's end, removes the still-empty block. Time runs from
+Other output starting first, or the turn's end, removes the still-empty block; a
+late completion of the previous request's item does not. Time runs from
 the request start (or the first summary delta without one) to item completion; a turn
 that ends first completes its unfinished blocks.
 One second after an observed completion, the block folds to its header row in
