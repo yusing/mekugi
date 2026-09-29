@@ -25,6 +25,9 @@ type subagentActivity struct {
 	// starts are forwarded requests whose provider streams untitled
 	// reasoning, awaiting the native UI's pre-delta thinking block.
 	starts []activityRequestStart
+	// unreturned are nested commands whose Code Mode cell returned nothing,
+	// awaiting the native UI's note that the model never saw their output.
+	unreturned []activityToolRef
 	// usage is the canonical per-thread accounting the roster displays.
 	usage *threadUsage
 }
@@ -41,6 +44,8 @@ type activityThread struct {
 	// Visible delta bytes streamed since the thread's last usage report.
 	streamed uint64
 }
+
+type activityToolRef struct{ thread, call string }
 
 type activityRequestStart struct {
 	thread string

@@ -42,7 +42,10 @@ calls and their identities/results, parallel calls, structured output, reasoning
 Multipart text retains separate content parts so visible-output source identities do not merge.
 Empty text arrays retain empty-string content.
 Custom tool grammars remain explicit input instructions and are still validated by their existing
-router/executor owners. Provider-hosted OpenAI search is not offered on the Grok route; the model is
+router/executor owners. The Code Mode `exec` description also states that only `text(...)` output
+reaches the model, so a nested tool's result must be printed, and that its input is JavaScript,
+not shell; Codex models need neither note. The OpenCode route shares this translation.
+Provider-hosted OpenAI search is not offered on the Grok route; the model is
 informed of its absence. Other unsupported provider tools/content fail explicitly rather than being
 silently approximated. A non-null `max_output_tokens` fails before inference: Chat completion
 limits exclude reasoning and cannot enforce the Responses total output budget. Encrypted agent messages, encrypted reasoning, opaque provider file IDs and

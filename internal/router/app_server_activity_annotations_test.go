@@ -190,3 +190,74 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 		})
 	}
 }
+
+// A cell that printed nothing returned none of its commands' output; the rows
+// say so rather than implying the model saw it.
+func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.conversation = true
+	activity := newSubagentActivity()
+	activity.attachNativePane("main")
+	trace := newNativeTraceFixture(t)
+	proxy := &mekugiProxy{activity: activity, nativeTrace: &nativeToolTrace{directory: trace.root}}
+	u.proxy = proxy
+	cells := []struct{ call, source, output string }{
+		{"silent", `await tools.exec_command({cmd: "git log"}); await tools.exec_command({cmd: "true"})`, `"Script completed\nWall time 0.1 seconds\nOutput:"`},
+		{"printed", `text(await tools.exec_command({cmd: "git status"}))`, `"Script completed\nWall time 0.1 seconds\nOutput:\nclean"`},
+	}
+	commands := []struct{ id, cmd string }{{"log-exec", "git log"}, {"quiet-exec", "true"}, {"status-exec", "git status"}}
+	var input []string
+	for _, cell := range cells {
+		trace.start("main", cell.call+"-runtime", cell.call, cell.source)
+		for _, command := range commands {
+			if strings.Contains(cell.source, `"`+command.cmd+`"`) {
+				trace.tool("main", cell.call+"-runtime", command.id, "exec_command", string(mustMarshalJSON(map[string]any{"cmd": command.cmd})))
+				trace.result("main", command.id, "completed", map[string]any{"exit_code": 0})
+			}
+		}
+		trace.end("main", cell.call+"-runtime")
+		input = append(input, string(mustMarshalJSON(map[string]any{"type": "custom_tool_call", "call_id": cell.call, "name": "exec", "input": cell.source})))
+	}
+	for _, cell := range cells {
+		input = append(input, `{"type":"custom_tool_call_output","call_id":"`+cell.call+`","output":`+cell.output+`}`)
+	}
+	for _, command := range commands {
+		output := "commit abc\n"
+		if command.id == "quiet-exec" {
+			output = ""
+		}
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+			"id": command.id, "type": "commandExecution", "command": command.cmd, "status": "completed", "exitCode": 0, "aggregatedOutput": output}})
+	}
+	rollCommandOutput(u)
+	request := &parsedResponsesRequest{fields: map[string]json.RawMessage{"input": json.RawMessage("[" + strings.Join(input, ",") + "]")}}
+	for range 2 { // A repeated request notes each command once.
+		proxy.observeCodeModeFailures("main", "exec", request, nil)
+		u.applyObservedActivity()
+	}
+	got := ansi.Strip(strings.Join(u.view.renderFeed(90, 60).lines, "\n"))
+	under := "Ran git log\n│     ┆ commit abc\n│     " + unreturnedOutputNote + "\n"
+	if strings.Count(got, unreturnedOutputNote) != 1 || !strings.Contains(got, under) {
+		t.Fatalf("want one note, under git log's output:\n%s", got)
+	}
+}
+
+func TestCodeModeReturnedNothing(t *testing.T) {
+	header := "Script completed\nWall time 0.1 seconds\nOutput:\n"
+	for raw, want := range map[string]bool{
+		string(mustMarshalJSON(header)):                                                                                                             true,
+		string(mustMarshalJSON(strings.TrimSuffix(header, "\n"))):                                                                                   true,
+		string(mustMarshalJSON(header + "  \n")):                                                                                                    true,
+		string(mustMarshalJSON(header + "printed")):                                                                                                 false,
+		`[{"type":"input_text","text":` + string(mustMarshalJSON(header)) + `},{"type":"input_text","text":""}]`:                                    true,
+		`[{"type":"input_text","text":` + string(mustMarshalJSON(header)) + `},{"type":"input_text","text":"x"}]`:                                   false,
+		`[{"type":"input_text","text":` + string(mustMarshalJSON(header)) + `},{"type":"input_image","image_url":""}]`:                              false,
+		`[{"type":"input_text","text":"Script failed\nWall time 0.0 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nTypeError"}]`:  true,
+		`[{"type":"input_text","text":"Script completed\nWall time 0.0 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nprinted"}]`: false,
+		string(mustMarshalJSON("Script running with cell ID 7\nWall time 10.0 seconds\nOutput:\n")):                                                 false,
+	} {
+		if got := codeModeReturnedNothing(json.RawMessage(raw)); got != want {
+			t.Errorf("codeModeReturnedNothing(%s) = %v, want %v", raw, got, want)
+		}
+	}
+}

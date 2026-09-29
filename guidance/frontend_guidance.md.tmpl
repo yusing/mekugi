@@ -83,6 +83,9 @@ For Grok overrides: low, medium, high, or xhigh.
 <instruction id="grok_input">
 The exact tool program or input, without JSON encoding or Markdown fences.
 </instruction>
+<instruction id="grok_exec">
+Only what the script passes to `text(...)` reaches you. A nested tool's result is discarded unless you print it, for example `text(await tools.exec_command({cmd: "ls"}))`. The input is JavaScript, not shell: run shell commands through `tools.exec_command`.
+</instruction>
 <instruction id="grok_format_prefix">
 The input string must obey this tool format:
 </instruction>

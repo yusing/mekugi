@@ -377,6 +377,20 @@ func (c *nativeTraceCell) patch(input string) (nativeToolResult, bool) {
 	return found.nativeToolResult, true
 }
 
+// execCommands lists an ended cell's nested exec_command calls.
+func (c *nativeTraceCell) execCommands() []string {
+	if c == nil || !c.ended {
+		return nil
+	}
+	var calls []string
+	for _, tool := range c.tools {
+		if tool.Tool == "exec_command" && tool.CallID != "" {
+			calls = append(calls, tool.CallID)
+		}
+	}
+	return calls
+}
+
 func (c *nativeTraceCell) pending() bool {
 	if c == nil {
 		return false

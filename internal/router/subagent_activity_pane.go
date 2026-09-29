@@ -108,6 +108,40 @@ func (a *subagentActivity) takeRequestStarts(root string) []activityRequestStart
 	return starts
 }
 
+const maxActivityUnreturned = 256
+
+// noteUnreturned records nested commands whose cell returned nothing.
+func (a *subagentActivity) noteUnreturned(thread string, calls []string) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || a.pane == nil {
+		return
+	}
+	for _, call := range calls {
+		if len(a.unreturned) < maxActivityUnreturned {
+			a.unreturned = append(a.unreturned, activityToolRef{thread: thread, call: call})
+		}
+	}
+}
+
+// takeUnreturned drains the unreturned command notes under root.
+func (a *subagentActivity) takeUnreturned(root string) []activityToolRef {
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || a.pane == nil || a.pane.root != root {
+		return nil
+	}
+	refs := slices.DeleteFunc(a.unreturned, func(ref activityToolRef) bool { return a.rootLocked(ref.thread) != root })
+	a.unreturned = nil
+	return refs
+}
+
 func (a *subagentActivity) endResponse(thread string) {
 	if a == nil {
 		return

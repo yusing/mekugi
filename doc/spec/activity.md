@@ -25,6 +25,12 @@ the host's `Script failed` header, the router adds one error row to that agent's
 activity with the first line of the host's trailing script error, so a script that
 fails before any nested tool call still shows. The result reaches the model
 unchanged, and failures from earlier requests are not shown again.
+When a finished cell's result carries nothing beyond that header (and a failure's
+script error), the model saw none of its nested results. Each nested
+`exec_command` row with output then adds a muted `output not returned to the model`
+note, identified through the native trace. A yielded cell, or one that printed
+anything, adds no note. Like failure rows, these notes last for the router's
+lifetime; restored history does not show them.
 
 ### Shell command labels
 

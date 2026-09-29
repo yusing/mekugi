@@ -1278,6 +1278,11 @@ func (u *appServerUI) applyObservedActivity() {
 		u.applyActivity(entries, nil)
 		u.dirty = true
 	}
+	for _, ref := range u.proxy.activity.takeUnreturned(u.thread) {
+		if main, activity := u.view.markUnreturned(ref.thread, ref.call), u.agents.markUnreturned(ref.thread, ref.call); main || activity {
+			u.dirty = true
+		}
+	}
 }
 
 // interruptTurn preserves the composer while interrupting the active turn.

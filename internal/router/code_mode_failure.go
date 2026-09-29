@@ -1,6 +1,7 @@
 package router
 
 import (
+	"cmp"
 	"encoding/json"
 	jsonv2 "encoding/json/v2"
 	"strings"
@@ -51,7 +52,53 @@ func (p *mekugiProxy) observeCodeModeFailures(thread, codeModeToolName string, r
 		if text, failed := codeModeFailureText(executionOutputTexts(item["output"])); failed {
 			p.activity.collectEvent(activityEvent{thread: thread, source: "code-mode-failure\x00" + callID, kind: "error", callID: callID, text: text})
 		}
+		if codeModeReturnedNothing(item["output"]) {
+			source := jsonString(call, "input")
+			if history, ok := visible[callID]; ok {
+				// The host ran the translated carrier, not the model's script.
+				source = cmp.Or(history.CarrierPayload, history.Script)
+			}
+			p.activity.noteUnreturned(thread, p.nativeTrace.readCell(thread, callID, source).execCommands())
+		}
 	}
+}
+
+// codeModeReturnedNothing reports a finished cell whose result carries nothing
+// beyond the host's header and, for a failure, its script error: the model saw
+// none of its nested tools' results. A yielded cell's result arrives later.
+func codeModeReturnedNothing(raw json.RawMessage) bool {
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		parts = append(parts, struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}{"input_text", text})
+	} else if json.Unmarshal(raw, &parts) != nil || len(parts) == 0 {
+		return false
+	}
+	header := parts[0].Text
+	if strings.HasSuffix(header, "\nOutput:") {
+		header += "\n"
+	}
+	status, _, body := codeModeExecutionHeader(header)
+	if parts[0].Type != "input_text" || status != "Script completed" && status != "Script failed" || strings.TrimSpace(body) != "" {
+		return false
+	}
+	for i, part := range parts[1:] {
+		switch {
+		case part.Type != "input_text":
+			return false
+		case strings.TrimSpace(part.Text) == "",
+			status == "Script failed" && i == len(parts)-2 && strings.HasPrefix(part.Text, "Script error:\n"):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // codeModeFailureText reads the host's failure header and, when the host

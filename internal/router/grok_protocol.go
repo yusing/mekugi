@@ -179,8 +179,13 @@ func translateChatRequest(body []byte, service *openCodeService) (_ *grokTransla
 					}
 				} else {
 					fn["parameters"] = map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string", "description": embeddedInstruction("grok_input")}}, "required": []string{"input"}, "additionalProperties": false}
+					if namespace == "" && name == "exec" {
+						// Codex's description leaves implicit that unprinted nested
+						// results never reach the model; other models miss it.
+						fn["description"] = fn["description"].(string) + "\n" + embeddedInstruction("grok_exec")
+					}
 					if format, ok := def["format"]; ok {
-						fn["description"] = jsonString(def, "description") + "\n" + embeddedInstruction("grok_format_prefix") + " " + string(format)
+						fn["description"] = fn["description"].(string) + "\n" + embeddedInstruction("grok_format_prefix") + " " + string(format)
 					}
 				}
 				switch tr.format {

@@ -414,6 +414,33 @@ func (v *liveActivityView) feedAgents() []liveActivityRosterRow {
 	return rows
 }
 
+// unreturnedOutputNote marks command output its Code Mode cell never returned.
+const unreturnedOutputNote = "output not returned to the model"
+
+// markUnreturned notes a command's output that its Code Mode cell never
+// returned, so the row does not imply the model saw it. A command with no
+// output has nothing to note. The note is a filter annotation, which a later
+// receipt for the same call keeps.
+func (v *liveActivityView) markUnreturned(thread, call string) bool {
+	for i, entry := range v.entries {
+		if entry.Kind != "tool" || entry.native == nil || entry.native.thread != thread || entry.native.item != call {
+			continue
+		}
+		output, noted := false, false
+		for _, block := range v.blocks[i] {
+			output = output || len(block.Tail)+block.TailOmitted > 0
+			noted = noted || block.Kind == "filter" && block.Body == unreturnedOutputNote
+		}
+		if !output || noted {
+			return false
+		}
+		v.blocks[i] = append(v.blocks[i], activityui.Block{Kind: "filter", Body: unreturnedOutputNote})
+		v.runs = nil
+		return true
+	}
+	return false
+}
+
 // removeThinking deletes a pending thinking block no reasoning took over.
 func (v *liveActivityView) removeThinking(native *liveActivityNativeItem) {
 	for i, entry := range v.entries {
