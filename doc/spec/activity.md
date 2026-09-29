@@ -70,7 +70,10 @@ Literal `mread` recovery calls omit activity entries rather than appearing as `R
 Wait and input presentation follows typed host events and their command/item
 identity. The activity observer does not reconstruct process or Code Mode cell
 state from request history, guess a command for an uncorrelated poll, or treat
-printed output as continuation evidence.
+printed output as continuation evidence. When a turn ends without a wait item
+completion, its roster status becomes `Wait ended`, not `Waiting for agent`.
+This does not claim that any child finished; a later host wait result replaces
+it. Restoring a stopped turn applies the same rule without reviving the wait.
 
 ### Program and edit previews
 

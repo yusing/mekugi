@@ -45,7 +45,8 @@ type liveDiffBroker struct {
 	subscriber        *liveDiffSubscriber
 	turnRevision      uint64
 	turnStatus        string
-	completedPreviews []diffview.Preview // Last 16 evaluated snapshots in this turn, oldest first.
+	completedPreviews []diffview.Preview             // Last 16 evaluated snapshots in this turn, oldest first.
+	previewTurns      map[string]liveDiffPreviewTurn // Latest native turn per thread.
 	previews          map[string]diffview.Preview
 }
 

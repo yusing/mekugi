@@ -9,6 +9,7 @@ type Preview struct {
 	ID        string
 	Workspace string
 	Caller    string
+	Turn      string `json:",omitzero"`
 	Thread    string
 	Files     []mekugi.ReviewFile
 	Input     string // Display-only text, never executed.

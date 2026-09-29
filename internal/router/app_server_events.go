@@ -221,6 +221,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		// Every command is offered for matching, including ones Activity hides,
 		// so their shells never wait for an item that will not arrive.
 		key := [3]string{p.ThreadID, p.TurnID, cmp.Or(p.ItemID, p.Item.ID)}
+		if m.Method == "item/completed" {
+			u.execTrack.completed(key)
+		}
 		switch {
 		case m.Method == "item/started":
 			u.execTrack.start(key, p.Item.Command)
@@ -262,12 +265,17 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		}
 		u.observeCost(p.ThreadID, agent)
 	case "turn/started":
+		if u.proxy != nil && u.proxy.autoLiveDiff != nil {
+			u.proxy.autoLiveDiff.events.setPreviewTurn(p.ThreadID, p.Turn.ID, true)
+		}
 		agent := s.agent(s.path(p.ThreadID))
 		agent.Responding, agent.Final = true, false
 		agent.Turns++
 		s.finals[p.ThreadID] = false
 		delete(s.messages, p.ThreadID)
 	case "turn/completed":
+		u.endTurnPreviews(p.ThreadID, p.Turn.ID)
+		entries = append(entries, u.endTurnWaits(p.ThreadID, p.Turn.ID, now)...)
 		for key := range s.waits {
 			if key[0] == p.ThreadID && key[1] == p.Turn.ID {
 				delete(s.waits, key)

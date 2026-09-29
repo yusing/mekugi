@@ -183,7 +183,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 		method = "item/started"
 	}
 	if _, _, progress := appServerProgress(item, method); progress {
-		method = appServerHistoryProgressPhase(item)
+		method = appServerHistoryProgressPhase(item, turn.Status)
 	}
 	switch item.Type {
 	case "imageView":

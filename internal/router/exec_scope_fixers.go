@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+// execGoFormatterWrites is shared by capture and display-only segment tracking.
+func execGoFormatterWrites(identity string, args []string) bool {
+	return (identity == "gofmt" || identity == "goimports") && slices.Contains(args, "-w")
+}
+
 func execFixerScope(input execProviderInput) execProviderResult {
 	if !filepath.IsAbs(input.cwd) {
 		return execProviderResult{open: true, reason: "fixer working directory unavailable"}
@@ -24,7 +29,7 @@ func execFixerScope(input execProviderInput) execProviderResult {
 	root := input.cwd
 	switch input.identity {
 	case "gofmt", "goimports":
-		if !has("-w") {
+		if !execGoFormatterWrites(input.identity, args) {
 			return execProviderResult{unhandled: true}
 		}
 		extensions = []string{".go"}

@@ -78,7 +78,7 @@ func (u *appServerUI) currentQuestion() *nativeQuestion {
 func (u *appServerUI) questionCount() int {
 	n := 0
 	for _, c := range u.questions.calls {
-		if c.thread != u.thread || c.resolved {
+		if c.thread != u.thread || c.resolved || c.sent {
 			continue
 		}
 		for _, q := range c.questions {

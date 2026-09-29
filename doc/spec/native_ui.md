@@ -851,7 +851,11 @@ one envelope; skipped questions send nothing. Reply envelopes do not enter promp
 history or create duplicate user-message bands. Answers appear only beneath their
 Asked record; pending-input previews show question submission progress without
 transport framing or repeated answers. Between submission and committed user-message observation the card reads
-`sending`. Rejection reopens the question with its draft, without changing the
+`sending`. Submitted answers no longer count as actionable questions: their dock,
+answer badge, and Action Required title clear immediately, even while steering
+remains queued. Pending-input progress remains visible until the host commits
+the reply; dismissal does not claim delivery. Other unanswered questions remain
+actionable. Rejection reopens the question with its draft, without changing the
 main editor. A committed reply from any client resolves the matching
 `(threadId, itemId, index)`; replay uses the same identities and never resends.
 

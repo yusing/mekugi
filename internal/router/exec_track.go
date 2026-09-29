@@ -14,6 +14,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 // Codex reports a command item just after it spawns the shell, which is
@@ -56,6 +57,7 @@ type execTrackCommand struct {
 // execTrack is one command's report, guarded by the hub.
 type execTrack struct {
 	script   string
+	hostOnly bool   // Native command identity, before any segment report.
 	serial   uint64 // Host start, before the helper claims this item.
 	segments []execTrackSegment
 	terminal bool // Output stays on the terminal; only statuses are reported.
@@ -132,6 +134,9 @@ func (h *execTrackHub) start(key [3]string, command string) {
 	}
 	h.sequence++
 	h.started = append(h.started, execTrackCommand{key: key, script: script, serial: h.sequence})
+	for preview := range h.previews {
+		preview.retain(key, &execTrack{script: script, serial: h.sequence, hostOnly: true})
+	}
 	h.signal()
 }
 
@@ -145,6 +150,24 @@ func (h *execTrackHub) finish(key [3]string) {
 	defer h.mu.Unlock()
 	h.started = slices.DeleteFunc(h.started, func(c execTrackCommand) bool { return c.key == key })
 	delete(h.tracks, key)
+}
+
+// completed records the nested host command boundary, not its enclosing cell
+// or the UI's later output-drain boundary. Failure also ends a live observation.
+func (h *execTrackHub) completed(key [3]string) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for preview := range h.previews {
+		for _, match := range preview.matches {
+			if match.key == key {
+				match.hostCompleted = true
+			}
+		}
+	}
+	h.signal()
 }
 
 func (h *execTrackHub) tracking(key [3]string) bool {
@@ -278,6 +301,26 @@ func (h *execTrackHub) signal() {
 }
 
 func execSegmentEdits(source string) bool {
+	// Formatters have tool-managed scope, so the Activity label is Run rather
+	// than Edit. Their write segments still own a live edit's lifetime.
+	program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(source), "")
+	formats := false
+	if err == nil {
+		syntax.Walk(program, func(node syntax.Node) bool {
+			if _, declaration := node.(*syntax.FuncDecl); declaration {
+				return false
+			}
+			if call, ok := node.(*syntax.CallExpr); ok {
+				if words, literal := literalArgs(call.Args); literal && len(words) > 0 {
+					formats = formats || execGoFormatterWrites(filepath.Base(words[0]), words[1:])
+				}
+			}
+			return !formats
+		})
+	}
+	if formats {
+		return true
+	}
 	for _, block := range toolOperationBlocks(execSegmentText(source)) {
 		if slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) {
 			return true
@@ -297,9 +340,10 @@ type execPreviewTrack struct {
 }
 
 type execPreviewMatch struct {
-	key       [3]string
-	track     *execTrack
-	ambiguous bool
+	key           [3]string
+	track         *execTrack
+	ambiguous     bool
+	hostCompleted bool
 }
 
 func newExecPreviewTrack(hub *execTrackHub, thread, turn string, commands []execCommandInput) *execPreviewTrack {
@@ -385,14 +429,18 @@ func (p *execPreviewTrack) state() (tracked, settled bool, changed <-chan struct
 			matches++
 		}
 		for _, pending := range h.started {
-			if pending.key[0] == p.thread && pending.key[1] == p.turn && pending.script == script && pending.serial > p.after {
+			if pending.key[0] == p.thread && pending.key[1] == p.turn && pending.script == script && pending.serial > p.after && pending.key != retained.key {
 				matches++
 			}
 		}
 		if matches > 1 {
 			return true, false, changed
 		}
-		if match == nil || match.ended && !match.done {
+		if match != nil && retained.hostCompleted {
+			tracked = true
+			continue
+		}
+		if match == nil || match.hostOnly || match.ended && !match.done {
 			allTracked = false
 			continue
 		}

@@ -2,9 +2,75 @@ package router
 
 import (
 	json "encoding/json/v2"
+	"fmt"
 	"strings"
 	"testing"
 )
+
+func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.turn = "turn"
+	questionTestAsync(t, u, "first", "Who receives it?")
+	questionTestAsync(t, u, "second", "Who approves it?")
+	u.openQuestions()
+	questionTestPaint(t, u, 70)
+	appServerTestKeys(t, u, "3Customers only\r")
+	request := appServerOneRequest(t, wire, "turn/steer", u.submission.text)
+	u.hideQuestions()
+	if u.questionCount() != 1 || u.questions.calls[0].resolved || !u.questions.calls[0].sent {
+		t.Fatalf("sent answer and separate unanswered question confused: count=%d call=%+v", u.questionCount(), u.questions.calls[0])
+	}
+	if rows := strings.Join(u.questionRows(80, 10), "\n"); !strings.Contains(rows, "main asks 1 questions") || strings.Contains(rows, "main asks 2 questions") {
+		t.Fatalf("question dock counted the sent answer: %q", rows)
+	}
+	preview := strings.Join(u.pendingInputPreview(80), "\n")
+	if !strings.Contains(preview, "Steering after the next tool call") || !strings.Contains(preview, "Answering 1 question(s)") || strings.Contains(preview, questionReplyStart) {
+		t.Fatalf("queued answer was not shown truthfully: %q", preview)
+	}
+	// RPC acceptance is not a committed user message. The answer remains in-flight.
+	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
+		"id": "other-answer", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": lifecycleReply(t, "second", 0, "Who approves it?", "Internal")}},
+	}})
+	if u.questionCount() != 0 || len(u.questionRows(80, 10)) != 0 || u.questions.calls[0].resolved {
+		t.Fatal("sent answer remained actionable after the other question was answered")
+	}
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"turn"}}`, request.ID))
+	if u.questions.calls[0].resolved || !strings.Contains(strings.Join(u.pendingInputPreview(80), "\n"), "Answering 1 question(s)") {
+		t.Fatal("steer acknowledgment incorrectly completed or hid the uncommitted answer")
+	}
+	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
+		"id": "answer", "clientId": request.Params.ClientUserMessageID, "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": request.text()}},
+	}})
+	if !u.questions.calls[0].resolved || strings.Contains(strings.Join(u.pendingInputPreview(80), "\n"), "Answering 1 question(s)") {
+		t.Fatal("committed answer was not settled")
+	}
+}
+
+func TestQuestionRejectedQueuedSteerReopensDockWithDraft(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.turn = "turn"
+	questionTestAsync(t, u, "pending", "Who receives it?")
+	u.openQuestions()
+	questionTestPaint(t, u, 70)
+	appServerTestKeys(t, u, "3Customers only\r")
+	request := appServerOneRequest(t, wire, "turn/steer", u.submission.text)
+	if u.questionCount() != 0 || len(u.questionRows(80, 10)) != 0 {
+		t.Fatal("queued answer still required action")
+	}
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, request.ID))
+	if u.questionCount() != 1 || u.questions.calls[0].sent || u.questions.calls[0].resolved {
+		t.Fatal("rejected answer did not become actionable again")
+	}
+	u.hideQuestions()
+	if rows := strings.Join(u.questionRows(80, 10), "\n"); !strings.Contains(rows, "main asks 1 questions") {
+		t.Fatalf("reopened question missing from dock: %q", rows)
+	}
+	u.openQuestions()
+	questionTestPaint(t, u, 70)
+	if u.draft != "Customers only" {
+		t.Fatalf("rejected answer lost its draft: %q", u.draft)
+	}
+}
 
 func lifecycleReply(t *testing.T, item string, index int, question, answer string) string {
 	t.Helper()

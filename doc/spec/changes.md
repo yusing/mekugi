@@ -374,16 +374,22 @@ Changed-file cards say `observed so far` and disappear if the files
 return to their captured state. When a live segment report uniquely matches the
 writer's thread, turn and exact script, and the host invocation started after
 the writer window opened, the card finishes after all recognized
-edit segments end or are skipped, independently of a following test or other
-non-edit segment. Its final frame uses observed files, not predicted content;
-later edit segments keep it open. Ambiguous concurrent matches cannot retire
-each other's cards. Without tracking, a literal edit's card finishes when its
+edit segments (including Go formatter writes) end or are skipped, independently
+of a following test or other non-edit segment. A uniquely matched native command
+completion also finishes its card when no segment report exists, without waiting
+for later commands in the same Code Mode cell. Its final frame uses observed
+files, not predicted content; later edit segments keep it open. Ambiguous
+concurrent matches cannot retire each other's cards. Without tracking, a literal edit's card finishes when its
 captured targets match the fully projected edit. The completed card says
 `observed`; it does not claim that the shell command or tests succeeded. Matching
 uses the pre-call baseline, never a fresh baseline read after execution.
 Untracked, unprojectable effects still require terminal results, background
-transition, or viewer shutdown to remove their live preview. Running previews and predictions never become
-durable evidence, and replay does not restart polling.
+transition, native turn completion, or viewer shutdown to remove their live
+preview. Interruption retires only that thread and turn's previews and polling;
+late frames and viewer resubscription cannot revive them. It neither cancels
+other agents' previews nor finalizes an unfinished host call. Running previews
+and predictions never become durable evidence, and replay does not restart
+polling.
 
 Query-based Mercurial scoping and literal `sed`/`perl` substitution prediction are
 outside this delivery. Original stock result content remains unchanged alongside

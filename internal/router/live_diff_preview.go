@@ -105,6 +105,7 @@ func (t *mekugiResponseTransform) previewStockDelta(itemID, kind, delta string) 
 		worker = startLiveDiffPreview(t.ctx, auto.events, t.directory, t.threadID, kind)
 		worker.mu.Lock()
 		worker.preview.Caller = t.operationCaller()
+		worker.preview.Turn = t.shellTurnID
 		worker.mu.Unlock()
 		t.previews[itemID] = worker
 	}
@@ -305,7 +306,7 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		projected.Complete = final
 		projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
-		projected.Tool = preview.Tool
+		projected.Tool, projected.Turn = preview.Tool, preview.Turn
 		changed := len(projected.Files) != 0 && !slices.Equal(projected.Files, lastFiles)
 		if changed && !release && !lastReveal.IsZero() && w.ctx.Err() == nil {
 			// Transport candidates may arrive every animation frame. Reveal a
@@ -324,7 +325,7 @@ func (w *liveDiffPreviewWorker) run() {
 			// A speculative patch projection cannot establish failure or success.
 			// Clear any earlier preview and leave the result to the host tool.
 			w.broker.publishPreview(diffview.Preview{
-				ID: preview.ID, Workspace: preview.Workspace, Thread: preview.Thread, Complete: true,
+				ID: preview.ID, Workspace: preview.Workspace, Thread: preview.Thread, Turn: preview.Turn, Complete: true,
 			}, false)
 			w.mu.Unlock()
 			continue
@@ -521,6 +522,9 @@ func (b *liveDiffBroker) publishPreview(preview diffview.Preview, remove bool) {
 	if remove {
 		delete(b.previews, preview.ID)
 		b.emitPreviewLocked(diffview.Preview{ID: preview.ID})
+		return
+	}
+	if turn, known := b.previewTurns[preview.Thread]; known && preview.Turn != "" && (turn.id != preview.Turn || turn.complete) {
 		return
 	}
 	if !b.scope.Workspaces[preview.Workspace][preview.Thread] {

@@ -39,9 +39,10 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	ctx, cancel := context.WithCancel(broker.ctx)
 	window.previewCancel = cancel
 	tracking := newExecPreviewTrack(r.tracker, window.thread, window.turn, observation.Commands)
+	turn := window.turn
 	go func() {
 		defer func() { <-execRunningPreviewSlots }()
-		runExecScopePreview(ctx, broker, observation, diffview.Preview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Caller: caller}, tracking)
+		runExecScopePreview(ctx, broker, observation, diffview.Preview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Turn: turn, Caller: caller}, tracking)
 	}()
 }
 

@@ -10,10 +10,13 @@ type appServerAgentState struct {
 	Status string `json:"status"`
 }
 
-// History can retain an unfinished wait even in a stopped turn. Preserve its
-// item state without reviving work, and allow later live completion to replace it.
-func appServerHistoryProgressPhase(item appServerItem) string {
+// History can retain an unfinished item in a stopped turn. The owning turn
+// ends its waiting presentation without claiming a successful tool result.
+func appServerHistoryProgressPhase(item appServerItem, turnStatus string) string {
 	if item.Status == "inProgress" {
+		if item.Type == "collabAgentToolCall" && item.Tool == "wait" && (turnStatus == "completed" || turnStatus == "interrupted" || turnStatus == "failed") {
+			return "turn/completed"
+		}
 		return "item/started"
 	}
 	return "item/completed"
@@ -42,8 +45,11 @@ func appServerWaitProgress(item appServerItem, method string) *activityui.Block 
 		return nil
 	}
 	text := "Waiting for agent"
-	if method == "item/completed" {
+	if method == "item/completed" || method == "turn/completed" {
 		text = "Finished waiting"
+		if item.Status == "inProgress" {
+			text = "Wait ended"
+		}
 		if item.Status == "failed" {
 			text = "Wait failed"
 		}

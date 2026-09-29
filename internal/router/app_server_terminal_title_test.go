@@ -92,6 +92,36 @@ func TestAppServerTerminalTitleUnsupportedRequests(t *testing.T) {
 	}
 }
 
+func TestAppServerTerminalTitleQueuedQuestionAnswerIsNotActionRequired(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/work/project")
+	out := notificationTestOutput(t, u)
+	u.turn = "turn"
+	now := time.Unix(0, 0)
+	questionTestAsync(t, u, "async", "Which option?")
+	out.Reset()
+	u.writeTerminalTitle(now)
+	if got := out.String(); got != "\x1b]0;Mekugi [ ! ] Action Required project\a" {
+		t.Fatalf("unanswered title = %q", got)
+	}
+	u.openQuestions()
+	questionTestPaint(t, u, 70)
+	appServerTestKeys(t, u, "1\r")
+	if u.questionCount() != 0 || u.questions.calls[0].resolved || !u.questions.calls[0].sent {
+		t.Fatal("queued answer was marked resolved or still actionable")
+	}
+	if rows := u.questionRows(80, 10); len(rows) != 0 {
+		t.Fatalf("answered question still has a dock: %q", rows)
+	}
+	if preview := strings.Join(u.pendingInputPreview(80), "\n"); !strings.Contains(preview, "Answering 1 question(s)") {
+		t.Fatalf("uncommitted answer has no pending preview: %q", preview)
+	}
+	out.Reset()
+	u.writeTerminalTitle(now)
+	if got := out.String(); got != "\x1b]0;Mekugi ⠋ project\a" {
+		t.Fatalf("queued answer title = %q", got)
+	}
+}
+
 func TestAppServerTerminalTitleIsolationAndSanitizing(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/work/project\a\x1b[31m\n")
 	out := notificationTestOutput(t, u)

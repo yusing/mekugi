@@ -326,7 +326,7 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 		if !entry.native.sameItem(previous.native) {
 			continue
 		}
-		if previous.native.phase == "item/completed" || entry.native.phase == "item/started" {
+		if previous.native.phase == "item/completed" || entry.native.phase == "item/started" || previous.native.phase == "turn/completed" && entry.native.phase != "item/completed" {
 			return true
 		}
 		if entry.native.phase == "item/agentMessage/delta" {

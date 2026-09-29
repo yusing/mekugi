@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -19,16 +20,20 @@ import (
 )
 
 func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
-	for _, edit := range []string{"cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go"} {
-		t.Run(strings.Fields(edit)[0], func(t *testing.T) {
+	for _, edit := range []string{"gofmt -w source.go", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go"} {
+		t.Run(filepath.Base(strings.Fields(edit)[0]), func(t *testing.T) {
 			shell := newExecTrackShell(t)
 			workspace := t.TempDir()
-			writeTestFile(t, filepath.Join(workspace, "source.go"), "before\n")
+			before, after, completedText := "before\n", "+after", "completed"
+			if filepath.Base(strings.Fields(edit)[0]) == "gofmt" {
+				before, after, completedText = "package p; var A=1\n", "+var A = 1", "Ran"
+			}
+			writeTestFile(t, filepath.Join(workspace, "source.go"), before)
 			// The following command cannot exit until the test has inspected a
 			// real terminal frame and the preview's completed filesystem view.
 			script := edit + "\nprintf 'test running\\n'; read -r answer"
 			observation, ok := captureExecObservation([]execCommandInput{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
-			if !ok || observation == nil {
+			if !ok || observation == nil || len(observation.Files) == 0 {
 				t.Fatal("missing edit capture")
 			}
 			u := newAppServerSessionTestUI(t, workspace)
@@ -52,6 +57,14 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			u.shell.preview(diffview.Preview{ID: "running:edit", Workspace: workspace, Thread: "main", Caller: "/root", Status: diffview.PreviewRunning, Input: "observing edit"})
 			cmd := exec.CommandContext(ctx, "bash", "-lc", script)
 			cmd.Dir, cmd.Env = workspace, shell.env
+			if strings.HasPrefix(edit, "gofmt") {
+				cmd.Args[1] = "-c" // The isolated HOME has no mise configuration.
+				for i, value := range cmd.Env {
+					if strings.HasPrefix(value, "PATH=") {
+						cmd.Env[i] = "PATH=" + filepath.Join(runtime.GOROOT(), "bin") + string(os.PathListSeparator) + strings.TrimPrefix(value, "PATH=")
+					}
+				}
+			}
 			for i, value := range cmd.Env {
 				if strings.HasPrefix(value, "CODEX_THREAD_ID=") {
 					cmd.Env[i] = "CODEX_THREAD_ID=main"
@@ -79,7 +92,7 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			if line, err := bufio.NewReader(output).ReadString('\n'); err != nil || line != "test running\n" {
 				t.Fatalf("following command did not start: %q, %v", line, err)
 			}
-			awaitMain(t, u, "completed")
+			awaitMain(t, u, completedText)
 			var completed *diffview.Preview
 			for completed == nil {
 				select {
@@ -96,7 +109,7 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 					t.Fatal("edit preview waited for the following command")
 				}
 			}
-			if len(completed.Files) != 1 || !strings.Contains(completed.Files[0].Diff, "+after") || completed.Footer != "observed edit" {
+			if len(completed.Files) != 1 || !strings.Contains(completed.Files[0].Diff, after) || completed.Footer != "observed edit" {
 				t.Fatalf("completion lacks actual observed edit: %+v", completed)
 			}
 			awaitMain(t, u, "Running")
@@ -134,7 +147,7 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			case raw := <-frame:
 				_, _ = screen.Write([]byte(raw))
 				shown := screen.String()
-				if strings.Contains(shown, "requested") || strings.Contains(shown, "LIVE ·") || !strings.Contains(shown, "completed") || !strings.Contains(shown, "Running") {
+				if strings.Contains(shown, "requested") || strings.Contains(shown, "LIVE ·") || !strings.Contains(shown, completedText) || !strings.Contains(shown, "Running") {
 					t.Fatalf("terminal did not settle only the edit:\n%s", shown)
 				}
 			case <-ctx.Done():
@@ -306,6 +319,64 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 		case <-time.After(3 * time.Second):
 			t.Fatal("grouped preview waited for the second command's tests")
 		}
+	}
+}
+
+func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
+	for _, script := range []string{"gofmt -w source.go", "sed -i 's/A/B/' source.go"} {
+		t.Run(strings.Fields(script)[0], func(t *testing.T) {
+			u, hub := newTrackedAppServerUI(t)
+			workspace := t.TempDir()
+			path := filepath.Join(workspace, "source.go")
+			writeTestFile(t, path, "package p; var A=1\n")
+			// Two nested calls in one cell. The edit is a single command, so
+			// there is no shell segment report. The sibling test stays pending.
+			source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q}); await tools.exec_command({cmd:'go test ./...',workdir:%q});", script, workspace, workspace)
+			commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
+			observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
+			if !ok || observation == nil || len(commands) != 2 {
+				t.Fatal("missing grouped edit observation")
+			}
+			auto, stop := newAutoLiveDiff(t.Context(), "")
+			defer stop()
+			auto.enabled.Store(true)
+			auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+			sub := auto.events.subscribe()
+			proxy := &mekugiProxy{execTrack: hub, execWindows: &execWindowRegistry{tracker: hub}, autoLiveDiff: auto}
+			transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
+			transform.openExecWindow("cell", observation, nil)
+			defer proxy.execWindows.close("cell")
+			item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
+			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+			cmd := exec.CommandContext(t.Context(), "env", "-u", "BASH_ENV", "bash", "-c", script)
+			cmd.Dir = workspace
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("edit failed: %v: %s", err, out)
+			}
+			item["status"], item["exitCode"] = "completed", 0
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "test", "type": "commandExecution", "command": "/bin/bash -lc 'go test ./...'", "status": "inProgress"}})
+			timer := time.NewTimer(5 * time.Second)
+			defer timer.Stop()
+			for {
+				select {
+				case <-sub.previewReady:
+					for _, event := range auto.events.takePreviews(sub) {
+						if event.Preview != nil && event.Preview.Complete {
+							if len(event.Preview.Files) != 1 || event.Preview.Footer != "observed edit" {
+								t.Fatalf("completion lost actual edit: %+v", event.Preview)
+							}
+							if !proxy.execWindows.find("cell").closed.IsZero() || u.session.commands[[3]string{"main", "turn", "test"}] == nil {
+								t.Fatal("edit completion ended enclosing cell or sibling test")
+							}
+							return
+						}
+					}
+				case <-timer.C:
+					t.Fatal("nested edit preview waited for later tests in the same cell")
+				}
+			}
+		})
 	}
 }
 
