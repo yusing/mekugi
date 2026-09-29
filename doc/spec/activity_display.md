@@ -205,13 +205,29 @@ Activity retains the complete response.
 Authored Markdown tables render as compact bordered grids with emphasized headers,
 column alignment, inline styles and links, and wrapped cells rather than clipped
 source rows. Optional outer pipes, escaped pipes, and code spans are supported;
-recognition requires a complete matching header delimiter row. Fenced code stays
-literal, and blockquoted tables retain the quote rail. At widths too narrow for a
+recognition requires a complete matching header delimiter row. Tables inside fenced
+code stay literal, and blockquoted tables retain the quote rail. At widths too narrow for a
 readable grid, body rows become separated header/value records so all columns remain
 available. Record values and their wrapped continuations share a display-width-aware
 label column; when that column would take more than half the pane, all labels
 stack above their values. Rendering is derived from the current text and pane width, including
 streaming updates and restored messages.
+
+Completed `mermaid` fences render the bounded Codex 0.159.0 flowchart subset:
+`flowchart`/`graph`, TD/TB/BT/LR/RL, rectangle/decision/stadium nodes, solid and
+dashed directed/undirected/bidirectional edges, pipe and spaced directed labels,
+and `&` endpoint groups expanded across chained edges. Quoted labels preserve
+punctuation, delimiters, and semicolons. Each edge has a separate lane; crossings
+are not junctions. No external renderer or process runs.
+
+Unsupported syntax, HTML/entities, unsafe or non-additive-width labels, open
+fences, and diagrams that cannot fit the pane retain the source code display,
+never a partial diagram. Bounds are 16 KiB source, 16 nodes, 24 expanded edges,
+24 references per group, 40 display cells per label, and 65,536 canvas cells.
+Flowchart subgraphs and other Mermaid families are outside this port. Rendering
+is recomputed from current text and width, including quoted blocks and replay.
+The upstream subset and layout come from
+[Codex 0.159.0](https://github.com/openai/codex/tree/687a119f0fcaace47e1f1abcc77cec6c813fd6da/codex-rs/mermaid).
 
 ### Agents roster and navigation
 

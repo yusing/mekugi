@@ -11,6 +11,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/ui/mermaid"
 )
 
 const (
@@ -358,7 +359,16 @@ func (p *Painter) Markdown(text string, width int) []string {
 				program = append(program, line)
 				continue
 			}
-			lines = append(lines, p.fenced(lang, strings.Join(program, "\n"), width)...)
+			body := strings.Join(program, "\n")
+			var diagram []string
+			if strings.EqualFold(lang, "mermaid") {
+				diagram, _ = mermaid.Render(body, width)
+			}
+			if len(diagram) > 0 {
+				lines = append(lines, diagram...)
+			} else {
+				lines = append(lines, p.fenced(lang, body, width)...)
+			}
 			fence, program = "", nil
 			continue
 		}
@@ -1386,7 +1396,7 @@ func (p *Painter) Summary(blocks []Block) string {
 		more = Dim + " · " + Undim + Elision{Hidden: len(blocks) - 1, Unit: "more", Form: ElisionSuffix}.String()
 	}
 	firstLine := func(text string) string {
-		// Summaries describe table content, not its decorative top border.
+		// Summaries describe tables and diagrams, not their decorative borders.
 		source := strings.Split(strings.TrimSpace(text), "\n")
 		source = source[:min(len(source), 3)]
 		for i, line := range source {
@@ -1398,6 +1408,14 @@ func (p *Painter) Summary(blocks []Block) string {
 				line = strings.TrimPrefix(trimmed[1:], " ")
 			}
 			source[i] = line
+		}
+		if fence, ok := FenceDelimiter(source[0]); ok && strings.EqualFold(strings.TrimSpace(source[0][len(fence):]), "mermaid") {
+			for _, line := range source[1:] {
+				if line = strings.TrimSpace(line); line != "" && line != fence {
+					return "Mermaid: " + ansi.Strip(line)
+				}
+			}
+			return "Mermaid diagram"
 		}
 		if table, consumed := parseMarkdownTable(source); consumed > 0 {
 			cells := make([]string, len(table.align))

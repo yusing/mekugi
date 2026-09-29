@@ -1,0 +1,6 @@
+OpenAI Codex
+Copyright 2025 OpenAI
+
+Flowchart parser, layout, and test fixture adapted to Go from Codex
+0.159.0 (687a119f0fcaace47e1f1abcc77cec6c813fd6da), codex-rs/mermaid.
+Modified to integrate with Mekugi Markdown and terminal width handling.

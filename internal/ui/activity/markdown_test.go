@@ -123,3 +123,37 @@ func TestLiveActivityMarkdownTrimsOuterBlankLines(t *testing.T) {
 		t.Fatalf("blank message rows: %q", rows)
 	}
 }
+
+func TestMarkdownMermaid(t *testing.T) {
+	p := activityui.Painter{}
+	source := "flowchart TD; A[Input] & B -- send --> C[Output]"
+	text := "```mermaid\n" + source + "\n```"
+	wide := strings.Join(plainLines(p.Markdown(text, 80)), "\n")
+	if strings.Contains(wide, "flowchart") || !strings.Contains(wide, "Output") || !strings.Contains(wide, "◄") {
+		t.Fatalf("diagram not rendered: %s", wide)
+	}
+	for _, tc := range []struct {
+		text  string
+		width int
+	}{{text, 8}, {"```mermaid\n" + source, 80}, {"```mermaid\nflowchart TD; A -->\n```", 80}, {"```text\n" + source + "\n```", 80}} {
+		got := strings.Join(plainLines(p.Markdown(tc.text, tc.width)), "\n")
+		want := strings.Join(plainLines(p.Markdown(strings.Replace(tc.text, "```mermaid", "```text", 1), tc.width)), "\n")
+		if got != want {
+			t.Fatalf("source fallback lost: %q", got)
+		}
+	}
+	quoted := strings.Join(plainLines(p.Markdown("> ```mermaid\n> graph;A-->B\n> ```", 80)), "\n")
+	if !strings.Contains(quoted, "▎ ┌") || !strings.Contains(quoted, "◄") {
+		t.Fatalf("quote diagram: %s", quoted)
+	}
+}
+
+func TestMarkdownMermaidSummary(t *testing.T) {
+	p := activityui.Painter{}
+	for _, source := range []string{"```mermaid\nflowchart TD\nA --> B\n```", "> ```mermaid\n> flowchart TD\n> A --> B\n> ```", "```mermaid\nflowchart TD\nA -->"} {
+		got := ansi.Strip(p.Summary([]activityui.Block{{Kind: "final", Body: source}}))
+		if !strings.Contains(got, "Mermaid: flowchart TD") || strings.ContainsAny(got, "┌─┐") {
+			t.Fatalf("diagram summary: %q", got)
+		}
+	}
+}

@@ -231,7 +231,10 @@ explicit `-c model_catalog_json=...` instead.
 An interactive `mekugi codex --yolo` launch lays out Main, Diff, Activity, and
 Agents panes in one terminal without an external pane manager. Main holds the
 conversation and composer. Markdown tables render as aligned grids that switch
-to a record layout in narrow panes.
+to a record layout in narrow panes. Completed Mermaid flowchart fences render as
+terminal diagrams with labeled solid/dashed edges and `&` fan-in/fan-out groups.
+Unsupported syntax (including subgraphs), incomplete fences, and diagrams too
+wide for the pane remain readable source.
 
 - `Ctrl-B`, then `1`/`2`/`3`/`4`/`5`, focuses Main, Diff, Activity, Agents, or Journal.
   Diff, Activity and Journal share the right column. Click a pane to focus it.
