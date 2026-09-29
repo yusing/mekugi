@@ -261,7 +261,7 @@ func TestRanRowWrapsAtShellWords(t *testing.T) {
 	}
 	var joined []string
 	for _, row := range plain {
-		if strings.HasPrefix(row, "       ┆") || strings.HasPrefix(row, "       · exit") {
+		if strings.Contains(row, "┆") || strings.HasPrefix(row, "       · exit") {
 			continue
 		}
 		row = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(row, "Ran"), " \\"))
@@ -277,7 +277,8 @@ func TestRanRowWrapsAtShellWords(t *testing.T) {
 		}
 	}
 	tail := strings.Join(plain, "\n")
-	for _, want := range []string{"       · exit 1", "       ┆ … 3 earlier lines", "       ┆ --- FAIL: TestX", "       ┆ FAIL"} {
+	// Earlier lines are counted in the verb column of the first output row.
+	for _, want := range []string{"       · exit 1\n+3     ┆ --- FAIL: TestX\n       ┆ FAIL"} {
 		if !strings.Contains(tail, want) {
 			t.Fatalf("missing %q:\n%s", want, tail)
 		}

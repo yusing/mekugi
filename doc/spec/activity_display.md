@@ -84,7 +84,10 @@ the command, or on its own row when it does not fit or follows a multiline
 program; the roster summary keeps a red `(exit N)`. When the host reports
 aggregated output for that failure, the last five non-blank lines follow the
 command under a muted dashed `┆` gutter, distinct from the code gutter, sanitized
-and bounded per line, with a count of earlier lines. While a command is
+and bounded per line. A muted `+N` in the verb column of the first output row
+counts earlier lines, or a `┆ … N earlier lines` row when the count does not fit
+there. In a pane shorter than 40 rows, open output shows only its last three
+lines and counts the rest. While a command is
 `Running`, the host's streamed output shows the same way as a rolling tail,
 including an unfinished last line; a carriage return restarts its line, as a
 progress line redraws. A burst rolls through rather than jumping to its end: each frame reveals a
@@ -107,7 +110,9 @@ agent's next standalone event, such as a separate command, Skill or Read, then
 collapses to one muted `┆ … +N lines` row once events pause for 750 ms after the
 later of that event and the output's completion, so a quick run of commands
 collapses together; a click on the command opens
-it again and another collapses it. Restored history shows zero-exit output
+it again and another collapses it. Output following a file or skill read
+(`Read`, or `Skill` other than `skills-mgr run`) is collapsed as soon as the read
+succeeds. Restored history shows zero-exit output
 already collapsed. Output arriving after completion is ignored.
 Unknown and zero exits add no failure label, and an unknown exit no output. Python, JavaScript (Node and Bun), and Perl interpreter previews use
 their own syntax colors. `Search` patterns are styled as literal patterns,

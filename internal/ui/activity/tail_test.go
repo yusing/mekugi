@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestOutputTailStreamsBoundedTail(t *testing.T) {
@@ -73,5 +75,33 @@ func TestTailRowsSkipsGaps(t *testing.T) {
 	}
 	if MoreLines(1) != "+1 line" || MoreLines(4) != "+4 lines" {
 		t.Fatal("line counts")
+	}
+}
+
+func TestOutputRowsCountEarlierLinesInVerbColumn(t *testing.T) {
+	var p Painter
+	block := Block{Kind: "reads", Verb: "Read", Reads: []Read{{Path: "a.go"}}, Tail: []string{"one", "two", "three", "four", "five"}, TailOmitted: 7}
+	plain := func(block Block) string {
+		var rows []string
+		for _, row := range p.Block(block, 60) {
+			rows = append(rows, ansi.Strip(row))
+		}
+		return strings.Join(rows, "\n")
+	}
+	if got, want := plain(block), "Read   a.go\n+7     ┆ one\n       ┆ two\n       ┆ three\n       ┆ four\n       ┆ five"; got != want {
+		t.Fatalf("open output =\n%s\nwant\n%s", got, want)
+	}
+	block.TailRows = 3
+	if got, want := plain(block), "Read   a.go\n+9     ┆ three\n       ┆ four\n       ┆ five"; got != want {
+		t.Fatalf("compact output =\n%s\nwant\n%s", got, want)
+	}
+	block.Collapsed = true
+	if got, want := plain(block), "Read   a.go\n       ┆ … +12 lines"; got != want {
+		t.Fatalf("collapsed output =\n%s\nwant\n%s", got, want)
+	}
+	// A count wider than the verb column keeps its own row.
+	block.Collapsed, block.TailRows, block.TailOmitted = false, 0, 1234567
+	if got, want := plain(block), "Read   a.go\n       ┆ … 1234567 earlier lines\n       ┆ one"; !strings.HasPrefix(got, want) {
+		t.Fatalf("wide count output =\n%s\nwant prefix\n%s", got, want)
 	}
 }

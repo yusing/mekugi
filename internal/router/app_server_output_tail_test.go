@@ -120,7 +120,7 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 		t.Fatalf("burst jumped to its tail instead of rolling:\n%s", got)
 	}
 	rollCommandOutput(u)
-	want := "└ Running go test ./...\n          ┆ … 4 earlier lines\n          ┆ ok 4\n          ┆ ok 5\n          ┆ ok 6\n          ┆ ok 7\n          ┆ --- partial"
+	want := "└ Running go test ./...\n  +4      ┆ ok 4\n          ┆ ok 5\n          ┆ ok 6\n          ┆ ok 7\n          ┆ --- partial"
 	if got := main(); !strings.Contains(got, want) {
 		t.Fatalf("live tail missing %q:\n%s", want, got)
 	}
@@ -230,13 +230,14 @@ func TestAppServerMixedCommandOutputFollowsFinalRead(t *testing.T) {
 			check("┆ second")
 			item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", exit, "first\nsecond\n"
 			notify("item/completed", map[string]any{"item": item})
-			check("┆ second")
-			nextEvent(t, u, "main")
-			u.view.settle(time.Now().Add(activityui.OutputDebounce))
 			if exit != 0 {
+				check("┆ second")
+				nextEvent(t, u, "main")
+				u.view.settle(time.Now().Add(activityui.OutputDebounce))
 				check("┆ second")
 				return
 			}
+			// A read's output starts collapsed, without waiting for a later event.
 			check("┆ … +2 lines")
 			feed := u.view.renderFeed(100, 60)
 			index := slices.IndexFunc(feed.lines, func(line string) bool { return strings.Contains(line, "… +2 lines") })
@@ -379,5 +380,42 @@ func TestAppServerMainClipsLongCommandSourceUntilOpened(t *testing.T) {
 	u.view.toggleSnippet(snippet)
 	if got := ansi.Strip(strings.Join(render().lines, "\n")); !strings.Contains(got, "│ … +") {
 		t.Fatalf("source did not clip again:\n%s", got)
+	}
+}
+
+func TestAppServerReadOutputStartsCollapsed(t *testing.T) {
+	for _, tc := range []struct {
+		command   string
+		collapsed bool
+	}{
+		{"cat a.go", true},
+		{"skills-mgr get herdr", true},
+		{"skills-mgr run herdr/x.sh list", false},
+		{"go vet ./...", false},
+	} {
+		u := newAppServerSessionTestUI(t, t.TempDir())
+		u.view.conversation = true
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+			"id": "cmd", "type": "commandExecution", "command": tc.command, "status": "completed", "exitCode": 0, "aggregatedOutput": "one\ntwo\n"}})
+		got := ansi.Strip(strings.Join(u.view.renderFeed(90, 60).lines, "\n"))
+		if collapsed := strings.Contains(got, "┆ … +2 lines") && !strings.Contains(got, "┆ two"); collapsed != tc.collapsed {
+			t.Fatalf("%s collapsed = %v, want %v:\n%s", tc.command, collapsed, tc.collapsed, got)
+		}
+	}
+}
+
+func TestAppServerShortPaneShowsCompactTail(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.conversation = true
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+		"id": "cmd", "type": "commandExecution", "command": "go test ./...", "status": "completed", "exitCode": 0, "aggregatedOutput": "1\n2\n3\n4\n5\n6\n"}})
+	render := func(height int) string {
+		return ansi.Strip(strings.Join(u.view.render(90, height, time.Now()), "\n"))
+	}
+	if got, want := render(liveActivityCompactHeight), "└ Ran go test ./...\n  +1  ┆ 2\n      ┆ 3\n      ┆ 4\n      ┆ 5\n      ┆ 6"; !strings.Contains(got, want) {
+		t.Fatalf("tall pane lacks the whole tail %q:\n%s", want, got)
+	}
+	if got, want := render(liveActivityCompactHeight-1), "└ Ran go test ./...\n  +3  ┆ 4\n      ┆ 5\n      ┆ 6"; !strings.Contains(got, want) {
+		t.Fatalf("short pane lacks the compact tail %q:\n%s", want, got)
 	}
 }

@@ -48,6 +48,7 @@ type Block struct {
 	Skipped     bool // A tracked segment the command list never reached.
 	Tail        []string
 	TailOmitted int    // Output lines before Tail.
+	TailRows    int    // Tail lines open output shows; 0 shows all of Tail.
 	SourceRows  int    // Rows a command or program preview may use; 0 shows it whole.
 	Flash       bool   // Presentation-only: another pane just opened this entry.
 	Live        bool   // Reasoning still streaming.
@@ -78,6 +79,12 @@ func (b Block) Collapsible() bool {
 		return !b.Running && !b.Skipped && b.ExitCode == 0 && len(b.Tail)+b.TailOmitted > 1
 	}
 	return false
+}
+
+// ReadOutput reports a file or skill read, whose output is what the agent
+// read rather than a result to watch, so it starts collapsed.
+func (b Block) ReadOutput() bool {
+	return b.Verb == "Read" || b.Verb == "Skill" && b.Kind == "reads"
 }
 
 // GroupOperations groups adjacent edits from one source and outcome, across

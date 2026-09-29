@@ -112,7 +112,8 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 			if len(blocks) > 0 {
 				last := &blocks[len(blocks)-1]
 				last.Tail, last.TailOmitted = entry.outputTail, entry.outputOmit
-				last.Collapsed = entry.native.collapsed && last.Collapsible()
+				// A read's output is what the agent read; it starts collapsed.
+				last.Collapsed = (entry.native.collapsed || last.ReadOutput()) && last.Collapsible()
 			}
 		}
 		return activityui.GroupOperations(blocks)
@@ -196,7 +197,7 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 		}
 	}
 	for i := range blocks {
-		blocks[i].Collapsed = entry.native.collapsed && blocks[i].Collapsible()
+		blocks[i].Collapsed = (entry.native.collapsed || blocks[i].ReadOutput()) && blocks[i].Collapsible()
 	}
 	return activityui.GroupOperations(blocks)
 }

@@ -139,6 +139,7 @@ type liveActivityRunKey struct {
 	lead        uint64             // Main item a transcript tool group continues, or 0.
 	flash       uint64             // Flashed Activity entry in this run, or 0.
 	excerpt     bool               // Main sent message shown as a linked excerpt.
+	tail        int                // Tail lines open output shows; 0 shows the whole tail.
 }
 
 func newLiveActivityView() *liveActivityView {
@@ -366,6 +367,23 @@ func (v *liveActivityView) pace(now time.Time) bool {
 }
 
 // shownBlocks is an entry's blocks as far as its pace has revealed them.
+// A pane shorter than liveActivityCompactHeight rows shows only the last
+// liveActivityCompactTail lines of open output, so a few commands' output
+// cannot fill a small screen.
+const (
+	liveActivityCompactHeight = 40
+	liveActivityCompactTail   = 3
+)
+
+// tailRows is how many output lines an open tail shows at the pane's height;
+// 0 shows the whole tail.
+func (v *liveActivityView) tailRows() int {
+	if v.height > 0 && v.height < liveActivityCompactHeight {
+		return liveActivityCompactTail
+	}
+	return 0
+}
+
 func (v *liveActivityView) shownBlocks(i int) []activityui.Block {
 	if pace, ok := v.paced[v.entries[i].Seq]; ok && pace.shown < len(v.blocks[i]) {
 		return v.blocks[i][:pace.shown]
@@ -1327,7 +1345,7 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 			}
 			last = j
 		}
-		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.Theme, -1, false, conversationThread{}, 0, 0, false}
+		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.Theme, -1, false, conversationThread{}, 0, 0, false, v.tailRows()}
 		if key.first <= flash && flash <= key.last {
 			key.flash = flash
 		}
@@ -1342,6 +1360,7 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 					for _, block := range v.shownBlocks(k) {
 						block.Source = v.entries[k].Seq
 						block.Flash = block.Source == key.flash
+						block.TailRows = key.tail
 						blocks = append(blocks, block)
 					}
 				}

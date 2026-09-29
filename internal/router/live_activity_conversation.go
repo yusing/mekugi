@@ -156,7 +156,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			start = k
 		}
 		thread.followed = continues(k, k+1)
-		key := liveActivityRunKey{first: v.entries[it.first].Seq, last: v.entries[it.last].Seq, width: width, theme: v.painter.Theme, hover: -1, main: true, thread: thread, excerpt: v.passed[v.entries[it.first].Seq]}
+		key := liveActivityRunKey{first: v.entries[it.first].Seq, last: v.entries[it.last].Seq, width: width, theme: v.painter.Theme, hover: -1, main: true, thread: thread, excerpt: v.passed[v.entries[it.first].Seq], tail: v.tailRows()}
 		if it.lead >= 0 {
 			key.lead = v.entries[it.lead].Seq
 		}
@@ -387,6 +387,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			if v.visible(v.entries[k]) {
 				for _, block := range v.shownBlocks(k) {
 					block.Source = v.entries[k].Seq
+					block.TailRows = v.tailRows()
 					group = append(group, block)
 				}
 			}

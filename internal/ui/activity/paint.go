@@ -974,23 +974,35 @@ func clipSource(rows []string, block Block, lead string) []string {
 	return append(rows[:keep:keep], lead+Dim+hint+Undim)
 }
 
-// outputRows attaches the invocation's output to its final operation.
+// outputRows attaches the invocation's output to its final operation. Open
+// output counts its earlier lines in the verb column of its first row.
 func outputRows(block Block, lines []string, width int) []string {
 	indent := block.cell(RowVerb(block))
 	padding := strings.Repeat(" ", indent)
+	tail, omitted := block.Tail, block.TailOmitted
+	if block.TailRows > 0 && len(tail) > block.TailRows {
+		omitted += len(tail) - block.TailRows
+		tail = tail[len(tail)-block.TailRows:]
+	}
 	// Output uses a dashed gutter, distinct from the program gutter above it.
-	if block.Collapsed && len(block.Tail) > 0 {
-		hint := "… " + MoreLines(block.TailOmitted+len(block.Tail))
+	if block.Collapsed && len(tail) > 0 {
+		hint := "… " + MoreLines(omitted+len(tail))
 		if block.Hovered {
 			hint = Underline(hint)
 		}
 		return append(lines, padding+ansi.Truncate(Dim+"┆ "+hint+Undim, width-indent, "…"))
 	}
-	if block.TailOmitted > 0 {
-		lines = append(lines, padding+ansi.Truncate(Dim+"┆ "+fmt.Sprintf("… %d earlier lines", block.TailOmitted)+Undim, width-indent, "…"))
-	}
-	for _, line := range block.Tail {
-		lines = append(lines, padding+ansi.Truncate(Dim+"┆"+Undim+" "+line, width-indent, "…"))
+	for i, line := range tail {
+		lead := padding
+		if count := "+" + strconv.Itoa(omitted); i == 0 && omitted > 0 {
+			if len(count) < indent {
+				lead = Dim + count + Undim + padding[len(count):]
+			} else {
+				// A count wider than the verb column keeps its own row.
+				lines = append(lines, padding+ansi.Truncate(Dim+"┆ "+fmt.Sprintf("… %d earlier lines", omitted)+Undim, width-indent, "…"))
+			}
+		}
+		lines = append(lines, lead+ansi.Truncate(Dim+"┆"+Undim+" "+line, width-indent, "…"))
 	}
 	return lines
 }
