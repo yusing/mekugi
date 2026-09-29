@@ -127,6 +127,12 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	}
 	content := strings.Join(view.Lines, "\n")
 	page.Text = content
+	if block.Verb == "Skill" && block.ReadOutput() {
+		for _, row := range p.Markdown(content, width) {
+			add(DialogLine{Text: row})
+		}
+		return page
+	}
 	colored, first, gutter := view.Lines, view.Dropped+1, "┆"
 	if block.ReadOutput() && len(block.Reads) == 1 {
 		// A read's output is the file it read.

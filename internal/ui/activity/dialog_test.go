@@ -223,3 +223,80 @@ func TestBackdropFadesColorsAndKeepsCursorMoves(t *testing.T) {
 		t.Fatalf("Backdrop = %q, want %q", got, want)
 	}
 }
+
+func TestDialogSkillReadMarkdown(t *testing.T) {
+	content := "# Skill guide\n\nUse **careful steps** and `code`.\n\n- Read before editing and keep the output within the available width.\n\n```go\nreturn 42\n```\n"
+	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+		for _, width := range []int{24, 80} {
+			for _, retained := range []bool{false, true} {
+				p := Painter{Theme: theme}
+				block := ParseOperation("Skill `example`")
+				block.Tail = strings.Split(content, "\n")
+				if retained {
+					block.Output = &Output{done: true, lines: block.Tail}
+					block.Tail = []string{"stale tail"}
+				}
+				page := p.DialogPage(block, width)
+				wantCopy := content
+				if retained {
+					// Retention removes trailing padding before the dialog sees it.
+					wantCopy = strings.TrimRight(content, "\n")
+				}
+				if page.Text != wantCopy {
+					t.Fatalf("copy changed Markdown source: %q", page.Text)
+				}
+				var rendered []string
+				for i, line := range page.Lines {
+					if line.Number != 0 || line.Gutter != "" || page.Indent(i) != 0 || page.RowCount(i, width) != 1 {
+						t.Fatalf("Markdown row has source/output layout: %+v", line)
+					}
+					rows := page.Rows(i, width)
+					if len(rows) != 1 || ansi.StringWidth(rows[0]) > width {
+						t.Fatalf("Markdown row exceeds width %d: %q", width, rows)
+					}
+					rendered = append(rendered, rows[0])
+				}
+				plain := ansi.Strip(strings.Join(rendered, "\n"))
+				if !strings.HasPrefix(plain, "Skill guide\n") || !strings.Contains(plain, "careful steps") || !strings.Contains(plain, "return 42") || strings.Contains(plain, "**") || strings.Contains(plain, "```") || strings.Contains(plain, "- Read") {
+					t.Fatalf("unrendered Markdown: %q", plain)
+				}
+				if page.Lines[0].Text == "Skill guide" {
+					t.Fatal("heading lost styling")
+				}
+			}
+		}
+	}
+}
+
+func TestDialogSkillOutputStates(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		output *Output
+		note   string
+	}{
+		{"live", &Output{lines: []string{"# Guide"}}, ""},
+		{"dropped", &Output{done: true, dropped: 4, lines: []string{"# Guide"}}, "4 earlier lines"},
+		{"released", &Output{done: true, released: true}, "released"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var p Painter
+			page := p.DialogPage(Block{Kind: "reads", Verb: "Skill", Output: tc.output, Tail: []string{"# Guide"}}, 80)
+			var rows []string
+			for _, line := range page.Lines {
+				rows = append(rows, ansi.Strip(line.Text))
+			}
+			if page.Text != "# Guide" || rows[len(rows)-1] != "Guide" || !strings.Contains(strings.Join(rows, "\n"), tc.note) || page.Live == tc.output.done {
+				t.Fatalf("skill state lost: %+v", page)
+			}
+		})
+	}
+	var p Painter
+	block := ParseOperation("Skill `run example/script.sh`")
+	block.Tail = []string{"# literal", "**output**"}
+	page := p.DialogPage(block, 80)
+	for i, line := range page.Lines {
+		if line.Number != i+1 || line.Gutter != "┆" || line.Text != block.Tail[i] {
+			t.Fatalf("skill script output no longer literal: %+v", page)
+		}
+	}
+}

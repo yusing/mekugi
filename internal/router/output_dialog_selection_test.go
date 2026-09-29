@@ -194,3 +194,40 @@ func TestOutputDialogMouseSelectionCopiesLiteralFrameGlyphs(t *testing.T) {
 		t.Fatalf("clipboard = %q, want %q", u.clipboard, want)
 	}
 }
+
+func TestOutputDialogSkillMarkdownSearchSelectionAndCopy(t *testing.T) {
+	const source = "# Skill guide\n\nUse **careful steps**."
+	output := new(activityui.Retention).New()
+	output.Write(source)
+	output.Finish(nil, new(0))
+	u := dialogForOutput(output)
+	u.main = &appServerUI{view: newLiveActivityView()}
+	block := activityui.ParseOperation("Skill `example`")
+	block.Output = output
+	u.output.pages[0] = block
+	frame := drawOutputDialog(u)
+	if !strings.Contains(frame, "Use careful steps.") || strings.Contains(frame, "**") || strings.Contains(frame, "# Skill guide") {
+		t.Fatalf("skill Markdown not rendered in dialog: %q", frame)
+	}
+	u.outputKey("y")
+	if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(source)) + "\x07"; u.clipboard != want {
+		t.Fatalf("whole-page copy changed source: %q", u.clipboard)
+	}
+	u.outputKey("/")
+	for _, key := range []string{"c", "a", "r", "e", "f", "u", "l", "\r"} {
+		u.outputKey(key)
+	}
+	if u.output.match < 0 || u.output.missed {
+		t.Fatal("search missed rendered skill text")
+	}
+	drawOutputDialog(u)
+	x, y := outputSelectionPoint(t, u, "careful steps")
+	outputSelectionDrag(u, x, y, x+len("careful steps")-1, y)
+	if u.output.selection == nil || u.output.selection.text() != "careful steps" {
+		t.Fatal("selection did not match rendered skill text")
+	}
+	u.outputKey("y")
+	if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("careful steps")) + "\x07"; u.clipboard != want {
+		t.Fatalf("selection copy changed visible text: %q", u.clipboard)
+	}
+}

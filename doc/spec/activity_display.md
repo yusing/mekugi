@@ -142,7 +142,10 @@ the panes faded to faint uncolored text; its frame keeps full strength.
 `b`/space and `g`/`G` (Home/End) scroll; the wheel scrolls only the dialog.
 Command titles and source bodies use syntax colors for their language; file-read
 output uses the file type, including when it ends in blank lines. Copying remains
-plain text. Source uses a numbered solid gutter, command output a dashed gutter, and a
+plain text. Skill-read output renders as Markdown, wrapping to the dialog width
+without line numbers or output gutters; whole-page copying preserves the retained
+Markdown source. Output from `skills-mgr run` remains literal command output.
+Source uses a numbered solid gutter, command output a dashed gutter, and a
 single-range read starts numbering at the requested first line. The header
 shows the target, result position, ranges, retained line count and known exit.
 Live output is marked `● live` and follows its tail; scrolling up pauses it,
