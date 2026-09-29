@@ -13,10 +13,10 @@ const nativeNavigationReturnLimit = 32
 // Click-through previews retain presentation state only, never captured data or
 // host lifecycle state. New activity and captures remain available on return.
 type nativeNavigationReturn struct {
-	side, activityOpen, diffOpen bool
-	focus                        int
-	main, agents                 nativeTranscriptReturn
-	diff                         nativeDiffReturn
+	side, activityOpen, diffOpen, journalOpen bool
+	focus                                     int
+	main, agents                              nativeTranscriptReturn
+	diff                                      nativeDiffReturn
 }
 type nativeTranscriptReturn struct {
 	offset          int
@@ -41,7 +41,7 @@ func (b nativeTranscriptReturn) restore(v *liveActivityView) {
 	v.runs = nil
 }
 func (u *terminalUI) navigationReturn() nativeNavigationReturn {
-	b := nativeNavigationReturn{side: u.side, activityOpen: u.activityOpen, diffOpen: u.diffOpen, focus: u.focus, main: transcriptReturn(u.main.view), agents: transcriptReturn(u.agents)}
+	b := nativeNavigationReturn{side: u.side, activityOpen: u.activityOpen, diffOpen: u.diffOpen, journalOpen: u.journalOpen, focus: u.focus, main: transcriptReturn(u.main.view), agents: transcriptReturn(u.agents)}
 	c := u.diff
 	b.diff = nativeDiffReturn{navigation: c.navigation, caller: c.view.Caller, scroll: maps.Clone(c.view.Scroll), following: c.view.Following, mode: c.diffMode, back: c.back, editPreview: c.editPreview}
 	b.diff.navigation.Collapsed = maps.Clone(c.navigation.Collapsed)
@@ -88,7 +88,7 @@ func (u *terminalUI) popNavigationReturn() bool {
 
 func (u *terminalUI) restoreNavigationReturn(b nativeNavigationReturn) {
 	c := u.diff
-	u.side, u.activityOpen, u.diffOpen, u.focus = b.side, b.activityOpen, b.diffOpen, b.focus
+	u.side, u.activityOpen, u.diffOpen, u.journalOpen, u.focus = b.side, b.activityOpen, b.diffOpen, b.journalOpen, b.focus
 	b.main.restore(u.main.view)
 	b.agents.restore(u.agents)
 	c.filterCaller(b.diff.caller)

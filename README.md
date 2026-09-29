@@ -18,13 +18,13 @@ sessions, and patch review. No fork, no config edits, no daemon.
   `apply_patch` behave as usual. Mekugi never re-runs an edit and changes no
   configuration or instruction files. A persistent WebSocket lets a supporting
   Codex client [steer a running turn](#composer).
-- **Native terminal UI.** [Main, Diff, Activity, and Agents](#native-ui) share
+- **Native terminal UI.** [Main, Diff, Activity, Journal, and Agents](#native-ui) share
   one terminal without an external pane manager. The composer works like
   Codex's and adds [`/btw` side questions](#composer) that don't interrupt
   Main, plus `/model`, `/effort`, and `/tier` pickers.
-- **Milestone journal.** Agents keep a revisable journal. You see live updates,
-  and answers are grouped at completion. A final answer goes into the journal
-  without an extra model request.
+- **Task journal.** A live plan strip shows current work and what remains.
+  Open the Journal pane for task states, timestamps and notes. Turn cards bring
+  together the outcome, new results and remaining tasks without another model request.
 - **Live subagent activity.** Start notices show model and effort. Progress and
   message excerpts appear in the main conversation, or live in Mekugi’s
   [agents pane](#agents-pane), whose roster shows each agent's elapsed time,
@@ -98,7 +98,7 @@ mekugi codex --yolo
 ```
 
 Add `$GOBIN`, or `$(go env GOPATH)/bin` if that is unset, to your `PATH`. Mekugi
-prints a dashboard URL, then opens its native Main, Diff, Activity, and Agents UI.
+prints a dashboard URL, then opens its native Main, Diff, Activity, Journal, and Agents UI.
 Interactive launches currently require explicit `--yolo` (no approvals or sandbox).
 Codex remains the agent runtime and tool executor. With `mekugi-exec` installed
 beside `mekugi`, a command list such as `cd app && make && make test` shows each
@@ -211,8 +211,8 @@ Agents panes in one terminal without an external pane manager. Main holds the
 conversation and composer. Markdown tables render as aligned grids that switch
 to a record layout in narrow panes.
 
-- `Ctrl-B`, then `1`/`2`/`3`/`4`, focuses Main, Diff, Activity, or Agents. Diff
-  and Activity share the right column. Click a pane to focus it.
+- `Ctrl-B`, then `1`/`2`/`3`/`4`/`5`, focuses Main, Diff, Activity, Agents, or Journal.
+  Diff, Activity and Journal share the right column. Click a pane to focus it.
 - Drag the dividers to resize panes or the file navigator. `Ctrl-B`, then arrow
   keys, resizes the main splits (up/down in the roster adjusts its height);
   `Ctrl-B`, then `[`/`]`, resizes the file navigator. Narrow terminals show the
@@ -291,6 +291,19 @@ or unfinished call never becomes a saved change.
 - Browsing pauses following; `r` resumes.
 
 See [live view details](doc/spec/changes.md#live-terminal-view).
+
+### Journal pane
+
+Press `Ctrl-B` then `5` to open Journal. Open tasks
+come first; finished subtrees start collapsed. Use `j`/`k` or arrows to select,
+`Space` to expand finished subtrees, `d` to read full details, and `Enter` to copy the selected path.
+Use `n` to switch between workspace and unscoped journals when both exist. Notes
+from the other journal still appear in Main.
+`Esc` returns to Main. Blocked tasks show their reason; notes have no state label.
+
+The plan strip stays above the composer while work remains. Main shows task
+transitions, plus notes while Journal is hidden. A turn card contains its outcome,
+new work and remaining tasks; select its expansion target to see the notes.
 
 ### Agents pane
 

@@ -342,7 +342,7 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 			}
 		}
 		if t.journalNativeTerminal != nil && t.journalNativeSink != nil {
-			t.journalNativeSink.publish(*t.journalNativeTerminal, true)
+			t.journalNativeSink.publish(*t.journalNativeTerminal, true, t.journalResponseID)
 			t.journalNativeTerminal = nil
 		}
 	}

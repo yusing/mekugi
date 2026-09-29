@@ -2,20 +2,27 @@
 
 ## Native Main presentation
 
-An attached app-server frontend receives typed Main journal revisions from the
-journal owner instead of the inline `Journal update`/`Journal flush` Markdown
-envelopes described below. IDs, author, original questions and revisions remain
-structured data. Main shows each milestone or answer set as a labeled journal
-block without repeated questions, Q/A labels or item IDs. An answer's reply link
-uses a shared layout for Main and agent replies: a `re:` header naming what it
-answers (your message or an assignment) and its time, then a separately quoted
-excerpt of up to two nonempty rows, followed by the answer. The header and excerpt
-jump to that retained original. A child answer threaded directly under the
-assignment it answers omits both. When the original is outside the loaded history, the link
-says so instead of jumping to another prompt. Revisions keep their question
-association, and a retraction removes the milestone. Activity shows a child's
-answers under its run.
+V2 journals have a Journal pane alongside Diff and Activity, selected by `Ctrl-B 5`;
+composer letters never open it. When at least four rows fit, a header counts the
+journal's own tasks by state above a separator. Open tasks precede finished tasks; finished
+subtrees collapse by default. Navigation uses arrows or j/k, Space expands finished
+subtrees, d opens full Markdown details, and Enter copies a selected path. Workspace
+and unscoped journals remain separate; n switches the selected namespace. Only notes
+from the presented namespace are suppressed in Main or acknowledged via the pane.
+Router stamps display in local time.
+Only tasks show state; blocked tasks retain their reason and dropped tasks are dimmed.
+A plan strip remains above the composer while any task is open. It shows the current
+task, progress and the next pending task.
 
+Native Main receives event rows after persistence. Notes are rows only while the
+Journal pane is hidden; blocked task rows remain visible. Successful terminal delivery
+publishes a framed turn card with Outcome, This turn and Remaining. Its notes expand
+in place. Empty Outcomes omit the answer line but retain the remaining work. Cards
+have response-specific identity, including consecutive empty Outcomes at one sequence.
+Answer reply links use the retained original question. The Journal pane restores its
+current tree from durable storage independently of provider requests.
+
+Retained v1 publications retain their milestone and grouped-answer presentation.
 The authenticated mutation path publishes native Main milestones after persistence,
 including those without `report_now`, even without an open provider response.
 The frontend applies pending milestones before later host events and preserves

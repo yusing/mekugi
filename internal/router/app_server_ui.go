@@ -80,6 +80,7 @@ type appServerUI struct {
 	execTrack                 *execTrackHub // Per-segment command reports; nil when not tracking.
 	issues                    *CriticalErrors
 	noticeEntries             map[string]bool
+	journalView               nativeJournalView
 	journal                   *nativeJournalSink
 	unscopedJournal           *nativeJournalSink
 	shell                     *terminalUI
@@ -310,7 +311,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 							items := sink.snapshot()
 							journalPending[sink] = items
 							for _, publication := range items {
-								u.view.applyJournal(journalKey(sink.workspace, sink.thread), publication)
+								u.applyJournalPublication(sink, publication)
 							}
 							u.dirty = u.dirty || len(items) > 0
 						}
@@ -331,7 +332,10 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 							notices.finish(u.mainContentPainted)
 							for sink, items := range journalPending {
 								if !u.mainContentPainted {
-									continue
+									if !u.journalPanePresents(sink) {
+										continue
+									}
+									items = slices.DeleteFunc(slices.Clone(items), func(p nativeJournalPublication) bool { return p.card != nil || p.event == nil })
 								}
 								if err := sink.acknowledge(ctx, proxy, items); err != nil {
 									return fmt.Errorf("journal presentation receipt: %w", err)
@@ -544,6 +548,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				// Real app-server requests can omit workspace metadata. Keep that
 				// journal namespace distinct; never infer filesystem authority from cwd.
 				u.unscopedJournal = u.proxy.journals.attachNative("", u.thread)
+				for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
+					if err := u.proxy.journals.restoreNative(u.ctx, u.proxy.replayStore, sink); err != nil {
+						u.setNotice("Journal restore: "+err.Error(), true)
+					}
+				}
 				u.proxy.activity.attachNativePane(u.thread)
 			}
 			// Resumed history is applied once the roster is read, so Main can
@@ -1027,6 +1036,12 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 	draft = draft[firstRow:min(len(draft), firstRow+visible)]
 
 	room := max(0, height-len(draft)-borderRows)
+	strip := u.journalPlanStrip(width)
+	if strip != "" && room > 0 {
+		room--
+	} else {
+		strip = ""
+	}
 	var pending []string
 	questionRows := u.questionRows(width, max(1, min(height/2, room)))
 	if len(questionRows) > 0 {
@@ -1083,6 +1098,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect
 	frame = append(frame, btwRows...)
 	u.questions.rect = terminalRect{0, len(frame), width, len(questionRows)}
 	frame = append(frame, questionRows...)
+	if strip != "" {
+		frame = append(frame, strip)
+	}
 	if u.questions.active != nil {
 		u.questions.painted = true
 	}

@@ -17,6 +17,10 @@ var liveActivityManagedFiles = regexp.MustCompile(`^\+ (\d+) tool-managed files 
 func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 	text := livediff.Safe(entry.Text, false)
 	switch entry.Kind {
+	case "journal_card":
+		return []activityui.Block{{Kind: "summary", Label: "Journal", Body: text, Collapsed: true}}
+	case "journal_event":
+		return []activityui.Block{{Kind: "progress", Body: text}}
 	case "reply":
 		// Direction comes from the delivered message, never from its text.
 		if entry.message != nil {

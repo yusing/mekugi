@@ -249,6 +249,9 @@ func nativeTitle(digit int, name, detail string, focused bool) string {
 func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	width, height := max(1, u.width), max(1, u.height)
 	now := time.Now()
+	if u.focus == 1 || u.focus == 2 {
+		u.journalOpen = false
+	}
 	u.agents.feedOnly, u.agents.focused = true, u.focus == 2
 	returning := len(u.navigationReturns) > 0
 	u.agents.returning = returning && !u.diffOpen
@@ -339,6 +342,10 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			draw(left, nativeBox(left.w, left.h, nativeTitle(1, "Main", u.main.questionBadge(), u.focus == 0), scrollLabel(u.main.view), u.focus == 0, body, rules))
 		}
 	}
+	if !framed && right.w > 0 && right.h > 0 && u.journalOpen {
+		l.journal = right
+		draw(right, u.main.journalView.render(u.main.journalTreeSnapshot(), right.w, right.h))
+	}
 	if right.w >= 4 && right.h >= 3 && framed {
 		iw, ih := right.w-2, right.h-2
 		dockRows := 0
@@ -352,7 +359,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			contentY += dockRows
 			l.live = terminalRect{right.x + 1, right.y + 1, iw, dockRows}
 		}
-		focused := u.focus == 1 || u.focus == 2
+		focused := u.focus == 1 || u.focus == 2 || u.focus == 4
 		var body []string
 		var title, label string
 		if u.diffOpen {
@@ -383,6 +390,14 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			summary, state := u.diff.nativeTitle()
 			title, label = nativeTitle(2, "Diff", "saved · "+summary, u.focus == 1), state
 			u.diffUnseen = false
+		} else if content > 0 && u.journalOpen {
+			l.journal = terminalRect{right.x + 1, contentY, iw, content}
+			body = u.main.journalView.render(u.main.journalTreeSnapshot(), iw, content)
+			namespace := "workspace"
+			if sink := u.main.selectedJournalSink(); sink != nil && sink.workspace == "" {
+				namespace = "unscoped"
+			}
+			title, label = nativeTitle(5, "Journal", namespace, u.focus == 4), "n namespace · d details"
 		} else if content > 0 {
 			l.agents = terminalRect{right.x + 1, contentY, iw, content}
 			// The feed-only renderer clears pane-local hits. Keep the separate
@@ -471,12 +486,12 @@ func (u *terminalUI) nativeStatus() string {
 		agentsBadge = activityui.Amber + superscript(responding) + activityui.Reset
 	}
 	pair := activityui.Dim + "[" + activityui.Undim + tab(2, "Diff", diffBadge, u.diffOpen) + activityui.Dim + "│" + activityui.Undim +
-		tab(3, "Activity", "", !u.diffOpen) + activityui.Dim + "]" + activityui.Undim
+		tab(3, "Activity", "", !u.diffOpen && !u.journalOpen) + activityui.Dim + "│" + activityui.Undim + tab(5, "Journal", "", u.journalOpen) + activityui.Dim + "]" + activityui.Undim
 	tabs := tab(1, "Main", "", true) + " " + pair + " " + tab(4, "Agents", agentsBadge, true)
 	var hints terminalHints
 	switch {
 	case u.prefix:
-		hints = terminalHints{{"ctrl+b 1-4", "focus", 0}, {"2/3", "diff or activity", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
+		hints = terminalHints{{"ctrl+b 1-5", "focus", 0}, {"2/3", "diff or activity", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
 		return tabs + "  " + hints.render()
 	case u.focus == 1:
 		hints = terminalHints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"r", "follow", 0}, {"?", "help", 0}}
@@ -485,6 +500,8 @@ func (u *terminalUI) nativeStatus() string {
 		}
 	case u.focus == 2:
 		hints = terminalHints{{"j/k", "scroll", 0}, {"n/p", "agent", 0}, {"o", "only", 0}, {"esc", "bottom", 0}, {"enter", "open", 0}}
+	case u.focus == 4:
+		hints = terminalHints{{"j/k", "select", 0}, {"enter", "copy path", 0}, {"space", "expand", 0}, {"d", "details", 0}, {"n", "namespace", 0}, {"esc", "Main", 0}}
 	case u.focus == 3:
 		hints = terminalHints{{"j/k", "agent", 0}, {"o", "only", 0}, {"esc", "back", 0}}
 	}
@@ -495,7 +512,7 @@ func (u *terminalUI) nativeStatus() string {
 		// The previewed pane's bottom row carries Esc's return hint.
 		hints = slices.DeleteFunc(hints, func(h terminalHint) bool { return h.key == "esc" })
 	}
-	hints = append(hints, terminalHint{"^B 1-4", "panes", 0})
+	hints = append(hints, terminalHint{"^B 1-5", "panes", 0})
 	return tabs + "  " + hints.render()
 }
 

@@ -30,6 +30,7 @@ type terminalUI struct {
 	width, height, split, horizontal, rosterHeight int
 	focus, drag                                    int // 0 Main, 1 diff, 2 agents, 3 roster; drag 1 main, 2 auxiliary, 3 files, 4 roster
 	side, activityOpen                             bool
+	journalOpen                                    bool
 	diffOpen                                       bool
 	diffUnseen                                     bool // Saved changes arrived while Activity held the right column.
 	liveDock                                       diffview.PreviewPane
@@ -47,8 +48,8 @@ type terminalUI struct {
 type terminalRect struct{ x, y, w, h int }
 
 type terminalLayout struct {
-	codex, diff, agents, roster, live      terminalRect
-	vertical, horizontal, rosterHorizontal int
+	codex, diff, agents, roster, live, journal terminalRect
+	vertical, horizontal, rosterHorizontal     int
 }
 
 func (r terminalRect) contains(x, y int) bool {
@@ -195,10 +196,16 @@ func (u *terminalUI) key(key byte) error {
 		case '1':
 			u.focus = 0
 		case '2':
+			u.journalOpen = false
 			u.focus = 1
 			u.side = true
 			u.diffOpen = true
+		case '5':
+			u.focus, u.journalOpen, u.diffOpen = 4, true, false
 		case '3', '4':
+			if key == '3' {
+				u.journalOpen = false
+			}
 			u.focus = int(key - '1')
 			u.side = true
 			u.activityOpen = true
@@ -384,6 +391,9 @@ func (u *terminalUI) send(s string) error {
 		return nil
 	}
 
+	if u.focus == 4 {
+		return u.journalKey(s)
+	}
 	if u.focus == 0 {
 		for _, key := range []byte(s) {
 			quit, err := u.main.key(key)
@@ -531,6 +541,9 @@ func (u *terminalUI) mouse(s string) error {
 	case u.layout.codex.contains(x, y):
 		pane = 0
 		r = u.layout.codex
+	case u.layout.journal.contains(x, y):
+		pane = 4
+		r = u.layout.journal
 	case u.layout.diff.contains(x, y):
 		pane = 1
 		r = u.layout.diff
@@ -575,6 +588,19 @@ func (u *terminalUI) mouse(s string) error {
 		return nil
 	}
 	if release {
+		return nil
+	}
+	if pane == 4 {
+		if button&^28 == 64 {
+			return u.journalKey("k")
+		}
+		if button&^28 == 65 {
+			return u.journalKey("j")
+		}
+		view := &u.main.journalView
+		if y-r.y >= view.top {
+			view.selected = max(0, min(len(view.rows)-1, view.offset+y-r.y-view.top))
+		}
 		return nil
 	}
 	if pane == 1 {

@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"sync"
 )
@@ -9,15 +10,20 @@ import (
 // A native sink is scoped to one launched Main thread and workspace. Durable
 // journal records remain the owner; this holds only pending presentation copies.
 type nativeJournalSink struct {
-	mu                sync.Mutex
-	workspace, thread string
-	pending           map[string]nativeJournalPublication
-	answers           map[string]string // Proven provider item ID -> captured journal item ID.
-	sequence          uint64
-	current           map[string]uint64
+	publicationSequence uint64
+	tree                *threadJournal
+	mu                  sync.Mutex
+	workspace, thread   string
+	pending             map[string]nativeJournalPublication
+	answers             map[string]string // Proven provider item ID -> captured journal item ID.
+	sequence            uint64
+	current             map[string]uint64
 }
 
 type nativeJournalPublication struct {
+	order               uint64
+	event               *journalEvent
+	card                *nativeJournalCard
 	item                journalItem
 	terminal, retracted bool
 	batch               uint64
@@ -62,9 +68,44 @@ func (t *mekugiResponseTransform) nativeJournal() *nativeJournalSink {
 	return t.journalNativeSink
 }
 
-func (s *nativeJournalSink) publish(journal threadJournal, terminal bool) {
+func (s *nativeJournalSink) publish(journal threadJournal, terminal bool, responseID ...string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if journal.TreeAuthored {
+		if journal.Sequence >= s.sequence {
+			snapshot := journal.clone()
+			s.tree = &snapshot
+			s.sequence = journal.Sequence
+		}
+		for _, event := range journal.Events {
+			if event.Seq <= journal.LiveSeq || journal.LegacyLive[event.Seq] || event.Fields.Kind == "answer" {
+				continue
+			}
+			id := fmt.Sprintf("event:%d", event.Seq)
+			e := event
+			if _, exists := s.pending[id]; exists {
+				continue
+			}
+			s.publicationSequence++
+			publication := nativeJournalPublication{order: s.publicationSequence, event: &e, item: journalItem{ID: id, Path: event.Path, Kind: event.Fields.Kind, State: event.Fields.State, Text: journalRowText(event), Updated: event.Seq, Author: event.Author}}
+			if event.Op == "set" && !event.Transition {
+				// Title and body edits are not transitions. They stay pending
+				// only for acknowledgement and render no transcript row.
+				publication.item.Text = ""
+			}
+			s.pending[id] = publication
+		}
+		if terminal {
+			id := fmt.Sprintf("card:%d", journal.Sequence)
+			if len(responseID) > 0 && responseID[0] != "" {
+				id = "card:" + responseID[0]
+			}
+			snapshot := journal.clone()
+			s.publicationSequence++
+			s.pending[id] = nativeJournalPublication{order: s.publicationSequence, card: &nativeJournalCard{Journal: snapshot, Since: journal.FlushSeq}, terminal: true, item: journalItem{ID: id, Updated: journal.Sequence, Author: journal.Author}}
+		}
+		return
+	}
 	if journal.Sequence >= s.sequence {
 		s.sequence = journal.Sequence
 		s.current = make(map[string]uint64, len(journal.Items)+len(journal.Retractions))
@@ -110,6 +151,18 @@ func (s *nativeJournalSink) publish(journal threadJournal, terminal bool) {
 	}
 }
 
+// A transcript row is one line: a task transition, a removal, or a note's title.
+// Bodies stay in the pane's detail view and the expanded turn card.
+func journalRowText(event journalEvent) string {
+	switch {
+	case event.Legacy || event.Op == "remove":
+		return journalEventText(event)
+	case event.Fields.Kind == "task":
+		return journalTaskText(event.Fields)
+	}
+	return event.Fields.Title
+}
+
 func (s *nativeJournalSink) bindAnswer(ids []string, journalID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -145,6 +198,12 @@ func (s *nativeJournalSink) snapshot() []nativeJournalPublication {
 		if a.item.Updated > b.item.Updated {
 			return 1
 		}
+		if a.order < b.order {
+			return -1
+		}
+		if a.order > b.order {
+			return 1
+		}
 		return 0
 	})
 	return items
@@ -154,7 +213,11 @@ func (s *nativeJournalSink) snapshot() []nativeJournalPublication {
 // Failure retains the pending revision; enqueueing or reading is not delivery.
 func (s *nativeJournalSink) acknowledge(ctx context.Context, p *mekugiProxy, items []nativeJournalPublication) error {
 	for _, item := range items {
-		if err := p.journals.acknowledge(ctx, p.replayStore, s.workspace, s.thread, map[string]uint64{item.item.ID: item.item.Updated}, item.terminal); err != nil {
+		if item.card != nil || item.event != nil {
+			if err := p.journals.acknowledgeTree(ctx, p.replayStore, s.workspace, s.thread, item.item.Updated, item.terminal); err != nil {
+				return err
+			}
+		} else if err := p.journals.acknowledge(ctx, p.replayStore, s.workspace, s.thread, map[string]uint64{item.item.ID: item.item.Updated}, item.terminal); err != nil {
 			return err
 		}
 		s.mu.Lock()
@@ -178,10 +241,34 @@ func (u *appServerUI) applyPendingJournal() {
 		}
 		items := sink.snapshot()
 		for _, publication := range items {
-			u.view.applyJournal(journalKey(sink.workspace, sink.thread), publication)
+			u.applyJournalPublication(sink, publication)
 		}
 		u.dirty = u.dirty || len(items) > 0
 	}
 	// Journal entries and app-server entries share the transcript ordering.
 	u.session.seq = max(u.session.seq, u.view.lastSeq)
+}
+
+func (u *appServerUI) applyJournalPublication(sink *nativeJournalSink, publication nativeJournalPublication) {
+	if publication.event != nil && publication.event.Fields.Kind == "note" && u.journalPanePresents(sink) {
+		return
+	}
+	if publication.event == nil || publication.item.Text != "" { // Non-transition edits render no row.
+		u.view.applyJournal(journalKey(sink.workspace, sink.thread), publication)
+	}
+}
+
+func (s *journalStore) restoreNative(ctx context.Context, store *mekugiReplayStore, sink *nativeJournalSink) error {
+	var snapshot *threadJournal
+	err := s.transaction(ctx, store, sink.workspace, sink.thread, func(j *threadJournal, exists bool) error {
+		if exists {
+			copy := j.clone()
+			snapshot = &copy
+		}
+		return errJournalUnchanged
+	})
+	if err == nil && snapshot != nil {
+		sink.publish(*snapshot, false)
+	}
+	return err
 }

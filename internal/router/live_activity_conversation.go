@@ -381,6 +381,17 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	entryRows := make(map[uint64]int)
 	p := &v.painter
 	switch {
+	case entry.Kind == "journal_card":
+		laid = blocks
+		v.journalCardLines(&out, entry, width)
+	case entry.Kind == "journal_event":
+		for _, row := range p.Markdown(livediff.Safe(entry.Text, false), max(1, width-2)) {
+			style := activityui.Dim
+			if entry.journalEvent != nil && entry.journalEvent.Fields.State == "blocked" {
+				style = activityui.Amber
+			}
+			out.add(0, style+row+activityui.Reset)
+		}
 	case entry.Agent == "Main" && entry.Kind == "progress":
 		for _, block := range blocks {
 			out.add(0, p.Block(block, width)...)

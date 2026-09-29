@@ -18,11 +18,12 @@ type nativePaneState struct {
 	Focus            int  `json:"focus"`
 	Split            int  `json:"split"`
 	DiffOpen         bool `json:"diffOpen"`
+	JournalOpen      bool `json:"journalOpen,omitzero"`
 	NavigatorColumns int  `json:"navigatorColumns"`
 }
 
 func (u *terminalUI) paneState() nativePaneState {
-	return nativePaneState{Version: 1, Focus: u.focus, Split: u.split, DiffOpen: u.diffOpen, NavigatorColumns: u.diff.navigation.Columns}
+	return nativePaneState{Version: 1, Focus: u.focus, Split: u.split, DiffOpen: u.diffOpen, JournalOpen: u.journalOpen, NavigatorColumns: u.diff.navigation.Columns}
 }
 
 type nativePanePersistence struct {
@@ -62,10 +63,10 @@ func (p *nativePanePersistence) open(u *terminalUI, workspace, thread string, re
 	if err := json.Unmarshal(data, &state); err != nil {
 		return err
 	}
-	if state.Version != 1 || state.Focus < 0 || state.Focus > 3 || state.Split < 0 || state.Split > 10000 || state.NavigatorColumns < 0 || state.NavigatorColumns > 10000 || state.Focus == 1 && !state.DiffOpen || state.Focus == 2 && state.DiffOpen {
+	if state.Version != 1 || state.Focus < 0 || state.Focus > 4 || state.Split < 0 || state.Split > 10000 || state.NavigatorColumns < 0 || state.NavigatorColumns > 10000 || state.Focus == 1 && !state.DiffOpen || state.Focus == 2 && (state.DiffOpen || state.JournalOpen) || state.DiffOpen && state.JournalOpen || state.Focus == 4 && !state.JournalOpen {
 		return errors.New("invalid or unsupported pane state")
 	}
-	u.focus, u.split, u.diffOpen = state.Focus, state.Split, state.DiffOpen
+	u.focus, u.split, u.diffOpen, u.journalOpen = state.Focus, state.Split, state.DiffOpen, state.JournalOpen
 	u.diff.navigation.Columns = state.NavigatorColumns
 	return nil
 }

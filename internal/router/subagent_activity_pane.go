@@ -9,23 +9,25 @@ import (
 type activityPane struct{ root string }
 
 type activityPaneEntry struct {
-	Seq      uint64
-	Agent    string
-	Kind     string
-	Text     string
-	CallID   string              `json:",omitempty"`
-	Filter   *exploreFilterEvent `json:",omitempty"`
-	Observed time.Time
+	journalEvent *journalEvent
+	Seq          uint64
+	Agent        string
+	Kind         string
+	Text         string
+	CallID       string              `json:",omitempty"`
+	Filter       *exploreFilterEvent `json:",omitempty"`
+	Observed     time.Time
 
 	native       *liveActivityNativeItem // In-process app-server lifecycle input, not a provider observation.
 	journal      *journalItem            // Native presentation keeps IDs/questions separate from rendered text.
-	journalItems []journalItem           // One terminal delivery uses Activity's existing grouped result renderer.
-	assignment   *activityAssignment     // Validated native NEW_TASK, not an ordinary message.
-	message      *activityMessage        // A directed message, for a reply entry.
-	start        *activityStart          // A child's start, for a start entry.
-	activitySeq  uint64                  // Main excerpt's exact entry in Activity, never a question target.
-	outputTail   []string                // Failed command's sanitized final output lines, on an exit entry.
-	outputOmit   int                     // Output lines before outputTail.
+	journalCard  *nativeJournalCard
+	journalItems []journalItem       // One terminal delivery uses Activity's existing grouped result renderer.
+	assignment   *activityAssignment // Validated native NEW_TASK, not an ordinary message.
+	message      *activityMessage    // A directed message, for a reply entry.
+	start        *activityStart      // A child's start, for a start entry.
+	activitySeq  uint64              // Main excerpt's exact entry in Activity, never a question target.
+	outputTail   []string            // Failed command's sanitized final output lines, on an exit entry.
+	outputOmit   int                 // Output lines before outputTail.
 }
 
 type activityPaneAgent struct {

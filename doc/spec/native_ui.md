@@ -8,6 +8,12 @@ Operation-row formatting and feed controls are specified by
 
 ### Native app-server UI
 
+Journal shares the auxiliary column with Diff and Activity (`Ctrl-B 5`). No bare
+key opens it, so composer text that starts with any letter is typed. Its plan strip, tree navigation, transition rows and expandable
+terminal card follow [journal presentation](journal.md#native-main-presentation).
+Pane preferences retain its visibility and focus; transient selection and expansion
+remain local to the active frontend.
+
 `mekugi codex` uses the native client of `codex app-server` for interactive
 terminal launches. Explicit `--yolo` remains required; without it startup rejects
 before launching Codex. There is no legacy UI selection or fallback. It maps explicit `--yolo`, model and config

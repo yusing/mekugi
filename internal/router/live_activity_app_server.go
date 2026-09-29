@@ -13,6 +13,10 @@ import (
 )
 
 func (v *liveActivityView) applyJournal(thread string, publication nativeJournalPublication) {
+	if publication.event != nil || publication.card != nil {
+		v.applyTreeJournal(thread, publication)
+		return
+	}
 	// Keep question links stable across live-to-terminal replacement and edits,
 	// including when an identical prompt is submitted again later.
 	targets := make(map[string]uint64)
