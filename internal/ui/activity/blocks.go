@@ -87,6 +87,19 @@ func (b Block) ReadOutput() bool {
 	return b.Verb == "Read" || b.Verb == "Skill" && b.Kind == "reads"
 }
 
+// Instant reports an operation that prints what it reads at once: a read,
+// search, listing or inspection, not a program whose output is worth
+// watching roll by.
+func (b Block) Instant() bool {
+	switch b.Verb {
+	case "Read", "Search", "Inspect", "List":
+		return true
+	case "Skill":
+		return b.Kind == "reads" // skills-mgr run runs a program.
+	}
+	return false
+}
+
 // GroupOperations groups adjacent edits from one source and outcome, across
 // invocations, so their rows share one verb cell. Invocation identities stay
 // on their rows. Other operations stand alone.

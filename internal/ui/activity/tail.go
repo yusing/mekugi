@@ -136,7 +136,7 @@ type outputLine struct {
 func TailOutput(output string) ([]string, int) {
 	var tail OutputTail
 	tail.Write(output)
-	tail.Reveal(len(tail.pending))
+	tail.Flush()
 	return tail.Lines()
 }
 
@@ -189,6 +189,12 @@ func (t *OutputTail) Reveal(n int) bool {
 // frame rate, while steady output stays within a few lines of live.
 func (t *OutputTail) Roll() bool {
 	return t.Reveal((len(t.pending) + 3) / 4)
+}
+
+// Flush reveals every pending line at once, for output with nothing to watch
+// roll by.
+func (t *OutputTail) Flush() bool {
+	return t.Reveal(len(t.pending))
 }
 
 // Lines is the last revealed non-blank lines, then an unfinished one once

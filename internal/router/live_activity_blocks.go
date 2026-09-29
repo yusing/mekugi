@@ -3,6 +3,7 @@ package router
 import (
 	"cmp"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/livediff"
@@ -156,6 +157,13 @@ func toolOperationBlocks(text string) []activityui.Block {
 		blocks = append(blocks, block)
 	}
 	return activityui.MergeLiveActivityReads(blocks)
+}
+
+// instantOperations reports tool text whose every operation prints what it
+// reads at once, so its output shows whole rather than rolling through.
+func instantOperations(text string) bool {
+	blocks := toolOperationBlocks(livediff.Safe(text, false))
+	return len(blocks) > 0 && !slices.ContainsFunc(blocks, func(block activityui.Block) bool { return !block.Instant() })
 }
 
 // commandSegmentBlocks shows each segment of a tracked command as its own

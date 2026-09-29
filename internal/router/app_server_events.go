@@ -44,7 +44,10 @@ type appServerCommandRun struct {
 	entry  activityPaneEntry
 	output activityui.OutputTail
 	dirty  bool
-	done   []activityPaneEntry // Completion, held until streamed output has rolled through.
+	// Instant operations, such as reads, show their output at once; other
+	// commands roll a burst through.
+	instant bool
+	done    []activityPaneEntry // Completion, held until streamed output has rolled through.
 	// A tracked command's completion waits for its segment report to end.
 	completion  *activityPaneEntry
 	completed   appServerItem
@@ -353,7 +356,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				if item.Type == "commandExecution" {
 					native.running = true
 					if s.commands[key] == nil {
-						s.commands[key] = &appServerCommandRun{entry: entry}
+						s.commands[key] = &appServerCommandRun{entry: entry, instant: instantOperations(entry.Text)}
 					}
 				}
 				entries = append(entries, entry)
@@ -367,7 +370,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			// A burst that arrived just before completion, as from a command
 			// that prints only when it exits, rolls through before the final
 			// tail replaces it.
-			if run := s.commands[key]; run != nil && run.output.Pending() > 0 {
+			if run := s.commands[key]; run != nil && !run.instant && run.output.Pending() > 0 {
 				run.done = done
 				break
 			}
@@ -414,6 +417,15 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	return !main || !strings.HasPrefix(m.Method, "turn/"), nil
 }
 
+// roll reveals one frame's share of pending output, or all of an instant
+// operation's.
+func (r *appServerCommandRun) roll() bool {
+	if r.instant {
+		return r.output.Flush()
+	}
+	return r.output.Roll()
+}
+
 // commandDone is a completed command's entry with its output, and a failure's
 // exit with the host's combined output tail.
 func (s *appServerSession) commandDone(entry activityPaneEntry, item appServerItem, now time.Time) []activityPaneEntry {
@@ -458,7 +470,7 @@ func (u *appServerUI) flushCommandOutput() {
 			entries = append(entries, tracked...)
 			continue
 		}
-		if rolled := run.output.Roll(); !run.dirty && !rolled {
+		if rolled := run.roll(); !run.dirty && !rolled {
 			continue
 		}
 		run.dirty = false

@@ -96,6 +96,10 @@ nothing waits. Only a burst's latest 64 lines roll, so the tail's memory stays
 bounded however much the command prints, and at most one update per frame is
 drawn. A completion that arrives while a burst is still rolling, as from a
 command that prints only when it exits, is held until the burst has rolled.
+Output of an invocation, or tracked segment, whose operations are all instant
+reads (`Read`, `Search`, `Inspect`, `List`, or a `Skill` read other than
+`skills-mgr run`) shows its latest lines at once instead of rolling, and its
+completion is never held; other `Run` output still rolls.
 The host supplies one combined output stream per shell invocation. Its tail follows
 the final displayed operation, including a Read or Skill row, rather than an earlier
 Run row; it does not claim per-command output attribution. A command list tracked under

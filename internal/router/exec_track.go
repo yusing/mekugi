@@ -67,13 +67,14 @@ type execTrack struct {
 }
 
 type execTrackSegment struct {
-	source string
-	edit   bool   // The shared classifier identifies an edit operation.
-	text   string // Display operations, derived once by the UI.
-	began  bool
-	ended  bool
-	code   int
-	output activityui.OutputTail
+	source  string
+	edit    bool   // The shared classifier identifies an edit operation.
+	text    string // Display operations, derived once by the UI.
+	instant bool   // Its operations show output at once rather than rolling.
+	began   bool
+	ended   bool
+	code    int
+	output  activityui.OutputTail
 }
 
 func listenExecTrack(ctx context.Context, socket, directory string) (*execTrackHub, error) {
@@ -495,8 +496,13 @@ func (h *execTrackHub) view(key [3]string, final bool, text func(string) string)
 		segment := &track.segments[i]
 		if segment.text == "" {
 			segment.text = text(segment.source)
+			segment.instant = instantOperations(segment.text)
 		}
-		if segment.output.Roll() {
+		rolled := segment.output.Roll
+		if segment.instant {
+			rolled = segment.output.Flush
+		}
+		if rolled() {
 			changed = true
 		}
 		shown := commandSegment{text: segment.text, exit: segment.code}
@@ -512,7 +518,7 @@ func (h *execTrackHub) view(key [3]string, final bool, text func(string) string)
 		}
 		if view.output {
 			if final {
-				segment.output.Reveal(segment.output.Pending())
+				segment.output.Flush()
 			}
 			shown.tail, shown.omit = segment.output.Lines()
 		}
@@ -560,7 +566,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 		return nil, false
 	}
 	// Terminal and over-bound commands keep the host's combined output.
-	rolled := !view.output && run.output.Roll()
+	rolled := !view.output && run.roll()
 	if !changed && !rolled && !run.dirty {
 		return nil, true
 	}

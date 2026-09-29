@@ -419,3 +419,41 @@ func TestAppServerShortPaneShowsCompactTail(t *testing.T) {
 		t.Fatalf("short pane lacks the compact tail %q:\n%s", want, got)
 	}
 }
+
+func TestAppServerInstantOperationOutputDoesNotRoll(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.conversation = true
+	notify := func(method string, params map[string]any) {
+		t.Helper()
+		params["threadId"], params["turnId"] = "main", "t"
+		appServerTestNotify(t, u, method, params)
+	}
+	main := func() string { return ansi.Strip(strings.Join(u.view.renderFeed(90, 60).lines, "\n")) }
+	var output strings.Builder
+	for i := range 20 {
+		fmt.Fprintf(&output, "line %d\n", i)
+	}
+	item := map[string]any{"id": "read", "type": "commandExecution", "command": "rg -n line internal", "status": "inProgress"}
+	notify("item/started", map[string]any{"item": item})
+	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "read", "delta": output.String()})
+	u.flushCommandOutput()
+	if got := main(); !strings.Contains(got, "┆ line 19") || strings.Contains(got, "line 14") {
+		t.Fatalf("a search's output rolled instead of showing its tail at once:\n%s", got)
+	}
+	// Its completion is not held behind a burst either.
+	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "read", "delta": "line 20\n"})
+	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output.String()+"line 20\n"
+	notify("item/completed", map[string]any{"item": item})
+	if got := main(); strings.Contains(got, "Running") || !strings.Contains(got, "┆ line 20") || len(u.session.commands) != 0 {
+		t.Fatalf("a search's completion waited for its output to roll:\n%s", got)
+	}
+
+	// Other commands still roll a burst through.
+	run := map[string]any{"id": "run", "type": "commandExecution", "command": "go test ./...", "status": "inProgress"}
+	notify("item/started", map[string]any{"item": run})
+	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "run", "delta": output.String()})
+	u.flushCommandOutput()
+	if got := main(); strings.Contains(got[strings.Index(got, "Running"):], "line 19") {
+		t.Fatalf("a command's burst jumped to its tail:\n%s", got)
+	}
+}
