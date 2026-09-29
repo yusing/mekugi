@@ -136,7 +136,9 @@ tests, also read `CONTEXT-AUTOMATED-TESTS.md`.
 
 ## Where to look
 
-- `README.md`: user-facing documentation; keep agent-facing details out of it.
+- `README.md`: user-facing documentation; keep agent-facing details out of it. `Features`
+  summarizes capabilities, `Native UI` covers interactive use, and `Development` serves
+  contributors.
 - `doc/spec/index.md`: interface requirements and acceptance criteria.
 - `doc/architecture/index.md`: boundary ownership contracts.
 - `internal/router/journal_tool.go`: additive journal and finish guidance projected through the
