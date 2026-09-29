@@ -748,10 +748,14 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	if height >= 10 {
 		rows = append(rows, "")
 	}
-	keys := [][2]string{{fmt.Sprintf("1–%d", min(9, len(q.choices)+1)), "choose"}, {"type", "answer"}, {"enter", "next"}, {"←/→", "question"}, {"ctrl+]", "skip"}, {"esc", "hide"}}
+	keys := [][2]string{{fmt.Sprintf("1–%d", min(9, len(q.choices)+1)), "choose"}, {"type", "answer"}}
 	if len(c.request) > 0 {
-		keys = append(keys[:2], append([][2]string{{"tab", "note"}}, keys[2:]...)...)
+		keys = append(keys, [2]string{"tab", "note"})
 	}
+	if len(c.questions) > 1 {
+		keys = append(keys, [2]string{"enter", "next"}, [2]string{"←/→", "question"})
+	}
+	keys = append(keys, [2]string{"ctrl+]", "skip"}, [2]string{"esc", "hide"})
 	hints := func(pairs [][2]string) []string {
 		var parts []string
 		for _, pair := range pairs {
@@ -761,7 +765,11 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	}
 	foot := hints(keys)
 	if len(foot) > max(2, height/3) {
-		foot = hints([][2]string{{"↑↓", "pick"}, {"↵", "next"}, {"←→", "question"}, {"^]", "skip"}, {"esc", "hide"}})
+		compact := [][2]string{{"↑↓", "pick"}}
+		if len(c.questions) > 1 {
+			compact = append(compact, [2]string{"↵", "next"}, [2]string{"←→", "question"})
+		}
+		foot = hints(append(compact, [2]string{"^]", "skip"}, [2]string{"esc", "hide"}))
 	}
 	if d.confirm {
 		gaps := 0

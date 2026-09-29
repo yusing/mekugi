@@ -701,6 +701,7 @@ lists scroll with `option N/M`; only visible options determine column widths.
 Descriptions drop when less than 24 columns remain. Key hints wrap into bands,
 with compact hints in narrow panes. Long question bodies remain accessible through
 PgUp/PgDn rather than ellipsis truncation.
+For a single question, omit the Enter-next and left/right question-navigation hints.
 
 Up/Down and Ctrl-P/Ctrl-N wrap option selection. Digits choose options; other
 printable input selects Other and edits the answer. Tab on a sync option edits a

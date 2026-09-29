@@ -355,3 +355,20 @@ func TestNativeQuestionsWaitForEmptyComposerAndRespectHide(t *testing.T) {
 		t.Fatal("manual reopening failed")
 	}
 }
+
+func TestNativeSingleQuestionOmitsNavigationHints(t *testing.T) {
+	for _, width := range []int{24, 72, 160} {
+		for _, titles := range [][]string{{"Only question?"}, {"First question?", "Second question?"}} {
+			u, _ := newAppServerTestUI()
+			questionTestAsync(t, u, "hints", titles...)
+			for _, height := range []int{8, 20} {
+				rows := strings.Join(u.questionRows(width, height), "\n")
+				hasNext := strings.Contains(rows, "next")
+				hasArrows := strings.Contains(rows, "←") || strings.Contains(rows, "→")
+				if want := len(titles) > 1; hasNext != want || hasArrows != want {
+					t.Fatalf("%d questions at %dx%d have wrong hints:\n%s", len(titles), width, height, rows)
+				}
+			}
+		}
+	}
+}
