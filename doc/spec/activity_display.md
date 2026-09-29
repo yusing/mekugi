@@ -184,7 +184,9 @@ and activity, then its metrics inline in fixed-width columns: context usage (def
 by the native layout contract), the timer, the agent's captured edit lines as
 `+added -removed` in the Diff pane's colors, `↑ in ↓ out` tokens, estimated USD cost
 to two decimal places, and provider-response turns as `T+N`. Edit lines total every
-capture attributed to the agent, independent of the Diff caller filter; an incomplete
+capture attributed to the agent, independent of the Diff caller filter. Files outside
+the capturing workspace, such as rewritten scratch files, stay in the Diff pane but
+are not counted; tool-managed captures still count. An incomplete
 capture shows `?` rather than a partial count, and an agent without captures leaves
 the column blank. The roster rule totals them with the other session totals.
 A changed token, cost, context, or edit-line value counts toward its new value over

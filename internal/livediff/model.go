@@ -29,6 +29,7 @@ type File struct {
 type Chunk struct {
 	Key, Status   string
 	Stream        string
+	Workspace     string // The capturing workspace; empty when unknown.
 	CaptureOrder  uint64
 	SnapshotOrder int
 	Review        mekugi.ReviewFile

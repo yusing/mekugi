@@ -291,6 +291,28 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 	}
 }
 
+// Rewritten scratch files outside the workspace are not project edits.
+func TestLiveDiffCallerCountsSkipFilesOutsideWorkspace(t *testing.T) {
+	chunk := func(caller, workspace, before, after string) livediff.Chunk {
+		return livediff.Chunk{Workspace: workspace, Origin: livediff.Origin{Caller: caller},
+			Review: mekugi.ReviewFile{BeforePath: before, AfterPath: after, Diff: "@@ -1 +1 @@\n-x\n+y"}}
+	}
+	counts := liveDiffCallerCounts([]livediff.File{{Chunks: []livediff.Chunk{
+		chunk("/root", "/w", "/w/a.go", "/w/a.go"),
+		chunk("/root", "/w", "/tmp/stats.txt", "/tmp/stats.txt"),
+		chunk("/root", "/w", "/w-other/b.go", "/w-other/b.go"),
+		chunk("/root", "/w", "/w/moved.go", "/tmp/moved.go"),
+		chunk("/root", "", "/tmp/unknown.go", "/tmp/unknown.go"), // Unknown workspace still counts.
+		chunk("/root/scratch", "/w", "", "/tmp/new.txt"),
+	}}})
+	if got, want := counts["/root"], (livediff.Counts{Added: 3, Removed: 3}); got != want {
+		t.Fatalf("/root counts = %+v, want %+v", got, want)
+	}
+	if _, ok := counts["/root/scratch"]; ok {
+		t.Fatalf("an agent with only scratch edits has counts: %+v", counts)
+	}
+}
+
 func TestNativeRosterMetricsEaseToNewValues(t *testing.T) {
 	v := newLiveActivityView()
 	now := time.Now()

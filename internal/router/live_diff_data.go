@@ -90,8 +90,8 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			}
 			attempt.chunks = append(attempt.chunks, livediff.Chunk{
 				Key: key + "/" + strconv.Itoa(n), Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
-				CaptureOrder: record.CaptureOrder,
-				Review:       file, Origin: origin,
+				Workspace: event.Workspace, CaptureOrder: record.CaptureOrder,
+				Review: file, Origin: origin,
 			})
 		}
 		if len(managed) != 0 {
@@ -103,8 +103,8 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			}
 			attempt.chunks = append(attempt.chunks, livediff.Chunk{
 				Key: key + "/managed", Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
-				CaptureOrder: record.CaptureOrder,
-				Review:       mekugi.ReviewFile{BeforePath: label, AfterPath: label, Origin: "tool-managed", Incomplete: reason}, Origin: origin,
+				Workspace: event.Workspace, CaptureOrder: record.CaptureOrder,
+				Review: mekugi.ReviewFile{BeforePath: label, AfterPath: label, Origin: "tool-managed", Incomplete: reason}, Origin: origin,
 			})
 		}
 		d.attempts[key] = attempt
