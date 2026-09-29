@@ -46,7 +46,7 @@ func (u *appServerUI) effortChoices() []string {
 // intent, never synthetic Responses items or writes to the user's config file.
 // Source: codex-rs/app-server-protocol/src/protocol/v2/{thread,turn}.rs
 func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
-	if u.thread == "" || u.restoring != nil || u.starting {
+	if u.thread == "" || u.restoring != nil || u.starting || u.clearing {
 		u.setNotice("Wait for the thread or turn to finish starting", true)
 		return false, nil
 	}
@@ -130,6 +130,10 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 	command := fields[0]
 	if command != "/model" && command != "/reasoning" && command != "/effort" && command != "/tier" {
 		return false, nil
+	}
+	if u.clearing {
+		u.setNotice("Wait for the new session · draft kept", false)
+		return true, nil
 	}
 	var choices []string
 	switch command {

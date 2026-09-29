@@ -332,6 +332,55 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 	}
 }
 
+func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
+	p := newNativePreview(t)
+	defer p.close()
+	keys := func(s string) {
+		t.Helper()
+		for _, key := range []byte(s) {
+			if err := p.ui.shell.key(key); err != nil {
+				t.Fatal(err)
+			}
+			p.serve()
+		}
+	}
+	render := func() string {
+		t.Helper()
+		screen := vt.NewEmulator(100, 28)
+		defer screen.Close()
+		p.ui.shell.paintedRows = nil
+		finishPacing(p.ui.view, p.ui.agents)
+		if err := p.ui.paint(screen, 100, 28); err != nil {
+			t.Fatal(err)
+		}
+		return screen.String()
+	}
+	p.until("main streams its patch")
+	keys("/compact\r")
+	if p.ui.turn == "" || len(p.ui.unsent) != 1 || p.ui.unsent[0].text != "/compact" {
+		t.Fatal("busy compact was not queued locally")
+	}
+	if frame := render(); !strings.Contains(frame, "/compact") {
+		t.Fatalf("queued compact absent from rendered frame:\n%s", frame)
+	}
+	p.until("done")
+	p.serve()
+	if p.ui.turn != "" || p.ui.compactRequest || !strings.Contains(render(), "Context compacted") {
+		t.Fatal("queued compaction did not complete visibly")
+	}
+	keys("/clear\r")
+	if p.ui.thread != "preview-clear-1" || len(p.ui.view.entries) != 0 {
+		t.Fatalf("clear did not open empty thread: thread=%q entries=%+v", p.ui.thread, p.ui.view.entries)
+	}
+	if frame := render(); strings.Contains(frame, "Context compacted") || strings.Contains(frame, "old transcript") {
+		t.Fatalf("clear retained previous presentation:\n%s", frame)
+	}
+	keys("fresh prompt\r")
+	if p.ui.thread != "preview-clear-1" || !strings.Contains(render(), "I heard: fresh prompt") {
+		t.Fatal("fresh thread did not answer the next composer prompt")
+	}
+}
+
 type nativePreviewStep struct {
 	name string
 	run  func()
@@ -346,6 +395,7 @@ type nativePreview struct {
 	workspace   string
 	message     int
 	calls       int
+	clears      int
 	steps       []nativePreviewStep
 	step        int
 	active      map[string]string // Running turn by thread.
@@ -982,6 +1032,7 @@ func (p *nativePreview) serve() {
 			Params struct {
 				Input       []map[string]any `json:"input"`
 				ClientID    string           `json:"clientUserMessageId"`
+				ThreadID    string           `json:"threadId"`
 				Model       string           `json:"model"`
 				Effort      string           `json:"effort"`
 				ServiceTier jsontext.Value   `json:"serviceTier"`
@@ -999,6 +1050,15 @@ func (p *nativePreview) serve() {
 		result := map[string]any{}
 		turn := ""
 		switch request.Method {
+		case "thread/start":
+			p.step = len(p.steps)
+			p.live = nil
+			clear(p.active)
+			p.clears++
+			result["thread"] = map[string]any{"id": fmt.Sprintf("preview-clear-%d", p.clears), "cwd": p.workspace}
+			result["model"] = p.ui.model
+			result["reasoningEffort"] = p.ui.reasoningEffort
+			result["serviceTier"] = p.ui.serviceTier
 		case "skills/list":
 			result["data"] = []any{map[string]any{"cwd": p.ui.session.cwd, "skills": []any{
 				map[string]any{"name": "code-review", "description": "Review a change for correctness", "path": filepath.Join(p.ui.session.cwd, "skills/code-review/SKILL.md"), "enabled": true},
@@ -1017,11 +1077,21 @@ func (p *nativePreview) serve() {
 			turn = fmt.Sprintf("preview-turn-%d", p.message)
 			result["turn"] = map[string]any{"id": turn}
 		case "turn/steer":
-			turn = p.active["main"]
+			turn = p.active[request.Params.ThreadID]
 			result["turnId"] = turn
+		case "thread/compact/start":
+			p.message++
+			turn = fmt.Sprintf("preview-compact-%d", p.message)
 		}
 		p.reply(request.ID, result)
 		switch request.Method {
+		case "thread/compact/start":
+			thread := request.Params.ThreadID
+			p.notify("turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": turn}})
+			item := map[string]any{"id": fmt.Sprintf("preview-compaction-%d", p.message), "type": "contextCompaction"}
+			p.notify("item/started", map[string]any{"threadId": thread, "turnId": turn, "item": item})
+			p.notify("item/completed", map[string]any{"threadId": thread, "turnId": turn, "item": item})
+			p.notify("turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": turn, "status": "completed"}})
 		case "thread/settings/update":
 			model, effort, tier := p.ui.model, p.ui.reasoningEffort, p.ui.serviceTier
 			if request.Params.Model != "" {
@@ -1035,9 +1105,9 @@ func (p *nativePreview) serve() {
 					p.t.Fatal(err)
 				}
 			}
-			p.notify("thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": model, "effort": effort, "serviceTier": tier}})
+			p.notify("thread/settings/updated", map[string]any{"threadId": request.Params.ThreadID, "threadSettings": map[string]any{"model": model, "effort": effort, "serviceTier": tier}})
 		case "turn/start":
-			p.notify("turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": turn}})
+			p.notify("turn/started", map[string]any{"threadId": request.Params.ThreadID, "turn": map[string]any{"id": turn}})
 			p.userMessage(turn, request.Params.ClientID, request.Params.Input)
 			var text []string
 			for _, input := range request.Params.Input {
@@ -1045,10 +1115,10 @@ func (p *nativePreview) serve() {
 					text = append(text, s)
 				}
 			}
-			p.notify("item/completed", map[string]any{"threadId": "main", "turnId": turn, "item": map[string]any{
+			p.notify("item/completed", map[string]any{"threadId": request.Params.ThreadID, "turnId": turn, "item": map[string]any{
 				"id": fmt.Sprintf("preview-answer-%d", p.message), "type": "agentMessage", "text": "I heard: " + strings.Join(text, ""),
 			}})
-			p.notify("turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": turn, "status": "completed"}})
+			p.notify("turn/completed", map[string]any{"threadId": request.Params.ThreadID, "turn": map[string]any{"id": turn, "status": "completed"}})
 		case "turn/steer":
 			p.userMessage(turn, request.Params.ClientID, request.Params.Input)
 		case "turn/interrupt":
@@ -1071,7 +1141,7 @@ func (p *nativePreview) reply(id jsontext.Value, result any) {
 }
 
 func (p *nativePreview) userMessage(turn, clientID string, content any) {
-	p.notify("item/completed", map[string]any{"threadId": "main", "turnId": turn, "item": map[string]any{
+	p.notify("item/completed", map[string]any{"threadId": p.ui.thread, "turnId": turn, "item": map[string]any{
 		"id": fmt.Sprintf("preview-user-%d-%d", p.message, len(p.ui.view.entries)), "type": "userMessage", "clientId": clientID, "content": content,
 	}})
 }

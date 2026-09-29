@@ -60,7 +60,7 @@ func TestAppServerSteerAndQueueNativeCodex(t *testing.T) {
 	}()
 	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="OpenAI",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="Native control fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="mock-model"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}, "")
@@ -91,11 +91,21 @@ func TestAppServerSteerAndQueueNativeCodex(t *testing.T) {
 	terminal.send("queued afterwards\t")
 	terminal.await("Queued for the next turn")
 	terminal.send("\x03")
-	resent := next("interrupt resend")
-	if strings.Count(resent, "steer interrupts") != 1 || strings.Contains(resent, "queued afterwards") {
-		t.Fatalf("interrupt resend request: %s", resent)
+	terminal.awaitMatch("interrupted input restored", func(screen string) bool {
+		return strings.Contains(screen, "╭─ Interrupted") && strings.Contains(screen, "steer interrupts") && strings.Contains(screen, "queued afterwards") && !strings.Contains(screen, "↳")
+	})
+	select {
+	case body := <-p.requests:
+		t.Fatalf("interruption automatically resent input: %s", body)
+	default:
 	}
-	settled("resent turn running")
+	terminal.send("\r")
+	resent := next("explicit resubmission")
+	if strings.Count(resent, "steer interrupts") != 1 || !strings.Contains(resent, "queued afterwards") {
+		t.Fatalf("restored input request: %s", resent)
+	}
+	settled("resubmitted turn running")
+	terminal.send("queued later\t")
 
 	terminal.send("steer commits\r")
 	settled("second steer accepted")
@@ -104,11 +114,25 @@ func TestAppServerSteerAndQueueNativeCodex(t *testing.T) {
 	if committed := next("committed steer"); strings.Count(committed, "steer commits") != 1 {
 		t.Fatalf("steer not committed once: %s", committed)
 	}
-	if queued := next("queued turn"); strings.Count(queued, "queued afterwards") != 1 || strings.Count(queued, "steer interrupts") != 1 {
+	if queued := next("queued turn"); strings.Count(queued, "queued later") != 1 || strings.Count(queued, "steer interrupts") != 1 {
 		t.Fatalf("queued turn request: %s", queued)
 	}
 	terminal.awaitMatch("pending input cleared", func(screen string) bool {
 		return strings.Contains(screen, "╭─ Completed") && !strings.Contains(screen, "↳") && strings.Count(screen, "steer commits") == 1
 	})
+	terminal.send("/compact\r")
+	next("manual compaction")
+	terminal.await("Context compacted")
+	terminal.await("╭─ Completed")
+	terminal.send("/clear\r")
+	terminal.awaitMatch("fresh session", func(screen string) bool {
+		return strings.Contains(screen, "Ready") && !strings.Contains(screen, "steer interrupts") && !strings.Contains(screen, "queued later")
+	})
+	terminal.send("Fresh session prompt\r")
+	fresh := next("fresh session")
+	if !strings.Contains(fresh, "Fresh session prompt") || strings.Contains(fresh, "steer interrupts") {
+		t.Fatalf("clear retained prior context: %s", fresh)
+	}
+	terminal.await("╭─ Completed")
 	terminal.quit()
 }

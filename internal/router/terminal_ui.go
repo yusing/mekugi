@@ -386,7 +386,7 @@ func (u *terminalUI) send(s string) error {
 	}
 
 	if s == "\x1b" && u.focus == 0 && u.main != nil && !u.main.paste {
-		if u.main.turn != "" {
+		if u.main.turn != "" || u.main.starting || u.main.submission.text != "" || len(u.main.unsent)+len(u.main.queued) > 0 {
 			return u.main.interruptTurn()
 		}
 		return nil

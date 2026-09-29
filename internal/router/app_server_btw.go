@@ -37,7 +37,7 @@ func (u *appServerUI) submitBTW() error {
 		u.setNotice("Use /btw QUESTION · repeat /btw for a follow-up · Esc closes", false)
 		return nil
 	}
-	if u.thread == "" || u.restoring != nil {
+	if u.thread == "" || u.restoring != nil || u.clearing {
 		u.setNotice("Wait for the conversation to load before asking a side question", false)
 		return nil
 	}
@@ -75,7 +75,7 @@ func (u *appServerUI) btwRequest(b *appServerBTW, method string, params any) err
 
 func (u *appServerUI) flushBTW() error {
 	b := u.btw
-	if b == nil || b.pending.text == "" || b.starting {
+	if b == nil || b.pending.text == "" || b.starting || u.clearing {
 		return nil
 	}
 	if b.thread == "" {

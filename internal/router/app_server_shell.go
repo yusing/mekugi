@@ -22,7 +22,7 @@ func (u *appServerUI) submitShell() error {
 	if u.thread == "" || u.restoring != nil {
 		return nil
 	}
-	if u.shellPending.text != "" || u.shellOrigin != nil || u.starting || u.submission.text != "" || u.interrupting != "" {
+	if u.clearing || u.shellPending.text != "" || u.shellOrigin != nil || u.starting || u.submission.text != "" || u.interrupting != "" {
 		u.setNotice("Waiting for the pending request · press Enter again when ready", false)
 		return nil
 	}

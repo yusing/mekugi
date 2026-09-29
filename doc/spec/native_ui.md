@@ -286,7 +286,7 @@ text part, so host echoes and restored history retain their presentation without
 guessing from prompt text. Missing historical span metadata stays literal.
 
 File snapshots travel in Codex-owned input history, not a router-lifetime lookup.
-Queued input, accepted steering resends, fork/resume, and provider switches retain
+Queued and restored input, fork/resume, and provider switches retain
 the submitted content without reopening files. The native transcript and recalled
 prompt hide transport framing. A recalled draft with live file bindings takes a
 fresh snapshot when submitted again. Attachment contents are not journal question
@@ -518,6 +518,19 @@ Codex owns validation, precedence, preemption, and continuation. The client uses
 the same `turn/steer` path whether the feature is enabled or disabled and never
 implements instant steering by aborting a turn or replaying a tool.
 
+`/compact` asks Codex to compact the current conversation. While busy it appears
+in the pending-input list and runs after the active turn; it never replaces that
+turn or becomes model input. It separates surrounding text batches, and later
+input waits until compaction finishes. Interrupt restores a still-queued command
+along with other unsent input. Host compaction progress and failures remain visible.
+`/clear` clears Main, Activity, and journal presentation and starts a fresh Codex
+session with the current workspace and model settings. It is unavailable while a
+task or submission is in progress. Existing saved threads and filesystem changes
+are not deleted; a failed fresh-session request keeps the old transcript usable.
+While the new session starts, model-setting commands, shell commands, and side
+questions keep their drafts for retry rather than targeting the old thread.
+Late events from the previous session cannot repopulate the new transcript.
+
 Busy input follows Codex's composer queue. Enter while a turn runs steers it;
 Tab queues input for the next turn and, while idle, sends like Enter. Input that
 cannot be sent yet stacks locally instead of being refused: steers typed while
@@ -539,15 +552,17 @@ and never quits. Dismissing a picker, help, or selection and returning a paused
 transcript to the bottom take precedence.
 
 Ctrl-C first clears a non-empty draft (Ctrl+Z restores it), then interrupts the
-active turn, and with no turn active or starting exits like `/quit`. Interrupting
-with uncommitted or stacked steers sends them at once as the next turn, since
-Codex discards uncommitted input on interrupt; a steer committed before the
-interrupt is not resent, and queued input waits for that turn to end. A plain
-interrupt returns queued entries to the composer. A rejected steer returns to
-the composer, and a steer the turn ended without committing does too, because
-its delivery is unknown; neither becomes a new turn. A turn's steers settle only
-after any steer still being sent to it resolves, so resent or restored steers
-keep their typed order. On exit, stacked input is
+active or starting turn, and exits like `/quit` only when no input is waiting.
+Interrupt restores uncommitted submissions, locally stacked steers, and queued
+entries ahead of the current draft, preserving attachments and typed order;
+nothing is automatically resent. A committed user message stays in the transcript.
+An interrupted start that Codex has not committed removes its provisional
+transcript entry. If it was the first message, Main returns to an empty transcript
+and Ready composer with that draft restored. An interrupt requested before the
+host supplies the turn ID waits for that ID rather than inventing one.
+A rejected steer, or a steer whose turn ended without committing it, also returns
+to the composer. Submissions settle after their in-flight acknowledgement, so
+restoration cannot reorder or duplicate input. On exit, stacked input is
 printed with the unsent draft, and unresolved or uncommitted submissions as
 outcome unknown, never resent. Composer notices (command, paste, editor and
 Ctrl-C feedback) follow the turn state on the composer border without replacing

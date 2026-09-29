@@ -120,8 +120,13 @@ type appServerUI struct {
 	steers                    []composerSubmission // Accepted steers the turn has not yet committed.
 	unsent, queued            []composerDraft      // Stacked steers and next-turn input.
 	interrupting              string               // The interrupted turn.
-	resendSteers              bool                 // The interrupt sends pending steers as the next turn.
-	composerRect              terminalRect         // Visible draft text, relative to Main.
+	pendingStart              composerSubmission   // Start awaiting a committed user message.
+	interruptBeforeStart      bool
+	compactRequest            bool // Compact RPC acknowledgement still pending.
+	clearing                  bool // Fresh-thread request; keep old presentation until success.
+	manualCompact             bool // Compact turn has not completed yet.
+	retiredThreads            map[string]bool
+	composerRect              terminalRect // Visible draft text, relative to Main.
 	cursorBack, composerWidth int
 	cursorColumn              *int
 	images                    []composerImage
@@ -434,6 +439,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	if handled, err := u.btwMessage(m); handled {
 		return err
 	}
+	if u.retiredSessionEvent(m) {
+		return nil
+	}
 	// Any event can make stacked input sendable: an acknowledgement, a turn
 	// start or end, or settled settings.
 	defer func() {
@@ -461,6 +469,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	}
 	if m.Method == "" {
 		method := u.requests[string(m.ID)]
+		if method == "" {
+			return nil
+		}
 		delete(u.requests, string(m.ID))
 		if method == "config/read" {
 			u.notificationConfig(m)
@@ -492,13 +503,32 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.shellResponse(m.Error)
 			return nil
 		}
+		if method == "thread/compact/start" {
+			u.compactRequest = false
+			if m.Error != nil {
+				u.starting, u.interruptBeforeStart, u.manualCompact = false, false, false
+				u.restoreDrafts(append([]composerDraft{{text: "/compact"}}, slices.Concat(u.unsent, u.queued)...)...)
+				u.unsent, u.queued = nil, nil
+				u.setNotice("Compaction failed: "+m.Error.Message, true)
+				u.status = "Ready"
+			}
+			return nil
+		}
+		if method == "thread/start" && u.clearing && m.Error != nil {
+			u.clearing = false
+			u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
+			u.unsent, u.queued = nil, nil
+			u.status = "Ready"
+			u.setNotice("Could not clear session: "+m.Error.Message, true)
+			return nil
+		}
 		if m.Error != nil {
 			u.status, u.alert = method+": "+m.Error.Message, true
 			if method == "initialize" || method == "thread/start" || method == "thread/resume" {
 				return errors.New(u.status)
 			}
 			if method == "turn/interrupt" {
-				u.interrupting, u.resendSteers = "", false
+				u.interrupting, u.interruptBeforeStart = "", false
 			}
 			return nil
 		}
@@ -540,6 +570,12 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			if method == "thread/resume" && result.Thread.ID != u.resumeThread {
 				return errors.New("thread/resume returned a different thread identity")
+			}
+			if u.clearing {
+				if err := u.clearSessionPresentation(); err != nil {
+					return err
+				}
+				delete(u.retiredThreads, result.Thread.ID)
 			}
 			u.statusConfig = appServerStatusConfig{}
 			if err := json.Unmarshal(m.Result, &u.statusConfig); err != nil {
@@ -653,6 +689,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				u.shellStandalone, u.shellOrigin = true, nil
 			}
 			u.turn, u.status, u.starting, u.alert, u.turnStarted = p.Turn.ID, "Working", false, false, time.Now()
+			if u.interruptBeforeStart {
+				return u.interruptTurn()
+			}
 		}
 	case "turn/completed":
 		if u.notifications != nil {
@@ -663,7 +702,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 		}
 		if p.ThreadID == u.thread && p.Turn.ID == u.turn {
-			u.shellStandalone = false
+			u.shellStandalone, u.manualCompact = false, false
 			u.endSyncQuestions(p.Turn.ID)
 			u.turn, u.starting = "", false
 			u.status, u.alert = strings.ToUpper(p.Turn.Status[:min(1, len(p.Turn.Status))])+p.Turn.Status[min(1, len(p.Turn.Status)):], p.Turn.Status == "failed"
@@ -878,13 +917,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			}
 			return false, nil
 		}
-		if u.turn != "" {
+		if u.turn != "" || u.starting || u.submission.text != "" || len(u.unsent)+len(u.queued) > 0 {
 			return false, u.interruptTurn()
 		}
-		if !u.starting && u.submission.text == "" {
-			return true, nil
-		}
-		u.setNotice("Turn is starting · nothing to interrupt yet", false)
+		return true, nil
 	case 127, 8:
 		u.deleteDraft(true)
 	case '\n':
@@ -896,6 +932,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		}
 		if u.shellMode() {
 			return false, u.submitShell()
+		}
+		if text == "/compact" || text == "/clear" {
+			return false, u.sessionCommand(text)
 		}
 		if text == "/status" {
 			return false, u.showStatus()
@@ -921,7 +960,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /btw, /status, /copy, /skills, /model, /effort, /reasoning, /tier, /quit", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /compact, /clear, /btw, /status, /copy, /skills, /model, /effort, /reasoning, /tier, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil {
@@ -1407,15 +1446,22 @@ func (u *appServerUI) applyObservedActivity() {
 
 // interruptTurn preserves the composer while interrupting the active turn.
 func (u *appServerUI) interruptTurn() error {
-	// As in Codex, interrupting with pending steers sends them now as
-	// the next turn instead of after the next tool call.
+	if u.turn == "" {
+		if u.starting || u.submission.text != "" {
+			u.interruptBeforeStart = true
+			u.status = "Interrupting…"
+			return nil
+		}
+		u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
+		u.unsent, u.queued = nil, nil
+		return nil
+	}
+	if u.interrupting == u.turn {
+		return nil
+	}
 	u.endSyncQuestions(u.turn)
 	u.interrupting = u.turn
-	u.resendSteers = len(u.steers) > 0 || len(u.unsent) > 0 || u.submission.turn != ""
 	u.status = "Interrupting…"
-	if u.resendSteers {
-		u.status = "Interrupting to send steer…"
-	}
 	return u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
 }
 

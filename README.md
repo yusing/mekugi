@@ -282,6 +282,11 @@ Mekugi differs in these ways:
 - **Waiting messages combine.** Steers typed while an earlier one is still
   sending, and queued messages, are sent together as one message, one entry per
   line. Alt+Up or Shift+Left brings back the last queued message.
+- **Session controls.** `/compact` compacts context, waiting for the current turn
+  when busy. `/clear` starts a fresh session and clears its transcript; it is
+  available while idle and does not delete saved sessions or filesystem changes.
+  Interrupt returns unsent input to the composer without automatically resending
+  it. Interrupting an uncommitted first message leaves an empty transcript.
 - **Setting pickers.** `/model`, `/effort` (also `/reasoning`), and `/tier` open
   a picker: Up/Down and Enter apply a choice, Esc cancels, and neither the
   command nor its choices enter the transcript. A value switches directly, such

@@ -172,42 +172,32 @@ func TestAppServerQueuedAttachmentsKeepFilesUntilSent(t *testing.T) {
 	}
 }
 
-func TestAppServerInterruptSendsSteersImmediately(t *testing.T) {
+func TestAppServerInterruptRestoresSteersAndQueuedInput(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestTurn(t, u, "t")
 	appServerTestKeys(t, u, "accepted\r")
 	accepted := appServerOneRequest(t, w, "turn/steer", "accepted")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, accepted.ID))
 	appServerTestKeys(t, u, "later\t\x03")
-	if request := appServerOneRequest(t, w, "turn/interrupt", ""); request.ID == 0 || u.status != "Interrupting to send steer…" {
-		t.Fatalf("interrupt status = %q", u.status)
-	}
+	appServerOneRequest(t, w, "turn/interrupt", "")
 	appServerTestKeys(t, u, "typed while interrupting\r")
 	if requests := appServerTurnRequests(t, w); len(requests) != 0 {
 		t.Fatalf("steered the interrupted turn: %+v", requests)
 	}
 	appServerTestTurnEnd(t, u, "t", "interrupted")
-	start := appServerOneRequest(t, w, "turn/start", "accepted\ntyped while interrupting")
-	if len(u.queued) != 1 || u.draft != "" {
-		t.Fatalf("interrupt consumed queued input or restored steers: queued=%d draft=%q", len(u.queued), u.draft)
+	if requests := appServerTurnRequests(t, w); len(requests) != 0 || u.draft != "accepted\ntyped while interrupting\nlater" || len(u.queued)+len(u.unsent) != 0 {
+		t.Fatalf("input not restored: requests=%+v draft=%q", requests, u.draft)
 	}
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t2"}}}`, start.ID))
-	if len(u.inputHistory) != 2 || u.inputHistory[0].text != "accepted" || u.inputHistory[1].text != "typed while interrupting" {
-		t.Fatalf("resent steer duplicated or missing in history: %+v", u.inputHistory)
-	}
-	appServerTestTurn(t, u, "t2")
-	appServerTestTurnEnd(t, u, "t2", "completed")
-	appServerOneRequest(t, w, "turn/start", "later")
 }
 
-func TestAppServerInterruptResendsUnresolvedSteerOnce(t *testing.T) {
+func TestAppServerInterruptRestoresUnresolvedSteerOnce(t *testing.T) {
 	for _, tt := range []struct {
-		name, response    string
-		committed, resent bool
+		name, response string
+		committed      bool
 	}{
-		{"rejected after interrupt", `{"code":-1,"message":"no active turn to steer"}`, false, true},
-		{"accepted after interrupt", "", false, true},
-		{"committed before interrupt", "", true, false},
+		{"rejected after interrupt", `{"code":-1,"message":"no active turn to steer"}`, false},
+		{"accepted after interrupt", "", false},
+		{"committed before interrupt", "", true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			u, w := newAppServerTestUI()
@@ -228,13 +218,12 @@ func TestAppServerInterruptResendsUnresolvedSteerOnce(t *testing.T) {
 			} else {
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, steer.ID))
 			}
-			if tt.resent {
-				appServerOneRequest(t, w, "turn/start", "unresolved")
-			} else if requests := appServerTurnRequests(t, w); len(requests) != 0 {
-				t.Fatalf("committed steer resent: %+v", requests)
+			want := "unresolved"
+			if tt.committed {
+				want = ""
 			}
-			if u.draft != "" || u.alert {
-				t.Fatalf("draft=%q alert=%v status=%q", u.draft, u.alert, u.status)
+			if requests := appServerTurnRequests(t, w); len(requests) != 0 || u.draft != want || u.alert {
+				t.Fatalf("requests=%+v draft=%q alert=%v status=%q", requests, u.draft, u.alert, u.status)
 			}
 		})
 	}
@@ -302,8 +291,8 @@ func TestAppServerEndedTurnKeepsSteerOrder(t *testing.T) {
 		wantRequest string
 		wantDraft   string
 	}{
-		{"interrupt resend after rejection", true, `"error":{"code":-1,"message":"no active turn to steer"}`, "A\nB\nC", ""},
-		{"interrupt resend after acceptance", true, `"result":{"turnId":"t"}`, "A\nB\nC", ""},
+		{"interrupt restore after rejection", true, `"error":{"code":-1,"message":"no active turn to steer"}`, "", "A\nB\nC"},
+		{"interrupt restore after acceptance", true, `"result":{"turnId":"t"}`, "", "A\nB\nC"},
 		{"turn ended", false, `"result":{"turnId":"t"}`, "C", "A\nB"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -326,7 +315,11 @@ func TestAppServerEndedTurnKeepsSteerOrder(t *testing.T) {
 				t.Fatalf("settled before the in-flight steer resolved: %+v", requests)
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,%s}`, b.ID, tt.response))
-			appServerOneRequest(t, w, "turn/start", tt.wantRequest)
+			if tt.wantRequest != "" {
+				appServerOneRequest(t, w, "turn/start", tt.wantRequest)
+			} else if requests := appServerTurnRequests(t, w); len(requests) != 0 {
+				t.Fatalf("unexpected resend: %+v", requests)
+			}
 			if u.draft != tt.wantDraft {
 				t.Fatalf("draft = %q, want %q", u.draft, tt.wantDraft)
 			}
@@ -367,5 +360,51 @@ func TestAppServerRestoreKeepsCaret(t *testing.T) {
 	appServerTestKeys(t, u, "queued\tabcd\x1b[D\x1b[D\x1b[1;3A")
 	if u.draft != "queued\nabcd" || u.cursor() != len("queued\nab") {
 		t.Fatalf("draft=%q caret=%d", u.draft, u.cursor())
+	}
+}
+
+func TestAppServerInterruptBeforeFirstCommitRestoresCleanComposer(t *testing.T) {
+	for _, responseFirst := range []bool{false, true} {
+		t.Run(fmt.Sprint(responseFirst), func(t *testing.T) {
+			u, w := newAppServerTestUI()
+			appServerTestKeys(t, u, "first prompt\r")
+			start := appServerOneRequest(t, w, "turn/start", "first prompt")
+			if responseFirst {
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t"}}}`, start.ID))
+			}
+			appServerTestKeys(t, u, "\x03")
+			if requests := appServerTurnRequests(t, w); len(requests) != 0 {
+				t.Fatalf("interrupted without a host turn: %+v", requests)
+			}
+			appServerTestTurn(t, u, "t")
+			appServerOneRequest(t, w, "turn/interrupt", "")
+			appServerTestTurnEnd(t, u, "t", "interrupted")
+			if !responseFirst {
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t"}}}`, start.ID))
+			}
+			if u.draft != "first prompt" || len(u.view.entries) != 0 || u.status != "Ready" || u.starting || u.turn != "" {
+				t.Fatalf("not clean: draft=%q entries=%+v status=%q starting=%v turn=%q", u.draft, u.view.entries, u.status, u.starting, u.turn)
+			}
+			if len(appServerTurnRequests(t, w)) != 0 {
+				t.Fatal("automatically resent restored input")
+			}
+			var frame bytes.Buffer
+			if err := u.paint(&frame, 80, 24); err != nil {
+				t.Fatal(err)
+			}
+			if got := appServerComposerScreenText(t, frame.Bytes(), 80, 24); strings.TrimSpace(got) != "first prompt" {
+				t.Fatalf("composer frame = %q", got)
+			}
+		})
+	}
+}
+
+func TestAppServerInterruptLocallyStackedInputDoesNotQuit(t *testing.T) {
+	u, w := newAppServerTestUI()
+	u.settingsPending = true
+	appServerTestKeys(t, u, "not sent\r")
+	quit, err := u.key(3)
+	if quit || err != nil || u.draft != "not sent" || len(u.unsent) != 0 || w.Len() != 0 {
+		t.Fatalf("quit=%v err=%v draft=%q requests=%s", quit, err, u.draft, w.String())
 	}
 }

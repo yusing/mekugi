@@ -53,7 +53,7 @@ func TestAppServerCopyPicker(t *testing.T) {
 	u.view.applyAppServerItem("", "main", "child", "t", "child", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Not this"})
 	u.view.applyAppServerItem("", "main", "main", "new", "stream", "item/agentMessage/delta", "Partial", appServerItem{})
 	u.turn = "new"
-	appServerTestKeys(t, u, "/co\r")
+	appServerTestKeys(t, u, "/cop\r")
 	if u.picker.modal != "copy" || u.draft != "" || len(u.picker.choices) != 2 {
 		t.Fatalf("picker=%+v draft=%q", u.picker, u.draft)
 	}
