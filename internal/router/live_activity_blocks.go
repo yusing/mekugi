@@ -229,12 +229,14 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 		last := &operations[len(operations)-1]
 		last.ExitCode, last.Segment = segment.exit, true
 		last.Tail, last.TailOmitted = segment.tail, segment.omit
+		last.Changes = segment.changes
 		blocks = append(blocks, operations...)
 	}
 	if len(entry.outputTail) > 0 {
 		for i := len(blocks) - 1; i >= 0; i-- {
 			if !blocks[i].Skipped {
 				blocks[i].Tail, blocks[i].TailOmitted = entry.outputTail, entry.outputOmit
+				blocks[i].Changes = entry.native.changes
 				break
 			}
 		}

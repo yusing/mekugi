@@ -464,6 +464,7 @@ type commandSegment struct {
 	exit    int
 	tail    []string
 	omit    int
+	changes []activityui.ChangeRow
 }
 
 // execTrackView is a report as presented at one frame.
@@ -521,6 +522,13 @@ func (h *execTrackHub) view(key [3]string, final bool, text func(string) string)
 				segment.output.Flush()
 			}
 			shown.tail, shown.omit = segment.output.Lines()
+			if final && !shown.skipped && shown.exit == 0 {
+				output := strings.Join(shown.tail, "\n")
+				shown.changes = mchangesOutputRows(appServerItem{Command: segment.source, AggregatedOutput: &output})
+				if len(shown.changes) > 0 && shown.omit > 0 {
+					shown.changes = append([]activityui.ChangeRow{{Note: "… " + activityui.MoreLines(shown.omit)}}, shown.changes...)
+				}
+			}
 		}
 		view.segments = append(view.segments, shown)
 	}
@@ -599,6 +607,7 @@ func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry,
 	entry.native = &native
 	if !view.output {
 		entry.outputTail, entry.outputOmit = appServerOutputTail(item.AggregatedOutput)
+		native.changes = mchangesOutputRows(item)
 	}
 	return []activityPaneEntry{entry}
 }

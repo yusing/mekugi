@@ -472,3 +472,25 @@ func TestExecTrackReportsTerminalCommandStatusOnly(t *testing.T) {
 		t.Fatalf("view = %+v", view)
 	}
 }
+
+func TestAppServerTrackedMChangesShowsRichRows(t *testing.T) {
+	for _, script := range []string{"echo before && mchanges --list --max-tokens 800", "echo before; mchanges --list --max-tokens 800"} {
+		t.Run(script, func(t *testing.T) {
+			u, hub := newTrackedAppServerUI(t)
+			item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
+			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+			report := dialExecTrackReport(t, hub, script)
+			index := 1
+			report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.Output, Index: 0, Data: "before\n"}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)})
+			output := "amber1..amber5 +343 -658\namber6 +158 -81\namber7..amber9 +86 -30\n"
+			report.send(execsegment.Message{Type: execsegment.Begin, Index: index}, execsegment.Message{Type: execsegment.Output, Index: index, Data: output}, execsegment.Message{Type: execsegment.End, Index: index, Code: new(0)}, execsegment.Message{Type: execsegment.Done, Code: new(0)})
+			report.conn.Close()
+			item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+			got := awaitMain(t, u, "━━━━━━━━")
+			if !strings.Contains(got, "amber1..amber5  +343 -658") || strings.Contains(got, "┆ amber") {
+				t.Fatalf("tracked listing not rendered as change rows:\n%s", got)
+			}
+		})
+	}
+}
