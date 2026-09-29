@@ -247,9 +247,9 @@ func TestMReadFreshStoreForkAndSideContinuityStayInTheirHandleScopes(t *testing.
 	assertPairRead(side, firstCursor, secondCursor)
 	borrowed, borrowErr, borrowStatus := runShellWorkerTest(t, registry, "bash", nil,
 		fmt.Sprintf("mread %s %s --max-tokens 120", firstCursor, forkID), nil, mreadQualityInvocation(t, side))
-	if borrowStatus != 1 || borrowed != "" || !strings.Contains(borrowErr, "unavailable in this session") ||
+	if borrowStatus != 1 || borrowed == "" || strings.Contains(borrowed, "fork-owned") || !strings.Contains(borrowErr, "unavailable in this session") ||
 		strings.Contains(borrowErr, "root-a-") || strings.Contains(borrowErr, "alpha") ||
 		strings.Contains(borrowErr, "beta") || strings.Contains(borrowErr, "oversized") || strings.Contains(borrowErr, "fork-owned") {
-		t.Fatalf("mixed authorized/foreign read exposed partial data: status=%d stdout=%q stderr=%q", borrowStatus, borrowed, borrowErr)
+		t.Fatalf("mixed read lost authorized output or exposed foreign data: status=%d stdout=%q stderr=%q", borrowStatus, borrowed, borrowErr)
 	}
 }

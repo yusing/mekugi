@@ -507,3 +507,28 @@ func TestOutlineRecoveryCapacityPreservesCurrentOutput(t *testing.T) {
 		t.Fatalf("capacity discarded valid output or advertised recovery: %d %q %q", status, stdout, stderr)
 	}
 }
+
+func TestMReadKeepsValidTargetsAroundMissingHandle(t *testing.T) {
+	t.Parallel()
+	registry := sharedProxyTestRegistry(t)
+	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := openMekugiReplayStore(manifest.ReplayDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.putShellOutput(t.Context(), "first-success\n", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last, err := store.putShellOutput(t.Context(), "last-success\n", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := executeMRead(t.Context(), manifest, registry.RuntimeRoot, []string{first, "amber999999", last})
+	if result.ExitCode != 1 || !strings.Contains(result.Stdout, "first-success") || !strings.Contains(result.Stdout, "last-success") || !strings.Contains(result.Stderr, "amber999999") {
+		t.Fatalf("mixed read: %+v", result)
+	}
+}

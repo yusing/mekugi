@@ -275,9 +275,8 @@ func TestMChangesSlicesSummaryKeepsMixedStates(t *testing.T) {
 	unknown := "amber4"
 	stdout, stderr, status := f.run(t,
 		"mchanges --summary "+strings.Join([]string{completed, pending, retired, unknown}, " "))
-	if status != 0 || stderr != "" || !strings.Contains(stdout, "M\t1\t1\tkept.txt\n") ||
-		!strings.Contains(stdout, pending+" pending") || !strings.Contains(stdout, retired+" retired") ||
-		!strings.Contains(stdout, unknown+" unknown") {
+	if status != 1 || !strings.Contains(stderr, retired) || !strings.Contains(stderr, unknown) || !strings.Contains(stdout, "M\t1\t1\tkept.txt\n") ||
+		!strings.Contains(stdout, pending+" pending") || strings.Contains(stdout, retired) || strings.Contains(stdout, unknown) {
 		t.Fatalf("mixed summary: %q, %q, %d", stdout, stderr, status)
 	}
 }
@@ -593,7 +592,7 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 	assertRejected(partial, "partial captured effects")
 }
 
-func TestMChangesNetRejectsBinaryOnlyAndMixedEvidence(t *testing.T) {
+func TestMChangesNetKeepsTextWhenBinaryEvidenceFails(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "net-binary-evidence")
 	assertRejected := func(id string) {
@@ -622,5 +621,32 @@ func TestMChangesNetRejectsBinaryOnlyAndMixedEvidence(t *testing.T) {
 			mekugi.RenderReviewFile("text.txt", "text.txt", "before\n", "after\n"),
 		},
 	})
-	assertRejected(mixed)
+	stdout, stderr, status := f.run(t, "mchanges --net "+mixed)
+	if status != 1 || !strings.Contains(stdout, "text.txt") || !strings.Contains(stdout, "+after") || strings.Contains(stdout, "mixed.dat") || !strings.Contains(stderr, "binary evidence that cannot be composed") {
+		t.Fatalf("mixed net evidence: %q, %q, %d", stdout, stderr, status)
+	}
+}
+
+func TestMChangesReadsKeepAvailableTargets(t *testing.T) {
+	t.Parallel()
+	f := newMChangesSliceFixture(t, "mixed-read-targets")
+	first := f.reserve(t, f.thread, "first")
+	f.publish(t, first, "first", "first-call", mekugiHistory{ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("first.txt", "first.txt", "old\n", "first-new\n")}})
+	second := f.reserve(t, f.thread, "second")
+	f.publish(t, second, "second", "second-call", mekugiHistory{ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("second.txt", "second.txt", "old\n", "second-new\n")}})
+	for _, view := range []string{"", "--summary", "--history", "--net", "--list"} {
+		for _, selection := range []string{first + " amber3 " + second, "amber1..amber3"} {
+			out, diagnostic, status := f.run(t, "mchanges "+view+" "+selection)
+			if status != 1 || !strings.Contains(diagnostic, "amber3") || !strings.Contains(diagnostic, "never allocated") {
+				t.Fatalf("%s %s: %q %q %d", view, selection, out, diagnostic, status)
+			}
+			if view == "--list" {
+				if !strings.Contains(out, first+".."+second) {
+					t.Fatalf("list lost available range: %q", out)
+				}
+			} else if !strings.Contains(out, "first.txt") || !strings.Contains(out, "second.txt") {
+				t.Fatalf("%s lost available results: %q", view, out)
+			}
+		}
+	}
 }

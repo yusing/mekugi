@@ -34,6 +34,7 @@ type FixtureResponses = {
   mutateOnMethod?: string;
   mutatePath?: string;
   mutatedSource?: string;
+  errorOnMethod?: string;
 };
 
 async function installLSPFixture(
@@ -66,9 +67,11 @@ function handle(message) {
   if (message.method === "initialize") {
     send({jsonrpc: "2.0", id: message.id, result: {capabilities: {positionEncoding: "utf-16"}}});
   } else if (message.method === "textDocument/definition") {
-    send({jsonrpc: "2.0", id: message.id, result: responses.definition});
+    if (responses.errorOnMethod === message.method) send({jsonrpc: "2.0", id: message.id, error: {code: -32001, message: "fixture query rejected"}});
+    else send({jsonrpc: "2.0", id: message.id, result: responses.definition});
   } else if (message.method === "textDocument/references") {
-    send({jsonrpc: "2.0", id: message.id, result: responses.references});
+    if (responses.errorOnMethod === message.method) send({jsonrpc: "2.0", id: message.id, error: {code: -32001, message: "fixture query rejected"}});
+    else send({jsonrpc: "2.0", id: message.id, result: responses.references});
   } else if (message.method === "shutdown") {
     send({jsonrpc: "2.0", id: message.id, result: null});
   } else if (message.method === "exit") {
@@ -470,45 +473,127 @@ describe("msymbol batched queries", () => {
     ].join(""));
   }, 30_000);
 
-  test("fails a batch atomically when a later tuple has invalid input", async () => {
+  test("keeps successes before and after an invalid selector on stdout", async () => {
     const directory = await temporaryDirectory("msymbol-invalid-batch-");
     process.chdir(directory);
-    await writeFile("sample.ts", "export function Pick() {}\n", "utf8");
+    const source = "export function Pick() {}\n";
+    await writeFile("sample.ts", source, "utf8");
+    const uri = pathToFileURL(path.join(directory, "sample.ts")).href;
+    await installLSPFixture("tsc", {definition: location(uri, 0, 16, 20), references: [location(uri, 0, 16, 20)]});
     const result = await createMSymbolTool("start: TEST").execute(
-      ["def", "sample.ts", "1", "Pick", "refs", "sample.ts", "99", "Pick"],
+      ["def", "sample.ts", "1", "Pick", "refs", "sample.ts", "99", "Pick", "refs", "sample.ts", "1", "Pick"],
       executionContext,
     );
     expect(result.exitCode).toBe(1);
-    expect(result.stdout).toBeUndefined();
+    expect(result.stdout).toBe(`"sample.ts":1-1\n${source}"sample.ts":\n1 ${source}`);
+    expect(result.stderr).toContain('msymbol: refs "sample.ts" 99 Pick: line 99 is past EOF');
   });
 
-  test("fails a batch without output when an input changes during resolver work", async () => {
+  test("a missing source does not prevent a valid tuple from resolving", async () => {
+    const directory = await temporaryDirectory("msymbol-missing-source-batch-");
+    process.chdir(directory);
+    const source = "export function Pick() {}\n";
+    await writeFile("sample.ts", source, "utf8");
+    const uri = pathToFileURL(path.join(directory, "sample.ts")).href;
+    await installLSPFixture("tsc", {definition: location(uri, 0, 16, 20), references: []});
+    const result = await createMSymbolTool("start: TEST").execute(
+      ["def", "missing.ts", "1", "Pick", "def", "sample.ts", "1", "Pick"], executionContext,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe(`"sample.ts":1-1\n${source}`);
+    expect(result.stderr).toContain('msymbol: def "missing.ts" 1 Pick: path does not exist');
+  });
+
+  test("a failing Go language server does not stop TypeScript tuples", async () => {
+    const directory = await temporaryDirectory("msymbol-language-startup-batch-");
+    process.chdir(directory);
+    const goSource = "package p\nfunc Pick() {}\n";
+    const tsSource = "export function Pick() {}\n";
+    await Promise.all([writeFile("sample.go", goSource, "utf8"), writeFile("sample.ts", tsSource, "utf8")]);
+    const tsURI = pathToFileURL(path.join(directory, "sample.ts")).href;
+    const goFixture = await installLSPFixture("gopls", {
+      definition: [], references: [], hangOnInitialize: true,
+    });
+    const tsFixture = await installLSPFixture("tsc", {
+      definition: location(tsURI, 0, 16, 20), references: [],
+    });
+    process.env.PATH = `${path.dirname(goFixture.executable)}${path.delimiter}${path.dirname(tsFixture.executable)}${path.delimiter}${originalPATH ?? ""}`;
+    await writeFile(goFixture.executable, "#!/usr/bin/env bun\nprocess.exit(1);\n");
+    const result = await createMSymbolTool("start: TEST").execute(
+      ["def", "sample.go", "2", "Pick", "refs", "sample.go", "2", "Pick", "def", "sample.ts", "1", "Pick"], executionContext,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe(`"sample.ts":1-1\n${tsSource}`);
+    expect(result.stderr).toContain('msymbol: def "sample.go" 2 Pick: initialize failed: language server exited');
+  });
+
+  test("a protocol error fails only its tuple while a later query succeeds", async () => {
+    const directory = await temporaryDirectory("msymbol-protocol-batch-");
+    process.chdir(directory);
+    const source = "export function Pick() {}\n";
+    await writeFile("sample.ts", source, "utf8");
+    const uri = pathToFileURL(path.join(directory, "sample.ts")).href;
+    await installLSPFixture("tsc", {
+      definition: location(uri, 0, 16, 20),
+      references: [location(uri, 0, 16, 20)],
+      errorOnMethod: "textDocument/definition",
+    });
+    const result = await createMSymbolTool("start: TEST").execute(
+      ["def", "sample.ts", "1", "Pick", "refs", "sample.ts", "1", "Pick"], executionContext,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe(`"sample.ts":\n1 ${source}`);
+    expect(result.stderr).toContain('msymbol: def "sample.ts" 1 Pick:');
+    expect(result.stderr).toContain("fixture query rejected");
+  });
+
+  test("an uneditable definition does not discard a later reference result", async () => {
+    const directory = await temporaryDirectory("msymbol-uneditable-batch-");
+    process.chdir(directory);
+    const source = "export function Pick() {}\n";
+    await writeFile("sample.ts", source, "utf8");
+    const outside = await temporaryDirectory("msymbol-uneditable-outside-");
+    await writeFile(path.join(outside, "external.ts"), source, "utf8");
+    const uri = pathToFileURL(path.join(directory, "sample.ts")).href;
+    const externalURI = pathToFileURL(path.join(outside, "external.ts")).href;
+    await installLSPFixture("tsc", {
+      definition: location(externalURI, 0, 16, 20),
+      references: [location(uri, 0, 16, 20)],
+    });
+    const result = await createMSymbolTool("start: TEST").execute(
+      ["def", "sample.ts", "1", "Pick", "refs", "sample.ts", "1", "Pick"], executionContext,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe(`"sample.ts":\n1 ${source}`);
+    expect(result.stderr).toContain('msymbol: def "sample.ts" 1 Pick: definition has no editable workspace location');
+  });
+
+  test("a changed input fails its tuple but preserves an independent file's output", async () => {
     const directory = await temporaryDirectory("msymbol-changing-batch-");
     process.chdir(directory);
     const file = "sample.ts";
     const source = "export function Pick() {}\nPick();\n";
     const changedSource = source.replace("Pick();", "Pick(); Pick();");
     const target = path.join(directory, file);
-    await writeFile(target, source, "utf8");
-    const uri = pathToFileURL(target).href;
+    const other = "other.ts";
+    const otherSource = "export function Other() {}\n";
+    await Promise.all([writeFile(target, source, "utf8"), writeFile(other, otherSource, "utf8")]);
+    const otherURI = pathToFileURL(path.join(directory, other)).href;
     await installLSPFixture("tsc", {
-      definition: location(uri, 0, 16, 20),
-      references: [location(uri, 0, 16, 20), location(uri, 1, 0, 4)],
+      definition: location(otherURI, 0, 16, 21),
+      references: [],
       mutateOnMethod: "textDocument/definition",
       mutatePath: target,
       mutatedSource: changedSource,
     });
 
     const result = await createMSymbolTool("start: TEST").execute(
-      ["def", file, "1", "Pick", "refs", file, "2", "Pick"],
+      ["def", file, "1", "Pick", "def", other, "1", "Other"],
       executionContext,
     );
-    expect(result).toEqual({
-      stderr: "msymbol: input changed during query\n",
-      exitCode: 1,
-      failureClass: "resolver_error",
-      terminationReason: "resolver_cleanup",
-    });
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toContain(`"other.ts":1-1\n${otherSource}`);
+    expect(result.stderr).toContain('msymbol: def "sample.ts" 1 Pick: input changed during query');
   });
 
   test("names the resolver time limit and a narrower-workspace recovery action", async () => {

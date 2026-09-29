@@ -49,7 +49,7 @@ dependencies, searches for a different workspace, weakens result confinement, or
 substitutes text search. Go and LSP processes both run in the selected workspace.
 
 Several `(def|refs) PATH [LINE] SYMBOL [N]` tuples may follow each other in one
-invocation. All inputs are validated before resolver startup. Tuples share one
+invocation. Each input is validated before resolver startup; invalid inputs are reported while valid tuples continue. Tuples share one
 language-server session per language in the selected workspace, and one combined
 output budget. Results follow tuple order. A single Go query uses gopls CLI; a
 Go batch uses one invocation-owned gopls LSP server. No detached cross-invocation
@@ -60,7 +60,7 @@ separate one-second dispatch grace after process exit. A reply completed within
 those bounds remains valid, and forced cleanup does not change completed stdout or
 exit status. Reference queries include declarations. Missing dependencies, invalid
 input, changed source, malformed protocol results, timeouts, and failed queries
-return concise stderr and nonzero status without useful stdout.
+return target-qualified stderr and nonzero status. Only affected tuples fail; successful tuples retain stdout in request order, including successes before and after a failed query. Resolver startup failures affect only that language; per-request errors do not abort its other queries.
 
 Successful definitions have one header and raw body rows:
 
@@ -125,7 +125,7 @@ Acceptance:
    canonical path and line, reports skipped locations, and accepts an empty result.
 5. Relative and absolute in-workspace paths work. Lexical escapes, escaping
    symlinks, missing resolvers, source changes, malformed protocol results, and
-   uneditable definitions fail without useful stdout.
+   uneditable definitions fail without suppressing unrelated tuples' stdout.
 6. The stock executable frontend preserves cwd, environment, resolver cleanup,
    bounded output recovery, AX observation, and `Read`/`Search` activity across
    direct and Code Mode invocation.
@@ -137,4 +137,4 @@ Acceptance:
 8. Combined path/line operands, qualified selectors, and unique no-line definition
    and reference queries are accepted. Ambiguous and missing-token errors are actionable without
    starting the resolver. A batch starts one server per language, shares its budget,
-   preserves tuple order, and rejects changed inputs before emitting rows.
+   preserves tuple order, and rejects changed inputs without suppressing unchanged inputs.

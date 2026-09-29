@@ -218,7 +218,7 @@ func TestParseChangeRead(t *testing.T) {
 		{"--max-tokens", strconv.Itoa(maxOutputTokens + 1), "amber1"},
 		{"--workspace", workspace, "--workspace", workspace, "amber1"},
 		{"--cursor"}, {"--cursor", "", "amber1"}, {"--unknown", "amber1"},
-		{"--list", "amber1"}, {"--list", "--", "file"}, {"--list", "--summary"},
+		{"--list", "--", "file"}, {"--list", "--summary"},
 	} {
 		if _, err := parseChangeRead(arguments, workspace); err == nil {
 			t.Fatalf("accepted %q", arguments)

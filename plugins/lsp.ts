@@ -111,13 +111,15 @@ function processFailure(command: string, error: Error): Error {
 
 export async function runLSPQuery(options: LSPQueryOptions): Promise<LSPQueryResult> {
   const result = await runLSPQueries(options, [options]);
-  return {locations: result.locations[0], stderr: result.stderr};
+  const locations = result.locations[0];
+  if (locations instanceof Error) throw locations;
+  return {locations, stderr: result.stderr};
 }
 
 export async function runLSPQueries(
   options: Pick<LSPQueryOptions, "command" | "args" | "workspace">,
   queries: Omit<LSPQueryOptions, "command" | "args" | "workspace">[],
-): Promise<{locations: LSPLocation[][]; stderr: string}> {
+): Promise<{locations: (LSPLocation[] | Error)[]; stderr: string}> {
   return withResolverDeadline(async (deadline) => {
     const child = spawn(options.command, options.args, {
       cwd: options.workspace,
@@ -199,42 +201,46 @@ export async function runLSPQueries(
       }
       phase = "open document";
       await Promise.race([connection.sendNotification("initialized", {}), deadline, processEnded]);
-      const parsedLocations: LSPLocation[][] = [];
+      const parsedLocations: (LSPLocation[] | Error)[] = [];
       const opened = new Set<string>();
       for (const query of queries) {
-        const uri = pathToFileURL(query.path).href;
-        if (!opened.has(uri)) {
-          phase = "open document";
-          opened.add(uri);
-          await Promise.race([connection.sendNotification("textDocument/didOpen", {
-            textDocument: {
-              uri,
-              languageId: query.languageID,
-              version: 1,
-              text: query.source,
-            },
-          }), deadline, processEnded]);
+        try {
+          const uri = pathToFileURL(query.path).href;
+          if (!opened.has(uri)) {
+            phase = "open document";
+            opened.add(uri);
+            await Promise.race([connection.sendNotification("textDocument/didOpen", {
+              textDocument: {
+                uri,
+                languageId: query.languageID,
+                version: 1,
+                text: query.source,
+              },
+            }), deadline, processEnded]);
+          }
+          phase = query.mode === "def" ? "definition" : "references";
+          const response = query.mode === "def"
+            ? await Promise.race([
+              connection.sendRequest("textDocument/definition", {
+                textDocument: {uri},
+                position: query.position,
+              }),
+              deadline,
+              processEnded,
+            ])
+            : await Promise.race([
+              connection.sendRequest("textDocument/references", {
+                textDocument: {uri},
+                position: query.position,
+                context: {includeDeclaration: true},
+              }),
+              deadline,
+              processEnded,
+            ]);
+          parsedLocations.push(locations(response, query.mode));
+        } catch (error) {
+          parsedLocations.push(error instanceof ResolverTimeout ? error : new Error(`${phase} failed: ${errorText(error)}`));
         }
-        phase = query.mode === "def" ? "definition" : "references";
-        const response = query.mode === "def"
-          ? await Promise.race([
-            connection.sendRequest("textDocument/definition", {
-              textDocument: {uri},
-              position: query.position,
-            }),
-            deadline,
-            processEnded,
-          ])
-          : await Promise.race([
-            connection.sendRequest("textDocument/references", {
-              textDocument: {uri},
-              position: query.position,
-              context: {includeDeclaration: true},
-            }),
-            deadline,
-            processEnded,
-          ]);
-        parsedLocations.push(locations(response, query.mode));
       }
       phase = "shutdown";
       // Cleanup is auxiliary once the semantic response is complete. Bound the

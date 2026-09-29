@@ -60,7 +60,7 @@ If omitted entries exceed the shared recovery capacity, the current output remai
 stderr explains that recovery is unavailable and no reference is exposed.
 
 Compact failures write concise path-qualified stderr; JSON failures write one
-closed LF-terminated envelope to stdout and leave stderr empty. Both exit nonzero,
+closed LF-terminated envelope to stderr. Stdout contains only successful documents. Both exit nonzero,
 and a failed path does not suppress other requested paths. Stable codes are `usage`, `not_found`, `not_regular`, `not_utf8`,
 `read`, `parse`, and `output_limit`. The centralized Codex guidance and
 private call contract describe compact rows and the JSON option without embedding a schema.

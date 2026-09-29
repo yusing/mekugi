@@ -130,6 +130,9 @@ different stream starts from the initial reference. Budgets may change.
 
 Empty streams have no frame. Source reads report `[rows START:END]`; multiple handles
 have per-handle labels, share one total budget, and produce one combined next call.
+A failed handle writes a handle-qualified error on stderr and makes the invocation
+nonzero without discarding successful pages or preventing other handles from being read.
+Only valid unfinished handles appear in the combined next call.
 Generated producer-limit diagnostics are not stored as omitted source stderr; actual
 captured command stderr remains evidence and is not removed by text matching.
 A page containing only generic stdout is unframed. Stderr

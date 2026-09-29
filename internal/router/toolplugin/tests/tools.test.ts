@@ -1154,7 +1154,7 @@ describe("msymbol built-in plugin", () => {
     const tool = createMSymbolTool("start: TEST");
     const external = await tool.execute(["def", "input.go", "2", "Target"], executionContext);
     expect(external).toEqual({
-      stderr: "msymbol: skipped 1 location outside workspace\nmsymbol: definition has no editable workspace location\n",
+      stderr: "msymbol: definition has no editable workspace location\nmsymbol: skipped 1 location outside workspace\n",
       exitCode: 1,
       failureClass: "no_editable_location",
       terminationReason: "resolver_cleanup",
@@ -1711,7 +1711,25 @@ describe("inspect_file command contract", () => {
       expect(JSON.parse(result.stdout!).data.outline).toHaveLength(2);
     }
     const directoryResult = await tool.execute(["--json", outside], executionContext);
-    expect(JSON.parse(directoryResult.stdout!).error.code).toBe("not_regular");
+    expect(directoryResult.stdout).toBeUndefined();
+    expect(JSON.parse(directoryResult.stderr!).error.code).toBe("not_regular");
+  });
+
+  test("JSON mode writes only successful documents to stdout and error envelopes to stderr", async () => {
+    const directory = await temporaryDirectory("inspect-json-mixed-");
+    process.chdir(directory);
+    await writeFile("first.go", "package p\nfunc First() {}\n");
+    await writeFile("last.go", "package p\nfunc Last() {}\n");
+    const result = await createInspectFileTool("").execute(
+      ["--json", "first.go", "missing.go", "last.go"], executionContext,
+    );
+    expect(result.exitCode).toBe(1);
+    const successes = result.stdout!.trimEnd().split("\n").map((row) => JSON.parse(row));
+    expect(successes.map((row) => row.data.path)).toEqual(["first.go", "last.go"]);
+    expect(successes.every((row) => row.ok === true)).toBe(true);
+    const errors = result.stderr!.trimEnd().split("\n").map((row) => JSON.parse(row));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ok: false, path: "missing.go"});
   });
 
   test("rejects an invalid budget and a missing path", async () => {
@@ -1722,7 +1740,7 @@ describe("inspect_file command contract", () => {
     ]) {
       const result = await tool.execute(args, executionContext);
       expect(result.exitCode).toBe(1);
-      expect(result.stdout).toBe("");
+      expect(result.stdout).toBeUndefined();
       expect(result.stderr).toMatch(/^inspect_file: /u);
     }
   });
@@ -1773,9 +1791,10 @@ describe("inspect_file bounds and paths", () => {
     // retains its parent components and can exceed the result byte budget.
     const operand = "../".repeat(22_000) + target.slice(path.parse(target).root.length);
     expect(path.resolve(operand)).toBe(target);
-    const result = await inspect(operand);
+    const result = await createInspectFileTool("").execute(["--json", operand], executionContext);
     expect(result.exitCode).toBe(1);
-    expect(result.result.error.code).toBe("output_limit");
+    expect(result.stdout).toBeUndefined();
+    expect(JSON.parse(result.stderr!).error.code).toBe("output_limit");
     expect(result.failureClass).toBe("output_limit");
   });
 

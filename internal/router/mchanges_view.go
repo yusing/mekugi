@@ -98,7 +98,13 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 		}
 		// Compress only complete, comparable rows. Partial IDs retain their
 		// individual known counts so an agent can select the useful capture.
-		if previous != nil && previous.status == next.status && previous.coverage == next.coverage &&
+		consecutive := false
+		if previous != nil {
+			previousStream, previousNumber, _ := parseChangeID(previous.last)
+			stream, number, _ := parseChangeID(id)
+			consecutive = stream == previousStream && number == previousNumber+1
+		}
+		if consecutive && previous.status == next.status && previous.coverage == next.coverage &&
 			!previous.unknown && !next.unknown && previous.managed == 0 && next.managed == 0 &&
 			next.coverage != execCoveragePartial && next.coverage != execCoverageUnswept {
 			previous.last = id
@@ -140,15 +146,18 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 	if err != nil {
 		return "", err
 	}
+	var failures []error
 	chains := make(map[string]*mekugi.ReviewComposition)
 	var ordered []*mekugi.ReviewComposition
 	for _, capture := range captures {
 		if len(capture.files) != 0 && capture.coverage != "" && capture.coverage != execCoverageExact {
-			return "", fmt.Errorf("change %s has partial captured effects; read without --net to inspect them", capture.id)
+			failures = append(failures, fmt.Errorf("change %s has partial captured effects; read without --net to inspect them", capture.id))
+			continue
 		}
 		for _, file := range capture.files {
 			if file.Binary {
-				return "", fmt.Errorf("change %s includes binary evidence that cannot be composed; read without --net to inspect it", capture.id)
+				failures = append(failures, fmt.Errorf("change %s includes binary evidence that cannot be composed; read without --net to inspect it", capture.id))
+				continue
 			}
 			key := file.BeforePath
 			if key == "" {
@@ -160,7 +169,8 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 				ordered = append(ordered, chain)
 			}
 			if err := chain.ApplyWithHighlight(file, false, false); err != nil {
-				return "", fmt.Errorf("change %s cannot be composed: %w", capture.id, err)
+				failures = append(failures, fmt.Errorf("change %s cannot be composed: %w", capture.id, err))
+				continue
 			}
 			delete(chains, key)
 			if file.AfterPath != "" {
@@ -181,8 +191,11 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 			}
 		}
 	}
-	if output.Len() == 0 {
+	if output.Len() == 0 && len(failures) == 0 {
 		output.WriteString("no net changes in selected captured history\n")
+	}
+	if len(failures) > 0 {
+		return output.String(), &partialChangeReadError{errors.Join(failures...)}
 	}
 	return output.String(), nil
 }

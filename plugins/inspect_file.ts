@@ -278,7 +278,7 @@ export function createInspectFileTool(grammar: string): Tool<string[]> {
     name: "inspect_file",
     description: `Inspect host-readable regular files and return compact structural rows: START-END KIND NAME. Imports collapse to one range; parse_error rows locate syntax errors. When only structure is needed, prefer an outline to a full-file read; read source only for information missing from the outline or current context.
 Usage: inspect_file [--json] [--max-tokens N] PATH [PATH ...]
-Multiple files have path headers and share one budget. --json returns metadata and structured outline entries instead. Line ranges are one-based. Example: inspect_file src/main.go, then mcat src/main.go START:END for the relevant entry. Reuse known locations instead of outlining a file again.`,
+Multiple files have path headers and share one budget. Failed paths report errors on stderr (JSON envelopes with --json), preserve successful stdout, and exit nonzero. --json returns metadata and structured outline entries instead. Line ranges are one-based. Example: inspect_file src/main.go, then mcat src/main.go START:END for the relevant entry. Reuse known locations instead of outlining a file again.`,
     grammar,
     argv: readerArguments,
     async execute(argv) {
@@ -331,7 +331,7 @@ Multiple files have path headers and share one budget. --json returns metadata a
             failureClass ??= inspectionFailureClass(cause.code);
             if (json) {
               const row = failure(input, cause.code, cause.message);
-              if (!output.append(row)) omitted.push(row);
+              errors.push(row);
             } else errors.push(`inspect_file: ${displayOutlineName(input)}: ${cause.message}\n`);
           }
         }
@@ -347,8 +347,8 @@ Multiple files have path headers and share one budget. --json returns metadata a
         const cause = error instanceof InspectFailure
           ? error
           : new InspectFailure(suppliedPath === null ? "usage" : "read", `cannot inspect file: ${errorText(error)}`);
-        return {stdout: json ? failure(suppliedPath, cause.code, cause.message) : "",
-          ...(!json ? {stderr: `inspect_file: ${suppliedPath === null ? "" : displayOutlineName(suppliedPath) + ": "}${cause.message}\n`} : {}), exitCode: 1,
+        return {stderr: json ? failure(suppliedPath, cause.code, cause.message)
+          : `inspect_file: ${suppliedPath === null ? "" : displayOutlineName(suppliedPath) + ": "}${cause.message}\n`, exitCode: 1,
           failureClass: inspectionFailureClass(cause.code)};
       }
     },

@@ -174,7 +174,7 @@ The session-private `mchanges` executable lists the current thread's change
 IDs or reads selected IDs and ranges:
 
 ```text
-mchanges --list [--workspace DIR] [--max-tokens N]
+mchanges --list [ID[..ID] ...] [--workspace DIR] [--max-tokens N]
 mchanges [--mine | ID[..ID] ...] [--summary|--history|--net] [--workspace DIR] [--max-tokens N] [-- PATH ...]
 mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]
 ```
@@ -182,12 +182,13 @@ mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH .
 A bare `mchanges` or `--mine` selects every allocated ID owned by the calling
 thread, including explicit markers for retired evidence. Forked threads inherit
 their visible stream under the fork's identity; resume uses the durable identity.
-`--list` shows IDs and counts, without execution outcomes or capture diagnostics.
+`--list` without operands selects the calling thread; explicit IDs and ranges may
+select captured changes across agents. It shows IDs and counts, without execution outcomes or capture diagnostics.
 It compresses consecutive comparable complete IDs and
 shows known direct `+N -N` counts. Partial or unswept IDs remain separate;
 `?` marks unknown direct counts, while `managed:N` counts tool-managed review
 files excluded from the default diff. Pending and retired IDs remain visible;
-sibling threads' IDs are not exposed. Explicit IDs can still be read across
+sibling threads' IDs are not exposed by implicit selection. Explicit IDs can still be read across
 agents in the shared namespace. The default view shows each ID and unified
 file diff. `--summary` prefixes each path's added and removed line counts with the same
 file status as the diff pane (`A`, `M`, `D`, `R`, `RM`, `UU`, or `?` for incomplete evidence), aggregating across
@@ -196,8 +197,13 @@ A created-then-deleted file has no summary row, matching the empty saved diff.
 Paths inside the selected workspace are shortened. By default,
 confirmed managed files become one compact `M +added -removed` row with a separate binary unavailable-count tally;
 incomplete managed records form a separate `?` row with bounded reason counts, not claimed edits;
-explicit path filters expand individual managed paths. Pending, retired and never-allocated selections get per-ID
-status rows without hiding the remaining summary. It is not a net workspace diff;
+explicit path filters expand individual managed paths. Pending selections get per-ID status rows. Unavailable selections, including
+retired or never-allocated IDs, report target-qualified stderr and nonzero status
+without suppressing available results in any read mode. Explicit ranges extending
+past the latest ID still return available IDs. `--net` composes available evidence
+and reports skipped or uncomposable targets rather than claiming complete coverage.
+Successful output stays on stdout. `apply` and `revert` retain dependency checks
+and do not skip failed dependencies. It is not a net workspace diff;
 binary or incomplete files have unknown counts. Incomplete path rows append quoted retained
 reasons after the path column. Missing evidence cannot establish a modification, even when
 the record contains both path names. A sequence containing an incomplete capture stays `?`.

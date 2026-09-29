@@ -18,7 +18,7 @@ import (
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
-const changesReadUsage = "mchanges --list [--workspace DIR] [--max-tokens N] | mchanges [--mine | ID[..ID] ...] [--summary|--history|--net] [--workspace DIR] [--max-tokens N] [-- PATH ...] | mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]"
+const changesReadUsage = "mchanges --list [ID[..ID] ...] [--workspace DIR] [--max-tokens N] | mchanges [--mine | ID[..ID] ...] [--summary|--history|--net] [--workspace DIR] [--max-tokens N] [-- PATH ...] | mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]"
 
 const maxChangeReadBytes = 64 << 20
 
@@ -102,20 +102,20 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 			return options, fmt.Errorf("unknown option %s; %s", flag, changesReadUsage)
 		}
 	}
-	if options.view == "list" && (len(refs) != 0 || len(options.paths) != 0) {
-		return options, errors.New("--list does not accept change IDs or paths")
+	if options.view == "list" && len(options.paths) != 0 {
+		return options, errors.New("--list does not accept paths")
 	}
 	if options.mine && len(refs) != 0 {
 		return options, errors.New("--mine does not accept explicit change IDs")
 	}
-	if len(refs) == 0 && options.view != "list" {
+	if len(refs) == 0 {
 		if options.view == "revert" || options.view == "apply" {
 			return options, fmt.Errorf("mutations require explicit change IDs; %s", changesReadUsage)
 		}
 		options.mine = true
 	}
 	var err error
-	if options.view != "list" {
+	if len(refs) != 0 {
 		options.ids, err = expandChangeRefs(refs)
 		if err != nil {
 			return options, err
@@ -138,16 +138,23 @@ func (s *mekugiReplayStore) readChanges(ctx context.Context, options changeReadO
 	return text, err
 }
 
+// partialChangeReadError accompanies usable output from independent change reads.
+type partialChangeReadError struct{ error }
+
 func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeReadOptions) (string, *changeReadSnapshot, error) {
 	s = s.scoped(ctx)
+	if options.view == "list" && len(options.ids) == 0 {
+		options.mine = true
+	}
 	var output string
 	var snapshot *changeReadSnapshot
+	var targetErrors []error
 	err := s.locked(ctx, func() error {
 		index, err := s.readChangeIndex(options.workspace)
 		if err != nil {
 			return err
 		}
-		if options.mine || options.view == "list" {
+		if options.mine {
 			if s.session.Thread == "" {
 				return errors.New("own-thread reads require a Codex thread identity")
 			}
@@ -160,25 +167,62 @@ func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeRe
 			Selected: make(map[string]trackedChange), Streams: index.Streams, Mine: options.mine, OverlapLabels: make(map[string]string)}
 		options.overlapLabels = snapshot.OverlapLabels
 		names := []string{changeIndexName(options.workspace, index.Namespace)}
+		var readable []string
 		for _, id := range options.ids {
 			change, exists := index.Changes[id]
 			if !exists {
-				if options.view != "summary" && options.view != "list" && !options.mine {
-					return missingChangeError(index, id)
+				if !options.mine || options.view == "net" {
+					targetErrors = append(targetErrors, missingChangeError(index, id))
+				} else {
+					readable = append(readable, id)
 				}
 				continue
 			}
+			var readErr error
+			for _, call := range change.Calls {
+				record, found, err := s.read(options.workspace, call.ID, false)
+				if err != nil {
+					readErr = fmt.Errorf("change %s: %w", id, err)
+					break
+				}
+				if !found || record.History.ChangeID != id || record.History.CorrelationID != change.Correlation {
+					readErr = fmt.Errorf("change %s has a missing or inconsistent attempt", id)
+					break
+				}
+			}
+			if readErr == nil && options.view == "net" {
+				if len(change.Calls) == 0 || change.RetiredCalls != 0 {
+					readErr = fmt.Errorf("change %s has pending or retired history; cannot produce a complete --net view", id)
+				}
+			}
+			if readErr != nil {
+				targetErrors = append(targetErrors, readErr)
+				continue
+			}
+			readable = append(readable, id)
 			snapshot.Selected[id] = change
 			for _, call := range change.Calls {
 				names = append(names, replayRecordName(options.workspace, call.ID, false))
 			}
 		}
+		options.ids = readable
+		snapshot.IDs = readable
 		if err := s.retainFiles(names...); err != nil {
 			return err
 		}
+		if len(readable) == 0 && len(targetErrors) > 0 {
+			return nil
+		}
 		output, err = s.renderChanges(ctx, options, index)
+		if partial, ok := errors.AsType[*partialChangeReadError](err); ok {
+			targetErrors = append(targetErrors, partial.error)
+			return nil
+		}
 		return err
 	})
+	if err == nil && len(targetErrors) > 0 {
+		err = &partialChangeReadError{errors.Join(targetErrors...)}
+	}
 	return output, snapshot, err
 }
 
@@ -574,12 +618,28 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRo
 		return execution
 	}
 	text, snapshot, err := store.readChangeView(ctx, options)
+	diagnostics := ""
 	if err != nil {
-		return fail(err)
+		if _, partial := errors.AsType[*partialChangeReadError](err); !partial {
+			return fail(err)
+		}
+		diagnostics = fmt.Sprintf("mchanges: %v\n", err)
 	}
 	selected, err := selectReadPage(ctx, manifest, runtimeRoot, text, options.maxTokens)
 	if err != nil {
 		return fail(err)
+	}
+	if diagnostics != "" {
+		execution := toolplugin.ExecutionOutput{Stdout: selected, Stderr: diagnostics, ExitCode: 1}
+		if len(selected) < len(text) {
+			execution.OmittedOutput = &toolplugin.OmittedOutput{Stdout: text[len(selected):], StdoutKind: "rows"}
+			retained, err := retainExecutionOutput(ctx, manifest, execution)
+			if err != nil {
+				return fail(err)
+			}
+			return retained
+		}
+		return execution
 	}
 	next := ""
 	if len(selected) < len(text) {

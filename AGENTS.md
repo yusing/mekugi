@@ -34,6 +34,13 @@ Report types:
 
 The linked contracts own interface details, exceptions, and acceptance cases.
 
+- **Independent multi-target reads:** A failed target must not suppress successful
+  results or prevent other targets from being attempted. Keep successful output on
+  stdout and target-qualified errors on stderr; return nonzero for any failed target.
+  Apply this across multi-target tools and all read modes, including `mchanges --list`
+  ranges and `--net`: unavailable IDs beyond the latest capture must not discard
+  available selections. `mchanges apply` and `revert` retain dependency checks;
+  do not skip failed dependencies and mutate the remaining selection.
 - **Visible-row alignment:** In scrollable lists and pickers, derive shared
   column widths only from currently visible rows. Off-screen items must not
   change alignment, truncation, or description visibility.
