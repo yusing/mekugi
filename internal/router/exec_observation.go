@@ -1373,7 +1373,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		case !completed:
 			status = execStatusFailed
 		}
-		if results, confirmed := member.history.nativeCell.commands(member.history.ExecObservation.Commands, workspace); confirmed {
+		if results, confirmed := member.history.nativeCell.commands(&member.history, workspace); confirmed {
 			status = execStatusCompleted
 			hostResults = append(hostResults, results...)
 			for _, result := range results {

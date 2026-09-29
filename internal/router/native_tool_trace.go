@@ -389,10 +389,15 @@ func (c *nativeTraceCell) pending() bool {
 	return !c.ended
 }
 
-func (c *nativeTraceCell) commands(commands []execCommandInput, workspace string) ([]nativeToolResult, bool) {
-	if c == nil || !c.ended {
+// commands confirms each observed command by exactly one terminal host call.
+// Journal publications the router lowered into history's carrier are not
+// observed commands and do not affect the outcome; any other unobserved or
+// repeated command leaves the outcome unconfirmed.
+func (c *nativeTraceCell) commands(history *mekugiHistory, workspace string) ([]nativeToolResult, bool) {
+	if c == nil || !c.ended || history.ExecObservation == nil {
 		return nil, false
 	}
+	commands := history.ExecObservation.Commands
 	normalize := func(command execCommandInput) execCommandInput {
 		if command.Workdir == "" {
 			command.Workdir = workspace
@@ -419,6 +424,9 @@ func (c *nativeTraceCell) commands(commands []execCommandInput, workspace string
 					break
 				}
 			}
+		}
+		if want[command] == 0 && history.lowersJournalCommand(nativeJournalCommand.FindStringSubmatch(tool.command.Command)) {
+			continue
 		}
 		if !tool.terminal || want[command] == 0 {
 			return nil, false

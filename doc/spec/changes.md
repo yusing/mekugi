@@ -74,7 +74,10 @@ a diagnostic, not a fabricated workspace-wide change.
 The record keeps command labels, actual host exit codes when available, and capture
 diagnostics for `--history`. A nonzero exit is a command failure, not a failed
 file change. Native receipts retain per-tool results for Code Mode; absent receipts
-do not invent exit codes or delay captured file changes. Yielded calls wait for
+do not invent exit codes or delay captured file changes. Each observed command must
+match exactly one terminal host call. Journal publications that Mekugi lowered into
+the same cell are transport, not observed commands. Any other unobserved or repeated
+command call leaves the per-tool results absent. Yielded calls wait for
 their terminal `write_stdin` or `wait` result before capture completes.
 
 Coverage describes only the captured scope: complete comparisons are `exact`;

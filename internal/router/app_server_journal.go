@@ -27,15 +27,21 @@ func (u *appServerUI) internalJournalCommand(thread string, item appServerItem) 
 	// not rebase them; verify the retained executing thread in either scope.
 	for _, workspace := range []string{u.session.cwd, ""} {
 		history, found, err := u.proxy.replayStore.lookup(u.ctx, workspace, string(callID))
-		if err != nil || !found || history.ExecutingThread != thread || history.Script == history.CarrierPayload {
-			continue
-		}
-		// The opaque token alone is not provenance. The exact generated prefix
-		// must belong to this thread's durable translated host call, including on resume.
-		prefix := workerCommand("mjournal", []string{commentaryOnceArgument, parts[1], parts[2]})
-		if strings.Contains(history.CarrierPayload, "const command = "+strconv.Quote(prefix+" '")+" + encodeURIComponent(JSON.stringify(mutation))") {
+		if err == nil && found && history.ExecutingThread == thread && history.lowersJournalCommand(parts) {
 			return true
 		}
 	}
 	return false
+}
+
+// lowersJournalCommand reports whether parts, a nativeJournalCommand match,
+// is a publication this translated Code Mode call issues. The opaque token
+// alone is not provenance: the exact generated prefix must belong to the
+// durable carrier, including on resume.
+func (h *mekugiHistory) lowersJournalCommand(parts []string) bool {
+	if parts == nil || h.Script == h.CarrierPayload {
+		return false
+	}
+	prefix := workerCommand("mjournal", []string{commentaryOnceArgument, parts[1], parts[2]})
+	return strings.Contains(h.CarrierPayload, "const command = "+strconv.Quote(prefix+" '")+" + encodeURIComponent(JSON.stringify(mutation))")
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -76,6 +77,10 @@ func (f *nativeTraceFixture) end(thread, cell string) {
 	f.event(thread, map[string]any{"type": "code_cell_ended", "runtime_cell_id": cell, "status": "completed"})
 }
 
+func observedCommands(commands ...execCommandInput) *mekugiHistory {
+	return &mekugiHistory{ExecObservation: &execObservation{Commands: commands, CodeMode: true}}
+}
+
 func TestNativeTraceConfirmsEachToolWithoutPrintedOutput(t *testing.T) {
 	f := newNativeTraceFixture(t)
 	trace := &nativeToolTrace{directory: f.root}
@@ -93,7 +98,7 @@ func TestNativeTraceConfirmsEachToolWithoutPrintedOutput(t *testing.T) {
 	if !ok || patch.Status != "completed" || patch.CallID != "patch" {
 		t.Fatalf("patch receipt = %+v, %t", patch, ok)
 	}
-	results, ok := cell.commands([]execCommandInput{{Command: "printf changed > target"}}, "/work")
+	results, ok := cell.commands(observedCommands(execCommandInput{Command: "printf changed > target"}), "/work")
 	if !ok || len(results) != 1 || results[0].ExitCode == nil || *results[0].ExitCode != 0 {
 		t.Fatalf("command receipts = %+v, %t", results, ok)
 	}
@@ -129,7 +134,7 @@ func TestNativeTraceFailuresAndYieldAreNotSuccess(t *testing.T) {
 	if patch, ok := cell.patch("bad input"); !ok || patch.Status != "failed" {
 		t.Fatal("caught patch failure lost")
 	}
-	commands := []execCommandInput{{Command: "exit 7"}, {Command: "sleep 1"}}
+	commands := observedCommands(execCommandInput{Command: "exit 7"}, execCommandInput{Command: "sleep 1"})
 	if _, ok := cell.commands(commands, "/work"); ok {
 		t.Fatal("pending process confirmed")
 	}
@@ -149,7 +154,7 @@ func TestNativeTraceRuntimeExitSurvivesYieldedDispatchResult(t *testing.T) {
 	f.result("t", "cmd", "completed", map[string]any{"session_id": 123})
 	f.end("t", "1")
 	trace := &nativeToolTrace{directory: f.root}
-	results, ok := trace.readCell("t", "outer", "source").commands([]execCommandInput{{Command: "exit 3"}}, "/work")
+	results, ok := trace.readCell("t", "outer", "source").commands(observedCommands(execCommandInput{Command: "exit 3"}), "/work")
 	if !ok || len(results) != 1 || results[0].Status != "failed" || *results[0].ExitCode != 3 {
 		t.Fatalf("lost process exit: %+v, %t", results, ok)
 	}
@@ -178,6 +183,55 @@ func TestNativeTraceMissingAndCorruptEvidenceNeverConfirms(t *testing.T) {
 			trace := &nativeToolTrace{directory: f.root}
 			if _, ok := trace.readCell("t", "outer", "source").patch("input"); ok {
 				t.Fatal("ambiguous/missing evidence became success")
+			}
+		})
+	}
+}
+
+// A journal publication the router lowered into the cell is transport, not an
+// observed command; only the model's literal commands decide the outcome.
+func TestNativeTraceCommandsSkipOnlyLoweredJournalPublications(t *testing.T) {
+	transform, proxy, _, _ := newMekugiTestTransform(t)
+	proxy.commentaryEndpoint = "http://127.0.0.1:1234/internal/commentary"
+	const edit = "python3 - <<'PY'\nopen('a.txt','w').write('new')\nPY\ncat a.txt"
+	source := `await journal({op:"add", text:"Editing"}); text(await tools.exec_command({cmd: ` + string(mustMarshalJSON(edit)) + `}));`
+	lowered, changed, err := transform.lowerCodeModeCommentary("cell", source)
+	if err != nil || !changed {
+		t.Fatalf("lowering: %v %v", changed, err)
+	}
+	token := runtimeCommentaryToken(t, transform)
+	journal := workerCommand("mjournal", []string{commentaryOnceArgument, proxy.commentaryEndpoint, token}) + " '%7B%22op%22%3A%22add%22%7D'"
+	history := &mekugiHistory{ToolName: "exec", Script: source, CarrierPayload: lowered,
+		ExecObservation: &execObservation{Commands: []execCommandInput{{Command: edit}}, CodeMode: true}}
+	for _, tc := range []struct {
+		name    string
+		extra   []string
+		history *mekugiHistory
+		want    bool
+	}{
+		{"lowered journal", []string{journal}, history, true},
+		{"journal list continuation", []string{journal + " 2 " + strings.Repeat("a", 64)}, history, true},
+		{"unobserved command", []string{journal, "touch b.txt"}, history, false},
+		{"repeated observed command", []string{edit}, history, false},
+		{"unproven token", []string{strings.Replace(journal, token, "unproven.token", 1)}, history, false},
+		{"untranslated carrier", []string{journal}, &mekugiHistory{Script: lowered, CarrierPayload: lowered, ExecObservation: history.ExecObservation}, false},
+		{"chained journal", []string{journal + "; touch b.txt"}, history, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newNativeTraceFixture(t)
+			f.start("t", "1", "cell", lowered)
+			for i, command := range tc.extra {
+				id := fmt.Sprintf("extra-%d", i)
+				f.tool("t", "1", id, "exec_command", string(mustMarshalJSON(map[string]any{"cmd": command, "login": false})))
+				f.result("t", id, "completed", map[string]any{"exit_code": 0})
+			}
+			f.tool("t", "1", "edit", "exec_command", string(mustMarshalJSON(map[string]string{"cmd": edit})))
+			f.result("t", "edit", "completed", map[string]any{"exit_code": 0})
+			f.end("t", "1")
+			trace := &nativeToolTrace{directory: f.root}
+			results, ok := trace.readCell("t", "cell", lowered).commands(tc.history, "/work")
+			if ok != tc.want || ok && (len(results) != 1 || results[0].CallID != "edit") {
+				t.Fatalf("results = %+v, %t; want confirmed %t", results, ok, tc.want)
 			}
 		})
 	}
