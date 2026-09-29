@@ -457,3 +457,46 @@ func TestRanRowExpandsSourceTabs(t *testing.T) {
 		}
 	}
 }
+
+// Collapsed read content no longer keeps each read on its own row: targets
+// count their lines, and opening the row shows each invocation's output.
+func TestMergedReadsCountContentPerTarget(t *testing.T) {
+	p := activityui.Painter{}
+	test := "internal/router/toolplugin/tests/tools.test.ts"
+	read := func(source uint64, path, span string, lines int) activityui.Block {
+		return activityui.Block{Source: source, Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: path, Ranges: []string{span}}}, Tail: make([]string, lines), Collapsed: true}
+	}
+	open := read(5, "open.go", "1:2", 3)
+	open.Collapsed = false // Open output stays with its invocation.
+	blocks := activityui.MergeLiveActivityReads([]activityui.Block{
+		read(1, test, "1147:1167", 19),
+		read(2, test, "1738:1788", 50),
+		read(3, "plugins/inspect_file.ts", "135:185", 50),
+		{Source: 4, Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: test, Ranges: []string{"1:85"}}}},
+		open,
+	})
+	if len(blocks) != 2 || len(blocks[0].Members) != 4 || !blocks[0].Collapsed {
+		t.Fatalf("merged = %+v", blocks)
+	}
+	got := plainLines(p.Block(blocks[0], 80))
+	want := []string{
+		"Read   …/tests/tools.test.ts    L1147–1167, L1738–1788, L1–85 (69 lines)",
+		"       plugins/inspect_file.ts  L135–185 (50 lines)",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("merged rows =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	blocks[0].Collapsed = false
+	opened := strings.Join(plainLines(p.Block(blocks[0], 100)), "\n")
+	if strings.Count(opened, "Read") != 4 || strings.Count(opened, "┆") != 119 {
+		t.Fatalf("opened rows =\n%s", opened)
+	}
+	// Streaming or failed reads stay their own rows.
+	running := read(6, "a.go", "1:2", 2)
+	running.Collapsed, running.Running = false, true
+	failed := read(7, "b.go", "1:2", 2)
+	failed.Collapsed, failed.ExitCode = false, 1
+	if merged := activityui.MergeLiveActivityReads([]activityui.Block{read(8, "c.go", "1:2", 2), running, failed}); len(merged) != 3 {
+		t.Fatalf("unsettled reads merged: %+v", merged)
+	}
+}

@@ -1494,9 +1494,12 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			run.questions = append(run.questions, 0)
 		}
 		previousMessage, previousSummary = message, block.Kind == "summary"
-		if block.Source != 0 {
-			if _, exists := run.entryRows[block.Source]; !exists {
-				run.entryRows[block.Source] = len(run.lines)
+		// A merged read row stands for each entry it merged.
+		for _, member := range append([]activityui.Block{block}, block.Members...) {
+			if member.Source != 0 {
+				if _, exists := run.entryRows[member.Source]; !exists {
+					run.entryRows[member.Source] = len(run.lines)
+				}
 			}
 		}
 		// Messages carry results, so they get twice the operation share.

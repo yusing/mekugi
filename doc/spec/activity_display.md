@@ -55,8 +55,12 @@ Consecutive same-action target events by one agent collapse into one row, both
 within a call and across calls. Reads join ranges of the same file; Inspect,
 List, Search, and other target-only actions use the same grouping. A group that
 does not fit on one row puts each target on its own row, without separators;
-Search targets use the same path emphasis as reads. Different
-actions and detail-bearing operations remain distinct. When one live invocation
+Search targets use the same path emphasis as reads. Reads whose collapsed
+content came from one target join as well: each target counts the lines read
+from it as `(N lines)`, and a click opens the row as the invocations it stands
+for, each with its output, and another closes it. A read still streaming,
+failed, or left open stays its own row until it settles. Different actions and
+other detail-bearing operations remain distinct. When one live invocation
 reports several operations at once, such as a shell call classified as Skill,
 Read and Search, they appear one at a time, 80 ms apart, in Main, Activity and the
 roster summary; restored history shows at once. Child text is sanitized before layout, so it cannot emit terminal

@@ -482,6 +482,15 @@ func liveActivityIndent(lines []string, prefix string) []string {
 // Block renders one parsed block within width columns.
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
+	if block.Opened() {
+		var lines []string
+		for _, member := range block.Members {
+			member.Collapsed, member.Hovered, member.Flash = false, false, block.Flash
+			member.VerbColumn, member.TailRows = block.VerbColumn, block.TailRows
+			lines = append(lines, p.Block(member, width)...)
+		}
+		return lines
+	}
 	lines := p.blockRows(block, width)
 	if trailer := segmentTrailer(block); trailer != "" && len(lines) > 0 {
 		if last := len(lines) - 1; ansi.StringWidth(lines[last])+1+ansi.StringWidth(trailer) <= width {
@@ -574,20 +583,20 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		lead, count := block.lead(VerbColor(block.Verb), block.Verb), ResultCount(block.Results)+readLines(block)
 		indent := ansi.StringWidth(lead)
 		literal := block.Verb == "Search" || block.Verb == "Skill"
-		// fit shortens a path that cannot share its row with its ranges and,
-		// on the last row, the count after them.
-		fit := func(read Read, last bool) string {
+		// fit shortens a path that cannot share its row with its ranges, gap
+		// cells after it, and, on the last row, the count after them.
+		fit := func(read Read, gap int, last bool) string {
 			if literal {
 				return read.Path
 			}
 			room := width - indent
 			if len(read.Ranges) > 0 {
-				room -= ansi.StringWidth(lineRanges(read.Ranges)) + 1
+				room -= ansi.StringWidth(lineRanges(read.Ranges)) + gap
 			}
 			if last {
 				room -= ansi.StringWidth(count)
 			}
-			return fitPath(read.Path, room)
+			return fitPath(read.Path, room-ansi.StringWidth(lineSuffix(read.Lines, false)))
 		}
 		item := func(path string, read Read) string {
 			item := Path(path)
@@ -597,7 +606,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			if len(read.Ranges) > 0 {
 				item += " " + Dim + lineRanges(read.Ranges) + Undim
 			}
-			return item
+			return item + lineSuffix(read.Lines, block.Hovered)
 		}
 		var items []string
 		for _, read := range block.Reads {
@@ -608,7 +617,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			return liveActivityHang(lead, joined, width)
 		}
 		if len(items) < 2 {
-			return liveActivityHang(lead, item(fit(block.Reads[0], true), block.Reads[0])+count, width)
+			return liveActivityHang(lead, item(fit(block.Reads[0], 1, true), block.Reads[0])+count, width)
 		}
 		// Items that do not fit on one row take one row each, rather than
 		// leaving separators dangling at wrapped row ends. Their ranges share
@@ -616,13 +625,13 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		paths := make([]string, len(block.Reads))
 		column := 0
 		for i, read := range block.Reads {
-			paths[i] = fit(read, i == len(block.Reads)-1)
+			paths[i] = fit(read, 2, i == len(block.Reads)-1)
 			items[i] = item(paths[i], read)
 			column = max(column, ansi.StringWidth(paths[i]))
 		}
 		for i, read := range block.Reads {
-			if len(read.Ranges) > 0 && !literal && indent+column+2+ansi.StringWidth(lineRanges(read.Ranges)) <= width {
-				items[i] = Path(paths[i]) + strings.Repeat(" ", column-ansi.StringWidth(paths[i])+2) + Dim + lineRanges(read.Ranges) + Undim
+			if len(read.Ranges) > 0 && !literal && indent+column+2+ansi.StringWidth(lineRanges(read.Ranges)+lineSuffix(read.Lines, false)) <= width {
+				items[i] = Path(paths[i]) + strings.Repeat(" ", column-ansi.StringWidth(paths[i])+2) + Dim + lineRanges(read.Ranges) + Undim + lineSuffix(read.Lines, block.Hovered)
 			}
 		}
 		items[len(items)-1] += count
@@ -984,8 +993,17 @@ func readLines(block Block) string {
 	if !block.Collapsed || !block.ReadOutput() || len(block.Tail) == 0 {
 		return ""
 	}
-	count := "(" + LineCount(block.TailOmitted+len(block.Tail)) + ")"
-	if block.Hovered {
+	return lineSuffix(block.TailOmitted+len(block.Tail), block.Hovered)
+}
+
+// lineSuffix counts n lines of collapsed content, underlined under the
+// pointer that opens it.
+func lineSuffix(n int, hovered bool) string {
+	if n <= 0 {
+		return ""
+	}
+	count := "(" + LineCount(n) + ")"
+	if hovered {
 		count = Underline(count)
 	}
 	return " " + Dim + count + Undim

@@ -457,3 +457,41 @@ func TestAppServerInstantOperationOutputDoesNotRoll(t *testing.T) {
 		t.Fatalf("a command's burst jumped to its tail:\n%s", got)
 	}
 }
+
+// Consecutive reads whose content collapsed share one row that counts each
+// target's lines; a click opens every invocation's output, another closes it.
+func TestAppServerCollapsedReadsMerge(t *testing.T) {
+	for _, conversation := range []bool{false, true} {
+		t.Run(fmt.Sprint(conversation), func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			u.view.conversation = conversation
+			for i, command := range []string{"sed -n 1,3p a.go", "sed -n 1,2p b.go", "sed -n 5,6p a.go"} {
+				appServerTestNotify(t, u, "item/completed", map[string]any{
+					"threadId": "main", "turnId": "t", "item": map[string]any{
+						"id": fmt.Sprint(i), "type": "commandExecution", "command": command,
+						"status": "completed", "exitCode": 0, "aggregatedOutput": fmt.Sprintf("read-%d\nmore-%d\n", i, i),
+					},
+				})
+			}
+			feed := u.view.renderFeed(100, 60)
+			got := ansi.Strip(strings.Join(feed.lines, "\n"))
+			if strings.Count(got, "Read") != 1 || !strings.Contains(got, "Read a.go L1–3, L5–6 (4 lines) · b.go L1–2 (2 lines)") || strings.Contains(got, "read-0") {
+				t.Fatalf("collapsed reads did not merge:\n%s", got)
+			}
+			index := slices.IndexFunc(feed.lines, func(line string) bool { return strings.Contains(line, "(4 lines)") })
+			snippet := feed.snippets[index]
+			if snippet == (liveActivitySnippet{}) {
+				t.Fatal("merged read row has no toggle")
+			}
+			u.view.toggleSnippet(snippet)
+			opened := ansi.Strip(strings.Join(u.view.renderFeed(100, 60).lines, "\n"))
+			if strings.Count(opened, "Read") != 3 || strings.Index(opened, "read-0") > strings.Index(opened, "b.go") || !strings.Contains(opened, "┆ more-2") {
+				t.Fatalf("opened reads lost their invocations:\n%s", opened)
+			}
+			u.view.toggleSnippet(snippet)
+			if again := ansi.Strip(strings.Join(u.view.renderFeed(100, 60).lines, "\n")); again != got {
+				t.Fatalf("closed reads =\n%s\nwant\n%s", again, got)
+			}
+		})
+	}
+}

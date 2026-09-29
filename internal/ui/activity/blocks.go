@@ -51,6 +51,9 @@ type Block struct {
 	TailOmitted int         // Output lines before Tail.
 	TailRows    int         // Tail lines open output shows; 0 shows all of Tail.
 	Changes     []ChangeRow // Change history rows open output shows instead of Tail.
+	// Members are the invocations a merged read row stands for, each with its
+	// own output. Opened, the row shows them as they were.
+	Members []Block
 	SourceRows  int         // Rows a command or program preview may use; 0 shows it whole.
 	Flash       bool        // Presentation-only: another pane just opened this entry.
 	Live        bool        // Reasoning still streaming.
@@ -326,6 +329,7 @@ type Stat struct{ Status, Added, Removed, Path string }
 type Read struct {
 	Path   string
 	Ranges []string
+	Lines  int // Collapsed content read from this target, once merged.
 }
 
 // Read previews append line spans as space-separated N:M pairs.
@@ -446,32 +450,73 @@ func parseLiveActivityReads(label string) ([]Read, bool) {
 	return reads, len(reads) > 0
 }
 
-// mergeLiveActivityReads collapses adjacent targets of the same action, joining ranges
-// of the same path. Merged blocks own their slices; parsed entries are shared.
+// MergeLiveActivityReads collapses adjacent targets of the same action, joining
+// ranges of the same path. Reads whose content is collapsed join too, each
+// target counting the lines read from it; a read still streaming, failed or
+// left open stays its own row until it settles. Merged blocks own their
+// slices; parsed entries are shared.
 func MergeLiveActivityReads(blocks []Block) []Block {
-	var merged []Block
+	var merged, firsts []Block
 	for _, block := range blocks {
 		n := len(merged)
-		if block.Kind != "reads" || n == 0 || merged[n-1].Kind != "reads" || merged[n-1].Verb != block.Verb || block.Results != nil || merged[n-1].Results != nil || len(block.Tail) > 0 || block.TailOmitted > 0 || len(merged[n-1].Tail) > 0 || merged[n-1].TailOmitted > 0 {
+		if n == 0 || !mergesReads(merged[n-1], block) {
 			if block.Kind == "reads" {
 				block.Reads = slices.Clone(block.Reads)
 				for i := range block.Reads {
 					block.Reads[i].Ranges = slices.Clone(block.Reads[i].Ranges)
 				}
 			}
-			merged = append(merged, block)
+			merged, firsts = append(merged, block), append(firsts, block)
 			continue
 		}
 		last := &merged[n-1]
+		if last.Members == nil {
+			last.Members = []Block{firsts[n-1]}
+			last.countContent()
+		}
+		last.Members = append(last.Members, block)
+		last.Flash = last.Flash || block.Flash
+		last.Collapsed = last.Collapsed || block.Collapsed
+		block.countContent()
 		for _, read := range block.Reads {
 			if i := slices.IndexFunc(last.Reads, func(r Read) bool { return r.Path == read.Path }); i >= 0 {
 				last.Reads[i].Ranges = append(last.Reads[i].Ranges, read.Ranges...)
+				last.Reads[i].Lines += read.Lines
 			} else {
-				last.Reads = append(last.Reads, Read{Path: read.Path, Ranges: slices.Clone(read.Ranges)})
+				last.Reads = append(last.Reads, Read{Path: read.Path, Ranges: slices.Clone(read.Ranges), Lines: read.Lines})
 			}
 		}
 	}
 	return merged
+}
+
+// mergesReads reports whether next joins the read row last.
+func mergesReads(last, next Block) bool {
+	joins := func(b Block) bool {
+		return b.Kind == "reads" && b.Results == nil && b.ExitCode == 0 &&
+			(len(b.Tail) == 0 && b.TailOmitted == 0 || b.readContent())
+	}
+	return last.Verb == next.Verb && joins(last) && joins(next)
+}
+
+// readContent reports collapsed content that one target's row can count.
+func (b Block) readContent() bool {
+	return b.Collapsed && b.ReadOutput() && len(b.Reads) == 1 && len(b.Tail) > 0
+}
+
+// countContent moves a read's collapsed content count onto its target.
+func (b *Block) countContent() {
+	if b.readContent() {
+		b.Reads = slices.Clone(b.Reads)
+		b.Reads[0].Lines = b.TailOmitted + len(b.Tail)
+		b.Tail, b.TailOmitted = nil, 0
+	}
+}
+
+// Opened reports a merged read row whose reader opened its content, which
+// then shows as the invocations it stands for.
+func (b Block) Opened() bool {
+	return len(b.Members) > 0 && !b.Collapsed && slices.ContainsFunc(b.Reads, func(r Read) bool { return r.Lines > 0 })
 }
 
 const liveActivityClippedAnswer = "… (full answer in Codex completion)"
