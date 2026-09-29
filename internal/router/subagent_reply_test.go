@@ -21,8 +21,8 @@ func TestReceivedRepliesRemainNativeAndKeepFullBodies(t *testing.T) {
 	if !bytes.Equal(fields["input"], input) {
 		t.Fatal("native envelopes changed")
 	}
-	if len(got.replies) != 2 || got.replies[0].sender != "/root/a" || got.replies[0].text != "[`/root/a` -> `/root/b`] Message received:\n"+body ||
-		got.replies[0].source == "" || got.replies[1].text != "[`/root/a` -> `/root/b`] Message received:\nNext reply." ||
+	if len(got.replies) != 2 || got.replies[0].message != (activityMessage{from: "/root/a", to: "/root/b", text: body}) ||
+		got.replies[0].source == "" || got.replies[1].message.text != "Next reply." ||
 		len(got.finals) != 1 || got.finals[0].text != body {
 		t.Fatalf("native replies and finals = %+v", got)
 	}
@@ -43,7 +43,7 @@ func TestReceivedReplyCurrentInputBoundary(t *testing.T) {
 			input := mustTestJSON(t, []any{envelope("old"), boundary, envelope("fresh")})
 			fields := map[string]json.RawMessage{"input": input}
 			got := prepareSubagentInputEnvelopes(fields, "/root")
-			if len(got.replies) != 1 || got.replies[0].text != "[`/root/worker` -> `/root`] Message received:\nfresh" || !bytes.Equal(fields["input"], input) {
+			if len(got.replies) != 1 || got.replies[0].message != (activityMessage{from: "/root/worker", to: "/root", text: "fresh"}) || !bytes.Equal(fields["input"], input) {
 				t.Fatalf("current native reply = %+v; input = %s", got.replies, fields["input"])
 			}
 		})
@@ -62,7 +62,7 @@ func TestReceivedEncryptedReplyDoesNotExposeCiphertext(t *testing.T) {
 			fields := map[string]json.RawMessage{"input": input}
 			got := prepareSubagentInputEnvelopes(fields, "/root")
 			want := name == "native" || name == "single encrypted"
-			if (len(got.replies) == 1) != want || want && got.replies[0].text != "[`/root/worker` -> `/root`] Message received." || !bytes.Equal(fields["input"], input) {
+			if (len(got.replies) == 1) != want || want && got.replies[0].message != (activityMessage{from: "/root/worker", to: "/root"}) || !bytes.Equal(fields["input"], input) {
 				t.Fatalf("encrypted reply = %+v; input = %s", got.replies, fields["input"])
 			}
 		})

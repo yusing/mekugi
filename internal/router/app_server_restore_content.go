@@ -11,7 +11,6 @@ import (
 
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/pathdisplay"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 const appServerRestoreThreadLimit = 128
@@ -25,6 +24,14 @@ type appServerActivityRestore struct {
 	next     int
 	pages    int
 	listed   bool
+	// Rollout evidence the host's history omits: item completion times by
+	// thread ID, Activity placements by agent path, and Main placements,
+	// which wait for every child so Main can follow them in time order.
+	itemAt   map[string]map[string]time.Time
+	pane     map[string][]*restoredPlacement
+	main     []*restoredPlacement
+	notices  []string
+	rendered bool
 }
 
 func (u *appServerUI) restorePaneContent(root appServerThreadInfo) error {
@@ -62,6 +69,10 @@ func (u *appServerUI) restoreList(cursor string) error {
 
 func (u *appServerUI) restoreContentNotice(message string) {
 	u.agents.status = "History incomplete"
+	if r := u.restoring; r != nil && !r.rendered {
+		r.notices = append(r.notices, message) // Shown after Main's history.
+		return
+	}
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Session", Kind: "text", Text: message, Observed: time.Now()}}})
 	// Notices advance Main independently of the Activity sequence.
 	u.session.seq = max(u.session.seq, u.view.lastSeq)
@@ -140,17 +151,63 @@ func (u *appServerUI) readRestoredChildren() error {
 		agent := u.session.agent(u.session.paths[id])
 		agent.Started, agent.LastResponse = historyTime(info.CreatedAt), historyTime(info.UpdatedAt)
 	}
+	u.readRestoredRollouts()
 	for _, turn := range r.root.Turns {
 		for _, item := range turn.Items {
 			if item.Type == "collabAgentToolCall" {
 				item.SenderThreadID = u.thread
-				u.applyRestoredActivity(u.restoredCollab(item, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt))))
+				entries := u.restoredCollab(item, historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, r.root.UpdatedAt)))
+				u.applyRestoredActivity(entries)
+				for _, entry := range entries {
+					if main, ok := mainActivityEntry(entry); ok {
+						seq := u.agents.entrySeq(entry)
+						r.main = append(r.main, &restoredPlacement{entry: main, turn: turn.ID, anchor: item.ID, at: entry.Observed, link: &seq})
+					}
+				}
 			}
 		}
 	}
-	r.root.Turns = nil
 	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
 	return u.readNextRestoredChild()
+}
+
+// readRestoredRollouts reads each thread's retained rollout once every name
+// is known. Evidence belongs to the Activity agent live display would show
+// it under; the root's own evidence belongs to Main.
+func (u *appServerUI) readRestoredRollouts() {
+	r := u.restoring
+	r.itemAt, r.pane = make(map[string]map[string]time.Time), make(map[string][]*restoredPlacement)
+	var activity *subagentActivity
+	if u.proxy != nil {
+		activity = u.proxy.activity
+	}
+	infos := []appServerThreadInfo{r.root}
+	for _, id := range r.order {
+		infos = append(infos, r.threads[id])
+	}
+	for _, info := range infos {
+		agent := u.session.path(info.ID)
+		rollout := readRestoredRollout(info, agent)
+		r.itemAt[info.ID] = rollout.itemAt
+		for _, event := range rollout.events {
+			if event.repeated {
+				activity.markRestored(info.ID, event.entry)
+			}
+			p := &restoredPlacement{entry: event.entry, turn: event.turn, anchor: event.anchor, at: event.at}
+			p.entry.Observed, p.entry.Text = event.at, clipNativeActivityMessage(event.entry.Text)
+			owner := paneActivityAgent(event.entry)
+			if owner == "/root" {
+				p.entry, _ = mainActivityEntry(p.entry)
+				r.main = append(r.main, p)
+				continue
+			}
+			p.entry.Agent = owner
+			if owner != agent {
+				p.turn, p.anchor = "", "" // Another thread's history orders it by time.
+			}
+			r.pane[owner] = append(r.pane[owner], p)
+		}
+	}
 }
 
 func (u *appServerUI) readNextRestoredChild() error {
@@ -158,6 +215,23 @@ func (u *appServerUI) readNextRestoredChild() error {
 	if r.next < len(r.order) {
 		u.status = fmt.Sprintf("Restoring Activity %d/%d…", r.next+1, len(r.order))
 		return u.request("thread/read", map[string]any{"threadId": r.order[r.next], "includeTurns": true})
+	}
+	if !r.rendered {
+		// Evidence for a child whose history could not be read still reaches Main.
+		for _, placements := range r.pane {
+			for _, p := range placements {
+				if main, ok := mainActivityEntry(p.entry); ok {
+					r.main = append(r.main, &restoredPlacement{entry: main, at: p.at})
+				}
+			}
+		}
+		r.pane = nil
+		u.restoreMainHistory(r.root.Turns, r.main, r.itemAt[r.root.ID])
+		r.root.Turns, r.main, r.rendered = nil, nil, true
+		for _, notice := range r.notices {
+			u.restoreContentNotice(notice)
+		}
+		r.notices = nil
 	}
 	return u.finishRestoredContent()
 }
@@ -221,12 +295,7 @@ func historyTime(seconds int64) time.Time {
 
 func (u *appServerUI) applyRestoredActivity(entries []activityPaneEntry) {
 	for i := range entries {
-		if entries[i].Kind == "reply" {
-			from, to, _, _, ok := activityui.ParseEnvelope(entries[i].Text)
-			if ok && from == "/root" {
-				entries[i].Agent = to
-			}
-		}
+		entries[i].Agent = paneActivityAgent(entries[i])
 	}
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: entries, Agents: slices.Clone(u.session.agents)})
 	for _, entry := range entries {
@@ -248,58 +317,49 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 	agent.Turns, agent.Responding = uint64(len(info.Turns)), false
 	u.observeCost(info.ID, agent)
 	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(s.agents)})
-	for _, turn := range info.Turns {
+	var r *appServerActivityRestore
+	var itemAt map[string]time.Time
+	byTurn := make(map[int][]*restoredPlacement)
+	if r = u.restoring; r != nil {
+		itemAt = r.itemAt[info.ID]
+		for _, p := range r.pane[name] {
+			index := restoredTurnFor(info.Turns, itemAt, p.at)
+			if p.turn != "" {
+				index = slices.IndexFunc(info.Turns, func(turn appServerHistoryTurn) bool { return turn.ID == p.turn })
+			}
+			if index >= 0 {
+				byTurn[index] = append(byTurn[index], p)
+			} else if main, ok := mainActivityEntry(p.entry); ok && p.turn == "" {
+				r.main = append(r.main, &restoredPlacement{entry: main, at: p.at})
+			}
+		}
+		delete(r.pane, name)
+	}
+	for index, turn := range info.Turns {
 		observed := historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, info.UpdatedAt))
 		var entries []activityPaneEntry
+		var times []time.Time // When each entry happened, to place Main's copy.
+		place := func(slot []*restoredPlacement) {
+			for _, p := range slot {
+				entry := p.entry
+				entry.Seq = s.next()
+				entries, times = append(entries, entry), append(times, p.at)
+			}
+		}
+		slots := placeRestored(turn, itemAt, byTurn[index])
+		place(slots[0])
 		lastMessage := -1
-		for _, item := range turn.Items {
-			entry := activityPaneEntry{Seq: s.next(), Agent: name, Observed: observed, CallID: item.ID,
-				native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", searchResults: appServerSearchResults(item)}}
-			progressPhase := appServerHistoryProgressPhase(item)
-			item = u.waitItem(item, info.ID, turn.ID, item.ID, false)
-			if text, wait, handled := appServerProgress(item, progressPhase); handled {
-				if text != "" {
-					entry.Kind, entry.Text = "progress", text
-					entry.native.wait = wait
-					entry.native.phase = progressPhase
-					entries = append(entries, entry)
-				}
-				continue
+		for i, item := range turn.Items {
+			first := len(entries)
+			u.restoreActivityItem(info, turn, item, name, observed, &entries, &lastMessage)
+			at, ok := itemAt[item.ID]
+			if !ok {
+				at = observed
 			}
-			switch item.Type {
-			case "reasoning":
-				entry.Kind, entry.Text = "reasoning", strings.Join(item.Summary, "\n\n")
-				if strings.TrimSpace(entry.Text) != "" {
-					entries = append(entries, entry)
-				}
-			case "imageView":
-				entry.Kind, entry.Text = "tool", "View "+commentaryCode(pathdisplay.ForWorkspace(info.Cwd, item.Path))
-				entries = append(entries, entry)
-			case "commandExecution", "fileChange", "webSearch":
-				entry.Kind, entry.Text = "tool", appServerToolText(item, info.Cwd)
-				if item.Type == "fileChange" {
-					entry.Text = appServerEditText(item, info.Cwd)
-				}
-				appServerSucceededOutput(&entry, item, time.Time{})
-				entries = append(entries, entry)
-				if item.ExitCode != nil && *item.ExitCode != 0 {
-					exit := activityPaneEntry{Seq: s.next(), Agent: name, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID, Observed: observed}
-					exit.outputTail, exit.outputOmit = appServerOutputTail(item.AggregatedOutput)
-					entries = append(entries, exit)
-				}
-			case "agentMessage":
-				if item.Delivery == "async" && len(item.Questions) > 0 {
-					continue
-				}
-				entry.Kind, entry.Text = "text", item.Text
-				if item.Phase == "final_answer" || item.Phase == "finalAnswer" {
-					entry.Kind = "final"
-				}
-				lastMessage = len(entries)
-				entries = append(entries, entry)
-			case "collabAgentToolCall":
-				entries = append(entries, u.restoredCollab(item, observed)...)
+			for range entries[first:] {
+				times = append(times, at)
 			}
+			place(slots[i+1])
 		}
 		agent = s.agent(name)
 		agent.Final = turn.Status == "completed"
@@ -312,7 +372,68 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 				text += ": " + turn.Error.Message
 			}
 			entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: name, Kind: "error", Text: text, Observed: observed})
+			times = append(times, observed)
 		}
 		u.applyRestoredActivity(entries)
+		if r == nil {
+			continue
+		}
+		for i, entry := range entries {
+			if main, ok := mainActivityEntry(entry); ok {
+				seq := u.agents.entrySeq(entry)
+				r.main = append(r.main, &restoredPlacement{entry: main, at: times[i], link: &seq})
+			}
+		}
+	}
+}
+
+func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServerHistoryTurn, item appServerItem, name string, observed time.Time, entries *[]activityPaneEntry, lastMessage *int) {
+	s := &u.session
+	entry := activityPaneEntry{Seq: s.next(), Agent: name, Observed: observed, CallID: item.ID,
+		native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", searchResults: appServerSearchResults(item)}}
+	progressPhase := appServerHistoryProgressPhase(item)
+	item = u.waitItem(item, info.ID, turn.ID, item.ID, false)
+	if text, wait, handled := appServerProgress(item, progressPhase); handled {
+		if text != "" {
+			entry.Kind, entry.Text = "progress", text
+			entry.native.wait = wait
+			entry.native.phase = progressPhase
+			*entries = append(*entries, entry)
+		}
+		return
+	}
+	switch item.Type {
+	case "reasoning":
+		entry.Kind, entry.Text = "reasoning", strings.Join(item.Summary, "\n\n")
+		if strings.TrimSpace(entry.Text) != "" {
+			*entries = append(*entries, entry)
+		}
+	case "imageView":
+		entry.Kind, entry.Text = "tool", "View "+commentaryCode(pathdisplay.ForWorkspace(info.Cwd, item.Path))
+		*entries = append(*entries, entry)
+	case "commandExecution", "fileChange", "webSearch":
+		entry.Kind, entry.Text = "tool", appServerToolText(item, info.Cwd)
+		if item.Type == "fileChange" {
+			entry.Text = appServerEditText(item, info.Cwd)
+		}
+		appServerSucceededOutput(&entry, item, time.Time{})
+		*entries = append(*entries, entry)
+		if item.ExitCode != nil && *item.ExitCode != 0 {
+			exit := activityPaneEntry{Seq: s.next(), Agent: name, Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID, Observed: observed}
+			exit.outputTail, exit.outputOmit = appServerOutputTail(item.AggregatedOutput)
+			*entries = append(*entries, exit)
+		}
+	case "agentMessage":
+		if item.Delivery == "async" && len(item.Questions) > 0 {
+			return
+		}
+		entry.Kind, entry.Text = "text", item.Text
+		if item.Phase == "final_answer" || item.Phase == "finalAnswer" {
+			entry.Kind = "final"
+		}
+		*lastMessage = len(*entries)
+		*entries = append(*entries, entry)
+	case "collabAgentToolCall":
+		*entries = append(*entries, u.restoredCollab(item, observed)...)
 	}
 }

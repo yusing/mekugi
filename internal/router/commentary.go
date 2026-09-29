@@ -368,17 +368,6 @@ func (t *mekugiResponseTransform) runtimeCommentaryMessage(publication published
 	return message
 }
 
-func attributedCommentary(author, text string) string {
-	if author == "" {
-		return text
-	}
-	prefix := "[" + commentaryCode(author) + "] "
-	if hasCommentaryAuthor(text, author) {
-		return text
-	}
-	return prefix + text
-}
-
 // commentaryCode keeps backticks in names or previews from ending the code span.
 func commentaryCode(value string) string {
 	longest, run := 0, 0
@@ -395,10 +384,6 @@ func commentaryCode(value string) string {
 		return fence + " " + value + " " + fence
 	}
 	return fence + value + fence
-}
-
-func hasCommentaryAuthor(text, author string) bool {
-	return strings.HasPrefix(text, "["+commentaryCode(author)+"] ")
 }
 
 // retainCommentary is called only at router-authored message construction sites.

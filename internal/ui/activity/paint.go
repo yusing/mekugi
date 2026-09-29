@@ -683,11 +683,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		return lines
 	case "message":
-		head := p.messageDirection(block)
-		if headline := strings.TrimSuffix(block.Verb, ":"); headline != "" && headline != "Message received" && headline != "Message received." && headline != "Message sent" && headline != "Message sent." {
-			head += "  " + Dim + headline + Undim
-		}
-		lines := []string{ansi.Truncate(head, width, "…")}
+		lines := []string{ansi.Truncate(p.messageDirection(block), width, "…")}
 		return append(lines, p.Markdown(block.Body, width)...)
 	case "start":
 		head := Green + "\x1b[1m▶ Started" + Reset

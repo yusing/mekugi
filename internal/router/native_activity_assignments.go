@@ -12,6 +12,24 @@ type activityAssignment struct {
 	created            time.Time
 }
 
+// activityMessage is a message one agent delivered to another. Its text is
+// the payload alone; an opaque payload leaves it empty.
+type activityMessage struct{ from, to, text string }
+
+// activityStart names the model settings a child actually ran with.
+type activityStart struct{ model, effort, tier string }
+
+// label shows the settings as code spans; any may be unknown.
+func (s *activityStart) label() string {
+	var parts []string
+	for _, value := range []string{s.model, s.effort, s.tier} {
+		if value != "" {
+			parts = append(parts, commentaryCode(value))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 // The native pane keeps every observed NEW_TASK, including follow-ups, keyed by
 // the host item and payload. Full-history requests cannot replay its display.
 func (a *subagentActivity) collectSubagentStart(thread string, request *parsedResponsesRequest, recipient string) {
@@ -26,7 +44,7 @@ func (a *subagentActivity) collectSubagentStart(thread string, request *parsedRe
 		}
 	}
 	a.mu.Unlock()
-	heading := nativeSubagentStart(request)
+	start := nativeSubagentStart(request)
 	var items []map[string]jsonv1.RawMessage
 	if json.Unmarshal(request.fields["input"], &items) != nil {
 		items = nil
@@ -59,7 +77,9 @@ func (a *subagentActivity) collectSubagentStart(thread string, request *parsedRe
 	if len(assignments) > 0 {
 		spawn = assignments[0]
 	}
-	a.collectEventLocked(activityEvent{thread: thread, source: "subagent-start\x00" + thread, kind: "start", text: heading, observed: spawn.created, assignment: spawn})
+	if start != nil {
+		a.collectEventLocked(activityEvent{thread: thread, source: "subagent-start\x00" + thread, kind: "start", observed: spawn.created, assignment: spawn, start: start})
+	}
 	for _, assignment := range assignments {
 		a.collectEventLocked(activityEvent{thread: thread, source: assignment.id, kind: "assignment", text: assignment.text, observed: assignment.created, assignment: assignment})
 	}

@@ -162,6 +162,9 @@ func (s *nativeJournalSink) acknowledge(ctx context.Context, p *mekugiProxy, ite
 // Apply persisted milestones before later host events, not only at the next
 // paint tick. Delivery receipts still belong to the successful paint path.
 func (u *appServerUI) applyPendingJournal() {
+	if u.historyPending() {
+		return // Pending publications remain until Main shows resumed history.
+	}
 	for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
 		if sink == nil {
 			continue

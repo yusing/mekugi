@@ -24,7 +24,7 @@ func TestPublishCommentaryOnceListsThroughAuthenticatedRoute(t *testing.T) {
 	}
 	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
 	defer server.Close()
-	token := broker.subscribe("session", "call", "")
+	token := broker.subscribe("session", "call")
 	broker.bindActivity(token, "thread")
 	for _, tc := range []struct {
 		name string

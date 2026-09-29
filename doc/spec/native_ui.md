@@ -52,7 +52,10 @@ Startup `resume THREAD_ID` uses `thread/resume`, not a new thread or a replayed
 prompt. The returned thread identity must match the requested ID; failure exits
 without falling back to a new conversation. Main hydrates text messages and
 command/edit items from the returned turns before accepting input, using the
-existing retained transcript window. Buffered notifications then reconcile by
+existing retained transcript window. It hydrates after the roster's histories
+are read, so child starts, assignments, messages and answers take their place
+in Main as they did live. A failed turn, which live Main reports only in its
+status line, leaves an error row with the recorded failure. Buffered notifications then reconcile by
 item identity. Historical tools are display-only: they do not recreate live
 edit previews, processes or delivery receipts. Subsequent input
 starts a turn on the same thread; an active snapshot retains its steer/interrupt
@@ -69,6 +72,14 @@ messages, commands, edit descriptions and answers are presentation history;
 children are not resumed and historical unfinished turns never imply live work.
 Only completed collaboration items imply delivered assignments or messages;
 other attempts retain their recorded status without claiming delivery.
+Codex's history omits Code Mode cell results and delivered inter-agent
+messages, so each thread's host-selected rollout supplies them when its session
+metadata names that thread: failed-cell rows and the tasks and messages the
+thread received, as live Activity observed them in its requests. Evidence
+follows the host item it was recorded after, or, for another thread's
+record, its completion time. Reading is bounded to each rollout's last 64 MiB;
+older evidence shows only what the host's history does. A later live request
+that carries restored messages again does not repeat them.
 Usage is shown only when available from its existing owner, never reconstructed
 from transcript text. Missing child history is marked incomplete without
 preventing the parent conversation from continuing.

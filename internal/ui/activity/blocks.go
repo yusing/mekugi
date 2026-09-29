@@ -351,29 +351,6 @@ func liveActivityCodeSpan(s string, i int) (string, int, bool) {
 	return code, i + run + end + run, true
 }
 
-func ParseEnvelope(text string) (from, to, headline, body string, ok bool) {
-	if !strings.HasPrefix(text, "[") {
-		return
-	}
-	from, i, ok := liveActivityCodeSpan(text, 1)
-	if !ok || !strings.HasPrefix(text[i:], " -> ") {
-		return "", "", "", "", false
-	}
-	to, j, ok := liveActivityCodeSpan(text, i+4)
-	if !ok || !strings.HasPrefix(text[j:], "]") {
-		return "", "", "", "", false
-	}
-	headline, body, _ = strings.Cut(strings.TrimPrefix(text[j+1:], " "), "\n")
-	return from, to, headline, strings.Trim(body, "\n"), true
-}
-
-func ParseStart(text string) Block {
-	heading, body, _ := strings.Cut(text, "\n")
-	_, details, _ := strings.Cut(heading, "Started · ")
-	body = strings.TrimPrefix(strings.TrimLeft(body, "\n"), "Spawn assignment:\n")
-	return Block{Kind: "start", Label: details, Body: body}
-}
-
 // Paragraphs splits operations at blank lines outside fences.
 func Paragraphs(text string) []string {
 	var paragraphs, current []string

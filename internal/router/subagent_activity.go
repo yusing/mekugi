@@ -30,6 +30,10 @@ type subagentActivity struct {
 	unreturned []activityToolRef
 	// usage is the canonical per-thread accounting the roster displays.
 	usage *threadUsage
+	// restored counts messages that resumed history already shows. A later
+	// full-history request carries them again under this router's new
+	// identities; each count absorbs one such repeat.
+	restored map[string]int
 }
 
 type activityThread struct {
@@ -60,6 +64,8 @@ type activityEvent struct {
 	queued                     time.Time // Queue retention is independent of original message time.
 	filter                     *exploreFilterEvent
 	assignment                 *activityAssignment
+	message                    *activityMessage
+	start                      *activityStart
 }
 
 func newSubagentActivity() *subagentActivity {
@@ -142,7 +148,8 @@ func (a *subagentActivity) collectEvent(event activityEvent) {
 
 func (a *subagentActivity) collectEventLocked(event activityEvent) {
 	thread, source, kind, text := event.thread, event.source, event.kind, event.text
-	if source == "" || len(source) > maxCommentaryPublicationBytes || strings.TrimSpace(text) == "" {
+	// A message may be opaque and a start carries only its settings.
+	if source == "" || len(source) > maxCommentaryPublicationBytes || strings.TrimSpace(text) == "" && event.message == nil && event.start == nil {
 		return
 	}
 	node := a.threads[thread]
@@ -158,10 +165,16 @@ func (a *subagentActivity) collectEventLocked(event activityEvent) {
 	if _, exists := node.seen[source]; exists {
 		return
 	}
-	raw := text
-	if len(raw) > maxNativeActivityMessageBytes {
-		const clipped = "\n… (message clipped at the native Activity 64 KiB display limit)"
-		raw = strings.ToValidUTF8(raw[:maxNativeActivityMessageBytes-len(clipped)], "") + clipped
+	if key := restoredActivityKey(event, thread); key != "" && a.restored[key] > 0 {
+		a.restored[key]--
+		node.seen[source] = struct{}{}
+		return
+	}
+	raw := clipNativeActivityMessage(text)
+	if event.message != nil {
+		message := *event.message
+		message.text = clipNativeActivityMessage(message.text)
+		event.message = &message
 	}
 	now := time.Now()
 	a.expireLocked(now)
@@ -186,6 +199,50 @@ func (a *subagentActivity) collectEventLocked(event activityEvent) {
 		event.observed = now
 	}
 	a.events = append(a.events, event)
+}
+
+func clipNativeActivityMessage(text string) string {
+	if len(text) <= maxNativeActivityMessageBytes {
+		return text
+	}
+	const clipped = "\n… (message clipped at the native Activity 64 KiB display limit)"
+	return strings.ToValidUTF8(text[:maxNativeActivityMessageBytes-len(clipped)], "") + clipped
+}
+
+// markRestored records a message that restored Activity shows and that the
+// thread's later requests carry again.
+func (a *subagentActivity) markRestored(thread string, entry activityPaneEntry) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.restored == nil {
+		a.restored = make(map[string]int)
+	}
+	event := activityEvent{kind: entry.Kind, assignment: entry.assignment, message: entry.message}
+	if event.kind == "start" {
+		a.restored[restoredActivityKey(event, thread)]++
+		event.kind = "assignment" // Its task is also a restored assignment.
+	}
+	if key := restoredActivityKey(event, thread); key != "" {
+		a.restored[key]++
+	}
+}
+
+// restoredActivityKey identifies a repeated message by its thread's start or
+// by content: request input need not carry the host item IDs that live source
+// identities include. Other kinds are never repeated.
+func restoredActivityKey(event activityEvent, thread string) string {
+	switch {
+	case event.kind == "start":
+		return "start\x00" + thread
+	case event.kind == "assignment" && event.assignment != nil:
+		return "assignment\x00" + event.assignment.from + "\x00" + event.assignment.to + "\x00" + event.assignment.text
+	case event.kind == "reply" && event.message != nil:
+		return "reply\x00" + event.message.from + "\x00" + event.message.to + "\x00" + event.message.text
+	}
+	return ""
 }
 
 func (a *subagentActivity) expireLocked(now time.Time) {

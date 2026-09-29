@@ -570,14 +570,11 @@ func (s *appServerSession) collab(item appServerItem, id string, now time.Time) 
 		to := s.path(receiver)
 		switch item.Tool {
 		case "spawnAgent":
-			text := "Started"
+			start := &activityStart{model: item.Model}
 			if item.Model != "" {
-				text += " · " + commentaryCode(item.Model)
-				if item.ReasoningEffort != "" {
-					text += " " + commentaryCode(item.ReasoningEffort)
-				}
+				start.effort = item.ReasoningEffort
 			}
-			entry := activityPaneEntry{Seq: s.next(), Agent: to, Kind: "start", Text: text, Observed: now}
+			entry := activityPaneEntry{Seq: s.next(), Agent: to, Kind: "start", Observed: now, start: start}
 			if strings.TrimSpace(item.Prompt) != "" {
 				entry.assignment = &activityAssignment{id: id, from: from, to: to, text: item.Prompt}
 			}
@@ -589,8 +586,8 @@ func (s *appServerSession) collab(item appServerItem, id string, now time.Time) 
 			}
 		case "sendMessage":
 			if strings.TrimSpace(item.Prompt) != "" {
-				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: from, Kind: "reply", Observed: now,
-					Text: "[" + commentaryCode(from) + " -> " + commentaryCode(to) + "] Message sent:\n" + item.Prompt})
+				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: from, Kind: "reply", Text: item.Prompt, Observed: now,
+					message: &activityMessage{from: from, to: to, text: item.Prompt}})
 			}
 		}
 		for i := first; i < len(entries); i++ {

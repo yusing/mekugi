@@ -95,10 +95,11 @@ func TestChildCommentaryAttributionJSONAndSSE(t *testing.T) {
 				t.Fatal("Code Mode publication missing")
 			}
 			message := second.runtimeCommentaryMessage(publications[0])
-			if message == nil || !bytes.Contains(message["content"], []byte("[`/root/beta`] Code work.")) {
-				t.Fatalf("Code Mode attribution: %s", mustTestJSON(t, message))
+			// The publication stays in the child's own thread, which already names its author.
+			if message == nil || !bytes.Contains(message["content"], []byte("Code work.")) || bytes.Contains(message["content"], []byte("/root/")) {
+				t.Fatalf("Code Mode publication: %s", mustTestJSON(t, message))
 			}
-			// A capability's author survives its creator and a later request with absent metadata.
+			// A capability survives its creator and a later request with absent metadata.
 			token := testRuntimeCommentaryCall(t, first, "deferred-code-call")
 			first.Close()
 			proxy.commentary.publish(token, "Deferred work.", false)
@@ -125,8 +126,8 @@ func TestChildCommentaryAttributionJSONAndSSE(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if !bytes.Contains(output, []byte("[`/root/alpha`] Deferred work.")) || strings.LastIndex(string(output), "Actual child answer.") < strings.LastIndex(string(output), "Deferred work.") || !strings.Contains(string(output), "Actual child answer.") {
-				t.Fatalf("missing deferred author/result ordering or provider answer: %s", output)
+			if !bytes.Contains(output, []byte("Deferred work.")) || bytes.Contains(output, []byte("[`/root/")) || strings.LastIndex(string(output), "Actual child answer.") < strings.LastIndex(string(output), "Deferred work.") || !strings.Contains(string(output), "Actual child answer.") {
+				t.Fatalf("missing deferred result ordering or provider answer: %s", output)
 			}
 			if events := proxy.drainCommentarySession(second.historySessionID, second.shellThreadID); len(events) != 0 {
 				t.Fatal("publication crossed child sessions")
@@ -136,31 +137,21 @@ func TestChildCommentaryAttributionJSONAndSSE(t *testing.T) {
 }
 
 func TestRuntimeCommentaryRenderedByteBudget(t *testing.T) {
-	author := "/root/worker"
-	prefix := "[" + commentaryCode(author) + "] "
 	b := newCommentaryBroker()
-	oversized := "/root/" + strings.Repeat("a", maxCommentaryPublicationBytes)
-	if b.subscribe("session", "call", oversized) != "" {
-		t.Fatal("oversized author admitted")
-	}
-	if len(b.routes) != 0 {
-		t.Fatal("oversized author retained state")
-	}
-
-	token := b.subscribe("session", "call", author)
-	if !b.publish(token, strings.Repeat("x", maxCommentaryPublicationBytes), true) {
+	token := b.subscribe("session", "call")
+	if !b.publish(token, strings.Repeat("x", maxCommentaryPublicationBytes+1), true) {
 		t.Fatal("oversized publication failed completion")
 	}
 	if len(b.routes) != 0 || b.eventCount != 0 {
 		t.Fatal("oversized publication retained bytes or blocked completion")
 	}
 
-	token = b.subscribe("session", "call", author)
-	fits := strings.Repeat("x", maxCommentaryPublicationBytes-len(prefix))
+	token = b.subscribe("session", "call")
+	fits := strings.Repeat("x", maxCommentaryPublicationBytes)
 	b.publish(token, fits, false)
 	b.publish(token, fits+"x", true)
 	events := b.drain(token)
-	if len(events) != 1 || len(events[0].text) != maxCommentaryPublicationBytes || events[0].text != prefix+fits || len(b.routes) != 0 {
+	if len(events) != 1 || events[0].text != fits || len(b.routes) != 0 {
 		t.Fatal("rendered boundary or completion changed")
 	}
 
@@ -168,7 +159,7 @@ func TestRuntimeCommentaryRenderedByteBudget(t *testing.T) {
 
 func TestCommentaryCallRouteCapacityAndExpiry(t *testing.T) {
 	broker := newCommentaryBroker()
-	token := broker.subscribe("session", "call", "")
+	token := broker.subscribe("session", "call")
 	if token == "" {
 		t.Fatal("publisher route was not allocated")
 	}
@@ -189,7 +180,7 @@ func TestCommentaryCallRouteCapacityAndExpiry(t *testing.T) {
 	if broker.publish(token, "expired", false) || len(broker.routes) != 0 || broker.eventCount != 0 {
 		t.Fatal("expired call route retained capacity")
 	}
-	if replacement := broker.subscribe("session", "next-call", ""); replacement == "" || replacement == token {
+	if replacement := broker.subscribe("session", "next-call"); replacement == "" || replacement == token {
 		t.Fatal("expired route did not release capacity")
 	}
 }

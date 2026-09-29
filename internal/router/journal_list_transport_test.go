@@ -26,7 +26,7 @@ func TestJournalListTransportPagesLargeAuthenticatedSnapshot(t *testing.T) {
 	}
 	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
 	defer server.Close()
-	token := broker.subscribe("session", "list-call", "")
+	token := broker.subscribe("session", "list-call")
 	broker.bindActivity(token, "thread")
 	type page struct {
 		OK       bool              `json:"ok"`
@@ -88,7 +88,7 @@ func TestJournalListTransportRejectsStaleAndInvalidContinuations(t *testing.T) {
 	broker.journalLister = func(context.Context, string, string, string) ([]journalItem, error) { return items, nil }
 	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
 	defer server.Close()
-	token := broker.subscribe("session", "list-call", "")
+	token := broker.subscribe("session", "list-call")
 	broker.bindActivity(token, "thread")
 	sink := &httpCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
 	direct, err := sink.send(t.Context(), map[string]any{"op": "list"})

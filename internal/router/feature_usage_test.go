@@ -219,7 +219,7 @@ func TestFeatureUsageConcurrentPublications(t *testing.T) {
 	broker := newCommentaryBroker()
 	broker.debug = d
 	t.Cleanup(broker.close)
-	token := broker.subscribe("session", "call", "")
+	token := broker.subscribe("session", "call")
 	var workers sync.WaitGroup
 	for range 16 {
 		workers.Go(func() {

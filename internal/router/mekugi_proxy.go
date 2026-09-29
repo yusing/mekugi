@@ -589,11 +589,11 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		thread := activityThreadID
 		if recipient == "/root" {
 			// Display directed replies under the proven sender when available.
-			if child := p.activity.childThread(activityThreadID, reply.sender); child != "" {
+			if child := p.activity.childThread(activityThreadID, reply.message.from); child != "" {
 				thread = child
 			}
 		}
-		p.activity.collect(thread, reply.source, "reply", reply.text)
+		p.activity.collectEvent(activityEvent{thread: thread, source: reply.source, kind: "reply", text: reply.message.text, message: &reply.message})
 	}
 	if metadata.SubagentKind == "thread_spawn" {
 		// The collector deduplicates this source by stable child thread, including

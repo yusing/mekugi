@@ -52,7 +52,7 @@ func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) 
 		stack = append(stack, index)
 	}
 
-	token := t.proxy.commentary.subscribe(t.historySessionID, callID, t.commentaryAuthor)
+	token := t.proxy.commentary.subscribe(t.historySessionID, callID)
 	if token != "" {
 		t.proxy.commentary.bindJournalQuestion(token, t.journalQuestion)
 		t.proxy.commentary.bindActivity(token, t.shellThreadID)

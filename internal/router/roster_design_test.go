@@ -21,7 +21,7 @@ func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 		{"/root/a/x", "/root/a/x", "/root/a", "→ a"},
 		{"/root/a", "/root/a/x", "/root/a", "← a/x"},
 	} {
-		blocks := parseLiveActivity(activityPaneEntry{Agent: tc.owner, Kind: "reply", Text: "[`" + tc.from + "` -> `" + tc.to + "`] Message received:\nMessage body"})
+		blocks := parseLiveActivity(activityPaneEntry{Agent: tc.owner, Kind: "reply", message: &activityMessage{from: tc.from, to: tc.to, text: "Message body"}})
 		if len(blocks) != 1 || blocks[0].Kind != "message" {
 			t.Fatalf("parsed message = %+v", blocks)
 		}
@@ -37,8 +37,8 @@ func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 		t.Errorf("main without inbound = %q", empty)
 	}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
-		{Seq: 3, Agent: "/root/a", Kind: "reply", Text: "[`/root/a` -> `/root`] Message received:\nOlder inbound", Observed: now},
-		{Seq: 4, Agent: "/root/a", Kind: "reply", Text: "[`/root/a` -> `/root`] Message received:\nLatest inbound", Observed: now},
+		{Seq: 3, Agent: "/root/a", Kind: "reply", message: &activityMessage{from: "/root/a", to: "/root", text: "Older inbound"}, Observed: now},
+		{Seq: 4, Agent: "/root/a", Kind: "reply", message: &activityMessage{from: "/root/a", to: "/root", text: "Latest inbound"}, Observed: now},
 	}})
 	summary, _ := v.current(v.agents[0], now)
 	if !strings.Contains(ansi.Strip(summary), "Latest inbound") || strings.Contains(ansi.Strip(summary), "Older inbound") || !strings.Contains(ansi.Strip(summary), "← a") {

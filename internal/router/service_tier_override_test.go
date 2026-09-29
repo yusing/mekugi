@@ -170,8 +170,8 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 				wantModel = "gpt-6-astra"
 			}
 			start := nativeSubagentStart(&forwarded)
-			if !strings.Contains(start, "`"+wantModel+"`") || !strings.Contains(start, "`"+strings.ReplaceAll(want, "priority", "fast")+"`") {
-				t.Fatalf("commentary=%s", start)
+			if start == nil || start.model != wantModel || start.tier != strings.ReplaceAll(want, "priority", "fast") {
+				t.Fatalf("start=%+v", start)
 			}
 		})
 	}
@@ -179,7 +179,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 
 func TestSubagentStartServiceTier(t *testing.T) {
 	for _, tc := range []struct{ tier, want string }{
-		{"priority", " `fast`"}, {"fast", " `fast`"}, {"default", " `default`"}, {"", ""},
+		{"priority", "fast"}, {"fast", "fast"}, {"default", "default"}, {"", ""},
 	} {
 		request := serverRequest(t, func(fields map[string]any) {
 			fields["model"] = "gpt-6-astra"
@@ -188,8 +188,8 @@ func TestSubagentStartServiceTier(t *testing.T) {
 			}
 		})
 		got := nativeSubagentStart(&request)
-		if heading, _, _ := strings.Cut(got, "\n"); heading != "Started · `gpt-6-astra` `high`"+tc.want {
-			t.Fatalf("tier=%s commentary=%s", tc.tier, got)
+		if got == nil || *got != (activityStart{model: "gpt-6-astra", effort: "high", tier: tc.want}) {
+			t.Fatalf("tier=%s start=%+v", tc.tier, got)
 		}
 	}
 }
@@ -273,7 +273,7 @@ func TestServiceTierJournalHandoffAndRootNotice(t *testing.T) {
 		}
 	}
 	entries := proxy.activity.takeNativeActivity("root")
-	if len(entries) != 1 || entries[0].Kind != "start" || !strings.Contains(entries[0].Text, " `fast`") {
+	if len(entries) != 1 || entries[0].Kind != "start" || entries[0].start == nil || entries[0].start.tier != "fast" {
 		t.Fatalf("native start did not retain effective tier: %+v", entries)
 	}
 }

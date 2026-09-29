@@ -535,8 +535,16 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				u.unscopedJournal = u.proxy.journals.attachNative("", u.thread)
 				u.proxy.activity.attachNativePane(u.thread)
 			}
+			// Resumed history is applied once the roster is read, so Main can
+			// follow child activity in order. An active snapshot keeps its
+			// steer/interrupt target meanwhile.
 			if method == "thread/resume" {
-				u.restoreHistory(result.Thread.Turns)
+				for _, turn := range result.Thread.Turns {
+					if turn.Status == "inProgress" {
+						u.turn, u.status, u.turnStarted = turn.ID, "Working", time.Now()
+						u.session.agent("/root").Responding = true
+					}
+				}
 			}
 			if u.panes != nil {
 				u.ensureShell()
@@ -885,20 +893,66 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	return false, nil
 }
 
+// paneActivityAgent names the Activity agent an entry belongs to. A directed
+// message shows under its sender, or under its recipient when Main sent it.
+func paneActivityAgent(entry activityPaneEntry) string {
+	if entry.Kind == "reply" && entry.message != nil {
+		if entry.message.from == "/root" {
+			return entry.message.to
+		}
+		return entry.message.from
+	}
+	return entry.Agent
+}
+
+// historyPending reports resumed history that Main has yet to show. Router
+// observations wait in their queues so they follow it, as live.
+func (u *appServerUI) historyPending() bool {
+	return u.restoring != nil && !u.restoring.rendered
+}
+
+// mainActivityEntry projects one collector entry into Main's audience.
+// Ordinary root activity stays in Main, but a directed message belongs at
+// both ends, and a child's start and answer show where Main follows them.
+func mainActivityEntry(entry activityPaneEntry) (activityPaneEntry, bool) {
+	main := entry.Agent == "/root" && (entry.Kind == "tool" || entry.Kind == "exit" || entry.Kind == "output_filter" || entry.Kind == "error" || entry.Kind == "reasoning" || entry.Kind == "progress")
+	if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil {
+		main = true
+		entry.Agent = entry.assignment.from
+		if entry.Agent == "" {
+			entry.Agent = "Main"
+		}
+	}
+	if entry.Kind == "reply" && entry.message != nil {
+		main = entry.message.from == "/root" || entry.message.to == "/root"
+		entry.Agent = entry.message.from
+	}
+	main = main || (entry.Kind == "final" || entry.Kind == "start") && entry.Agent != "/root"
+	if entry.Agent == "/root" {
+		entry.Agent = "Main"
+	}
+	return entry, main
+}
+
+// mainActivityLinked reports a Main entry that excerpts its Activity entry.
+func mainActivityLinked(entry activityPaneEntry) bool {
+	return entry.Kind == "final" || entry.Kind == "reply" || entry.assignment != nil
+}
+
+func (u *appServerUI) applyMainActivity(entry activityPaneEntry) {
+	entry.Seq = u.view.lastSeq + 1
+	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+	if entry.Kind == "final" {
+		u.view.linkChildAnswers(u.view.entrySeq(entry))
+	}
+}
+
 // applyActivity projects the collector once into the two audiences. Ordinary
 // root activity stays in Main, but a directed message belongs at both ends.
 func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activityPaneAgent) {
 	paneEntries := slices.Clone(entries)
-	for i, entry := range paneEntries {
-		if entry.Kind == "reply" {
-			from, to, _, _, ok := activityui.ParseEnvelope(entry.Text)
-			if ok {
-				paneEntries[i].Agent = from
-				if from == "/root" {
-					paneEntries[i].Agent = to
-				}
-			}
-		}
+	for i := range paneEntries {
+		paneEntries[i].Agent = paneActivityAgent(paneEntries[i])
 	}
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: paneEntries, Agents: agents})
 	for _, entry := range paneEntries {
@@ -907,34 +961,11 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 		}
 	}
 	for i, entry := range entries {
-		main := entry.Agent == "/root" && (entry.Kind == "tool" || entry.Kind == "exit" || entry.Kind == "output_filter" || entry.Kind == "error" || entry.Kind == "reasoning" || entry.Kind == "progress")
-		if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil {
-			main = true
-			entry.Agent = entry.assignment.from
-			if entry.Agent == "" {
-				entry.Agent = "Main"
-			}
-		}
-		if entry.Kind == "reply" {
-			from, to, _, _, ok := activityui.ParseEnvelope(entry.Text)
-			if ok {
-				main = from == "/root" || to == "/root"
-				entry.Agent = from
-			}
-		}
-		main = main || (entry.Kind == "final" || entry.Kind == "start") && entry.Agent != "/root"
-		if main {
-			if entry.Kind == "final" || entry.Kind == "reply" || entry.assignment != nil {
+		if entry, main := mainActivityEntry(entry); main {
+			if mainActivityLinked(entry) {
 				entry.activitySeq = u.agents.entrySeq(paneEntries[i])
 			}
-			entry.Seq = u.view.lastSeq + 1
-			if entry.Agent == "/root" {
-				entry.Agent = "Main"
-			}
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
-			if entry.Kind == "final" {
-				u.view.linkChildAnswers(u.view.entrySeq(entry))
-			}
+			u.applyMainActivity(entry)
 		}
 	}
 	u.applyCapturedEdits()
@@ -1264,7 +1295,7 @@ func (u *appServerUI) paint(out io.Writer, width, height int) error {
 // Router-owned annotations and authenticated directed inputs supplement the
 // native event stream without becoming assistant speech or execution events.
 func (u *appServerUI) applyObservedActivity() {
-	if u.proxy == nil {
+	if u.proxy == nil || u.historyPending() {
 		return
 	}
 	entries := u.proxy.activity.takeNativeActivity(u.thread)

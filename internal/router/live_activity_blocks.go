@@ -16,14 +16,12 @@ var liveActivityManagedFiles = regexp.MustCompile(`^\+ (\d+) tool-managed files 
 
 func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 	text := livediff.Safe(entry.Text, false)
-	// Only the router writes reply envelopes; child-authored text that looks
-	// like one stays plain, so it cannot pose as another agent's message.
-	if entry.Kind == "reply" {
-		if from, to, headline, body, ok := activityui.ParseEnvelope(text); ok {
-			return []activityui.Block{{Kind: "message", From: from, To: to, Owner: entry.Agent, Verb: headline, Body: body}}
-		}
-	}
 	switch entry.Kind {
+	case "reply":
+		// Direction comes from the delivered message, never from its text.
+		if entry.message != nil {
+			return []activityui.Block{{Kind: "message", From: entry.message.from, To: entry.message.to, Owner: entry.Agent, Body: strings.Trim(livediff.Safe(entry.message.text, false), "\n")}}
+		}
 	case "question":
 		label, body, _ := strings.Cut(text, "\n")
 		block := activityui.Block{Kind: "op", Verb: "Asked", Label: label, Body: body}
@@ -82,8 +80,8 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 		journal, _ := activityui.ParseJournal(text)
 		return []activityui.Block{{Kind: "final", Body: text, Journal: journal, Owner: entry.Agent}}
 	case "start":
-		if strings.HasPrefix(text, "Started") {
-			block := activityui.ParseStart(text)
+		if entry.start != nil {
+			block := activityui.Block{Kind: "start", Label: livediff.Safe(entry.start.label(), false)}
 			if entry.assignment != nil {
 				block.From, block.To = entry.assignment.from, entry.assignment.to
 				block.Body = livediff.Safe(entry.assignment.text, false)

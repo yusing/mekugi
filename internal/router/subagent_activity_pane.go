@@ -21,6 +21,8 @@ type activityPaneEntry struct {
 	journal      *journalItem            // Native presentation keeps IDs/questions separate from rendered text.
 	journalItems []journalItem           // One terminal delivery uses Activity's existing grouped result renderer.
 	assignment   *activityAssignment     // Validated native NEW_TASK, not an ordinary message.
+	message      *activityMessage        // A directed message, for a reply entry.
+	start        *activityStart          // A child's start, for a start entry.
 	activitySeq  uint64                  // Main excerpt's exact entry in Activity, never a question target.
 	outputTail   []string                // Failed command's sanitized final output lines, on an exit entry.
 	outputOmit   int                     // Output lines before outputTail.
@@ -257,7 +259,8 @@ func (a *subagentActivity) takeNativeActivity(root string) []activityPaneEntry {
 			kept = append(kept, event)
 			continue
 		}
-		entries = append(entries, activityPaneEntry{Agent: node.name, Kind: event.kind, Text: event.raw, CallID: event.callID, Filter: event.filter, Observed: event.observed, assignment: event.assignment})
+		entries = append(entries, activityPaneEntry{Agent: node.name, Kind: event.kind, Text: event.raw, CallID: event.callID, Filter: event.filter, Observed: event.observed,
+			assignment: event.assignment, message: event.message, start: event.start})
 	}
 	clear(a.events[len(kept):])
 	a.events = kept

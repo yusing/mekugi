@@ -25,7 +25,7 @@ func TestRosterSummaryFormatting(t *testing.T) {
 			t.Fatalf("list summary = %q", summary)
 		}
 		for _, recipient := range []string{"/root", "/root/worker", "/root/parent/worker"} {
-			blocks := parseLiveActivity(activityPaneEntry{Kind: "reply", Text: "[`/root/replier` -> `" + recipient + "`] Message received:\nDone."})
+			blocks := parseLiveActivity(activityPaneEntry{Kind: "reply", message: &activityMessage{from: "/root/replier", to: recipient, text: "Done."}})
 			rows := strings.Join(p.Block(blocks[0], 80), "\n")
 			summary := p.Summary(blocks)
 			for _, text := range []string{ansi.Strip(rows), ansi.Strip(summary)} {

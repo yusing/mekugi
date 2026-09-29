@@ -211,8 +211,8 @@ func TestAppServerCommunicationBothAudiences(t *testing.T) {
 	u.ensureShell()
 	assignment := "Check the original question link."
 	u.applyActivity([]activityPaneEntry{
-		{Seq: 1, Agent: "/root/reviewer", Kind: "reply", Text: "[`/root` -> `/root/reviewer`] Message received:\n" + assignment},
-		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Text: "[`/root/reviewer` -> `/root`] Message received:\nI checked the link."},
+		{Seq: 1, Agent: "/root/reviewer", Kind: "reply", message: &activityMessage{from: "/root", to: "/root/reviewer", text: assignment}},
+		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", message: &activityMessage{from: "/root/reviewer", to: "/root", text: "I checked the link."}},
 		{Seq: 3, Agent: "/root/reviewer", Kind: "final", Text: "The question link is correct."},
 	}, nil)
 	u.view.conversation = true
@@ -232,7 +232,7 @@ func TestAppServerOutgoingMessageHeader(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	u.view.conversation = true
-	u.applyActivity([]activityPaneEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reply", Text: "[`/root` -> `/root/reviewer`] Message received:\nCheck the answer link."}}, nil)
+	u.applyActivity([]activityPaneEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reply", message: &activityMessage{from: "/root", to: "/root/reviewer", text: "Check the answer link."}}}, nil)
 	feed := u.view.renderFeed(90, 20)
 	if len(feed.lines) != 2 || !strings.HasPrefix(ansi.Strip(feed.lines[0]), "→ reviewer ") || ansi.Strip(feed.lines[1]) != "│ Check the answer link." {
 		t.Fatalf("outgoing recipient must head Main's message, above its body: %q", feed.lines)
@@ -252,8 +252,8 @@ func TestAppServerActivityGroupsAgentRun(t *testing.T) {
 	u.ensureShell()
 	start := time.Date(2026, 9, 26, 12, 30, 10, 0, time.Local)
 	u.applyActivity([]activityPaneEntry{
-		{Seq: 1, Agent: "/root/reviewer", Kind: "reply", Text: "[`/root` -> `/root/reviewer`] Message received:\nCheck the link.", Observed: start},
-		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Text: "[`/root/reviewer` -> `/root`] Message received:\nLink checked.", Observed: start.Add(10 * time.Second)},
+		{Seq: 1, Agent: "/root/reviewer", Kind: "reply", message: &activityMessage{from: "/root", to: "/root/reviewer", text: "Check the link."}, Observed: start},
+		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", message: &activityMessage{from: "/root/reviewer", to: "/root", text: "Link checked."}, Observed: start.Add(10 * time.Second)},
 		{Seq: 3, Agent: "/root/reviewer", Kind: "text", Text: "Checking the next item.", Observed: start.Add(20 * time.Second)},
 	}, nil)
 	u.agents.only, u.agents.selected = true, "/root/reviewer"
@@ -300,7 +300,7 @@ func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 	child.WriteString("Journal result `/root/reviewer`")
 	writeJournalItems(&child, []journalItem{{ID: "amber", Question: assignment, Text: "The question link is correct."}})
 	u.applyActivity([]activityPaneEntry{
-		{Seq: 1, Agent: "/root/reviewer", Kind: "start", Text: nativeSubagentStart(&request),
+		{Seq: 1, Agent: "/root/reviewer", Kind: "start", start: nativeSubagentStart(&request),
 			assignment: &activityAssignment{id: "task-1", from: "/root", to: "/root/reviewer", text: assignment}},
 		{Seq: 2, Agent: "/root/reviewer", Kind: "final", Text: child.String()},
 	}, nil)

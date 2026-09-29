@@ -12,27 +12,14 @@ import (
 // Restore only observational context from the host-selected rollout. Reading a
 // child's history must not attach to or resume it. Live usage always wins.
 func restoreContextUsage(agent *activityPaneAgent, info appServerThreadInfo) {
-	if agent == nil || agent.ContextKnown || !filepath.IsAbs(info.Path) {
+	if agent == nil || agent.ContextKnown {
 		return
 	}
-	f, err := os.Open(info.Path)
-	if err != nil {
+	f, stat, ok := openThreadRollout(info)
+	if !ok {
 		return
 	}
 	defer f.Close()
-	stat, err := f.Stat()
-	if err != nil || !stat.Mode().IsRegular() {
-		return
-	}
-	var meta struct {
-		Type    string `json:"type"`
-		Payload struct {
-			ID string `json:"id"`
-		} `json:"payload"`
-	}
-	if json.UnmarshalDecode(jsontext.NewDecoder(io.LimitReader(f, 64<<10)), &meta) != nil || meta.Type != "session_meta" || meta.Payload.ID != info.ID {
-		return
-	}
 	// Bound startup I/O and memory independently of transcript size. A missing
 	// retained snapshot leaves the existing state alone, never a fabricated count.
 	const tailLimit = 8 << 20
@@ -72,4 +59,32 @@ func restoreContextUsage(agent *activityPaneAgent, info appServerThreadInfo) {
 		agent.ContextTokens, agent.ContextWindow, agent.ContextKnown = event.Payload.Info.Last.Total, event.Payload.Info.Window, true
 		return
 	}
+}
+
+// openThreadRollout opens the host-selected rollout only when its session
+// metadata names the thread; a mismatched or irregular file is not evidence.
+func openThreadRollout(info appServerThreadInfo) (*os.File, os.FileInfo, bool) {
+	if !filepath.IsAbs(info.Path) {
+		return nil, nil, false
+	}
+	f, err := os.Open(info.Path)
+	if err != nil {
+		return nil, nil, false
+	}
+	stat, err := f.Stat()
+	if err != nil || !stat.Mode().IsRegular() {
+		f.Close()
+		return nil, nil, false
+	}
+	var meta struct {
+		Type    string `json:"type"`
+		Payload struct {
+			ID string `json:"id"`
+		} `json:"payload"`
+	}
+	if json.UnmarshalDecode(jsontext.NewDecoder(io.LimitReader(f, 64<<10)), &meta) != nil || meta.Type != "session_meta" || meta.Payload.ID != info.ID {
+		f.Close()
+		return nil, nil, false
+	}
+	return f, stat, true
 }

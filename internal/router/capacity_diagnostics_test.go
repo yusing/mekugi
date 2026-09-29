@@ -21,7 +21,7 @@ func TestJournalPublisherPreservesUnderlyingError(t *testing.T) {
 	}
 	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
 	defer server.Close()
-	token := broker.subscribe("/w\x00thread", "call", "")
+	token := broker.subscribe("/w\x00thread", "call")
 	sink := &httpCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
 	for _, publication := range []map[string]any{
 		{"id": "fixture-add", "journal": []journalMutation{{Op: "add", Text: new("milestone")}}},
@@ -40,11 +40,11 @@ func TestCapacityNoticesAreVisibleAndDoNotConsumeTools(t *testing.T) {
 	broker := newCommentaryBroker()
 	broker.notice = func(category, message string) { issues.addNotice("", category, message) }
 	for range maxCommentaryRoutes {
-		if broker.subscribe("session", "call", "") == "" {
+		if broker.subscribe("session", "call") == "" {
 			t.Fatal("publisher rejected before concurrency limit")
 		}
 	}
-	if broker.subscribe("session", "overflow", "") != "" {
+	if broker.subscribe("session", "overflow") != "" {
 		t.Fatal("publisher accepted beyond concurrency limit")
 	}
 	visible := issues.takeNative("any-root", nil)
@@ -64,7 +64,7 @@ func TestJournalCapacityReturnsActionableHostToolError(t *testing.T) {
 	}
 	transform, proxy := newRuntimeCommentaryTransform(t)
 	for range maxCommentaryRoutes {
-		if proxy.commentary.subscribe("other-session", "call", "") == "" {
+		if proxy.commentary.subscribe("other-session", "call") == "" {
 			t.Fatal("publisher capacity exhausted early")
 		}
 	}

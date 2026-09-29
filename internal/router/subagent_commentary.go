@@ -22,30 +22,28 @@ func subagentCommentaryMessageID(seed string) string {
 // Start metadata and any readable assignment come from the child's actual
 // request. Native roles can override the parent's model and reasoning settings,
 // while opaque native collaboration arguments must remain opaque.
-func nativeSubagentStart(request *parsedResponsesRequest) string {
+func nativeSubagentStart(request *parsedResponsesRequest) *activityStart {
 	model := request.model()
 	var reasoning struct {
 		Effort string `json:"effort"`
 	}
 	if raw, ok := request.fields["reasoning"]; ok && json.Unmarshal(raw, &reasoning) != nil {
-		return ""
+		return nil
 	}
-	tier := jsonString(request.fields, "service_tier")
+	return subagentStart(model, reasoning.Effort, jsonString(request.fields, "service_tier"))
+}
+
+// subagentStart validates the model settings a child actually ran with; a
+// start without its model is unknown.
+func subagentStart(model, effort, tier string) *activityStart {
 	if tier == "priority" {
 		tier = "fast"
 	}
-	effort := strings.TrimSpace(reasoning.Effort)
+	effort = strings.TrimSpace(effort)
 	if model == "" || len(model)+len(effort)+len(tier) > maxCommentaryPublicationBytes || strings.ContainsAny(model+effort+tier, "\r\n\x00") {
-		return ""
+		return nil
 	}
-	text := "Started · " + commentaryCode(model)
-	if effort != "" {
-		text += " " + commentaryCode(effort)
-	}
-	if tier != "" {
-		text += " " + commentaryCode(tier)
-	}
-	return text
+	return &activityStart{model: model, effort: effort, tier: tier}
 }
 
 type subagentInputEnvelopes struct {
@@ -53,7 +51,10 @@ type subagentInputEnvelopes struct {
 	finals  []subagentFinal
 }
 
-type subagentReply struct{ source, sender, text string }
+type subagentReply struct {
+	source  string
+	message activityMessage
+}
 type subagentFinal struct{ sender, source, text string }
 
 func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient string) (envelopes subagentInputEnvelopes) {
@@ -95,13 +96,8 @@ func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient 
 			continue
 		}
 		id := subagentCommentaryMessageID("response\x00" + jsonString(item, "id") + "\x00" + sender + "\x00" + text)
-		direction := "[" + commentaryCode(sender) + " -> " + commentaryCode(recipient) + "] "
-		label := direction + "Message received."
-		if text != "" {
-			label = direction + "Message received:\n" + text
-		}
 		if len(envelopes.replies) < maxCommentaryEventsPerRoute {
-			envelopes.replies = append(envelopes.replies, subagentReply{source: id, sender: sender, text: label})
+			envelopes.replies = append(envelopes.replies, subagentReply{source: id, message: activityMessage{from: sender, to: recipient, text: text}})
 		}
 	}
 	return envelopes

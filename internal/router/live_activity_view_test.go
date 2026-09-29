@@ -123,12 +123,12 @@ func TestLiveActivityJavaScriptStableIndent(t *testing.T) {
 }
 
 func TestParseLiveActivityBlocks(t *testing.T) {
-	message := parseLiveActivity(activityPaneEntry{Kind: "reply", Text: "[`/root/a` -> `/root`] Message received:\nDone.\n- `x.go`"})
+	message := parseLiveActivity(activityPaneEntry{Kind: "reply", message: &activityMessage{from: "/root/a", to: "/root", text: "Done.\n- `x.go`"}})
 	if len(message) != 1 || message[0].Kind != "message" || message[0].From != "/root/a" || message[0].To != "/root" || message[0].Body != "Done.\n- `x.go`" {
 		t.Fatalf("message = %+v", message)
 	}
-	start := parseLiveActivity(activityPaneEntry{Kind: "start", Text: "Started · `m` high `fast`"})
-	if len(start) != 1 || start[0].Kind != "start" || start[0].Label != "`m` high `fast`" || start[0].Body != "" {
+	start := parseLiveActivity(activityPaneEntry{Kind: "start", start: &activityStart{model: "m", effort: "high", tier: "fast"}})
+	if len(start) != 1 || start[0].Kind != "start" || start[0].Label != "`m` `high` `fast`" || start[0].Body != "" {
 		t.Fatalf("start = %+v", start)
 	}
 	// Blank lines inside a fence do not split the operation.
@@ -162,7 +162,7 @@ func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
 	now := time.Now()
 	view := newLiveActivityView()
 	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/explorer"}}, Entries: []activityPaneEntry{{
-		Seq: 1, Agent: "/root/explorer", Kind: "start", Text: nativeSubagentStart(&request), Observed: now,
+		Seq: 1, Agent: "/root/explorer", Kind: "start", start: nativeSubagentStart(&request), Observed: now,
 		assignment: &activityAssignment{id: "task-1", from: "/root", to: "/root/explorer", text: "Inspect parser.\n\n- Preserve behavior."},
 	}}})
 	view.only, view.selected = true, "/root/explorer"
@@ -238,9 +238,9 @@ func TestLiveActivityViewResponsiveLayouts(t *testing.T) {
 	view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 		{Name: "/root/inventory", Final: true}, {Name: "/root/review", Responding: true}, {Name: "/root/review/probe"},
 	}, Entries: []activityPaneEntry{
-		{Seq: 1, Agent: "/root/inventory", Kind: "start", Text: "Started · `m` high", Observed: now},
+		{Seq: 1, Agent: "/root/inventory", Kind: "start", start: &activityStart{model: "m", effort: "high"}, Observed: now},
 		{Seq: 2, Agent: "/root/review", Kind: "tool", Text: "Run\n```bash\ngo test ./internal/router -run TestActivity -count=1 -v\n```", Observed: now},
-		{Seq: 3, Agent: "/root/inventory", Kind: "reply", Text: "[`/root/inventory` -> `/root`] Message received:\n" + strings.Repeat("Inventory complete with a long result line. ", 12), Observed: now},
+		{Seq: 3, Agent: "/root/inventory", Kind: "reply", message: &activityMessage{from: "/root/inventory", to: "/root", text: strings.Repeat("Inventory complete with a long result line. ", 12)}, Observed: now},
 		{Seq: 4, Agent: "/root/review/probe", Kind: "tool", Text: "Read `b.go`", Observed: now},
 		{Seq: 5, Agent: "/root/review", Kind: "commentary", Text: "Checking the `prepare.ts` copy step.", Observed: now},
 	}})

@@ -43,7 +43,6 @@ type publishedCommentary struct {
 type commentaryRoute struct {
 	journalQuestion string
 	originThread    string
-	author          string
 	sessionID       string
 	callID          string
 	expires         time.Time
@@ -75,10 +74,7 @@ func (b *commentaryBroker) capacityNotice() {
 	}
 }
 
-func (b *commentaryBroker) subscribe(sessionID, callID, author string) string {
-	if len(author) > maxCommentaryPublicationBytes || len(commentaryCode(author))+3 > maxCommentaryPublicationBytes {
-		return ""
-	}
+func (b *commentaryBroker) subscribe(sessionID, callID string) string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.cleanupExpiredLocked(time.Now())
@@ -94,7 +90,6 @@ func (b *commentaryBroker) subscribe(sessionID, callID, author string) string {
 	}
 	token := base64.RawURLEncoding.EncodeToString([]byte(callID)) + "." + base64.RawURLEncoding.EncodeToString(random)
 	b.routes[token] = &commentaryRoute{
-		author:    author,
 		sessionID: sessionID,
 		callID:    callID,
 		expires:   time.Now().Add(commentaryRouteTTL),
@@ -113,12 +108,8 @@ func (b *commentaryBroker) publish(token, text string, complete bool) bool {
 	}
 	route.expires = now.Add(commentaryRouteTTL)
 	withinRouteCapacity := route.nextID < maxCommentaryEventsPerRoute
-	// Check rendered bytes before attribution allocates or provenance is retained.
 	// Oversized auxiliary text still reaches completion handling below.
 	renderedFits := len(text) <= maxCommentaryPublicationBytes
-	if route.author != "" && !hasCommentaryAuthor(text, route.author) {
-		renderedFits = renderedFits && len(commentaryCode(route.author))+3 <= maxCommentaryPublicationBytes-len(text)
-	}
 	outcome := "accepted"
 	switch {
 	case strings.TrimSpace(text) == "":
@@ -137,7 +128,7 @@ func (b *commentaryBroker) publish(token, text string, complete bool) bool {
 		event := publishedCommentary{
 			callID:    route.callID,
 			messageID: commentaryMessageID(token + ":" + fmt.Sprint(route.nextID)),
-			text:      attributedCommentary(route.author, text),
+			text:      text,
 		}
 		messageID = event.messageID
 		route.events = append(route.events, event)

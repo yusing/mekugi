@@ -14,7 +14,7 @@ func TestSubagentStartHasOnlyObservedModelHeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := nativeSubagentStart(&request)
-	if got != "Started · `gpt-effective` `high` `fast`" || strings.Contains(got, "Private assignment body") {
-		t.Fatalf("native start header = %q", got)
+	if got == nil || *got != (activityStart{model: "gpt-effective", effort: "high", tier: "fast"}) || strings.Contains(got.label(), "Private assignment body") {
+		t.Fatalf("native start = %+v", got)
 	}
 }
