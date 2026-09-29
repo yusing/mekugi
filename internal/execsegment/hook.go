@@ -1,6 +1,9 @@
 package execsegment
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // Guard marks a shell that already decided whether to track its command, so
 // nested Bash commands started by that command are never tracked.
@@ -75,12 +78,21 @@ esac
 func quote(value string) string { return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'" }
 
 // Protocol is the helper-to-router message version.
-const Protocol = 2
+const Protocol = 3
+
+// Timing records helper-observed command boundaries. ElapsedNS is measured
+// with the helper's monotonic clock, independently of wall-clock adjustments.
+type Timing struct {
+	Started   time.Time `json:"started,omitzero"`
+	Ended     time.Time `json:"ended,omitzero"`
+	ElapsedNS int64     `json:"elapsed_ns,omitzero"`
+}
 
 // Message is one line of the helper's report. Hello opens a report and the
 // router answers with Reply; the rest follow in the order the shell and its
 // output produced them.
 type Message struct {
+	Timing   Timing   `json:"timing,omitzero"`
 	Type     string   `json:"t"`
 	Version  int      `json:"v,omitzero"`
 	Thread   string   `json:"thread,omitempty"`

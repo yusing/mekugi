@@ -392,16 +392,23 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			key := [3]string{p.ThreadID, p.TurnID, id}
 			if m.Method != "item/completed" {
 				if item.Type == "commandExecution" {
-					native.running = true
+					native.running, native.commandStarted = true, now
 					if run := s.commands[key]; run == nil {
 						native.output = s.outputs.New()
 						s.commands[key] = &appServerCommandRun{entry: entry, instant: instantOperations(entry.Text)}
 					} else {
 						native.output = run.entry.native.output
+						native.commandStarted = run.entry.native.commandStarted
 					}
 				}
 				entries = append(entries, entry)
 				break
+			}
+			if item.Type == "commandExecution" {
+				native.commandEnded = now
+				if run := s.commands[key]; run != nil {
+					native.commandStarted = run.entry.native.commandStarted
+				}
 			}
 			s.retainOutput(native, item)
 			if run := s.commands[key]; run != nil && u.execTrack.tracking(key) {
@@ -685,7 +692,7 @@ func appServerSucceededOutput(entry *activityPaneEntry, item appServerItem, sett
 	}
 	entry.outputTail, entry.outputOmit = appServerOutputTail(item.AggregatedOutput)
 	entry.native.settled, entry.native.collapsed = settled, settled.IsZero()
-	entry.native.changes = mchangesOutputRows(item)
+	entry.native.changes, entry.native.commit = commandOutputRows(item)
 }
 
 // appServerOutputTail keeps the last non-blank lines of a command's host

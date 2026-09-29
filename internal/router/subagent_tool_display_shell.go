@@ -119,6 +119,10 @@ func toolActivityReads(script string) (string, bool) {
 		syntax.Walk(program, func(node syntax.Node) bool {
 			if statement, ok := node.(*syntax.Stmt); ok && !hasEdit {
 				_, hasEdit = toolActivityEditStatement(statement)
+				if !hasEdit {
+					// A commit's heredoc is its message, not a program.
+					_, hasEdit = vcsStatement(statement)
+				}
 			}
 			return !hasEdit
 		})
@@ -149,10 +153,13 @@ func toolActivityReads(script string) (string, bool) {
 		statements[index].separator = toolActivityReadSeparator(statement)
 	}
 	var displays []string
-	classified := false
+	classified, heading, operation := false, false, false
 	for _, result := range statements {
 		classified = classified || result.ok
+		heading = heading || result.separator
+		operation = operation || !result.separator
 	}
+	classified = classified || heading && operation
 	for index, statement := range program.Stmts {
 		result := statements[index]
 		if result.separator && classified {
@@ -220,7 +227,7 @@ func toolActivityStatementDisplayEnd(script string, statement *syntax.Stmt) int 
 	return end
 }
 
-// Literal section headings alongside classified operations are decoration.
+// Literal section headings alongside other operations are decoration.
 // Keep dynamic output, redirections, and headings-only scripts visible.
 func toolActivityReadSeparator(statement *syntax.Stmt) bool {
 	argv, ok := toolActivityLiteralCall(statement)
@@ -250,7 +257,7 @@ func toolActivityReadSeparator(statement *syntax.Stmt) bool {
 			return true
 		}
 	}
-	return false
+	return strings.HasSuffix(heading, ":") && strings.TrimSpace(strings.TrimSuffix(heading, ":")) != ""
 }
 
 // Recognize only transparent search bounds and executable lookups. Keep their
@@ -263,15 +270,18 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 	if display, ok := toolActivityEditStatement(statement); ok {
 		return display, true
 	}
+	if call, ok := vcsStatement(statement); ok {
+		return call.display, true
+	}
 	if binary, ok := statement.Cmd.(*syntax.BinaryCmd); ok {
 		if binary.Op == syntax.AndStmt && len(statement.Redirs) == 0 {
 			left, leftOK := toolActivityStatement(script, binary.X)
 			right, rightOK := toolActivityStatement(script, binary.Y)
-			if leftOK || rightOK {
-				if !leftOK {
+			if leftOK || rightOK || toolActivityReadSeparator(binary.X) != toolActivityReadSeparator(binary.Y) {
+				if !leftOK && !toolActivityReadSeparator(binary.X) {
 					left = toolActivityUnclassifiedShell(toolActivityStatementSource(script, binary.X))
 				}
-				if !rightOK {
+				if !rightOK && !toolActivityReadSeparator(binary.Y) {
 					right = toolActivityUnclassifiedShell(toolActivityStatementSource(script, binary.Y))
 				}
 				return strings.Trim(strings.Join([]string{left, right}, "\n\n"), "\n"), true

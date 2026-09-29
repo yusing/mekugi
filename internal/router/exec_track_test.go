@@ -301,6 +301,15 @@ func awaitMain(t *testing.T, u *appServerUI, want string) string {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		u.flushCommandOutput()
+		u.startCommitReads()
+		for drained := false; !drained; {
+			select {
+			case key := <-u.commitReads:
+				u.commitRead(key)
+			default:
+				drained = true
+			}
+		}
 		u.view.pace(time.Now())
 		main := ansi.Strip(strings.Join(u.view.renderFeed(90, 60).lines, "\n"))
 		if strings.Contains(main, want) {

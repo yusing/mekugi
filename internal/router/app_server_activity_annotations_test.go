@@ -203,9 +203,9 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 	u.proxy = proxy
 	cells := []struct{ call, source, output string }{
 		{"silent", `await tools.exec_command({cmd: "git log"}); await tools.exec_command({cmd: "true"})`, `"Script completed\nWall time 0.1 seconds\nOutput:"`},
-		{"printed", `text(await tools.exec_command({cmd: "git status"}))`, `"Script completed\nWall time 0.1 seconds\nOutput:\nclean"`},
+		{"printed", `text(await tools.exec_command({cmd: "go version"}))`, `"Script completed\nWall time 0.1 seconds\nOutput:\nclean"`},
 	}
-	commands := []struct{ id, cmd string }{{"log-exec", "git log"}, {"quiet-exec", "true"}, {"status-exec", "git status"}}
+	commands := []struct{ id, cmd string }{{"log-exec", "git log"}, {"quiet-exec", "true"}, {"status-exec", "go version"}}
 	var input []string
 	for _, cell := range cells {
 		trace.start("main", cell.call+"-runtime", cell.call, cell.source)

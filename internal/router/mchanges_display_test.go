@@ -31,24 +31,25 @@ func TestMChangesSummaryShowsEditRows(t *testing.T) {
 		"? tool-managed: 2 missing capture; use --history for paths and full reasons\n"
 	u := mchangesDisplay(t, "mchanges --summary", output)
 	want := strings.Join([]string{
-		"└ Ran mchanges --summary",
-		"      Edited  internal/router/app.go   +12 -3 ━━━━━━━━",
-		"      Created doc/new.md               +40    ━━━━━━━━",
-		"      Moved   old.go → new => name.go  +1 -1  ━━━━━━━━",
-		"      Deleted gone.go                  -9     ━━━━━━━━",
-		"      ?       unknown.bin              missing capture",
-		"              amber3                   retired (partial history)",
-		"      Edited  tool-managed files       +30 -2 ━━━━━━━━ 1 counts unavailable",
-		"      ?       tool-managed files       2 missing capture",
+		"└ Diff mine · mchanges --summary",
+		"       Edited  internal/router/app.go   +12 -3 ━━━━━━━━",
+		"       Created doc/new.md               +40    ━━━━━━━━",
+		"       Moved   old.go → new => name.go  +1 -1  ━━━━━━━━",
+		"       Deleted gone.go                  -9     ━━━━━━━━",
+		"       ?       unknown.bin              missing capture",
+		"               amber3                   retired (partial history)",
+		"       Edited  tool-managed files       +30 -2 ━━━━━━━━ 1 counts unavailable",
+		"       ?       tool-managed files       2 missing capture",
 	}, "\n")
 	if got := mainFeed(u, 100); !strings.Contains(got, want) {
 		t.Fatalf("summary rows =\n%s\nwant\n%s", got, want)
 	}
-	// The rows are output: they collapse after the agent's next event.
+	// The rows are the diff's result, not output: they stay after the
+	// agent's next event.
 	nextEvent(t, u, "main")
 	settleActivity(time.Now().Add(activityui.OutputDebounce), u.view)
-	if got := mainFeed(u, 100); strings.Contains(got, "Edited") || !strings.Contains(got, "┆ … +8 lines") {
-		t.Fatalf("summary rows did not collapse:\n%s", got)
+	if got := mainFeed(u, 100); !strings.Contains(got, want) || strings.Contains(got, "┆ … +8 lines") {
+		t.Fatalf("summary rows collapsed:\n%s", got)
 	}
 }
 

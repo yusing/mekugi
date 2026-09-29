@@ -549,7 +549,7 @@ func TestRunDurationLiveAndCompletedRendering(t *testing.T) {
 	if index < 0 {
 		t.Fatal("missing running command")
 	}
-	u.view.entries[index].Observed = time.Now().Add(-2 * time.Second)
+	u.view.entries[index].native.commandStarted = time.Now().Add(-2 * time.Second)
 	u.view.blocks[index] = parseLiveActivity(u.view.entries[index])
 	u.view.runs = nil
 	feed := u.view.renderFeed(100, 30)
@@ -577,7 +577,7 @@ func TestRunDurationLiveAndCompletedRendering(t *testing.T) {
 	}
 }
 
-func TestBatchDialogKeepsInvocationTiming(t *testing.T) {
+func TestBatchDialogDoesNotAttributeInvocationTimingToSegments(t *testing.T) {
 	for _, segmented := range []bool{false, true} {
 		t.Run(fmt.Sprint(segmented), func(t *testing.T) {
 			retention := new(activityui.Retention)
@@ -597,12 +597,12 @@ func TestBatchDialogKeepsInvocationTiming(t *testing.T) {
 			}
 			want := " · 4s"
 			if segmented {
-				want += " total"
+				want = ""
 			}
 			for i := range u.output.pages {
 				u.output.showPage(i)
 				drawOutputDialog(u)
-				if title := ansi.Strip(u.output.laid.Title); !strings.HasSuffix(title, want) {
+				if title := ansi.Strip(u.output.laid.Title); (want != "" && !strings.HasSuffix(title, want)) || (want == "" && (strings.Contains(title, " · 4s") || strings.Contains(title, " · 7s") || strings.Contains(title, "total"))) {
 					t.Fatalf("live batch title %q, want %q", title, want)
 				}
 			}
@@ -613,12 +613,12 @@ func TestBatchDialogKeepsInvocationTiming(t *testing.T) {
 			second.Finish(nil, new(0))
 			want = " · 7s"
 			if segmented {
-				want += " total"
+				want = ""
 			}
 			for i := range u.output.pages {
 				u.output.showPage(i)
 				drawOutputDialog(u)
-				if title := ansi.Strip(u.output.laid.Title); !strings.HasSuffix(title, want) || strings.Contains(title, "Running") {
+				if title := ansi.Strip(u.output.laid.Title); ((want != "" && !strings.HasSuffix(title, want)) || (want == "" && (strings.Contains(title, " · 4s") || strings.Contains(title, " · 7s") || strings.Contains(title, "total")))) || strings.Contains(title, "Running") {
 					t.Fatalf("completed batch title %q, want %q", title, want)
 				}
 			}

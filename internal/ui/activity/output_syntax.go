@@ -19,6 +19,8 @@ func (p *Painter) outputColors(block Block, rows []string) []string {
 	switch {
 	case block.ReadOutput() && len(block.Reads) == 1:
 		path = block.Reads[0].Path
+	case block.Verb == "Diff" && block.VCS():
+		path = "output.diff"
 	case strings.Contains(content, "\n+++ ") && strings.Contains(content, "\n@@ "):
 		return p.Highlight("diff", content)
 	case block.Verb == "Search":

@@ -20,6 +20,7 @@ type retainedCommandSegments struct {
 }
 
 type retainedCommandSegment struct {
+	Timing  execsegment.Timing `json:",omitzero"`
 	Source  string
 	Skipped bool
 	Exit    int
@@ -43,11 +44,16 @@ func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item appSer
 	}
 	record := &retainedCommandSegments{Command: item.Command, Exit: *item.ExitCode, Output: sha256.Sum256([]byte(*item.AggregatedOutput))}
 	for i, segment := range view.segments {
-		part := retainedCommandSegment{Source: parts[i].Source, Skipped: segment.skipped, Exit: segment.exit}
+		part := retainedCommandSegment{Timing: segment.timing, Source: parts[i].Source, Skipped: segment.skipped, Exit: segment.exit}
 		if view.output && segment.output != nil {
 			output := segment.output.View()
 			if output.Done && !output.Released && !output.Truncated && output.Dropped == 0 {
 				part.Output = new(strings.Join(output.Lines, "\n"))
+				if segment.raw != "" {
+					// VCS parsers need original delimiters (not display-expanded
+					// tabs). Keep that complete evidence as the retained output.
+					part.Output = new(segment.raw)
+				}
 			}
 		}
 		record.Parts = append(record.Parts, part)
@@ -88,7 +94,11 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 			return nil
 		}
 		for i, part := range candidate.Parts {
-			if part.Source != parts[i].Source || part.Skipped && (part.Output != nil || part.Exit != 0) {
+			if part.Source != parts[i].Source || part.Skipped && (part.Output != nil || part.Exit != 0 || part.Timing != (execsegment.Timing{})) {
+				return nil
+			}
+			timing := part.Timing
+			if timing.ElapsedNS < 0 || timing.Started.IsZero() && (!timing.Ended.IsZero() || timing.ElapsedNS != 0) || timing.Ended.IsZero() && timing.ElapsedNS != 0 {
 				return nil
 			}
 		}
@@ -106,13 +116,13 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 		separate = separate && (part.Skipped || part.Output != nil)
 	}
 	for _, part := range record.Parts {
-		segment := commandSegment{text: execSegmentText(part.Source), skipped: part.Skipped, exit: part.Exit}
+		segment := commandSegment{timing: part.Timing, source: part.Source, text: execSegmentText(part.Source), skipped: part.Skipped, exit: part.Exit}
 		if separate && !part.Skipped {
 			segment.output = u.session.outputs.New()
 			segment.output.Finish(part.Output, &part.Exit)
 			segment.tail, segment.omit = appServerOutputTail(part.Output)
 			if part.Exit == 0 {
-				segment.changes = mchangesOutputRows(appServerItem{Command: part.Source, AggregatedOutput: part.Output})
+				segment.changes, segment.commit = commandOutputRows(appServerItem{Command: part.Source, Cwd: vcsSegmentCwd(item.Cwd, entry.native.segments), AggregatedOutput: part.Output})
 			}
 		}
 		entry.native.segments = append(entry.native.segments, segment)

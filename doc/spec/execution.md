@@ -137,9 +137,9 @@ Acceptance:
 ## REQ-EXECUTION-002 — Track each segment of a command list
 
 In the native app-server UI, a Bash command whose script is a top-level list
-(`;`, newline, `&&`, `||`) reports each segment's own output and exit status, so
-Activity can show every segment with its own state. Pipelines and compound
-commands are single segments. Command text, stdin, output bytes, exit status,
+(`;`, newline, `&&`, `||`) reports each segment's own output, exit status,
+start/end timestamps and elapsed duration, so Activity can show every segment with
+its own state. Pipelines and compound commands are single segments. Command text, stdin, output bytes, exit status,
 PTY/yield behavior, and `write_stdin` continuation stay those of the stock
 command. Codex's startup, cancellation, sandbox, and process group apply
 unchanged.
@@ -174,7 +174,11 @@ A script stays untracked when:
 The helper relays the shell's output to Codex's original descriptors while it
 reports each segment's share. The shell waits for the helper to acknowledge
 each segment's begin and end, so output cannot precede its segment identity or
-spill across a completed segment boundary.
+spill across a completed segment boundary. At these control boundaries the helper
+records wall-clock timestamps and measures elapsed time with its monotonic clock,
+before draining end-of-command output. The shell's EXIT boundary closes the active
+segment if its ordinary end hook was bypassed. Missing boundaries never borrow
+invocation duration. Protocol version 3 carries this timing with boundary reports.
 Output a background descendant writes later is attributed to the segment that
 is running when it arrives. A terminal command is not relayed, because
 programs would detect a pipe; it reports statuses only and keeps the host's
@@ -189,9 +193,9 @@ Completed, host-validated reports are retained in the managed replay store,
 scoped to the workspace and exact host turn/item identity. Restored history,
 including inherited fork history and `codex resume`, uses them only when the
 command, aggregate output and terminal exit still match. Replay restores
-settled output and states, never a process or continuation. Reading inherited
-reports retains them for the requesting thread independently of the original
-thread. Storage failure leaves live presentation available without promising
+settled output, states and observed timing, never a process or continuation.
+Reading inherited reports retains them for the requesting thread independently
+of the original thread. Storage failure leaves live presentation available without promising
 restoration.
 
 Old history without reports, missing or mismatched records, and incomplete
@@ -223,7 +227,7 @@ Acceptance:
    for later non-edit commands. Preview matching requires exact thread, turn and
    script identity and rejects ambiguous matches. These live observations never
    finalize the host command or create durable change receipts.
-7. Completed segment output, failure and skipped states survive a fresh router
+7. Completed segment output, timing, failure and skipped states survive a fresh router
    and inherited host history. Changed workspace, turn, item, command, aggregate
    or exit cannot borrow another invocation's report. Missing evidence cannot
    manufacture output boundaries.

@@ -288,7 +288,7 @@ func TestCodeModeLoweredJournalCellEditReceipt(t *testing.T) {
 }
 
 func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
-	for _, source := range []string{"rm -- FILE; git status --short", "git status --short; rm -- FILE"} {
+	for _, source := range []string{"rm -- FILE; make check", "make check; rm -- FILE"} {
 		for _, thread := range []string{"main", "child"} {
 			t.Run(thread+source, func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
@@ -312,10 +312,10 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 							t.Fatalf("lost neighbor: %+v", blocks)
 						}
 						run, edit := 1, 0
-						if strings.HasPrefix(source, "git") {
+						if strings.HasPrefix(source, "make") {
 							run, edit = 0, 1
 						}
-						if blocks[run].Verb != "Run" || !strings.Contains(blocks[run].Label+blocks[run].Code, "git status --short") || blocks[edit].Verb != "Delete" {
+						if blocks[run].Verb != "Run" || !strings.Contains(blocks[run].Label+blocks[run].Code, "make check") || blocks[edit].Verb != "Delete" {
 							t.Fatalf("incorrect operations: %+v", blocks)
 						}
 						if !strings.Contains(strings.Join(blocks[1].Tail, "\n"), "tracked.go") {

@@ -34,8 +34,8 @@ sessions, and patch review. No fork, no config edits, no daemon.
   Edit event to jump to its captured file and hunk.
 - **Readable command output.** With `mekugi-exec` installed, each command in a
   list such as `cd app && make && make test` shows its own output and exit
-  status. Click a command or read to open its retained output in an
-  [output dialog](#output-dialog) with one tab per command, search, and text
+  status and elapsed time. Click a command or read to open its retained output
+  in an [output dialog](#output-dialog) with one tab per command, search, and text
   selection.
 - **File attachments.** [Select files with `@`](#composer) to send text contents
   directly to the agent, without a separate file-read tool call. **Attached**
@@ -369,7 +369,10 @@ Click a command, program, read, or long-content excerpt in Main or Activity to
 open its full content in the shared dialog above the panes, without expanding
 the transcript. Read source and unified diffs use syntax colors. When
 `mekugi-exec` recorded a command list, each command gets its own tab with its
-output and exit status; otherwise the dialog labels the output as combined.
+output, exit status, start/end timestamps and measured duration. Decorative
+section headings are omitted. Older history without timing evidence shows no
+per-command duration; an invocation's total is never reused for its commands.
+Without retained output boundaries, the dialog labels the output as combined.
 
 - Left/Right or a click switches tabs. `j`/`k`, `PgUp`/`PgDn`, and `g`/`G`
   scroll; live output follows its tail until you scroll up.

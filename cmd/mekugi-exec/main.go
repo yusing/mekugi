@@ -111,6 +111,7 @@ type relay struct {
 	opened  bool
 	control []byte
 	current int
+	started time.Time
 	report  *reporter
 }
 
@@ -180,7 +181,8 @@ func (r *relay) readControl() bool {
 			if len(fields) == 2 {
 				if index, err := strconv.Atoi(fields[1]); err == nil {
 					r.current = index
-					r.report.send(execsegment.Message{Type: execsegment.Begin, Index: index})
+					r.started = time.Now()
+					r.report.send(execsegment.Message{Type: execsegment.Begin, Index: index, Timing: execsegment.Timing{Started: r.started}})
 					// Separate control and output pipes can become readable in
 					// either order. Let the shell produce output only after its
 					// segment identity is installed, including the first segment.
@@ -190,6 +192,7 @@ func (r *relay) readControl() bool {
 				}
 			}
 		case "e", "d":
+			ended := time.Now()
 			r.drain()
 			code := -1
 			if len(fields) >= 2 {
@@ -199,9 +202,12 @@ func (r *relay) readControl() bool {
 			}
 			if fields[0] == "e" && len(fields) == 3 {
 				if index, err := strconv.Atoi(fields[1]); err == nil {
-					r.report.send(execsegment.Message{Type: execsegment.End, Index: index, Code: new(code)})
+					r.endSegment(index, code, ended)
 				}
 			} else if fields[0] == "d" {
+				// exit/errexit can bypass the normal end hook. The EXIT
+				// boundary ends the currently observed command, not the batch.
+				r.endSegment(r.current, code, ended)
 				r.report.send(execsegment.Message{Type: execsegment.Done, Code: new(code)})
 			}
 			// The shell waits for this before its next segment starts.
@@ -210,6 +216,14 @@ func (r *relay) readControl() bool {
 			}
 		}
 	}
+}
+
+func (r *relay) endSegment(index, code int, ended time.Time) {
+	if index != r.current || r.started.IsZero() {
+		return
+	}
+	r.report.send(execsegment.Message{Type: execsegment.End, Index: index, Code: new(code), Timing: execsegment.Timing{Started: r.started, Ended: ended, ElapsedNS: int64(ended.Sub(r.started))}})
+	r.started = time.Time{}
 }
 
 // drain relays whatever output is already buffered, without waiting.

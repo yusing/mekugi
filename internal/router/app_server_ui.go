@@ -37,6 +37,7 @@ type appServerItem struct {
 	AgentThreadID    string                    `json:"agentThreadId"`
 	AgentPath        string                    `json:"agentPath"`
 	Command          string                    `json:"command"`
+	Cwd              string                    `json:"cwd"` // commandExecution: the directory the host ran it in.
 	Source           string                    `json:"source"`
 	ProcessID        string                    `json:"processId"`
 	Path             string                    `json:"path"`
@@ -74,6 +75,7 @@ type appServerUI struct {
 	statusConfig              appServerStatusConfig
 	statusReports             map[string]*appServerStatusReport
 	picker                    composerPicker
+	commitReads               chan gitCommitKey // Commit objects read off the UI goroutine.
 	files                     []composerFile
 	skills                    []composerSkill
 	client                    *appserver.Client
@@ -258,6 +260,10 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						u.dirty = true
 					case result := <-u.picker.scanResults:
 						u.applyPickerScan(result)
+					case key := <-u.commitReads:
+						if u.commitRead(key) {
+							u.dirty = true
+						}
 					case message, ok := <-c.Messages:
 						if !ok {
 							exited = true
@@ -282,6 +288,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						u.applyObservedActivity()
 						u.flushCommandOutput()
+						u.startCommitReads()
 						u.paneError(u.panes.save(u.shell, time.Now(), false))
 						if u.expireNotice(time.Now()) {
 							u.dirty = true

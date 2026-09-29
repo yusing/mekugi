@@ -9,6 +9,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 // Receipt summary of tool-managed files: count, sample paths, optional source.
@@ -21,19 +22,32 @@ func appServerDuration(item appServerItem) time.Duration {
 	return time.Duration(*item.DurationMS) * time.Millisecond
 }
 
-// Command timing belongs to the host invocation, not a reconstructed segment.
+// The host duration supports a single command or an explicitly combined output
+// view, never individual rows reconstructed from a command list.
 func setCommandTiming(blocks []activityui.Block, entry activityPaneEntry) {
 	if entry.native == nil {
 		return
 	}
+	command := entry.native.command
+	if script, ok := appServerShellScript(command); ok {
+		command = script
+	}
+	compound := len(blocks) > 1 || len(entry.native.segments) > 0
+	if program, err := syntax.NewParser().Parse(strings.NewReader(command), ""); err == nil {
+		compound = compound || len(program.Stmts) > 1
+		if len(program.Stmts) == 1 {
+			if binary, ok := program.Stmts[0].Cmd.(*syntax.BinaryCmd); ok {
+				compound = compound || binary.Op == syntax.AndStmt || binary.Op == syntax.OrStmt
+			}
+		}
+	}
 	for i := range blocks {
 		block := &blocks[i]
-		if block.Verb != "Run" || block.Skipped {
+		if (block.Kind != "op" && block.Kind != "reads") || block.Skipped || compound && !block.BatchExit {
 			continue
 		}
-		block.Duration, block.Started = entry.native.duration, time.Time{}
-		block.InvocationTiming = !block.BatchExit && (len(blocks) > 1 || len(entry.native.segments) > 0)
-		if entry.native.running {
+		block.Duration, block.Started, block.Ended = entry.native.duration, entry.native.commandStarted, entry.native.commandEnded
+		if entry.native.running && block.Started.IsZero() {
 			block.Started = entry.Observed
 		}
 	}
@@ -130,7 +144,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		if entry.native != nil && len(entry.native.segments) > 0 {
 			return commandSegmentBlocks(entry)
 		}
-		blocks := toolOperationBlocks(text)
+		blocks := activityui.FoldStages(toolOperationBlocks(text))
 		if len(blocks) == 1 && blocks[0].Verb == "Search" && entry.native != nil {
 			blocks[0].Results = entry.native.searchResults
 		}
@@ -146,7 +160,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 			if len(blocks) > 0 {
 				last := &blocks[len(blocks)-1]
 				last.Tail, last.TailOmitted = entry.outputTail, entry.outputOmit
-				last.Changes = entry.native.changes
+				last.Changes = commitChanges(entry.native.changes, entry.native.commit)
 				// A read's output is what the agent read; it starts collapsed.
 				last.Collapsed = (entry.native.collapsed || last.ReadOutput()) && last.Collapsible()
 			}
@@ -248,7 +262,19 @@ func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitt
 // follows the last segment shown.
 func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 	var blocks []activityui.Block
+	// Classify decoration in the full script, not as a standalone segment.
+	// Keep failed headings visible, and retain every segment for replay/output.
+	command := entry.native.command
+	if script, ok := appServerShellScript(command); ok {
+		command = script
+	}
+	_, classified := toolActivityReads(command)
 	for _, segment := range entry.native.segments {
+		if classified && !segment.skipped && segment.exit == 0 {
+			if program, err := syntax.NewParser().Parse(strings.NewReader(segment.source), ""); err == nil && len(program.Stmts) == 1 && toolActivityReadSeparator(program.Stmts[0]) {
+				continue
+			}
+		}
 		operations := toolOperationBlocks(livediff.Safe(segment.text, false))
 		for i := range operations {
 			operations[i].Running, operations[i].Skipped = segment.running, segment.skipped
@@ -269,19 +295,24 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 		}
 		last := &operations[len(operations)-1]
 		last.ExitCode, last.Segment = segment.exit, true
+		if !segment.skipped {
+			last.Started, last.Ended = segment.timing.Started, segment.timing.Ended
+			last.Duration = time.Duration(segment.timing.ElapsedNS)
+		}
 		last.Tail, last.TailOmitted, last.Output = segment.tail, segment.omit, segment.output
-		last.Changes = segment.changes
+		last.Changes = commitChanges(segment.changes, segment.commit)
 		blocks = append(blocks, operations...)
 	}
 	if len(entry.outputTail) > 0 {
 		for i := len(blocks) - 1; i >= 0; i-- {
 			if !blocks[i].Skipped {
 				blocks[i].Tail, blocks[i].TailOmitted, blocks[i].Output = entry.outputTail, entry.outputOmit, entry.native.output
-				blocks[i].Changes = entry.native.changes
+				blocks[i].Changes = commitChanges(entry.native.changes, entry.native.commit)
 				break
 			}
 		}
 	}
+	blocks = activityui.FoldStages(blocks)
 	for i := range blocks {
 		blocks[i].Collapsed = (entry.native.collapsed || blocks[i].ReadOutput()) && blocks[i].Collapsible()
 	}

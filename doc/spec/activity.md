@@ -63,9 +63,10 @@ effectful pipeline stages retain the original `Run` preview. Shell execution
 still receives the exact original command, including flags and pipes.
 Per-command `Run` excerpts omit statement-terminating semicolons; quoted
 semicolons and other executable syntax remain visible.
-Literal `printf` and `echo` section headings alongside classified operations are
-omitted as display decoration; standalone, redirected, escaped, or dynamic headings
-remain `Run` operations.
+Literal `printf` and `echo` section headings alongside other operations are
+omitted as display decoration, including colon-ended labels and bordered headings.
+Live and successful tracked heading segments are omitted too; failed ones remain
+visible. Standalone, redirected, escaped, or dynamic headings remain `Run` operations.
 Literal `mread` recovery calls omit activity entries rather than appearing as `Run`.
 Wait and input presentation follows typed host events and their command/item
 identity. The activity observer does not reconstruct process or Code Mode cell
@@ -74,6 +75,50 @@ printed output as continuation evidence. When a turn ends without a wait item
 completion, its roster status becomes `Wait ended`, not `Waiting for agent`.
 This does not claim that any child finished; a later host wait result replaces
 it. Restoring a stopped turn applies the same rule without reviving the wait.
+
+### Version-control operations
+
+Literal git, svn, and `mchanges` reads and commits are labeled by what they do rather
+than `Run`. `git commit` and `svn commit`/`ci` are `Commit`; `git add` with paths,
+`-A`, or `-u` is `Stage`; `git diff`, `git show`, `svn diff`, and `mchanges` patch,
+`--net`, and `--summary` reads are `Diff`; `git diff --check` is `Check`; and
+`git status` (long, short, or porcelain v1) and `svn status` are `Status`. The label
+names the heading, any paths after `--` or as svn operands, and the source tool with
+flags that change what the row shows, such as `git --stat` or `git -C DIR`.
+A commit's heading is the first non-blank line of a literal `-m` message, a quoted
+heredoc or here-string read through `-F -`, or the `"$(cat <<'EOF' … EOF)"` idiom
+read as the text it substitutes; a message from a file or the existing commit has
+no heading. A diff's heading is its scope: `working tree`, `staged`, the revisions
+as written, `rN` for svn, or the mchanges IDs (`mine` when none).
+Revision syntax such as `HEAD~2` is literal where its tilde cannot expand.
+Dynamic words, globs, brace expansions, environment assignments, `git -c`,
+options that write files, run external diff programs, open an editor, stage
+interactively, or change the output form (`--dry-run`, `-p`, `-c`, `--output`,
+`--ext-diff`, `-z`, `--porcelain=v2`, `svn st -u`/`-v`), redirections other than a
+commit's message on stdin and discarded or merged stderr, `REV:PATH` reads,
+`mchanges --list`/`--history`, and `mchanges revert`/`apply` remain `Run`.
+Unknown Git diff/show options, custom pretty formats and patch prefixes, and
+mixed file-summary formats likewise remain `Run` rather than misreading output.
+Copy-detecting stat/numstat reads need `--summary` to distinguish copies from moves.
+
+A successful command's own output supplies its rows: a unified diff's files with
+counts taken within each hunk's stated extent, git's stat, numstat, shortstat,
+name-status, and name-only forms, `svn diff --summarize`, status entries with their
+branch and upstream distance, and the files `svn commit` sent with its revision.
+Git patch copies show the destination as created, with a `copy of` note; the source
+is not reported as moved. A `--stat` graph scaled to its width shows each file's
+total, not a split. A git commit's output names its hash, branch, and totals; its files and counts come from a
+read-only `git show --numstat --summary` of that hash in the command's host cwd. The
+read runs off the UI loop, at most two at a time, bounded to two seconds and 4 MiB,
+and cached by hash; until it returns, and without that cwd or a readable object, the
+output's created, deleted, and moved files show without counts. Consecutive Git
+`-C` options resolve in order. After a prior shell segment other than a recognized
+VCS command, the initial cwd is no longer proven: enrichment is omitted unless
+the commit specifies an absolute `-C` directory, including on replay.
+Staging and checks, which print nothing on success, may precede a commit in one
+invocation's combined output; any other list keeps the plain tail because its output
+cannot be attributed. Tracked segments read their own unsanitized output. Output
+that names no commit claims none, and unreadable output keeps its tail.
 
 ### Program and edit previews
 

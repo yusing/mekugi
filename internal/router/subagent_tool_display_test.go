@@ -182,11 +182,13 @@ func TestSubagentNumberedReadDisplay(t *testing.T) {
 func TestSubagentMixedReadRunFallbacks(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
 		{"cat a\ncat b > c", "Read `a`\n\nEdit `c` · cat (requested)"},
-		{"cat a; git diff --check; git diff --stat;", "Read `a`\n\nRun `git diff --check`\n\nRun `git diff --stat`"},
+		{"cat a; git diff --check; git diff --stat;", "Read `a`\n\nCheck `working tree` · git diff --check\n\nDiff `working tree` · git --stat"},
+		{"cat a; git log --oneline;", "Read `a`\n\nRun `git log --oneline`"},
 		{"cat a\ncat b && echo done", "Read `a`\n\nRead `b`\n\nRun `echo done`"},
 		{"cat a; printf '%s;' value;", "Read `a`\n\nRun `printf '%s;' value`"},
 		{"cat a; sleep 1 &", "Read `a`\n\nRun `sleep 1 &`"},
-		{"git status --short\ncat a", "Run `git status --short`\n\nRead `a`"},
+		{"git status --short\ncat a", "Status `working tree` · git\n\nRead `a`"},
+		{"git status --porcelain=v2\ncat a", "Run `git status --porcelain=v2`\n\nRead `a`"},
 		{"cat a\nsed -n '1,$p' b", "Read `a`\n\nRun `sed -n '1,$p' b`"},
 		{"cat a\ncat \"$file\"", "Read `a`\n\nRead `\"$file\"`"},
 		{"cat a\ncat good -n", "Read `a`\n\nRun `cat good -n`"},

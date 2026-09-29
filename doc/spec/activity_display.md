@@ -127,11 +127,23 @@ succeeds. Being what the agent read rather than a result to watch, it takes no
 row of its own: a muted `(N lines)` follows the read's target, and a row too
 narrow for it shortens the path rather than the count. Restored history shows zero-exit output
 already collapsed. Output arriving after completion is ignored.
-`Run`/`Running` rows and their dialog titles append elapsed time only above 3 ms,
+Command rows and their dialog titles append elapsed time only above 3 ms,
 using milliseconds below a second and compact whole-second units thereafter
-(`4ms`, `1s`, `1m10s`, `1h`). Live time uses the observed start; completed
-time uses the host duration, including restored items when available. Segment
-rows mark that duration `total`: it belongs to the invocation, not the segment.
+(`4ms`, `1s`, `1m10s`, `1h`). For tracked batch commands, the shell helper records
+each command's start and end at its control boundaries and measures duration with
+its monotonic clock. The elapsed suffix counts from that command's observed start while running and freezes
+at its measured duration when complete. Its output dialog shows the start and end
+timestamps in local time, with date, milliseconds and timezone, and the measured
+duration without rounding. Timed commands retain their individual rows rather
+than merging reads or folding staging into a commit. An EXIT boundary also
+ends the active command when `exit` or `errexit` bypasses its normal end hook.
+Completed observations retain timestamps and duration across resume and forks;
+skipped commands have neither. A disconnected report supplies no invented end.
+Single-command invocations show their live-observed host boundary timestamps and
+use the host duration when complete; replay never reconstructs missing timestamps.
+Older or unsupported batch observations without per-command timing
+omit it; an invocation's total is never copied onto individual command rows. The
+combined-output dialog may show the invocation duration.
 
 The shared content dialog captures keys and pointer events above both panes.
 Observed shell segments appear as command tabs, selectable by click or Left/Right.
@@ -185,14 +197,37 @@ with the host aggregate when supplied. Restored commands retain their available
 host aggregates, not streams that were never persisted.
 
 A successful `mchanges --list` or `--summary` read shows its host output as
-change rows laid out like confirmed edit rows rather than a tail: summary files
+change rows laid out like confirmed edit rows rather than a tail; a `--summary`
+read heads them with its `Diff` row (below): summary files
 under their status verb (`Edited`, `Created`, `Deleted`, `Moved`, `Conflict`, or
 `?` for incomplete evidence), list rows under their change ID, then shared path and
 count columns with omitted zero counts and scaled bars, and statuses, reasons and
 tool-managed tallies muted after them. These rows describe read history, not new
 edits. At most 12 show, then a muted `… +N more`. A line it cannot read stays a
-muted note, and output with no readable row keeps its ordinary tail; the rows
-collapse like other output.
+muted note, and output with no readable row keeps its ordinary tail; `--list`
+rows collapse like other output.
+
+A [version-control operation](activity.md#version-control-operations) is one row:
+its verb, its heading, then a muted `· source`. `Commit` and `Stage` use gold;
+`Diff`, `Status`, and `Check` use the read blue. A commit's heading is its subject,
+with a leading `amend!`, `fixup!`, or `squash!` marker in amber; diff and status
+headings are their scope, and paths after `in` use path emphasis. The heading is
+cut with `…` so the source stays on the row; below 16 cells it wraps instead. A
+nonzero exit makes the verb red and adds `· exit N`. Staging rows directly
+before a commit of the same invocation fold into it when they lack individual
+timing, since the commit names what it recorded. A timed, failed or skipped stage,
+or one before a skipped commit, stays.
+A commit reads `Committed` only once the host completed it and its output named the
+commit. Successful output becomes rows beneath the heading instead of a tail, laid
+out like `mchanges --summary` rows: files under their verbs with shared path and
+count columns and scaled bars, a note such as `binary` or `N lines`, or a two-cell
+status code, staged state green and unstaged, untracked, or conflicted state red.
+A gold-led closing row follows any `… +N more`: a commit's hash, `on BRANCH`, and
+totals; a status's branch, `↑N ↓N`, and `clean`; an svn revision `rN`; or a diff's
+file count and totals when it has more files than show. These rows are the
+operation's result, so they stay when output collapses; the output dialog keeps the
+retained output, colored as a patch for `Diff`. The roster summary shows the verb,
+heading, the rows' changed lines, and the source.
 Unknown and zero exits add no failure label, and an unknown exit no output. Python, JavaScript (Node and Bun), and Perl interpreter previews use
 their own syntax colors. `Search` patterns are styled as literal patterns,
 not shell commands, while every target path uses the Search violet with path emphasis.

@@ -15,10 +15,9 @@ import (
 // so it can lay them out natively. Unrecognized text stays a plain text block;
 // nothing is interpreted, expanded, or executed.
 type Block struct {
-	InvocationTiming bool // The elapsed suffix names the whole invocation, not this segment.
-
+	Ended       time.Time     // Observed command end; zero when unavailable.
 	Started     time.Time     // Observed live command start, presentation only.
-	Duration    time.Duration // Host duration; zero means unavailable.
+	Duration    time.Duration // Host or measured segment duration; zero means unavailable.
 	Questions   []Question
 	Source      uint64 // Activity entry identity for exact cross-pane navigation.
 	Kind        string // op, reads, message, start, error, text
@@ -193,6 +192,8 @@ func RowVerb(b Block) string {
 		return "Running"
 	case b.Kind == "op" && b.Verb == "Run" && !b.Skipped:
 		return "Ran"
+	case b.committed():
+		return "Committed"
 	case b.GroupHeader != "":
 		return EditVerb(b)
 	}
@@ -506,7 +507,7 @@ func MergeLiveActivityReads(blocks []Block) []Block {
 // mergesReads reports whether next joins the read row last.
 func mergesReads(last, next Block) bool {
 	joins := func(b Block) bool {
-		return b.Kind == "reads" && b.Results == nil && b.ExitCode == 0 &&
+		return b.Kind == "reads" && b.Results == nil && b.ExitCode == 0 && b.Started.IsZero() && b.Duration == 0 &&
 			(len(b.Tail) == 0 && b.TailOmitted == 0 || b.readContent())
 	}
 	return last.Verb == next.Verb && joins(last) && joins(next)

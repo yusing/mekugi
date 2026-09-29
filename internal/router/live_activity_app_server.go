@@ -150,6 +150,8 @@ func journalQuestionMatches(entry activityPaneEntry, source string) bool {
 // Native items extend the activity model rather than creating another transcript
 // cache. Their identities are deliberately not joined to provider call IDs.
 type liveActivityNativeItem struct {
+	commandStarted     time.Time // Live host command boundary; not reconstructed on replay.
+	commandEnded       time.Time
 	duration           time.Duration
 	questions          []activityui.Question
 	replySource        string // Stock async envelope or sync turn prompt used to bind journal publications.
@@ -162,7 +164,8 @@ type liveActivityNativeItem struct {
 	live               bool                   // From a live notification; restored history never sets it.
 	collapseAt         time.Time              // A settled live block stays open until then.
 	settled            time.Time              // Successful output stays open from then until its agent's next event.
-	changes            []activityui.ChangeRow // Change history rows read from a successful mchanges listing or summary.
+	changes            []activityui.ChangeRow // Change rows read from a successful change history, VCS read, or commit.
+	commit             gitCommitKey           // The commit object whose files complete changes.
 	collapsed          bool                   // A settled block shows collapsed: after its linger, or restored.
 	spans              []activityui.TextSpan  // Attachment spans, not text resembling image labels.
 	question           uint64                 // Original user entry, retained even for a live journal publication.

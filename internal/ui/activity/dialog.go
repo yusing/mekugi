@@ -79,6 +79,21 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		}
 	}
 
+	// Keep timestamps in distinct metadata rows rather than clipping both
+	// into the dialog's single-line status strip. They are not copied output.
+	if !block.Started.IsZero() {
+		add(DialogLine{Text: Dim + "Started " + block.Started.Local().Format("2006-01-02 15:04:05.000 MST") + Undim})
+	}
+	if !block.Ended.IsZero() {
+		add(DialogLine{Text: Dim + "Ended   " + block.Ended.Local().Format("2006-01-02 15:04:05.000 MST") + Undim})
+		if block.Duration > 0 {
+			add(DialogLine{Text: Dim + "Elapsed " + block.Duration.String() + Undim})
+		}
+	}
+	if !block.Started.IsZero() {
+		gap()
+	}
+
 	code := livediff.Safe(block.Code, false)
 	page.Text = code
 	if code != "" && (strings.Contains(code, "\n") || ansi.StringWidth(code) > width/2) {
@@ -397,10 +412,8 @@ func (p *Painter) DialogPageTitle(block Block, now time.Time) string {
 	if target := dialogTarget(p, block); target != "" {
 		title += Dim + " · " + Undim + target
 	}
-	if block.Verb == "Run" {
-		if elapsed := RunElapsed(block, now); elapsed != "" {
-			title += Dim + " · " + elapsed + Undim
-		}
+	if elapsed := RunElapsed(block, now); elapsed != "" {
+		title += Dim + " · " + elapsed + Undim
 	}
 	return title
 }

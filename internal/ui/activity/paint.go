@@ -39,8 +39,10 @@ func VerbColor(verb string) string {
 		return Green
 	case "Attach":
 		return Red
-	case "Read", "Inspect", "View", "Open", "List", "Check":
+	case "Read", "Inspect", "View", "Open", "List", "Check", "Diff", "Status":
 		return "\x1b[38;5;75m"
+	case "Commit", "Committed", "Stage":
+		return Hash
 	case "Search", "Find", "Skill":
 		return "\x1b[38;5;141m"
 	case "Run", "Running", "Send", "Sleep", "Wait", "Still", "Stop":
@@ -494,6 +496,16 @@ func liveActivityIndent(lines []string, prefix string) []string {
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
 	lines := p.blockRows(block, width)
+	if block.Verb != "Run" && !block.Skipped && len(lines) > 0 {
+		if elapsed := RunElapsed(block, time.Now()); elapsed != "" {
+			suffix := Dim + " · " + elapsed + Undim
+			if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
+				lines[0] += suffix
+			} else {
+				lines = append(lines, strings.Repeat(" ", block.cell(RowVerb(block)))+Dim+"· "+elapsed+Undim)
+			}
+		}
+	}
 	if trailer := segmentTrailer(block); trailer != "" && len(lines) > 0 {
 		if last := len(lines) - 1; ansi.StringWidth(lines[last])+1+ansi.StringWidth(trailer) <= width {
 			lines[last] += " " + trailer
@@ -519,7 +531,7 @@ func segmentTrailer(block Block) string {
 	switch {
 	case block.Skipped && EditStatus(block) != "skipped":
 		return "· skipped"
-	case !block.Segment || block.ExitCode == 0 || block.GroupHeader != "" || block.Kind != "op" && block.Kind != "reads":
+	case !block.Segment || block.ExitCode == 0 || block.GroupHeader != "" || block.Kind != "op" && block.Kind != "reads" || block.VCS():
 		return ""
 	case block.Kind == "op" && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)):
 		return "" // The row already shows the exit.
@@ -666,6 +678,9 @@ func (p *Painter) blockRows(block Block, width int) []string {
 	case "op":
 		if len(block.Questions) > 0 {
 			return p.questionRows(block, width)
+		}
+		if block.VCS() {
+			return p.vcsRow(block, width)
 		}
 		if block.Verb == "Run" {
 			return p.ranRow(block, width)
@@ -1033,7 +1048,8 @@ func lineSuffix(n int, hovered bool) string {
 func outputRows(block Block, lines []string, width int) []string {
 	indent := block.cell(RowVerb(block))
 	padding := strings.Repeat(" ", indent)
-	if len(block.Changes) > 0 && !block.Collapsed {
+	// A VCS row's changes are its result, not output to collapse.
+	if len(block.Changes) > 0 && (!block.Collapsed || block.VCS()) {
 		return append(lines, changeRows(block.Changes, padding, width-indent)...)
 	}
 	tail, omitted := block.Tail, block.TailOmitted
@@ -1479,6 +1495,9 @@ func (p *Painter) Summary(blocks []Block) string {
 		}
 		return SummaryVerb(block.Verb) + strings.Join(names, ", ") + more
 	case "op":
+		if block.VCS() {
+			return p.vcsSummary(block) + more
+		}
 		detail := strings.TrimSpace(p.Label(block.Verb, block.Label))
 		if detail == "" || strings.HasPrefix(ansi.Strip(detail), "·") {
 			code, _, _ := strings.Cut(block.Code, "\n")
@@ -1574,7 +1593,7 @@ func ResultCount(count *int) string {
 // RunElapsed shares the compact duration grammar used by native status timers.
 func RunElapsed(block Block, now time.Time) string {
 	elapsed := block.Duration
-	if (block.Running || block.InvocationTiming) && !block.Started.IsZero() {
+	if block.Running && !block.Started.IsZero() {
 		elapsed = now.Sub(block.Started)
 	}
 	if elapsed <= 3*time.Millisecond {
@@ -1592,9 +1611,6 @@ func RunElapsed(block Block, now time.Time) string {
 				text = strings.TrimSuffix(text, "0m")
 			}
 		}
-	}
-	if block.InvocationTiming {
-		text += " total"
 	}
 	return text
 }

@@ -69,6 +69,7 @@ type execTrack struct {
 }
 
 type execTrackSegment struct {
+	timing  execsegment.Timing
 	source  string
 	edit    bool   // The shared classifier identifies an edit operation.
 	text    string // Display operations, derived once by the UI.
@@ -78,6 +79,8 @@ type execTrackSegment struct {
 	code    int
 	output  activityui.OutputTail
 	fresh   []byte             // Output since the last view, bounded like a retained output.
+	vcs     bool               // A VCS command whose raw output becomes change rows.
+	raw     []byte             // A VCS segment's unsanitized output, bounded like fresh.
 	full    *activityui.Output // Retained by the UI, which alone reads and writes it.
 }
 
@@ -208,7 +211,7 @@ func (h *execTrackHub) claim(ctx context.Context, hello execsegment.Message) ([3
 			h.started = slices.Delete(h.started, index, index+1)
 			track := &execTrack{script: hello.Script, serial: command.serial, terminal: hello.Terminal, dirty: true}
 			for _, source := range hello.Segments {
-				track.segments = append(track.segments, execTrackSegment{source: source, edit: execSegmentEdits(source)})
+				track.segments = append(track.segments, execTrackSegment{source: source, edit: execSegmentEdits(source), vcs: vcsSegment(source)})
 			}
 			h.tracks[key] = track
 			for preview := range h.previews {
@@ -486,16 +489,20 @@ func (t *execTrack) apply(message execsegment.Message) {
 	case execsegment.Begin:
 		if valid {
 			t.segments[message.Index].began = true
+			t.segments[message.Index].timing = execsegment.Timing{Started: message.Timing.Started}
 		}
 	case execsegment.Output:
 		if valid && !t.lossy {
 			segment := &t.segments[message.Index]
 			segment.output.Write(message.Data)
 			segment.fresh = append(segment.fresh, message.Data...)
-			if over := len(segment.fresh) - activityui.OutputBytes; over > 0 {
+			if segment.vcs {
+				segment.raw = append(segment.raw, message.Data...)
+			}
+			if over := max(len(segment.fresh), len(segment.raw)) - activityui.OutputBytes; over > 0 {
 				// Without a complete pending stream, use the host aggregate
 				// rather than splice unrelated byte ranges into retained output.
-				segment.fresh = nil
+				segment.fresh, segment.raw = nil, nil
 				t.lossy = true
 			}
 		}
@@ -503,6 +510,9 @@ func (t *execTrack) apply(message execsegment.Message) {
 		if valid && message.Code != nil {
 			segment := &t.segments[message.Index]
 			segment.began, segment.ended, segment.code = true, true, *message.Code
+			if !message.Timing.Started.IsZero() && message.Timing.Started.Equal(segment.timing.Started) && !message.Timing.Ended.IsZero() && message.Timing.ElapsedNS >= 0 {
+				segment.timing = message.Timing
+			}
 		}
 	case execsegment.Done:
 		if message.Code != nil {
@@ -518,6 +528,7 @@ func (t *execTrack) apply(message execsegment.Message) {
 
 // commandSegment is one segment as the Activity shows it.
 type commandSegment struct {
+	timing  execsegment.Timing
 	text    string // Display operations for the segment's source.
 	running bool
 	skipped bool // The list short-circuited before it.
@@ -526,6 +537,9 @@ type commandSegment struct {
 	omit    int
 	changes []activityui.ChangeRow
 	output  *activityui.Output
+	source  string
+	raw     string       // A finished VCS segment's complete output, for its change rows.
+	commit  gitCommitKey // The commit object whose files complete changes.
 }
 
 // execTrackView is a report as presented at one frame.
@@ -575,7 +589,7 @@ func (h *execTrackHub) view(key [3]string, final bool, text func(string) string,
 		if rolled() {
 			changed = true
 		}
-		shown := commandSegment{text: segment.text, exit: segment.code}
+		shown := commandSegment{timing: segment.timing, text: segment.text, exit: segment.code, source: segment.source}
 		switch {
 		case segment.began && !segment.ended && final:
 			shown.exit = track.code
@@ -607,6 +621,9 @@ func (h *execTrackHub) view(key [3]string, final bool, text func(string) string,
 				shown.changes = mchangesOutputRows(appServerItem{Command: segment.source, AggregatedOutput: &output})
 				if len(shown.changes) > 0 && shown.omit > 0 {
 					shown.changes = append([]activityui.ChangeRow{{Note: activityui.Elision{Hidden: shown.omit}.Text()}}, shown.changes...)
+				}
+				if segment.vcs {
+					shown.raw = string(segment.raw)
 				}
 			}
 		}
@@ -683,12 +700,18 @@ func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry,
 	native := *entry.native
 	native.segments = view.segments
 	u.retainCommandSegments(entry, item, view)
+	for i := range native.segments {
+		// A commit reads its object from the directory the host ran it in.
+		if segment := &native.segments[i]; segment.raw != "" && segment.changes == nil {
+			segment.changes, segment.commit = vcsOutputRows(segment.source, vcsSegmentCwd(item.Cwd, native.segments[:i]), segment.raw)
+		}
+	}
 	// Successful segments' output stays open until the agent's next event.
 	native.settled, native.collapsed = now, false
 	entry.native = &native
 	if !view.output {
 		entry.outputTail, entry.outputOmit = appServerOutputTail(item.AggregatedOutput)
-		native.changes = mchangesOutputRows(item)
+		native.changes, native.commit = commandOutputRows(item)
 	}
 	return []activityPaneEntry{entry}
 }
