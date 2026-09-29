@@ -199,7 +199,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			text = appServerEditText(item, u.session.cwd)
 		}
 		entry := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, searchResults: appServerSearchResults(item)}}
+			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, searchResults: appServerSearchResults(item)}}
 		u.session.retainOutput(entry.native, item)
 		appServerSucceededOutput(&entry, item, time.Time{})
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})

@@ -25,6 +25,10 @@ func TestShellEditIntentClassification(t *testing.T) {
 			wantVerbs: []string{"Edit", "Edit", "Edit", "Edit", "Run"}, wantPaths: []string{"a file.go", "b.go", "a file.go.bak", "b.go.bak"}, wantProgram: "sed", secret: "PRIVATE_SED_SOURCE",
 		},
 		{
+			name: "variable heredoc and neighbors", command: "tmpdir=$(mktemp -d)\nartifact=\"$tmpdir/findings.txt\"\ncat >\"$artifact\" <<'EOF'\nPRIVATE_CAT_SOURCE\nEOF\nprintf '%s\\n' \"$artifact\"",
+			wantVerbs: []string{"Run", "Run", "Edit", "Run"}, wantPaths: []string{`"$artifact"`}, wantProgram: "cat", secret: "PRIVATE_CAT_SOURCE",
+		},
+		{
 			name: "cat append and test", command: "cat >> a.go <<'EOF'\nPRIVATE_CAT_SOURCE\nEOF\ngo test ./internal/router",
 			wantVerbs: []string{"Edit", "Run"}, wantPaths: []string{"a.go"}, wantProgram: "cat", secret: "PRIVATE_CAT_SOURCE",
 		},

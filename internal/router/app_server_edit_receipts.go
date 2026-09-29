@@ -81,6 +81,31 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 				}
 			}
 			text := receipt.text
+			if index == 0 && entry.native.command != "" {
+				// Rebuild from the host command so repeated reconciliation never
+				// duplicates receipts or drops neighboring operations.
+				original := toolActivityShell(appServerDisplayCommand(entry.native.command))
+				paragraphs := activityui.Paragraphs(original)
+				if len(paragraphs) > 1 {
+					var parts []string
+					inserted := false
+					for _, paragraph := range paragraphs {
+						block := activityui.ParseOperation(paragraph)
+						if slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) {
+							if !inserted {
+								parts = append(parts, receipt.text)
+								inserted = true
+							}
+							continue
+						}
+						parts = append(parts, paragraph)
+					}
+					if !inserted {
+						parts = append(parts, receipt.text)
+					}
+					text = strings.Join(parts, "\n\n")
+				}
+			}
 			if index > 0 {
 				var remaining []string
 				for _, paragraph := range activityui.Paragraphs(entry.Text) {

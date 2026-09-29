@@ -88,6 +88,11 @@ Literal, statically scoped `sed -i` edits use the shared capture parser to show
 `Edit` intent immediately, without waiting for a retained receipt. This requested
 operation has no applied counts; the captured `mchanges` evidence later replaces
 it in place with the observed file changes. Read-only `sed` is not an edit.
+`cat` output redirections also show edit intent for simple variable targets,
+keeping the target expression unevaluated and the heredoc body out of Run cards.
+Literal, statically scoped `rm` commands show requested `Delete` intent.
+A receipt replaces edit intent without removing neighboring operations in a
+mixed script; combined host output remains attached to the final operation.
 
 Stock `apply_patch`, including transparent Code Mode calls using immutable
 literal patch bindings, does not emit a bare `Edit` label, a generic `Run`

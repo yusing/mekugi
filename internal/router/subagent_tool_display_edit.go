@@ -19,7 +19,8 @@ func toolActivityEditStatement(statement *syntax.Stmt) (string, bool) {
 	if !literal {
 		return "", false
 	}
-	if filepath.Base(command) == "sed" && len(statement.Redirs) == 0 {
+	name := filepath.Base(command)
+	if (name == "sed" || name == "rm") && len(statement.Redirs) == 0 {
 		// Reuse capture's option/script parser without resolving or reading
 		// files. The operation is requested; only its later receipt has counts.
 		for _, arg := range call.Args[1:] {
@@ -29,14 +30,20 @@ func toolActivityEditStatement(statement *syntax.Stmt) (string, bool) {
 		}
 		plan := execPlan{}
 		walker := execShellWalker{cwd: ".", plan: &plan}
-		walker.sed(call.Args[1:])
+		verb := "Edit"
+		if name == "rm" {
+			walker.remove(call.Args[1:])
+			verb = "Delete"
+		} else {
+			walker.sed(call.Args[1:])
+		}
 		if plan.Class != execDeclared || len(plan.Scope) == 0 {
 			return "", false
 		}
 		var paths []string
 		for _, scope := range plan.Scope {
 			for _, operand := range scope.Operands {
-				paths = append(paths, "Edit "+toolActivityCode(operand.Path)+" · sed (requested)")
+				paths = append(paths, verb+" "+toolActivityCode(operand.Path)+" · "+name+" (requested)")
 			}
 		}
 		return strings.Join(paths, "\n\n"), true
@@ -47,7 +54,11 @@ func toolActivityEditStatement(statement *syntax.Stmt) (string, bool) {
 			if redirect.Op != syntax.RdrOut && redirect.Op != syntax.AppOut && redirect.Op != syntax.RdrClob || redirect.N != nil && redirect.N.Value != "1" {
 				continue
 			}
-			if path, literal := shellCatLiteral(redirect.Word); literal && path != "" && !strings.HasPrefix(path, "/dev/") {
+			path, literal := shellCatLiteral(redirect.Word)
+			if !literal && toolActivityPatternWord(redirect.Word) {
+				path = shellWords([]*syntax.Word{redirect.Word})
+			}
+			if path != "" && !strings.HasPrefix(path, "/dev/") {
 				paths = append(paths, "Edit "+toolActivityCode(path)+" · cat (requested)")
 			}
 		}

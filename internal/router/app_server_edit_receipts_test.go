@@ -286,3 +286,50 @@ func TestCodeModeLoweredJournalCellEditReceipt(t *testing.T) {
 	restored.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}})
 	assertCapturedCommand(t, restored.view, "thread-1", "edit-exec", "Edit", 0)
 }
+
+func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
+	for _, source := range []string{"rm -- FILE; git status --short", "git status --short; rm -- FILE"} {
+		for _, thread := range []string{"main", "child"} {
+			t.Run(thread+source, func(t *testing.T) {
+				u := newAppServerSessionTestUI(t, t.TempDir())
+				if thread == "child" {
+					appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": thread, "agentNickname": "worker"}})
+				}
+				view := u.view
+				if thread == "child" {
+					view = u.agents
+				}
+				item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "/bin/bash -lc " + shellQuoteArgument(source), ExitCode: new(0), AggregatedOutput: new(" M tracked.go\n")}
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": item})
+				data := newLiveDiffData()
+				data.order = []string{"receipt"}
+				data.attempts["receipt"] = liveDiffAttempt{receipt: &capturedActivityEdit{thread: thread, calls: []string{"cmd"}, text: "Delete `FILE` +0 -1 · rm"}}
+				check := func(view *liveActivityView) {
+					for range 2 {
+						view.applyCapturedEdits(data)
+						blocks := view.blocks[0]
+						if len(blocks) != 2 {
+							t.Fatalf("lost neighbor: %+v", blocks)
+						}
+						run, edit := 1, 0
+						if strings.HasPrefix(source, "git") {
+							run, edit = 0, 1
+						}
+						if blocks[run].Verb != "Run" || !strings.Contains(blocks[run].Label+blocks[run].Code, "git status --short") || blocks[edit].Verb != "Delete" {
+							t.Fatalf("incorrect operations: %+v", blocks)
+						}
+						if !strings.Contains(strings.Join(blocks[1].Tail, "\n"), "tracked.go") {
+							t.Fatalf("lost aggregate output: %+v", blocks)
+						}
+					}
+				}
+				check(view)
+				if thread == "main" {
+					restored := newAppServerSessionTestUI(t, t.TempDir())
+					restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+					check(restored.view)
+				}
+			})
+		}
+	}
+}
