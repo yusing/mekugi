@@ -2,6 +2,7 @@ package router
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/shellsyntax"
@@ -45,6 +46,8 @@ func shellInterpreterFlag(name, flag string) (source, harmless bool) {
 type shellScriptProjection struct {
 	Source   string
 	Language string
+	// Command is the invocation around Source, as `python3 -c … arg`.
+	Command string
 }
 
 func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool) {
@@ -96,7 +99,11 @@ func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool
 				return shellScriptProjection{}, false
 			}
 		}
-		return shellScriptProjection{Source: program, Language: toolActivityLanguage(name)}, true
+		// args is call.Args[1:]: the program is call.Args[index+2].
+		words := slices.Clone(call.Args[:index+3])
+		words[index+2] = &syntax.Word{Parts: []syntax.WordPart{&syntax.Lit{Value: "…"}}}
+		words = append(words, args[index+2:]...)
+		return shellScriptProjection{Source: program, Language: toolActivityLanguage(name), Command: shellWords(words)}, true
 	}
 
 	if len(statement.Redirs) != 1 {
@@ -106,5 +113,47 @@ func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool
 	if !ok {
 		return shellScriptProjection{}, false
 	}
-	return shellScriptProjection{Source: program, Language: toolActivityLanguage(name)}, true
+	return shellScriptProjection{Source: program, Language: toolActivityLanguage(name), Command: shellWords(call.Args)}, true
+}
+
+// shellInterpreterReadsStdin reports a lone interpreter told by `-` to read its
+// program from stdin with nothing redirected there, as `python3 -`.
+func shellInterpreterReadsStdin(input string) bool {
+	statements, _, _, ok := liveDiffShellStatements(input, "")
+	if !ok || len(statements) != 1 {
+		return false
+	}
+	statement := statements[0]
+	call, ok := statement.Cmd.(*syntax.CallExpr)
+	if !ok || statement.Background || statement.Negated || statement.Coprocess || statement.Disown ||
+		len(statement.Redirs) != 0 || len(call.Assigns) != 0 || len(call.Args) < 2 {
+		return false
+	}
+	interpreter, literal := shellCatLiteral(call.Args[0])
+	name := shellsyntax.InterpreterIdentity(interpreter)
+	if !literal || !shellInterpreterPattern.MatchString(name) {
+		return false
+	}
+	stdin := false
+	for _, word := range call.Args[1:] {
+		value, static := shellCatLiteral(word)
+		if _, harmless := shellInterpreterFlag(name, value); !static || value != "-" && !harmless {
+			return false
+		}
+		stdin = stdin || value == "-"
+	}
+	return stdin
+}
+
+// shellWords prints static words as the command line shows them.
+func shellWords(words []*syntax.Word) string {
+	shown := make([]string, 0, len(words))
+	for _, word := range words {
+		var source strings.Builder
+		if syntax.NewPrinter().Print(&source, word) != nil || strings.ContainsAny(source.String(), "\r\n") {
+			return ""
+		}
+		shown = append(shown, source.String())
+	}
+	return strings.Join(shown, " ")
 }

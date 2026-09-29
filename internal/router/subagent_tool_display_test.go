@@ -8,27 +8,43 @@ import (
 // Most display tests compare one textual preview; delivery tests check message boundaries.
 func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 	for _, test := range []struct {
-		name, source, language, program string
+		name, source, command, language, program string
 	}{
-		{"python command", `python3 -I -c 'print("ok")'`, "python", `print("ok")`},
-		{"pypy command", `pypy3 -c 'print("ok")'`, "python", `print("ok")`},
-		{"python heredoc", "python3 - <<'PY'\nprint('ok')\nPY\n", "python", "print('ok')\n"},
-		{"node command", `node --input-type=module -e 'console.log("ok")'`, "javascript", `console.log("ok")`},
-		{"node heredoc", "node - <<'JS'\nconsole.log('ok')\nJS\n", "javascript", "console.log('ok')\n"},
-		{"bun command", `bun -e 'console.log("ok")'`, "javascript", `console.log("ok")`},
-		{"bun heredoc", "bun - <<'JS'\nconsole.log('ok')\nJS\n", "javascript", "console.log('ok')\n"},
-		{"perl command", `perl -e 'print "ok"'`, "perl", `print "ok"`},
-		{"perl heredoc", "perl - <<'PL'\n" + `print "ok";` + "\nPL\n", "perl", `print "ok";` + "\n"},
-		{"ruby command", `ruby -e 'puts "ok"'`, "ruby", `puts "ok"`},
-		{"php command", `php -r 'echo "ok";'`, "php", `echo "ok";`},
-		{"shell combined flag", `sh -ec 'printf ok'`, "sh", `printf ok`},
+		{"python command", "python3 -I -c 'import sys\nprint(\"ok\")' arg", "python3 -I -c … arg", "python", "import sys\nprint(\"ok\")"},
+		{"pypy command", "pypy3 -c 'import sys\nprint(\"ok\")'", "pypy3 -c …", "python", "import sys\nprint(\"ok\")"},
+		{"python heredoc", "python3 - <<'PY'\nimport sys\nprint('ok')\nPY\n", "python3 -", "python", "import sys\nprint('ok')\n"},
+		{"python heredoc without dash", "python3 <<'PY'\nimport sys\nprint('ok')\nPY\n", "python3", "python", "import sys\nprint('ok')\n"},
+		{"node command", "node --input-type=module -e 'const a = 1\nconsole.log(a)'", "node --input-type=module -e …", "javascript", "const a = 1\nconsole.log(a)"},
+		{"node heredoc", "node - <<'JS'\nconst a = 1\nconsole.log(a)\nJS\n", "node -", "javascript", "const a = 1\nconsole.log(a)\n"},
+		{"bun command", "bun -e 'const a = 1\nconsole.log(a)'", "bun -e …", "javascript", "const a = 1\nconsole.log(a)"},
+		{"perl heredoc", "perl - <<'PL'\nmy $a = 1;\nprint $a;\nPL\n", "perl -", "perl", "my $a = 1;\nprint $a;\n"},
+		{"ruby command", "ruby -e 'a = 1\nputs a'", "ruby -e …", "ruby", "a = 1\nputs a"},
+		{"php command", "php -r '$a = 1;\necho $a;'", "php -r …", "php", "$a = 1;\necho $a;"},
+		{"shell combined flag", "sh -ec 'cd dir\nprintf ok'", "sh -ec …", "sh", "cd dir\nprintf ok"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			want := "Run\n" + toolActivityFenced(test.language, test.program)
+			want := "Run " + toolActivityCode(test.command) + "\n" + toolActivityFenced(test.language, test.program)
 			if got := toolActivityShell(test.source); got != want {
 				t.Fatalf("display = %q; want %q", got, want)
 			}
 		})
+	}
+
+	// A one-line program reads best as the literal command, which names its
+	// interpreter; a lone `-` notes that stdin supplies the program.
+	for source, label := range map[string]string{
+		`python3 -I -c 'print("ok")'`:         "Run",
+		"python3 - <<'PY'\nprint('ok')\nPY\n": "Run",
+		`perl -e 'print "ok"'`:                "Run",
+		"python3 -":                           "Run · program read from stdin",
+		"python3 -u -":                        "Run · program read from stdin",
+		"python3 - < script.py":               "Run",
+		"cat script.py | python3 -":           "Run",
+		"python3 - arg":                       "Run",
+	} {
+		if got, want := toolActivityShell(source), label+"\n"+toolActivityFenced("bash", source); got != want {
+			t.Errorf("literal display = %q; want %q", got, want)
+		}
 	}
 
 	for _, source := range []string{

@@ -35,8 +35,15 @@ func toolActivityShellLanguage(script, language string) string {
 	if strings.TrimSpace(script) == "" {
 		return "Run"
 	}
-	if projection, ok := shellInterpreterScriptProjection(script); ok {
-		return "Run\n" + toolActivityFenced(projection.Language, projection.Source)
+	// A multi-line program shows under the command that runs it; a one-line
+	// program reads best as the literal command.
+	if projection, ok := shellInterpreterScriptProjection(script); ok && projection.Command != "" &&
+		strings.Contains(strings.TrimRight(projection.Source, "\n"), "\n") {
+		return "Run " + toolActivityCode(projection.Command) + "\n" + toolActivityFenced(projection.Language, projection.Source)
+	}
+	note := ""
+	if shellInterpreterReadsStdin(script) {
+		note = " · program read from stdin"
 	}
 	if err != nil || len(parsed.Interpreter) == 0 {
 		language = ""
@@ -44,7 +51,7 @@ func toolActivityShellLanguage(script, language string) string {
 		language = parsed.Interpreter[0]
 	}
 	language = toolActivityLanguage(language)
-	return "Run\n" + toolActivityFenced(language, script)
+	return "Run" + note + "\n" + toolActivityFenced(language, script)
 }
 
 func toolActivityLanguage(interpreter string) string {

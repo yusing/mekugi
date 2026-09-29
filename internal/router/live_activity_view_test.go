@@ -411,12 +411,12 @@ func TestLiveActivityCompactionAppearsInFeedAndRoster(t *testing.T) {
 
 func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 	for _, tc := range []struct {
-		shell, first, second string
+		shell, header, first, second string
 	}{
-		{"python -c 'import json\nprint(json.dumps(1))'", "import json", "print(json.dumps(1))"},
-		{"node -e 'const value = 1;\nconsole.log(value)'", "const value = 1;", "console.log(value)"},
-		{"bun - <<'JS'\nconst value = 1;\nconsole.log(value)\nJS\n", "const value = 1;", "console.log(value)"},
-		{"perl - <<'PL'\nmy $value = 1;\nprint $value;\nPL\n", "my $value = 1;", "print $value;"},
+		{"python -c 'import json\nprint(json.dumps(1))'", "python -c …", "import json", "print(json.dumps(1))"},
+		{"node -e 'const value = 1;\nconsole.log(value)'", "node -e …", "const value = 1;", "console.log(value)"},
+		{"bun - <<'JS'\nconst value = 1;\nconsole.log(value)\nJS\n", "bun -", "const value = 1;", "console.log(value)"},
+		{"perl - <<'PL'\nmy $value = 1;\nprint $value;\nPL\n", "perl -", "my $value = 1;", "print $value;"},
 	} {
 		t.Run(tc.shell, func(t *testing.T) {
 			blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell(tc.shell)})
@@ -425,11 +425,12 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 			}
 			painter := activityui.Painter{Theme: livediff.DarkTheme}
 			rows := painter.Block(blocks[0], 80)
-			if len(rows) < 2 || ansi.Strip(rows[0]) != "Ran    │ "+tc.first || !strings.Contains(ansi.Strip(rows[1]), "       │ "+tc.second) {
+			// The header names the interpreter the program runs under.
+			if len(rows) < 3 || ansi.Strip(rows[0]) != "Ran    "+tc.header || ansi.Strip(rows[1]) != "       │ "+tc.first || !strings.Contains(ansi.Strip(rows[2]), "       │ "+tc.second) {
 				t.Fatalf("preview rows = %q", plainLines(rows))
 			}
-			if !strings.Contains(rows[0], "\x1b[38;2;") {
-				t.Fatalf("source was not syntax highlighted: %q", rows[0])
+			if !strings.Contains(rows[1], "\x1b[38;2;") {
+				t.Fatalf("source was not syntax highlighted: %q", rows[1])
 			}
 			for _, width := range []int{11, 18, 40} {
 				for _, row := range painter.Block(blocks[0], width) {

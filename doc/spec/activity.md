@@ -65,8 +65,11 @@ printed output as continuation evidence.
 
 Whole-program previews use fenced code blocks with the selected interpreter
 language. Literal interpreter wrappers, including `python -c`,
-`python - <<'PY'`, and `node -e`, show the actual program rather than a Bash
-wrapper. This same projector supplies provisional streaming previews and completed
+`python - <<'PY'`, and `node -e`, show a multi-line program rather than a Bash
+wrapper, under a header naming the command with `…` for the program, as
+`Ran python3 -c …` or `Ran python3 -`. A one-line program shows as the literal
+command, which names its interpreter. A lone `-` with nothing redirected to
+stdin adds a muted `· program read from stdin`. This same projector supplies provisional streaming previews and completed
 operation displays. It never evaluates shell expansions or implies that a
 command succeeded. Source line breaks and indentation remain intact.
 
