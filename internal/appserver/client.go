@@ -34,6 +34,8 @@ type Client struct {
 	Output      io.ReadCloser
 	Messages    chan Message
 	readDone    chan error
+	stopRead    chan struct{}
+	stopOnce    sync.Once
 	Done        chan error
 	Diagnostics Diagnostics
 	next        int
@@ -56,7 +58,7 @@ func (d *Diagnostics) Write(p []byte) (int, error) {
 }
 
 func Start(cmd *exec.Cmd) (*Client, error) {
-	c := &Client{cmd: cmd, Messages: make(chan Message, 256), readDone: make(chan error, 1), Done: make(chan error, 1)}
+	c := &Client{cmd: cmd, Messages: make(chan Message, 256), readDone: make(chan error, 1), stopRead: make(chan struct{}), Done: make(chan error, 1)}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, &c.Diagnostics
 	var err error
 	if c.Input, err = cmd.StdinPipe(); err != nil {
@@ -81,10 +83,13 @@ func Start(cmd *exec.Cmd) (*Client, error) {
 				c.readDone <- fmt.Errorf("decode app-server: %w", err)
 				return
 			}
+			// Preserve ordered RPC events when presentation falls behind. The
+			// bounded channel and stdout pipe backpressure the producer instead
+			// of treating a temporary UI stall as a fatal protocol error.
 			select {
 			case c.Messages <- message:
-			default:
-				c.readDone <- errors.New("app-server event capacity exceeded; session state is incomplete, do not resubmit automatically")
+			case <-c.stopRead:
+				c.readDone <- nil
 				return
 			}
 		}
@@ -134,6 +139,9 @@ func (c *Client) Respond(id jsontext.Value, result any) error {
 }
 
 func (c *Client) Close() {
+	// A paused consumer may leave the reader waiting to deliver a message,
+	// rather than reading stdout. Closing the pipe alone cannot release it.
+	c.stopOnce.Do(func() { close(c.stopRead) })
 	_ = c.Input.Close()
 	_ = c.cmd.Process.Kill()
 	_ = c.Output.Close()

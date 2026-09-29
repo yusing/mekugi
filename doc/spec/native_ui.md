@@ -28,6 +28,10 @@ Zero or unavailable usage omits the token line; no established thread omits the
 resume hint. Noninteractive commands retain Codex's own exit output.
 An unexpected app-server exit retains its diagnostic alongside the child's exit
 status; the normal session summary must not make a disconnect look like a clean quit.
+Temporary event bursts or paused presentation do not drop RPC messages or
+terminate app-server. Transport buffering is bounded and applies backpressure
+until the consumer catches up, preserving message order. Explicit close and
+the graceful-shutdown deadline can release a reader waiting on that consumer.
 
 The client replaces presentation, not projection policy. Codex remains the agent
 runtime and execution authority, and Mekugi's router stays in the model-request
