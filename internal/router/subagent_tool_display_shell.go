@@ -495,10 +495,17 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 	patterns := command == "rg" || command == "grep" || command == "ls" ||
 		command == "cat" || command == "mcat" || command == "sed" || command == "nl" || command == "inspect_file"
 	var argv []string
-	for _, arg := range call.Args {
+	for i, arg := range call.Args {
 		value, literal := shellCatLiteral(arg)
 		if !literal {
-			if !patterns || !toolActivityPatternWord(arg) {
+			// Classify sed by its literal flags and print program, not by
+			// how the input path is constructed. Keep dynamic operands
+			// verbatim so substitutions and their effects remain visible.
+			if command == "sed" {
+				if i != 3 {
+					return "", false
+				}
+			} else if !patterns || !toolActivityPatternWord(arg) {
 				return "", false
 			}
 			value = script[int(arg.Pos().Offset()):int(arg.End().Offset())]

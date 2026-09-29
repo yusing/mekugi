@@ -34,8 +34,13 @@ selection is labeled `Read`; literal `rg` is `Search`;
 simple listings are `List`; and `inspect_file`, including its options and multiple
 paths, is `Inspect`. Path globs and simple shell parameter references such as
 `$HOME` and `${HOME}` are preserved as source without expansion; parameter
-operators and executable substitutions remain `Run`. A `cat` read piped to a bounded `head` retains its read
-label. `skills-mgr get` and `skills-mgr run` use `Skill`, including reference reads.
+operators and executable substitutions normally remain `Run`. Bounded `sed -n`
+reads are classified by their literal flags and print program, regardless of how
+the input path is constructed. Dynamic operands remain visible verbatim and are
+never evaluated by the display; `Read` describes the outer sed operation, not
+the effects of any embedded substitutions. In-place edits and non-print scripts
+do not qualify as reads.
+A `cat` read piped to a bounded `head` retains its read label. `skills-mgr get` and `skills-mgr run` use `Skill`, including reference reads.
 The skill name is bold; reference paths and run arguments retain normal weight.
 `&&` chains show classified operations and unclassified `Run` neighbors in source
 order, without claiming execution or success. Other unsupported compound commands

@@ -253,6 +253,7 @@ func TestSubagentSymbolicReadPaths(t *testing.T) {
 		{`mcat "$HOME/.codex/INSTRUCTION-AUTHORING.md" AGENTS.md`, "Read `\"$HOME/.codex/INSTRUCTION-AUTHORING.md\"`\n\nRead `AGENTS.md`"},
 		{`mcat "${HOME}/a b.go" 1:20 other.go`, "Read `\"${HOME}/a b.go\" 1:20`\n\nRead `other.go`"},
 		{`cat $ROOT/*.go`, "Read `$ROOT/*.go`"},
+		{`sed -n '390,432p' $(go env GOROOT)/src/encoding/json/v2/arshal_time.go`, "Read `$(go env GOROOT)/src/encoding/json/v2/arshal_time.go 390:432`"},
 		{`sed -n '1,260p' "$file"`, "Read `\"$file\" 1:260`"},
 		{`nl -ba "$file" | sed -n '1,2p'`, "Read `\"$file\" 1:2`"},
 		{`inspect_file "$ROOT/a.go"`, "Inspect `\"$ROOT/a.go\"`"},
@@ -276,6 +277,33 @@ func TestSubagentSymbolicReadPaths(t *testing.T) {
 	} {
 		if got := toolActivityShell(source); got != "Run\n"+toolActivityFenced("bash", source) {
 			t.Errorf("%s: unexpected classification %q", source, got)
+		}
+	}
+}
+
+func TestSubagentSedDynamicOperands(t *testing.T) {
+	for _, operand := range []string{
+		`$(project-root)/file.go`, `"$(dirname "$file")/file.go"`,
+		"`project-root`/file.go", `${ROOT:-/tmp}/file.go`,
+		`$(touch sentinel; printf /tmp)/file.go`, `<(generate-source)`,
+		`$(go env -w GOPATH=/tmp)/file.go`,
+		`$(GOENV=other go env GOROOT)/file.go`,
+	} {
+		source := "sed -n '1,2p' " + operand
+		want := "Read " + toolActivityCode(operand+" 1:2")
+		if got := toolActivityShell(source); got != want {
+			t.Errorf("%s: got %q, want %q", source, got, want)
+		}
+	}
+	for _, source := range []string{
+		`sed -i -n '1,2p' $(project-root)/file.go`,
+		`sed -n '1,2p;w out' $(project-root)/file.go`,
+		`sed -n '1e touch sentinel' $(project-root)/file.go`,
+		`sed -n "$program" $(project-root)/file.go`,
+		`sed "$flags" '1,2p' $(project-root)/file.go`,
+	} {
+		if got := toolActivityShell(source); strings.HasPrefix(got, "Read") {
+			t.Errorf("%s: misclassified as %q", source, got)
 		}
 	}
 }
