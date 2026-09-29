@@ -251,13 +251,13 @@ func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
 	}
 	stdout, stderr, status = runShellWorkerTest(t, f.registry, "bash", nil,
 		"mchanges amber5 --workspace ..", nil, childInvocation)
-	if status == 0 || stdout != "" || !strings.Contains(stderr, "never allocated") ||
+	if status == 0 || stdout != "available IDs: amber1..amber2\navailable IDs: amber4\n" || !strings.Contains(stderr, "never allocated") ||
 		!strings.Contains(stderr, "amber4") {
 		t.Fatalf("never-allocated diagnostic: %q, %q, %d", stdout, stderr, status)
 	}
 	stdout, stderr, status = runShellWorkerTest(t, f.registry, "bash", nil,
 		"mchanges "+retired+" --workspace ..", nil, childInvocation)
-	if status == 0 || stdout != "" || !strings.Contains(stderr, "retired") {
+	if status == 0 || stdout != "available IDs: amber1..amber2\navailable IDs: amber4\n" || !strings.Contains(stderr, "retired") {
 		t.Fatalf("retired diagnostic: %q, %q, %d", stdout, stderr, status)
 	}
 }
@@ -624,6 +624,36 @@ func TestMChangesNetKeepsTextWhenBinaryEvidenceFails(t *testing.T) {
 	stdout, stderr, status := f.run(t, "mchanges --net "+mixed)
 	if status != 1 || !strings.Contains(stdout, "text.txt") || !strings.Contains(stdout, "+after") || strings.Contains(stdout, "mixed.dat") || !strings.Contains(stderr, "binary evidence that cannot be composed") {
 		t.Fatalf("mixed net evidence: %q, %q, %d", stdout, stderr, status)
+	}
+}
+
+func TestMChangesMissingReadRecoversAvailableRange(t *testing.T) {
+	t.Parallel()
+	f := newMChangesSliceFixture(t, "missing-read-recovery")
+	for number := 1; number <= 5; number++ {
+		correlation := fmt.Sprintf("capture-%d", number)
+		id := f.reserve(t, f.thread, correlation)
+		f.publish(t, id, correlation, correlation+"-call", mekugiHistory{
+			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")},
+		})
+	}
+	// Explicit reads can cross threads, but recovery must not advertise unrelated streams.
+	f.reserve(t, "other-thread", "unrelated")
+	for _, view := range []string{"", "--summary", "--history", "--net", "--list"} {
+		out, diagnostic, status := f.run(t, "mchanges amber6 "+view)
+		if status != 1 || out != "available IDs: amber1..amber5\n" ||
+			diagnostic != "mchanges: change amber6 is never allocated (latest is amber5)\n" {
+			t.Fatalf("%s: stdout=%q stderr=%q status=%d", view, out, diagnostic, status)
+		}
+	}
+	for _, operation := range []string{"apply", "revert"} {
+		out, diagnostic, status := f.run(t, "mchanges "+operation+" amber1 amber6")
+		if status != 1 || out != "" || !strings.Contains(diagnostic, "amber6") {
+			t.Fatalf("%s: stdout=%q stderr=%q status=%d", operation, out, diagnostic, status)
+		}
+		if _, err := os.Stat(filepath.Join(f.workspace, "file.txt")); !os.IsNotExist(err) {
+			t.Fatalf("%s mutated the workspace: %v", operation, err)
+		}
 	}
 }
 

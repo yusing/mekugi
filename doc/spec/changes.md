@@ -203,7 +203,12 @@ incomplete managed records form a separate `?` row with bounded reason counts, n
 explicit path filters expand individual managed paths. Pending selections get per-ID status rows. Unavailable selections, including
 retired or never-allocated IDs, report target-qualified stderr and nonzero status
 without suppressing available results in any read mode. Explicit ranges extending
-past the latest ID still return available IDs. `--net` composes available evidence
+past the latest ID still return available IDs. When no selected ID is readable and
+IDs are missing, stdout instead reports `available IDs:` ranges retained in those
+IDs' streams. These are recovery suggestions, not substituted diffs or a claim of
+complete evidence; retired gaps are not bridged and unrelated streams are not
+listed. This recovery is shared by all read modes, including `--list` and `--net`.
+`--net` composes available evidence
 and reports skipped or uncomposable targets rather than claiming complete coverage.
 Successful output stays on stdout. `apply` and `revert` retain dependency checks
 and do not skip failed dependencies. It is not a net workspace diff;
@@ -218,8 +223,9 @@ records retain their original reasons; changing capture limits does not recover 
 Numeric range ends such as
 `amber1..3` are equivalent to `amber1..amber3`. A path operand belongs after `--`;
 unknown options are diagnosed as options. Missing-ID errors distinguish retired
-from never allocated, give the latest allocation for the stream, and identify
-the selected workspace so callers can correct `--workspace`.
+from never allocated and give the latest allocation for a never-allocated ID in a
+known stream. If the stream is unknown, the error identifies the selected
+workspace so callers can correct `--workspace`.
 
 `--net` composes selected completed captures in recorded capture order using the
 same review composition as the live view. It follows moves and emits canonical

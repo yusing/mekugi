@@ -179,7 +179,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	if status != 0 || stderr != "" || stdout != id+"\nadd \"\" -> \"--summary\"\nadd \"\" -> \"apple2\"\n" {
 		t.Fatalf("literal flag and ID paths: %q, %q, %d", stdout, stderr, status)
 	}
-	for _, arguments := range []string{"read " + id, id + " --path file.txt", "amber99", "amber1..apple2", "--max-tokens 0 amber1", "--history --summary amber1"} {
+	for _, arguments := range []string{"read " + id, id + " --path file.txt", "amber1..apple2", "--max-tokens 0 amber1", "--history --summary amber1"} {
 		stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil, "mchanges "+arguments, nil, invocation)
 		if status == 0 || stdout != "" || stderr == "" {
 			t.Fatalf("%q did not reject: %q, %q, %d", arguments, stdout, stderr, status)

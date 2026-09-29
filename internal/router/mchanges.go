@@ -168,11 +168,14 @@ func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeRe
 		options.overlapLabels = snapshot.OverlapLabels
 		names := []string{changeIndexName(options.workspace, index.Namespace)}
 		var readable []string
+		missingStreams := make(map[string]bool)
 		for _, id := range options.ids {
 			change, exists := index.Changes[id]
 			if !exists {
 				if !options.mine || options.view == "net" {
 					targetErrors = append(targetErrors, missingChangeError(index, id))
+					stream, _, _ := parseChangeID(id)
+					missingStreams[stream] = true
 				} else {
 					readable = append(readable, id)
 				}
@@ -211,6 +214,7 @@ func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeRe
 			return err
 		}
 		if len(readable) == 0 && len(targetErrors) > 0 {
+			output = availableChangeRanges(index, missingStreams)
 			return nil
 		}
 		output, err = s.renderChanges(ctx, options, index)
@@ -263,7 +267,41 @@ func missingChangeError(index changeIndex, id string) error {
 	if state == "unknown" {
 		reason = "never allocated (latest is " + latest + ")"
 	}
-	return fmt.Errorf("change %s is %s in workspace %q; check --workspace when reading from a subdirectory", id, reason, index.Workspace)
+	if latest == "none in this stream" {
+		return fmt.Errorf("change %s is %s in workspace %q; check --workspace", id, reason, index.Workspace)
+	}
+	return fmt.Errorf("change %s is %s", id, reason)
+}
+
+// Recovery advertises retained IDs, not replacement evidence for a failed read.
+// Restrict it to the requested streams and never bridge retired holes.
+func availableChangeRanges(index changeIndex, streams map[string]bool) string {
+	numbers := make(map[string][]int)
+	for id := range index.Changes {
+		stream, number, _ := parseChangeID(id)
+		if streams[stream] {
+			numbers[stream] = append(numbers[stream], number)
+		}
+	}
+	var output strings.Builder
+	for position := range index.Streams {
+		stream := index.streamName(position)
+		ids := numbers[stream]
+		slices.Sort(ids)
+		for start := 0; start < len(ids); {
+			end := start
+			for end+1 < len(ids) && ids[end+1] == ids[end]+1 {
+				end++
+			}
+			fmt.Fprintf(&output, "available IDs: %s", changeHandle(stream, ids[start]))
+			if end != start {
+				fmt.Fprintf(&output, "..%s", changeHandle(stream, ids[end]))
+			}
+			output.WriteByte('\n')
+			start = end + 1
+		}
+	}
+	return output.String()
 }
 
 func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
