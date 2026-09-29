@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -95,7 +94,9 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	var totals []string
 	if editedKnown {
 		added, removed := v.lineCountParts(edited)
-		totals = append(totals, strings.TrimSpace(added+" "+removed))
+		if total := strings.TrimSpace(added + " " + removed); total != "" {
+			totals = append(totals, total)
+		}
 	}
 	if input+output > 0 {
 		totals = append(totals, "↑"+formatUsageTokens(input)+" ↓"+formatUsageTokens(output))
@@ -320,15 +321,20 @@ func (v *liveActivityView) paceRosterMetrics(rows []liveActivityRosterRow, now t
 	v.rosterPace = pace
 }
 
-// lineCountParts colors known added and removed line counts like the Diff
-// pane; unknown counts show as "?", not zero.
+// lineCountParts uses semantic green/red colors, independent of the syntax
+// theme. Zero counts are omitted; unknown counts show as "?", not zero.
 func (v *liveActivityView) lineCountParts(count livediff.Counts) (string, string) {
 	if count.Added < 0 || count.Removed < 0 {
 		return "?", ""
 	}
-	theme := v.painter.Theme
-	return theme.Foreground(chroma.GenericInserted) + fmt.Sprintf("+%d", count.Added) + "\x1b[39m",
-		theme.Foreground(chroma.GenericDeleted) + fmt.Sprintf("-%d", count.Removed) + "\x1b[39m"
+	var added, removed string
+	if count.Added > 0 {
+		added = activityui.Green + fmt.Sprintf("+%d", count.Added) + "\x1b[39m"
+	}
+	if count.Removed > 0 {
+		removed = activityui.Red + fmt.Sprintf("-%d", count.Removed) + "\x1b[39m"
+	}
+	return added, removed
 }
 
 // nativeRosterColumns renders each row's metrics as columns sized to their

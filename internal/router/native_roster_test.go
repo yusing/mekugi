@@ -327,3 +327,36 @@ func TestNativeRosterMetricsEaseToNewValues(t *testing.T) {
 		t.Fatalf("retarget restarted from the new value: %q", got)
 	}
 }
+
+func TestNativeRosterLineCountColorsAndZeros(t *testing.T) {
+	v := newLiveActivityView()
+	for _, tt := range []struct {
+		count          livediff.Counts
+		added, removed string
+	}{
+		{livediff.Counts{}, "", ""},
+		{livediff.Counts{Added: 3}, activityui.Green + "+3\x1b[39m", ""},
+		{livediff.Counts{Removed: 2}, "", activityui.Red + "-2\x1b[39m"},
+		{livediff.Counts{Added: 3, Removed: 2}, activityui.Green + "+3\x1b[39m", activityui.Red + "-2\x1b[39m"},
+	} {
+		added, removed := v.lineCountParts(tt.count)
+		if added != tt.added || removed != tt.removed {
+			t.Fatalf("%+v: got %q %q", tt.count, added, removed)
+		}
+		view := newLiveActivityView()
+		now := time.Now()
+		view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root", Started: now, InputTokens: 100}}})
+		view.lineCounts = map[string]livediff.Counts{"/root": tt.count}
+		rows := view.nativeRoster(150, 8, now, true)
+		for _, row := range rows[:2] {
+			if strings.Contains(row, "+0") || strings.Contains(row, "-0") {
+				t.Fatalf("zero count rendered: %q", row)
+			}
+			for _, colored := range []string{tt.added, tt.removed} {
+				if colored != "" && !strings.Contains(row, colored) {
+					t.Fatalf("missing colored count %q in %q", colored, row)
+				}
+			}
+		}
+	}
+}
