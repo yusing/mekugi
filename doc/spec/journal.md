@@ -80,6 +80,33 @@ must refer to the fork's own children. An unavailable or oversized mount view do
 not suppress a parent's successful answer; its terminal card retains the own-record
 outcome and reports mounted journals unavailable. Explicit combined reads still fail.
 
+## Evidence-backed recovery
+
+V2 recovery uses a deterministic summary of constraints, open tasks, established
+results and retained changes, with actionable paths first. Context nodes are kept
+in full. Working tasks precede pending and blocked tasks; completed work and notes
+follow. When completed work exceeds its budget, the newest results are kept in
+tree order and the omitted count is stated. Bounded detail excerpts point back to
+`read`, never claim to be complete.
+
+Changes and failed commands captured after the latest journal event appear in a
+separate section. It includes change ranges, aggregated numstat, failed commands,
+observed exit status, the end of bounded host output and durable `mread`
+references. Unknown exit status stays unknown. At most eight failed commands are
+listed, newest kept within the remaining capacity, with earlier ones counted. A
+failed command whose output was not retained is listed as such. Unordered records
+from before failure capture ordering are covered by a known journal boundary. The
+resume direction points at this evidence and the working task, rather than
+treating an investigation's hypothesis as established. Capturing failed output
+does not replace or alter the host's result. An unreadable evidence boundary does
+not block journal writes; the next summary treats the boundary as unknown.
+
+The summary is at most 64 KiB. Mandatory constraints and open tasks must fit its
+reserved half; otherwise rendering fails rather than omitting a constraint or a
+task. Corrupt failure evidence also fails rendering. The native recovery hook
+treats failure as advisory; router-side synthesis uses provider fallback.
+Neither recovery path acknowledges events or replays effects.
+
 ## REQ-JOURNAL-001 — Durable work journals
 
 Mekugi owns one durable journal per stable thread. Passthrough is unchanged.

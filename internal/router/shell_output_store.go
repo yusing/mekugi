@@ -341,28 +341,8 @@ func (s *mekugiReplayStore) readShellOutput(ctx context.Context, id string) (she
 		if err != nil {
 			return err
 		}
-		decoder := json.NewDecoder(bytes.NewReader(data))
-		decoder.DisallowUnknownFields()
-		required := struct {
-			*shellOutputRecord
-			Stdout   *string `json:"stdout"`
-			Stderr   *string `json:"stderr"`
-			ExitCode *int    `json:"exit_code"`
-		}{shellOutputRecord: &record}
-		if err := decoder.Decode(&required); err != nil {
-			return err
-		}
-		if required.Stdout == nil || required.Stderr == nil || required.ExitCode == nil {
-			return errors.New("read recovery record is missing required fields")
-		}
-		record.Stdout, record.Stderr, record.ExitCode = *required.Stdout, *required.Stderr, *required.ExitCode
-		if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-			return errors.New("trailing read recovery data")
-		}
-		if record.ID != id {
-			return errors.New("read recovery identity mismatch")
-		}
-		if err := validateReadRecord(record); err != nil {
+		record, err = decodeShellOutputRecord(data, id)
+		if err != nil {
 			return err
 		}
 		return s.retainReadRecord(record)
@@ -398,4 +378,34 @@ func readNextCall(id string, budgets ...int) string {
 		command += fmt.Sprintf(" --max-tokens %d", budgets[0])
 	}
 	return "read: incomplete; next_call: " + command + "\n"
+}
+
+// decodeShellOutputRecord is shared by mread and locked recovery summaries.
+func decodeShellOutputRecord(data []byte, id string) (shellOutputRecord, error) {
+	var record shellOutputRecord
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	required := struct {
+		*shellOutputRecord
+		Stdout   *string `json:"stdout"`
+		Stderr   *string `json:"stderr"`
+		ExitCode *int    `json:"exit_code"`
+	}{shellOutputRecord: &record}
+	if err := decoder.Decode(&required); err != nil {
+		return record, err
+	}
+	if required.Stdout == nil || required.Stderr == nil || required.ExitCode == nil {
+		return record, errors.New("read recovery record is missing required fields")
+	}
+	record.Stdout, record.Stderr, record.ExitCode = *required.Stdout, *required.Stderr, *required.ExitCode
+	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+		return record, errors.New("trailing read recovery data")
+	}
+	if record.ID != id {
+		return record, errors.New("read recovery identity mismatch")
+	}
+	if err := validateReadRecord(record); err != nil {
+		return record, err
+	}
+	return record, nil
 }

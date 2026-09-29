@@ -348,7 +348,8 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 			return syncReplayDirectory(s.directory)
 		}
 	}
-	if !exists && !r.Commentary && r.History.ChangeID != "" && len(r.History.ReviewFiles) > 0 {
+	failed := r.History.ExecOutcome != nil && r.History.ExecOutcome.Status == execStatusFailed && r.History.ExecOutcome.SharedWith == ""
+	if !exists && !r.Commentary && (r.History.ChangeID != "" && len(r.History.ReviewFiles) > 0 || failed) {
 		r.CaptureOrder, err = s.nextCaptureOrder()
 		if err != nil {
 			return err

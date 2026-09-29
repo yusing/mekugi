@@ -22,6 +22,7 @@ import (
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
 const (
@@ -120,12 +121,13 @@ type execObservation struct {
 
 // execOutcome is the finalized status of an observed exec record.
 type execOutcome struct {
-	Status   string
-	Exit     *int `json:",omitempty"`
-	Class    string
-	Labels   []string `json:",omitempty"`
-	Coverage string
-	CodeMode bool `json:",omitzero"`
+	OutputRef string `json:",omitempty"` // Router-retained failed host result, readable with mread.
+	Status    string
+	Exit      *int `json:",omitempty"`
+	Class     string
+	Labels    []string `json:",omitempty"`
+	Coverage  string
+	CodeMode  bool `json:",omitzero"`
 	// Scope lists the captured paths, the only paths the record compares
 	// exactly.
 	Scope       []string `json:",omitempty"`
@@ -1360,7 +1362,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		CodeMode:    observation.CodeMode, Overlaps: view.overlaps, Background: background,
 	}
 	outcome.Scope = observation.scopePaths()
-	var reports []string
+	var reports, failureReports []string
 	var hostResults []nativeToolResult
 	for index, member := range members {
 		_, exit, completed, resultText, _ := execResultState(member.history.ToolName, member.output)
@@ -1393,6 +1395,9 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		}
 		if index == 0 || status == execStatusFailed || status == "" && outcome.Status != execStatusFailed {
 			outcome.Status = status
+		}
+		if status == execStatusFailed {
+			failureReports = append(failureReports, execTruncateReport(resultText, maxExecReportBytes))
 		}
 	}
 	arguments := first.history.CarrierPayload
@@ -1427,6 +1432,23 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	}
 	if !complete && record.Report != "" {
 		record.Report += "\nMekugi could not capture complete file evidence."
+	}
+	if p.replayStore != nil && outcome.Status == execStatusFailed && len(failureReports) != 0 {
+		// Retain the bounded host evidence, not an invented reconstruction of
+		// output the host omitted. This never changes the host's tool result.
+		output := toolplugin.OmittedOutput{Stdout: strings.Join(failureReports, "\n")}
+		// The read record's status only marks the output failed; the observed
+		// exit, including an unknown or out-of-range one, stays on the outcome.
+		exit := 1
+		if outcome.Exit != nil && *outcome.Exit > 0 && *outcome.Exit <= 255 {
+			exit = *outcome.Exit
+		}
+		ref, err := p.replayStore.putTypedOutput(ctx, output, exit)
+		if err != nil {
+			p.notice("", thread, "journal_failure_output", "Failed-command output could not be retained; journal recovery lists the command without output.")
+		} else {
+			outcome.OutputRef = ref
+		}
 	}
 	records := map[string]mekugiHistory{derivedCallID: record}
 	for _, member := range members[1:] {

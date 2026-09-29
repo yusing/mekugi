@@ -100,37 +100,40 @@ type journalSpawnRole struct {
 }
 
 type threadJournal struct {
-	mountUnavailable   string                      // View-only diagnostic; never persisted.
-	LifecycleState     string                      `json:"lifecycle_state,omitempty"`
-	LifecycleReason    string                      `json:"lifecycle_reason,omitempty"`
-	LifecycleAt        string                      `json:"lifecycle_at,omitempty"`
-	LegacyLive         map[uint64]bool             `json:"legacy_live,omitempty"`
-	LegacyFlush        map[uint64]bool             `json:"legacy_flush,omitempty"`
-	TreeAuthored       bool                        `json:"tree_authored,omitzero"`
-	Events             []journalEvent              `json:"events,omitempty"`
-	NextOrdinal        map[string]uint64           `json:"next_ordinal,omitempty"`
-	SliceParents       map[string]bool             `json:"slice_parents,omitempty"`
-	LiveSeq            uint64                      `json:"live_seq,omitzero"`
-	FlushSeq           uint64                      `json:"flush_seq,omitzero"`
-	Parent             string                      `json:"parent,omitempty"`
-	IdentityKnown      bool                        `json:"identity_known,omitzero"`
-	IdentityConflicted bool                        `json:"identity_conflicted,omitzero"`
-	Version            int                         `json:"version"`
-	Workspace          string                      `json:"workspace"`
-	Thread             string                      `json:"thread"`
-	SpawnBaselineKnown bool                        `json:"spawn_baseline_known,omitzero"`
-	SpawnBaseline      map[string]bool             `json:"spawn_baseline,omitempty"`
-	SpawnRoles         map[string]journalSpawnRole `json:"spawn_roles,omitempty"`
-	SpawnRole          string                      `json:"-"`
-	Author             string                      `json:"author"`
-	Sequence           uint64                      `json:"sequence"`
-	ResultSeq          uint64                      `json:"result_seq,omitzero"`
-	ResultChangeSeq    uint64                      `json:"result_change_seq,omitzero"`
-	ResultCount        uint64                      `json:"result_count,omitzero"`
-	NextID             uint64                      `json:"next_id"`
-	Items              []journalItem               `json:"items"`
-	Retractions        []journalRetraction         `json:"retractions,omitempty"`
-	Receipts           map[string]journalReceipt   `json:"receipts"`
+	EvidenceKnown        bool                        `json:"evidence_known,omitzero"`
+	EvidenceChangeSeq    uint64                      `json:"evidence_change_seq,omitzero"`
+	EvidenceCaptureOrder uint64                      `json:"evidence_capture_order,omitzero"`
+	mountUnavailable     string                      // View-only diagnostic; never persisted.
+	LifecycleState       string                      `json:"lifecycle_state,omitempty"`
+	LifecycleReason      string                      `json:"lifecycle_reason,omitempty"`
+	LifecycleAt          string                      `json:"lifecycle_at,omitempty"`
+	LegacyLive           map[uint64]bool             `json:"legacy_live,omitempty"`
+	LegacyFlush          map[uint64]bool             `json:"legacy_flush,omitempty"`
+	TreeAuthored         bool                        `json:"tree_authored,omitzero"`
+	Events               []journalEvent              `json:"events,omitempty"`
+	NextOrdinal          map[string]uint64           `json:"next_ordinal,omitempty"`
+	SliceParents         map[string]bool             `json:"slice_parents,omitempty"`
+	LiveSeq              uint64                      `json:"live_seq,omitzero"`
+	FlushSeq             uint64                      `json:"flush_seq,omitzero"`
+	Parent               string                      `json:"parent,omitempty"`
+	IdentityKnown        bool                        `json:"identity_known,omitzero"`
+	IdentityConflicted   bool                        `json:"identity_conflicted,omitzero"`
+	Version              int                         `json:"version"`
+	Workspace            string                      `json:"workspace"`
+	Thread               string                      `json:"thread"`
+	SpawnBaselineKnown   bool                        `json:"spawn_baseline_known,omitzero"`
+	SpawnBaseline        map[string]bool             `json:"spawn_baseline,omitempty"`
+	SpawnRoles           map[string]journalSpawnRole `json:"spawn_roles,omitempty"`
+	SpawnRole            string                      `json:"-"`
+	Author               string                      `json:"author"`
+	Sequence             uint64                      `json:"sequence"`
+	ResultSeq            uint64                      `json:"result_seq,omitzero"`
+	ResultChangeSeq      uint64                      `json:"result_change_seq,omitzero"`
+	ResultCount          uint64                      `json:"result_count,omitzero"`
+	NextID               uint64                      `json:"next_id"`
+	Items                []journalItem               `json:"items"`
+	Retractions          []journalRetraction         `json:"retractions,omitempty"`
+	Receipts             map[string]journalReceipt   `json:"receipts"`
 }
 
 func (j threadJournal) clone() threadJournal {
@@ -313,6 +316,21 @@ func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore
 			return err
 		}
 		if store != nil {
+			if next.Sequence != current.Sequence {
+				// Recovery evidence is auxiliary: an unreadable boundary widens
+				// the next summary instead of blocking the journal write.
+				next.EvidenceKnown, next.EvidenceChangeSeq, next.EvidenceCaptureOrder = false, 0, 0
+				evidence := *store
+				namespace, err := store.namespaceForThread(thread)
+				if err == nil {
+					evidence.session.Namespace = namespace
+					index, indexErr := evidence.readChangeIndex(workspace)
+					order, orderErr := store.currentCaptureOrder()
+					if indexErr == nil && orderErr == nil {
+						next.EvidenceKnown, next.EvidenceChangeSeq, next.EvidenceCaptureOrder = true, index.Sequence, order
+					}
+				}
+			}
 			if err := writeThreadJournal(store, next); err != nil {
 				return err
 			}

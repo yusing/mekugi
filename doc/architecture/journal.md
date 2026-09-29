@@ -16,6 +16,14 @@ sinks cache immutable composed views only. Child lifecycle comes from accepted
 requests and host turn observations, never provider final-answer text. A child's
 publication refreshes ancestor views without mutating ancestor event logs or cursors.
 
+Journal transactions checkpoint the change owner's sequence and durable capture
+order when they append events. These counters are separate from journal sequence;
+timestamps are never compared across owners to infer coverage. Failed command
+observations share the capture-order owner and retain bounded host output through
+the managed read store. Summaries read journal, change and failure evidence under
+one replay lock, scoped by durable thread/workspace identity. The same renderer
+serves v2 hook recovery and compaction synthesis; summary text is not usage evidence.
+
 The router intercepts the dedicated journal tool and returns its result through
 the current response flow rather than a host executor. A valid direct finish
 can select terminal delivery when no client-dispatched work remains. Code Mode

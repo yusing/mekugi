@@ -99,6 +99,11 @@ func (s *mekugiReplayStore) postCompactContext(ctx context.Context, workspace, t
 		if journal.Parent != "" || journal.Author != "/root" {
 			return nil // Main threads only, even if invoked manually for a child.
 		}
+		if journal.TreeAuthored {
+			summary, err := s.journalSummaryLocked(ctx, journal)
+			content = summary.Text
+			return err
+		}
 		var items strings.Builder
 		for _, item := range journal.Items {
 			fmt.Fprintf(&items, "\n[%s] author=%s reported=%t flushed=%t\n%s\n",

@@ -114,8 +114,10 @@ context insertion, and hook-output history. Native
 context. Subagents and passthrough sessions are outside this feature's scope.
 
 The hook reads the retained journal and executing-thread-owned change evidence
-through their existing owners. It includes journal IDs, authors, questions, delivery
-state, retained change ranges, and aggregated numstat, not full diffs. These are
+through their existing owners. V2 uses the [evidence-backed journal summary](journal.md#evidence-backed-recovery),
+including paths, task states, constraints and changes/failures captured after the
+last journal event. Retained v1 journals include IDs, authors, questions and delivery
+state. Both include retained change ranges and aggregated numstat, not full diffs. These are
 historical facts, not new authorization or proof of current workspace state. No
 tools or effects are replayed, and listing does not acknowledge journal delivery.
 
@@ -137,8 +139,9 @@ Acceptance:
 2. Restart and resume read the same durable records. Forks read their own journal
    and own change attempts; unrelated workspaces, threads, and children cannot
    contribute records to that snapshot.
-3. Journal and change selection share a locked snapshot. Each section is bounded
-   to 8 KiB with UTF-8-safe truncation and explicit retrieval instructions. Removed,
+3. Journal and evidence selection share a locked snapshot. V2 follows the journal
+   summary bounds; legacy sections are bounded to 8 KiB with UTF-8-safe truncation
+   and explicit retrieval instructions. Removed,
    partial, or unavailable change evidence retains the change owner's limitations.
 4. Non-compact events do nothing. Child identities do not inject context. Invalid
    input and storage errors are advisory native hook failures; they neither stop

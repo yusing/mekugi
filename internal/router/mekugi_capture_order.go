@@ -13,6 +13,21 @@ import (
 // It is persisted before the capture, so retries can leave gaps but cannot move
 // an existing capture. Receipts and viewer refreshes do not change this order.
 func (s *mekugiReplayStore) nextCaptureOrder() (uint64, error) {
+	previous, err := s.currentCaptureOrder()
+	if err != nil {
+		return 0, err
+	}
+	if previous == math.MaxUint64 {
+		return 0, errors.New("capture order capacity reached")
+	}
+	next := previous + 1
+	var data [8]byte
+	binary.BigEndian.PutUint64(data[:], next)
+	return next, s.writeFile("capture-order", "capture-order-pending-", data[:])
+}
+
+// currentCaptureOrder reads the durable evidence boundary under store.lock.
+func (s *mekugiReplayStore) currentCaptureOrder() (uint64, error) {
 	const name = "capture-order"
 	path := filepath.Join(s.directory, name)
 	var previous uint64
@@ -38,11 +53,5 @@ func (s *mekugiReplayStore) nextCaptureOrder() (uint64, error) {
 		}
 		previous = binary.BigEndian.Uint64(data)
 	}
-	if previous == math.MaxUint64 {
-		return 0, errors.New("capture order capacity reached")
-	}
-	next := previous + 1
-	var data [8]byte
-	binary.BigEndian.PutUint64(data[:], next)
-	return next, s.writeFile(name, "capture-order-pending-", data[:])
+	return previous, nil
 }

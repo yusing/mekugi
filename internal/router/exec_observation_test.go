@@ -444,6 +444,7 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 	}{
 		{name: "completed", exit: "0", wantOutcome: "command completed · exit 0"},
 		{name: "failed", exit: "1", wantOutcome: "command failed · exit 1"},
+		{name: "failed out of range", exit: "300", wantOutcome: "command failed · exit 300"},
 		{name: "yielded", yielded: true, exit: "0", wantOutcome: "command completed · exit 0"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -484,6 +485,19 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 			if history.ExecOutcome == nil || !strings.Contains(history.ExecOutcome.text(), test.wantOutcome) {
 				t.Fatalf("host outcome = %+v, want %q", history.ExecOutcome, test.wantOutcome)
 			}
+			if strings.HasPrefix(test.name, "failed") {
+				if history.ExecOutcome.OutputRef == "" {
+					t.Fatal("failed host result has no durable mread reference")
+				}
+				store, err := openMekugiReplayStore(proxy.replayStore.directory)
+				if err != nil {
+					t.Fatal(err)
+				}
+				output, err := store.readShellOutput(next.ctx, history.ExecOutcome.OutputRef)
+				if err != nil || output.ExitCode != 1 || output.Stdout != history.Report {
+					t.Fatalf("failed output reference is not readable after restart: %+v, %v", output, err)
+				}
+			}
 			changes, err := proxy.replayStore.readChanges(next.ctx, changeReadOptions{
 				workspace: workspace, ids: []string{history.ChangeID}, view: "history", maxTokens: 4000,
 			})
@@ -496,6 +510,9 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 			again, _, _ := proxy.replayStore.lookup(t.Context(), workspace, "exec-call:exec:1")
 			if again.ChangeID != history.ChangeID {
 				t.Fatalf("replay reallocated change %s -> %s", history.ChangeID, again.ChangeID)
+			}
+			if again.ExecOutcome.OutputRef != history.ExecOutcome.OutputRef {
+				t.Fatal("replay reallocated failed-output evidence")
 			}
 		})
 	}
