@@ -17,6 +17,7 @@ import (
 // The index contains identities and application receipts, not another copy of
 // scripts or diffs. Replay records remain immutable translation facts.
 type changeIndex struct {
+	Sequence  uint64 `json:",omitzero"`
 	Version   int
 	Workspace string
 	Namespace string `json:",omitzero"`
@@ -44,9 +45,10 @@ type trackedChange struct {
 }
 
 type trackedCall struct {
-	Thread  string `json:",omitempty"` // Empty uses the originating change stream.
-	ID      string
-	Managed bool `json:",omitzero"`
+	Sequence uint64 `json:",omitzero"`
+	Thread   string `json:",omitempty"` // Empty uses the originating change stream.
+	ID       string
+	Managed  bool `json:",omitzero"`
 }
 
 func changeNotice(id string) string {
@@ -225,7 +227,11 @@ func (s *mekugiReplayStore) publishChanges(workspace string, histories map[strin
 			for _, file := range history.ReviewFiles {
 				managed = managed && file.Origin != ""
 			}
-			call := trackedCall{ID: callID, Thread: history.ExecutingThread, Managed: managed}
+			if index.Sequence == ^uint64(0) {
+				return errors.New("change sequence exhausted")
+			}
+			index.Sequence++
+			call := trackedCall{Sequence: index.Sequence, ID: callID, Thread: history.ExecutingThread, Managed: managed}
 			change.Calls = append(change.Calls, call)
 			updates[history.ChangeID] = append(updates[history.ChangeID], call)
 			index.Changes[history.ChangeID] = change
@@ -280,6 +286,15 @@ func (s *mekugiReplayStore) repairVisibleChangeCalls(ctx context.Context, worksp
 				change, err = s.repairChangeCall(workspace, history.ChangeID, callID, change)
 				if err != nil {
 					return err
+				}
+				if index.Sequence == ^uint64(0) {
+					return errors.New("change sequence exhausted")
+				}
+				index.Sequence++
+				for i := range change.Calls {
+					if change.Calls[i].ID == callID {
+						change.Calls[i].Sequence = index.Sequence
+					}
 				}
 				updates[history.ChangeID] = change.Calls
 				changed = true

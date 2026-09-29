@@ -12,18 +12,33 @@ import (
 // durable executing-thread ownership, including recoveries in another stream,
 // rather than the current router's activity tree or model-authored handoffs.
 func (s *mekugiReplayStore) childJournalChanges(ctx context.Context, workspace, thread string) string {
+	text, _ := s.childJournalChangesSince(ctx, workspace, thread, 0, false)
+	return text
+}
+
+func (s *mekugiReplayStore) childJournalChangesSince(ctx context.Context, workspace, thread string, since uint64, delivered bool) (result string, cursor uint64) {
 	const unavailable = "\n\n**Changes:**\nChanges unavailable: "
 	if s == nil || thread == "" {
-		return unavailable + "change storage or thread identity is unavailable.\n"
+		return unavailable + "change storage or thread identity is unavailable.\n", since
 	}
 	s = s.scoped(ctx)
 	index, err := s.readChangeIndex(workspace)
 	if err != nil {
-		return unavailable + err.Error() + "\n"
+		return unavailable + err.Error() + "\n", since
 	}
 	selected := changeIndex{Workspace: workspace, Changes: make(map[string]trackedChange)}
 	var ids, ranges []string
 	retired := false
+	totalCalls, totalChanges := 0, 0
+	defer func() {
+		if delivered {
+			if retired {
+				result += "\nCumulative: unavailable after session cleanup.\n"
+			} else {
+				result += fmt.Sprintf("\nCumulative: %d recorded evaluations across %d retained changes.\n", totalCalls, totalChanges)
+			}
+		}
+	}()
 	// Sort retained IDs instead of iterating retired stream positions.
 	byStream := make(map[string][]int)
 	for id := range index.Changes {
@@ -50,10 +65,20 @@ func (s *mekugiReplayStore) childJournalChanges(ctx context.Context, workspace, 
 			id := changeHandle(name, number)
 			change := index.Changes[id]
 			retired = retired || change.RetiredCalls != 0
+			owned := 0
+			for _, call := range change.Calls {
+				if cmp.Or(call.Thread, stream.Thread) == thread {
+					owned++
+				}
+			}
+			totalCalls += owned
+			if owned > 0 {
+				totalChanges++
+			}
 			calls := slices.DeleteFunc(slices.Clone(change.Calls), func(call trackedCall) bool {
-				return cmp.Or(call.Thread, stream.Thread) != thread
+				return cmp.Or(call.Thread, stream.Thread) != thread || delivered && call.Sequence <= since
 			})
-			if len(calls) == 0 && !(stream.Thread == thread && len(change.Calls) == 0) {
+			if len(calls) == 0 && !(!delivered && stream.Thread == thread && len(change.Calls) == 0) {
 				continue
 			}
 			change.Calls = calls
@@ -74,15 +99,15 @@ func (s *mekugiReplayStore) childJournalChanges(ctx context.Context, workspace, 
 	}
 	if len(ids) == 0 {
 		if retired {
-			return unavailable + "older change records were removed by session cleanup.\n"
+			return unavailable + "older change records were removed by session cleanup.\n", index.Sequence
 		}
-		return "\n\n**Changes:**\nNo recorded changes.\n"
+		return "\n\n**Changes:**\nNo recorded changes.\n", index.Sequence
 	}
 	var output strings.Builder
 	fmt.Fprintf(&output, "\n\n**Changes:** %s\n", strings.Join(ranges, ", "))
 	if retired {
 		output.WriteString("Stat unavailable: older change records were removed by session cleanup.\n")
-		return output.String()
+		return output.String(), index.Sequence
 	}
 	stat, err := s.renderChanges(ctx, changeReadOptions{workspace: workspace, ids: ids, view: "summary"}, selected)
 	if err != nil {
@@ -93,5 +118,5 @@ func (s *mekugiReplayStore) childJournalChanges(ctx context.Context, workspace, 
 		output.WriteString("\nAggregated numstat (this agent's recorded evaluations, not a net diff):\n\n")
 		output.WriteString(indentJournalText(stat, "    "))
 	}
-	return output.String()
+	return output.String(), index.Sequence
 }

@@ -302,6 +302,7 @@ type mekugiJournalState struct {
 	journalLiveBytes        int
 	journalNewCount         int
 	journalChildResult      string
+	journalResultWindow     *journalResultWindow
 	journalFlushedCount     int
 	journalDeliveryRelease  func()
 	journalQuestion         string // Request-local user text for the natural final answer.

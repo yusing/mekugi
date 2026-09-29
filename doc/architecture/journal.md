@@ -18,8 +18,11 @@ authority. Replay of an old result cannot finish a later turn.
 Delivery snapshots and leases the originating journal before rendering. Live delivery
 marks a revision reported; terminal delivery separately marks it flushed, and edits reset
 both for the new revision. Main terminal delivery groups its own answers by their exact source question and acknowledges
-only after successful downstream delivery. Native child completion exposes the child's current
-journal text; main completion does not deliver it again.
+only after successful downstream delivery. Native child completion snapshots a revision cursor and a retained-change evaluation
+cursor together. Successful downstream completion advances both; failure preserves
+the delta for retry. Agent results omit echoed assignments and opaque labels, while
+the durable journal retains them for reads and replay. Main does not deliver child
+results again.
 
 Answer association accepts actual user messages and validated plaintext native assignments
 addressed to the child. Encrypted or conflicting identity cannot fall back to stale text.

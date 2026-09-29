@@ -253,6 +253,19 @@ func TestJournalTerminalSharedQuestions(t *testing.T) {
 						}
 						body = commentaryMessageText(messages[0])
 					}
+					if child {
+						for _, unwanted := range []string{"**Question:**", "Shared assignment?", "Different question?", "`amber`", "`arch`"} {
+							if strings.Contains(body, unwanted) {
+								t.Fatalf("child result repeats assignment or opaque labels: %s", body)
+							}
+						}
+						for _, want := range []string{"First finding", "Second finding", "Plain milestone", "Fourth finding", "Fifth finding", "Sixth finding"} {
+							if !strings.Contains(body, want) {
+								t.Fatalf("child result lost %q: %s", want, body)
+							}
+						}
+						continue
+					}
 					for _, question := range []string{"Shared assignment?", "Different question?"} {
 						if strings.Count(body, question) != 1 {
 							t.Fatalf("question %q must appear once: %s", question, body)

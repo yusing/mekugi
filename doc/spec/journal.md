@@ -116,25 +116,24 @@ Terminal flushes and terminal retractions render as assistant
 `final_answer` messages, not commentary; live updates remain commentary. These terminal messages
 are user-visible only and retain the same exact-ID removal from later provider input.
 Only successful terminal delivery marks a revision flushed;
-edits clear both current-revision delivery flags. `list` exposes both flags. A child completes without flushing and emits
-`Journal result` with its own current journal items,
-including already-flushed items, as the native completion result. The result preserves item
-IDs, author, questions, and Markdown using the terminal item renderer and capacity bound.
-An empty journal returns `No journal entries.` under the result heading. Completion does not
-include journal delivery counts. Result delivery does not mark items
-reported or flushed and does not include descendant journals. The parent receives the result
-text without a journal lookup or another child provider request.
-The child result appends its retained change ranges and one aggregated numstat using
-`mchanges --summary` count semantics. Journal and change selection share a locked snapshot.
-Response delivery preserves the prepared storage namespace and turn lease when switching
-from the response-start deadline to the execution lifetime.
-Selection uses durable executing-thread ownership, falling back to the originating stream
-for older records; it excludes other threads' attempts, even within a shared recovery ID.
-Ranges identify the retained changes, while counts cover only this child's evaluations.
-Like the current journal list, this is thread-wide retained history, not a per-follow-up delta.
-Ranges are ordered by stream allocation and numeric ID, split at gaps and the reader's
-range limit. No recorded changes is explicit; unavailable or retired evidence is labeled
-unavailable rather than zero. Existing terminal capacity and retention requirements apply.
+edits clear both current-revision delivery flags. `list` exposes both flags. A child completes without flushing and emits `Journal result` containing only
+revisions newer than its durable `resultSeq` cursor. Agent recipients see neither
+the echoed assignment nor opaque item IDs. Notes are Markdown bullets and answers
+are standalone Markdown; stored questions and the complete journal remain available
+through reads, Activity, replay and forks. An empty delta says `No new journal entries.`
+The cursor advances only after successful downstream terminal response delivery.
+Failure leaves the previous window available for retry. Result acknowledgement
+does not consume Main live or terminal delivery state.
+
+The child result appends retained change ranges and aggregated numstat for this
+result's executing-thread-owned evaluations, including recoveries in another stream.
+Journal revisions and change evaluations share a locked delivery snapshot and
+independently monotonic cursors. Ranges identify retained changes while statistics
+exclude earlier delivered evaluations and other agents' work. A later recovery of
+an earlier change is included as a new evaluation. Follow-up results add one cumulative line counting retained owned evaluations and
+changes. Missing or retired evidence is unavailable, never reported as zero. Change ranges preserve stream allocation order,
+split at gaps and the reader's range limit. Response delivery retains the prepared
+storage namespace and turn lease through the execution lifetime.
 The native completion result is the sole audience payload; the router does not send an
 additional completion notification or take over host lifecycle or audience routing.
 Live updates remain immediate. Main completion never replays descendant journals, including after router restart.
@@ -169,7 +168,7 @@ asks for a concise final report containing only distinct, current findings, resu
 validation, or blockers, without overlapping progress or superseded summaries.
 Parents' own journals cover their results, integration decisions, and actions on findings,
 not repetitions or summaries of other agents' journals.
-Native child completion preserves each agent's original report; main completion does not repeat it.
+Native child completion delivers only new results; main completion does not repeat them.
 The final answer becomes a journal item; the router supplies the original question. Live notices label question-associated items as **Question** and
 **Answer**; terminal blocks use **Answer** or **Answers**, according to the number of answers.
 The router preserves authored Markdown rather than summarizing it. Within each terminal journal

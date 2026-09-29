@@ -598,8 +598,8 @@ func TestNaturalProviderAnswerBecomesJournalTerminalResult(t *testing.T) {
 				} else if !bytes.Contains(output, []byte("Journal flush")) {
 					t.Fatalf("main completion omitted its journal flush: %s", output)
 				}
-				if !bytes.Contains(output, []byte("**Question:**")) || !bytes.Contains(output, []byte("How did the task go?")) ||
-					!bytes.Contains(output, []byte("**Answer:**")) {
+				if !child && (!bytes.Contains(output, []byte("**Question:**")) || !bytes.Contains(output, []byte("How did the task go?")) ||
+					!bytes.Contains(output, []byte("**Answer:**"))) {
 					t.Fatalf("natural answer lost its question association: %s", output)
 				}
 				items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, transform.shellThreadID)

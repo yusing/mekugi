@@ -88,6 +88,9 @@ type threadJournal struct {
 	SpawnRole          string                      `json:"-"`
 	Author             string                      `json:"author"`
 	Sequence           uint64                      `json:"sequence"`
+	ResultSeq          uint64                      `json:"result_seq,omitzero"`
+	ResultChangeSeq    uint64                      `json:"result_change_seq,omitzero"`
+	ResultCount        uint64                      `json:"result_count,omitzero"`
 	NextID             uint64                      `json:"next_id"`
 	Items              []journalItem               `json:"items"`
 	Retractions        []journalRetraction         `json:"retractions,omitempty"`
@@ -713,6 +716,19 @@ func (s *journalStore) acknowledge(ctx context.Context, store *mekugiReplayStore
 		j.Retractions = slices.DeleteFunc(j.Retractions, func(retraction journalRetraction) bool {
 			return revisions[retraction.ID] == retraction.Sequence
 		})
+		return nil
+	})
+}
+
+// Completion delivery acknowledges its prepared window, never a later snapshot.
+func (s *journalStore) acknowledgeResult(ctx context.Context, store *mekugiReplayStore, workspace, thread string, sequence, changes, count uint64) error {
+	return s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
+		if !exists {
+			return errors.New("journal result state is missing")
+		}
+		j.ResultSeq = max(j.ResultSeq, sequence)
+		j.ResultChangeSeq = max(j.ResultChangeSeq, changes)
+		j.ResultCount = max(j.ResultCount, count)
 		return nil
 	})
 }

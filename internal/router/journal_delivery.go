@@ -13,6 +13,10 @@ import (
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
+type journalResultWindow struct {
+	sequence, changes, count uint64
+}
+
 type journalDelivery struct {
 	thread    string
 	revisions map[string]uint64
@@ -129,7 +133,9 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 			}
 		}
 		if childTerminal {
-			changes = t.proxy.replayStore.childJournalChanges(t.ctx, t.directory, t.shellThreadID)
+			var changeSeq uint64
+			changes, changeSeq = t.proxy.replayStore.childJournalChangesSince(t.ctx, t.directory, t.shellThreadID, journal.ResultChangeSeq, journal.ResultCount != 0)
+			t.journalResultWindow = &journalResultWindow{sequence: journal.Sequence, changes: changeSeq, count: journal.ResultCount + 1}
 		}
 		return nil
 	}
@@ -167,12 +173,22 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 		if journal.Author != "" {
 			text.WriteString(" " + commentaryCode(journal.Author))
 		}
-		if len(journal.Items) == 0 {
-			text.WriteString("\nNo journal entries.")
+		entries := 0
+		for _, item := range journal.Items {
+			if item.Updated <= journal.ResultSeq {
+				continue
+			}
+			entries++
+			if item.TerminalOnly {
+				text.WriteString("\n\n" + indentJournalText(item.Text, ""))
+			} else {
+				text.WriteString("\n- " + strings.TrimPrefix(indentJournalText(item.Text, "  "), "  "))
+			}
 		}
-		// The native completion carries the snapshot; no model recap or
-		// separate audience notification is needed.
-		writeJournalItems(&text, journal.Items)
+		if entries == 0 {
+			text.WriteString("\nNo new journal entries.")
+		}
+
 		text.WriteString(changes)
 		if text.Len() > maxJournalFlushBytes {
 			t.ReleaseDelivery()
@@ -311,6 +327,11 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 	if (t.journalTerminalReady() || t.liveDiffCompletionReady) && (envelope.Type == "response.completed" || envelope.Status == "completed") {
 		t.storageIdle = true
 		t.finishLiveDiffTurn()
+		if window := t.journalResultWindow; window != nil {
+			if err := t.proxy.journals.acknowledgeResult(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, window.sequence, window.changes, window.count); err == nil {
+				t.journalResultWindow = nil
+			}
+		}
 		if t.journalNativeTerminal != nil && t.journalNativeSink != nil {
 			t.journalNativeSink.publish(*t.journalNativeTerminal, true)
 			t.journalNativeTerminal = nil

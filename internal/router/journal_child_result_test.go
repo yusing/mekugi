@@ -112,26 +112,23 @@ func TestJournalChildCompletionResult(t *testing.T) {
 					before[0].EverReported = true
 				}
 				if len(before) == 0 {
-					if !strings.Contains(result, "No journal entries.") || strings.Contains(result, "First") {
+					if !strings.Contains(result, "No new journal entries.") || strings.Contains(result, "First") {
 						t.Fatalf("empty journal result: %q", result)
 					}
 				} else {
-					for _, want := range []string{"`/root/child`", "`amber`", "**Question:**", "Which result?", "**Answers:**"} {
-						if !strings.Contains(result, want) {
-							t.Fatalf("result missing %q: %q", want, result)
-						}
+					if !strings.Contains(result, "`/root/child`") || !strings.Contains(result, "\n\nSecond finding") {
+						t.Fatalf("missing identity or standalone answer: %q", result)
 					}
-					if strings.Count(result, "Which result?") != 1 ||
-						strings.Count(result, "**Answers:**") != 1 ||
-						!strings.Contains(result, "\n- `apple`\n\n  Second finding\n") ||
-						strings.Contains(result, "question in `") {
-						t.Fatalf("shared assignment and answers are not one block: %s", result)
+					for _, forbidden := range []string{"`amber`", "`apple`", "**Question:**", "Which result?", "**Answer", "question in `"} {
+						if strings.Contains(result, forbidden) {
+							t.Fatalf("result repeats unusable label or assignment %q: %q", forbidden, result)
+						}
 					}
 					if state == "edited" {
 						if !strings.Contains(result, "Revised result") || strings.Contains(result, "First") {
 							t.Fatalf("stale result: %q", result)
 						}
-					} else if !strings.Contains(result, "First\n  \n  - detail\n  \n  ```go\n  ok()\n  ```") {
+					} else if !strings.Contains(result, "First\n\n- detail\n\n```go\nok()\n```") {
 						t.Fatalf("Markdown lost item containment: %q", result)
 					}
 				}
