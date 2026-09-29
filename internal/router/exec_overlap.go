@@ -33,6 +33,7 @@ type execWindow struct {
 type execWindowRegistry struct {
 	mu      sync.Mutex
 	windows []*execWindow
+	tracker *execTrackHub
 }
 
 func (r *execWindowRegistry) find(ref string) *execWindow {

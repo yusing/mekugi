@@ -168,11 +168,13 @@ A script stays untracked when:
 - it runs in a nested shell started by a command;
 - it does not match a live item within 150 ms, for example because Codex
   redacted a secret-like word in the displayed command;
+- multiple unmatched live items could own the same report;
 - the helper, socket, or router is unavailable.
 
 The helper relays the shell's output to Codex's original descriptors while it
 reports each segment's share. The shell waits for the helper to acknowledge
-each segment's end, so the reported output of consecutive segments is exact.
+each segment's begin and end, so output cannot precede its segment identity or
+spill across a completed segment boundary.
 Output a background descendant writes later is attributed to the segment that
 is running when it arrives. A terminal command is not relayed, because
 programs would detect a pipe; it reports statuses only and keeps the host's
@@ -184,7 +186,7 @@ A completed command shows its segments only when its report ended with the
 host's own exit status. Otherwise, including a report that ends when the shell
 replaces itself or is killed, Activity falls back to the host's combined result.
 Reports are live-only; restored history and `codex resume` show the combined
-result. The per-command overhead is one helper start and one acknowledgment per
+result. The per-command overhead is one helper start and two acknowledgments per
 segment. Single commands start no helper.
 
 Acceptance:
@@ -194,9 +196,14 @@ Acceptance:
    `cd`, `exit N`, `set -e` with `||` and `!`, heredocs, short-circuited
    `&&`/`||`, Bash error messages, and fatal expansion errors.
 2. Each segment's report carries only its own output and status. A
-   short-circuited segment is reported as never run, and a shell that exits
+   short-circuited segment is reported as never run once a later segment starts
+   or the shell finishes, and a shell that exits
    inside a segment attributes that exit to it.
 3. Codex snapshot scripts, nested shells, unmatched scripts, and untrackable
    scripts run unmodified.
 4. Terminal commands keep their terminal, and only statuses are reported.
 5. An incomplete report never replaces the host's combined output or exit.
+6. Edit intent and running diff cards use segment lifecycle rather than waiting
+   for later non-edit commands. Preview matching requires exact thread, turn and
+   script identity and rejects ambiguous matches. These live observations never
+   finalize the host command or create durable change receipts.

@@ -38,9 +38,10 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	}
 	ctx, cancel := context.WithCancel(broker.ctx)
 	window.previewCancel = cancel
+	tracking := newExecPreviewTrack(r.tracker, window.thread, window.turn, observation.Commands)
 	go func() {
 		defer func() { <-execRunningPreviewSlots }()
-		runExecScopePreview(ctx, broker, observation, diffview.Preview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Caller: caller})
+		runExecScopePreview(ctx, broker, observation, diffview.Preview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Caller: caller}, tracking)
 	}()
 }
 
@@ -181,7 +182,8 @@ func execPreviewExpected(ctx context.Context, observation execObservation) map[s
 	return expected
 }
 
-func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observation execObservation, preview diffview.Preview) {
+func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observation execObservation, preview diffview.Preview, tracking *execPreviewTrack) {
+	defer tracking.close()
 	defer broker.discardRunningPreview(preview)
 	expected := execPreviewExpected(ctx, observation)
 	matched := make(map[string]bool)
@@ -201,13 +203,17 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 	defer ticker.Stop()
 	stamps := make(map[string]string)
 	changed := make(map[string]mekugi.ReviewFile)
+	settledPaths := make(map[string]bool)
 	cursor := 0
 	for {
+		_, _, lifecycle := tracking.state()
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		case <-lifecycle:
 		}
+		tracked, settled, _ := tracking.state()
 		deadline := time.Now().Add(30 * time.Millisecond)
 		budget := execRunningPreviewBytes
 		updated := false
@@ -225,6 +231,9 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 				continue
 			}
 			if previous, ok := stamps[before.Path]; ok && previous == stamp {
+				if settled {
+					settledPaths[before.Path] = true
+				}
 				continue
 			}
 			after := snapshotExecFile(before.Path, &budget)
@@ -235,6 +244,9 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 				after.Error = "running preview exceeds the 1 MiB content bound; content not read"
 			}
 			stamps[before.Path] = stamp
+			if settled {
+				settledPaths[before.Path] = true
+			}
 			var file mekugi.ReviewFile
 			if target, ok := expected[before.Path]; ok {
 				beforePath, afterPath := before.Path, before.Path
@@ -292,7 +304,7 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 		// The literal edit has landed. A following test keeps the host command
 		// alive, not this edit's live card. This does not close the observation
 		// window or persist a command outcome or completed change receipt.
-		if len(expected) > 0 && len(matched) == len(expected) {
+		if settled && len(settledPaths) == len(observation.Files) || !tracked && len(expected) > 0 && len(matched) == len(expected) {
 			if len(preview.Files) > 0 && ctx.Err() == nil {
 				preview.Status, preview.Complete = diffview.PreviewRunning, true
 				preview.Tool = nativeExecCommandToolName

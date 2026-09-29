@@ -21,7 +21,7 @@ func TestExecRunningPreviewReportsOversizedFile(t *testing.T) {
 	defer cancel()
 	broker := newLiveDiffBroker(ctx)
 	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
-	go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{ID: "oversized", Workspace: root, Thread: "thread"})
+	go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{ID: "oversized", Workspace: root, Thread: "thread"}, nil)
 	preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool { return preview.ID == "oversized" && len(preview.Files) == 1 })
 	if !strings.Contains(preview.Files[0].Incomplete, "content bound") || strings.Contains(preview.Files[0].Diff, "+new") || strings.Contains(preview.Files[0].Diff, "-old") {
 		t.Fatalf("oversized display hid bounds or guessed content: %+v", preview)
@@ -59,7 +59,7 @@ func TestExecRunningPreviewRetriesBudgetedFiles(t *testing.T) {
 	const previewID = "running:budgeted"
 	go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: files}, diffview.Preview{
 		ID: previewID, Workspace: root, Thread: "thread", Caller: "budget-test",
-	})
+	}, nil)
 	preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
 		return preview.ID == previewID && preview.Status == diffview.PreviewRunning && len(preview.Files) == 2
 	})

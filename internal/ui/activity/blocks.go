@@ -33,6 +33,7 @@ type Block struct {
 	Results     *int
 	ExitCode    int    // Nonzero command exit; zero means no failure label.
 	EditSource  string // Editing source shared by this invocation's file rows.
+	EditOutcome string // Live segment outcome, distinct from captured file evidence.
 	EditHeader  bool   // First row of a contiguous source group.
 	GroupHeader string // Presentation-only edit outcome shared by a group's rows.
 	GroupStart  bool
@@ -115,6 +116,9 @@ const requestedEdit = " (requested)"
 
 // editHeading keeps intent and failures from reading as completed edits.
 func editHeading(b Block) string {
+	if b.EditOutcome != "" {
+		return "Edit " + b.EditOutcome
+	}
 	if strings.HasSuffix(b.EditSource, requestedEdit) {
 		return "Edit requested"
 	}

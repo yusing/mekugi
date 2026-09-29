@@ -503,7 +503,7 @@ func (p *Painter) Block(block Block, width int) []string {
 // no exit, such as a failed read.
 func segmentTrailer(block Block) string {
 	switch {
-	case block.Skipped:
+	case block.Skipped && EditStatus(block) != "skipped":
 		return "· skipped"
 	case !block.Segment || block.ExitCode == 0 || block.GroupHeader != "" || block.Kind != "op" && block.Kind != "reads":
 		return ""

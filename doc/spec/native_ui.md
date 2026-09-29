@@ -135,7 +135,11 @@ using durable thread and host-call identities, including after resume. Both use
 the shared edit receipt formatter. Non-`apply_patch` receipts include a subdued
 `cat`, `python3`, or other captured source label, separated by a middle dot.
 Wrapped continuation rows preserve foreground colors and emphasis, including subdued source labels.
-Commands without captured effects retain their requested intent or ordinary Run classification. A grouped capture is displayed once rather than
+For tracked command lists, each edit intent changes from `requested` to
+`completed`, `failed`, or `skipped` using its own segment outcome, without waiting
+for later tests. `completed` reports command completion, not captured file counts
+or success of the enclosing command. Untracked commands without captured effects
+retain their requested intent or ordinary Run classification. A grouped capture is displayed once rather than
 claiming per-command attribution. Successful sibling edit rows are omitted once
 the grouped receipt covers them; real non-edit operations and failures remain
 visible, without internal capture-bookkeeping placeholders. Incomplete capture paths are grouped in

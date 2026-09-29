@@ -181,6 +181,12 @@ func (r *relay) readControl() bool {
 				if index, err := strconv.Atoi(fields[1]); err == nil {
 					r.current = index
 					r.report.send(execsegment.Message{Type: execsegment.Begin, Index: index})
+					// Separate control and output pipes can become readable in
+					// either order. Let the shell produce output only after its
+					// segment identity is installed, including the first segment.
+					if _, err := unix.Write(r.ack, []byte("\n")); err != nil {
+						return false
+					}
 				}
 			}
 		case "e", "d":

@@ -58,7 +58,7 @@ relay|status)
   fi
   unset -v __mekugi_o __mekugi_x __mekugi_m
   printf 'o\n' >&"$__mekugi_c"
-  __mekugi_b() { local __mekugi_s=$?; printf 'b %s\n' "$1" >&"$__mekugi_c"; return "$__mekugi_s"; }
+  __mekugi_b() { local __mekugi_s=$? __mekugi_r; printf 'b %s\n' "$1" >&"$__mekugi_c"; IFS= read -r __mekugi_r <&"$__mekugi_a"; return "$__mekugi_s"; }
   __mekugi_e() { local __mekugi_s=$? __mekugi_r; printf 'e %s %s\n' "$1" "$__mekugi_s" >&"$__mekugi_c"; IFS= read -r __mekugi_r <&"$__mekugi_a"; return "$__mekugi_s"; }
   __mekugi_f() { local __mekugi_s=$? __mekugi_r; printf 'd %s\n' "$__mekugi_s" >&"$__mekugi_c"; IFS= read -r __mekugi_r <&"$__mekugi_a"; }
   trap __mekugi_f EXIT
@@ -75,7 +75,7 @@ esac
 func quote(value string) string { return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'" }
 
 // Protocol is the helper-to-router message version.
-const Protocol = 1
+const Protocol = 2
 
 // Message is one line of the helper's report. Hello opens a report and the
 // router answers with Reply; the rest follow in the order the shell and its

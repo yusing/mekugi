@@ -347,6 +347,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 				socket, directory := ExecTrackPaths(frontendDirectory)
 				if hub, err := listenExecTrack(ctx, socket, directory); err == nil {
 					mekugiCalls.execTrack = hub
+					mekugiCalls.execWindows.tracker = hub
 				}
 			}
 			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint)

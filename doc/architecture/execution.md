@@ -61,6 +61,16 @@ Segment tracking (`REQ-EXECUTION-002`) has four owners:
   only the relay of that shell's output and the report; it never starts,
   signals, or continues a command.
 - The router's report hub matches each report to a live host item and bounds
-  what it retains. Matching is session-scoped and process-local.
+  what it retains. Matching is session-scoped and process-local. Writer previews
+  subscribe to its lifecycle notifications and join only unique exact
+  thread/turn/script matches; they do not consume Activity's dirty flag or
+  acquire ownership of command completion. Each preview retains at most one
+  matched report per captured script until it closes, so Activity retirement
+  cannot erase an earlier member of a sequential Code Mode batch. Additional
+  matches mark that script ambiguous without retaining more reports. Only host
+  items started after the preview window opened are eligible, including when an
+  older item's helper report arrives late.
+  Overlapping preview windows claiming the same thread/turn/script remain
+  ambiguous; a report cannot be borrowed by both windows.
 - The native UI presents a report only after it ended with the host's exit
   status, and otherwise presents the host's own result.

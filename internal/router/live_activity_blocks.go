@@ -167,6 +167,17 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 		operations := toolOperationBlocks(livediff.Safe(segment.text, false))
 		for i := range operations {
 			operations[i].Running, operations[i].Skipped = segment.running, segment.skipped
+			if block := &operations[i]; !segment.running && strings.HasSuffix(block.EditSource, " (requested)") {
+				status := "completed"
+				if segment.skipped {
+					status = "skipped"
+				} else if segment.exit != 0 {
+					status = "failed"
+				}
+				block.EditSource = strings.TrimSuffix(block.EditSource, " (requested)")
+				block.Label = strings.TrimSuffix(block.Label, " (requested)")
+				block.EditOutcome = status
+			}
 		}
 		if len(operations) == 0 {
 			continue

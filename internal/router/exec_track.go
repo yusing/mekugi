@@ -39,8 +39,10 @@ type execTrackHub struct {
 	listener net.Listener
 	mu       sync.Mutex
 	started  []execTrackCommand // Live, unmatched command items, oldest first.
-	changed  chan struct{}      // Closed and replaced when a command starts.
+	changed  chan struct{}      // Closed and replaced at command/segment lifecycle boundaries.
 	tracks   map[[3]string]*execTrack
+	previews map[*execPreviewTrack]struct{} // Registered only for a live preview's lifetime.
+	sequence uint64                         // Host starts within this router lifetime.
 	closed   bool
 	wg       sync.WaitGroup
 }
@@ -48,10 +50,13 @@ type execTrackHub struct {
 type execTrackCommand struct {
 	key    [3]string // Thread, turn, item.
 	script string
+	serial uint64
 }
 
 // execTrack is one command's report, guarded by the hub.
 type execTrack struct {
+	script   string
+	serial   uint64 // Host start, before the helper claims this item.
 	segments []execTrackSegment
 	terminal bool // Output stays on the terminal; only statuses are reported.
 	lossy    bool // Output reports stopped at the helper's bound.
@@ -63,6 +68,7 @@ type execTrack struct {
 
 type execTrackSegment struct {
 	source string
+	edit   bool   // The shared classifier identifies an edit operation.
 	text   string // Display operations, derived once by the UI.
 	began  bool
 	ended  bool
@@ -121,9 +127,9 @@ func (h *execTrackHub) start(key [3]string, command string) {
 	if slices.ContainsFunc(h.started, func(c execTrackCommand) bool { return c.key == key }) || h.tracks[key] != nil {
 		return
 	}
-	h.started = append(h.started, execTrackCommand{key: key, script: script})
-	close(h.changed)
-	h.changed = make(chan struct{})
+	h.sequence++
+	h.started = append(h.started, execTrackCommand{key: key, script: script, serial: h.sequence})
+	h.signal()
 }
 
 // finish forgets a command that completed without a report, and a report
@@ -147,10 +153,9 @@ func (h *execTrackHub) tracking(key [3]string) bool {
 	return h.tracks[key] != nil
 }
 
-// claim matches a report to the oldest live command in its thread running
-// the same script. Identical concurrent scripts are indistinguishable, and
-// whichever report claims first takes the oldest item; their segments are
-// the same, so only the reported outputs could be exchanged.
+// claim matches a report to a unique live command in its thread running the
+// same script. Ambiguous unmatched items run untracked: exchanging reports
+// would also exchange their segment lifecycle and preview identity.
 func (h *execTrackHub) claim(ctx context.Context, hello execsegment.Message) ([3]string, *execTrack, bool) {
 	timer := time.NewTimer(execTrackClaimWait)
 	defer timer.Stop()
@@ -160,17 +165,30 @@ func (h *execTrackHub) claim(ctx context.Context, hello execsegment.Message) ([3
 			h.mu.Unlock()
 			return [3]string{}, nil, false
 		}
-		index := slices.IndexFunc(h.started, func(c execTrackCommand) bool {
-			return c.script == hello.Script && (hello.Thread == "" || c.key[0] == hello.Thread)
-		})
+		index := -1
+		for i, command := range h.started {
+			if command.script != hello.Script || hello.Thread != "" && command.key[0] != hello.Thread {
+				continue
+			}
+			if index >= 0 {
+				h.mu.Unlock()
+				return [3]string{}, nil, false
+			}
+			index = i
+		}
 		if index >= 0 {
-			key := h.started[index].key
+			command := h.started[index]
+			key := command.key
 			h.started = slices.Delete(h.started, index, index+1)
-			track := &execTrack{terminal: hello.Terminal, dirty: true}
+			track := &execTrack{script: hello.Script, serial: command.serial, terminal: hello.Terminal, dirty: true}
 			for _, source := range hello.Segments {
-				track.segments = append(track.segments, execTrackSegment{source: source})
+				track.segments = append(track.segments, execTrackSegment{source: source, edit: execSegmentEdits(source)})
 			}
 			h.tracks[key] = track
+			for preview := range h.previews {
+				preview.retain(key, track)
+			}
+			h.signal()
 			h.mu.Unlock()
 			return key, track, true
 		}
@@ -224,6 +242,7 @@ func (h *execTrackHub) serve(ctx context.Context, conn net.Conn) {
 	defer func() {
 		h.mu.Lock()
 		track.ended, track.dirty = true, true
+		h.signal()
 		h.mu.Unlock()
 	}()
 	if err := conn.SetReadDeadline(time.Time{}); err != nil {
@@ -238,12 +257,162 @@ func (h *execTrackHub) serve(ctx context.Context, conn net.Conn) {
 			}
 			h.mu.Lock()
 			track.apply(message)
+			if message.Type != execsegment.Output {
+				h.signal()
+			}
 			h.mu.Unlock()
 		}
 		if err != nil {
 			return
 		}
 	}
+}
+
+// signal wakes lifecycle consumers. The hub lock must be held.
+func (h *execTrackHub) signal() {
+	close(h.changed)
+	h.changed = make(chan struct{})
+}
+
+func execSegmentEdits(source string) bool {
+	for _, block := range toolOperationBlocks(execSegmentText(source)) {
+		if slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) {
+			return true
+		}
+	}
+	return false
+}
+
+// execPreviewTrack joins a display-only writer window to live segment reports.
+// Exact thread, turn and script identity are required; identical concurrent
+// commands are ambiguous and must not retire one another's previews.
+type execPreviewTrack struct {
+	hub          *execTrackHub
+	thread, turn string
+	matches      map[string]*execPreviewMatch
+	after        uint64 // Only host invocations started after this window opened.
+}
+
+type execPreviewMatch struct {
+	key       [3]string
+	track     *execTrack
+	ambiguous bool
+}
+
+func newExecPreviewTrack(hub *execTrackHub, thread, turn string, commands []execCommandInput) *execPreviewTrack {
+	if hub == nil || thread == "" || turn == "" {
+		return nil
+	}
+	p := &execPreviewTrack{hub: hub, thread: thread, turn: turn, matches: make(map[string]*execPreviewMatch)}
+	for _, command := range commands {
+		if execSegmentEdits(command.Command) {
+			if previous := p.matches[command.Command]; previous != nil {
+				previous.ambiguous = true
+			} else {
+				p.matches[command.Command] = &execPreviewMatch{}
+			}
+		}
+	}
+	if len(p.matches) == 0 {
+		return nil
+	}
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	if hub.previews == nil {
+		hub.previews = make(map[*execPreviewTrack]struct{})
+	}
+	// The report carries no workspace or outer-call identity. Two live
+	// windows claiming the same future script cannot both own its report.
+	for other := range hub.previews {
+		if other.thread != thread || other.turn != turn {
+			continue
+		}
+		for script, match := range p.matches {
+			if sibling := other.matches[script]; sibling != nil {
+				match.ambiguous, sibling.ambiguous = true, true
+			}
+		}
+	}
+	hub.previews[p] = struct{}{}
+	p.after = hub.sequence
+	return p
+}
+
+// retain keeps at most one report per captured script, independent of Activity
+// retirement. Repeated matches remain ambiguous, without accumulating reports.
+// The hub lock must be held.
+func (p *execPreviewTrack) retain(key [3]string, track *execTrack) {
+	if key[0] != p.thread || key[1] != p.turn || track.serial <= p.after {
+		return
+	}
+	if match := p.matches[track.script]; match != nil {
+		if match.track != nil && match.key != key {
+			match.ambiguous = true
+		} else {
+			match.key, match.track = key, track
+		}
+	}
+}
+
+func (p *execPreviewTrack) close() {
+	if p != nil {
+		p.hub.mu.Lock()
+		delete(p.hub.previews, p)
+		p.hub.mu.Unlock()
+	}
+}
+
+func (p *execPreviewTrack) state() (tracked, settled bool, changed <-chan struct{}) {
+	if p == nil {
+		return false, false, nil
+	}
+	h := p.hub
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	changed = h.changed
+	settled = true
+	allTracked := true
+	for script, retained := range p.matches {
+		if retained.ambiguous {
+			return true, false, changed
+		}
+		match := retained.track
+		matches := 0
+		if match != nil {
+			matches++
+		}
+		for _, pending := range h.started {
+			if pending.key[0] == p.thread && pending.key[1] == p.turn && pending.script == script && pending.serial > p.after {
+				matches++
+			}
+		}
+		if matches > 1 {
+			return true, false, changed
+		}
+		if match == nil || match.ended && !match.done {
+			allTracked = false
+			continue
+		}
+		tracked = true
+		last := match.lastStarted()
+		for i, segment := range match.segments {
+			if segment.edit && !segment.ended && !match.done && (segment.began || i > last) {
+				settled = false
+			}
+		}
+	}
+	return tracked && allTracked, tracked && allTracked && settled, changed
+}
+
+// Top-level list segments execute in source order. Beginning a later one
+// proves that an earlier, never-started operand was short-circuited.
+func (t *execTrack) lastStarted() int {
+	for i := len(t.segments) - 1; i >= 0; i-- {
+		if t.segments[i].began || t.segments[i].ended {
+			return i
+		}
+	}
+	return -1
 }
 
 func writeExecTrackReply(conn net.Conn, ok bool) error {
@@ -321,6 +490,7 @@ func (h *execTrackHub) view(key [3]string, final bool, text func(string) string)
 	}
 	changed := track.dirty
 	view := execTrackView{output: !track.terminal && !track.lossy, ended: track.ended, complete: track.ended && track.done, code: track.code}
+	last := track.lastStarted()
 	for i := range track.segments {
 		segment := &track.segments[i]
 		if segment.text == "" {
@@ -335,7 +505,7 @@ func (h *execTrackHub) view(key [3]string, final bool, text func(string) string)
 			shown.exit = track.code
 		case segment.began && !segment.ended:
 			shown.running = true
-		case !segment.began && final:
+		case !segment.began && (final || i < last):
 			shown.skipped = true
 		case !segment.began:
 			continue

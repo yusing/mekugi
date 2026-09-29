@@ -61,7 +61,7 @@ func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
 	finished := make(chan struct{})
 	go func() {
 		defer close(finished)
-		runExecScopePreview(ctx, broker, *observation, diffview.Preview{ID: "fast-edit", Workspace: workspace, Thread: "thread", Caller: "/root"})
+		runExecScopePreview(ctx, broker, *observation, diffview.Preview{ID: "fast-edit", Workspace: workspace, Thread: "thread", Caller: "/root"}, nil)
 	}()
 	select {
 	case <-finished:
