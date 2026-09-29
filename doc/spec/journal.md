@@ -14,6 +14,14 @@ Only tasks show state; blocked tasks retain their reason and dropped tasks are d
 A plan strip remains above the composer while any task is open. It shows the current
 task, progress and the next pending task.
 
+Child journals mount read-only under the parent's linked task, or under an Agents
+group when unlinked. Enter on a mount opens that child's Activity; an agent absent
+from the roster, including an unresolved mount, yields a notice. The parent task
+remains parent-owned; the mounted root observes the host lifecycle. Unknown lifecycle
+has no state label. Child changes refresh mounted views without copying notes into
+the parent's record or acknowledging child events on behalf of the parent. The plan
+strip counts only the presented journal's own tasks.
+
 Native Main receives event rows after persistence. Notes are rows only while the
 Journal pane is hidden; blocked task rows remain visible. Successful terminal delivery
 publishes a framed turn card with Outcome, This turn and Remaining. Its notes expand
@@ -41,6 +49,36 @@ so each answer displays once. Capture-capacity fallback stays raw. Child native
 completion payloads, nonattached inline delivery and legacy exact-ID replay
 provenance are unchanged. Native sinks are scoped by workspace and stable Main
 thread; missing-workspace records are never rebased to the app-server cwd.
+
+## Cross-agent reads and binding
+
+`set` accepts `agent` to bind a direct child's canonical path to one owned task.
+The binding cannot be changed or duplicated. It can precede the child's first
+request; until durable ancestry proves the child, only an unresolved mount appears.
+Only complete, nonconflicting ancestry in the selected workspace permits content
+to appear. Reading an ancestor does not reveal the caller's siblings. Ambiguous
+agent identity rejects the combined read rather than selecting a journal.
+
+Owned paths remain ordinal. Combined reads reserve `@agents` for the unlinked
+group and `@<escaped-thread-id>` for mounted roots; descendants retain their local
+ordinal suffixes. These are stable JSON Pointer view addresses accepted by `read`,
+not mutation targets. `read agent` addresses the child's local paths. Combined
+views are bounded to 8,192 nodes; larger views require a narrower agent read.
+
+The router records a child's accepted requests as working. Native app-server
+turn completion supplies done or blocked lifecycle evidence. Provider response
+completion alone is not child completion. Frontends without host completion
+evidence retain the last observed state. A parent cannot become done while any
+mounted descendant remains open, including an unresolved mount. The check applies
+to tasks a batch completes or rebinds; a child resumed under an already done task
+does not block the parent's other writes. Reading and restarting do not revive
+child processes.
+
+Forks copy task states and history, but not live agent bindings to children owned
+by the source parent. Copied events retain the historical assignment. New bindings
+must refer to the fork's own children. An unavailable or oversized mount view does
+not suppress a parent's successful answer; its terminal card retains the own-record
+outcome and reports mounted journals unavailable. Explicit combined reads still fail.
 
 ## REQ-JOURNAL-001 — Durable work journals
 
@@ -76,7 +114,7 @@ No dedicated journal tool is exposed. Operations are:
 - `add {under?, kind?, title, body?, state?, reason?, before?}`: adds one node, with
   default kind note and default task state pending. `before` changes display order,
   not stable keys, and must name a sibling.
-- `set {p, title?, body?, state?, reason?}`: updates writable fields. Blocked and
+- `set {p, title?, body?, state?, reason?, agent?}`: updates writable fields. Blocked and
   dropped tasks require a reason. A final task reopens only with working.
 - `log {p?, text}`: adds a timestamped note under the single working leaf task,
   or root if none is working. Several working leaves require an explicit path.

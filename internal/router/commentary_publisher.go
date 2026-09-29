@@ -52,6 +52,7 @@ type commentaryRoute struct {
 }
 
 type commentaryBroker struct {
+	journalReader    func(context.Context, string, string, string, string, *int) ([]journalNode, error)
 	journalPublisher func(context.Context, string, string, string, []journalMutation) ([]string, error)
 	journalLister    func(context.Context, string, string, string) ([]journalItem, error)
 	notice           func(string, string)
@@ -289,7 +290,9 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	switch publication.Op {
 	case "list", "read":
 		var items []journalItem
-		items, err = b.journalLister(request.Context(), session, thread, publication.Agent)
+		if publication.Op == "list" || b.journalReader == nil {
+			items, err = b.journalLister(request.Context(), session, thread, publication.Agent)
+		}
 		if err != nil {
 			http.Error(writer, "journal list rejected: "+err.Error(), http.StatusBadRequest)
 			return
@@ -306,7 +309,13 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		}
 		var payload any = listed
 		if publication.Op == "read" {
-			nodes, readErr := journalTree(items, publication.P, publication.Depth)
+			var nodes []journalNode
+			var readErr error
+			if b.journalReader != nil {
+				nodes, readErr = b.journalReader(request.Context(), session, thread, publication.Agent, publication.P, publication.Depth)
+			} else {
+				nodes, readErr = journalTree(items, publication.P, publication.Depth)
+			}
 			if readErr != nil {
 				http.Error(writer, readErr.Error(), http.StatusBadRequest)
 				return

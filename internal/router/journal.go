@@ -40,6 +40,7 @@ var errJournalEventLimit = errors.New("journal event capacity reached; retained 
 var errJournalItemLimit = errors.New("journal item limit reached")
 
 type journalMutation struct {
+	Agent            string           `json:"agent,omitempty"`
 	P                string           `json:"p,omitempty"`
 	Under            string           `json:"under,omitempty"`
 	Kind             string           `json:"kind,omitempty"`
@@ -99,6 +100,10 @@ type journalSpawnRole struct {
 }
 
 type threadJournal struct {
+	mountUnavailable   string                      // View-only diagnostic; never persisted.
+	LifecycleState     string                      `json:"lifecycle_state,omitempty"`
+	LifecycleReason    string                      `json:"lifecycle_reason,omitempty"`
+	LifecycleAt        string                      `json:"lifecycle_at,omitempty"`
 	LegacyLive         map[uint64]bool             `json:"legacy_live,omitempty"`
 	LegacyFlush        map[uint64]bool             `json:"legacy_flush,omitempty"`
 	TreeAuthored       bool                        `json:"tree_authored,omitzero"`
@@ -318,6 +323,9 @@ func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore
 		if sink := s.nativeSink(workspace, thread); sink != nil {
 			sink.publish(next, false)
 		}
+		if mountedViewChanged(current, next) {
+			s.publishMountedViews(store, workspace, thread)
+		}
 		return nil
 	}
 	if store != nil {
@@ -362,6 +370,11 @@ func (s *journalStore) initialize(ctx context.Context, store *mekugiReplayStore,
 		j.NextOrdinal = maps.Clone(source.NextOrdinal)
 		j.SliceParents = maps.Clone(source.SliceParents)
 		j.Items = slices.Clone(source.Items)
+		// A fork copies facts and task states, not authority over children of
+		// another parent. Historical bindings remain in the copied event log.
+		for i := range j.Items {
+			j.Items[i].Agent = ""
+		}
 		j.Sequence, j.NextID = source.Sequence, source.NextID
 		return nil
 	})
@@ -563,7 +576,11 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 		}
 		j.ensureTree()
 		treeMutated := false
+		before := slices.Clone(j.Items)
 		for _, mutation := range mutations {
+			if mutation.Agent != "" && mutation.Op != "set" {
+				return errors.New("agent binding is only supported by set")
+			}
 			if mutation.Op == "plan" || mutation.Op == "set" || mutation.Op == "log" || mutation.Op == "remove" || mutation.Op == "add" && mutation.Title != nil {
 				paths, err := j.applyTree(mutation)
 				if err != nil {
@@ -678,6 +695,9 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 			if err := j.validateTree(); err != nil {
 				return err
 			}
+			if err := s.validateMountedCompletion(store, *j, before); err != nil {
+				return err
+			}
 		}
 		if receiptID != "" {
 			j.Receipts[receiptID] = journalReceipt{Digest: digest, IDs: slices.Clone(ids)}
@@ -701,50 +721,9 @@ func (s *journalStore) listAgent(ctx context.Context, store *mekugiReplayStore, 
 		if err != nil {
 			return err
 		}
-		chain := func(thread string) []string {
-			var path []string
-			for range len(journals) {
-				node, ok := journals[thread]
-				if !ok || !node.IdentityKnown || node.IdentityConflicted {
-					return nil
-				}
-				path = append(path, thread)
-				if node.Parent == "" {
-					return path
-				}
-				thread = node.Parent
-			}
-			return nil
-		}
-		callerPath := chain(caller)
-		if len(callerPath) == 0 {
-			return errors.New("journal ancestry is unavailable")
-		}
-		target := ""
-		var targetPath []string
-		for thread, node := range journals {
-			if node.Author != agent {
-				continue
-			}
-			path := chain(thread)
-			if len(path) == 0 || path[len(path)-1] != callerPath[len(callerPath)-1] ||
-				!slices.Contains(callerPath, thread) && !slices.Contains(path, caller) {
-				continue
-			}
-			if target != "" {
-				return errors.New("journal agent path is ambiguous")
-			}
-			target, targetPath = thread, path
-		}
-		if target == "" {
-			return errors.New("journal agent is not a proven ancestor or descendant")
-		}
-		for _, path := range [][]string{callerPath, targetPath} {
-			for _, thread := range path {
-				if err := recordErrors[thread]; err != nil {
-					return err
-				}
-			}
+		target, err := journalReadTarget(journals, recordErrors, caller, agent)
+		if err != nil {
+			return err
 		}
 		items = slices.Clone(journals[target].Items)
 		return nil

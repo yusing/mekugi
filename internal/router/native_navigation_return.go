@@ -77,10 +77,12 @@ func (u *terminalUI) popNavigationReturn() bool {
 	// Back changes presentation, not the user's current keyboard destination.
 	// Activity and Diff occupy the same pane, so follow its restored content.
 	u.focus = focus
-	if focus == 1 || focus == 2 {
+	if focus == 1 || focus == 2 || focus == 4 {
 		u.focus = 2
 		if u.diffOpen {
 			u.focus = 1
+		} else if u.journalOpen {
+			u.focus = 4
 		}
 	}
 	return true

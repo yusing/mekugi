@@ -8,6 +8,14 @@ acknowledgements. It shares durable workspace coordination and session retention
 Journal mutations do not impose a lifetime thread-count limit. Journal state is durable while
 its session is retained; a request's completion intent is not.
 
+Cross-agent trees are derived views under the journal/replay locks, authorized by
+complete durable ancestry in one workspace. Records never contain child snapshots.
+Typed binding operations associate a parent's task with a direct child; reserved
+view paths keep foreign nodes distinct without changing local ordinals. Native
+sinks cache immutable composed views only. Child lifecycle comes from accepted
+requests and host turn observations, never provider final-answer text. A child's
+publication refreshes ancestor views without mutating ancestor event logs or cursors.
+
 The router intercepts the dedicated journal tool and returns its result through
 the current response flow rather than a host executor. A valid direct finish
 can select terminal delivery when no client-dispatched work remains. Code Mode

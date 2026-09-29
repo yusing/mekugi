@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"encoding/base64"
+	"slices"
 	"strings"
 	"testing"
 
@@ -50,6 +51,20 @@ func TestNativeJournalPaneNarrowWideAndCollapsedSubtree(t *testing.T) {
 	}
 }
 
+func TestNativeJournalAgentsGroupIsNotAConstraint(t *testing.T) {
+	journal := threadJournal{Items: []journalItem{
+		{Path: "/1", Kind: "task", Title: "Own task", State: "working"},
+		{Path: "/2", Kind: "context", Title: "No new dependencies"},
+		{Path: "/@agents", Kind: "context", Title: "Agents"},
+		{Path: "/@agents/@child", Kind: "task", Title: "/root/child", Agent: "/root/child", State: "working"},
+	}}
+	rows := ansi.Strip(strings.Join(new(nativeJournalView).render(&journal, 80, 6), "\n"))
+	constraint, task, group := strings.Index(rows, "◆ /2"), strings.Index(rows, "/1 Own task"), strings.Index(rows, "⎇ Agents")
+	if strings.Contains(rows, "◆ /@agents") || group < 0 || constraint > task || task > group {
+		t.Fatalf("Agents group rendered or ranked as a constraint: %q", rows)
+	}
+}
+
 func TestNativeJournalSelectionExpansionAndCopyPath(t *testing.T) {
 	journal := nativeJournalFixture()
 	u, _ := newAppServerTestUI()
@@ -88,6 +103,13 @@ func TestNativeJournalPlanStripOnlyWithOpenTask(t *testing.T) {
 	if !strings.Contains(strip, "▸ /1 Pending parser") {
 		t.Fatalf("plan strip did not show the next pending task: %q", strip)
 	}
+	mounted := append(slices.Clone(journal.Items), journalItem{Path: "/@agents/@child", Kind: "task", Title: "/root/child", State: "working"},
+		journalItem{Path: "/@agents/@child/1", Kind: "task", Title: "Child pending", State: "pending"})
+	u.journal.tree = &threadJournal{Items: mounted}
+	if strip := ansi.Strip(u.journalPlanStrip(120)); strings.Contains(strip, "Child pending") || !strings.Contains(strip, "1/4 done") {
+		t.Fatalf("plan strip counted mounted child tasks: %q", strip)
+	}
+	u.journal.tree = &journal
 	if ansi.StringWidth(u.journalPlanStrip(17)) > 17 {
 		t.Fatalf("narrow plan strip overflowed: %q", u.journalPlanStrip(17))
 	}
@@ -192,9 +214,25 @@ func seedNativeJournalPreview(p *nativePreview) {
 		{Op: "log", P: "/2", Text: new("Tokenizer and AST validated")},
 		{Op: "set", P: "/2", State: new("done")},
 		{Op: "add", Kind: "task", Title: new("Renderer"), State: new("working")},
+		{Op: "set", P: "/3", Agent: "/root/renderer"},
 		{Op: "log", P: "/3", Text: new("Task tree and turn card use the shared renderer")},
 		{Op: "add", Kind: "task", Title: new("CLI wiring"), State: new("blocked"), Reason: new("Waiting for interface review")},
 	}); err != nil {
+		p.t.Fatal(err)
+	}
+	if err := proxy.journals.initialize(p.t.Context(), p.store, p.workspace, "preview-child", "/root/renderer", ""); err != nil {
+		p.t.Fatal(err)
+	}
+	if err := proxy.journals.bindIdentity(p.t.Context(), p.store, p.workspace, "main", "", "/root", true); err != nil {
+		p.t.Fatal(err)
+	}
+	if err := proxy.journals.bindIdentity(p.t.Context(), p.store, p.workspace, "preview-child", "main", "/root/renderer", true); err != nil {
+		p.t.Fatal(err)
+	}
+	if _, err := proxy.journals.apply(p.t.Context(), p.store, p.workspace, "preview-child", "", []journalMutation{{Op: "add", Kind: "task", Title: new("Layout engine"), State: new("working")}, {Op: "log", Text: new("Grid measurer reused; no new dependency")}}); err != nil {
+		p.t.Fatal(err)
+	}
+	if err := proxy.journals.observeLifecycle(p.t.Context(), p.store, p.workspace, "preview-child", "working", ""); err != nil {
 		p.t.Fatal(err)
 	}
 	journal, exists, err := readThreadJournal(p.store, p.workspace, "main")

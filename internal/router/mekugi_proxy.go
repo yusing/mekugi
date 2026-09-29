@@ -230,6 +230,13 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 		}
 		return proxy.journals.list(ctx, proxy.replayStore, workspace, thread)
 	}
+	broker.journalReader = func(ctx context.Context, session, thread, agent, path string, depth *int) ([]journalNode, error) {
+		workspace, _, ok := strings.Cut(session, "\x00")
+		if !ok {
+			return nil, errors.New("journal workspace is unavailable")
+		}
+		return proxy.journals.readTree(ctx, proxy.replayStore, workspace, thread, agent, path, depth)
+	}
 	return proxy
 }
 
@@ -656,6 +663,12 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	if err := p.journals.bindIdentity(ctx, p.replayStore, directory, threadID, metadata.ParentThreadID, author, activityThreadID != ""); err != nil {
 		transform.Close()
 		return nil, err
+	}
+	if metadata.ParentThreadID != "" && activityThreadID != "" {
+		if err := p.journals.observeLifecycle(ctx, p.replayStore, directory, threadID, "working", ""); err != nil {
+			transform.Close()
+			return nil, err
+		}
 	}
 	spawnBaseline, err := p.journals.forkSpawnBaseline(ctx, p.replayStore, directory, threadID, fork != "", nativeSpawnCallIDs(request.fields["input"]))
 	if err != nil {

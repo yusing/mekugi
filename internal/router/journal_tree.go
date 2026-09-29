@@ -114,9 +114,6 @@ func (j *threadJournal) treeParent(path string) error {
 	if j.Items[i].Kind != "task" {
 		return fmt.Errorf("journal parent must be a task: %s", path)
 	}
-	if j.Items[i].Agent != "" {
-		return fmt.Errorf("mounted journal is read-only: %s", path)
-	}
 	return nil
 }
 
@@ -173,7 +170,7 @@ func (j *threadJournal) applyTree(m journalMutation) ([]string, error) {
 		under := m.P
 		if under == "" {
 			for _, item := range j.Items {
-				if item.Kind != "task" || item.State != "working" {
+				if item.Kind != "task" || item.State != "working" || item.Agent != "" {
 					continue
 				}
 				leaf := !slices.ContainsFunc(j.Items, func(child journalItem) bool {
@@ -242,8 +239,20 @@ func (j *threadJournal) applyTree(m journalMutation) ([]string, error) {
 			return nil, fmt.Errorf("journal path not found: %s", m.P)
 		}
 		item := &j.Items[index]
-		if item.Kind == "answer" || item.Agent != "" {
+		if item.Kind == "answer" {
 			return nil, errors.New("router-owned journal node is read-only")
+		}
+		if m.Agent != "" && m.Agent != item.Agent {
+			if item.Agent != "" {
+				return nil, errors.New("journal agent binding is immutable")
+			}
+			if item.Kind != "task" || journalParent(m.Agent) != j.Author || strings.TrimSpace(m.Agent) != m.Agent || !utf8.ValidString(m.Agent) {
+				return nil, errors.New("agent must name a direct child on a task")
+			}
+			if slices.ContainsFunc(j.Items, func(other journalItem) bool { return other.Agent == m.Agent }) {
+				return nil, errors.New("child journal is already mounted")
+			}
+			item.Agent = m.Agent
 		}
 		transition := m.State != nil && *m.State != item.State
 		if transition && (item.State == "done" || item.State == "dropped") && *m.State != "working" {
@@ -273,7 +282,9 @@ func (j *threadJournal) applyTree(m journalMutation) ([]string, error) {
 		if index < 0 {
 			return nil, fmt.Errorf("journal path not found: %s", m.P)
 		}
-		if j.Items[index].Kind == "answer" || j.Items[index].Agent != "" {
+		if j.Items[index].Kind == "answer" || slices.ContainsFunc(j.Items, func(item journalItem) bool {
+			return item.Agent != "" && (item.Path == m.P || strings.HasPrefix(item.Path, m.P+"/"))
+		}) {
 			return nil, errors.New("router-owned journal node is read-only")
 		}
 		if err := j.treeEvent("remove", index, false); err != nil {
@@ -437,6 +448,9 @@ func journalTree(items []journalItem, path string, depth *int) ([]journalNode, e
 }
 
 func validateTreeMutation(m journalMutation) error {
+	if m.Agent != "" && m.Op != "set" {
+		return errors.New("agent binding is only supported by set")
+	}
 	extra := false
 	switch m.Op {
 	case "plan":

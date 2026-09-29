@@ -300,6 +300,9 @@ come first; finished subtrees start collapsed. Use `j`/`k` or arrows to select,
 Use `n` to switch between workspace and unscoped journals when both exist. Notes
 from the other journal still appear in Main.
 `Esc` returns to Main. Blocked tasks show their reason; notes have no state label.
+Delegated journals appear under their owning task, or in an Agents group. Press
+`Enter` on a mounted agent to open its Activity. Lifecycle labels reflect observed
+host state; a provider answer alone does not mark an agent complete.
 
 The plan strip stays above the composer while work remains. Main shows task
 transitions, plus notes while Journal is hidden. A turn card contains its outcome,

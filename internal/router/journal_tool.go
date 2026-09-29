@@ -50,6 +50,7 @@ func journalMutationsSchema() json.RawMessage {
 				"text":   map[string]any{"type": "string"},
 				"state":  map[string]any{"type": "string", "enum": []string{"pending", "working", "done", "blocked", "dropped"}},
 				"reason": map[string]any{"type": "string"},
+				"agent":  map[string]any{"type": "string", "description": "Bind a direct child journal with set; the mount is then read-only."},
 				"before": map[string]any{"type": "string"},
 				"reset":  map[string]any{"type": "string", "enum": []string{"slice"}},
 				"tasks":  map[string]any{"type": "array", "maxItems": maxJournalItems, "items": map[string]any{"anyOf": []any{map[string]any{"type": "string"}, map[string]any{"type": "object"}}}},
@@ -109,7 +110,6 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 	var args struct {
 		journalMutation
 		Journal json.RawMessage `json:"journal"`
-		Agent   string          `json:"agent"`
 		Depth   *int            `json:"depth"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(jsonString(item, "arguments")))
@@ -144,7 +144,7 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 				err = fmt.Errorf("journal %s accepts only %s and batched journal mutations", args.Op, map[string]string{"list": "agent", "read": "p, agent, depth"}[args.Op])
 			}
 			var items []journalItem
-			if err == nil {
+			if err == nil && args.Op == "list" {
 				if args.Agent != "" {
 					items, err = t.proxy.journals.listAgent(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, args.Agent)
 				} else {
@@ -154,7 +154,7 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 			if args.Op == "read" {
 				var nodes []journalNode
 				if err == nil {
-					nodes, err = journalTree(items, args.P, args.Depth)
+					nodes, err = t.proxy.journals.readTree(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, args.Agent, args.P, args.Depth)
 				}
 				result = map[string]any{"ok": true, "items": nodes}
 			} else {
@@ -164,8 +164,8 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 				}
 				result = map[string]any{"ok": true, "items": listed}
 			}
-		} else if args.Agent != "" {
-			err = errors.New("agent is only supported by journal list")
+		} else if args.Agent != "" && args.Op != "set" {
+			err = errors.New("agent is only supported by journal read, list, and set")
 		} else {
 			var ids []string
 			ids, err = t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, callID, bindJournalAnswers([]journalMutation{args.journalMutation}, t.journalQuestion))

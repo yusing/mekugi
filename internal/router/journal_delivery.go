@@ -139,6 +139,23 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 			changes, changeSeq = t.proxy.replayStore.childJournalChangesSince(t.ctx, t.directory, t.shellThreadID, journal.ResultChangeSeq, journal.ResultCount != 0)
 			t.journalResultWindow = &journalResultWindow{sequence: journal.Sequence, changes: changeSeq, count: journal.ResultCount + 1}
 		}
+		if terminal && journal.TreeAuthored {
+			journals, recordErrors, readErr := t.proxy.journals.workspaceJournals(t.proxy.replayStore, t.directory)
+			var items []journalItem
+			if readErr == nil {
+				items, readErr = mountedJournalItems(journals, recordErrors, t.shellThreadID, t.shellThreadID)
+			}
+			if readErr != nil {
+				journal.mountUnavailable = fmt.Sprintf("%.256s", readErr.Error())
+			} else {
+				ownItems := journal.Items
+				journal.Items = items
+				if len(journalTurnCard(journal, journal.FlushSeq, false)) > maxJournalFlushBytes {
+					journal.Items = ownItems
+					journal.mountUnavailable = "combined card exceeds terminal capacity; read child journals separately"
+				}
+			}
+		}
 		return nil
 	}
 	if t.proxy.replayStore != nil {

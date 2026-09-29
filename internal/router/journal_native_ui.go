@@ -10,6 +10,7 @@ import (
 // A native sink is scoped to one launched Main thread and workspace. Durable
 // journal records remain the owner; this holds only pending presentation copies.
 type nativeJournalSink struct {
+	mounted             *threadJournal
 	publicationSequence uint64
 	tree                *threadJournal
 	mu                  sync.Mutex
@@ -269,6 +270,11 @@ func (s *journalStore) restoreNative(ctx context.Context, store *mekugiReplaySto
 	})
 	if err == nil && snapshot != nil {
 		sink.publish(*snapshot, false)
+		// Restore mounts under the same locked snapshot discipline as live updates.
+		err = s.transaction(ctx, store, sink.workspace, sink.thread, func(_ *threadJournal, _ bool) error {
+			s.publishMountedViews(store, sink.workspace, sink.thread)
+			return errJournalUnchanged
+		})
 	}
 	return err
 }

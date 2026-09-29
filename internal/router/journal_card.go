@@ -74,6 +74,9 @@ func journalTurnCard(j threadJournal, since uint64, child bool) string {
 		text.WriteString("\n- " + strings.TrimPrefix(indentJournalText(journalEventText(event), "  "), "  "))
 	}
 	if !child {
+		if j.mountUnavailable != "" {
+			text.WriteString("\n\nMounted journals unavailable: " + j.mountUnavailable)
+		}
 		remaining := false
 		for _, item := range j.Items {
 			if item.Kind != "task" || item.State == "done" || item.State == "dropped" {
