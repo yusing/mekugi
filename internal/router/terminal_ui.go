@@ -132,6 +132,9 @@ func (u *terminalUI) key(key byte) error {
 			if u.main != nil && u.main.notifications != nil {
 				u.main.notifications.focused = s == "\x1b[I"
 			}
+			if s == "\x1b[O" {
+				u.clearJournalHover() // No pointer report follows the pointer out of the window.
+			}
 			return nil
 		}
 		if s == "\x1b[200~" {
@@ -443,6 +446,9 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	button, x, y := v[0], v[1]-1, v[2]-1
 	release := s[len(s)-1] == 'm'
+	if !u.layout.journal.contains(x, y) || u.output != nil {
+		u.clearJournalHover()
+	}
 	if u.output != nil {
 		u.outputMouse(button, x, y, release)
 		return nil
@@ -589,17 +595,7 @@ func (u *terminalUI) mouse(s string) error {
 		return nil
 	}
 	if pane == 4 {
-		if button&^28 == 64 {
-			return u.journalKey("k")
-		}
-		if button&^28 == 65 {
-			return u.journalKey("j")
-		}
-		view := &u.main.journalView
-		if y-r.y >= view.top {
-			view.selected = max(0, min(len(view.rows)-1, view.offset+y-r.y-view.top))
-		}
-		return nil
+		return u.journalMouse(button, x-r.x, y-r.y)
 	}
 	if pane == 1 {
 		for _, key := range []byte(translated) {

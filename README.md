@@ -341,14 +341,16 @@ See [live view details](doc/spec/changes.md#live-terminal-view).
 
 ### Journal pane
 
-Press `Ctrl-B` then `5` to open Journal. Open tasks
+Press `Ctrl-B` then `5` to open Journal. Its title counts tasks by state. Open tasks
 come first; finished subtrees start collapsed. Use `j`/`k` or arrows to select,
-`Space` to expand finished subtrees, `d` to read full details, and `Enter` to copy the selected path.
-Use `n` to switch between workspace and unscoped journals when both exist. Notes
+`Space` to expand or collapse, `d` to read full details, `Enter` to open a row, and
+`c` to copy the selected path. Click a `▸` marker to expand it, or click a row to open it.
+When requests without workspace metadata keep a separate unscoped journal, the title
+offers `n` to switch between it and the workspace journal. Notes
 from the other journal still appear in Main.
 `Esc` returns to Main. Blocked tasks show their reason; notes have no state label.
 Delegated journals appear under their owning task, or in an Agents group. Press
-`Enter` on a mounted agent to open its Activity. Lifecycle labels reflect observed
+`Enter` on, or click, a mounted agent to open its Activity. Lifecycle labels reflect observed
 host state; a provider answer alone does not mark an agent complete.
 
 The plan strip stays above the composer while work remains. Main shows task

@@ -3,11 +3,13 @@ package router
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func nativeJournalFixture() threadJournal {
@@ -23,7 +25,7 @@ func nativeJournalFixture() threadJournal {
 func TestNativeJournalPaneNarrowWideAndCollapsedSubtree(t *testing.T) {
 	journal := nativeJournalFixture()
 	view := new(nativeJournalView)
-	wide := view.render(&journal, 80, 8)
+	wide := view.render(&journal, 80, 8, true, false, livediff.DarkTheme)
 	joined := ansi.Strip(strings.Join(wide, "\n"))
 	for _, required := range []string{"○ /1 Pending parser", "◐ /2 Working renderer", "⚠ /3 Blocked wiring", "Needs decision", "▸ ● /4 Done scanner"} {
 		if !strings.Contains(joined, required) {
@@ -33,10 +35,10 @@ func TestNativeJournalPaneNarrowWideAndCollapsedSubtree(t *testing.T) {
 	if strings.Contains(joined, "Scanner passed") {
 		t.Fatalf("finished subtree expanded by default: %q", joined)
 	}
-	if header := ansi.Strip(wide[0]); header != "working 1 · blocked 1 · pending 1 · done 1" || !strings.HasPrefix(ansi.Strip(wide[1]), "───") {
-		t.Fatalf("pane header counts or separator missing: %q", wide[:2])
+	if header := ansi.Strip(wide[0]); header != " ◐ 1 working · ⚠ 1 blocked · ○ 1 pending · ● 1 done" {
+		t.Fatalf("pane header counts missing: %q", wide[:2])
 	}
-	for _, row := range view.render(&journal, 18, 4) {
+	for _, row := range view.render(&journal, 18, 4, true, false, livediff.DarkTheme) {
 		if ansi.StringWidth(row) > 18 {
 			t.Fatalf("narrow pane overflowed: width=%d row=%q", ansi.StringWidth(row), row)
 		}
@@ -44,8 +46,8 @@ func TestNativeJournalPaneNarrowWideAndCollapsedSubtree(t *testing.T) {
 	if len(view.rows) != 4 {
 		t.Fatalf("finished child should be collapsed: %d rows", len(view.rows))
 	}
-	view.expanded = map[string]bool{"/4": true}
-	expanded := ansi.Strip(strings.Join(view.render(&journal, 80, 8), "\n"))
+	view.toggled = map[string]bool{"/4": true}
+	expanded := ansi.Strip(strings.Join(view.render(&journal, 80, 8, true, false, livediff.DarkTheme), "\n"))
 	if !strings.Contains(expanded, "▾ ● /4 Done scanner") || !strings.Contains(expanded, "Scanner passed") {
 		t.Fatalf("space-expanded finished subtree missing: %q", expanded)
 	}
@@ -58,7 +60,7 @@ func TestNativeJournalAgentsGroupIsNotAConstraint(t *testing.T) {
 		{Path: "/@agents", Kind: "context", Title: "Agents"},
 		{Path: "/@agents/@child", Kind: "task", Title: "/root/child", Agent: "/root/child", State: "working"},
 	}}
-	rows := ansi.Strip(strings.Join(new(nativeJournalView).render(&journal, 80, 6), "\n"))
+	rows := ansi.Strip(strings.Join(new(nativeJournalView).render(&journal, 80, 6, false, false, livediff.DarkTheme), "\n"))
 	constraint, task, group := strings.Index(rows, "◆ /2"), strings.Index(rows, "/1 Own task"), strings.Index(rows, "⎇ Agents")
 	if strings.Contains(rows, "◆ /@agents") || group < 0 || constraint > task || task > group {
 		t.Fatalf("Agents group rendered or ranked as a constraint: %q", rows)
@@ -72,18 +74,18 @@ func TestNativeJournalSelectionExpansionAndCopyPath(t *testing.T) {
 	shell := &terminalUI{main: u, focus: 4, journalOpen: true}
 	u.shell = shell
 	view := &u.journalView
-	view.render(&journal, 80, 8)
+	view.render(&journal, 80, 8, false, true, livediff.DarkTheme)
 	if err := shell.journalKey("G"); err != nil || view.rows[view.selected].node.Path != "/4" {
 		t.Fatalf("selection did not reach finished task: %d %v", view.selected, err)
 	}
-	if err := shell.journalKey(" "); err != nil || !view.expanded["/4"] {
+	if err := shell.journalKey(" "); err != nil || !view.toggled["/4"] {
 		t.Fatalf("space did not expand selected task: %v", err)
 	}
-	view.render(&journal, 80, 8)
+	view.render(&journal, 80, 8, false, true, livediff.DarkTheme)
 	if err := shell.journalKey("j"); err != nil || view.rows[view.selected].node.Path != "/4/1" {
 		t.Fatalf("selection did not enter expanded subtree: %d %v", view.selected, err)
 	}
-	if err := shell.journalKey("\r"); err != nil {
+	if err := shell.journalKey("c"); err != nil {
 		t.Fatal(err)
 	}
 	want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("/4/1")) + "\a"
@@ -373,5 +375,139 @@ func TestNativeJournalCollapsedCardShowsRemoval(t *testing.T) {
 	text := ansi.Strip(strings.Join(out.lines, "\n"))
 	if !strings.Contains(text, "Removed /1 Old task") || strings.Contains(text, "◐ /1") {
 		t.Fatalf("collapsed card misrepresented removal: %q", text)
+	}
+}
+
+func nativeJournalMouse(t *testing.T, u *appServerUI, button, x, y int) {
+	t.Helper()
+	if err := u.shell.mouse(fmt.Sprintf("\x1b[<%d;%d;%dM", button, x+1, y+1)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func nativeJournalPaintedPane(t *testing.T, u *appServerUI) []string {
+	t.Helper()
+	var frame bytes.Buffer
+	if err := u.paint(&frame, 120, 24); err != nil {
+		t.Fatal(err)
+	}
+	r := u.shell.layout.journal
+	return u.journalView.render(u.journalTreeSnapshot(), r.w, r.h, false, u.shell.focus == 4, u.view.painter.Theme)
+}
+
+func nativeJournalMarked(rows []string, fill string) []int {
+	var marked []int
+	for i, row := range rows {
+		if strings.Contains(row, fill) {
+			marked = append(marked, i)
+		}
+	}
+	return marked
+}
+
+func TestNativeJournalMarksOnlyPointerOrKeyboardCursor(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.ensureShell()
+	t.Cleanup(u.shell.diff.close)
+	journal := nativeJournalFixture()
+	u.journal = &nativeJournalSink{tree: &journal}
+	u.shell.focus, u.shell.journalOpen = 4, true
+	fill := u.view.painter.Theme.SelectionBackground()
+	if marked := nativeJournalMarked(nativeJournalPaintedPane(t, u), fill); len(marked) != 0 {
+		t.Fatalf("selection marked without pointer or keyboard: %v", marked)
+	}
+	if err := u.shell.journalKey("j"); err != nil {
+		t.Fatal(err)
+	}
+	if marked := nativeJournalMarked(nativeJournalPaintedPane(t, u), fill); !slices.Equal(marked, []int{u.journalView.selected}) || u.journalView.selected != 1 {
+		t.Fatalf("keyboard cursor not marked: %v selected=%d", marked, u.journalView.selected)
+	}
+	u.shell.focus = 0
+	if marked := nativeJournalMarked(nativeJournalPaintedPane(t, u), fill); len(marked) != 0 {
+		t.Fatalf("unfocused pane kept its cursor mark: %v", marked)
+	}
+	u.shell.focus = 4
+	nativeJournalPaintedPane(t, u)
+	r := u.shell.layout.journal
+	nativeJournalMouse(t, u, 35, r.x+5, r.y+3)
+	if marked := nativeJournalMarked(nativeJournalPaintedPane(t, u), fill); !slices.Equal(marked, []int{3}) || u.journalView.selected != 1 {
+		t.Fatalf("pointer did not replace the cursor mark or moved the selection: %v selected=%d", marked, u.journalView.selected)
+	}
+	nativeJournalMouse(t, u, 35, r.x-3, r.y+3)
+	if marked := nativeJournalMarked(nativeJournalPaintedPane(t, u), fill); len(marked) != 0 {
+		t.Fatalf("mark stayed after the pointer left: %v", marked)
+	}
+}
+
+func TestNativeJournalClickTogglesDisclosureOpensRowAndWheelScrolls(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.ensureShell()
+	t.Cleanup(u.shell.diff.close)
+	journal := nativeJournalFixture()
+	u.journal = &nativeJournalSink{tree: &journal}
+	u.shell.focus, u.shell.journalOpen = 4, true
+	nativeJournalPaintedPane(t, u)
+	r := u.shell.layout.journal
+	finished := slices.IndexFunc(u.journalView.rows, func(row journalPaneRow) bool { return row.node.Path == "/4" })
+	nativeJournalMouse(t, u, 0, r.x+1, r.y+finished)
+	if !u.journalView.toggled["/4"] || u.shell.output != nil {
+		t.Fatalf("disclosure click did not only expand: %v", u.journalView.toggled)
+	}
+	rows := ansi.Strip(strings.Join(nativeJournalPaintedPane(t, u), "\n"))
+	if !strings.Contains(rows, "▾ ● /4") || !strings.Contains(rows, "└ · Scanner passed") {
+		t.Fatalf("expanded subtree missing: %q", rows)
+	}
+	nativeJournalMouse(t, u, 0, r.x+12, r.y+finished)
+	if u.shell.output == nil || !u.journalView.toggled["/4"] {
+		t.Fatal("row click did not open details")
+	}
+	u.shell.outputKey("\x1b")
+
+	for i := range 30 {
+		path := fmt.Sprintf("/%d", 10+i)
+		journal.Items = append(journal.Items, journalItem{Path: path, ID: path, Kind: "task", Title: "Filler", State: "pending"})
+	}
+	nativeJournalPaintedPane(t, u)
+	selected := u.journalView.selected
+	nativeJournalMouse(t, u, 65, r.x+5, r.y+2)
+	nativeJournalPaintedPane(t, u)
+	if u.journalView.offset != 3 || u.journalView.selected != selected || u.shell.output != nil {
+		t.Fatalf("wheel moved selection or did not scroll: offset=%d selected=%d/%d", u.journalView.offset, u.journalView.selected, selected)
+	}
+}
+
+func TestNativeJournalHintsNamespaceOnlyWithBothJournals(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.ensureShell()
+	t.Cleanup(u.shell.diff.close)
+	workspace, unscoped := nativeJournalFixture(), nativeJournalFixture()
+	u.journal = &nativeJournalSink{workspace: "/workspace", tree: &workspace}
+	u.shell.focus, u.shell.journalOpen = 4, true
+	var frame bytes.Buffer
+	if err := u.paint(&frame, 140, 24); err != nil {
+		t.Fatal(err)
+	}
+	screen := ansi.Strip(frame.String())
+	if !strings.Contains(screen, "space expand · d details") || strings.Contains(screen, "namespace") || strings.Contains(screen, "workspace") {
+		t.Fatalf("single journal named a namespace or lost pane hints: %q", screen)
+	}
+	status := ansi.Strip(u.shell.nativeStatus())
+	for _, repeated := range []string{"details", "expand", "namespace"} {
+		if strings.Contains(status, repeated) {
+			t.Fatalf("status bar repeats pane hint %q: %q", repeated, status)
+		}
+	}
+	if err := u.shell.journalKey("n"); err != nil || u.journalView.unscoped {
+		t.Fatalf("n switched to an absent namespace: %v", err)
+	}
+	u.unscopedJournal = &nativeJournalSink{tree: &unscoped}
+	if hints := ansi.Strip(u.journalPaneHints()); !strings.HasSuffix(hints, "n unscoped") {
+		t.Fatalf("namespace hint missing with both journals: %q", hints)
+	}
+	if err := u.shell.journalKey("n"); err != nil {
+		t.Fatal(err)
+	}
+	if current, other := u.journalNamespaces(); current != "unscoped" || other != "workspace" {
+		t.Fatalf("namespace switch: %q %q", current, other)
 	}
 }

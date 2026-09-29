@@ -3,13 +3,24 @@
 ## Native Main presentation
 
 V2 journals have a Journal pane alongside Diff and Activity, selected by `Ctrl-B 5`;
-composer letters never open it. When at least four rows fit, a header counts the
-journal's own tasks by state above a separator. Open tasks precede finished tasks; finished
-subtrees collapse by default. Navigation uses arrows or j/k, Space expands finished
-subtrees, d opens full Markdown details, and Enter copies a selected path. Workspace
-and unscoped journals remain separate; n switches the selected namespace. Only notes
-from the presented namespace are suppressed in Main or acknowledged via the pane.
-Router stamps display in local time.
+composer letters never open it. The pane title counts the journal's own tasks by state
+in their state colors, dropping state names before its pane keys when narrow; an
+untitled short pane shows the counts as its first row when at least four rows fit.
+Open tasks precede finished tasks; open subtrees start expanded and finished subtrees
+collapsed, with a disclosure marker and the collapsed descendant count. The title carries
+the pane keys: Space expands or collapses the selected subtree and d opens full Markdown
+details. The status bar lists only the other keys: arrows or j/k select, Enter opens the
+row (a mounted agent's Activity, otherwise details), and c copies the selected path.
+The right and left arrows also expand and collapse, and left on a leaf selects its parent.
+A click on a disclosure marker toggles its subtree; a click elsewhere on a row opens it.
+The wheel scrolls without moving the selection. Only the row under the pointer, or the
+keyboard selection of the focused pane after navigation keys, is highlighted; no row
+stays highlighted once the pointer leaves the pane. The selection follows its node as
+rows change. Workspace and unscoped journals remain separate. Only when both hold a
+journal does the title name the presented one and offer n to switch; unscoped holds
+app-server requests without workspace metadata. Only notes from the presented namespace
+are suppressed in Main or acknowledged via the pane. Router stamps display in local time
+at the row's right edge when the pane is wide enough.
 Only tasks show state; blocked tasks retain their reason and dropped tasks are dimmed.
 A plan strip remains above the composer while any task is open. It shows the current
 task, progress and the next pending task.

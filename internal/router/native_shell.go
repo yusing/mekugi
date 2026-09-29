@@ -333,7 +333,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	}
 	if !framed && right.w > 0 && right.h > 0 && u.journalOpen {
 		l.journal = right
-		draw(right, u.main.journalView.render(u.main.journalTreeSnapshot(), right.w, right.h))
+		draw(right, u.main.journalView.render(u.main.journalTreeSnapshot(), right.w, right.h, true, u.focus == 4, u.main.view.painter.Theme))
 	}
 	if right.w >= 4 && right.h >= 3 && framed {
 		iw, ih := right.w-2, right.h-2
@@ -374,12 +374,25 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			u.diffUnseen = false
 		} else if content > 0 && u.journalOpen {
 			l.journal = terminalRect{right.x + 1, contentY, iw, content}
-			body = u.main.journalView.render(u.main.journalTreeSnapshot(), iw, content)
-			namespace := "workspace"
-			if sink := u.main.selectedJournalSink(); sink != nil && sink.workspace == "" {
-				namespace = "unscoped"
+			journal := u.main.journalTreeSnapshot()
+			body = u.main.journalView.render(journal, iw, content, false, u.focus == 4, u.main.view.painter.Theme)
+			label = u.main.journalPaneHints()
+			// Counts drop their state names before the pane hints drop.
+			for _, compact := range []bool{false, true} {
+				var detail []string
+				if namespace, _ := u.main.journalNamespaces(); namespace != "" {
+					detail = append(detail, namespace)
+				}
+				if journal != nil {
+					if counts := journalTitleCounts(journal.Items, compact); counts != "" {
+						detail = append(detail, counts)
+					}
+				}
+				title = nativeTitle(5, "Journal", strings.Join(detail, activityui.Dim+" · "+activityui.Undim), u.focus == 4)
+				if ansi.StringWidth(title)+ansi.StringWidth(label)+5 <= right.w-2 {
+					break
+				}
 			}
-			title, label = nativeTitle(5, "Journal", namespace, u.focus == 4), "n namespace · d details"
 		} else if content > 0 {
 			l.agents = terminalRect{right.x + 1, contentY, iw, content}
 			// The feed-only renderer clears pane-local hits. Keep the separate
@@ -483,7 +496,8 @@ func (u *terminalUI) nativeStatus() string {
 	case u.focus == 2:
 		hints = terminalHints{{"j/k", "scroll", 0}, {"n/p", "agent", 0}, {"o", "only", 0}, {"esc", "bottom", 0}, {"enter", "open", 0}}
 	case u.focus == 4:
-		hints = terminalHints{{"j/k", "select", 0}, {"enter", "copy path", 0}, {"space", "expand", 0}, {"d", "details", 0}, {"n", "namespace", 0}, {"esc", "Main", 0}}
+		// Expansion, details and namespace keys are in the pane title.
+		hints = terminalHints{{"j/k", "select", 0}, {"enter", "open", 0}, {"c", "copy path", 0}, {"esc", "Main", 0}}
 	case u.focus == 3:
 		hints = terminalHints{{"j/k", "agent", 0}, {"o", "only", 0}, {"esc", "back", 0}}
 	}

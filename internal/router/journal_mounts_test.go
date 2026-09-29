@@ -186,7 +186,7 @@ func TestNativeJournalMountedAgentEnterOpensChildActivity(t *testing.T) {
 	t.Cleanup(u.shell.diff.close)
 	shell := u.shell
 	shell.focus, shell.journalOpen = 4, true
-	u.journalView.render(&j, 80, 8)
+	u.journalView.render(&j, 80, 8, false, true, u.view.painter.Theme)
 	index := slices.IndexFunc(u.journalView.rows, func(row journalPaneRow) bool { return strings.Contains(row.node.Path, "@child") })
 	if index < 0 {
 		t.Fatal("mount row not visible")
