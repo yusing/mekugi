@@ -19,6 +19,10 @@ import (
 type outputDialog struct {
 	view      *liveActivityView // Supplies the painter's theme and colors.
 	pages     []activityui.Block
+	origins   []activityui.Block // Original invocation members, including merged feed rows.
+	states    map[outputPageKey]outputPageState
+	active    outputPageKey
+	pageReady bool
 	page      int
 	top       int  // First body row shown.
 	follow    bool // Live output keeps its latest rows in view.
@@ -26,6 +30,7 @@ type outputDialog struct {
 	rect      terminalRect
 	body      []string // Last visible body, used as the drag snapshot.
 	indents   []int
+	tabs      []outputTab
 	selection *terminalSelection
 
 	typing bool   // The footer reads a search query.
@@ -38,6 +43,22 @@ type outputDialog struct {
 	laid    activityui.DialogPage
 	laidKey outputDialogKey
 	starts  []int // Each line's first body row, then the total row count.
+}
+
+type outputPageKey struct {
+	output *activityui.Output
+	source uint64
+	index  int // Distinguishes output-less pages such as skipped commands.
+}
+
+type outputPageState struct {
+	top, match             int
+	follow, typing, missed bool
+	draft, query           string
+}
+
+type outputTab struct {
+	page, from, to int
 }
 
 type outputDialogKey struct {
@@ -66,9 +87,93 @@ func (u *terminalUI) openOutput(view *liveActivityView, snippet liveActivitySnip
 		pages = block.Members
 	}
 	u.selection = nil
-	u.output = &outputDialog{view: view, pages: pages, match: -1}
-	u.output.showPage(0)
+	u.output = &outputDialog{view: view, origins: pages, pages: pages, match: -1}
+	u.output.refreshPages()
+	page := 0
+	if len(block.Members) == 0 && block.Output != nil {
+		for i, command := range u.output.pages {
+			if command.Output == block.Output {
+				page = i
+				break
+			}
+		}
+	}
+	u.output.showPage(page)
 	return true
+}
+
+// commandOutputPages uses only observed segment boundaries, never output text.
+func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block {
+	if source == 0 {
+		return nil
+	}
+	for _, entry := range v.entries {
+		if entry.Seq != source || entry.native == nil {
+			continue
+		}
+		// PTY, restored and lossy reports have no trustworthy output split.
+		separate := len(entry.native.segments) > 0 && len(entry.outputTail) == 0
+		for _, segment := range entry.native.segments {
+			if !segment.skipped && segment.output == nil {
+				separate = false
+			}
+		}
+		if !separate {
+			operations := toolOperationBlocks(entry.Text)
+			if len(entry.native.segments) < 2 && len(operations) < 2 && (len(operations) == 0 || len(operations[0].Reads) < 2) {
+				return nil
+			}
+			return []activityui.Block{{Source: source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: entry.native.command, Lang: "bash", Output: entry.native.output, Tail: entry.outputTail, TailOmitted: entry.outputOmit, Running: entry.native.running, Body: "Per-command output boundaries were not retained for this invocation."}}
+		}
+		var pages []activityui.Block
+		for _, block := range commandSegmentBlocks(entry) {
+			if block.Segment {
+				block.Source = source
+				pages = append(pages, block)
+			}
+		}
+		return pages
+	}
+	return nil
+}
+
+func (d *outputDialog) chrome() int {
+	if len(d.pages) > 1 {
+		return activityui.DialogChrome + 1
+	}
+	return activityui.DialogChrome
+}
+
+// tabRow keeps the active command and its nearest neighbors visible.
+func (d *outputDialog) tabRow(width int) string {
+	d.tabs = nil
+	if len(d.pages) < 2 {
+		return ""
+	}
+	count := min(len(d.pages), max(1, width/24))
+	first := max(0, min(d.page-count/2, len(d.pages)-count))
+	cell := max(1, width/count)
+	var out strings.Builder
+	for i := first; i < first+count; i++ {
+		block := d.pages[i]
+		label := block.Verb
+		if len(block.Reads) == 1 {
+			label += " " + block.Reads[0].Path
+		} else if block.Code != "" {
+			label += " " + strings.SplitN(block.Code, "\n", 2)[0]
+		}
+		label = fmt.Sprintf(" %d %s ", i+1, label)
+		label = ansi.Truncate(label, cell, "…")
+		label += strings.Repeat(" ", max(0, cell-ansi.StringWidth(label)))
+		if i == d.page {
+			label = d.view.painter.Theme.Accent() + "\x1b[7m" + label + activityui.Reset
+		} else {
+			label = activityui.Dim + label + activityui.Undim
+		}
+		d.tabs = append(d.tabs, outputTab{i, (i - first) * cell, (i - first + 1) * cell})
+		out.WriteString(label)
+	}
+	return out.String()
 }
 
 // openRequested opens an operation the view's pointer handling clicked.
@@ -79,15 +184,65 @@ func (u *terminalUI) openRequested(view *liveActivityView) {
 	}
 }
 
-func (d *outputDialog) showPage(page int) {
-	d.page, d.top, d.match, d.missed = page, 0, -1, false
+func (d *outputDialog) pageKey(page int) outputPageKey {
 	block := d.pages[page]
-	// Live output opens at its latest rows; settled output from its start.
-	d.follow = block.Running || block.Output != nil && !block.Output.View().Done
+	if block.Output != nil {
+		return outputPageKey{output: block.Output}
+	}
+	return outputPageKey{source: block.Source, index: page}
+}
+
+func (d *outputDialog) showPage(page int) {
+	if d.states == nil {
+		d.states = make(map[outputPageKey]outputPageState)
+	}
+	if d.pageReady {
+		d.states[d.active] = outputPageState{d.top, d.match, d.follow, d.typing, d.missed, d.draft, d.query}
+	}
+	d.page, d.active, d.pageReady = page, d.pageKey(page), true
+	state, exists := d.states[d.active]
+	if !exists {
+		block := d.pages[page]
+		state.match = -1
+		state.follow = block.Running || block.Output != nil && !block.Output.View().Done
+	}
+	d.top, d.match, d.follow, d.typing, d.missed, d.draft, d.query = state.top, state.match, state.follow, state.typing, state.missed, state.draft, state.query
+}
+
+func (d *outputDialog) refreshPages() {
+	if len(d.origins) == 0 {
+		return
+	}
+	var pages []activityui.Block
+	seen := make(map[uint64]bool)
+	for _, origin := range d.origins {
+		if origin.Source != 0 && seen[origin.Source] {
+			continue
+		}
+		commands := d.view.commandOutputPages(origin.Source)
+		if len(commands) == 0 {
+			pages = append(pages, origin)
+		} else {
+			seen[origin.Source] = true
+			pages = append(pages, commands...)
+		}
+	}
+	d.pages = pages
+	page := min(d.page, len(pages)-1)
+	for i := range pages {
+		if d.pageKey(i) == d.active {
+			page = i
+			break
+		}
+	}
+	if d.pageReady {
+		d.showPage(page)
+	}
 }
 
 // layout rebuilds the page for a body width when anything it shows changed.
 func (d *outputDialog) layout(width int) {
+	d.refreshPages()
 	block := d.pages[d.page]
 	key := outputDialogKey{page: d.page, width: width, output: block.Output, theme: d.view.painter.Theme}
 	if block.Output != nil {
@@ -223,7 +378,7 @@ func (u *terminalUI) outputKey(key string) {
 // press outside closes it.
 func (u *terminalUI) outputMouse(button, x, y int, release bool) {
 	d := u.output
-	body := terminalRect{d.rect.x + 2, d.rect.y + 3, d.rect.w - 4, d.rows}
+	body := terminalRect{d.rect.x + 2, d.rect.y + d.chrome() - 1, d.rect.w - 4, d.rows}
 	if selected := d.selection; selected != nil && selected.dragging && (release || button&32 != 0 && button&3 == 0) {
 		selected.move(x-body.x, y-body.y, release)
 		if selected.moved {
@@ -246,6 +401,14 @@ func (u *terminalUI) outputMouse(button, x, y int, release bool) {
 		d.scroll(outputDialogWheelRows)
 	case 0:
 		d.selection = nil
+		if len(d.pages) > 1 && y == d.rect.y+2 {
+			for _, tab := range d.tabs {
+				if x-d.rect.x-2 >= tab.from && x-d.rect.x-2 < tab.to {
+					d.showPage(tab.page)
+					return
+				}
+			}
+		}
 		if !d.rect.contains(x, y) {
 			u.output = nil
 		} else if body.contains(x, y) && len(d.body) > 0 {
@@ -263,7 +426,7 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 	if width >= outputDialogFullWidth {
 		w, h = int(float64(width)*outputDialogShare), int(float64(height)*outputDialogShare)
 	}
-	if w < 12 || h < activityui.DialogChrome+1 {
+	if w < 12 || h < d.chrome()+1 {
 		d.rect, d.selection = terminalRect{}, nil
 		return
 	}
@@ -274,12 +437,12 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 		d.layout(w - 4)
 	}
 	if width >= outputDialogFullWidth {
-		h = min(h, max(activityui.DialogChrome+3, activityui.DialogChrome+d.total()))
+		h = min(h, max(d.chrome()+3, d.chrome()+d.total()))
 	}
 	if d.selection != nil && d.rect != (terminalRect{(width - w) / 2, (height - h) / 2, w, h}) {
 		d.selection = nil
 	}
-	d.rows = h - activityui.DialogChrome
+	d.rows = h - d.chrome()
 	if d.follow {
 		d.top = d.bottom()
 	}
@@ -309,7 +472,7 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 			body[i] = selected.row(i)
 		}
 	}
-	frame := activityui.DialogFrame{Page: d.laid, Paused: d.laid.Live && !d.follow, Rows: body, Top: d.top, Total: d.total(), Footer: d.footer(w)}
+	frame := activityui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.laid, Paused: d.laid.Live && !d.follow, Rows: body, Top: d.top, Total: d.total(), Footer: d.footer(w)}
 	if len(d.pages) > 1 {
 		frame.Position = fmt.Sprintf("%d / %d", d.page+1, len(d.pages))
 	}
@@ -363,7 +526,7 @@ func (d *outputDialog) footer(width int) string {
 	}
 	keys := []string{"↑↓ PgUp/PgDn g/G scroll"}
 	if len(d.pages) > 1 {
-		keys = append(keys, "←→ prev/next result")
+		keys = append(keys, "←→ command")
 	}
 	keys = append(keys, "/ find")
 	if d.query != "" {
@@ -379,6 +542,9 @@ func (d *outputDialog) footer(width int) string {
 	}
 	if ansi.StringWidth(footer) > width-6 {
 		footer = dim + "↑↓ scroll · / find · y copy · esc" + undim
+		if len(d.pages) > 1 {
+			footer = dim + "←→ command · ↑↓ scroll · y copy · esc" + undim
+		}
 	}
 	return footer
 }

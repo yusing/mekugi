@@ -387,3 +387,117 @@ func TestOutputDialogTrackedViewDrainsRetainedOutput(t *testing.T) {
 		t.Fatal("pending output not drained")
 	}
 }
+
+func TestOutputDialogCommandTabs(t *testing.T) {
+	retention := new(activityui.Retention)
+	first, second := retention.New(), retention.New()
+	first.Write("package main\n\n")
+	first.Finish(nil, new(0))
+	second.Write("main.go:12:return 42\n")
+	view := newLiveActivityView()
+	entry := activityPaneEntry{Seq: 10, Agent: "Main", Kind: "tool", Text: "Read `main.go`\n\nSearch `return` in `main.go`", native: &liveActivityNativeItem{segments: []commandSegment{
+		{text: "Read `main.go`", output: first},
+		{text: "Search `return` in `main.go`", output: second, running: true},
+	}}}
+	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+	feed := view.renderFeed(90, 30)
+	u := &terminalUI{}
+	for _, snippet := range feed.snippets {
+		if u.openOutput(view, snippet) {
+			break
+		}
+	}
+	if u.output == nil || len(u.output.origins) != 1 || u.output.origins[0].Source != 10 {
+		t.Fatal("click did not open command pages")
+	}
+	frame := drawOutputDialog(u)
+	if !strings.Contains(frame, "1 Read") || !strings.Contains(frame, "2 Search") || strings.Contains(frame, "return 42") {
+		t.Fatalf("wrong command tabs or mixed output: %s", frame)
+	}
+	if u.output.laid.Text != "package main" || u.output.laid.Lines[0].Text == "package main" {
+		t.Fatalf("read tab missing syntax or text: %+v", u.output.laid)
+	}
+	tab := u.output.tabs[1]
+	u.outputMouse(0, u.output.rect.x+2+tab.from, u.output.rect.y+2, false)
+	drawOutputDialog(u)
+	if u.output.page != 1 || u.output.laid.Text != "main.go:12:return 42" {
+		t.Fatalf("tab click did not select command: %+v", u.output.laid)
+	}
+	third := retention.New()
+	third.Write("third only\n")
+	third.Finish(nil, new(0))
+	view.entries[0].native.segments = append(view.entries[0].native.segments, commandSegment{text: "Run `echo third`", output: third})
+	drawOutputDialog(u)
+	u.outputKey("\x1b[C")
+	drawOutputDialog(u)
+	if len(u.output.pages) != 3 || u.output.laid.Text != "third only" {
+		t.Fatalf("late command missing or mixed: %+v", u.output.laid)
+	}
+	// A lossy report must replace the tabs with the authoritative combined buffer.
+	combined := retention.New()
+	combined.Write("first\nsecond\nthird\n")
+	combined.Finish(nil, new(1))
+	view.entries[0].native.output = combined
+	view.entries[0].outputTail = []string{"first", "second", "third"}
+	frame = drawOutputDialog(u)
+	if len(u.output.pages) != 1 || !strings.Contains(frame, "combined output") || u.output.laid.Text != "first\nsecond\nthird" || !strings.Contains(frame, "exit 1") {
+		t.Fatalf("lossy report falsely attributed combined output: %s", frame)
+	}
+
+}
+
+func TestOutputDialogMergedTrackedReadsKeepAllInvocations(t *testing.T) {
+	view := newLiveActivityView()
+	retention := new(activityui.Retention)
+	for i, path := range []string{"first.go", "second.py"} {
+		output := retention.New()
+		output.Write(path + " only\n")
+		output.Finish(nil, new(0))
+		text := "Read `" + path + "`"
+		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: uint64(i + 1), Agent: "Main", Kind: "tool", Text: text, native: &liveActivityNativeItem{thread: "main", item: path, segments: []commandSegment{{text: text, output: output}}}}}})
+	}
+	feed := view.renderFeed(90, 30)
+	u := &terminalUI{}
+	for _, snippet := range feed.snippets {
+		if u.openOutput(view, snippet) {
+			break
+		}
+	}
+	if u.output == nil || len(u.output.pages) != 2 {
+		t.Fatal("merged row lost an invocation")
+	}
+	for i, path := range []string{"first.go", "second.py"} {
+		u.output.showPage(i)
+		drawOutputDialog(u)
+		if u.output.laid.Text != path+" only" {
+			t.Fatalf("page %d: %q", i, u.output.laid.Text)
+		}
+	}
+}
+
+func TestOutputDialogTabsKeepNavigationState(t *testing.T) {
+	retention := new(activityui.Retention)
+	first, second := retention.New(), retention.New()
+	first.Write(strings.Repeat("first row\n", 50))
+	first.Finish(nil, new(0))
+	second.Write("second row\n")
+	second.Finish(nil, new(0))
+	u := dialogForOutput(first)
+	u.output.pages = append(u.output.pages, activityui.Block{Verb: "Run", Output: second})
+	drawOutputDialog(u)
+	u.outputKey("\x1b[6~")
+	top := u.output.top
+	u.outputKey("/")
+	u.outputKey("first")
+	tab := u.output.tabs[1]
+	u.outputMouse(0, u.output.rect.x+2+tab.from, u.output.rect.y+2, false)
+	drawOutputDialog(u)
+	if u.output.top != 0 || u.output.typing || u.output.draft != "" {
+		t.Fatal("new tab borrowed navigation state")
+	}
+	u.outputKey("\x1b[D")
+	drawOutputDialog(u)
+	if top == 0 || u.output.top != top || !u.output.typing || u.output.draft != "first" {
+		t.Fatal("return lost tab navigation state")
+	}
+}

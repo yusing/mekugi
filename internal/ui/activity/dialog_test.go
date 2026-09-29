@@ -200,3 +200,19 @@ func TestDialogSourceTitleAndBodySyntax(t *testing.T) {
 		}
 	}
 }
+
+func TestDialogSearchTitleAndResultSyntax(t *testing.T) {
+	p := Painter{Theme: livediff.DarkTheme}
+	for _, line := range []string{"main.go:12:return 42", "12:return 42"} {
+		page := p.DialogPage(Block{Verb: "Search", Label: "`return` in `main.go`", Tail: []string{line}}, 80)
+		if !strings.Contains(page.Title, p.Theme.Accent()+"return") {
+			t.Fatalf("search title lost pattern color: %q", page.Title)
+		}
+		if len(page.Lines) != 1 || ansi.Strip(page.Lines[0].Text) != line || page.Text != line {
+			t.Fatalf("search result changed: %+v", page)
+		}
+		if !strings.Contains(page.Lines[0].Text, p.Highlight("go", "return 42\n")[0]) || page.Lines[0].Text == line {
+			t.Fatalf("search result lost code colors: %q", page.Lines[0].Text)
+		}
+	}
+}

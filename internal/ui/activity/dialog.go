@@ -2,6 +2,7 @@ package activity
 
 import (
 	"context"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -65,6 +66,9 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		detail = append(detail, "exit 0")
 	}
 	page.Detail = Dim + strings.Join(detail, " · ") + Undim
+	if block.Skipped {
+		page.Detail = Dim + "skipped" + Undim
+	}
 	add := func(line DialogLine) {
 		page.Lines = append(page.Lines, line)
 		if line.Number > 0 {
@@ -141,11 +145,43 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 				colored = lines
 			}
 		}
+	} else if block.Verb == "Search" && len(content) <= dialogHighlightBytes {
+		colored = make([]string, len(view.Lines))
+		for i, line := range view.Lines {
+			colored[i] = p.dialogSearchLine(block, line)
+		}
 	}
 	for i, line := range colored {
 		add(DialogLine{Number: first + i, Gutter: gutter, Text: line})
 	}
 	return page
+}
+
+// Search rows supply their own file type; never color them as the shell
+// program that produced them. Keep prefixes and copied bytes intact.
+var dialogSearchRow = regexp.MustCompile(`^(.+?):([0-9]+):(.*)$`)
+
+func (p *Painter) dialogSearchLine(block Block, line string) string {
+	parts := dialogSearchRow.FindStringSubmatch(line)
+	if parts == nil {
+		// rg omits the filename when exactly one file was requested.
+		_, target, ok := strings.Cut(block.Label, " in ")
+		path, end, valid := liveActivityCodeSpan(target, 0)
+		number, content, numbered := strings.Cut(line, ":")
+		n, err := strconv.Atoi(number)
+		if !ok || !valid || end != len(target) || !numbered || err != nil || n < 1 {
+			return line
+		}
+		if rows, err := p.syntax.ColorSource(context.Background(), p.Theme, path, content+"\n"); err == nil && len(rows) == 1 {
+			content = rows[0]
+		}
+		return Dim + number + ":" + Undim + content
+	}
+	content := parts[3]
+	if rows, err := p.syntax.ColorSource(context.Background(), p.Theme, parts[1], content+"\n"); err == nil && len(rows) == 1 {
+		content = rows[0]
+	}
+	return Path(parts[1]) + Dim + ":" + parts[2] + ":" + Undim + content
 }
 
 // dialogLanguage uses the same source language for the title and body.
@@ -170,6 +206,8 @@ func (p *Painter) dialogHighlight(block Block, source string) []string {
 // dialogTarget styles what the operation acted on.
 func dialogTarget(p *Painter, block Block) string {
 	switch {
+	case block.BatchExit:
+		return p.Label(block.Verb, block.Label)
 	case block.Kind == "reads":
 		var paths []string
 		for _, read := range block.Reads {
@@ -185,7 +223,7 @@ func dialogTarget(p *Painter, block Block) string {
 		}
 		return first
 	}
-	return strings.TrimSpace(ansi.Strip(p.Label(block.Verb, block.Label)))
+	return strings.TrimSpace(p.Label(block.Verb, block.Label))
 }
 
 // textWidth is the width numbered lines wrap within.
@@ -252,6 +290,7 @@ func (d DialogPage) Rows(i, width int) []string {
 
 // DialogFrame is one frame of the output dialog, before layout.
 type DialogFrame struct {
+	Tabs     string // Styled command selector, empty for a single result.
 	Page     DialogPage
 	Position string   // Page position among a merged row's invocations, such as "2 / 4".
 	Paused   bool     // Live output the reader scrolled away from.
@@ -300,8 +339,13 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 		}
 		return edge("│") + " " + text + Reset + strings.Repeat(" ", max(0, inner-ansi.StringWidth(text))) + " " + closing
 	}
-	lines = append(lines, row(f.Page.Detail, false), edge("├"+strings.Repeat("─", width-2)+"┤"))
+	lines = append(lines, row(f.Page.Detail, false))
 	body := height - DialogChrome
+	if f.Tabs != "" {
+		lines = append(lines, row(f.Tabs, false))
+		body--
+	}
+	lines = append(lines, edge("├"+strings.Repeat("─", width-2)+"┤"))
 	thumbFrom, thumbTo := 0, -1
 	if f.Total > body && body > 0 {
 		size := max(1, body*body/f.Total)

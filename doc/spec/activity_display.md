@@ -127,7 +127,15 @@ succeeds. Being what the agent read rather than a result to watch, it takes no
 row of its own: a muted `(N lines)` follows the read's target, and a row too
 narrow for it shortens the path rather than the count. Restored history shows zero-exit output
 already collapsed. Output arriving after completion is ignored.
-The output dialog captures keys and pointer events above both panes. It takes
+The output dialog captures keys and pointer events above both panes.
+Observed shell segments appear as command tabs, selectable by click or Left/Right.
+Each tab owns its retained output, status, scrolling, search and copy target;
+newly started segments become available while the dialog is open. Read output
+uses the file's syntax colors; numbered search matches color the path, line
+number and matched source separately. Search titles retain pattern/path colors.
+When per-command boundaries were not retained (including restored history,
+terminal-only or lossy reports), the dialog labels the host buffer as combined
+output instead of attributing it to the last command. It never guesses boundaries. It takes
 at most 90% of each dimension, or the available screen below 60 columns.
 `Esc`/`q` or a click outside closes it. `↑`/`↓`, `j`/`k`, `PgUp`/`PgDn`,
 `b`/space and `g`/`G` (Home/End) scroll; the wheel scrolls only the dialog.
