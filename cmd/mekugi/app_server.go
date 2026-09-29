@@ -27,6 +27,15 @@ func appServerArgs(args []string) ([]string, string, error) {
 			resume = "--last"
 		case "--yolo", "--dangerously-bypass-approvals-and-sandbox":
 			yolo = true
+		case "--enable", "--disable":
+			if i+1 == len(args) || args[i+1] == "" || strings.HasPrefix(args[i+1], "-") {
+				return nil, "", fmt.Errorf("%s requires a feature", arg)
+			}
+			i++
+			// Keep host validation and toggle precedence, rather than translating
+			// these into config overrides. Codex owns instant-interrupt execution.
+			// Source: codex-rs/cli/src/main.rs:933:978@68e1a421 FeatureToggles
+			out = append(out, arg, args[i])
 		case "-c", "--config", "-m", "--model":
 			if i+1 == len(args) {
 				return nil, "", fmt.Errorf("%s requires a value", arg)
@@ -38,7 +47,12 @@ func appServerArgs(args []string) ([]string, string, error) {
 			}
 			out = append(out, "-c", value)
 		default:
-			if after, ok := strings.CutPrefix(arg, "--config="); ok {
+			if flag, feature, ok := strings.Cut(arg, "="); ok && (flag == "--enable" || flag == "--disable") {
+				if feature == "" {
+					return nil, "", fmt.Errorf("%s requires a feature", flag)
+				}
+				out = append(out, arg)
+			} else if after, ok := strings.CutPrefix(arg, "--config="); ok {
 				out = append(out, "-c", after)
 			} else if flag, model, ok := strings.Cut(arg, "="); ok && (flag == "-m" || flag == "--model") {
 				if model == "" {
@@ -48,7 +62,7 @@ func appServerArgs(args []string) ([]string, string, error) {
 			} else if resumeCommand && resume == "" && !strings.HasPrefix(arg, "-") && strings.TrimSpace(arg) != "" {
 				resume = arg
 			} else {
-				return nil, "", fmt.Errorf("native UI does not yet support %q; use --yolo, -m, -c, and resume THREAD_ID or resume --last, and enter prompts in Main", arg)
+				return nil, "", fmt.Errorf("native UI does not yet support %q; use --yolo, -m, -c, --enable, --disable, and resume THREAD_ID or resume --last, and enter prompts in Main", arg)
 			}
 		}
 	}

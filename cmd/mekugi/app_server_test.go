@@ -2,6 +2,7 @@ package main
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -11,6 +12,53 @@ func TestAppServerArgs(t *testing.T) {
 		want := []string{"app-server", "-c", "features.test=true", "-c", "foo=42", "-c", `model="model-name"`, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`}
 		if err != nil || !slices.Equal(got, want) {
 			t.Fatalf("appServerArgs(%s) = %q, %v; want %q", yolo, got, err, want)
+		}
+	}
+}
+
+func TestAppServerInstantInterruptOptIn(t *testing.T) {
+	for _, options := range [][]string{
+		nil,
+		{"--enable", "instant_interrupt"},
+		{"--enable=instant_interrupt"},
+		{"--disable", "instant_interrupt"},
+		{"--disable=instant_interrupt"},
+		{"-c", "features.instant_interrupt=true"},
+		{"--config=features.instant_interrupt=false"},
+		{"--enable", "instant_interrupt", "--disable", "instant_interrupt", "--enable", "code_mode"},
+	} {
+		for _, resume := range [][]string{nil, {"resume", "thread-id"}, {"resume", "--last"}} {
+			input := append([]string{"--yolo"}, options...)
+			input = append(input, resume...)
+			got, _, err := appServerArgs(input)
+			wantOptions := options
+			if slices.Equal(options, []string{"--config=features.instant_interrupt=false"}) {
+				wantOptions = []string{"-c", "features.instant_interrupt=false"}
+			}
+			want := append([]string{"app-server"}, wantOptions...)
+			want = append(want, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`)
+			if err != nil || !slices.Equal(got, want) {
+				t.Fatalf("appServerArgs(%q) = %q, %v; want %q", input, got, err, want)
+			}
+			// The final wrapper must neither override the opt-in nor enable it
+			// by default, including resumed launches.
+			wrapped := codexArgs("http://127.0.0.1:12345/v1", got, false, false)
+			if !slices.Equal(wrapped[:len(want)], want) {
+				t.Fatalf("wrapper changed host options: %q", wrapped)
+			}
+			for _, arg := range wrapped[len(want):] {
+				if strings.Contains(arg, "instant_interrupt") {
+					t.Fatalf("wrapper imposed instant_interrupt: %q", wrapped)
+				}
+			}
+		}
+	}
+}
+
+func TestAppServerFeatureToggleMissingValue(t *testing.T) {
+	for _, options := range [][]string{{"--enable"}, {"--disable"}, {"--enable="}, {"--disable="}, {"--enable", ""}, {"--disable", "--yolo"}} {
+		if _, _, err := appServerArgs(append([]string{"--yolo"}, options...)); err == nil {
+			t.Fatalf("accepted missing feature: %q", options)
 		}
 	}
 }

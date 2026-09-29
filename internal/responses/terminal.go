@@ -15,6 +15,7 @@ const (
 	TerminalCompleted
 	TerminalSteered
 	TerminalFailed
+	TerminalInterrupted
 )
 
 func (s TerminalState) String() string {
@@ -29,13 +30,15 @@ func (s TerminalState) String() string {
 		return "steered"
 	case TerminalFailed:
 		return "failed"
+	case TerminalInterrupted:
+		return "interrupted"
 	default:
 		return "unknown"
 	}
 }
 
 func (s TerminalState) Terminal() bool {
-	return s == TerminalCompleted || s == TerminalSteered || s == TerminalFailed
+	return s == TerminalCompleted || s == TerminalSteered || s == TerminalInterrupted || s == TerminalFailed
 }
 
 // Status returns the response status named by an event. Callers must establish
@@ -43,8 +46,8 @@ func (s TerminalState) Terminal() bool {
 func (k Kind) Status() string { return strings.TrimPrefix(string(k), "response.") }
 
 // Source: internal/router/client.go:826:899. JSON status and SSE event kind have
-// different authority. A steered SSE terminal is accepted, but not successful.
-// Keep malformed nested incomplete details non-steered, as at the original owner.
+// different authority. Steered and interrupted SSE terminals are accepted, but
+// not successful. Malformed nested incomplete details remain failures.
 func ObserveTerminal(body []byte, stream bool) TerminalState {
 	if stream {
 		payload := strings.TrimSpace(string(body))
@@ -91,8 +94,15 @@ func ObserveTerminal(body []byte, stream bool) TerminalState {
 				} `json:"incomplete_details"`
 			} `json:"response"`
 		}
-		if stream && json.Unmarshal(body, &event) == nil && event.Response.Incomplete.Reason == "steered" {
-			return TerminalSteered
+		if stream && json.Unmarshal(body, &event) == nil {
+			switch event.Response.Incomplete.Reason {
+			case "steered":
+				return TerminalSteered
+			case "interrupted":
+				// Source: codex-rs/core/tests/suite/pending_input.rs:1137:1217@68e1a421
+				// Instant interruption drains a reusable response, not a failure.
+				return TerminalInterrupted
+			}
 		}
 		return TerminalFailed
 	case "failed":
@@ -121,6 +131,9 @@ func MergeTerminal(current, observed TerminalState) TerminalState {
 	}
 	if current == TerminalSteered || observed == TerminalSteered {
 		return TerminalSteered
+	}
+	if current == TerminalInterrupted || observed == TerminalInterrupted {
+		return TerminalInterrupted
 	}
 	if current == TerminalCompleted || observed == TerminalCompleted {
 		return TerminalCompleted

@@ -515,12 +515,13 @@ func isSSELine(line string) bool {
 type responseTerminalState = responses.TerminalState
 
 const (
-	responseTerminalUnknown   = responses.TerminalUnknown
-	responseTerminalInvalid   = responses.TerminalInvalid
-	responseTerminalPending   = responses.TerminalPending
-	responseTerminalCompleted = responses.TerminalCompleted
-	responseTerminalSteered   = responses.TerminalSteered
-	responseTerminalFailed    = responses.TerminalFailed
+	responseTerminalUnknown     = responses.TerminalUnknown
+	responseTerminalInvalid     = responses.TerminalInvalid
+	responseTerminalPending     = responses.TerminalPending
+	responseTerminalCompleted   = responses.TerminalCompleted
+	responseTerminalSteered     = responses.TerminalSteered
+	responseTerminalFailed      = responses.TerminalFailed
+	responseTerminalInterrupted = responses.TerminalInterrupted
 )
 
 func copyUpstreamBodyTransformed(writer io.Writer, response *http.Response, streamResponse bool, transformer responseTransformer, hooks *responseHooks) (responseTerminalState, error) {

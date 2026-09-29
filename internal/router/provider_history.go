@@ -174,7 +174,7 @@ func (e *webSocketExchange) observeProviderHistory(body []byte) error {
 	e.providerSuffix = nil
 	terminal := responseevents.ObserveTerminal(body, true)
 	if event.Response.ID == "" || !e.providerInput.confirmed ||
-		(terminal != responseevents.TerminalCompleted && terminal != responseevents.TerminalSteered) {
+		(terminal != responseevents.TerminalCompleted && terminal != responseevents.TerminalSteered && terminal != responseevents.TerminalInterrupted) {
 		return nil
 	}
 	state, err := e.providerInput.append(output)

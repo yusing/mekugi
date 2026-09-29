@@ -553,7 +553,8 @@ func (a *requestAttempt) deliver() (*requestContinuation, error) {
 		a.finalization.observation.outcome = requestOutcomeFailed
 		a.finalization.failurePhase = requestFailureTerminalValidation
 	case a.finalization.upstreamTerminalState == responseTerminalCompleted ||
-		a.finalization.upstreamTerminalState == responseTerminalSteered:
+		a.finalization.upstreamTerminalState == responseTerminalSteered ||
+		a.finalization.upstreamTerminalState == responseTerminalInterrupted:
 		a.finalization.observation.outcome = requestOutcomeCompleted
 		a.hooks.finish(a.finalization.completion())
 	case a.finalization.upstreamTerminalState == responseTerminalFailed:

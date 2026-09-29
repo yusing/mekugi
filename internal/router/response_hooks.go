@@ -96,7 +96,7 @@ func (h *responseHooks) observe(payload []byte, stream bool) error {
 	if event.Type == responses.OutputItemDone {
 		h.output.outputItemDone(event.Item)
 	}
-	if terminal := responses.ObserveTerminal(payload, true); terminal == responses.TerminalCompleted || terminal == responses.TerminalSteered {
+	if terminal := responses.ObserveTerminal(payload, true); terminal == responses.TerminalCompleted || terminal == responses.TerminalSteered || terminal == responses.TerminalInterrupted {
 		h.output.completedOutput(event.Response.Output)
 	}
 	return nil

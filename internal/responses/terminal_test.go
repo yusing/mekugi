@@ -11,6 +11,9 @@ func TestTerminalEvidence(t *testing.T) {
 		{`{"type":"response.completed","response":{"status":"failed"}}`, true, TerminalCompleted},
 		{`{"status":"failed"}`, false, TerminalFailed},
 		{`{"type":"response.incomplete","response":{"incomplete_details":{"reason":"steered"}}}`, true, TerminalSteered},
+		{`{"type":"response.incomplete","response":{"incomplete_details":{"reason":"interrupted"}}}`, true, TerminalInterrupted},
+		{`{"status":"incomplete","incomplete_details":{"reason":"interrupted"}}`, false, TerminalFailed},
+		{`{"type":"response.incomplete","response":{"incomplete_details":{"reason":"max_output_tokens"}}}`, true, TerminalFailed},
 		{`{"status":"incomplete","incomplete_details":{"reason":"steered"}}`, false, TerminalFailed},
 		{`{"type":"response.incomplete","response":{"incomplete_details":42}}`, true, TerminalFailed},
 		{`{"type":"codex.response.metadata"}`, true, TerminalUnknown},
@@ -33,10 +36,18 @@ func TestTerminalEvidence(t *testing.T) {
 	if !Kind(Error).EndsExchange() || Kind(Error).Terminal() || Kind("response.steer.pending").EndsExchange() || !Kind("response.steer.pending").Steering() {
 		t.Fatal("exchange, response and steering boundaries conflated")
 	}
-	for _, sticky := range []TerminalState{TerminalInvalid, TerminalFailed, TerminalSteered} {
+	for _, sticky := range []TerminalState{TerminalInvalid, TerminalFailed, TerminalSteered, TerminalInterrupted} {
 		if got := MergeTerminal(sticky, TerminalCompleted); got != sticky {
 			t.Fatalf("lost %v: %v", sticky, got)
 		}
+	}
+	for _, sticky := range []TerminalState{TerminalInvalid, TerminalFailed} {
+		if MergeTerminal(sticky, TerminalInterrupted) != sticky || MergeTerminal(TerminalInterrupted, sticky) != sticky {
+			t.Fatalf("interruption erased %v evidence", sticky)
+		}
+	}
+	if !TerminalInterrupted.Terminal() || TerminalInterrupted.String() != "interrupted" {
+		t.Fatal("interruption is not a distinct terminal")
 	}
 }
 

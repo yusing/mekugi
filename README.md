@@ -255,7 +255,17 @@ The composer works like Codex's: input history and editing keys, `@` file and
 `$` skill pickers, `/skills`, Ctrl+V image paste, Ctrl+G to edit in `$EDITOR`,
 Enter to steer and Tab to queue during a turn, Esc or Ctrl-C to interrupt,
 Shift+Up/Down for reasoning, `/model`, and `/copy`. Type `?` in an empty
-composer for the full shortcut list. Mekugi differs in these ways:
+composer for the full shortcut list.
+
+With Codex 0.159.0, opt in to instant steering with
+`mekugi codex --yolo --enable instant_interrupt` (or
+`-c features.instant_interrupt=true`). New input can then steer during model
+responses and long-running Code Mode calls instead of waiting for them to finish.
+Running Code Mode cells continue in the background; steering does not terminate
+them. This is off by default; `--disable instant_interrupt` opts out. The same
+options work with `resume`.
+
+Mekugi differs in these ways:
 
 - **File contents attach.** `@!` also finds ignored files; neither picker lists
   VCS metadata such as `.git`. Selected text files attach their contents when

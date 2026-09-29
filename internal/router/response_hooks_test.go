@@ -10,13 +10,15 @@ import (
 )
 
 func TestResponseHooksFinishOnce(t *testing.T) {
-	var results []requestCompletion
-	hooks := &responseHooks{onFinished: func(r requestCompletion) { results = append(results, r) }}
-	first := requestCompletion{outcome: requestOutcomeCompleted, terminal: responseTerminalSteered}
-	hooks.finish(first)
-	hooks.finish(requestCompletion{outcome: requestOutcomeCompleted, terminal: responseTerminalCompleted})
-	if len(results) != 1 || results[0] != first || results[0].succeeded() || !results[0].acceptsOutput() {
-		t.Fatalf("finish results = %#v", results)
+	for _, terminal := range []responseTerminalState{responseTerminalSteered, responseTerminalInterrupted} {
+		var results []requestCompletion
+		hooks := &responseHooks{onFinished: func(r requestCompletion) { results = append(results, r) }}
+		first := requestCompletion{outcome: requestOutcomeCompleted, terminal: terminal}
+		hooks.finish(first)
+		hooks.finish(requestCompletion{outcome: requestOutcomeCompleted, terminal: responseTerminalCompleted})
+		if len(results) != 1 || results[0] != first || results[0].succeeded() || !results[0].acceptsOutput() {
+			t.Fatalf("finish results = %#v", results)
+		}
 	}
 }
 

@@ -16,7 +16,7 @@ remain local to the active frontend.
 
 `mekugi codex` uses the native client of `codex app-server` for interactive
 terminal launches. Explicit `--yolo` remains required; without it startup rejects
-before launching Codex. There is no legacy UI selection or fallback. It maps explicit `--yolo`, model and config
+before launching Codex. There is no legacy UI selection or fallback. It maps explicit `--yolo`, model, config, and feature-toggle (`--enable` / `--disable`)
 arguments plus `resume THREAD_ID` or `resume --last`, and rejects other interactive arguments rather
 than ignoring them.
 Router readiness, provider catalogs, invocation overrides, native recovery hooks
@@ -512,6 +512,13 @@ Rejected submissions return to an empty composer with an error; if a later draft
 exists, the rejected command is saved separately in input history instead of
 turning that draft into executable shell text. Acknowledgements do
 not claim command completion. Removing `!` returns to normal compose mode.
+
+The host's opt-in `instant_interrupt` feature lets new input preempt model
+responses and yield long-running Code Mode calls without terminating their
+cells. Native launches forward feature toggles unchanged, including on resume;
+Codex owns validation, precedence, preemption, and continuation. The client uses
+the same `turn/steer` path whether the feature is enabled or disabled and never
+implements instant steering by aborting a turn or replaying a tool.
 
 Busy input follows Codex's composer queue. Enter while a turn runs steers it;
 Tab queues input for the next turn and, while idle, sends like Enter. Input that

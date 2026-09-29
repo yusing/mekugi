@@ -24,6 +24,13 @@ keeps reading after a steered `response.incomplete` or normal completion for an
 automatic successor. A pending tool-result continuation uses the same
 `previous_response_id` and does not resend accepted steering.
 
+Codex's opt-in instant interruption uses `response.interrupt` on the owning
+connection. The router forwards it unchanged while reading the active response,
+including `discard_partial_items`, and preserves the acknowledgement and
+item-interrupted events. An `interrupted` incomplete terminal drains that
+response without declaring successful model completion. Codex supplies the next
+`response.create`; the router neither fabricates a successor nor cancels tools.
+
 Startup metadata with `request_kind="prewarm"` and explicit `generate=false`
 is a non-generating transport handshake and does not require workspaces or a
 supported tool catalog. When Codex supplies a supported execution catalog, prewarm
@@ -51,7 +58,7 @@ Request preparation and response restoration retain stock tool identity,
 replay, and native execution behavior. Connection-local native history supplies ordinary
 projection and durable replay. Separately, the transport fingerprints the complete
 provider input plus raw completed output, reconciling streamed items with terminal
-snapshots before any client-facing transformation. Only a successful or steered
+snapshots before any client-facing transformation. Only a successful, steered, or interrupted
 provider terminal confirms that fingerprint. These fixed-size fingerprints are not
 filesystem authority and are not restored as live connection state after restart.
 
@@ -111,6 +118,8 @@ Acceptance:
    their existing meaning across responses.
 5. HTTP clients remain supported; a dropped active WebSocket fails without
    transparent replay, and lifecycle cancellation closes owned sockets.
+6. Instant interruption drains on the same socket, and a matching continuation
+   reuses the interrupted response ID without replaying prior input or tools.
 
 ### Provider WebSocket transport for HTTP clients
 
