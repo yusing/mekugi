@@ -301,6 +301,7 @@ type mekugiJournalState struct {
 	journalQuietFile        os.FileInfo
 	journalLiveBytes        int
 	journalNewCount         int
+	journalResponseID       string
 	journalChildResult      string
 	journalResultWindow     *journalResultWindow
 	journalFlushedCount     int

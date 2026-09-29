@@ -48,7 +48,7 @@ func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) er
 	var answer strings.Builder
 	var ids []string
 	for _, item := range output {
-		if !isSubstantiveAnswer(item) {
+		if !isSubstantiveAnswer(item) && !(isFinalAnswerMessage(item) && jsonString(item, "phase") == "final_answer" && strings.TrimSpace(commentaryMessageText(item)) == "") {
 			continue
 		}
 		t.journalNaturalFinalSeen = true
@@ -65,7 +65,26 @@ func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) er
 		answer.WriteString(commentaryMessageText(item))
 		ids = append(ids, jsonString(item, "id"))
 	}
-	if answer.Len() != 0 {
+	emptyOutcome := strings.TrimSpace(answer.String()) == "" || strings.EqualFold(strings.TrimSuffix(strings.TrimSpace(answer.String()), "."), "done")
+	if len(ids) != 0 && emptyOutcome {
+		tree, err := t.proxy.journals.treeAuthored(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID)
+		if err != nil {
+			return err
+		}
+		// Only a turn card stands in for an empty Outcome. A legacy flush has
+		// nothing to render, so it keeps the answer as the final message.
+		emptyOutcome = tree || t.nativeJournal() != nil
+	}
+	if len(ids) != 0 && emptyOutcome {
+		t.journalNaturalAnswerIDs = make(map[string]bool, len(ids))
+		for _, id := range ids {
+			t.journalNaturalAnswerIDs[id] = true
+		}
+		if sink := t.nativeJournal(); sink != nil {
+			sink.bindAnswer(ids, "@empty-outcome")
+		}
+	}
+	if strings.TrimSpace(answer.String()) != "" && !emptyOutcome {
 		value := answer.String()
 		if len(value)+len(t.journalQuestion) > maxJournalItemBytes {
 			return nil // The original provider answer remains visible.
@@ -77,7 +96,7 @@ func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) er
 		}
 		journalIDs, err := t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, "final:"+receipt, []journalMutation{mutation})
 		if err != nil {
-			if errors.Is(err, errJournalItemLimit) {
+			if errors.Is(err, errJournalItemLimit) || errors.Is(err, errJournalEventLimit) {
 				return nil // Preserve the original answer and its provider history.
 			}
 			return err

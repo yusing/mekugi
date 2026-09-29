@@ -18,6 +18,8 @@ type journalResultWindow struct {
 }
 
 type journalDelivery struct {
+	tree      bool
+	sequence  uint64
 	thread    string
 	revisions map[string]uint64
 	terminal  bool
@@ -190,11 +192,18 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 		}
 
 		text.WriteString(changes)
-		if text.Len() > maxJournalFlushBytes {
+		if journal.TreeAuthored {
+			t.journalChildResult = journalTurnCard(journal, journal.ResultSeq, true) + changes
+		} else {
+			t.journalChildResult = text.String()
+		}
+		if len(t.journalChildResult) > maxJournalFlushBytes {
 			t.ReleaseDelivery()
 			return nil, errors.New("child journal result exceeds terminal capacity")
 		}
-		t.journalChildResult = text.String()
+	}
+	if journal.TreeAuthored && !childTerminal {
+		return t.prepareTreeDelivery(journal, terminal)
 	}
 	for _, item := range journal.Items {
 		if item.ReportNow && !item.Reported && len(journalUpdateText(journal.Author, item.ID, journalItemText(item))) <= maxCommentaryPublicationBytes-t.journalLiveBytes {
@@ -214,7 +223,7 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 	emit := func(text string, revisions map[string]uint64, source string) {
 		id := commentaryMessageID("journal\x00" + t.directory + "\x00" + deliveryThread + "\x00" + source)
 		message := assistantCommentaryMessage(id, text)
-		prepared[id] = journalDelivery{thread: deliveryThread, revisions: revisions, terminal: terminal}
+		prepared[id] = journalDelivery{thread: deliveryThread, revisions: revisions, terminal: terminal, sequence: journal.Sequence}
 		traceSource := "report_now"
 		if terminal {
 			message["phase"] = mustMarshalJSON("final_answer")
@@ -350,6 +359,12 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 		if !ok {
 			continue
 		}
+		if delivery.tree {
+			if err := t.proxy.journals.acknowledgeTree(t.ctx, t.proxy.replayStore, t.directory, delivery.thread, delivery.sequence, delivery.terminal); err == nil {
+				delete(t.journalDeliveries, id)
+			}
+			continue
+		}
 		if err := t.proxy.journals.acknowledge(t.ctx, t.proxy.replayStore, t.directory, delivery.thread, delivery.revisions, delivery.terminal); err != nil {
 			continue
 		}
@@ -435,6 +450,9 @@ func (t *mekugiResponseTransform) decorateJournalJSON(payload []byte) ([]byte, e
 		return nil, err
 	}
 	terminal := jsonString(response, "status") == "completed" && t.journalTerminalReady()
+	if terminal {
+		t.journalResponseID = jsonString(response, "id")
+	}
 	messages, err := t.prepareJournalDelivery(terminal)
 	if err != nil {
 		return nil, err
@@ -479,6 +497,14 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 		return append(notices, events...), nil
 	}
 
+	if t.journalTerminal {
+		var envelope struct {
+			Response json.RawMessage `json:"response"`
+		}
+		if json.Unmarshal(original, &envelope) == nil {
+			t.journalResponseID = jsonResponseID(envelope.Response)
+		}
+	}
 	messages, err := t.prepareJournalDelivery(t.journalTerminal)
 	if err != nil {
 		return nil, err

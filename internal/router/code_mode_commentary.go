@@ -104,17 +104,26 @@ while (execution.session_id != null) {
 if (execution.exit_code !== 0) throw new Error("journal publication failed" + (output.trim() ? ": " + output.trim().slice(0, 16384) : ""));
 const publication = JSON.parse(output);
 if (publication.ok !== true || !Array.isArray(publication.items)) throw new Error("invalid journal publication result");
-if (!Array.isArray(mutation) && mutation.op === "list") {
+if (!Array.isArray(mutation) && (mutation.op === "list" || mutation.op === "read")) {
   items.push(...publication.items);
-  if (publication.next == null) return items;
+  if (publication.next == null) {
+    if (mutation.op === "list") return items;
+    const nodes = new Map(items.map(node => [node.path, node]));
+    const roots = [];
+    for (const node of items) {
+      const parent = nodes.get(node.path.slice(0, node.path.lastIndexOf("/")));
+      if (parent) parent.children.push(node); else roots.push(node);
+    }
+    return roots;
+  }
   if (!Number.isInteger(publication.next) || publication.next !== items.length || !/^[a-f0-9]{64}$/.test(publication.revision)) throw new Error("invalid journal list continuation");
   continuation = " " + publication.next + " " + publication.revision;
   continue;
 }
-if (publication.items.length !== (Array.isArray(mutation) ? mutation.length : 1) || publication.items.some(id => typeof id !== "string")) {
+if (publication.items.some(id => typeof id !== "string")) {
   throw new Error("invalid journal publication result");
 }
-return Array.isArray(mutation) ? publication.items : publication.items[0];
+return Array.isArray(mutation) || mutation.op === "plan" ? publication.items : publication.items[0];
 }
 })(` + argument + `))`
 	}

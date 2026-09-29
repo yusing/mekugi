@@ -36,15 +36,21 @@ Options apply only to commands whose Usage lists them.
 <!-- mekugi-frontends:end -->
 
 <instruction id="journal_tool">
-Milestones in this durable milestone journal survive compaction. Finish naturally with a concise final answer; the router renders it with the journal as a Question and Answer flush.
+The durable journal holds the plan, task states, established results, decisions, constraints and blockers. Record mutations inside the next useful exec with `await journal(...)`, or in a useful native tool's optional journal field. Do not make a separate tool call just to journal. Questions and direct replies remain conversational; do not duplicate journal facts in commentary or the final answer.
 
-Record milestones when established, not only at completion: distinct current findings, validation results, decisions, or blockers. Use journal mutations instead of commentary for milestone updates; set report_now when the user needs the update immediately. Do not duplicate the update in commentary. Plans, ongoing narration, superseded progress, and summaries of other agents are not milestones. Questions and direct conversational replies remain separate from milestone reporting.
+Code Mode API: `await journal(op)` or `await journal([op, ...])` applies an atomic batch. Paths use stable sibling ordinals (`/1`, `/1/2`), never titles or shifting array indices. A plan returns its created paths in order; other mutations return the affected path. Arrays return paths in operation order.
 
-Record mutations on a useful call, not as a separate journal call: each separate call costs another model request. Use the optional journal field on a useful ordinary tool call. In Code Mode, use the exec-local journal helper below inside the next useful exec. For example, after inspecting a test result, record the validated outcome alongside the next useful call. Mutations return router-assigned IDs; edit an existing item when its result is superseded.
+- `{op:"plan", under?:path, tasks:["Title", {p?:existingChildPath,title,state?,body?,tasks?:[...]}]}` creates pending tasks or updates listed children. Unlisted pending children become dropped; working and finished children remain.
+- `{op:"add", under?:path, kind?:"task"|"note"|"context", title, body?, state?, reason?, before?:siblingPath}` adds one node. Default kind is note. Context nodes hold durable constraints.
+- `{op:"set", p:path, title?,body?,state?,reason?}` updates a node. Task states are pending, working, done, blocked, dropped. Blocked and dropped require a reason. Reopen done/dropped with working. A done parent cannot have open descendants; complete parent and children in one atomic batch when appropriate.
+- `{op:"log", p?:taskPath, text}` records an established fact under the single working leaf, otherwise root. Several working leaves require an explicit path. Use notes for validation results and decisions, not ongoing narration.
+- `{op:"remove", p:path}` corrects a mistaken entry; retained history keeps a tombstone.
+- `{op:"read", p?:path, agent?:canonicalAgent, depth?:number}` returns a tree of nodes with paths, kinds, titles, bodies, task states, router timestamps and children. Omit agent for your journal; only proven ancestors and descendants are readable. Write only your own journal. Parents record integration decisions, not copies of child results.
 
-Code Mode journal API: `await journal(mutation)` returns an item ID; `await journal([mutation, ...])` applies an atomic batch and returns IDs in order. A mutation is `{op: "add" | "edit" | "delete", id?: string, text?: string, report_now?: boolean}`. Add requires nonblank text; edit requires id and nonblank text; delete requires id. For example: `const id = await journal({op: "add", text: "Tests passed"});` then `await journal({op: "edit", id, text: "Full suite passed"});`. Read with `await journal({op: "list"})` (optional `agent: string`), which returns an array of `{id, text, question?, author, reported, flushed}` items; omit agent for your own journal or select a proven ancestor or descendant by canonical path. List accepts only op and agent. Publication and read failures throw. Call `journal(...)` directly, not `tools.journal(...)`: it is a router-provided source helper, not a discoverable tool in ALL_TOOLS. The router converts it to an authenticated mjournal call through stock execution; do not construct or replay that internal call.
+Call `journal(...)` directly, not `tools.journal(...)`. The helper uses authenticated stock execution; do not construct its internal transport. Publication and read failures throw.
 
-Once the assigned work is complete and all required tool results have been inspected, finish with a final answer, not a journal call. Main flushes its unflushed items and a child returns its current journal to its native completion audience. Child completion automatically includes owned change ranges and aggregated numstat; do not collect them just to finish.
+After inspecting required results, finish naturally with an Outcome of one or two sentences answering the request or identifying a needed decision. The turn card already contains progress, tests and remaining tasks; do not recap them. If there is no additional Outcome, finish with exactly `Done.`. Child completion automatically includes its new journal events, owned change ranges and aggregated numstat; do not collect those just to finish.
+
 </instruction>
 
 <instruction id="journal_code_mode">
@@ -56,7 +62,7 @@ Once the assigned work is complete and all required tool results have been inspe
 </instruction>
 
 <instruction id="journal_mutations">
-Optional atomic journal mutations applied before this operation. report_now shows progress immediately.
+Optional atomic journal plan, add, set, log, or remove operations applied before this operation. Task paths are stable; notes record established facts.
 </instruction>
 <instruction id="report_issue">
 Report an observed Mekugi interaction problem as Markdown to the configured diagnose hooks.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"io"
@@ -21,7 +22,7 @@ import (
 )
 
 const (
-	maxJournalItems     = 256
+	maxJournalItems     = 512
 	maxJournalItemBytes = 16 << 10
 	// Terminal delivery is independent of the live progress budget. The extra
 	// space covers indentation of every content line, Q&A labels, item IDs,
@@ -35,28 +36,50 @@ const (
 
 // errJournalUnchanged skips publication after the locked durable read.
 var errJournalUnchanged = errors.New("journal unchanged")
+var errJournalEventLimit = errors.New("journal event capacity reached; retained notes and transitions cannot be discarded")
 var errJournalItemLimit = errors.New("journal item limit reached")
 
 type journalMutation struct {
-	Op               string  `json:"op"`
-	ID               string  `json:"id,omitempty"`
-	Text             *string `json:"text,omitempty"`
-	Answer           *bool   `json:"answer,omitempty"`
+	P                string           `json:"p,omitempty"`
+	Under            string           `json:"under,omitempty"`
+	Kind             string           `json:"kind,omitempty"`
+	Title            *string          `json:"title,omitempty"`
+	Body             *string          `json:"body,omitempty"`
+	State            *string          `json:"state,omitempty"`
+	Reason           *string          `json:"reason,omitempty"`
+	Before           string           `json:"before,omitempty"`
+	Reset            string           `json:"reset,omitempty"`
+	Tasks            []jsontext.Value `json:"tasks,omitempty"`
+	Op               string           `json:"op"`
+	ID               string           `json:"id,omitempty"`
+	Text             *string          `json:"text,omitempty"`
+	Answer           *bool            `json:"answer,omitempty"`
 	inferredQuestion string
 	ReportNow        bool `json:"report_now,omitzero"`
 }
 
 type journalItem struct {
-	TerminalOnly bool   `json:"terminal_only,omitzero"`
-	ID           string `json:"id"`
-	Text         string `json:"text"`
-	Question     string `json:"question,omitempty"`
-	Author       string `json:"author"`
-	Created      uint64 `json:"created"`
-	Updated      uint64 `json:"updated"`
-	ReportNow    bool   `json:"report_now"`
-	Reported     bool   `json:"reported"`
-	Flushed      bool   `json:"flushed"`
+	Path         string        `json:"path,omitempty"`
+	Kind         string        `json:"kind,omitempty"`
+	Title        string        `json:"title,omitempty"`
+	Body         string        `json:"body,omitempty"`
+	State        string        `json:"state,omitempty"`
+	Reason       string        `json:"reason,omitempty"`
+	Agent        string        `json:"agent,omitempty"`
+	CreatedAt    string        `json:"created_at,omitempty"`
+	UpdatedAt    string        `json:"updated_at,omitempty"`
+	Started      *journalStamp `json:"started,omitempty"`
+	Finished     *journalStamp `json:"finished,omitempty"`
+	TerminalOnly bool          `json:"terminal_only,omitzero"`
+	ID           string        `json:"id"`
+	Text         string        `json:"text"`
+	Question     string        `json:"question,omitempty"`
+	Author       string        `json:"author"`
+	Created      uint64        `json:"created"`
+	Updated      uint64        `json:"updated"`
+	ReportNow    bool          `json:"report_now"`
+	Reported     bool          `json:"reported"`
+	Flushed      bool          `json:"flushed"`
 	// A later silent edit does not erase the fact that the user saw this ID.
 	EverReported bool `json:"ever_reported,omitzero"`
 }
@@ -76,6 +99,14 @@ type journalSpawnRole struct {
 }
 
 type threadJournal struct {
+	LegacyLive         map[uint64]bool             `json:"legacy_live,omitempty"`
+	LegacyFlush        map[uint64]bool             `json:"legacy_flush,omitempty"`
+	TreeAuthored       bool                        `json:"tree_authored,omitzero"`
+	Events             []journalEvent              `json:"events,omitempty"`
+	NextOrdinal        map[string]uint64           `json:"next_ordinal,omitempty"`
+	SliceParents       map[string]bool             `json:"slice_parents,omitempty"`
+	LiveSeq            uint64                      `json:"live_seq,omitzero"`
+	FlushSeq           uint64                      `json:"flush_seq,omitzero"`
 	Parent             string                      `json:"parent,omitempty"`
 	IdentityKnown      bool                        `json:"identity_known,omitzero"`
 	IdentityConflicted bool                        `json:"identity_conflicted,omitzero"`
@@ -98,6 +129,11 @@ type threadJournal struct {
 }
 
 func (j threadJournal) clone() threadJournal {
+	j.LegacyLive = maps.Clone(j.LegacyLive)
+	j.LegacyFlush = maps.Clone(j.LegacyFlush)
+	j.Events = slices.Clone(j.Events)
+	j.NextOrdinal = maps.Clone(j.NextOrdinal)
+	j.SliceParents = maps.Clone(j.SliceParents)
 	j.Retractions = slices.Clone(j.Retractions)
 	j.Items = slices.Clone(j.Items)
 	j.Receipts = maps.Clone(j.Receipts)
@@ -213,7 +249,7 @@ func readJournalRecord(path string) (threadJournal, bool, error) {
 	}
 	var journal threadJournal
 	if len(data) > maxReplayRecordBytes || json.Unmarshal(data, &journal) != nil ||
-		journal.Version != 1 || journal.Thread == "" || filepath.Base(path) != journalFilename(journal.Workspace, journal.Thread) {
+		(journal.Version != 1 && journal.Version != 2) || journal.Thread == "" || filepath.Base(path) != journalFilename(journal.Workspace, journal.Thread) {
 		return threadJournal{}, false, errors.New("corrupt journal record")
 	}
 	if len(journal.Items) > maxJournalItems || journal.Receipts == nil {
@@ -221,6 +257,7 @@ func readJournalRecord(path string) (threadJournal, bool, error) {
 		// content failed validation, without trusting partially decoded JSON.
 		return journal, true, errors.New("corrupt journal contents")
 	}
+	journal.ensureTree()
 	return journal, true, nil
 }
 
@@ -297,7 +334,7 @@ func (s *journalStore) initialize(ctx context.Context, store *mekugiReplayStore,
 		if exists {
 			return errJournalUnchanged
 		}
-		*j = threadJournal{Version: 1, Workspace: workspace, Thread: thread, Author: author, Items: []journalItem{}, Receipts: make(map[string]journalReceipt)}
+		*j = threadJournal{Version: 2, Workspace: workspace, Thread: thread, Author: author, Items: []journalItem{}, Receipts: make(map[string]journalReceipt)}
 		if fork == "" {
 			return nil
 		}
@@ -318,6 +355,12 @@ func (s *journalStore) initialize(ctx context.Context, store *mekugiReplayStore,
 		if err := store.retainJournalDependencies(source); err != nil {
 			return err
 		}
+		j.LegacyLive, j.LegacyFlush = maps.Clone(source.LegacyLive), maps.Clone(source.LegacyFlush)
+		j.LiveSeq, j.FlushSeq = source.LiveSeq, source.FlushSeq
+		j.TreeAuthored = source.TreeAuthored
+		j.Events = slices.Clone(source.Events)
+		j.NextOrdinal = maps.Clone(source.NextOrdinal)
+		j.SliceParents = maps.Clone(source.SliceParents)
 		j.Items = slices.Clone(source.Items)
 		j.Sequence, j.NextID = source.Sequence, source.NextID
 		return nil
@@ -486,7 +529,7 @@ func decodeJournalMutations(raw []byte) ([]journalMutation, error) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&mutations); err != nil || mutations == nil || len(mutations) > maxJournalItems {
-		return nil, errors.New("journal must be an array of at most 256 mutations")
+		return nil, errors.New("journal must be an array of at most 512 mutations")
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
@@ -518,7 +561,25 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 			ids = slices.Clone(receipt.IDs)
 			return nil
 		}
+		j.ensureTree()
+		treeMutated := false
 		for _, mutation := range mutations {
+			if mutation.Op == "plan" || mutation.Op == "set" || mutation.Op == "log" || mutation.Op == "remove" || mutation.Op == "add" && mutation.Title != nil {
+				paths, err := j.applyTree(mutation)
+				if err != nil {
+					return err
+				}
+				ids = append(ids, paths...)
+				treeMutated = true
+				continue
+			}
+			if strings.HasPrefix(mutation.ID, "/") {
+				return errors.New("legacy journal IDs resolve only retained aliases; use p with set or remove")
+			}
+			if mutation.P != "" || mutation.Under != "" || mutation.Kind != "" || mutation.Body != nil || mutation.State != nil ||
+				mutation.Reason != nil || mutation.Before != "" || mutation.Reset != "" || mutation.Tasks != nil {
+				return errors.New("tree fields require plan, set, log, remove, or add with title; text-only add is the retained milestone form")
+			}
 			question := ""
 			index := slices.IndexFunc(j.Items, func(item journalItem) bool { return item.ID == mutation.ID })
 			if mutation.Op == "edit" && index >= 0 {
@@ -559,6 +620,11 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 				return errors.New("journal sequence exhausted")
 			}
 			j.Sequence++
+			var removed journalItem
+			if mutation.Op == "delete" {
+				removed = j.Items[index]
+			}
+
 			switch mutation.Op {
 			case "add":
 				j.NextID++
@@ -585,6 +651,32 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 				}
 				j.Items = slices.Delete(j.Items, index, index+1)
 				ids = append(ids, mutation.ID)
+			}
+			j.ensureTree()
+			event := journalEvent{Legacy: true, Seq: j.Sequence, At: time.Now().UTC().Format(time.RFC3339Nano), Author: j.Author, Op: mutation.Op}
+			if mutation.Op == "delete" {
+				event.Op, event.Path, event.Fields = "remove", removed.Path, removed.node()
+			} else {
+				current := slices.IndexFunc(j.Items, func(item journalItem) bool { return item.ID == ids[len(ids)-1] })
+				node := &j.Items[current]
+				setLegacyJournalContent(node)
+				node.UpdatedAt = event.At
+				if mutation.Op == "add" {
+					node.CreatedAt = event.At
+				}
+				event.Path, event.Fields = node.Path, node.node()
+				if event.Op == "edit" {
+					event.Op = "set"
+				}
+			}
+			if err := j.appendEvent(event); err != nil {
+				return err
+			}
+		}
+		j.ensureTree()
+		if treeMutated {
+			if err := j.validateTree(); err != nil {
+				return err
 			}
 		}
 		if receiptID != "" {
@@ -695,6 +787,24 @@ func (s *journalStore) list(ctx context.Context, store *mekugiReplayStore, works
 	return items, err
 }
 
+func (s *journalStore) treeAuthored(ctx context.Context, store *mekugiReplayStore, workspace, thread string) (bool, error) {
+	release, err := s.lockState(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer release()
+	if store == nil {
+		return s.memory[journalKey(workspace, thread)].TreeAuthored, nil
+	}
+	var tree bool
+	err = store.locked(ctx, func() error {
+		j, _, err := readThreadJournal(store, workspace, thread)
+		tree = j.TreeAuthored
+		return err
+	})
+	return tree, err
+}
+
 // Delivery acknowledgements refer to the exact revision rendered. An edit
 // arriving while a message is being written must remain eligible for delivery.
 func (s *journalStore) acknowledge(ctx context.Context, store *mekugiReplayStore, workspace, thread string, revisions map[string]uint64, terminal bool) error {
@@ -705,6 +815,7 @@ func (s *journalStore) acknowledge(ctx context.Context, store *mekugiReplayStore
 		for index := range j.Items {
 			if revision, ok := revisions[j.Items[index].ID]; ok {
 				j.Items[index].EverReported = true
+				j.acknowledgeLegacyPath(j.Items[index].Path, revision, terminal)
 				if revision == j.Items[index].Updated {
 					j.Items[index].Reported = true
 					if terminal {
@@ -713,9 +824,19 @@ func (s *journalStore) acknowledge(ctx context.Context, store *mekugiReplayStore
 				}
 			}
 		}
+		j.advanceLegacyCursors()
 		j.Retractions = slices.DeleteFunc(j.Retractions, func(retraction journalRetraction) bool {
-			return revisions[retraction.ID] == retraction.Sequence
+			if revisions[retraction.ID] != retraction.Sequence {
+				return false
+			}
+			for _, event := range j.Events {
+				if event.Seq == retraction.Sequence {
+					j.acknowledgeLegacyPath(event.Path, event.Seq, terminal)
+				}
+			}
+			return true
 		})
+		j.advanceLegacyCursors()
 		return nil
 	})
 }
@@ -729,6 +850,29 @@ func (s *journalStore) acknowledgeResult(ctx context.Context, store *mekugiRepla
 		j.ResultSeq = max(j.ResultSeq, sequence)
 		j.ResultChangeSeq = max(j.ResultChangeSeq, changes)
 		j.ResultCount = max(j.ResultCount, count)
+		return nil
+	})
+}
+
+func (s *journalStore) acknowledgeTree(ctx context.Context, store *mekugiReplayStore, workspace, thread string, sequence uint64, terminal bool) error {
+	return s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
+		if !exists {
+			return errors.New("journal cursor state is missing")
+		}
+		j.LiveSeq = max(j.LiveSeq, sequence)
+		if terminal {
+			j.FlushSeq = max(j.FlushSeq, sequence)
+		}
+		for i := range j.Items {
+			if j.Items[i].Updated <= sequence {
+				j.Items[i].Reported, j.Items[i].EverReported = true, true
+				if terminal {
+					j.Items[i].Flushed = true
+				}
+			}
+		}
+		j.advanceLegacyCursors()
+		j.Retractions = slices.DeleteFunc(j.Retractions, func(retraction journalRetraction) bool { return retraction.Sequence <= sequence })
 		return nil
 	})
 }

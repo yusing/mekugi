@@ -76,7 +76,7 @@ func TestNaturalJournalAnswerStreamsWhenTerminalStatusIsAbsent(t *testing.T) {
 	transform, proxy, _, _ := newMekugiTestTransform(t)
 	transform.journalQuestion = "What changed?"
 	answer := map[string]any{"type": "message", "id": "answer-item", "role": "assistant", "phase": "final_answer", "status": "completed",
-		"content": []any{map[string]any{"type": "output_text", "text": "Done."}}}
+		"content": []any{map[string]any{"type": "output_text", "text": "Requested result delivered."}}}
 	first, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": answer}))
 	if err != nil || len(first) != 0 {
 		t.Fatalf("answer escaped before terminal: %s, %v", first, err)
@@ -141,7 +141,7 @@ func TestNaturalJournalAnswerWithLocalJournalCall(t *testing.T) {
 			transform.journalQuestion = "Question?"
 			call := journalFinishCall(`{"op":"add","text":"Milestone"}`)
 			answer := map[string]any{"type": "message", "id": "answer-item", "role": "assistant", "phase": "final_answer", "status": "completed",
-				"content": []any{map[string]any{"type": "output_text", "text": "Done."}}}
+				"content": []any{map[string]any{"type": "output_text", "text": "Requested result delivered."}}}
 			response := map[string]any{"id": "with-local", "status": "completed", "output": []any{call, answer}}
 			var visible []byte
 			if stream {
@@ -174,7 +174,7 @@ func TestNaturalJournalAnswerCapacityFallbackWithLocalCall(t *testing.T) {
 	transform.journalQuestion = strings.Repeat("Q", maxJournalItemBytes)
 	call := journalFinishCall(`{"op":"add","text":"Milestone"}`)
 	answer := map[string]any{"type": "message", "id": "answer-item", "role": "assistant", "phase": "final_answer", "status": "completed",
-		"content": []any{map[string]any{"type": "output_text", "text": "Done."}}}
+		"content": []any{map[string]any{"type": "output_text", "text": "Requested result delivered."}}}
 	visible, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"id": "local-over-limit", "status": "completed", "output": []any{call, answer}}))
 	if err != nil || transform.journalContinue || !bytes.Contains(visible, []byte(`"id":"answer-item"`)) || bytes.Contains(visible, []byte("Journal flush")) {
 		t.Fatalf("capacity fallback lost final answer or requested another turn: %s, %v", visible, err)
@@ -187,7 +187,7 @@ func TestNaturalJournalAnswerKeepsBufferedCommentary(t *testing.T) {
 		"content": []any{map[string]any{"type": "output_text", "text": "Progress."}}}
 	unknown := map[string]any{"type": "message", "id": "commentary-item", "role": "assistant", "status": "in_progress"}
 	answer := map[string]any{"type": "message", "id": "answer-item", "role": "assistant", "phase": "final_answer", "status": "completed",
-		"content": []any{map[string]any{"type": "output_text", "text": "Done."}}}
+		"content": []any{map[string]any{"type": "output_text", "text": "Requested result delivered."}}}
 	for _, event := range []any{
 		map[string]any{"type": "response.output_item.added", "output_index": 0, "item": unknown},
 		map[string]any{"type": "response.output_text.delta", "output_index": 0, "delta": "Progress."},

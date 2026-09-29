@@ -80,7 +80,7 @@ func (s *nativeJournalSink) publish(journal threadJournal, terminal bool) {
 			}
 		}
 		for id, journalID := range s.answers {
-			if s.current[journalID] == 0 {
+			if journalID != "@empty-outcome" && s.current[journalID] == 0 {
 				delete(s.answers, id)
 			}
 		}
@@ -113,6 +113,13 @@ func (s *nativeJournalSink) publish(journal threadJournal, terminal bool) {
 func (s *nativeJournalSink) bindAnswer(ids []string, journalID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Empty Outcomes have no node whose removal can retire the binding. Only
+	// the current native turn needs those transient provider IDs.
+	for id, previous := range s.answers {
+		if previous == "@empty-outcome" {
+			delete(s.answers, id)
+		}
+	}
 	for _, id := range ids {
 		s.answers[id] = journalID
 	}

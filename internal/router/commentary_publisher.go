@@ -196,6 +196,8 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		Complete  bool   `json:"complete"`
 		Op        string `json:"op"`
 		Agent     string `json:"agent"`
+		P         string `json:"p"`
+		Depth     *int   `json:"depth"`
 		Page      *int   `json:"page"`
 		Revision  string `json:"revision"`
 	}
@@ -232,11 +234,15 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	raw := bytes.TrimSpace(publication.Journal)
 	switch publication.Op {
 	case "", "batch":
-		if publication.Complete || publication.Agent != "" || len(raw) == 0 || publication.ReceiptID == "" || publication.Page != nil || publication.Revision != "" {
+		if publication.Complete || publication.Agent != "" || publication.P != "" || publication.Depth != nil || len(raw) == 0 || publication.ReceiptID == "" || publication.Page != nil || publication.Revision != "" {
 			http.Error(writer, "invalid journal publication", http.StatusBadRequest)
 			return
 		}
-	case "list":
+	case "list", "read":
+		if publication.Op == "list" && (publication.P != "" || publication.Depth != nil) {
+			http.Error(writer, "journal list accepts only agent", http.StatusBadRequest)
+			return
+		}
 		if publication.Complete || publication.ReceiptID != "" || len(raw) != 0 {
 			http.Error(writer, "journal list accepts only agent", http.StatusBadRequest)
 			return
@@ -281,23 +287,46 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	}
 
 	switch publication.Op {
-	case "list":
+	case "list", "read":
 		var items []journalItem
 		items, err = b.journalLister(request.Context(), session, thread, publication.Agent)
 		if err != nil {
 			http.Error(writer, "journal list rejected: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		listed := make([]journalListItem, 0, len(items))
-		for _, item := range items {
-			listed = append(listed, journalListItem{
-				ID: item.ID, Text: item.Text, Question: item.Question,
-				Author: item.Author, Reported: item.Reported, Flushed: item.Flushed,
-			})
+		listed := []journalListItem{}
+		if publication.Op == "list" {
+			listed = make([]journalListItem, 0, len(items))
+			for _, item := range items {
+				listed = append(listed, journalListItem{
+					ID: item.ID, Text: item.Text, Question: item.Question,
+					Author: item.Author, Reported: item.Reported, Flushed: item.Flushed,
+				})
+			}
 		}
-		response := map[string]any{"ok": true, "items": listed}
+		var payload any = listed
+		if publication.Op == "read" {
+			nodes, readErr := journalTree(items, publication.P, publication.Depth)
+			if readErr != nil {
+				http.Error(writer, readErr.Error(), http.StatusBadRequest)
+				return
+			}
+			flat := []journalNode{}
+			var flatten func([]journalNode)
+			flatten = func(nodes []journalNode) {
+				for _, node := range nodes {
+					children := node.Children
+					node.Children = []journalNode{}
+					flat = append(flat, node)
+					flatten(children)
+				}
+			}
+			flatten(nodes)
+			payload = flat
+		}
+		response := map[string]any{"ok": true, "items": payload}
 		if publication.Page != nil {
-			encoded, err := jsonv1.Marshal(listed)
+			encoded, err := jsonv1.Marshal(payload)
 			if err != nil {
 				http.Error(writer, "encode journal list", http.StatusInternalServerError)
 				return
@@ -307,10 +336,19 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 				http.Error(writer, "journal changed during list; retry the read", http.StatusConflict)
 				return
 			}
-			start := min(*publication.Page, len(listed))
-			end := min(start+journalListPageItems, len(listed))
-			response["items"], response["revision"] = listed[start:end], revision
-			if end < len(listed) {
+			length := len(listed)
+			if nodes, ok := payload.([]journalNode); ok {
+				length = len(nodes)
+			}
+			start := min(*publication.Page, length)
+			end := min(start+journalListPageItems, length)
+			response["revision"] = revision
+			if nodes, ok := payload.([]journalNode); ok {
+				response["items"] = nodes[start:end]
+			} else {
+				response["items"] = listed[start:end]
+			}
+			if end < length {
 				response["next"] = end
 			}
 		}
@@ -403,8 +441,10 @@ func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []st
 	var operation struct {
 		Op    string `json:"op"`
 		Agent string `json:"agent"`
+		P     string `json:"p"`
+		Depth *int   `json:"depth"`
 	}
-	if json.Unmarshal([]byte(text), &operation) == nil && operation.Op == "list" {
+	if json.Unmarshal([]byte(text), &operation) == nil && (operation.Op == "list" || operation.Op == "read") {
 		if err := json.Unmarshal([]byte(text), &operation, json.RejectUnknownMembers(true)); err != nil {
 			return true, fmt.Errorf("journal list accepts only op and agent: %w", err)
 		}
@@ -416,7 +456,7 @@ func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []st
 			}
 			revision = arguments[5]
 		}
-		publication = map[string]any{"op": "list", "agent": operation.Agent, "page": page, "revision": revision}
+		publication = map[string]any{"op": operation.Op, "agent": operation.Agent, "p": operation.P, "depth": operation.Depth, "page": page, "revision": revision}
 	} else if len(arguments) != 4 {
 		return true, fmt.Errorf("journal continuation requires list")
 	}

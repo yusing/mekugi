@@ -46,9 +46,9 @@ The journal owner supplies the additive durable-work guidance once per request: 
 Code Mode `exec` or native `exec_command` in one marked Journal section. No dedicated
 `functions.journal` tool is exposed. Eligible
 structured tools receive the optional atomic `journal` mutation field.
-The shared description owns milestone scope, immediate reporting, the complete Code Mode
-helper API (including list, required fields, return values, and failures), batching, and natural
-completion. It identifies `journal(...)` as a router-provided source helper outside `tools`
+The shared description owns planning, task states, established facts and constraints,
+the complete Code Mode helper API (including read, required fields, stable paths and
+failures), batching, and Outcome-only natural completion. It identifies `journal(...)` as a router-provided source helper outside `tools`
 and `ALL_TOOLS`, and the generated `mjournal` invocation as internal transport rather than an
 agent-authored command. Projection preserves the caller's stock execution contracts. A
 previously marked section is refreshed in place. Duplicate, incomplete, or reversed markers
@@ -90,9 +90,9 @@ Acceptance:
    section. Refresh is idempotent, malformed markers fail closed, and unrelated descriptions,
    sibling tools, and stock execution contracts remain unchanged.
 3. The execution-tool journal section and optional mutation field expose enough guidance to record concise
-   milestones, request immediate reporting, list retained items, and finish naturally with a final
-   answer rendered as a journal flush without another provider request. Guidance directs mutations
-   onto useful calls rather than standalone journal calls; Code Mode exposes only the exec-local helper for both list and mutations.
+   tasks and facts, read retained subtrees, and finish naturally with an Outcome
+   rendered in the turn card without another provider request. Guidance directs mutations
+   onto useful calls rather than standalone journal calls; Code Mode exposes only the exec-local helper for both read and mutations.
 4. Ordinary, fork, side-thread, subagent, model-switch, compaction, and resume consumers derive
    guidance from their current tool catalog and authenticated registry rather than invisible ancestry
    or live router state. Each helper has one description owner; the built-in section of the

@@ -20,7 +20,7 @@ const journalHistoryTool = "__mekugi_journal"
 const codeModeJournalStart = "<!-- mekugi-journal:start -->"
 const codeModeJournalEnd = "<!-- mekugi-journal:end -->"
 
-const codeModeJournalHint = "In Code Mode, use the exec-local journal helper for list and mutations: record mutations with await journal(...) inside your next useful exec call, and finish with a final answer instead of a journal call."
+const codeModeJournalHint = "In Code Mode, use the exec-local journal helper for reads and mutations: record mutations with await journal(...) inside your next useful exec call, and finish with an Outcome instead of a journal call."
 
 var journalToolDescription = embeddedInstruction("journal_tool")
 var codeModeJournalGuidance = strings.Replace(embeddedInstruction("journal_code_mode"), "<journal-tool-description />", journalToolDescription, 1)
@@ -41,10 +41,18 @@ func journalMutationsSchema() json.RawMessage {
 		"items": map[string]any{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]any{
-				"op":         map[string]any{"type": "string", "enum": []string{"add", "edit", "delete"}, "description": "Add a milestone, edit its current result, or delete a superseded item."},
-				"id":         map[string]any{"type": "string"},
-				"text":       map[string]any{"type": "string"},
-				"report_now": map[string]any{"type": "boolean", "description": "Show this milestone to the user immediately rather than waiting for completion."},
+				"op":     map[string]any{"type": "string", "enum": []string{"plan", "add", "set", "log", "remove"}, "description": "Plan tasks, change state, or record established facts."},
+				"p":      map[string]any{"type": "string"},
+				"under":  map[string]any{"type": "string"},
+				"kind":   map[string]any{"type": "string", "enum": []string{"task", "note", "context"}},
+				"title":  map[string]any{"type": "string"},
+				"body":   map[string]any{"type": "string"},
+				"text":   map[string]any{"type": "string"},
+				"state":  map[string]any{"type": "string", "enum": []string{"pending", "working", "done", "blocked", "dropped"}},
+				"reason": map[string]any{"type": "string"},
+				"before": map[string]any{"type": "string"},
+				"reset":  map[string]any{"type": "string", "enum": []string{"slice"}},
+				"tasks":  map[string]any{"type": "array", "maxItems": maxJournalItems, "items": map[string]any{"anyOf": []any{map[string]any{"type": "string"}, map[string]any{"type": "object"}}}},
 			}, "required": []string{"op"},
 		},
 	})
@@ -102,6 +110,7 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 		journalMutation
 		Journal json.RawMessage `json:"journal"`
 		Agent   string          `json:"agent"`
+		Depth   *int            `json:"depth"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(jsonString(item, "arguments")))
 	decoder.DisallowUnknownFields()
@@ -130,9 +139,9 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 			} else {
 				result = map[string]any{"ok": true, "finish_requested": true}
 			}
-		} else if args.Op == "list" {
-			if args.ID != "" || args.Text != nil || args.Answer != nil || args.ReportNow {
-				err = errors.New("journal list accepts only agent and batched journal mutations")
+		} else if args.Op == "list" || args.Op == "read" {
+			if args.ID != "" || args.Text != nil || args.Answer != nil || args.ReportNow || args.Under != "" || args.Kind != "" || args.Title != nil || args.Body != nil || args.State != nil || args.Reason != nil || args.Tasks != nil || args.Reset != "" || args.Before != "" || args.Op == "list" && (args.P != "" || args.Depth != nil) {
+				err = fmt.Errorf("journal %s accepts only %s and batched journal mutations", args.Op, map[string]string{"list": "agent", "read": "p, agent, depth"}[args.Op])
 			}
 			var items []journalItem
 			if err == nil {
@@ -142,11 +151,19 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 					items, err = t.proxy.journals.list(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID)
 				}
 			}
-			listed := make([]journalListItem, 0, len(items))
-			for _, item := range items {
-				listed = append(listed, journalListItem{ID: item.ID, Text: item.Text, Question: item.Question, Author: item.Author, Reported: item.Reported, Flushed: item.Flushed})
+			if args.Op == "read" {
+				var nodes []journalNode
+				if err == nil {
+					nodes, err = journalTree(items, args.P, args.Depth)
+				}
+				result = map[string]any{"ok": true, "items": nodes}
+			} else {
+				listed := make([]journalListItem, 0, len(items))
+				for _, item := range items {
+					listed = append(listed, journalListItem{ID: item.ID, Text: item.Text, Question: item.Question, Author: item.Author, Reported: item.Reported, Flushed: item.Flushed})
+				}
+				result = map[string]any{"ok": true, "items": listed}
 			}
-			result = map[string]any{"ok": true, "items": listed}
 		} else if args.Agent != "" {
 			err = errors.New("agent is only supported by journal list")
 		} else {
@@ -154,7 +171,13 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 			ids, err = t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, callID, bindJournalAnswers([]journalMutation{args.journalMutation}, t.journalQuestion))
 			if err == nil {
 				t.featureTrace.record("journal", "tool", "mutation", "accepted", callID, "")
-				result = map[string]any{"ok": true, "id": ids[0]}
+				result = map[string]any{"ok": true}
+				if args.Op == "plan" || args.Title != nil || args.P != "" {
+					result.(map[string]any)["items"] = ids
+				}
+				if len(ids) != 0 {
+					result.(map[string]any)["id"] = ids[0]
+				}
 			}
 		}
 		if err != nil {

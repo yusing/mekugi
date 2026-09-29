@@ -35,35 +35,60 @@ completion payloads, nonattached inline delivery and legacy exact-ID replay
 provenance are unchanged. Native sinks are scoped by workspace and stable Main
 thread; missing-workspace records are never rebased to the app-server cwd.
 
-## REQ-JOURNAL-001 — Per-thread milestone journals
+## REQ-JOURNAL-001 — Durable work journals
 
-Mekugi mode owns one durable milestone journal per stable thread. Passthrough is unchanged.
-Items have router-assigned IDs (`amber`, `apple`, ...), nonblank UTF-8 text, an optional original
-question, canonical author, router sequence creation/update values, `report_now`, `reported`,
-and `flushed` state. A thread has at most 256 items; there is no lifetime thread-count or mutation-receipt-count ceiling. Combined
-question and text content is limited to 16 KiB per item. The per-response live progress budget
-is also 16 KiB. Terminal flushes have a separate bound sized for all 256 items, including labels
-and the author heading. Main completion flushes only its own journal; child results are already delivered by native completion. Each journal has its own terminal capacity. Record-size failures identify the limiting byte budget. Initialization errors retain their cause and
-reject preparation rather than exposing an uninitialized journal. Journals follow the automatic
-session-retention policy in [REQ-ROUTER-001](router.md); active turns and shared inherited records
-remain protected.
+Mekugi owns one durable journal per stable thread. Passthrough is unchanged.
+A journal has a materialized task tree, append-only timestamped events, and delivery
+cursors. Nodes have stable ordinal JSON Pointer paths such as `/1/2`; sibling keys
+are never renumbered or reused after successful removal. Titles are display text,
+not addresses. Notes and context nodes have no state. Only tasks have `pending`,
+`working`, `done`, `blocked`, or `dropped` state. Answers remain router-owned.
 
-An ordinary fork copies the source's latest journal at its first accepted normal Responses
-request in the selected workspace, then evolves independently. It does not reconstruct the
-historical fork point. Routing-session remaps and resumes keep the stable thread's journal.
+Nodes contain a one-line nonblank title, optional Markdown body, author, creation
+and update stamps (`seq`, RFC 3339 `at`), and children. Tasks can additionally contain
+a reason, their first working stamp and their latest completion/drop stamp.
+Reopening a finished task clears its current finished stamp without rewriting history.
+The tree has at most 512 nodes; combined title, body, reason and question content is
+limited to 16 KiB per node. Events are bounded at 4,096 and an 8 MiB content-and-metadata budget. At capacity, adjacent edits
+without state transitions may collapse. Notes and state transitions
+are retained; irreducible capacity failures reject atomically instead of losing history.
+The managed record byte limit applies independently. Historical v1 timestamps are
+unknown rather than fabricated.
 
-Eligible non-strict ordinary function tools receive an optional `journal` array. Each mutation is
-`add`, `edit`, or `delete`; additions and edits require nonblank text, edits and deletes require
-an existing ID, and a malformed array rejects the host call before execution. The array is applied
-in order atomically, then removed from executed arguments while the original call remains available
-through replay. `report_now` emits a router-owned user-only **Journal update** labelled with
-the item ID and author when known. Live updates do not send native inter-agent messages or
-enter any agent's provider input. Successful delivery marks that revision reported, not flushed.
-It MUST remain eligible for a terminal **Journal flush**, whose heading identifies its known author
-and whose entries identify their IDs. A flush containing one item puts its ID in the heading and
-renders its text directly, without list indentation; multi-item flushes retain the entry list.
-These labels distinguish journals from stock commentary and reasoning summaries without rewriting
-stock output. Deletes are silent unless retracting an already-reported ID.
+Each mutation is `plan`, `add`, `set`, `log`, or `remove`. Native eligible non-strict
+function tools accept an optional atomic `journal` array, applied before execution
+and removed from host arguments. Code Mode uses the exec-local `journal(...)` helper.
+No dedicated journal tool is exposed. Operations are:
+
+- `plan {under?, tasks, reset?}`: each string adds a pending task; objects contain
+  `p?`, `title`, `state?`, `body?`, `reason?`, and nested `tasks?`. Existing paths must
+  name distinct direct task children. Unlisted pending children become dropped with
+  an explanation; working and final children remain. A plan returns created paths
+  in preorder. `reset: "slice"` records a slice boundary policy; driving context
+  resets is a separate frontend capability.
+- `add {under?, kind?, title, body?, state?, reason?, before?}`: adds one node, with
+  default kind note and default task state pending. `before` changes display order,
+  not stable keys, and must name a sibling.
+- `set {p, title?, body?, state?, reason?}`: updates writable fields. Blocked and
+  dropped tasks require a reason. A final task reopens only with working.
+- `log {p?, text}`: adds a timestamped note under the single working leaf task,
+  or root if none is working. Several working leaves require an explicit path.
+- `remove {p}`: removes a mistaken subtree, retaining its removal event.
+- `read {p?, agent?, depth?}`: returns the selected subtree. Depth zero omits child
+  nodes. Omitted agent selects the caller; explicit agents require proven ancestry.
+
+Mutation batches validate at the end. A done task cannot retain open descendant
+tasks. Rejection lists those paths and rolls back all nodes, ordinals and events.
+Single mutations return their affected path; plans and batches return paths in order.
+Receipt replay returns the original result without applying effects twice.
+
+Ordinary forks copy the source's latest journal at their first accepted request and
+then evolve independently. Resumes and routing remaps retain stable thread identity.
+V1 items migrate in order to notes or answers with stable paths and preserved questions;
+retained v1 IDs resolve as legacy aliases, not writable v2 paths. Retained add/edit/delete/list
+calls remain replayable, but new model catalogs expose only v2 operations.
+Session retention, selected-workspace scope, initialization errors and durable identity
+requirements are unchanged. Active turns and shared inherited records remain protected.
 
 The router associates a completed assistant final answer with the latest actual user message
 or native `NEW_TASK` assignment addressed to the requesting child from that request's visible
@@ -84,17 +109,9 @@ concurrent threads and branches do not share its source. Journal mutation schema
 expose an answer flag, and ordinary milestone edits preserve any attached question. Previously
 retained answer-marked and finish calls remain replayable but are not offered to new model turns.
 
-Mekugi does not expose a dedicated `functions.journal` tool. Code Mode exposes list and
-mutations through `await journal(...)` on `exec`. Mutations belong inside the next useful
-`exec`, so a milestone does not need a standalone provider round trip. Native ordinary
-function calls retain their optional batched `journal` field. Legacy dedicated calls remain
-replayable; retained-form mutations and finish calls still apply and receive an exec-local
-helper hint in Code Mode.
-List is read-only and may address only a proven ancestor or descendant journal. Unknown
-or conflicted ancestry fails closed. Durable workspace identities, not the live activity
-collector, authorize relative access after a router restart with only the requesting
-thread observed. Authorization and returned items use the same locked snapshot.
-Mutations return router-assigned IDs.
+Reads authorize and return one locked durable snapshot. Unknown, ambiguous or
+conflicted ancestry fails closed, including after a router restart with only the
+requesting thread observed. Agent names alone do not authorize access.
 
 The agent finishes naturally with a final answer after inspecting required tool results.
 On a successful completed response with no client-dispatched calls, the router captures the final
@@ -108,15 +125,21 @@ still fail translation under the atomic field contract.
 Failed, incomplete, or interrupted responses never flush. Completion is response-local:
 replay, resume, and forks do not finish a new turn.
 
-On successful main completion with no client-dispatched calls, the router emits token metrics,
-then one deterministic flush of its own journal containing only unflushed revisions, including previously
-live-reported entries, skipping the flush when empty. The flush remains the last assistant message in
-both streamed events and the terminal snapshot so native turn completion does not display it again.
-Terminal flushes and terminal retractions render as assistant
-`final_answer` messages, not commentary; live updates remain commentary. These terminal messages
-are user-visible only and retain the same exact-ID removal from later provider input.
-Only successful terminal delivery marks a revision flushed;
-edits clear both current-revision delivery flags. `list` exposes both flags. A child completes without flushing and emits `Journal result` containing only
+For v2-authored journals, successful Main completion emits a Markdown turn card
+when no native frontend is attached. Outcome is the captured final answer; This turn
+contains events after `flushSeq`; Remaining contains open tasks. A card with none of
+these says so instead of ending at its heading. Answer questions
+remain stored but are not echoed in the card. A blank final or a case-insensitive
+`done` with an optional period is an empty Outcome: no answer node is created and
+the exact raw provider item is hidden. The final message is still required.
+Without a turn card, a v1-authored journal keeps such a final as its answer.
+
+Live fallback renders events after `liveSeq`, clipping a row that no single update
+can hold; the turn card keeps it whole. Successful downstream delivery advances
+the corresponding cursor; failure preserves its window. Main cards remain the last
+assistant message. Failed, incomplete and interrupted responses never terminal-flush.
+Retained v1 authoring keeps its legacy presentation and delivery receipts during replay.
+A child completes without flushing and emits `Journal result` containing only
 revisions newer than its durable `resultSeq` cursor. Agent recipients see neither
 the echoed assignment nor opaque item IDs. Notes are Markdown bullets and answers
 are standalone Markdown; stored questions and the complete journal remain available
@@ -160,58 +183,19 @@ stock tool catalog and prompt.
 
 ### Runtime authoring
 
-Journals record checkpoints and milestones when established, not only at completion.
-Milestone updates use journal mutations rather than duplicate commentary; immediate updates
-use `report_now`. Questions and direct conversational replies are distinct from milestone reporting.
-Journals do not record plans or ongoing narration. Agent guidance
-asks for a concise final report containing only distinct, current findings, results,
-validation, or blockers, without overlapping progress or superseded summaries.
-Parents' own journals cover their results, integration decisions, and actions on findings,
-not repetitions or summaries of other agents' journals.
-Native child completion delivers only new results; main completion does not repeat them.
-The final answer becomes a journal item; the router supplies the original question. Live notices label question-associated items as **Question** and
-**Answer**; terminal blocks use **Answer** or **Answers**, according to the number of answers.
-The router preserves authored Markdown rather than summarizing it. Within each terminal journal
-message, all items with an identical question form one block: the question appears once, followed
-by all its answers together. Groups follow the first rendered occurrence of their question;
-answers retain their journal order within each group. Plain milestones remain separate entries
-at their first-occurrence positions, visibly separated from question blocks. Each author journal
-and each delivery groups only its own rendered items, after filtering already-flushed revisions
-where applicable.
-Stored questions remain attached to every answer, and standalone live updates remain self-contained.
-Each answer keeps its ID separate from its body and indents all body lines under that item,
-including blank lines, nested lists, paragraphs, and fenced code blocks.
+Plans are pending tasks. Task transitions and established facts are recorded as they
+happen, attached to the next useful tool call rather than a standalone request.
+Constraints belong in context nodes. Ongoing narration is not a note. Questions and
+direct replies remain conversational. Parents record integration decisions, not copies
+of child journals. The final answer is a short Outcome or exactly `Done.` when there
+is nothing beyond the journal. It does not repeat progress, validation, or remaining work.
 
-Code Mode reserves `await journal({op, id?, text?, report_now?})`, also accepting
-a mutation array. `await journal({op: "list", agent?: string})` returns an array of journal
-items with `id`, `text`, optional `question`, `author`, `reported`, and `flushed`. List accepts
-only `op` and `agent`; omitted agent selects the caller, and explicit agents use the same
-durable ancestry authorization as other journal reads. Read failures throw. The parser preserves strings, comments, properties, and unrelated
-identifiers, and leaves unparseable source unchanged for the executor to diagnose.
-A single mutation returns its item ID; a mutation array returns the ordered item IDs.
-Nested calls can use an added item's returned ID in a subsequent edit. Publication failures
-throw rather than returning an execution envelope as a journal ID.
-
-Code Mode journal mutations are lowered to an authenticated `mjournal`
-frontend invoked through stock `tools.exec_command`. The frontend publishes
-only the requested mutation through a call-scoped broker capability; it does
-not run the surrounding program or replace the stock result. Programmatic
-calls can await the returned item ID, including an add followed by an edit.
-List transport uses bounded internal pages below the stock output collection limit and
-assembles the complete item array inside the helper. Every page reauthorizes access and
-checks the full snapshot revision; concurrent changes fail the read rather than mixing
-snapshots. These transport cursors are not model-facing operation fields.
-Failed publication throws. If publisher capacity is unavailable, the host-executed helper throws
-a model-visible retry hint; the user-only capacity notice contains no agent instructions.
-The capability expires with its owning call and
-cannot be borrowed by another thread. Agent-authored source and private
-publisher credentials are not added to sanitized metrics.
-
-The exec-local journal helper owns `list`, `add`, `edit`, and `delete`;
-and guidance directs mutations to the exec-local helper. A successful natural
-final answer with no pending Codex-dispatched work delivers the terminal journal
-without another provider request. Replay may restore journal calls and results,
-but cannot finish another turn or branch.
+Code Mode lowers the helper to authenticated `mjournal` through stock `exec_command`;
+it neither runs the surrounding program nor owns the host lifecycle. Read transport
+uses bounded flat pages, authorizing each page against the full snapshot revision,
+then assembles the tree inside the helper. A concurrent revision fails rather than
+mixing snapshots. Pagination fields are internal, not model-facing. Read and publication
+failures throw; credentials and authored source stay out of sanitized metrics.
 
 ### Delivery failures
 
@@ -226,39 +210,15 @@ failure or overflow.
 
 ### Acceptance
 
-1. Mekugi catalogs omit Tasks/`update_plan` and project journals only onto eligible ordinary
-   function schemas. Strict tools, provider-owned additional tools, collaboration, and
-   user-messaging schemas stay exact; passthrough is unchanged.
-2. Batched mutations apply atomically before execution, return assigned IDs, and disappear
-   from host arguments. Replay restores the original call without executing it again.
-3. CRUD, independent ordinary forks, resume, capacity rejection, and retained reporting
-   revisions survive router restart in the selected workspace.
-4. Cross-thread listing allows only proven ancestors and descendants, never siblings.
-   It is read-only and does not copy entries or subscribe to their delivery.
-5. Immediate notices are acknowledged after successful emission without consuming the terminal
-   flush. A failed live or terminal delivery remains eligible for retry. Silent edits become
-   flush-eligible again; deleting a previously shown ID with report_now emits a retraction.
-6. Successful natural main completions show only main's unflushed revisions,
-   including live updates, after eligible token metrics. The flush is emitted exactly once and remains
-   the last assistant message. Child completions save without flushing and
-   retain a nonempty completion result containing their current journal text. Completion makes no
-   final-answer continuation request.
-   A captured provider final answer is not also rendered separately; failures and interruptions do not terminal-flush.
-7. Native client normalization preserves journal results and returns the child's
-   current journal text after one naturally completing child request, without a
-   final-answer continuation.
-8. Debug evidence separates applied mutations, runtime wiring, live rendering, and
-   terminal flushing without recording journal bodies or private publication credentials.
-9. Multiline Markdown stays within its terminal journal item. Answer items display the
-   original question and a labelled answer in live delivery. Terminal delivery displays each
-   identical question once per author journal, followed by all its answers in one block. Different
-   questions and plain milestones remain separate; groups follow first occurrence and answers
-   keep their relative order and full Markdown. Filtering flushed revisions, retry, child
-   completion, and restart group only items included in that message. Question edits, clearing,
-   list, replay, restart, and forks preserve the specified state semantics.
-10. All requests omit the dedicated journal tool and expose the full journal guidance
-    on exec. The exec-local helper supports read-only list with durable ancestry authorization
-    and rejects mixed list/mutation fields. Native function tools retain batched mutation fields. Exec-local mutations remain host work, a
-    natural final answer completes in one provider request, and an off-schema dedicated
-    mutation or finish applies with the Code Mode hint without adding a provider request when
-    the response otherwise completes. A journal-only list continues so its result is inspectable.
+1. Native and Code Mode mutations reach the same atomic owner; host input remains
+   exact apart from removing the optional journal field. Retained replay is idempotent.
+2. Stable paths, nested planning, omission/drop rules, reasons and end-of-batch parent
+   validation survive restart and independent forks.
+3. Reads expose timestamps and children, respect subtree/depth, and require proven
+   durable ancestry. Bounded transport reassembles complete trees without mixed revisions.
+4. Empty Outcomes create no answer node or duplicate raw final. Main cards contain
+   new events and open tasks. Failed delivery retains cursor windows for retry.
+5. Child JSON/SSE results omit echoed questions and opaque aliases, deliver only new
+   work after acknowledgement, and include only the corresponding owned evaluations.
+6. Instruction projection exposes one v2 API description, keeps stock tool authority,
+   removes update_plan, and directs mutations onto useful calls and finals to Outcome.

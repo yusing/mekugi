@@ -157,17 +157,14 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 			// Count across the actual combined request, not each surface in isolation.
 			combined := string(mustMarshalJSON(request.fields))
 			for _, rule := range []string{
-				"Record milestones when established, not only at completion",
-				"Use journal mutations instead of commentary for milestone updates",
-				"Use the optional journal field",
-				"Code Mode journal API:",
-				"Add requires nonblank text; edit requires id and nonblank text; delete requires id.",
-				"applies an atomic batch and returns IDs in order",
+				"The durable journal holds the plan",
+				"Code Mode API:",
+				"Task states are pending, working, done, blocked, dropped.",
+				"Paths use stable sibling ordinals",
 				"Publication and read failures throw.",
-				"not a discoverable tool in ALL_TOOLS",
-				"do not construct or replay that internal call",
-				"Once the assigned work is complete",
-				"Finish naturally with a concise final answer",
+				"do not construct its internal transport",
+				"finish naturally with an Outcome",
+				"Parents record integration decisions",
 			} {
 				if count := strings.Count(combined, rule); count != 1 {
 					t.Errorf("journal rule %q appears %d times; want one owner", rule, count)
