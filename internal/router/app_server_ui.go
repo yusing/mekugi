@@ -279,14 +279,15 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						if u.expireNotice(time.Now()) {
 							u.dirty = true
 						}
+						now := time.Now()
+						if settleActivity(now, u.view, u.agents) {
+							u.dirty = true
+						}
 						for _, view := range []*liveActivityView{u.view, u.agents} {
-							if view.expireFlash(time.Now()) {
+							if view.expireFlash(now) {
 								u.dirty = true
 							}
-							if view.settle(time.Now()) {
-								u.dirty = true
-							}
-							if view.pace(time.Now()) {
+							if view.pace(now) {
 								u.dirty = true
 							}
 						}

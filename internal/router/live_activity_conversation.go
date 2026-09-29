@@ -71,6 +71,18 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 				last = j
 			}
 		}
+		if v.entries[i].Agent == "Main" && v.entries[i].Kind == "reasoning" {
+			for ; j < len(v.entries); j++ {
+				next := v.entries[j]
+				if !v.visible(next) {
+					continue
+				}
+				if next.Agent != "Main" || next.Kind != "reasoning" {
+					break
+				}
+				last = j
+			}
+		}
 		for _, same := range []func(activityPaneEntry) bool{conversationTool, conversationMilestone} {
 			if !same(v.entries[i]) {
 				continue
@@ -134,7 +146,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 					copy(items[lead:k-1], items[lead+1:k])
 					items[k-1], lead = moved, k-1
 				} else {
-					items[k].lead = items[lead].first
+					items[k].lead = items[lead].last
 				}
 			}
 			headed = true
@@ -373,8 +385,18 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		for _, block := range blocks {
 			out.add(0, p.Block(block, width)...)
 		}
-	case entry.Agent == "Main" && entry.Kind == "reasoning" && first == last:
-		for index, block := range blocks {
+	case entry.Agent == "Main" && entry.Kind == "reasoning":
+		var summaries []activityui.Block
+		for k := first; k <= last; k++ {
+			if v.visible(v.entries[k]) {
+				for _, block := range v.blocks[k] {
+					block.Source = v.entries[k].Seq
+					summaries = append(summaries, block)
+				}
+			}
+		}
+		laid = activityui.GroupReasoning(summaries)
+		for index, block := range laid {
 			// Settled provider thinking shows its header; a click toggles it.
 			snippet := liveActivitySnippet{run: entry.Seq, block: index}
 			toggle := v.clickTarget(&block, snippet)

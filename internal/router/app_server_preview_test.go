@@ -78,8 +78,7 @@ func TestNativeUIPreview(t *testing.T) {
 					return err
 				}
 				flashExpired := p.ui.view.expireFlash(now)
-				settled := p.ui.view.settle(now)
-				settled = p.ui.agents.settle(now) || settled
+				settled := settleActivity(now, p.ui.view, p.ui.agents)
 				settled = p.ui.view.pace(now) || settled
 				settled = p.ui.agents.pace(now) || settled
 				p.ui.dirty = false
@@ -172,7 +171,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	p.until("explorer thought")
 	render("grok thought", "• Thought", "I should read launch.go first")
 	// A second later the finished block folds to its header.
-	p.ui.agents.settle(time.Now().Add(activityui.ThinkingLinger))
+	settleActivity(time.Now().Add(activityui.ThinkingLinger), p.ui.agents)
 	if frame := render("grok thought folded", "• Thought"); strings.Contains(frame, "The pane blocks on its first frame") {
 		t.Fatalf("finished thinking did not fold:\n%s", frame)
 	}
@@ -203,7 +202,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Fatalf("passed test run lacks its settled output:\n%s", got)
 	}
 	nextEvent(t, p.ui, p.ui.agents.entries[len(p.ui.agents.entries)-1].native.thread)
-	p.ui.agents.settle(time.Now().Add(activityui.OutputDebounce))
+	settleActivity(time.Now().Add(activityui.OutputDebounce), p.ui.agents)
 	if got := agents(); strings.Contains(got, "┆ ok ") || !strings.Contains(got, "┆ … +6 lines") {
 		t.Fatalf("passed test run output did not collapse:\n%s", got)
 	}

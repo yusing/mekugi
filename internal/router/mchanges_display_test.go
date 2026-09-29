@@ -46,7 +46,7 @@ func TestMChangesSummaryShowsEditRows(t *testing.T) {
 	}
 	// The rows are output: they collapse after the agent's next event.
 	nextEvent(t, u, "main")
-	u.view.settle(time.Now().Add(activityui.OutputDebounce))
+	settleActivity(time.Now().Add(activityui.OutputDebounce), u.view)
 	if got := mainFeed(u, 100); strings.Contains(got, "Edited") || !strings.Contains(got, "┆ … +8 lines") {
 		t.Fatalf("summary rows did not collapse:\n%s", got)
 	}

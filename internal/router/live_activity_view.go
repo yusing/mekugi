@@ -977,9 +977,25 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (stri
 			continue
 		}
 		if v0.Agent == agent.Name || agent.Name == "/root" && source != v && v0.Agent == "Main" {
+			if v0.Kind == "reasoning" {
+				// Roster status is per agent, even when other agents interleave.
+				var earlier []activityui.Block
+				for j := i - 1; j >= 0; j-- {
+					previous := source.entries[j]
+					if previous.Agent != v0.Agent {
+						continue
+					}
+					if previous.Kind != "reasoning" {
+						break
+					}
+					earlier = append(earlier, source.shownBlocks(j)...)
+				}
+				slices.Reverse(earlier)
+				blocks = append(earlier, blocks...)
+			}
 			summary = v.painter.Summary(blocks)
 			if v0.Kind == "reasoning" && agent.Responding {
-				summary = activityui.ReasoningShimmer(activityui.ReasoningSummaryHeader(v0.Text), now.Sub(v0.Observed), v.painter.Colors)
+				summary = activityui.ReasoningShimmer(ansi.Strip(summary), now.Sub(v0.Observed), v.painter.Colors)
 			}
 			break
 		}
@@ -1509,7 +1525,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		return block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart
 	}
 	rail := ""
-	blocks = activityui.AlignVerbs(activityui.GroupOperations(blocks))
+	blocks = activityui.AlignVerbs(activityui.GroupOperations(activityui.GroupReasoning(blocks)))
 	run.blocks = blocks
 	for index, block := range blocks {
 		// Native Activity joins consecutive operations into one tree.
@@ -1672,38 +1688,56 @@ func (v *liveActivityView) standalone(entry activityPaneEntry) bool {
 	return !(entry.native != nil && entry.native.wait != nil) && !(entry.Kind == "tool" && entry.Text == "")
 }
 
-// settle collapses settled live blocks that are due: finished provider
+// settleActivity collapses settled live blocks that are due: finished provider
 // thinking after its linger, and successful command output once its agent's
 // next standalone event has been followed by a pause. Entries are shared
 // between views, so each view replaces rather than modifies native state.
-func (v *liveActivityView) settle(now time.Time) bool {
-	changed := false
-	for i, entry := range v.entries {
-		if entry.native == nil {
-			continue
-		}
-		thought := !entry.native.collapseAt.IsZero() && !now.Before(entry.native.collapseAt)
-		// A later row by the same agent settles the output, a pause after the
-		// latest of it and the output's own completion.
-		next := v.events[entry.Agent]
-		settled := entry.native.settled
-		output := !settled.IsZero() && next.seq > entry.Seq && !now.Before(maxTime(next.at, settled).Add(activityui.OutputDebounce))
-		if !thought && !output {
-			continue
-		}
-		native := *entry.native
-		native.collapseAt, native.settled, native.collapsed = time.Time{}, time.Time{}, true
-		v.entries[i].native = &native
-		for j := range v.blocks[i] {
-			if block := &v.blocks[i][j]; block.Collapsible() {
-				block.Collapsed, changed = true, true
+func settleActivity(now time.Time, views ...*liveActivityView) bool {
+	// Eligible output shares one deadline, including late completions and
+	// other agents. Never fold an earlier result while its batch is settling.
+	var outputAt time.Time
+	for _, v := range views {
+		for _, entry := range v.entries {
+			if entry.native == nil || entry.native.settled.IsZero() {
+				continue
+			}
+			next := v.events[entry.Agent]
+			if next.seq > entry.Seq {
+				outputAt = maxTime(outputAt, maxTime(next.at, entry.native.settled).Add(activityui.OutputDebounce))
 			}
 		}
 	}
-	if changed {
-		v.runs = nil
+	anyChanged := false
+	for _, v := range views {
+		changed := false
+		for i, entry := range v.entries {
+			if entry.native == nil {
+				continue
+			}
+			thought := !entry.native.collapseAt.IsZero() && !now.Before(entry.native.collapseAt)
+			// A later row by the same agent settles the output, a pause after the
+			// latest of it and the output's own completion.
+			next := v.events[entry.Agent]
+			settled := entry.native.settled
+			output := !settled.IsZero() && next.seq > entry.Seq && !now.Before(outputAt)
+			if !thought && !output {
+				continue
+			}
+			native := *entry.native
+			native.collapseAt, native.settled, native.collapsed = time.Time{}, time.Time{}, true
+			v.entries[i].native = &native
+			for j := range v.blocks[i] {
+				if block := &v.blocks[i][j]; block.Collapsible() {
+					block.Collapsed, changed = true, true
+				}
+			}
+		}
+		if changed {
+			v.runs = nil
+		}
+		anyChanged = changed || anyChanged
 	}
-	return changed
+	return anyChanged
 }
 
 func maxTime(a, b time.Time) time.Time {

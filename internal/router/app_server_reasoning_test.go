@@ -209,7 +209,7 @@ func TestAppServerProviderThinking(t *testing.T) {
 	}
 	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r2", "delta": "Interrupted thought."})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t", "status": "interrupted"}})
-	if got := feed(); strings.Contains(got, "Thinking…") || strings.Count(got, "• Thought") != 2 || !strings.Contains(got, "Interrupted thought.") {
+	if got := feed(); strings.Contains(got, "Thinking…") || strings.Count(got, "• Thought") != 1 || !strings.Contains(got, "• Fourth.") || !strings.Contains(got, "Interrupted thought.") {
 		t.Fatalf("turn end left thinking live: %q", got)
 	}
 }
@@ -233,11 +233,11 @@ func TestAppServerThinkingFolds(t *testing.T) {
 			if got := plain(render()); !strings.Contains(got, "• Thought") || !strings.Contains(got, "Delta.") {
 				t.Fatalf("thinking folded before its delay: %q", got)
 			}
-			if view.settle(time.Now()) {
+			if settleActivity(time.Now(), view) {
 				t.Fatal("fold fired before its delay")
 			}
 			later := time.Now().Add(activityui.ThinkingLinger)
-			if !view.settle(later) || view.settle(later) {
+			if !settleActivity(later, view) || settleActivity(later, view) {
 				t.Fatal("fold did not fire exactly once")
 			}
 			feed := render()

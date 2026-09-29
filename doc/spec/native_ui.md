@@ -667,7 +667,10 @@ that missing state means success or continued work.
 
 Native public reasoning summaries appear for Main and children, from summary
 deltas or completed/history items. Main retains dim italic summary bodies in its
-transcript; reasoning does not replace `Working` in the composer status.
+transcript; consecutive summaries without an intervening action fold the earlier
+summaries into one expandable, comma-separated row, leaving the latest summary
+expanded. Inline consecutive summaries are comma-separated too.
+Reasoning does not replace `Working` in the composer status.
 Working and its progress overrides shimmer while the turn runs. Other ongoing
 states, such as sending and interrupting, breathe smoothly together from dim to light to dim, using a continuous neutral
 color ramp until terminal colors are reported. Successful steering returns to
@@ -698,7 +701,12 @@ the request start (or the first summary delta without one) to item completion; a
 that ends first completes its unfinished blocks.
 One second after an observed completion, the block folds to its header row in
 Main and Activity; a click expands and collapses it. Restored history keeps
-its body. Titled summaries keep the Codex rendering.
+its body. In a consecutive run, the latest summary stays expanded instead of
+folding on that timer. Titled summaries keep the Codex rendering.
+
+Successful output eligible to fold shares one debounce deadline across Main and Activity,
+including late completions, so it collapses in a single screen update rather than
+one result at a time. An agent's latest output remains open until later activity.
 
 Main and Activity follow new transcript content until manual scrollback or an
 explicit jump to earlier content. Opening or closing Live/Diff, resizing, and

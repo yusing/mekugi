@@ -214,3 +214,63 @@ func TestConversationMainToolsFollowTheirLead(t *testing.T) {
 		t.Fatalf("uninterrupted tools moved:\n%s", strings.Join(plain, "\n"))
 	}
 }
+
+func TestConversationConsecutiveReasoning(t *testing.T) {
+	v := newLiveActivityView()
+	v.conversation = true
+	v.entries = []activityPaneEntry{
+		{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "**First**\n\nOld body\nOld tail"},
+		{Seq: 2, Agent: "Main", Kind: "reasoning", Text: "**Second**"},
+		{Seq: 3, Agent: "Main", Kind: "reasoning", Text: "**Latest**\n\nCurrent body"},
+		{Seq: 4, Agent: "Main", Kind: "tool", Text: "Read `Makefile`"},
+		{Seq: 5, Agent: "Main", Kind: "reasoning", Text: "**After action**\n\nSeparate body"},
+	}
+	for _, entry := range v.entries {
+		v.blocks = append(v.blocks, parseLiveActivity(entry))
+	}
+	feed := v.renderFeed(80, 40)
+	got := strings.Join(threadPlain(feed), "\n")
+	if !strings.Contains(got, "Old tail, Second") || strings.Contains(got, "Old body") || !strings.Contains(got, "Current body\n└ Read") || !strings.Contains(got, "Separate body") {
+		t.Fatalf("collapsed run:\n%s", got)
+	}
+	snippet := feed.snippets[0]
+	if snippet == (liveActivitySnippet{}) {
+		t.Fatal("collapsed summaries cannot open")
+	}
+	v.toggleSnippet(snippet)
+	got = strings.Join(threadPlain(v.renderFeed(80, 40)), "\n")
+	if !strings.Contains(got, "Old body") {
+		t.Fatalf("summary bodies lost:\n%s", got)
+	}
+	// The Activity view applies the same policy, independently of Main grouping.
+	v.conversation, v.childrenOnly, v.runs = false, true, nil
+	for i := range v.entries {
+		v.entries[i].Agent = "/root/worker"
+	}
+	v.expanded = nil
+	got = strings.Join(threadPlain(v.renderFeed(80, 60)), "\n")
+	if !strings.Contains(got, "Old tail, Second") || strings.Contains(got, "Old body") || !strings.Contains(got, "Current body") {
+		t.Fatalf("activity run:\n%s", got)
+	}
+}
+
+func TestRosterJoinsConsecutiveReasoning(t *testing.T) {
+	v := newLiveActivityView()
+	v.childrenOnly = true
+	v.entries = []activityPaneEntry{
+		{Seq: 1, Agent: "/root/worker", Kind: "reasoning", Text: "**Before action**"},
+		{Seq: 2, Agent: "/root/worker", Kind: "tool", Text: "Read `Makefile`"},
+		{Seq: 3, Agent: "/root/worker", Kind: "reasoning", Text: "**First**"},
+		{Seq: 4, Agent: "/root/other", Kind: "tool", Text: "Read `go.mod`"},
+		{Seq: 5, Agent: "/root/worker", Kind: "reasoning", Text: "**Second**"},
+	}
+	for _, entry := range v.entries {
+		v.blocks = append(v.blocks, parseLiveActivity(entry))
+	}
+	for _, live := range []bool{false, true} {
+		summary, _ := v.current(activityPaneAgent{Name: "/root/worker", Responding: live}, time.Now())
+		if got := ansi.Strip(summary); got != "First, Second" {
+			t.Fatalf("live=%v: inline = %q", live, got)
+		}
+	}
+}

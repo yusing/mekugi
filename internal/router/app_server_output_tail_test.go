@@ -144,14 +144,14 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	if got := main(); !strings.Contains(got, open) || strings.Contains(got, "Running") || strings.Contains(got, "late") {
 		t.Fatalf("completed command lacks its settled output %q:\n%s", open, got)
 	}
-	if u.view.settle(time.Now().Add(time.Hour)) {
+	if settleActivity(time.Now().Add(time.Hour), u.view) {
 		t.Fatal("output collapsed before a later event")
 	}
 	nextEvent(t, u, "main")
-	if u.view.settle(time.Now()) {
+	if settleActivity(time.Now(), u.view) {
 		t.Fatal("output collapsed before events paused")
 	}
-	if !u.view.settle(time.Now().Add(activityui.OutputDebounce)) {
+	if !settleActivity(time.Now().Add(activityui.OutputDebounce), u.view) {
 		t.Fatal("output did not collapse after the next event")
 	}
 	feed := u.view.renderFeed(90, 60)
@@ -190,7 +190,7 @@ func TestAppServerSingleLineOutputStaysVisible(t *testing.T) {
 			"id": "cmd", "type": "commandExecution", "command": "echo done", "status": "completed", "exitCode": 0, "aggregatedOutput": "done\n",
 		}})
 		nextEvent(t, u, "main")
-		u.view.settle(time.Now().Add(activityui.OutputDebounce))
+		settleActivity(time.Now().Add(activityui.OutputDebounce), u.view)
 		feed := u.view.renderFeed(90, 60)
 		got := ansi.Strip(strings.Join(feed.lines, "\n"))
 		if !strings.Contains(got, "┆ done") || strings.Contains(got, "+1 lines") {
@@ -241,7 +241,7 @@ func TestAppServerMixedCommandOutputFollowsFinalRead(t *testing.T) {
 			if exit != 0 {
 				check("┆ second")
 				nextEvent(t, u, "main")
-				u.view.settle(time.Now().Add(activityui.OutputDebounce))
+				settleActivity(time.Now().Add(activityui.OutputDebounce), u.view)
 				check("┆ second")
 				return
 			}
@@ -352,15 +352,15 @@ func TestAppServerOutputCollapsesTogetherAfterEventsPause(t *testing.T) {
 	run("second")
 	start := time.Now()
 	// Rapid commands keep deferring the collapse rather than folding one by one.
-	if u.view.settle(start.Add(activityui.OutputDebounce / 2)) {
+	if settleActivity(start.Add(activityui.OutputDebounce/2), u.view) {
 		t.Fatal("output collapsed while events were still arriving")
 	}
 	run("third")
 	third := u.view.events["Main"].at
-	if u.view.settle(third.Add(activityui.OutputDebounce / 2)) {
+	if settleActivity(third.Add(activityui.OutputDebounce/2), u.view) {
 		t.Fatal("a later event did not restart the pause")
 	}
-	if !u.view.settle(third.Add(activityui.OutputDebounce)) {
+	if !settleActivity(third.Add(activityui.OutputDebounce), u.view) {
 		t.Fatal("settled output did not collapse after events paused")
 	}
 	got := ansi.Strip(strings.Join(u.view.renderFeed(100, 60).lines, "\n"))
@@ -519,5 +519,78 @@ func TestAppServerCollapsedReadsMerge(t *testing.T) {
 				t.Fatalf("closed reads =\n%s\nwant\n%s", again, got)
 			}
 		})
+	}
+}
+
+func TestOutputCollapseSharesFrameAcrossLateCompletions(t *testing.T) {
+	for _, agents := range [][]string{{"Main", "Main"}, {"Main", "/root/worker"}} {
+		t.Run(strings.Join(agents, ","), func(t *testing.T) {
+			v := newLiveActivityView()
+			start := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+			late := start.Add(activityui.OutputDebounce / 2)
+			v.events = map[string]liveActivityEvent{}
+			for i, agent := range agents {
+				settled := start
+				if i == 1 {
+					settled = late
+				}
+				v.entries = append(v.entries, activityPaneEntry{Seq: uint64(i + 1), Agent: agent, native: &liveActivityNativeItem{settled: settled}})
+				v.blocks = append(v.blocks, []activityui.Block{{Kind: "op", Verb: "Run", Tail: []string{"one", "two"}}})
+				v.events[agent] = liveActivityEvent{seq: 3, at: start}
+			}
+			if settleActivity(start.Add(activityui.OutputDebounce), v) {
+				t.Fatal("earlier output collapsed in a separate frame")
+			}
+			if v.blocks[0][0].Collapsed || v.blocks[1][0].Collapsed {
+				t.Fatal("partially collapsed batch")
+			}
+			if !settleActivity(late.Add(activityui.OutputDebounce), v) {
+				t.Fatal("batch did not collapse")
+			}
+			if !v.blocks[0][0].Collapsed || !v.blocks[1][0].Collapsed {
+				t.Fatal("outputs did not collapse together")
+			}
+		})
+	}
+}
+
+func TestOutputCollapseSharesFrameAcrossPanes(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.conversation = true
+	start := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+	late := start.Add(activityui.OutputDebounce / 2)
+	for i, agent := range []string{"/root", "/root/worker"} {
+		at := start
+		if i == 1 {
+			at = late
+		}
+		u.applyActivity([]activityPaneEntry{
+			{Seq: uint64(i*2 + 1), Agent: agent, Kind: "tool", Text: "Run `echo result`", Observed: at, outputTail: []string{"first output line", "last output line"}, native: &liveActivityNativeItem{thread: agent, item: "cmd", settled: at}},
+			{Seq: uint64(i*2 + 2), Agent: agent, Kind: "reasoning", Text: "**Next step**", Observed: at, native: &liveActivityNativeItem{thread: agent, item: "next"}},
+		}, nil)
+	}
+	render := func(view *liveActivityView) string {
+		return ansi.Strip(strings.Join(view.renderFeed(90, 60).lines, "\n"))
+	}
+	for _, view := range []*liveActivityView{u.view, u.agents} {
+		if !strings.Contains(render(view), "first output line") {
+			t.Fatalf("fixture lacks visible output: %s", render(view))
+		}
+	}
+	if settleActivity(start.Add(activityui.OutputDebounce), u.view, u.agents) {
+		t.Fatal("panes collapsed in different frames")
+	}
+	for _, view := range []*liveActivityView{u.view, u.agents} {
+		if !strings.Contains(render(view), "first output line") {
+			t.Fatal("one pane collapsed early")
+		}
+	}
+	if !settleActivity(late.Add(activityui.OutputDebounce), u.view, u.agents) {
+		t.Fatal("panes did not settle")
+	}
+	for _, view := range []*liveActivityView{u.view, u.agents} {
+		if got := render(view); strings.Contains(got, "first output line") || !strings.Contains(got, "… +2 lines") {
+			t.Fatalf("pane did not collapse:\n%s", got)
+		}
 	}
 }

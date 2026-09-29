@@ -44,3 +44,33 @@ func TestThinkingBlock(t *testing.T) {
 		t.Fatalf("partial title rendered as thinking = %q", got)
 	}
 }
+
+func TestConsecutiveReasoningGroups(t *testing.T) {
+	var p activityui.Painter
+	summaries := []activityui.Block{
+		{Kind: "summary", Body: "**First**\n\nEarlier body\nextra detail", Source: 1},
+		{Kind: "summary", Body: "**Second**", Source: 2},
+		{Kind: "summary", Body: "Latest body", Source: 3, Collapsed: true},
+	}
+	grouped := activityui.GroupReasoning(summaries)
+	if len(grouped) != 2 || len(grouped[0].Members) != 2 || grouped[1].Source != 3 || grouped[1].Collapsed {
+		t.Fatalf("group = %+v", grouped)
+	}
+	collapsed := ansi.Strip(strings.Join(p.Block(grouped[0], 80), "\n"))
+	if collapsed != "• extra detail, Second" {
+		t.Fatalf("collapsed = %q", collapsed)
+	}
+	grouped[0].Collapsed = false
+	expanded := ansi.Strip(strings.Join(p.Block(grouped[0], 80), "\n"))
+	if !strings.Contains(expanded, "Earlier body") || !strings.Contains(expanded, "Second") {
+		t.Fatalf("expanded = %q", expanded)
+	}
+	if got := ansi.Strip(p.Summary(summaries)); got != "extra detail, Second, Latest body" {
+		t.Fatalf("inline = %q", got)
+	}
+	separated := append(append([]activityui.Block{}, summaries[:1]...), activityui.Block{Kind: "op", Verb: "Read"})
+	separated = append(separated, summaries[1:]...)
+	if got := activityui.GroupReasoning(separated); len(got) != 4 || got[0].Collapsed || got[1].Kind != "op" {
+		t.Fatalf("action boundary = %+v", got)
+	}
+}

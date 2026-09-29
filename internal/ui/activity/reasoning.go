@@ -68,3 +68,32 @@ func ThinkingHeader(live bool, elapsed string) string {
 	}
 	return "Thought"
 }
+
+// GroupReasoning folds earlier summaries in each uninterrupted run into one
+// expandable row. The latest summary stays expanded.
+func GroupReasoning(blocks []Block) []Block {
+	var out []Block
+	for i := 0; i < len(blocks); {
+		end := i + 1
+		if blocks[i].Kind == "summary" {
+			for end < len(blocks) && blocks[end].Kind == "summary" {
+				end++
+			}
+		}
+		if end-i > 1 {
+			members := slices.Clone(blocks[i : end-1])
+			headers := make([]string, 0, len(members))
+			for _, member := range members {
+				headers = append(headers, ReasoningSummaryHeader(member.Body))
+			}
+			out = append(out, Block{Kind: "summary", Source: blocks[i].Source, Label: strings.Join(headers, ", "), Members: members, Collapsed: true})
+			latest := blocks[end-1]
+			latest.Collapsed = false
+			out = append(out, latest)
+		} else {
+			out = append(out, blocks[i])
+		}
+		i = end
+	}
+	return out
+}

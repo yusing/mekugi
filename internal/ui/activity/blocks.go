@@ -53,7 +53,8 @@ type Block struct {
 	Changes     []ChangeRow // Change history rows open output shows instead of Tail.
 	Output      *Output     // The invocation's retained output, which the output dialog reads.
 	// Members are the invocations a merged read row stands for, each with its
-	// own output, which the output dialog pages through.
+	// own output, which the output dialog pages through. For a summary group,
+	// Members retain the earlier summaries for expansion.
 	Members    []Block
 	SourceRows int    // Rows a command or program preview may use; 0 shows it whole.
 	Flash      bool   // Presentation-only: another pane just opened this entry.
@@ -67,7 +68,8 @@ type Block struct {
 // Finished thinking stays open for ThinkingLinger after it completes live,
 // then collapses to one row. Successful output stays open until its agent's
 // next standalone event, then collapses once events pause for
-// OutputDebounce, so a quick run of commands collapses together rather than
+// OutputDebounce. Eligible outputs share the latest deadline across agents
+// and late completions, so a quick run of commands collapses together rather than
 // one row at a time. Restored history starts settled.
 const (
 	ThinkingLinger = time.Second

@@ -521,6 +521,21 @@ func (p *Painter) blockRows(block Block, width int) []string {
 	case "progress":
 		return Wrap(Dim+"• "+block.progressText(true)+Reset, width, false)
 	case "summary":
+		if len(block.Members) > 0 {
+			if block.Collapsed {
+				label := p.Inline(block.Label)
+				if block.Hovered {
+					label = Underline(label)
+				}
+				return liveActivityHang(Dim+"• ", label+Undim, width)
+			}
+			var rows []string
+			for _, member := range block.Members {
+				member.Collapsed = false
+				rows = append(rows, p.Block(member, width)...)
+			}
+			return rows
+		}
 		// Codex keeps summary bodies in detailed transcript, dim and italic,
 		// with a bullet rather than a separate "Reasoning summary" card.
 		body := ReasoningSummaryBody(block.Body)
@@ -1405,7 +1420,12 @@ func (p *Painter) Summary(blocks []Block) string {
 	case "progress":
 		return Dim + block.progressText(true) + Reset
 	case "summary":
-		return Dim + ReasoningSummaryHeader(block.Body) + Undim
+		var headers []string
+		for i := len(blocks) - 1; i >= 0 && blocks[i].Kind == "summary"; i-- {
+			headers = append(headers, ReasoningSummaryHeader(blocks[i].Body))
+		}
+		slices.Reverse(headers)
+		return Dim + strings.Join(headers, ", ") + Undim
 	case "final":
 		text := firstLine(block.Body)
 		if block.Journal != nil {
