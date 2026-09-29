@@ -188,10 +188,6 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 			}
 		}
 		var text strings.Builder
-		text.WriteString("Journal result")
-		if journal.Author != "" {
-			text.WriteString(" " + commentaryCode(journal.Author))
-		}
 		entries := 0
 		for _, item := range journal.Items {
 			if item.Updated <= journal.ResultSeq {
@@ -204,16 +200,14 @@ func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[s
 				text.WriteString("\n- " + strings.TrimPrefix(indentJournalText(item.Text, "  "), "  "))
 			}
 		}
+		result := strings.TrimLeft(text.String(), "\n")
 		if entries == 0 {
-			text.WriteString("\nNo new journal entries.")
+			result = "No new journal entries."
 		}
-
-		text.WriteString(changes)
 		if journal.TreeAuthored {
-			t.journalChildResult = journalTurnCard(journal, journal.ResultSeq, true) + changes
-		} else {
-			t.journalChildResult = text.String()
+			result = journalTurnCard(journal, journal.ResultSeq, true)
 		}
+		t.journalChildResult = result + changes
 		if len(t.journalChildResult) > maxJournalFlushBytes {
 			t.ReleaseDelivery()
 			return nil, errors.New("child journal result exceeds terminal capacity")

@@ -98,7 +98,7 @@ func TestJournalChildCompletionResult(t *testing.T) {
 						result = commentaryMessageText(item)
 					}
 				}
-				if !strings.Contains(result, "Journal result") || strings.Contains(result, "Journal saved:") || strings.Contains(result, "Descendant stays separate") {
+				if !strings.Contains(result, "**Changes:**") || strings.Contains(result, "Journal result") || strings.Contains(result, "Journal saved:") || strings.Contains(result, "Descendant stays separate") {
 					t.Fatalf("missing or incorrectly scoped result: %q", result)
 				}
 				if len(output) == 0 || jsonString(output[len(output)-1], "phase") != "final_answer" {
@@ -116,8 +116,9 @@ func TestJournalChildCompletionResult(t *testing.T) {
 						t.Fatalf("empty journal result: %q", result)
 					}
 				} else {
-					if !strings.Contains(result, "`/root/child`") || !strings.Contains(result, "\n\nSecond finding") {
-						t.Fatalf("missing identity or standalone answer: %q", result)
+					// Codex names the author on the completion, so the result does not.
+					if strings.Contains(result, "`/root/child`") || !strings.Contains(result, "\n\nSecond finding") {
+						t.Fatalf("repeated identity or missing standalone answer: %q", result)
 					}
 					for _, forbidden := range []string{"`amber`", "`apple`", "**Question:**", "Which result?", "**Answer", "question in `"} {
 						if strings.Contains(result, forbidden) {
@@ -187,8 +188,8 @@ func TestJournalChildResultAfterRestart(t *testing.T) {
 	}
 	child.Delivered(wire)
 	child.ReleaseDelivery()
-	if !strings.Contains(string(wire), "Durable child result") || !strings.Contains(string(wire), "Journal result `/root/child`") {
-		t.Fatalf("resumed completion lost result or identity: %s", wire)
+	if !strings.Contains(string(wire), "Durable child result") || strings.Contains(string(wire), "Journal result") {
+		t.Fatalf("resumed completion lost result or kept a redundant author heading: %s", wire)
 	}
 	items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "child")
 	if err != nil || len(items) != 1 || items[0].Reported || items[0].Flushed {

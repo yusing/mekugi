@@ -22,8 +22,11 @@ app-server requests without workspace metadata. Only notes from the presented na
 are suppressed in Main or acknowledged via the pane. Router stamps display in local time
 at the row's right edge when the pane is wide enough.
 Only tasks show state; blocked tasks retain their reason and dropped tasks are dimmed.
-A plan strip remains above the composer while any task is open. It shows the current
-task, progress and the next pending task.
+A plan strip above the composer pins the newest task change (added, started,
+updated, reopened, done, blocked or dropped) with the task's current state, then
+right-aligned progress and the pane key, which yield to the title when narrow. A
+journal without an event log pins its current task. It remains while any task is
+open, and during a Main turn after the last task finishes.
 
 Child journals mount read-only under the parent's linked task, or under an Agents
 group when unlinked. Enter on a mount opens that child's Activity; an agent absent
@@ -33,10 +36,13 @@ has no state label. Child changes refresh mounted views without copying notes in
 the parent's record or acknowledging child events on behalf of the parent. The plan
 strip counts only the presented journal's own tasks.
 
-Native Main receives event rows after persistence. Notes are rows only while the
+Native Main receives event rows after persistence. Adjacent rows share one `journal`
+item: a state glyph colored by state, the dim path, the title and the change, one node
+per row, wrapped under the title. A row's time shows only where it differs from the
+row above. A row with a body opens it on click. Notes are rows only while the
 Journal pane is hidden; blocked task rows remain visible. Successful terminal delivery
-publishes a framed turn card with Outcome, This turn and Remaining. Its notes expand
-in place. Empty Outcomes omit the answer line but retain the remaining work. Cards
+publishes a turn card framed like an answer, with Outcome, This turn and Remaining
+one node per row, and done and open counts in its title. Its notes expand in place. Empty Outcomes omit the answer line but retain the remaining work. Cards
 have response-specific identity, including consecutive empty Outcomes at one sequence.
 Answer reply links use the retained original question. The Journal pane restores its
 current tree from durable storage independently of provider requests.
@@ -287,8 +293,12 @@ can hold; the turn card keeps it whole. Successful downstream delivery advances
 the corresponding cursor; failure preserves its window. Main cards remain the last
 assistant message. Failed, incomplete and interrupted responses never terminal-flush.
 Retained v1 authoring keeps its legacy presentation and delivery receipts during replay.
-A child completes without flushing and emits `Journal result` containing only
-revisions newer than its durable `resultSeq` cursor. Agent recipients see neither
+A child completes without flushing and emits a result containing only
+revisions newer than its durable `resultSeq` cursor. The result has no author
+heading: Codex names the child on its completion notification and inter-agent
+result. Activity recognizes the result by its closing change report, and still
+recognizes retained results that lead with `Journal result`, painting the report
+as per-file rows with the totals in the answer title. Agent recipients see neither
 the echoed assignment nor opaque item IDs. Notes are Markdown bullets and answers
 are standalone Markdown; stored questions and the complete journal remain available
 through reads, Activity, replay and forks. An empty delta says `No new journal entries.`

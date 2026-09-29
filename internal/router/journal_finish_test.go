@@ -592,7 +592,7 @@ func TestNaturalProviderAnswerBecomesJournalTerminalResult(t *testing.T) {
 					t.Fatalf("provider answer was not exclusively rendered through the journal: %s", output)
 				}
 				if child {
-					if !bytes.Contains(output, []byte("Journal result")) {
+					if !bytes.Contains(output, []byte("**Changes:**")) || bytes.Contains(output, []byte("Journal result")) {
 						t.Fatalf("child completion omitted its journal result: %s", output)
 					}
 				} else if !bytes.Contains(output, []byte("Journal flush")) {

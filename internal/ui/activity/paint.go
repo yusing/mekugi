@@ -175,6 +175,9 @@ func Wrap(text string, width int, hard bool) []string {
 	return lines
 }
 
+// Hang wraps label after lead, indenting continuation rows under the label.
+func Hang(lead, label string, width int) []string { return liveActivityHang(lead, label, width) }
+
 // hang places a styled label after a lead, wrapping continuations under the label.
 func liveActivityHang(lead, label string, width int) []string {
 	indent := ansi.StringWidth(lead)
@@ -1260,6 +1263,10 @@ func (p *Painter) Event(block Block, width int) []string {
 					rows = append(rows, liveActivityHang(Dim+"•"+Undim+" ", strings.Join(p.Markdown(answer.Text, inner-2), "\n"), inner)...)
 				}
 			}
+			if totals := block.Journal.totals(); totals != "" {
+				// The title keeps the totals visible when the card is clipped.
+				title += Dim + " · " + Undim + totals
+			}
 			tail := *block.Journal
 			tail.Groups, tail.empty = nil, false
 			rows = append(rows, p.Journal(&tail, inner, false)...)
@@ -1302,20 +1309,8 @@ func (p *Painter) Journal(journal *Journal, width int, heading bool) []string {
 	if answers > 1 {
 		facts = append(facts, fmt.Sprintf("%d answers", answers))
 	}
-	if len(journal.Stats) > 0 {
-		added, removed := 0, 0
-		for _, stat := range journal.Stats {
-			a, errA := strconv.Atoi(stat.Added)
-			r, errR := strconv.Atoi(stat.Removed)
-			if errA == nil && errR == nil {
-				added, removed = added+a, removed+r
-			}
-		}
-		files := "1 file"
-		if len(journal.Stats) > 1 {
-			files = fmt.Sprintf("%d files", len(journal.Stats))
-		}
-		facts = append(facts, files+" "+Green+fmt.Sprintf("+%d", added)+"\x1b[39m "+Red+fmt.Sprintf("-%d", removed)+"\x1b[39m")
+	if totals := journal.totals(); totals != "" {
+		facts = append(facts, totals)
 	}
 	if len(facts) > 0 {
 		head += Dim + " · " + strings.Join(facts, " · ") + Undim
@@ -1381,6 +1376,26 @@ func (p *Painter) Journal(journal *Journal, width int, heading bool) []string {
 		}
 	}
 	return lines
+}
+
+// totals summarizes a journal's recorded file changes, or "" without any.
+func (journal *Journal) totals() string {
+	if len(journal.Stats) == 0 {
+		return ""
+	}
+	added, removed := 0, 0
+	for _, stat := range journal.Stats {
+		a, errA := strconv.Atoi(stat.Added)
+		r, errR := strconv.Atoi(stat.Removed)
+		if errA == nil && errR == nil {
+			added, removed = added+a, removed+r
+		}
+	}
+	files := "1 file"
+	if len(journal.Stats) > 1 {
+		files = fmt.Sprintf("%d files", len(journal.Stats))
+	}
+	return files + " " + Green + fmt.Sprintf("+%d", added) + "\x1b[39m " + Red + fmt.Sprintf("-%d", removed) + "\x1b[39m"
 }
 
 // Verb pads verbs to a common column so arguments line up.
@@ -1540,12 +1555,24 @@ func (p Painter) route(block Block) string {
 // liveActivityCard frames rows under a titled top edge. A glowing card was
 // just opened from another pane.
 func liveActivityCard(title string, rows []string, width int, glow bool) []string {
+	return Card(title, "", rows, width, glow)
+}
+
+// Card frames a finished answer: a rounded green edge with its title on the
+// top border and optional dim right text, such as a time.
+func Card(title, right string, rows []string, width int, glow bool) []string {
 	edge := "\x1b[38;2;80;120;90m"
 	if glow {
 		edge = "\x1b[1m" + Green
 	}
 	inner := width - 4
-	top := edge + "╭─ " + Reset + title + edge + " " + strings.Repeat("─", max(0, width-5-ansi.StringWidth(title))) + "╮" + Reset
+	title = ansi.Truncate(title, max(0, width-6), "…")
+	if right != "" && width-7-ansi.StringWidth(title)-ansi.StringWidth(right) >= 2 {
+		right = " " + Reset + Dim + right + Undim + edge + " "
+	} else {
+		right = ""
+	}
+	top := edge + "╭─ " + Reset + title + edge + " " + strings.Repeat("─", max(0, width-5-ansi.StringWidth(title)-ansi.StringWidth(right))) + right + "╮" + Reset
 	lines := []string{ansi.Truncate(top, width, "")}
 	for _, row := range rows {
 		row = ansi.Truncate(row, inner, "…")

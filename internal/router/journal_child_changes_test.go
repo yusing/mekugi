@@ -121,7 +121,7 @@ func TestJournalChildCompletionIncludesOwnChanges(t *testing.T) {
 
 	result := finishChildJournalForChanges(t, child)
 	for _, want := range []string{
-		"Journal result", "**Changes:**", first, third + ".." + fifth, recovery,
+		"**Changes:**", first, third + ".." + fifth, recovery,
 		"M\t1\t1\tfirst.txt", "M\t2\t0\tthird.txt", "M\t1\t1\tfourth.txt",
 		"M\t0\t1\tfifth.txt", "M\t2\t1\trecovery.txt",
 	} {

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -99,11 +100,8 @@ func TestNativeJournalPlanStripOnlyWithOpenTask(t *testing.T) {
 	journal := nativeJournalFixture()
 	u.journal = &nativeJournalSink{tree: &journal}
 	strip := ansi.Strip(u.journalPlanStrip(80))
-	if !strings.Contains(strip, "◐ /2 Working renderer") || !strings.Contains(strip, "Ctrl-B 5: journal") {
-		t.Fatalf("plan strip did not prefer working task: %q", strip)
-	}
-	if !strings.Contains(strip, "▸ /1 Pending parser") {
-		t.Fatalf("plan strip did not show the next pending task: %q", strip)
+	if !strings.HasPrefix(strip, "◐ /2 Working renderer") || !strings.HasSuffix(strip, "1/4 done · Ctrl-B 5 journal") || ansi.StringWidth(strip) != 80 {
+		t.Fatalf("plan strip without events did not prefer working task: %q", strip)
 	}
 	mounted := append(slices.Clone(journal.Items), journalItem{Path: "/@agents/@child", Kind: "task", Title: "/root/child", State: "working"},
 		journalItem{Path: "/@agents/@child/1", Kind: "task", Title: "Child pending", State: "pending"})
@@ -373,7 +371,7 @@ func TestNativeJournalCollapsedCardShowsRemoval(t *testing.T) {
 	var out conversationLines
 	v.journalCardLines(&out, entry, 70)
 	text := ansi.Strip(strings.Join(out.lines, "\n"))
-	if !strings.Contains(text, "Removed /1 Old task") || strings.Contains(text, "◐ /1") {
+	if !strings.Contains(text, "⊖ /1 Old task · removed") || strings.Contains(text, "◐ /1") {
 		t.Fatalf("collapsed card misrepresented removal: %q", text)
 	}
 }
@@ -509,5 +507,120 @@ func TestNativeJournalHintsNamespaceOnlyWithBothJournals(t *testing.T) {
 	}
 	if current, other := u.journalNamespaces(); current != "unscoped" || other != "workspace" {
 		t.Fatalf("namespace switch: %q %q", current, other)
+	}
+}
+
+func nativeJournalEvent(seq uint64, at time.Time, op, path, kind, title, state, body string) journalEvent {
+	return journalEvent{Seq: seq, At: at.UTC().Format(time.RFC3339Nano), Op: op, Path: path, Transition: kind == "task",
+		Fields: journalNode{Path: path, Kind: kind, Title: title, State: state, Body: body}}
+}
+
+func TestNativeJournalTranscriptGroupsAdjacentChanges(t *testing.T) {
+	v := newLiveActivityView()
+	v.conversation = true
+	now := time.Now()
+	note := "Change-records confirmed FIXME recovery; owns selection/composition and namespace-wide stream IDs. Reports existing independent finalization."
+	for _, event := range []journalEvent{
+		nativeJournalEvent(1, now, "set", "/3", "task", "activity-dialogs", "working", ""),
+		nativeJournalEvent(2, now, "add", "/7", "task", "Integrate batches and validate", "pending", ""),
+		nativeJournalEvent(3, now, "add", "/3/1", "note", note, "", "Detail body"),
+		nativeJournalEvent(4, now, "set", "/4", "task", "shell-boundaries", "blocked", ""),
+	} {
+		e := event
+		v.applyTreeJournal("main", nativeJournalPublication{event: &e, item: journalItem{ID: fmt.Sprintf("event:%d", e.Seq), Text: journalRowText(e)}})
+	}
+	feed := v.renderFeed(60, 40)
+	plain := make([]string, len(feed.lines))
+	for i, line := range feed.lines {
+		plain[i] = ansi.Strip(line)
+		if ansi.StringWidth(line) > 60 {
+			t.Fatalf("row overflowed: %q", plain[i])
+		}
+	}
+	text := strings.Join(plain, "\n")
+	if strings.Count(text, "◆ journal") != 1 || strings.Contains(text, "\n\n") {
+		t.Fatalf("adjacent changes did not share one compact item:\n%s", text)
+	}
+	for _, want := range []string{"│ ◐ /3 activity-dialogs · started", "│ ○ /7 Integrate batches and validate · added", "│ ⚠ /4 shell-boundaries · blocked", "│ ◆ Change-records"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q:\n%s", want, text)
+		}
+	}
+	noteRow := slices.IndexFunc(plain, func(row string) bool { return strings.Contains(row, "◆ Change-records") })
+	if next := plain[noteRow+1]; !strings.HasPrefix(next, "│   ") {
+		t.Fatalf("wrapped note did not hang under its text: %q", next)
+	}
+	snippet := feed.snippets[noteRow]
+	block, ok := v.snippetBlock(snippet)
+	if !ok || !strings.Contains(block.Body, "Detail body") {
+		t.Fatalf("note row does not open its detail: %+v %v", block, ok)
+	}
+	if feed.snippets[noteRow-1] != (liveActivitySnippet{}) {
+		t.Fatal("a task without detail must not claim a click")
+	}
+}
+
+func TestNativeJournalStripPinsNewestChange(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	now := time.Now()
+	journal := threadJournal{Version: 2, TreeAuthored: true, Items: []journalItem{
+		{Path: "/1", Kind: "task", Title: "Parser", State: "done"},
+		{Path: "/2", Kind: "task", Title: "Renderer", State: "working", Started: &journalStamp{At: now.Add(-time.Minute).Format(time.RFC3339Nano)}},
+		{Path: "/3", Kind: "task", Title: "Docs", State: "pending"},
+	}, Events: []journalEvent{
+		nativeJournalEvent(1, now, "set", "/1", "task", "Parser", "done", ""),
+		nativeJournalEvent(2, now, "set", "/2", "task", "Renderer", "working", ""),
+		nativeJournalEvent(3, now, "add", "/2/1", "note", "Progress", "", ""),
+	}}
+	u.journal = &nativeJournalSink{tree: &journal}
+	strip := ansi.Strip(u.journalPlanStrip(80))
+	if !strings.HasPrefix(strip, "◐ /2 Renderer · started · 1m") || !strings.HasSuffix(strip, "1/3 done · Ctrl-B 5 journal") {
+		t.Fatalf("strip did not pin the newest task change: %q", strip)
+	}
+	journal.Events = append(journal.Events, nativeJournalEvent(4, now, "add", "/4", "task", "Review", "pending", ""))
+	journal.Items = append(journal.Items, journalItem{Path: "/4", Kind: "task", Title: "Review", State: "pending"})
+	if strip := ansi.Strip(u.journalPlanStrip(80)); !strings.HasPrefix(strip, "○ /4 Review · added") {
+		t.Fatalf("a created task did not take the pin: %q", strip)
+	}
+	for i := range journal.Items {
+		journal.Items[i].State = "done"
+	}
+	if strip := u.journalPlanStrip(80); strip != "" {
+		t.Fatalf("finished plan stayed pinned after the turn: %q", strip)
+	}
+	u.turn = "t"
+	if strip := ansi.Strip(u.journalPlanStrip(80)); !strings.HasPrefix(strip, "● /4 Review") {
+		t.Fatalf("an active turn lost its last change: %q", strip)
+	}
+}
+
+func TestNativeJournalPinReplacesOlderReplyPin(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"t"}}}`)
+	send := func(id, text string) {
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": id, "type": "agentMessage", "text": text}})
+	}
+	send("reply", "Older Main response")
+	for i := range 20 {
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": fmt.Sprint(i), "type": "commandExecution", "command": fmt.Sprint("echo activity-", i)}})
+	}
+	later := time.Now().Add(time.Second)
+	journal := threadJournal{Version: 2, TreeAuthored: true, Items: []journalItem{{Path: "/1", Kind: "task", Title: "Renderer", State: "working"}},
+		Events: []journalEvent{nativeJournalEvent(1, later, "set", "/1", "task", "Renderer", "working", "")}}
+	u.journal = &nativeJournalSink{tree: &journal}
+	frame, _ := u.mainFrame(80, 24, 0)
+	text := ansi.Strip(strings.Join(frame, "\n"))
+	if u.view.feedTop != 1 || strings.Contains(text, "Older Main response") || !strings.Contains(text, "◐ /1 Renderer · started") {
+		t.Fatalf("newer journal state did not replace the pinned reply:\n%s", text)
+	}
+	time.Sleep(10 * time.Millisecond)
+	journal.Events[0].At = time.Now().Add(-time.Hour).Format(time.RFC3339Nano)
+	send("newer", "Newer Main response")
+	for i := range 20 {
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": fmt.Sprint("more-", i), "type": "commandExecution", "command": fmt.Sprint("echo more-", i)}})
+	}
+	frame, _ = u.mainFrame(80, 24, 0)
+	if u.view.feedTop <= 1 || !strings.Contains(ansi.Strip(frame[1]), "Newer Main response") {
+		t.Fatalf("a newer reply did not win the pin back:\n%s", strings.Join(frame, "\n"))
 	}
 }

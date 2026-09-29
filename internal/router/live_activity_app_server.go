@@ -401,6 +401,9 @@ func (v *liveActivityView) linkChildAnswers(seq uint64) {
 			if block.Journal != nil {
 				for _, group := range block.Journal.Groups {
 					for j, answer := range group.Answers {
+						if answer.ID == "" {
+							continue // Tree results are deltas without item identity.
+						}
 						known[answer.ID] = group.Target
 						previousAnswers[answer.ID] = &group.Answers[j]
 					}
@@ -419,7 +422,15 @@ func (v *liveActivityView) linkChildAnswers(seq uint64) {
 		var groups []activityui.AnswerGroup
 		for _, group := range block.Journal.Groups {
 			var current uint64
-			if group.Question != "" {
+			if group.Question == "" && slices.ContainsFunc(group.Answers, func(answer activityui.Answer) bool { return answer.ID == "" }) {
+				// A tree result answers the latest task sent to its agent.
+				for _, entry := range slices.Backward(v.entries[:index]) {
+					if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil && entry.assignment.to == owner {
+						current = entry.Seq
+						break
+					}
+				}
+			} else if group.Question != "" {
 				for _, entry := range slices.Backward(v.entries[:index]) {
 					if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil && entry.assignment.id != "" && entry.assignment.to == owner && normalize(entry.assignment.text) == group.Question {
 						current = entry.Seq
@@ -430,7 +441,9 @@ func (v *liveActivityView) linkChildAnswers(seq uint64) {
 			first := len(groups)
 			for _, answer := range group.Answers {
 				target, seen := known[answer.ID]
-				if previous := previousAnswers[answer.ID]; previous != nil {
+				if answer.ID == "" {
+					target, seen = current, true
+				} else if previous := previousAnswers[answer.ID]; previous != nil {
 					previous.Text = answer.Text
 					continue // A cumulative snapshot updates, rather than repeats, an earlier answer.
 				}

@@ -400,8 +400,7 @@ type nativePreview struct {
 	step        int
 	active      map[string]string // Running turn by thread.
 	assignments map[string]string
-	models      map[string]string // Provider model by thread, when not the default.
-	answers     map[string][]journalItem
+	models      map[string]string     // Provider model by thread, when not the default.
 	delay       string                // Seconds each preview command sleeps between outputs.
 	live        *nativePreviewProcess // The running command; the script waits for it.
 }
@@ -454,7 +453,7 @@ func newNativePreview(t *testing.T) *nativePreview {
 		return max(1, u.shell.layout.diff.w), max(3, u.shell.layout.diff.h), nil
 	}
 	u.session.start("main", workspace)
-	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace, delay: "0", active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}, answers: make(map[string][]journalItem)}
+	p := &nativePreview{t: t, ui: u, input: input, store: store, usage: usage, workspace: workspace, delay: "0", active: make(map[string]string), assignments: make(map[string]string), models: map[string]string{"t-explorer": nativePreviewGrokModel}}
 	store.liveDiff = func(changes []liveDiffChange) {
 		u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "change", Changes: changes})
 	}
@@ -720,14 +719,15 @@ func (p *nativePreview) receive(to, from, id, kind, body string) {
 }
 
 func (p *nativePreview) say(thread, id, phase, text string) {
-	// Child completions use the journal owner's cumulative result grammar,
-	// not hand-painted answer cards. Follow-ups must retain old answer IDs.
+	// Child completions use the tree journal's result grammar, not
+	// hand-painted answer cards: this turn's answer, then the change report.
+	// Codex names the author, so the result does not.
 	if thread != "main" && phase == "final_answer" {
-		p.answers[thread] = append(p.answers[thread], journalItem{ID: id, Question: p.assignments[thread], Text: text})
-		var result strings.Builder
-		result.WriteString("Journal result " + commentaryCode(p.ui.session.path(thread)))
-		writeJournalItems(&result, p.answers[thread])
-		text = result.String()
+		report := "**Changes:**\nNo recorded changes.\n"
+		if thread == "t-reviewer" {
+			report = "**Changes:** amber1\n\nAggregated numstat (this agent's recorded evaluations, not a net diff):\n\n    A\t12\t0\tdoc.go\n"
+		}
+		text += "\n\n" + report
 	}
 	item := map[string]any{"id": id, "type": "agentMessage", "text": text}
 	if phase != "" {
@@ -1244,7 +1244,7 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 }
 
 // The fake session exercises production event projection, turn association,
-// cumulative journal grammar, and the real mouse path, not a separate mock UI.
+// tree journal result grammar, and the real mouse path, not a separate mock UI.
 func TestNativeUIPreviewSessionReplyIdentity(t *testing.T) {
 	p := newNativePreview(t)
 	defer p.close()

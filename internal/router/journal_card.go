@@ -47,10 +47,10 @@ func journalEventText(event journalEvent) string {
 }
 
 func journalTurnCard(j threadJournal, since uint64, child bool) string {
+	// A child's recipient already knows its author: Codex names the agent on
+	// both the completion notification and the inter-agent result.
 	var text strings.Builder
-	if child {
-		text.WriteString("Journal result " + commentaryCode(j.Author))
-	} else {
+	if !child {
 		text.WriteString("Journal")
 	}
 	entries := 0
@@ -66,8 +66,12 @@ func journalTurnCard(j threadJournal, since uint64, child bool) string {
 		if event.Seq <= since || !child && j.LegacyFlush[event.Seq] || event.Fields.Kind == "answer" {
 			continue
 		}
-		if !happened && !child {
-			text.WriteString("\n\n**This turn**")
+		if !happened {
+			if child {
+				text.WriteString("\n")
+			} else {
+				text.WriteString("\n\n**This turn**")
+			}
 		}
 		happened = true
 		entries++
@@ -89,10 +93,13 @@ func journalTurnCard(j threadJournal, since uint64, child bool) string {
 			text.WriteString("\n- " + journalTaskText(item.node()))
 		}
 	}
-	if child && entries == 0 {
-		text.WriteString("\nNo new journal entries.")
+	if child {
+		if entries == 0 {
+			return "No new journal entries."
+		}
+		return strings.TrimLeft(text.String(), "\n")
 	}
-	if !child && !strings.Contains(text.String(), "\n") {
+	if !strings.Contains(text.String(), "\n") {
 		// An empty Outcome with nothing new or open still ends the turn visibly.
 		text.WriteString("\n\nNo journal changes this turn; no open tasks.")
 	}

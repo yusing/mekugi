@@ -179,3 +179,35 @@ func TestNativeActivityRetentionUsesQueueTime(t *testing.T) {
 		t.Fatal("queue did not expire")
 	}
 }
+
+// Tree results are deltas without item IDs: consecutive results from one
+// agent stay separate, and each links to the task it answers.
+func TestNativeActivityTreeResultsStaySeparateAndLinked(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentRole": "review",
+		"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/reviewer"}}}}})
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "other", "agentRole": "explorer",
+		"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/other"}}}}})
+	collab := func(id, tool, receiver, prompt string) {
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": id, "type": "collabAgentToolCall",
+			"tool": tool, "senderThreadId": "main", "receiverThreadIds": []string{receiver}, "prompt": prompt}})
+	}
+	result := func(agent, answer string) {
+		u.applyActivity([]activityPaneEntry{{Seq: u.session.next(), Agent: agent, Kind: "final", Text: answer + "\n\n**Changes:**\nNo recorded changes.\n"}}, nil)
+	}
+	collab("task-1", "spawnAgent", "child", "Review the first change.")
+	result("/root/reviewer", "FIRST ANSWER")
+	collab("task-2", "followupTask", "child", "Review the second change.")
+	collab("task-3", "spawnAgent", "other", "Explore elsewhere.")
+	result("/root/other", "OTHER ANSWER")
+	result("/root/reviewer", "SECOND ANSWER")
+	u.view.conversation = true
+	main := ansi.Strip(strings.Join(u.view.renderFeed(100, 80).lines, "\n"))
+	first, second := strings.Index(main, "FIRST ANSWER"), strings.Index(main, "SECOND ANSWER")
+	if first < 0 || second < first || strings.Count(main, "SECOND ANSWER") != 1 {
+		t.Fatalf("consecutive tree results merged:\n%s", main)
+	}
+	if context := strings.LastIndex(main[:second], "↩ re:"); context < 0 || !strings.Contains(main[context:second], "Review the second change.") {
+		t.Fatalf("tree result lost its assignment link:\n%s", main)
+	}
+}

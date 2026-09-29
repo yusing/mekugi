@@ -529,16 +529,82 @@ func (b *Block) countContent() {
 
 const liveActivityClippedAnswer = "… (full answer in Codex completion)"
 
-// parseLiveActivityJournal reads the journal result grammar written by journal
-// delivery. Any other shape stays authored Markdown.
+// ParseJournal reads the child result grammar written by journal delivery:
+// the answer, then the change report that always closes a child result.
+// Results retained from before the heading was dropped still lead with
+// "Journal result". Any other shape stays authored Markdown.
 func ParseJournal(text string) (*Journal, bool) {
-	lines := strings.Split(text, "\n")
-	if lines[0] != "Journal result" && !strings.HasPrefix(lines[0], "Journal result `") {
+	first, body, _ := strings.Cut(text, "\n")
+	headed := first == "Journal result" || strings.HasPrefix(first, "Journal result `")
+	if !headed {
+		body = text
+	}
+	lines := strings.Split(body, "\n")
+	report := len(lines)
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.HasPrefix(lines[i], "**Changes:**") {
+			report = i
+			break
+		}
+	}
+	if report == len(lines) && !headed {
 		return nil, false
 	}
 	journal := &Journal{}
-	current, inChanges := -1, false
-	for i := 1; i < len(lines); i++ {
+	if !parseJournalChanges(journal, lines[report:], headed) {
+		return nil, false
+	}
+	// Only headed results ever used the v1 item grammar; a headless answer of
+	// code-span bullets is Markdown.
+	answer := lines[:report]
+	if !headed || !parseJournalAnswers(journal, answer) {
+		// A tree journal's result is the answer as Markdown, then its task
+		// and note rows as bullets.
+		text := strings.Trim(strings.Join(answer, "\n"), "\n")
+		switch text {
+		case "", "No new journal entries.", "No journal entries.":
+			journal.empty = true
+		default:
+			journal.Groups = []AnswerGroup{{Answers: []Answer{{Text: text}}}}
+		}
+	}
+	return journal, true
+}
+
+// parseJournalChanges reads the change report, rejecting lines it never
+// writes so an authored answer that merely quotes the heading stays Markdown.
+// The report always follows its heading with a note or numstat, and only
+// numstat rows are indented.
+func parseJournalChanges(journal *Journal, lines []string, headed bool) bool {
+	reported, numstat := headed, false
+	for i, line := range lines {
+		switch {
+		case i == 0:
+			journal.Changes = strings.TrimSpace(strings.TrimPrefix(line, "**Changes:**"))
+		case line == "":
+		case strings.HasPrefix(line, "Aggregated numstat"):
+			reported, numstat = true, true
+		case strings.HasPrefix(line, "    ") && (numstat || headed):
+			// Numstat columns are tabs, expanded by the sanitizer.
+			if fields := strings.SplitN(strings.TrimPrefix(line, "    "), "    ", 4); len(fields) == 4 {
+				journal.Stats = append(journal.Stats, Stat{fields[0], fields[1], fields[2], fields[3]})
+			}
+		case line == "No recorded changes.", line == "No recorded file changes.", strings.HasPrefix(line, "Changes unavailable: "),
+			strings.HasPrefix(line, "Stat unavailable: "), strings.HasPrefix(line, "Cumulative: "):
+			reported = true
+			journal.notes = append(journal.notes, line)
+		default:
+			return false
+		}
+	}
+	return reported
+}
+
+// parseJournalAnswers reads the item grammar of v1 journal results: answers
+// under their questions, each headed by its item ID.
+func parseJournalAnswers(journal *Journal, lines []string) bool {
+	current := -1
+	for i := 0; i < len(lines); i++ {
 		line := lines[i]
 		switch {
 		case line == liveActivityClippedAnswer:
@@ -546,9 +612,9 @@ func ParseJournal(text string) (*Journal, bool) {
 		case line == "":
 		case line == "---":
 			current = -1
-		case line == "No journal entries." && !inChanges:
+		case line == "No journal entries.":
 			journal.empty = true
-		case line == "**Question:**" && !inChanges:
+		case line == "**Question:**":
 			var question []string
 			for i+1 < len(lines) && lines[i+1] != "**Answer:**" && lines[i+1] != "**Answers:**" && lines[i+1] != liveActivityClippedAnswer {
 				i++
@@ -559,10 +625,11 @@ func ParseJournal(text string) (*Journal, bool) {
 			}
 			journal.Groups = append(journal.Groups, AnswerGroup{Question: strings.Trim(strings.Join(question, "\n"), "\n")})
 			current = len(journal.Groups) - 1
-		case strings.HasPrefix(line, "- `") && !inChanges:
+		case strings.HasPrefix(line, "- `"):
 			id, end, ok := liveActivityCodeSpan(line, 2)
 			if !ok || end != len(line) {
-				return nil, false
+				journal.Groups, journal.empty, journal.clipped = nil, false, false
+				return false
 			}
 			var body []string
 			for i+1 < len(lines) && (lines[i+1] == "" || strings.HasPrefix(lines[i+1], "  ")) {
@@ -575,20 +642,10 @@ func ParseJournal(text string) (*Journal, bool) {
 			}
 			group := &journal.Groups[current]
 			group.Answers = append(group.Answers, Answer{ID: id, Text: strings.Trim(strings.Join(body, "\n"), "\n")})
-		case strings.HasPrefix(line, "**Changes:**"):
-			inChanges = true
-			journal.Changes = strings.TrimSpace(strings.TrimPrefix(line, "**Changes:**"))
-		case inChanges && strings.HasPrefix(line, "    "):
-			// Numstat columns are tabs, expanded by the sanitizer.
-			if fields := strings.SplitN(strings.TrimPrefix(line, "    "), "    ", 4); len(fields) == 4 {
-				journal.Stats = append(journal.Stats, Stat{fields[0], fields[1], fields[2], fields[3]})
-			}
-		case inChanges && strings.HasPrefix(line, "Aggregated numstat"):
-		case inChanges:
-			journal.notes = append(journal.notes, line)
 		default:
-			return nil, false
+			journal.Groups, journal.empty, journal.clipped = nil, false, false
+			return false
 		}
 	}
-	return journal, true
+	return true
 }

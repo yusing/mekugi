@@ -139,7 +139,7 @@ func TestJournalAssignmentFinalAnswerAfterRestartAndFollowup(t *testing.T) {
 		visible, err := child.TransformJSON(mustTestJSON(t, map[string]any{
 			"id": "assignment-response-" + question, "status": "completed", "output": []any{answer},
 		}))
-		if err != nil || !strings.Contains(string(visible), "Journal result") {
+		if err != nil || !strings.Contains(string(visible), "**Changes:**") {
 			t.Fatalf("natural assignment completion failed: %s, %v", visible, err)
 		}
 		child.Delivered(visible)

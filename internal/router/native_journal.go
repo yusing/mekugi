@@ -522,51 +522,187 @@ func (u *terminalUI) openJournalDetail(node journalNode) {
 	u.openBlocks(u.main.view, pages)
 }
 
-func (u *appServerUI) journalPlanStrip(width int) string {
+// journalPin is the journal state the strip above the composer pins: the
+// newest task change, shown with the task's current state.
+type journalPin struct {
+	node        journalNode
+	verb        string
+	at          time.Time
+	done, total int
+}
+
+// journalPin reports the newest task change in the presented journal. A
+// journal without an open task pins nothing once the turn ends.
+func (u *appServerUI) journalPin() (journalPin, bool) {
 	j := u.journalTreeSnapshot()
 	if j == nil {
-		return ""
+		return journalPin{}, false
 	}
-	var current, next *journalItem
-	done, total := 0, 0
+	var pin journalPin
+	var current *journalItem
+	open := false
 	for i := range j.Items {
 		item := &j.Items[i]
-		if item.Kind != "task" {
-			continue
-		}
-		if strings.Contains(item.Path, "/@") {
+		if item.Kind != "task" || strings.Contains(item.Path, "/@") {
 			continue // Mounted roots and their descendants belong to child journals.
 		}
-		total++
+		pin.total++
 		if item.State == "done" || item.State == "dropped" {
-			done++
+			pin.done++
 			continue
 		}
+		open = true
 		if current == nil || item.State == "working" && current.State != "working" || item.State == "blocked" && current.State == "pending" {
 			current = item
 		}
 	}
+	if !open && u.turn == "" {
+		return journalPin{}, false
+	}
+	for _, event := range slices.Backward(j.Events) {
+		if event.Legacy || event.Op == "remove" || event.Fields.Kind != "task" || strings.Contains(event.Path, "/@") {
+			continue
+		}
+		pin.node, pin.verb = event.Fields, journalEventVerb(event)
+		pin.at, _ = time.Parse(time.RFC3339Nano, event.At)
+		for _, item := range j.Items {
+			if item.Path == event.Path {
+				pin.node = item.node()
+				break
+			}
+		}
+		return pin, true
+	}
+	// Journals without an event log still pin their current task.
 	if current == nil {
+		return journalPin{}, false
+	}
+	pin.node = current.node()
+	return pin, true
+}
+
+// journalPlanStrip pins the newest journal state above the composer: the
+// changed task on the left, overall progress and the pane key on the right.
+func (u *appServerUI) journalPlanStrip(width int) string {
+	pin, ok := u.journalPin()
+	if !ok {
 		return ""
 	}
-	for i := range j.Items {
-		if item := &j.Items[i]; item != current && item.Kind == "task" && item.State == "pending" && !strings.Contains(item.Path, "/@") {
-			next = item
-			break
+	theme := u.view.painter.Theme
+	left := journalNodeRow(theme, pin.node, pin.verb)
+	if pin.node.State == "working" && pin.node.Started != nil {
+		if start, err := time.Parse(time.RFC3339Nano, pin.node.Started.At); err == nil {
+			left += activityui.Dim + " · " + time.Since(start).Round(time.Second).String() + activityui.Undim
 		}
 	}
-	elapsed := ""
-	if current.State == "working" && current.Started != nil {
-		if start, err := time.Parse(time.RFC3339Nano, current.Started.At); err == nil {
-			elapsed = " · " + time.Since(start).Round(time.Second).String()
+	// The pane key yields first, then progress, before the task's title.
+	progress := fmt.Sprintf("%d/%d done", pin.done, pin.total)
+	for _, right := range []string{progress + " · Ctrl-B 5 journal", progress} {
+		if room := width - ansi.StringWidth(right) - 2; ansi.StringWidth(left) <= room || right == progress && room >= 24 {
+			left = ansi.Truncate(left, room, "…")
+			return left + strings.Repeat(" ", width-ansi.StringWidth(left)-ansi.StringWidth(right)) + activityui.Dim + right + activityui.Undim
 		}
 	}
-	upcoming := ""
-	if next != nil {
-		upcoming = "  ▸ " + next.Path + " " + next.Title
+	return ansi.Truncate(left, width, "…")
+}
+
+// journalNewerThanReply reports a pinned journal state newer than Main's
+// latest reply. It then replaces the pinned reply; a newer reply wins back.
+func (u *appServerUI) journalNewerThanReply() bool {
+	pin, ok := u.journalPin()
+	if !ok || pin.at.IsZero() {
+		return false
 	}
-	text := fmt.Sprintf("%s · %d/%d done%s%s  (Ctrl-B 5: journal)", journalTaskText(current.node()), done, total, elapsed, upcoming)
-	return ansi.Truncate(livediff.Safe(text, false), width, "…")
+	reply := u.view.latestMainReply()
+	return reply == nil || pin.at.After(reply.Observed)
+}
+
+var journalGlyphs = map[string]string{"pending": "○", "working": "◐", "done": "●", "blocked": "⚠", "dropped": "⊘"}
+
+// journalStateColor colors a task's glyph by state, as Activity colors
+// outcomes: working in the accent, done green, blocked amber.
+func journalStateColor(theme livediff.Theme, state string) string {
+	switch state {
+	case "working":
+		return theme.Accent()
+	case "done":
+		return activityui.Green
+	case "blocked":
+		return activityui.Amber
+	}
+	return activityui.Dim
+}
+
+// journalEventVerb names the change an event made to its task.
+func journalEventVerb(event journalEvent) string {
+	switch {
+	case event.Op == "remove":
+		return "removed"
+	case event.Fields.Kind != "task":
+		return ""
+	case event.Fields.State == "working":
+		return "started"
+	case event.Fields.State == "done", event.Fields.State == "blocked", event.Fields.State == "dropped":
+		return event.Fields.State
+	case event.Op == "add":
+		return "added"
+	case event.Transition:
+		return "reopened"
+	}
+	return "updated"
+}
+
+// journalNodeRow is one node on one styled row: a state glyph, the dim path,
+// the title, then dim details. verb names the change a transcript row shows.
+func journalNodeRow(theme livediff.Theme, node journalNode, verb string) string {
+	lead, text := journalNodeParts(theme, node, verb)
+	return lead + text
+}
+
+// journalNodeParts splits a node row into its glyph lead and its text, so
+// wrapped rows can hang under the text.
+func journalNodeParts(theme livediff.Theme, node journalNode, verb string) (lead, text string) {
+	safe := func(text string) string { return livediff.Safe(strings.Join(strings.Fields(text), " "), false) }
+	title := safe(node.Title)
+	switch {
+	case verb == "removed":
+		return activityui.Dim + "⊖ " + activityui.Undim, activityui.Dim + node.Path + " " + title + " · removed" + activityui.Undim
+	case node.Kind == "note":
+		if title == "Note" && node.Body != "" {
+			first, _, _ := strings.Cut(node.Body, "\n")
+			title = safe(first)
+		}
+		return theme.Accent() + "◆" + activityui.Reset + " ", title
+	case node.Kind != "task":
+		return activityui.Dim + "◇ " + activityui.Undim, activityui.Dim + node.Path + activityui.Undim + " " + title
+	}
+	color := journalStateColor(theme, node.State)
+	var details []string
+	if verb != "" {
+		details = append(details, verb)
+	}
+	if node.Reason != "" {
+		details = append(details, safe(node.Reason))
+	}
+	if node.Started != nil && node.Finished != nil {
+		start, firstErr := time.Parse(time.RFC3339Nano, node.Started.At)
+		end, lastErr := time.Parse(time.RFC3339Nano, node.Finished.At)
+		if firstErr == nil && lastErr == nil && !end.Before(start) {
+			details = append(details, end.Sub(start).Round(time.Second).String())
+		}
+	}
+	if node.State == "dropped" {
+		title = activityui.Dim + title + activityui.Undim
+	}
+	text = activityui.Dim + node.Path + activityui.Undim + " " + title
+	if len(details) > 0 {
+		style := activityui.Dim
+		if node.State == "blocked" {
+			style = activityui.Amber
+		}
+		text += style + " · " + strings.Join(details, " · ") + activityui.Reset
+	}
+	return color + journalGlyphs[node.State] + activityui.Reset + " ", text
 }
 
 func (v *liveActivityView) applyTreeJournal(thread string, p nativeJournalPublication) {
@@ -598,15 +734,20 @@ func (v *liveActivityView) applyTreeJournal(thread string, p nativeJournalPublic
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 }
 
+// journalCardLines lays out Main's turn card as a finished answer: the
+// Outcome leads, then what happened this turn one node per row, then the
+// tasks still open. This turn aggregates each node to its final state in the
+// window; a node both added and removed within it never happened.
 func (v *liveActivityView) journalCardLines(out *conversationLines, entry activityPaneEntry, width int) {
 	card := entry.journalCard
 	if card == nil {
 		return
 	}
+	p := &v.painter
+	theme := p.Theme
 	snippet := liveActivitySnippet{run: entry.Seq, block: 0}
-	// The Outcome leads. This turn aggregates each node to its final state in
-	// the window; a node both added and removed within it never happened.
-	var lines, paths []string
+	inner := max(1, width-4)
+	var outcome, paths []string
 	latest := make(map[string]journalEvent)
 	added := make(map[string]bool)
 	for _, event := range card.Journal.Events {
@@ -614,7 +755,7 @@ func (v *liveActivityView) journalCardLines(out *conversationLines, entry activi
 			continue
 		}
 		if event.Fields.Kind == "answer" {
-			lines = append(lines, journalEventText(event))
+			outcome = append(outcome, journalEventText(event))
 			continue
 		}
 		if _, seen := latest[event.Path]; !seen {
@@ -623,53 +764,139 @@ func (v *liveActivityView) journalCardLines(out *conversationLines, entry activi
 		}
 		latest[event.Path] = event
 	}
-	var happened []string
-	notes := 0
+	var happened [][2]string
+	row := func(node journalNode, verb string) [2]string {
+		lead, text := journalNodeParts(theme, node, verb)
+		return [2]string{lead, text}
+	}
+	notes, done := 0, 0
 	for _, path := range paths {
 		event := latest[path]
 		switch {
 		case event.Op == "remove" && added[path]:
 		case event.Op == "remove":
-			happened = append(happened, journalEventText(event))
+			happened = append(happened, row(event.Fields, "removed"))
 		case event.Fields.Kind == "task":
-			happened = append(happened, journalTaskText(event.Fields))
+			if event.Fields.State == "done" {
+				done++
+			}
+			happened = append(happened, row(event.Fields, ""))
 		default:
 			notes++
 		}
 	}
-	if notes == 1 {
-		happened = append(happened, "1 note · click to open")
-	} else if notes > 1 {
-		happened = append(happened, fmt.Sprintf("%d notes · click to open", notes))
+	if notes > 0 {
+		label := "1 note"
+		if notes > 1 {
+			label = fmt.Sprintf("%d notes", notes)
+		}
+		happened = append(happened, [2]string{theme.Accent() + "◆" + activityui.Reset + " ", label + activityui.Dim + " · click to open" + activityui.Undim})
 	}
-	if len(happened) > 0 {
-		lines = append(lines, "This turn  "+strings.Join(happened, " · "))
-	}
-	if card.Journal.mountUnavailable != "" {
-		lines = append(lines, "Mounted journals unavailable: "+card.Journal.mountUnavailable)
-	}
-	var remaining []string
+	var remaining [][2]string
 	for _, item := range card.Journal.Items {
-		if item.Kind == "task" && item.State != "done" && item.State != "dropped" {
-			remaining = append(remaining, journalTaskText(item.node()))
+		if item.Kind == "task" && item.State != "done" && item.State != "dropped" && !strings.Contains(item.Path, "/@") {
+			remaining = append(remaining, row(item.node(), ""))
 		}
 	}
-	if len(remaining) > 0 {
-		lines = append(lines, "Remaining  "+strings.Join(remaining, " · "))
+	var rows []string
+	section := func(label string, items [][2]string) {
+		if len(items) == 0 {
+			return
+		}
+		if len(rows) > 0 {
+			rows = append(rows, "")
+		}
+		if label != "" {
+			rows = append(rows, "\x1b[1m"+label+"\x1b[22m")
+		}
+		for _, item := range items {
+			rows = append(rows, activityui.Hang(item[0], item[1], inner)...)
+		}
 	}
-	body := strings.Join(lines, "\n\n")
+	if len(outcome) > 0 {
+		rows = p.Markdown(livediff.Safe(strings.Join(outcome, "\n\n"), false), inner)
+	}
+	section("This turn", happened)
+	if card.Journal.mountUnavailable != "" {
+		section("", [][2]string{{activityui.Amber + "⚠ " + activityui.Reset, activityui.Amber + "Mounted journals unavailable: " + livediff.Safe(card.Journal.mountUnavailable, false) + activityui.Reset}})
+	}
+	section("Remaining", remaining)
+	if len(rows) == 0 {
+		rows = []string{activityui.Dim + "No journal changes this turn; no open tasks." + activityui.Undim}
+	}
+	title := activityui.Green + "✓" + activityui.Reset + activityui.Dim + " journal"
+	var facts []string
+	if done > 0 {
+		facts = append(facts, fmt.Sprintf("%d done", done))
+	}
+	if len(remaining) > 0 {
+		facts = append(facts, fmt.Sprintf("%d open", len(remaining)))
+	}
+	if len(facts) > 0 {
+		title += " · " + strings.Join(facts, " · ")
+	}
+	title += activityui.Undim
 	if entry.native.question != 0 {
 		for _, question := range v.entries {
 			if question.Seq == entry.native.question {
-				v.replyContext(out, question, mainGutter(&v.painter), max(1, width-2))
+				v.replyContext(out, question, mainGutter(p), max(1, width-2))
 				break
 			}
 		}
 	}
-	text := v.painter.Markdown(livediff.Safe(body, false), max(1, width-4))
-	rows := nativeBox(width, len(text)+2, "Journal", entry.Observed.Local().Format("15:04"), false, text, nil)
+	if width < 12 {
+		rows = append([]string{title}, rows...)
+	} else {
+		rows = activityui.Card(title, entry.Observed.Local().Format("15:04"), rows, width, false)
+	}
 	for _, row := range rows {
 		out.add(0, row)
 		out.snippets[len(out.snippets)-1] = snippet
 	}
+}
+
+// journalEventsItem shows adjacent journal changes as one journal item: a
+// heading, then each task change or note on its own row under the journal
+// gutter. A row's time shows only where it differs from the row above.
+func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last, width int) []activityui.Block {
+	p := &v.painter
+	accent := p.Theme.Accent()
+	head := v.entries[first]
+	out.add(0, conversationHeading(accent+"◆"+activityui.Reset, "\x1b[1m"+accent+"journal"+activityui.Reset, "", head, width))
+	gutter := accent + "│" + activityui.Reset + " "
+	body := max(1, width-2)
+	var laid []activityui.Block
+	stamp := head.Observed.Local().Format("15:04")
+	for k := first; k <= last; k++ {
+		entry := v.entries[k]
+		if !v.visible(entry) || entry.Kind != "journal_event" {
+			continue
+		}
+		lead, text := "", livediff.Safe(entry.Text, false)
+		detail := ""
+		if event := entry.journalEvent; event != nil {
+			lead, text = journalNodeParts(p.Theme, event.Fields, journalEventVerb(*event))
+			if event.Op != "remove" && strings.TrimSpace(event.Fields.Body) != "" {
+				detail = journalEventText(*event)
+				text += activityui.Dim + " ›" + activityui.Undim
+			}
+			if at := journalLocalTime(event.At); at != "" && at != stamp {
+				stamp = at
+				if gap := body - ansi.StringWidth(lead+text) - len(at); gap >= 2 {
+					text += strings.Repeat(" ", gap) + activityui.Dim + at + activityui.Undim
+				}
+			}
+		}
+		snippet := liveActivitySnippet{}
+		if detail != "" {
+			snippet = liveActivitySnippet{run: head.Seq, block: len(laid)}
+			laid = append(laid, activityui.Block{Kind: "text", Verb: "Journal", Label: entry.journalEvent.Path, Body: livediff.Safe(detail, false)})
+		}
+		// Wrapped rows hang under the text, past the state glyph.
+		for _, line := range activityui.Hang(lead, text, body) {
+			out.add(0, gutter+line)
+			out.snippets[len(out.snippets)-1] = snippet
+		}
+	}
+	return laid
 }

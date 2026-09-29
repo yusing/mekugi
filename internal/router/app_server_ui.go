@@ -1120,13 +1120,14 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 
 	room := max(0, height-len(draft)-borderRows)
 	strip := u.journalPlanStrip(width)
+	journalPinned := strip != ""
 	if reset := u.journalResetStrip(width); reset != "" {
-		strip = reset
+		strip, journalPinned = reset, false
 	}
 	if strip != "" && room > 0 {
 		room--
 	} else {
-		strip = ""
+		strip, journalPinned = "", false
 	}
 	var pending []string
 	questionRows := u.questionRows(width, max(1, min(height/2, room)))
@@ -1158,7 +1159,8 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	}
 	u.mainContentPainted = room > 1
 	u.view.conversation, u.view.feedOnly, u.view.status = true, true, livediff.Safe(u.status, false)
-	u.view.pinMainReply = u.turn != ""
+	// One pin: a journal state newer than Main's latest reply replaces it.
+	u.view.pinMainReply = u.turn != "" && !(journalPinned && u.journalNewerThanReply())
 	var frame []string
 	u.view.feedRows = 0
 	u.view.feedQuestions, u.view.feedSnippets = nil, nil

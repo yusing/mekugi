@@ -105,7 +105,7 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 			item = call("journal", map[string]any{"op": "add", "text": "Native root milestone", "report_now": true})
 		case turn == 2:
 			item = call("spawn_agent", map[string]any{"message": "Record your milestone, then report your findings.", "task_name": "journal_child", "fork_turns": "none"})
-		case strings.Contains(input, "Journal result") && strings.Contains(input, "Native child milestone") && strings.Contains(input, "Native child second finding") && strings.Contains(input, "**Question:**") && strings.Contains(input, "**Answer:**") && strings.Contains(input, "Record your milestone, then report your findings."):
+		case strings.Contains(input, "Native child milestone") && strings.Contains(input, "Native child second finding") && strings.Contains(input, "Record your milestone, then report your findings."):
 			if !strings.Contains(input, "**Changes:**") || !strings.Contains(input, "amber1") || !strings.Contains(input, `M\t1\t1\tnative-child.txt`) {
 				start := strings.LastIndex(input, "**Changes:**")
 				if start < 0 {
