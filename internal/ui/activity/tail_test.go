@@ -96,13 +96,38 @@ func TestOutputRowsCountEarlierLinesInVerbColumn(t *testing.T) {
 		t.Fatalf("compact output =\n%s\nwant\n%s", got, want)
 	}
 	block.Collapsed = true
-	if got, want := plain(block), "Read   a.go\n       ┆ … +12 lines"; got != want {
+	// Read content counts its lines after its target, without a row of its own.
+	if got, want := plain(block), "Read   a.go (12 lines)"; got != want {
 		t.Fatalf("collapsed output =\n%s\nwant\n%s", got, want)
 	}
 	// A count wider than the verb column keeps its own row.
 	block.Collapsed, block.TailRows, block.TailOmitted = false, 0, 1234567
 	if got, want := plain(block), "Read   a.go\n       ┆ … 1234567 earlier lines\n       ┆ one"; !strings.HasPrefix(got, want) {
 		t.Fatalf("wide count output =\n%s\nwant prefix\n%s", got, want)
+	}
+}
+
+// A collapsed read's line count stays whole: its path gives way first, and
+// the count takes the hover underline that opens it.
+func TestCollapsedReadCountsLinesAfterTarget(t *testing.T) {
+	var p Painter
+	path := "internal/router/toolplugin/tests/tools.test.ts"
+	block := Block{Kind: "reads", Verb: "Read", Reads: []Read{{Path: path, Ranges: []string{"1:85"}}}, Tail: make([]string, 84), Collapsed: true}
+	rows := p.Block(block, 50)
+	if got, want := ansi.Strip(strings.Join(rows, "\n")), "Read   …/tests/tools.test.ts L1–85 (84 lines)"; got != want {
+		t.Fatalf("fitted read = %q, want %q", got, want)
+	}
+	block.Hovered = true
+	if row := p.Block(block, 50)[0]; !strings.Contains(row, "\x1b[4m(84 lines)") {
+		t.Fatalf("hovered count is not underlined: %q", row)
+	}
+	skill := Block{Kind: "reads", Verb: "Skill", Reads: []Read{{Path: "frontend-design"}}, Tail: []string{"only"}, TailOmitted: 1, Collapsed: true}
+	if got, want := ansi.Strip(strings.Join(p.Block(skill, 60), "\n")), "Skill  frontend-design (2 lines)"; got != want {
+		t.Fatalf("skill read = %q, want %q", got, want)
+	}
+	op := Block{Kind: "op", Verb: "Read", Label: "not a target", Tail: []string{"a", "b"}, Collapsed: true}
+	if got, want := ansi.Strip(strings.Join(p.Block(op, 60), "\n")), "Read   not a target (2 lines)"; got != want {
+		t.Fatalf("unparsed read = %q, want %q", got, want)
 	}
 }
 

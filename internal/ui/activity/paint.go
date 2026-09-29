@@ -571,17 +571,21 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		return append([]string{Green + "✓ Final answer" + Reset}, liveActivityIndent(p.Markdown(block.Body, width-2), "  ")...)
 	case "reads":
-		lead, count := block.lead(VerbColor(block.Verb), block.Verb), ResultCount(block.Results)
+		lead, count := block.lead(VerbColor(block.Verb), block.Verb), ResultCount(block.Results)+readLines(block)
 		indent := ansi.StringWidth(lead)
 		literal := block.Verb == "Search" || block.Verb == "Skill"
-		// fit shortens a path that cannot share its row with its ranges.
-		fit := func(read Read) string {
+		// fit shortens a path that cannot share its row with its ranges and,
+		// on the last row, the count after them.
+		fit := func(read Read, last bool) string {
 			if literal {
 				return read.Path
 			}
 			room := width - indent
 			if len(read.Ranges) > 0 {
 				room -= ansi.StringWidth(lineRanges(read.Ranges)) + 1
+			}
+			if last {
+				room -= ansi.StringWidth(count)
 			}
 			return fitPath(read.Path, room)
 		}
@@ -604,7 +608,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			return liveActivityHang(lead, joined, width)
 		}
 		if len(items) < 2 {
-			return liveActivityHang(lead, item(fit(block.Reads[0]), block.Reads[0])+count, width)
+			return liveActivityHang(lead, item(fit(block.Reads[0], true), block.Reads[0])+count, width)
 		}
 		// Items that do not fit on one row take one row each, rather than
 		// leaving separators dangling at wrapped row ends. Their ranges share
@@ -612,7 +616,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		paths := make([]string, len(block.Reads))
 		column := 0
 		for i, read := range block.Reads {
-			paths[i] = fit(read)
+			paths[i] = fit(read, i == len(block.Reads)-1)
 			items[i] = item(paths[i], read)
 			column = max(column, ansi.StringWidth(paths[i]))
 		}
@@ -974,6 +978,19 @@ func clipSource(rows []string, block Block, lead string) []string {
 	return append(rows[:keep:keep], lead+Dim+hint+Undim)
 }
 
+// readLines counts collapsed read output after the target it came from: a
+// file's content needs no row of its own to say how much there is.
+func readLines(block Block) string {
+	if !block.Collapsed || !block.ReadOutput() || len(block.Tail) == 0 {
+		return ""
+	}
+	count := "(" + LineCount(block.TailOmitted+len(block.Tail)) + ")"
+	if block.Hovered {
+		count = Underline(count)
+	}
+	return " " + Dim + count + Undim
+}
+
 // outputRows attaches the invocation's output to its final operation. Open
 // output counts its earlier lines in the verb column of its first row.
 func outputRows(block Block, lines []string, width int) []string {
@@ -986,6 +1003,16 @@ func outputRows(block Block, lines []string, width int) []string {
 	if block.TailRows > 0 && len(tail) > block.TailRows {
 		omitted += len(tail) - block.TailRows
 		tail = tail[len(tail)-block.TailRows:]
+	}
+	if suffix := readLines(block); suffix != "" && len(lines) > 0 {
+		last := &lines[len(lines)-1]
+		if block.Kind == "reads" {
+			return lines // Its layout placed the count.
+		}
+		if ansi.StringWidth(*last)+ansi.StringWidth(suffix) <= width {
+			*last += suffix
+			return lines
+		}
 	}
 	// Output uses a dashed gutter, distinct from the program gutter above it.
 	if block.Collapsed && len(tail) > 0 {

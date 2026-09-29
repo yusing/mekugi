@@ -121,7 +121,9 @@ later of that event and the output's completion, so a quick run of commands
 collapses together; a click on the command opens
 it again and another collapses it. Output following a file or skill read
 (`Read`, or `Skill` other than `skills-mgr run`) is collapsed as soon as the read
-succeeds. Restored history shows zero-exit output
+succeeds. Being what the agent read rather than a result to watch, it takes no
+row of its own: a muted `(N lines)` follows the read's target, and a row too
+narrow for it shortens the path rather than the count. Restored history shows zero-exit output
 already collapsed. Output arriving after completion is ignored.
 A successful `mchanges --list` or `--summary` read shows its host output as
 change rows laid out like confirmed edit rows rather than a tail: summary files

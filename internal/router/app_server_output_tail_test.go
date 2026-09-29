@@ -238,9 +238,9 @@ func TestAppServerMixedCommandOutputFollowsFinalRead(t *testing.T) {
 				return
 			}
 			// A read's output starts collapsed, without waiting for a later event.
-			check("┆ … +2 lines")
+			check("Read  a.go (2 lines)")
 			feed := u.view.renderFeed(100, 60)
-			index := slices.IndexFunc(feed.lines, func(line string) bool { return strings.Contains(line, "… +2 lines") })
+			index := slices.IndexFunc(feed.lines, func(line string) bool { return strings.Contains(line, "(2 lines)") })
 			snippet := feed.snippets[index]
 			if snippet == (liveActivitySnippet{}) {
 				t.Fatal("final Read output has no toggle")
@@ -398,7 +398,7 @@ func TestAppServerReadOutputStartsCollapsed(t *testing.T) {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 			"id": "cmd", "type": "commandExecution", "command": tc.command, "status": "completed", "exitCode": 0, "aggregatedOutput": "one\ntwo\n"}})
 		got := ansi.Strip(strings.Join(u.view.renderFeed(90, 60).lines, "\n"))
-		if collapsed := strings.Contains(got, "┆ … +2 lines") && !strings.Contains(got, "┆ two"); collapsed != tc.collapsed {
+		if collapsed := strings.Contains(got, " (2 lines)") && !strings.Contains(got, "┆ two"); collapsed != tc.collapsed {
 			t.Fatalf("%s collapsed = %v, want %v:\n%s", tc.command, collapsed, tc.collapsed, got)
 		}
 	}

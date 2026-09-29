@@ -54,6 +54,14 @@ func MoreLines(n int) string {
 	return fmt.Sprintf("+%d lines", n)
 }
 
+// LineCount labels n lines of content.
+func LineCount(n int) string {
+	if n == 1 {
+		return "1 line"
+	}
+	return fmt.Sprintf("%d lines", n)
+}
+
 // Underline marks a row's toggle under the pointer.
 func Underline(text string) string {
 	var out strings.Builder
