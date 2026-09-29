@@ -21,7 +21,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Native terminal UI.** [Main, Diff, Activity, and Agents](#native-ui) share
   one terminal without an external pane manager. The composer works like
   Codex's and adds [`/btw` side questions](#composer) that don't interrupt
-  Main, plus direct `/reasoning` and `/tier` switches.
+  Main, plus `/model`, `/effort`, and `/tier` pickers.
 - **Milestone journal.** Agents keep a revisable journal. You see live updates,
   and answers are grouped at completion. A final answer goes into the journal
   without an extra model request.
@@ -242,8 +242,10 @@ composer for the full shortcut list. Mekugi differs in these ways:
 - **Waiting messages combine.** Steers typed while an earlier one is still
   sending, and queued messages, are sent together as one message, one entry per
   line. Alt+Up or Shift+Left brings back the last queued message.
-- **Direct switches.** `/model`, `/reasoning`, and `/tier` take a value, such as
-  `/reasoning high` or `/tier priority`; `/tier default` clears the tier.
+- **Setting pickers.** `/model`, `/effort` (also `/reasoning`), and `/tier` open
+  a picker: Up/Down and Enter apply a choice, Esc cancels, and neither the
+  command nor its choices enter the transcript. A value switches directly, such
+  as `/effort high` or `/tier priority`; `/tier default` clears the tier.
   Changes also reach a running turn's next steps and never edit your config file.
 - **Terminal requirements.** `/copy` and text selection copy through OSC 52,
   which your terminal must allow. Pasting a clipboard image on Linux needs

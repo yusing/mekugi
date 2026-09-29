@@ -138,6 +138,10 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 		}
 	}
 	if height > 1 {
+		if p.modal == "settings" {
+			put(0, "  "+bold+"Choose "+strings.TrimPrefix(u.settingsChoices, "/")+reset)
+			footer = "  ↑/↓ navigate · enter apply · esc cancel"
+		}
 		if p.modal == "copy" {
 			put(0, "  "+bold+"Copy to clipboard"+reset)
 			footer = "  " + bold + "↑/↓" + reset + dim + " navigate · " + reset + bold + "enter" + reset + dim + " copy · " + reset + bold + "esc" + reset + dim + " close" + reset

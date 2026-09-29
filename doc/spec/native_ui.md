@@ -313,7 +313,7 @@ results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
 Typing `/` at the start of an otherwise single-token draft opens a local command
-catalog with descriptions for `/btw`, `/status`, `/copy`, `/model`, `/reasoning`, `/tier`, `/skills`, and
+catalog with descriptions for `/btw`, `/status`, `/copy`, `/model`, `/effort`, `/reasoning`, `/tier`, `/skills`, and
 `/quit`. Typing filters commands with fuzzy matching; Up/Down selects, Tab
 completes without executing, Enter runs the selected command, and Escape closes
 the catalog without changing the draft. Arguments close completion. Pasted text
@@ -436,8 +436,12 @@ word end, skipping whitespace and punctuation in the travel direction.
 Ctrl+Up/Down move to logical line boundaries. Word navigation accepts modified-arrow sequences and
 the Meta-b/f sequences emitted by macOS terminals, including over remote sessions.
 Shift+Up/Down steps through model-advertised reasoning levels without wrapping.
-`/model`, `/reasoning`, and `/tier` show choices in the scrollable transcript,
-or accept an explicit value;
+`/model`, `/effort` (also `/reasoning`), and `/tier` open local pickers
+with model-advertised choices, or accept an explicit value. Arrow keys navigate,
+Enter applies the selection, and Escape cancels without changing settings.
+The current confirmed value is initially selected when advertised. Loading and
+unavailable choices remain in the picker. Commands and choice lists never enter
+the transcript or submit a prompt.
 `/tier default` clears the requested service tier. Codex validates explicit values.
 The native app-server invocation enables Codex's `step_model_switching` and
 `reasoning_effort_override` features without writing user configuration.

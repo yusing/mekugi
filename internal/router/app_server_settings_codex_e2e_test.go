@@ -73,7 +73,10 @@ func TestAppServerLiveSettingsNativeCodex(t *testing.T) {
 		t.Fatal(terminal.ctx.Err())
 	}
 	terminal.await("Working")
-	terminal.send("/reasoning high\r")
+	terminal.send("/effort\r")
+	terminal.await("Choose effort")
+	terminal.await("enter apply")
+	terminal.send("\x1b[B\x1b[B\r")
 	terminal.await("live update published")
 	terminal.send("/model gpt-6-sol\r")
 	terminal.await("gpt-6-sol (high)")

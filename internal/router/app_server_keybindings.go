@@ -37,7 +37,7 @@ func renderNativeKeybindings(width, height int) []string {
 			{"/status", "Session status and usage"},
 			{"/copy", "Copy response or part of it"},
 			{"/btw QUESTION", "Side question / follow-up"},
-			{"/model /reasoning /tier", "Show choices or set VALUE"},
+			{"/model /effort /tier", "Open picker or set VALUE"},
 			{"ctrl+c", "Clear / interrupt / quit"},
 			{"esc", "Interrupt, keep draft"},
 			{"ctrl+b 1–4", "Focus pane"},

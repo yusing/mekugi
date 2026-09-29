@@ -764,7 +764,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 				if u.picker.modal == "manage" {
 					u.picker.query += string(u.pasted)
 					u.pasted = nil
-				} else if u.picker.modal == "menu" || u.picker.modal == "copy" {
+				} else if u.picker.modal == "menu" || u.picker.modal == "copy" || u.picker.modal == "settings" {
 					u.pasted = nil
 				} else {
 					u.finishPaste()
@@ -877,7 +877,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /btw, /status, /copy, /skills, /model, /reasoning, /tier, /quit", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /btw, /status, /copy, /skills, /model, /effort, /reasoning, /tier, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil {

@@ -128,7 +128,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 		return false, nil
 	}
 	command := fields[0]
-	if command != "/model" && command != "/reasoning" && command != "/tier" {
+	if command != "/model" && command != "/reasoning" && command != "/effort" && command != "/tier" {
 		return false, nil
 	}
 	var choices []string
@@ -139,7 +139,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 				choices = append(choices, model.Model)
 			}
 		}
-	case "/reasoning":
+	case "/reasoning", "/effort":
 		choices = u.effortChoices()
 	case "/tier":
 		choices = []string{"default"}
@@ -149,21 +149,13 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 			}
 		}
 	}
+	if len(fields) == 1 {
+		u.deleteDraftRange(0, len(u.draft))
+		u.showSettingsPicker(command, choices)
+		return true, nil
+	}
 	if len(fields) != 2 {
-		if u.modelsLoading {
-			u.settingsChoices = command
-			u.setNotice("Loading model choices…", false)
-			return true, nil
-		}
-		body := command + " VALUE"
-		if len(choices) == 0 {
-			body += "\nNo advertised choices; explicit values are validated by Codex."
-		} else {
-			body += "\n" + strings.Join(choices, "\n")
-		}
-		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Settings", Kind: "text", Text: body}}})
-		u.view.follow()
-		u.setNotice("Choices shown above · PgUp/PgDn scroll", false)
+		u.setNotice("Use "+command+" or "+command+" VALUE", true)
 		return true, nil
 	}
 	if u.settingsPending {
@@ -174,7 +166,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 	switch command {
 	case "/model":
 		change["model"] = fields[1]
-	case "/reasoning":
+	case "/reasoning", "/effort":
 		change["effort"] = fields[1]
 	case "/tier":
 		change["serviceTier"] = fields[1]
@@ -196,7 +188,11 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool, error) {
 	if method == "model/list" {
 		if m.Error != nil {
-			u.modelsLoading, u.reasoningKey, u.settingsChoices = false, nil, ""
+			u.modelsLoading, u.reasoningKey = false, nil
+			if u.picker.modal == "settings" {
+				u.picker.loading = false
+				u.picker.problem = "Model choices unavailable · Esc to close; use an explicit VALUE"
+			}
 			u.setNotice("Model choices unavailable: "+m.Error.Message, true)
 			return true, nil
 		}
@@ -214,8 +210,9 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		u.modelsLoading = false
 		if u.settingsChoices != "" {
 			command := u.settingsChoices
-			u.settingsChoices = ""
-			_, _ = u.settingsCommand(command)
+			if u.picker.modal == "settings" {
+				_, _ = u.settingsCommand(command)
+			}
 		}
 		if u.reasoningKey != nil {
 			up := *u.reasoningKey
@@ -302,4 +299,91 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		u.setNotice("Settings saved for next turn", false)
 	}
 	return true, nil
+}
+
+// Settings share the composer's bounded viewport, never the transcript.
+func (u *appServerUI) showSettingsPicker(command string, choices []string) {
+	u.cancelPickerScan()
+	p := &u.picker
+	p.modal, p.open, p.selected, p.top = "settings", true, 0, 0
+	p.target, p.problem, p.loading = composerTarget{}, "", u.modelsLoading
+	p.choices = nil
+	u.settingsChoices = command
+	current := u.model
+	switch command {
+	case "/reasoning", "/effort":
+		current = u.reasoningEffort
+	case "/tier":
+		current = u.serviceTier
+		if current == "" {
+			current = "default"
+		}
+	}
+	if p.loading {
+		return
+	}
+	for _, value := range choices {
+		choice := composerChoice{name: value}
+		if value == current {
+			choice.description = "Current"
+			p.selected = len(p.choices)
+		}
+		p.choices = append(p.choices, choice)
+	}
+	if len(p.choices) == 0 {
+		p.problem = "No advertised choices · Esc to close; use an explicit VALUE"
+	}
+}
+
+func (u *appServerUI) settingsPickerKey(key string) bool {
+	p := &u.picker
+	switch key {
+	case "\x1b[200~", "\x1b[201~":
+		return false
+	case "\x1b", "\x03":
+		p.modal, p.open, p.choices = "", false, nil
+		u.settingsChoices = ""
+	case "\x1b[A", "\x1bOA", "\x10", "\x1b[B", "\x1bOB", "\x0e", "\t":
+		if n := len(p.choices); n > 0 {
+			step := 1
+			if key == "\x1b[A" || key == "\x1bOA" || key == "\x10" {
+				step = -1
+			}
+			p.selected = (p.selected + step + n) % n
+		}
+	case "\x1b[5~":
+		p.selected = max(0, p.selected-8)
+	case "\x1b[6~":
+		p.selected = max(0, min(len(p.choices)-1, p.selected+8))
+	case "\x1b[H", "\x1bOH":
+		p.selected = 0
+	case "\x1b[F", "\x1bOF":
+		p.selected = max(0, len(p.choices)-1)
+	case "\r":
+		if p.loading || len(p.choices) == 0 {
+			return true
+		}
+		field := "model"
+		switch u.settingsChoices {
+		case "/effort", "/reasoning":
+			field = "effort"
+		case "/tier":
+			field = "serviceTier"
+		}
+		var value any = p.choices[p.selected].name
+		if field == "serviceTier" && value == "default" {
+			value = nil
+		}
+		accepted, err := u.updateSettings(map[string]any{field: value})
+		if err != nil {
+			u.setNotice("Settings update failed: "+err.Error(), true)
+		}
+		if accepted {
+			p.modal, p.open, p.choices = "", false, nil
+			u.settingsChoices = ""
+		} else {
+			p.problem = u.notice
+		}
+	}
+	return true
 }
