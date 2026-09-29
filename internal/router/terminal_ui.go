@@ -603,7 +603,7 @@ func (u *terminalUI) mouse(s string) error {
 			only, selected := u.agents.only, u.agents.selected
 			u.agents.pointAgent(action, y-r.y+1, x-r.x+1)
 			if action == '\r' && u.main != nil && (only != u.agents.only || selected != u.agents.selected) {
-				u.navigationReturns = append(u.navigationReturns, navigationBefore)
+				u.appendNavigationReturn(navigationBefore)
 			}
 			u.showRosterPick(only, selected)
 		}

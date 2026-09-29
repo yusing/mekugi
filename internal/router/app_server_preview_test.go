@@ -1273,12 +1273,9 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			if err := u.shell.flushEscape(); err != nil {
 				t.Fatal(err)
 			}
-			wantFocus := 0
-			if activity {
-				wantFocus = 2
-			}
+			wantFocus := 2 // Back keeps focus in the right pane, now showing Activity.
 			if u.shell.diffOpen || u.shell.activityOpen != activity || u.shell.side != activity || u.shell.focus != wantFocus {
-				t.Fatal("Escape did not return to the originating pane")
+				t.Fatal("Escape did not restore the view while preserving right-pane focus")
 			}
 
 		})

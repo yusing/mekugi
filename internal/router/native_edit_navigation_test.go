@@ -144,6 +144,15 @@ func TestNativeEditClickScrollsToCapturedHunk(t *testing.T) {
 			t.Fatalf("wrong hunk at offset %d: %s", c.offset, ansi.Strip(visible))
 		}
 	}
+	for range 3 {
+		if !u.shell.openActivityEdit(u.view, 1, "target.go") {
+			t.Fatal("repeated edit navigation failed")
+		}
+		c.frame(t)
+	}
+	if len(u.shell.navigationReturns) != 1 {
+		t.Fatal("same edit added duplicate return levels")
+	}
 	_, title := c.nativeTitle()
 	if !strings.Contains(title, "capture amber1") {
 		t.Fatalf("historical preview not labeled: %q", title)

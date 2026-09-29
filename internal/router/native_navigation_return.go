@@ -2,10 +2,13 @@ package router
 
 import (
 	"maps"
+	"slices"
 
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
+
+const nativeNavigationReturnLimit = 32
 
 // Click-through previews retain presentation state only, never captured data or
 // host lifecycle state. New activity and captures remain available on return.
@@ -49,7 +52,13 @@ func (u *terminalUI) navigationReturn() nativeNavigationReturn {
 	return b
 }
 func (u *terminalUI) pushNavigationReturn() {
-	u.navigationReturns = append(u.navigationReturns, u.navigationReturn())
+	u.appendNavigationReturn(u.navigationReturn())
+}
+func (u *terminalUI) appendNavigationReturn(b nativeNavigationReturn) {
+	if len(u.navigationReturns) >= nativeNavigationReturnLimit {
+		u.navigationReturns = slices.Delete(u.navigationReturns, 0, len(u.navigationReturns)-nativeNavigationReturnLimit+1)
+	}
+	u.navigationReturns = append(u.navigationReturns, b)
 }
 func (u *terminalUI) popNavigationReturn() bool {
 	if len(u.navigationReturns) == 0 || u.main.paste {
@@ -63,7 +72,17 @@ func (u *terminalUI) popNavigationReturn() bool {
 	b := u.navigationReturns[index]
 	u.navigationReturns[index] = nativeNavigationReturn{}
 	u.navigationReturns = u.navigationReturns[:index]
+	focus := u.focus
 	u.restoreNavigationReturn(b)
+	// Back changes presentation, not the user's current keyboard destination.
+	// Activity and Diff occupy the same pane, so follow its restored content.
+	u.focus = focus
+	if focus == 1 || focus == 2 {
+		u.focus = 2
+		if u.diffOpen {
+			u.focus = 1
+		}
+	}
 	return true
 }
 

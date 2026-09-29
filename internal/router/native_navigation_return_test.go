@@ -156,3 +156,98 @@ func TestNativeReplyPreviewReturnsToScrolledDiff(t *testing.T) {
 		t.Fatalf("return hint missing below the previewed diff (%d of %d rows): %q", pane.h, rows, hint)
 	}
 }
+
+func TestNativeNavigationReturnBounded(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir()).shell
+	for i := range nativeNavigationReturnLimit * 3 {
+		u.main.view.offset = i
+		u.pushNavigationReturn()
+		if len(u.navigationReturns) > nativeNavigationReturnLimit {
+			t.Fatal("unbounded return history")
+		}
+	}
+	for i := nativeNavigationReturnLimit*3 - 1; i >= nativeNavigationReturnLimit*2; i-- {
+		if !u.popNavigationReturn() || u.main.view.offset != i {
+			t.Fatalf("return order at %d: %d", i, u.main.view.offset)
+		}
+	}
+	if u.popNavigationReturn() {
+		t.Fatal("discarded history returned")
+	}
+	for _, b := range u.navigationReturns[:cap(u.navigationReturns)] {
+		if b.diff.scroll != nil || b.diff.editPreview != nil {
+			t.Fatal("popped state retained")
+		}
+	}
+}
+
+func TestNativeNavigationReturnPreservesCurrentPane(t *testing.T) {
+	for _, diffOpen := range []bool{false, true} {
+		for focus := range 4 {
+			t.Run(fmt.Sprint(diffOpen, focus), func(t *testing.T) {
+				u := newAppServerSessionTestUI(t, t.TempDir()).shell
+				u.diffOpen, u.focus = diffOpen, (focus+1)%4
+				u.pushNavigationReturn()
+				u.diffOpen, u.focus = !diffOpen, focus
+				if !u.popNavigationReturn() {
+					t.Fatal("missing return")
+				}
+				want := focus
+				if focus == 1 || focus == 2 {
+					want = 2
+					if diffOpen {
+						want = 1
+					}
+				}
+				if u.focus != want {
+					t.Fatalf("focus = %d, want %d", u.focus, want)
+				}
+			})
+		}
+	}
+}
+
+func TestNativeReplyPreviewSameDestination(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir()).shell
+	u.main.view.entries = []activityPaneEntry{{Seq: 1, activitySeq: 2}}
+	u.agents.entries = []activityPaneEntry{{Seq: 2, Agent: "/root/worker"}}
+	if !u.openActivityReply(1) || !u.openActivityReply(1) || len(u.navigationReturns) != 1 {
+		t.Fatal("pending destination added duplicate history")
+	}
+	// Once rendered, both ordinary and bottom-clamped targets remain no-ops.
+	for _, row := range []int{8, 100} {
+		u.agents.pendingTarget = 0
+		u.agents.questionRows = map[uint64]int{2: row}
+		u.agents.feedLines, u.agents.feedRows = 30, 10
+		u.agents.offset, u.agents.following = min(row-1, 20), false
+		if !u.openActivityReply(1) || len(u.navigationReturns) != 1 {
+			t.Fatal("rendered destination added duplicate history")
+		}
+	}
+	u.agents.offset = 0
+	if !u.openActivityReply(1) || len(u.navigationReturns) != 2 {
+		t.Fatal("different scroll position lost return")
+	}
+}
+
+func TestNativeQuestionPreviewSameDestination(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir()).shell
+	v := u.main.view
+	v.feedOnly, v.conversation = true, true
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+		{Seq: 1, Agent: "Main", Kind: "text", Text: strings.Repeat("Earlier reply.\n", 30)},
+		{Seq: 2, Agent: "You", Kind: "text", Text: "Bottom question"},
+	}})
+	v.render(80, 10, time.Now())
+	initialRows := v.feedRows
+	for range 2 {
+		u.selection = &terminalSelection{rect: terminalRect{w: 10, h: 1}, dragging: true, view: v, rows: []string{"question"}, questions: []uint64{2}}
+		if !u.selectionMouse(0, 0, 0, true) {
+			t.Fatal("question click not consumed")
+		}
+		v.render(80, 10, time.Now())
+	}
+	if len(u.navigationReturns) != 1 || v.offset != v.feedLines-v.feedRows || v.feedRows != initialRows-1 {
+		t.Fatalf("duplicate question return: %d, offset %d, rows %d -> %d", len(u.navigationReturns), v.offset, initialRows, v.feedRows)
+	}
+}

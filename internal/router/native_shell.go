@@ -38,6 +38,13 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 			if target.Seq != entry.activitySeq {
 				continue
 			}
+			a := u.agents
+			row, located := a.questionRows[target.Seq]
+			if !u.diffOpen && a.only && a.selected == target.Agent &&
+				(a.pendingTarget == target.Seq || located && !a.following && a.offset == max(0, min(row-1, a.feedLines-a.feedRows))) {
+				u.focus = 2
+				return true
+			}
 			u.pushNavigationReturn()
 			u.side, u.activityOpen, u.diffOpen, u.focus = true, true, false, 2
 			u.agents.selected, u.agents.only = target.Agent, true

@@ -63,7 +63,17 @@ func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64, path s
 						continue
 					}
 				}
-				u.navigationReturns = append(u.navigationReturns, previous)
+				// Reopening the same capture is not another navigation level.
+				if previous.diffOpen && previous.diff.mode && previous.diff.caller == "" &&
+					previous.diff.navigation.Changes.Query == "" && previous.diff.navigation.ChangesTab &&
+					previous.diff.navigation.Changes.Target.Change == node.Change &&
+					previous.diff.selected == c.view.Files[file].Key() &&
+					(previous.diff.editPreview == nil && focus == nil || previous.diff.editPreview != nil && focus != nil && previous.diff.editPreview.Key == focus.Key) {
+					u.restoreNavigationReturn(previous)
+					u.focus = 1
+					return true
+				}
+				u.appendNavigationReturn(previous)
 				c.back = liveDiffBack{}
 				u.side, u.diffOpen, u.activityOpen, u.focus = true, true, false, 1
 				c.diffMode, c.dirty = true, true

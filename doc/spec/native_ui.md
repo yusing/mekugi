@@ -209,7 +209,11 @@ hunks remain inspectable. Only the pointed edit row's text underlines
 on hover in Main and Activity, not its gutter, alignment gaps, stat bar, or other
 rows in the same capture. Click-through navigation (Edit, Open in Activity, question links, and
 roster picks) is a temporary preview. Escape restores the previous pane, filters,
-and scroll position. While a preview is open, the previewed pane's bottom row
+and scroll position without moving keyboard focus to another pane. If the focused
+right pane changes between Activity and Diff, focus stays in that pane's restored
+content. Reopening the current destination does not add a return level. History
+retains the latest 32 levels, discarding the oldest when full.
+While a preview is open, the previewed pane's bottom row
 shows a centered “↩ Back to previous view · esc” hint, like a paused
 transcript's “Back to bottom”, in place of any Esc hint in the status bar. Nested
 previews return one level at a time; diff help, filters, and nested diff actions
