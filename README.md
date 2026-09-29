@@ -157,6 +157,7 @@ These overrides last only for the invocation; no configuration files change.
 | `--main-mentor-handoff` | `true` | Enable mentor handoff for eligible main sessions and ordinary forks |
 | `--mentor-handoff` | `true` | Use `false` to keep subagents on their configured models |
 | `--post-compact-recovery` | `true` | Use `false` to skip the post-compaction context hook |
+| `--journal-compaction` | `off` | Experimental `auto` uses journal summaries without a provider request; `slice` forwards ordinary compactions and awaits slice-reset support |
 | `--grok` | `false` | Enable Grok models in mekugi mode |
 | `--grok-auth-file` | `~/.grok/auth.json` | Select a Grok OAuth credential store |
 | `--explore-filter` | `true` with a TypeSafe API key | Use `false` to keep search output unfiltered. See [search output filtering](#features) |
@@ -458,6 +459,13 @@ Every section is optional. Settings are read at startup and never rewritten.
   case, add a `SessionStart` handler matching `^compact$` that runs
   `/absolute/path/to/mekugi post-compact`. Hook failures don't stop the task.
   See [guidance behavior](doc/spec/guide.md).
+- **Journal compaction (opt-in):** `--journal-compaction=auto` uses retained task,
+  constraint, change and failed-command evidence instead of asking the model for a
+  summary. It includes subagents and falls back to the provider if evidence cannot
+  be safely recovered. A proven router summary skips duplicate hook injection.
+  The default remains `off` pending comparative evaluation; this is not evidence
+  of improved model success or token savings. Slice-reset automation is not yet
+  available. See [compaction behavior](doc/spec/journal.md#router-answered-compaction).
 - **Instructions:** Mekugi keeps Codex's base instructions and adds its guidance
   through tool descriptions. Anything between `<!-- mekugi:omit -->` and
   `<!-- /mekugi:omit -->` in instructions, including `AGENTS.md`, is removed before

@@ -113,6 +113,11 @@ context insertion, and hook-output history. Native
 `PostCompact` is not the injection surface because it does not expose additional
 context. Subagents and passthrough sessions are outside this feature's scope.
 
+For router-answered compaction, the hook emits nothing only when the latest
+compacted rollout response ID matches the durable thread/workspace synthesis
+record. Missing, malformed or mismatched transcript evidence keeps ordinary
+recovery. This check survives router restart and never acknowledges journal events.
+
 The hook reads the retained journal and executing-thread-owned change evidence
 through their existing owners. V2 uses the [evidence-backed journal summary](journal.md#evidence-backed-recovery),
 including paths, task states, constraints and changes/failures captured after the

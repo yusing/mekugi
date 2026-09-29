@@ -40,6 +40,11 @@ A durable record MUST contain only:
 - HTTP and Responses status, completeness, duration, a bounded capture-error category, and an optional `transport: "websocket"` marker;
 - optional `request_kind`, restricted to `turn`, `prewarm`, or `compaction`, supplied
   from validated router metadata and preserved in the corresponding exchange snapshot;
+- optional `compaction_answer` (`router` or `provider`), summary byte size and
+  uncovered change/failure counts. Router answers have known counts and no provider
+  attempt or provider usage record. Their exchange usage explicitly reports zero;
+  provider summaries have measured text bytes when complete and unknown evidence
+  counts. Missing answerer fields in older exports mean unknown, not provider;
 - provider usage counters;
 - the measured `projected_request` after history replay and tool projection, on provider records;
 - decoded assistant `final_text` sizes, separate from complete output arrays;
@@ -57,7 +62,12 @@ a capture error and no `projected_request`, rather than substituting the
 provider wire request.
 
 `GET /api/metrics` MUST return `mekugi.capture.metrics.v6`. Its calculations MUST be made by the
-capturer, not by the router, engine, plugin, comparison report, or dashboard. The snapshot MUST expose:
+capturer, not by the router, engine, plugin, comparison report, or dashboard.
+
+Exchange details retain wall-clock duration in milliseconds, including local
+compaction, without treating local token estimates as provider usage or savings.
+
+The snapshot MUST expose:
 
 1. logical request and provider-attempt counts, including completed and failed logical requests;
 2. provider input, cached input, uncached input, output, reasoning, and usage-bearing attempt counts;

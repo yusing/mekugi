@@ -67,6 +67,12 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if *flags.mode != "mekugi" && *flags.mode != "passthrough" {
 		return errors.New("--mode must be mekugi or passthrough")
 	}
+	if value := *flags.journalCompaction; value != "auto" && value != "slice" && value != "off" {
+		return errors.New("--journal-compaction must be auto, slice, or off")
+	}
+	if *flags.mode == "passthrough" && *flags.journalCompaction != "off" {
+		return errors.New("--journal-compaction requires --mode mekugi")
+	}
 	faint, err := terminalui.SupportsFaint(ctx, *flags.ansiFaint)
 	if err != nil {
 		return err
@@ -255,6 +261,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
 		mekugiCalls = newMekugiProxy(registry, titles)
+		mekugiCalls.journalCompaction = *flags.journalCompaction
 		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
 		if traceErr == nil {
 			mekugiCalls.nativeTrace = &nativeToolTrace{directory: traceDirectory}

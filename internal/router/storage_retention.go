@@ -170,7 +170,7 @@ func retainedDataName(name string) bool {
 			return true
 		}
 	}
-	for _, prefix := range []string{"call-", "commentary-", "journal-", "failure-", changeIndexPrefix, "cursor-", "output-", "wait-"} {
+	for _, prefix := range []string{"call-", "commentary-", "journal-", "compaction-", "failure-", changeIndexPrefix, "cursor-", "output-", "wait-"} {
 		if hash, ok := strings.CutPrefix(strings.TrimSuffix(name, ".json"), prefix); ok {
 			if len(hash) != 64 {
 				return false

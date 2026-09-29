@@ -21,10 +21,11 @@ func RunPostCompactHook(ctx context.Context, args []string, stdin io.Reader, std
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	var event struct {
-		Event     string `json:"hook_event_name"`
-		Source    string `json:"source"`
-		Thread    string `json:"session_id"`
-		Directory string `json:"cwd"`
+		Event      string `json:"hook_event_name"`
+		Source     string `json:"source"`
+		Thread     string `json:"session_id"`
+		Directory  string `json:"cwd"`
+		Transcript string `json:"transcript_path"`
 	}
 	fail := func(err error) int {
 		fmt.Fprintf(stderr, "mekugi post-compact: %v\n", err)
@@ -62,6 +63,9 @@ func RunPostCompactHook(ctx context.Context, args []string, stdin io.Reader, std
 		return fail(err)
 	}
 	defer release()
+	if store.answeredCompaction(ctx, filepath.Clean(event.Directory), event.Thread, compactedResponseID(event.Transcript)) {
+		return 0
+	}
 	content, err := store.postCompactContext(ctx, filepath.Clean(event.Directory), event.Thread)
 	if err != nil {
 		return fail(err)

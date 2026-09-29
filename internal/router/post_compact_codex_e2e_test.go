@@ -33,11 +33,19 @@ type compactCodexProvider struct {
 	workspace                         string
 	turns                             int
 	compacted, restored, existingHook bool
+	synthesized                       bool
+	duplicateHook                     bool
+	firstError                        error
 }
 
-func (p *compactCodexProvider) forwardExecution(ctx, _ context.Context, body []byte, headers http.Header, _ string) (*http.Response, error) {
+func (p *compactCodexProvider) forwardExecution(ctx, _ context.Context, body []byte, headers http.Header, _ string) (_ *http.Response, resultErr error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	defer func() {
+		if resultErr != nil && p.firstError == nil {
+			p.firstError = resultErr
+		}
+	}()
 	p.turns++
 	metadata, _ := decodeCodexTurnMetadata(headers)
 	thread := metadata.ThreadID
@@ -46,8 +54,8 @@ func (p *compactCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 	}
 	var item map[string]any
 	tokens := 10
-	switch p.turns {
-	case 1:
+	switch {
+	case p.turns == 1:
 		if thread == "" {
 			return nil, fmt.Errorf("native request missing stable thread")
 		}
@@ -67,6 +75,11 @@ func (p *compactCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 		if _, err := journal.apply(ctx, store, p.workspace, thread, "fixture-journal", []journalMutation{{Op: "add", Text: new("Durable native recovery milestone")}}); err != nil {
 			return nil, err
 		}
+		if p.synthesized {
+			if _, err := journal.apply(ctx, store, p.workspace, thread, "fixture-plan", []journalMutation{{Op: "add", Kind: "task", Title: new("Resume native work"), State: new("working")}}); err != nil {
+				return nil, err
+			}
+		}
 		id, err := store.reserveChange(ctx, p.workspace, thread, "fixture-edit")
 		if err != nil {
 			return nil, err
@@ -78,13 +91,16 @@ func (p *compactCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 		}
 		item = map[string]any{"type": "custom_tool_call", "id": "compact-exec", "call_id": "compact-exec-call", "name": "exec", "status": "completed", "input": `text("continue after compaction");`}
 		tokens = 150000
-	case 2:
+	case p.turns == 2 && !p.synthesized:
 		if metadata.RequestKind != "compaction" {
 			return nil, fmt.Errorf("expected native compaction, got %q", metadata.RequestKind)
 		}
 		p.compacted = true
 		item = compactFixtureMessage("compacted", "Continue the task after compaction.")
-	case 3:
+	case p.turns == 3 && !p.synthesized || p.turns == 2 && p.synthesized:
+		if p.synthesized && metadata.RequestKind == "compaction" {
+			return nil, fmt.Errorf("router-answered compaction reached fake upstream: metadata=%+v, transport thread=%q", metadata, headers.Get(threadIDHeader))
+		}
 		var request struct {
 			Input []struct {
 				Role    string `json:"role"`
@@ -97,20 +113,20 @@ func (p *compactCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 			return nil, err
 		}
 		for _, input := range request.Input {
-			if input.Role != "developer" {
-				continue
-			}
 			for _, part := range input.Content {
-				if part.Text == "existing compact hook" {
+				if input.Role == "developer" && part.Text == "existing compact hook" {
 					p.existingHook = true
 				}
-				if strings.Contains(part.Text, "Durable native recovery milestone") && strings.Contains(part.Text, "M\t1\t1\trecovered.txt") {
+				if p.synthesized && input.Role == "developer" && strings.Contains(part.Text, "Durable native recovery milestone") {
+					p.duplicateHook = true
+				}
+				if !p.synthesized && input.Role == "developer" && strings.Contains(part.Text, "Durable native recovery milestone") && strings.Contains(part.Text, "M\t1\t1\trecovered.txt") || p.synthesized && strings.Contains(part.Text, "Durable native recovery milestone") && strings.Contains(part.Text, "recovered.txt") && strings.Contains(part.Text, "Resume native work") {
 					p.restored = true
 				}
 			}
 		}
 		if !p.restored {
-			return nil, fmt.Errorf("immediate continuation lacks durable hook context")
+			return nil, fmt.Errorf("immediate continuation lacks durable recovery context")
 		}
 		item = compactFixtureMessage("done", "native recovery accepted")
 	default:
@@ -141,6 +157,15 @@ func compactFixtureMessage(id, text string) map[string]any {
 }
 
 func TestPostCompactNativeCodexE2E(t *testing.T) {
+	testPostCompactNativeCodexE2E(t, false)
+}
+
+func TestJournalCompactionNativeCodexE2E(t *testing.T) {
+	testPostCompactNativeCodexE2E(t, true)
+}
+
+func testPostCompactNativeCodexE2E(t *testing.T, synthesized bool) {
+	t.Helper()
 	codex, err := exec.LookPath("codex")
 	if err != nil {
 		t.Fatal(err)
@@ -163,8 +188,19 @@ func TestPostCompactNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
-	provider := &compactCodexProvider{store: store, workspace: workspace}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
+	if synthesized {
+		if output, err := exec.Command("git", "init", "--quiet", workspace).CombinedOutput(); err != nil {
+			t.Fatalf("initialize fixture workspace: %v: %s", err, output)
+		}
+	}
+	provider := &compactCodexProvider{store: store, workspace: workspace, synthesized: synthesized}
+	var proxy *mekugiProxy
+	if synthesized {
+		proxy = newManagedMekugiProxy(t)
+		proxy.replayStore = store
+		proxy.journalCompaction = "auto"
+	}
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy, nil))
 	defer server.Close()
 	executable, err := os.Executable()
 	if err != nil {
@@ -186,11 +222,18 @@ func TestPostCompactNativeCodexE2E(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr
 	if err := command.Run(); err != nil {
-		t.Fatalf("native compaction: %v\nstdout: %s\nstderr: %s", err, &stdout, &stderr)
+		provider.mu.Lock()
+		firstError := provider.firstError
+		provider.mu.Unlock()
+		t.Fatalf("native compaction: %v; first provider error: %v\nstdout: %s\nstderr: %s", err, firstError, &stdout, &stderr)
 	}
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
-	if provider.turns != 3 || !provider.compacted || !provider.restored || !provider.existingHook || !strings.Contains(stdout.String(), "native recovery accepted") {
-		t.Fatalf("native compaction turns=%d compacted=%t restored=%t existingHook=%t\nstdout: %s\nstderr: %s", provider.turns, provider.compacted, provider.restored, provider.existingHook, &stdout, &stderr)
+	expectedTurns := 3
+	if synthesized {
+		expectedTurns = 2
+	}
+	if provider.turns != expectedTurns || provider.compacted == synthesized || !provider.restored || !provider.existingHook || synthesized && provider.duplicateHook || !strings.Contains(stdout.String(), "native recovery accepted") {
+		t.Fatalf("native compaction synthesized=%t turns=%d compacted=%t restored=%t existingHook=%t duplicateHook=%t\nstdout: %s\nstderr: %s", synthesized, provider.turns, provider.compacted, provider.restored, provider.existingHook, provider.duplicateHook, &stdout, &stderr)
 	}
 }

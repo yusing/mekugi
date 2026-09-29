@@ -68,6 +68,7 @@ type requestAttempt struct {
 	finishUsage        bool
 	releaseDelivery    bool
 	continuationCancel context.CancelFunc
+	compactionRelease  func()
 }
 
 func (e requestExecutor) execute(
@@ -148,6 +149,12 @@ func (a *requestAttempt) run() (*requestContinuation, error) {
 	if err := a.prepare(); err != nil {
 		return nil, err
 	}
+	if a.tryJournalCompaction() {
+		if err := a.prepareResponse(); err != nil {
+			return nil, err
+		}
+		return a.deliver()
+	}
 	if err := a.prepareWire(); err != nil {
 		return nil, err
 	}
@@ -178,6 +185,11 @@ func (a *requestAttempt) prepare() error {
 	a.threadID = codexThreadID(a.headers)
 	a.finalization.threadID = a.threadID
 	a.finalization.turnID = a.metadata.TurnID
+	if a.executor.mekugiCalls != nil && a.metadataValid && a.metadata.RequestKind == responses.Compaction {
+		if err := validateMekugiCompactionRequest(&a.request, a.metadata); err != nil {
+			return err
+		}
+	}
 	handoff, err := a.executor.mentor.prepare(a.headers, a.metadata, a.metadataValid, &a.request)
 	if err != nil {
 		return fmt.Errorf("prepare Mentor Handoff: %w", err)
@@ -294,7 +306,10 @@ func (a *requestAttempt) prepareWire() error {
 			}
 		}
 	}
-	if a.mekugiTransform != nil || a.prewarm && a.executor.mekugiCalls != nil || grokEnabled || len(openCodeModels) > 0 {
+	// Compaction keeps request-wide projections but never gains collaboration
+	// tools or their instructions.
+	compaction := a.metadataValid && a.metadata.RequestKind == responses.Compaction
+	if !compaction && (a.mekugiTransform != nil || a.prewarm && a.executor.mekugiCalls != nil || grokEnabled || len(openCodeModels) > 0) {
 		a.bridge, err = prepareSubagentBridge(&a.request, grokEnabled, openCodeModels...)
 		if err != nil {
 			return fmt.Errorf("prepare collaboration bridge: %w", err)
@@ -579,6 +594,9 @@ func (a *requestAttempt) continueJournal() (*requestContinuation, error) {
 }
 
 func (a *requestAttempt) finish(requestErr error) error {
+	if a.compactionRelease != nil {
+		a.compactionRelease()
+	}
 	if a.continuationCancel != nil {
 		a.continuationCancel()
 	}

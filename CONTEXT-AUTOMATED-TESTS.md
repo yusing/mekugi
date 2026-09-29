@@ -10,6 +10,7 @@ go test -tags journal_e2e ./internal/router -run '^TestMChangesNestedNativeCodex
 go test -tags journal_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'
 go test -tags journal_e2e ./internal/router -run '^TestJournalNativeCodexSpawnE2E$'
 go test -tags journal_e2e ./internal/router -run '^TestPostCompactNativeCodexE2E$'
+go test -tags journal_e2e ./internal/router -run '^TestJournalCompactionNativeCodexE2E$'
 go test -tags journal_e2e ./internal/router -run '^(TestRouterTransformFaultNativeCodexE2E|TestRetryablePrestream5xxStillRetriesInNativeCodexE2E)$'
 ```
 
@@ -32,6 +33,9 @@ also checks coexistence of file-based and invocation-local native hooks. Only
 this isolated fixture bypasses hook trust; production registration requires the
 normal Codex hook review. The fixture does not exercise the interactive `/hooks`
 trust UI or manual `/compact` command.
+The journal-compaction fixture additionally verifies that a router-authored
+summary is accepted by installed Codex, never reaches the mock provider, restores
+task/change evidence, and suppresses only the matching recovery hook injection.
 
 The fixtures are the `internal/router/*_codex_e2e_test.go` files. A tagged compile-only check is
 `go test -tags journal_e2e ./internal/router -run '^$'`.

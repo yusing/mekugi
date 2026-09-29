@@ -122,6 +122,7 @@ type mekugiProxy struct {
 	commentary         *commentaryBroker
 	commentaryEndpoint string
 	journals           *journalStore
+	journalCompaction  string
 	usage              *threadUsage
 	metricMu           sync.Mutex
 	metricPaths        map[string]string

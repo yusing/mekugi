@@ -93,3 +93,21 @@ test('render current capture schema without retired edit-translation metrics', (
   assert.equal(runInContext('Object.hasOwn(renderedRows, "mekugi")', app.context), false);
   assert.equal(runInContext('Object.hasOwn(renderedRows, "health")', app.context), true);
 });
+
+test('compaction details distinguish known zero from absent measurements', () => {
+  const app = dashboard();
+  runInContext(`
+    tables = {};
+    tableRows = (id, entries, columns) => { tables[id] = {entries, columns}; };
+    currentSnapshot = {exchanges: [
+      {sequence: 1, request_kind: 'compaction'},
+      {sequence: 2, request_kind: 'compaction', compaction_answer: 'router', duration_ms: 3,
+       compaction_summary_bytes: 128, compaction_changes: 0, compaction_failures: 0},
+      {sequence: 3, request_kind: 'turn'}
+    ]};
+    renderDetails();
+  `, app.context);
+  const table = JSON.parse(runInContext('JSON.stringify(tables.compactions)', app.context));
+  assert.equal(table.columns, 6);
+  assert.deepEqual(table.entries, [['2', 'router', '3', '128', '0', '0'], ['1', '', '—', '—', '—', '—']]);
+});

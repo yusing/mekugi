@@ -27,6 +27,20 @@ otherwise. A non-repository temporary directory again supplied no workspace
 metadata; initializing the fixture repository made its root available for
 relative capture. No router-cwd fallback was used.
 
+### Journal compaction (2026-09-29)
+
+Codex CLI 0.158.0 accepted a router-synthesized local compaction response in
+`TestJournalCompactionNativeCodexE2E`, using a deterministic local provider and an
+isolated Git workspace. No compaction request reached that provider. The immediate
+continuation contained journal task and retained change evidence; the matching
+`SessionStart` hook omitted duplicate recovery while an independent hook still ran.
+The legacy provider-summary hook fixture also passed. These are offline protocol
+checks, not evidence that a model resumes better or uses fewer task tokens.
+
+The non-repository fixture emitted no compaction workspace metadata. The router
+can recover only a unique prior selected workspace from durable requesting-thread
+records, never its process cwd. Ambiguous retained workspaces keep provider fallback.
+
 ### Codex workspace metadata
 
 - A session started inside this Git repository declared the enclosing

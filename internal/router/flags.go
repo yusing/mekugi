@@ -16,6 +16,7 @@ type routerFlags struct {
 	mainMentorHandoffEnabled *bool
 	mentorHandoffEnabled     *bool
 	postCompactRecovery      *bool
+	journalCompaction        *string
 	grokEnabled              *bool
 	grokAuthFile             *string
 	exploreFilter            *bool
@@ -40,6 +41,7 @@ func newRouterFlags(stderr io.Writer) routerFlags {
 		mainMentorHandoffEnabled: flags.Bool("main-mentor-handoff", true, "start eligible main threads with a mentor model"),
 		mentorHandoffEnabled:     flags.Bool("mentor-handoff", true, "start eligible spawned subagents with a mentor model"),
 		postCompactRecovery:      flags.Bool("post-compact-recovery", true, "restore journal and change context after compaction through a pre-trusted Codex hook"),
+		journalCompaction:        flags.String("journal-compaction", "off", "journal compaction: auto, slice, or off (default remains gated on evaluation)"),
 		grokEnabled:              flags.Bool("grok", false, "enable Grok models and plaintext collaboration projection"),
 		grokAuthFile:             flags.String("grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)"),
 		exploreFilter:            flags.Bool("explore-filter", true, "omit search results that TypeSafe Jev judges unrelated to the task when a TypeSafe API key is configured"),

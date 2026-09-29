@@ -107,6 +107,40 @@ task. Corrupt failure evidence also fails rendering. The native recovery hook
 treats failure as advisory; router-side synthesis uses provider fallback.
 Neither recovery path acknowledges events or replays effects.
 
+## Router-answered compaction
+
+`--journal-compaction=auto` opts into journal summaries for validated local Codex
+compaction requests, including child threads. The default remains `off` until the
+offline harness and separately authorized paid evaluation establish the proposed
+success, redo and token-cost gate. `slice` is reset-only, with ordinary compactions
+forwarded to the provider; slice-reset driving is not yet delivered.
+
+Synthesis requires one selected workspace, an unambiguous requesting thread and
+durable journal or executing-thread-owned change evidence. Conflicted identities,
+missing evidence, rendering failures and persistence failures forward the request
+without journal/tool projection. Existing model aliases, service-tier policy and
+successful-compaction Mentor resets still apply. Invalid compaction protocol requests retain the existing validation
+errors. A summary is never empty. A downstream delivery failure is reported, not
+retried as a second provider request.
+
+Native local compaction may omit workspace metadata. Only a unique workspace
+already selected in that requesting thread's durable journal/execution records
+can substitute for it. Conflicting historical workspaces fall back to the provider;
+router cwd and another thread's records never supply a directory.
+
+Codex retains execution and history authority. The router supplies a completed
+assistant summary through the same streamed Responses delivery path, persisting
+its thread/workspace and response identity before exposure. No model request is
+made, and no model usage is fabricated. Metrics distinguish router answers from
+provider answers and report zero provider attempts/tokens for router answers.
+Summary bytes and evidence counts are measurements, never savings estimates.
+
+The recovery hook suppresses duplicate injection only when Codex's latest
+compacted transcript record identifies that persisted response. Missing or
+unreadable transcript evidence, older host records without response IDs, and
+provider-written summaries keep normal hook recovery. Failed or interrupted local
+responses cannot suppress recovery for another compaction.
+
 ## REQ-JOURNAL-001 — Durable work journals
 
 Mekugi owns one durable journal per stable thread. Passthrough is unchanged.

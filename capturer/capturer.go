@@ -68,6 +68,7 @@ type toolCallMetrics struct {
 }
 
 type captureRecord struct {
+	CompactionMetrics
 	Transport            string                             `json:"transport,omitempty"`
 	ControlDirection     ResponsesWebSocketControlDirection `json:"control_direction,omitempty"`
 	ProviderResponse     *providerResponseEvidence          `json:"provider_response,omitempty"`
@@ -119,6 +120,7 @@ type Recorder struct {
 }
 
 type requestState struct {
+	compaction            CompactionMetrics
 	requestKind           string
 	predecessorSequence   uint64
 	recorder              *Recorder
@@ -402,7 +404,11 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 	}
 	state.mu.Lock()
 	record.RequestKind = state.requestKind
+	record.CompactionMetrics = state.compaction
 	state.mu.Unlock()
+	if boundary == "codex" && record.CompactionAnswer == "router" {
+		record.ProviderExpected = new(false)
+	}
 	if contentType == webSocketContentType {
 		record.Transport = "websocket"
 	}
@@ -509,6 +515,11 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 	switch record.ResponseStatus {
 	case "completed", "failed", "incomplete", "cancelled", "error":
 		record.ResponseComplete = true
+	}
+	if record.CompactionAnswer == "router" {
+		record.Usage = nil // The client envelope's zeros are not provider usage evidence.
+	} else if record.CompactionAnswer == "provider" && record.ResponseStatus == "completed" && record.CaptureError == "" {
+		record.CompactionSummaryBytes = new(record.FinalText.Bytes)
 	}
 	if (statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices) && contentType != webSocketContentType {
 		record.ResponseComplete = true

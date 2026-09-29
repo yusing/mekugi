@@ -24,6 +24,19 @@ the managed read store. Summaries read journal, change and failure evidence unde
 one replay lock, scoped by durable thread/workspace identity. The same renderer
 serves v2 hook recovery and compaction synthesis; summary text is not usage evidence.
 
+The request executor selects local compaction after protocol validation, before
+provider preparation. Local responses reuse terminal delivery and cancellation,
+not tool execution or a second request path. The replay store retains the latest
+synthesis identity per workspace/thread, before response publication. Session
+leases protect evidence through delivery. The post-compaction hook compares that
+identity against `compaction_response_id` in the host's latest compacted rollout
+record; inability to prove a match leaves recovery enabled. Capturer owns the
+sanitized routing/count metrics and explicitly represents the absent provider
+attempt, rather than interpreting synthetic envelope usage as provider usage.
+For native compaction's missing workspace metadata, the session ownership catalog
+proves the unique prior selected workspace from exact thread-owned records. This
+lookup remains valid after restart and rejects multiple historical workspaces.
+
 The router intercepts the dedicated journal tool and returns its result through
 the current response flow rather than a host executor. A valid direct finish
 can select terminal delivery when no client-dispatched work remains. Code Mode
