@@ -25,6 +25,12 @@ func TestSearchDisplayQueryAndTarget(t *testing.T) {
 		{`rg -nA2 -g'*.go' needle src`, "Search `needle` in `src`"},
 		{`grep --regexp=needle --include='*.go' src 2>/dev/null | head -5`, "Search `needle` in `src`"},
 		{`rg --files src | head -n 50`, "List `src`"},
+		{`ls -l /tmp/x`, "List `/tmp/x`"},
+		{`ls -la`, "List `.`"},
+		{`ls -l --sort=time -I '*.o' -w 80 a 'b c' -- -d`, "List `a 'b c' -d`"},
+		{`ls --hide '*.o' -Ifoo src`, "List `src`"},
+		{`ls plugins 2>/dev/null | head -50`, "List `plugins`"},
+		{`echo hello; ls -l /tmp/x; python3 --version`, "Run `echo hello`\n\nList `/tmp/x`\n\nRun `python3 --version`"},
 		{`rg -n first src | grep -v second | head -n 5`, "Search `first` in `src`\n\nSearch `second`"},
 	} {
 		t.Run(tc.source, func(t *testing.T) {
@@ -46,6 +52,8 @@ func TestSearchDisplayQueryAndTarget(t *testing.T) {
 		`rg -n needle src | sort -o saved.txt`,
 		`rg -e`,
 		`rg --unknown-option value needle src`,
+		`ls --hid '*.o' src`,
+		`ls src > listing.txt`,
 	} {
 		if got := toolActivityShell(source); !strings.HasPrefix(got, "Run") || !strings.Contains(got, source) {
 			t.Errorf("unsafe/unknown pipeline lost original source: %q", got)

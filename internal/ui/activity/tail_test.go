@@ -105,3 +105,27 @@ func TestOutputRowsCountEarlierLinesInVerbColumn(t *testing.T) {
 		t.Fatalf("wide count output =\n%s\nwant prefix\n%s", got, want)
 	}
 }
+
+// A command's output gutter stays under the command when a wider neighbor
+// pads the group's shared verb column.
+func TestOutputRowsFollowPaddedVerbColumn(t *testing.T) {
+	var p Painter
+	ran := Block{Kind: "op", Verb: "Run", Label: "`python3 --version`", Tail: []string{"Python 3"}, TailOmitted: 2}
+	for _, neighbor := range []Block{
+		{Kind: "op", Verb: "Inspect", Label: "`command -v go`"},
+		{Kind: "reads", Verb: "Skill", Reads: []Read{{Path: "mekugi-owners"}}},
+		{Kind: "op", Verb: "List", Label: "`/tmp/x`"},
+	} {
+		for _, collapsed := range []bool{false, true} {
+			ran.Collapsed = collapsed
+			blocks := AlignVerbs([]Block{neighbor, ran})
+			rows := p.Block(blocks[1], 60)
+			command := strings.Index(ansi.Strip(rows[0]), "python3")
+			for _, row := range rows[1:] {
+				if gutter := strings.Index(ansi.Strip(row), "┆"); ansi.StringWidth(ansi.Strip(row)[:gutter]) != command {
+					t.Fatalf("beside %s, gutter at %d, command at %d:\n%s", neighbor.Verb, gutter, command, ansi.Strip(strings.Join(rows, "\n")))
+				}
+			}
+		}
+	}
+}

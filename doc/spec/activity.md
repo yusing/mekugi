@@ -55,7 +55,10 @@ order, without claiming execution or success. Other unsupported compound command
 retain a `Run` preview instead of claiming a simpler operation. Mixed command scripts keep
 every classified operation and show unclassified neighbors as `Run` in order.
 `rg` and `grep` search previews show the query and target, omitting execution
-flags and recognized output-only pipeline helpers such as `head`. Unknown or
+flags and recognized output-only pipeline helpers such as `head`. `ls` listings
+show only their path operands (`.` when none), omitting options and their values;
+an abbreviated long option that may consume the next word remains `Run`. Discarded
+stderr (`2>/dev/null`) is transparent to `find`, `rg`, `grep`, and `ls`. Unknown or
 effectful pipeline stages retain the original `Run` preview. Shell execution
 still receives the exact original command, including flags and pipes.
 Per-command `Run` excerpts omit statement-terminating semicolons; quoted

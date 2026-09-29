@@ -1,7 +1,9 @@
 package router
 
 import (
+	"cmp"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -341,8 +343,8 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 		return "", !executable
 	}
 	if len(statement.Redirs) != 0 {
-		// Only discarded stderr is transparent to these search previews.
-		if command != "find" && command != "rg" && command != "grep" {
+		// Only discarded stderr is transparent to these search and listing previews.
+		if command != "find" && command != "rg" && command != "grep" && command != "ls" {
 			return "", false
 		}
 		for _, redirect := range statement.Redirs {
@@ -677,11 +679,17 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 		add(label, script[int(call.Args[1].Pos().Offset()):int(call.End().Offset())])
 
 	case "ls":
-		detail := "."
-		if len(argv) > 1 {
-			detail = script[int(call.Args[1].Pos().Offset()):int(call.End().Offset())]
+		operands, ok := toolActivityListOperands(argv)
+		if !ok {
+			return "", false
 		}
-		add("List", detail)
+		// Keep each operand's source quoting.
+		paths := make([]string, len(operands))
+		for i, operand := range operands {
+			arg := call.Args[operand]
+			paths[i] = script[int(arg.Pos().Offset()):int(arg.End().Offset())]
+		}
+		add("List", cmp.Or(strings.Join(paths, " "), "."))
 	case "command":
 		if len(argv) != 3 || argv[1] != "-v" || argv[2] == "" || strings.HasPrefix(argv[2], "-") {
 			return "", false
@@ -736,6 +744,47 @@ func toolActivityPositiveDecimal(value string, maximum uint64) (uint64, bool) {
 	}
 	number, err := strconv.ParseUint(value, 10, 64)
 	return number, err == nil && number <= maximum
+}
+
+// toolActivityListOperands is the argv indexes of ls operands, without its
+// options, which describe the listing rather than what is listed. An
+// abbreviated option that may take the next word as its value is ambiguous,
+// so it stays unclassified.
+func toolActivityListOperands(argv []string) ([]int, bool) {
+	valued := []string{"--block-size", "--format", "--hide", "--ignore", "--indicator-style",
+		"--quoting-style", "--sort", "--tabsize", "--time", "--time-style", "--width"}
+	var operands []int
+	for i := 1; i < len(argv); i++ {
+		arg := argv[i]
+		switch {
+		case arg == "--":
+			for i++; i < len(argv); i++ {
+				operands = append(operands, i)
+			}
+		case arg == "-" || !strings.HasPrefix(arg, "-"):
+			operands = append(operands, i)
+		case strings.HasPrefix(arg, "--"):
+			if strings.Contains(arg, "=") {
+				continue
+			}
+			if slices.Contains(valued, arg) {
+				i++
+				continue
+			}
+			for _, option := range valued {
+				if strings.HasPrefix(option, arg) {
+					return nil, false
+				}
+			}
+		default:
+			// A short option that takes a value ends its cluster; the value is
+			// the rest of the word or the next one.
+			if at := strings.IndexAny(arg[1:], "ITw"); at >= 0 && at == len(arg)-2 {
+				i++
+			}
+		}
+	}
+	return operands, true
 }
 
 func toolActivityUnclassifiedShell(source string) string {
