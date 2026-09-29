@@ -521,7 +521,9 @@ Child answers link (`↩ re:`) to their retained assignment, not to a
 previous answer or similar text. An answer to its thread's latest assignment
 omits the link, since that assignment is directly above; an answer to an earlier
 assignment in the same thread keeps it. Main's ordinary replies link to the user input
-in their own turn. While Main is working, its latest ordinary reply is pinned
+in their own turn. Only the first reply to an input quotes it; a later reply to the
+same input quotes it again only when another message sits between them. Main's own
+tools, reasoning and progress do not separate replies. While Main is working, its latest ordinary reply is pinned
 at the top of Main only when the original is entirely outside the unpinned
 transcript viewport. Any visible part of the original suppresses the pin, avoiding
 duplicate messages on screen. The copy

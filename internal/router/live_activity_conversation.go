@@ -445,7 +445,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	case entry.Agent == "Main" && entry.Kind == "text":
 		out.add(0, mainHeading(p, entry, width))
 		gutter := mainGutter(p)
-		if entry.native != nil && entry.native.question != 0 {
+		if entry.native != nil && entry.native.question != 0 && v.mainReplyQuotes(first, entry.native.question) {
 			for _, question := range v.entries[:first] {
 				if question.Seq == entry.native.question {
 					v.replyContext(&out, question, gutter, width-2)
@@ -709,6 +709,22 @@ func threadHeading(lead, detail string, entry, previous activityPaneEntry, reply
 		}
 	}
 	return head
+}
+
+// mainReplyQuotes reports whether Main's reply at index quotes its message:
+// the first reply to it does, and a later one only when another message sits
+// between them. Main's own tools, reasoning and progress are not messages.
+func (v *liveActivityView) mainReplyQuotes(index int, question uint64) bool {
+	for _, previous := range slices.Backward(v.entries[:index]) {
+		if previous.Seq == question {
+			return true
+		}
+		if !v.visible(previous) || previous.Agent == "Main" && previous.Kind != "text" && previous.Kind != "final" {
+			continue
+		}
+		return previous.Agent != "Main" || previous.Kind != "text" || previous.native == nil || previous.native.question != question
+	}
+	return true
 }
 
 // replyContext gives every reply the same header and separately quoted prompt.

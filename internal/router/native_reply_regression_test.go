@@ -173,3 +173,31 @@ func TestNativeDirectedMessageDisplayBudget(t *testing.T) {
 		})
 	}
 }
+
+func TestNativeMainRepliesQuoteTheirMessageOnce(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.conversation = true
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn",
+		"item": map[string]any{"id": "prompt", "type": "userMessage", "content": []map[string]string{{"type": "text", "text": "Fix the build"}}}})
+	reply := func(id, text string) {
+		t.Helper()
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": id, "type": "agentMessage", "text": text}})
+	}
+	quotes := func() int {
+		t.Helper()
+		return strings.Count(ansi.Strip(strings.Join(u.view.renderFeed(90, 60).lines, "\n")), "↩ re: your message")
+	}
+	reply("first", "Looking at the Makefile.")
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "make build"}})
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "make build", "status": "completed", "exitCode": 0}})
+	reply("second", "The build passes now.")
+	if got := quotes(); got != 1 {
+		t.Fatalf("replies separated only by Main's own tools quoted the message %d times", got)
+	}
+	// Another message between replies makes the next one quote it again.
+	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Session", Kind: "text", Text: "Blocked on a request"}}})
+	reply("third", "Continuing.")
+	if got := quotes(); got != 2 {
+		t.Fatalf("reply after another message quoted %d times; want 2\n%s", got, ansi.Strip(strings.Join(u.view.renderFeed(90, 60).lines, "\n")))
+	}
+}
