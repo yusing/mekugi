@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -48,10 +49,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		}
 		block.Running = !view.Done
 	}
-	page := DialogPage{Title: VerbColor(block.Verb) + "\x1b[1m" + RowVerb(block) + Reset, Live: !view.Done}
-	if target := dialogTarget(p, block); target != "" {
-		page.Title += Dim + " · " + Undim + target
-	}
+	page := DialogPage{Title: p.DialogPageTitle(block, time.Now()), Live: block.Live || !view.Done}
 	var detail []string
 	if len(block.Reads) == 1 && len(block.Reads[0].Ranges) > 0 {
 		detail = append(detail, lineRanges(block.Reads[0].Ranges))
@@ -94,6 +92,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		page.Text = code
 	}
 	if block.Body != "" {
+		page.Text = block.Body
 		gap()
 		for _, row := range p.Markdown(block.Body, width) {
 			add(DialogLine{Text: row})
@@ -151,6 +150,8 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 				colored = lines
 			}
 		}
+	} else if len(content) <= dialogHighlightBytes && strings.Contains(content, "\n+++ ") && strings.Contains(content, "\n@@ ") {
+		colored = p.Highlight("diff", content)
 	} else if block.Verb == "Search" && len(content) <= dialogHighlightBytes {
 		colored = make([]string, len(view.Lines))
 		for i, line := range view.Lines {
@@ -326,6 +327,9 @@ func Backdrop(row string) string {
 // edge, the detail row, its rule and the bottom edge.
 const DialogChrome = 4
 
+const DialogClose = "[×]"
+const DialogCloseWidth = 3
+
 // Dialog boxes a frame width by height: the title and page position on the
 // top edge, the detail row and a rule, the body with a scroll thumb on its
 // right edge, and controls on the bottom edge.
@@ -345,11 +349,13 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 		right = strings.TrimSpace(live + " " + right)
 	}
 	if right != "" {
-		right = " " + right + " "
+		right += " "
 	}
+	right += DialogClose
+	right = " " + right + " "
 	room := width - 6 - ansi.StringWidth(right)
-	if room < 8 {
-		right, room = "", width-6
+	if room < 1 {
+		right, room = " "+DialogClose+" ", width-8-DialogCloseWidth
 	}
 	title := ansi.Truncate(f.Page.Title, room, "…") + Reset
 	fill := max(0, width-6-ansi.StringWidth(title)-ansi.StringWidth(right))
@@ -384,4 +390,31 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 	}
 	footer := ansi.Truncate(f.Footer, max(0, width-6), "…")
 	return append(lines, edge("╰─ ")+footer+Reset+" "+edge(strings.Repeat("─", max(0, width-5-ansi.StringWidth(footer)))+"╯"))
+}
+
+func (p *Painter) DialogPageTitle(block Block, now time.Time) string {
+	if block.Output != nil {
+		block.Running = !block.Output.View().Done
+	}
+	verb := RowVerb(block)
+	if verb == "" {
+		switch block.Kind {
+		case "summary":
+			verb = ThinkingHeader(block.Live, block.Elapsed)
+		case "final":
+			verb = "Answer"
+		default:
+			verb = "Message"
+		}
+	}
+	title := VerbColor(block.Verb) + "\x1b[1m" + verb + Reset
+	if target := dialogTarget(p, block); target != "" {
+		title += Dim + " · " + Undim + target
+	}
+	if block.Verb == "Run" {
+		if elapsed := RunElapsed(block, now); elapsed != "" {
+			title += Dim + " · " + elapsed + Undim
+		}
+	}
+	return title
 }

@@ -176,6 +176,12 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			key.hover = v.snippet.block
 		}
 		run, ok := v.runs[key]
+		for k := it.first; k <= it.last; k++ {
+			if n := v.entries[k].native; n != nil && n.running {
+				ok = false
+				break
+			}
+		}
 		if !ok {
 			run = v.conversationItem(it.first, it.last, width, thread)
 			if it.lead >= 0 {
@@ -293,7 +299,7 @@ const (
 
 // conversationSourceRows bounds a command or program preview in Main until
 // the reader opens it; Activity keeps its own per-block clip.
-const conversationSourceRows = 8
+const conversationSourceRows = 5
 
 // threadAgent names the agent an item of agent traffic concerns, or "" when
 // the item cannot join a thread.
@@ -826,7 +832,7 @@ func (v *liveActivityView) sentExcerpt(out *conversationLines, entry activityPan
 func (v *liveActivityView) linkedExcerpt(out *conversationLines, entry activityPaneEntry, noun string, rows []string, gutter, tail string, width, limit int) {
 	rows, hidden := liveActivityExcerpt(rows, width, limit)
 	out.hang(gutter, gutter, rows)
-	link := v.painter.Theme.Accent() + "↩ Open " + noun + " in Activity" + activityui.Reset
+	link := v.painter.Theme.Accent() + "↩ Open " + noun + activityui.Reset
 	if hidden > 0 {
 		link += activityui.Dim + " · " + activityui.Undim + activityui.Elision{Hidden: hidden, Form: activityui.ElisionSuffix}.String()
 	}
@@ -834,12 +840,11 @@ func (v *liveActivityView) linkedExcerpt(out *conversationLines, entry activityP
 }
 
 // collapsedItem shortens an item its thread has moved past. Assignments have
-// no Activity entry to open, so a click expands the item in place and another
-// collapses it, as Activity does with long narrative blocks.
+// no Activity entry to open, so the dialog resolves their own source entry.
 func (v *liveActivityView) collapsedItem(out *conversationLines, entry activityPaneEntry, rows []string, gutter string, width int) {
 	snippet := liveActivitySnippet{run: entry.Seq, block: 0}
 	_, hidden := liveActivityExcerpt(rows, width, conversationEarlierRows)
-	if hidden > 0 && !v.expanded[snippet] {
+	if hidden > 0 {
 		hint := activityui.Elision{Hidden: hidden, Form: activityui.ElisionSuffix, Hovered: v.snippet == snippet}.String()
 		room := width - ansi.StringWidth(hint) - 1
 		rows, _ = liveActivityExcerpt(rows, room, conversationEarlierRows)

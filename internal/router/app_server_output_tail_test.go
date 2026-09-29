@@ -120,9 +120,9 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 		t.Fatalf("burst jumped to its tail instead of rolling:\n%s", got)
 	}
 	rollCommandOutput(u)
-	want := "└ Running go test ./...\n  +4      ┆ ok 4\n          ┆ ok 5\n          ┆ ok 6\n          ┆ ok 7\n          ┆ --- partial"
-	if got := main(); !strings.Contains(got, want) {
-		t.Fatalf("live tail missing %q:\n%s", want, got)
+	want := "  +4      ┆ ok 4\n          ┆ ok 5\n          ┆ ok 6\n          ┆ ok 7\n          ┆ --- partial"
+	if got := main(); !strings.Contains(got, "└ Running go test ./...") || !strings.Contains(got, want) {
+		t.Fatalf("live tail missing header or %q:\n%s", want, got)
 	}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
 		"id": "cmd", "type": "commandExecution", "command": "make lint", "status": "inProgress"}})
@@ -132,7 +132,7 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 		"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/linter"}}}}})
 	rollCommandOutput(u)
 	agents := ansi.Strip(strings.Join(u.agents.renderFeed(90, 60).lines, "\n"))
-	if !strings.Contains(agents, "linter") || !strings.Contains(agents, "Running make lint\n") || !strings.Contains(agents, "┆ linting") || strings.Contains(agents, "ok 7") {
+	if !strings.Contains(agents, "linter") || !strings.Contains(agents, "Running make lint") || !strings.Contains(agents, "┆ linting") || strings.Contains(agents, "ok 7") {
 		t.Fatalf("Agents lacks the child's live tail:\n%s", agents)
 	}
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, "ok 1\nok 2\nPASS\n"
@@ -140,8 +140,8 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "late\n"})
 	rollCommandOutput(u)
 	// The host's output stays readable until Main's next event, then collapses.
-	open := "└ Ran go test ./...\n      ┆ ok 1\n      ┆ ok 2\n      ┆ PASS"
-	if got := main(); !strings.Contains(got, open) || strings.Contains(got, "Running") || strings.Contains(got, "late") {
+	open := "      ┆ ok 1\n      ┆ ok 2\n      ┆ PASS"
+	if got := main(); !strings.Contains(got, "└ Ran go test ./...") || !strings.Contains(got, open) || strings.Contains(got, "Running") || strings.Contains(got, "late") {
 		t.Fatalf("completed command lacks its settled output %q:\n%s", open, got)
 	}
 	if settleActivity(time.Now().Add(time.Hour), u.view) {

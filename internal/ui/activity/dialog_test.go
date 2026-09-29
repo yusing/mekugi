@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -298,5 +299,70 @@ func TestDialogSkillOutputStates(t *testing.T) {
 		if line.Number != i+1 || line.Gutter != "┆" || line.Text != block.Tail[i] {
 			t.Fatalf("skill script output no longer literal: %+v", page)
 		}
+	}
+}
+
+func TestRunElapsedSuffix(t *testing.T) {
+	now := time.Unix(100, 0)
+	for _, tc := range []struct {
+		duration time.Duration
+		want     string
+	}{
+		{0, ""}, {3 * time.Millisecond, ""}, {3500 * time.Microsecond, "3ms"}, {4 * time.Millisecond, "4ms"},
+		{999 * time.Millisecond, "999ms"}, {time.Second, "1s"}, {70 * time.Second, "1m10s"}, {time.Hour, "1h"},
+	} {
+		for _, live := range []bool{false, true} {
+			b := Block{Kind: "op", Verb: "Run", Code: "echo ok", Duration: tc.duration, Running: live}
+			if live {
+				b.Started = now.Add(-tc.duration)
+			}
+			if got := RunElapsed(b, now); got != tc.want {
+				t.Fatalf("%s live=%v: %q", tc.duration, live, got)
+			}
+			p := Painter{}
+			title := ansi.Strip(p.DialogPageTitle(b, now))
+			if tc.want != "" && !strings.HasSuffix(title, " · "+tc.want) {
+				t.Fatalf("title %q", title)
+			}
+			if !live {
+				row := ansi.Strip(strings.Join(p.Block(b, 100), "\n"))
+				if tc.want != "" && !strings.Contains(row, " · "+tc.want) {
+					t.Fatalf("row %q", row)
+				}
+			}
+		}
+	}
+}
+
+func TestDialogMchangesDiffColorsAndCopy(t *testing.T) {
+	source := "amber1\n--- a.go\n+++ a.go\n@@ -1 +1 @@\n-old\n+new"
+	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+		p := Painter{Theme: theme}
+		page := p.DialogPage(Block{Kind: "op", Verb: "Run", Code: "mchanges amber1", Tail: strings.Split(source, "\n")}, 80)
+		if page.Text != source {
+			t.Fatal("copy changed")
+		}
+		colored := map[string]bool{}
+		for _, row := range page.Lines {
+			if row.Gutter == "┆" {
+				colored[ansi.Strip(row.Text)] = row.Text != ansi.Strip(row.Text)
+			}
+		}
+		for _, line := range []string{"-old", "+new", "@@ -1 +1 @@"} {
+			if !colored[line] {
+				t.Fatalf("uncolored %q", line)
+			}
+		}
+	}
+}
+
+func TestDialogNarrativeCopiesMarkdown(t *testing.T) {
+	p := Painter{}
+	page := p.DialogPage(Block{Kind: "summary", Body: "**Full** narrative\n\nLast paragraph"}, 40)
+	if page.Text != "**Full** narrative\n\nLast paragraph" || strings.Contains(page.Text, "\x1b") {
+		t.Fatalf("copy %q", page.Text)
+	}
+	if len(page.Lines) == 0 || !strings.Contains(ansi.Strip(page.Title), "Thought") {
+		t.Fatalf("page %+v", page)
 	}
 }

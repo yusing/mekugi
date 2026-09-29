@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -976,6 +977,13 @@ func (p *Painter) ranRow(block Block, width int) []string {
 	case exit != "":
 		lines = suffix(lines, exit)
 	}
+	if elapsed := RunElapsed(block, time.Now()); elapsed != "" {
+		if strings.Contains(code, "\n") {
+			lines = append(lines, padding+Dim+"· "+elapsed+Undim)
+		} else {
+			lines = suffix(lines, Dim+"· "+elapsed+Undim)
+		}
+	}
 	if block.Body != "" {
 		lines = append(lines, liveActivityIndent(p.Markdown(block.Body, width-indent-2), padding+"  ")...)
 	}
@@ -1558,4 +1566,32 @@ func ResultCount(count *int) string {
 		return ""
 	}
 	return Dim + fmt.Sprintf(" (%d results)", *count) + Undim
+}
+
+// RunElapsed shares the compact duration grammar used by native status timers.
+func RunElapsed(block Block, now time.Time) string {
+	elapsed := block.Duration
+	if (block.Running || block.InvocationTiming) && !block.Started.IsZero() {
+		elapsed = now.Sub(block.Started)
+	}
+	if elapsed <= 3*time.Millisecond {
+		return ""
+	}
+	var text string
+	if elapsed < time.Second {
+		text = elapsed.Truncate(time.Millisecond).String()
+	} else {
+		elapsed = elapsed.Truncate(time.Second)
+		text = elapsed.String()
+		if elapsed >= time.Minute && elapsed%time.Minute == 0 {
+			text = strings.TrimSuffix(text, "0s")
+			if elapsed%time.Hour == 0 {
+				text = strings.TrimSuffix(text, "0m")
+			}
+		}
+	}
+	if block.InvocationTiming {
+		text += " total"
+	}
+	return text
 }

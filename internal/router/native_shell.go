@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 	"time"
 
@@ -38,19 +37,7 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 			if target.Seq != entry.activitySeq {
 				continue
 			}
-			a := u.agents
-			row, located := a.questionRows[target.Seq]
-			if !u.diffOpen && a.only && a.selected == target.Agent &&
-				(a.pendingTarget == target.Seq || located && !a.following && a.offset == max(0, min(row-1, a.feedLines-a.feedRows))) {
-				u.focus = 2
-				return true
-			}
-			u.pushNavigationReturn()
-			u.side, u.activityOpen, u.diffOpen, u.focus = true, true, false, 2
-			u.agents.selected, u.agents.only = target.Agent, true
-			u.agents.runs = nil
-			u.agents.pendingTarget = target.Seq
-			return true
+			return u.openEntry(u.agents, target.Seq)
 		}
 	}
 	return false
@@ -253,8 +240,6 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		u.journalOpen = false
 	}
 	u.agents.feedOnly, u.agents.focused = true, u.focus == 2
-	returning := len(u.navigationReturns) > 0
-	u.agents.returning = returning && !u.diffOpen
 	u.liveDock.Prefer = ""
 	if u.agents.only {
 		u.liveDock.Prefer = u.agents.selected
@@ -364,9 +349,6 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		var title, label string
 		if u.diffOpen {
 			diffRows := content
-			if returning && content > 1 {
-				diffRows-- // The return hint takes the pane's bottom row, as in Activity.
-			}
 			l.diff = terminalRect{right.x + 1, contentY, iw, diffRows}
 			if u.diffScreen.Width() != iw || u.diffScreen.Height() != diffRows {
 				u.diffScreen.Resize(iw, max(1, diffRows))
@@ -382,10 +364,6 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 				body = []string{"Diff unavailable", livediff.Safe(u.diffFailure, false), "Use mchanges to review captured edits."}
 			} else {
 				body = strings.Split(u.diffScreen.Render(), "\n")
-			}
-			if diffRows < content {
-				body = append(body[:min(len(body), diffRows)], make([]string, max(0, diffRows-len(body)))...)
-				body = append(body, liveActivityHint(u.agents.painter.Theme, liveActivityReturnHint, iw))
 			}
 			summary, state := u.diff.nativeTitle()
 			title, label = nativeTitle(2, "Diff", "saved · "+summary, u.focus == 1), state
@@ -507,10 +485,6 @@ func (u *terminalUI) nativeStatus() string {
 	}
 	if u.liveDock.Live() > 1 {
 		hints = append(hints, terminalHint{"^B e", "next live", 0})
-	}
-	if len(u.navigationReturns) > 0 {
-		// The previewed pane's bottom row carries Esc's return hint.
-		hints = slices.DeleteFunc(hints, func(h terminalHint) bool { return h.key == "esc" })
 	}
 	hints = append(hints, terminalHint{"^B 1-5", "panes", 0})
 	return tabs + "  " + hints.render()

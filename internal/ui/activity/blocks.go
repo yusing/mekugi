@@ -15,6 +15,10 @@ import (
 // so it can lay them out natively. Unrecognized text stays a plain text block;
 // nothing is interpreted, expanded, or executed.
 type Block struct {
+	InvocationTiming bool // The elapsed suffix names the whole invocation, not this segment.
+
+	Started     time.Time     // Observed live command start, presentation only.
+	Duration    time.Duration // Host duration; zero means unavailable.
 	Questions   []Question
 	Source      uint64 // Activity entry identity for exact cross-pane navigation.
 	Kind        string // op, reads, message, start, error, text

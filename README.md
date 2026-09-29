@@ -236,6 +236,11 @@ terminal diagrams with labeled solid/dashed edges and `&` fan-in/fan-out groups.
 Unsupported syntax (including subgraphs), incomplete fences, and diagrams too
 wide for the pane remain readable source.
 
+The empty launch view shows the Mekugi and
+Codex versions. Click tool output, long-content excerpts, or edit rows to open
+the shared scrollable dialog without leaving your current view. Close it with
+`Esc` or its top-right close button.
+
 - `Ctrl-B`, then `1`/`2`/`3`/`4`/`5`, focuses Main, Diff, Activity, Agents, or Journal.
   Diff, Activity and Journal share the right column. Click a pane to focus it.
 - Drag the dividers to resize panes or the file navigator. `Ctrl-B`, then arrow
@@ -319,10 +324,9 @@ or unfinished call never becomes a saved change.
   one caller's changes at a time, and `0` shows all callers. In the tab, `Enter`
   on a caller filters to it, and `Enter` or `h`/`l` on a change expands or
   collapses its files.
-- Click an Edit to preview its captured file and hunk in the branched
-  navigator. Edit, reply, question, and agent links are temporary previews:
-  `Esc` returns to your previous pane, filters, and scroll position. A back hint
-  appears while a preview is open.
+- Click an Edit to inspect its captured diff in the shared dialog. Reply,
+  question, and journal-agent links also open dialogs, leaving pane filters
+  and scroll positions unchanged. `Esc` dismisses the dialog.
 - Browsing pauses following; `r` resumes.
 
 See [live view details](doc/spec/changes.md#live-terminal-view).
@@ -361,8 +365,9 @@ Herdr is optional and does not control Mekugi's internal panes.
 
 ### Output dialog
 
-Click a command, program, or read in Main or Activity to open its full retained
-output in a dialog above the panes, without expanding the transcript. When
+Click a command, program, read, or long-content excerpt in Main or Activity to
+open its full content in the shared dialog above the panes, without expanding
+the transcript. Read source and unified diffs use syntax colors. When
 `mekugi-exec` recorded a command list, each command gets its own tab with its
 output and exit status; otherwise the dialog labels the output as combined.
 
@@ -371,7 +376,7 @@ output and exit status; otherwise the dialog labels the output as combined.
 - `/` searches, and `n`/`N` step through matches.
 - `y` copies the page's output. Drag to select text, then `y`, `c`, or Ctrl-C
   copies the selection.
-- `Esc`, `q`, or a click outside closes it.
+- The top-right `[×]` button, `Esc`, `q`, or a click outside closes it.
 
 See [activity display](doc/spec/activity_display.md).
 

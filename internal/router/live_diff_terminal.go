@@ -42,8 +42,6 @@ type liveDiffTerminalController struct {
 	renderer          livediff.Renderer
 	rendering         livediff.Render
 	rendered          []livediff.File
-	editPreview       *livediff.Chunk // Exact retained capture while inspecting a clicked edit.
-	editFocus         *livediff.Chunk // One-shot navigation to a clicked edit, after layout.
 	renderedFocus     livediff.Chunk
 	renderedFocusFile int
 	renderedTheme     livediff.Theme
@@ -121,21 +119,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 			focusFile = i
 		}
 	}
-	if preview := c.editPreview; preview != nil {
-		i := c.view.Selected
-		if i < len(c.view.Files) && slices.ContainsFunc(c.view.Files[i].Chunks, func(chunk livediff.Chunk) bool { return chunk.Key == preview.Key }) && c.navigation.Changes.Target.Change == preview.Change {
-			files[i].Chunks = []livediff.Chunk{*preview}
-			files[i].Path = cmp.Or(preview.Review.AfterPath, preview.Review.BeforePath)
-			files[i].Origins = []livediff.Origin{preview.Origin}
-			files[i].Baseline = 0
-		} else {
-			c.editPreview, c.editFocus = nil, nil
-		}
-	}
 	focus := c.view.LatestChunk()
-	if c.editPreview != nil {
-		focus, focusFile = *c.editPreview, c.view.Selected
-	}
 	focus.SnapshotOrder = 0 // Snapshot numbering does not change a capture's geometry.
 	navWidth := c.navigation.Width(width)
 	if inline := width < 100; inline != c.navigation.Changes.Inline {
@@ -209,10 +193,6 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 			viewport-- // A mid-file offset shares the viewport with the pinned heading.
 		}
 		offset = c.rendering.FollowOffset(viewport)
-	}
-	if c.editFocus != nil {
-		offset = c.rendering.FocusOffset
-		c.editFocus = nil
 	}
 	c.followDirty = false
 	// A reverted last file has an empty span at EOF. Normalize the
@@ -811,9 +791,6 @@ func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 		left += diffview.CountStats(total, c.theme)
 	}
 	var right []string
-	if c.editPreview != nil {
-		right = append(right, "capture "+livediff.Safe(c.editPreview.Change, false))
-	}
 	if c.coverage != "" {
 		status, _, _ := strings.Cut(c.coverage, ":")
 		right = append(right, livediff.Safe(status, false))

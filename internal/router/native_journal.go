@@ -263,9 +263,7 @@ func (u *terminalUI) journalKey(key string) error {
 			if node.Agent != "" && !known {
 				u.main.setNotice(node.Agent+" has no Activity yet.", false)
 			} else if known {
-				u.pushNavigationReturn()
-				u.focus, u.journalOpen, u.diffOpen, u.activityOpen = 2, false, false, true
-				u.agents.selected, u.agents.only, u.agents.following = node.Agent, true, true
+				u.openAgent(node.Agent)
 			} else {
 				u.copyText(node.Path)
 			}
@@ -279,9 +277,7 @@ func (u *terminalUI) journalKey(key string) error {
 func (u *terminalUI) openJournalDetail(node journalNode) {
 	text := journalEventText(journalEvent{Fields: node})
 	pages := []activityui.Block{{Kind: "text", Verb: "Journal", Label: node.Path, Body: livediff.Safe(text, false)}}
-	u.selection = nil
-	u.output = &outputDialog{view: u.main.view, origins: pages, pages: pages, match: -1}
-	u.output.showPage(0)
+	u.openBlocks(u.main.view, pages)
 }
 
 func (u *appServerUI) journalPlanStrip(width int) string {
@@ -366,63 +362,60 @@ func (v *liveActivityView) journalCardLines(out *conversationLines, entry activi
 		return
 	}
 	snippet := liveActivitySnippet{run: entry.Seq, block: 0}
-	body := journalTurnCard(card.Journal, card.Since, false)
-	if !v.expanded[snippet] {
-		// The Outcome leads. This turn aggregates each node to its final state in
-		// the window; a node both added and removed within it never happened.
-		var lines, paths []string
-		latest := make(map[string]journalEvent)
-		added := make(map[string]bool)
-		for _, event := range card.Journal.Events {
-			if event.Seq <= card.Since || card.Journal.LegacyFlush[event.Seq] {
-				continue
-			}
-			if event.Fields.Kind == "answer" {
-				lines = append(lines, journalEventText(event))
-				continue
-			}
-			if _, seen := latest[event.Path]; !seen {
-				paths = append(paths, event.Path)
-				added[event.Path] = event.Op == "add"
-			}
-			latest[event.Path] = event
+	// The Outcome leads. This turn aggregates each node to its final state in
+	// the window; a node both added and removed within it never happened.
+	var lines, paths []string
+	latest := make(map[string]journalEvent)
+	added := make(map[string]bool)
+	for _, event := range card.Journal.Events {
+		if event.Seq <= card.Since || card.Journal.LegacyFlush[event.Seq] {
+			continue
 		}
-		var happened []string
-		notes := 0
-		for _, path := range paths {
-			event := latest[path]
-			switch {
-			case event.Op == "remove" && added[path]:
-			case event.Op == "remove":
-				happened = append(happened, journalEventText(event))
-			case event.Fields.Kind == "task":
-				happened = append(happened, journalTaskText(event.Fields))
-			default:
-				notes++
-			}
+		if event.Fields.Kind == "answer" {
+			lines = append(lines, journalEventText(event))
+			continue
 		}
-		if notes == 1 {
-			happened = append(happened, "1 note · enter to expand")
-		} else if notes > 1 {
-			happened = append(happened, fmt.Sprintf("%d notes · enter to expand", notes))
+		if _, seen := latest[event.Path]; !seen {
+			paths = append(paths, event.Path)
+			added[event.Path] = event.Op == "add"
 		}
-		if len(happened) > 0 {
-			lines = append(lines, "This turn  "+strings.Join(happened, " · "))
-		}
-		if card.Journal.mountUnavailable != "" {
-			lines = append(lines, "Mounted journals unavailable: "+card.Journal.mountUnavailable)
-		}
-		var remaining []string
-		for _, item := range card.Journal.Items {
-			if item.Kind == "task" && item.State != "done" && item.State != "dropped" {
-				remaining = append(remaining, journalTaskText(item.node()))
-			}
-		}
-		if len(remaining) > 0 {
-			lines = append(lines, "Remaining  "+strings.Join(remaining, " · "))
-		}
-		body = strings.Join(lines, "\n\n")
+		latest[event.Path] = event
 	}
+	var happened []string
+	notes := 0
+	for _, path := range paths {
+		event := latest[path]
+		switch {
+		case event.Op == "remove" && added[path]:
+		case event.Op == "remove":
+			happened = append(happened, journalEventText(event))
+		case event.Fields.Kind == "task":
+			happened = append(happened, journalTaskText(event.Fields))
+		default:
+			notes++
+		}
+	}
+	if notes == 1 {
+		happened = append(happened, "1 note · click to open")
+	} else if notes > 1 {
+		happened = append(happened, fmt.Sprintf("%d notes · click to open", notes))
+	}
+	if len(happened) > 0 {
+		lines = append(lines, "This turn  "+strings.Join(happened, " · "))
+	}
+	if card.Journal.mountUnavailable != "" {
+		lines = append(lines, "Mounted journals unavailable: "+card.Journal.mountUnavailable)
+	}
+	var remaining []string
+	for _, item := range card.Journal.Items {
+		if item.Kind == "task" && item.State != "done" && item.State != "dropped" {
+			remaining = append(remaining, journalTaskText(item.node()))
+		}
+	}
+	if len(remaining) > 0 {
+		lines = append(lines, "Remaining  "+strings.Join(remaining, " · "))
+	}
+	body := strings.Join(lines, "\n\n")
 	if entry.native.question != 0 {
 		for _, question := range v.entries {
 			if question.Seq == entry.native.question {

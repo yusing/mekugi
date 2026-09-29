@@ -204,13 +204,13 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		p.pump(time.Second)
 	}
 	if got := agents(); p.live == nil || !regexp.MustCompile(`Running +│ for test in`).MatchString(got) {
-		t.Fatalf("streamed test run lacks its live tail:\n%s", got)
+		t.Fatalf("streamed test run lacks its live state:\n%s", got)
 	}
 	for p.live != nil {
 		p.pump(time.Second)
 	}
 	if got := agents(); strings.Contains(got, "Running") || !strings.Contains(got, "┆ ok      example.com") || !regexp.MustCompile(`Ran +│ for test in`).MatchString(got) {
-		t.Fatalf("passed test run lacks its settled output:\n%s", got)
+		t.Fatalf("passed test run lacks its settled state:\n%s", got)
 	}
 	nextEvent(t, p.ui, p.ui.agents.entries[len(p.ui.agents.entries)-1].native.thread)
 	settleActivity(time.Now().Add(activityui.OutputDebounce), p.ui.agents)
@@ -1258,23 +1258,23 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			d := u.shell.diff
-			if !u.shell.diffOpen || !d.navigation.ChangesTab || u.shell.focus != 1 {
-				t.Fatal("preview edit did not open branched diff")
+			if u.shell.output == nil || u.shell.diffOpen || u.shell.activityOpen != activity || u.shell.side != activity {
+				t.Fatal("preview edit did not open dialog over prior panes")
 			}
+			paint()
 			found := false
-			for _, attempt := range d.data.attempts {
-				if attempt.correlation == item+"\x000" && attempt.change == d.navigation.Changes.Target.Change {
-					found = true
+			for _, attempt := range u.shell.diff.data.attempts {
+				if attempt.correlation != item+"\x000" {
+					continue
+				}
+				for _, chunk := range attempt.chunks {
+					if u.shell.output.pages[u.shell.output.page].Code == chunk.Review.UnifiedDiff() {
+						found = true
+					}
 				}
 			}
 			if !found {
-				t.Fatalf("preview clicked wrong change: %+v", d.navigation.Changes.Target)
-			}
-			paint()
-			l := &d.navigation.Changes
-			if l.Cursor < l.Top || l.Cursor >= l.Top+d.navRows {
-				t.Fatal("preview target is off screen")
+				t.Fatal("preview dialog did not show exact captured edit")
 			}
 			if err := u.shell.key(27); err != nil {
 				t.Fatal(err)
@@ -1283,9 +1283,8 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			if err := u.shell.flushEscape(); err != nil {
 				t.Fatal(err)
 			}
-			wantFocus := 2 // Back keeps focus in the right pane, now showing Activity.
-			if u.shell.diffOpen || u.shell.activityOpen != activity || u.shell.side != activity || u.shell.focus != wantFocus {
-				t.Fatal("Escape did not restore the view while preserving right-pane focus")
+			if u.shell.output != nil || u.shell.diffOpen || u.shell.activityOpen != activity || u.shell.side != activity {
+				t.Fatal("Escape did not dismiss dialog while preserving panes")
 			}
 
 		})

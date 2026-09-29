@@ -150,6 +150,7 @@ func journalQuestionMatches(entry activityPaneEntry, source string) bool {
 // Native items extend the activity model rather than creating another transcript
 // cache. Their identities are deliberately not joined to provider call IDs.
 type liveActivityNativeItem struct {
+	duration           time.Duration
 	questions          []activityui.Question
 	replySource        string // Stock async envelope or sync turn prompt used to bind journal publications.
 	thread, turn, item string
@@ -193,7 +194,7 @@ func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, metho
 		return
 	}
 	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "text", Text: item.Text, Observed: time.Now(),
-		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, command: item.Command, status: item.Status}}
+		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, command: item.Command, status: item.Status, duration: appServerDuration(item)}}
 	if thread != main {
 		entry.Agent = "Thread " + thread
 	}

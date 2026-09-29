@@ -26,6 +26,7 @@ import (
 )
 
 type appServerItem struct {
+	DurationMS       *int64                    `json:"durationMs"`
 	Delivery         string                    `json:"delivery"`
 	Questions        []nativeQuestion          `json:"questions"`
 	ID               string                    `json:"id"`
@@ -62,6 +63,7 @@ type appServerItem struct {
 }
 
 type appServerUI struct {
+	backendVersion            string
 	reset                     *journalResetDriver
 	btw                       *appServerBTW
 	btwRequests               map[string]btwRequest
@@ -495,6 +497,12 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 		switch method {
 		case "initialize":
+			var initialized struct {
+				UserAgent string `json:"userAgent"`
+			}
+			if json.Unmarshal(m.Result, &initialized) == nil {
+				u.backendVersion = backendVersion(initialized.UserAgent)
+			}
 			if _, err := u.client.Send("initialized", map[string]any{}, false); err != nil {
 				return err
 			}
@@ -1020,7 +1028,16 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 // mainFrame is the transcript above a boxed composer. The top border carries
 // the session state; the bottom border the model. dock rows are left blank
 // between the two, in the returned rectangle, for the live edit dock.
-func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect) {
+func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, dockRect terminalRect) {
+	if len(u.view.entries) == 0 && u.draft == "" && height > 10 && u.statusPanel == nil && !u.pickerVisible() {
+		height--
+		defer func() {
+			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
+			dockRect.y++
+			u.composerRect.y++
+			u.view.feedTop++
+		}()
+	}
 	u.autoOpenQuestions()
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalRect{}

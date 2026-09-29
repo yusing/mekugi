@@ -202,6 +202,7 @@ func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 		u.agents = newLiveActivityView()
 		u.diff = newLiveDiffTerminalController(nil, "", nil)
 		t.Cleanup(u.diff.close)
+		u.main.view.entries = []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "First target"}, {Seq: 2, Agent: "Main", Kind: "text", Text: "Advanced target"}}
 		old, next := liveActivitySnippet{run: 1}, liveActivitySnippet{run: 2}
 		if question {
 			u.main.view.feedQuestions = []uint64{1}
@@ -216,17 +217,14 @@ func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 		u.paintSelection(u.paintedRows)
 		u.selectionMouse(0, 0, 0, true)
 		if question {
-			if u.main.view.flashQuestion != 1 || u.main.view.offset != 3 {
+			if u.output == nil || !strings.Contains(fmt.Sprint(u.output.pages), "First target") || strings.Contains(fmt.Sprint(u.output.pages), "Advanced target") {
 				t.Fatal("clicked an advancing question target")
 			}
-			if err := u.send("\x1b"); err != nil {
-				t.Fatal(err)
+			u.outputKey("\x1b")
+			if u.output != nil || u.main.view.offset != 0 {
+				t.Fatal("dismissing question changed transcript")
 			}
-			if u.main.view.offset != 0 || !u.main.view.following {
-				t.Fatal("question preview did not restore transcript")
-			}
-
-		} else if !u.main.view.expanded[old] || u.main.view.expanded[next] {
+		} else if u.output == nil || !strings.Contains(fmt.Sprint(u.output.pages), "First target") || strings.Contains(fmt.Sprint(u.output.pages), "Advanced target") {
 			t.Fatal("clicked an advancing snippet target")
 		}
 	}

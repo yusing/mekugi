@@ -41,7 +41,7 @@ func TestConversationThreadsReplyUnderAssignment(t *testing.T) {
 	v := threadTestView()
 	feed := v.renderFeed(width, 40)
 	plain := threadPlain(feed)
-	want := []string{"▶ reviewer started · gpt-6-astra", "│ ", "│ ", "├─← replied · 58s", "│ ", "│ ", "│ ", "│ ", "╰─↩ Open reply in Activity · +"}
+	want := []string{"▶ reviewer started · gpt-6-astra", "│ ", "│ ", "├─← replied · 58s", "│ ", "│ ", "│ ", "│ ", "╰─↩ Open reply · +"}
 	if len(plain) != len(want) {
 		t.Fatalf("thread rows = %d, want %d:\n%s", len(plain), len(want), strings.Join(plain, "\n"))
 	}
@@ -57,21 +57,21 @@ func TestConversationThreadsReplyUnderAssignment(t *testing.T) {
 		t.Fatalf("collapsed assignment lost its ellipsis or count: %q", plain[2])
 	}
 	if !strings.HasSuffix(plain[7], "…") || feed.questions[8] != 2 {
-		t.Fatalf("reply excerpt or its Activity link is wrong: %q, link %d", plain[7], feed.questions[8])
+		t.Fatalf("reply excerpt or its dialog link is wrong: %q, link %d", plain[7], feed.questions[8])
 	}
 	snippet := feed.snippets[1]
 	if snippet != (liveActivitySnippet{run: 1, block: 0}) || feed.snippets[2] != snippet || feed.questions[1] != 0 {
 		t.Fatalf("collapsed assignment is not expandable: %+v", feed.snippets[:3])
 	}
 
-	v.toggleSnippet(snippet)
-	expanded := threadPlain(v.renderFeed(width, 40))
-	if len(expanded) <= len(plain) || !strings.Contains(strings.Join(expanded, "\n"), "├─← replied") || strings.Contains(expanded[2], " lines") {
-		t.Fatalf("expanding the assignment did not show it in full:\n%s", strings.Join(expanded, "\n"))
+	shell := &terminalUI{}
+	v.opening = snippet
+	shell.openRequested(v)
+	if shell.output == nil || !strings.Contains(shell.output.pages[0].Body, "Review the follow-scroll") {
+		t.Fatal("collapsed assignment did not open full dialog")
 	}
-	v.toggleSnippet(snippet)
 	if again := threadPlain(v.renderFeed(width, 40)); len(again) != len(plain) {
-		t.Fatalf("collapsing again did not restore the excerpt:\n%s", strings.Join(again, "\n"))
+		t.Fatalf("dialog request changed the feed:\n%s", strings.Join(again, "\n"))
 	}
 }
 
@@ -237,17 +237,20 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 	if snippet == (liveActivitySnippet{}) {
 		t.Fatal("collapsed summaries cannot open")
 	}
-	v.toggleSnippet(snippet)
+	shell := &terminalUI{}
+	if !shell.openOutput(v, snippet) {
+		t.Fatal("summary did not request dialog")
+	}
 	got = strings.Join(threadPlain(v.renderFeed(80, 40)), "\n")
-	if !strings.Contains(got, "Old body") {
-		t.Fatalf("summary bodies lost:\n%s", got)
+	if strings.Contains(got, "Old body") {
+		t.Fatalf("summary expanded in the feed:\n%s", got)
 	}
 	// The Activity view applies the same policy, independently of Main grouping.
 	v.conversation, v.childrenOnly, v.runs = false, true, nil
 	for i := range v.entries {
 		v.entries[i].Agent = "/root/worker"
 	}
-	v.expanded = nil
+	v.opening = liveActivitySnippet{}
 	got = strings.Join(threadPlain(v.renderFeed(80, 60)), "\n")
 	if !strings.Contains(got, "Old tail, Second") || strings.Contains(got, "Old body") || !strings.Contains(got, "Current body") {
 		t.Fatalf("activity run:\n%s", got)

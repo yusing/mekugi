@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -188,20 +187,13 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 							if s.view == u.main.view && u.openActivityReply(s.questions[index]) {
 								return true
 							}
-							if target, ok := s.view.questionRows[s.questions[index]]; ok {
-								if s.view.following || s.view.offset != max(0, min(target, s.view.feedLines-s.view.feedRows)) {
-									u.pushNavigationReturn()
-								}
-								s.view.offset, s.view.following = target, false
-								s.view.flashQuestion = s.questions[index]
-								s.view.flashUntil = time.Now().Add(700 * time.Millisecond)
-							}
+							u.openEntry(s.view, s.questions[index])
 						} else if index < len(s.snippets) && s.snippets[index] != (liveActivitySnippet{}) {
 							snippet := s.snippets[index]
 							if snippet.block == editNavigationSnippet {
 								u.openActivityEdit(s.view, snippet.run, snippet.path)
 							} else if !u.openOutput(s.view, snippet) {
-								s.view.toggleSnippet(snippet)
+								u.openEntry(s.view, snippet.run)
 							}
 						}
 					}

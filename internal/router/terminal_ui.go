@@ -15,7 +15,6 @@ import (
 // The native shell owns terminal presentation; Codex app-server owns execution.
 type terminalUI struct {
 	selection                                      *terminalSelection
-	navigationReturns                              []nativeNavigationReturn
 	clipboard                                      string
 	pasteEnd                                       int
 	hostReply                                      []byte
@@ -362,9 +361,6 @@ func (u *terminalUI) send(s string) error {
 			return err
 		}
 	}
-	if s == "\x1b" && u.selection == nil && u.popNavigationReturn() {
-		return nil
-	}
 
 	if s == "\x1b" && u.main != nil && !u.main.keybindings {
 		var transcript *liveActivityView
@@ -565,10 +561,6 @@ func (u *terminalUI) mouse(s string) error {
 	if pane != 1 && u.diff != nil && u.diff.clearHover() {
 		u.diff.dirty = true
 	}
-	var navigationBefore nativeNavigationReturn
-	if u.main != nil && button&^28 == 0 && !release && (pane == 2 || pane == 3) {
-		navigationBefore = u.navigationReturn()
-	}
 
 	if button&^28 == 0 && !release {
 		u.focus = pane
@@ -633,9 +625,6 @@ func (u *terminalUI) mouse(s string) error {
 		} else {
 			only, selected := u.agents.only, u.agents.selected
 			u.agents.pointAgent(action, y-r.y+1, x-r.x+1)
-			if action == '\r' && u.main != nil && (only != u.agents.only || selected != u.agents.selected) {
-				u.appendNavigationReturn(navigationBefore)
-			}
 			u.showRosterPick(only, selected)
 		}
 	} else {

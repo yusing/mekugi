@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/pathdisplay"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // openActivityEdit resolves an exact host invocation, never a nearby edit or path.
@@ -28,63 +28,22 @@ func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64, path s
 			if !match || len(attempt.chunks) == 0 {
 				continue
 			}
-			c := u.diff
-			previous := u.navigationReturn()
-			c.navigation.Changes.Query = ""
-			c.filterCaller("")
-			for _, node := range c.navigation.Changes.Nodes {
-				if node.Change != attempt.change || len(node.Files) == 0 {
-					continue
+			var pages []activityui.Block
+			selected := -1
+			for _, chunk := range attempt.chunks {
+				target := cmp.Or(chunk.Review.AfterPath, chunk.Review.BeforePath)
+				display := pathdisplay.ForWorkspace(cmp.Or(chunk.Workspace, u.diff.workspace), target)
+				if path == "" && selected < 0 || display == path {
+					selected = len(pages)
 				}
-				file := node.Files[0].File
-				var focus *livediff.Chunk
-				if path != "" {
-					file = -1
-					for _, candidate := range node.Files {
-						for _, chunk := range c.view.Files[candidate.File].Chunks {
-							if chunk.Change != attempt.change {
-								continue
-							}
-							target := chunk.Review.AfterPath
-							if target == "" {
-								target = chunk.Review.BeforePath
-							}
-							if pathdisplay.ForWorkspace(cmp.Or(chunk.Workspace, c.workspace), target) == path {
-								file = candidate.File
-								focus = new(chunk)
-								break
-							}
-						}
-						if file >= 0 {
-							break
-						}
-					}
-					if file < 0 {
-						continue
-					}
-				}
-				// Reopening the same capture is not another navigation level.
-				if previous.diffOpen && previous.diff.mode && previous.diff.caller == "" &&
-					previous.diff.navigation.Changes.Query == "" && previous.diff.navigation.ChangesTab &&
-					previous.diff.navigation.Changes.Target.Change == node.Change &&
-					previous.diff.selected == c.view.Files[file].Key() &&
-					(previous.diff.editPreview == nil && focus == nil || previous.diff.editPreview != nil && focus != nil && previous.diff.editPreview.Key == focus.Key) {
-					u.restoreNavigationReturn(previous)
-					u.focus = 1
-					return true
-				}
-				u.appendNavigationReturn(previous)
-				c.back = liveDiffBack{}
-				u.side, u.diffOpen, u.activityOpen, u.focus = true, true, false, 1
-				c.diffMode, c.dirty = true, true
-				c.navigation.Hidden, c.navigation.Filtering = false, false
-				c.navigation.ChangesTab, c.navigation.Focused = true, true
-				c.openChange(node.Change, file)
-				c.editPreview, c.editFocus = focus, focus
-				c.navigation.Changes.FocusChange(node.Change, c.navRows)
-				return true
+				pages = append(pages, activityui.Block{Kind: "op", Verb: "Edit", Path: display, Code: chunk.Review.UnifiedDiff(), Lang: "diff", Fenced: true})
 			}
-			u.restoreNavigationReturn(previous)
+			if selected < 0 {
+				continue
+			}
+			u.openBlocks(view, pages)
+			u.output.showPage(selected)
+			return true
 		}
 	}
 	return false

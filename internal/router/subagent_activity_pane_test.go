@@ -81,30 +81,30 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	long := "Plan\n```go\n" + strings.Repeat("line\n", 20) + "```"
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Text: long, Observed: time.Now()}}})
 	all := strings.Join(plainLines(view.render(80, 40, time.Now())), "\n")
-	if !strings.Contains(all, "… +11 lines") || !strings.Contains(all, "  line") {
+	if !strings.Contains(all, "… +") || !strings.Contains(all, "  line") {
 		t.Fatalf("clamped feed = %s", all)
 	}
 	view.handleKey("", 'o')
 	only := plainLines(view.render(80, 40, time.Now()))
 	joined := strings.Join(only, "\n")
-	if strings.Contains(joined, "+11 lines") || strings.Count(joined, "  line") != 20 || strings.Contains(joined, "● b") {
+	if !strings.Contains(joined, "… +") || strings.Count(joined, "  line") >= 20 || strings.Contains(joined, "● b") {
 		t.Fatalf("only feed = %s", joined)
 	}
 	if !strings.HasPrefix(only[len(only)-1], "ONLY ·") || !strings.Contains(only[0], "only a (1/2)") {
 		t.Fatalf("only chrome = %q / %q", only[0], only[len(only)-1])
 	}
-	view.render(80, 20, time.Now()) // Make scrollback possible before pausing.
+	view.render(80, 5, time.Now()) // Make scrollback possible with five-row excerpts.
 	view.handleKey("", 'k')
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: 4, Agent: "/root/a", Text: "more", Observed: time.Now()},
 		{Seq: 5, Agent: "/root/b", Text: "hidden", Observed: time.Now()},
 		{Seq: 4, Agent: "/root/a", Text: "duplicate", Observed: time.Now()},
 	}})
-	if header := plainLines(view.render(80, 40, time.Now()))[0]; !strings.HasSuffix(header, "PAUSED · 1 new") {
+	if header := plainLines(view.render(80, 5, time.Now()))[0]; !strings.HasSuffix(header, "PAUSED · 1 new") {
 		t.Fatalf("paused header = %q", header)
 	}
 	view.handleKey("", 'G')
-	if header := plainLines(view.render(80, 40, time.Now()))[0]; !strings.HasSuffix(header, "FOLLOW") {
+	if header := plainLines(view.render(80, 5, time.Now()))[0]; !strings.HasSuffix(header, "FOLLOW") {
 		t.Fatalf("follow header = %q", header)
 	}
 }
@@ -139,18 +139,8 @@ func TestLiveActivitySnippetClick(t *testing.T) {
 		if !view.handleMouse('\r', row, column) {
 			t.Fatalf("%v: click did not redraw", size)
 		}
-		expanded := view.render(size[0], size[1], now)
-		if clipped(expanded) || strings.Count(strings.Join(plainLines(expanded), "\n"), "  line") != 20 {
-			t.Fatalf("%v: click did not expand: %q", size, plainLines(expanded))
-		}
-		// Hovering an expanded snippet underlines nothing; another click collapses it.
-		view.handleMouse('h', row, column)
-		if strings.Contains(strings.Join(view.render(size[0], size[1], now), "\n"), "\x1b[4m") {
-			t.Fatalf("%v: expanded snippet underlined", size)
-		}
-		view.handleMouse('\r', row, column)
-		if collapsed := view.render(size[0], size[1], now); !clipped(collapsed) {
-			t.Fatalf("%v: second click did not collapse: %q", size, plainLines(collapsed))
+		if view.opening == (liveActivitySnippet{}) || !clipped(view.render(size[0], size[1], now)) {
+			t.Fatalf("%v: click did not request dialog while retaining clipped feed", size)
 		}
 	}
 }

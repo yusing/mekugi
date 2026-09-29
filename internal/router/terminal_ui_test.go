@@ -271,7 +271,13 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 				view.only, view.selected = true, caller
 				u.shell.focus = 2
 			}
-			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: caller, Kind: "text", Text: strings.Repeat("transcript row\n\n", 80) + "LATEST_TRANSCRIPT"}}})
+			for i := range 80 {
+				text := "transcript row"
+				if i == 79 {
+					text = "LATEST_TRANSCRIPT"
+				}
+				view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: uint64(i + 1), Agent: caller, Kind: "text", Text: text}}})
+			}
 			screen := vt.NewEmulator(120, 40)
 			defer screen.Close()
 			paint := func(width, height int) string {
@@ -342,9 +348,9 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 				view.scrollKey(terminalui.PaneWheelDown)
 			}
 			assertFollow(paint(140, 32))
-			view.toggleSnippet(liveActivitySnippet{run: 1, block: 0})
+			u.shell.openEntry(view, 1)
 			if !view.following {
-				t.Fatal("expanding a snippet paused follow")
+				t.Fatal("opening a snippet paused follow")
 			}
 		})
 	}

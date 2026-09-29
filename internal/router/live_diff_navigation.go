@@ -139,7 +139,6 @@ func (c *liveDiffTerminalController) openChange(change string, file int) {
 	if file < 0 || file >= len(c.view.Files) {
 		return
 	}
-	c.editPreview, c.editFocus = nil, nil
 	c.view.Open(file)
 	c.navigation.Changes.Target = diffview.ChangeTarget{change, c.view.Files[file].Key()}
 	c.revealFile()

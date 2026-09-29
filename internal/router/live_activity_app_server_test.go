@@ -106,12 +106,16 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 			break
 		}
 	}
-	if !clicked || v.following || v.offset != v.questionRows[1] {
-		t.Fatal("reply branch did not navigate through the terminal mouse route")
+	if !clicked || u.shell.output == nil || !v.following {
+		t.Fatal("reply branch did not open a dialog while preserving follow")
 	}
 	var frame bytes.Buffer
 	if err := u.paint(&frame, 120, 24); err != nil || !strings.Contains(frame.String(), question) {
-		t.Fatalf("original question not visible after jump: %v", err)
+		t.Fatalf("original question not visible in dialog: %v", err)
+	}
+	u.shell.outputKey("\x1b")
+	if u.shell.output != nil || !v.following {
+		t.Fatal("dialog close changed Main follow")
 	}
 	// Editing an answer after the same prompt is submitted again must retain
 	// its original target, not jump to the newer identical question.
@@ -433,12 +437,26 @@ func TestLiveActivityMainJournalContentOnly(t *testing.T) {
 		t.Fatal("Main lost the actual question text")
 	}
 	for _, hidden := range []string{"amber", "apple"} {
-		if strings.Contains(main, hidden) || !strings.Contains(agents, hidden) {
-			t.Fatalf("journal metadata %q must stay in Agents, not Main", hidden)
+		if strings.Contains(main, hidden) {
+			t.Fatalf("journal metadata %q leaked into Main", hidden)
+		}
+	}
+	var agentBlocks []activityui.Block
+	for _, entry := range v.entries {
+		agentBlocks = append(agentBlocks, parseLiveActivity(entry)...)
+	}
+	var fullRows []string
+	for _, block := range agentBlocks {
+		fullRows = append(fullRows, v.painter.Block(block, 80)...)
+	}
+	fullAgents := ansi.Strip(strings.Join(fullRows, "\n"))
+	for _, id := range []string{"amber", "apple"} {
+		if !strings.Contains(fullAgents, id) {
+			t.Fatalf("agent block lost metadata %q", id)
 		}
 	}
 	for _, body := range []string{"Milestone body", "Answer body"} {
-		if strings.Count(main, body) != 1 || !strings.Contains(agents, body) {
+		if strings.Count(main, body) != 1 || !strings.Contains(fullAgents, body) {
 			t.Fatalf("journal content %q missing or duplicated", body)
 		}
 	}

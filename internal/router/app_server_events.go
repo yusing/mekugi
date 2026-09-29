@@ -329,7 +329,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		item := p.Item
 		id := cmp.Or(p.ItemID, item.ID)
 		item = u.waitItem(item, p.ThreadID, p.TurnID, id, m.Method == "item/started")
-		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method, live: true, command: item.Command}
+		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method, live: true, command: item.Command, duration: appServerDuration(item)}
 		agent := s.path(p.ThreadID)
 		if m.Method != "item/completed" && item.Type != "reasoning" && item.Type != "userMessage" {
 			// Other output started first: that request streamed no reasoning.

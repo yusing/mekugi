@@ -2,6 +2,11 @@
 
 ## REQ-NATIVE-UI-001 — Native app-server UI
 
+An empty launch view welcomes the user with `Mekugi <version> • codex <version>`.
+The versions identify the running executable and backend. Development builds
+without revision metadata show `dev`; unavailable backend versions are omitted.
+The welcome is presentation only, not conversation history.
+
 Operation-row formatting and feed controls are specified by
 [native activity presentation](activity_display.md); shared classification belongs to
 [activity observation](activity.md), and router cost totals to [usage reporting](usage.md).
@@ -211,24 +216,17 @@ narrow; focusing that list (Tab, s) enlarges it without covering the diff, and s
 again hides it. A roster pick that changes Activity's agent filter shows
 Activity in place of the saved diff.
 
-Clicking a compact Edit event opens the Diff pane’s changes-by-caller navigation
-and scrolls to the clicked file’s hunk in its captured change, rather than the
-first file in a multi-file capture. This temporary file preview shows the exact
+Clicking a compact Edit event opens the shared dialog at the clicked file’s
+captured diff, rather than the first file in a multi-file capture. This temporary file preview shows the exact
 retained capture, not the combined result of later edits, so shifted or superseded
 hunks remain inspectable. Only the pointed edit row's text underlines
 on hover in Main and Activity, not its gutter, alignment gaps, stat bar, or other
-rows in the same capture. Click-through navigation (Edit, Open in Activity, question links, and
-roster picks) is a temporary preview. Escape restores the previous pane, filters,
-and scroll position without moving keyboard focus to another pane. If the focused
-right pane changes between Activity and Diff, focus stays in that pane's restored
-content. Reopening the current destination does not add a return level. History
-retains the latest 32 levels, discarding the oldest when full.
-While a preview is open, the previewed pane's bottom row
-shows a centered “↩ Back to previous view · esc” hint, like a paused
-transcript's “Back to bottom”, in place of any Esc hint in the status bar. Nested
-previews return one level at a time; diff help, filters, and nested diff actions
-close first. Restoring presentation never rolls back new events or captures. Navigation uses the exact host invocation,
-including grouped shell captures, rather than matching nearby paths or edits.
+rows in the same capture. Click-through content (Edit, message excerpts, question links, and journal
+agent links) opens the shared content dialog above the existing panes. Its
+close button or Escape dismisses it without changing pane filters, scroll
+positions, or keyboard focus. New activity and captures remain available.
+Edit pages use the exact host invocation, including grouped shell captures,
+rather than matching nearby paths or edits. Roster picks remain explicit filters.
 
 Successful single-line Ran output remains visible rather than collapsing to a
 line-count toggle.
@@ -609,11 +607,11 @@ agent took, while follow-ups keep their time. The thread's latest item keeps the
 longer excerpt; items the thread has moved past shrink to two rows. A reply's
 Activity link counts its omitted rows and closes the thread when nothing follows
 it. A shrunk assignment ends with a right-aligned count of its omitted rows;
-clicking it expands the assignment in place, and clicking again collapses it.
+clicking it opens the full assignment in the shared dialog.
 An unanswered assignment stays in full while in view. Once a spawn, follow-up
 or Main message has scrolled above the viewport, it becomes an excerpt in the
-reply format: the same row budget and a link (`↩ Open assignment in Activity`
-or `↩ Open message in Activity`) that counts the omitted rows and opens that
+reply format: the same row budget and a link (`↩ Open assignment`
+or `↩ Open message`) that counts the omitted rows and opens that
 exact entry. A message the excerpt would not shorten stays in full. Shrinking
 above a scrolled-up viewport does not move the visible rows.
 Transcript blockquotes use a vertical rail rather than literal `>` markers,
@@ -727,7 +725,7 @@ late completion of the previous request's item does not. Time runs from
 the request start (or the first summary delta without one) to item completion; a turn
 that ends first completes its unfinished blocks.
 One second after an observed completion, the block folds to its header row in
-Main and Activity; a click expands and collapses it. Restored history keeps
+Main and Activity; a click opens its body in the shared dialog. Restored history keeps
 its body. In a consecutive run, the latest summary stays expanded instead of
 folding on that timer. Titled summaries keep the Codex rendering.
 
@@ -737,7 +735,7 @@ one result at a time. An agent's latest output remains open until later activity
 
 Main and Activity follow new transcript content until manual scrollback or an
 explicit jump to earlier content. Opening or closing Live/Diff, resizing, and
-expanding a narrative snippet or opening the output dialog do not disable following. Scrolling to the last full viewport
+opening a narrative snippet or output dialog do not disable following. Scrolling to the last full viewport
 (including End), or pressing Esc in a paused transcript, resumes following and
 clears its unseen count. Activity has no `r` follow binding. A paused transcript shows “↓ Back to bottom · esc”
 above Main's composer or at the bottom of Activity. Scrolling stops at the last

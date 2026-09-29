@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -65,6 +66,8 @@ type outputDialogKey struct {
 	page, width, version int
 	output               *activityui.Output
 	theme                livediff.Theme
+	body                 string
+	live                 bool
 }
 
 // Outside a narrow terminal, the dialog takes at most this share of each
@@ -78,16 +81,20 @@ const (
 // openOutput opens the operation a snippet names in the dialog, reporting
 // whether it names one.
 func (u *terminalUI) openOutput(view *liveActivityView, snippet liveActivitySnippet) bool {
+	for _, entry := range view.entries {
+		if entry.Seq == snippet.run && entry.journalCard != nil {
+			return u.openEntry(view, entry.Seq)
+		}
+	}
 	block, ok := view.snippetBlock(snippet)
-	if !ok || !outputBlock(block) {
+	if !ok || block.EditSource != "" || len(block.Questions) > 0 {
 		return false
 	}
 	pages := []activityui.Block{block}
 	if len(block.Members) > 0 {
 		pages = block.Members
 	}
-	u.selection = nil
-	u.output = &outputDialog{view: view, origins: pages, pages: pages, match: -1}
+	u.openBlocks(view, pages)
 	u.output.refreshPages()
 	page := 0
 	if len(block.Members) == 0 && block.Output != nil {
@@ -102,13 +109,62 @@ func (u *terminalUI) openOutput(view *liveActivityView, snippet liveActivitySnip
 	return true
 }
 
+// openBlocks is the shared modal entry point. It never changes pane navigation.
+func (u *terminalUI) openBlocks(view *liveActivityView, pages []activityui.Block) {
+	if len(pages) == 0 {
+		return
+	}
+	u.selection = nil
+	u.output = &outputDialog{view: view, origins: pages, pages: pages, match: -1}
+	u.output.refreshPages()
+	u.output.showPage(0)
+}
+
+func (u *terminalUI) openEntry(view *liveActivityView, seq uint64) bool {
+	for index, entry := range view.entries {
+		if entry.Seq != seq {
+			continue
+		}
+		blocks := parseLiveActivity(entry)
+		if index < len(view.blocks) {
+			blocks = slices.Clone(view.blocks[index])
+		}
+		if entry.journalCard != nil {
+			blocks = []activityui.Block{{Kind: "text", Verb: "Journal", Body: journalTurnCard(entry.journalCard.Journal, entry.journalCard.Since, false)}}
+		}
+		for i := range blocks {
+			blocks[i].Source = entry.Seq
+			if blocks[i].Verb == "" {
+				blocks[i].Verb = entry.Agent
+			}
+		}
+		u.openBlocks(view, blocks)
+		return len(blocks) > 0
+	}
+	return false
+}
+
+func (u *terminalUI) openAgent(agent string) {
+	var pages []activityui.Block
+	for _, entry := range u.agents.entries {
+		if entry.Agent == agent {
+			blocks := parseLiveActivity(entry)
+			for i := range blocks {
+				blocks[i].Source = entry.Seq
+			}
+			pages = append(pages, blocks...)
+		}
+	}
+	u.openBlocks(u.agents, pages)
+}
+
 // commandOutputPages uses only observed segment boundaries, never output text.
 func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block {
 	if source == 0 {
 		return nil
 	}
 	for _, entry := range v.entries {
-		if entry.Seq != source || entry.native == nil {
+		if entry.Seq != source || entry.native == nil || entry.native.command == "" && len(entry.native.segments) == 0 {
 			continue
 		}
 		// PTY, restored and lossy reports have no trustworthy output split.
@@ -123,7 +179,9 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 			if len(entry.native.segments) < 2 && len(operations) < 2 && (len(operations) == 0 || len(operations[0].Reads) < 2) {
 				return nil
 			}
-			return []activityui.Block{{Source: source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: appServerDisplayCommand(entry.native.command), Lang: "bash", Output: entry.native.output, Tail: entry.outputTail, TailOmitted: entry.outputOmit, Running: entry.native.running, Body: "Per-command output boundaries were not retained for this invocation."}}
+			pages := []activityui.Block{{Source: source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: appServerDisplayCommand(entry.native.command), Lang: "bash", Output: entry.native.output, Tail: entry.outputTail, TailOmitted: entry.outputOmit, Running: entry.native.running, Body: "Per-command output boundaries were not retained for this invocation."}}
+			setCommandTiming(pages, entry)
+			return pages
 		}
 		var pages []activityui.Block
 		for _, block := range commandSegmentBlocks(entry) {
@@ -132,6 +190,7 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 				pages = append(pages, block)
 			}
 		}
+		setCommandTiming(pages, entry)
 		return pages
 	}
 	return nil
@@ -157,7 +216,9 @@ func (d *outputDialog) tabRow(width int) string {
 	for i := first; i < first+count; i++ {
 		block := d.pages[i]
 		label := block.Verb
-		if len(block.Reads) == 1 {
+		if block.Path != "" {
+			label += " " + block.Path
+		} else if len(block.Reads) == 1 {
 			label += " " + block.Reads[0].Path
 		} else if block.Code != "" {
 			label += " " + strings.SplitN(block.Code, "\n", 2)[0]
@@ -180,7 +241,11 @@ func (d *outputDialog) tabRow(width int) string {
 func (u *terminalUI) openRequested(view *liveActivityView) {
 	if snippet := view.opening; snippet != (liveActivitySnippet{}) {
 		view.opening = liveActivitySnippet{}
-		u.openOutput(view, snippet)
+		if snippet.block == editNavigationSnippet {
+			u.openActivityEdit(view, snippet.run, snippet.path)
+		} else if !u.openOutput(view, snippet) {
+			u.openEntry(view, snippet.run)
+		}
 	}
 }
 
@@ -204,7 +269,7 @@ func (d *outputDialog) showPage(page int) {
 	if !exists {
 		block := d.pages[page]
 		state.match = -1
-		state.follow = block.Running || block.Output != nil && !block.Output.View().Done
+		state.follow = block.Live || block.Running || block.Output != nil && !block.Output.View().Done
 	}
 	d.top, d.match, d.follow, d.typing, d.missed, d.draft, d.query = state.top, state.match, state.follow, state.typing, state.missed, state.draft, state.query
 }
@@ -215,12 +280,41 @@ func (d *outputDialog) refreshPages() {
 	}
 	var pages []activityui.Block
 	seen := make(map[uint64]bool)
-	for _, origin := range d.origins {
+	for originIndex, origin := range d.origins {
 		if origin.Source != 0 && seen[origin.Source] {
 			continue
 		}
 		commands := d.view.commandOutputPages(origin.Source)
 		if len(commands) == 0 {
+			if origin.Source != 0 {
+				for index, entry := range d.view.entries {
+					if entry.Seq != origin.Source {
+						continue
+					}
+					if origin.Verb == "Run" && entry.native != nil {
+						timed := []activityui.Block{origin}
+						setCommandTiming(timed, entry)
+						origin = timed[0]
+						origin.Running = entry.native.running
+					} else if origin.Kind != "op" && origin.Kind != "reads" {
+						if entry.journalCard != nil {
+							origin.Body = journalTurnCard(entry.journalCard.Journal, entry.journalCard.Since, false)
+						} else if index < len(d.view.blocks) && len(d.view.blocks[index]) == 1 {
+							current := d.view.blocks[index][0]
+							current.Source = origin.Source
+							if current.Verb == "" {
+								current.Verb = origin.Verb
+							}
+							origin = current
+						}
+						if entry.native != nil && entry.native.live {
+							origin.Live = entry.native.phase == "summary" || entry.native.phase == "item/started" || entry.native.phase == "item/agentMessage/delta"
+						}
+					}
+					break
+				}
+			}
+			d.origins[originIndex] = origin // Keep the last readable snapshot if the source ages out.
 			pages = append(pages, origin)
 		} else {
 			seen[origin.Source] = true
@@ -244,11 +338,12 @@ func (d *outputDialog) refreshPages() {
 func (d *outputDialog) layout(width int) {
 	d.refreshPages()
 	block := d.pages[d.page]
-	key := outputDialogKey{page: d.page, width: width, output: block.Output, theme: d.view.painter.Theme}
+	key := outputDialogKey{page: d.page, width: width, output: block.Output, theme: d.view.painter.Theme, body: block.Body, live: block.Live}
 	if block.Output != nil {
 		key.version = block.Output.Version()
 	}
 	if key == d.laidKey && d.starts != nil {
+		d.laid.Title = d.view.painter.DialogPageTitle(block, time.Now())
 		return
 	}
 	d.laid, d.laidKey = d.view.painter.DialogPage(block, width), key
@@ -409,7 +504,7 @@ func (u *terminalUI) outputMouse(button, x, y int, release bool) {
 				}
 			}
 		}
-		if !d.rect.contains(x, y) {
+		if !d.rect.contains(x, y) || y == d.rect.y && x >= d.rect.x+d.rect.w-activityui.DialogCloseWidth-3 && x < d.rect.x+d.rect.w-3 {
 			u.output = nil
 		} else if body.contains(x, y) && len(d.body) > 0 {
 			d.selection = &terminalSelection{rect: terminalRect{0, 0, body.w, len(d.body)}, rows: d.body, contentLeft: d.indents, startX: x - body.x, startY: y - body.y, endX: x - body.x, endY: y - body.y, dragging: true}

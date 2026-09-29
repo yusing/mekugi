@@ -78,7 +78,7 @@ statement after `;`, `&&`, or `||` starts a row aligned with the first, and a
 statement that is still too wide breaks at unquoted blanks with a muted ` \`
 shell continuation, or after a pipe, two columns deeper; a word wider than the
 row is cut without one. Fenced multiline `Run` previews sit beside the verb with
-the code gutter. In Main a command or program preview keeps at most eight wrapped rows, the
+the code gutter. In Main a command or program preview keeps at most five wrapped rows, the
 last a muted `… +N lines` count (under the code gutter for a program), so a one-line
 command that wraps is bounded too; a click opens the whole source and retained
 output in the output dialog, without expanding the transcript. Tabs in previews expand to four spaces. `Run JavaScript` Code Mode previews always place source beneath
@@ -127,7 +127,13 @@ succeeds. Being what the agent read rather than a result to watch, it takes no
 row of its own: a muted `(N lines)` follows the read's target, and a row too
 narrow for it shortens the path rather than the count. Restored history shows zero-exit output
 already collapsed. Output arriving after completion is ignored.
-The output dialog captures keys and pointer events above both panes.
+`Run`/`Running` rows and their dialog titles append elapsed time only above 3 ms,
+using milliseconds below a second and compact whole-second units thereafter
+(`4ms`, `1s`, `1m10s`, `1h`). Live time uses the observed start; completed
+time uses the host duration, including restored items when available. Segment
+rows mark that duration `total`: it belongs to the invocation, not the segment.
+
+The shared content dialog captures keys and pointer events above both panes.
 Observed shell segments appear as command tabs, selectable by click or Left/Right.
 Each tab owns its retained output, status, scrolling, search and copy target;
 newly started segments become available while the dialog is open. Read output
@@ -138,8 +144,9 @@ terminal-only or lossy reports), the dialog labels the host buffer as combined
 output instead of attributing it to the last command. It never guesses boundaries. It takes
 at most 90% of each dimension, or the available screen below 60 columns, over
 the panes faded to faint uncolored text; its frame keeps full strength.
-`Esc`/`q` or a click outside closes it. `↑`/`↓`, `j`/`k`, `PgUp`/`PgDn`,
+The top-right `[×]` close button, `Esc`/`q`, or a click outside closes it. `↑`/`↓`, `j`/`k`, `PgUp`/`PgDn`,
 `b`/space and `g`/`G` (Home/End) scroll; the wheel scrolls only the dialog.
+Unified diff output, including `mchanges`, colors additions, deletions and hunk headers.
 Command titles and source bodies use syntax colors for their language; file-read
 output uses the file type, including when it ends in blank lines. Copying remains
 plain text. Skill-read output renders as Markdown, wrapping to the dialog width
@@ -150,7 +157,9 @@ single-range read starts numbering at the requested first line. The header
 shows the target, result position, ranges, retained line count and known exit.
 Live output is marked `● live` and follows its tail; scrolling up pauses it,
 and End or scrolling back to the bottom resumes. Opening or scrolling the
-dialog does not change transcript follow state.
+dialog does not change transcript follow state. Narrative dialogs refresh from
+their source entry as text streams or completes, keeping their scroll and search
+state; live narrative pages follow until the reader scrolls away.
 `/` starts a case-insensitive substring search, Enter finds, and `n`/`N` find
 next/previous matching lines. `y` copies the retained output of the current
 page, or source when there is no output. Dragging within the body selects visible
@@ -288,10 +297,11 @@ The viewport moves only when selection leaves it, not to recenter each selection
 The separate roster header omits feed follow state; the feed header is `ACTIVITY`
 with its filter and follow state. Feed-only controls do not offer clicking agents. The feed groups
 consecutive entries by agent under a colored heading. In the shared view it clips
-long entries, and its only mode shows one agent in full. Hovering a clipped
+narrative entries longer than five rows, including in single-agent mode.
+Operation source and output each keep up to five rows without clipping their status. Hovering a clipped
 snippet underlines its hidden-line count. Clicking an operation opens the output
-dialog; narrative text, including thinking and delegation assignments, expands
-in place and another click clips it. Neither action changes transcript following. Roster rows are
+dialog; narrative text, including thinking and delegation assignments, opens
+in the same dialog. Neither action changes transcript following. Roster rows are
 clickable: hovering highlights an agent; clicking it shows only that agent,
 and clicking it again restores the shared feed. In the roster, `↑`/`↓` or
 `k`/`j` move through all agents followed by each individual agent, stopping at

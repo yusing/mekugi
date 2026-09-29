@@ -50,7 +50,6 @@ type liveActivityView struct {
 	childrenOnly   bool                        // Native Main already owns root activity; keep it out of the auxiliary feed.
 	bare           bool                        // The shell's pane title replaces the heading and footer rows.
 	focused        bool                        // Native Activity shows its key hints only while it has keyboard focus.
-	returning      bool                        // A click-through preview is open here; Esc restores the previous view.
 	lineCounts     map[string]livediff.Counts  // Captured edit lines by caller key, for the native roster.
 	rosterPace     map[string]rosterMetricPace // Roster metrics easing toward their latest values, by agent.
 	rosterLines    map[string]livediff.Counts  // Line counts as last shown by the roster.
@@ -63,12 +62,9 @@ type liveActivityView struct {
 	events         map[string]liveActivityEvent // Each agent's latest standalone event, which settles its output.
 	pacedSeq       uint64                       // Entries up to this sequence have been considered for pacing.
 
-	// expanded snippets of narrative text show in full in the shared feed;
-	// snippet is the hovered one, and opening names an operation clicked to
-	// open in the output dialog, until the shell opens it.
-	expanded map[liveActivitySnippet]bool
-	snippet  liveActivitySnippet
-	opening  liveActivitySnippet
+	// opening names the snippet requested in the shared dialog.
+	snippet liveActivitySnippet // Hovered content target.
+	opening liveActivitySnippet
 	// passed holds Main's sent messages that have scrolled above the viewport,
 	// which then show as excerpts linking to Activity.
 	passed map[uint64]bool
@@ -316,11 +312,6 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 		v.entries = slices.Delete(v.entries, 0, extra)
 		v.blocks = slices.Delete(v.blocks, 0, extra)
 		v.runs = nil
-		for snippet := range v.expanded {
-			if snippet.run < v.entries[0].Seq {
-				delete(v.expanded, snippet)
-			}
-		}
 		for seq := range v.passed {
 			if seq < v.entries[0].Seq {
 				delete(v.passed, seq)
@@ -641,8 +632,7 @@ func underlineLink(line string) string {
 }
 
 // pointSnippet underlines a hovered snippet's count. A click on an operation
-// asks to open it in the output dialog; on narrative text it expands a
-// collapsed snippet or collapses an expanded one.
+// asks to open its full content in the shared dialog.
 func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 	var snippet liveActivitySnippet
 	editHover := 0
@@ -655,15 +645,8 @@ func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 	redraw := editHover != v.editHover
 	v.editHover = editHover
 	if action == '\r' && snippet != (liveActivitySnippet{}) {
-		if v.opensOutput(snippet) {
-			v.opening = snippet
-		} else {
-			v.toggleSnippet(snippet)
-		}
+		v.opening = snippet
 		redraw = true
-	}
-	if v.expanded[snippet] {
-		snippet = liveActivitySnippet{}
 	}
 	if snippet != v.snippet {
 		v.snippet, redraw = snippet, true
@@ -672,8 +655,8 @@ func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 }
 
 // clickTarget prepares a block whose rows a click acts on, and reports whether
-// they do: an operation opens the output dialog, and collapsed narrative text
-// opens in place. Under the pointer, the block underlines its count.
+// they do: operations and collapsed narrative text open the shared dialog.
+// Under the pointer, the block underlines its count.
 func (v *liveActivityView) clickTarget(block *activityui.Block, snippet liveActivitySnippet) bool {
 	if outputBlock(*block) {
 		block.Hovered = v.snippet == snippet
@@ -682,7 +665,6 @@ func (v *liveActivityView) clickTarget(block *activityui.Block, snippet liveActi
 	if !block.Collapsed {
 		return false
 	}
-	block.Collapsed = !v.expanded[snippet]
 	block.Hovered = block.Collapsed && v.snippet == snippet
 	return true
 }
@@ -705,30 +687,6 @@ func (v *liveActivityView) snippetBlock(snippet liveActivitySnippet) (activityui
 		}
 	}
 	return activityui.Block{}, false
-}
-
-func (v *liveActivityView) opensOutput(snippet liveActivitySnippet) bool {
-	block, ok := v.snippetBlock(snippet)
-	return ok && outputBlock(block)
-}
-
-func (v *liveActivityView) toggleSnippet(snippet liveActivitySnippet) {
-	if snippet.block == editNavigationSnippet {
-		return
-	}
-	if v.expanded[snippet] {
-		delete(v.expanded, snippet)
-	} else {
-		if v.expanded == nil {
-			v.expanded = make(map[liveActivitySnippet]bool)
-		}
-		v.expanded[snippet] = true
-	}
-	for key := range v.runs {
-		if key.first == snippet.run {
-			delete(v.runs, key)
-		}
-	}
 }
 
 // pointAgent highlights a hovered roster agent; a click filters the feed.
@@ -810,7 +768,7 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 	}
 	switch {
 	case v.feedOnly:
-		hint := (!v.following || v.returning) && body > 1
+		hint := !v.following && body > 1
 		feedRows := body
 		if hint {
 			feedRows--
@@ -829,9 +787,6 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 		lines = append(lines, v.viewport(feed, feedRows)...)
 		if hint {
 			label := "↓ Back to bottom · esc"
-			if v.returning {
-				label = liveActivityReturnHint
-			}
 			lines = append(lines, liveActivityHint(v.painter.Theme, label, text))
 		}
 	case len(rows) > 0 && text >= liveActivitySideColumns && body >= 6:
@@ -866,11 +821,6 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 	return lines
 }
 
-// liveActivityReturnHint replaces a pane's bottom hint while Esc returns from
-// a click-through preview rather than resuming following.
-const liveActivityReturnHint = "↩ Back to previous view · esc"
-
-// liveActivityHint centers an accented key hint on a pane's bottom row.
 func liveActivityHint(theme livediff.Theme, label string, width int) string {
 	label = ansi.Truncate(label, width, "")
 	return strings.Repeat(" ", max(0, (width-ansi.StringWidth(label))/2)) + theme.Accent() + label + activityui.Reset
@@ -1407,16 +1357,12 @@ type liveActivitySent struct {
 
 // renderFeed groups consecutive entries of one agent under a heading with a
 // colored gutter. Adjacent reads collapse into one row. In the interleaved
-// view each block is clipped to a share of the feed that grows with the pane,
-// unless the viewer expanded it.
+// view each block is clipped to five rows; full content opens in a dialog.
 func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 	if v.conversation {
 		return v.renderConversation(width)
 	}
-	clip := 0
-	if !v.only {
-		clip = min(12, max(3, rows/3))
-	}
+	clip := 5
 	// A cross-pane jump flashes its target from the first frame that shows it.
 	if v.pendingTarget != 0 && slices.ContainsFunc(v.entries, func(entry activityPaneEntry) bool { return entry.Seq == v.pendingTarget && v.visible(entry) }) {
 		v.flashQuestion, v.flashUntil = v.pendingTarget, time.Now().Add(700*time.Millisecond)
@@ -1452,6 +1398,12 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 			key.hover = v.snippet.block
 		}
 		run, ok := v.runs[key]
+		for k := i; k <= last; k++ {
+			if n := v.entries[k].native; n != nil && n.running {
+				ok = false
+				break
+			}
+		}
 		if !ok {
 			var blocks []activityui.Block
 			for k := i; k <= last; k++ {
@@ -1531,6 +1483,12 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		// Native Activity joins consecutive operations into one tree.
 		tree := v.childrenOnly && operation(block) && !continued(block)
 		toggle := v.clickTarget(&block, liveActivitySnippet{run: first, block: index})
+		if operation(block) {
+			block.SourceRows = 5
+			if block.TailRows == 0 || block.TailRows > 5 {
+				block.TailRows = 5
+			}
+		}
 		part := v.painter.Block(block, width-2)
 		switch {
 		case tree:
@@ -1558,11 +1516,10 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 				}
 			}
 		}
-		// Messages carry results, so they get twice the operation share.
 		limit := clip
-		if block.Kind == "message" || block.Kind == "final" {
-			limit *= 2
-		}
+		if operation(block) {
+			limit = 0
+		} // Source and output have separate budgets; keep exit/status rows visible.
 		var snippet liveActivitySnippet
 		if toggle {
 			snippet = liveActivitySnippet{run: first, block: index}
@@ -1570,10 +1527,8 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		if limit > 0 && len(part) > limit {
 			// An operation shows in full in the output dialog.
 			snippet = liveActivitySnippet{run: first, block: index}
-			if outputBlock(block) || !v.expanded[snippet] {
-				hint := activityui.Elision{Hidden: len(part) - limit + 1, Hovered: snippet == v.snippet}
-				part = append(part[:limit-1:limit-1], hint.String())
-			}
+			hint := activityui.Elision{Hidden: len(part) - limit + 1, Hovered: snippet == v.snippet}
+			part = append(part[:limit-1:limit-1], hint.String())
 		}
 		if block.EditSource != "" {
 			snippet = liveActivitySnippet{run: block.Source, block: editNavigationSnippet, path: activityui.EditPath(block)}

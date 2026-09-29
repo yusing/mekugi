@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -499,5 +500,178 @@ func TestOutputDialogTabsKeepNavigationState(t *testing.T) {
 	drawOutputDialog(u)
 	if top == 0 || u.output.top != top || !u.output.typing || u.output.draft != "first" {
 		t.Fatal("return lost tab navigation state")
+	}
+}
+
+func TestSharedDialogCloseButton(t *testing.T) {
+	for _, width := range []int{12, 40, 80, 160} {
+		u := dialogForOutput(&activityui.Output{})
+		u.output.pages[0].Body = "Dialog body"
+		rows := make([]string, 20)
+		u.paintOutput(rows, width, len(rows))
+		d := u.output
+		frame := ansi.Strip(strings.Join(rows, "\n"))
+		if !strings.Contains(frame, activityui.DialogClose) {
+			t.Fatalf("width %d: no close button: %s", width, frame)
+		}
+		u.outputMouse(0, d.rect.x+d.rect.w-6, d.rect.y, false)
+		if u.output != nil {
+			t.Fatalf("width %d: close button did not dismiss", width)
+		}
+	}
+}
+
+func TestCommandDurationRestoresAndStopsInDialog(t *testing.T) {
+	v := newLiveActivityView()
+	duration := int64(70000)
+	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "echo ok", DurationMS: &duration, Status: "completed"}
+	v.applyAppServerItem("/w", "main", "main", "turn", "cmd", "item/completed", "", item)
+	b := v.blocks[0][0]
+	if b.Duration != 70*time.Second || b.Running {
+		t.Fatalf("restored timing %+v", b)
+	}
+	p := v.painter.DialogPage(b, 80)
+	if !strings.HasSuffix(ansi.Strip(p.Title), " · 1m10s") {
+		t.Fatalf("title %q", p.Title)
+	}
+}
+
+func TestRunDurationLiveAndCompletedRendering(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "timed", "type": "commandExecution", "command": "sleep 2", "status": "inProgress"}})
+	index := -1
+	for i, entry := range u.view.entries {
+		if entry.native != nil && entry.native.item == "timed" {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		t.Fatal("missing running command")
+	}
+	u.view.entries[index].Observed = time.Now().Add(-2 * time.Second)
+	u.view.blocks[index] = parseLiveActivity(u.view.entries[index])
+	u.view.runs = nil
+	feed := u.view.renderFeed(100, 30)
+	if !strings.Contains(ansi.Strip(strings.Join(feed.lines, "\n")), "2s") {
+		t.Fatal("live command omitted elapsed")
+	}
+	opened := false
+	for _, snippet := range feed.snippets {
+		if u.shell.openOutput(u.view, snippet) {
+			opened = true
+			break
+		}
+	}
+	if !opened {
+		t.Fatal("missing dialog target")
+	}
+	drawOutputDialog(u.shell)
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "timed", "type": "commandExecution", "command": "sleep 2", "status": "completed", "durationMs": 4000, "exitCode": 0}})
+	for range 2 {
+		drawOutputDialog(u.shell)
+		title := ansi.Strip(u.shell.output.laid.Title)
+		if strings.Contains(title, "Running") || !strings.HasSuffix(title, " · 4s") {
+			t.Fatalf("completed timing %q", title)
+		}
+	}
+}
+
+func TestBatchDialogKeepsInvocationTiming(t *testing.T) {
+	for _, segmented := range []bool{false, true} {
+		t.Run(fmt.Sprint(segmented), func(t *testing.T) {
+			retention := new(activityui.Retention)
+			first, second := retention.New(), retention.New()
+			first.Write("first\n")
+			first.Finish(nil, new(0))
+			second.Write("second\n")
+			entry := activityPaneEntry{Seq: 1, Agent: "Main", Kind: "tool", Text: "Run `echo first`\n\nRun `echo second`", Observed: time.Now().Add(-4 * time.Second), native: &liveActivityNativeItem{command: "echo first; echo second", running: true, output: second}}
+			if segmented {
+				entry.native.segments = []commandSegment{{text: "Run `echo first`", output: first}, {text: "Run `echo second`", output: second, running: true}}
+			}
+			view := newLiveActivityView()
+			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+			u := &terminalUI{}
+			if !u.openEntry(view, 1) {
+				t.Fatal("could not open batch")
+			}
+			want := " · 4s"
+			if segmented {
+				want += " total"
+			}
+			for i := range u.output.pages {
+				u.output.showPage(i)
+				drawOutputDialog(u)
+				if title := ansi.Strip(u.output.laid.Title); !strings.HasSuffix(title, want) {
+					t.Fatalf("live batch title %q, want %q", title, want)
+				}
+			}
+			view.entries[0].native.running, view.entries[0].native.duration = false, 7*time.Second
+			if segmented {
+				view.entries[0].native.segments[1].running = false
+			}
+			second.Finish(nil, new(0))
+			want = " · 7s"
+			if segmented {
+				want += " total"
+			}
+			for i := range u.output.pages {
+				u.output.showPage(i)
+				drawOutputDialog(u)
+				if title := ansi.Strip(u.output.laid.Title); !strings.HasSuffix(title, want) || strings.Contains(title, "Running") {
+					t.Fatalf("completed batch title %q, want %q", title, want)
+				}
+			}
+		})
+	}
+}
+
+func TestNarrativeDialogRefreshesWhileStreaming(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+	body := "**Plan**\n\nneedle\n\n" + strings.Repeat("First paragraph.\n\n", 20)
+	delta := func(text string) {
+		appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r", "delta": text})
+	}
+	delta(body)
+	feed := u.agents.renderFeed(90, 30)
+	opened := false
+	for _, snippet := range feed.snippets {
+		if u.shell.openOutput(u.agents, snippet) {
+			opened = true
+			break
+		}
+	}
+	if !opened {
+		t.Fatal("streaming narrative has no dialog target")
+	}
+	drawOutputDialog(u.shell)
+	d := u.shell.output
+	if !d.laid.Live || !d.follow {
+		t.Fatal("streaming narrative did not follow")
+	}
+	u.shell.outputKey("/")
+	u.shell.outputKey("needle")
+	u.shell.outputKey("\r")
+	top, match := d.top, d.match
+	if d.follow || match < 0 {
+		t.Fatal("search did not pause at matching content")
+	}
+	delta("Fresh appended paragraph.")
+	drawOutputDialog(u.shell)
+	if !strings.Contains(d.laid.Text, "Fresh appended paragraph.") || d.top != top || d.match != match || d.query != "needle" || d.follow {
+		t.Fatalf("delta lost text or reader state: %+v", d)
+	}
+	completed := body + "Fresh appended paragraph.\n\nFinal paragraph."
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{completed}}})
+	drawOutputDialog(u.shell)
+	if d.laid.Live || !strings.Contains(d.laid.Text, "Final paragraph.") || d.top != top || d.query != "needle" || d.follow {
+		t.Fatal("completion failed to refresh narrative without moving reader")
+	}
+	// The retained page remains readable after its source ages out of the feed.
+	u.agents.entries = nil
+	drawOutputDialog(u.shell)
+	if !strings.Contains(d.laid.Text, "Final paragraph.") {
+		t.Fatal("eviction lost the last available narrative")
 	}
 }

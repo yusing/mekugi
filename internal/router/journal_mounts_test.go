@@ -199,14 +199,16 @@ func TestNativeJournalMountedAgentEnterOpensChildActivity(t *testing.T) {
 		t.Fatal("Enter on an agent without Activity opened another agent's feed")
 	}
 	shell.agents.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{{Name: "/root"}, {Name: "/root/other"}, {Name: "/root/child"}}})
+	shell.agents.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "/root/child", Kind: "text", Text: "Child activity"}}})
 	if err := shell.journalKey("\r"); err != nil {
 		t.Fatal(err)
 	}
-	if shell.focus != 2 || !shell.activityOpen || shell.journalOpen || u.agents.selected != "/root/child" || !u.agents.only || !u.agents.following {
-		t.Fatalf("Enter did not open child Activity: focus=%d activity=%v journal=%v agent=%q", shell.focus, shell.activityOpen, shell.journalOpen, u.agents.selected)
+	if shell.output == nil || shell.focus != 4 || !shell.journalOpen {
+		t.Fatalf("Enter did not open child dialog over Journal: focus=%d journal=%v", shell.focus, shell.journalOpen)
 	}
-	if !shell.popNavigationReturn() || shell.focus != 4 || !shell.journalOpen {
-		t.Fatal("Activity return did not restore Journal")
+	shell.outputKey("\x1b")
+	if shell.output != nil || shell.focus != 4 || !shell.journalOpen {
+		t.Fatal("dismissing child dialog changed Journal")
 	}
 }
 

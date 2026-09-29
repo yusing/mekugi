@@ -41,7 +41,7 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 	}
 	paint() // Scrolls both messages above the viewport.
 	main := paint()
-	if strings.Contains(main, "Spawn last line.") || strings.Contains(main, "Follow last line.") || strings.Count(main, "↩ Open assignment in Activity") != 2 {
+	if strings.Contains(main, "Spawn last line.") || strings.Contains(main, "Follow last line.") || strings.Count(main, "↩ Open assignment") != 2 {
 		t.Fatalf("messages out of view did not become linked excerpts:\n%s", main)
 	}
 	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
@@ -56,11 +56,18 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 	if seq == 0 || activity == 0 || !u.shell.openActivityReply(seq) {
 		t.Fatalf("follow-up has no Activity target: seq=%d activity=%d", seq, activity)
 	}
-	if !u.shell.activityOpen || u.agents.selected != "/root/worker" || u.agents.pendingTarget != activity {
-		t.Fatalf("link did not open the follow-up in Activity: open=%v selected=%q pending=%d", u.shell.activityOpen, u.agents.selected, u.agents.pendingTarget)
+	if u.shell.output == nil || !u.shell.activityOpen {
+		t.Fatal("link did not open the follow-up in a dialog")
 	}
-	if full := ansi.Strip(strings.Join(u.agents.renderFeed(100, 100).lines, "\n")); !strings.Contains(full, "Follow last line.") {
-		t.Fatalf("Activity lost the full follow-up:\n%s", full)
+	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
+		t.Fatal(err)
+	}
+	if full := u.shell.output.laid.Text; !strings.Contains(full, "Follow last line.") {
+		t.Fatalf("dialog lost the full follow-up:\n%s", full)
+	}
+	u.shell.outputKey("\x1b")
+	if u.shell.output != nil || !u.shell.activityOpen {
+		t.Fatal("dismissing dialog changed Activity navigation")
 	}
 }
 
@@ -83,7 +90,7 @@ func TestSentExcerptKeepsScrolledViewportStill(t *testing.T) {
 		t.Fatal("assignment above the viewport was not marked")
 	}
 	feed = v.renderFeed(width, rows)
-	if got := v.viewport(feed, rows)[0]; got != top || !strings.Contains(ansi.Strip(strings.Join(feed.lines, "\n")), "↩ Open assignment in Activity") {
+	if got := v.viewport(feed, rows)[0]; got != top || !strings.Contains(ansi.Strip(strings.Join(feed.lines, "\n")), "↩ Open assignment") {
 		t.Fatalf("collapse moved the viewport: %q, want %q", ansi.Strip(got), ansi.Strip(top))
 	}
 }

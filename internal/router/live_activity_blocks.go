@@ -14,7 +14,33 @@ import (
 // Receipt summary of tool-managed files: count, sample paths, optional source.
 var liveActivityManagedFiles = regexp.MustCompile(`^\+ (\d+) tool-managed files \((.*)\)(?: · (.+))?$`)
 
-func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
+func appServerDuration(item appServerItem) time.Duration {
+	if item.DurationMS == nil {
+		return 0
+	}
+	return time.Duration(*item.DurationMS) * time.Millisecond
+}
+
+// Command timing belongs to the host invocation, not a reconstructed segment.
+func setCommandTiming(blocks []activityui.Block, entry activityPaneEntry) {
+	if entry.native == nil {
+		return
+	}
+	for i := range blocks {
+		block := &blocks[i]
+		if block.Verb != "Run" || block.Skipped {
+			continue
+		}
+		block.Duration, block.Started = entry.native.duration, time.Time{}
+		block.InvocationTiming = !block.BatchExit && (len(blocks) > 1 || len(entry.native.segments) > 0)
+		if entry.native.running {
+			block.Started = entry.Observed
+		}
+	}
+}
+
+func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
+	defer func() { setCommandTiming(blocks, entry) }()
 	text := livediff.Safe(entry.Text, false)
 	switch entry.Kind {
 	case "journal_card":

@@ -215,7 +215,7 @@ func TestAppServerProviderThinking(t *testing.T) {
 }
 
 // Finished thinking stays open for a second, then folds to its header in
-// Main and Activity; a click toggles it.
+// Main and Activity; a click opens it in the shared dialog.
 func TestAppServerThinkingFolds(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
@@ -230,7 +230,7 @@ func TestAppServerThinkingFolds(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			render := func() liveActivityFeed { return view.renderFeed(90, 40) }
 			plain := func(feed liveActivityFeed) string { return ansi.Strip(strings.Join(feed.lines, "\n")) }
-			if got := plain(render()); !strings.Contains(got, "• Thought") || !strings.Contains(got, "Delta.") {
+			if got := plain(render()); !strings.Contains(got, "• Thought") || !strings.Contains(got, "Alpha.") {
 				t.Fatalf("thinking folded before its delay: %q", got)
 			}
 			if settleActivity(time.Now(), view) {
@@ -248,13 +248,11 @@ func TestAppServerThinkingFolds(t *testing.T) {
 			if row < 0 || !strings.Contains(ansi.Strip(feed.lines[row]), "Thought") {
 				t.Fatal("folded thinking cannot expand")
 			}
-			view.toggleSnippet(feed.snippets[row])
-			if got := plain(render()); !strings.Contains(got, "Alpha.") || !strings.Contains(got, "Delta.") {
-				t.Fatalf("expanded thinking: %q", got)
+			if !u.shell.openOutput(view, feed.snippets[row]) {
+				t.Fatal("folded thinking did not request dialog")
 			}
-			view.toggleSnippet(feed.snippets[row])
 			if got := plain(render()); strings.Contains(got, "Alpha.") {
-				t.Fatalf("thinking did not fold again: %q", got)
+				t.Fatalf("dialog request unfolded thinking in the feed: %q", got)
 			}
 		})
 	}
