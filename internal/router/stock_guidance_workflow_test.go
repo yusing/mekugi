@@ -161,7 +161,7 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 				"Code Mode API:",
 				"Task states are pending, working, done, blocked, dropped.",
 				"Paths use stable sibling ordinals",
-				"Publication and read failures throw.",
+				"Read and transport failures throw.",
 				"do not construct its internal transport",
 				"finish naturally with an Outcome",
 				"Parents record integration decisions",

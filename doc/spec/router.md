@@ -292,7 +292,9 @@ for runtime wiring, and separate `report_now` and `terminal_flush` rendering eve
 Journal-only `code_mode / lowering` records one observation per carrier, not per expression:
 `prepared` means a publisher route was created; `unavailable` means it could not be created
 and lowering rejects. Neither outcome proves expression execution.
-Only successful store admission counts as an accepted mutation. Prepared rendering does not
+Only successful store admission counts as an accepted mutation. `code_mode / mutation / rejected`
+records an authenticated runtime mutation that failed decoding or store admission; it
+applied nothing and carries no error text. Prepared rendering does not
 prove display. Existing `commentary` categories remain for automatic notice infrastructure:
 
 - `source: provider_message`, `stage: authored`, `outcome: observed`: a completed

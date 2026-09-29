@@ -120,15 +120,16 @@ func TestJournalTreePlanDropsOnlyPendingAndValidatesReason(t *testing.T) {
 	treeApply(t, proxy, workspace, journalMutation{Op: "set", P: "/4", State: new("blocked"), Reason: new("Needs decision")})
 }
 
-func TestJournalTreeLogPlacementAndAmbiguity(t *testing.T) {
+func TestJournalTreeLogPlacement(t *testing.T) {
 	proxy, workspace := treeTestJournal(t)
 	treeApply(t, proxy, workspace, journalMutation{Op: "plan", Tasks: []jsontext.Value{jsontext.Value(`{"title":"One","state":"working"}`)}})
 	if got := treeApply(t, proxy, workspace, journalMutation{Op: "log", Text: new("Passed 12 tests")}); !reflect.DeepEqual(got, []string{"/1/1"}) {
 		t.Fatalf("single working leaf did not own log: %v", got)
 	}
 	treeApply(t, proxy, workspace, journalMutation{Op: "add", Kind: "task", Title: new("Two"), State: new("working")})
-	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "tree", "", []journalMutation{{Op: "log", Text: new("Ambiguous")}}); err == nil {
-		t.Fatal("ambiguous implicit log placement accepted")
+	// Unrelated working leaves share only the root.
+	if got := treeApply(t, proxy, workspace, journalMutation{Op: "log", Text: new("Ambiguous")}); !reflect.DeepEqual(got, []string{"/3"}) {
+		t.Fatalf("ambiguous implicit log placement: %v", got)
 	}
 	if got := treeApply(t, proxy, workspace, journalMutation{Op: "log", P: "/2", Text: new("Explicit result")}); !reflect.DeepEqual(got, []string{"/2/1"}) {
 		t.Fatalf("explicit log placement: %v", got)

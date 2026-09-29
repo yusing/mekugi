@@ -27,10 +27,16 @@ func TestJournalPublisherPreservesUnderlyingError(t *testing.T) {
 		{"id": "fixture-add", "journal": []journalMutation{{Op: "add", Text: new("milestone")}}},
 		{"op": "list"},
 	} {
-		_, err := sink.send(t.Context(), publication)
-		if err == nil || !strings.Contains(err.Error(), "HTTP 400") ||
-			!strings.Contains(err.Error(), "delete obsolete items") && !strings.Contains(err.Error(), "retry initialization") {
-			t.Fatalf("underlying publisher error lost: %v", err)
+		result, err := sink.send(t.Context(), publication)
+		if publication["op"] == nil {
+			// Mutation rejections are structured results the helper reports.
+			if err != nil || !strings.Contains(string(result), `"ok":false`) || !strings.Contains(string(result), "delete obsolete items") {
+				t.Fatalf("underlying publisher error lost: %s, %v", result, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), "HTTP 400") || !strings.Contains(err.Error(), "retry initialization") {
+			t.Fatalf("underlying lister error lost: %v", err)
 		}
 	}
 }

@@ -199,17 +199,23 @@ No dedicated journal tool is exposed. Operations are:
   resets is a separate frontend capability.
 - `add {under?, kind?, title, body?, state?, reason?, before?}`: adds one node, with
   default kind note and default task state pending. `before` changes display order,
-  not stable keys, and must name a sibling.
+  not stable keys, and must name a sibling. Only tasks accept children. Ordinals are
+  shared by every kind, so a non-task `under` rejects naming that node's kind, title
+  and containing task, rather than moving a plan to another parent.
 - `set {p, title?, body?, state?, reason?, agent?}`: updates writable fields. Blocked and
   dropped tasks require a reason. A final task reopens only with working.
-- `log {p?, text}`: adds a timestamped note under the single working leaf task,
-  or root if none is working. Several working leaves require an explicit path.
+- `log {p?, text}`: adds a timestamped note under `p`, or else under the working
+  leaf task. Several working leaves select their deepest common task, or root.
+  A note or context `p` selects its containing task. Neither case attributes the
+  fact to an unrelated task.
 - `remove {p}`: removes a mistaken subtree, retaining its removal event.
 - `read {p?, agent?, depth?}`: returns the selected subtree. Depth zero omits child
   nodes. Omitted agent selects the caller; explicit agents require proven ancestry.
 
 Mutation batches validate at the end. A done task cannot retain open descendant
 tasks. Rejection lists those paths and rolls back all nodes, ordinals and events.
+A rejected operation in a batch names its one-based position and op. Undecodable
+payloads name the offending member.
 Single mutations return their affected path; plans and batches return paths in order.
 Receipt replay returns the original result without applying effects twice.
 
@@ -325,8 +331,12 @@ Code Mode lowers the helper to authenticated `mjournal` through stock `exec_comm
 it neither runs the surrounding program nor owns the host lifecycle. Read transport
 uses bounded flat pages, authorizing each page against the full snapshot revision,
 then assembles the tree inside the helper. A concurrent revision fails rather than
-mixing snapshots. Pagination fields are internal, not model-facing. Read and publication
-failures throw; credentials and authored source stay out of sanitized metrics.
+mixing snapshots. Pagination fields are internal, not model-facing. A rejected
+mutation applies nothing and is a result, not a transport failure: the helper
+prints the rejection through `text` and returns null, or an empty array for plans
+and batches, so the program's remaining work still runs. Read, transport and
+publisher-unavailable failures throw; credentials and authored source stay out of
+sanitized metrics, which count Code Mode rejections separately from acceptances.
 
 ### Delivery failures
 

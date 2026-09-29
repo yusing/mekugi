@@ -45,7 +45,7 @@ func validFeatureUsage(feature, source, stage, outcome string) bool {
 		switch stage {
 		case "mutation":
 			return (source == "tool_field" || source == "tool" || source == "shell" || source == "code_mode") &&
-				(outcome == "accepted" || outcome == "prepared")
+				(outcome == "accepted" || outcome == "prepared") || source == "code_mode" && outcome == "rejected"
 		case "lowering":
 			return source == "code_mode" && (outcome == "prepared" || outcome == "unavailable")
 		case "render":

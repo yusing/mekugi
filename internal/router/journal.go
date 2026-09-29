@@ -572,7 +572,11 @@ func decodeJournalMutations(raw []byte) ([]journalMutation, error) {
 	var mutations []journalMutation
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&mutations); err != nil || mutations == nil || len(mutations) > maxJournalItems {
+	if err := decoder.Decode(&mutations); err != nil {
+		// The decoder names the offending field, such as an unknown "path".
+		return nil, fmt.Errorf("journal must be an array of at most 512 mutations: %w", err)
+	}
+	if mutations == nil || len(mutations) > maxJournalItems {
 		return nil, errors.New("journal must be an array of at most 512 mutations")
 	}
 	var trailing any
@@ -610,12 +614,16 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 		j.ensureTree()
 		treeMutated := false
 		before := slices.Clone(j.Items)
-		for _, mutation := range mutations {
+		for position, mutation := range mutations {
 			if mutation.Agent != "" && mutation.Op != "set" {
 				return errors.New("agent binding is only supported by set")
 			}
 			if mutation.Op == "plan" || mutation.Op == "set" || mutation.Op == "log" || mutation.Op == "remove" || mutation.Op == "add" && mutation.Title != nil {
 				paths, err := j.applyTree(mutation)
+				if err != nil && len(mutations) > 1 {
+					// A batch rolls back atomically; name the operation to correct.
+					err = fmt.Errorf("operation %d (%s): %w", position+1, mutation.Op, err)
+				}
 				if err != nil {
 					return err
 				}

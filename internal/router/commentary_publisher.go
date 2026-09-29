@@ -268,7 +268,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	if len(raw) != 0 {
 		mutations, err = decodeJournalMutations(raw)
 		if err != nil {
-			http.Error(writer, "invalid journal publication", http.StatusBadRequest)
+			writeJournalRejection(writer, b.debug, thread, callID, err)
 			return
 		}
 	}
@@ -280,7 +280,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		}
 		ids, err = b.journalPublisher(request.Context(), session, thread, publication.ReceiptID, bindJournalAnswers(mutations, question))
 		if err != nil {
-			http.Error(writer, "journal mutation rejected: "+err.Error(), http.StatusBadRequest)
+			writeJournalRejection(writer, b.debug, thread, callID, err)
 			return
 		}
 		trace := featureUsageTrace{debug: b.debug, threadID: thread}
@@ -475,6 +475,16 @@ func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []st
 	}
 	_, err = writer.Write(result)
 	return true, err
+}
+
+// A rejected mutation applied nothing and is the model's to correct. It is a
+// result, not a transport failure, so the helper can report it without
+// aborting the rest of the Code Mode program.
+func writeJournalRejection(writer http.ResponseWriter, debug *debugOutput, thread, callID string, err error) {
+	trace := featureUsageTrace{debug: debug, threadID: thread}
+	trace.record("journal", "code_mode", "mutation", "rejected", callID, "")
+	writer.Header().Set("Content-Type", "application/json")
+	_ = jsonv1.NewEncoder(writer).Encode(map[string]any{"ok": false, "error": "journal mutation rejected: " + err.Error()})
 }
 
 func (s *httpCommentarySink) send(ctx context.Context, publication map[string]any) ([]byte, error) {

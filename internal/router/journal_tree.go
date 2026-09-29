@@ -108,9 +108,51 @@ func (j *threadJournal) treeParent(path string) error {
 		return fmt.Errorf("journal path not found: %s", path)
 	}
 	if j.Items[i].Kind != "task" {
-		return fmt.Errorf("journal parent must be a task: %s", path)
+		// Ordinals are shared by every kind, so a guessed path often lands on a note.
+		hint := "omit under for the root"
+		if task := journalParent(path); task != "" {
+			hint = "use its task " + task + " or " + hint
+		}
+		return fmt.Errorf("journal parent must be a task: %s is a %s (%q); %s", path, j.Items[i].Kind, j.Items[i].Title, hint)
 	}
 	return nil
+}
+
+// logTarget resolves where a log note attaches. A non-task p attaches to its
+// nearest task, and several working leaves share their deepest common task,
+// so an under-specified fact is never attributed to an unrelated task.
+func (j *threadJournal) logTarget(p string) (string, error) {
+	if p != "" {
+		i := j.treeIndex(p)
+		if i < 0 {
+			return "", fmt.Errorf("journal path not found: %s", p)
+		}
+		if j.Items[i].Kind != "task" {
+			return journalParent(p), nil // Only tasks have children.
+		}
+		return p, nil
+	}
+	var leaves []string
+	for _, item := range j.Items {
+		if item.Kind != "task" || item.State != "working" || item.Agent != "" {
+			continue
+		}
+		if !slices.ContainsFunc(j.Items, func(child journalItem) bool {
+			return child.Kind == "task" && strings.HasPrefix(child.Path, item.Path+"/")
+		}) {
+			leaves = append(leaves, item.Path)
+		}
+	}
+	if len(leaves) == 0 {
+		return "", nil
+	}
+	common := leaves[0]
+	for _, leaf := range leaves[1:] {
+		for common != "" && leaf != common && !strings.HasPrefix(leaf, common+"/") {
+			common = journalParent(common)
+		}
+	}
+	return common, nil
 }
 
 func validJournalState(state string) bool {
@@ -163,22 +205,9 @@ func (j *threadJournal) applyTree(m journalMutation) ([]string, error) {
 		if m.Text == nil || strings.TrimSpace(*m.Text) == "" {
 			return nil, errors.New("journal log requires text")
 		}
-		under := m.P
-		if under == "" {
-			for _, item := range j.Items {
-				if item.Kind != "task" || item.State != "working" || item.Agent != "" {
-					continue
-				}
-				leaf := !slices.ContainsFunc(j.Items, func(child journalItem) bool {
-					return child.Kind == "task" && strings.HasPrefix(child.Path, item.Path+"/")
-				})
-				if leaf {
-					if under != "" {
-						return nil, errors.New("journal log requires p when several working leaves exist")
-					}
-					under = item.Path
-				}
-			}
+		under, err := j.logTarget(m.P)
+		if err != nil {
+			return nil, err
 		}
 		title, body, _ := strings.Cut(strings.TrimSpace(*m.Text), "\n")
 		title = strings.TrimSuffix(title, "\r") // CRLF text keeps a one-line title.

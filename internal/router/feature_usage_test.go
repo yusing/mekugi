@@ -168,8 +168,8 @@ func TestFeatureUsageRuntimePublicationAndRendering(t *testing.T) {
 				if _, err := sink.send(t.Context(), map[string]any{"journal": json.RawMessage(`{"op":"add","text":"private runtime text","report_now":true}`), "id": "private-publication"}); err != nil {
 					t.Fatal(err)
 				}
-				if _, err := sink.send(t.Context(), map[string]any{"journal": json.RawMessage(`{"op":"add","text":"  "}`), "id": "blank-publication"}); err == nil {
-					t.Fatal("blank milestone accepted")
+				if result, err := sink.send(t.Context(), map[string]any{"journal": json.RawMessage(`{"op":"add","text":"  "}`), "id": "blank-publication"}); err != nil || !bytes.Contains(result, []byte(`"ok":false`)) {
+					t.Fatalf("blank milestone accepted: %s, %v", result, err)
 				}
 				if _, err := sink.send(t.Context(), map[string]any{"complete": true}); err != nil {
 					t.Fatal(err)
@@ -198,7 +198,8 @@ func TestFeatureUsageRuntimePublicationAndRendering(t *testing.T) {
 					}
 					got = got[1:]
 				}
-				if len(got) != 2 || got[0]["source"] != source || got[0]["stage"] != "mutation" || got[0]["outcome"] != "accepted" || got[1]["stage"] != "render" || got[1]["outcome"] != "prepared" {
+				if len(got) != 3 || got[0]["source"] != source || got[0]["stage"] != "mutation" || got[0]["outcome"] != "accepted" ||
+					got[1]["source"] != source || got[1]["stage"] != "mutation" || got[1]["outcome"] != "rejected" || got[2]["stage"] != "render" || got[2]["outcome"] != "prepared" {
 					t.Fatalf("mutation/render evidence: %v", got)
 				}
 				for _, key := range []string{"request_id", "session_id"} {

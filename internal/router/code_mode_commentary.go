@@ -83,6 +83,8 @@ func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) 
 			replacements[index] = `(await (async mutation => { throw new Error(` + strconv.Quote(journalPublisherUnavailable) + `); })(` + argument + `))`
 			continue
 		}
+		// A rejected mutation applied nothing. The helper reports it through
+		// text() and returns no paths, so the program's remaining work still runs.
 		command := workerCommand("mjournal", []string{
 			commentaryOnceArgument,
 			t.proxy.commentaryEndpoint,
@@ -103,6 +105,11 @@ while (execution.session_id != null) {
 }
 if (execution.exit_code !== 0) throw new Error("journal publication failed" + (output.trim() ? ": " + output.trim().slice(0, 16384) : ""));
 const publication = JSON.parse(output);
+if (publication.ok === false && typeof publication.error === "string") {
+  if (typeof globalThis.text !== "function") throw new Error(publication.error);
+  globalThis.text(publication.error);
+  return Array.isArray(mutation) || mutation.op === "plan" ? [] : null;
+}
 if (publication.ok !== true || !Array.isArray(publication.items)) throw new Error("invalid journal publication result");
 if (!Array.isArray(mutation) && (mutation.op === "list" || mutation.op === "read")) {
   items.push(...publication.items);
