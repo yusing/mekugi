@@ -73,7 +73,7 @@ func (p *journalResetCodexProvider) forwardExecution(ctx, _ context.Context, bod
 				p.recovered = p.recovered || strings.Contains(part.Text, "Journal recovery") && strings.Contains(part.Text, "/1 [done] First") && strings.Contains(part.Text, "/2 [pending] Second")
 			}
 		}
-		if !p.continuation || !p.recovered {
+		if !p.continuation || p.proxy.journalCompaction != "off" && !p.recovered {
 			return nil, fmt.Errorf("continuation missing path or durable recovery: path=%t recovery=%t", p.continuation, p.recovered)
 		}
 		if _, err := p.proxy.journals.apply(ctx, p.proxy.replayStore, p.workspace, thread, "fixture-second", []journalMutation{{Op: "set", P: "/2", State: new("done")}}); err != nil {
@@ -96,29 +96,8 @@ func TestJournalSliceResetNativeCodexE2E(t *testing.T) {
 }
 
 func testJournalSliceResetNativeCodex(t *testing.T, goals bool) {
-	codex, err := exec.LookPath("codex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("CODEX_HOME", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	workspace := t.TempDir()
-	if output, err := exec.Command("git", "init", "--quiet", workspace).CombinedOutput(); err != nil {
-		t.Fatalf("initialize fixture workspace: %v: %s", err, output)
-	}
-	proxy := newManagedMekugiProxy(t)
-	attachTestReplayStore(t, proxy)
-	proxy.journalCompaction = "slice"
-	provider := &journalResetCodexProvider{proxy: proxy, workspace: workspace}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy, nil))
-	defer server.Close()
-	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.reset_fixture={name="reset_fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="reset_fixture"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
-	cmd.Args = append(cmd.Args, "-c", fmt.Sprintf("features.goals=%t", goals))
-	cmd.Env = routerFaultCodexEnvironment(t)
-	cmd.Dir = workspace
+	ctx, cmd, provider := journalResetCodexFixture(t, goals)
+	proxy, workspace := provider.proxy, provider.workspace
 	client, err := appserver.Start(cmd)
 	if err != nil {
 		t.Fatal(err)
@@ -243,4 +222,32 @@ func testJournalSliceResetNativeCodex(t *testing.T, goals bool) {
 	if bytes.Contains([]byte(driver.notice), []byte("unavailable")) {
 		t.Fatalf("reset driver degraded: %s", driver.notice)
 	}
+}
+
+func journalResetCodexFixture(t *testing.T, goals bool) (context.Context, *exec.Cmd, *journalResetCodexProvider) {
+	t.Helper()
+	codex, err := exec.LookPath("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	workspace := t.TempDir()
+	if output, err := exec.Command("git", "init", "--quiet", workspace).CombinedOutput(); err != nil {
+		t.Fatalf("initialize fixture workspace: %v: %s", err, output)
+	}
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	proxy.journalCompaction = "slice"
+	provider := &journalResetCodexProvider{proxy: proxy, workspace: workspace}
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy, nil))
+	t.Cleanup(server.Close)
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	t.Cleanup(cancel)
+	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.reset_fixture={name="reset_fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="reset_fixture"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+	cmd.Args = append(cmd.Args, "-c", fmt.Sprintf("features.goals=%t", goals))
+	cmd.Env = routerFaultCodexEnvironment(t)
+	cmd.Dir = workspace
+	return ctx, cmd, provider
 }

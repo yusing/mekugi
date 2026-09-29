@@ -244,6 +244,21 @@ not change translation, execution, cancellation, or retry behavior.
 The [native UI contract](native_ui.md) owns interactive app-server presentation
 and client behavior.
 
+### Headless app-server frontend
+
+`mekugi codex headless --yolo` runs one stdin prompt in a new thread for automation
+and offline comparisons. It reuses invocation-local routing and the native client's
+slice-reset policy with a zero-duration countdown; it does not own a second reset
+or continuation implementation. `off` keeps the continuing-context control arm,
+while `slice` compacts at planned boundaries. Successful completion requires a
+successful Main turn and settled continuation/goal coordination.
+
+The frontend emits JSONL session evidence on stdout and diagnostics on stderr.
+It rejects empty/oversized prompts, resume and unsupported CLI options before
+launching the host. It fails on interactive host requests, failed or interrupted
+Main turns, lost host connections, output failure or cancellation. Codex retains
+execution authority. This frontend is not available in passthrough mode.
+
 ### Feature-usage debug evidence
 
 `router.jsonl` MUST support `event: "feature_usage"` with `schema_version: 1`, fixed

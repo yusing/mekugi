@@ -47,6 +47,7 @@ type Session struct {
 	SkillsManagerAvailable bool
 	// StartAppUI starts the native app-server UI and returns its joined lifetime.
 	StartAppUI           func(context.Context, *exec.Cmd, *os.File, *os.File, string) (func() error, error)
+	StartHeadless        func(context.Context, *exec.Cmd, io.Reader, io.Writer) (func() error, error)
 	FrontendDirectory    string
 	NativeTraceDirectory string
 }
@@ -347,6 +348,11 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}()
 	if ready != nil && ctx.Err() == nil {
 		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, SkillsManagerAvailable: skillsManagerAvailable}
+		if mekugiCalls != nil {
+			session.StartHeadless = func(ctx context.Context, cmd *exec.Cmd, input io.Reader, output io.Writer) (func() error, error) {
+				return startHeadlessAppServer(ctx, cmd, input, output, mekugiCalls)
+			}
+		}
 		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string) (func() error, error) {
 			if mekugiCalls != nil && frontendDirectory != "" {
 				// Without the socket, command shells find no router and run

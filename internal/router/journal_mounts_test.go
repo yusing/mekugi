@@ -152,6 +152,32 @@ func TestJournalMountCompletionUsesHostLifecycle(t *testing.T) {
 	}
 }
 
+func TestJournalHostTurnObservesUnscopedChildLifecycle(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	// Requests without workspace metadata keep the whole tree unscoped, while the
+	// frontend still reports its thread cwd.
+	for _, thread := range []struct{ thread, parent, author string }{{"tree", "", "/root"}, {"child", "tree", "/root/child"}} {
+		if err := proxy.journals.initialize(t.Context(), proxy.replayStore, "", thread.thread, thread.author, ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := proxy.journals.bindIdentity(t.Context(), proxy.replayStore, "", thread.thread, thread.parent, thread.author, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	treeApply(t, proxy, "", journalMutation{Op: "add", Kind: "task", Title: new("Delegated"), State: new("working")}, journalMutation{Op: "set", P: "/1", Agent: "/root/child"})
+	for _, method := range []string{"turn/started", "turn/completed"} {
+		event := appServerEvent{ThreadID: "child"}
+		event.Turn.Status = "completed"
+		if err := proxy.observeJournalHostTurn(t.Context(), t.TempDir(), method, event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, "", "tree", "", []journalMutation{{Op: "set", P: "/1", State: new("done")}}); err != nil {
+		t.Fatalf("unscoped child completion was not observed: %v", err)
+	}
+}
+
 func TestNativeJournalMountedAgentEnterOpensChildActivity(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	j := threadJournal{Version: 2, TreeAuthored: true, Items: []journalItem{{Path: "/@agents", Kind: "context", Title: "Agents"}, {Path: "/@agents/@child", Kind: "task", Title: "/root/child", Agent: "/root/child", State: "working"}}}

@@ -27,6 +27,9 @@ func TestAutoWrapProcess(t *testing.T) {
 		if os.Getenv("MEKUGI_AUTO_WRAP_TERMINAL") == "1" {
 			args = []string{"--yolo"}
 		}
+		if os.Getenv("MEKUGI_AUTO_WRAP_HEADLESS") == "1" {
+			args = []string{"headless", "--yolo"}
+		}
 		code, err := wrapCodex(t.Context(), []string{"--mentor-handoff=false"}, args)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -58,6 +61,10 @@ func TestAutoWrapProcess(t *testing.T) {
 					time.Sleep(100 * time.Millisecond)
 					os.Exit(23)
 				}
+			case "turn/start":
+				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"turn":{"id":"test-turn"}}}`+"\n", request.ID)
+				fmt.Fprintln(os.Stdout, `{"method":"turn/started","params":{"threadId":"auto-wrap","turn":{"id":"test-turn"}}}`)
+				fmt.Fprintln(os.Stdout, `{"method":"turn/completed","params":{"threadId":"auto-wrap","turn":{"id":"test-turn","status":"completed"}}}`)
 			}
 		}
 		if err := scanner.Err(); err != nil {

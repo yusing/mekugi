@@ -148,6 +148,8 @@ When a task becomes done during the completed turn and has a pending sibling,
 the frontend offers a three-second countdown to the next pending sibling. Escape
 or queued user input cancels it. Failed and interrupted turns do not continue;
 child completion cannot drive a Main reset.
+The [headless frontend](router.md#headless-app-server-frontend) uses the same policy
+with no countdown delay and emits reset events instead of rendering a strip.
 
 With `slice` or `auto`, the frontend asks Codex to compact before continuing.
 Only a router-answered, successfully completed compaction permits the automatic

@@ -50,6 +50,14 @@ policy. A continuation's reserved client-message ID identifies its transcript ro
 its acknowledged host turn ID gates pending input. Dispatched intents never replay
 RPCs after restart; retained pause evidence keeps uncertain goal outcomes visible.
 
+The headless adapter uses the same driver with zero countdown delay. Its stdout
+is one JSON object per line: host `appserver.Message` objects plus
+`mekugi/journal/reset` notifications (`threadId`, `phase`), advisory
+`mekugi/journal/notice` notifications (`threadId`, `message`), and terminal
+`mekugi/headless/completed` (`threadId`). Empty reset phase means the driver is
+idle, not a task state. Content is not sanitized. Errors use stderr and nonzero
+exit; successful task completion does not mask a later host-shutdown error.
+
 The router intercepts the dedicated journal tool and returns its result through
 the current response flow rather than a host executor. A valid direct finish
 can select terminal delivery when no client-dispatched work remains. Code Mode

@@ -30,7 +30,11 @@ func runWrap(routerArgs, args []string) int {
 			fmt.Fprintln(os.Stderr, "mekugi: Herdr agent hint:", err)
 		}
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+	signals := []os.Signal{syscall.SIGTERM}
+	if len(args) > 1 && args[1] == "headless" {
+		signals = append(signals, os.Interrupt)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), signals...)
 	defer stop()
 	code, err := wrapCodex(ctx, routerArgs, args[1:])
 	if err != nil {
@@ -40,16 +44,23 @@ func runWrap(routerArgs, args []string) int {
 }
 
 func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr error) {
+	headless := len(args) > 0 && args[0] == "headless"
+	if headless {
+		args = args[1:]
+	}
 	if err := validateCodexArgs(args); err != nil {
 		return 2, err
 	}
-	appUI := interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+	appUI := !headless && interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 	var resumeThread string
-	if appUI {
+	if appUI || headless {
 		var err error
 		args, resumeThread, err = appServerArgs(args)
 		if err != nil {
 			return 2, err
+		}
+		if headless && resumeThread != "" {
+			return 2, errors.New("headless runs a new thread; resume is not supported")
 		}
 	}
 	executable, err := exec.LookPath("codex")
@@ -158,7 +169,13 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	var waitCodex func() error
 	err = ctx.Err()
 	if err == nil {
-		if appUI {
+		if headless {
+			if session.StartHeadless == nil {
+				err = errors.New("headless requires Mekugi mode")
+			} else {
+				waitCodex, err = session.StartHeadless(ctx, cmd, os.Stdin, os.Stdout)
+			}
+		} else if appUI {
 			if session.StartAppUI != nil {
 				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread)
 			} else {
@@ -188,7 +205,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		codexErr = <-codexDone
 	}
 	if exitErr, ok := errors.AsType[*exec.ExitError](codexErr); ok {
-		if appUI {
+		if appUI || headless {
 			// Native UI failures carry context (for example a lost app-server)
 			// around the process status. Do not discard that diagnostic merely
 			// because we can preserve the child's exit code.
@@ -347,7 +364,7 @@ func interactiveCodexArgs(args []string) bool {
 			continue
 		}
 		switch arg {
-		case "exec", "e", "review", "login", "logout", "mcp", "mcp-server", "app-server", "app", "completion", "sandbox", "debug", "apply", "a", "cloud", "features", "help":
+		case "headless", "exec", "e", "review", "login", "logout", "mcp", "mcp-server", "app-server", "app", "completion", "sandbox", "debug", "apply", "a", "cloud", "features", "help":
 			return false
 		default:
 			return true // resume, fork, or the initial interactive prompt.

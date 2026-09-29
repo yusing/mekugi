@@ -148,6 +148,27 @@ Each invocation:
 
 These overrides last only for the invocation; no configuration files change.
 
+### Headless slice plans
+
+`mekugi codex headless --yolo` reads one prompt from stdin and runs a new
+app-server thread to completion, including any planned slice continuations:
+
+```sh
+mekugi --journal-compaction=slice codex headless --yolo -m gpt-6-sol < prompt.txt
+```
+
+Use `off` to continue slices in one context, or `slice` to reset between them.
+The headless client shares the native UI's reset policy with no countdown delay.
+It accepts model and `-c` options, not resume or positional prompts. Prompts must
+be nonempty and at most 16 MiB. Like the native UI, it requires explicit `--yolo`.
+It does not answer approval or user-input questions: those end the run with an
+error rather than hanging or guessing. Ctrl-C stops the run.
+
+Stdout is JSONL containing host app-server messages and namespaced Mekugi reset
+and completion events. Diagnostics go to stderr. The event stream includes prompt,
+tool and answer content; it is session evidence, not sanitized metrics. A nonzero
+exit means the run or its shutdown failed. Ordinary `codex exec` is unchanged.
+
 ### Options
 
 | Flag | Default | Purpose |

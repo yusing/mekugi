@@ -48,6 +48,11 @@ recovered task states, and the durable reset intent was consumed. The mock provi
 saw two ordinary turns and no compaction request. The fixture seeds journal facts;
 it does not measure model adherence to slice planning or context-size improvement.
 
+`TestJournalHeadlessNativeCodexE2E` exercises the production headless adapter with
+the same installed host and mock provider. Both `off` and `slice` complete two
+planned turns and emit valid JSONL; only `slice` produces a compaction item. The
+host shuts down cleanly after the terminal event. This is not a paid comparison.
+
 ### Codex workspace metadata
 
 - A session started inside this Git repository declared the enclosing

@@ -210,21 +210,8 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	}
 	u.observeProgress(m.Method, p)
 	if u.proxy != nil && u.proxy.journals != nil && p.ThreadID != "" && p.ThreadID != u.thread {
-		state, reason := "", ""
-		if m.Method == "turn/started" {
-			state = "working"
-		}
-		if m.Method == "turn/completed" {
-			if p.Turn.Status == "completed" {
-				state = "done"
-			} else {
-				state, reason = "blocked", "Host turn "+p.Turn.Status
-			}
-		}
-		if state != "" {
-			if err := u.proxy.journals.observeLifecycle(u.ctx, u.proxy.replayStore, u.session.cwd, p.ThreadID, state, reason); err != nil {
-				u.setNotice("Journal child lifecycle: "+err.Error(), true)
-			}
+		if err := u.proxy.observeJournalHostTurn(u.ctx, u.session.cwd, m.Method, p); err != nil {
+			u.setNotice("Journal child lifecycle: "+err.Error(), true)
 		}
 	}
 	if m.Method == "item/started" {
