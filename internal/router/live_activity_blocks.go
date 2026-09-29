@@ -113,6 +113,7 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 			if len(blocks) > 0 {
 				last := &blocks[len(blocks)-1]
 				last.Tail, last.TailOmitted = entry.outputTail, entry.outputOmit
+				last.Changes = entry.native.changes
 				// A read's output is what the agent read; it starts collapsed.
 				last.Collapsed = (entry.native.collapsed || last.ReadOutput()) && last.Collapsible()
 			}

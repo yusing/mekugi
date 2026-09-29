@@ -595,6 +595,7 @@ func appServerSucceededOutput(entry *activityPaneEntry, item appServerItem, sett
 	}
 	entry.outputTail, entry.outputOmit = appServerOutputTail(item.AggregatedOutput)
 	entry.native.settled, entry.native.collapsed = settled, settled.IsZero()
+	entry.native.changes = mchangesOutputRows(item)
 }
 
 // appServerOutputTail keeps the last non-blank lines of a command's host

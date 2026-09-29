@@ -118,6 +118,15 @@ it again and another collapses it. Output following a file or skill read
 (`Read`, or `Skill` other than `skills-mgr run`) is collapsed as soon as the read
 succeeds. Restored history shows zero-exit output
 already collapsed. Output arriving after completion is ignored.
+A successful `mchanges --list` or `--summary` read shows its host output as
+change rows laid out like confirmed edit rows rather than a tail: summary files
+under their status verb (`Edited`, `Created`, `Deleted`, `Moved`, `Conflict`, or
+`?` for incomplete evidence), list rows under their change ID, then shared path and
+count columns with omitted zero counts and scaled bars, and statuses, reasons and
+tool-managed tallies muted after them. These rows describe read history, not new
+edits. At most 12 show, then a muted `… +N more`. A line it cannot read stays a
+muted note, and output with no readable row keeps its ordinary tail; the rows
+collapse like other output.
 Unknown and zero exits add no failure label, and an unknown exit no output. Python, JavaScript (Node and Bun), and Perl interpreter previews use
 their own syntax colors. `Search` patterns are styled as literal patterns,
 not shell commands, while every target path uses the Search violet with path emphasis.

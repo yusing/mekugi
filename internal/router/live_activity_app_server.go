@@ -130,16 +130,17 @@ type liveActivityNativeItem struct {
 	wait               *activityui.Block // Structured wait progress is roster-only.
 	command, status    string
 	searchResults      *int
-	running            bool                  // Started live and not yet completed; replay never sets it.
-	live               bool                  // From a live notification; restored history never sets it.
-	collapseAt         time.Time             // A settled live block stays open until then.
-	settled            time.Time             // Successful output stays open from then until its agent's next event.
-	collapsed          bool                  // A settled block shows collapsed: after its linger, or restored.
-	spans              []activityui.TextSpan // Attachment spans, not text resembling image labels.
-	question           uint64                // Original user entry, retained even for a live journal publication.
-	thought            time.Duration         // Reasoning time from its first summary delta to completion.
-	attachments        []activityui.Block    // Submitted file snapshot outcomes, recovered from host history.
-	segments           []commandSegment      // A tracked command's own segments, replacing its single row.
+	running            bool                   // Started live and not yet completed; replay never sets it.
+	live               bool                   // From a live notification; restored history never sets it.
+	collapseAt         time.Time              // A settled live block stays open until then.
+	settled            time.Time              // Successful output stays open from then until its agent's next event.
+	changes            []activityui.ChangeRow // Change history rows read from a successful mchanges listing or summary.
+	collapsed          bool                   // A settled block shows collapsed: after its linger, or restored.
+	spans              []activityui.TextSpan  // Attachment spans, not text resembling image labels.
+	question           uint64                 // Original user entry, retained even for a live journal publication.
+	thought            time.Duration          // Reasoning time from its first summary delta to completion.
+	attachments        []activityui.Block     // Submitted file snapshot outcomes, recovered from host history.
+	segments           []commandSegment       // A tracked command's own segments, replacing its single row.
 }
 
 func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {

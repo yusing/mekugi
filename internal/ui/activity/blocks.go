@@ -47,12 +47,13 @@ type Block struct {
 	Segment     bool // Ends one tracked segment of a command list; shows that segment's exit.
 	Skipped     bool // A tracked segment the command list never reached.
 	Tail        []string
-	TailOmitted int    // Output lines before Tail.
-	TailRows    int    // Tail lines open output shows; 0 shows all of Tail.
-	SourceRows  int    // Rows a command or program preview may use; 0 shows it whole.
-	Flash       bool   // Presentation-only: another pane just opened this entry.
-	Live        bool   // Reasoning still streaming.
-	Elapsed     string // Formatted reasoning time, when observed from its first delta.
+	TailOmitted int         // Output lines before Tail.
+	TailRows    int         // Tail lines open output shows; 0 shows all of Tail.
+	Changes     []ChangeRow // Change history rows open output shows instead of Tail.
+	SourceRows  int         // Rows a command or program preview may use; 0 shows it whole.
+	Flash       bool        // Presentation-only: another pane just opened this entry.
+	Live        bool        // Reasoning still streaming.
+	Elapsed     string      // Formatted reasoning time, when observed from its first delta.
 	// Collapsed shows a settled block as one row that opens it; Hovered
 	// underlines that row under the pointer. Both are presentation-only.
 	Collapsed, Hovered bool

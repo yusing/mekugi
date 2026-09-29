@@ -789,13 +789,7 @@ func (p *Painter) editRow(block Block, width, lead int) (string, bool) {
 		return "", false
 	}
 	plain := editCounts(added, removed)
-	stats := strings.NewReplacer("+", Green+"+", " -", "\x1b[39m "+Red+"-").Replace(plain)
-	if strings.HasPrefix(plain, "-") {
-		stats = Red + plain
-	}
-	if plain != "" {
-		stats += "\x1b[39m"
-	}
+	stats := countText(plain)
 	room := width - lead - ansi.StringWidth(tail)
 	if plain != "" {
 		room -= ansi.StringWidth(plain) + 1
@@ -979,6 +973,9 @@ func clipSource(rows []string, block Block, lead string) []string {
 func outputRows(block Block, lines []string, width int) []string {
 	indent := block.cell(RowVerb(block))
 	padding := strings.Repeat(" ", indent)
+	if len(block.Changes) > 0 && !block.Collapsed {
+		return append(lines, changeRows(block.Changes, padding, width-indent)...)
+	}
 	tail, omitted := block.Tail, block.TailOmitted
 	if block.TailRows > 0 && len(tail) > block.TailRows {
 		omitted += len(tail) - block.TailRows
