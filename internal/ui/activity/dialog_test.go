@@ -216,3 +216,10 @@ func TestDialogSearchTitleAndResultSyntax(t *testing.T) {
 		}
 	}
 }
+
+func TestBackdropFadesColorsAndKeepsCursorMoves(t *testing.T) {
+	row := "\x1b[1G\x1b[0m\x1b[38;2;1;2;3mSearch\x1b[0m\x1b[12G\x1b[48;2;22;42;29m+ added\x1b[0m"
+	if got, want := Backdrop(row), Dim+"\x1b[1GSearch\x1b[12G+ added"; got != want {
+		t.Fatalf("Backdrop = %q, want %q", got, want)
+	}
+}

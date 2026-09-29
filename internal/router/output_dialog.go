@@ -417,9 +417,9 @@ func (u *terminalUI) outputMouse(button, x, y int, release bool) {
 	}
 }
 
-// paintOutput draws the dialog over the screen above the status row: at most
-// nine tenths of each dimension, fitted to its content, and the whole screen
-// when the terminal is narrow.
+// paintOutput draws the dialog over the faded screen above the status row: at
+// most nine tenths of each dimension, fitted to its content, and the whole
+// screen when the terminal is narrow.
 func (u *terminalUI) paintOutput(rows []string, width, height int) {
 	d := u.output
 	w, h := width, height
@@ -478,6 +478,9 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 	}
 	x, y := (width-w)/2, (height-h)/2
 	d.rect = terminalRect{x, y, w, h}
+	for i := range rows {
+		rows[i] = activityui.Backdrop(rows[i])
+	}
 	for i, line := range d.view.painter.Dialog(frame, w, h) {
 		if y+i < len(rows) {
 			rows[y+i] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", x+1, line)

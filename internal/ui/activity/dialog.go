@@ -300,6 +300,22 @@ type DialogFrame struct {
 	Footer   string   // Styled controls.
 }
 
+// Backdrop fades a screen row the dialog is drawn over: its colors and
+// attributes give way to faint text, and cursor moves stay in place.
+func Backdrop(row string) string {
+	var out strings.Builder
+	out.WriteString(Dim)
+	var state byte
+	for row != "" {
+		seq, _, n, next := ansi.DecodeSequence(row, state, nil)
+		if !strings.HasPrefix(seq, "\x1b[") || !strings.HasSuffix(seq, "m") {
+			out.WriteString(seq)
+		}
+		row, state = row[n:], next
+	}
+	return out.String()
+}
+
 // DialogChrome is the rows a dialog frame takes beyond its body: the top
 // edge, the detail row, its rule and the bottom edge.
 const DialogChrome = 4
@@ -311,7 +327,8 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 	if width < 12 || height < DialogChrome+1 {
 		return nil
 	}
-	edge := func(s string) string { return Dim + s + Undim }
+	// Full-strength edges hold the frame apart from the faded backdrop.
+	edge := func(s string) string { return s }
 	inner := width - 4
 	right := f.Position
 	if f.Page.Live {
