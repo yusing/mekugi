@@ -342,7 +342,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 				view.scrollKey(terminalui.PaneWheelDown)
 			}
 			assertFollow(paint(140, 32))
-			view.toggleSnippet(liveActivitySnippet{1, 0})
+			view.toggleSnippet(liveActivitySnippet{run: 1, block: 0})
 			if !view.following {
 				t.Fatal("expanding a snippet paused follow")
 			}

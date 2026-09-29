@@ -100,6 +100,7 @@ const editNavigationSnippet = -1
 type liveActivitySnippet struct {
 	run   uint64
 	block int
+	path  string // Exact edit-row target, before display shortening.
 }
 
 type liveActivityRun struct {
@@ -1513,7 +1514,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 	for index, block := range blocks {
 		// Native Activity joins consecutive operations into one tree.
 		tree := v.childrenOnly && operation(block) && !continued(block)
-		toggle := v.clickTarget(&block, liveActivitySnippet{first, index})
+		toggle := v.clickTarget(&block, liveActivitySnippet{run: first, block: index})
 		part := v.painter.Block(block, width-2)
 		switch {
 		case tree:
@@ -1548,18 +1549,18 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		}
 		var snippet liveActivitySnippet
 		if toggle {
-			snippet = liveActivitySnippet{first, index}
+			snippet = liveActivitySnippet{run: first, block: index}
 		}
 		if limit > 0 && len(part) > limit {
 			// An operation shows in full in the output dialog.
-			snippet = liveActivitySnippet{first, index}
+			snippet = liveActivitySnippet{run: first, block: index}
 			if outputBlock(block) || !v.expanded[snippet] {
 				hint := activityui.Elision{Hidden: len(part) - limit + 1, Hovered: snippet == v.snippet}
 				part = append(part[:limit-1:limit-1], hint.String())
 			}
 		}
 		if block.EditSource != "" {
-			snippet = liveActivitySnippet{block.Source, editNavigationSnippet}
+			snippet = liveActivitySnippet{run: block.Source, block: editNavigationSnippet, path: activityui.EditPath(block)}
 		}
 		switch {
 		case tree:

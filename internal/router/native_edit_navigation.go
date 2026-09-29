@@ -1,12 +1,16 @@
 package router
 
 import (
+	"cmp"
 	"slices"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/pathdisplay"
 )
 
 // openActivityEdit resolves an exact host invocation, never a nearby edit or path.
-func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64) bool {
+func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64, path string) bool {
 	if u.diff == nil || u.diff.data == nil {
 		return false
 	}
@@ -32,13 +36,41 @@ func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64) bool {
 				if node.Change != attempt.change || len(node.Files) == 0 {
 					continue
 				}
+				file := node.Files[0].File
+				var focus *livediff.Chunk
+				if path != "" {
+					file = -1
+					for _, candidate := range node.Files {
+						for _, chunk := range c.view.Files[candidate.File].Chunks {
+							if chunk.Change != attempt.change {
+								continue
+							}
+							target := chunk.Review.AfterPath
+							if target == "" {
+								target = chunk.Review.BeforePath
+							}
+							if pathdisplay.ForWorkspace(cmp.Or(chunk.Workspace, c.workspace), target) == path {
+								file = candidate.File
+								focus = new(chunk)
+								break
+							}
+						}
+						if file >= 0 {
+							break
+						}
+					}
+					if file < 0 {
+						continue
+					}
+				}
 				u.navigationReturns = append(u.navigationReturns, previous)
 				c.back = liveDiffBack{}
 				u.side, u.diffOpen, u.activityOpen, u.focus = true, true, false, 1
 				c.diffMode, c.dirty = true, true
 				c.navigation.Hidden, c.navigation.Filtering = false, false
 				c.navigation.ChangesTab, c.navigation.Focused = true, true
-				c.openChange(node.Change, node.Files[0].File)
+				c.openChange(node.Change, file)
+				c.editPreview, c.editFocus = focus, focus
 				c.navigation.Changes.FocusChange(node.Change, c.navRows)
 				return true
 			}

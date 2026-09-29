@@ -3,8 +3,11 @@ package router
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+	mekugi "github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
@@ -17,6 +20,7 @@ func TestNativeEditClickOpensBranchedDiff(t *testing.T) {
 				for i := range 20 {
 					captures = append(captures, liveDiffCapture(fmt.Sprint(i), fmt.Sprintf("file%d.go", i), uint64(i+1), "old\n", "new\n", livediff.Origin{Change: fmt.Sprintf("amber%d", i+1), Caller: "/root", Source: "apply_patch"}))
 				}
+				captures = append(captures, liveDiffCapture("target-file", "file20.go", 21, "old\n", "new\n", livediff.Origin{Change: "amber20", Caller: "/root", Source: "apply_patch"}))
 				c := liveDiffChangesController(t, 120, 28, captures)
 				u.shell.diff = c
 				c.data = newLiveDiffData()
@@ -30,10 +34,10 @@ func TestNativeEditClickOpensBranchedDiff(t *testing.T) {
 				c.data.attempts["target"] = attempt
 				path := "earlier.go"
 				if repeated {
-					path = "file19.go"
+					path = "file20.go"
 				}
 				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `" + path + "` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "earlier"}}}})
-				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Agent: "Main", Kind: "tool", Text: "Edit `file19.go` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "call"}}}})
+				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Agent: "Main", Kind: "tool", Text: "Edit `file20.go` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "call"}}}})
 				u.shell.side, u.shell.diffOpen = true, true
 				c.filterCaller("/root")
 				c.navigation.Changes.Query = "amber1"
@@ -63,6 +67,9 @@ func TestNativeEditClickOpensBranchedDiff(t *testing.T) {
 				}
 				if c.navigation.Changes.Target.Change != "amber20" {
 					t.Fatalf("wrong change: %+v", c.navigation.Changes.Target)
+				}
+				if got := c.view.Files[c.view.Selected].Path; got != "/w/file20.go" {
+					t.Fatalf("clicked second file opened %q", got)
 				}
 				if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
 					t.Fatal(err)
@@ -105,5 +112,47 @@ func TestNativeEditClickOpensBranchedDiff(t *testing.T) {
 
 			})
 		}
+	}
+}
+
+func TestNativeEditClickScrollsToCapturedHunk(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	before := liveDiffLinesFile("target", 100)
+	after := strings.Replace(before, "target_line_80", "clicked_hunk", 1)
+	later := strings.Repeat("later_hunk\n", 100) + after
+	captures := []livediff.Chunk{
+		liveDiffCapture("clicked", "target.go", 1, before, after, livediff.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}),
+		liveDiffCapture("later", "target.go", 2, after, later, livediff.Origin{Change: "amber2", Caller: "/root", Source: "apply_patch"}),
+		{Key: "rename", CaptureOrder: 3, Origin: livediff.Origin{Change: "amber3", Caller: "/root", Source: "apply_patch"}, Review: mekugi.RenderReviewFile("/w/target.go", "/w/renamed.go", later, later)},
+	}
+	c := liveDiffChangesController(t, 120, 24, captures)
+	u.shell.diff = c
+	c.data = newLiveDiffData()
+	c.data.order = []string{"clicked"}
+	c.data.attempts["clicked"] = liveDiffAttempt{thread: "main", correlation: "call\x000", change: "amber1", chunks: captures[:1]}
+	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `target.go` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "call"}}}})
+	if !u.shell.openActivityEdit(u.view, 1, "target.go") {
+		t.Fatal("edit navigation failed")
+	}
+	for range 2 { // The next frame must retain the jump after one-shot focus is consumed.
+		c.frame(t)
+		if c.files[c.view.Selected].Path != "/w/target.go" {
+			t.Fatalf("historical preview shows later path: %q", c.files[c.view.Selected].Path)
+		}
+		visible := strings.Join(c.lines[c.offset:min(len(c.lines), c.offset+c.rows)], "\n")
+		if !strings.Contains(ansi.Strip(visible), "clicked_hunk") || strings.Contains(ansi.Strip(visible), "later_hunk") {
+			t.Fatalf("wrong hunk at offset %d: %s", c.offset, ansi.Strip(visible))
+		}
+	}
+	_, title := c.nativeTitle()
+	if !strings.Contains(title, "capture amber1") {
+		t.Fatalf("historical preview not labeled: %q", title)
+	}
+	if !u.shell.popNavigationReturn() || c.editPreview != nil {
+		t.Fatal("return did not restore combined diff")
+	}
+	c.frame(t)
+	if !strings.Contains(ansi.Strip(strings.Join(c.lines, "\n")), "later_hunk") {
+		t.Fatal("return lost subsequent capture")
 	}
 }

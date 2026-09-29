@@ -202,7 +202,10 @@ again hides it. A roster pick that changes Activity's agent filter shows
 Activity in place of the saved diff.
 
 Clicking a compact Edit event opens the Diff pane’s changes-by-caller navigation
-and scrolls to its captured change. Only the pointed edit row's text underlines
+and scrolls to the clicked file’s hunk in its captured change, rather than the
+first file in a multi-file capture. This temporary file preview shows the exact
+retained capture, not the combined result of later edits, so shifted or superseded
+hunks remain inspectable. Only the pointed edit row's text underlines
 on hover in Main and Activity, not its gutter, alignment gaps, stat bar, or other
 rows in the same capture. Click-through navigation (Edit, Open in Activity, question links, and
 roster picks) is a temporary preview. Escape restores the previous pane, filters,

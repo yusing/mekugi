@@ -26,6 +26,7 @@ type nativeDiffReturn struct {
 	scroll           map[string]int
 	following, mode  bool
 	back             liveDiffBack
+	editPreview      *livediff.Chunk
 }
 
 func transcriptReturn(v *liveActivityView) nativeTranscriptReturn {
@@ -39,7 +40,7 @@ func (b nativeTranscriptReturn) restore(v *liveActivityView) {
 func (u *terminalUI) navigationReturn() nativeNavigationReturn {
 	b := nativeNavigationReturn{side: u.side, activityOpen: u.activityOpen, diffOpen: u.diffOpen, focus: u.focus, main: transcriptReturn(u.main.view), agents: transcriptReturn(u.agents)}
 	c := u.diff
-	b.diff = nativeDiffReturn{navigation: c.navigation, caller: c.view.Caller, scroll: maps.Clone(c.view.Scroll), following: c.view.Following, mode: c.diffMode, back: c.back}
+	b.diff = nativeDiffReturn{navigation: c.navigation, caller: c.view.Caller, scroll: maps.Clone(c.view.Scroll), following: c.view.Following, mode: c.diffMode, back: c.back, editPreview: c.editPreview}
 	b.diff.navigation.Collapsed = maps.Clone(c.navigation.Collapsed)
 	b.diff.navigation.Changes.Expanded = maps.Clone(c.navigation.Changes.Expanded)
 	if c.view.Selected >= 0 && c.view.Selected < len(c.view.Files) {
@@ -73,6 +74,7 @@ func (u *terminalUI) restoreNavigationReturn(b nativeNavigationReturn) {
 	b.agents.restore(u.agents)
 	c.filterCaller(b.diff.caller)
 	c.navigation = b.diff.navigation
+	c.editPreview, c.editFocus = b.diff.editPreview, nil
 	for i, file := range c.view.Files {
 		if file.Key() == b.diff.selected {
 			c.view.Selected = i

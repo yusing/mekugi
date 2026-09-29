@@ -60,7 +60,7 @@ func TestConversationThreadsReplyUnderAssignment(t *testing.T) {
 		t.Fatalf("reply excerpt or its Activity link is wrong: %q, link %d", plain[7], feed.questions[8])
 	}
 	snippet := feed.snippets[1]
-	if snippet != (liveActivitySnippet{1, 0}) || feed.snippets[2] != snippet || feed.questions[1] != 0 {
+	if snippet != (liveActivitySnippet{run: 1, block: 0}) || feed.snippets[2] != snippet || feed.questions[1] != 0 {
 		t.Fatalf("collapsed assignment is not expandable: %+v", feed.snippets[:3])
 	}
 

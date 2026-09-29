@@ -197,7 +197,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 						} else if index < len(s.snippets) && s.snippets[index] != (liveActivitySnippet{}) {
 							snippet := s.snippets[index]
 							if snippet.block == editNavigationSnippet {
-								u.openActivityEdit(s.view, snippet.run)
+								u.openActivityEdit(s.view, snippet.run, snippet.path)
 							} else if !u.openOutput(s.view, snippet) {
 								s.view.toggleSnippet(snippet)
 							}

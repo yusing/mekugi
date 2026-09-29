@@ -376,7 +376,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	case entry.Agent == "Main" && entry.Kind == "reasoning" && first == last:
 		for index, block := range blocks {
 			// Settled provider thinking shows its header; a click toggles it.
-			snippet := liveActivitySnippet{entry.Seq, index}
+			snippet := liveActivitySnippet{run: entry.Seq, block: index}
 			toggle := v.clickTarget(&block, snippet)
 			for _, row := range p.Block(block, width) {
 				out.add(0, row)
@@ -410,7 +410,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		// even when adjacent edits share a heading or edit the same path.
 		laid = activityui.AlignVerbs(activityui.GroupOperations(activityui.MergeLiveActivityReads(group)))
 		for index, block := range laid {
-			snippet := liveActivitySnippet{entry.Seq, index}
+			snippet := liveActivitySnippet{run: entry.Seq, block: index}
 			toggle := v.clickTarget(&block, snippet)
 			if block.Kind == "op" && block.Code != "" {
 				// The output dialog shows the whole source.
@@ -418,7 +418,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			}
 			target := liveActivitySnippet{}
 			if block.EditSource != "" {
-				target = liveActivitySnippet{block.Source, editNavigationSnippet}
+				target = liveActivitySnippet{run: block.Source, block: editNavigationSnippet, path: activityui.EditPath(block)}
 			} else if toggle {
 				target = snippet
 			}
@@ -804,7 +804,7 @@ func (v *liveActivityView) linkedExcerpt(out *conversationLines, entry activityP
 // no Activity entry to open, so a click expands the item in place and another
 // collapses it, as Activity does with long narrative blocks.
 func (v *liveActivityView) collapsedItem(out *conversationLines, entry activityPaneEntry, rows []string, gutter string, width int) {
-	snippet := liveActivitySnippet{entry.Seq, 0}
+	snippet := liveActivitySnippet{run: entry.Seq, block: 0}
 	_, hidden := liveActivityExcerpt(rows, width, conversationEarlierRows)
 	if hidden > 0 && !v.expanded[snippet] {
 		hint := activityui.Elision{Hidden: hidden, Form: activityui.ElisionSuffix, Hovered: v.snippet == snippet}.String()

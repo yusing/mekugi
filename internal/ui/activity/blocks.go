@@ -291,6 +291,12 @@ func editLabel(b Block) string {
 // Receipts write "`path` +A -R"; app-server rows write "`path` · +A −R".
 var editStatPattern = regexp.MustCompile(`^(?: ·)? \+(\d+) [-−](\d+)((?: · [^` + "`" + `]*)?)$`)
 
+// EditPath returns the unshortened target of an edit row, when known.
+func EditPath(block Block) string {
+	path, _, _ := liveActivityCodeSpan(block.Label, 0)
+	return path
+}
+
 // EditStat reads a file row label as a path, line counts, and a trailing status.
 func EditStat(label string) (path string, added, removed int, tail string, ok bool) {
 	path, end, ok := liveActivityCodeSpan(label, 0)
