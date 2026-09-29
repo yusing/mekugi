@@ -9,6 +9,7 @@ var nativeCommands = []composerChoice{
 	{name: "/tier", description: "Choose the service tier"},
 	{name: "/skills", description: "List or manage skills"},
 	{name: "/status", description: "Show session settings and usage limits"},
+	{name: "/copy", description: "Copy the last response or part of it"},
 	{name: "/quit", description: "Quit the session"},
 }
 

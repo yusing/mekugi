@@ -493,6 +493,12 @@ explicit tier. Settings apply to future turns and are also published to a runnin
 turn's subsequent steps; already-running inference is unchanged. The composer
 shows host-confirmed settings. These controls do not edit your config file.
 
+`/copy` lets you copy the last completed response, a code block, or a blockquote.
+Use Up/Down and Enter to choose, or Esc to cancel. Like selecting text and pressing
+Ctrl-C, it sends a clipboard request to your terminal, which must allow OSC 52.
+You can copy while a response is still streaming; the previous completed response
+remains available.
+
 The native UI requires explicit `--yolo` (no approvals or sandbox), restores Main's
 message and tool history, and continues the same thread. It also restores pane
 layout and keyboard focus, adapting the saved sizes to the current terminal.

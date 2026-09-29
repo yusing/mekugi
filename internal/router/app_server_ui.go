@@ -753,7 +753,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 				if u.picker.modal == "manage" {
 					u.picker.query += string(u.pasted)
 					u.pasted = nil
-				} else if u.picker.modal == "menu" {
+				} else if u.picker.modal == "menu" || u.picker.modal == "copy" {
 					u.pasted = nil
 				} else {
 					u.finishPaste()
@@ -842,6 +842,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if text == "/status" {
 			return false, u.showStatus()
 		}
+		if text == "/copy" {
+			u.showCopyPicker()
+			return false, nil
+		}
 		if text == "/skills" {
 			u.deleteDraftRange(0, len(u.draft))
 			u.picker.modal, u.picker.open, u.picker.selected, u.picker.top = "menu", true, 0, 0
@@ -859,7 +863,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /status, /skills, /model, /reasoning, /tier, /quit", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /status, /copy, /skills, /model, /reasoning, /tier, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil {

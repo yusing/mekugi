@@ -35,6 +35,7 @@ func renderNativeKeybindings(width, height int) []string {
 			{"alt+↑ / shift+←", "Edit last queued"},
 			{"shift+↑ / shift+↓", "Raise / lower reasoning"},
 			{"/status", "Session status and usage"},
+			{"/copy", "Copy response or part of it"},
 			{"/model /reasoning /tier", "Show choices or set VALUE"},
 			{"ctrl+c", "Clear / interrupt / quit"},
 			{"esc", "Interrupt, keep draft"},

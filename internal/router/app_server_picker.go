@@ -35,6 +35,7 @@ type composerTarget struct {
 type composerChoice struct {
 	name, path, description string
 	display                 string
+	copyText                string
 	enabled                 bool
 	directory               bool
 	indices                 []int
@@ -139,7 +140,7 @@ func (u *appServerUI) refreshPicker() {
 	}
 	p := &u.picker
 	target := u.completionTarget()
-	if p.modal == "menu" {
+	if p.modal == "menu" || p.modal == "copy" {
 		p.open = true
 		return
 	}
@@ -352,6 +353,9 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 
 func (u *appServerUI) pickerKey(key string) bool {
 	p := &u.picker
+	if p.modal == "copy" && p.open {
+		return u.copyPickerKey(key)
+	}
 	if p.modal != "" && p.open {
 		return u.skillsModalKey(key)
 	}

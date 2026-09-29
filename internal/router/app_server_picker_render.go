@@ -138,6 +138,10 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 		}
 	}
 	if height > 1 {
+		if p.modal == "copy" {
+			put(0, "  "+bold+"Copy to clipboard"+reset)
+			footer = "  " + bold + "↑/↓" + reset + dim + " navigate · " + reset + bold + "enter" + reset + dim + " copy · " + reset + bold + "esc" + reset + dim + " close" + reset
+		}
 		put(height-1, footer)
 	}
 	if p.modal == "manage" && height < 6 {

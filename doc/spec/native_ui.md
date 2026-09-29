@@ -306,12 +306,22 @@ results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
 Typing `/` at the start of an otherwise single-token draft opens a local command
-catalog with descriptions for `/status`, `/model`, `/reasoning`, `/tier`, `/skills`, and
+catalog with descriptions for `/status`, `/copy`, `/model`, `/reasoning`, `/tier`, `/skills`, and
 `/quit`. Typing filters commands with fuzzy matching; Up/Down selects, Tab
 completes without executing, Enter runs the selected command, and Escape closes
 the catalog without changing the draft. Arguments close completion. Pasted text
 does not activate the catalog. The catalog uses the shared picker viewport and
 visible-row column sizing; it never submits a command to the model.
+
+`/copy` opens a local picker for the latest completed response in the active
+thread, including restored history and journal answers. Whole response preserves
+the Markdown; fenced code blocks and blockquotes are individually selectable.
+Bounded previews never truncate clipboard content. Streaming fragments and other
+threads do not replace the last completed response. Enter copies; Escape cancels;
+an empty history reports that there is no response to copy. Copying remains
+available during a turn without interrupting it. The picker, selection Copy
+(`c` or Ctrl-C), and link copying share terminal clipboard delivery and feedback.
+Delivery uses OSC 52 and reports a request sent, not confirmed clipboard access.
 
 `/status` opens a temporary, bordered session panel with fixed close/scroll
 controls, grouped sections, aligned values, and colored remaining-usage gauges.
