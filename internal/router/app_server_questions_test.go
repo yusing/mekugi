@@ -104,8 +104,8 @@ func TestNativeQuestionAsyncBatchAndExternalCommit(t *testing.T) {
 	u.session.start("main", t.TempDir())
 	u.turn = "turn"
 	questionTestAsync(t, u, "async-item", "Who receives it?", "Who approves it?")
-	if u.questions.active != nil || u.questionCount() != 2 {
-		t.Fatal("async question stole focus or was lost")
+	if u.questions.active == nil || u.questionCount() != 2 {
+		t.Fatal("async question did not open or was lost")
 	}
 	if u.session.finals["main"] {
 		t.Fatal("async question entered final-answer bookkeeping")
@@ -200,8 +200,8 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 	})
 	t.Run("supersede and steer", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
-		questionTestAsync(t, u, "pending", "Who receives it?")
 		u.draft = "new prompt"
+		questionTestAsync(t, u, "pending", "Who receives it?")
 		if got := strings.Join(u.questionRows(80, 10), " "); !strings.Contains(got, "dismisses 1 questions") {
 			t.Fatalf("missing supersede warning: %q", got)
 		}
@@ -306,5 +306,52 @@ func TestNativeQuestionBeforePaintAndSecretFrame(t *testing.T) {
 	appServerTestKeys(t, v, "3SECRET-ANSWER")
 	if frame := questionTestPaint(t, v, 60); strings.Contains(frame, "SECRET") || !strings.Contains(frame, "•") {
 		t.Fatal("secret editor is not masked")
+	}
+}
+
+func TestNativeQuestionsOpenNextCallWithoutShortcut(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.turn = "turn"
+	questionTestAsync(t, u, "first", "First question?")
+	questionTestAsync(t, u, "second", "Second question?")
+	if u.questions.active == nil || u.questions.active.item != "first" {
+		t.Fatal("first question did not open directly")
+	}
+	questionTestPaint(t, u, 70)
+	appServerTestKeys(t, u, "1\r")
+	if u.questions.active == nil || u.questions.active.item != "second" {
+		t.Fatal("next call needs a shortcut")
+	}
+	if u.questions.painted {
+		t.Fatal("new question accepts an answer before being painted")
+	}
+	if got := questionTestPaint(t, u, 70); !strings.Contains(got, "Second question?") {
+		t.Fatalf("next question not visible:\n%s", got)
+	}
+}
+
+func TestNativeQuestionsWaitForEmptyComposerAndRespectHide(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.turn = "turn"
+	appServerTestKeys(t, u, "draft")
+	questionTestAsync(t, u, "pending", "Pending question?")
+	questionTestPaint(t, u, 70)
+	if u.questions.active != nil || u.draft != "draft" {
+		t.Fatal("arrival disrupted a nonempty composer")
+	}
+	appServerTestKeys(t, u, "\x7f\x7f\x7f\x7f\x7f")
+	questionTestPaint(t, u, 70)
+	if u.questions.active == nil {
+		t.Fatal("empty composer did not show question")
+	}
+	// Escape is assembled by the input loop; exercise its completed key.
+	u.questionKey("\x1b")
+	questionTestPaint(t, u, 70)
+	if u.questions.active != nil {
+		t.Fatal("paint undid explicit hide")
+	}
+	u.openQuestions()
+	if u.questions.active == nil {
+		t.Fatal("manual reopening failed")
 	}
 }

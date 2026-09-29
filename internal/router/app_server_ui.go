@@ -662,7 +662,6 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 }
 
 func (u *appServerUI) key(key byte) (bool, error) {
-	u.questions.lastKey = time.Now()
 	if u.questions.active != nil && !u.questions.painted {
 		u.hideQuestions()
 	}
@@ -975,6 +974,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 // the session state; the bottom border the model. dock rows are left blank
 // between the two, in the returned rectangle, for the live edit dock.
 func (u *appServerUI) mainFrame(width, height, dock int) ([]string, terminalRect) {
+	u.autoOpenQuestions()
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalRect{}
 	u.questions.rect = terminalRect{}

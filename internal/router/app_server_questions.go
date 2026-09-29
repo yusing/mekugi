@@ -56,7 +56,7 @@ type nativeQuestionDock struct {
 	parked     questionEditor
 	confirm    bool
 	rect       terminalRect
-	lastKey    time.Time
+	autoOpen   bool
 	painted    bool
 }
 
@@ -113,6 +113,18 @@ func (u *appServerUI) openQuestions() {
 			return
 		}
 	}
+}
+
+// Only an empty, idle composer yields to pending live questions. Explicitly
+// hiding the dock and history restoration leave manual reopening available.
+func (u *appServerUI) autoOpenQuestions() {
+	if !u.questions.autoOpen || u.questions.active != nil || u.draft != "" || len(u.images) > 0 || len(u.files) > 0 || len(u.skills) > 0 || u.paste || u.escape != "" || u.pickerVisible() || u.keybindings || u.statusPanel != nil {
+		return
+	}
+	if u.shell != nil && (u.shell.focus != 0 || u.shell.paste || u.shell.sequence != "") {
+		return
+	}
+	u.openQuestions()
 }
 func (u *appServerUI) openQuestionCall(c *nativeQuestionCall) {
 	if u.questions.active != nil {
@@ -186,10 +198,9 @@ func (u *appServerUI) addQuestions(c *nativeQuestionCall, replay bool) {
 		}
 	}
 	u.renderQuestionRecord(c)
-	if !replay && len(c.request) > 0 && u.draft == "" && !u.paste && u.escape == "" && time.Since(u.questions.lastKey) >= time.Second && (u.shell == nil || u.shell.focus == 0 && !u.shell.paste && u.shell.sequence == "") {
-		u.openQuestionCall(c)
-		// No buffered keystroke can select an answer before this dock is painted.
-		u.questions.painted = false
+	if !replay {
+		u.questions.autoOpen = true
+		u.autoOpenQuestions()
 	}
 }
 func (u *appServerUI) questionMessage(m appserver.Message) (bool, error) {
@@ -343,6 +354,7 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		if q.note {
 			q.note = false
 		} else {
+			u.questions.autoOpen = false
 			u.hideQuestions()
 		}
 	case "\x1b[A", "\x10", "\x1b[B", "\x0e":
@@ -431,6 +443,10 @@ func (u *appServerUI) submitQuestions() error {
 	if c == nil || c.resolved || c.sent {
 		return nil
 	}
+	defer func() {
+		u.questions.autoOpen = true
+		u.autoOpenQuestions()
+	}()
 	if len(c.request) > 0 {
 		answers := make(map[string]map[string][]string)
 		for _, q := range c.questions {

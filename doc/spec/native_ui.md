@@ -711,9 +711,12 @@ Ctrl-] skips. A submission with gaps requires the inline confirmation
 then hides the dock while retaining drafts; with it hidden, Escape retains its
 usual interrupt behavior. Ctrl-C retains clear/interrupt/quit behavior.
 
-Async arrival never takes focus. Sync arrival takes focus only if the composer
-is empty and has had no keystroke for one second. Otherwise a one-row banner
-appears and editing continues. Keystrokes received before the dock is painted do
+Live sync and async questions open directly when Main's composer is empty and
+not pasting, showing a picker, or holding attachments. Otherwise a one-row banner
+appears and editing continues; clearing the composer opens the pending question.
+Submitting a call opens the next pending call when the restored composer is empty.
+Explicitly hiding the dock keeps it hidden until reopened or a new question arrives.
+Keystrokes received before the dock is painted do
 not select or submit an answer. Clicking the banner or Ctrl+B Q opens the dock;
 Session help lists the key. Main's title shows `?N` while another pane has focus.
 Alt+Up and Shift+Left retain their queued-input editing meaning.
