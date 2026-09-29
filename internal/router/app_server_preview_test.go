@@ -170,10 +170,10 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	}
 	render("grok thinking", "started · grok:grok-4.7-build-fast", "• Thinking…")
 	p.until("explorer thought")
-	render("grok thought", "• Thought for", "I should read launch.go first")
+	render("grok thought", "• Thought", "I should read launch.go first")
 	// A second later the finished block folds to its header.
 	p.ui.agents.settle(time.Now().Add(activityui.ThinkingLinger))
-	if frame := render("grok thought folded", "• Thought for"); strings.Contains(frame, "The pane blocks on its first frame") {
+	if frame := render("grok thought folded", "• Thought"); strings.Contains(frame, "The pane blocks on its first frame") {
 		t.Fatalf("finished thinking did not fold:\n%s", frame)
 	}
 	p.until("three agents edit at once")

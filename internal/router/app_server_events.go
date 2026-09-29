@@ -23,19 +23,22 @@ import (
 // session into the roster and Activity entries. Captured edits and previews
 // retain the shared router owners, as do journals and cost.
 type appServerSession struct {
-	seq         uint64
-	paths       map[string]string // Thread → canonical agent path.
-	agents      []activityPaneAgent
-	reasoning   map[[3]string]string    // Summary text by thread, turn, item.
-	thinking    map[[3]string]time.Time // First delta of reasoning still streaming.
-	messages    map[string]activityPaneEntry
-	finals      map[string]bool                    // The thread's current turn already sent its answer.
-	metadata    map[string]string                  // Child thread → pending metadata request ID; empty when settled.
-	commands    map[[3]string]*appServerCommandRun // Live commands by thread, turn, item.
-	cwd         string
-	waits       map[[3]string][]appServerWaitTarget // Start-time targets by thread, turn, item.
-	waitStore   *mekugiReplayStore
-	waitContext context.Context
+	seq       uint64
+	paths     map[string]string // Thread → canonical agent path.
+	agents    []activityPaneAgent
+	reasoning map[[3]string]string    // Summary text by thread, turn, item.
+	thinking  map[[3]string]time.Time // Start of reasoning still streaming.
+	// Thread → thinking block shown from its provider request's start, before
+	// any reasoning item exists; the first reasoning item takes it over.
+	pendingThinking map[string]pendingThinking
+	messages        map[string]activityPaneEntry
+	finals          map[string]bool                    // The thread's current turn already sent its answer.
+	metadata        map[string]string                  // Child thread → pending metadata request ID; empty when settled.
+	commands        map[[3]string]*appServerCommandRun // Live commands by thread, turn, item.
+	cwd             string
+	waits           map[[3]string][]appServerWaitTarget // Start-time targets by thread, turn, item.
+	waitStore       *mekugiReplayStore
+	waitContext     context.Context
 }
 
 // appServerCommandRun is a started command whose streamed output tail is
@@ -117,6 +120,7 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.agents = []activityPaneAgent{{Name: "/root", Role: "main", Started: time.Now()}}
 	s.reasoning = make(map[[3]string]string)
 	s.thinking = make(map[[3]string]time.Time)
+	s.pendingThinking = make(map[string]pendingThinking)
 	s.messages = make(map[string]activityPaneEntry)
 	s.finals = make(map[string]bool)
 	s.metadata = make(map[string]string)
@@ -295,17 +299,25 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		}
 		text += p.Delta
 		s.reasoning[key] = text
+		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: p.ItemID, phase: "summary"}
 		if _, ok := s.thinking[key]; !ok {
 			s.thinking[key] = now
+			if pending, ok := s.pendingThinking[p.ThreadID]; ok {
+				delete(s.pendingThinking, p.ThreadID)
+				s.thinking[key], native.replaces = pending.at, pending.item
+			}
 		}
-		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(p.ThreadID), Kind: "reasoning", Text: text, CallID: p.ItemID, Observed: now,
-			native: &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: p.ItemID, phase: "summary"}})
+		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(p.ThreadID), Kind: "reasoning", Text: text, CallID: p.ItemID, Observed: now, native: native})
 	case "item/started", "item/completed", "item/agentMessage/delta":
 		item := p.Item
 		id := cmp.Or(p.ItemID, item.ID)
 		item = u.waitItem(item, p.ThreadID, p.TurnID, id, m.Method == "item/started")
 		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method, live: true}
 		agent := s.path(p.ThreadID)
+		if item.Type != "reasoning" && item.Type != "userMessage" {
+			// Other output first: that request streamed no reasoning.
+			entries = append(entries, s.dropThinking(p.ThreadID)...)
+		}
 		if text, wait, handled := appServerProgress(item, m.Method); handled {
 			if text != "" {
 				native.wait = wait
@@ -331,6 +343,11 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			text := strings.Join(item.Summary, "\n\n")
 			if m.Method == "item/completed" {
 				native.collapseAt = now.Add(activityui.ThinkingLinger)
+				if pending, ok := s.pendingThinking[p.ThreadID]; ok && s.thinking[key].IsZero() && strings.TrimSpace(text) != "" {
+					// A summary delivered only at completion still takes over the block.
+					delete(s.pendingThinking, p.ThreadID)
+					s.thinking[key], native.replaces = pending.at, pending.item
+				}
 				if started, ok := s.thinking[key]; ok {
 					delete(s.thinking, key)
 					native.thought = now.Sub(started)
@@ -439,9 +456,46 @@ func (s *appServerSession) commandDone(entry activityPaneEntry, item appServerIt
 	return done
 }
 
+type pendingThinking struct {
+	item string // Placeholder item ID, never a host item.
+	at   time.Time
+}
+
+// beginThinking shows a thinking block from a provider request's start, as
+// grok-build does, so the wait for the first reasoning delta is not silent.
+// Reasoning still streaming for the thread keeps its own block.
+func (s *appServerSession) beginThinking(thread string, at time.Time) []activityPaneEntry {
+	if s.pendingThinking == nil {
+		return nil
+	}
+	for key := range s.thinking {
+		if key[0] == thread {
+			return nil
+		}
+	}
+	entries := s.dropThinking(thread)
+	item := "thinking:" + strconv.FormatUint(s.next(), 10)
+	s.pendingThinking[thread] = pendingThinking{item: item, at: at}
+	return append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(thread), Kind: "reasoning", CallID: item, Observed: at,
+		native: &liveActivityNativeItem{thread: thread, item: item, phase: "summary", live: true}})
+}
+
+// dropThinking removes a request's thinking block no reasoning took over,
+// as grok-build removes an empty block rather than showing "Thought".
+func (s *appServerSession) dropThinking(thread string) []activityPaneEntry {
+	pending, ok := s.pendingThinking[thread]
+	if !ok {
+		return nil
+	}
+	delete(s.pendingThinking, thread)
+	return []activityPaneEntry{{Seq: s.next(), Agent: s.path(thread), Kind: "reasoning", CallID: pending.item,
+		native: &liveActivityNativeItem{thread: thread, item: pending.item, phase: "discarded"}}}
+}
+
 // endThinking completes reasoning a finished turn never completed, such as
 // after an interrupt, so it stops presenting as streaming.
 func (s *appServerSession) endThinking(thread string, now time.Time) []activityPaneEntry {
+	entries := s.dropThinking(thread)
 	var keys [][3]string
 	for key := range s.thinking {
 		if key[0] == thread {
@@ -449,7 +503,6 @@ func (s *appServerSession) endThinking(thread string, now time.Time) []activityP
 		}
 	}
 	slices.SortFunc(keys, func(a, b [3]string) int { return cmp.Compare(a[1]+"\x00"+a[2], b[1]+"\x00"+b[2]) })
-	var entries []activityPaneEntry
 	for _, key := range keys {
 		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(thread), Kind: "reasoning", Text: s.reasoning[key], CallID: key[2], Observed: now,
 			native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], phase: "item/completed", thought: now.Sub(s.thinking[key]), collapseAt: now.Add(activityui.ThinkingLinger)}})

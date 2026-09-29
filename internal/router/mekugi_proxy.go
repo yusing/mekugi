@@ -604,7 +604,8 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		p.activity.markFinal(activityThreadID, final)
 	}
 	if activityThreadID != "" {
-		p.activity.beginResponse(activityThreadID)
+		model := request.model()
+		p.activity.beginResponse(activityThreadID, isGrokModel(model) || isOpenCodeModel(model))
 	}
 	deferredCommentary := p.drainCommentarySession(historySessionID, threadID)
 	transform := &mekugiResponseTransform{

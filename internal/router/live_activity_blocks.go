@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -48,7 +49,8 @@ func parseLiveActivity(entry activityPaneEntry) []activityui.Block {
 		if entry.native != nil {
 			block.Live = entry.native.phase == "summary"
 			block.Collapsed = entry.native.collapsed && block.Collapsible()
-			if entry.native.thought > 0 {
+			// Whole seconds only: a sub-second block reads as "Thought", not "0s".
+			if entry.native.thought >= time.Second {
 				block.Elapsed = liveActivityAge(entry.native.thought)
 			}
 		}

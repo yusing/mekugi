@@ -1268,6 +1268,9 @@ func (u *appServerUI) applyObservedActivity() {
 		return
 	}
 	entries := u.proxy.activity.takeNativeActivity(u.thread)
+	for _, start := range u.proxy.activity.takeRequestStarts(u.thread) {
+		entries = append(entries, u.session.beginThinking(start.thread, start.at)...)
+	}
 	for i := range entries {
 		entries[i].Seq = u.session.next()
 	}

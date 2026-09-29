@@ -603,9 +603,13 @@ reasoning stay excluded.
 Summaries without a leading bold title are third-party provider reasoning and
 render as thinking blocks, following grok-build: a dim `• Thinking…` header
 over the latest three text rows while it streams, with `· +N lines` counting
-the rows above them, then `• Thought for 12s` (or `• Thought` when no delta
-was observed) over the complete body. Time runs from the first summary delta
-to item completion; a turn that ends first completes its unfinished blocks.
+the rows above them, then `• Thought for 12s` (or `• Thought` when it lasted under a second or no
+delta was observed) over the complete body. As in grok-build, each forwarded request
+to such a provider shows `• Thinking…` from the request start, so the wait for the
+first delta is not silent; the request's first reasoning item takes over that block.
+Other output first, or the turn's end, removes the still-empty block. Time runs from
+the request start (or the first summary delta without one) to item completion; a turn
+that ends first completes its unfinished blocks.
 One second after an observed completion, the block folds to its header row in
 Main and Activity; a click expands and collapses it. Restored history keeps
 its body. Titled summaries keep the Codex rendering.

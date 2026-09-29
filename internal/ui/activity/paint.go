@@ -525,6 +525,10 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		// with a bullet rather than a separate "Reasoning summary" card.
 		body := ReasoningSummaryBody(block.Body)
 		if body == "" {
+			// A request's thinking block before its first delta.
+			if block.Live && strings.TrimSpace(block.Body) == "" {
+				return []string{Dim + "• " + ThinkingHeader(true, "") + Undim}
+			}
 			return nil
 		}
 		style := Dim + "\x1b[3m"

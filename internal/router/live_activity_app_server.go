@@ -138,7 +138,8 @@ type liveActivityNativeItem struct {
 	collapsed          bool                   // A settled block shows collapsed: after its linger, or restored.
 	spans              []activityui.TextSpan  // Attachment spans, not text resembling image labels.
 	question           uint64                 // Original user entry, retained even for a live journal publication.
-	thought            time.Duration          // Reasoning time from its first summary delta to completion.
+	thought            time.Duration          // Reasoning time from its start to completion.
+	replaces           string                 // Pending thinking block this reasoning item takes over.
 	attachments        []activityui.Block     // Submitted file snapshot outcomes, recovered from host history.
 	segments           []commandSegment       // A tracked command's own segments, replacing its single row.
 }

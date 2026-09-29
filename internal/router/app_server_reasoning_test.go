@@ -203,12 +203,13 @@ func TestAppServerProviderThinking(t *testing.T) {
 	}
 	// A route without a replayable summary completes with an empty one.
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "r1", "type": "reasoning", "summary": []string{}}})
-	if got := feed(); !strings.Contains(got, "• Thought for 0s") || !strings.Contains(got, "First thought.") || strings.Contains(got, "Thinking…") {
+	// A sub-second block names no duration rather than "0s".
+	if got := feed(); !strings.Contains(got, "• Thought") || strings.Contains(got, "Thought for") || !strings.Contains(got, "First thought.") || strings.Contains(got, "Thinking…") {
 		t.Fatalf("completed thinking: %q", got)
 	}
 	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r2", "delta": "Interrupted thought."})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t", "status": "interrupted"}})
-	if got := feed(); strings.Contains(got, "Thinking…") || strings.Count(got, "• Thought for") != 2 || !strings.Contains(got, "Interrupted thought.") {
+	if got := feed(); strings.Contains(got, "Thinking…") || strings.Count(got, "• Thought") != 2 || !strings.Contains(got, "Interrupted thought.") {
 		t.Fatalf("turn end left thinking live: %q", got)
 	}
 }
@@ -229,7 +230,7 @@ func TestAppServerThinkingFolds(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			render := func() liveActivityFeed { return view.renderFeed(90, 40) }
 			plain := func(feed liveActivityFeed) string { return ansi.Strip(strings.Join(feed.lines, "\n")) }
-			if got := plain(render()); !strings.Contains(got, "• Thought for 0s") || !strings.Contains(got, "Delta.") {
+			if got := plain(render()); !strings.Contains(got, "• Thought") || !strings.Contains(got, "Delta.") {
 				t.Fatalf("thinking folded before its delay: %q", got)
 			}
 			if view.settle(time.Now()) {
@@ -240,11 +241,11 @@ func TestAppServerThinkingFolds(t *testing.T) {
 				t.Fatal("fold did not fire exactly once")
 			}
 			feed := render()
-			if got := plain(feed); !strings.Contains(got, "• Thought for 0s") || strings.Contains(got, "Alpha.") {
+			if got := plain(feed); !strings.Contains(got, "• Thought") || strings.Contains(got, "Alpha.") {
 				t.Fatalf("finished thinking did not fold: %q", got)
 			}
 			row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
-			if row < 0 || !strings.Contains(ansi.Strip(feed.lines[row]), "Thought for") {
+			if row < 0 || !strings.Contains(ansi.Strip(feed.lines[row]), "Thought") {
 				t.Fatal("folded thinking cannot expand")
 			}
 			view.toggleSnippet(feed.snippets[row])
@@ -256,5 +257,88 @@ func TestAppServerThinkingFolds(t *testing.T) {
 				t.Fatalf("thinking did not fold again: %q", got)
 			}
 		})
+	}
+}
+
+func TestThinkingElapsedNamesWholeSecondsOnly(t *testing.T) {
+	for thought, want := range map[time.Duration]string{0: "", 900 * time.Millisecond: "", time.Second: "1s", 12500 * time.Millisecond: "12s"} {
+		entry := activityPaneEntry{Kind: "reasoning", Text: "Body.", native: &liveActivityNativeItem{phase: "item/completed", thought: thought}}
+		if got := parseLiveActivity(entry)[0].Elapsed; got != want {
+			t.Errorf("thought %v: elapsed %q, want %q", thought, got, want)
+		}
+	}
+}
+
+// As in grok-build, a provider request that streams untitled reasoning shows
+// its thinking block from the request start, before the first delta. The
+// first reasoning item takes the block over and times from that start; other
+// output first, or the turn's end, removes the empty block.
+func TestAppServerThinkingFromRequestStart(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.conversation = true
+	activity := newSubagentActivity()
+	activity.attachNativePane("main")
+	activity.observe("child", "main", "/root/worker", true)
+	u.proxy = &mekugiProxy{activity: activity}
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+	u.agents.only, u.agents.selected = false, "/root/worker"
+	feed := func(view *liveActivityView) string {
+		return ansi.Strip(strings.Join(view.renderFeed(90, 40).lines, "\n"))
+	}
+	start := func(thread string, ago time.Duration) {
+		t.Helper()
+		activity.beginResponse(thread, true)
+		activity.starts[len(activity.starts)-1].at = time.Now().Add(-ago)
+		u.applyObservedActivity()
+	}
+	thinkingRows := func(view *liveActivityView) int {
+		rows := 0
+		for _, entry := range view.entries {
+			if entry.Kind == "reasoning" {
+				rows++
+			}
+		}
+		return rows
+	}
+
+	// Main and child each show the block while waiting for the first delta.
+	start("main", 3*time.Second)
+	start("child", 3*time.Second)
+	for name, view := range map[string]*liveActivityView{"Main": u.view, "Activity": u.agents} {
+		if got := feed(view); !strings.Contains(got, "• Thinking…") {
+			t.Fatalf("%s shows no thinking before the first delta: %q", name, got)
+		}
+	}
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t"}})
+	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r1", "delta": "Planning."})
+	if got := feed(u.agents); thinkingRows(u.agents) != 1 || !strings.Contains(got, "• Thinking…") || !strings.Contains(got, "Planning.") {
+		t.Fatalf("first delta did not take over the block: %d rows, %q", thinkingRows(u.agents), got)
+	}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "r1", "type": "reasoning", "summary": []string{"Planning."}}})
+	if got := feed(u.agents); thinkingRows(u.agents) != 1 || !strings.Contains(got, "• Thought for 3s") {
+		t.Fatalf("thinking not timed from the request start: %q", got)
+	}
+
+	// A request that answers without reasoning leaves no empty block.
+	start("child", 0)
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "ls"}})
+	if got := feed(u.agents); thinkingRows(u.agents) != 1 || strings.Contains(got, "Thinking…") {
+		t.Fatalf("empty thinking block kept after other output: %q", got)
+	}
+	// Main's pending block ends with its turn.
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "m", "status": "completed"}})
+	if got := feed(u.view); thinkingRows(u.view) != 0 || strings.Contains(got, "Thinking…") || strings.Contains(got, "Thought") {
+		t.Fatalf("turn end kept an empty thinking block: %q", got)
+	}
+
+	// Only providers streaming untitled reasoning start a block.
+	activity.beginResponse("main", false)
+	if starts := activity.takeRequestStarts("main"); len(starts) != 0 {
+		t.Fatalf("Codex-summarized request started a thinking block: %+v", starts)
+	}
+	activity.observe("other", "", "/root", false)
+	activity.beginResponse("other", true)
+	if starts := activity.takeRequestStarts("main"); len(starts) != 0 || len(activity.starts) != 0 {
+		t.Fatalf("request start crossed roots: %+v, retained %+v", starts, activity.starts)
 	}
 }

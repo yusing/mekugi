@@ -22,6 +22,9 @@ type subagentActivity struct {
 	closed  bool
 	order   int
 	pane    *activityPane
+	// starts are forwarded requests whose provider streams untitled
+	// reasoning, awaiting the native UI's pre-delta thinking block.
+	starts []activityRequestStart
 	// usage is the canonical per-thread accounting the roster displays.
 	usage *threadUsage
 }
@@ -37,6 +40,11 @@ type activityThread struct {
 	turns                 uint64
 	// Visible delta bytes streamed since the thread's last usage report.
 	streamed uint64
+}
+
+type activityRequestStart struct {
+	thread string
+	at     time.Time
 }
 
 type activityEvent struct {

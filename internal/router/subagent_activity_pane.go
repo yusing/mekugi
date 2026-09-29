@@ -1,6 +1,7 @@
 package router
 
 import (
+	"slices"
 	"time"
 )
 
@@ -70,8 +71,10 @@ func (a *subagentActivity) attachNativePane(root string) {
 }
 
 // beginResponse and endResponse track open provider responses for the roster.
-// A new response clears an earlier final-answer marker.
-func (a *subagentActivity) beginResponse(thread string) {
+// A new response clears an earlier final-answer marker. A thinking response
+// comes from a provider that streams untitled reasoning; the native UI shows
+// its thinking block from this request start, before the first delta.
+func (a *subagentActivity) beginResponse(thread string, thinking bool) {
 	if a == nil {
 		return
 	}
@@ -81,7 +84,28 @@ func (a *subagentActivity) beginResponse(thread string) {
 		node.responding++
 		node.turns++
 		node.final = false
+		if thinking && a.pane != nil && len(a.starts) < maxActivityRequestStarts {
+			a.starts = append(a.starts, activityRequestStart{thread: thread, at: time.Now()})
+		}
 	}
+}
+
+const maxActivityRequestStarts = 64
+
+// takeRequestStarts drains the thinking request starts under root.
+func (a *subagentActivity) takeRequestStarts(root string) []activityRequestStart {
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || a.pane == nil || a.pane.root != root {
+		return nil
+	}
+	// Starts outside the pane's root have no audience and are dropped.
+	starts := slices.DeleteFunc(a.starts, func(start activityRequestStart) bool { return a.rootLocked(start.thread) != root })
+	a.starts = nil
+	return starts
 }
 
 func (a *subagentActivity) endResponse(thread string) {

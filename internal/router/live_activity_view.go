@@ -190,6 +190,10 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			continue
 		}
 		if entry.Kind == "reasoning" {
+			if entry.native != nil && entry.native.phase == "discarded" {
+				v.removeThinking(entry.native)
+				continue
+			}
 			// These are provider-visible summaries from the collector, never
 			// raw reasoning. Keep legacy panes and the other audience excluded.
 			if !(v.childrenOnly && entry.Agent != "/root" || v.conversation && entry.Agent == "Main") {
@@ -198,10 +202,16 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			updated := false
 			if entry.CallID != "" {
 				for i, previous := range v.entries {
-					if previous.Kind == "reasoning" && previous.Agent == entry.Agent && previous.CallID == entry.CallID &&
+					if previous.Kind != "reasoning" || previous.Agent != entry.Agent {
+						continue
+					}
+					// The request's pending block keeps its row and start.
+					replaced := entry.native != nil && entry.native.replaces != "" && previous.native != nil &&
+						previous.native.thread == entry.native.thread && previous.native.item == entry.native.replaces
+					if replaced || previous.CallID == entry.CallID &&
 						(previous.native == nil && entry.native == nil || previous.native != nil && entry.native != nil && previous.native.sameItem(entry.native)) {
 						entry.Seq = previous.Seq
-						if activityui.ReasoningSummaryHeader(previous.Text) == activityui.ReasoningSummaryHeader(entry.Text) {
+						if replaced || activityui.ReasoningSummaryHeader(previous.Text) == activityui.ReasoningSummaryHeader(entry.Text) {
 							entry.Observed = previous.Observed
 						}
 						v.entries[i], v.blocks[i], v.runs = entry, parseLiveActivity(entry), nil
@@ -402,6 +412,18 @@ func (v *liveActivityView) feedAgents() []liveActivityRosterRow {
 		rows = slices.DeleteFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == "/root" })
 	}
 	return rows
+}
+
+// removeThinking deletes a pending thinking block no reasoning took over.
+func (v *liveActivityView) removeThinking(native *liveActivityNativeItem) {
+	for i, entry := range v.entries {
+		if entry.Kind == "reasoning" && native.sameItem(entry.native) {
+			v.entries = slices.Delete(v.entries, i, i+1)
+			v.blocks = slices.Delete(v.blocks, i, i+1)
+			v.runs = nil
+			return
+		}
+	}
 }
 
 func (v *liveActivityView) visible(entry activityPaneEntry) bool {
