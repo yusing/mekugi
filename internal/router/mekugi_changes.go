@@ -33,6 +33,7 @@ type pendingChangeIndexWrite struct {
 }
 
 type changeStream struct {
+	Name    string `json:",omitzero"`
 	Thread  string
 	Next    int
 	Retired int `json:",omitzero"`
@@ -106,9 +107,13 @@ func validateChangeIndex(index changeIndex) error {
 		if stream.Next < 1 || stream.Retired < 0 || stream.Retired > stream.Next || threads[stream.Thread] {
 			return errors.New("invalid change stream counter or duplicate thread")
 		}
+		name := index.streamName(position)
+		if _, err := changeStreamOrdinal(name); err != nil || streams[name] != 0 {
+			return errors.New("invalid or duplicate change stream name")
+		}
 		threads[stream.Thread] = true
-		streams[changeStreamName(position)] = stream.Next
-		counts[changeStreamName(position)] = stream.Retired
+		streams[index.streamName(position)] = stream.Next
+		counts[index.streamName(position)] = stream.Retired
 	}
 	correlations := make(map[string]bool, len(index.Changes))
 	calls := make(map[string]bool)
@@ -174,10 +179,14 @@ func (s *mekugiReplayStore) reserveChange(ctx context.Context, workspace, thread
 		stream := slices.IndexFunc(index.Streams, func(stream changeStream) bool { return stream.Thread == thread })
 		if stream == -1 {
 			stream = len(index.Streams)
-			index.Streams = append(index.Streams, changeStream{Thread: thread})
+			name, err := s.allocateChangeStream()
+			if err != nil {
+				return err
+			}
+			index.Streams = append(index.Streams, changeStream{Name: name, Thread: thread})
 		}
 		index.Streams[stream].Next++
-		id = changeHandle(changeStreamName(stream), index.Streams[stream].Next)
+		id = changeHandle(index.streamName(stream), index.Streams[stream].Next)
 		if _, exists := index.Changes[id]; exists {
 			return errors.New("change stream would overwrite an existing ID")
 		}
@@ -185,6 +194,11 @@ func (s *mekugiReplayStore) reserveChange(ctx context.Context, workspace, thread
 		return s.writeChangeIndex(index)
 	})
 	return
+}
+
+// streamName preserves positional names in older indexes and frozen read snapshots.
+func (index changeIndex) streamName(position int) string {
+	return cmp.Or(index.Streams[position].Name, changeStreamName(position))
 }
 
 func changeStreamName(index int) string {

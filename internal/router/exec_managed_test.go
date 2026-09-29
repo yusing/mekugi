@@ -102,7 +102,7 @@ func TestManagedExecMChangesSurface(t *testing.T) {
 	}
 	stream := -1
 	for i := range index.Streams {
-		if changeStreamName(i) == streamName {
+		if index.streamName(i) == streamName {
 			stream = i
 			break
 		}

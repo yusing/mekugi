@@ -132,7 +132,10 @@ producer arguments are rejected. Provider work shares a 200 ms budget within the
 to an open observation with its reason retained in history, never a host-call error.
 
 Each completed observation with changed or incomplete file evidence receives a
-short session-scoped change ID. Complete no-effect attempts remain in retained
+short session-scoped change ID. New agent/workspace streams receive distinct
+base names within the shared namespace, so switching workspaces does not reuse
+another workspace's IDs. Allocation survives restart and retention; existing
+retained IDs keep their original names. Complete no-effect attempts remain in retained
 call history without allocating IDs. Legacy no-effect IDs remain explicitly
 readable but are omitted from `--list`; compressed ranges do not bridge them. Root
 and child agents share an inherited namespace; forks and side threads receive

@@ -209,7 +209,7 @@ func (s *mekugiReplayStore) notifyLiveDiff(index changeIndex, updates map[string
 			continue // The durable index validator already owns this check.
 		}
 		for stream, info := range index.Streams {
-			if changeStreamName(stream) == streamName {
+			if index.streamName(stream) == streamName {
 				byThread := make(map[string][]trackedCall)
 				for _, call := range calls {
 					thread := cmp.Or(call.Thread, info.Thread)

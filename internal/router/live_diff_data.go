@@ -145,7 +145,7 @@ func (d *liveDiffData) reconcile(ctx context.Context, s *mekugiReplayStore, scop
 		for _, index := range indexes {
 			for stream, info := range index.Streams {
 				for number := 1; number <= info.Next; number++ {
-					id := changeHandle(changeStreamName(stream), number)
+					id := changeHandle(index.streamName(stream), number)
 					change := index.Changes[id]
 					change.Calls = slices.Clone(change.Calls)
 					change.Calls = slices.DeleteFunc(change.Calls, func(call trackedCall) bool {

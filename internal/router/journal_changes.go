@@ -52,7 +52,7 @@ func (s *mekugiReplayStore) renderChildJournalChanges(ctx context.Context, index
 		byStream[prefix] = append(byStream[prefix], number)
 	}
 	for position, stream := range index.Streams {
-		name := changeStreamName(position)
+		name := index.streamName(position)
 		numbers := byStream[name]
 		slices.Sort(numbers)
 		first, last := 0, 0

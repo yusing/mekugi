@@ -236,7 +236,7 @@ func threadChangeIDs(index changeIndex, thread string) ([]string, error) {
 		}
 		ids := make([]string, stream.Next)
 		for number := 1; number <= stream.Next; number++ {
-			ids[number-1] = changeHandle(changeStreamName(position), number)
+			ids[number-1] = changeHandle(index.streamName(position), number)
 		}
 		return ids, nil
 	}
@@ -246,7 +246,7 @@ func threadChangeIDs(index changeIndex, thread string) ([]string, error) {
 func missingChangeState(index changeIndex, id string) (string, string) {
 	name, number, _ := parseChangeID(id)
 	for position, stream := range index.Streams {
-		if changeStreamName(position) != name {
+		if index.streamName(position) != name {
 			continue
 		}
 		if number <= stream.Next {

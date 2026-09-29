@@ -16,13 +16,14 @@ import (
 // Scope metadata outlives reclaimed payloads so resuming an expired session
 // cannot reuse one of its old handles.
 type handleScope struct {
-	Version   int
-	Thread    string
-	Namespace string
-	Parent    string `json:",omitzero"`
-	Fork      string `json:",omitzero"`
-	Next      uint64
-	Inherited []handleRange `json:",omitzero"`
+	Version          int
+	Thread           string
+	Namespace        string
+	Parent           string `json:",omitzero"`
+	Fork             string `json:",omitzero"`
+	NextChangeStream int    `json:",omitzero"`
+	Next             uint64
+	Inherited        []handleRange `json:",omitzero"`
 }
 
 // A fork freezes the allocation ranges of its ancestors. Payloads are immutable
@@ -54,9 +55,9 @@ func (s *mekugiReplayStore) readHandleScope(thread string) (handleScope, bool, e
 	if err := json.Unmarshal(data, &scope, json.RejectUnknownMembers(true)); err != nil {
 		return scope, false, fmt.Errorf("decode handle scope: %w", err)
 	}
-	if scope.Version != 1 || scope.Thread != thread || thread != "" && scope.Namespace == "" ||
+	if scope.NextChangeStream < 0 || scope.Version != 1 || scope.Thread != thread || thread != "" && scope.Namespace == "" ||
 		scope.Parent != "" && scope.Parent == thread || scope.Fork != "" && scope.Fork == thread ||
-		scope.Namespace != thread && (scope.Parent == "" || scope.Next != 0 || len(scope.Inherited) != 0 || scope.Fork != "") {
+		scope.Namespace != thread && (scope.Parent == "" || scope.Next != 0 || scope.NextChangeStream != 0 || len(scope.Inherited) != 0 || scope.Fork != "") {
 		return scope, false, errors.New("invalid handle scope identity")
 	}
 	var end uint64
@@ -184,6 +185,7 @@ func (s *mekugiReplayStore) initializeRootHandleScope(thread, fork string, visib
 			return err
 		}
 		dest.Next, dest.Inherited = prior.Next, slices.Clone(prior.Inherited)
+		dest.NextChangeStream = prior.NextChangeStream
 		if len(dest.Inherited) == 0 && prior.Next > 0 || len(dest.Inherited) > 0 && dest.Inherited[len(dest.Inherited)-1].End < prior.Next {
 			dest.Inherited = append(dest.Inherited, handleRange{Namespace: source, End: prior.Next})
 		}
@@ -281,7 +283,7 @@ func (s *mekugiReplayStore) cloneHandleData(source, dest, fork string, visibleFi
 				// Preserve the original author when the cloned stream changes owner.
 				for id, change := range index.Changes {
 					stream, _, _ := parseChangeID(id)
-					if stream != changeStreamName(i) {
+					if stream != index.streamName(i) {
 						continue
 					}
 					for j := range change.Calls {

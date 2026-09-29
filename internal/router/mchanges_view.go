@@ -169,7 +169,7 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 				ordered = append(ordered, chain)
 			}
 			if err := chain.ApplyWithHighlight(file, false, false); err != nil {
-				failures = append(failures, fmt.Errorf("change %s cannot be composed: %w", capture.id, err))
+				failures = append(failures, fmt.Errorf("change %s cannot be composed: %w; read without --net to inspect its captured diff", capture.id, err))
 				continue
 			}
 			delete(chains, key)

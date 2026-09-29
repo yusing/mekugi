@@ -119,7 +119,7 @@ func (f *mchangesSliceFixture) retire(t *testing.T, id string) {
 		}
 		position := -1
 		for candidate := range index.Streams {
-			if changeStreamName(candidate) == stream {
+			if index.streamName(candidate) == stream {
 				position = candidate
 				break
 			}
@@ -648,5 +648,49 @@ func TestMChangesReadsKeepAvailableTargets(t *testing.T) {
 				t.Fatalf("%s lost available results: %q", view, out)
 			}
 		}
+	}
+}
+
+func TestMChangesOverlappingCapturesKeepIndependentEvidence(t *testing.T) {
+	t.Parallel()
+	f := newMChangesSliceFixture(t, "overlapping-captures")
+	// Shape of the retained amber1..6 incident: an overlapping observation
+	// starts at index+12 even though the preceding capture ends at index+14.
+	// Reordering or accepting the contradictory baseline would invent a net.
+	files := [][]mekugi.ReviewFile{
+		{mekugi.RenderReviewFile("first.txt", "first.txt", "old\n", "first\n")},
+		{mekugi.RenderReviewFile("wrap_test.go", "wrap_test.go", "index+10\n", "index+14\n"),
+			mekugi.RenderReviewFile("README.md", "README.md", "old\n", "documented\n")},
+		{mekugi.RenderReviewFile("wrap_test.go", "wrap_test.go", "index+12\n", "index+14\n"),
+			mekugi.RenderReviewFile("journal.go", "journal.go", "old\n", "reset\n")},
+		{mekugi.RenderReviewFile("fourth.txt", "fourth.txt", "old\n", "fourth\n")},
+		{mekugi.RenderReviewFile("reset_test.go", "reset_test.go", "driver.message(now)\nnow := time.Now()\n", "driver.message()\nnow := time.Now()\n")},
+		{mekugi.RenderReviewFile("reset_test.go", "reset_test.go", "driver.message()\nnow := time.Now()\n", "driver.message()\n")},
+	}
+	var ids []string
+	for i, reviews := range files {
+		correlation := fmt.Sprintf("overlap-%d", i)
+		id := f.reserve(t, f.thread, correlation)
+		f.publish(t, id, correlation, correlation+"-call", mekugiHistory{ReviewFiles: reviews})
+		ids = append(ids, id)
+	}
+	for _, selection := range []string{ids[0] + ".." + ids[5], strings.Join([]string{ids[5], ids[3], ids[2], ids[1], ids[4], ids[0]}, " ")} {
+		out, diagnostic, status := f.run(t, "mchanges --net "+selection)
+		if status != 1 || !strings.Contains(diagnostic, ids[2]+" cannot be composed") ||
+			!strings.Contains(diagnostic, "captured source does not match") || !strings.Contains(diagnostic, "without --net") {
+			t.Fatalf("overlap diagnostic: %q %q %d", out, diagnostic, status)
+		}
+		for _, expected := range []string{"+first", "+documented", "+reset", "+fourth", "-index+10\n+index+14", "-driver.message(now)", "-now := time.Now()", "+driver.message()"} {
+			if !strings.Contains(out, expected) {
+				t.Errorf("lost independent evidence %q: %q", expected, out)
+			}
+		}
+		if strings.Contains(out, "index+12") {
+			t.Fatalf("inconsistent source leaked into net: %q", out)
+		}
+	}
+	out, diagnostic, status := f.run(t, "mchanges "+ids[0]+".."+ids[5])
+	if status != 0 || diagnostic != "" || !strings.Contains(out, "-index+12\n+index+14") {
+		t.Fatalf("ordinary read lost overlapping capture: %q %q %d", out, diagnostic, status)
 	}
 }

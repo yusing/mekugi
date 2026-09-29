@@ -425,7 +425,7 @@ func (s *mekugiReplayStore) retainJournalDependencies(journal threadJournal) err
 		names = append(names, changeIndexName(journal.Workspace, index.Namespace))
 		for id, change := range index.Changes {
 			owner, _, _ := parseChangeID(id)
-			if owner == changeStreamName(position) {
+			if owner == index.streamName(position) {
 				for _, call := range change.Calls {
 					names = append(names, replayRecordName(journal.Workspace, call.ID, false))
 				}
@@ -582,7 +582,7 @@ func (s *mekugiReplayStore) pruneStoredChanges(deleted map[string]bool, thread s
 		})
 		for id, change := range index.Changes {
 			stream, _, _ := parseChangeID(id)
-			pending := len(change.Calls) == 0 && position >= 0 && changeStreamName(position) == stream
+			pending := len(change.Calls) == 0 && position >= 0 && index.streamName(position) == stream
 			before := len(change.Calls)
 			change.Calls = slices.DeleteFunc(change.Calls, func(call trackedCall) bool {
 				return deleted[replayRecordName(index.Workspace, call.ID, false)]
@@ -594,7 +594,7 @@ func (s *mekugiReplayStore) pruneStoredChanges(deleted map[string]bool, thread s
 			if len(change.Calls) == 0 {
 				delete(index.Changes, id)
 				for position := range index.Streams {
-					if changeStreamName(position) == stream {
+					if index.streamName(position) == stream {
 						index.Streams[position].Retired++
 						break
 					}
@@ -632,7 +632,7 @@ func (s *mekugiReplayStore) reconcileRetiredChanges(index *changeIndex) (bool, e
 		}
 		for id := range index.Changes {
 			owner, number, _ := parseChangeID(id)
-			if owner == changeStreamName(position) && number <= stream.Next {
+			if owner == index.streamName(position) && number <= stream.Next {
 				if _, exists := current.Changes[id]; !exists {
 					delete(index.Changes, id)
 				}

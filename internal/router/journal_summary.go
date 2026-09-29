@@ -193,7 +193,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		streamName, _, _ := parseChangeID(id)
 		owner := ""
 		for i, stream := range index.Streams {
-			if changeStreamName(i) == streamName {
+			if index.streamName(i) == streamName {
 				owner = stream.Thread
 				break
 			}
