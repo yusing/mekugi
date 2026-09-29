@@ -54,6 +54,10 @@ func TestAutoWrapProcess(t *testing.T) {
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{}}`+"\n", request.ID)
 			case "thread/start":
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"thread":{"id":"auto-wrap","cwd":%q},"model":"test-model"}}`+"\n", request.ID, os.Getenv("MEKUGI_AUTO_WRAP_WORKSPACE"))
+				if os.Getenv("MEKUGI_AUTO_WRAP_FAILURE") == "1" {
+					time.Sleep(100 * time.Millisecond)
+					os.Exit(23)
+				}
 			}
 		}
 		if err := scanner.Err(); err != nil {
@@ -94,7 +98,8 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 		name     string
 		terminal bool
 		optOut   bool
-	}{{"terminal", true, false}, {"terminal-env-zero", true, true}, {"redirected", false, false}} {
+		failure  bool
+	}{{"terminal", true, false, false}, {"terminal-env-zero", true, true, false}, {"redirected", false, false, false}, {"terminal-failure", true, false, true}} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
 			workspace := t.TempDir()
@@ -102,6 +107,10 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			rpcMarker := filepath.Join(dir, "app-server-rpc")
 			t.Setenv("MEKUGI_AUTO_WRAP_PROCESS", "1")
 			t.Setenv("MEKUGI_AUTO_WRAP_TERMINAL", "0")
+			t.Setenv("MEKUGI_AUTO_WRAP_FAILURE", "0")
+			if test.failure {
+				t.Setenv("MEKUGI_AUTO_WRAP_FAILURE", "1")
+			}
 			if test.terminal {
 				t.Setenv("MEKUGI_AUTO_WRAP_TERMINAL", "1")
 			}
@@ -150,7 +159,7 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 					for {
 						n, readErr := tty.Read(buf)
 						data.Write(buf[:n])
-						if !quit && bytes.Contains(data.Bytes(), []byte("Ready")) {
+						if !test.failure && !quit && bytes.Contains(data.Bytes(), []byte("Ready")) {
 							_, _ = tty.Write([]byte("/quit\r"))
 							quit = true
 						}
@@ -165,7 +174,11 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			} else {
 				output, err = cmd.CombinedOutput()
 			}
-			if err != nil {
+			if test.failure {
+				if err == nil || cmd.ProcessState.ExitCode() != 23 || !bytes.Contains(output, []byte("app-server disconnected; active work may be incomplete")) {
+					t.Fatalf("unexpected app-server exit lost its status or diagnostic: %v\n%s", err, output)
+				}
+			} else if err != nil {
 				t.Fatalf("wrapper: %v\n%s", err, output)
 			}
 			if _, err := os.Stat(herdrMarker); !os.IsNotExist(err) {

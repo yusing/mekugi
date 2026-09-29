@@ -188,6 +188,12 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		codexErr = <-codexDone
 	}
 	if exitErr, ok := errors.AsType[*exec.ExitError](codexErr); ok {
+		if appUI {
+			// Native UI failures carry context (for example a lost app-server)
+			// around the process status. Do not discard that diagnostic merely
+			// because we can preserve the child's exit code.
+			routerErr = errors.Join(codexErr, routerErr)
+		}
 		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
 			return 128 + int(status.Signal()), routerErr
 		}

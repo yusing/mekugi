@@ -26,6 +26,8 @@ resume, not child-thread or router cost totals. Displayed input and total exclud
 cached input; cached and reasoning counts appear separately when nonzero.
 Zero or unavailable usage omits the token line; no established thread omits the
 resume hint. Noninteractive commands retain Codex's own exit output.
+An unexpected app-server exit retains its diagnostic alongside the child's exit
+status; the normal session summary must not make a disconnect look like a clean quit.
 
 The client replaces presentation, not projection policy. Codex remains the agent
 runtime and execution authority, and Mekugi's router stays in the model-request
