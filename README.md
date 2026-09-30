@@ -613,6 +613,14 @@ the playing turn or, once idle, starts a new one that echoes your prompt; Tab
 queues for the next turn; Ctrl-C clears the draft, then interrupts playback,
 then exits, as does `/quit`.
 
+For offline terminal-layout regression checks, run `make test-ui-snapshots`.
+Failures leave `.txt.new` candidates beside the reviewed fixtures and print a
+diff without replacing the baseline. After reviewing an intentional change,
+run `make update-ui-snapshots SNAPSHOT='^TestUISnapshotJournalReply$'`, then
+rerun the check. Omitting `SNAPSHOT` updates all matching cases. See
+[terminal UI snapshot testing](CONTEXT-TESTS.md#terminal-ui-snapshots) for fixture
+locations and coverage limits.
+
 Bun is required to regenerate and test plugin assets:
 
 ```sh

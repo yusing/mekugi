@@ -1,0 +1,19 @@
+                                                
+  Enable/Disable Skills                         
+  Turn skills on or off. Your changes are       
+  saved automatically.                          
+                                                
+  Type to search skills                         
+                                                
+› [x] row0  description                         
+  [x] row1  description                         
+  [x] row2  description                         
+  [x] row3  description                         
+  [x] row4  description                         
+  [x] row5  description                         
+  [x] row6  description                         
+  [x] row7  description                         
+↓                                               
+                                                
+                                                
+  space/enter toggle · esc close

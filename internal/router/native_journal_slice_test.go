@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -30,6 +31,7 @@ func nativeJournalSliceFixture() threadJournal {
 func nativeJournalSliceUI(t *testing.T, journal *threadJournal) *appServerUI {
 	t.Helper()
 	u, _ := newAppServerTestUI()
+	u.view.painter.Theme = livediff.DarkTheme
 	u.ensureShell()
 	t.Cleanup(u.shell.diff.close)
 	u.journal = &nativeJournalSink{tree: journal}
@@ -54,7 +56,7 @@ func nativeJournalSliceFrame(u *terminalUI, width, height int) []string {
 	return rows
 }
 
-func TestNativeJournalSliceDialogIncludesCollapsedDescendantsOnly(t *testing.T) {
+func TestUISnapshotNativeJournalSliceDialogIncludesCollapsedDescendantsOnly(t *testing.T) {
 	journal := nativeJournalSliceFixture()
 	u := nativeJournalSliceUI(t, &journal)
 	u.journalView.expanded = map[string]bool{"/1": false}
@@ -73,17 +75,7 @@ func TestNativeJournalSliceDialogIncludesCollapsedDescendantsOnly(t *testing.T) 
 	if len(d.pages) != 1 || len(d.segments) != 5 || len(d.segmentLines) != 5 {
 		t.Fatalf("slice must be one page with five segments: pages=%d segments=%d ranges=%v", len(d.pages), len(d.segments), d.segmentLines)
 	}
-	text := ansi.Strip(d.laid.Text)
-	for _, want := range []string{"First slice", "Branch body", "Deep evidence body", "Selected evidence body", "Tail context body"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("slice omitted %q: %q", want, text)
-		}
-	}
-	for _, excluded := range []string{"Other slice", "Excluded sibling body", "Excluded sibling evidence"} {
-		if strings.Contains(text, excluded) {
-			t.Errorf("slice leaked sibling %q", excluded)
-		}
-	}
+	assertNativeJournalDialogSnapshot(t, "journal-slice-dialog", d.laid)
 	if d.top != 0 || d.follow || !d.flashUntil.IsZero() {
 		t.Fatalf("root click should start at top without flash: top=%d follow=%v flash=%v", d.top, d.follow, d.flashUntil)
 	}
@@ -146,7 +138,7 @@ func TestNativeJournalSliceDescendantNavigationFlashesAndExpires(t *testing.T) {
 	}
 }
 
-func TestNativeJournalSliceDialogUsesSelectedNamespace(t *testing.T) {
+func TestUISnapshotNativeJournalSliceDialogUsesSelectedNamespace(t *testing.T) {
 	workspace, unscoped := nativeJournalSliceFixture(), nativeJournalSliceFixture()
 	for i := range unscoped.Items {
 		unscoped.Items[i].Title = "Unscoped " + unscoped.Items[i].Title
@@ -160,15 +152,10 @@ func TestNativeJournalSliceDialogUsesSelectedNamespace(t *testing.T) {
 		t.Fatal("unscoped descendant did not open")
 	}
 	nativeJournalSliceFrame(u.shell, 90, 18)
-	text := ansi.Strip(u.shell.output.laid.Text)
-	for _, want := range []string{"Unscoped First slice", "Unscoped Branch body", "Unscoped Deep evidence body", "Unscoped Selected evidence body"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("selected namespace content missing %q: %q", want, text)
-		}
-	}
+	assertNativeJournalDialogSnapshot(t, "journal-slice-unscoped", u.shell.output.laid)
 }
 
-func TestNativeJournalSliceDialogNavigationAfterNarrowResize(t *testing.T) {
+func TestUISnapshotNativeJournalSliceDialogNavigationAfterNarrowResize(t *testing.T) {
 	journal := nativeJournalSliceFixture()
 	u := nativeJournalSliceUI(t, &journal)
 	u.shell.openJournalDetail(nativeJournalSliceNode(t, &journal, "/1/2"))
@@ -195,20 +182,14 @@ func TestNativeJournalSliceDialogNavigationAfterNarrowResize(t *testing.T) {
 			if d.top != d.starts[span[0]] || d.follow {
 				t.Fatalf("resize navigation used stale wrapped rows: top=%d start=%d", d.top, d.starts[span[0]])
 			}
-			if !strings.Contains(ansi.Strip(strings.Join(d.body, "\n")), "Selected") {
-				t.Fatalf("narrow navigation did not reveal selected segment: %q", d.body)
-			}
-			for _, line := range d.body {
-				if ansi.StringWidth(line) > d.rect.w-4 {
-					t.Fatalf("resized body overflowed: width=%d line=%q", d.rect.w, line)
-				}
-			}
+			assertNativeJournalSnapshot(t, fmt.Sprintf("journal-slice-resized-%d", width), d.body)
 		})
 	}
 }
 
-func TestNativeJournalCardReplyContextInsideFramePreservesTargets(t *testing.T) {
+func TestUISnapshotNativeJournalCardReplyContextInsideFramePreservesTargets(t *testing.T) {
 	v := newLiveActivityView()
+	v.painter.Theme = livediff.DarkTheme
 	question := activityPaneEntry{Seq: 7, Agent: "You", Kind: "text", Text: "What was the journal issue?", Observed: time.Date(2026, 9, 30, 8, 16, 39, 0, time.Local)}
 	v.entries = []activityPaneEntry{question}
 	card := &nativeJournalCard{Journal: threadJournal{Events: []journalEvent{{Seq: 1, Op: "add", Path: "/1", Fields: journalNode{Path: "/1", Kind: "answer", Body: "The batch was rejected without partial updates."}}}}}
@@ -217,9 +198,7 @@ func TestNativeJournalCardReplyContextInsideFramePreservesTargets(t *testing.T) 
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			var out conversationLines
 			v.journalCardLines(&out, entry, width)
-			if len(out.lines) < 5 || !strings.HasPrefix(ansi.Strip(out.lines[0]), "╭") || !strings.HasPrefix(ansi.Strip(out.lines[len(out.lines)-1]), "╰") {
-				t.Fatalf("reply context sits outside journal frame: %q", out.lines)
-			}
+			assertNativeJournalSnapshot(t, fmt.Sprintf("journal-reply-context-%d", width), out.lines)
 			links := 0
 			for i, line := range out.lines {
 				plain := ansi.Strip(line)

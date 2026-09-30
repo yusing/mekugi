@@ -2,49 +2,25 @@ package router
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
-// These goldens are the bodies of Codex TUI snapshots at 86be5320b068ef67b56348b02aa8c33706955da6:
+// These fixtures originated from Codex TUI snapshots at 86be5320b068ef67b56348b02aa8c33706955da6:
 // chatwidget/tests/popups_and_settings.rs (skills_menu_default_mentions_shortcut)
 // and bottom_pane/skills_toggle_view.rs (skills_toggle_basic).
-func skillsGolden(t *testing.T, name string) string {
-	t.Helper()
-	data, err := os.ReadFile("testdata/picker/" + name + ".txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return strings.TrimSuffix(string(data), "\n")
-}
-
-func skillsPlainRows(rows []string) string {
-	for i := range rows {
-		rows[i] = strings.TrimRight(ansi.Strip(rows[i]), " ")
-	}
-	return strings.Join(rows, "\n")
-}
-
-func skillsGoldenRows(golden string) string {
-	rows := strings.Split(golden, "\n")
-	for i := range rows {
-		rows[i] = strings.TrimRight(rows[i], " ")
-	}
-	return strings.Join(rows, "\n")
-}
-
-func TestSkillsMenuCodexSnapshotAndActions(t *testing.T) {
+func TestUISnapshotSkillsMenuAndActions(t *testing.T) {
 	u, _ := newAppServerTestUI()
+	u.view.painter.Theme = livediff.DarkTheme
 	appServerTestKeys(t, u, "/skills\r")
 	if u.picker.modal != "menu" || !u.picker.open || u.pickerHeight(80) != 8 {
 		t.Fatalf("menu state/height = %+v, %d", u.picker, u.pickerHeight(80))
 	}
-	if got, want := skillsPlainRows(u.renderPicker(80, 8)), skillsGoldenRows(skillsGolden(t, "skills_menu_default")); got != want {
-		t.Fatalf("stock skills menu mismatch:\n got:\n%s\nwant:\n%s", got, want)
-	}
+	uisnapshot.Assert(t, "testdata/snapshots/skills_menu_default.txt", strings.Join(u.renderPicker(80, 8), "\n")+"\n")
 	if !u.skillsModalKey("2") || u.picker.modal != "manage" {
 		t.Fatalf("numeric manage action = %+v", u.picker)
 	}
@@ -64,8 +40,9 @@ func TestSkillsMenuCodexSnapshotAndActions(t *testing.T) {
 	}
 }
 
-func TestSkillsManageCodexSnapshotFilteringAndSave(t *testing.T) {
+func TestUISnapshotSkillsManageFilteringAndSave(t *testing.T) {
 	u, w := newAppServerTestUI()
+	u.view.painter.Theme = livediff.DarkTheme
 	u.session.cwd = "/work"
 	u.picker.modal, u.picker.open = "manage", true
 	u.picker.skills = []composerChoice{
@@ -79,9 +56,7 @@ func TestSkillsManageCodexSnapshotFilteringAndSave(t *testing.T) {
 	if len(u.picker.choices) != 2 || u.pickerHeight(72) != 12 {
 		t.Fatalf("management rows/height = %d, %d", len(u.picker.choices), u.pickerHeight(72))
 	}
-	if got, want := skillsPlainRows(u.renderPicker(72, 12)), skillsGoldenRows(skillsGolden(t, "skills_toggle_basic")); got != want {
-		t.Fatalf("stock skills manager mismatch:\n got:\n%s\nwant:\n%s", got, want)
-	}
+	uisnapshot.Assert(t, "testdata/snapshots/skills_toggle_basic.txt", strings.Join(u.renderPicker(72, 12), "\n")+"\n")
 	appServerTestKeys(t, u, "changelog")
 	if len(u.picker.choices) != 1 || u.picker.choices[0].name != "changelog_writer" {
 		t.Fatalf("disabled skill missing from management filter: %+v", u.picker.choices)
@@ -106,8 +81,9 @@ func TestSkillsManageCodexSnapshotFilteringAndSave(t *testing.T) {
 	}
 }
 
-func TestSkillsManagerViewportAndPaste(t *testing.T) {
+func TestUISnapshotSkillsManagerViewportAndPaste(t *testing.T) {
 	u, _ := newAppServerTestUI()
+	u.view.painter.Theme = livediff.DarkTheme
 	u.session.cwd = "/work"
 	u.picker.modal, u.picker.open = "manage", true
 	u.picker.skillsLoaded, u.picker.skillsCwd = true, "/work"
@@ -117,15 +93,13 @@ func TestSkillsManagerViewportAndPaste(t *testing.T) {
 	u.refreshPicker()
 	u.picker.selected = 14
 	rows := u.renderPicker(60, u.pickerHeight(60))
-	text := skillsPlainRows(rows)
-	if strings.Count(text, "[x]") != 8 || !strings.Contains(text, "› [x] skill-14") || !strings.Contains(text, "↑") {
-		t.Fatalf("viewport:\n%s", text)
-	}
+	t.Run("viewport", func(t *testing.T) {
+		uisnapshot.Assert(t, "testdata/snapshots/skills_manager_viewport.txt", strings.Join(rows, "\n")+"\n")
+	})
 	for _, height := range []int{1, 2, 4} {
-		rows = u.renderPicker(30, height)
-		if !strings.Contains(skillsPlainRows(rows), "skill-14") {
-			t.Fatalf("selected skill missing at height %d", height)
-		}
+		t.Run(fmt.Sprintf("height_%d", height), func(t *testing.T) {
+			uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/skills_manager_height_%d.txt", height), strings.Join(u.renderPicker(30, height), "\n")+"\n")
+		})
 	}
 	appServerTestKeys(t, u, "\x1b[200~skill-03\x1b[201~")
 	if u.draft != "" || u.picker.query != "skill-03" || len(u.picker.choices) != 1 {
@@ -143,10 +117,11 @@ func TestSkillsShellVariablesStayLiteral(t *testing.T) {
 	}
 }
 
-func TestSkillsColumnsMeasureOnlyVisibleRows(t *testing.T) {
+func TestUISnapshotSkillsColumnsMeasureOnlyVisibleRows(t *testing.T) {
 	for _, modal := range []string{"", "manage"} {
 		t.Run("modal="+modal, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
+			u.view.painter.Theme = livediff.DarkTheme
 			u.picker.modal, u.picker.target.kind = modal, '$'
 			for i := range 9 {
 				u.picker.choices = append(u.picker.choices, composerChoice{
@@ -155,9 +130,11 @@ func TestSkillsColumnsMeasureOnlyVisibleRows(t *testing.T) {
 			}
 			height := u.pickerHeight(48)
 			before := strings.Join(u.renderPicker(48, height), "\n")
-			if !strings.Contains(before, "description") {
-				t.Fatal("visible rows should show descriptions")
+			name := "completion"
+			if modal != "" {
+				name = modal
 			}
+			uisnapshot.Assert(t, "testdata/snapshots/skills_columns_"+name+".txt", before+"\n")
 			u.picker.choices[8].display = "an-extremely-long-name-outside-the-visible-viewport"
 			if after := strings.Join(u.renderPicker(48, height), "\n"); after != before {
 				t.Fatalf("off-screen name changed visible alignment:\nbefore:\n%s\nafter:\n%s", ansi.Strip(before), ansi.Strip(after))

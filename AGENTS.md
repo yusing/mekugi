@@ -134,6 +134,13 @@ binary into the installation path: bare `make` defaults to `install`, which repl
 Before running tests or generating assets, read `CONTEXT-TESTS.md`; before automated live Codex
 tests, also read `CONTEXT-AUTOMATED-TESTS.md`.
 
+User-visible terminal UI changes require rendered-output snapshot coverage, adding a case
+when none covers the changed behavior. Keep reviewed plain-text fixtures in the owning
+package's `testdata/snapshots/` and compare actual renderer output with
+`internal/uisnapshot`, using test names prefixed `TestUISnapshot`. Fix nondeterministic
+inputs; preserve layout and whitespace. Review intentional snapshot changes before
+accepting them. The offline check and update workflow is in `CONTEXT-TESTS.md`.
+
 ## Where to look
 
 - `README.md`: user-facing documentation; keep agent-facing details out of it. `Features`

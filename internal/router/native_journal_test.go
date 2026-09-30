@@ -23,49 +23,27 @@ func nativeJournalFixture() threadJournal {
 	}}
 }
 
-func TestNativeJournalPaneNarrowWideAndCollapsedSubtree(t *testing.T) {
+func TestUISnapshotNativeJournalPaneNarrowWideAndCollapsedSubtree(t *testing.T) {
 	journal := nativeJournalFixture()
 	view := new(nativeJournalView)
 	wide := view.render(&journal, 80, 8, true, false, livediff.DarkTheme)
-	joined := ansi.Strip(strings.Join(wide, "\n"))
-	for _, required := range []string{"○ /1 Pending parser", "◐ /2 Working renderer", "⚠ /3 Blocked wiring", "Needs decision", "▾ ● /4 Done scanner"} {
-		if !strings.Contains(joined, required) {
-			t.Fatalf("wide pane missing %q: %q", required, joined)
-		}
-	}
-	if !strings.Contains(joined, "Scanner passed") {
-		t.Fatalf("finished subtree should expand when it fits: %q", joined)
-	}
-	if header := ansi.Strip(wide[0]); header != " ◐ 1 working · ⚠ 1 blocked · ○ 1 pending · ● 1 done" {
-		t.Fatalf("pane header counts missing: %q", wide[:2])
-	}
-	for _, row := range view.render(&journal, 18, 4, true, false, livediff.DarkTheme) {
-		if ansi.StringWidth(row) > 18 {
-			t.Fatalf("narrow pane overflowed: width=%d row=%q", ansi.StringWidth(row), row)
-		}
-	}
+	assertNativeJournalSnapshot(t, "journal-pane-wide", wide)
+	assertNativeJournalSnapshot(t, "journal-pane-narrow", view.render(&journal, 18, 4, true, false, livediff.DarkTheme))
 	if len(view.rows) != 4 {
 		t.Fatalf("finished child should be collapsed: %d rows", len(view.rows))
 	}
 	view.expanded = map[string]bool{"/4": true}
-	expanded := ansi.Strip(strings.Join(view.render(&journal, 80, 8, true, false, livediff.DarkTheme), "\n"))
-	if !strings.Contains(expanded, "▾ ● /4 Done scanner") || !strings.Contains(expanded, "Scanner passed") {
-		t.Fatalf("space-expanded finished subtree missing: %q", expanded)
-	}
+	assertNativeJournalSnapshot(t, "journal-pane-expanded", view.render(&journal, 80, 8, true, false, livediff.DarkTheme))
 }
 
-func TestNativeJournalAgentsGroupIsNotAConstraint(t *testing.T) {
+func TestUISnapshotNativeJournalAgentsGroupIsNotAConstraint(t *testing.T) {
 	journal := threadJournal{Items: []journalItem{
 		{Path: "/1", Kind: "task", Title: "Own task", State: "working"},
 		{Path: "/2", Kind: "context", Title: "No new dependencies"},
 		{Path: "/@agents", Kind: "context", Title: "Agents"},
 		{Path: "/@agents/@child", Kind: "task", Title: "/root/child", Agent: "/root/child", State: "working"},
 	}}
-	rows := ansi.Strip(strings.Join(new(nativeJournalView).render(&journal, 80, 6, false, false, livediff.DarkTheme), "\n"))
-	constraint, task, group := strings.Index(rows, "◆ /2"), strings.Index(rows, "/1 Own task"), strings.Index(rows, "⎇ Agents")
-	if strings.Contains(rows, "◆ /@agents") || group < 0 || constraint > task || task > group {
-		t.Fatalf("Agents group rendered or ranked as a constraint: %q", rows)
-	}
+	assertNativeJournalSnapshot(t, "journal-agents-group", new(nativeJournalView).render(&journal, 80, 6, false, false, livediff.DarkTheme))
 }
 
 func TestNativeJournalSelectionExpansionAndCopyPath(t *testing.T) {
@@ -96,24 +74,17 @@ func TestNativeJournalSelectionExpansionAndCopyPath(t *testing.T) {
 	}
 }
 
-func TestNativeJournalPlanStripOnlyWithOpenTask(t *testing.T) {
+func TestUISnapshotNativeJournalPlanStripOnlyWithOpenTask(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	journal := nativeJournalFixture()
 	u.journal = &nativeJournalSink{tree: &journal}
-	strip := ansi.Strip(u.journalPlanStrip(80))
-	if !strings.HasPrefix(strip, "◐ /2 Working renderer") || !strings.HasSuffix(strip, "1/4 done · Ctrl-B 5 journal") || ansi.StringWidth(strip) != 80 {
-		t.Fatalf("plan strip without events did not prefer working task: %q", strip)
-	}
+	assertNativeJournalSnapshot(t, "journal-plan-strip", []string{u.journalPlanStrip(80)})
 	mounted := append(slices.Clone(journal.Items), journalItem{Path: "/@agents/@child", Kind: "task", Title: "/root/child", State: "working"},
 		journalItem{Path: "/@agents/@child/1", Kind: "task", Title: "Child pending", State: "pending"})
 	u.journal.tree = &threadJournal{Items: mounted}
-	if strip := ansi.Strip(u.journalPlanStrip(120)); strings.Contains(strip, "Child pending") || !strings.Contains(strip, "1/4 done") {
-		t.Fatalf("plan strip counted mounted child tasks: %q", strip)
-	}
+	assertNativeJournalSnapshot(t, "journal-plan-strip-mounted", []string{u.journalPlanStrip(120)})
 	u.journal.tree = &journal
-	if ansi.StringWidth(u.journalPlanStrip(17)) > 17 {
-		t.Fatalf("narrow plan strip overflowed: %q", u.journalPlanStrip(17))
-	}
+	assertNativeJournalSnapshot(t, "journal-plan-strip-narrow", []string{u.journalPlanStrip(17)})
 	for i := range journal.Items {
 		if journal.Items[i].Kind == "task" {
 			journal.Items[i].State = "done"
@@ -279,7 +250,7 @@ func TestNativeJournalNamespacesDoNotHideUndisplayedNotes(t *testing.T) {
 	}
 }
 
-func TestNativeJournalTranscriptRowsAreOneLineTransitions(t *testing.T) {
+func TestUISnapshotNativeJournalTranscriptRowsAreOneLineTransitions(t *testing.T) {
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, transform.shellThreadID, "", []journalMutation{
 		{Op: "add", Kind: "task", Title: new("Parser"), Body: new("Long task body"), State: new("working")},
@@ -294,6 +265,14 @@ func TestNativeJournalTranscriptRowsAreOneLineTransitions(t *testing.T) {
 	if err := proxy.journals.restoreNative(t.Context(), proxy.replayStore, u.journal); err != nil {
 		t.Fatal(err)
 	}
+	// Freeze event timestamps before the restored publications reach the renderer.
+	u.journal.mu.Lock()
+	for _, publication := range u.journal.pending {
+		if publication.event != nil {
+			publication.event.At = time.Date(2026, 9, 30, 8, 16, 39, 0, time.Local).Format(time.RFC3339Nano)
+		}
+	}
+	u.journal.mu.Unlock()
 	u.applyPendingJournal()
 	var rows []string
 	for _, entry := range u.view.entries {
@@ -301,15 +280,13 @@ func TestNativeJournalTranscriptRowsAreOneLineTransitions(t *testing.T) {
 			rows = append(rows, entry.Text)
 		}
 	}
-	if len(rows) != 2 || !strings.HasSuffix(rows[0], "◐ /1 Parser") || !strings.HasSuffix(rows[1], "Tests passed") {
-		t.Fatalf("transcript rows were not one-line transitions and notes: %q", rows)
-	}
+	assertNativeJournalSnapshot(t, "journal-transcript-transitions", rows)
 	if len(u.journal.snapshot()) != 3 {
 		t.Fatal("the title edit must stay pending until acknowledged")
 	}
 }
 
-func TestNativeJournalDurableMultilineDetails(t *testing.T) {
+func TestUISnapshotNativeJournalDurableMultilineDetails(t *testing.T) {
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	_, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, transform.shellThreadID, "", []journalMutation{
 		{Op: "log", Text: new("Validation passed\n\n**Important detail**\n\nSecond paragraph")},
@@ -318,6 +295,7 @@ func TestNativeJournalDurableMultilineDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	u, _ := newAppServerTestUI()
+	u.view.painter.Theme = livediff.DarkTheme
 	u.ensureShell()
 	t.Cleanup(u.shell.diff.close)
 	u.journal = proxy.journals.attachNative(workspace, transform.shellThreadID)
@@ -329,20 +307,12 @@ func TestNativeJournalDurableMultilineDetails(t *testing.T) {
 		t.Fatalf("restored detail did not open: %v", err)
 	}
 	u.shell.output.layout(40)
-	page := u.shell.output.laid
-	var rendered strings.Builder
-	for _, line := range page.Lines {
-		rendered.WriteString(ansi.Strip(line.Text))
-	}
-	for _, want := range []string{"Validation passed", "Important detail", "Second paragraph"} {
-		if !strings.Contains(rendered.String(), want) {
-			t.Fatalf("detail lost %q: %q", want, rendered.String())
-		}
-	}
+	assertNativeJournalDialogSnapshot(t, "journal-durable-multiline-detail", u.shell.output.laid)
 }
 
-func TestNativeJournalCollapsedCardLeadsWithOutcomeAndAggregatesTasks(t *testing.T) {
+func TestUISnapshotNativeJournalCollapsedCardLeadsWithOutcomeAndAggregatesTasks(t *testing.T) {
 	v := newLiveActivityView()
+	v.painter.Theme = livediff.DarkTheme
 	parser := journalNode{Path: "/1", Kind: "task", Title: "Parser"}
 	state := func(node journalNode, state string) journalNode { node.State = state; return node }
 	card := &nativeJournalCard{Journal: threadJournal{Events: []journalEvent{
@@ -354,21 +324,15 @@ func TestNativeJournalCollapsedCardLeadsWithOutcomeAndAggregatesTasks(t *testing
 		{Seq: 6, Op: "remove", Path: "/2", Fields: journalNode{Path: "/2", Kind: "task", Title: "Mistake", State: "pending"}},
 		{Seq: 7, Op: "add", Path: "/3", Fields: journalNode{Path: "/3", Kind: "answer", Body: "OUTCOME TEXT"}},
 	}}}
-	entry := activityPaneEntry{Seq: 1, journalCard: card, native: &liveActivityNativeItem{}}
+	entry := activityPaneEntry{Seq: 1, Observed: time.Date(2026, 9, 30, 8, 16, 39, 0, time.Local), journalCard: card, native: &liveActivityNativeItem{}}
 	var out conversationLines
 	v.journalCardLines(&out, entry, 90)
-	text := ansi.Strip(strings.Join(out.lines, "\n"))
-	outcome, turn := strings.Index(text, "OUTCOME TEXT"), strings.Index(text, "This turn")
-	if outcome < 0 || turn < outcome || strings.Count(text, "/1 Parser") != 1 || !strings.Contains(text, "● /1 Parser") || !strings.Contains(text, "1 note ·") {
-		t.Fatalf("collapsed card did not lead with Outcome and aggregate tasks: %q", text)
-	}
-	if strings.Contains(text, "Mistake") {
-		t.Fatalf("collapsed card showed a node added and removed in one window: %q", text)
-	}
+	assertNativeJournalSnapshot(t, "journal-collapsed-card", out.lines)
 }
 
-func TestNativeJournalCardDialogShowsCardRowsAndFullNotes(t *testing.T) {
+func TestUISnapshotNativeJournalCardDialogShowsCardRowsAndFullNotes(t *testing.T) {
 	v := newLiveActivityView()
+	v.painter.Theme = livediff.DarkTheme
 	task := journalNode{Path: "/1", Kind: "task", Title: "Tighten spacing"}
 	state := func(node journalNode, state string) journalNode { node.State = state; return node }
 	card := &nativeJournalCard{Journal: threadJournal{Events: []journalEvent{
@@ -385,38 +349,20 @@ func TestNativeJournalCardDialogShowsCardRowsAndFullNotes(t *testing.T) {
 		t.Fatal("journal card did not open")
 	}
 	page := v.painter.DialogPage(u.output.pages[0], 70)
-	var lines []string
-	for _, line := range page.Lines {
-		lines = append(lines, ansi.Strip(line.Text))
-	}
-	body := strings.Join(lines, "\n")
-	if detail := ansi.Strip(page.Detail); detail != "23:28 · 1 done · 1 open · 1 note" {
-		t.Fatalf("detail row = %q", detail)
-	}
-	if strings.HasPrefix(body, "Journal") || !strings.HasPrefix(body, "Fixed both.") {
-		t.Fatalf("dialog did not lead with the Outcome: %q", body)
-	}
-	if strings.Count(body, "/1 Tighten spacing") != 1 || !strings.Contains(body, "● /1 Tighten spacing") || !strings.Contains(body, "○ /3 Follow-up") {
-		t.Fatalf("dialog did not aggregate tasks into card rows: %q", body)
-	}
-	if !strings.Contains(body, "◆ Removed the blank row.\n  Focused suite passed.") || strings.Contains(body, "click to open") {
-		t.Fatalf("dialog did not write the note out: %q", body)
-	}
+	assertNativeJournalDialogSnapshot(t, "journal-card-dialog", page)
 	if !strings.HasPrefix(page.Text, "Journal") || !strings.Contains(page.Text, "Focused suite passed.") {
 		t.Fatalf("copied text lost the plain card: %q", page.Text)
 	}
 }
 
-func TestNativeJournalCollapsedCardShowsRemoval(t *testing.T) {
+func TestUISnapshotNativeJournalCollapsedCardShowsRemoval(t *testing.T) {
 	v := newLiveActivityView()
+	v.painter.Theme = livediff.DarkTheme
 	card := &nativeJournalCard{Journal: threadJournal{Events: []journalEvent{{Seq: 1, Op: "remove", Path: "/1", Fields: journalNode{Path: "/1", Kind: "task", Title: "Old task", State: "working"}}}}}
-	entry := activityPaneEntry{Seq: 1, journalCard: card, native: &liveActivityNativeItem{}}
+	entry := activityPaneEntry{Seq: 1, Observed: time.Date(2026, 9, 30, 8, 16, 39, 0, time.Local), journalCard: card, native: &liveActivityNativeItem{}}
 	var out conversationLines
 	v.journalCardLines(&out, entry, 70)
-	text := ansi.Strip(strings.Join(out.lines, "\n"))
-	if !strings.Contains(text, "⊖ /1 Old task · removed") || strings.Contains(text, "◐ /1") {
-		t.Fatalf("collapsed card misrepresented removal: %q", text)
-	}
+	assertNativeJournalSnapshot(t, "journal-card-removal", out.lines)
 }
 
 func nativeJournalMouse(t *testing.T, u *appServerUI, button, x, y int) {

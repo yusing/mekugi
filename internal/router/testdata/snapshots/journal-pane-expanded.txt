@@ -1,0 +1,8 @@
+ ◐ 1 working · ⚠ 1 blocked · ○ 1 pending · ● 1 done
+   ○ /1 Pending parser
+   ◐ /2 Working renderer
+   ⚠ /3 Blocked wiring · Needs decision
+ ▾ ● /4 Done scanner
+   └ · Scanner passed
+
+

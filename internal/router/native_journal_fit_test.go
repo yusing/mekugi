@@ -2,11 +2,9 @@ package router
 
 import (
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
@@ -28,19 +26,15 @@ func nativeJournalFitRow(t *testing.T, v *nativeJournalView, path string) journa
 	return v.rows[i]
 }
 
-func TestNativeJournalFitRoomyDefaultExpandsDoneSubtrees(t *testing.T) {
+func TestUISnapshotNativeJournalFitRoomyDefaultExpandsDoneSubtrees(t *testing.T) {
 	j := nativeJournalFitFixture()
 	j.Items[0].State, j.Items[2].State = "done", "dropped"
 	v := new(nativeJournalView)
-	frame := ansi.Strip(strings.Join(v.render(&j, 80, 10, false, false, livediff.DarkTheme), "\n"))
+	frame := v.render(&j, 80, 10, false, false, livediff.DarkTheme)
 	if len(v.rows) != 4 || !nativeJournalFitRow(t, v, "/1").open || !nativeJournalFitRow(t, v, "/2").open {
 		t.Fatalf("roomy pane did not expand finished subtrees: %+v", v.rows)
 	}
-	for _, want := range []string{"Recent evidence", "Older evidence"} {
-		if !strings.Contains(frame, want) {
-			t.Fatalf("roomy rendered pane omitted %q: %s", want, frame)
-		}
-	}
+	assertNativeJournalSnapshot(t, "journal-fit-roomy", frame)
 }
 
 func TestNativeJournalFitOldestFirstNotDisplayOrder(t *testing.T) {
@@ -127,7 +121,7 @@ func TestNativeJournalFitManualDisclosurePersistsAndProtectsAncestors(t *testing
 	}
 }
 
-func TestNativeJournalFitReservesHeaderRowBudget(t *testing.T) {
+func TestUISnapshotNativeJournalFitReservesHeaderRowBudget(t *testing.T) {
 	j := nativeJournalFitFixture()
 	without, with := new(nativeJournalView), new(nativeJournalView)
 	without.render(&j, 80, 4, false, false, livediff.DarkTheme)
@@ -135,9 +129,10 @@ func TestNativeJournalFitReservesHeaderRowBudget(t *testing.T) {
 	if len(without.rows) != 4 || len(with.rows) != 3 || with.height != 3 || with.top != 1 || len(frame) != 4 {
 		t.Fatalf("header not deducted from fit budget: without=%d with=%d height=%d top=%d frame=%d", len(without.rows), len(with.rows), with.height, with.top, len(frame))
 	}
-	if !strings.Contains(ansi.Strip(frame[0]), "working") || nativeJournalFitRow(t, with, "/2").open {
+	if nativeJournalFitRow(t, with, "/2").open {
 		t.Fatal("header frame did not fit oldest subtree under state counts")
 	}
+	assertNativeJournalSnapshot(t, "journal-fit-header-budget", frame)
 }
 
 func TestNativeJournalFitSelectionFallsBackToNearestVisibleAncestor(t *testing.T) {

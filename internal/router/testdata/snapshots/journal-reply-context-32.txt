@@ -1,0 +1,8 @@
+╭─ ✓ journal ─────────── 08:16 ╮
+│ ↩ re: your message 08:16:39  │
+│ ▎ What was the journal       │
+│ ▎ issue?                     │
+│                              │
+│ The batch was rejected       │
+│ without partial updates.     │
+╰──────────────────────────────╯

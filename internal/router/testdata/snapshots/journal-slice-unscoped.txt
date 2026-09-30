@@ -1,0 +1,73 @@
+
+
+─ /1 ────────────────────────────────────────────────────────────────────────
+● /1 Unscoped First slice
+
+Unscoped Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+Root context that wraps in narrow terminals.
+
+─ /1/1 ──────────────────────────────────────────────────────────────────────
+● /1/1 Unscoped Closed branch
+
+Unscoped Branch body
+
+─ /1/1/1 ────────────────────────────────────────────────────────────────────
+Unscoped Nested evidence
+
+Unscoped Deep evidence body
+
+─ /1/2 ──────────────────────────────────────────────────────────────────────
+Unscoped Selected evidence
+
+Unscoped Selected evidence body
+Second evidence line
+
+─ /1/3 ──────────────────────────────────────────────────────────────────────
+Unscoped Tail context
+
+Unscoped Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body
+Tail context body

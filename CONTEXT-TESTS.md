@@ -31,6 +31,31 @@ the embedded WASM core and JavaScript bundle through directives in
 `internal/router/toolplugin/runtime.go`; do not hand-edit generated assets.
 Use a fresh temporary Bun transpiler cache when test discovery appears stale.
 
+## Terminal UI snapshots
+
+`make test-ui-snapshots` runs offline rendered-output regression tests without Codex
+or model requests. Select a case with `SNAPSHOT='^TestUISnapshotJournalReply$'`.
+The supplied journal preview lives in
+`internal/router/testdata/snapshots/journal-ui-preview.txt`. Journal panes, cards,
+details, and skills pickers have additional router fixtures; activity change-report
+fixtures live in `internal/ui/activity/testdata/snapshots/`. Other owners keep
+fixtures in their own `testdata/snapshots/` directories. Snapshot assertions replace
+layout/text checks, not independent state, interaction, parser, or color checks.
+
+`internal/uisnapshot.Assert` strips ANSI sequences only: spacing, blank lines,
+wrapping, and borders remain exact. Tests fix time, theme, dimensions, and other
+nondeterministic inputs before invoking the actual renderer. Text snapshots do
+not establish color/style correctness or replace interaction and PTY acceptance.
+
+A missing or changed fixture fails the test and writes a sibling `.txt.new`
+candidate with a unified diff in the failure output. The reviewed fixture stays
+unchanged. Inspect the candidate, then either move that candidate over its fixture
+or run `make update-ui-snapshots SNAPSHOT='^TestUISnapshotJournalReply$'` to
+regenerate the selected baseline. Omitting `SNAPSHOT` updates all matching cases.
+Updates are opt-in via `MEKUGI_UPDATE_UI_SNAPSHOTS=1`; the check recipe clears it
+so inherited configuration cannot silently accept changes. A passing comparison
+or explicit update removes its stale candidate. Rerun the check after acceptance.
+
 ## Boundary coverage and test cost
 
 Keep repeatable test costs visible. Reuse immutable registry fixtures while

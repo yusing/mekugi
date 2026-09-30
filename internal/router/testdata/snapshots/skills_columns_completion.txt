@@ -1,0 +1,11 @@
+
+› row0  [Skill] description                     
+  row1  [Skill] description
+  row2  [Skill] description
+  row3  [Skill] description
+  row4  [Skill] description
+  row5  [Skill] description
+  row6  [Skill] description
+  row7  [Skill] description
+↓
+  enter insert · esc close

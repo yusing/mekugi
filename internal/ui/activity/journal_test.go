@@ -4,13 +4,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 // Tree journal results carry no author heading: the answer is Markdown, then
 // the change report. The report must still paint as structured rows.
-func TestJournalTreeResultPaintsChangeReport(t *testing.T) {
+func TestUISnapshotJournalTreeResultPaintsChangeReport(t *testing.T) {
 	text := livediff.Safe("Updated the assigned tests.\n\n- ● /1 Port tests · 2m3s\n\n**Changes:** apple14..apple18\n\n"+
 		"Aggregated numstat (this agent's recorded evaluations, not a net diff):\n\n"+
 		"    M\t1\t1\tinternal/router/app_server_events_test.go\n    M\t15\t28\tinternal/router/app_server_preview_test.go\n"+
@@ -22,18 +22,8 @@ func TestJournalTreeResultPaintsChangeReport(t *testing.T) {
 	if answer := journal.Groups[0].Answers[0].Text; !strings.HasPrefix(answer, "Updated the assigned tests.") || !strings.Contains(answer, "/1 Port tests") || strings.Contains(answer, "Changes") {
 		t.Fatalf("answer lost its rows or kept the report: %q", answer)
 	}
-	p := Painter{}
-	card := ansi.Strip(strings.Join(p.Event(Block{Kind: "final", Body: text, Journal: journal}, 80), "\n"))
-	for _, want := range []string{"✓ answer", "Changes apple14..apple18", "+15 -28", "app_server_preview_test.go", "Cumulative: 18"} {
-		if !strings.Contains(card, want) {
-			t.Fatalf("card missing %q:\n%s", want, card)
-		}
-	}
-	for _, unwanted := range []string{"Aggregated numstat", "**", "Journal result"} {
-		if strings.Contains(card, unwanted) {
-			t.Fatalf("card kept %q:\n%s", unwanted, card)
-		}
-	}
+	p := Painter{Theme: livediff.DarkTheme}
+	uisnapshot.Assert(t, "testdata/snapshots/journal_tree_change_report.txt", strings.Join(p.Event(Block{Kind: "final", Body: text, Journal: journal}, 80), "\n")+"\n")
 }
 
 func TestJournalResultRecognition(t *testing.T) {
