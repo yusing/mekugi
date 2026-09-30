@@ -437,6 +437,9 @@ func (v *liveActivityView) removeThinking(native *liveActivityNativeItem) {
 }
 
 func (v *liveActivityView) visible(entry activityPaneEntry) bool {
+	if entry.native != nil && entry.native.phase == "queued-summary" {
+		return false
+	}
 	if entry.Kind == "question_reply" {
 		return false
 	}
@@ -1720,8 +1723,7 @@ func (v *liveActivityView) standalone(entry activityPaneEntry) bool {
 	return !(entry.native != nil && entry.native.wait != nil) && !(entry.Kind == "tool" && entry.Text == "")
 }
 
-// settleActivity collapses settled live blocks that are due: finished provider
-// thinking after its linger, and successful command output once its agent's
+// settleActivity collapses completed reasoning and successful command output once its agent's
 // next standalone event has been followed by a pause. Entries are shared
 // between views, so each view replaces rather than modifies native state.
 func settleActivity(now time.Time, views ...*liveActivityView) bool {
@@ -1746,17 +1748,16 @@ func settleActivity(now time.Time, views ...*liveActivityView) bool {
 			if entry.native == nil {
 				continue
 			}
-			thought := !entry.native.collapseAt.IsZero() && !now.Before(entry.native.collapseAt)
 			// A later row by the same agent settles the output, a pause after the
 			// latest of it and the output's own completion.
 			next := v.events[entry.Agent]
 			settled := entry.native.settled
 			output := !settled.IsZero() && next.seq > entry.Seq && !now.Before(outputAt)
-			if !thought && !output {
+			if !output {
 				continue
 			}
 			native := *entry.native
-			native.collapseAt, native.settled, native.collapsed = time.Time{}, time.Time{}, true
+			native.settled, native.collapsed = time.Time{}, true
 			v.entries[i].native = &native
 			v.invalidateEntry(entry.Seq)
 			for j := range v.blocks[i] {

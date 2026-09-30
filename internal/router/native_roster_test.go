@@ -118,6 +118,7 @@ func TestNativeRosterShowsActivityDetails(t *testing.T) {
 		}
 	}
 	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "reasoning", "delta": "Checking event routing"})
+	u.flushStreamOutput()
 	got = ansi.Strip(strings.Join(u.agents.nativeRoster(140, 6, time.Now(), true), "\n"))
 	if !strings.Contains(got, "Checking event routing") {
 		t.Fatalf("summary missing: %s", got)

@@ -1,0 +1,5 @@
+worker                                                                  08:00:00
+│ • Checking tests · +1 line
+│   Second checkpoint.
+│   Third checkpoint.
+│   Fourth checkpoint.

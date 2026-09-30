@@ -20,6 +20,7 @@ type Block struct {
 	Duration    time.Duration // Host or measured segment duration; zero means unavailable.
 	Questions   []Question
 	Source      uint64 // Activity entry identity for exact cross-pane navigation.
+	Section     int    // Reasoning section ordinal within that entry, retained by dialogs.
 	Kind        string // op, reads, message, start, error, text
 	Verb        string // Operation verb, or a message headline.
 	Label       string // Markdown remainder of the operation label.
@@ -73,16 +74,12 @@ type Block struct {
 	Detail string // Styled facts for the dialog's detail row when it has none of its own.
 }
 
-// Finished thinking stays open for ThinkingLinger after it completes live,
-// then collapses to one row. Successful output stays open until its agent's
+// Successful output stays open until its agent's
 // next standalone event, then collapses once events pause for
 // OutputDebounce. Eligible outputs share the latest deadline across agents
 // and late completions, so a quick run of commands collapses together rather than
 // one row at a time. Restored history starts settled.
-const (
-	ThinkingLinger = time.Second
-	OutputDebounce = 750 * time.Millisecond
-)
+const OutputDebounce = 750 * time.Millisecond
 
 // Collapsible reports a settled block that can show as one row: finished
 // thinking as its header, or a successful command's output as its

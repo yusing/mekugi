@@ -162,7 +162,7 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 		t.Fatal("started command has no retained output")
 	}
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "streamed\n"})
-	u.flushCommandOutput()
+	u.flushStreamOutput()
 	if got := u.view.blocks[0][len(u.view.blocks[0])-1].Output; got != retained {
 		t.Fatal("delta changed retained output identity")
 	}
@@ -629,9 +629,10 @@ func TestBatchDialogDoesNotAttributeInvocationTimingToSegments(t *testing.T) {
 func TestNarrativeDialogRefreshesWhileStreaming(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-	body := "**Plan**\n\nneedle\n\n" + strings.Repeat("First paragraph.\n\n", 20)
+	body := "**Plan**\n\nneedle.\n\n" + strings.Repeat("First paragraph.\n\n", 20)
 	delta := func(text string) {
 		appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r", "delta": text})
+		rollCommandOutput(u)
 	}
 	delta(body)
 	feed := u.agents.renderFeed(90, 30)
@@ -664,6 +665,7 @@ func TestNarrativeDialogRefreshesWhileStreaming(t *testing.T) {
 	}
 	completed := body + "Fresh appended paragraph.\n\nFinal paragraph."
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{completed}}})
+	rollCommandOutput(u)
 	drawOutputDialog(u.shell)
 	if d.laid.Live || !strings.Contains(d.laid.Text, "Final paragraph.") || d.top != top || d.query != "needle" || d.follow {
 		t.Fatal("completion failed to refresh narrative without moving reader")

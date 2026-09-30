@@ -628,6 +628,9 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		return Wrap(Dim+"• "+block.progressText(true)+Reset, width, false)
 	case "summary":
 		// Public reasoning shares one streaming block across providers.
+		if block.Label == "" {
+			block.Label = ReasoningSections(block.Body)[0].Label
+		}
 		body := ReasoningSummaryBody(block.Body)
 		if body == "" {
 			// A request's thinking block before its first delta.
@@ -637,25 +640,36 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			return nil
 		}
 		header := p.thinkingHeader(block, width-2)
+		rows := p.markdown(body, max(1, width-2), true)
+		titleOnly := body == strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(block.Body), "<!-- -->"))
+		if len(rows) == 1 && (block.Label == "" || titleOnly) {
+			// Short summaries stay visible, including heading-only summaries,
+			// both while streaming and after completion.
+			text := rows[0]
+			if !block.Live && block.Elapsed != "" {
+				text = reasoningFor(text, block.Elapsed)
+			}
+			if block.Hovered {
+				text = Underline(text)
+			}
+			rows = liveActivityHang("• ", text, width)
+			for i, row := range rows {
+				rows[i] = reasoningRow(row)
+			}
+			return rows
+		}
 		if block.Collapsed {
 			if block.Hovered {
 				header = Underline(header)
 			}
 			return []string{Dim + "• " + header + Undim}
 		}
-		rows := p.markdown(body, max(1, width-2), true)
-		summary := header
-		if block.Elapsed != "" {
-			summary = strings.TrimSuffix(summary, " for "+block.Elapsed)
-		}
-		if !block.Live && len(rows) == 1 && strings.TrimSpace(ansi.Strip(rows[0])) == summary {
-			// A complete short summary is already visible in the label.
-			return []string{Dim + "• " + header + Undim}
-		}
 		if block.Live {
 			var hidden int
 			if rows, hidden = TailRows(rows, ThinkingTailRows); hidden > 0 {
-				header += " · " + Elision{Hidden: hidden, Form: ElisionSuffix}.String() + Dim
+				suffix := " · " + Elision{Hidden: hidden, Form: ElisionSuffix}.String()
+				suffix = ansi.Truncate(suffix, max(0, width-3), "…")
+				header = p.thinkingHeader(block, width-2-ansi.StringWidth(suffix)) + suffix + Dim
 			}
 		}
 		for i, row := range rows {

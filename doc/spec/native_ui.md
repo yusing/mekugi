@@ -909,10 +909,10 @@ running` only for agents whose reported state is running, without claiming
 that missing state means success or continued work.
 
 Native public reasoning summaries appear for Main and children, from summary
-deltas, item events, or history. Main and Activity use the same thinking block
+deltas, item events, or history. Main and Activity use the same reasoning sections
 for titled and untitled summaries. Body rows are uniformly faint and italic,
 including wrapped lines and text after inline formatting. Paragraphs and soft
-line breaks continue beneath the block's single header; only explicit Markdown
+line breaks continue beneath each section's header; only explicit Markdown
 list items introduce body bullets. Inline consecutive summaries in roster status
 are comma-separated.
 Reasoning does not replace `Working` in the composer status.
@@ -933,14 +933,28 @@ that stops when superseded or finished. The sweep blends between
 the terminal's reported (OSC 10/11) foreground and background; without both
 reports it steps through dim, normal and bold. Raw and encrypted
 reasoning stay excluded.
-Reasoning renders as thinking blocks, following grok-build: a dim `• Thinking…` header
-over the latest three text rows while it streams, with `· +N lines` counting
-the rows above them, then a short public-summary label such as `• Locating rendition file for 12s`
-over the complete body. The label uses the first nonempty summary line,
-shortened to fit while preserving the duration. Under one
-second or when timing is unavailable, only the summary label appears. A complete
-short summary already shown in the label is not repeated in a body row. As in grok-build, each forwarded request
-to such a provider shows `• Thinking…` from the request start, so the wait for the
+Short reasoning summaries that occupy one rendered body row display directly,
+without a `Thinking…` header, while streaming and after completion. Heading-only
+summaries remain visible, including when followed by blank lines or an empty
+Markdown comment. Completion adds `for <duration>` when at least one second was
+observed; a trailing period is stripped immediately before `for`. Otherwise the
+summary appears without a duration. The full summary
+is retained without truncation, wrapping the duration when needed.
+Summaries containing standalone Markdown headings, bold titles, or short plain
+titles followed by blank-line-separated paragraphs form separate collapsible
+sections. Plain titles are limited to 60 display columns and eight words, omit
+sentence-ending punctuation, and are not list, table, or code content. Fenced
+content does not introduce sections. Each titled section uses its title as its
+streaming and collapsed header. Untitled longer summaries use `• Thinking…`
+while streaming and `• Thought` after completion. The latest three body rows
+remain visible, with `· +N lines` counting the rows above them.
+Summary bursts roll through at the command-output cadence, retaining their
+original Markdown. Completion waits until queued text has been shown, then
+keeps the body open until the same agent's next standalone event and the shared
+output debounce. Eligible summaries and command outputs collapse together when
+events pause. An observed item duration is shown on its last section only,
+not attributed separately to each section. Each forwarded request to a provider
+that streams untitled reasoning shows `• Thinking…` from the request start, so the wait for the
 first delta is not silent; the request's first reasoning item takes over that block.
 Other output starting first, or the turn's end, removes the still-empty block; a
 late completion of the previous request's item does not. Time runs from
@@ -948,12 +962,14 @@ the observed request start, or the reasoning item's start when no request start
 was observed, falling back to the first visible summary when both are absent,
 through item completion; a turn
 that ends first completes its unfinished blocks.
-One second after an observed completion, the block folds to its header row in
-Main and Activity; a click opens its body in the shared dialog. Restored history
-starts folded, retaining each body for the dialog. Consecutive items keep their
-own headers and collapse independently, including the latest item.
-An item that starts without public text shows only `Thinking…` while waiting;
-completion with no public summary removes that header. Text appears only when
+In Main and Activity, a click on a finished row opens its body in the shared
+dialog. Restored long summaries start folded, while short ones remain directly
+visible. Each section's own body is retained for its dialog. Consecutive items keep their
+own rows and collapse independently, including the latest item.
+An item that starts without public text creates no summary row; its observed
+start still supplies timing when public text arrives later. Provider-request
+waiting progress remains separate and is removed when no public summary arrives.
+Late deltas cannot reopen completed items. Text appears only when
 the host supplies a public summary; raw and encrypted reasoning are not a
 substitute for summaries delivered late or only at completion.
 

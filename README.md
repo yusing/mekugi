@@ -310,9 +310,11 @@ Mekugi differs in these ways:
   available while idle and does not delete saved sessions or filesystem changes.
   Interrupt returns unsent input to the composer without automatically resending
   it. Interrupting an uncommitted first message leaves an empty transcript.
-- **Reasoning streams compactly.** Main and Activity show the latest reasoning
-  rows under `Thinking…`, then collapse to `Thought for` with the observed
-  duration. Click the finished header to read the full reasoning in a dialog.
+- **Reasoning stays visible.** Main and Activity display short summaries directly,
+  adding `for <duration>` without a preceding period when timing is available.
+  Longer summaries roll through like command output and remain readable until
+  later activity settles. Titled sections collapse to their own titles; untitled
+  reasoning uses `Thought`. Click a section to read its full text in a dialog.
 - **Live pane.** `/live` opens an on/off picker; `/live on` or `/live off`
   applies directly for the current session. Hiding it frees its space without
   stopping activity or edit capture. New launches, including resume, show it again.

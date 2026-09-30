@@ -16,15 +16,23 @@ import (
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
+// Existing lifecycle checks observe fully played frames. Pacing itself is
+// covered separately with explicit individual flushes.
+func reasoningTestNotify(t *testing.T, u *appServerUI, method string, params map[string]any) {
+	t.Helper()
+	appServerTestNotify(t, u, method, params)
+	rollCommandOutput(u)
+}
+
 func TestAppServerPublicSummaryNotifications(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	for _, thread := range []string{"main", "child"} {
-		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
+		reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
 		for _, delta := range []string{"**Checking " + thread + "**", "\n\nPublic " + thread + " summary."} {
-			appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "same-id", "delta": delta})
+			reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "same-id", "delta": delta})
 		}
-		appServerTestNotify(t, u, "item/reasoning/textDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "same-id", "delta": "PRIVATE"})
+		reasoningTestNotify(t, u, "item/reasoning/textDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "same-id", "delta": "PRIVATE"})
 	}
 	main := ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
 	child := ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n"))
@@ -33,9 +41,9 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 	}
 	for _, thread := range []string{"main", "child"} {
 		// Real reasoning content is a string array, unlike user input blocks.
-		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{
+		reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{
 			"id": "same-id", "type": "reasoning", "summary": []string{"**Complete**\n\nFinal public " + thread + "."}, "content": []string{"PRIVATE"}}})
-		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "completed"}})
+		reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "completed"}})
 	}
 	u.agents.only, u.agents.selected = false, "/root/worker"
 	main = ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
@@ -44,7 +52,7 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 		t.Fatalf("completed summaries: main=%q, child=%q", main, child)
 	}
 	// A reused item ID in a new turn must not replace earlier summaries.
-	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "next", "itemId": "same-id", "delta": "Next public summary."})
+	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "next", "itemId": "same-id", "delta": "Next public summary."})
 	main = ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
 	if !strings.Contains(main, "Final public main.") || !strings.Contains(main, "Next public summary.") {
 		t.Fatalf("turn identity lost: %q", main)
@@ -84,8 +92,8 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 
 func TestAppServerComposerKeepsWorkingDuringReasoning(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Checking layout**"})
+	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
+	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Checking layout**"})
 	for _, dock := range []int{0, 3} {
 		frame, dockRect := u.mainFrame(70, 12, dock)
 		border := u.composerRect.y - 1
@@ -108,7 +116,7 @@ func TestAppServerComposerKeepsWorkingDuringReasoning(t *testing.T) {
 
 func TestAppServerWorkingShimmers(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
+	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
 	a, b := u.sessionLabel(u.turnStarted), u.sessionLabel(u.turnStarted.Add(500*time.Millisecond))
 	if a == b || ansi.Strip(a) != ansi.Strip(b) || !strings.Contains(ansi.Strip(a), "Working") {
 		t.Fatalf("no text-preserving shimmer: %q %q", a, b)
@@ -122,9 +130,9 @@ func TestAppServerWorkingShimmers(t *testing.T) {
 func TestAppServerCompletedElapsedTime(t *testing.T) {
 	for seconds, elapsed := range map[int]string{0: "0s", 12: "12s", 60: "1m", 75: "1m15s", 82: "1m22s", 3600: "1h", 3682: "1h1m22s"} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
+		reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
 		u.turnStarted = time.Now().Add(-time.Duration(seconds) * time.Second)
-		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "completed"}})
+		reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "completed"}})
 		want := "Completed in " + elapsed
 		for _, now := range []time.Time{time.Now(), time.Now().Add(time.Minute)} {
 			if got := ansi.Strip(u.sessionLabel(now)); got != want {
@@ -137,9 +145,9 @@ func TestAppServerCompletedElapsedTime(t *testing.T) {
 func TestAppServerWorkingSurvivesDockComposition(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.draft = "one\ntwo\nthree\nfour"
-	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
+	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
 	u.shell.preview(diffview.Preview{ID: "p", Caller: "/root", Status: diffview.PreviewEdit, Input: "package a\n"})
-	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Active summary**"})
+	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "**Active summary**"})
 	var out bytes.Buffer
 	if err := u.paint(&out, 80, 14); err != nil {
 		t.Fatal(err)
@@ -201,54 +209,56 @@ func TestAppServerPendingStatusPulses(t *testing.T) {
 // completes with its time, including when the turn ends without completing it.
 func TestAppServerProviderThinking(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
-	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t"}})
+	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t"}})
 	u.agents.only, u.agents.selected = false, "/root/worker"
 	feed := func() string { return ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n")) }
 	for _, delta := range []string{"First ", "thought.\n\nSecond.\n\nThird.\n\nFourth."} {
-		appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r1", "delta": delta})
+		reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r1", "delta": delta})
 	}
 	if got := feed(); !strings.Contains(got, "• Thinking… · +1 line") || strings.Contains(got, "First thought.") || !strings.Contains(got, "Fourth.") {
 		t.Fatalf("live thinking: %q", got)
 	}
 	// A route without a replayable summary completes with an empty one.
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "r1", "type": "reasoning", "summary": []string{}}})
+	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "r1", "type": "reasoning", "summary": []string{}}})
 	// A sub-second block names no duration rather than "0s".
-	if got := feed(); !strings.Contains(got, "• First thought.") || strings.Contains(got, "First thought. for") || !strings.Contains(got, "First thought.") || strings.Contains(got, "Thinking…") {
+	if got := feed(); !strings.Contains(got, "• Thought") || strings.Contains(got, "Thought for") || !strings.Contains(got, "First thought.") || strings.Contains(got, "Thinking…") {
 		t.Fatalf("completed thinking: %q", got)
 	}
-	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r2", "delta": "Interrupted thought."})
-	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t", "status": "interrupted"}})
-	if got := feed(); strings.Contains(got, "Thinking…") || strings.Count(got, "• First thought.") != 1 || strings.Count(got, "• Interrupted thought.") != 1 || !strings.Contains(got, "First thought.") || !strings.Contains(got, "Interrupted thought.") {
+	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r2", "delta": "Interrupted thought."})
+	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t", "status": "interrupted"}})
+	settleActivity(time.Now().Add(activityui.OutputDebounce), u.agents)
+	if got := feed(); strings.Contains(got, "Thinking…") || strings.Count(got, "• Thought") != 1 || strings.Count(got, "• Interrupted thought.") != 1 {
 		t.Fatalf("turn end left thinking live: %q", got)
 	}
 }
 
-// Finished thinking stays open for a second, then folds to its header in
+// Finished long reasoning waits for a later event and the output debounce in
 // Main and Activity; a click opens it in the shared dialog.
 func TestAppServerThinkingFolds(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	u.agents.only, u.agents.selected = false, "/root/worker"
 	body := "**Reviewing**\n\nAlpha.\n\nBravo.\n\nCharlie.\n\nDelta."
 	for _, thread := range []string{"main", "child"} {
-		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
-		appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": body})
-		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{body}}})
+		reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
+		reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": body})
+		reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{body}}})
 	}
 	for name, view := range map[string]*liveActivityView{"Main": u.view, "Activity": u.agents} {
 		t.Run(name, func(t *testing.T) {
 			render := func() liveActivityFeed { return view.renderFeed(90, 40) }
 			plain := func(feed liveActivityFeed) string { return ansi.Strip(strings.Join(feed.lines, "\n")) }
-			if got := plain(render()); !strings.Contains(got, "• Reviewing") || !strings.Contains(got, "Alpha.") {
-				t.Fatalf("thinking folded before its delay: %q", got)
+			if settleActivity(time.Now().Add(time.Hour), view) {
+				t.Fatal("reasoning collapsed before the next event")
 			}
-			if settleActivity(time.Now(), view) {
-				t.Fatal("fold fired before its delay")
+			thread := "main"
+			if view == u.agents {
+				thread = "child"
 			}
-			later := time.Now().Add(activityui.ThinkingLinger)
-			if !settleActivity(later, view) || settleActivity(later, view) {
-				t.Fatal("fold did not fire exactly once")
+			nextEvent(t, u, thread)
+			if settleActivity(time.Now(), view) || !settleActivity(time.Now().Add(activityui.OutputDebounce), view) {
+				t.Fatal("reasoning did not share output's delayed collapse")
 			}
 			feed := render()
 			if got := plain(feed); !strings.Contains(got, "• Reviewing") || strings.Contains(got, "Alpha.") {
@@ -292,7 +302,7 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	activity.attachNativePane("main")
 	activity.observe("child", "main", "/root/worker", true)
 	u.proxy = &mekugiProxy{activity: activity}
-	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	u.agents.only, u.agents.selected = false, "/root/worker"
 	feed := func(view *liveActivityView) string {
 		return ansi.Strip(strings.Join(view.renderFeed(90, 40).lines, "\n"))
@@ -321,40 +331,40 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 			t.Fatalf("%s shows no thinking before the first delta: %q", name, got)
 		}
 	}
-	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t"}})
-	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r1", "delta": "Planning."})
-	if got := feed(u.agents); thinkingRows(u.agents) != 1 || !strings.Contains(got, "• Thinking…") || !strings.Contains(got, "Planning.") {
+	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t"}})
+	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r1", "delta": "Planning."})
+	if got := feed(u.agents); thinkingRows(u.agents) != 1 || strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Planning.") {
 		t.Fatalf("first delta did not take over the block: %d rows, %q", thinkingRows(u.agents), got)
 	}
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "r1", "type": "reasoning", "summary": []string{"Planning."}}})
-	if got := feed(u.agents); thinkingRows(u.agents) != 1 || !strings.Contains(got, "• Planning. for 3s") {
+	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "r1", "type": "reasoning", "summary": []string{"Planning."}}})
+	if got := feed(u.agents); thinkingRows(u.agents) != 1 || !strings.Contains(got, "• Planning for 3s") {
 		t.Fatalf("thinking not timed from the request start: %q", got)
 	}
 
 	// A request that answers without reasoning leaves no empty block.
 	start("child", 0)
-	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "ls"}})
+	reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "ls"}})
 	if got := feed(u.agents); thinkingRows(u.agents) != 1 || strings.Contains(got, "Thinking…") {
 		t.Fatalf("empty thinking block kept after other output: %q", got)
 	}
 	// The previous request's late command completion keeps the next block.
 	start("child", 0)
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "ls", "status": "completed"}})
+	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "ls", "status": "completed"}})
 	if got := feed(u.agents); !strings.Contains(got, "• Thinking…") {
 		t.Fatalf("late command completion removed the next request's block: %q", got)
 	}
-	appServerTestNotify(t, u, "item/agentMessage/delta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "a1", "delta": "Done."})
+	reasoningTestNotify(t, u, "item/agentMessage/delta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "a1", "delta": "Done."})
 	if got := feed(u.agents); strings.Contains(got, "Thinking…") {
 		t.Fatalf("empty thinking block kept after an answer delta: %q", got)
 	}
 	// Main's answer, handled by the transcript, also removes its block.
-	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "m", "item": map[string]any{"id": "a2", "type": "agentMessage", "text": ""}})
+	reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "m", "item": map[string]any{"id": "a2", "type": "agentMessage", "text": ""}})
 	if got := feed(u.view); thinkingRows(u.view) != 0 || strings.Contains(got, "Thinking…") {
 		t.Fatalf("empty thinking block kept after Main's answer: %q", got)
 	}
 	// Main's pending block ends with its turn.
 	start("main", 0)
-	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "m", "status": "completed"}})
+	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "m", "status": "completed"}})
 	if got := feed(u.view); thinkingRows(u.view) != 0 || strings.Contains(got, "Thinking…") || strings.Contains(got, "Thought") {
 		t.Fatalf("turn end kept an empty thinking block: %q", got)
 	}
@@ -375,26 +385,25 @@ func TestAppServerStartedSummarySettlesWithoutDelta(t *testing.T) {
 	for _, interrupted := range []bool{false, true} {
 		t.Run(map[bool]string{false: "completed", true: "interrupted"}[interrupted], func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+			reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			u.agents.only, u.agents.selected = false, "/root/worker"
 			for _, thread := range []string{"main", "child"} {
-				appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
-				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{"**Checking**\n\nStarted public body."}}})
+				reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
+				reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{"**Checking**\n\nStarted public body."}}})
 				view := u.view
 				if thread == "child" {
 					view = u.agents
 				}
-				if got := ansi.Strip(strings.Join(view.renderFeed(90, 40).lines, "\n")); !strings.Contains(got, "Thinking…") || !strings.Contains(got, "Started public body.") {
+				if got := ansi.Strip(strings.Join(view.renderFeed(90, 40).lines, "\n")); strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Checking") || !strings.Contains(got, "Started public body.") {
 					t.Fatalf("started summary is not streaming: %s", got)
 				}
 				if interrupted {
-					appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "interrupted"}})
+					reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "interrupted"}})
 				} else {
-					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
+					reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
 				}
-				settleActivity(time.Now().Add(activityui.ThinkingLinger), view)
 				feed := view.renderFeed(90, 40)
-				if got := ansi.Strip(strings.Join(feed.lines, "\n")); strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Checking") || strings.Contains(got, "Started public body.") {
+				if got := ansi.Strip(strings.Join(feed.lines, "\n")); strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Checking") || !strings.Contains(got, "Started public body.") {
 					t.Fatalf("started summary did not settle: %s", got)
 				}
 				row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
@@ -414,14 +423,14 @@ func TestUISnapshotAppServerReasoningStartsBeforeSummary(t *testing.T) {
 			u.clock = func() time.Time { return at }
 			u.view.clock, u.agents.clock = u.clock, u.clock
 			u.view.painter.Theme, u.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
-			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+			reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 			u.agents.only, u.agents.selected = false, "/root/worker"
 			view := u.view
 			if thread == "child" {
 				view = u.agents
 			}
-			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
-			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
+			reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
+			reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
 			frame := func() string { return ansi.Strip(strings.Join(view.renderFeed(80, 40).lines, "\n")) + "\n" }
 			t.Run("waiting", func(t *testing.T) {
 				uisnapshot.Assert(t, "testdata/snapshots/reasoning-waiting-"+thread+".txt", frame())
@@ -429,10 +438,10 @@ func TestUISnapshotAppServerReasoningStartsBeforeSummary(t *testing.T) {
 			// Public summary can arrive only just before completion. Its
 			// arrival is not the beginning of the reasoning item.
 			at = at.Add(4200 * time.Millisecond)
-			appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": "**Checking**\n\nPublic summary."})
+			reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": "**Checking**\n\nPublic summary."})
 			at = at.Add(83 * time.Millisecond)
-			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{"**Checking**\n\nPublic summary."}}})
-			if got := frame(); !strings.Contains(got, "Checking for 4s") || strings.Count(got, "Checking for 4s") != 1 || len(u.session.thinking) != 0 {
+			reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{"**Checking**\n\nPublic summary."}}})
+			if got := frame(); strings.Count(got, "Checking for 4s") != 1 || len(u.session.thinking) != 0 {
 				t.Fatalf("summary burst lost observed item duration or duplicated header: %s", got)
 			}
 			uisnapshot.Assert(t, "testdata/snapshots/reasoning-late-summary-"+thread+".txt", frame())
@@ -440,16 +449,62 @@ func TestUISnapshotAppServerReasoningStartsBeforeSummary(t *testing.T) {
 	}
 }
 
+func TestUISnapshotAppServerReasoningLifecycle(t *testing.T) {
+	for _, thread := range []string{"main", "child"} {
+		for _, tc := range []struct{ name, body string }{
+			{"heading", "**Checking tests**\n\n"},
+			{"hash-heading", "# Checking tests\n<!-- -->"},
+			{"long", "**Checking tests**\n\nFirst checkpoint.\n\nSecond checkpoint.\n\nThird checkpoint.\n\nFourth checkpoint."},
+		} {
+			t.Run(thread+"_"+tc.name, func(t *testing.T) {
+				u := newAppServerSessionTestUI(t, t.TempDir())
+				at := time.Date(2026, 9, 30, 8, 0, 0, 0, time.Local)
+				u.clock = func() time.Time { return at }
+				u.view.clock, u.agents.clock = u.clock, u.clock
+				u.view.painter.Theme, u.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
+				reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+				u.agents.only, u.agents.selected = false, "/root/worker"
+				view := u.view
+				if thread == "child" {
+					view = u.agents
+				}
+				reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
+				reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning"}})
+				reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": tc.body})
+				snapshot := func(stage string) {
+					t.Helper()
+					t.Run(stage, func(t *testing.T) {
+						uisnapshot.Assert(t, "testdata/snapshots/reasoning-lifecycle-"+thread+"-"+tc.name+"-"+stage+".txt", strings.Join(view.renderFeed(80, 40).lines, "\n")+"\n")
+					})
+				}
+				snapshot("streaming")
+				at = at.Add(2 * time.Second)
+				// Completion may omit text already delivered in deltas.
+				reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning"}})
+				snapshot("done")
+				reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "completed"}})
+				nextEvent(t, u, thread)
+				at = at.Add(activityui.OutputDebounce)
+				settleActivity(at, view)
+				snapshot("settled")
+				if len(u.session.thinking) != 0 || len(u.session.summaries) != 0 || len(view.entries) != 2 {
+					t.Fatalf("reasoning completion retained live state or duplicated entries: %+v", view.entries)
+				}
+			})
+		}
+	}
+}
+
 func TestAppServerEmptyStartedReasoningDoesNotLeaveThought(t *testing.T) {
 	for _, interrupted := range []bool{false, true} {
 		u := newAppServerSessionTestUI(t, t.TempDir())
-		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
-		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
-		appServerTestNotify(t, u, "item/reasoning/textDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "PRIVATE"})
+		reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
+		reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
+		reasoningTestNotify(t, u, "item/reasoning/textDelta", map[string]any{"threadId": "main", "turnId": "t", "itemId": "r", "delta": "PRIVATE"})
 		if interrupted {
-			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "interrupted"}})
+			reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t", "status": "interrupted"}})
 		} else {
-			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
+			reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
 		}
 		got := ansi.Strip(strings.Join(u.view.renderFeed(80, 40).lines, "\n"))
 		if strings.Contains(got, "Thinking") || strings.Contains(got, "Thought") || strings.Contains(got, "PRIVATE") || len(u.session.thinking) != 0 {

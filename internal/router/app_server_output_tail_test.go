@@ -115,7 +115,7 @@ func TestAppServerCommandRunsWithLiveTailThenRan(t *testing.T) {
 	if got := main(); strings.Contains(got, "ok 7") {
 		t.Fatalf("output rendered before its frame:\n%s", got)
 	}
-	u.flushCommandOutput()
+	u.flushStreamOutput()
 	if got := main(); !strings.Contains(got, "┆ ok 1") || strings.Contains(got, "ok 2") {
 		t.Fatalf("burst jumped to its tail instead of rolling:\n%s", got)
 	}
@@ -296,7 +296,7 @@ func TestAppServerAdjacentReadOutputsStayWithInvocation(t *testing.T) {
 // and held completions have followed.
 func rollCommandOutput(u *appServerUI) {
 	for range activityui.OutputPendingLines {
-		u.flushCommandOutput()
+		u.flushStreamOutput()
 	}
 }
 
@@ -319,7 +319,7 @@ func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": output.String()})
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 1, output.String()
 	notify("item/completed", map[string]any{"item": item})
-	u.flushCommandOutput()
+	u.flushStreamOutput()
 	if got := main(); !strings.Contains(got, "Running") || strings.Contains(got, "ok 19") {
 		t.Fatalf("completion replaced the output before it rolled:\n%s", got)
 	}
@@ -337,7 +337,8 @@ func TestAppServerCompletionWaitsForOutputBurst(t *testing.T) {
 func nextEvent(t *testing.T, u *appServerUI, thread string) {
 	t.Helper()
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{
-		"id": "next-" + thread, "type": "reasoning", "summary": []string{"**Next step**"}}})
+		"id": fmt.Sprintf("next-%s-%d", thread, u.session.seq+1), "type": "reasoning", "summary": []string{"**Next step**"}}})
+	rollCommandOutput(u)
 }
 
 func TestAppServerOutputCollapsesTogetherAfterEventsPause(t *testing.T) {
@@ -454,7 +455,7 @@ func TestAppServerInstantOperationOutputDoesNotRoll(t *testing.T) {
 	item := map[string]any{"id": "read", "type": "commandExecution", "command": "rg -n line internal", "status": "inProgress"}
 	notify("item/started", map[string]any{"item": item})
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "read", "delta": output.String()})
-	u.flushCommandOutput()
+	u.flushStreamOutput()
 	if got := main(); !strings.Contains(got, "┆ line 19") || strings.Contains(got, "line 14") {
 		t.Fatalf("a search's output rolled instead of showing its tail at once:\n%s", got)
 	}
@@ -470,7 +471,7 @@ func TestAppServerInstantOperationOutputDoesNotRoll(t *testing.T) {
 	run := map[string]any{"id": "run", "type": "commandExecution", "command": "go test ./...", "status": "inProgress"}
 	notify("item/started", map[string]any{"item": run})
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "run", "delta": output.String()})
-	u.flushCommandOutput()
+	u.flushStreamOutput()
 	if got := main(); strings.Contains(got[strings.Index(got, "Running"):], "line 19") {
 		t.Fatalf("a command's burst jumped to its tail:\n%s", got)
 	}

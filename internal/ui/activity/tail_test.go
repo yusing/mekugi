@@ -65,6 +65,27 @@ func TestOutputTailRollsThroughBurst(t *testing.T) {
 	}
 }
 
+func TestOutputTailVisibleThroughPreservesSourceGaps(t *testing.T) {
+	var tail OutputTail
+	tail.Write("one\n\nthree\n\npartial")
+	if got := tail.VisibleThrough(); got != 0 {
+		t.Fatalf("unrevealed source boundary = %d", got)
+	}
+	tail.Reveal(1)
+	if got := tail.VisibleThrough(); got != 1 {
+		t.Fatalf("first source boundary = %d", got)
+	}
+	tail.Write("\nfive\n")
+	tail.Reveal(1)
+	if got := tail.VisibleThrough(); got != 3 {
+		t.Fatalf("blank source rows were lost: %d", got)
+	}
+	tail.Flush()
+	if got := tail.VisibleThrough(); got != 7 {
+		t.Fatalf("complete source boundary = %d", got)
+	}
+}
+
 func TestTailRowsSkipsGaps(t *testing.T) {
 	rows := []string{"one", "", "two", "│", "three", "", "four"}
 	if tail, hidden := TailRows(rows, 3); !reflect.DeepEqual(tail, []string{"two", "three", "four"}) || hidden != 1 {

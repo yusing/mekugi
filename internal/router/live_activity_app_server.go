@@ -163,11 +163,10 @@ type liveActivityNativeItem struct {
 	searchResults      *int
 	running            bool                   // Started live and not yet completed; replay never sets it.
 	live               bool                   // From a live notification; restored history never sets it.
-	collapseAt         time.Time              // A settled live block stays open until then.
 	settled            time.Time              // Successful output stays open from then until its agent's next event.
 	changes            []activityui.ChangeRow // Change rows read from a successful change history, VCS read, or commit.
 	commit             gitCommitKey           // The commit object whose files complete changes.
-	collapsed          bool                   // A settled block shows collapsed: after its linger, or restored.
+	collapsed          bool                   // A completed reasoning block, settled output, or restored block.
 	spans              []activityui.TextSpan  // Attachment spans, not text resembling image labels.
 	question           uint64                 // Original user entry, retained even for a live journal publication.
 	thought            time.Duration          // Reasoning time from its start to completion.

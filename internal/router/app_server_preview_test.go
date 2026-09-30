@@ -95,7 +95,7 @@ func TestNativeUIPreview(t *testing.T) {
 				settled = p.ui.agents.pace(now) || settled
 				settled = p.ui.dirty || settled // Includes keys drained by this tick.
 				p.ui.dirty = false
-				p.ui.flushCommandOutput() // Rolls output bursts, as each real frame does.
+				p.ui.flushStreamOutput() // Rolls output bursts, as each real frame does.
 				settled = p.ui.dirty || settled
 				noticeExpired := p.ui.expireNotice(now)
 				if p.pump(0) {
@@ -184,12 +184,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	}
 	render("grok thinking", "started · grok:grok-4.7-build-fast", "• Thinking…")
 	p.until("explorer thought")
-	render("grok thought", "• The pane blocks on its first frame", "I should read launch.go first")
-	// A second later the finished block folds to its header.
-	if !settleActivity(time.Now().Add(activityui.ThinkingLinger), p.ui.agents) {
-		t.Fatal("finished thinking did not transition to folded")
-	}
-	render("grok thought folded", "• The pane blocks on its first frame")
+	render("grok thought readable", "• Thought", "I should read launch.go first")
 	p.until("three agents edit at once")
 	frame := render("agent dock accordion", "LIVE · 3 agents", "^B e next", "▸", "reviewer → main", "2 Diff ●")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
@@ -676,7 +671,7 @@ func (p *nativePreview) pump(wait time.Duration) bool {
 		p.finishCommand(live.thread, live.item, *event.exit)
 		p.live = nil
 	}
-	p.ui.flushCommandOutput()
+	p.ui.flushStreamOutput()
 	return true
 }
 

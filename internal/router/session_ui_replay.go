@@ -123,20 +123,26 @@ func (p *uiReplayPlayback) seek(position time.Duration) error {
 }
 
 func (p *uiReplayPlayback) settleCompleted() {
+	for _, run := range p.ui.session.summaries {
+		if run.done != nil {
+			run.output.Flush()
+			run.dirty = true
+		}
+	}
 	for _, run := range p.ui.session.commands {
 		if run.done != nil {
 			run.output.Flush()
 			run.dirty = true // Flush consumed the work that roll would otherwise detect.
 		}
 	}
-	p.ui.flushCommandOutput()
+	p.ui.flushStreamOutput()
 }
 
 func (p *uiReplayPlayback) paint(out io.Writer, width, height int) error {
 	start := time.Now()
 	u := p.ui
 	if !p.at.Equal(p.paintedAt) {
-		u.flushCommandOutput()
+		u.flushStreamOutput()
 		settleActivity(p.at, u.view, u.agents)
 		u.view.pace(p.at)
 		u.agents.pace(p.at)

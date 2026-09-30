@@ -282,8 +282,9 @@ func TestCodexReasoningSummaryPresentation(t *testing.T) {
 	for _, tc := range []struct{ text, header, body string }{
 		{"**Checking tests**\n\nInspecting the output.", "Inspecting the output.", "Inspecting the output."},
 		{"**Checking tests**: running suite", "Checking tests: running suite", "**Checking tests**: running suite"},
-		{"# Checking tests\n<!-- -->", "Checking tests", "# Checking tests\n<!-- -->"},
-		{"**Checking tests**\n<!-- -->", "Checking tests", ""},
+		{"# Checking tests\n<!-- -->", "Checking tests", "# Checking tests"},
+		{"**Checking tests**\n<!-- -->", "Checking tests", "**Checking tests**"},
+		{"**Checking tests**\n\n", "Checking tests", "**Checking tests**"},
 		{"**Unfinished heading", "Thinking", "**Unfinished heading"},
 	} {
 		if activityui.ReasoningSummaryHeader(tc.text) != tc.header || activityui.ReasoningSummaryBody(tc.text) != tc.body {

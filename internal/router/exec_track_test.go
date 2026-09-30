@@ -300,7 +300,7 @@ func awaitMain(t *testing.T, u *appServerUI, want string) string {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		u.flushCommandOutput()
+		u.flushStreamOutput()
 		u.startCommitReads()
 		for drained := false; !drained; {
 			select {

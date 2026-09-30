@@ -324,7 +324,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						if err := u.fillResumePicker(); err != nil {
 							return err
 						}
-						u.flushCommandOutput()
+						u.flushStreamOutput()
 						u.startCommitReads()
 						u.paneError(u.panes.save(u.shell, u.now(), false))
 						if u.expireNotice(u.now()) {

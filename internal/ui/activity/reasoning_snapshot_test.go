@@ -43,7 +43,7 @@ func TestUISnapshotReasoningCompleted(t *testing.T) {
 			collapsed bool
 			hovered   bool
 		}{
-			{name: "linger"},
+			{name: "expanded"},
 			{name: "collapsed", collapsed: true},
 			{name: "hovered", collapsed: true, hovered: true},
 		} {

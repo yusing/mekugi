@@ -309,8 +309,12 @@ func (d *outputDialog) refreshPages() {
 					} else if origin.Kind != "op" && origin.Kind != "reads" {
 						if entry.journalCard != nil {
 							origin = d.view.journalCardBlock(entry)
-						} else if index < len(d.view.blocks) && len(d.view.blocks[index]) == 1 {
-							current := d.view.blocks[index][0]
+						} else if index < len(d.view.blocks) && (origin.Kind != "summary" && len(d.view.blocks[index]) == 1 || origin.Kind == "summary" && origin.Section < len(d.view.blocks[index])) {
+							section := 0
+							if origin.Kind == "summary" {
+								section = origin.Section
+							}
+							current := d.view.blocks[index][section]
 							current.Source = origin.Source
 							if current.Verb == "" {
 								current.Verb = origin.Verb

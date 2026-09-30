@@ -1,0 +1,4 @@
+• Inspecting order for 2s
+
+● main                                                                  08:00:02
+┃ Answer after reasoning.

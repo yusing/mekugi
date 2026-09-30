@@ -83,7 +83,7 @@ func TestAppServerReasoningStreamNativeCodexE2E(t *testing.T) {
 	defer terminal.cancel()
 	terminal.await("Ready")
 	terminal.send("Exercise incremental public reasoning.\r")
-	terminal.await("Thinking…")
+	terminal.await("Working")
 	if strings.Contains(terminal.screen.String(), "public checkpoint") {
 		t.Fatal("summary appeared before the provider sent it")
 	}
@@ -106,9 +106,9 @@ func TestAppServerReasoningStreamNativeCodexE2E(t *testing.T) {
 	}
 	close(p.stages[2])
 	terminal.await("Reasoning acceptance complete.")
-	terminal.await("First public checkpoint. for ")
+	terminal.await("Thought for ")
 	terminal.awaitMatch("folded reasoning", func(frame string) bool {
-		return strings.Contains(frame, "First public checkpoint. for ") && !strings.Contains(frame, "Second public checkpoint.")
+		return strings.Contains(frame, "Thought for ") && !strings.Contains(frame, "Second public checkpoint.")
 	})
 	terminal.quit()
 }

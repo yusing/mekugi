@@ -150,6 +150,18 @@ func (t *OutputTail) Pending() int {
 	return len(t.pending)
 }
 
+// VisibleThrough is the source-line boundary revealed so far. Once the
+// backlog is empty it includes the unfinished line, just as Lines does.
+func (t *OutputTail) VisibleThrough() int {
+	if len(t.pending) == 0 {
+		return t.count + 1
+	}
+	if len(t.lines) == 0 {
+		return 0
+	}
+	return t.lines[len(t.lines)-1].index + 1
+}
+
 // Reveal shows up to n pending lines, oldest first, and reports whether it
 // showed any.
 func (t *OutputTail) Reveal(n int) bool {

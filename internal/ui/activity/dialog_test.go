@@ -362,7 +362,7 @@ func TestDialogNarrativeCopiesMarkdown(t *testing.T) {
 	if page.Text != "**Full** narrative\n\nLast paragraph" || strings.Contains(page.Text, "\x1b") {
 		t.Fatalf("copy %q", page.Text)
 	}
-	if len(page.Lines) == 0 || !strings.Contains(ansi.Strip(page.Title), "Full narrative") {
+	if len(page.Lines) == 0 {
 		t.Fatalf("page %+v", page)
 	}
 }

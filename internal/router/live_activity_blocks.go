@@ -97,16 +97,19 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 			return []activityui.Block{{Kind: "message", From: entry.assignment.from, To: entry.assignment.to, Owner: entry.Agent, Body: livediff.Safe(entry.assignment.text, false)}}
 		}
 	case "reasoning":
-		block := activityui.Block{Kind: "summary", Body: source}
-		if entry.native != nil {
-			block.Live = entry.native.phase == "summary" || entry.native.phase == "item/started"
-			block.Collapsed = entry.native.collapsed && block.Collapsible()
-			// Whole seconds only: sub-second blocks show their summary without a duration.
-			if entry.native.thought >= time.Second {
-				block.Elapsed = liveActivityAge(entry.native.thought)
+		blocks := activityui.ReasoningSections(source)
+		for i := range blocks {
+			block := &blocks[i]
+			if entry.native != nil {
+				block.Live = entry.native.phase == "summary" || entry.native.phase == "item/started"
+				block.Collapsed = entry.native.collapsed && block.Collapsible()
+				// Duration belongs to the item, not to each detected section.
+				if i == len(blocks)-1 && entry.native.thought >= time.Second {
+					block.Elapsed = liveActivityAge(entry.native.thought)
+				}
 			}
 		}
-		return []activityui.Block{block}
+		return blocks
 	case "native_journal":
 		if entry.journal != nil {
 			journal := &activityui.Journal{}

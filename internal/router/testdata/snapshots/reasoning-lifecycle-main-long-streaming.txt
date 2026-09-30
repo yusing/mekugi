@@ -1,0 +1,4 @@
+• Checking tests · +1 line
+  Second checkpoint.
+  Third checkpoint.
+  Fourth checkpoint.

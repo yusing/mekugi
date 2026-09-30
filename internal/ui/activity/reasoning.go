@@ -29,22 +29,16 @@ func ReasoningSummaryHeader(text string) string {
 	return "Thinking"
 }
 
-// Source: codex-rs/tui/src/history_cell/messages.rs:749:798@86be5320
-// split_reasoning_summary_parts, for the collector's single accumulated item.
+// ReasoningSummaryBody removes a detected section title only when paragraphs
+// follow it. Heading-only summaries remain public content, not empty bodies.
 func ReasoningSummaryBody(text string) string {
 	text = strings.TrimSpace(text)
-	if rest, ok := strings.CutPrefix(text, "**"); ok {
-		if _, body, closed := strings.Cut(rest, "**"); closed {
-			if strings.TrimSpace(body) == "<!-- -->" {
-				return ""
-			}
-			if strings.HasPrefix(body, "\n") || strings.HasPrefix(body, "\r") {
-				text = strings.TrimSpace(body)
-			}
+	text = strings.TrimSpace(strings.TrimSuffix(text, "<!-- -->"))
+	lines := strings.Split(text, "\n")
+	if len(lines) > 1 && reasoningTitle(lines, 0) != "" {
+		if body := strings.TrimSpace(strings.Join(lines[1:], "\n")); body != "" {
+			return body
 		}
-	}
-	if text == "<!-- -->" {
-		return ""
 	}
 	return text
 }
@@ -53,29 +47,35 @@ func ReasoningSummaryBody(text string) string {
 // streams, following grok-build's truncated thinking blocks.
 const ThinkingTailRows = 3
 
-// thinkingHeader keeps completed reasoning recognizable without opening it.
-// Reserve room for elapsed time instead of truncating it with the summary.
+// thinkingHeader labels long reasoning blocks; short summaries render directly.
 func (p *Painter) thinkingHeader(block Block, width int) string {
-	if block.Live {
-		return "Thinking…"
+	label := block.Label
+	if label == "" {
+		label = ReasoningSections(block.Body)[0].Label
 	}
-	label := "Reasoning"
-	for line := range strings.SplitSeq(block.Body, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "<!--") {
-			continue
+	if label == "" && block.Live {
+		label = "Thinking…"
+	} else if label == "" {
+		label = "Thought"
+	}
+	label = p.Inline(label)
+	if !block.Live && block.Elapsed != "" {
+		suffix := " for " + block.Elapsed
+		label = strings.TrimSuffix(reasoningFor(label, block.Elapsed), suffix)
+		if width > ansi.StringWidth(suffix) {
+			return ansi.Truncate(label, width-ansi.StringWidth(suffix), "…") + suffix
 		}
-		label = strings.TrimSpace(ansi.Strip(p.Inline(ReasoningSummaryHeader(line))))
-		break
+		label += suffix
 	}
-	suffix := ""
-	if block.Elapsed != "" {
-		suffix = " for " + block.Elapsed
+	return ansi.Truncate(label, max(1, width), "…")
+}
+
+// Strip the visible trailing period, preserving Markdown's terminal styles.
+func reasoningFor(text, elapsed string) string {
+	if dot := strings.LastIndexByte(text, '.'); dot >= 0 && ansi.Strip(text[dot+1:]) == "" {
+		text = text[:dot] + text[dot+1:]
 	}
-	if width <= ansi.StringWidth(suffix) {
-		return ansi.Truncate(label+suffix, max(1, width), "…")
-	}
-	return ansi.Truncate(label, min(60, max(1, width-ansi.StringWidth(suffix))), "…") + suffix
+	return text + " for " + elapsed
 }
 
 // reasoningRow keeps the whole row faint and italic, including text after

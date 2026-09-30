@@ -1,0 +1,2 @@
+• Inspecting order for 2s
+└ Ran echo later · 100ms

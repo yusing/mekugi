@@ -35,6 +35,7 @@ type appServerSession struct {
 	finals          map[string]bool                    // The thread's current turn already sent its answer.
 	metadata        map[string]string                  // Child thread → pending metadata request ID; empty when settled.
 	commands        map[[3]string]*appServerCommandRun // Live commands by thread, turn, item.
+	summaries       map[[3]string]*appServerSummaryRun // Public summaries pacing through the same frame cadence.
 	outputs         activityui.Retention               // Command output the output dialog reads, bounded across the session.
 	cwd             string
 	waits           map[[3]string][]appServerWaitTarget // Start-time targets by thread, turn, item.
@@ -132,6 +133,7 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.finals = make(map[string]bool)
 	s.metadata = make(map[string]string)
 	s.commands = make(map[[3]string]*appServerCommandRun)
+	s.summaries = make(map[[3]string]*appServerSummaryRun)
 	s.waits = make(map[[3]string][]appServerWaitTarget)
 	s.waitStore, s.waitContext = nil, nil
 	s.cwd = cwd
@@ -319,6 +321,11 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		}
 	case "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":
 		key := [3]string{p.ThreadID, p.TurnID, p.ItemID}
+		if _, seen := s.reasoning[key]; seen {
+			if _, streaming := s.thinking[key]; !streaming {
+				break // Late summary updates cannot reopen a completed item.
+			}
+		}
 		text := s.reasoning[key]
 		if m.Method == "item/reasoning/summaryPartAdded" {
 			if text != "" {
@@ -328,7 +335,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		}
 		text += p.Delta
 		s.reasoning[key] = text
-		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: p.ItemID, phase: "summary"}
+		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: p.ItemID, phase: "summary", live: true}
 		s.startThinking(key, native, now)
 		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(p.ThreadID), Kind: "reasoning", Text: text, CallID: p.ItemID, Observed: now, native: native})
 	case "item/started", "item/completed", "item/agentMessage/delta":
@@ -372,7 +379,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				s.startThinking(key, native, now)
 			}
 			if m.Method == "item/completed" {
-				native.collapseAt = now.Add(activityui.ThinkingLinger)
+				native.settled = now
 				if pending, ok := s.pendingThinking[p.ThreadID]; ok && s.thinking[key].IsZero() && strings.TrimSpace(text) != "" {
 					// A summary delivered only at completion still takes over the block.
 					delete(s.pendingThinking, p.ThreadID)
@@ -393,8 +400,10 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				// header rather than retaining an empty Thinking or Thought.
 				native.phase = "discarded"
 			}
-			if m.Method == "item/started" || m.Method == "item/completed" || strings.TrimSpace(text) != "" {
-				s.reasoning[key] = text
+			// Empty starts still establish item identity for late-delta rejection.
+			// Their absence from the visible transcript is independent of that state.
+			s.reasoning[key] = text
+			if m.Method == "item/completed" || strings.TrimSpace(text) != "" || native.replaces != "" {
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "reasoning", Text: text, CallID: id, Observed: now, native: native})
 			}
 		case "commandExecution", "webSearch":
@@ -477,7 +486,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		}
 	}
 	u.updateAgentPane(m.Method, p)
-	u.applyActivity(entries, slices.Clone(s.agents))
+	u.applyActivity(u.queueSummaries(entries), slices.Clone(s.agents))
 	// Main's turn lifecycle also drives the composer state.
 	return !main || !strings.HasPrefix(m.Method, "turn/"), nil
 }
@@ -565,18 +574,23 @@ func (s *appServerSession) endThinking(thread string, now time.Time) []activityP
 	}
 	slices.SortFunc(keys, func(a, b [3]string) int { return cmp.Compare(a[1]+"\x00"+a[2], b[1]+"\x00"+b[2]) })
 	for _, key := range keys {
-		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(thread), Kind: "reasoning", Text: s.reasoning[key], CallID: key[2], Observed: now,
-			native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], phase: "item/completed", thought: now.Sub(s.thinking[key]), collapseAt: now.Add(activityui.ThinkingLinger)}})
+		text, phase := s.reasoning[key], "item/completed"
+		if strings.TrimSpace(text) == "" {
+			phase = "discarded"
+		}
+		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(thread), Kind: "reasoning", Text: text, CallID: key[2], Observed: now,
+			native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], phase: phase, thought: now.Sub(s.thinking[key]), settled: now, live: true}})
 		delete(s.thinking, key)
 	}
 	return entries
 }
 
-// flushCommandOutput re-sends each live command whose output changed since
+// flushStreamOutput rolls public summaries and re-sends each live command whose output changed since
 // the last frame, with its current tail, rolling a burst through a share at a
 // time. A held completion follows once nothing is pending. Late output cannot
 // reopen a completed command, whose entry it would otherwise replace.
-func (u *appServerUI) flushCommandOutput() {
+func (u *appServerUI) flushStreamOutput() {
+	u.flushSummaryOutput()
 	s := &u.session
 	var entries []activityPaneEntry
 	for key, run := range s.commands {

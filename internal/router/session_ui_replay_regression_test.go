@@ -66,7 +66,7 @@ func TestSessionUIReplayReasoningUsesRecordedItemStart(t *testing.T) {
 	for _, step := range []struct {
 		at   time.Duration
 		want string
-	}{{time.Second, "Thinking…"}, {1500 * time.Millisecond, "Public summary"}, {3 * time.Second, "Checking for 2s"}} {
+	}{{time.Second, "Working"}, {1500 * time.Millisecond, "Public summary"}, {3 * time.Second, "Checking for 2s"}} {
 		if err := p.advance(step.at); err != nil {
 			t.Fatal(err)
 		}
