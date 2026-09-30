@@ -282,9 +282,11 @@ func TestExecObservationBoundsFileBytes(t *testing.T) {
 }
 
 func TestExecObservationSkipsNeutralCommands(t *testing.T) {
-	for _, command := range []string{"ls", "git status"} {
-		if _, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: t.TempDir(), Shell: "bash"}}, false, false, execCaptureEnv{}); observed {
-			t.Errorf("%q was observed without a declared scope", command)
+	for _, command := range []string{"ls", "git status", `rg -n pattern internal/{router,ui}`, `find "$HOME/.codex/sessions" -type f -print`, `[ -d "$directory" ] && echo directory`, "skills-mgr info"} {
+		for _, codeMode := range []bool{false, true} {
+			if _, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: t.TempDir(), Shell: "bash"}}, false, codeMode, execCaptureEnv{}); observed {
+				t.Errorf("%q was observed without a declared scope", command)
+			}
 		}
 	}
 	if _, observed := captureExecObservation([]execCommandInput{{Command: "rm a", Workdir: t.TempDir(), Shell: "bash"}}, true, true, execCaptureEnv{}); !observed {
@@ -532,6 +534,62 @@ func TestNativeExecCommandWithoutEffectAllocatesNoChange(t *testing.T) {
 	history, found, err := proxy.replayStore.lookup(t.Context(), workspace, "exec-call:exec:1")
 	if err != nil || !found || history.ChangeID != "" || len(history.ReviewFiles) != 0 {
 		t.Fatalf("empty observation = %+v found=%v err=%v", history, found, err)
+	}
+}
+
+func TestReadCommandFormsAllocateNoChanges(t *testing.T) {
+	for _, command := range []string{
+		`rg -n pattern internal/{router,ui}`,
+		`[ -d "$directory" ] && echo directory`,
+		`find "$HOME/.codex/sessions" -type f -print`,
+		`skills-mgr info`,
+	} {
+		for _, codeMode := range []bool{false, true} {
+			mode := "native"
+			if codeMode {
+				mode = "code-mode"
+			}
+			t.Run(mode+"/"+command, func(t *testing.T) {
+				proxy := newManagedMekugiProxy(t)
+				attachTestReplayStore(t, proxy)
+				if codeMode {
+					transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
+					transform.sessionShell = "bash"
+					call := map[string]any{
+						"type": "custom_tool_call", "id": "code-item", "call_id": "code-call", "name": "exec",
+						"input": "text(await tools.exec_command(" + string(mustMarshalJSON(map[string]string{"cmd": command})) + "));", "status": "completed",
+					}
+					if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"id": "response", "status": "completed", "output": []any{call}})); err != nil {
+						t.Fatal(err)
+					}
+					request := parsedResponsesRequest{fields: map[string]json.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{
+						"type": "custom_tool_call_output", "call_id": "code-call", "output": []any{
+							map[string]any{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+						},
+					}})}}
+					if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
+						t.Fatal(err)
+					}
+					index, err := proxy.replayStore.readChangeIndex(workspace)
+					if err != nil || len(index.Changes) != 0 {
+						t.Fatalf("read-only Code Mode command allocated changes: %+v, %v", index, err)
+					}
+				} else {
+					workspace := t.TempDir()
+					transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session")
+					arguments := string(mustMarshalJSON(map[string]string{"cmd": command}))
+					streamNativeExecCommand(t, transform, "exec-call", arguments)
+					reconcileExecItems(t, proxy, workspace, []any{
+						map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments},
+						map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process exited with code 0")},
+					})
+					index, err := proxy.replayStore.readChangeIndex(workspace)
+					if err != nil || len(index.Changes) != 0 {
+						t.Fatalf("read-only native command allocated changes: %+v, %v", index, err)
+					}
+				}
+			})
+		}
 	}
 }
 

@@ -50,6 +50,34 @@ func TestJournalResultRecognition(t *testing.T) {
 	}
 }
 
+func TestUISnapshotJournalCaptureDiagnostics(t *testing.T) {
+	for _, mixed := range []bool{false, true} {
+		name := "gaps"
+		stats := ""
+		if mixed {
+			name = "mixed"
+			stats = "    M\t1\t1\tinternal/router/known.go\n"
+		}
+		t.Run(name, func(t *testing.T) {
+			text := livediff.Safe("Finished inspection.\n\n**Changes:** ash1..ash3\n\n"+
+				"Recorded evaluations (file statistics and capture diagnostics, not a net diff):\n\n"+
+				"    ash1 incomplete captured scope; use --history for diagnostics\n"+
+				"    ash2 incomplete captured scope; use --history for diagnostics\n"+
+				"    ash3 incomplete captured scope; use --history for diagnostics\n"+stats, false)
+			journal, ok := ParseJournal(text)
+			wantStats := 0
+			if mixed {
+				wantStats = 1
+			}
+			if !ok || len(journal.Stats) != wantStats || len(journal.notes) != 3 {
+				t.Fatalf("capture diagnostics lost or treated as file statistics: %+v %v", journal, ok)
+			}
+			p := Painter{Theme: livediff.DarkTheme}
+			uisnapshot.Assert(t, "testdata/snapshots/journal_capture_"+name+".txt", strings.Join(p.Event(Block{Kind: "final", Body: text, Journal: journal}, 80), "\n")+"\n")
+		})
+	}
+}
+
 func TestJournalHeadlessCodeSpanBulletsStayMarkdown(t *testing.T) {
 	journal, ok := ParseJournal("- `internal/a.go`\n- `internal/b.go`\n\n**Changes:**\nNo recorded changes.\n")
 	if !ok || len(journal.Groups) != 1 || len(journal.Groups[0].Answers) != 1 || journal.Groups[0].Answers[0].ID != "" || !strings.Contains(journal.Groups[0].Answers[0].Text, "internal/b.go") {

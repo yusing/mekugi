@@ -331,7 +331,7 @@ type Journal struct {
 	empty   bool
 	Changes string // Change ranges.
 	Stats   []Stat
-	notes   []string // Unavailable or empty change reports.
+	notes   []string // Capture diagnostics and unavailable or empty change reports.
 	clipped bool
 }
 
@@ -578,8 +578,7 @@ func ParseJournal(text string) (*Journal, bool) {
 
 // parseJournalChanges reads the change report, rejecting lines it never
 // writes so an authored answer that merely quotes the heading stays Markdown.
-// The report always follows its heading with a note or numstat, and only
-// numstat rows are indented.
+// The report always follows its heading with a note or evaluation rows.
 func parseJournalChanges(journal *Journal, lines []string, headed bool) bool {
 	reported, numstat := headed, false
 	for i, line := range lines {
@@ -587,12 +586,21 @@ func parseJournalChanges(journal *Journal, lines []string, headed bool) bool {
 		case i == 0:
 			journal.Changes = strings.TrimSpace(strings.TrimPrefix(line, "**Changes:**"))
 		case line == "":
-		case strings.HasPrefix(line, "Aggregated numstat"):
+		case strings.HasPrefix(line, "Recorded evaluations"), strings.HasPrefix(line, "Aggregated numstat"):
 			reported, numstat = true, true
 		case strings.HasPrefix(line, "    ") && (numstat || headed):
 			// Numstat columns are tabs, expanded by the sanitizer.
 			if fields := strings.SplitN(strings.TrimPrefix(line, "    "), "    ", 4); len(fields) == 4 {
-				journal.Stats = append(journal.Stats, Stat{fields[0], fields[1], fields[2], fields[3]})
+				switch {
+				case fields[0] == "?":
+					journal.notes = append(journal.notes, "Capture incomplete: "+fields[3])
+				case fields[1] == "-" || fields[2] == "-":
+					journal.notes = append(journal.notes, fields[0]+" "+fields[3]+" · counts unavailable")
+				default:
+					journal.Stats = append(journal.Stats, Stat{fields[0], fields[1], fields[2], fields[3]})
+				}
+			} else {
+				journal.notes = append(journal.notes, strings.TrimSpace(line))
 			}
 		case line == "No recorded changes.", line == "No recorded file changes.", strings.HasPrefix(line, "Changes unavailable: "),
 			strings.HasPrefix(line, "Stat unavailable: "), strings.HasPrefix(line, "Cumulative: "):

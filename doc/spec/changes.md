@@ -70,6 +70,13 @@ forms remain open. `env -u`/`--unset` preserves underlying scope unless it remov
 `PATH` or cannot be parsed. Code Mode `write_stdin` calls with literal empty or
 omitted input are polling, not an additional writer.
 
+Reader option checks recognize lexical brace-expanded paths without executing
+the shell. The `[` test builtin and quoted scalar `find` paths containing a
+literal slash remain read-only; dynamic action operands, command substitutions,
+writer options and output redirects retain their effect classification.
+`skills-mgr info` is read-only. Other manager commands may repair workspace
+placeholders or run scripts and do not imply an exact no-op.
+
 For a declared command, Mekugi captures the derived paths before the call is
 forwarded, within bounds on file size, total and encoded size, enumeration, and
 time. There is no separate file-count or glob-match-count cap. A path past a bound is recorded as omitted. When an earlier statement can

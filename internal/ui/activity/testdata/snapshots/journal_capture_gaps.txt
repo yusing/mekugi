@@ -1,0 +1,8 @@
+╭─ ✓ answer ───────────────────────────────────────────────────────────────────╮
+│ Finished inspection.                                                         │
+│                                                                              │
+│ Changes ash1..ash3                                                           │
+│ ash1 incomplete captured scope; use --history for diagnostics                │
+│ ash2 incomplete captured scope; use --history for diagnostics                │
+│ ash3 incomplete captured scope; use --history for diagnostics                │
+╰──────────────────────────────────────────────────────────────────────────────╯

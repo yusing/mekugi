@@ -9,6 +9,9 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func TestJournalChildCompletionChangesAfterRequestForward(t *testing.T) {
@@ -286,6 +289,85 @@ func TestJournalChildCompletionChangesEmptyUnavailableAndRestart(t *testing.T) {
 			t.Fatalf("restart lost durable changes:\n%s", result)
 		}
 	})
+}
+
+func TestJournalChildCompletionCaptureGapsStayReadable(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy.replayStore = store
+	child, _ := prepareActivityTest(t, proxy, "child", "child", "root", "/root/child", nil)
+	defer child.Close()
+	store = store.scoped(child.ctx)
+	id, err := store.reserveChange(child.ctx, child.directory, child.shellThreadID, "opaque")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.put(child.ctx, child.directory, map[string]mekugiHistory{"opaque": {
+		ChangeID: id, CorrelationID: "opaque", ExecutingThread: child.shellThreadID,
+		ToolName: "exec_command", Script: "unknown-reader source.go",
+		ExecOutcome: &execOutcome{Class: "opaque", Coverage: execCoveragePartial, ScopeReason: "unknown-reader is not recognized"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	result := finishChildJournalForChanges(t, child)
+	if !strings.Contains(result, id+" incomplete captured scope") || strings.Contains(result, "Aggregated numstat") || strings.Contains(result, "No recorded file changes.") {
+		t.Fatalf("capture-only completion implied file statistics or exact no-op:\n%s", result)
+	}
+	history, err := store.readChanges(child.ctx, changeReadOptions{workspace: child.directory, ids: []string{id}, view: "history"})
+	if err != nil || !strings.Contains(history, "unknown-reader is not recognized") || !strings.Contains(history, "unknown-reader source.go") {
+		t.Fatalf("completion diagnostic lost retained scope evidence: %q %v", history, err)
+	}
+}
+
+func TestUISnapshotJournalChildCaptureFileDiagnostics(t *testing.T) {
+	for _, mixed := range []bool{false, true} {
+		name := "gaps"
+		if mixed {
+			name = "mixed"
+		}
+		t.Run(name, func(t *testing.T) {
+			proxy := newManagedMekugiProxy(t)
+			store, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			proxy.replayStore = store
+			child, _ := prepareActivityTest(t, proxy, "child", "child", "root", "/root/child", nil)
+			defer child.Close()
+			store = store.scoped(child.ctx)
+			id, err := store.reserveChange(child.ctx, child.directory, child.shellThreadID, "edit")
+			if err != nil {
+				t.Fatal(err)
+			}
+			files := []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("source.go", "source.go", "capture deadline")}
+			if mixed {
+				files = append(files,
+					mekugi.RenderReviewFile("known.go", "known.go", "old\n", "new\n"),
+					mekugi.RenderBinaryReviewFile("old.bin", "new.bin", 3, 3, "abc", "abc"),
+				)
+			}
+			if err := store.put(child.ctx, child.directory, map[string]mekugiHistory{"edit": {
+				ChangeID: id, CorrelationID: "edit", ExecutingThread: child.shellThreadID, ReviewFiles: files,
+			}}); err != nil {
+				t.Fatal(err)
+			}
+			text := livediff.Safe(finishChildJournalForChanges(t, child), false)
+			journal, ok := activityui.ParseJournal(text)
+			wantStats := 0
+			if mixed {
+				wantStats = 1
+			}
+			if !ok || len(journal.Stats) != wantStats || journal.Changes != id {
+				t.Fatalf("producer capture gaps became file statistics: %+v, %v\n%s", journal, ok, text)
+			}
+			painter := activityui.Painter{Theme: livediff.DarkTheme}
+			uisnapshot.Assert(t, "testdata/snapshots/journal-child-capture-"+name+".txt",
+				strings.Join(painter.Event(activityui.Block{Kind: "final", Body: text, Journal: journal}, 80), "\n")+"\n")
+		})
+	}
 }
 
 func finishChildJournalForChanges(t *testing.T, child *mekugiResponseTransform) string {

@@ -121,7 +121,7 @@ func (s *mekugiReplayStore) renderChildJournalChanges(ctx context.Context, index
 	} else if stat == "" {
 		output.WriteString("No recorded file changes.\n")
 	} else {
-		output.WriteString("\nAggregated numstat (this agent's recorded evaluations, not a net diff):\n\n")
+		output.WriteString("\nRecorded evaluations (file statistics and capture diagnostics, not a net diff):\n\n")
 		output.WriteString(indentJournalText(stat, "    "))
 	}
 	return output.String(), index.Sequence

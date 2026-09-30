@@ -1,0 +1,9 @@
+╭─ ✓ answer · 1 file +1 -1 ────────────────────────────────────────────────────╮
+│ Finished inspection.                                                         │
+│                                                                              │
+│ Changes ash1..ash3                                                           │
+│ M  +1 -1  internal/router/known.go                                           │
+│ ash1 incomplete captured scope; use --history for diagnostics                │
+│ ash2 incomplete captured scope; use --history for diagnostics                │
+│ ash3 incomplete captured scope; use --history for diagnostics                │
+╰──────────────────────────────────────────────────────────────────────────────╯

@@ -337,8 +337,10 @@ The cursor advances only after successful downstream terminal response delivery.
 Failure leaves the previous window available for retry. Result acknowledgement
 does not consume Main live or terminal delivery state.
 
-The child result appends retained change ranges and aggregated numstat for this
-result's executing-thread-owned evaluations, including recoveries in another stream.
+The child result appends retained change ranges, file statistics and capture
+diagnostics for this result's executing-thread-owned evaluations, including
+recoveries in another stream. Capture gaps are not file statistics or confirmed
+edits; their diagnostics remain visible even when no file differences were captured.
 Journal revisions and change evaluations share a locked delivery snapshot and
 independently monotonic cursors. Ranges identify retained changes while statistics
 exclude earlier delivered evaluations and other agents' work. A later recovery of

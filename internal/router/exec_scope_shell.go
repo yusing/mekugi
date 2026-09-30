@@ -610,6 +610,10 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 		return
 	}
 	name, literal := shellCatLiteral(call.Args[0])
+	if !literal && call.Args[0].Lit() == "[" {
+		// An unmatched opening bracket is the test builtin, not a glob.
+		name, literal = "[", true
+	}
 	if !literal {
 		w.opaque("dynamic command name")
 		return
@@ -937,7 +941,7 @@ func execNeutralCommand(identity string, args []*syntax.Word) bool {
 		if !checked {
 			return true
 		}
-		values, ok := literalArgs(args)
+		values, ok := execNeutralArgs(args)
 		if !ok {
 			return false
 		}
@@ -967,6 +971,10 @@ func execNeutralCommand(identity string, args []*syntax.Word) bool {
 		return false
 	}
 	switch identity {
+	case "skills-mgr":
+		// Other subcommands can start a refresh runner that repairs project
+		// placeholders; run also executes an arbitrary skill script.
+		return slices.Equal(values, []string{"info"})
 	case "go":
 		if len(values) == 0 {
 			return false
@@ -997,6 +1005,28 @@ func execNeutralCommand(identity string, args []*syntax.Word) bool {
 		}
 	}
 	return false
+}
+
+// execNeutralArgs expands only lexical braces for reader option checks. This
+// does not resolve parameters, expand filesystem globs, or execute the shell.
+func execNeutralArgs(words []*syntax.Word) ([]string, bool) {
+	var values []string
+	for _, word := range words {
+		copy := *word
+		copy.Parts = slices.Clone(word.Parts)
+		syntax.SplitBraces(&copy)
+		for expanded, err := range expand.BracesSeq(nil, &copy) {
+			if err != nil || len(values) >= 4096 {
+				return nil, false
+			}
+			args, ok := literalArgs([]*syntax.Word{expanded})
+			if !ok {
+				return nil, false
+			}
+			values = append(values, args...)
+		}
+	}
+	return values, true
 }
 
 // cd moves the walker as if it succeeded. A directory that is not a literal
@@ -1505,18 +1535,48 @@ func (w *execShellWalker) awk(identity string, args []*syntax.Word) {
 }
 
 func (w *execShellWalker) find(args []*syntax.Word) {
-	values, ok := literalArgs(args)
-	if !ok {
-		w.opaque("dynamic find operand")
-		return
-	}
-	for _, value := range values {
-		switch value {
-		case "-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls":
-			w.opaque("find " + value)
+	for _, arg := range args {
+		values, ok := execNeutralArgs([]*syntax.Word{arg})
+		if !ok && execFindReadPath(arg) {
+			continue
+		}
+		if !ok {
+			w.opaque("dynamic find operand")
 			return
 		}
+		for _, value := range values {
+			switch value {
+			case "-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls":
+				w.opaque("find " + value)
+				return
+			}
+		}
 	}
+}
+
+// A quoted scalar path containing a literal slash cannot expand to a find
+// action. Its value need not be resolved to establish that the command reads.
+func execFindReadPath(word *syntax.Word) bool {
+	if len(word.Parts) != 1 || !execWordStatic(word) {
+		return false
+	}
+	quoted, ok := word.Parts[0].(*syntax.DblQuoted)
+	if !ok {
+		return false
+	}
+	path, scalar := false, true
+	for _, part := range quoted.Parts {
+		if text, ok := part.(*syntax.Lit); ok && strings.Contains(text.Value, "/") {
+			path = true
+		}
+	}
+	syntax.Walk(word, func(node syntax.Node) bool {
+		if param, ok := node.(*syntax.ParamExp); ok && (param.Excl || param.Index != nil || param.Param.Value == "@" || param.Param.Value == "*") {
+			scalar = false
+		}
+		return scalar
+	})
+	return path && scalar
 }
 
 // sed -i is declared when its script cannot write other files or run commands.

@@ -186,3 +186,43 @@ func TestClassifyRTKWrappersAndEnvUnset(t *testing.T) {
 		t.Fatalf("wrapped go test program labels = %+v; want go test, not rtk", plan.Programs)
 	}
 }
+
+func TestClassifyReadCommandFormsWithoutFalseWriters(t *testing.T) {
+	for _, command := range []string{
+		`rg -n 'editPages|nativeStatus\(' internal/router/{app_server_events.go,live_activity_view.go,terminal_ui.go,native_shell.go,native_edit_navigation.go}`,
+		`rg -n 'pattern' src/{one,two{a,b}}.go`,
+		`rg -n 'pattern' src/{1..5}.go`,
+		`rtk rg -n pattern internal/{router,ui}`,
+		`[ -d "$directory" ] && echo directory`,
+		`find "$HOME/.codex/sessions" -type f -name '*rollout*' -print 2>/dev/null | head -20`,
+		`find "${XDG_STATE_HOME:-$HOME/.local/state}/mekugi" -type f -print`,
+		`skills-mgr info`,
+	} {
+		if plan := classifyExecShell(command, "/work", "bash"); plan.Class != execNeutral {
+			t.Errorf("read command %q classified as %s: %s", command, plan.Class, plan.Reason)
+		}
+	}
+	for _, command := range []string{
+		`rg --{pre,no-ignore} tool pattern`,
+		`rg "$options" pattern`,
+		`find "$HOME/.codex" -delete`,
+		`find "$root" -print`,
+		`find "$@/folder" -print`,
+		`find "${paths[@]}/folder" -print`,
+		`find "$HOME/$(touch changed)" -print`,
+		`find "$HOME/.codex" -{print,delete}`,
+		`skills-mgr get golang-best-practices`,
+		`skills-mgr list`,
+		`skills-mgr run use-modern-go/scripts/run-tool.sh list --go-version 1.27`,
+		`skills-mgr adopt`,
+		`rg() { touch changed; }; rg pattern src/{one,two}`,
+	} {
+		if plan := classifyExecShell(command, "/work", "bash"); plan.Class != execOpaque {
+			t.Errorf("possible writer %q classified as %s: %s", command, plan.Class, plan.Reason)
+		}
+	}
+	plan := classifyExecShell(`rg -n pattern src/{one,two}.go > matches.txt`, "/work", "bash")
+	if plan.Class != execDeclared || !slices.Equal(execPlanScope(plan, "/work"), []string{"file:matches.txt"}) {
+		t.Fatalf("reader redirection lost write scope: %+v", plan)
+	}
+}
