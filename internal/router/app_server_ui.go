@@ -334,7 +334,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 							u.dirty = true
 							agePaint = time.Now()
 						}
-						if err := u.shell.flushEscape(); err != nil {
+						if err := u.drainKeys(keys); err != nil || u.quitRequested {
 							return err
 						}
 						notices := u.applyCriticalNotices()

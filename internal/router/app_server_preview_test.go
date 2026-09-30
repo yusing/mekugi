@@ -85,13 +85,15 @@ func TestNativeUIPreview(t *testing.T) {
 						return err
 					}
 				}
-				if err := p.ui.shell.flushEscape(); err != nil {
+				if err := p.ui.drainKeys(keys); err != nil || p.ui.quitRequested {
 					return err
 				}
+				p.serve()
 				flashExpired := p.ui.view.expireFlash(now)
 				settled := settleActivity(now, p.ui.view, p.ui.agents)
 				settled = p.ui.view.pace(now) || settled
 				settled = p.ui.agents.pace(now) || settled
+				settled = p.ui.dirty || settled // Includes keys drained by this tick.
 				p.ui.dirty = false
 				p.ui.flushCommandOutput() // Rolls output bursts, as each real frame does.
 				settled = p.ui.dirty || settled
