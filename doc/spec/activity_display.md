@@ -150,6 +150,8 @@ combined-output dialog may show the invocation duration.
 
 The shared content dialog captures keys and pointer events above both panes.
 Observed shell segments appear as command tabs, selectable by click or Left/Right.
+Tab paths use the shared front-truncation format, retaining nearby directories and
+filenames rather than an indistinguishable leading path prefix.
 Each tab owns its retained output, status, scrolling, search and copy target;
 newly started segments become available while the dialog is open. Read output
 uses the file's syntax colors; numbered search matches color the path, line
@@ -368,8 +370,11 @@ clickable: hovering highlights an agent; clicking it shows only that agent,
 and clicking it again restores the shared feed. In the roster, `↑`/`↓` or
 `k`/`j` move through all agents followed by each individual agent, stopping at
 either end. Main's activity belongs to Main, so Activity neither shows nor counts
-Main: roster navigation skips its row, and clicking it restores the shared feed. `o` toggles the filter. `n`/`Tab` and `p` also select agents. The roster mouse wheel
-scrolls its viewport without changing selection, filtering, or feed follow state.
+Main: roster navigation skips its row, and clicking it restores the shared feed.
+`a` toggles the filter in Activity and Agents; the hint describes the next action
+as `a all` when filtered and `a only` otherwise. `n`/`Tab` and `p` also select agents.
+The roster mouse wheel scrolls its viewport without changing selection, filtering,
+or feed follow state.
 Hover underlines only the name; selection shades the row. Feed scrolling follows the same
 line/page/home/end/follow contract as the [live diff](changes.md#live-terminal-view).
 Roster status symbols are

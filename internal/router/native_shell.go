@@ -460,10 +460,12 @@ func (u *terminalUI) rosterLimit(height int) int {
 // nativeStatus shows the pane tabs, with Diff and Activity marked as the pair
 // sharing the right column, and only the focused pane's keys.
 func (u *terminalUI) nativeStatus() string {
+	u.paneTabs = [5]terminalRect{}
 	if u.main != nil && u.main.replay != nil {
 		return u.main.replay.bar(u.width)
 	}
-	tab := func(digit int, name, badge string, shown bool) string {
+	var tabs strings.Builder
+	tab := func(digit int, name, badge string, shown bool) {
 		text := fmt.Sprintf(" %d %s", digit, name)
 		switch {
 		case u.focus == digit-1:
@@ -473,46 +475,78 @@ func (u *terminalUI) nativeStatus() string {
 		default:
 			text = activityui.Dim + text + activityui.Undim + badge + " "
 		}
-		return text
+		left := ansi.StringWidth(tabs.String())
+		u.paneTabs[digit-1] = terminalRect{left, u.height - 1, max(0, min(ansi.StringWidth(text), u.width-left)), 1}
+		tabs.WriteString(text)
 	}
 	diffBadge := ""
 	if u.diffUnseen {
-		diffBadge = activityui.Amber + "●" + activityui.Reset
+		diffBadge = activityui.Amber + " ●" + "\x1b[39m"
 	}
 	responding, _ := u.agents.statusCounts(u.agents.roster())
 	agentsBadge := ""
 	if responding > 0 {
-		agentsBadge = activityui.Amber + superscript(responding) + activityui.Reset
+		agentsBadge = activityui.Amber + superscript(responding) + "\x1b[39m"
 	}
-	pair := activityui.Dim + "[" + activityui.Undim + tab(2, "Diff", diffBadge, u.diffOpen) + activityui.Dim + "│" + activityui.Undim +
-		tab(3, "Activity", "", !u.diffOpen && !u.journalOpen) + activityui.Dim + "│" + activityui.Undim + tab(5, "Journal", "", u.journalOpen) + activityui.Dim + "]" + activityui.Undim
-	tabs := tab(1, "Main", "", true) + " " + pair + " " + tab(4, "Agents", agentsBadge, true)
+	tab(1, "Main", "", true)
+	tabs.WriteString(" " + activityui.Dim + "[" + activityui.Undim)
+	tab(2, "Diff", diffBadge, u.diffOpen)
+	tabs.WriteString(activityui.Dim + "│" + activityui.Undim)
+	tab(3, "Activity", "", !u.diffOpen && !u.journalOpen)
+	tabs.WriteString(activityui.Dim + "│" + activityui.Undim)
+	tab(5, "Journal", "", u.journalOpen)
+	tabs.WriteString(activityui.Dim + "]" + activityui.Undim + " ")
+	tab(4, "Agents", agentsBadge, true)
 	if u.main != nil && u.main.interruptLocked {
-		tabs += "  " + activityui.Amber + "Locked · /unlock" + activityui.Reset
+		tabs.WriteString("  " + activityui.Amber + "Locked · /unlock" + activityui.Reset)
+	}
+	filter := "only"
+	if u.agents.only {
+		filter = "all"
 	}
 	var hints terminalHints
 	switch {
 	case u.prefix:
 		hints = terminalHints{{"ctrl+b 1-5", "focus", 0}, {"2/3", "diff or activity", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
-		return tabs + "  " + hints.render()
+		return tabs.String() + "  " + hints.render()
 	case u.focus == 1:
 		hints = terminalHints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"r", "follow", 0}, {"?", "help", 0}}
 		if u.diff.back.kind != 0 {
 			hints = append(terminalHints{{"esc", "back", 0}}, hints...)
 		}
 	case u.focus == 2:
-		hints = terminalHints{{"j/k", "scroll", 0}, {"n/p", "agent", 0}, {"o", "only", 0}, {"esc", "bottom", 0}, {"enter", "open", 0}}
+		hints = terminalHints{{"j/k", "scroll", 0}, {"n/p", "agent", 0}, {"a", filter, 0}, {"esc", "bottom", 0}, {"enter", "open", 0}}
 	case u.focus == 4:
 		// Expansion, details and namespace keys are in the pane title.
 		hints = terminalHints{{"j/k", "select", 0}, {"enter", "open", 0}, {"c", "copy path", 0}, {"esc", "Main", 0}}
 	case u.focus == 3:
-		hints = terminalHints{{"j/k", "agent", 0}, {"o", "only", 0}, {"esc", "back", 0}}
+		hints = terminalHints{{"j/k", "agent", 0}, {"a", filter, 0}, {"esc", "back", 0}}
 	}
 	if u.liveDock.Live() > 1 {
 		hints = append(hints, terminalHint{"^B e", "next live", 0})
 	}
 	hints = append(hints, terminalHint{"^B 1-5", "panes", 0})
-	return tabs + "  " + hints.render()
+	return tabs.String() + "  " + hints.render()
+}
+
+// selectNativePane gives status-bar clicks and Ctrl-B digits the same action.
+func (u *terminalUI) selectNativePane(pane int) {
+	u.focus = pane
+	if pane == 0 {
+		return
+	}
+	u.autoActivity = false
+	u.side = true
+	switch pane {
+	case 1:
+		u.journalOpen, u.diffOpen = false, true
+	case 2:
+		u.journalOpen, u.diffOpen, u.activityOpen = false, false, true
+	case 3:
+		u.activityOpen = true
+	case 4:
+		u.journalOpen, u.diffOpen = true, false
+	}
 }
 
 func superscript(n int) string {

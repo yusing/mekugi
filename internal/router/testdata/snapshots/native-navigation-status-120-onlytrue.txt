@@ -1,0 +1,1 @@
+ 1 Main  [ 2 Diff ● │ 3 Activity │ 5 Journal ]  4 Agents   j/k agent · a all · esc back · ^B 1-5 panes

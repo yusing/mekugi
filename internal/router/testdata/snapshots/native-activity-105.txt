@@ -13,4 +13,4 @@ AGENTS  4 agents · 1 responding                                                
                                 │ 
                                 │ 
                                 │ 
-ALL · click agent · n/p agent · o only · j/k scroll · End bottom
+ALL · click agent · n/p agent · a only · j/k scroll · End bottom

@@ -1770,9 +1770,9 @@ func maxTime(a, b time.Time) time.Time {
 }
 
 func (v *liveActivityView) footer(width int) string {
-	mode, toggle := "ALL", "o only"
+	mode, toggle := "ALL", "a only"
 	if v.only {
-		mode, toggle = "ONLY", "o all"
+		mode, toggle = "ONLY", "a all"
 	}
 	keys := "n/p agent · " + toggle + " · j/k scroll · End bottom"
 	if !v.feedOnly {
@@ -1780,7 +1780,7 @@ func (v *liveActivityView) footer(width int) string {
 	}
 
 	if width < 60 {
-		keys = "n/p · o · j/k · End"
+		keys = "n/p · a · j/k · End"
 	}
 	return ansi.Truncate("\x1b[1m"+mode+activityui.Undim+activityui.Dim+" · "+keys+activityui.Undim, width, "…")
 }
@@ -1856,7 +1856,7 @@ func (v *liveActivityView) handleRosterKey(escape string, key byte) (string, boo
 		v.showAgent(1)
 	case 'k', 'p':
 		v.showAgent(-1)
-	case 'o':
+	case 'a':
 		v.only = !v.only
 		v.follow()
 	}

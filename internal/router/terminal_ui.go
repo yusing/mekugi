@@ -41,6 +41,7 @@ type terminalUI struct {
 	sequence, agentEscape                          string
 	paste                                          bool
 	layout                                         terminalLayout
+	paneTabs                                       [5]terminalRect // Visible status-bar selectors, indexed by pane.
 	paintedRows                                    []string
 	paintedWidth                                   int
 	faint                                          bool // Output capability is local to this terminal, not request or global state.
@@ -197,27 +198,8 @@ func (u *terminalUI) key(key byte) error {
 		switch key {
 		case 2:
 			return u.send(string([]byte{2}))
-		case '1':
-			u.focus = 0
-		case '2':
-			u.autoActivity = false
-			u.journalOpen = false
-			u.focus = 1
-			u.side = true
-			u.diffOpen = true
-		case '5':
-			u.autoActivity = false
-			u.focus, u.journalOpen, u.diffOpen = 4, true, false
-		case '3', '4':
-			u.autoActivity = false
-			if key == '3' {
-				u.journalOpen = false
-			}
-			u.focus = int(key - '1')
-			u.side = true
-			u.activityOpen = true
-			// Native Diff and Activity share the right column.
-			u.diffOpen = u.diffOpen && key == '4'
+		case '1', '2', '3', '4', '5':
+			u.selectNativePane(int(key - '1'))
 		case 'q':
 			if u.main != nil {
 				u.main.openQuestions()
@@ -459,6 +441,17 @@ func (u *terminalUI) mouse(s string) error {
 	if u.output != nil {
 		u.outputMouse(button, x, y, release)
 		return nil
+	}
+	if u.selection == nil && u.drag == 0 {
+		for pane, rect := range u.paneTabs {
+			if rect.contains(x, y) {
+				if button == 0 && !release {
+					u.prefix = false
+					u.selectNativePane(pane)
+				}
+				return nil
+			}
+		}
 	}
 	if u.main != nil && u.main.statusPanel != nil && u.layout.codex.contains(x, y) {
 		if u.selectionMouse(button, x, y, release) {

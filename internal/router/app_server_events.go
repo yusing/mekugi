@@ -437,6 +437,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: "View " + commentaryCode(pathdisplay.ForWorkspace(s.cwd, item.Path)), CallID: id, Observed: now, native: native})
 		case "fileChange":
 			if len(item.Changes) > 0 {
+				native.editPages = appServerEditPages(item, s.cwd, m.Method)
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerEditText(item, s.cwd), CallID: id, Observed: now, native: native})
 			}
 		case "collabAgentToolCall":
@@ -825,6 +826,22 @@ func appServerEditText(item appServerItem, cwd string) string {
 		parts = append(parts, text+" · apply_patch")
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// appServerEditPages retains host-supplied completed diffs for navigation only.
+// It neither captures the filesystem nor creates durable change evidence.
+func appServerEditPages(item appServerItem, cwd, phase string) []activityui.Block {
+	if phase != "item/completed" || item.Status != "" && item.Status != "completed" {
+		return nil
+	}
+	var pages []activityui.Block
+	for _, change := range item.Changes {
+		if change.Diff == "" {
+			continue
+		}
+		pages = append(pages, activityui.Block{Kind: "op", Verb: "Edit", Path: pathdisplay.ForWorkspace(cwd, change.Path), Code: change.Diff, Lang: "diff", Fenced: true})
+	}
+	return pages
 }
 
 func appServerChangeCounts(change appServerFileChange) (added, removed int) {

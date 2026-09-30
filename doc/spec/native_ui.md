@@ -18,6 +18,10 @@ key opens it, so composer text that starts with any letter is typed. Its plan st
 terminal card follow [journal presentation](journal.md#native-main-presentation).
 Pane preferences retain its visibility and focus; transient selection and expansion
 remain local to the active frontend.
+The bottom pane selectors are clickable and perform the same selection as
+`Ctrl-B` followed by the pane digit. Only visible selector cells are active;
+open dialogs and selection actions retain pointer precedence. The unread Diff
+indicator is separated from its label and retains the selected tab highlight.
 New sessions default to Journal. Live child spawns and follow-up turns temporarily
 show Activity without moving Main's keyboard focus. Journal returns after the last
 outstanding child completes, fails, or is interrupted, unless the user explicitly

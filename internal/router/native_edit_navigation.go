@@ -11,14 +11,15 @@ import (
 
 // openActivityEdit resolves an exact host invocation, never a nearby edit or path.
 func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64, path string) bool {
-	if u.diff == nil || u.diff.data == nil {
-		return false
-	}
 	for _, entry := range view.entries {
 		if entry.Seq != seq || entry.native == nil {
 			continue
 		}
-		for _, key := range u.diff.data.order {
+		var order []string
+		if u.diff != nil && u.diff.data != nil {
+			order = u.diff.data.order
+		}
+		for _, key := range order {
 			attempt := u.diff.data.attempts[key]
 			call, _, _ := strings.Cut(attempt.correlation, "\x00")
 			match := attempt.thread == entry.native.thread && call == entry.native.item
@@ -29,20 +30,28 @@ func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64, path s
 				continue
 			}
 			var pages []activityui.Block
-			selected := -1
 			for _, chunk := range attempt.chunks {
 				target := cmp.Or(chunk.Review.AfterPath, chunk.Review.BeforePath)
 				display := pathdisplay.ForWorkspace(cmp.Or(chunk.Workspace, u.diff.workspace), target)
-				if path == "" && selected < 0 || display == path {
-					selected = len(pages)
-				}
 				pages = append(pages, activityui.Block{Kind: "op", Verb: "Edit", Path: display, Code: chunk.Review.UnifiedDiff(), Lang: "diff", Fenced: true})
 			}
-			if selected < 0 {
-				continue
+			if u.openEditPages(view, pages, path) {
+				return true
 			}
+		}
+		// Codex can finish a nested edit while sibling commands keep its cell
+		// open. Its completed item already carries that invocation's diff;
+		// opening it must not wait for the outer cell's durable capture.
+		return u.openEditPages(view, entry.native.editPages, path)
+	}
+	return false
+}
+
+func (u *terminalUI) openEditPages(view *liveActivityView, pages []activityui.Block, path string) bool {
+	for i, page := range pages {
+		if path == "" || page.Path == path {
 			u.openBlocks(view, pages)
-			u.output.showPage(selected)
+			u.output.showPage(i)
 			return true
 		}
 	}

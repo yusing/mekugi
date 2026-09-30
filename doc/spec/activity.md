@@ -164,6 +164,11 @@ remain absolute. Incomplete captures show unavailable counts. Failed and
 unfinished patches produce no successful edit summary, and repeated receipts
 are deduplicated. The live pane separately owns full provisional and completed
 diff display under [REQ-CHANGES-001](changes.md).
+Completed native file-change items can open their own host-supplied diffs before
+the containing Code Mode batch exits. Durable captured review remains preferred
+when available; this immediate navigation neither snapshots the workspace nor
+publishes completed change evidence. Pending, failed, and declined host items
+do not supply a completed-diff navigation fallback.
 
 ### Other tools and grouping
 

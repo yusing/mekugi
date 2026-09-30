@@ -82,7 +82,7 @@ func TestRosterDesignSeparateHeaderTreeAndMetrics(t *testing.T) {
 		t.Errorf("roster header = %q", roster)
 	}
 	feed := strings.Join(plainLines(v.render(90, 20, now)), "\n")
-	if !strings.Contains(feed, "FOLLOW") || !strings.Contains(feed, "o only") {
+	if !strings.Contains(feed, "FOLLOW") || !strings.Contains(feed, "a only") {
 		t.Errorf("feed chrome = %q", feed)
 	}
 	v.feedOnly = true

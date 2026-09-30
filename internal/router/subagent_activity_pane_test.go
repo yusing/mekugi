@@ -84,7 +84,7 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	if !strings.Contains(all, "… +") || !strings.Contains(all, "  line") {
 		t.Fatalf("clamped feed = %s", all)
 	}
-	view.handleKey("", 'o')
+	view.handleKey("", 'a')
 	only := plainLines(view.render(80, 40, time.Now()))
 	joined := strings.Join(only, "\n")
 	if !strings.Contains(joined, "… +") || strings.Count(joined, "  line") >= 20 || strings.Contains(joined, "● b") {

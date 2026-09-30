@@ -229,7 +229,8 @@ the shared scrollable dialog without leaving your current view. Close it with
 `Esc` or its top-right close button.
 
 - `Ctrl-B`, then `1`/`2`/`3`/`4`/`5`, focuses Main, Diff, Activity, Agents, or Journal.
-  Diff, Activity and Journal share the right column. Click a pane to focus it.
+  Diff, Activity and Journal share the right column. Click a pane or its bottom
+  selector to focus it.
   New sessions show Journal there. A live child spawn or follow-up temporarily
   shows Activity; when all children finish, Journal returns unless you selected
   another pane. Saved pane preferences still apply on resume.
@@ -353,7 +354,9 @@ or unfinished call never becomes a saved change.
   collapses its files.
 - Click an Edit to inspect its captured diff in the shared dialog. Reply,
   question, and journal-agent links also open dialogs, leaving pane filters
-  and scroll positions unchanged. `Esc` dismisses the dialog.
+  and scroll positions unchanged. Completed host file-change diffs open even
+  while other commands in the same batch are still running. `Esc` dismisses
+  the dialog.
 - Browsing pauses following; `r` resumes.
 
 See [live view details](doc/spec/changes.md#live-terminal-view).
@@ -388,6 +391,8 @@ shows `?`. Main's conversation and progress stay in Main. Token and cost figures
 come from the router's usage accounting, not an additional app-server total.
 
 - Click an agent to inspect its activity; reply links address that agent.
+- In Activity or Agents, `a` toggles selected-agent filtering. The hint reads
+  `a all` while filtered, and `a only` in the shared view.
 - Scrolling pauses following; `r` resumes it. The mouse wheel scrolls without
   changing keyboard focus.
 
@@ -406,6 +411,7 @@ section headings are omitted. Older history without timing evidence shows no
 per-command duration; an invocation's total is never reused for its commands.
 Without retained output boundaries, the dialog labels the output as combined.
 
+- Tab paths shorten from the front, retaining the nearest directories and filename.
 - Left/Right or a click switches tabs. `j`/`k`, `PgUp`/`PgDn`, and `g`/`G`
   scroll; live output follows its tail until you scroll up.
 - `/` searches, and `n`/`N` step through matches.

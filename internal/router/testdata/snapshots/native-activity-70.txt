@@ -13,4 +13,4 @@ AGENTS  4 agents · 1 responding                                FOLLOW
 
 ● review/probe ───────────────────────────────────────────── 12:00:00
 ▎ Checking narrow layouts and baseline whitespace.
-ALL · click agent · n/p agent · o only · j/k scroll · End bottom
+ALL · click agent · n/p agent · a only · j/k scroll · End bottom

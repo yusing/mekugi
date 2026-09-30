@@ -421,6 +421,7 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 		entry.native.workdir = appServerCommandWorkdir(item, info.Cwd)
 		if item.Type == "fileChange" {
 			entry.Text = appServerEditText(item, info.Cwd)
+			entry.native.editPages = appServerEditPages(item, info.Cwd, entry.native.phase)
 		}
 		s.retainOutput(entry.native, item)
 		appServerSucceededOutput(&entry, item, time.Time{})

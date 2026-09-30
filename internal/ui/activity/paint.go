@@ -913,7 +913,20 @@ func statBar(added, removed, scale int) string {
 // leading directories so its nearest directories and file name remain.
 func fitPath(path string, width int) string {
 	// Below this, eliding leaves too little of the name; rows wrap instead.
-	if width < 16 || ansi.StringWidth(path) <= width {
+	if width < 16 {
+		return path
+	}
+	return TruncatePath(path, width)
+}
+
+// TruncatePath uses the feed's path elision in single-line controls, including
+// widths where feed rows would wrap instead. It keeps nearby directories and
+// the filename, or the filename's start and extension when it cannot fit.
+func TruncatePath(path string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(path) <= width {
 		return path
 	}
 	i := strings.LastIndex(strings.TrimSuffix(path, "/"), "/")

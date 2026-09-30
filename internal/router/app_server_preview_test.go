@@ -191,7 +191,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Fatalf("finished thinking did not fold:\n%s", frame)
 	}
 	p.until("three agents edit at once")
-	frame := render("agent dock accordion", "LIVE · 3 agents", "^B e next", "▸", "reviewer → main", "2 Diff●")
+	frame := render("agent dock accordion", "LIVE · 3 agents", "^B e next", "▸", "reviewer → main", "2 Diff ●")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
 		t.Fatal("the saved diff replaced Activity without being opened")
 	}

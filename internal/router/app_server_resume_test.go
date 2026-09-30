@@ -93,6 +93,10 @@ func TestAppServerResumeHistoryDoesNotReviveEffects(t *testing.T) {
 	if u.turn != "" || len(u.session.agents) != 1 || u.session.agents[0].Responding || len(u.view.entries) != 2 || u.view.blocks[0][0].ExitCode != 2 {
 		t.Fatalf("history revived lifecycle or lost tools: %+v", u.session)
 	}
+	if !u.shell.openActivityEdit(u.view, u.view.entries[1].Seq, "a.go") {
+		t.Fatal("restored completed host edit lost diff navigation")
+	}
+	u.shell.outputKey("\x1b")
 	u.restoreHistory([]appServerHistoryTurn{{ID: "active", Status: "inProgress", Items: []appServerItem{{ID: "partial", Type: "agentMessage", Text: "Partial"}}}})
 	if u.turn != "active" || !u.session.agents[0].Responding {
 		t.Fatal("active snapshot did not restore steer/interrupt target")

@@ -10,7 +10,7 @@ ACTIVITY · all                                   CONNECTING
 ▎     │ func value11() int {
 ▎     │     return 11
 ▎     │ }
-ALL · n/p · o · j/k · End
+ALL · n/p · a · j/k · End
 == early scroll ==
 ACTIVITY · all                                   CONNECTING
 ● source0 ──────────────────────────────────────── 12:00:00
@@ -23,7 +23,7 @@ ACTIVITY · all                                   CONNECTING
 
 ● source1 ──────────────────────────────────────── 12:00:00
                   ↓ Back to bottom · esc
-ALL · n/p · o · j/k · End
+ALL · n/p · a · j/k · End
 == early repaint ==
 ACTIVITY · all                                   CONNECTING
 ● source0 ──────────────────────────────────────── 12:00:00
@@ -36,4 +36,4 @@ ACTIVITY · all                                   CONNECTING
 
 ● source1 ──────────────────────────────────────── 12:00:00
                   ↓ Back to bottom · esc
-ALL · n/p · o · j/k · End
+ALL · n/p · a · j/k · End

@@ -497,8 +497,8 @@ func TestLiveActivityReviewRegressions(t *testing.T) {
 	// A stray Esc then ']' does not swallow later keys.
 	escape, _ := view.handleKey("", 27)
 	escape, _ = view.handleKey(escape, ']')
-	if view.handleKey(escape, 'o'); !view.only || view.osc.Active {
-		t.Fatalf("o after Esc ] was swallowed: osc=%+v", view.osc)
+	if view.handleKey(escape, 'a'); !view.only || view.osc.Active {
+		t.Fatalf("a after Esc ] was swallowed: osc=%+v", view.osc)
 	}
 	// A real background reply still selects the theme.
 	view.painter.Theme = livediff.DarkTheme

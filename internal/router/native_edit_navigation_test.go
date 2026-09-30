@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
@@ -63,6 +65,98 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
+	for _, child := range []bool{false, true} {
+		t.Run(fmt.Sprint(child), func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			thread, view := "main", u.view
+			if child {
+				thread, view = "child", u.agents
+				u.session.registerThread(appServerThreadInfo{ID: thread, AgentNickname: "worker"})
+				u.session.metadata[thread] = ""
+				u.shell.selectNativePane(2)
+			}
+			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "batch", "status": "inProgress"}})
+			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "batch", "item": map[string]any{"id": "slow-sibling", "type": "commandExecution", "command": "sleep 30", "status": "inProgress"}})
+			change := map[string]any{"path": "batch.go", "kind": map[string]any{"type": "update"}, "diff": "@@ -1 +1 @@\n-before_batch\n+after_batch\n"}
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "batch", "item": map[string]any{"id": "patch", "type": "fileChange", "status": "completed", "changes": []any{change}}})
+			finishPacing(u.view, u.agents)
+			screen := vt.NewEmulator(160, 40)
+			defer screen.Close()
+			if err := u.paint(screen, 160, 40); err != nil {
+				t.Fatal(err)
+			}
+			if len(u.shell.diff.data.order) != 0 || u.session.commands[[3]string{thread, "batch", "slow-sibling"}] == nil {
+				t.Fatal("fixture must have no durable capture and a running batch sibling")
+			}
+			// Click the actual rendered edit, through the shared pointer routing.
+			x, y := -1, -1
+			for row := range 40 {
+				for col := range 160 - len("batch.go") {
+					var text strings.Builder
+					for offset := range len("batch.go") {
+						text.WriteString(screen.CellAt(col+offset, row).Content)
+					}
+					if text.String() == "batch.go" {
+						x, y = col, row
+						break
+					}
+				}
+				if x >= 0 {
+					break
+				}
+			}
+			if x < 0 {
+				t.Fatalf("edit row missing:\n%s", screen.String())
+			}
+			for _, end := range []string{"M", "m"} {
+				if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", x+1, y+1, end)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if u.shell.output == nil {
+				t.Fatal("completed nested edit was unresponsive before batch exit")
+			}
+			if err := u.paint(screen, 160, 40); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(u.shell.output.laid.Text, "+after_batch") || u.shell.output.view != view {
+				t.Fatalf("wrong edit opened:\n%s", screen.String())
+			}
+			if u.session.commands[[3]string{thread, "batch", "slow-sibling"}] == nil {
+				t.Fatal("opening a diff altered host command lifecycle")
+			}
+		})
+	}
+}
+
+func TestNativeHostEditNavigationRequiresCompletedSuccessfulItem(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	for _, tc := range []struct{ phase, status string }{{"item/started", ""}, {"item/completed", "failed"}, {"item/completed", "declined"}, {"item/completed", "inProgress"}} {
+		item := appServerItem{Type: "fileChange", Status: tc.status, Changes: []appServerFileChange{{Path: "a.go", Diff: "+not_confirmed\n"}}}
+		u.view.entries = []activityPaneEntry{{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item, u.session.cwd, tc.phase)}}}
+		if u.shell.openActivityEdit(u.view, 1, "a.go") || u.shell.output != nil {
+			t.Fatalf("%s/%s opened a completed edit", tc.phase, tc.status)
+		}
+	}
+	item := appServerItem{Changes: []appServerFileChange{{Path: "first.go", Diff: "+first\n"}, {Path: "second.go", Diff: "+second\n"}}}
+	u.view.entries = []activityPaneEntry{{Seq: 2, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item, u.session.cwd, "item/completed")}}}
+	if u.shell.openActivityEdit(u.view, 2, "missing.go") || !u.shell.openActivityEdit(u.view, 2, "second.go") || u.shell.output.page != 1 {
+		t.Fatal("host diff did not resolve the exact clicked path")
+	}
+}
+
+func TestUISnapshotNativeCompletedHostEditDialog(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	item := appServerItem{Changes: []appServerFileChange{{Path: "internal/router/batch.go", Diff: "@@ -1 +1 @@\n-before_batch\n+after_batch\n"}}}
+	u.view.entries = []activityPaneEntry{{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item, u.session.cwd, "item/completed")}}}
+	if !u.shell.openActivityEdit(u.view, 1, "internal/router/batch.go") {
+		t.Fatal("host edit did not open")
+	}
+	u.view.painter.Theme = livediff.DarkTheme
+	uisnapshot.Assert(t, "testdata/snapshots/native-completed-host-edit-dialog.txt", drawOutputDialog(u.shell)+"\n")
 }
 
 func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {

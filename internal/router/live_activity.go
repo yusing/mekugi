@@ -13,7 +13,7 @@ func (v *liveActivityView) handleKey(escape string, key byte) (string, bool) {
 	// A background-color reply selects the syntax theme, as in the diff pane.
 	// A byte that cannot occur in the reply ends the capture and is handled as
 	// a key, so a stray Esc then ']' does not swallow later input.
-	if v.osc.Active && !liveActivityOSCByte(key) {
+	if v.osc.Active && (!liveActivityOSCByte(key) || v.osc.Reply == "\x1b]" && key != '1') {
 		v.osc = livediff.OSC{}
 	} else if v.osc.Active || escape == "\x1b" && key == ']' {
 		if reply, complete := v.osc.Consume(key); complete {
@@ -55,7 +55,7 @@ func (v *liveActivityView) handleKey(escape string, key byte) (string, bool) {
 		v.selectAgent(1)
 	case 'p':
 		v.selectAgent(-1)
-	case 'o':
+	case 'a':
 		v.only = !v.only
 		v.follow()
 

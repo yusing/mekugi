@@ -223,15 +223,17 @@ func (d *outputDialog) tabRow(width int) string {
 	var out strings.Builder
 	for i := first; i < first+count; i++ {
 		block := d.pages[i]
-		label := block.Verb
-		if block.Path != "" {
-			label += " " + block.Path
-		} else if len(block.Reads) == 1 {
-			label += " " + block.Reads[0].Path
+		label := fmt.Sprintf(" %d %s", i+1, block.Verb)
+		path := block.Path
+		if path == "" && len(block.Reads) == 1 {
+			path = block.Reads[0].Path
+		}
+		if path != "" {
+			label += " " + activityui.Path(activityui.TruncatePath(path, cell-ansi.StringWidth(label)-2))
 		} else if block.Code != "" {
 			label += " " + strings.SplitN(block.Code, "\n", 2)[0]
 		}
-		label = fmt.Sprintf(" %d %s ", i+1, label)
+		label += " "
 		label = ansi.Truncate(label, cell, "…")
 		label += strings.Repeat(" ", max(0, cell-ansi.StringWidth(label)))
 		if i == d.page {
