@@ -580,11 +580,11 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		if body == "" {
 			// A request's thinking block before its first delta.
 			if block.Live && strings.TrimSpace(block.Body) == "" {
-				return []string{Dim + "• " + ThinkingHeader(true, "") + Undim}
+				return []string{Dim + "• " + p.thinkingHeader(block, width-2) + Undim}
 			}
 			return nil
 		}
-		header := ThinkingHeader(block.Live, block.Elapsed)
+		header := p.thinkingHeader(block, width-2)
 		if block.Collapsed {
 			if block.Hovered {
 				header = Underline(header)
@@ -592,6 +592,14 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			return []string{Dim + "• " + header + Undim}
 		}
 		rows := p.markdown(body, max(1, width-2), true)
+		summary := header
+		if block.Elapsed != "" {
+			summary = strings.TrimSuffix(summary, " for "+block.Elapsed)
+		}
+		if !block.Live && len(rows) == 1 && strings.TrimSpace(ansi.Strip(rows[0])) == summary {
+			// A complete short summary is already visible in the label.
+			return []string{Dim + "• " + header + Undim}
+		}
 		if block.Live {
 			var hidden int
 			if rows, hidden = TailRows(rows, ThinkingTailRows); hidden > 0 {

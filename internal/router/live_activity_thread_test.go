@@ -200,7 +200,7 @@ func TestConversationMainToolsFollowTheirLead(t *testing.T) {
 	card, seed, tool = row(plain, "lookup"), row(plain, "Preparing regression seed"), row(plain, "Edit")
 	resumed := row(plain, "continued")
 	// The read branches from its reasoning row.
-	if seed != 1 || row(plain, "└ Read") != seed+1 || resumed < card || !strings.Contains(plain[resumed], "Thought") || tool != resumed+1 {
+	if seed != 0 || row(plain, "└ Read") != seed+1 || resumed < card || !strings.Contains(plain[resumed], "Preparing regression seed") || tool != resumed+1 {
 		t.Fatalf("Main's later tools do not continue their reasoning:\n%s", text)
 	}
 	for _, line := range plain {
@@ -210,7 +210,7 @@ func TestConversationMainToolsFollowTheirLead(t *testing.T) {
 	}
 
 	// Tools directly under their lead branch from it.
-	if plain := render(reasoning, edit, done); row(plain, "Edit") != 2 || row(plain, "continued") >= 0 {
+	if plain := render(reasoning, edit, done); row(plain, "Edit") != 1 || row(plain, "continued") >= 0 {
 		t.Fatalf("uninterrupted tools moved:\n%s", strings.Join(plain, "\n"))
 	}
 }
@@ -231,7 +231,7 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 		}
 		feed := v.renderFeed(80, 40)
 		got := strings.Join(threadPlain(feed), "\n")
-		if strings.Count(got, "Thought for 12s") != 3 || strings.Contains(got, "body") {
+		if strings.Count(got, "First for 12s") != 1 || strings.Count(got, "Second for 12s") != 1 || strings.Count(got, "Latest body for 12s") != 1 || strings.Contains(got, "Old body") || strings.Contains(got, "Second body") {
 			t.Fatalf("independent folded items: %s", got)
 		}
 		shell := &terminalUI{}

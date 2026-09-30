@@ -49,6 +49,34 @@ func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 	}
 }
 
+func TestSessionUIReplayReasoningUsesRecordedItemStart(t *testing.T) {
+	path := replayTestWrite(t, t.TempDir(), "root.jsonl", replayTestMeta("root"),
+		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
+		replayTestItem("root", "turn", replayTestEpoch+1000, replayTestEpoch+3000, map[string]any{
+			"type": "Reasoning", "id": "r", "summary_text": []string{"**Checking**\n\n" + strings.Repeat("Public summary chunk. ", 20)},
+		}),
+		replayTestRecord("event_msg", replayTestEpoch+4000, map[string]any{"type": "task_complete", "turn_id": "turn"}),
+	)
+	source, err := readSessionUIReplay(t.Context(), path, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := newUIReplayPlayback(t.Context(), source, 1)
+	t.Cleanup(p.close)
+	for _, step := range []struct {
+		at   time.Duration
+		want string
+	}{{time.Second, "Thinking…"}, {1500 * time.Millisecond, "Public summary"}, {3 * time.Second, "Checking for 2s"}} {
+		if err := p.advance(step.at); err != nil {
+			t.Fatal(err)
+		}
+		frame := replayPlaybackTestPaint(t, p, 120, 28)
+		if !strings.Contains(frame, step.want) {
+			t.Fatalf("reasoning at %s lost recorded start or synthetic streaming; want %q:\n%s", step.at, step.want, frame)
+		}
+	}
+}
+
 func TestSessionUIReplayRustAgentStatusShapesReachFinalWaitDisplay(t *testing.T) {
 	states := map[string]any{
 		"running-agent": "running", "initializing-agent": "pending_init", "interrupted-agent": "interrupted",

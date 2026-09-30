@@ -1,4 +1,4 @@
-╭─ Thought for 12s ────────── [×] ─╮
+╭─ Inspecting the r… for 12s  [×] ─╮
 │                                  │
 ├──────────────────────────────────┤
 │ Inspecting the reasoning display │

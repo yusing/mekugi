@@ -1,5 +1,5 @@
 ┌ 1 Main ──────────────────────────────────────────────────┐┌ 3 Activity ────────────────────────────────────── FOLLOW ┐
-│• Thought for 2s                                          ││                                                          │
+│• Inspecting repaint timing. for 2s                       ││                                                          │
 │└ Ran sleep 1; printf 'captured output'                   ││                                                          │
 │      ┆ captured output                                   ││                                                          │
 │                                                          ││                                                          │

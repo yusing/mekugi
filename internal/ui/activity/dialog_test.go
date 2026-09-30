@@ -320,7 +320,7 @@ func TestRunElapsedSuffix(t *testing.T) {
 				t.Fatalf("%s live=%v: %q", tc.duration, live, got)
 			}
 			p := Painter{}
-			title := ansi.Strip(p.DialogPageTitle(b, now))
+			title := ansi.Strip(p.DialogPageTitle(b, now, 80))
 			if tc.want != "" && !strings.HasSuffix(title, " · "+tc.want) {
 				t.Fatalf("title %q", title)
 			}
@@ -362,7 +362,7 @@ func TestDialogNarrativeCopiesMarkdown(t *testing.T) {
 	if page.Text != "**Full** narrative\n\nLast paragraph" || strings.Contains(page.Text, "\x1b") {
 		t.Fatalf("copy %q", page.Text)
 	}
-	if len(page.Lines) == 0 || !strings.Contains(ansi.Strip(page.Title), "Thought") {
+	if len(page.Lines) == 0 || !strings.Contains(ansi.Strip(page.Title), "Full narrative") {
 		t.Fatalf("page %+v", page)
 	}
 }

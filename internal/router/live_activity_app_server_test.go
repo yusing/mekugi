@@ -185,8 +185,8 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	}
 	u.agents.agents = []activityPaneAgent{{Name: "/root/reviewer", Responding: true}}
 	live := strings.Join(u.agents.renderFeed(80, 20).lines, "\n")
-	if !strings.Contains(ansi.Strip(live), "Updated public summary") || !strings.Contains(live, activityui.Dim+"\x1b[3m") {
-		t.Fatal("dim italic reasoning body is missing from Activity")
+	if !strings.Contains(ansi.Strip(live), "Updated public summary") {
+		t.Fatal("reasoning summary is missing from Activity")
 	}
 	u.agents.agents[0].Responding = false
 	if idle := strings.Join(u.agents.renderFeed(80, 20).lines, "\n"); !strings.Contains(idle, "Updated public summary") {
@@ -202,8 +202,8 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	}
 	u.agents.only, u.agents.selected = true, "/root/reviewer"
 	detail := strings.Join(u.agents.renderFeed(80, 20).lines, "\n")
-	if !strings.Contains(detail, "Updated public summary") || !strings.Contains(detail, activityui.Dim+"\x1b[3m") || strings.Contains(detail, "Reasoning summary") {
-		t.Fatal("detailed summary must use Codex's dim italic body, not a labelled card")
+	if !strings.Contains(detail, "Updated public summary") || strings.Contains(detail, "Reasoning summary") {
+		t.Fatal("detailed summary must remain visible, not a labelled card")
 	}
 	if len(legacy.entries) != 0 || len(u.view.entries) != 0 {
 		t.Fatal("changed Main or legacy reasoning policy")

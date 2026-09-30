@@ -74,6 +74,42 @@ func TestUISnapshotReasoningDialog(t *testing.T) {
 	}
 }
 
+func TestUISnapshotReasoningShortSummary(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, elapsed string
+		width               int
+	}{
+		{"subsecond", "Locating rendition file", "", 40},
+		{"timed", "Locating rendition file", "2s", 40},
+		{"heading", "**Locating rendition file**\n\nThe complete body remains available in the dialog.", "2s", 40},
+		{"long", "A long summary that needs shortening before its elapsed duration\nMore details.", "12s", 32},
+		{"tiny", "Locating rendition file", "12s", 8},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := Painter{Theme: livediff.DarkTheme}
+			block := Block{Kind: "summary", Body: tc.body, Elapsed: tc.elapsed, Collapsed: true}
+			rows := p.Block(block, tc.width)
+			uisnapshot.Assert(t, "testdata/snapshots/reasoning_short_"+tc.name+".txt", strings.Join(rows, "\n")+"\n")
+			page := p.DialogPage(block, tc.width)
+			if page.Text != tc.body {
+				t.Fatalf("short label changed the retained body: %q", page.Text)
+			}
+			for _, row := range rows {
+				if ansi.StringWidth(row) > tc.width {
+					t.Fatalf("summary header overflows: %q", row)
+				}
+			}
+		})
+	}
+}
+
+func TestUISnapshotReasoningShortUncollapsed(t *testing.T) {
+	p := Painter{Theme: livediff.DarkTheme}
+	block := Block{Kind: "summary", Body: "Locating rendition file", Elapsed: "12s"}
+	rows := p.Block(block, 26)
+	uisnapshot.Assert(t, "testdata/snapshots/reasoning_short_uncollapsed.txt", strings.Join(rows, "\n")+"\n")
+}
+
 func TestReasoningRowStyleResets(t *testing.T) {
 	// Combined/short SGR forms emitted by wrapping and syntax rendering must
 	// not turn a continuation back into normal text or strand its accent.

@@ -53,15 +53,29 @@ func ReasoningSummaryBody(text string) string {
 // streams, following grok-build's truncated thinking blocks.
 const ThinkingTailRows = 3
 
-// ThinkingHeader labels reasoning the way grok-build does.
-func ThinkingHeader(live bool, elapsed string) string {
-	switch {
-	case live:
+// thinkingHeader keeps completed reasoning recognizable without opening it.
+// Reserve room for elapsed time instead of truncating it with the summary.
+func (p *Painter) thinkingHeader(block Block, width int) string {
+	if block.Live {
 		return "Thinking…"
-	case elapsed != "":
-		return "Thought for " + elapsed
 	}
-	return "Thought"
+	label := "Reasoning"
+	for line := range strings.SplitSeq(block.Body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "<!--") {
+			continue
+		}
+		label = strings.TrimSpace(ansi.Strip(p.Inline(ReasoningSummaryHeader(line))))
+		break
+	}
+	suffix := ""
+	if block.Elapsed != "" {
+		suffix = " for " + block.Elapsed
+	}
+	if width <= ansi.StringWidth(suffix) {
+		return ansi.Truncate(label+suffix, max(1, width), "…")
+	}
+	return ansi.Truncate(label, min(60, max(1, width-ansi.StringWidth(suffix))), "…") + suffix
 }
 
 // reasoningRow keeps the whole row faint and italic, including text after

@@ -878,18 +878,27 @@ reports it steps through dim, normal and bold. Raw and encrypted
 reasoning stay excluded.
 Reasoning renders as thinking blocks, following grok-build: a dim `• Thinking…` header
 over the latest three text rows while it streams, with `· +N lines` counting
-the rows above them, then `• Thought for 12s` (or `• Thought` when it lasted under a second or timing
-is unavailable) over the complete body. As in grok-build, each forwarded request
+the rows above them, then a short public-summary label such as `• Locating rendition file for 12s`
+over the complete body. The label uses the first nonempty summary line,
+shortened to fit while preserving the duration. Under one
+second or when timing is unavailable, only the summary label appears. A complete
+short summary already shown in the label is not repeated in a body row. As in grok-build, each forwarded request
 to such a provider shows `• Thinking…` from the request start, so the wait for the
 first delta is not silent; the request's first reasoning item takes over that block.
 Other output starting first, or the turn's end, removes the still-empty block; a
 late completion of the previous request's item does not. Time runs from
-the request start (or the first visible summary without one) to item completion; a turn
+the observed request start, or the reasoning item's start when no request start
+was observed, falling back to the first visible summary when both are absent,
+through item completion; a turn
 that ends first completes its unfinished blocks.
 One second after an observed completion, the block folds to its header row in
 Main and Activity; a click opens its body in the shared dialog. Restored history
 starts folded, retaining each body for the dialog. Consecutive items keep their
 own headers and collapse independently, including the latest item.
+An item that starts without public text shows only `Thinking…` while waiting;
+completion with no public summary removes that header. Text appears only when
+the host supplies a public summary; raw and encrypted reasoning are not a
+substitute for summaries delivered late or only at completion.
 
 Successful output eligible to fold shares one debounce deadline across Main and Activity,
 including late completions, so it collapses in a single screen update rather than

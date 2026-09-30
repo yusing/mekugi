@@ -13,6 +13,7 @@ go test -tags journal_e2e ./internal/router -run '^TestPostCompactNativeCodexE2E
 go test -tags journal_e2e ./internal/router -run '^TestJournalCompactionNativeCodexE2E$'
 go test -tags journal_e2e ./internal/router -run '^TestJournalSliceResetNativeCodexE2E$'
 go test -tags journal_e2e ./internal/router -run '^TestJournalHeadlessNativeCodexE2E$'
+go test -tags journal_e2e ./internal/router -run '^TestAppServerReasoningStreamNativeCodexE2E$'
 go test -tags journal_e2e ./internal/router -run '^(TestRouterTransformFaultNativeCodexE2E|TestRetryablePrestream5xxStillRetriesInNativeCodexE2E)$'
 ```
 
@@ -43,6 +44,11 @@ planned turn through the shared reset policy. It verifies the continuation path,
 recovered summary and consumed intent without a provider compaction request.
 The headless fixture exercises the production JSONL adapter with both `off` and
 `slice`, proving two turns, reset-only compaction and clean host shutdown.
+
+The reasoning fixture gates a local provider stream on rendered PTY frames. It
+checks waiting before public text, two incremental public-summary updates before
+completion, elapsed-duration display, and folding after completion.
+It does not establish a real provider's public-summary delivery cadence.
 
 The fixtures are the `internal/router/*_codex_e2e_test.go` files. A tagged compile-only check is
 `go test -tags journal_e2e ./internal/router -run '^$'`.

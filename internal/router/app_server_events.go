@@ -364,7 +364,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		case "reasoning":
 			key := [3]string{p.ThreadID, p.TurnID, id}
 			text := strings.Join(item.Summary, "\n\n")
-			if m.Method == "item/started" && strings.TrimSpace(text) != "" {
+			if m.Method == "item/started" {
 				s.startThinking(key, native, now)
 			}
 			if m.Method == "item/completed" {
@@ -384,7 +384,12 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 					}
 				}
 			}
-			if strings.TrimSpace(text) != "" {
+			if m.Method == "item/completed" && strings.TrimSpace(text) == "" {
+				// A raw-only item had no public summary. Remove its waiting
+				// header rather than retaining an empty Thinking or Thought.
+				native.phase = "discarded"
+			}
+			if m.Method == "item/started" || m.Method == "item/completed" || strings.TrimSpace(text) != "" {
 				s.reasoning[key] = text
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "reasoning", Text: text, CallID: id, Observed: now, native: native})
 			}
@@ -531,8 +536,8 @@ func (s *appServerSession) dropThinking(thread string) []activityPaneEntry {
 		native: &liveActivityNativeItem{thread: thread, item: pending.item, phase: "discarded"}}}
 }
 
-// startThinking tracks the first visible summary, whether supplied with the
-// item or as a delta, and takes over the request's pending block at most once.
+// startThinking tracks the item start, falling back to the first public summary
+// when no start was observed, and takes over the request's pending block at most once.
 func (s *appServerSession) startThinking(key [3]string, native *liveActivityNativeItem, now time.Time) {
 	if _, ok := s.thinking[key]; ok {
 		return

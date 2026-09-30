@@ -8,43 +8,30 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
-func TestThinkingBlock(t *testing.T) {
-	var p activityui.Painter
+func TestUISnapshotThinkingBlock(t *testing.T) {
 	body := "one\n\ntwo\n\nthree\n\nfour\n\nfive"
-	plain := func(block activityui.Block) []string {
-		rows := p.Block(block, 40)
-		for i, row := range rows {
-			rows[i] = strings.TrimRight(ansi.Strip(row), " ")
-		}
-		return rows
-	}
-	// Streaming provider reasoning keeps its latest text rows under a header.
-	if got := plain(activityui.Block{Kind: "summary", Body: body, Live: true}); strings.Join(got, "|") != "• Thinking… · +2 lines|  three|  four|  five" {
-		t.Fatalf("live thinking = %q", got)
-	}
-	if got := plain(activityui.Block{Kind: "summary", Body: "one\n\ntwo", Live: true}); strings.Join(got, "|") != "• Thinking…|  one|  two" {
-		t.Fatalf("short live thinking = %q", got)
-	}
-	// Finished thinking reports its time and keeps every row.
-	got := plain(activityui.Block{Kind: "summary", Body: body, Elapsed: "12s"})
-	if got[0] != "• Thought for 12s" || len(got) != 10 || got[9] != "  five" {
-		t.Fatalf("finished thinking = %q", got)
-	}
-	if got := plain(activityui.Block{Kind: "summary", Body: body, Elapsed: "12s", Collapsed: true}); strings.Join(got, "|") != "• Thought for 12s" {
-		t.Fatalf("folded thinking = %q", got)
-	}
-	if got := plain(activityui.Block{Kind: "summary", Body: "one"}); strings.Join(got, "|") != "• Thought|  one" {
-		t.Fatalf("untimed thinking = %q", got)
-	}
-	// Titled and untitled summaries share the streaming lifecycle.
-	if got := plain(activityui.Block{Kind: "summary", Body: "**Checking**\n\nPublic summary.", Live: true}); strings.Join(got, "|") != "• Thinking…|  Public summary." {
-		t.Fatalf("titled summary = %q", got)
-	}
-	if got := plain(activityui.Block{Kind: "summary", Body: "**Check", Live: true}); !strings.Contains(strings.Join(got, "|"), "Thinking…") {
-		t.Fatalf("partial title lost thinking header = %q", got)
+	for _, tc := range []struct {
+		name  string
+		block activityui.Block
+	}{
+		{"streaming", activityui.Block{Kind: "summary", Body: body, Live: true}},
+		{"short_streaming", activityui.Block{Kind: "summary", Body: "one\n\ntwo", Live: true}},
+		{"completed", activityui.Block{Kind: "summary", Body: body, Elapsed: "12s"}},
+		{"collapsed", activityui.Block{Kind: "summary", Body: body, Elapsed: "12s", Collapsed: true}},
+		{"untimed", activityui.Block{Kind: "summary", Body: "one"}},
+		{"titled", activityui.Block{Kind: "summary", Body: "**Checking**\n\nPublic summary.", Live: true}},
+		{"partial_title", activityui.Block{Kind: "summary", Body: "**Check", Live: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := activityui.Painter{Theme: livediff.DarkTheme}
+			rows := p.Block(tc.block, 40)
+			uisnapshot.Assert(t, "testdata/snapshots/thinking_block_"+tc.name+".txt", strings.Join(rows, "\n")+"\n")
+		})
 	}
 }
 

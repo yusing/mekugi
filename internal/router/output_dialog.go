@@ -353,7 +353,7 @@ func (d *outputDialog) layout(width int) {
 		key.version = block.Output.Version()
 	}
 	if key == d.laidKey && d.starts != nil {
-		d.laid.Title = d.view.painter.DialogPageTitle(block, time.Now())
+		d.laid.Title = d.view.painter.DialogPageTitle(block, time.Now(), width)
 		return
 	}
 	d.laid, d.laidKey = d.view.painter.DialogPage(block, width), key

@@ -100,7 +100,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		if entry.native != nil {
 			block.Live = entry.native.phase == "summary" || entry.native.phase == "item/started"
 			block.Collapsed = entry.native.collapsed && block.Collapsible()
-			// Whole seconds only: a sub-second block reads as "Thought", not "0s".
+			// Whole seconds only: sub-second blocks show their summary without a duration.
 			if entry.native.thought >= time.Second {
 				block.Elapsed = liveActivityAge(entry.native.thought)
 			}

@@ -359,7 +359,7 @@ func TestOperationRowsNameTheirOutcome(t *testing.T) {
 			[]string{"Edit   a.go via cat · requested"}},
 		// Reasoning stays its own block, which heads the operations after it.
 		{"reasoning", []activityui.Block{{Kind: "summary", Body: "**Checking**"}, {Kind: "op", Verb: "Read", Label: "`Makefile`"}},
-			[]string{"• Thought", "  Checking", "Read   Makefile"}},
+			[]string{"• Checking", "Read   Makefile"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var rows []string
@@ -402,7 +402,7 @@ func TestAlignVerbsPadsOnlyToAdjacentVerbs(t *testing.T) {
 		rows = append(rows, p.Block(block, 80)...)
 	}
 	// A verb wider than the default column does not widen its neighbors'.
-	want := []string{"Ran git status", "    output not returned to the model", "Run JavaScript x()", "• Thought", "  Checking", "Read   a.go", "Search needle"}
+	want := []string{"Ran git status", "    output not returned to the model", "Run JavaScript x()", "• Checking", "Read   a.go", "Search needle"}
 	if got := plainLines(rows); !reflect.DeepEqual(got, want) {
 		t.Fatalf("rows = %q, want %q", got, want)
 	}
