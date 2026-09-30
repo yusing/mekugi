@@ -161,8 +161,11 @@ The top-right `[×]` close button, `Esc`/`q`, or a click outside closes it. `↑
 All command output uses shared best-effort content-based syntax detection in
 inline tails and dialogs, independently of the producing command. Known file
 types and numbered search matches retain their explicit syntax hints. Unified
-diffs color additions, deletions and hunk headers whether produced by `git diff`,
-`mchanges`, or another command. Unrecognized content and buffers above 256 KiB
+diffs reuse the diff pane’s per-language hunk syntax and added/deleted row
+fills whether produced by `git diff`, `mchanges`, or another command. Rolling
+tails use available retained headers and source context before selecting visible
+rows; expanded output and dialogs use the same renderer. Unrecognized content
+and buffers above 256 KiB
 remain plain text; inferred syntax never changes output bytes or line numbering.
 Command titles and source bodies use syntax colors for their language; file-read
 output uses the file type, including when it ends in blank lines. Copying remains

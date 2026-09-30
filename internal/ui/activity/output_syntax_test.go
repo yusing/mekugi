@@ -72,3 +72,84 @@ func TestCommandOutputSyntaxBoundAndExplicitHint(t *testing.T) {
 		t.Fatalf("file hint lost: %q", got)
 	}
 }
+
+func TestDiffOutputUsesPaneSyntaxAndRetainedTailContext(t *testing.T) {
+	source := "amber1\n--- a/sample.go\n+++ b/sample.go\n@@ -1,3 +1,3 @@\n package main\n \n-var answer = 41\n+var answer = 42"
+	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+		p := Painter{Theme: theme}
+		var renderer livediff.Renderer
+		want, err := renderer.ColorSource(t.Context(), theme, "sample.go", "package main\n\nvar answer = 42\n")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, verb := range []string{"Run", "Diff"} {
+			var output Output
+			output.Write(source)
+			block := Block{Kind: "op", Verb: verb, Code: "mchanges amber1", Output: &output, Tail: []string{"-var answer = 41", "+var answer = 42"}, TailOmitted: 6}
+			tail := p.tailColors(block)
+			if tail[1] != livediff.SourceLine(theme, ansi.StringWidth(want[2])+4, "", want[2], '+') || !strings.Contains(tail[1], theme.RowBackground('+')) {
+				t.Fatalf("tail lacks pane syntax: %q, want %q", tail, want[2])
+			}
+			for _, collapsed := range []bool{false, true} {
+				block.Collapsed = collapsed
+				page := p.DialogPage(block, 120)
+				if page.Text != strings.ReplaceAll(source, "\n \n", "\n\n") {
+					t.Fatalf("copy changed: %q", page.Text)
+				}
+				found := false
+				for _, line := range page.Lines {
+					if line.Text == tail[1] {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatal("dialog differs from streaming tail")
+				}
+			}
+		}
+	}
+}
+
+func TestCapturedEditDialogUsesPaneSyntax(t *testing.T) {
+	p := Painter{Theme: livediff.DarkTheme}
+	source := "--- a/main.go\n+++ b/main.go\n@@ -1 +1 @@\n-var answer = 41\n+var answer = 42"
+	block := Block{Kind: "op", Verb: "Edit", Path: "main.go", Code: source, Lang: "diff", Fenced: true}
+	page := p.DialogPage(block, 120)
+	var renderer livediff.Renderer
+	want, err := renderer.ColorSource(t.Context(), p.Theme, "main.go", "var answer = 42\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Text != source {
+		t.Fatal("edit copy changed")
+	}
+	found := false
+	for _, line := range page.Lines {
+		if line.Text == livediff.SourceLine(p.Theme, ansi.StringWidth(want[0])+4, "", want[0], '+') {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("clicked edit lacks pane syntax")
+	}
+}
+
+func TestTimestampedDiffRetainedSyntax(t *testing.T) {
+	var output Output
+	output.Write("--- old path.go\t2026-09-30 10:00:00.123 +0800\n+++ new path.go\t2026-09-30 10:01:00.123 +0800\n@@ -1 +1 @@\n-var answer = 41\n+var answer = 42")
+	p := Painter{Theme: livediff.DarkTheme}
+	block := Block{Kind: "op", Verb: "Run", Output: &output, Tail: []string{"+var answer = 42"}, TailOmitted: 4}
+	var renderer livediff.Renderer
+	source, err := renderer.ColorSource(t.Context(), p.Theme, "path.go", "var answer = 42\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := livediff.SourceLine(p.Theme, ansi.StringWidth(source[0])+4, "", source[0], '+')
+	if got := p.tailColors(block)[0]; got != want {
+		t.Fatalf("timestamp lost tail syntax: %q", got)
+	}
+	page := p.DialogPage(block, 120)
+	if page.Lines[len(page.Lines)-1].Text != want {
+		t.Fatal("timestamp lost dialog syntax")
+	}
+}

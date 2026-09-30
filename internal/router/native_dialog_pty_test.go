@@ -64,12 +64,35 @@ func TestNativeDialogPTYCloseAndResize(t *testing.T) {
 		return screen.String()
 	}
 	paint(120, 32)
-	pages := []activityui.Block{{Kind: "op", Verb: "Run", Code: "mchanges amber1", Tail: strings.Split("amber1\n--- a.go\n+++ a.go\n@@ -1 +1 @@\n-old\n+new", "\n")}}
+	pages := []activityui.Block{{Kind: "op", Verb: "Run", Code: "mchanges amber1", Tail: strings.Split("amber1\n--- a.go\n+++ a.go\n@@ -1 +1 @@\n-var answer = 41\n+var answer = 42", "\n")}}
 	u.shell.openBlocks(u.view, pages)
 	for _, size := range [][2]int{{120, 32}, {48, 20}, {160, 40}} {
 		frame := paint(size[0], size[1])
-		if !strings.Contains(frame, "[×]") || !strings.Contains(frame, "+new") {
+		if !strings.Contains(frame, "[×]") || !strings.Contains(frame, "+var answer = 42") {
 			t.Fatalf("%v dialog missing from PTY:\n%s", size, frame)
+		}
+		found := false
+		for y := 0; y < size[1]; y++ {
+			var row strings.Builder
+			for x := 0; x < size[0]; x++ {
+				row.WriteString(screen.CellAt(x, y).Content)
+			}
+			if x := strings.Index(row.String(), "+var answer = 42"); x >= 0 {
+				// Locate by cells rather than UTF-8 byte offsets in the gutter.
+				for col := 0; col+15 < size[0]; col++ {
+					if screen.CellAt(col, y).Content != "+" {
+						continue
+					}
+					keyword := screen.CellAt(col+1, y).Style
+					number := screen.CellAt(col+14, y).Style
+					if keyword.Fg != nil && number.Fg != nil && keyword.Fg != number.Fg && keyword.Bg != nil {
+						found = true
+					}
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("%v diff lost token colors or row fill", size)
 		}
 	}
 	rect := u.shell.output.rect

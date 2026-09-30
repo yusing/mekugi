@@ -98,17 +98,9 @@ func liveActivityLanguagePath(lang string) string {
 // highlight colors source by language, falling back to exact plain text.
 func (p *Painter) Highlight(lang, source string) []string {
 	if strings.EqualFold(lang, "diff") {
-		var lines []string
-		for line := range strings.SplitSeq(source, "\n") {
-			switch {
-			case strings.HasPrefix(line, "+"):
-				line = Green + line + Reset
-			case strings.HasPrefix(line, "-"):
-				line = Red + line + Reset
-			case strings.HasPrefix(line, "@@"):
-				line = Dim + line + Reset
-			}
-			lines = append(lines, line)
+		lines, err := p.syntax.ColorDiff(context.Background(), p.Theme, source)
+		if err != nil {
+			return strings.Split(source, "\n")
 		}
 		return lines
 	}
@@ -530,7 +522,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		}
 	}
 	if !block.Collapsed {
-		block.Tail = p.outputColors(block, block.Tail)
+		block.Tail = p.tailColors(block)
 	}
 	return outputRows(block, lines, width)
 }
