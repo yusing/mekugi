@@ -26,6 +26,12 @@ commands and output, file-change activity, agent lifecycle and collaboration,
 compaction, and image-view activity. Encrypted/raw reasoning is never projected.
 Question and answer presentation is limited to retained semantic items; input
 keystrokes, resize events, journal publications, and live diff previews are absent.
+Retained semantic journal messages remain visible. Router-generated journal
+transport commands and their synthetic output are hidden only when the strict
+generated shell grammar matches the durable translated carrier for the executing
+thread and metadata workspace (or its original empty workspace scope). Reading
+that provenance creates no store, locks, or writers. Missing, invalid, or unrelated
+provenance keeps the command visible and discloses an unverified transport candidate.
 
 Events are stably merged by recorded time. Item start and completion remain fixed;
 agent text and command output are not exposed at item start. Synthetic UTF-8 streaming deltas

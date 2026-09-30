@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"cmp"
 	"context"
+	"encoding/base64"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
@@ -21,13 +22,14 @@ import (
 // Replay uses retained semantic items, never shell execution or provider calls.
 // Missing token/chunk arrival times are simulated between the recorded bounds.
 type sessionUIReplay struct {
-	Thread, Cwd      string
-	Start, End       time.Time
-	Events           []uiReplayEvent
-	Threads          map[string]string
-	Missing          []string
-	Unsupported      map[string]int
-	Items, Providers int
+	Thread, Cwd       string
+	Start, End        time.Time
+	Events            []uiReplayEvent
+	Threads           map[string]string
+	Missing           []string
+	Unsupported       map[string]int
+	Items, Providers  int
+	JournalUnverified int
 }
 
 type uiReplayEvent struct {
@@ -85,6 +87,10 @@ func readReplayLines(ctx context.Context, path string, visit func([]byte) error)
 
 func readSessionUIReplay(ctx context.Context, path, debugDir string, seed uint64) (*sessionUIReplay, error) {
 	r := &sessionUIReplay{Threads: make(map[string]string), Unsupported: make(map[string]int)}
+	// Read only published records. Opening the writable store would create it
+	// and acquire process resources that offline presentation must not own.
+	directory, _ := defaultMekugiReplayDirectory()
+	store := &mekugiReplayStore{directory: directory}
 	rng := rand.New(rand.NewPCG(seed, seed^0xa0761d6478bd642f))
 	queue := []string{path}
 	loaded := make(map[string]bool)
@@ -92,7 +98,7 @@ func readSessionUIReplay(ctx context.Context, path, debugDir string, seed uint64
 	turns := make(map[string]string)
 	for len(queue) > 0 {
 		path, queue = queue[0], queue[1:]
-		var thread, scope string
+		var thread, scope, workspace string
 		ancestors := make(map[string]bool)
 		firstEvent := len(r.Events)
 		var children []string
@@ -113,6 +119,7 @@ func readSessionUIReplay(ctx context.Context, path, debugDir string, seed uint64
 					return nil
 				} // Fork rollouts retain ancestor metadata as history.
 				thread, scope = p.ID, p.ID
+				workspace = p.Cwd
 				if thread == "" {
 					return errors.New("session metadata has no thread id")
 				}
@@ -176,6 +183,19 @@ func readSessionUIReplay(ctx context.Context, path, debugDir string, seed uint64
 				}
 				if item.ID == "" || p.Turn == "" || p.Started <= 0 || p.Completed < p.Started {
 					return errors.New("item lacks valid identity or start/end timing")
+				}
+				if hidden, candidate := replayJournalTransport(store, workspace, thread, item); hidden {
+					// Hiding presentation must not shorten the recorded interval,
+					// including rollouts without explicit turn lifecycle records.
+					for _, at := range []int64{p.Started, p.Completed} {
+						r.Events = append(r.Events, uiReplayEvent{At: time.UnixMilli(at), Method: "replay/transportBoundary", Params: e.Params})
+					}
+					if len(r.Events) > 500000 {
+						return errors.New("replay exceeds 500000 events")
+					}
+					return nil
+				} else if candidate {
+					r.JournalUnverified++
 				}
 				r.Items++
 				item.DurationMS = new(p.Completed - p.Started)
@@ -243,6 +263,31 @@ func readSessionUIReplay(ctx context.Context, path, debugDir string, seed uint64
 	slices.SortStableFunc(r.Events, func(a, b uiReplayEvent) int { return a.At.Compare(b.At) })
 	r.Start, r.End = r.Events[0].At, r.Events[len(r.Events)-1].At
 	return r, nil
+}
+
+// The generated command grammar alone is not provenance. Reuse the durable
+// carrier's classifier and executing-thread scope, without a live proxy or
+// authorization token. Semantic journal messages remain normal replay items.
+func replayJournalTransport(store *mekugiReplayStore, workspace, thread string, item appServerItem) (hidden, candidate bool) {
+	if item.Type != "commandExecution" {
+		return false, false
+	}
+	parts := nativeJournalCommand.FindStringSubmatch(appServerDisplayCommand(item.Command))
+	if parts == nil {
+		return false, false
+	}
+	encoded, _, _ := strings.Cut(parts[2], ".")
+	callID, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || store.directory == "" {
+		return false, true
+	}
+	for _, scope := range []string{workspace, ""} {
+		record, found, err := store.read(scope, string(callID), false)
+		if err == nil && found && record.History.ExecutingThread == thread && record.History.lowersJournalCommand(parts) {
+			return true, true
+		}
+	}
+	return false, true
 }
 
 func replayItem(raw jsontext.Value) (appServerItem, bool, error) {

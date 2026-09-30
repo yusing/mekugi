@@ -92,7 +92,7 @@ func (p *uiReplayPlayback) advance(position time.Duration) error {
 		switch e.Method {
 		case "replay/providerStarted":
 			p.ui.applyActivity(p.ui.session.beginThinking(e.Params.ThreadID, e.At), nil)
-		case "replay/providerCompleted":
+		case "replay/providerCompleted", "replay/transportBoundary":
 			// Retain this boundary in ordering and duration without duplicating state.
 		default:
 			params, err := json.Marshal(&e.Params)
@@ -327,7 +327,9 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 	if len(source.Missing) > 0 || len(source.Unsupported) > 0 {
 		fmt.Fprintf(stderr, "Coverage: %d missing child rollouts; unsupported item kinds: %v\n", len(source.Missing), source.Unsupported)
 	}
-
+	if source.JournalUnverified > 0 {
+		fmt.Fprintf(stderr, "Coverage: %d journal transport candidates lack verified retained provenance; kept visible.\n", source.JournalUnverified)
+	}
 	p := newUIReplayPlayback(ctx, source, *speed)
 	defer p.close()
 	p.from, p.until = *from, *until

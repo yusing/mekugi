@@ -662,8 +662,11 @@ rollouts in the same directory are included. Optional debug captures add provide
 request intervals. Streaming is **simulated**, not a screen recording: retained
 text is released in seeded, irregular chunks within its recorded interval. The
 default `--seed 1` makes comparisons repeatable. Missing children and unsupported
-item kinds are reported. Original keystrokes, window sizes, journal cards, and
-live diff previews are not reconstructed; file-change activity is retained.
+item kinds are reported. Retained journal messages remain visible; internal
+journal transport commands are hidden only when local retained provenance
+identifies them. Unverified candidates stay visible and are reported. Original
+keystrokes, window sizes, journal cards, and live diff previews are not
+reconstructed; file-change activity is retained.
 
 The playback bar shows position, speed, and simulated-streaming status. **Space**
 pauses, **+/-** steps through speed presets from 0.1x to 100x, **[/]** seeks ten
