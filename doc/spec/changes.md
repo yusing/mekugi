@@ -70,6 +70,11 @@ forms remain open. `env -u`/`--unset` preserves underlying scope unless it remov
 `PATH` or cannot be parsed. Code Mode `write_stdin` calls with literal empty or
 omitted input are polling, not an additional writer.
 
+Read-only commands in cells that also patch files must not become incomplete
+captures merely because they have no filesystem baseline. Their pre-call
+classification and shell identity remain valid through host matching and replay,
+without allocating reader-only change IDs.
+
 Reader option checks recognize lexical brace-expanded paths without executing
 the shell. The `[` test builtin and quoted scalar `find` paths containing a
 literal slash remain read-only; dynamic action operands, command substitutions,

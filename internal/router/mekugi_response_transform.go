@@ -628,6 +628,11 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		if !changed && len(patches) == 0 && !observed && resolvedBaseline == nil {
 			return false, nil
 		}
+		if observation == nil && len(execs) != 0 {
+			// Retained patch or journal cells still need literal reader identities
+			// for host-trace matching, without a baseline or writer window.
+			observation = &execObservation{Commands: execs, Class: execNeutral.String(), CodeMode: true}
+		}
 		// Retain the provider input and captured baseline before exposing any
 		// executable call. The stock host remains the only edit executor.
 		history := mekugiHistory{
