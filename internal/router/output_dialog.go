@@ -130,7 +130,7 @@ func (u *terminalUI) openEntry(view *liveActivityView, seq uint64) bool {
 			blocks = slices.Clone(view.blocks[index])
 		}
 		if entry.journalCard != nil {
-			blocks = []activityui.Block{{Kind: "text", Verb: "Journal", Body: journalTurnCard(entry.journalCard.Journal, entry.journalCard.Since, false)}}
+			blocks = []activityui.Block{view.journalCardBlock(entry)}
 		}
 		for i := range blocks {
 			blocks[i].Source = entry.Seq
@@ -298,7 +298,7 @@ func (d *outputDialog) refreshPages() {
 						origin.Running = entry.native.running
 					} else if origin.Kind != "op" && origin.Kind != "reads" {
 						if entry.journalCard != nil {
-							origin.Body = journalTurnCard(entry.journalCard.Journal, entry.journalCard.Since, false)
+							origin = d.view.journalCardBlock(entry)
 						} else if index < len(d.view.blocks) && len(d.view.blocks[index]) == 1 {
 							current := d.view.blocks[index][0]
 							current.Source = origin.Source

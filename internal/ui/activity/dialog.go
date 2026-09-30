@@ -64,6 +64,9 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		detail = append(detail, "exit 0")
 	}
 	page.Detail = Dim + strings.Join(detail, " · ") + Undim
+	if len(detail) == 0 && block.Detail != "" {
+		page.Detail = block.Detail
+	}
 	if block.Skipped {
 		page.Detail = Dim + "skipped" + Undim
 	}
@@ -109,7 +112,11 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	if block.Body != "" {
 		page.Text = block.Body
 		gap()
-		for _, row := range p.Markdown(block.Body, width) {
+		rows := block.Rows
+		if rows == nil {
+			rows = func(width int) []string { return p.Markdown(block.Body, width) }
+		}
+		for _, row := range rows(width) {
 			add(DialogLine{Text: row})
 		}
 	}

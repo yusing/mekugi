@@ -42,7 +42,9 @@ per row, wrapped under the title. A row's time shows only where it differs from 
 row above. A row with a body opens it on click. Notes are rows only while the
 Journal pane is hidden; blocked task rows remain visible. Successful terminal delivery
 publishes a turn card framed like an answer, with Outcome, This turn and Remaining
-one node per row, and done and open counts in its title. Its notes expand in place. Empty Outcomes omit the answer line but retain the remaining work. Cards
+one node per row, and done and open counts in its title. It counts its notes; a
+click opens the card in the shared dialog with the same rows, each note written out
+in full, and the time and counts on the detail row. Empty Outcomes omit the answer line but retain the remaining work. Cards
 have response-specific identity, including consecutive empty Outcomes at one sequence.
 Answer reply links use the retained original question. The Journal pane restores its
 current tree from durable storage independently of provider requests.

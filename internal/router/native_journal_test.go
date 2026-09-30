@@ -364,6 +364,46 @@ func TestNativeJournalCollapsedCardLeadsWithOutcomeAndAggregatesTasks(t *testing
 	}
 }
 
+func TestNativeJournalCardDialogShowsCardRowsAndFullNotes(t *testing.T) {
+	v := newLiveActivityView()
+	task := journalNode{Path: "/1", Kind: "task", Title: "Tighten spacing"}
+	state := func(node journalNode, state string) journalNode { node.State = state; return node }
+	card := &nativeJournalCard{Journal: threadJournal{Events: []journalEvent{
+		{Seq: 1, Op: "set", Path: "/1", Fields: state(task, "working"), Transition: true},
+		{Seq: 2, Op: "add", Path: "/1/1", Fields: journalNode{Path: "/1/1", Kind: "note", Title: "Note", Body: "Removed the blank row.\nFocused suite passed."}},
+		{Seq: 3, Op: "set", Path: "/1", Fields: state(task, "done"), Transition: true},
+		{Seq: 4, Op: "add", Path: "/2", Fields: journalNode{Path: "/2", Kind: "answer", Body: "Fixed both."}},
+	}, Items: []journalItem{{Path: "/3", ID: "/3", Kind: "task", Title: "Follow-up", State: "pending"}}}}
+	observed := time.Date(2026, 9, 30, 23, 28, 0, 0, time.Local)
+	entry := activityPaneEntry{Seq: 1, Agent: "Main", Kind: "journal_card", Observed: observed, journalCard: card, native: &liveActivityNativeItem{}}
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+	u := &terminalUI{}
+	if !u.openEntry(v, 1) || u.output == nil {
+		t.Fatal("journal card did not open")
+	}
+	page := v.painter.DialogPage(u.output.pages[0], 70)
+	var lines []string
+	for _, line := range page.Lines {
+		lines = append(lines, ansi.Strip(line.Text))
+	}
+	body := strings.Join(lines, "\n")
+	if detail := ansi.Strip(page.Detail); detail != "23:28 · 1 done · 1 open · 1 note" {
+		t.Fatalf("detail row = %q", detail)
+	}
+	if strings.HasPrefix(body, "Journal") || !strings.HasPrefix(body, "Fixed both.") {
+		t.Fatalf("dialog did not lead with the Outcome: %q", body)
+	}
+	if strings.Count(body, "/1 Tighten spacing") != 1 || !strings.Contains(body, "● /1 Tighten spacing") || !strings.Contains(body, "○ /3 Follow-up") {
+		t.Fatalf("dialog did not aggregate tasks into card rows: %q", body)
+	}
+	if !strings.Contains(body, "◆ Removed the blank row.\n  Focused suite passed.") || strings.Contains(body, "click to open") {
+		t.Fatalf("dialog did not write the note out: %q", body)
+	}
+	if !strings.HasPrefix(page.Text, "Journal") || !strings.Contains(page.Text, "Focused suite passed.") {
+		t.Fatalf("copied text lost the plain card: %q", page.Text)
+	}
+}
+
 func TestNativeJournalCollapsedCardShowsRemoval(t *testing.T) {
 	v := newLiveActivityView()
 	card := &nativeJournalCard{Journal: threadJournal{Events: []journalEvent{{Seq: 1, Op: "remove", Path: "/1", Fields: journalNode{Path: "/1", Kind: "task", Title: "Old task", State: "working"}}}}}

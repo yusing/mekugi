@@ -66,6 +66,10 @@ type Block struct {
 	// Collapsed shows a settled block as one row that opens it; Hovered
 	// underlines that row under the pointer. Both are presentation-only.
 	Collapsed, Hovered bool
+	// Rows paints styled presentation rows at a width; the dialog shows them
+	// in place of Body's Markdown, and Body stays the copied text.
+	Rows   func(width int) []string
+	Detail string // Styled facts for the dialog's detail row when it has none of its own.
 }
 
 // Finished thinking stays open for ThinkingLinger after it completes live,

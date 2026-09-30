@@ -734,104 +734,17 @@ func (v *liveActivityView) applyTreeJournal(thread string, p nativeJournalPublic
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 }
 
-// journalCardLines lays out Main's turn card as a finished answer: the
-// Outcome leads, then what happened this turn one node per row, then the
-// tasks still open. This turn aggregates each node to its final state in the
-// window; a node both added and removed within it never happened.
+// journalCardLines lays out Main's turn card as a finished answer, with its
+// notes counted; the card opens as journalCardBlock.
 func (v *liveActivityView) journalCardLines(out *conversationLines, entry activityPaneEntry, width int) {
 	card := entry.journalCard
 	if card == nil {
 		return
 	}
 	p := &v.painter
-	theme := p.Theme
 	snippet := liveActivitySnippet{run: entry.Seq, block: 0}
-	inner := max(1, width-4)
-	var outcome, paths []string
-	latest := make(map[string]journalEvent)
-	added := make(map[string]bool)
-	for _, event := range card.Journal.Events {
-		if event.Seq <= card.Since || card.Journal.LegacyFlush[event.Seq] {
-			continue
-		}
-		if event.Fields.Kind == "answer" {
-			outcome = append(outcome, journalEventText(event))
-			continue
-		}
-		if _, seen := latest[event.Path]; !seen {
-			paths = append(paths, event.Path)
-			added[event.Path] = event.Op == "add"
-		}
-		latest[event.Path] = event
-	}
-	var happened [][2]string
-	row := func(node journalNode, verb string) [2]string {
-		lead, text := journalNodeParts(theme, node, verb)
-		return [2]string{lead, text}
-	}
-	notes, done := 0, 0
-	for _, path := range paths {
-		event := latest[path]
-		switch {
-		case event.Op == "remove" && added[path]:
-		case event.Op == "remove":
-			happened = append(happened, row(event.Fields, "removed"))
-		case event.Fields.Kind == "task":
-			if event.Fields.State == "done" {
-				done++
-			}
-			happened = append(happened, row(event.Fields, ""))
-		default:
-			notes++
-		}
-	}
-	if notes > 0 {
-		label := "1 note"
-		if notes > 1 {
-			label = fmt.Sprintf("%d notes", notes)
-		}
-		happened = append(happened, [2]string{theme.Accent() + "◆" + activityui.Reset + " ", label + activityui.Dim + " · click to open" + activityui.Undim})
-	}
-	var remaining [][2]string
-	for _, item := range card.Journal.Items {
-		if item.Kind == "task" && item.State != "done" && item.State != "dropped" && !strings.Contains(item.Path, "/@") {
-			remaining = append(remaining, row(item.node(), ""))
-		}
-	}
-	var rows []string
-	section := func(label string, items [][2]string) {
-		if len(items) == 0 {
-			return
-		}
-		if len(rows) > 0 {
-			rows = append(rows, "")
-		}
-		if label != "" {
-			rows = append(rows, "\x1b[1m"+label+"\x1b[22m")
-		}
-		for _, item := range items {
-			rows = append(rows, activityui.Hang(item[0], item[1], inner)...)
-		}
-	}
-	if len(outcome) > 0 {
-		rows = p.Markdown(livediff.Safe(strings.Join(outcome, "\n\n"), false), inner)
-	}
-	section("This turn", happened)
-	if card.Journal.mountUnavailable != "" {
-		section("", [][2]string{{activityui.Amber + "⚠ " + activityui.Reset, activityui.Amber + "Mounted journals unavailable: " + livediff.Safe(card.Journal.mountUnavailable, false) + activityui.Reset}})
-	}
-	section("Remaining", remaining)
-	if len(rows) == 0 {
-		rows = []string{activityui.Dim + "No journal changes this turn; no open tasks." + activityui.Undim}
-	}
+	rows, facts := journalCardRows(p, card, max(1, width-4), false)
 	title := activityui.Green + "✓" + activityui.Reset + activityui.Dim + " journal"
-	var facts []string
-	if done > 0 {
-		facts = append(facts, fmt.Sprintf("%d done", done))
-	}
-	if len(remaining) > 0 {
-		facts = append(facts, fmt.Sprintf("%d open", len(remaining)))
-	}
 	if len(facts) > 0 {
 		title += " · " + strings.Join(facts, " · ")
 	}
@@ -853,6 +766,135 @@ func (v *liveActivityView) journalCardLines(out *conversationLines, entry activi
 		out.add(0, row)
 		out.snippets[len(out.snippets)-1] = snippet
 	}
+}
+
+// journalCardBlock opens a turn card in the dialog with the card's rows and
+// each note written out in full; the plain card stays the copied text.
+func (v *liveActivityView) journalCardBlock(entry activityPaneEntry) activityui.Block {
+	card := entry.journalCard
+	p := &v.painter
+	_, facts := journalCardRows(p, card, 80, true)
+	facts = append([]string{entry.Observed.Local().Format("15:04")}, facts...)
+	return activityui.Block{Kind: "text", Verb: "Journal", Source: entry.Seq,
+		Body:   journalTurnCard(card.Journal, card.Since, false),
+		Detail: activityui.Dim + strings.Join(facts, " · ") + activityui.Undim,
+		Rows: func(width int) []string {
+			rows, _ := journalCardRows(p, card, width, true)
+			return rows
+		}}
+}
+
+// journalCardRows lays out a turn card's body: the Outcome leads, then what
+// happened this turn one node per row, then the tasks still open. This turn
+// aggregates each node to its final state in the window; a node both added
+// and removed within it never happened. Notes are counted, or with expand
+// listed with their bodies. facts are the title's counts.
+func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, expand bool) (rows, facts []string) {
+	theme := p.Theme
+	var outcome, paths []string
+	latest := make(map[string]journalEvent)
+	added := make(map[string]bool)
+	for _, event := range card.Journal.Events {
+		if event.Seq <= card.Since || card.Journal.LegacyFlush[event.Seq] {
+			continue
+		}
+		if event.Fields.Kind == "answer" {
+			outcome = append(outcome, journalEventText(event))
+			continue
+		}
+		if _, seen := latest[event.Path]; !seen {
+			paths = append(paths, event.Path)
+			added[event.Path] = event.Op == "add"
+		}
+		latest[event.Path] = event
+	}
+	var happened [][]string
+	row := func(node journalNode, verb string) []string {
+		lead, text := journalNodeParts(theme, node, verb)
+		return activityui.Hang(lead, text, inner)
+	}
+	notes, done := 0, 0
+	for _, path := range paths {
+		event := latest[path]
+		switch {
+		case event.Op == "remove" && added[path]:
+		case event.Op == "remove":
+			happened = append(happened, row(event.Fields, "removed"))
+		case event.Fields.Kind == "task":
+			if event.Fields.State == "done" {
+				done++
+			}
+			happened = append(happened, row(event.Fields, ""))
+		case expand:
+			notes++
+			lines := row(event.Fields, "")
+			body := strings.TrimSpace(event.Fields.Body)
+			if event.Fields.Title == "Note" {
+				_, body, _ = strings.Cut(body, "\n") // The row already shows its first line.
+				body = strings.TrimSpace(body)
+			}
+			if body != "" {
+				for _, line := range p.Markdown(livediff.Safe(body, false), max(1, inner-2)) {
+					lines = append(lines, "  "+line)
+				}
+			}
+			happened = append(happened, lines)
+		default:
+			notes++
+		}
+	}
+	if notes > 0 && !expand {
+		label := "1 note"
+		if notes > 1 {
+			label = fmt.Sprintf("%d notes", notes)
+		}
+		happened = append(happened, activityui.Hang(theme.Accent()+"◆"+activityui.Reset+" ", label+activityui.Dim+" · click to open"+activityui.Undim, inner))
+	}
+	var remaining [][]string
+	for _, item := range card.Journal.Items {
+		if item.Kind == "task" && item.State != "done" && item.State != "dropped" && !strings.Contains(item.Path, "/@") {
+			remaining = append(remaining, row(item.node(), ""))
+		}
+	}
+	section := func(label string, items [][]string) {
+		if len(items) == 0 {
+			return
+		}
+		if len(rows) > 0 {
+			rows = append(rows, "")
+		}
+		if label != "" {
+			rows = append(rows, "\x1b[1m"+label+"\x1b[22m")
+		}
+		for _, item := range items {
+			rows = append(rows, item...)
+		}
+	}
+	if len(outcome) > 0 {
+		rows = p.Markdown(livediff.Safe(strings.Join(outcome, "\n\n"), false), inner)
+	}
+	section("This turn", happened)
+	if card.Journal.mountUnavailable != "" {
+		section("", [][]string{activityui.Hang(activityui.Amber+"⚠ "+activityui.Reset, activityui.Amber+"Mounted journals unavailable: "+livediff.Safe(card.Journal.mountUnavailable, false)+activityui.Reset, inner)})
+	}
+	section("Remaining", remaining)
+	if len(rows) == 0 {
+		rows = []string{activityui.Dim + "No journal changes this turn; no open tasks." + activityui.Undim}
+	}
+	if done > 0 {
+		facts = append(facts, fmt.Sprintf("%d done", done))
+	}
+	if len(remaining) > 0 {
+		facts = append(facts, fmt.Sprintf("%d open", len(remaining)))
+	}
+	if expand && notes > 0 {
+		label := "1 note"
+		if notes > 1 {
+			label = fmt.Sprintf("%d notes", notes)
+		}
+		facts = append(facts, label)
+	}
+	return rows, facts
 }
 
 // journalEventsItem shows adjacent journal changes as one journal item: a
