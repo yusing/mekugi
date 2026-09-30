@@ -666,8 +666,11 @@ item kinds are reported. Original keystrokes, window sizes, journal cards, and
 live diff previews are not reconstructed; file-change activity is retained.
 
 The playback bar shows position, speed, and simulated-streaming status. **Space**
-pauses, **+/-** changes speed, **[/]** seeks ten seconds, **r** restarts, **j/k**
-scrolls Main, and **q** quits. Playback stops on its final frame until you quit.
+pauses, **+/-** steps through speed presets from 0.1x to 100x, **[/]** seeks ten
+seconds, **r** restarts, **j/k** or the mouse wheel scrolls Main, and **q** quits.
+Speed presets include 1x in both directions, even after reaching either limit;
+a custom `--speed` moves to the next preset in the selected direction. Playback
+stops on its final frame until you quit.
 Use `--from 5m --until 6m` to review a recorded interval; earlier state is loaded
 first. The current terminal size controls layout.
 

@@ -36,7 +36,11 @@ reads provider-boundary records from `capture.jsonl` for loaded threads only:
 request start is `captured_at - duration_ms`; completion is `captured_at`.
 
 The playback clock advances recorded time at `--speed` (finite, 0.1–100, default
-1.0). Event timestamps and displayed durations use recorded time, not accelerated
+1.0). Interactive +/- moves through the same ordered presets in both directions:
+0.1, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, and 100. At the limits, further
+steps in that direction do nothing. A custom starting speed moves to the nearest
+preset strictly in the requested direction. Event timestamps and displayed
+durations use recorded time, not accelerated
 wall time. Pause freezes the playback clock. Backward seeking rebuilds isolated
 presentation state and cannot retain future content. `--from` and `--until` select
 a positive interval within the recorded duration; earlier events reconstruct
@@ -54,6 +58,10 @@ snapshots cover running, paused, completed, and narrow playback states.
 columns and 8–500 rows). It emits no terminal bytes and returns a JSON timing
 summary on stdout; loading/coverage/progress notices use stderr. Interactive
 mode requires terminal stdin/stdout and restores terminal state on exit.
+Wheel reports scroll Main and cannot become playback commands or quit replay;
+other mouse reports and terminal navigation sequences are consumed without
+triggering controls. A standalone Escape, Ctrl+C, or q quits. Mouse reporting
+is enabled only during interactive playback and disabled on exit.
 
 `--cpu-profile` and `--heap-profile` create new mode-0600 files and reject existing
 destinations. CPU sampling covers playback, not initial reading or pre-interval

@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime/pprof"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -177,7 +178,11 @@ func (p *uiReplayPlayback) bar(width int) string {
 	if p.position >= p.until {
 		state = "■"
 	}
-	label := fmt.Sprintf(" %s Replay · simulated · %.1fx · %s/%s", state, p.speed, replayTime(p.position), replayTime(p.until))
+	speed := strconv.FormatFloat(p.speed, 'f', -1, 64)
+	if !strings.Contains(speed, ".") {
+		speed += ".0"
+	}
+	label := fmt.Sprintf(" %s Replay · simulated · %sx · %s/%s", state, speed, replayTime(p.position), replayTime(p.until))
 	hint := "  Space pause · +/- speed · [/] seek · r restart · q quit"
 	remaining := width - ansi.StringWidth(label) - ansi.StringWidth(hint) - 3
 	if remaining >= 6 {
@@ -207,9 +212,9 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 	case ' ':
 		p.paused = !p.paused
 	case '+', '=':
-		p.speed = min(100, p.speed*2)
+		p.speed = replaySpeedStep(p.speed, true)
 	case '-':
-		p.speed = max(0.1, p.speed/2)
+		p.speed = replaySpeedStep(p.speed, false)
 	case '[':
 		return false, p.seek(max(p.from, p.position-10*time.Second))
 	case ']':
@@ -221,8 +226,41 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 		p.ui.view.scrollKey('b')
 	case 'j':
 		p.ui.view.scrollKey(' ')
+	case terminalui.PaneWheelUp, terminalui.PaneWheelDown:
+		p.ui.view.scrollKey(key)
 	}
 	return false, nil
+}
+
+// Charge elapsed wall time at the previous speed and pause state before a
+// control changes them. Scrolling must not discard time between paint ticks.
+func (p *uiReplayPlayback) control(key byte, elapsed time.Duration) (bool, error) {
+	if !p.paused {
+		if err := p.advance(p.position + time.Duration(float64(elapsed)*p.speed)); err != nil {
+			return false, err
+		}
+	}
+	return p.key(key)
+}
+
+// A shared ladder avoids drifting off 1x after either speed limit is reached.
+// Arbitrary --speed values move to the next preset in the requested direction.
+func replaySpeedStep(speed float64, faster bool) float64 {
+	steps := [...]float64{0.1, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 100}
+	if faster {
+		for _, step := range steps {
+			if step > speed {
+				return step
+			}
+		}
+		return steps[len(steps)-1]
+	}
+	for i := len(steps) - 1; i >= 0; i-- {
+		if steps[i] < speed {
+			return steps[i]
+		}
+	}
+	return steps[0]
 }
 
 // RunSessionUIReplay is an offline entry point. It shares the native presenter,
@@ -289,6 +327,7 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 	if len(source.Missing) > 0 || len(source.Unsupported) > 0 {
 		fmt.Fprintf(stderr, "Coverage: %d missing child rollouts; unsupported item kinds: %v\n", len(source.Missing), source.Unsupported)
 	}
+
 	p := newUIReplayPlayback(ctx, source, *speed)
 	defer p.close()
 	p.from, p.until = *from, *until
@@ -317,6 +356,8 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 	}
 	started := time.Now()
 	run := func(keys <-chan byte, out io.Writer) error {
+		var input uiReplayInput
+		defer input.close()
 		tick := time.NewTicker(33 * time.Millisecond)
 		defer tick.Stop()
 		last, progress := time.Now(), time.Now()
@@ -338,12 +379,20 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
+			case <-input.escapeC:
+				// Only a standalone Escape quits; CSI/SS3/mouse reports do not.
+				return nil
 			case key, ok := <-keys:
 				if !ok {
 					return io.EOF
 				}
-				quit, err := p.key(key)
-				last = time.Now()
+				key = input.consume(key)
+				if key == 0 {
+					continue
+				}
+				now := time.Now()
+				quit, err := p.control(key, now.Sub(last))
+				last = now
 				if err != nil || quit {
 					return err
 				}
@@ -380,7 +429,7 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 	if *headless {
 		err = run(nil, io.Discard)
 	} else {
-		err = terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l", "\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error { return run(keys, stdout) })
+		err = terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1000;1006h", "\x1b[?1000;1006l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error { return run(keys, stdout) })
 	}
 	elapsed := time.Since(started)
 	if cpuFile != nil {
