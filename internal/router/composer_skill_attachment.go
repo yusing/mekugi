@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
@@ -41,7 +42,7 @@ func frameComposerSkillFromPath(name, path, content string) []string {
 		header += fmt.Sprintf(" from %q", path)
 	}
 	return frameAttachmentText(content, func(start, end, total int) string {
-		return fmt.Sprintf("%s (UTF-8 bytes %d:%d of %d; skill instructions):\n", header, start, end, total)
+		return fmt.Sprintf("%s (UTF-8 bytes %d:%d of %d; skill instructions; %s):\n", header, start, end, total, attachmentReadGuidance)
 	})
 }
 func (u *appServerUI) snapshotDraftSkills(d *composerDraft) {
@@ -74,14 +75,25 @@ func (d *composerDraft) snapshotSkillAttachments(cwd string, environment []strin
 		header := fmt.Sprintf("Attached skill %q", skill.name)
 		var data []byte
 		var err error
+		managed := skill.path == ""
 		if skill.path != "" {
 			header += fmt.Sprintf(" from %q", skill.path)
 			if !filepath.IsAbs(skill.path) {
 				err = fmt.Errorf("skill metadata requires an absolute path")
 			} else {
-				data, err = readComposerFile(skill.path)
+				// User-invoked managed skills may be absent from the model's
+				// catalog. Their native path is a generated metadata placeholder,
+				// never the instruction source.
+				_, markerErr := os.Stat(filepath.Join(filepath.Dir(skill.path), ".skills-mgr-placeholder"))
+				managed = markerErr == nil
+				if markerErr != nil && !os.IsNotExist(markerErr) {
+					err = markerErr
+				} else if !managed {
+					data, err = readComposerFile(skill.path)
+				}
 			}
-		} else {
+		}
+		if managed && err == nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			data, err = readManagedSkill(ctx, cwd, environment, skill.name)
 			cancel()

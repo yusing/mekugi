@@ -108,11 +108,9 @@ func TestComposerFileAttachmentsNativeCodexE2E(t *testing.T) {
 
 // Both skill sources use the @file snapshot envelope and byte framing.
 func TestSkillContentsNativeCodexE2E(t *testing.T) {
-	for _, managed := range []bool{false, true} {
-		name := "native"
-		if managed {
-			name = "managed"
-		}
+	for _, name := range []string{"native", "managed", "user-invoked"} {
+		managed := name != "native"
+		hidden := name == "user-invoked"
 		t.Run(name, func(t *testing.T) {
 			codex, err := exec.LookPath("codex")
 			if err != nil {
@@ -131,6 +129,12 @@ func TestSkillContentsNativeCodexE2E(t *testing.T) {
 			if managed {
 				native = "---\nname: " + skill + "\ndescription: Stale native copy\n---\n\nSTALE-NATIVE-CONTENTS\n"
 			}
+			if hidden {
+				native = "---\nname: " + skill + "\ndescription: User-invoked fixture\ndisable-model-invocation: true\n---\n"
+				if err := os.WriteFile(filepath.Join(filepath.Dir(source), ".skills-mgr-placeholder"), []byte("managed\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if err := os.WriteFile(source, []byte(native), 0600); err != nil {
 				t.Fatal(err)
 			}
@@ -143,7 +147,11 @@ func TestSkillContentsNativeCodexE2E(t *testing.T) {
 				if err := os.WriteFile(manager+".body", []byte(instructions), 0600); err != nil {
 					t.Fatal(err)
 				}
-				script := "#!/bin/sh\nif [ \"$1\" = list ]; then printf '%s' '<skills><skill name=\"" + skill + "\"/></skills>'; else printf 'get\\n' >> \"$0.calls\"; cat \"$0.body\"; fi\n"
+				catalog := "<skills><skill name=\"" + skill + "\"/></skills>"
+				if hidden {
+					catalog = "<skills/>"
+				}
+				script := "#!/bin/sh\nif [ \"$1\" = list ]; then printf '%s' '" + catalog + "'; else printf 'get\\n' >> \"$0.calls\"; cat \"$0.body\"; fi\n"
 				if err := os.WriteFile(manager, []byte(script), 0700); err != nil {
 					t.Fatal(err)
 				}
@@ -206,8 +214,11 @@ func TestSkillContentsNativeCodexE2E(t *testing.T) {
 							if item.Role != "user" {
 								t.Fatal("skill snapshot is not a user message")
 							}
-							if !managed && !strings.Contains(part.Text, " from "+strconv.Quote(source)) {
+							if (!managed || hidden) && !strings.Contains(part.Text, " from "+strconv.Quote(source)) {
 								t.Fatal("metadata source path lost")
+							}
+							if !strings.Contains(part.Text, attachmentReadGuidance) {
+								t.Fatal("attachment reuse guidance missing at provider")
 							}
 							_, content, ok := strings.Cut(part.Text, ":\n")
 							if !ok {

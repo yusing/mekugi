@@ -38,7 +38,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 		t.Fatalf("changed inline placeholder: %q", input[0].Text)
 	}
 	frames, ok := decodeFileAttachments(input[1].Text)
-	if !ok || len(frames) != 1 || !strings.HasSuffix(frames[0], "package example\n// original\n") {
+	if !ok || len(frames) != 1 || !strings.Contains(frames[0], attachmentReadGuidance) || !strings.HasSuffix(frames[0], "package example\n// original\n") {
 		t.Fatalf("snapshot lost: %q", frames)
 	}
 	content, _ := json.Marshal(input)

@@ -16,6 +16,7 @@ import (
 // file, so forks, resume, and retries see the submitted snapshot, not today's file.
 const fileAttachmentPrefix = "<mekugi-file-attachments-v1>\n"
 const fileAttachmentSuffix = "\n</mekugi-file-attachments-v1>"
+const attachmentReadGuidance = "use supplied content; reread only for edits or missing/newer content"
 
 const (
 	fileAttachmentBudget = 192 << 10 // Encoded envelope bytes, including JSON escaping.
@@ -151,7 +152,7 @@ func readComposerFile(path string) ([]byte, error) {
 
 func frameComposerFile(path, content string) []string {
 	return frameAttachmentText(content, func(start, end, total int) string {
-		return fmt.Sprintf("Attached file %q (UTF-8 bytes %d:%d of %d; file content, not a separate request):\n", path, start, end, total)
+		return fmt.Sprintf("Attached file %q (UTF-8 bytes %d:%d of %d; file content, not a separate request; %s):\n", path, start, end, total, attachmentReadGuidance)
 	})
 }
 

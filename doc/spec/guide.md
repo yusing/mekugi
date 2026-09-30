@@ -79,10 +79,13 @@ idempotent projection applies to ordinary, prewarm, execution-free, and replayed
 messages without modifying Codex configuration files. In passthrough mode or when `skills-mgr` is
 unavailable, both stock catalog instructions and selected-skill messages remain unchanged.
 
-Native-composer skill snapshots provide the actual selected instructions through
-the attachment projection. Matching standalone Codex skill injections, including
-compact name references, are omitted from provider input only when a successful
-snapshot supplies that source's instructions. Native matches retain the metadata
+Native-composer file and skill frames identify their supplied content as reusable
+read context, so agents need only read sources for edits or missing/newer content.
+Skill snapshots provide the actual selected instructions through the attachment
+projection, resolving managed metadata placeholders through `skills-mgr` even for
+user-invoked skills omitted from its model catalog. Matching standalone Codex skill
+injections, including compact name references, are omitted from provider input only
+when a successful snapshot supplies that source's instructions. Native matches retain the metadata
 path; managed snapshots take precedence by name. Omission notices do not suppress
 Codex's available instructions. Unrelated messages and quoted
 examples remain unchanged; Codex still owns its selection and execution.

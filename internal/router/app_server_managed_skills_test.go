@@ -53,7 +53,7 @@ func TestManagedSkillAttachmentContentsAndIdentity(t *testing.T) {
 		t.Fatalf("instructions missing or duplicated: %+v", input)
 	}
 	frames, ok := decodeFileAttachments(input[1]["text"].(string))
-	if !ok || len(frames) != 1 || !strings.HasSuffix(frames[0], managedSkillInstructions) {
+	if !ok || len(frames) != 1 || !strings.Contains(frames[0], attachmentReadGuidance) || !strings.HasSuffix(frames[0], managedSkillInstructions) {
 		t.Fatalf("instruction contents missing: %+v", frames)
 	}
 	content, err := json.Marshal(input)
@@ -124,5 +124,58 @@ func TestManagedSkillSourceFailuresRemainIndependent(t *testing.T) {
 	cancel()
 	if _, err := readManagedSkills(ctx, u.session.cwd, u.skillEnvironment); err == nil {
 		t.Fatal("canceled catalog ran")
+	}
+}
+
+func TestManagedSkillMetadataPlaceholderResolvesInstructions(t *testing.T) {
+	for _, fails := range []bool{false, true} {
+		t.Run(strconv.FormatBool(fails), func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			// A user-invoked skill is intentionally absent from the model catalog.
+			script := "if [ \"$1\" = list ]; then printf '%s' '<skills/>'; else\n"
+			if fails {
+				script += "exit 1\n"
+			} else {
+				script += "[ \"$1\" = get ] && [ \"$2\" = --codex ] && [ \"$3\" = review ] || exit 1\nprintf '%s' '" + managedSkillInstructions + "'\n"
+			}
+			testManagedSkills(t, u, script+"fi\n")
+			choices, err := readManagedSkills(t.Context(), u.session.cwd, u.skillEnvironment)
+			if err != nil || len(choices) != 0 {
+				t.Fatalf("user-invoked skill leaked into catalog: %+v, %v", choices, err)
+			}
+			path := filepath.Join(t.TempDir(), "SKILL.md")
+			metadata := "---\nname: review\ndisable-model-invocation: true\n---\n"
+			for name, contents := range map[string]string{path: metadata, filepath.Join(filepath.Dir(path), ".skills-mgr-placeholder"): "managed\n"} {
+				if err := os.WriteFile(name, []byte(contents), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			draft := composerDraft{text: "$review", skills: []composerSkill{{start: 0, end: 7, name: "review", path: path}}}
+			draft.snapshotSkillAttachments(u.session.cwd, u.skillEnvironment)
+			frames, ok := decodeFileAttachments(draft.attachments[0])
+			if !ok || len(frames) != 1 {
+				t.Fatalf("snapshot missing: %+v", frames)
+			}
+			name, source, rest := skillAttachmentFrame(frames[0])
+			if name != "review" || source != path || strings.Contains(frames[0], metadata) {
+				t.Fatalf("placeholder attached as instructions or source lost: %q", frames[0])
+			}
+			if fails {
+				if !strings.HasPrefix(rest, ": CONTENT NOT ATTACHED (") || draft.attachmentNotice == "" {
+					t.Fatalf("failed manager claimed instructions: %q", frames[0])
+				}
+			} else if !strings.HasSuffix(frames[0], managedSkillInstructions) {
+				t.Fatalf("managed instructions missing: %q", frames[0])
+			}
+			// A queued/replayed snapshot must not require its live source.
+			before := draft.attachments[0]
+			if err := os.Remove(filepath.Join(strings.TrimPrefix(u.skillEnvironment[0], "PATH="), "skills-mgr")); err != nil {
+				t.Fatal(err)
+			}
+			draft.snapshotSkillAttachments(u.session.cwd, u.skillEnvironment)
+			if draft.attachments[0] != before {
+				t.Fatal("retained snapshot reopened manager")
+			}
+		})
 	}
 }
