@@ -18,9 +18,8 @@ type nativeJournalCard struct {
 
 type nativeJournalView struct {
 	unscoped bool
-	// toggled inverts a subtree's default: open work starts expanded and
-	// finished work collapsed.
-	toggled                  map[string]bool
+	// expanded records explicit disclosure choices; absent nodes fit automatically.
+	expanded                 map[string]bool
 	selected, offset, height int
 	top                      int // Header rows above the first node row.
 	// hover is the pointed pane row plus one. The selection is filled only
@@ -128,7 +127,10 @@ func (v *nativeJournalView) rebuild(j *threadJournal) {
 		})
 		for i, node := range nodes {
 			row := journalPaneRow{node: node, lead: lead, depth: depth, last: i == len(nodes)-1}
-			row.open = row.expandable() && journalNodeClosed(node) == v.toggled[node.Path]
+			row.open = row.expandable()
+			if expanded, explicit := v.expanded[node.Path]; explicit {
+				row.open = row.expandable() && expanded
+			}
 			v.rows = append(v.rows, row)
 			if !row.open {
 				continue
@@ -142,10 +144,87 @@ func (v *nativeJournalView) rebuild(j *threadJournal) {
 		}
 	}
 	walk(nodes, "", 0)
+	v.fit()
+	for selected != "" && !slices.ContainsFunc(v.rows, func(row journalPaneRow) bool { return row.node.Path == selected }) {
+		selected = journalParent(selected)
+	}
 	if index := slices.IndexFunc(v.rows, func(row journalPaneRow) bool { return row.node.Path == selected }); index >= 0 {
 		v.selected = index
 	}
 	v.selected = max(0, min(v.selected, len(v.rows)-1))
+}
+
+// fit collapses the least recently updated visible subtrees first. A manual
+// expansion protects its ancestors, so fitting never undoes a disclosure click.
+func (v *nativeJournalView) fit() {
+	if v.height <= 0 || len(v.rows) <= v.height {
+		return
+	}
+	type candidate struct {
+		path string
+		at   time.Time
+		seq  uint64
+	}
+	var latest func(journalNode) candidate
+	latest = func(node journalNode) candidate {
+		at, _ := time.Parse(time.RFC3339Nano, node.Updated.At)
+		newest := candidate{path: node.Path, at: at, seq: node.Updated.Seq}
+		for _, child := range node.Children {
+			stamp := latest(child)
+			if stamp.at.After(newest.at) {
+				newest.at = stamp.at
+			}
+			newest.seq = max(newest.seq, stamp.seq)
+		}
+		return newest
+	}
+	var candidates []candidate
+	for i, row := range v.rows {
+		if !row.open {
+			continue
+		}
+		if _, explicit := v.expanded[row.node.Path]; explicit {
+			continue
+		}
+		pinned := false
+		for k := i; k < len(v.rows) && (k == i || v.rows[k].depth > row.depth); k++ {
+			node := v.rows[k].node
+			if v.expanded[node.Path] {
+				pinned = true
+				break
+			}
+		}
+		if !pinned {
+			candidates = append(candidates, latest(row.node))
+		}
+	}
+	slices.SortStableFunc(candidates, func(a, b candidate) int {
+		if order := a.at.Compare(b.at); order != 0 {
+			return order
+		}
+		if a.seq < b.seq {
+			return -1
+		}
+		if a.seq > b.seq {
+			return 1
+		}
+		return 0
+	})
+	for _, candidate := range candidates {
+		if len(v.rows) <= v.height {
+			break
+		}
+		i := slices.IndexFunc(v.rows, func(row journalPaneRow) bool { return row.node.Path == candidate.path })
+		if i < 0 || !v.rows[i].open {
+			continue
+		}
+		end := i + 1
+		for end < len(v.rows) && v.rows[end].depth > v.rows[i].depth {
+			end++
+		}
+		v.rows[i].open = false
+		v.rows = slices.Delete(v.rows, i+1, end)
+	}
 }
 
 // The Agents group and mount diagnostics are view-only nodes at reserved keys.
@@ -230,23 +309,24 @@ func (u *appServerUI) journalPaneHints() string {
 // render lays out the tree. header adds the state counts as a first row for a
 // pane without a titled frame.
 func (v *nativeJournalView) render(j *threadJournal, width, height int, header, focused bool, theme livediff.Theme) []string {
-	v.rebuild(j)
-	v.height = height
 	rows := make([]string, max(0, height))
-	if height == 0 {
+	v.top = 0
+	if j != nil {
+		if counts := journalTitleCounts(j.Items, width < 60); header && height >= 4 && counts != "" {
+			rows[0] = ansi.Truncate(" "+counts, width, "…")
+			v.top = 1
+		}
+	}
+	body := height - v.top
+	v.height = body
+	v.rebuild(j)
+	if height <= 0 {
 		return rows
 	}
 	if len(v.rows) == 0 {
 		rows[0] = activityui.Dim + " No journal entries." + activityui.Undim
 		return rows
 	}
-	v.top = 0
-	if counts := journalTitleCounts(j.Items, width < 60); header && height >= 4 && counts != "" {
-		rows[0] = ansi.Truncate(" "+counts, width, "…")
-		v.top = 1
-	}
-	body := height - v.top
-	v.height = body
 	if v.reveal {
 		if v.selected < v.offset {
 			v.offset = v.selected
@@ -412,7 +492,7 @@ func (u *terminalUI) journalKey(key string) error {
 	case "n":
 		if _, other := u.main.journalNamespaces(); other != "" {
 			view.unscoped = !view.unscoped
-			view.selected, view.offset, view.toggled = 0, 0, nil
+			view.selected, view.offset, view.expanded = 0, 0, nil
 		}
 	case "j", "\x1b[B":
 		view.selected = min(len(view.rows)-1, view.selected+1)
@@ -456,10 +536,10 @@ func (v *nativeJournalView) toggle(row journalPaneRow) {
 	if !row.expandable() {
 		return
 	}
-	if v.toggled == nil {
-		v.toggled = make(map[string]bool)
+	if v.expanded == nil {
+		v.expanded = make(map[string]bool)
 	}
-	v.toggled[row.node.Path] = !v.toggled[row.node.Path]
+	v.expanded[row.node.Path] = !row.open
 }
 
 // journalMouse points, scrolls, and clicks within the pane: the disclosure
@@ -517,9 +597,38 @@ func (u *terminalUI) openJournalRow(node journalNode) {
 }
 
 func (u *terminalUI) openJournalDetail(node journalNode) {
-	text := journalEventText(journalEvent{Fields: node})
-	pages := []activityui.Block{{Kind: "text", Verb: "Journal", Label: node.Path, Body: livediff.Safe(text, false)}}
-	u.openBlocks(u.main.view, pages)
+	journal := u.main.journalTreeSnapshot()
+	if journal == nil {
+		return
+	}
+	roots, _ := journalTree(journal.Items, "", nil)
+	var root *journalNode
+	for i := range roots {
+		if node.Path == roots[i].Path || strings.HasPrefix(node.Path, roots[i].Path+"/") {
+			root = &roots[i]
+			break
+		}
+	}
+	if root == nil {
+		return
+	}
+	var segments []activityui.Block
+	target := 0
+	var walk func(journalNode)
+	walk = func(current journalNode) {
+		if current.Path == node.Path {
+			target = len(segments)
+		}
+		segments = append(segments, activityui.Block{Kind: "text", Verb: "Journal", Label: current.Path,
+			Body: livediff.Safe(journalEventText(journalEvent{Fields: current}), false)})
+		for _, child := range current.Children {
+			walk(child)
+		}
+	}
+	walk(*root)
+	u.openBlocks(u.main.view, []activityui.Block{{Kind: "text", Verb: "Journal", Label: livediff.Safe(root.Title, false)}})
+	u.output.segments = segments
+	u.output.pendingSegment, u.output.pendingFlash = target+1, node.Path != root.Path
 }
 
 // journalPin is the journal state the strip above the composer pins: the
@@ -749,22 +858,32 @@ func (v *liveActivityView) journalCardLines(out *conversationLines, entry activi
 		title += " · " + strings.Join(facts, " · ")
 	}
 	title += activityui.Undim
-	if entry.native.question != 0 {
+	var context conversationLines
+	if entry.native != nil && entry.native.question != 0 {
 		for _, question := range v.entries {
 			if question.Seq == entry.native.question {
-				v.replyContext(out, question, mainGutter(p), max(1, width-2))
+				v.replyContext(&context, question, "", max(1, width-4))
 				break
 			}
 		}
 	}
+	if len(context.lines) > 0 {
+		rows = append(append(context.lines, ""), rows...)
+	}
+
 	if width < 12 {
 		rows = append([]string{title}, rows...)
 	} else {
 		rows = activityui.Card(title, entry.Observed.Local().Format("15:04"), rows, width, false)
 	}
-	for _, row := range rows {
-		out.add(0, row)
-		out.snippets[len(out.snippets)-1] = snippet
+	for i, row := range rows {
+		// Both framing variants prepend one title row.
+		if i > 0 && i <= len(context.questions) {
+			out.add(context.questions[i-1], row)
+		} else {
+			out.add(0, row)
+			out.snippets[len(out.snippets)-1] = snippet
+		}
 	}
 }
 

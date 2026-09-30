@@ -44,6 +44,14 @@ type outputDialog struct {
 	laid    activityui.DialogPage
 	laidKey outputDialogKey
 	starts  []int // Each line's first body row, then the total row count.
+
+	// Segmented documents share one scroll surface, not per-item tabs.
+	segments           []activityui.Block
+	segmentLines       [][2]int
+	pendingSegment     int // Segment index plus one, resolved after layout.
+	pendingFlash       bool
+	flashFrom, flashTo int // Logical line range, exclusive end.
+	flashUntil         time.Time
 }
 
 type outputPageKey struct {
@@ -347,6 +355,30 @@ func (d *outputDialog) layout(width int) {
 		return
 	}
 	d.laid, d.laidKey = d.view.painter.DialogPage(block, width), key
+	if len(d.segments) > 0 {
+		flashed := slices.IndexFunc(d.segmentLines, func(lines [2]int) bool {
+			return lines[0] == d.flashFrom && lines[1] == d.flashTo
+		})
+		d.laid.Lines, d.segmentLines = nil, nil
+		var texts []string
+		for _, segment := range d.segments {
+			if len(d.laid.Lines) > 0 {
+				d.laid.Lines = append(d.laid.Lines, activityui.DialogLine{})
+			}
+			first := len(d.laid.Lines)
+			page := d.view.painter.DialogPage(segment, width)
+			heading := activityui.Dim + "─ " + segment.Label + " "
+			heading += strings.Repeat("─", max(0, width-ansi.StringWidth(heading))) + activityui.Undim
+			d.laid.Lines = append(d.laid.Lines, activityui.DialogLine{Text: heading})
+			d.laid.Lines = append(d.laid.Lines, page.Lines...)
+			d.segmentLines = append(d.segmentLines, [2]int{first, len(d.laid.Lines)})
+			texts = append(texts, segment.Label+"\n"+page.Text)
+		}
+		d.laid.Text = strings.Join(texts, "\n\n")
+		if flashed >= 0 {
+			d.flashFrom, d.flashTo = d.segmentLines[flashed][0], d.segmentLines[flashed][1]
+		}
+	}
 	d.starts = make([]int, len(d.laid.Lines)+1)
 	for i := range d.laid.Lines {
 		d.starts[i+1] = d.starts[i] + d.laid.RowCount(i, width)
@@ -361,6 +393,28 @@ func (d *outputDialog) total() int {
 }
 
 func (d *outputDialog) bottom() int { return max(0, d.total()-d.rows) }
+
+// navigate is the shared row-target navigation for links and search results.
+// Flash is opt-in and starts only once the destination has been laid out.
+func (d *outputDialog) navigate(first, last int, flash bool) {
+	if first < 0 || first >= len(d.laid.Lines) {
+		return
+	}
+	d.top, d.follow = min(d.starts[first], d.bottom()), false
+	d.flashFrom, d.flashTo, d.flashUntil = 0, 0, time.Time{}
+	if flash {
+		d.flashFrom, d.flashTo = first, min(last, len(d.laid.Lines))
+		d.flashUntil = time.Now().Add(700 * time.Millisecond)
+	}
+}
+
+func (d *outputDialog) expireFlash(now time.Time) bool {
+	if d.flashUntil.IsZero() || now.Before(d.flashUntil) {
+		return false
+	}
+	d.flashFrom, d.flashTo, d.flashUntil = 0, 0, time.Time{}
+	return true
+}
 
 // scroll moves the body by rows; reaching the bottom of live output follows it.
 func (d *outputDialog) scroll(rows int) {
@@ -389,7 +443,8 @@ func (d *outputDialog) find(step int) {
 		i := ((from+step*k)%n + n) % n
 		if strings.Contains(strings.ToLower(ansi.Strip(d.laid.Lines[i].Text)), d.query) {
 			d.match, d.missed = i, false
-			d.top, d.follow = max(0, min(d.starts[i]-d.rows/3, d.bottom())), false
+			d.navigate(i, i+1, false)
+			d.top = max(0, min(d.starts[i]-d.rows/3, d.bottom()))
 			return
 		}
 	}
@@ -538,6 +593,11 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 		d.selection = nil
 	}
 	d.rows = h - d.chrome()
+	if d.pendingSegment > 0 && d.pendingSegment <= len(d.segmentLines) {
+		target := d.segmentLines[d.pendingSegment-1]
+		d.navigate(target[0], target[1], d.pendingFlash)
+		d.pendingSegment = 0
+	}
 	if d.follow {
 		d.top = d.bottom()
 	}
@@ -550,7 +610,12 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 			lines = lines[min(skip, len(lines)):]
 		}
 		for _, line := range lines {
-			body = append(body, d.highlight(line, d.laid.Indent(i), i == d.match))
+			line = d.highlight(line, d.laid.Indent(i), i == d.match)
+			if i >= d.flashFrom && i < d.flashTo && time.Now().Before(d.flashUntil) {
+				fill := d.view.painter.Theme.SelectionBackground()
+				line = fill + strings.ReplaceAll(line, activityui.Reset, activityui.Reset+fill) + "\x1b[49m"
+			}
+			body = append(body, line)
 			indents = append(indents, d.laid.Indent(i))
 		}
 	}

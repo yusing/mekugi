@@ -6,10 +6,17 @@ V2 journals have a Journal pane alongside Diff and Activity, selected by `Ctrl-B
 composer letters never open it. The pane title counts the journal's own tasks by state
 in their state colors, dropping state names before its pane keys when narrow; an
 untitled short pane shows the counts as its first row when at least four rows fit.
-Open tasks precede finished tasks; open subtrees start expanded and finished subtrees
-collapsed, with a disclosure marker and the collapsed descendant count. The title carries
-the pane keys: Space expands or collapses the selected subtree and d opens full Markdown
-details. The status bar lists only the other keys: arrows or j/k select, Enter opens the
+Open tasks precede finished tasks. Subtrees start expanded; when they exceed the
+pane height, the least recently updated subtrees collapse first, considering their
+descendants too. More height expands them again. Explicit disclosure choices stay
+fixed; manual expansions are not hidden by automatic ancestor collapse. A disclosure
+marker shows each subtree, with its descendant count when collapsed. The title carries
+the pane keys: Space expands or collapses the selected subtree and d opens the
+slice's full Markdown details in one segmented dialog.
+Each top-level slice includes all its descendants, even collapsed rows. Opening an
+item uses that same dialog, scrolls to its segment and briefly flashes it; opening
+the slice itself starts at the top without a flash. The status bar lists only the
+other keys: arrows or j/k select, Enter opens the
 row (a mounted agent's Activity, otherwise details), and c copies the selected path.
 The right and left arrows also expand and collapse, and left on a leaf selects its parent.
 A click on a disclosure marker toggles its subtree; a click elsewhere on a row opens it.
@@ -46,7 +53,8 @@ one node per row, and done and open counts in its title. It counts its notes; a
 click opens the card in the shared dialog with the same rows, each note written out
 in full, and the time and counts on the detail row. Empty Outcomes omit the answer line but retain the remaining work. Cards
 have response-specific identity, including consecutive empty Outcomes at one sequence.
-Answer reply links use the retained original question. The Journal pane restores its
+Answer reply context appears inside the Main card's frame; its header and excerpt
+link to the retained original question. The Journal pane restores its
 current tree from durable storage independently of provider requests.
 
 Retained v1 publications retain their milestone and grouped-answer presentation.

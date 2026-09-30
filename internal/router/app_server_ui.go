@@ -313,6 +313,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 							u.dirty = true
 						}
 						now := time.Now()
+						if u.shell.output != nil && u.shell.output.expireFlash(now) {
+							u.dirty = true
+						}
 						if settleActivity(now, u.view, u.agents) {
 							u.dirty = true
 						}

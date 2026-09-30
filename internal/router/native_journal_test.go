@@ -28,13 +28,13 @@ func TestNativeJournalPaneNarrowWideAndCollapsedSubtree(t *testing.T) {
 	view := new(nativeJournalView)
 	wide := view.render(&journal, 80, 8, true, false, livediff.DarkTheme)
 	joined := ansi.Strip(strings.Join(wide, "\n"))
-	for _, required := range []string{"○ /1 Pending parser", "◐ /2 Working renderer", "⚠ /3 Blocked wiring", "Needs decision", "▸ ● /4 Done scanner"} {
+	for _, required := range []string{"○ /1 Pending parser", "◐ /2 Working renderer", "⚠ /3 Blocked wiring", "Needs decision", "▾ ● /4 Done scanner"} {
 		if !strings.Contains(joined, required) {
 			t.Fatalf("wide pane missing %q: %q", required, joined)
 		}
 	}
-	if strings.Contains(joined, "Scanner passed") {
-		t.Fatalf("finished subtree expanded by default: %q", joined)
+	if !strings.Contains(joined, "Scanner passed") {
+		t.Fatalf("finished subtree should expand when it fits: %q", joined)
 	}
 	if header := ansi.Strip(wide[0]); header != " ◐ 1 working · ⚠ 1 blocked · ○ 1 pending · ● 1 done" {
 		t.Fatalf("pane header counts missing: %q", wide[:2])
@@ -47,7 +47,7 @@ func TestNativeJournalPaneNarrowWideAndCollapsedSubtree(t *testing.T) {
 	if len(view.rows) != 4 {
 		t.Fatalf("finished child should be collapsed: %d rows", len(view.rows))
 	}
-	view.toggled = map[string]bool{"/4": true}
+	view.expanded = map[string]bool{"/4": true}
 	expanded := ansi.Strip(strings.Join(view.render(&journal, 80, 8, true, false, livediff.DarkTheme), "\n"))
 	if !strings.Contains(expanded, "▾ ● /4 Done scanner") || !strings.Contains(expanded, "Scanner passed") {
 		t.Fatalf("space-expanded finished subtree missing: %q", expanded)
@@ -75,11 +75,12 @@ func TestNativeJournalSelectionExpansionAndCopyPath(t *testing.T) {
 	shell := &terminalUI{main: u, focus: 4, journalOpen: true}
 	u.shell = shell
 	view := &u.journalView
+	view.expanded = map[string]bool{"/4": false}
 	view.render(&journal, 80, 8, false, true, livediff.DarkTheme)
 	if err := shell.journalKey("G"); err != nil || view.rows[view.selected].node.Path != "/4" {
 		t.Fatalf("selection did not reach finished task: %d %v", view.selected, err)
 	}
-	if err := shell.journalKey(" "); err != nil || !view.toggled["/4"] {
+	if err := shell.journalKey(" "); err != nil || !view.expanded["/4"] {
 		t.Fatalf("space did not expand selected task: %v", err)
 	}
 	view.render(&journal, 80, 8, false, true, livediff.DarkTheme)
@@ -327,7 +328,8 @@ func TestNativeJournalDurableMultilineDetails(t *testing.T) {
 	if err := u.shell.journalKey("d"); err != nil || u.shell.output == nil {
 		t.Fatalf("restored detail did not open: %v", err)
 	}
-	page := u.view.painter.DialogPage(u.shell.output.pages[0], 40)
+	u.shell.output.layout(40)
+	page := u.shell.output.laid
 	var rendered strings.Builder
 	for _, line := range page.Lines {
 		rendered.WriteString(ansi.Strip(line.Text))
@@ -485,19 +487,20 @@ func TestNativeJournalClickTogglesDisclosureOpensRowAndWheelScrolls(t *testing.T
 	journal := nativeJournalFixture()
 	u.journal = &nativeJournalSink{tree: &journal}
 	u.shell.focus, u.shell.journalOpen = 4, true
+	u.journalView.expanded = map[string]bool{"/4": false}
 	nativeJournalPaintedPane(t, u)
 	r := u.shell.layout.journal
 	finished := slices.IndexFunc(u.journalView.rows, func(row journalPaneRow) bool { return row.node.Path == "/4" })
 	nativeJournalMouse(t, u, 0, r.x+1, r.y+finished)
-	if !u.journalView.toggled["/4"] || u.shell.output != nil {
-		t.Fatalf("disclosure click did not only expand: %v", u.journalView.toggled)
+	if !u.journalView.expanded["/4"] || u.shell.output != nil {
+		t.Fatalf("disclosure click did not only expand: %v", u.journalView.expanded)
 	}
 	rows := ansi.Strip(strings.Join(nativeJournalPaintedPane(t, u), "\n"))
 	if !strings.Contains(rows, "▾ ● /4") || !strings.Contains(rows, "└ · Scanner passed") {
 		t.Fatalf("expanded subtree missing: %q", rows)
 	}
 	nativeJournalMouse(t, u, 0, r.x+12, r.y+finished)
-	if u.shell.output == nil || !u.journalView.toggled["/4"] {
+	if u.shell.output == nil || !u.journalView.expanded["/4"] {
 		t.Fatal("row click did not open details")
 	}
 	u.shell.outputKey("\x1b")
