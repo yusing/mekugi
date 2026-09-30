@@ -30,7 +30,7 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 		return rows
 	}
 	content := strings.Join(rows, "\n")
-	if len(content) > dialogHighlightBytes {
+	if p.LayoutOnly || len(content) > dialogHighlightBytes {
 		return selectRows(rows)
 	}
 	path := ""

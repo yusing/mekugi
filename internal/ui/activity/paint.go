@@ -30,6 +30,9 @@ type Painter struct {
 	Theme  livediff.Theme
 	Colors Colors
 	syntax livediff.Renderer
+	// LayoutOnly skips syntax decoration while retaining exact text geometry.
+	// The feed uses it for cold off-screen runs, never visible rows or dialogs.
+	LayoutOnly bool
 }
 
 func VerbColor(verb string) string {
@@ -97,6 +100,12 @@ func liveActivityLanguagePath(lang string) string {
 
 // highlight colors source by language, falling back to exact plain text.
 func (p *Painter) Highlight(lang, source string) []string {
+	if p.LayoutOnly {
+		if !strings.EqualFold(lang, "diff") {
+			source = strings.TrimSuffix(source, "\n")
+		}
+		return strings.Split(source, "\n")
+	}
 	if strings.EqualFold(lang, "diff") {
 		lines, err := p.syntax.ColorDiff(context.Background(), p.Theme, source)
 		if err != nil {
@@ -985,7 +994,7 @@ func (p *Painter) ranRow(block Block, width int) []string {
 		if block.Fenced && block.Lang != "" {
 			lang = block.Lang
 		}
-		lines = clipSource(p.command(lead, lang, code, width), block, padding)
+		lines = p.command(lead, lang, code, width, block)
 		if label != "" {
 			lines = suffix(lines, label)
 		}
@@ -1103,14 +1112,16 @@ func outputRows(block Block, lines []string, width int) []string {
 // command places a one-line command after lead. A statement after a
 // separator starts a row under the first; other continuations sit two
 // columns deeper.
-func (p *Painter) command(lead, lang, code string, width int) []string {
+func (p *Painter) command(lead, lang, code string, width int, block Block) []string {
 	styled := strings.Join(p.Highlight(lang, code), " ")
 	indent := ansi.StringWidth(lead)
+	padding := strings.Repeat(" ", indent)
 	if indent > width/2 || ansi.Strip(styled) != code {
-		return liveActivityHang(lead, styled, width)
+		return clipSource(liveActivityHang(lead, styled, width), block, padding)
 	}
 	var lines []string
-	for i, row := range shellWrap(styled, code, width-indent, lang == "bash") {
+	wrapped, hidden := shellWrap(styled, code, width-indent, lang == "bash", block.SourceRows)
+	for i, row := range wrapped {
 		switch {
 		case i == 0:
 			lines = append(lines, lead+row.text)
@@ -1119,6 +1130,11 @@ func (p *Painter) command(lead, lang, code string, width int) []string {
 		default:
 			lines = append(lines, strings.Repeat(" ", indent)+row.text)
 		}
+	}
+	if hidden > 0 {
+		keep := max(1, block.SourceRows-1)
+		hidden += len(lines) - keep
+		lines = append(lines[:keep:keep], padding+Elision{Hidden: hidden, Hovered: block.Hovered}.String())
 	}
 	return lines
 }
@@ -1132,8 +1148,9 @@ type wrapRow struct {
 // text. When the command does not fit, each top-level statement after ;, &&,
 // or || starts a row. Other breaks inside a statement end with a line
 // continuation, or follow a pipe, so each row reads as the same command; a
-// word wider than a row is cut without one.
-func shellWrap(styled, plain string, width int, shell bool) []wrapRow {
+// word wider than a row is cut without one. A positive limit materializes only
+// that many rows, returning the exact count of the rest without ANSI slicing.
+func shellWrap(styled, plain string, width int, shell bool, limit int) ([]wrapRow, int) {
 	type blank struct {
 		from, to  int  // Cell offsets of a blank run.
 		statement bool // Follows a top-level statement separator.
@@ -1179,50 +1196,68 @@ func shellWrap(styled, plain string, width int, shell bool) []wrapRow {
 	}
 	total := ansi.StringWidth(plain)
 	if total <= width {
-		return []wrapRow{{styled, false}}
+		return []wrapRow{{styled, false}}, 0
 	}
 	var rows []wrapRow
-	start, deeper := 0, false
+	hidden := 0
+	add := func(start, end int, deeper, continuation bool) {
+		if limit > 0 && len(rows) >= max(1, limit) {
+			hidden++
+			return
+		}
+		text := ansi.Cut(styled, start, end) + Reset
+		if continuation {
+			text += Dim + " \\" + Undim
+		}
+		rows = append(rows, wrapRow{text, deeper})
+	}
+	start, firstBlank, deeper := 0, 0, false
 	for {
 		avail := max(1, width)
 		if deeper {
 			avail = max(1, width-2)
 		}
+		for firstBlank < len(blanks) && blanks[firstBlank].from <= start {
+			firstBlank++
+		}
 		chosen := -1
-		for i, b := range blanks {
-			if b.from > start && b.statement {
-				if b.from-start <= avail {
-					chosen = i
-				}
+		for i := firstBlank; i < len(blanks); i++ {
+			b := blanks[i]
+			if b.from-start > avail {
+				break
+			}
+			if b.statement {
+				chosen = i
 				break
 			}
 		}
 		if chosen < 0 && total-start <= avail {
-			return append(rows, wrapRow{ansi.Cut(styled, start, total) + Reset, deeper})
+			add(start, total, deeper, false)
+			return rows, hidden
 		}
 		if chosen < 0 {
-			for i, b := range blanks {
+			for i := firstBlank; i < len(blanks); i++ {
+				b := blanks[i]
+				if b.from-start > avail {
+					break
+				}
 				cost := continuation
 				if b.pipe || b.statement {
 					cost = 0
 				}
-				if b.from > start && b.from-start+cost <= avail {
+				if b.from-start+cost <= avail {
 					chosen = i
 				}
 			}
 		}
 		if chosen < 0 {
 			end := start + avail
-			rows = append(rows, wrapRow{ansi.Cut(styled, start, end) + Reset, deeper})
+			add(start, end, deeper, false)
 			start, deeper = end, true
 			continue
 		}
 		b := blanks[chosen]
-		text := ansi.Cut(styled, start, b.from) + Reset
-		if !b.pipe && !b.statement && shell {
-			text += Dim + " \\" + Undim
-		}
-		rows = append(rows, wrapRow{text, deeper})
+		add(start, b.from, deeper, !b.pipe && !b.statement && shell)
 		start, deeper = b.to, !b.statement
 	}
 }

@@ -182,28 +182,45 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			key.hover = v.snippet.block
 		}
 		run, ok := v.runs[key]
+		if ok && !run.colored && !v.painter.LayoutOnly {
+			ok = false
+		}
 		for k := it.first; k <= it.last; k++ {
 			if n := v.entries[k].native; n != nil && n.running {
 				ok = false
 				break
 			}
 		}
-		if !ok {
-			run = v.conversationItem(it.first, it.last, width, thread)
+		render := func() liveActivityRun {
+			window := v.syntaxWindow
+			if window != nil && it.lead >= 0 {
+				v.syntaxWindow = &liveActivitySyntaxWindow{window.first - 1, window.last - 1}
+			}
+			run := v.conversationItem(it.first, it.last, width, thread)
+			v.syntaxWindow = window
 			if it.lead >= 0 {
-				run.lines = append([]string{v.continuation(it.lead, width)}, run.lines...)
+				continuation := v.paintBlock(0, 1, func() []string { return []string{v.continuation(it.lead, width)} })
+				run.lines = append(continuation, run.lines...)
 				run.snippets = append([]liveActivitySnippet{{}}, run.snippets...)
 				run.questions = append([]uint64{0}, run.questions...)
 				for seq, row := range run.entryRows {
 					run.entryRows[seq] = row + 1
 				}
 			}
+			return run
+		}
+		if !ok {
+			run = render()
+			run.colored = !v.painter.LayoutOnly
 		}
 		used[key] = run
 		if len(feed.lines) > 0 && !thread.joined && !it.attached {
 			feed.separator()
 		}
 		head := len(feed.lines)
+		if !run.colored {
+			feed.paints = append(feed.paints, liveActivityPaint{head, key, render})
+		}
 		// A sent message shrinking above a scrolled viewport keeps its rows still.
 		if full := key; !ok && key.excerpt && !v.following && head < v.offset {
 			full.excerpt = false
@@ -395,7 +412,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		laid = v.journalEventsItem(&out, first, last, width)
 	case entry.Agent == "Main" && entry.Kind == "progress":
 		for _, block := range blocks {
-			out.add(0, p.Block(block, width)...)
+			out.add(0, v.paintBlock(len(out.lines), 0, func() []string { return p.Block(block, width) })...)
 		}
 	case entry.Agent == "Main" && entry.Kind == "reasoning":
 		var summaries []activityui.Block
@@ -412,7 +429,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			// Settled provider thinking shows its header; a click toggles it.
 			snippet := liveActivitySnippet{run: entry.Seq, block: index}
 			toggle := v.clickTarget(&block, snippet)
-			for _, row := range p.Block(block, width) {
+			for _, row := range v.paintBlock(len(out.lines), 0, func() []string { return p.Block(block, width) }) {
 				out.add(0, row)
 				if toggle {
 					out.snippets[len(out.snippets)-1] = snippet
@@ -456,7 +473,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			} else if toggle {
 				target = snippet
 			}
-			rows := p.Block(block, width-2)
+			rows := v.paintBlock(len(toggles), 0, func() []string { return p.Block(block, width-2) })
 			if len(block.Questions) > 0 {
 				entryRows[block.Source] = len(toggles)
 			}
@@ -566,9 +583,12 @@ func (v *liveActivityView) milestoneItem(out *conversationLines, entry activityP
 	out.add(0, conversationHeading(accent+"◆"+activityui.Reset, "\x1b[1m"+accent+"journal"+activityui.Reset, "", entry, width))
 	gutter := accent + "│" + activityui.Reset + " "
 	for _, text := range milestones {
-		rows := v.painter.Markdown(text, width-4)
+		body := width - 4
 		if len(milestones) == 1 {
-			rows = v.painter.Markdown(text, width-2)
+			body = width - 2
+		}
+		rows := v.paintBlock(len(out.lines), 0, func() []string { return v.painter.Markdown(text, body) })
+		if len(milestones) == 1 {
 			out.hang(gutter, gutter, rows)
 			continue
 		}
@@ -611,7 +631,7 @@ func (v *liveActivityView) userItemContinued(out *conversationLines, entry activ
 		// Bound input stays literal; Markdown must not consume token text.
 		rows, _ = activityui.LayoutSpans(entry.Text, entry.native.spans, width-2)
 	} else {
-		rows = v.painter.Markdown(livediff.Safe(entry.Text, false), width-2)
+		rows = v.paintBlock(len(out.lines), 0, func() []string { return v.painter.Markdown(livediff.Safe(entry.Text, false), width-2) })
 	}
 	if len(rows) == 0 {
 		rows = []string{""}
@@ -742,7 +762,7 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 				}
 				continue
 			}
-			out.hang(gutter, gutter, p.Block(block, body))
+			out.hang(gutter, gutter, v.paintBlock(len(out.lines), 0, func() []string { return p.Block(block, body) }))
 		}
 	}
 }
@@ -914,12 +934,12 @@ func (v *liveActivityView) journalItem(out *conversationLines, journal *activity
 		if group.Question == "" {
 			for _, item := range group.Answers {
 				gap()
-				rows := p.Markdown(item.Text, body-2)
 				if item.ID == "" {
 					// A tree journal's result is the answer itself, not a milestone.
-					out.hang(lead, indent, p.Markdown(item.Text, body))
+					out.hang(lead, indent, v.paintBlock(len(out.lines), 0, func() []string { return p.Markdown(item.Text, body) }))
 					continue
 				}
+				rows := v.paintBlock(len(out.lines), 0, func() []string { return p.Markdown(item.Text, body-2) })
 				for k := range rows {
 					if k == 0 {
 						rows[k] = milestone + rows[k]
@@ -934,7 +954,7 @@ func (v *liveActivityView) journalItem(out *conversationLines, journal *activity
 		gap()
 		v.journalReplyContext(out, group, index, lead, body)
 		for _, item := range group.Answers {
-			rows := p.Markdown(item.Text, body-ansi.StringWidth(answer))
+			rows := v.paintBlock(len(out.lines), 0, func() []string { return p.Markdown(item.Text, body-ansi.StringWidth(answer)) })
 			for k := range rows {
 				if k == 0 {
 					rows[k] = answer + rows[k]

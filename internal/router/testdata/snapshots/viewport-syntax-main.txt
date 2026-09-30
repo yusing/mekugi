@@ -1,0 +1,39 @@
+== cold end ==
+      │     return 10
+      │ }
+
+● main                                             12:00:00
+┃ Inspect source 11 before continuing.
+
+└ Ran source preview
+      │ package source11
+      │ 
+      │ func value11() int {
+      │     return 11
+      │ }
+== early scroll ==
+
+└ Ran source preview
+      │ package source0
+      │ 
+      │ func value0() int {
+      │     return 0
+      │ }
+
+● main                                             12:00:00
+┃ Inspect source 1 before continuing.
+
+                  ↓ Back to bottom · esc
+== early repaint ==
+
+└ Ran source preview
+      │ package source0
+      │ 
+      │ func value0() int {
+      │     return 0
+      │ }
+
+● main                                             12:00:00
+┃ Inspect source 1 before continuing.
+
+                  ↓ Back to bottom · esc

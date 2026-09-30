@@ -60,6 +60,7 @@ type liveActivityView struct {
 	painter        activityui.Painter
 	osc            livediff.OSC
 	runs           map[liveActivityRunKey]liveActivityRun
+	syntaxWindow   *liveActivitySyntaxWindow    // Invocation-local rows being decorated within a run.
 	paced          map[uint64]liveActivityPace  // Live invocations still revealing their operations, by entry.
 	events         map[string]liveActivityEvent // Each agent's latest standalone event, which settles its output.
 	pacedSeq       uint64                       // Entries up to this sequence have been considered for pacing.
@@ -102,6 +103,8 @@ type liveActivitySnippet struct {
 }
 
 type liveActivityRun struct {
+	colored   bool   // Syntax decoration has been materialized.
+	painted   []bool // Decorated rows in a partially visible run.
 	lines     []string
 	blocks    []activityui.Block    // Laid-out blocks, indexed by the snippets naming them.
 	snippets  []liveActivitySnippet // Aligned with lines.
@@ -1318,6 +1321,7 @@ func (v *liveActivityView) renderStrip(rows []liveActivityRosterRow, width int) 
 }
 
 type liveActivityFeed struct {
+	paints                       []liveActivityPaint // Cold runs to decorate if they enter the viewport.
 	lines                        []string
 	heads                        []int                 // Index of the heading that owns each line.
 	snippets                     []liveActivitySnippet // Snippet that owns each line, if any.
@@ -1325,6 +1329,36 @@ type liveActivityFeed struct {
 	mainReply                    *activityPaneEntry
 	mainReplyStart, mainReplyEnd int // Half-open rendered range, excluding inter-item gaps.
 	sent                         []liveActivitySent
+}
+
+type liveActivityPaint struct {
+	start  int
+	key    liveActivityRunKey
+	render func() liveActivityRun
+}
+
+type liveActivitySyntaxWindow struct{ first, last int }
+
+// paintBlock measures an independent block without syntax before decorating
+// it. Grouped runs can be arbitrarily long; intersection with their heading
+// must not tokenize every operation they contain.
+func (v *liveActivityView) paintBlock(start, limit int, render func() []string) []string {
+	if v.syntaxWindow == nil {
+		return render()
+	}
+	saved := v.painter.LayoutOnly
+	v.painter.LayoutOnly = true
+	rows := render()
+	count := len(rows)
+	if limit > 0 {
+		count = min(count, limit)
+	}
+	if start < v.syntaxWindow.last && start+count > v.syntaxWindow.first {
+		v.painter.LayoutOnly = false
+		rows = render()
+	}
+	v.painter.LayoutOnly = saved
+	return rows
 }
 
 // liveActivitySent is a Main sent message's entry and the feed row after it.
@@ -1351,6 +1385,38 @@ func (feed *liveActivityFeed) appendRows(run liveActivityRun) {
 // colored gutter. Adjacent reads collapse into one row. In the interleaved
 // view each block is clipped to five rows; full content opens in a dialog.
 func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
+	v.painter.LayoutOnly = true
+	feed := v.layoutFeed(width, rows)
+	v.painter.LayoutOnly = false
+	offset, _ := v.viewportPosition(feed, rows)
+	for _, paint := range feed.paints {
+		old := v.runs[paint.key]
+		first, last := max(0, offset-paint.start), min(len(old.lines), offset+rows-paint.start)
+		if first >= last {
+			continue
+		}
+		if old.painted == nil {
+			old.painted = make([]bool, len(old.lines))
+		}
+		if !slices.Contains(old.painted[first:last], false) {
+			continue
+		}
+		v.syntaxWindow = &liveActivitySyntaxWindow{first, last}
+		run := paint.render()
+		v.syntaxWindow = nil
+		copy(old.lines[first:last], run.lines[first:last])
+		for i := first; i < last; i++ {
+			old.painted[i] = true
+		}
+		old.colored = !slices.Contains(old.painted, false)
+		v.runs[paint.key] = old
+		copy(feed.lines[paint.start+first:paint.start+last], run.lines[first:last])
+	}
+	feed.paints = nil
+	return feed
+}
+
+func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 	if v.conversation {
 		return v.renderConversation(width)
 	}
@@ -1396,9 +1462,10 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 				break
 			}
 		}
-		if !ok {
+		first := i // The deferred painter must not borrow the advancing loop cursor.
+		render := func() liveActivityRun {
 			var blocks []activityui.Block
-			for k := i; k <= last; k++ {
+			for k := first; k <= last; k++ {
 				if v.visible(v.entries[k]) {
 					for _, block := range v.shownBlocks(k) {
 						block.Source = v.entries[k].Seq
@@ -1410,15 +1477,22 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 			}
 			observed := v.entries[last].Observed
 			if v.childrenOnly {
-				observed = v.entries[i].Observed // A stable heading while the run grows.
+				observed = v.entries[first].Observed // A stable heading while the run grows.
 			}
-			run = v.renderRun(key.first, agent, observed, activityui.MergeLiveActivityReads(blocks), width, clip)
+			return v.renderRun(key.first, agent, observed, activityui.MergeLiveActivityReads(blocks), width, clip)
+		}
+		if !ok {
+			run = render()
+			run.colored = !v.painter.LayoutOnly
 		}
 		used[key] = run
 		if len(feed.lines) > 0 {
 			feed.separator()
 		}
 		head := len(feed.lines)
+		if !run.colored {
+			feed.paints = append(feed.paints, liveActivityPaint{head, key, render})
+		}
 		for seq, row := range run.entryRows {
 			v.questionRows[seq] = head + row
 		}
@@ -1476,22 +1550,32 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 				block.TailRows = 5
 			}
 		}
-		var part []string
-		switch {
-		case tree:
-			part = v.painter.Event(block, width-4)
-		case v.childrenOnly:
-			part = v.painter.Event(block, width-2)
-		default:
-			part = v.painter.Block(block, width-2)
-		}
-		if len(part) == 0 {
-			continue
-		}
 		message := slices.Contains([]string{"text", "message", "final", "summary", "start"}, block.Kind)
 		// Reasoning heads the operations after it, so no gap parts them.
 		headed := previousSummary && operation(block)
-		if len(run.lines) > 1 && (message || previousMessage) && !headed {
+		gap := len(run.lines) > 1 && (message || previousMessage) && !headed
+		start := len(run.lines)
+		if gap {
+			start++
+		}
+		limit := clip
+		if operation(block) {
+			limit = 0
+		} // Source and output have separate budgets.
+		part := v.paintBlock(start, limit, func() []string {
+			switch {
+			case tree:
+				return v.painter.Event(block, width-4)
+			case v.childrenOnly:
+				return v.painter.Event(block, width-2)
+			default:
+				return v.painter.Block(block, width-2)
+			}
+		})
+		if len(part) == 0 {
+			continue
+		}
+		if gap {
 			run.lines = append(run.lines, gutter)
 			run.snippets = append(run.snippets, liveActivitySnippet{})
 			run.questions = append(run.questions, 0)
@@ -1505,10 +1589,6 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 				}
 			}
 		}
-		limit := clip
-		if operation(block) {
-			limit = 0
-		} // Source and output have separate budgets; keep exit/status rows visible.
 		var snippet liveActivitySnippet
 		if toggle {
 			snippet = liveActivitySnippet{run: first, block: index}
