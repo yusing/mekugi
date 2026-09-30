@@ -315,7 +315,7 @@ Mekugi differs in these ways:
   Longer summaries roll through like command output and remain readable until
   later activity settles. Titled sections collapse to their own titles; untitled
   reasoning uses `Thought`. Click a section to read its full text in a dialog.
-- **Live pane.** `/live` opens an on/off picker; `/live on` or `/live off`
+- **Live pane.** `/live` toggles it on or off; `/live on` or `/live off`
   applies directly for the current session. Hiding it frees its space without
   stopping activity or edit capture. New launches, including resume, show it again.
 - **Setting pickers.** `/model`, `/effort` (also `/reasoning`), and `/tier` open

@@ -7,33 +7,37 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
-func TestNativeUISessionLivePicker(t *testing.T) {
+func TestNativeUISessionLiveToggle(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.ensureShell()
-	defer u.shell.diffScreen.Close()
 	u.modelsLoading, u.settingsPending = true, true
 	appServerTestKeys(t, u, "/live\r")
-	if u.picker.loading || len(u.picker.choices) != 2 || u.picker.choices[u.picker.selected].name != "on" {
-		t.Fatalf("Live picker unavailable: %+v", u.picker)
+	defer u.shell.diffScreen.Close()
+	if !u.shell.liveHidden || u.picker.open || u.draft != "" || wire.Len() != 0 {
+		t.Fatal("toggle did not hide Live locally")
 	}
-	appServerTestKeys(t, u, "\x1b[B\r")
-	if !u.shell.liveHidden || u.picker.open || wire.Len() != 0 {
-		t.Fatal("local choice failed or reached host")
+	appServerTestKeys(t, u, "/live\r")
+	if u.shell.liveHidden || u.picker.open || u.draft != "" || wire.Len() != 0 {
+		t.Fatal("second toggle did not show Live locally")
 	}
-	appServerTestKeys(t, u, "/live\r\x1b")
-	if !u.shell.liveHidden {
-		t.Fatal("cancel changed visibility")
+	for _, command := range []string{"/live off", "/live off", "/live on", "/live on"} {
+		appServerTestKeys(t, u, command+"\r")
+		if u.shell.liveHidden != strings.HasSuffix(command, "off") || u.picker.open || u.draft != "" || wire.Len() != 0 {
+			t.Fatalf("direct setting failed: %s", command)
+		}
 	}
-	appServerTestKeys(t, u, "/live on\r")
-	if u.shell.liveHidden || u.draft != "" || wire.Len() != 0 {
-		t.Fatal("direct setting failed")
+	for _, command := range []string{"/live invalid", "/live on extra"} {
+		u.loadDraft(composerDraft{})
+		appServerTestKeys(t, u, command+"\r")
+		if u.shell.liveHidden || u.draft != command || !u.noticeAlert {
+			t.Fatal("invalid value changed preference or lost draft")
+		}
 	}
-	appServerTestKeys(t, u, "/live invalid\r")
-	if u.shell.liveHidden || u.draft != "/live invalid" || !u.noticeAlert {
-		t.Fatal("invalid value changed preference or lost draft")
+	if len(u.view.entries) != 0 {
+		t.Fatal("local toggle entered the transcript")
 	}
 	other, _ := newAppServerTestUI()
 	other.ensureShell()
@@ -43,22 +47,43 @@ func TestNativeUISessionLivePicker(t *testing.T) {
 	}
 }
 
-func TestNativeUILivePickerDuringModelList(t *testing.T) {
+func TestNativeUILiveToggleDuringModelList(t *testing.T) {
 	for _, reply := range []string{`{"id":1,"result":{"data":[]}}`, `{"id":1,"error":{"code":-1,"message":"unavailable"}}`} {
 		u, wire := newAppServerTestUI()
-		u.ensureShell()
-		defer u.shell.diffScreen.Close()
 		u.modelsLoading = true
 		u.requests["1"] = "model/list"
-		appServerTestKeys(t, u, "/live\r\x1b[B")
+		appServerTestKeys(t, u, "/live\r")
+		defer u.shell.diffScreen.Close()
 		appServerTestMessage(t, u, reply)
-		if u.picker.loading || u.picker.problem != "" || u.picker.choices[u.picker.selected].name != "off" {
-			t.Fatalf("model response disturbed Live choice: %+v", u.picker)
+		if !u.shell.liveHidden || u.picker.open || wire.Len() != 0 {
+			t.Fatal("model response disturbed Live toggle")
 		}
-		appServerTestKeys(t, u, "\r")
-		if !u.shell.liveHidden || wire.Len() != 0 {
-			t.Fatal("interleaved reply changed submitted choice")
+		appServerTestKeys(t, u, "/live\r")
+		if u.shell.liveHidden || u.picker.open || wire.Len() != 0 {
+			t.Fatal("interleaved reply prevented toggling back")
 		}
+	}
+}
+
+func TestUISnapshotNativeLiveToggle(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.view.painter.Theme = livediff.DarkTheme
+	u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
+	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
+	u.view.clock = u.clock
+	u.ensureShell()
+	defer u.shell.diffScreen.Close()
+	screen := vt.NewEmulator(100, 28)
+	defer screen.Close()
+	preview := diffview.Preview{ID: "edit", Workspace: t.TempDir(), Caller: "/root", Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: live.txt\n+Live edit still in progress\n*** End Patch"}
+	u.session.cwd = preview.Workspace
+	u.shell.preview(projectStockPatchPreview(t.Context(), preview.Workspace, preview))
+	for _, value := range []string{"off", "on"} {
+		appServerTestKeys(t, u, "/live\r")
+		if err := u.paint(screen, 100, 28); err != nil {
+			t.Fatal(err)
+		}
+		assertNativeUISnapshot(t, "native-live-toggle-"+value, strings.Split(screen.String(), "\n"))
 	}
 }
 
@@ -84,7 +109,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			if !strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("default dock missing")
 			}
-			u.setLivePane("off")
+			appServerTestKeys(t, u, "/live\r")
 			frame := paint()
 			if strings.Contains(frame, "VISIBLE_EDIT") || u.shell.layout.live.h != 0 || len(u.shell.liveDock.Order) != 1 {
 				t.Fatal("hidden dock lost state or reserved space")
@@ -94,15 +119,15 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			if r.h == 0 || !strings.Contains(lines[r.y-1], "┘") || strings.TrimSpace(lines[r.y+r.h]) != "" {
 				t.Fatalf("roster must immediately follow the pane border with padding only below:\n%s", frame)
 			}
-			u.setLivePane("on")
+			appServerTestKeys(t, u, "/live\r")
 			if !strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("current edit not restored")
 			}
-			u.setLivePane("off")
+			appServerTestKeys(t, u, "/live\r")
 			preview.Complete = true
 			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, preview))
 			u.shell.animating(time.Now().Add(time.Hour))
-			u.setLivePane("on")
+			appServerTestKeys(t, u, "/live\r")
 			if strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("expired edit revived")
 			}

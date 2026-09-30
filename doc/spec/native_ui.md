@@ -264,7 +264,7 @@ contextual key hints. Ctrl-B + number focuses a pane.
 A blank row immediately above the composer separates it from the latest message
 or auxiliary content, including the journal plan strip, when height permits.
 
-`/live` opens an on/off picker for the Live pane; `/live on` and `/live off`
+`/live` toggles the Live pane on or off; `/live on` and `/live off`
 apply directly. This presentation-only preference lasts for the current frontend
 session, defaults to on at launch (including resume), and never stops activity,
 preview updates, or capture. Hidden docks reserve no space. Showing the pane

@@ -143,10 +143,26 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 		u.setNotice("Wait for the new session · draft kept", false)
 		return true, nil
 	}
+	if command == "/live" {
+		u.ensureShell()
+		value := "off"
+		if u.shell.liveHidden {
+			value = "on"
+		}
+		if len(fields) == 2 {
+			value = fields[1]
+		}
+		if len(fields) > 2 || value != "on" && value != "off" {
+			u.setNotice("Use /live, /live on, or /live off", true)
+			return true, nil
+		}
+		u.recordDraft()
+		u.draft, u.cursorBack, u.images = "", 0, nil
+		u.setLivePane(value)
+		return true, nil
+	}
 	var choices []string
 	switch command {
-	case "/live":
-		choices = []string{"on", "off"}
 	case "/model":
 		for _, model := range u.models {
 			if !model.Hidden {
@@ -170,16 +186,6 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 	}
 	if len(fields) != 2 {
 		u.setNotice("Use "+command+" or "+command+" VALUE", true)
-		return true, nil
-	}
-	if command == "/live" {
-		if fields[1] != "on" && fields[1] != "off" {
-			u.setNotice("Use /live, /live on, or /live off", true)
-			return true, nil
-		}
-		u.setLivePane(fields[1])
-		u.recordDraft()
-		u.draft, u.cursorBack, u.images = "", 0, nil
 		return true, nil
 	}
 	if u.settingsPending {
@@ -213,7 +219,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	if method == "model/list" {
 		if m.Error != nil {
 			u.modelsLoading, u.reasoningKey = false, nil
-			if u.picker.modal == "settings" && u.settingsChoices != "/live" {
+			if u.picker.modal == "settings" {
 				u.picker.loading = false
 				u.picker.problem = "Model choices unavailable · Esc to close; use an explicit VALUE"
 			}
@@ -234,7 +240,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		u.modelsLoading = false
 		if u.settingsChoices != "" {
 			command := u.settingsChoices
-			if u.picker.modal == "settings" && u.settingsChoices != "/live" {
+			if u.picker.modal == "settings" {
 				_, _ = u.settingsCommand(command)
 			}
 		}
@@ -348,12 +354,6 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 	u.settingsChoices = command
 	current := u.model
 	switch command {
-	case "/live":
-		p.loading = false
-		current = "on"
-		if u.shell != nil && u.shell.liveHidden {
-			current = "off"
-		}
 	case "/reasoning", "/effort":
 		current = u.reasoningEffort
 	case "/tier":
@@ -404,12 +404,6 @@ func (u *appServerUI) settingsPickerKey(key string) bool {
 		p.selected = max(0, len(p.choices)-1)
 	case "\r":
 		if p.loading || len(p.choices) == 0 {
-			return true
-		}
-		if u.settingsChoices == "/live" {
-			u.setLivePane(p.choices[p.selected].name)
-			p.modal, p.open, p.choices = "", false, nil
-			u.settingsChoices = ""
 			return true
 		}
 		field := "model"

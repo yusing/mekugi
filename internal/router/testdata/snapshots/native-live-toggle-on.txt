@@ -1,0 +1,28 @@
+┌ 1 Main ────────────────────────────────────────┐┌ 5 Journal ─────────── space expand · d details ┐
+│Mekugi dev • codex                              ││ No journal entries.                            │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+╞ LIVE · main ═══════════════════════════════════╡│                                                │
+│  main · ◐ A live.txt +1 -0                     ││                                                │
+│▎ 1│+Live edit still in progress                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│╭─ Ready · Live pane on for this session ──────╮││                                                │
+││ ❯                                            │││                                                │
+│╰───────────────── snapshot-model (high) • 0% ─╯││                                                │
+└────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes
