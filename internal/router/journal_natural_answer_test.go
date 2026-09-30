@@ -23,13 +23,8 @@ func TestNaturalJournalAnswerCapturesOnceAndFlushes(t *testing.T) {
 	if err := json.Unmarshal(visible, &result); err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Output) == 0 || !strings.Contains(commentaryMessageText(result.Output[len(result.Output)-1]), "**Question:**\n\nWhat changed?\n\n**Answer:**\n\nThe requested change is complete.") {
-		t.Fatalf("missing question/answer flush: %s", visible)
-	}
-	for _, item := range result.Output {
-		if jsonString(item, "id") == "answer-item" {
-			t.Fatalf("raw answer also delivered: %s", visible)
-		}
+	if len(result.Output) != 1 || jsonString(result.Output[0], "id") != "answer-item" || commentaryMessageText(result.Output[0]) != "The requested change is complete." {
+		t.Fatalf("ordinary answer replaced by a journal flush: %s", visible)
 	}
 	transform.Delivered(visible)
 	transform.ReleaseDelivery()
@@ -90,14 +85,11 @@ func TestNaturalJournalAnswerStreamsWhenTerminalStatusIsAbsent(t *testing.T) {
 		if strings.Contains(string(event), `"type":"response.completed"`) {
 			terminal = true
 		}
-		if strings.Contains(string(event), `"id":"answer-item"`) {
-			t.Fatalf("raw answer escaped: %s", last)
-		}
 		transform.Delivered(event)
 	}
 	transform.ReleaseDelivery()
-	if !terminal || !bytes.Contains(bytes.Join(last, nil), []byte("**Question:**")) {
-		t.Fatalf("missing terminal question/answer flush: %s", last)
+	if !terminal || !bytes.Contains(bytes.Join(last, nil), []byte(`"id":"answer-item"`)) || bytes.Contains(bytes.Join(last, nil), []byte("**Question:**")) {
+		t.Fatalf("missing ordinary terminal answer: %s", last)
 	}
 	items, err := proxy.journals.list(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID)
 	if err != nil || len(items) != 1 || !items[0].Flushed {
@@ -162,7 +154,7 @@ func TestNaturalJournalAnswerWithLocalJournalCall(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if transform.journalContinue || !bytes.Contains(visible, []byte("Journal flush")) || !bytes.Contains(visible, []byte("Milestone")) || !bytes.Contains(visible, []byte("**Answer:**")) {
+			if transform.journalContinue || !bytes.Contains(visible, []byte("Journal flush")) || !bytes.Contains(visible, []byte("Milestone")) || !bytes.Contains(visible, []byte(`"id":"answer-item"`)) || bytes.Contains(visible, []byte("**Answer:**")) {
 				t.Fatalf("local call forced continuation or lost answer: %s", visible)
 			}
 		})
@@ -213,7 +205,7 @@ func TestNaturalJournalAnswerKeepsBufferedCommentary(t *testing.T) {
 		answerDone = answerDone || event.Type == "response.output_item.done" && jsonString(event.Item, "id") == "answer-item"
 		commentaryDelta = commentaryDelta || event.Type == "response.output_text.delta"
 	}
-	if !commentaryDone || !commentaryDelta || answerDone {
-		t.Fatalf("buffered commentary lifecycle lost or raw answer escaped: %s", events)
+	if !commentaryDone || !commentaryDelta || !answerDone {
+		t.Fatalf("buffered commentary or ordinary answer lifecycle lost: %s", events)
 	}
 }

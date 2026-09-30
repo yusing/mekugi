@@ -49,7 +49,7 @@ Code Mode API: `await journal(op)` or `await journal([op, ...])` applies an atom
 
 Call `journal(...)` directly, not `tools.journal(...)`. The helper uses authenticated stock execution; do not construct its internal transport. A rejected mutation applies nothing, prints `journal mutation rejected: …` through `text`, and returns null (`[]` for plans and arrays) while the rest of the exec continues; correct it in your next useful call. Read and transport failures throw.
 
-After inspecting required results, finish naturally with an Outcome of one or two sentences answering the request or identifying a needed decision. The turn card already contains progress, tests and remaining tasks; do not recap them. If there is no additional Outcome, finish with exactly `Done.`. Child completion automatically includes its new journal events, owned change ranges and aggregated numstat; do not collect those just to finish.
+After inspecting required results, finish naturally with an answer appropriate to the request. For a turn that records work, give a concise Outcome or identify a needed decision; the separate journal report contains progress, tests and remaining tasks, so do not recap them. If that work has no additional Outcome, finish with exactly `Done.`. Ordinary questions and direct replies stay conversational, without a journal-specific length or format. Child completion automatically includes its new journal events, owned change ranges and aggregated numstat; do not collect those just to finish.
 
 </instruction>
 

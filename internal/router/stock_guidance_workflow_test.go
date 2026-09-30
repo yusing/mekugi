@@ -163,7 +163,7 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 				"Paths use stable sibling ordinals",
 				"Read and transport failures throw.",
 				"do not construct its internal transport",
-				"finish naturally with an Outcome",
+				"finish naturally with an answer",
 				"Parents record integration decisions",
 			} {
 				if count := strings.Count(combined, rule); count != 1 {

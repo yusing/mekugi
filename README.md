@@ -23,8 +23,9 @@ sessions, and patch review. No fork, no config edits, no daemon.
   Codex's and adds [`/btw` side questions](#composer) that don't interrupt
   Main, plus `/model`, `/effort`, and `/tier` pickers.
 - **Task journal.** A live plan strip shows current work and what remains.
-  Open the Journal pane for task states, timestamps and notes. Turn cards bring
-  together the outcome, new results and remaining tasks without another model request.
+  Open the Journal pane for task states, timestamps and notes. Separate work reports
+  show new results and remaining tasks without another model request; ordinary replies
+  stay in the conversation.
 - **Live subagent activity.** Start notices show model and effort. Progress and
   message excerpts appear in the main conversation, or live in Mekugi’s
   [agents pane](#agents-pane), whose roster shows each agent's elapsed time,
@@ -402,8 +403,10 @@ Delegated journals appear under their owning task, or in an Agents group. Press
 host state; a provider answer alone does not mark an agent complete.
 
 The plan strip stays above the composer while work remains. Main shows task
-transitions, plus notes while Journal is hidden. A turn card contains its outcome,
-new work and remaining tasks; select its expansion target to see the notes.
+transitions, plus notes while Journal is hidden. Answers stay in the conversation.
+When there are new work updates, a separate journal card shows the new work and
+remaining tasks; select its expansion target to see the notes. An unchanged plan
+does not add a card to an ordinary reply.
 
 With Codex `exec --json`, child journal milestones appear in Main's next response,
 separately from the child's final result. A host tool wait can delay those updates;

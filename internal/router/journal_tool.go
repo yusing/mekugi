@@ -21,7 +21,7 @@ const journalHistoryTool = "__mekugi_journal"
 const codeModeJournalStart = "<!-- mekugi-journal:start -->"
 const codeModeJournalEnd = "<!-- mekugi-journal:end -->"
 
-const codeModeJournalHint = "In Code Mode, use the exec-local journal helper for reads and mutations: record mutations with await journal(...) inside your next useful exec call, and finish with an Outcome instead of a journal call."
+const codeModeJournalHint = "In Code Mode, use the exec-local journal helper for reads and mutations: record mutations with await journal(...) inside your next useful exec call, and finish naturally with an answer instead of a journal call."
 
 var journalToolDescription = embeddedInstruction("journal_tool")
 

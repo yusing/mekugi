@@ -22,7 +22,7 @@ func (t *mekugiResponseTransform) TransformJSON(payload []byte) ([]byte, error) 
 	}
 	transformed, err := t.transformResponse(payload, "")
 	if err == nil && t.journalActive {
-		if len(t.journalNaturalAnswerIDs) == 0 {
+		if !t.journalNaturalFinalSeen {
 			err = t.captureNaturalJournalAnswer(payload)
 		}
 		if err == nil && (t.journalTerminalReady() || t.journalNaturalFinalSeen) {
@@ -402,7 +402,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			}
 		}
 		t.releaseCommentarySubscriptions()
-		visible = append(visible, t.filterNaturalAnswerEvents(t.finalAnswer.flush())...)
+		visible = append(visible, t.finalAnswer.flush()...)
 		visible = append(visible, event)
 		return visible, nil
 

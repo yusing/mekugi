@@ -41,6 +41,19 @@ func journalEventText(event journalEvent) string {
 	return text
 }
 
+// Answer capture and unchanged open tasks alone are not a Main work report.
+func journalHasReport(j threadJournal, since uint64) bool {
+	if j.mountUnavailable != "" {
+		return true
+	}
+	for _, event := range j.Events {
+		if event.Seq > since && !j.LegacyFlush[event.Seq] && event.Fields.Kind != "answer" {
+			return true
+		}
+	}
+	return false
+}
+
 func journalTurnCard(j threadJournal, since uint64, child bool) string {
 	// A child's recipient already knows its author: Codex names the agent on
 	// both the completion notification and the inter-agent result.
@@ -49,12 +62,14 @@ func journalTurnCard(j threadJournal, since uint64, child bool) string {
 		text.WriteString("Journal")
 	}
 	entries := 0
-	for _, event := range j.Events {
-		if event.Seq <= since || !child && j.LegacyFlush[event.Seq] || event.Fields.Kind != "answer" {
-			continue
+	if child {
+		for _, event := range j.Events {
+			if event.Seq <= since || event.Fields.Kind != "answer" {
+				continue
+			}
+			text.WriteString("\n\n" + journalEventText(event))
+			entries++
 		}
-		text.WriteString("\n\n" + journalEventText(event))
-		entries++
 	}
 	happened := false
 	for _, event := range j.Events {
@@ -108,6 +123,10 @@ func (t *mekugiResponseTransform) prepareTreeDelivery(j threadJournal, terminal 
 	sequence := uint64(0)
 	if terminal {
 		since = j.FlushSeq
+		if !journalHasReport(j, since) {
+			t.ReleaseDelivery()
+			return nil, nil
+		}
 		text = journalTurnCard(j, since, false)
 		sequence = j.Sequence
 	} else {
@@ -149,7 +168,7 @@ func (t *mekugiResponseTransform) prepareTreeDelivery(j threadJournal, terminal 
 	}
 	id := commentaryMessageID("journal-v2\x00" + t.directory + "\x00" + t.shellThreadID + "\x00" + identity)
 	message := assistantCommentaryMessage(id, text)
-	if terminal {
+	if terminal && (!t.journalNaturalFinalSeen || len(t.journalNaturalAnswerIDs) != 0) {
 		message["phase"] = mustMarshalJSON("final_answer")
 	}
 	retained := t.retainCommentary(message)

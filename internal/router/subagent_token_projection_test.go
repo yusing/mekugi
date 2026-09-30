@@ -75,9 +75,9 @@ func TestChildCompletionPreservesRootJournalAnswer(t *testing.T) {
 					}
 				}
 				if bytes.Contains(output, []byte("Router session usage")) ||
-					!bytes.Contains(output, []byte("Journal flush")) || !bytes.Contains(output, []byte("Root answer.")) ||
-					bytes.Contains(output, []byte(`"id":"root-answer"`)) {
-					t.Fatalf("main completion emitted usage commentary or lost the journal answer: %s", output)
+					bytes.Contains(output, []byte("Journal flush")) || !bytes.Contains(output, []byte("Root answer.")) ||
+					!bytes.Contains(output, []byte(`"id":"root-answer"`)) {
+					t.Fatalf("main completion emitted usage or a report, or lost its ordinary provider answer: %s", output)
 				}
 				root.ReleaseDelivery()
 			})

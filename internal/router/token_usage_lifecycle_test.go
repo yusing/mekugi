@@ -274,7 +274,7 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 	defer cancel()
 	proxy := newManagedMekugiProxy(t)
 	usage := map[string]any{"input_tokens": 100000, "input_tokens_details": map[string]any{"cached_tokens": 40000}, "output_tokens": 10000, "output_tokens_details": map[string]any{"reasoning_tokens": 5000}}
-	journalFlushIDs := make(chan string, 1)
+	finalAnswerIDs := make(chan string, 1)
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstream, err := websocket.Accept(w, r, nil)
 		if err != nil {
@@ -327,9 +327,9 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 			t.Error(err)
 			return
 		}
-		journalFlushID := <-journalFlushIDs
-		if journalFlushID == "" {
-			t.Error("successful successor did not expose its terminal Journal flush")
+		finalAnswerID := <-finalAnswerIDs
+		if finalAnswerID != "answer" {
+			t.Errorf("successful successor ordinary final ID=%q, want answer", finalAnswerID)
 		}
 		wantTier := requestedTier
 		if wantTier == "fast" {
@@ -342,17 +342,17 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		if jsonString(next, "model") != wantModel || jsonString(next, "service_tier") != wantTier {
 			t.Errorf("next model=%s tier=%s", jsonString(next, "model"), jsonString(next, "service_tier"))
 		}
-		if jsonString(next, "previous_response_id") != "" {
-			t.Errorf("natural answer replacement retained provider cache parent %q", jsonString(next, "previous_response_id"))
+		if jsonString(next, "previous_response_id") != "successor" {
+			t.Errorf("ordinary final lost confirmed provider cache parent: %q", jsonString(next, "previous_response_id"))
 		}
-		var rebasedInput []map[string]json.RawMessage
-		if err := json.Unmarshal(next["input"], &rebasedInput); err != nil {
-			t.Fatalf("decode rebased provider input: %v", err)
+		var deltaInput []map[string]json.RawMessage
+		if err := json.Unmarshal(next["input"], &deltaInput); err != nil {
+			t.Fatalf("decode provider input delta: %v", err)
 		}
 		priorQuestion, steering, nextQuestion := false, false, false
-		for _, item := range rebasedInput {
-			if jsonString(item, "id") == journalFlushID {
-				t.Errorf("user-only Journal flush %q leaked into provider input", journalFlushID)
+		for _, item := range deltaInput {
+			if jsonString(item, "id") == finalAnswerID {
+				t.Errorf("already cached ordinary final %q replayed in provider input delta", finalAnswerID)
 			}
 			if jsonString(item, "role") == "user" {
 				var content string
@@ -365,8 +365,8 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 				}
 			}
 		}
-		if !priorQuestion || !steering || !nextQuestion {
-			t.Errorf("rebased input lost prior question, steering, or explicit request: previous=%v steering=%v next=%v input=%s",
+		if len(deltaInput) != 1 || priorQuestion || steering || !nextQuestion {
+			t.Errorf("provider delta must contain only the explicit next question: previous=%v steering=%v next=%v input=%s",
 				priorQuestion, steering, nextQuestion, next["input"])
 		}
 		if bytes.Contains(next["input"], []byte("No files were changed.")) || bytes.Contains(next["input"], []byte("Journal flush")) {
@@ -409,7 +409,7 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		t.Fatalf("first=%s", mustMarshalJSON(event))
 	}
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.steer", "previous_response_id": "parent", "input": "change direction"})
-	journalFlushID := ""
+	finalAnswerID := ""
 	for {
 		event := socketRead(t, ctx, conn)
 		if jsonString(event, "type") == "error" {
@@ -417,15 +417,20 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		}
 		if jsonString(event, "type") == "response.output_item.done" {
 			var item map[string]json.RawMessage
-			if err := json.Unmarshal(event["item"], &item); err == nil && strings.Contains(commentaryMessageText(item), "Journal flush") {
-				journalFlushID = jsonString(item, "id")
+			if err := json.Unmarshal(event["item"], &item); err == nil {
+				if strings.Contains(commentaryMessageText(item), "Journal flush") {
+					t.Fatal("answer-only automatic successor emitted a journal report")
+				}
+				if jsonString(item, "phase") == "final_answer" {
+					finalAnswerID = jsonString(item, "id")
+				}
 			}
 		}
 		if jsonString(event, "type") == "response.completed" {
 			break
 		}
 	}
-	journalFlushIDs <- journalFlushID
+	finalAnswerIDs <- finalAnswerID
 	got, ok := proxy.usage.snapshot("thread-1")
 	total := got.cost.uncachedInput + got.cost.cachedInput + got.cost.output
 	if !ok || !got.cost.known || got.InputTokens != 200000 || math.Abs(total-2*initialCost) > 1e-10 {

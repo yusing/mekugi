@@ -48,13 +48,14 @@ item: a state glyph colored by state, the dim path, the title and the change, on
 per row, wrapped under the title. A row's time shows only where it differs from the
 row above. A row with a body opens it on click. Notes are rows only while the
 Journal pane is hidden; blocked task rows remain visible. Successful terminal delivery
-publishes a turn card framed like an answer, with Outcome, This turn and Remaining
-one node per row, and done and open counts in its title. It counts its notes; a
+publishes a separate work-report card only when non-answer events remain unacknowledged
+or mounted-journal diagnostics need to be shown. Captured answers and unchanged open
+tasks alone do not produce a card. The card has This turn and Remaining, one node
+per row, and done and open counts in its title. It counts its notes; a
 click opens the card in the shared dialog with the same rows, each note written out
-in full, and the time and counts on the detail row. Empty Outcomes omit the answer line but retain the remaining work. Cards
-have response-specific identity, including consecutive empty Outcomes at one sequence.
-Answer reply context appears inside the Main card's frame; its header and excerpt
-link to the retained original question. The Journal pane restores its
+in full, and the time and counts on the detail row. Cards have response-specific
+identity. Substantive answers and their reply context use the ordinary conversation
+renderer, independently of the card. The Journal pane restores its
 current tree from durable storage independently of provider requests.
 
 Retained v1 publications retain their milestone and grouped-answer presentation.
@@ -70,9 +71,11 @@ UI output acknowledges exact revisions through the journal owner. Terminal
 records become eligible only after successful downstream response completion.
 Failed presentation leaves unacknowledged records durable and pending.
 
-The substantive provider final remains in Codex's response. The frontend hides
-only the exact captured provider item IDs associated with native journal answers,
-so each answer displays once. Capture-capacity fallback stays raw. Child native
+The substantive provider final remains in Codex's response and displays once on
+the ordinary answer path; durable capture does not hide or reframe it. Only an
+empty Outcome replaced by a meaningful work report is hidden, by exact provider
+item ID. Without a report, even an empty Outcome stays on the ordinary path.
+Capture-capacity fallback stays raw. Child native
 completion payloads, nonattached inline delivery and legacy exact-ID replay
 provenance are unchanged. Native sinks are scoped by workspace and stable Main
 thread; missing-workspace records are never rebased to the app-server cwd.
@@ -105,8 +108,8 @@ child processes.
 Forks copy task states and history, but not live agent bindings to children owned
 by the source parent. Copied events retain the historical assignment. New bindings
 must refer to the fork's own children. An unavailable or oversized mount view does
-not suppress a parent's successful answer; its terminal card retains the own-record
-outcome and reports mounted journals unavailable. Explicit combined reads still fail.
+not suppress a parent's successful answer; a separate terminal card reports
+mounted journals unavailable. Explicit combined reads still fail.
 
 ## Evidence-backed recovery
 
@@ -299,8 +302,9 @@ requesting thread observed. Agent names alone do not authorize access.
 
 The agent finishes naturally with a final answer after inspecting required tool results.
 On a successful completed response with no client-dispatched calls, the router captures the final
-answer for the journal renderer, suppresses the raw provider final-answer message, and returns the
-terminal journal delivery without another provider request. A journal-only operation without
+answer for durable recovery and delivers Main's substantive provider final unchanged.
+Pending work-report events are delivered separately in that same response, without
+another provider request. Child completion retains its journal-result payload. A journal-only operation without
 a final answer continues so its result remains inspectable. Mixed client calls remain
 host-dispatched and prevent terminal delivery. Journal operation error results continue for correction.
 Invalid or rejected mutations in a dedicated journal call return an `ok: false` tool result
@@ -309,20 +313,23 @@ still fail translation under the atomic field contract.
 Failed, incomplete, or interrupted responses never flush. Completion is response-local:
 replay, resume, and forks do not finish a new turn.
 
-For v2-authored journals, successful Main completion emits a Markdown turn card
-when no native frontend is attached. Outcome is the captured final answer; This turn
-contains events after `flushSeq`; Remaining contains open tasks. A card with none of
-these says so instead of ending at its heading. Answer questions
-remain stored but are not echoed in the card. A blank final or a case-insensitive
-`done` with an optional period is an empty Outcome: no answer node is created and
-the exact raw provider item is hidden. The final message is still required.
-Without a turn card, a v1-authored journal keeps such a final as its answer.
+For v2-authored journals without a native frontend, successful Main completion
+emits a separate Markdown work report only for non-answer events after `flushSeq`
+that have not already been acknowledged, or mounted-journal diagnostics. This turn
+contains those events; Remaining contains open tasks. Neither captured answers nor
+unchanged open tasks alone trigger a report. Answers and their questions remain
+stored but are not echoed in the report. A blank final or a case-insensitive `done`
+with an optional period is an empty Outcome: no answer node is created for a tree
+journal, and the exact raw provider item is hidden only when a meaningful report
+replaces it. Otherwise the original final stays visible. The final message is
+still required. Retained v1 authoring without a turn card keeps such a final as its answer.
 
 Live v2 fallback uses the `Journal` heading without an author-path label and renders
 events after `liveSeq`, clipping a row that no single update
 can hold; the turn card keeps it whole. Successful downstream delivery advances
-the corresponding cursor; failure preserves its window. Main cards remain the last
-assistant message. Failed, incomplete and interrupted responses never terminal-flush.
+the corresponding cursor; failure preserves its window. Main reports precede the
+ordinary final in inline delivery so no commentary follows that final. Failed,
+incomplete and interrupted responses never terminal-flush.
 Retained v1 authoring keeps its legacy presentation and delivery receipts during replay.
 A child completes without flushing and emits a result containing only
 revisions newer than its durable `resultSeq` cursor. The result has no author
@@ -389,8 +396,10 @@ Plans are pending tasks. Task transitions and established facts are recorded as 
 happen, attached to the next useful tool call rather than a standalone request.
 Constraints belong in context nodes. Ongoing narration is not a note. Questions and
 direct replies remain conversational. Parents record integration decisions, not copies
-of child journals. The final answer is a short Outcome or exactly `Done.` when there
-is nothing beyond the journal. It does not repeat progress, validation, or remaining work.
+of child journals. A turn that records work ends with a concise Outcome, or exactly
+`Done.` when there is nothing beyond its work report. It does not repeat progress,
+validation, or remaining work. Ordinary questions and direct replies have no
+journal-specific length or format.
 
 Code Mode lowers the helper to authenticated `mjournal` through stock `exec_command`;
 it neither runs the surrounding program nor owns the host lifecycle. Read transport
@@ -410,7 +419,9 @@ natural completion can succeed. If required retention fails,
 the response fails instead of silently completing without the flush or child summary.
 Unacknowledged revisions remain available for a later flush.
 
-A successful provider final message is captured as the journal answer and triggers a flush.
+A successful provider final message is captured for recovery; Main's ordinary answer
+delivery acknowledges only its captured revision, independently of pending work
+reports. A report acknowledges its own prepared window after successful delivery.
 Ordinary token-usage buffering remains bounded and releases provider events unchanged on
 failure or overflow.
 
@@ -422,12 +433,15 @@ failure or overflow.
    validation survive restart and independent forks.
 3. Reads expose timestamps and children, respect subtree/depth, and require proven
    durable ancestry. Bounded transport reassembles complete trees without mixed revisions.
-4. Empty Outcomes create no answer node or duplicate raw final. Main cards contain
-   new events and open tasks. Failed delivery retains cursor windows for retry.
+4. Main answers remain ordinary messages, including replies while tasks are open.
+   Cards require new non-answer events or diagnostics and never repeat the answer.
+   Empty Outcomes create no tree answer node and stay visible unless a report
+   replaces them. Failed delivery retains cursor windows for retry.
 5. Child JSON/SSE results omit echoed questions and opaque aliases, deliver only new
    work after acknowledgement, and include only the corresponding owned evaluations.
 6. Instruction projection exposes one v2 API description, keeps stock tool authority,
-   removes update_plan, and directs mutations onto useful calls and finals to Outcome.
+   removes update_plan, and directs mutations onto useful calls, work finals to a
+   concise Outcome, and ordinary replies to conversational answers.
 7. Installed Codex root JSON output receives a child live milestone while the child
    is still working, independently of the child's terminal result. Root visibility
    acknowledgement is durable, scoped to proven descendants in the selected workspace,

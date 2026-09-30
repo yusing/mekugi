@@ -1,7 +1,5 @@
 23:28 · 1 done · 1 open · 1 note
 
-Fixed both.
-
 This turn
 ● /1 Tighten spacing
 ◆ Removed the blank row.

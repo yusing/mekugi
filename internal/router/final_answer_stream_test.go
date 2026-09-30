@@ -282,11 +282,18 @@ func TestNonJournalAnswerStreamsWithoutUsageCommentary(t *testing.T) {
 				t.Fatal(err)
 			}
 			events := finalAnswerTestPayloads(output.String())
-			if len(events) != 2 || bytes.Contains(output.Bytes(), []byte("Router session usage")) {
+			wantEvents := len(answer) + 1
+			if child {
+				wantEvents = 2
+			}
+			if len(events) != wantEvents || bytes.Contains(output.Bytes(), []byte("Router session usage")) {
 				t.Fatalf("completion output = %s", output.String())
 			}
-			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte(`"id":"answer"`)) {
-				t.Fatal("journal completion did not capture the provider answer")
+			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte(`"id":"answer"`)) == child {
+				t.Fatal("completion lost the answer or violated Main/child delivery ownership")
+			}
+			if !child && bytes.Contains(output.Bytes(), []byte("Journal flush")) {
+				t.Fatal("answer-only Main completion emitted a journal report")
 			}
 			counts, available := proxy.usage.snapshot("thread-1")
 			if !available || counts.tokenCounts != (tokenCounts{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3}) {

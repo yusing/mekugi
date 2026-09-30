@@ -310,7 +310,7 @@ func TestUISnapshotNativeJournalDurableMultilineDetails(t *testing.T) {
 	assertNativeJournalDialogSnapshot(t, "journal-durable-multiline-detail", u.shell.output.laid)
 }
 
-func TestUISnapshotNativeJournalCollapsedCardLeadsWithOutcomeAndAggregatesTasks(t *testing.T) {
+func TestUISnapshotNativeJournalCollapsedCardOmitsAnswerAndAggregatesTasks(t *testing.T) {
 	v := newLiveActivityView()
 	v.painter.Theme = livediff.DarkTheme
 	parser := journalNode{Path: "/1", Kind: "task", Title: "Parser"}

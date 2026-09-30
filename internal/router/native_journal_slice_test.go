@@ -187,29 +187,24 @@ func TestUISnapshotNativeJournalSliceDialogNavigationAfterNarrowResize(t *testin
 	}
 }
 
-func TestUISnapshotNativeJournalCardReplyContextInsideFramePreservesTargets(t *testing.T) {
+func TestUISnapshotNativeJournalOrdinaryReplyContextPreservesTargets(t *testing.T) {
 	v := newLiveActivityView()
 	v.painter.Theme = livediff.DarkTheme
 	question := activityPaneEntry{Seq: 7, Agent: "You", Kind: "text", Text: "What was the journal issue?", Observed: time.Date(2026, 9, 30, 8, 16, 39, 0, time.Local)}
-	v.entries = []activityPaneEntry{question}
-	card := &nativeJournalCard{Journal: threadJournal{Events: []journalEvent{{Seq: 1, Op: "add", Path: "/1", Fields: journalNode{Path: "/1", Kind: "answer", Body: "The batch was rejected without partial updates."}}}}}
-	entry := activityPaneEntry{Seq: 8, Observed: question.Observed, journalCard: card, native: &liveActivityNativeItem{question: question.Seq}}
+	entry := activityPaneEntry{Seq: 8, Agent: "Main", Kind: "text", Text: "The batch was rejected without partial updates.", Observed: question.Observed, native: &liveActivityNativeItem{question: question.Seq}}
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{question, entry}})
 	for _, width := range []int{90, 32} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			var out conversationLines
-			v.journalCardLines(&out, entry, width)
+			out := v.conversationItem(1, 1, width, conversationThread{})
 			assertNativeJournalSnapshot(t, fmt.Sprintf("journal-reply-context-%d", width), out.lines)
 			links := 0
 			for i, line := range out.lines {
 				plain := ansi.Strip(line)
 				if ansi.StringWidth(line) > width {
-					t.Fatalf("card overflowed width %d: %q", width, plain)
+					t.Fatalf("ordinary reply overflowed width %d: %q", width, plain)
 				}
 				if out.questions[i] == question.Seq {
 					links++
-					if i == 0 || i == len(out.lines)-1 || !strings.HasPrefix(plain, "│") || !strings.HasSuffix(plain, "│") {
-						t.Fatalf("question target not inside frame: row=%d text=%q", i, plain)
-					}
 				}
 				if strings.Contains(plain, "↩ re:") && out.questions[i] != question.Seq {
 					t.Fatal("reply header lost original question click target")

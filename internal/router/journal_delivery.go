@@ -151,6 +151,13 @@ func (t *mekugiResponseTransform) prepareOwnJournalDelivery(terminal bool) ([]ma
 			changes, changeSeq = t.proxy.replayStore.childJournalChangesSince(t.ctx, t.directory, t.shellThreadID, journal.ResultChangeSeq, journal.ResultCount != 0)
 			t.journalResultWindow = &journalResultWindow{sequence: journal.Sequence, changes: changeSeq, count: journal.ResultCount + 1}
 		}
+		if terminal && t.journalAnswerDelivery != nil {
+			for _, item := range journal.Items {
+				if _, captured := t.journalAnswerDelivery.revisions[item.ID]; captured {
+					t.journalAnswerDelivery.revisions[item.ID] = item.Updated
+				}
+			}
+		}
 		if terminal && journal.TreeAuthored {
 			journals, recordErrors, readErr := t.proxy.journals.workspaceJournals(t.proxy.replayStore, t.directory)
 			var items []journalItem
@@ -179,6 +186,19 @@ func (t *mekugiResponseTransform) prepareOwnJournalDelivery(terminal bool) ([]ma
 	if err != nil {
 		t.ReleaseDelivery()
 		return nil, err
+	}
+	if terminal && len(t.journalNaturalAnswerIDs) != 0 {
+		if !journalHasReport(journal, journal.FlushSeq) {
+			// An empty Outcome needs a visible completion when no work report
+			// replaces it. Do not hide it just because a journal exists.
+			t.journalNaturalAnswerIDs = nil
+		} else if sink := t.nativeJournal(); sink != nil {
+			var ids []string
+			for id := range t.journalNaturalAnswerIDs {
+				ids = append(ids, id)
+			}
+			sink.bindAnswer(ids)
+		}
 	}
 	if sink := t.nativeJournal(); sink != nil {
 		if terminal {
@@ -248,8 +268,10 @@ func (t *mekugiResponseTransform) prepareOwnJournalDelivery(terminal bool) ([]ma
 		message := assistantCommentaryMessage(id, text)
 		prepared[id] = journalDelivery{thread: deliveryThread, revisions: revisions, terminal: terminal, sequence: journal.Sequence}
 		traceSource := "report_now"
-		if terminal {
+		if terminal && (!t.journalNaturalFinalSeen || len(t.journalNaturalAnswerIDs) != 0) {
 			message["phase"] = mustMarshalJSON("final_answer")
+		}
+		if terminal {
 			traceSource = "terminal_flush"
 		}
 		t.featureTrace.record("journal", traceSource, "render", "prepared", "", id)
@@ -290,6 +312,11 @@ func (t *mekugiResponseTransform) prepareOwnJournalDelivery(terminal bool) ([]ma
 			if item.Flushed {
 				flushed++
 				continue
+			}
+			if t.journalAnswerDelivery != nil {
+				if _, captured := t.journalAnswerDelivery.revisions[item.ID]; captured {
+					continue
+				}
 			}
 			items = append(items, item)
 			revisions[item.ID] = item.Updated
@@ -367,6 +394,11 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 		if t.journalNativeTerminal != nil && t.journalNativeSink != nil {
 			t.journalNativeSink.publish(*t.journalNativeTerminal, true, t.journalResponseID)
 			t.journalNativeTerminal = nil
+		}
+		if delivery := t.journalAnswerDelivery; delivery != nil {
+			if err := t.proxy.journals.acknowledge(t.ctx, t.proxy.replayStore, t.directory, delivery.thread, delivery.revisions, true); err == nil {
+				t.journalAnswerDelivery = nil
+			}
 		}
 	}
 	if len(t.journalDeliveries) == 0 {
@@ -488,14 +520,19 @@ func (t *mekugiResponseTransform) decorateJournalJSON(payload []byte) ([]byte, e
 			t.ReleaseDelivery()
 			return nil, err
 		}
-		// Keep the final-answer flush last. Later commentary makes Codex render
-		// that final answer again when it receives turn completion.
+		// Keep Main's ordinary final last. Commentary after it makes Codex
+		// render that answer again when it receives turn completion.
 		if t.subagentTurn {
 			messages = append(messages, terminalMessages...)
+			output = append(output, messages...)
 		} else {
 			messages = append(terminalMessages, messages...)
+			if t.journalNaturalFinalSeen && len(t.journalNaturalAnswerIDs) == 0 {
+				output = append(messages, output...)
+			} else {
+				output = append(output, messages...)
+			}
 		}
-		output = append(output, messages...)
 	} else {
 		output = append(messages, output...)
 	}
@@ -528,6 +565,11 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 	if err != nil {
 		return nil, err
 	}
+	// Empty-outcome suppression is decided by the prepared report, not capture.
+	// Keep its buffered lifecycle until that decision is known.
+	if t.journalTerminal {
+		events = t.filterNaturalAnswerEvents(events)
+	}
 	if !t.journalTerminal {
 		var notices [][]byte
 		for _, message := range messages {
@@ -555,8 +597,8 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 		t.ReleaseDelivery()
 		return nil, err
 	}
-	// Stream the same ordering as the terminal snapshot, leaving the final-answer
-	// journal last with no commentary after it.
+	// Match the terminal snapshot: Main's work report precedes its raw final;
+	// child completion retains its journal-result ordering.
 	if t.subagentTurn {
 		messages = append(messages, terminalMessages...)
 	} else {
@@ -567,6 +609,11 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 		notices = append(notices, assistantCommentaryDoneEvent(message))
 	}
 	var visible [][]byte
+	reportBeforeFinal := !t.subagentTurn && t.journalNaturalFinalSeen && len(t.journalNaturalAnswerIDs) == 0
+	if reportBeforeFinal {
+		visible = append(visible, notices...)
+	}
+	doneItems := make(map[string]bool)
 	for _, payload := range events {
 		var event struct {
 			Type     responseevents.Kind        `json:"type"`
@@ -576,19 +623,40 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 		if err := json.Unmarshal(payload, &event); err != nil {
 			return nil, err
 		}
+		if event.Type == responseevents.OutputItemDone {
+			doneItems[jsonString(event.Item, "id")] = true
+		}
 		if event.Type == responseevents.Completed {
 			var output []map[string]json.RawMessage
 			if err := decodeJournalOutput(event.Response["output"], &output); err != nil {
 				return nil, err
 			}
 			output = t.withoutNaturalAnswer(output)
-			output = append(output, messages...)
+			if reportBeforeFinal {
+				output = append(messages, output...)
+				// Snapshot-only finals still need their ordinary host message event.
+				// Buffered finals already have it; overflow fallback may have exposed
+				// it earlier and must not receive another copy.
+				if !t.finalAnswer.disabled {
+					for _, item := range output {
+						id := jsonString(item, "id")
+						if id != "" && isFinalAnswerMessage(item) && !doneItems[id] {
+							visible = append(visible, assistantCommentaryDoneEvent(item))
+							doneItems[id] = true
+						}
+					}
+				}
+			} else {
+				output = append(output, messages...)
+			}
 			event.Response["output"] = mustMarshalJSON(output)
 			payload, err = replaceRawField(payload, "response", mustMarshalJSON(event.Response))
 			if err != nil {
 				return nil, err
 			}
-			visible = append(visible, notices...)
+			if !reportBeforeFinal {
+				visible = append(visible, notices...)
+			}
 		}
 		visible = append(visible, payload)
 	}

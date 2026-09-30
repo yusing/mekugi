@@ -24,10 +24,13 @@ func regressionCardText(t *testing.T, wire []byte) string {
 	if err := jsonv2.Unmarshal(wire, &response); err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Output) == 0 {
-		t.Fatalf("missing terminal card: %s", wire)
+	for _, item := range response.Output {
+		if text := commentaryMessageText(item); strings.HasPrefix(text, "Journal") {
+			return text
+		}
 	}
-	return commentaryMessageText(response.Output[len(response.Output)-1])
+	t.Fatalf("missing terminal card: %s", wire)
+	return ""
 }
 
 func TestJournalTreeNaturalMarkdownAnswerKeepsShape(t *testing.T) {
@@ -48,8 +51,17 @@ func TestJournalTreeNaturalMarkdownAnswerKeepsShape(t *testing.T) {
 				t.Fatal(err)
 			}
 			card := regressionCardText(t, wire)
-			if !strings.Contains(card, final) || strings.Contains(string(wire), `"id":"raw-markdown-final"`) {
-				t.Fatalf("card changed original Markdown or exposed raw answer: %q", card)
+			if strings.Contains(card, final) || !strings.Contains(string(wire), `"id":"raw-markdown-final"`) {
+				t.Fatalf("work report copied or replaced original Markdown: %q", card)
+			}
+			var response struct {
+				Output []map[string]jsonv1.RawMessage `json:"output"`
+			}
+			if err := jsonv2.Unmarshal(wire, &response); err != nil {
+				t.Fatal(err)
+			}
+			if commentaryMessageText(response.Output[len(response.Output)-1]) != final {
+				t.Fatalf("ordinary final changed its Markdown: %s", wire)
 			}
 			transform.Delivered(wire)
 			transform.ReleaseDelivery()
@@ -257,7 +269,7 @@ func resumeJournalRegression(t *testing.T, proxy *mekugiProxy, workspace, thread
 	return transform
 }
 
-func TestJournalTreeEmptyOutcomeStillShowsRemainingNextTurn(t *testing.T) {
+func TestJournalTreeEmptyOutcomeDoesNotReportUnchangedRemainingNextTurn(t *testing.T) {
 	first, proxy, _, workspace := newDurableTreeTransform(t)
 	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, first.shellThreadID, "", []journalMutation{{Op: "add", Kind: "task", Title: new("Pending task")}}); err != nil {
 		t.Fatal(err)
@@ -273,9 +285,6 @@ func TestJournalTreeEmptyOutcomeStillShowsRemainingNextTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := regressionCardText(t, next); !strings.Contains(got, "**Remaining**") || !strings.Contains(got, "Pending task") || strings.Contains(got, "**This turn**") {
-		t.Fatalf("empty turn lost remaining work or repeated events: %s", got)
-	}
 	var a, b struct {
 		Output []map[string]jsonv1.RawMessage `json:"output"`
 	}
@@ -285,8 +294,8 @@ func TestJournalTreeEmptyOutcomeStillShowsRemainingNextTurn(t *testing.T) {
 	if err := jsonv2.Unmarshal(next, &b); err != nil {
 		t.Fatal(err)
 	}
-	if jsonString(a.Output[len(a.Output)-1], "id") == jsonString(b.Output[len(b.Output)-1], "id") {
-		t.Fatal("different terminal turns reused card identity")
+	if len(a.Output) != 1 || !strings.Contains(commentaryMessageText(a.Output[0]), "Pending task") || len(b.Output) != 1 || jsonString(b.Output[0], "id") != "raw-second-empty" || commentaryMessageText(b.Output[0]) != "Done." {
+		t.Fatalf("unchanged remaining work produced another card: %s", next)
 	}
 	second.ReleaseDelivery()
 }

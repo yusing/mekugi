@@ -266,6 +266,7 @@ type mekugiCommentaryState struct {
 type mekugiJournalState struct {
 	journalNativeSink       *nativeJournalSink
 	journalNativeTerminal   *threadJournal
+	journalAnswerDelivery   *journalDelivery // Raw Main answer receipt, independent of its work report.
 	journalDeliveries       map[string]journalDelivery
 	liveDiffCompletionReady bool
 	journalQuietFile        os.FileInfo

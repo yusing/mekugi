@@ -2,7 +2,6 @@ package router
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 )
 
@@ -86,7 +85,7 @@ func TestNativeJournalSinkIsolationAndDetach(t *testing.T) {
 	}
 }
 
-func TestNativeJournalFinalKeepsProviderAndPublishesOnlyAfterDelivery(t *testing.T) {
+func TestNativeJournalFinalKeepsProviderAndAcknowledgesOnlyAfterDelivery(t *testing.T) {
 	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	sink := proxy.journals.attachNative(workspace, "thread-1")
 	defer proxy.journals.detachNative(sink)
@@ -107,25 +106,17 @@ func TestNativeJournalFinalKeepsProviderAndPublishesOnlyAfterDelivery(t *testing
 	if err != nil || len(items) != 1 || items[0].Question != "What was done?" || items[0].Text != "Completed work." || items[0].Flushed {
 		t.Fatalf("captured answer metadata: %+v, %v", items, err)
 	}
-	if !sink.hides("provider-final") || sink.hides("unrelated-final") {
-		t.Fatal("native sink hid a provider item other than the captured answer")
+	if sink.hides("provider-final") || sink.hides("unrelated-final") {
+		t.Fatal("native sink hid an ordinary provider answer")
 	}
 	transform.Delivered(output)
 	transform.ReleaseDelivery()
 	pending := sink.snapshot()
-	if len(pending) != 1 || !pending[0].terminal || pending[0].item.ID != items[0].ID {
-		t.Fatalf("completed delivery did not publish typed answer: %+v", pending)
-	}
-	if err := sink.acknowledge(t.Context(), proxy, pending); err != nil {
-		t.Fatal(err)
+	if len(pending) != 0 {
+		t.Fatalf("ordinary answer republished as journal: %+v", pending)
 	}
 	items, err = proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
 	if err != nil || !items[0].Reported || !items[0].Flushed {
-		t.Fatalf("render acknowledgement not persisted: %+v, %v", items, err)
-	}
-	view := newLiveActivityView()
-	view.applyJournal("thread-1", pending[0])
-	if len(view.entries) != 1 || view.entries[0].journal == nil || view.entries[0].journal.Question != "What was done?" || strings.Contains(view.entries[0].Text, "**Question:**") || strings.Contains(view.entries[0].Text, "Journal flush") {
-		t.Fatalf("typed Activity entry fell back to old flush format: %+v", view.entries)
+		t.Fatalf("answer delivery acknowledgement not persisted: %+v, %v", items, err)
 	}
 }

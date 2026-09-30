@@ -101,8 +101,9 @@ Acceptance:
    section. Refresh is idempotent, malformed markers fail closed, and unrelated descriptions,
    sibling tools, and stock execution contracts remain unchanged.
 3. The execution-tool journal section and optional mutation field expose enough guidance to record concise
-   tasks and facts, read retained subtrees, and finish naturally with an Outcome
-   rendered in the turn card without another provider request. Guidance directs mutations
+   tasks and facts, read retained subtrees, and finish naturally with an answer.
+   Work turns use a concise Outcome alongside a separate work report without another
+   provider request; ordinary replies stay conversational. Guidance directs mutations
    onto useful calls rather than standalone journal calls; Code Mode exposes only the exec-local helper for both read and mutations.
 4. Ordinary, fork, side-thread, subagent, model-switch, compaction, and resume consumers derive
    guidance from their current tool catalog and authenticated registry rather than invisible ancestry

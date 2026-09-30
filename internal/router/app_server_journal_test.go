@@ -103,7 +103,7 @@ func TestNativeJournalUnlinkedAnswerWaitsForTerminal(t *testing.T) {
 	_, proxy, _, workspace := newMekugiTestTransform(t)
 	sink := proxy.journals.attachNative(workspace, "thread-1")
 	defer proxy.journals.detachNative(sink)
-	ids, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "answer", []journalMutation{{Op: "add", Text: new("Unlinked final answer"), Answer: new(true)}})
+	_, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "thread-1", "answer", []journalMutation{{Op: "add", Text: new("Unlinked final answer"), Answer: new(true)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,8 +115,11 @@ func TestNativeJournalUnlinkedAnswerWaitsForTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	sink.publish(threadJournal{Sequence: items[0].Updated, Items: items}, true)
-	if got := sink.snapshot(); len(got) != 1 || got[0].item.ID != ids[0] || !got[0].terminal {
-		t.Fatalf("missing terminal answer: %+v", got)
+	if got := sink.snapshot(); len(got) != 0 {
+		t.Fatalf("answer-only terminal emitted a separate native journal report: %+v", got)
+	}
+	if len(items) != 1 || items[0].Text != "Unlinked final answer" || !items[0].TerminalOnly {
+		t.Fatalf("unlinked answer was not retained in journal: %+v", items)
 	}
 }
 

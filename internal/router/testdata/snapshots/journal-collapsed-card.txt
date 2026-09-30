@@ -1,6 +1,4 @@
 ╭─ ✓ journal · 1 done ──────────────────────────────────────────────────────────── 08:16 ╮
-│ OUTCOME TEXT                                                                           │
-│                                                                                        │
 │ This turn                                                                              │
 │ ● /1 Parser                                                                            │
 │ ◆ 1 note · click to open                                                               │

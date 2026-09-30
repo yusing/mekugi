@@ -587,8 +587,8 @@ func TestNaturalProviderAnswerBecomesJournalTerminalResult(t *testing.T) {
 					transform.Delivered(output)
 				}
 				transform.ReleaseDelivery()
-				if bytes.Contains(output, []byte(`"id":"natural-answer"`)) || !bytes.Contains(output, []byte("Provider answer is captured.")) {
-					t.Fatalf("provider answer was not exclusively rendered through the journal: %s", output)
+				if bytes.Contains(output, []byte(`"id":"natural-answer"`)) == child || !bytes.Contains(output, []byte("Provider answer is captured.")) {
+					t.Fatalf("provider answer violated Main/child delivery ownership: %s", output)
 				}
 				if child {
 					if !bytes.Contains(output, []byte("**Changes:**")) || bytes.Contains(output, []byte("Journal result")) {
@@ -597,9 +597,9 @@ func TestNaturalProviderAnswerBecomesJournalTerminalResult(t *testing.T) {
 				} else if !bytes.Contains(output, []byte("Journal flush")) {
 					t.Fatalf("main completion omitted its journal flush: %s", output)
 				}
-				if !child && (!bytes.Contains(output, []byte("**Question:**")) || !bytes.Contains(output, []byte("How did the task go?")) ||
-					!bytes.Contains(output, []byte("**Answer:**"))) {
-					t.Fatalf("natural answer lost its question association: %s", output)
+				if !child && (bytes.Contains(output, []byte("**Answer:**")) ||
+					bytes.Index(output, []byte("Journal flush")) > bytes.Index(output, []byte(`"id":"natural-answer"`))) {
+					t.Fatalf("separate work report copied the answer or followed the ordinary final: %s", output)
 				}
 				items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, transform.shellThreadID)
 				if err != nil || len(items) != 2 || items[0].Text != "Pending report" || items[1].Text != "Provider answer is captured." ||
@@ -644,23 +644,19 @@ func TestJournalListContinuationCapturesNaturalAnswer(t *testing.T) {
 				!bytes.Contains(provider.forwarded[1], []byte("intermediate-message")) {
 				t.Fatalf("journal result or non-answer provider history was lost on continuation: %s", provider.forwarded[1])
 			}
-			if bytes.Contains(output.Bytes(), []byte(`"id":"unexpected-message"`)) ||
+			if !bytes.Contains(output.Bytes(), []byte(`"id":"unexpected-message"`)) ||
 				!bytes.Contains(output.Bytes(), []byte("Provider interim progress.")) {
-				t.Fatalf("natural final answer was not replaced or interim progress was lost: %s", output.Bytes())
+				t.Fatalf("ordinary natural final or interim progress was lost: %s", output.Bytes())
 			}
 			var flushes int
 			for _, item := range journalFinishClientOutput(t, stream, output.Bytes()) {
 				text := commentaryMessageText(item)
 				if strings.Contains(text, "Journal flush") {
 					flushes++
-					if !strings.Contains(text, "**Question:**") || !strings.Contains(text, "task") ||
-						!strings.Contains(text, "**Answer:**") || !strings.Contains(text, "Natural provider final answer.") {
-						t.Fatalf("natural final answer lost Q/A rendering: %s", text)
-					}
 				}
 			}
-			if flushes != 1 {
-				t.Fatalf("terminal flushes = %d, want one: %s", flushes, output.Bytes())
+			if flushes != 0 {
+				t.Fatalf("answer-only terminal flushes = %d, want zero: %s", flushes, output.Bytes())
 			}
 			if stream {
 				completed := 0
@@ -677,8 +673,8 @@ func TestJournalListContinuationCapturesNaturalAnswer(t *testing.T) {
 						completed++
 					}
 				}
-				if completed != 0 {
-					t.Fatalf("stream emitted %d raw provider final answers, want 0", completed)
+				if completed != 1 {
+					t.Fatalf("stream emitted %d raw provider final answers, want 1", completed)
 				}
 			}
 		})

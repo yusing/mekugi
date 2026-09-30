@@ -411,8 +411,8 @@ func TestJournalMountFailureDoesNotSuppressTerminalOutcome(t *testing.T) {
 				} else {
 					card = regressionCardText(t, wire)
 				}
-				if !strings.Contains(card, "Parent outcome delivered.") || !strings.Contains(card, "Mounted journals unavailable:") {
-					t.Fatalf("fallback lost own outcome or diagnostic: %q", card)
+				if strings.Contains(card, "Parent outcome delivered.") || !strings.Contains(string(wire), "Parent outcome delivered.") || !strings.Contains(card, "Mounted journals unavailable:") {
+					t.Fatalf("fallback lost ordinary outcome or separate diagnostic: %q", card)
 				}
 			})
 		}
@@ -449,7 +449,7 @@ func TestJournalMountRenderedCardLimitPreservesOutcome(t *testing.T) {
 	transform.Delivered(wire)
 	transform.ReleaseDelivery()
 	card := regressionCardText(t, wire)
-	if !strings.Contains(card, "Outcome survives a large mounted card.") || !strings.Contains(card, "combined card exceeds terminal capacity") {
+	if strings.Contains(card, "Outcome survives a large mounted card.") || !strings.Contains(string(wire), "Outcome survives a large mounted card.") || !strings.Contains(card, "combined card exceeds terminal capacity") {
 		t.Fatalf("missing rendered-size fallback: %q", card)
 	}
 }

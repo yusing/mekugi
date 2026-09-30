@@ -55,14 +55,3 @@ func TestJournalLiveUpdateClipsRowLargerThanAnyUpdate(t *testing.T) {
 		t.Fatalf("clipped live row: %d bytes, head %q", len(text), text[:min(len(text), 80)])
 	}
 }
-
-func TestJournalTurnCardWithoutContentStillSaysSo(t *testing.T) {
-	card := journalTurnCard(threadJournal{Author: "/root"}, 0, false)
-	if !strings.HasPrefix(card, "Journal\n\n") || !strings.Contains(card, "no open tasks") {
-		t.Fatalf("empty turn card = %q", card)
-	}
-	withRemaining := journalTurnCard(threadJournal{Author: "/root", Items: []journalItem{{Path: "/1", ID: "/1", Kind: "task", Title: "Open", State: "pending"}}}, 0, false)
-	if strings.Contains(withRemaining, "no open tasks") {
-		t.Fatalf("card with remaining work claims none: %q", withRemaining)
-	}
-}

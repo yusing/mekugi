@@ -16,7 +16,7 @@ type nativeJournalSink struct {
 	mu                  sync.Mutex
 	workspace, thread   string
 	pending             map[string]nativeJournalPublication
-	answers             map[string]string // Proven provider item ID -> captured journal item ID.
+	answers             map[string]bool // Exact empty-Outcome item IDs replaced by work reports.
 	sequence            uint64
 	current             map[string]uint64
 }
@@ -36,7 +36,7 @@ func (s *journalStore) attachNative(workspace, thread string) *nativeJournalSink
 	if s.native == nil {
 		s.native = make(map[string]*nativeJournalSink)
 	}
-	sink := &nativeJournalSink{workspace: workspace, thread: thread, pending: make(map[string]nativeJournalPublication), answers: make(map[string]string)}
+	sink := &nativeJournalSink{workspace: workspace, thread: thread, pending: make(map[string]nativeJournalPublication), answers: make(map[string]bool)}
 	s.native[journalKey(workspace, thread)] = sink
 	return sink
 }
@@ -96,7 +96,7 @@ func (s *nativeJournalSink) publish(journal threadJournal, terminal bool, respon
 			}
 			s.pending[id] = publication
 		}
-		if terminal {
+		if terminal && journalHasReport(journal, journal.FlushSeq) {
 			id := fmt.Sprintf("card:%d", journal.Sequence)
 			if len(responseID) > 0 && responseID[0] != "" {
 				id = "card:" + responseID[0]
@@ -121,13 +121,11 @@ func (s *nativeJournalSink) publish(journal threadJournal, terminal bool, respon
 				delete(s.pending, id)
 			}
 		}
-		for id, journalID := range s.answers {
-			if journalID != "@empty-outcome" && s.current[journalID] == 0 {
-				delete(s.answers, id)
-			}
-		}
 	}
 	for _, item := range journal.Items {
+		if item.TerminalOnly {
+			continue // Main answers remain on the host's ordinary message path.
+		}
 		if s.current[item.ID] != item.Updated {
 			continue
 		}
@@ -164,25 +162,20 @@ func journalRowText(event journalEvent) string {
 	return event.Fields.Title
 }
 
-func (s *nativeJournalSink) bindAnswer(ids []string, journalID string) {
+func (s *nativeJournalSink) bindAnswer(ids []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// Empty Outcomes have no node whose removal can retire the binding. Only
-	// the current native turn needs those transient provider IDs.
-	for id, previous := range s.answers {
-		if previous == "@empty-outcome" {
-			delete(s.answers, id)
-		}
-	}
+	// Only the current native turn needs these transient provider IDs.
+	clear(s.answers)
 	for _, id := range ids {
-		s.answers[id] = journalID
+		s.answers[id] = true
 	}
 }
 
 func (s *nativeJournalSink) hides(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.answers[id] != ""
+	return s.answers[id]
 }
 
 func (s *nativeJournalSink) snapshot() []nativeJournalPublication {

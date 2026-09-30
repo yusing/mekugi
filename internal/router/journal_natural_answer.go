@@ -8,8 +8,8 @@ import (
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
-// A completed provider answer is the terminal journal answer. Capture it before
-// terminal delivery so only the journal renderer owns its visible copy.
+// Capture a completed provider answer for recovery without making Main's answer
+// presentation journal-owned. Child completion still delivers its journal result.
 func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) error {
 	if !t.journalAvailable || t.journalClientCalls || len(t.journalPending) != 0 {
 		return nil
@@ -112,9 +112,6 @@ func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) er
 		for _, id := range ids {
 			t.journalNaturalAnswerIDs[id] = true
 		}
-		if sink := t.nativeJournal(); sink != nil {
-			sink.bindAnswer(ids, "@empty-outcome")
-		}
 	}
 	if strings.TrimSpace(answer.String()) != "" && !emptyOutcome {
 		value := answer.String()
@@ -136,12 +133,15 @@ func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) er
 		// Source: codex-rs/core/src/event_mapping.rs parse_turn_item and
 		// app-server-protocol/src/protocol/v2/item.rs@86be5320 copy the provider
 		// message ID unchanged into AgentMessage and its delta itemId.
-		if sink := t.nativeJournal(); sink != nil && len(journalIDs) > 0 {
-			sink.bindAnswer(ids, journalIDs[0])
-		}
-		t.journalNaturalAnswerIDs = make(map[string]bool, len(ids))
-		for _, id := range ids {
-			t.journalNaturalAnswerIDs[id] = true
+		if t.subagentTurn {
+			t.journalNaturalAnswerIDs = make(map[string]bool, len(ids))
+			for _, id := range ids {
+				t.journalNaturalAnswerIDs[id] = true
+			}
+		} else if len(journalIDs) > 0 {
+			// The delivery snapshot supplies the exact revision. Acknowledging this
+			// raw answer must not consume pending work-report events.
+			t.journalAnswerDelivery = &journalDelivery{thread: t.shellThreadID, terminal: true, revisions: map[string]uint64{journalIDs[0]: 0}}
 		}
 	}
 	if len(ids) != 0 {

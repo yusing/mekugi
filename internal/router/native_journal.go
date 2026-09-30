@@ -823,24 +823,11 @@ func (v *liveActivityView) applyTreeJournal(thread string, p nativeJournalPublic
 	}
 	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: kind, Text: text, Observed: time.Now(), journalCard: p.card, journalEvent: p.event,
 		native: &liveActivityNativeItem{thread: thread, turn: "journal-v2", item: p.item.ID, phase: kind}}
-	if p.card != nil {
-		for _, event := range p.card.Journal.Events {
-			if event.Seq <= p.card.Since || event.Fields.Kind != "answer" {
-				continue
-			}
-			for _, question := range slices.Backward(v.entries) {
-				if journalQuestionMatches(question, event.Fields.Question) {
-					entry.native.question = question.Seq
-					break
-				}
-			}
-		}
-	}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 }
 
-// journalCardLines lays out Main's turn card as a finished answer, with its
-// notes counted; the card opens as journalCardBlock.
+// journalCardLines lays out Main's work report separately from its ordinary
+// answer, with its notes counted; the card opens as journalCardBlock.
 func (v *liveActivityView) journalCardLines(out *conversationLines, entry activityPaneEntry, width int) {
 	card := entry.journalCard
 	if card == nil {
@@ -854,30 +841,14 @@ func (v *liveActivityView) journalCardLines(out *conversationLines, entry activi
 		title += " · " + strings.Join(facts, " · ")
 	}
 	title += activityui.Undim
-	var context conversationLines
-	if entry.native != nil && entry.native.question != 0 {
-		for _, question := range v.entries {
-			if question.Seq == entry.native.question {
-				v.replyContext(&context, question, "", max(1, width-4))
-				break
-			}
-		}
-	}
-	if len(context.lines) > 0 {
-		rows = append(append(context.lines, ""), rows...)
-	}
-
 	if width < 12 {
 		rows = append([]string{title}, rows...)
 	} else {
 		rows = activityui.Card(title, entry.Observed.Local().Format("15:04"), rows, width, false)
 	}
 	for i, row := range rows {
-		// Both framing variants prepend one title row.
-		if i > 0 && i <= len(context.questions) {
-			out.add(context.questions[i-1], row)
-		} else {
-			out.add(0, row)
+		out.add(0, row)
+		if i > 0 {
 			out.snippets[len(out.snippets)-1] = snippet
 		}
 	}
@@ -899,14 +870,14 @@ func (v *liveActivityView) journalCardBlock(entry activityPaneEntry) activityui.
 		}}
 }
 
-// journalCardRows lays out a turn card's body: the Outcome leads, then what
+// journalCardRows lays out a work report's body: what
 // happened this turn one node per row, then the tasks still open. This turn
 // aggregates each node to its final state in the window; a node both added
 // and removed within it never happened. Notes are counted, or with expand
 // listed with their bodies. facts are the title's counts.
 func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, expand bool) (rows, facts []string) {
 	theme := p.Theme
-	var outcome, paths []string
+	var paths []string
 	latest := make(map[string]journalEvent)
 	added := make(map[string]bool)
 	for _, event := range card.Journal.Events {
@@ -914,7 +885,6 @@ func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, 
 			continue
 		}
 		if event.Fields.Kind == "answer" {
-			outcome = append(outcome, journalEventText(event))
 			continue
 		}
 		if _, seen := latest[event.Path]; !seen {
@@ -984,9 +954,6 @@ func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, 
 		for _, item := range items {
 			rows = append(rows, item...)
 		}
-	}
-	if len(outcome) > 0 {
-		rows = p.Markdown(livediff.Safe(strings.Join(outcome, "\n\n"), false), inner)
 	}
 	section("This turn", happened)
 	if card.Journal.mountUnavailable != "" {

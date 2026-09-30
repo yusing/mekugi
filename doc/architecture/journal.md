@@ -79,7 +79,10 @@ authority. Its mutation rejections are structured results for the helper, while
 authentication, routing and transport failures remain HTTP errors. Replay of an old result cannot finish a later turn.
 
 Delivery snapshots and leases the originating journal before rendering. V2 delivery selects event windows from live and terminal cursors and acknowledges
-only after successful downstream delivery. Retained v1 operations preserve legacy
+only after successful downstream delivery. Main's ordinary final-answer receipt
+acknowledges only the exact captured answer revision, not the work-report window.
+Durable capture does not transfer substantive answer presentation to the journal
+renderer. Retained v1 operations preserve legacy
 receipt and alias compatibility. The tree is derived inside the journal owner, not
 maintained independently by transport or presentation adapters. Native child completion snapshots a revision cursor and a retained-change evaluation
 cursor together. Successful downstream completion advances both; failure preserves

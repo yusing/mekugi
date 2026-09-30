@@ -133,11 +133,11 @@ func TestCodeModeJournalCompletionAvoidsProviderContinuation(t *testing.T) {
 		plain    string // call ID whose result must not carry it
 	}{
 		{name: "exec journal is host work", calls: []any{exec}, requests: 1},
-		{name: "natural final answer", calls: []any{final}, requests: 1, flush: true},
+		{name: "natural final answer", calls: []any{final}, requests: 1},
 		{name: "stray add with final answer", calls: []any{journalCall("add-call", `{"op":"add","text":"Validated milestone"}`), final}, requests: 1, flush: true, hint: "add-call"},
 		{name: "stray finish", calls: []any{journalCall("finish-call", `{"op":"finish","journal":[{"op":"add","text":"Validated milestone"}]}`)}, requests: 1, flush: true, hint: "finish-call"},
 		// A journal-only list result stays inspectable, so it continues.
-		{name: "list", calls: []any{journalCall("list-call", `{"op":"list"}`)}, requests: 2, flush: true, plain: "list-call"},
+		{name: "list", calls: []any{journalCall("list-call", `{"op":"list"}`)}, requests: 2, plain: "list-call"},
 		{name: "native add", native: true, calls: []any{journalCall("add-call", `{"op":"add","text":"Validated milestone"}`)}, requests: 2, flush: true, plain: "add-call"},
 	} {
 		for _, stream := range []bool{false, true} {
@@ -173,6 +173,15 @@ func TestCodeModeJournalCompletionAvoidsProviderContinuation(t *testing.T) {
 				}
 				if got := strings.Contains(output.String(), "Journal flush"); got != test.flush {
 					t.Fatalf("journal flush = %t, want %t: %s", got, test.flush, output.Bytes())
+				}
+				if test.name == "natural final answer" || test.name == "list" {
+					if !bytes.Contains(output.Bytes(), []byte(`"id":"answer-item"`)) {
+						t.Fatalf("answer-only Main completion replaced the ordinary provider final: %s", output.Bytes())
+					}
+					items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
+					if err != nil || len(items) != 1 || items[0].Text != "The assigned work is complete." || !items[0].Flushed {
+						t.Fatalf("ordinary final was not durably captured and acknowledged: %+v, %v", items, err)
+					}
 				}
 				results := make(map[string]map[string]json.RawMessage)
 				dispatched := false
