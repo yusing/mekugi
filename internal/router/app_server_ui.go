@@ -82,7 +82,9 @@ type appServerUI struct {
 	statusReports             map[string]*appServerStatusReport
 	picker                    composerPicker
 	skillEnvironment          []string
-	commitReads               chan gitCommitKey // Commit objects read off the UI goroutine.
+	commitReads               chan gitCommitKey        // Commit objects read off the UI goroutine.
+	commandSegmentWrites      chan commandSegmentWrite // Completed replay writes, consumed only by the UI.
+	commandSegmentPending     int
 	files                     []composerFile
 	selections                []composerSelection
 	skills                    []composerSkill
@@ -283,6 +285,8 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						if u.commitRead(key) {
 							u.dirty = true
 						}
+					case err := <-u.commandSegmentWrites:
+						u.commandSegmentRetained(err)
 					case message, ok := <-c.Messages:
 						if !ok {
 							exited = true
@@ -402,6 +406,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 				<-c.Done
 			}
 		}
+		u.finishCommandSegments()
 		u.hideQuestions()
 		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
 			fmt.Fprintln(stdout, "Unsent draft:\n"+livediff.Safe(unsent.text, false))

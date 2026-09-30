@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -33,6 +34,13 @@ func commandSegmentsID(turn, item string) string {
 	return fmt.Sprintf("command-segments:%x", sha256.Sum256(fmt.Appendf(nil, "%q:%q", turn, item)))
 }
 
+const commandSegmentRetentionLimit = 32
+
+type commandSegmentWrite struct {
+	key [3]string // Original thread, turn and item, independent of the current UI.
+	err error
+}
+
 func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item appServerItem, view execTrackView) {
 	if u.proxy == nil || u.proxy.replayStore == nil || item.AggregatedOutput == nil || item.ExitCode == nil {
 		return
@@ -40,6 +48,10 @@ func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item appSer
 	script, ok := appServerShellScript(item.Command)
 	parts, split := execsegment.Split(script)
 	if !ok || !split || len(parts) != len(view.segments) || !view.complete || view.code != *item.ExitCode {
+		return
+	}
+	if u.commandSegmentPending == commandSegmentRetentionLimit {
+		u.commandSegmentRetentionFailed([3]string{entry.native.thread, entry.native.turn, entry.native.item}, fmt.Errorf("pending command segment reports reached the limit of %d", commandSegmentRetentionLimit))
 		return
 	}
 	record := &retainedCommandSegments{Command: item.Command, Exit: *item.ExitCode, Output: sha256.Sum256([]byte(*item.AggregatedOutput))}
@@ -58,12 +70,54 @@ func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item appSer
 		}
 		record.Parts = append(record.Parts, part)
 	}
-	ctx, cancel := context.WithTimeout(u.ctx, time.Second)
-	defer cancel()
+	// Snapshot every UI-owned value before leaving the event loop. The shared
+	// store can be busy with capture or another session; that must neither
+	// freeze presentation nor discard a report after a one-second lock wait.
+	ctx, cancel := context.WithTimeout(u.ctx, 30*time.Second)
 	ctx = context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: entry.native.thread})
 	id := commandSegmentsID(entry.native.turn, entry.native.item)
-	if err := u.proxy.replayStore.put(ctx, u.session.cwd, map[string]mekugiHistory{id: {CommandSegments: record}}); err != nil {
-		u.setNotice("Command segment history could not be retained; live output remains available.", true)
+	key := [3]string{entry.native.thread, entry.native.turn, entry.native.item}
+	store, workspace := u.proxy.replayStore, u.session.cwd
+	if u.commandSegmentWrites == nil {
+		u.commandSegmentWrites = make(chan commandSegmentWrite, commandSegmentRetentionLimit)
+	}
+	writes := u.commandSegmentWrites
+	u.commandSegmentPending++
+	go func() {
+		defer cancel()
+		writes <- commandSegmentWrite{key: key, err: store.put(ctx, workspace, map[string]mekugiHistory{id: {CommandSegments: record}})}
+	}()
+}
+
+// Only the UI event loop consumes results or changes presentation state.
+func (u *appServerUI) commandSegmentRetained(result commandSegmentWrite) {
+	u.commandSegmentPending--
+	if result.err == nil {
+		return
+	}
+	u.commandSegmentRetentionFailed(result.key, result.err)
+}
+
+func (u *appServerUI) commandSegmentRetentionFailed(key [3]string, err error) {
+	if u.issues == nil {
+		u.issues = NewCriticalErrors()
+	}
+	message := fmt.Sprintf("Command segment history could not be retained for item %s (turn %s). Live output remains available, but this report cannot be restored after restart. Error: %v", key[2], key[1], err)
+	if diagnostic, ok := errors.AsType[*criticalDiagnosticError](err); ok && !strings.Contains(message, diagnostic.summary) {
+		message += "\n" + diagnostic.summary
+	}
+	// Use the native notice owner for full, wrapped transcript errors and
+	// launcher recovery. Distinct items and causes must not collapse together.
+	category := fmt.Sprintf("command_segment_retention:%x", sha256.Sum256([]byte(message)))
+	u.issues.addThreadNotice("", key[0], category, message)
+	u.dirty = true
+}
+
+// Normal exit drains accepted reports before releasing the session's resources.
+// Cancellation still reaches each bounded store operation through u.ctx.
+func (u *appServerUI) finishCommandSegments() {
+	for u.commandSegmentPending > 0 {
+		u.commandSegmentRetained(<-u.commandSegmentWrites)
 	}
 }
 

@@ -28,6 +28,7 @@ func appServerTestNotify(t *testing.T, u *appServerUI, method string, params any
 func newAppServerSessionTestUI(t *testing.T, workspace string) *appServerUI {
 	u, _ := newAppServerTestUI()
 	u.ctx = t.Context()
+	t.Cleanup(func() { awaitCommandSegments(t, u) })
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.session.start("main", workspace)

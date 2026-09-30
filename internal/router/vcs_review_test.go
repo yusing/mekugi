@@ -73,6 +73,7 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 			item := appServerItem{ID: key[2], Type: "commandExecution", Command: "bash -lc " + quoteShellWord(prior+"; "+command), Cwd: g.dir, ExitCode: new(0), AggregatedOutput: &output}
 			entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], command: item.Command}}
 			live := u.trackedCommandDone(key, entry, item)[0]
+			awaitCommandSegments(t, u)
 			restored := entry
 			restored.native = &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2]}
 			u.restoreCommandSegments(&restored, item, g.dir)

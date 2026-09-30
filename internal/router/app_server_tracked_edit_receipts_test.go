@@ -151,6 +151,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 			output.Finish(new("test failed"), new(2))
 			u.retainCommandSegments(activityPaneEntry{native: &liveActivityNativeItem{thread: thread, turn: "turn", item: item.ID}}, item,
 				execTrackView{complete: true, output: true, code: 2, segments: []commandSegment{{}, {}, {exit: 2, output: output}}})
+			awaitCommandSegments(t, u)
 			restored := newAppServerSessionTestUI(t, workspace)
 			restored.proxy = &mekugiProxy{replayStore: &mekugiReplayStore{directory: store.directory}}
 			restored.shell.diff.data = trackedEditReceiptData(thread, item.ID)

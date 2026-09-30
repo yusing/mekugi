@@ -191,8 +191,15 @@ including inherited fork history and `codex resume`, uses them only when the
 command, aggregate output and terminal exit still match. Replay restores
 settled output, states and observed timing, never a process or continuation.
 Reading inherited reports retains them for the requesting thread independently
-of the original thread. Storage failure leaves live presentation available without promising
-restoration.
+of the original thread. Retention runs outside the UI event loop with at most 32
+pending reports and a 30-second storage-lock wait. Each pending report keeps its
+original workspace and thread ownership even if the user switches sessions.
+Normal exit drains accepted writes; cancellation cancels their lock waits.
+Storage failure or a full pending-report bound leaves live presentation available
+without promising restoration. The owning thread receives a native Main error
+entry with the host turn/item identity and complete underlying error, wrapped in
+the transcript rather than truncated into the composer. Distinct causes remain
+separate, and notices not painted before exit remain available to the launcher.
 
 Old history without reports, missing or mismatched records, and incomplete
 reports keep the combined host result. Terminal and lossy reports retain their
