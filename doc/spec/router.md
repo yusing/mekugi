@@ -64,8 +64,8 @@ managed store's quota and retention policy and can be looked up after restart us
 not a claim of successful persistence or a different request outcome. Startup and cleanup failures are concise stderr
 errors outside the active Codex UI. Critical request failures use the user-only
 commentary contract. The launcher prints undelivered notices and repetition
-summaries after Codex exits. In-memory metrics, explicit sanitized capture and
-final metrics exports, and opt-in issue reports are not operational logging.
+summaries after Codex exits. In-memory metrics, explicit sanitized capture,
+debug metrics exports, and opt-in issue reports are not operational logging.
 `mekugi` mode also retains private durable replay state so resumed and forked conversations restore
 their original model-visible tools. This is correctness state, not an operational session log.
 It lives at `$XDG_STATE_HOME/mekugi/replay`, or `~/.local/state/mekugi/replay` when that variable is
@@ -108,9 +108,8 @@ failed cleanup reports an error and does not claim complete reclamation.
 Change-index retirement preserves stream high-water counters so old IDs are never reused.
 Partially retired change histories explicitly identify removed attempts. Missing recovery references
 explain session expiry or storage pressure and never replay an operation.
-`--capture-output PATH` appends sanitized capture records. Token-usage Markdown
-snapshots use a stable Codex-session-keyed file in the system temporary directory;
-the wrapper prints each written path on exit.
+`--capture-output PATH` appends sanitized capture records. Main completion and
+wrapper exit do not create token-usage Markdown files or announce metrics paths.
 
 `--debug` is a boolean flag requiring no argument. It creates a private, unique
 `mekugi-debug-*` directory in the system temporary directory, with router diagnostics,

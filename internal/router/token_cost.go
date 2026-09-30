@@ -3,8 +3,6 @@ package router
 import (
 	"fmt"
 	"strings"
-
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // tokenCost contains estimates for disjoint billable categories. Reasoning is
@@ -17,17 +15,10 @@ type tokenCost struct {
 }
 
 type tokenUsageReport struct {
-	turn *tokenUsageReport
 	tokenCounts
 	cost         tokenCost
 	model        string
-	rows         *[]agentTokenUsage
 	missingUsage uint64
-}
-
-type agentTokenUsage struct {
-	agent, role string
-	report      tokenUsageReport
 }
 
 type tokenPrice struct {
@@ -148,68 +139,6 @@ func (cost *tokenCost) add(next tokenCost) {
 	cost.cachedInput += next.cachedInput
 	cost.output += next.output
 	cost.known = cost.known && next.known
-}
-
-func formatTokenUsageReport(report tokenUsageReport) string {
-	var text strings.Builder
-	text.WriteString("Router session usage\n\n| Agent | Role | Model | Input (cache hit) | Cache write | Output | Reasoning | Input cost (cached + uncached) | Output cost | Total cost | Missing usage |\n| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
-	rows := []agentTokenUsage{{agent: "/root", role: "main", report: report}}
-	if report.rows != nil {
-		rows = *report.rows
-	}
-	for _, row := range rows {
-		writeTokenUsageRow(&text, activityui.AgentDisplayName(row.agent), row.role, row.report)
-	}
-	total := report
-	total.model = "—"
-	writeTokenUsageRow(&text, "Total", "—", total)
-	text.WriteString("\nRouter session API estimates since router startup; reasoning is included in output, and cache writes are included in input.")
-	if report.missingUsage != 0 {
-		fmt.Fprintf(&text, "\nUsage incomplete: observed totals exclude %d response(s) without usable terminal usage. Missing usage counts responses, not tokens; later observed usage is included.", report.missingUsage)
-	}
-	if report.Incomplete {
-		text.WriteString("\nUsage incomplete: one or more agents have unavailable usage.")
-	} else if !report.cost.known {
-		text.WriteString("\nCost unavailable: unknown model/service-tier pricing or inconsistent usage.")
-	}
-	return text.String()
-}
-
-func tokenUsageCell(value string) string {
-	if value == "" {
-		return "n/a"
-	}
-	return strings.NewReplacer("|", "&#124;", "\n", " ", "\r", " ", "`", "&#96;").Replace(value)
-}
-
-func writeTokenUsageRow(text *strings.Builder, agent, role string, report tokenUsageReport) {
-	input, writes, output, reasoning := "n/a", "n/a", "n/a", "n/a"
-	if !report.Incomplete {
-		hit := 0.0
-		if report.InputTokens != 0 {
-			hit = 100 * float64(report.InputTokens-min(report.InputTokens, report.UncachedInputTokens)) / float64(report.InputTokens)
-		}
-		input = fmt.Sprintf("%s (%.1f%%)", formatUsageTokens(report.InputTokens), hit)
-		if report.Inconsistent {
-			input = formatUsageTokens(report.InputTokens) + " (n/a)"
-		}
-		writes, output, reasoning = formatUsageTokens(report.CacheWriteTokens), formatUsageTokens(report.OutputTokens), formatUsageTokens(report.ReasoningTokens)
-	}
-	inputCost, outputCost, totalCost := "n/a", "n/a", "n/a"
-	if report.cost.known && !report.Incomplete {
-		inputCost = fmt.Sprintf("$%.4f+$%.4f=$%.4f", report.cost.cachedInput, report.cost.uncachedInput, report.cost.cachedInput+report.cost.uncachedInput)
-		outputCost = fmt.Sprintf("$%.4f", report.cost.output)
-		totalCost = fmt.Sprintf("$%.4f", report.cost.cachedInput+report.cost.uncachedInput+report.cost.output)
-	}
-	missing := fmt.Sprint(report.missingUsage)
-	if report.Incomplete {
-		missing = "n/a"
-	}
-	if report.missingUsage != 0 {
-		agent += " (partial)"
-	}
-	fmt.Fprintf(text, "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
-		tokenUsageCell(agent), tokenUsageCell(role), tokenUsageCell(report.model), input, writes, output, reasoning, inputCost, outputCost, totalCost, missing)
 }
 
 func formatUsageTokens(count uint64) string {

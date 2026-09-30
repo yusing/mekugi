@@ -59,8 +59,8 @@ sessions, and patch review. No fork, no config edits, no daemon.
   `--post-compact-recovery=false`.
 - **Custom tools.** Add your own [plugins](doc/spec/plugin.md) as JavaScript
   modules.
-- **Usage and cost.** Eligible main completions update a Markdown usage
-  snapshot. A per-launch browser dashboard shows request metrics and cache
+- **Usage and cost.** The native Agents roster shows per-thread usage and cost.
+  A per-launch browser dashboard shows request metrics and cache
   diagnostics. Costs are API estimates, not subscription charges.
 - **Diagnostics.** [Replay session UI](#replay-a-session) with adjustable speed and
   CPU/heap profiles, [inspect past sessions](#inspect-a-session) offline, record
@@ -474,12 +474,10 @@ curl -sS "${MEKUGI_BASE_URL%/v1}/api/metrics"
 mekugi --capture-output capture.jsonl codex
 ```
 
-The router writes a Markdown token-usage snapshot to the system temporary
-directory after each eligible main completion, reusing the same file for the
-same Codex session, and prints its path when Codex exits. Dashboard metrics
-stay in memory unless captured with `--capture-output`; captures hold sanitized
-measurements only, with no prompts, patches, or credentials. Provider-reported
-usage is authoritative; local token estimates are not billing figures. See the
+Dashboard metrics stay in memory unless captured with `--capture-output`;
+captures hold sanitized measurements only, with no prompts, patches, or
+credentials. Provider-reported usage is authoritative; local token estimates
+are not billing figures. See the
 [metrics reference](doc/spec/metrics.md).
 
 `mekugi --debug codex` writes a private `mekugi-debug-*` directory in the system

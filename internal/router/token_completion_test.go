@@ -2,11 +2,12 @@ package router
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestMainCompletionDoesNotPersistPriorTotalsWithoutCurrentUsage(t *testing.T) {
+func TestMainCompletionPreservesPriorTotalsWithoutCurrentUsage(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
@@ -39,12 +40,64 @@ func TestMainCompletionDoesNotPersistPriorTotalsWithoutCurrentUsage(t *testing.T
 			if strings.Contains(string(output), "Router session usage") || !strings.Contains(string(output), "Actual answer") {
 				t.Fatalf("stale token usage was emitted or provider answer was lost: %s", output)
 			}
-			if _, available := final.threadUsageCounts(); !available {
+			if _, available := proxy.usage.snapshot(final.usageTracker.thread); !available {
 				t.Fatal("prior aggregate was lost")
 			}
-			if paths := proxy.tokenMetricPaths(); len(paths) != 0 {
-				t.Fatalf("completion persisted metrics without current usage: %q", paths)
-			}
 		})
+	}
+}
+
+func TestMainCompletionDoesNotExportTokenMetrics(t *testing.T) {
+	for _, journal := range []bool{false, true} {
+		for _, stream := range []bool{false, true} {
+			name := map[bool]string{false: "plain", true: "journal"}[journal] + "/" + map[bool]string{false: "json", true: "sse"}[stream]
+			t.Run(name, func(t *testing.T) {
+				directory := t.TempDir()
+				t.Setenv("TMPDIR", directory)
+				proxy := newManagedMekugiProxy(t)
+				main, _ := prepareActivityTest(t, proxy, "session", "thread", "", "/root", nil)
+				main.journalActive = journal
+				main.observeResponseUsage(tokenCounts{InputTokens: 100, UncachedInputTokens: 40, OutputTokens: 10})
+				response := []byte(`{"id":"main-response","status":"completed","output":[{"type":"message","id":"answer","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Actual answer"}]}]}`)
+				var output []byte
+				if stream {
+					events, err := main.TransformSSE([]byte(`{"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"answer","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Actual answer"}]}}`))
+					if err != nil {
+						t.Fatal(err)
+					}
+					output = bytes.Join(events, nil)
+					events, err = main.TransformSSE(append(append([]byte(`{"type":"response.completed","response":`), response...), '}'))
+					if err != nil {
+						t.Fatal(err)
+					}
+					output = append(output, bytes.Join(events, nil)...)
+				} else {
+					var err error
+					output, err = main.TransformJSON(response)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				main.Close()
+				if !bytes.Contains(output, []byte("Actual answer")) || bytes.Contains(output, []byte("Router session usage")) {
+					t.Fatalf("completion changed the answer or emitted metrics: %s", output)
+				}
+				report, ok := proxy.usage.snapshot("thread")
+				if !ok || report.InputTokens != 100 || report.OutputTokens != 10 {
+					t.Fatalf("completion lost in-memory usage: %+v, ok=%v", report, ok)
+				}
+				assertNoLegacyTokenMetrics(t, directory)
+			})
+		}
+	}
+}
+
+func assertNoLegacyTokenMetrics(t *testing.T, directory string) {
+	t.Helper()
+	for _, pattern := range []string{"mekugi-token-metrics-*.md", ".mekugi-token-metrics-*.md"} {
+		paths, err := filepath.Glob(filepath.Join(directory, pattern))
+		if err != nil || len(paths) != 0 {
+			t.Fatalf("unexpected legacy token metrics files: %q, error=%v", paths, err)
+		}
 	}
 }

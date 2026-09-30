@@ -421,18 +421,8 @@ func (chain responseTransformerChain) Delivered(payload []byte) {
 
 func (t *mekugiResponseTransform) journalTerminalMessages(response []byte) ([]map[string]json.RawMessage, error) {
 	var messages []map[string]json.RawMessage
-	var counts tokenUsageReport
-	observed := false
-	// Natural completion is terminal even with an empty journal. Missing current
-	// usage must invalidate prior totals before rendering, not hide the report.
-	if !t.subagentTurn {
-		if !t.usageObserved {
-			t.usageTracker.finish()
-		}
-		counts, observed = t.completionUsageReport()
-	}
-	if observed {
-		t.proxy.writeTokenMetrics(t.shellThreadID, counts)
+	if !t.subagentTurn && !t.usageObserved {
+		t.usageTracker.finish()
 	}
 	if t.subagentTurn {
 		id := commentaryMessageID("journal-summary\x00" + jsonResponseID(response))

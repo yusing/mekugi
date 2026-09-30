@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestChildCompletionsDoNotPersistTokenMetrics(t *testing.T) {
+func TestChildCompletionsPreserveTerminalEvents(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	for _, status := range []string{"failed", "incomplete"} {
 		t.Run(status, func(t *testing.T) {
@@ -31,9 +31,6 @@ func TestChildCompletionsDoNotPersistTokenMetrics(t *testing.T) {
 			if !bytes.Contains(events[0], []byte(`"type":"response.`+status+`"`)) ||
 				bytes.Contains(events[0], []byte("Router session usage")) {
 				t.Fatalf("terminal event = %s", events[0])
-			}
-			if paths := transform.proxy.tokenMetricPaths(); len(paths) != 0 {
-				t.Fatalf("child completion persisted token metrics: %q", paths)
 			}
 		})
 	}

@@ -441,10 +441,6 @@ func (t *mekugiResponseTransform) pendingCallKnown(callID string) bool {
 }
 
 func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStatus string) ([]byte, error) {
-	var counts tokenUsageReport
-	observed := false
-	// Discovery reads durable ancestry, so defer it until a report can be saved.
-	// Journal finish has its own terminal reporting path.
 	if !t.subagentTurn && t.usageObserved && !t.journalTerminalReady() {
 		substantive := t.finalAnswer.substantive && !t.finalAnswer.blocked && !t.finalAnswer.disabled
 		if terminalStatus == "" {
@@ -455,7 +451,6 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		}
 		if substantive && json.Unmarshal(payload, &identity) == nil && cmp.Or(terminalStatus, identity.Status) == "completed" {
 			t.liveDiffCompletionReady = true
-			counts, observed = t.completionUsageReport()
 		}
 	}
 	var object map[string]json.RawMessage
@@ -467,9 +462,6 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 
 	if err != nil {
 		return nil, err
-	}
-	if observed && t.usageObserved {
-		t.proxy.writeTokenMetrics(t.shellThreadID, counts)
 	}
 	// SSE terminal events own completion even when the embedded status is absent.
 	// JSON responses have no event envelope and retain body-status semantics.

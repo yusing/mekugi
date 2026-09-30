@@ -1,22 +1,19 @@
 # Provider usage ownership
 
-## CTR-USAGE-001 — Per-thread usage and reporting
+## CTR-USAGE-001 — Per-thread usage accounting
 
 Router thread accounting owns provider-authoritative usage for each stable thread
-for the router lifetime. The [usage contract](../spec/usage.md) owns report shape,
-pricing, incomplete-evidence behavior, and main-completion eligibility.
+for the router lifetime. The [usage contract](../spec/usage.md) owns pricing and
+incomplete-evidence behavior.
 
 Each response retains its effective model, service tier, and pricing basis before
 accumulation. Missing responses preserve known totals with explicit gaps; identity
-conflicts and overflow cannot become apparently complete totals. Main-turn usage
-has a separate bounded index keyed by canonical thread/turn identity, not provider
-attempt or child turn ID.
+conflicts and overflow cannot become apparently complete totals. Accounting is
+keyed by stable transport thread identity, not routing session or ancestry.
 
-Report delivery joins proven workspace descendants without mutating individual
-thread counters. Main completion writes a file before journal terminal delivery;
-it does not generate a usage conversation message. The native roster consumes
-these same counters. App-server token usage supplies separate context/exit displays
-and is never added to router cost totals.
+The native roster consumes these same counters without a completion-time file
+export or usage conversation message. App-server token usage supplies separate
+context/exit displays and is never added to router cost totals.
 
 Capture-owned [metrics](metrics.md) use terminal facts but retain independent
 calculation and persistence. Local token estimates are not provider usage.

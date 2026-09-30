@@ -1,49 +1,13 @@
-# Provider usage reporting
+# Provider usage accounting
 
-## REQ-USAGE-001 — Per-thread accounting and usage files
-
-### Report delivery
-
-An eligible main completion updates a Markdown token-usage file without adding a
-conversation message. Unavailable usage is reported as `n/a` in that file with an
-incomplete-usage explanation. Child completion does not update the main report.
-
-The report is a Markdown table in the system temporary directory, using the Codex
-thread ID as the stable file identity across router restarts. The wrapper reports
-written file paths on exit. No usage line or table is added to the conversation.
-
-The file reports aggregate router-session usage since router startup, not the entire
-persisted Codex conversation; restart does not reconstruct prior provider usage.
-Partial observations and unavailable pricing stay explicit in the file.
-
-The table has one row per proven agent
-and a `Total` row under the same `Router session usage` heading. Columns are `Agent`, `Role`, `Model`, `Input (cache hit)`, `Cache write`,
-`Output`, `Reasoning`, `Input cost (cached + uncached)`, `Output cost`, `Total cost`, and
-`Missing usage`. Missing usage counts forwarded responses without usable terminal usage, not
-missing tokens. Affected agent rows and the total are labeled `partial`; their numbers and
-cache-hit percentages cover only observed usage. The report states that missing usage is excluded.
-Counts use compact decimal units, such as `149K`, `1.4M`, and `1.2B`. Input includes its
-cache-hit percentage; the total percentage is weighted by input tokens, not averaged
-across agents. Input cost displays `$a+$b=$c`, with cached cost first and uncached cost
-second. Costs are in USD. Child roles come from explicit native spawn arguments matched to
-successful spawn results and the child's proven parent and canonical identity. Retained role
-evidence survives router restart and does not depend on the parent remaining live. Missing or
-conflicting role evidence is `n/a`, never inferred from the agent's name. Ordinary forks
-must not reuse inherited spawn evidence to assign roles to their own children.
-Model labels append `fast` for effective `fast` or `priority` usage, such as
-`gpt-5.6-sol fast`; a provider-reported downgrade to `default` has no suffix.
-Model or tier switches retain the distinct observed labels and original per-response pricing.
-Intermediate client-tool responses and failed or incomplete responses do not update the file.
-Completion eligibility is defined by [REQ-JOURNAL-001](journal.md).
+## REQ-USAGE-001 — Per-thread accounting and reference costs
 
 ### Accounting and incomplete evidence
 
 JSON and streaming responses use the same cumulative provider-authoritative per-thread
-counts. Main combines only proven descendants in its selected workspace with its own row;
-unrelated threads and ordinary forks' source trees are excluded. Missing child usage or
-unavailable tree evidence must not produce an apparently complete aggregate. A missing main
-usage total likewise leaves its row and the aggregate unavailable while retaining known child rows.
-Intermediate responses contribute without file updates. Thread accounting remains separate;
+counts. The native roster consumes these totals without adding usage messages to the
+conversation. Main completion and wrapper exit do not write Markdown usage files.
+Thread accounting remains separate from capture-owned [metrics](metrics.md);
 compaction and routing-session changes do not reset totals. Repeated terminal observations
 within one request count once. Totals remain in memory until router shutdown without a
 lifetime thread-count ceiling. Arithmetic overflow makes the affected total unavailable.
@@ -60,9 +24,11 @@ to later totals without producing their own notices.
 ### Reference pricing
 
 Cost estimates use built-in reference list API prices, not subscription
-rates or live billing quotes. No pricing fetch is required; the Markdown file is independent of terminal rendering. Each response is priced using its effective provider-request model, service
-tier, and input size before accumulation, so model switches and long-context rates do not reprice
-earlier responses. OpenAI long-context rates begin above 272,000 input tokens, not at that exact count. Grok 4.6 long-context rates begin at 200,000 input tokens.
+rates or live billing quotes. No pricing fetch is required. Each response is priced
+using its effective provider-request model, service tier, and input size before
+accumulation, so model switches and long-context rates do not reprice earlier responses.
+OpenAI long-context rates begin above 272,000 input tokens, not at that exact count.
+Grok 4.6 long-context rates begin at 200,000 input tokens.
 The terminal provider `service_tier` takes precedence over the request, including a downgrade
 from `priority` or `fast` to `default`. These two Fast aliases share model-specific reference
 rates; a blanket multiplier MUST NOT be applied to every model. When the response omits the tier,
@@ -85,21 +51,18 @@ GPT-6 Sol's 10% rate.
 Cached input is subtracted from ordinary input; reasoning is included in output and MUST NOT be
 charged again. Optional `cache_write_tokens` are part of uncached input, not additional input
 tokens. For models with published cache-write rates, their premium is included in the uncached
-input cost cell. An omitted cache-write field is zero for older providers; explicit null,
+input cost. An omitted cache-write field is zero for older providers; explicit null,
 invalid, or contradictory evidence is not known zero. Unknown model/service-tier pricing
-or inconsistent usage makes the affected row's cost cells `n/a` and its aggregate cost
-unavailable, without hiding known token counts or presenting a partial cost as complete.
-The report explains overlapping token categories, reference pricing, the router-lifetime
-boundary, and unavailable estimates. Root accounting is not mutated when rendering the
-tree total. This is file-based accounting, not a change to capture-owned metrics exports.
+or inconsistent usage makes the affected thread's cost unavailable, without hiding known
+token counts or presenting a partial cost as complete. Display behavior belongs to
+[activity display](activity_display.md).
 
 Acceptance:
 
-1. Eligible main completion updates the Markdown per-agent table without conversation
-   commentary; child, intermediate, failed, and incomplete responses do not update it.
-2. Cache-hit percentages and split input cost reflect observed provider usage. Pricing
-   remains per response across model and tier switches, without double-charging cached
-   input or reasoning.
+1. Main and child completion preserve usage accounting and response delivery without
+   writing Markdown usage files or adding usage commentary.
+2. Pricing remains per response across model and tier switches, without double-charging
+   cached input or reasoning.
 3. Missing usage remains explicit after later successes, compaction, and session remapping.
-   Unavailable evidence is `n/a`, never inferred zero; restart begins a new accounting window.
-4. Tree totals include only proven descendants and leave per-thread counters unchanged.
+   Unavailable evidence is never inferred zero; restart begins a new accounting window.
+4. Per-thread counters exclude other threads, including descendants and fork sources.

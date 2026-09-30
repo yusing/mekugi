@@ -13,13 +13,8 @@ import (
 type threadUsage struct {
 	mu      sync.Mutex
 	threads map[string]*threadUsageTotal
-	turns   map[usageTurnKey]*threadUsageTotal
 	closed  bool
 }
-
-type usageTurnKey struct{ thread, turn string }
-
-const maxTrackedUsageTurns = 4096
 
 type threadUsageTotal struct {
 	cost         tokenCost
@@ -39,7 +34,6 @@ type threadUsageObservation struct {
 	openCodePrice *openCodePrice
 	serviceTier   string
 	thread        string
-	turnID        string
 }
 
 func newThreadUsage() *threadUsage {
@@ -59,7 +53,6 @@ func (o *threadUsageObservation) observe(counts tokenCounts) {
 	o.once.Do(func() {
 		tier := cmp.Or(counts.ServiceTier, o.serviceTier)
 		o.totals.add(o.thread, o.model, o.reasoning, tier, counts, o.conflicted, o.openCodePrice)
-		o.totals.addTurn(o.thread, o.turnID, o.model, o.reasoning, tier, counts, o.conflicted, o.openCodePrice)
 	})
 }
 
@@ -138,54 +131,11 @@ func usageTokenCost(model, serviceTier string, counts tokenCounts, price *openCo
 	return estimateTokenCost(model, serviceTier, counts)
 }
 
-func (u *threadUsage) observationForTurn(thread, metadataThread, turnID, model, tier string) *threadUsageObservation {
-	observation := u.observation(thread, metadataThread, model, tier)
-	observation.turnID = turnID
-	return observation
-}
-
-func (u *threadUsage) addTurn(thread, turn, model, reasoning, tier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
-	if u == nil || thread == "" || turn == "" || len(thread) > maxCommentaryPublicationBytes || len(turn) > maxCommentaryPublicationBytes {
-		return
-	}
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	if u.closed {
-		return
-	}
-	if u.turns == nil {
-		u.turns = make(map[usageTurnKey]*threadUsageTotal)
-	}
-	key := usageTurnKey{thread, turn}
-	total := u.turns[key]
-	if total == nil {
-		// Never evict a tracked turn and later revive it with a partial total.
-		if len(u.turns) >= maxTrackedUsageTurns {
-			return
-		}
-		total = &threadUsageTotal{complete: true, cost: tokenCost{known: true}}
-		u.turns[key] = total
-	}
-	addThreadUsageTotal(total, model, reasoning, tier, counts, conflicted, price)
-}
-
 func usageTotalReport(total *threadUsageTotal) (tokenUsageReport, bool) {
 	if total == nil || !total.complete {
 		return tokenUsageReport{}, false
 	}
 	return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage}, true
-}
-
-func (u *threadUsage) turnSnapshot(thread, turn string) (tokenUsageReport, bool) {
-	if u == nil || turn == "" {
-		return tokenUsageReport{}, false
-	}
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	if u.closed {
-		return tokenUsageReport{}, false
-	}
-	return usageTotalReport(u.turns[usageTurnKey{thread, turn}])
 }
 
 func (u *threadUsage) snapshot(thread string) (tokenUsageReport, bool) {
@@ -223,107 +173,9 @@ func (u *threadUsage) close() {
 	defer u.mu.Unlock()
 	u.closed = true
 	clear(u.threads)
-	clear(u.turns)
 }
 
-func (t *mekugiResponseTransform) threadUsageCounts() (tokenUsageReport, bool) {
-	if t.usageTracker == nil {
-		return tokenUsageReport{}, false
-	}
-	return t.usageTracker.totals.snapshot(t.usageTracker.thread)
-}
-
-// completionUsageReport consolidates only proven descendants. Usage itself stays
-// keyed by transport thread, independent of presentation names and routing sessions.
-func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, bool) {
-	if t.subagentTurn || t.usageTracker == nil {
-		return tokenUsageReport{}, false
-	}
-	report, observed := t.threadUsageCounts()
-	if !observed {
-		report.Incomplete = true
-	}
-	rows := []agentTokenUsage{{agent: "/root", role: "main", report: report}}
-	report.rows = &rows
-	report.model = ""
-
-	turn, ok := t.usageTracker.totals.turnSnapshot(t.usageTracker.thread, t.usageTracker.turnID)
-	if !ok {
-		turn.Incomplete = true
-	}
-	report.turn = &turn
-
-	if t.proxy != nil && t.journalAvailable {
-		journals := t.proxy.journals
-		release, err := journals.lockState(t.ctx)
-		if err != nil {
-			report.Incomplete = true
-			report.cost.known = false
-			return report, true
-		}
-		var children []threadJournal
-		read := func() error {
-			var err error
-			children, err = journals.descendants(t.proxy.replayStore, t.directory, t.usageTracker.thread)
-			return err
-		}
-		if t.proxy.replayStore != nil {
-			err = t.proxy.replayStore.locked(t.ctx, read)
-		} else {
-			err = read()
-		}
-		release()
-		if err != nil {
-			report.Incomplete = true
-			report.cost.known = false
-			return report, true
-		}
-		for _, child := range children {
-			counts, ok := t.usageTracker.totals.snapshot(child.Thread)
-			if !ok {
-				counts.Incomplete = true
-			}
-			role := child.SpawnRole
-			if role == "" {
-				role = "n/a"
-			}
-			rows = append(rows, agentTokenUsage{agent: child.Author, role: role, report: counts})
-			if ^uint64(0)-report.missingUsage < counts.missingUsage {
-				report.Incomplete = true
-			} else {
-				report.missingUsage += counts.missingUsage
-			}
-			report.cost.add(counts.cost)
-			if !ok || report.Incomplete || !addTokenUsageCounts(&report.tokenCounts, counts.tokenCounts) {
-				report.Incomplete = true
-				report.cost.known = false
-			}
-		}
-	}
-	return report, true
-}
-
-func addTokenUsageCounts(sum *tokenCounts, next tokenCounts) bool {
-	for _, pair := range []struct {
-		dst *uint64
-		add uint64
-	}{
-		{&sum.InputTokens, next.InputTokens},
-		{&sum.UncachedInputTokens, next.UncachedInputTokens},
-		{&sum.CacheWriteTokens, next.CacheWriteTokens},
-		{&sum.OutputTokens, next.OutputTokens},
-		{&sum.ReasoningTokens, next.ReasoningTokens},
-	} {
-		if ^uint64(0)-*pair.dst < pair.add {
-			return false
-		}
-		*pair.dst += pair.add
-	}
-	sum.Inconsistent = sum.Inconsistent || next.Inconsistent
-	return true
-}
-
-// Shared by the token report and live roster; pricing always uses the bare model.
+// Model labels include reasoning and service tier; pricing uses the bare model.
 func usageModelLabel(model, reasoning, tier string) string {
 	label := strings.TrimSpace(model + " " + reasoning)
 	if label != "" && (tier == "fast" || tier == "priority") {

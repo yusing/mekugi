@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -230,14 +229,6 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 	}
 	if provider.childRequests != 2 {
 		t.Fatalf("child provider requests = %d, want live update then a natural final answer without another request", provider.childRequests)
-	}
-	paths := proxy.tokenMetricPaths()
-	if len(paths) != 1 {
-		t.Fatalf("main completion metric paths = %q", paths)
-	}
-	markdown, err := os.ReadFile(paths[0])
-	if err != nil || !strings.Contains(string(markdown), "| journal_child |") || !strings.Contains(string(markdown), "| Total |") {
-		t.Fatalf("main metrics omitted native child usage: %q, %v", markdown, err)
 	}
 	if !childLiveUpdate || !strings.Contains(stdout.String(), "Journal flush ") {
 		t.Fatal("native consumer did not display distinct live updates and terminal flushes")

@@ -48,7 +48,7 @@ linked, not copied.
 - [`REQ-NOTICES-001`](notices.md): native diagnostic delivery and recovery
 - [`REQ-ACTIVITY-001`](activity.md): observed tool classification
 - [`REQ-ACTIVITY-DISPLAY-001`](activity_display.md): native operation rows and agent feeds
-- [`REQ-USAGE-001`](usage.md): per-thread provider accounting and usage files
+- [`REQ-USAGE-001`](usage.md): per-thread provider accounting and reference costs
 - [`REQ-READ-001`](read.md): authenticated raw-row reading and managed continuation
 - [`REQ-SYMBOL-001`](symbol.md): routed semantic symbol lookup with raw source rows
 - [`REQ-INSPECT-001`](inspect.md): executable structural file inspection with numeric spans

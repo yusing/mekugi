@@ -354,10 +354,9 @@ func (a *requestAttempt) forward() error {
 		if a.mekugiTransform != nil {
 			a.usageTracker = a.mekugiTransform.usageTracker
 		} else if a.executor.mekugiCalls != nil && a.metadataValid {
-			a.usageTracker = a.executor.mekugiCalls.usage.observationForTurn(
+			a.usageTracker = a.executor.mekugiCalls.usage.observation(
 				a.threadID,
 				a.metadata.ThreadID,
-				a.metadata.TurnID,
 				a.request.model(),
 				usageServiceTier(a.request.fields["service_tier"]),
 			)

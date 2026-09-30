@@ -198,7 +198,7 @@ func TestLiveDiffJournalTerminalCompletesAfterTransformedDelivery(t *testing.T) 
 	}
 }
 
-func TestLiveDiffCompletionMetricsOnlyPersistForSuccessfulFinal(t *testing.T) {
+func TestLiveDiffCompletionOnlyForSuccessfulFinal(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		for _, scenario := range []string{"final", "tool-only", "failed"} {
 			t.Run(map[bool]string{false: "json", true: "sse"}[stream]+"/"+scenario, func(t *testing.T) {
@@ -206,7 +206,7 @@ func TestLiveDiffCompletionMetricsOnlyPersistForSuccessfulFinal(t *testing.T) {
 				transform, proxy, _, workspace := newMekugiTestTransform(t)
 				turnID := "usage-off-" + map[bool]string{false: "json", true: "sse"}[stream] + "-" + scenario
 				transform.shellTurnID = turnID
-				transform.usageTracker = proxy.usage.observationForTurn(transform.shellThreadID, transform.shellThreadID, turnID, "gpt-6-sol", "")
+				transform.usageTracker = proxy.usage.observation(transform.shellThreadID, transform.shellThreadID, "gpt-6-sol", "")
 				transform.observeResponseUsage(tokenCounts{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5})
 				auto, sub := newLiveDiffTurnTest(t, workspace, transform.shellThreadID)
 				proxy.autoLiveDiff = auto
@@ -298,9 +298,6 @@ func TestLiveDiffCompletionMetricsOnlyPersistForSuccessfulFinal(t *testing.T) {
 					requireLiveDiffTurnEvent(t, sub, "completed")
 				} else {
 					requireNoLiveDiffTurnEvent(t, sub)
-				}
-				if len(proxy.tokenMetricPaths()) != map[bool]int{true: 1, false: 0}[scenario == "final"] {
-					t.Fatalf("scenario %s persisted unexpected token metrics: %q", scenario, proxy.tokenMetricPaths())
 				}
 			})
 		}

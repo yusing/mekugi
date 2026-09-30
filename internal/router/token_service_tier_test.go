@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -117,32 +117,26 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 					if strings.Contains(output.String(), "Router session usage") {
 						t.Fatalf("completion emitted usage commentary: %s", output.String())
 					}
-					paths := proxy.tokenMetricPaths()
-					if len(paths) != 1 {
-						t.Fatalf("completion metric paths = %q", paths)
+					report, ok := proxy.usage.snapshot("thread-1")
+					want := 0.0
+					priced := tc.want != "n/a"
+					if priced {
+						var err error
+						want, err = strconv.ParseFloat(strings.TrimPrefix(tc.want, "$"), 64)
+						if err != nil {
+							t.Fatal(err)
+						}
 					}
-					markdown, err := os.ReadFile(paths[0])
-					if err != nil {
-						t.Fatal(err)
-					}
-					metrics := string(markdown)
-					if !strings.Contains(metrics, "| "+modelLabel+" |") {
-						t.Fatalf("missing tier-aware model label %q: %s", modelLabel, metrics)
-					}
-					want := tc.want
 					if cacheWrites != 0 {
-						switch want {
-						case "$0.9120":
-							want = "$0.9520"
-						case "$0.4560":
-							want = "$0.4760"
-						}
-						if !strings.Contains(metrics, "| 20K |") {
-							t.Fatalf("lost cache writes: %s", metrics)
+						if want == .912 {
+							want = .952
+						} else if want == .456 {
+							want = .476
 						}
 					}
-					if !strings.Contains(metrics, want+" |") || !strings.Contains(metrics, "100K (") {
-						t.Fatalf("metrics=%s", metrics)
+					if !ok || report.model != modelLabel || report.InputTokens != 100_000 || report.CacheWriteTokens != cacheWrites ||
+						report.cost.known != priced || (priced && math.Abs(report.cost.cachedInput+report.cost.uncachedInput+report.cost.output-want) > 1e-10) {
+						t.Fatalf("tier-aware usage = %+v, ok=%v", report, ok)
 					}
 					requested := tc.requested
 					if requested == "fast" {
@@ -211,9 +205,8 @@ func TestTokenCostCacheWrites(t *testing.T) {
 				totals.observation("thread", "", tc.model, tc.tier).observe(counts)
 			}
 			report, ok := totals.snapshot("thread")
-			text := formatTokenUsageReport(report)
-			if !ok || report.InputTokens != 2*tc.input || report.CacheWriteTokens != 80_000 || !strings.Contains(text, "| 80K |") {
-				t.Fatalf("report=%s", text)
+			if !ok || report.InputTokens != 2*tc.input || report.CacheWriteTokens != 80_000 {
+				t.Fatalf("report=%+v", report)
 			}
 		})
 	}

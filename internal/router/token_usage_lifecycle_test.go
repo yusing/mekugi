@@ -9,7 +9,6 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -62,14 +61,6 @@ func TestTokenUsageManualSwitch(t *testing.T) {
 			}
 			if strings.Contains(out.String(), "Router session usage") {
 				t.Fatalf("completion exposed token metrics as commentary: %s", out.String())
-			}
-			paths := proxy.tokenMetricPaths()
-			if len(paths) != 1 {
-				t.Fatalf("main completion metric paths = %q", paths)
-			}
-			markdown, err := os.ReadFile(paths[0])
-			if err != nil || !strings.Contains(string(markdown), "$1.6208 |") || !strings.Contains(string(markdown), "300K (") {
-				t.Fatalf("saved metrics lost aggregate usage: %s, %v", markdown, err)
 			}
 		})
 	}
@@ -243,17 +234,6 @@ func TestTokenUsageGapRetainsObservedTotals(t *testing.T) {
 						wantReport := gap == "http-rejection" || gap == "failed-with-usage" || gap == "incomplete-with-usage"
 						if strings.Contains(out.String(), "Router session usage") {
 							t.Fatalf("completion emitted usage commentary: %s", out.String())
-						}
-						paths := proxy.tokenMetricPaths()
-						if len(paths) != 1 {
-							t.Fatalf("completion metric paths = %q", paths)
-						}
-						markdown, err := os.ReadFile(paths[0])
-						if err != nil {
-							t.Fatal(err)
-						}
-						if strings.Contains(string(markdown), "Usage incomplete") == wantReport {
-							t.Fatalf("unexpected final metrics: %s", markdown)
 						}
 						got, valid := proxy.usage.snapshot("thread-1")
 						wantInput, wantMissing := uint64(200), uint64(1)

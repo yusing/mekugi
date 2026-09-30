@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"maps"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -686,13 +685,14 @@ func TestJournalListContinuationCapturesNaturalAnswer(t *testing.T) {
 	}
 }
 
-func TestJournalEmptyFinishPersistsTokenMetricsSilently(t *testing.T) {
+func TestJournalEmptyFinishRetainsUsageWithoutExport(t *testing.T) {
 	for _, scenario := range []string{"complete", "prior-gap", "missing-current"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(scenario+"/"+map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-				t.Setenv("TMPDIR", t.TempDir())
+				directory := t.TempDir()
+				t.Setenv("TMPDIR", directory)
 
-				// A previous accepted request with missing usage permanently invalidates totals.
+				// Missing usage remains a gap while subsequent observed usage is retained.
 				proxy := newManagedMekugiProxy(t)
 				if scenario == "prior-gap" {
 					proxy.usage.observation("thread-1", "", "gpt-6-astra", "").finish()
@@ -726,26 +726,22 @@ func TestJournalEmptyFinishPersistsTokenMetricsSilently(t *testing.T) {
 				if len(provider.forwarded) != 1 {
 					t.Fatalf("finish issued %d provider requests; want 1", len(provider.forwarded))
 				}
+				assertNoLegacyTokenMetrics(t, directory)
+				report, observed := proxy.usage.snapshot("thread-1")
+				wantInput, wantMissing := uint64(20), uint64(0)
+				if scenario == "prior-gap" {
+					wantMissing = 1
+				} else if scenario == "missing-current" {
+					wantInput, wantMissing = 100, 1
+				}
+				if !observed || report.InputTokens != wantInput || report.missingUsage != wantMissing {
+					t.Fatalf("empty completion usage = %+v, observed=%v", report, observed)
+				}
 				if strings.Contains(output.String(), "Journal flush") {
 					t.Fatal("empty journal emitted a flush")
 				}
 				if strings.Contains(output.String(), "Router session usage") || strings.Contains(output.String(), "Usage incomplete") {
 					t.Fatalf("empty finish exposed metrics in completion commentary: %s", output.Bytes())
-				}
-				paths := proxy.tokenMetricPaths()
-				if len(paths) != 1 {
-					t.Fatalf("empty finish metric paths = %q", paths)
-				}
-				markdown, err := os.ReadFile(paths[0])
-				if err != nil {
-					t.Fatal(err)
-				}
-				if scenario == "complete" {
-					if !strings.Contains(string(markdown), "20 (60.0%)") {
-						t.Fatalf("incorrect saved metrics: %s", markdown)
-					}
-				} else if !strings.Contains(string(markdown), "Usage incomplete") {
-					t.Fatalf("usage gap missing from saved metrics: %s", markdown)
 				}
 			})
 		}

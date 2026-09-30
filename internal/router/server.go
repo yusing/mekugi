@@ -132,9 +132,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			if debug != nil {
 				paths = append(paths, debug.paths...)
 			}
-			if mekugiCalls != nil {
-				paths = append(paths, mekugiCalls.tokenMetricPaths()...)
-			}
 			if len(paths) != 0 {
 				artifacts(paths)
 			}

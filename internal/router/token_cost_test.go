@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"math"
-	"os"
 	"strings"
 	"testing"
 )
@@ -117,22 +116,6 @@ func TestThreadCostsKeepPerResponseModelsAndTiers(t *testing.T) {
 	}
 }
 
-func TestTokenUsageReportTables(t *testing.T) {
-	counts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 40_000, OutputTokens: 30_000, ReasoningTokens: 20_000}
-	report := tokenUsageReport{tokenCounts: counts, cost: estimateTokenCost("gpt-6-astra", "", counts)}
-	got := formatTokenUsageReport(report)
-	want := "| main | main | n/a | 100K (60.0%) | 0 | 30K | 20K | $0.0600+$0.4000=$0.4600 | $1.5000 | $1.9600 |"
-	if !strings.Contains(got, want) || !strings.Contains(got, "Router session API estimates since router startup") {
-		t.Fatalf("report:\n%s", got)
-	}
-	report.cost.known = false
-	got = formatTokenUsageReport(report)
-	if strings.Contains(got, "$") || !strings.Contains(got, "| n/a | n/a | n/a |") ||
-		!strings.Contains(got, "100K (60.0%)") || !strings.Contains(got, "Cost unavailable:") {
-		t.Fatalf("unavailable report:\n%s", got)
-	}
-}
-
 func TestFormatUsageTokens(t *testing.T) {
 	for value, want := range map[uint64]string{0: "0", 12: "12", 123: "123", 1234: "1.2K", 149000: "149K", 1234567: "1.2M", 1200000000: "1.2B", ^uint64(0): "18446744073.7B"} {
 		if got := formatUsageTokens(value); got != want {
@@ -141,7 +124,7 @@ func TestFormatUsageTokens(t *testing.T) {
 	}
 }
 
-func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
+func TestTokenCostIncludesCompactionAcrossTransports(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		stream      bool
@@ -228,29 +211,14 @@ func TestTokenCostReportIncludesCompactionAcrossTransports(t *testing.T) {
 				if strings.Contains(output.String(), "Router session usage") {
 					t.Fatalf("completion emitted usage commentary: %s", output.String())
 				}
-				paths := proxy.tokenMetricPaths()
-				if len(paths) != 1 {
-					t.Fatalf("completion metric paths = %q", paths)
-				}
-				markdown, err := os.ReadFile(paths[0])
-				if err != nil {
-					t.Fatal(err)
-				}
-				rendered := string(markdown)
-				wantCost := "$2.2400"
+				report, ok := proxy.usage.snapshot("thread-1")
+				wantCost := 2.24
 				if tc.serviceTier != "" {
-					wantCost = "$4.4800"
+					wantCost = 4.48
 				}
-				if tc.invalid != "" {
-					wantCost = "n/a"
-					if strings.Contains(rendered, "$") || !strings.Contains(rendered, "Cost unavailable:") {
-						t.Fatal("inconsistent provider usage was priced", rendered)
-					}
-				}
-				for _, want := range []string{"400K (", wantCost + " |"} {
-					if !strings.Contains(rendered, want) {
-						t.Fatalf("missing %q from %s", want, rendered)
-					}
+				if !ok || report.InputTokens != 400_000 || report.cost.known != (tc.invalid == "") ||
+					(tc.invalid == "" && math.Abs(report.cost.cachedInput+report.cost.uncachedInput+report.cost.output-wantCost) > 1e-10) {
+					t.Fatalf("compaction usage = %+v, ok=%v", report, ok)
 				}
 				if !strings.Contains(output.String(), "No files were changed.") {
 					t.Fatal("provider final text was filtered")

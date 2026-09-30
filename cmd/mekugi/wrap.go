@@ -89,11 +89,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	var debugPaths []string
 	defer func() {
 		for _, path := range debugPaths {
-			if strings.HasPrefix(filepath.Base(path), "mekugi-token-metrics-") && strings.HasSuffix(path, ".md") {
-				fmt.Fprintf(os.Stderr, "mekugi token metrics: %s\n", path)
-			} else {
-				fmt.Fprintf(os.Stderr, "mekugi debug: %s\n", path)
-			}
+			fmt.Fprintf(os.Stderr, "mekugi debug: %s\n", path)
 		}
 	}()
 	go func() {

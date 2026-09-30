@@ -292,9 +292,6 @@ func TestNonJournalAnswerStreamsWithoutUsageCommentary(t *testing.T) {
 			if !available || counts.tokenCounts != (tokenCounts{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3}) {
 				t.Fatalf("provider usage changed: %+v, available=%v", counts, available)
 			}
-			if paths := proxy.tokenMetricPaths(); len(paths) != map[bool]int{false: 1, true: 0}[child] {
-				t.Fatalf("child=%t token metric paths = %q", child, paths)
-			}
 		})
 	}
 }
