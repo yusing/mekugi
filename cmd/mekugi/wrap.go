@@ -44,6 +44,7 @@ func runWrap(routerArgs, args []string) int {
 }
 
 func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr error) {
+	args = expandReasoningShortcuts(args)
 	headless := len(args) > 0 && args[0] == "headless"
 	if headless {
 		args = args[1:]
@@ -220,6 +221,31 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		return 1, err
 	}
 	return 0, nil
+}
+
+// Reasoning shortcuts are session-local Codex config overrides. Preserve option
+// operands and everything after -- rather than interpreting prompt contents.
+func expandReasoningShortcuts(args []string) []string {
+	result := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			return append(result, args[i:]...)
+		}
+		switch arg {
+		case "--low", "--medium", "--high", "--xhigh", "--max", "--ultra":
+			result = append(result, "-c", fmt.Sprintf("model_reasoning_effort=%q", strings.TrimPrefix(arg, "--")))
+		case "-c", "--config", "--enable", "--disable", "-i", "--image", "-m", "--model", "-p", "--profile", "-s", "--sandbox", "-a", "--ask-for-approval", "-C", "--cd", "--add-dir":
+			result = append(result, arg)
+			if i+1 < len(args) {
+				i++
+				result = append(result, args[i])
+			}
+		default:
+			result = append(result, arg)
+		}
+	}
+	return result
 }
 
 // execTrackHelper is the installed command-segment helper beside this

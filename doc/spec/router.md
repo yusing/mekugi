@@ -13,6 +13,11 @@ selection in config and profiles is overridden without modifying configuration.
 Provider-selection arguments are rejected. Mekugi flags precede `codex`; subsequent
 noninteractive arguments remain intact, including subcommands and `--` delimiters.
 Interactive terminal arguments follow the native client mapping below.
+
+After `codex`, `--low`, `--medium`, `--high`, `--xhigh`, `--max`, and `--ultra`
+expand to invocation-local `model_reasoning_effort` config overrides. They may
+also follow `headless`. Option values and arguments after `--` remain literal;
+the selected model determines which reasoning efforts it supports.
 The wrapper also enforces `include_collaboration_mode_instructions=false` in the
 final command's invocation-only config layer, after user overrides and before `--`.
 This disables Codex's collaboration-mode instruction injection without editing config files.
