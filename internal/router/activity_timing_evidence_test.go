@@ -44,6 +44,7 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 	item.Status, item.ExitCode, item.AggregatedOutput = "failed", new(1), new("")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
 	awaitMain(t, u, "skipped")
+	u.finishCommandSegments() // Normal shutdown drains asynchronous retained reports.
 	store, err = openMekugiReplayStore(directory)
 	if err != nil {
 		t.Fatal(err)
