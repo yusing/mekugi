@@ -81,6 +81,23 @@ func (u *appServerUI) sessionBusy() bool {
 	return u.turn != "" || u.starting || u.compactRequest || u.submission.text != "" || u.settingsPending || u.shellPending.text != "" || len(u.unsent)+len(u.queued) > 0 || u.reset.active()
 }
 
+// A queued compact is a local action, not Main's running turn. Return waiting
+// input for retry without interrupting that turn or an in-flight submission.
+func (u *appServerUI) cancelQueuedCompact() bool {
+	if u.manualCompact || u.compactRequest {
+		return false
+	}
+	isCompact := func(d composerDraft) bool { return d.text == "/compact" }
+	if !slices.ContainsFunc(u.unsent, isCompact) && !slices.ContainsFunc(u.queued, isCompact) {
+		return false
+	}
+	u.continueAfterCompact = false
+	u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
+	u.unsent, u.queued = nil, nil
+	u.setNotice("Queued compaction cancelled · input restored · Main continues", false)
+	return true
+}
+
 // Detach presentation only after the new host thread exists. Saved threads,
 // journal evidence, and running children remain owned by Codex.
 func (u *appServerUI) clearSessionPresentation() error {

@@ -988,7 +988,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.pasteImage()
 	case 3:
 		// As in Codex, Ctrl-C first clears the draft (undoable with Ctrl+Z),
-		// then interrupts the active turn, and otherwise quits like /quit.
+		// then cancels queued compaction, interrupts the active turn, or quits.
 		if u.draft != "" {
 			u.deleteDraftRange(0, len(u.draft))
 			u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again quits", false)
@@ -1000,7 +1000,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			}
 			return false, nil
 		}
-		if u.turn != "" || u.starting || u.submission.text != "" || len(u.unsent)+len(u.queued) > 0 {
+		if u.cancelQueuedCompact() {
+			return false, nil
+		}
+		if u.turn != "" || u.starting || u.submission.text != "" || u.compactRequest || u.manualCompact || u.continueAfterCompact || len(u.unsent)+len(u.queued) > 0 {
 			return false, u.keyboardInterrupt()
 		}
 		if u.interruptLocked {
@@ -1558,6 +1561,12 @@ func (u *appServerUI) applyObservedActivity() {
 
 // interruptTurn preserves the composer while interrupting the active turn.
 func (u *appServerUI) interruptTurn() error {
+	if u.manualCompact || u.compactRequest || u.continueAfterCompact {
+		// Restore waiting input when cancellation is admitted, even if Codex
+		// completes compaction successfully before acknowledging the interrupt.
+		u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
+		u.unsent, u.queued = nil, nil
+	}
 	u.continueAfterCompact = false
 	if u.turn == "" {
 		if u.starting || u.submission.text != "" {

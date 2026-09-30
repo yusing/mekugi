@@ -422,7 +422,7 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 	case u.manualCompact:
 		header = "Waiting for context compaction"
 	case len(u.unsent) > 0 && u.unsent[0].text == "/compact":
-		header = "Compaction queued after this turn · ctrl+c restores input"
+		header = "Compaction queued after this turn · ctrl+c cancels; Main continues"
 	case u.turn != "" || u.starting:
 	case u.settingsPending || u.resumeClearEffort:
 		header = "Sending when settings apply"

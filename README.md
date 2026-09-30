@@ -306,7 +306,9 @@ Mekugi differs in these ways:
   when busy. After successful queued compaction, waiting input runs next; without
   waiting input, Mekugi sends a visible continuation message to resume the task.
   Idle compaction stays idle, and failure or interruption never automatically
-  continues it. `/clear` starts a fresh session and clears its transcript; it is
+  continues it. Ctrl+C cancels queued compaction and restores waiting input
+  without interrupting Main; once compaction starts, it interrupts only that
+  compaction. `/clear` starts a fresh session and clears its transcript; it is
   available while idle and does not delete saved sessions or filesystem changes.
   Interrupt returns unsent input to the composer without automatically resending
   it. Interrupting an uncommitted first message leaves an empty transcript.

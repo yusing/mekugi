@@ -1,0 +1,16 @@
+
+
+
+
+
+
+
+
+
+
+› /compact  Compact context, or queue compaction while busy                     
+
+  ↑/↓ navigate · enter select · tab complete · esc close
+╭─ ◐ Working 0s · Queued compaction cancelled · input restored · Main contin… ─╮
+│ ❯ /compact                                                                   │
+╰───────────────────────────────────────────────── snapshot-model (high) • 0% ─╯

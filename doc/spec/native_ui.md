@@ -714,8 +714,11 @@ text batches, and later input waits until compaction finishes. Successful busy-q
 compaction continues with waiting input, or sends one visible task-continuation
 message if none is waiting. Idle `/compact` stays idle. Failure or interruption
 cancels automatic continuation, including an interrupt racing successful completion.
-Interrupt restores a still-queued command along with other unsent input. Host
-compaction progress and failures remain visible.
+With an empty composer, Ctrl+C cancels a still-queued command and restores it
+along with other waiting input without interrupting Main. Once compaction is
+starting or running, Ctrl+C cancels that compaction, restores waiting input, and
+cancels its automatic continuation, not a later Main turn. Outside compact cancellation, normal Main interruption
+is unchanged. Host compaction progress and failures remain visible.
 `/clear` clears Main, Activity, and journal presentation and starts a fresh Codex
 session with the current workspace and model settings. It is unavailable while a
 task or submission is in progress. Existing saved threads and filesystem changes

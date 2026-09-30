@@ -143,15 +143,109 @@ func TestAppServerCompactQueuedRejectedAfterCompletionDoesNotContinue(t *testing
 	}
 }
 
-func TestAppServerCompactQueuedInterruptBeforeRunRestoresCommand(t *testing.T) {
+func TestAppServerCompactQueuedCancelBeforeRunPreservesMain(t *testing.T) {
+	for _, locked := range []bool{false, true} {
+		t.Run(fmt.Sprint("locked=", locked), func(t *testing.T) {
+			u, w := newAppServerTestUI()
+			u.interruptLocked = locked
+			appServerTestTurn(t, u, "work")
+			appServerTestKeys(t, u, "/compact\r")
+			appServerTestKeys(t, u, "after compact\r")
+			appServerTestKeys(t, u, "next turn\t\x03")
+			if w.Len() != 0 || u.turn != "work" || u.interrupting != "" || u.interruptBeforeStart || u.draft != "/compact\nafter compact\nnext turn" || u.continueAfterCompact || len(u.unsent)+len(u.queued) != 0 {
+				t.Fatalf("queued cancellation touched Main or lost input: wire=%q draft=%q turn=%q", w.String(), u.draft, u.turn)
+			}
+			appServerTestTurnEnd(t, u, "work", "completed")
+			if w.Len() != 0 {
+				t.Fatalf("cancelled compaction ran after Main ended: %s", w.String())
+			}
+		})
+	}
+}
+
+func TestAppServerCompactQueuedCancelPreservesStartingMain(t *testing.T) {
+	u, w := newAppServerTestUI()
+	appServerTestKeys(t, u, "task\r")
+	start := appServerOneRequest(t, w, "turn/start", "task")
+	appServerTestKeys(t, u, "/compact\r\x03")
+	if w.Len() != 0 || !u.starting || u.interruptBeforeStart || u.submission.text != "task" || u.draft != "/compact" {
+		t.Fatalf("compact cancellation cancelled the pending Main start: wire=%q draft=%q", w.String(), u.draft)
+	}
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"work"}}}`, start.ID))
+	appServerTestTurn(t, u, "work")
+	if w.Len() != 0 || u.turn != "work" {
+		t.Fatalf("compact cancellation interrupted newly started Main: %s", w.String())
+	}
+}
+
+func TestAppServerCompactQueuedCancelPreservesInFlightSteer(t *testing.T) {
+	u, w := newAppServerTestUI()
+	appServerTestTurn(t, u, "work")
+	appServerTestKeys(t, u, "steer\r")
+	steer := appServerOneRequest(t, w, "turn/steer", "steer")
+	appServerTestKeys(t, u, "waiting steer\r/compact\r\x03")
+	if w.Len() != 0 || u.interrupting != "" || u.submission.text != "steer" || u.draft != "waiting steer\n/compact" {
+		t.Fatalf("compact cancellation touched the in-flight steer: wire=%q draft=%q", w.String(), u.draft)
+	}
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"work"}}`, steer.ID))
+	appServerTestUserMessage(t, u, "steer-item", steer.Params.ClientUserMessageID, "steer")
+	appServerTestTurnEnd(t, u, "work", "completed")
+	if w.Len() != 0 || u.draft != "waiting steer\n/compact" {
+		t.Fatalf("cancelled input was resent: wire=%q draft=%q", w.String(), u.draft)
+	}
+}
+
+func TestAppServerCompactCancelThenNormalMainInterrupt(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "/compact\r\x03")
-	r := appServerOneRequest(t, w, "turn/interrupt", "")
+	if w.Len() != 0 {
+		t.Fatal("compact cancellation interrupted Main")
+	}
+	appServerTestKeys(t, u, "\x03") // Clear the restored command first.
+	if w.Len() != 0 || u.draft != "" {
+		t.Fatal("clearing restored command interrupted Main")
+	}
+	appServerTestKeys(t, u, "\x03")
+	appServerOneRequest(t, w, "turn/interrupt", "")
+	if u.interrupting != "work" {
+		t.Fatal("normal Main interruption was not preserved")
+	}
+}
+
+func TestAppServerCompactCancelCompletionBeforeAckDoesNotQuitOrContinue(t *testing.T) {
+	u, w := newAppServerTestUI()
+	r := queueBusyCompact(t, u, w)
+	appServerTestTurn(t, u, "compact-turn")
+	appServerTestTurnEnd(t, u, "compact-turn", "completed")
+	appServerTestKeys(t, u, "\x03")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
-	appServerTestTurnEnd(t, u, "work", "interrupted")
-	if w.Len() != 0 || u.draft != "/compact" || u.continueAfterCompact {
-		t.Fatalf("cancelled queue restarted: wire=%q draft=%q", w.String(), u.draft)
+	if w.Len() != 0 || u.continueAfterCompact || u.interruptBeforeStart {
+		t.Fatalf("completion racing cancellation continued task: %s", w.String())
+	}
+	appServerTestKeys(t, u, "new task\r")
+	appServerOneRequest(t, w, "turn/start", "new task")
+	appServerTestTurn(t, u, "new-work")
+	if w.Len() != 0 || u.interrupting != "" {
+		t.Fatal("old compaction cancellation interrupted the new Main turn")
+	}
+}
+
+func TestUISnapshotNativeCompactQueuedCancel(t *testing.T) {
+	u, w := newAppServerTestUI()
+	u.view.painter.Theme = livediff.DarkTheme
+	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
+	u.view.clock = u.clock
+	u.model, u.reasoningEffort = "snapshot-model", "high"
+	appServerTestTurn(t, u, "work")
+	appServerTestKeys(t, u, "/compact\r")
+	rows, _ := u.mainFrame(80, 16, 0)
+	assertNativeUISnapshot(t, "native-compact-queued", rows)
+	appServerTestKeys(t, u, "\x03")
+	rows, _ = u.mainFrame(80, 16, 0)
+	assertNativeUISnapshot(t, "native-compact-queued-cancel", rows)
+	if w.Len() != 0 {
+		t.Fatal("cancellation interrupted Main")
 	}
 }
 
@@ -182,6 +276,48 @@ func TestAppServerCompactQueuedInterruptDuringCompactionCancelsContinuation(t *t
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
 	if w.Len() != 0 || u.continueAfterCompact {
 		t.Fatalf("interrupt racing compaction completion restarted task: %s", w.String())
+	}
+}
+
+func TestAppServerCompactCancelRestoresWaitingInputDespiteSuccessfulCompletion(t *testing.T) {
+	for _, phase := range []string{"starting", "running", "completed-before-ack"} {
+		t.Run(phase, func(t *testing.T) {
+			u, w := newAppServerTestUI()
+			r := queueBusyCompact(t, u, w)
+			if phase == "running" {
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
+			}
+			if phase != "starting" {
+				appServerTestTurn(t, u, "compact-turn")
+			}
+			if phase == "completed-before-ack" {
+				appServerTestTurnEnd(t, u, "compact-turn", "completed")
+			}
+			appServerTestKeys(t, u, "waiting enter\rwaiting tab\t\x03")
+			if u.draft != "waiting enter\nwaiting tab" || len(u.unsent)+len(u.queued) != 0 || u.continueAfterCompact {
+				t.Fatalf("cancellation did not restore waiting input: draft=%q unsent=%+v queued=%+v", u.draft, u.unsent, u.queued)
+			}
+			if phase != "running" {
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
+			}
+			if phase == "starting" {
+				appServerTestTurn(t, u, "compact-turn")
+			}
+			if phase != "completed-before-ack" {
+				interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
+				appServerTestTurnEnd(t, u, "compact-turn", "completed")
+			}
+			if w.Len() != 0 || u.draft != "waiting enter\nwaiting tab" {
+				t.Fatalf("completion racing cancellation dispatched waiting input: wire=%q draft=%q", w.String(), u.draft)
+			}
+			appServerTestKeys(t, u, "\r")
+			appServerOneRequest(t, w, "turn/start", "waiting enter\nwaiting tab")
+			appServerTestTurn(t, u, "retry")
+			if w.Len() != 0 || u.interrupting != "" {
+				t.Fatal("compaction cancellation interrupted the retried input")
+			}
+		})
 	}
 }
 

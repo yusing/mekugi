@@ -1,0 +1,16 @@
+Mekugi dev • codex
+
+
+
+
+
+
+
+
+
+• Compaction queued after this turn · ctrl+c cancels; Main continues
+  ↳ /compact
+
+╭─ ◐ Working 0s ───────────────────────────────────────────────────────────────╮
+│ ❯                                                                            │
+╰───────────────────────────────────────────────── snapshot-model (high) • 0% ─╯
