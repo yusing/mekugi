@@ -1,0 +1,5 @@
+• Mekugi background storage cleanup inspected 2 managed records; reclaiming
+eligible inactive data in batches of at most 16 files.
+
+• Mekugi background storage cleanup reclaimed 579 bytes from 1 inactive sessions
+and 0 legacy records. Codex chats and workspace files are unchanged.

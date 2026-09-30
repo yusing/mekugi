@@ -25,13 +25,6 @@ type changeIndex struct {
 	Changes   map[string]trackedChange
 }
 
-// pendingChangeIndexWrite stays under store.lock. Maintenance refreshes its
-// encoding only when cleanup changes the pending index.
-type pendingChangeIndexWrite struct {
-	index changeIndex
-	data  []byte
-}
-
 type changeStream struct {
 	Name    string `json:",omitzero"`
 	Thread  string
@@ -151,11 +144,10 @@ func (s *mekugiReplayStore) writeChangeIndex(index changeIndex) (err error) {
 	if err != nil {
 		return err
 	}
-	pending := pendingChangeIndexWrite{index: index, data: data}
-	if err := s.maintainStorage(changeIndexName(index.Workspace, index.Namespace), int64(len(data)), false, &pending); err != nil {
+	if err := s.maintainStorage(changeIndexName(index.Workspace, index.Namespace), int64(len(data))); err != nil {
 		return err
 	}
-	return storageIOError(s.writeFile(changeIndexName(index.Workspace, index.Namespace), "changes-pending-", pending.data))
+	return storageIOError(s.writeFile(changeIndexName(index.Workspace, index.Namespace), "changes-pending-", data))
 }
 
 // reserveChange runs before evaluation, including private direct application.

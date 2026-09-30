@@ -84,7 +84,11 @@ consuming the managed-data allowance.
 Automatic retention removes Mekugi-owned data after 14 days without activity and reclaims the
 least recently active inactive sessions when a byte budget would be exceeded. Requests check
 space before exposing retained facts; the router attempts an age sweep on startup and then
-hourly in the background, outside request preparation. An age-sweep failure does not fail an
+hourly in the background, outside request preparation. Foreground publication never prunes:
+insufficient space queues a coalesced background pressure request and reports a capacity
+diagnostic without exposing unfinished evidence. Retrying persistence must not rerun the host
+operation. Background work notices pressure promptly without waiting for the next age sweep.
+An age-sweep failure does not fail an
 unrelated request and is reported as a router-wide notice.
 The policy never deletes Codex transcripts, workspace files, exported metrics, or explicit debug
 bundles. It never infers expiry from request truncation or compaction.
@@ -108,6 +112,11 @@ If no inactive data can be reclaimed, publication fails with required bytes, the
 and an actionable explanation rather than a generic initialization error. Catalog growth counts
 toward the budget too. Cleanup reports removals through user-only notices, or worker stderr;
 failed cleanup reports an error and does not claim complete reclamation.
+Prune planning and index decoding do not hold the publication lock. Removal commits use
+bounded file batches, revalidate concurrent ownership and active/read leases, and release
+the lock between batches. One worker per store performs maintenance; router shutdown cancels
+and joins its worker, including a lazily opened failure-only store. Startup and native UI
+session handling do not wait for a full sweep.
 
 Change-index retirement preserves stream high-water counters so old IDs are never reused.
 Partially retired change histories explicitly identify removed attempts. Missing recovery references

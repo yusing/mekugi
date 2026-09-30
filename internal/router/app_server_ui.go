@@ -1606,6 +1606,10 @@ func (u *appServerUI) applyCriticalNotices() *criticalNoticeDelivery {
 			continue
 		}
 		text := noticeText(&notice)
+		kind := "error"
+		if notice.category == "storage_cleanup_planning" || notice.category == "storage_cleanup_reclaimed" {
+			kind = "progress"
+		}
 		if notice.thread != "" && notice.thread != u.thread && activity != nil {
 			activity.mu.Lock()
 			if node := activity.threads[notice.thread]; node != nil {
@@ -1614,7 +1618,7 @@ func (u *appServerUI) applyCriticalNotices() *criticalNoticeDelivery {
 			activity.mu.Unlock()
 		}
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
-			Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "error", Text: text, Observed: u.now(),
+			Seq: u.view.lastSeq + 1, Agent: "Main", Kind: kind, Text: text, Observed: u.now(),
 		}}})
 		u.noticeEntries[notice.id] = true
 	}

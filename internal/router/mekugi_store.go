@@ -28,12 +28,9 @@ type mekugiReplayStore struct {
 	directory          string
 	maxBytes           int64
 	session            storageSessionIdentity
-	storageNotice      func(string, string, string)
+	storageNotice      func(session, thread, phase, message string)
 	liveDiff           func([]liveDiffChange)
 	maxCommentaryBytes int64
-	// Only under store.lock, during one envelope write. Cleanup must not
-	// reclaim dependencies already selected by an unpublished envelope.
-	snapshotPins map[string]bool
 }
 type replayRecord struct {
 	Version      int
@@ -349,16 +346,6 @@ func mergeReplayHistory(old, next mekugiHistory) (mekugiHistory, error) {
 	return next, nil
 }
 func (s *mekugiReplayStore) write(r replayRecord) (err error) {
-	previousPins := s.snapshotPins
-	s.snapshotPins = map[string]bool{replayRecordName(r.Workspace, r.CallID, r.Commentary): true}
-	defer func() { s.snapshotPins = previousPins }()
-	dependencies, err := s.snapshotDependencies(replayRecordName(r.Workspace, r.CallID, r.Commentary))
-	if err != nil {
-		return err
-	}
-	for _, name := range dependencies {
-		s.snapshotPins[name] = true
-	}
 	previous, exists, err := s.read(r.Workspace, r.CallID, r.Commentary)
 	if err != nil {
 		return err
@@ -407,6 +394,9 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 // writeFile publishes an already-validated record. Callers retain their lock,
 // schema, identity, and quota policies; all records share the durability sequence.
 func (s *mekugiReplayStore) writeFile(name, pattern string, data []byte) error {
+	if err := s.advanceStorageRevision(); err != nil {
+		return err
+	}
 	if err := writeAtomicFile(filepath.Join(s.directory, name), pattern, data, true); err != nil {
 		return err
 	}

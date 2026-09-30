@@ -236,8 +236,8 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			issues.addNotice("", "native_trace", "Nested tool confirmation unavailable: "+traceErr.Error())
 		}
 		mekugiCalls.noticeSink = issues.addThreadNotice
-		replayStore.storageNotice = func(session, thread, message string) {
-			issues.addThreadNotice(session, thread, "storage_cleanup", message)
+		replayStore.storageNotice = func(session, thread, phase, message string) {
+			issues.addThreadNotice(session, thread, "storage_cleanup_"+phase, message)
 		}
 		mekugiCalls.commentary.debug = debug
 		var stopLiveDiff func()
@@ -269,11 +269,20 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		if err != nil {
 			return fmt.Errorf("initialize commentary publisher: %w", err)
 		}
+	}
+	if mekugiCalls != nil || issues != nil {
 		retentionCtx, stopRetention := context.WithCancel(ctx)
 		retentionDone := make(chan struct{})
 		go func() {
 			defer close(retentionDone)
-			mekugiCalls.replayStore.runRetentionSweeps(retentionCtx, func() {
+			runStorageRetention(retentionCtx, func() *mekugiReplayStore {
+				if mekugiCalls != nil {
+					return mekugiCalls.replayStore
+				}
+				issues.mu.Lock()
+				defer issues.mu.Unlock()
+				return issues.failureStore
+			}, func() {
 				issues.addNotice("", "storage_cleanup_failure", "Mekugi could not complete background storage cleanup. Session requests continue unless storage reaches its limit.")
 			})
 		}()

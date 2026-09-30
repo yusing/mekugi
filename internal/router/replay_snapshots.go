@@ -140,9 +140,6 @@ func (s *mekugiReplayStore) putSnapshot(value any) (string, error) {
 		return "", errors.New("snapshot exceeds size limit")
 	}
 	name := snapshotName(data)
-	if s.snapshotPins != nil {
-		s.snapshotPins[name] = true
-	}
 	_, exists, err := s.snapshotData(name)
 	if err != nil {
 		return "", err

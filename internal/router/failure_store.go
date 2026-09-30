@@ -47,6 +47,9 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 			store, err = openMekugiReplayStoreContext(ctx, directory)
 		}
 		if err == nil {
+			store.storageNotice = func(session, thread, phase, message string) {
+				c.addThreadNotice(session, thread, "storage_cleanup_"+phase, message)
+			}
 			c.mu.Lock()
 			c.failureStore = store
 			c.mu.Unlock()
@@ -56,11 +59,6 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 	if store == nil {
 		err = errors.New("failure storage unavailable")
 	} else {
-		// Passthrough has no replay lifecycle; a failure-only store still needs
-		// the shared, hourly-throttled age sweep as well as publication quotas.
-		if sweepErr := store.cleanupSessions(ctx); sweepErr != nil {
-			c.addThreadNotice(f.sessionID, f.threadID, "failure_cleanup", "Mekugi could not complete failure-record retention cleanup.")
-		}
 		record := failureRecord{Version: 1, Time: time.Now().UTC(), Thread: f.threadID,
 			Phase: f.failurePhase, Code: f.diagnosticCode, Reference: f.diagnosticReference,
 			Error: f.diagnosticError}

@@ -105,7 +105,7 @@ func shellOutputStore(manifest toolWorkerManifest) (*mekugiReplayStore, error) {
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, errors.New("read recovery storage is missing or invalid")
 	}
-	return &mekugiReplayStore{directory: manifest.ReplayDirectory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, storageNotice: func(_, _ string, message string) { _, _ = fmt.Fprintln(os.Stderr, message) }}, nil
+	return &mekugiReplayStore{directory: manifest.ReplayDirectory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, storageNotice: func(_, _, _ string, message string) { _, _ = fmt.Fprintln(os.Stderr, message) }}, nil
 }
 
 func validShellOutputID(id string) bool {

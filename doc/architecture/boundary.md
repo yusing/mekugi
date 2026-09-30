@@ -46,6 +46,17 @@ Cleanup operates only on exact managed record names under the store lock; it
 never traverses user workspaces or Codex transcripts. The age and
 storage-pressure policy belongs to [REQ-ROUTER-001](../spec/router.md).
 Retirement neither transfers execution authority nor recycles change IDs.
+Background planners validate a store-wide publication revision before each
+bounded removal commit. The revision is coordination metadata, not authorization
+or replay state. Catalog and change-index reads occur outside the store lock;
+unchanged plans reuse their size/ownership view instead of rescanning after each
+session. Catalogs remain intact during partial retirement and are removed only
+after the final batch; a restarted planner safely revisits already-removed names
+without rewriting the remaining catalog for each batch. Concurrent publication
+invalidates the plan. The maintenance lease
+permits one worker per store, while active-turn and inherited-read leases remain
+independent protections. Pressure requests carry only a managed record name and
+byte growth, never a thread view or host continuation.
 
 The live-diff renderer consumes provisional inputs and completed review files
 without owning workspace effects or replay locks. Commentary and capture are

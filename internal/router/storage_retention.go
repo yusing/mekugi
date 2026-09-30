@@ -213,14 +213,6 @@ func (s *mekugiReplayStore) retainFiles(names ...string) error {
 	}
 	name := storageSessionName(s.session.Thread)
 	session, err := s.readRetainedSession(name)
-	existed := err == nil
-	var previous []byte
-	if existed {
-		previous, err = marshalProtocolJSON(session)
-		if err != nil {
-			return err
-		}
-	}
 	if errors.Is(err, os.ErrNotExist) {
 		session = retainedSession{Version: 1, Thread: s.session.Thread, Files: make(map[string]bool)}
 	} else if err != nil {
@@ -245,27 +237,14 @@ func (s *mekugiReplayStore) retainFiles(names ...string) error {
 	if len(data) > maxReplayRecordBytes {
 		return storageCapacityError("session ownership catalog", int64(len(data)), maxReplayRecordBytes, "Continue in a new chat; the current session has too many retained references to fit in one catalog record.")
 	}
-	if err := s.writeFile(name, "session-pending-", data); err != nil {
-		return storageIOError(err)
-	}
-	if len(names) == 0 {
-		// Starting a request only touches a small activity record. Its final
-		// preparation checks the combined budget after inherited facts are pinned.
-		return nil
-	}
-	// The new ownership must exist before cleanup considers other owners.
-	// Roll back catalog growth when its byte budget cannot be satisfied.
-	if err := s.maintainStorage("", 0, false, nil); err != nil {
-		var rollback error
-		if existed {
-			rollback = s.writeFile(name, "session-pending-", previous)
-		} else {
-			rollback = os.Remove(filepath.Join(s.directory, name))
-			rollback = errors.Join(rollback, syncReplayDirectory(s.directory))
+	if len(names) > 0 {
+		// Admission cannot prune. The store lock bridges validation to this
+		// publication; failed catalog growth therefore needs no rollback.
+		if err := s.maintainStorage(name, int64(len(data))); err != nil {
+			return err
 		}
-		return errors.Join(err, rollback)
 	}
-	return nil
+	return storageIOError(s.writeFile(name, "session-pending-", data))
 }
 
 var retainedReadReference = regexp.MustCompile(`(?:\b|\\[nr])mread(?:[ \t]|\\t)+([a-z]+[0-9]*)\b`)
@@ -470,11 +449,12 @@ func storageIOError(err error) error {
 }
 
 type storageCandidate struct {
-	name   string
-	thread string
-	used   time.Time
-	files  map[string]bool
-	legacy bool
+	name    string
+	thread  string
+	used    time.Time
+	files   map[string]bool
+	legacy  bool
+	pending []string
 }
 
 type storageSnapshot struct {
@@ -484,6 +464,10 @@ type storageSnapshot struct {
 }
 
 func (s *mekugiReplayStore) storageSnapshot() (storageSnapshot, error) {
+	return s.storageSnapshotContext(context.Background())
+}
+
+func (s *mekugiReplayStore) storageSnapshotContext(ctx context.Context) (storageSnapshot, error) {
 	snapshot := storageSnapshot{files: make(map[string]int64), owners: make(map[string]int)}
 	entries, err := os.ReadDir(s.directory)
 	if err != nil {
@@ -491,6 +475,9 @@ func (s *mekugiReplayStore) storageSnapshot() (storageSnapshot, error) {
 	}
 	times := make(map[string]time.Time)
 	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return snapshot, err
+		}
 		name := entry.Name()
 		if storageCatalogName(name) {
 			session, err := s.readRetainedSession(name)
@@ -519,6 +506,9 @@ func (s *mekugiReplayStore) storageSnapshot() (storageSnapshot, error) {
 	// Old journals have an exact thread identity even before the ownership
 	// catalog existed. Adopt them so a live old chat is never treated as garbage.
 	for name := range snapshot.files {
+		if err := ctx.Err(); err != nil {
+			return snapshot, err
+		}
 		if snapshot.owners[name] != 0 || !strings.HasPrefix(name, "journal-") {
 			continue
 		}
@@ -548,6 +538,9 @@ func (s *mekugiReplayStore) storageSnapshot() (storageSnapshot, error) {
 	// Process calls before considering orphan blobs as legacy candidates.
 	addDependencies := func(candidate *storageCandidate) error {
 		for _, name := range slices.Sorted(maps.Keys(candidate.files)) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			dependencies, err := s.snapshotDependencies(name)
 			if err != nil {
 				return err
@@ -598,62 +591,42 @@ func firstStorageFile(files map[string]bool) string {
 
 // Only deletion facts from this locked cleanup may prune an index. An unrelated
 // missing replay file remains corruption, not an apparently successful cleanup.
-func (s *mekugiReplayStore) pruneStoredChanges(deleted map[string]bool, thread string) error {
-	entries, err := os.ReadDir(s.directory)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if !retainedDataName(entry.Name()) || !strings.HasPrefix(entry.Name(), changeIndexPrefix) {
+func retireStoredChanges(index *changeIndex, deleted map[string]bool, thread string) bool {
+	changed := false
+	position := slices.IndexFunc(index.Streams, func(candidate changeStream) bool {
+		return candidate.Thread == thread && thread != ""
+	})
+	for id, change := range index.Changes {
+		stream, _, _ := parseChangeID(id)
+		pending := len(change.Calls) == 0 && position >= 0 && index.streamName(position) == stream
+		if !pending && !slices.ContainsFunc(change.Calls, func(call trackedCall) bool {
+			return deleted[replayRecordName(index.Workspace, call.ID, false)]
+		}) {
 			continue
 		}
-		data, err := readManagedOutputFile(filepath.Join(s.directory, entry.Name()))
-		if err != nil {
-			return err
-		}
-		var index changeIndex
-		if json.Unmarshal(data, &index) != nil || changeIndexName(index.Workspace, index.Namespace) != entry.Name() || validateChangeIndex(index) != nil {
-			return errors.New("invalid change index during session cleanup")
-		}
-		changed := false
-		position := slices.IndexFunc(index.Streams, func(candidate changeStream) bool {
-			return candidate.Thread == thread && thread != ""
-		})
-		for id, change := range index.Changes {
-			stream, _, _ := parseChangeID(id)
-			pending := len(change.Calls) == 0 && position >= 0 && index.streamName(position) == stream
-			before := len(change.Calls)
-			change.Calls = slices.DeleteFunc(change.Calls, func(call trackedCall) bool {
-				return deleted[replayRecordName(index.Workspace, call.ID, false)]
-			})
-			if len(change.Calls) == before && !pending {
-				continue
-			}
+		if !changed {
+			index.Streams = slices.Clone(index.Streams)
+			index.Changes = maps.Clone(index.Changes)
 			changed = true
-			if len(change.Calls) == 0 {
-				delete(index.Changes, id)
-				for position := range index.Streams {
-					if index.streamName(position) == stream {
-						index.Streams[position].Retired++
-						break
-					}
-				}
-			} else {
-				change.RetiredCalls += before - len(change.Calls)
-				index.Changes[id] = change
-			}
 		}
-		if changed {
-			data, err = marshalProtocolJSON(index)
-			if err != nil {
-				return err
+		before := len(change.Calls)
+		change.Calls = slices.DeleteFunc(slices.Clone(change.Calls), func(call trackedCall) bool {
+			return deleted[replayRecordName(index.Workspace, call.ID, false)]
+		})
+		if len(change.Calls) == 0 {
+			delete(index.Changes, id)
+			for position := range index.Streams {
+				if index.streamName(position) == stream {
+					index.Streams[position].Retired++
+					break
+				}
 			}
-			if err := s.writeFile(entry.Name(), "changes-pending-", data); err != nil {
-				return err
-			}
+		} else {
+			change.RetiredCalls += before - len(change.Calls)
+			index.Changes[id] = change
 		}
 	}
-	return nil
+	return changed
 }
 
 func (s *mekugiReplayStore) reconcileRetiredChanges(index *changeIndex) (bool, error) {
@@ -752,160 +725,33 @@ func (s *mekugiReplayStore) storageFileSizes() (map[string]int64, error) {
 	return files, nil
 }
 
-// maintainStorage runs under store.lock. It only removes exact managed files.
-// It never traverses a workspace, Codex's transcripts, or process-runtime paths.
-func (s *mekugiReplayStore) maintainStorage(replacement string, size int64, expire bool, pendingIndex *pendingChangeIndexWrite) error {
-	_, limit := s.storageNeeds(nil, replacement, size)
-	if size > limit && pendingIndex == nil {
-		return storageCapacityError("session storage write", size, limit, "A single record cannot fit; reduce the retained output or split the operation.")
-	}
+// Admission runs under store.lock but never prunes. Background maintenance
+// owns reclamation; a capacity failure cannot expose unfinished durable evidence.
+func (s *mekugiReplayStore) maintainStorage(replacement string, size int64) error {
 	files, err := s.storageFileSizes()
 	if err != nil {
 		return storageIOError(err)
 	}
-	if required, bound := s.storageNeeds(files, replacement, size); !expire && required <= bound {
+	required, limit := s.storageNeeds(files, replacement, size)
+	if required <= limit {
 		return nil
 	}
-	snapshotPath := filepath.Join(s.directory, "retention-snapshot.lock")
-	if info, err := os.Lstat(snapshotPath); err == nil && !info.Mode().IsRegular() {
-		return errors.New("invalid retention snapshot lease; cleanup refused")
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+	if size > limit && !strings.HasPrefix(replacement, changeIndexPrefix) {
+		return storageCapacityError("session storage write", size, limit, "A single record cannot fit; reduce the retained output or split the operation.")
 	}
-	snapshotLease := flock.New(snapshotPath, flock.SetPermissions(0600))
-	acquired, err := snapshotLease.TryLock()
-	if err != nil {
+	request := storagePressureRequest{Name: replacement, Growth: max(0, size-files[replacement])}
+	if err := s.requestStoragePrune(request); err != nil {
 		return storageIOError(err)
 	}
-	if !acquired {
-		if required, bound := s.storageNeeds(files, replacement, size); required > bound {
-			return storageCapacityError("session storage", required, bound, "Another request is validating inherited history. Cleanup preserved its snapshot; retry after that request finishes.")
-		}
-		return nil
-	}
-	defer snapshotLease.Unlock()
-	snapshot, err := s.storageSnapshot()
-	if err != nil {
-		return storageIOError(err)
-	}
-	required := func() int64 {
-		value, bound := s.storageNeeds(snapshot.files, replacement, size)
-		limit = bound
-		return value
-	}
-	cutoff := time.Now().Add(-sessionRetention)
-	removed, legacy, freed := 0, 0, int64(0)
-	defer func() {
-		if (removed != 0 || legacy != 0) && s.storageNotice != nil {
-			s.storageNotice(s.session.Routing, s.session.Thread, fmt.Sprintf(
-				"Mekugi storage cleanup removed %d inactive session records and %d legacy records (%d bytes). Data expires after 14 days without activity; storage pressure removes the oldest inactive sessions first. Codex chats are unchanged. Removed recovery references are no longer available.",
-				removed, legacy, freed))
-		}
-	}()
-	for _, candidate := range snapshot.sessions {
-		old := expire && candidate.used.Before(cutoff)
-		if !old && required() <= limit {
-			continue
-		}
-		if candidate.thread != "" && candidate.thread == s.session.Thread {
-			continue
-		}
-		if candidate.legacy && candidate.thread == "" && !candidate.used.Before(cutoff) {
-			// Recent pre-catalog records cannot be proven inactive.
-			continue
-		}
-		var lease *flock.Flock
-		if candidate.thread != "" {
-			path := filepath.Join(s.directory, strings.TrimSuffix(storageSessionName(candidate.thread), ".json")+".lock")
-			if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
-				return errors.New("session storage lease is not a regular file; cleanup refused")
-			} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-				return storageIOError(err)
-			}
-			lease = flock.New(path, flock.SetPermissions(0600))
-			ok, err := lease.TryLock()
-			if err != nil {
-				return storageIOError(err)
-			}
-			if !ok {
-				continue
-			}
-		}
-		deleted := make(map[string]bool)
-		deleteErr := func() error {
-			if lease != nil {
-				defer lease.Unlock()
-			}
-			// Envelopes precede snapshot blobs. A partial cleanup failure must
-			// never leave a surviving call whose dependent snapshot was deleted.
-			for _, file := range slices.Sorted(maps.Keys(candidate.files)) {
-				// Shared inherited facts survive until their last owner expires.
-				if snapshot.owners[file] > 1 || file == replacement || s.snapshotPins[file] || strings.HasPrefix(file, changeIndexPrefix) {
-					continue
-				}
-				if err := os.Remove(filepath.Join(s.directory, file)); err != nil && !errors.Is(err, os.ErrNotExist) {
-					return err
-				}
-				deleted[file] = true
-				freed += snapshot.files[file]
-				delete(snapshot.files, file)
-			}
-			if err := s.pruneStoredChanges(deleted, candidate.thread); err != nil {
-				return err
-			}
-			if candidate.name != "" {
-				if err := os.Remove(filepath.Join(s.directory, candidate.name)); err != nil && !errors.Is(err, os.ErrNotExist) {
-					return err
-				}
-			}
-			if candidate.name != "" {
-				freed += snapshot.files[candidate.name]
-				delete(snapshot.files, candidate.name)
-			}
-			for file := range candidate.files {
-				snapshot.owners[file]--
-			}
-			return syncReplayDirectory(s.directory)
-		}()
-		if deleteErr != nil {
-			return storageIOError(fmt.Errorf("session cleanup partially completed: %w", deleteErr))
-		}
-		if pendingIndex != nil {
-			changed, err := s.reconcileRetiredChanges(&pendingIndex.index)
-			if err != nil {
-				return err
-			}
-			if changed {
-				pendingIndex.data, err = marshalProtocolJSON(pendingIndex.index)
-				if err != nil {
-					return err
-				}
-				size = int64(len(pendingIndex.data))
-			}
-		}
-		if sizes, err := s.storageFileSizes(); err != nil {
-			return storageIOError(err)
-		} else {
-			snapshot.files = sizes
-		}
-		if candidate.legacy {
-			legacy++
-		} else {
-			removed++
-		}
-	}
-	if required() > limit {
-		return storageCapacityError("retained session storage", required(), limit,
-			"Automatic cleanup found no more reclaimable inactive data. Running sessions and shared history were preserved. Finish active work or reduce the retained output before retrying. Recent legacy records without session ownership are also protected.")
-	}
-	return nil
+	return storageCapacityError("retained session storage", required, limit,
+		"Background cleanup was requested. Retry retaining this evidence after maintenance frees space; do not rerun the host operation. Running sessions and shared history were preserved.")
 }
 
 func (s *mekugiReplayStore) writeManagedFile(name, pattern string, data []byte) error {
 	if err := s.retainFiles(name); err != nil {
 		return storageIOError(err)
 	}
-	if err := s.maintainStorage(name, int64(len(data)), false, nil); err != nil {
+	if err := s.maintainStorage(name, int64(len(data))); err != nil {
 		return err
 	}
 	return storageIOError(s.writeFile(name, pattern, data))
@@ -932,42 +778,20 @@ func (s *mekugiReplayStore) lockStorageSnapshot(ctx context.Context) (func(), er
 	return func() { _ = lease.Unlock() }, nil
 }
 
-func (s *mekugiReplayStore) cleanupSessions(ctx context.Context) error {
-	if s == nil {
-		return nil
-	}
-	s = s.scoped(ctx)
-	return s.locked(ctx, func() error {
-		// Quota checks still run on every publication. Age sweeps need not
-		// rescan every chat for every provider round trip.
-		marker := filepath.Join(s.directory, "retention-sweep")
-		if info, err := os.Lstat(marker); err == nil {
-			if !info.Mode().IsRegular() {
-				return errors.New("invalid session retention sweep marker")
-			}
-			if time.Since(info.ModTime()) < time.Hour {
-				return s.maintainStorage("", 0, false, nil)
-			}
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		if err := s.maintainStorage("", 0, true, nil); err != nil {
-			return err
-		}
-		return s.writeFile("retention-sweep", "retention-pending-", nil)
-	})
-}
-
 // Age-based cleanup is router maintenance, not part of any request's replay
 // view. An unrelated catalog must not prevent a new thread from starting.
 func (s *mekugiReplayStore) runRetentionSweeps(ctx context.Context, notice func()) {
+	runStorageRetention(ctx, func() *mekugiReplayStore { return s }, notice)
+}
+
+func runStorageRetention(ctx context.Context, store func() *mekugiReplayStore, notice func()) {
 	cleanup := func() {
-		if err := s.cleanupSessions(ctx); err != nil && ctx.Err() == nil && notice != nil {
+		if err := store().cleanupSessions(ctx); err != nil && ctx.Err() == nil && notice != nil {
 			notice()
 		}
 	}
 	cleanup()
-	ticker := time.NewTicker(time.Hour)
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
 		select {

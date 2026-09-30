@@ -59,6 +59,23 @@ func retentionTestExists(t *testing.T, store *mekugiReplayStore, workspace, call
 	}
 }
 
+func retentionTestPressureRetry(t *testing.T, store *mekugiReplayStore, ctx context.Context, write func() error) {
+	t.Helper()
+	for range 8 {
+		err := write()
+		if err == nil {
+			return
+		}
+		if !strings.Contains(err.Error(), "Background cleanup was requested") {
+			t.Fatal(err)
+		}
+		if err := store.cleanupSessions(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Fatal("background pruning did not free enough space for persistence retry")
+}
+
 func TestStorageRetentionExpiresInactiveSessionsOnly(t *testing.T) {
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -77,14 +94,14 @@ func TestStorageRetentionExpiresInactiveSessionsOnly(t *testing.T) {
 	retentionTestAge(t, store, "active", 30*24*time.Hour)
 	current, _ := retentionTestSession(t, store, "current", 0)
 	var notices []string
-	store.storageNotice = func(_, _ string, message string) { notices = append(notices, message) }
+	store.storageNotice = func(_, _, _ string, message string) { notices = append(notices, message) }
 	if err := store.cleanupSessions(current); err != nil {
 		t.Fatal(err)
 	}
 	retentionTestExists(t, store, "/w", "old-call", false)
 	retentionTestExists(t, store, "/w", "recent-call", true)
 	retentionTestExists(t, store, "/other", "active-call", true)
-	if len(notices) != 1 || !strings.Contains(notices[0], "Codex chats are unchanged") {
+	if len(notices) != 2 || !strings.Contains(notices[0], "inspected") || !strings.Contains(notices[1], "Codex chats and workspace files are unchanged") {
 		t.Fatalf("cleanup notice = %v", notices)
 	}
 }
@@ -108,7 +125,9 @@ func TestStoragePressureRemovesOldestInactiveSessionAcrossWorkspaces(t *testing.
 		t.Fatal(err)
 	}
 	store.maxBytes, _ = store.storageNeeds(files, "", 0)
-	retentionTestPut(t, store, current, "/third", "new")
+	retentionTestPressureRetry(t, store, current, func() error {
+		return store.put(current, "/third", map[string]mekugiHistory{"new": {ToolName: "shell", Script: "true"}})
+	})
 	retentionTestExists(t, store, "/first", "old", false)
 	retentionTestExists(t, store, "/second", "newer", true)
 	retentionTestExists(t, store, "/third", "new", true)
@@ -396,7 +415,7 @@ func TestStorageSnapshotLeaseBridgesForkValidationAndAdoption(t *testing.T) {
 	if err := store.retainInput(child, "/w", nil, map[string]mekugiHistory{"shared": history}, releaseSnapshot); err != nil {
 		t.Fatal(err)
 	}
-	if err := other.locked(otherCtx, func() error { return other.scoped(otherCtx).maintainStorage("", 0, true, nil) }); err != nil {
+	if err := other.cleanupSessions(otherCtx); err != nil {
 		t.Fatal(err)
 	}
 	retentionTestExists(t, store, "/w", "shared", true)
@@ -418,12 +437,13 @@ func TestStorageIndexLimitReclaimsInactiveChanges(t *testing.T) {
 	retentionTestAge(t, store, "old", time.Hour)
 	current, _ := retentionTestSession(t, store, "current", 0)
 	current = bindTestHandleScope(t, store, current, "old", "")
-	next, err := store.reserveChange(current, "/w", "current", strings.Repeat("y", 4096))
-	if err != nil {
-		t.Fatal(err)
-	}
+	var next string
+	retentionTestPressureRetry(t, store, current, func() error {
+		next, err = store.reserveChange(current, "/w", "current", strings.Repeat("y", 4096))
+		return err
+	})
 	index, err := store.scoped(current).readChangeIndex("/w")
-	if err != nil || next != "apple1" || index.Streams[0].Retired != 1 || len(index.Changes) != 1 || index.Changes[next].Correlation != strings.Repeat("y", 4096) {
+	if err != nil || next == id || index.Streams[0].Retired != 1 || len(index.Changes) != 1 || index.Changes[next].Correlation != strings.Repeat("y", 4096) {
 		t.Fatalf("index reclamation: next=%s retired=%+v err=%v", next, index.Streams, err)
 	}
 	if _, exists := index.Changes[id]; exists {
@@ -431,7 +451,7 @@ func TestStorageIndexLimitReclaimsInactiveChanges(t *testing.T) {
 	}
 }
 
-func TestStorageMaintenanceReusesUnchangedIndexEncoding(t *testing.T) {
+func TestStorageAdmissionDoesNotPruneUnrelatedSessions(t *testing.T) {
 	for _, cleanup := range []bool{false, true} {
 		t.Run(strconv.FormatBool(cleanup), func(t *testing.T) {
 			store, err := openMekugiReplayStore(t.TempDir())
@@ -457,18 +477,18 @@ func TestStorageMaintenanceReusesUnchangedIndexEncoding(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				pending := pendingChangeIndexWrite{index: index, data: data}
-				if err := store.scoped(current).maintainStorage(changeIndexName("/w", index.Namespace), int64(len(data)), cleanup, &pending); err != nil {
+				if err := store.scoped(current).maintainStorage(changeIndexName("/w", index.Namespace), int64(len(data))); err != nil {
 					return err
-				}
-				if len(pending.data) != len(data) || &pending.data[0] != &data[0] {
-					t.Fatal("maintenance encoded an unchanged index again")
 				}
 				return nil
 			}); err != nil {
 				t.Fatal(err)
 			}
 			if cleanup {
+				retentionTestExists(t, store, "/other", "unrelated", true)
+				if err := store.cleanupSessions(current); err != nil {
+					t.Fatal(err)
+				}
 				retentionTestExists(t, store, "/other", "unrelated", false)
 			}
 		})
@@ -511,16 +531,17 @@ func TestStorageIndexPressurePersistsRetiredAttempts(t *testing.T) {
 	// remove the old attempt, preserve the active attempt, and persist both
 	// that retirement and the newly reserved ID in the replacement index.
 	correlation := strings.Repeat("y", 1024)
-	next, err := store.reserveChange(current, "/w", "current", correlation)
-	if err != nil {
-		t.Fatal(err)
-	}
+	var next string
+	retentionTestPressureRetry(t, store, current, func() error {
+		next, err = store.reserveChange(current, "/w", "current", correlation)
+		return err
+	})
 	index, err := store.scoped(current).readChangeIndex("/w")
 	if err != nil {
 		t.Fatal(err)
 	}
 	change := index.Changes[id]
-	if next != "apple1" || len(index.Changes) != 2 || index.Changes[next].Correlation != correlation {
+	if next == id || len(index.Changes) != 2 || index.Changes[next].Correlation != correlation {
 		t.Fatalf("new reservation missing after cleanup: next=%q index=%+v", next, index)
 	}
 	if change.RetiredCalls != 1 || len(change.Calls) != 1 || change.Calls[0].ID != "current-call" {

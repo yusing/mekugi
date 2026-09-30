@@ -1,0 +1,2 @@
+• Mekugi background storage cleanup inspected 2 managed records; reclaiming
+eligible inactive data in batches of at most 16 files.
