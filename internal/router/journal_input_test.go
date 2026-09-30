@@ -128,7 +128,10 @@ async function checks() {
   await journal({op: "add", kind: "context", title: "Constraint"});
   const plan: string[] = await journal({op: "plan", tasks: ["One", {title: "Two", reason: "Waiting", state: "blocked", tasks: ["Child"]}]});
   const batch: string[] = await journal([{op: "log", text: "Checked"}, {op: "add", kind: "task", title: "Delegate", agent: "/root/child"}]);
-  const nodes: JournalNode[] = await journal({op: "read", p: "/1", depth: 0, agent: "/root/child"});
+  const nodes: JournalNode[] = await journal({op: "read", p: "/1", depth: 0, agent: "/root/child", view: "tasks"});
+  await journal({op: "read", view: "own", depth: 0});
+  // @ts-expect-error invalid read view
+  await journal({op: "read", view: "unknown"});
   await journal({op: "remove", p: "/1"});
   const operation: JournalMutation = Math.random() > 0.5 ? {op: "plan", tasks: []} : {op: "log", text: "Checked"};
   await journal(operation);

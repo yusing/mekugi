@@ -138,6 +138,7 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 		journalMutation
 		Journal json.RawMessage `json:"journal"`
 		Depth   *int            `json:"depth"`
+		View    string          `json:"view"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(jsonString(item, "arguments")))
 	decoder.DisallowUnknownFields()
@@ -167,8 +168,8 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 				result = map[string]any{"ok": true, "finish_requested": true}
 			}
 		} else if args.Op == "list" || args.Op == "read" {
-			if args.ID != "" || args.Text != nil || args.Answer != nil || args.ReportNow || args.Under != "" || args.Kind != "" || args.Title != nil || args.Body != nil || args.State != nil || args.Reason != nil || args.Tasks != nil || args.Reset != "" || args.Before != "" || args.Op == "list" && (args.P != "" || args.Depth != nil) {
-				err = fmt.Errorf("journal %s accepts only %s and batched journal mutations", args.Op, map[string]string{"list": "agent", "read": "p, agent, depth"}[args.Op])
+			if args.ID != "" || args.Text != nil || args.Answer != nil || args.ReportNow || args.Under != "" || args.Kind != "" || args.Title != nil || args.Body != nil || args.State != nil || args.Reason != nil || args.Tasks != nil || args.Reset != "" || args.Before != "" || args.Op == "list" && (args.P != "" || args.Depth != nil || args.View != "") {
+				err = fmt.Errorf("journal %s accepts only %s and batched journal mutations", args.Op, map[string]string{"list": "agent", "read": "p, agent, depth, view"}[args.Op])
 			}
 			var items []journalItem
 			if err == nil && args.Op == "list" {
@@ -181,7 +182,7 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 			if args.Op == "read" {
 				var nodes []journalNode
 				if err == nil {
-					nodes, err = t.proxy.journals.readTree(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, args.Agent, args.P, args.Depth)
+					nodes, err = t.proxy.journals.readTree(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, args.Agent, args.P, args.Depth, args.View)
 				}
 				result = map[string]any{"ok": true, "items": nodes}
 			} else {
@@ -194,6 +195,8 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 			if err == nil {
 				t.proxy.countJournalRead(t.ctx, t.directory, t.shellThreadID, "counter-read:"+callID, args.Op)
 			}
+		} else if args.View != "" || args.Depth != nil {
+			err = errors.New("journal view and depth require read")
 		} else {
 			var ids []string
 			ids, err = t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, callID, bindJournalAnswers([]journalMutation{args.journalMutation}, t.journalQuestion))

@@ -128,13 +128,14 @@ func TestJournalCodeModeTreeReadReassemblesPages(t *testing.T) {
 		t.Skip("Node is required to execute lowered Code Mode")
 	}
 	transform, _ := newRuntimeCommentaryTransform(t)
-	lowered, changed, err := transform.lowerCodeModeCommentary("read-call", `const nodes = await journal({op:"read",p:"/1",depth:1}); process.stdout.write(JSON.stringify(nodes));`)
+	lowered, changed, err := transform.lowerCodeModeCommentary("read-call", `const nodes = await journal({op:"read",p:"/1",depth:1,view:"tasks"}); process.stdout.write(JSON.stringify(nodes));`)
 	if err != nil || !changed {
 		t.Fatalf("lowering: changed=%t err=%v", changed, err)
 	}
 	first := `{"ok":true,"items":[{"path":"/1","kind":"task","title":"Parent","state":"working","children":[]}],"next":1,"revision":"` + strings.Repeat("a", 64) + `"}`
 	last := `{"ok":true,"items":[{"path":"/1/1","kind":"task","title":"Child","state":"pending","children":[]}]}`
 	script := `let calls=0; const tools={exec_command:async ({cmd})=>{
+  if (!decodeURIComponent(cmd).includes('"view":"tasks"')) throw new Error("read view lost");
   calls++;
   if(calls===1) return {exit_code:0,output:` + strconv.Quote(first) + `};
   if(calls!==2 || !cmd.endsWith(" 1 "+"a".repeat(64))) throw new Error("invalid continuation command");

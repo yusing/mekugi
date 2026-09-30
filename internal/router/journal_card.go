@@ -112,7 +112,7 @@ func (t *mekugiResponseTransform) prepareTreeDelivery(j threadJournal, terminal 
 		sequence = j.Sequence
 	} else {
 		var output strings.Builder
-		header := "Journal update " + commentaryCode(j.Author)
+		header := "Journal"
 		output.WriteString(header)
 		for _, event := range j.Events {
 			if event.Seq <= since || j.LegacyLive[event.Seq] || event.Fields.Kind == "answer" {

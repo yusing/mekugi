@@ -238,8 +238,14 @@ No dedicated journal tool is exposed. Operations are:
   A note or context `p` selects its containing task. Neither case attributes the
   fact to an unrelated task.
 - `remove {p}`: removes a mistaken subtree, retaining its removal event.
-- `read {p?, agent?, depth?}`: returns the selected subtree. Depth zero omits child
-  nodes. Omitted agent selects the caller; explicit agents require proven ancestry.
+- `read {p?, agent?, depth?, view?}`: returns the selected subtree. Depth zero omits
+  child nodes. Omitted agent selects the caller; explicit agents require proven
+  ancestry. The default `combined` view includes read-only mounted agents. `own`
+  reads only the selected journal, without mounting descendants. `tasks` reads
+  only its own tasks and omits their bodies and questions for compact path/state
+  recovery. `view: "tasks", depth: 0` returns only root tasks. Own and task reads
+  without an explicit agent require only the caller's record, so unavailable
+  descendant journals cannot prevent local ID recovery.
 
 Model-facing native inputs are operation-specific closed schemas; Code Mode guidance
 includes discriminated TypeScript input declarations. They reject unsupported fields
@@ -256,6 +262,8 @@ and do not retain a success receipt.
 A rejected operation in a batch names its one-based position and op. Undecodable
 payloads name the offending member.
 Single mutations return their affected path; plans and batches return paths in order.
+Code Mode also displays the returned path array for a plan or a batch containing
+a plan, without changing the helper's return value or performing another read.
 Receipt replay returns the original result without applying effects twice.
 
 Ordinary forks copy the source's latest journal at their first accepted request and
@@ -310,7 +318,8 @@ remain stored but are not echoed in the card. A blank final or a case-insensitiv
 the exact raw provider item is hidden. The final message is still required.
 Without a turn card, a v1-authored journal keeps such a final as its answer.
 
-Live fallback renders events after `liveSeq`, clipping a row that no single update
+Live v2 fallback uses the `Journal` heading without an author-path label and renders
+events after `liveSeq`, clipping a row that no single update
 can hold; the turn card keeps it whole. Successful downstream delivery advances
 the corresponding cursor; failure preserves its window. Main cards remain the last
 assistant message. Failed, incomplete and interrupted responses never terminal-flush.

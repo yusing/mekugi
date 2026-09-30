@@ -592,7 +592,7 @@ func TestJournalLiveSnapshotCacheRefreshesOnMutationAndTerminal(t *testing.T) {
 
 func TestJournalSharedGuidance(t *testing.T) {
 	description := codeModeJournalGuidance
-	for _, required := range []string{"durable journal", "await journal", "finish naturally with an Outcome", "turn card"} {
+	for _, required := range []string{"durable journal", "await journal", "finish naturally with an Outcome", "turn card", `view?:"combined"|"own"|"tasks"`, `{op:"read", view:"tasks", depth:0}`} {
 		if !strings.Contains(description, required) {
 			t.Fatalf("journal description lacks %q: %q", required, description)
 		}

@@ -52,7 +52,7 @@ type commentaryRoute struct {
 }
 
 type commentaryBroker struct {
-	journalReader    func(context.Context, string, string, string, string, *int) ([]journalNode, error)
+	journalReader    func(context.Context, string, string, string, string, *int, string) ([]journalNode, error)
 	journalPublisher func(context.Context, string, string, string, []journalMutation) ([]string, error)
 	journalLister    func(context.Context, string, string, string) ([]journalItem, error)
 	notice           func(string, string)
@@ -199,6 +199,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		Agent     string `json:"agent"`
 		P         string `json:"p"`
 		Depth     *int   `json:"depth"`
+		View      string `json:"view"`
 		Page      *int   `json:"page"`
 		Revision  string `json:"revision"`
 	}
@@ -208,7 +209,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		http.Error(writer, "invalid commentary publication", http.StatusBadRequest)
 		return
 	}
-	if len(publication.Journal) == 0 && publication.Complete && publication.Op == "" && publication.ReceiptID == "" && publication.Agent == "" && publication.Page == nil && publication.Revision == "" {
+	if len(publication.Journal) == 0 && publication.Complete && publication.Op == "" && publication.ReceiptID == "" && publication.Agent == "" && publication.P == "" && publication.Depth == nil && publication.View == "" && publication.Page == nil && publication.Revision == "" {
 		if !b.publish(token, "", true) {
 			http.Error(writer, "unauthorized", http.StatusUnauthorized)
 			return
@@ -235,12 +236,12 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	raw := bytes.TrimSpace(publication.Journal)
 	switch publication.Op {
 	case "", "batch":
-		if publication.Complete || publication.Agent != "" || publication.P != "" || publication.Depth != nil || len(raw) == 0 || publication.ReceiptID == "" || publication.Page != nil || publication.Revision != "" {
+		if publication.Complete || publication.Agent != "" || publication.P != "" || publication.Depth != nil || publication.View != "" || len(raw) == 0 || publication.ReceiptID == "" || publication.Page != nil || publication.Revision != "" {
 			http.Error(writer, "invalid journal publication", http.StatusBadRequest)
 			return
 		}
 	case "list", "read":
-		if publication.Op == "list" && (publication.P != "" || publication.Depth != nil) {
+		if publication.Op == "list" && (publication.P != "" || publication.Depth != nil || publication.View != "") {
 			http.Error(writer, "journal list accepts only agent", http.StatusBadRequest)
 			return
 		}
@@ -312,9 +313,9 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 			var nodes []journalNode
 			var readErr error
 			if b.journalReader != nil {
-				nodes, readErr = b.journalReader(request.Context(), session, thread, publication.Agent, publication.P, publication.Depth)
+				nodes, readErr = b.journalReader(request.Context(), session, thread, publication.Agent, publication.P, publication.Depth, publication.View)
 			} else {
-				nodes, readErr = journalTree(items, publication.P, publication.Depth)
+				nodes, readErr = journalReadView(items, publication.P, publication.Depth, publication.View)
 			}
 			if readErr != nil {
 				http.Error(writer, readErr.Error(), http.StatusBadRequest)
@@ -452,6 +453,7 @@ func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []st
 		Agent string `json:"agent"`
 		P     string `json:"p"`
 		Depth *int   `json:"depth"`
+		View  string `json:"view"`
 	}
 	if json.Unmarshal([]byte(text), &operation) == nil && (operation.Op == "list" || operation.Op == "read") {
 		if err := json.Unmarshal([]byte(text), &operation, json.RejectUnknownMembers(true)); err != nil {
@@ -465,7 +467,7 @@ func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []st
 			}
 			revision = arguments[5]
 		}
-		publication = map[string]any{"op": operation.Op, "agent": operation.Agent, "p": operation.P, "depth": operation.Depth, "page": page, "revision": revision}
+		publication = map[string]any{"op": operation.Op, "agent": operation.Agent, "p": operation.P, "depth": operation.Depth, "view": operation.View, "page": page, "revision": revision}
 	} else if len(arguments) != 4 {
 		return true, fmt.Errorf("journal continuation requires list")
 	}

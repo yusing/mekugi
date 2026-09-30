@@ -29,7 +29,7 @@ func TestJournalCountersRuntimeCarriersReachMetricsExport(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if _, err := proxy.commentary.journalReader(request.Context(), session, thread, "", "", nil); err != nil {
+		if _, err := proxy.commentary.journalReader(request.Context(), session, thread, "", "", nil, ""); err != nil {
 			t.Fatal(err)
 		}
 		response := mustTestJSON(t, map[string]any{"id": "runtime-final", "status": "completed", "output": []any{map[string]any{"type": "message", "id": "runtime-message", "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "Done."}}}}})

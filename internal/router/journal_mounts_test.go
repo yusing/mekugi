@@ -29,7 +29,7 @@ func mountFixture(t *testing.T) (*mekugiProxy, string) {
 
 func mountRead(t *testing.T, proxy *mekugiProxy, workspace, caller, agent, path string) []journalNode {
 	t.Helper()
-	nodes, err := proxy.journals.readTree(t.Context(), proxy.replayStore, workspace, caller, agent, path, nil)
+	nodes, err := proxy.journals.readTree(t.Context(), proxy.replayStore, workspace, caller, agent, path, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestJournalMountDurableBoundAndFallbackViews(t *testing.T) {
 	if _, ok := mountFind(childView, "/@agents/@sibling"); ok {
 		t.Fatal("child's ancestor read exposed sibling mount")
 	}
-	if _, err := proxy.journals.readTree(t.Context(), proxy.replayStore, workspace, "child", "/root/sibling", "", nil); err == nil {
+	if _, err := proxy.journals.readTree(t.Context(), proxy.replayStore, workspace, "child", "/root/sibling", "", nil, ""); err == nil {
 		t.Fatal("child directly read sibling journal")
 	}
 }
@@ -347,7 +347,7 @@ func TestJournalMountForkPreservesFactsNotSourceChildAuthority(t *testing.T) {
 	if len(nodes) != 2 || nodes[0].State != "done" || nodes[0].Agent != "" || len(nodes[0].Children) != 0 {
 		t.Fatalf("fork copied child authority or lost task state: %+v", nodes)
 	}
-	if _, err := proxy.journals.readTree(t.Context(), proxy.replayStore, workspace, "fork", "/root/child", "", nil); err == nil {
+	if _, err := proxy.journals.readTree(t.Context(), proxy.replayStore, workspace, "fork", "/root/child", "", nil, ""); err == nil {
 		t.Fatal("fork acquired source child read authority")
 	}
 	original := treeSnapshot(t, proxy, workspace)
