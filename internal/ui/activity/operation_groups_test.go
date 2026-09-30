@@ -341,7 +341,7 @@ func TestOperationRowsNameTheirOutcome(t *testing.T) {
 		want   []string
 	}{
 		{"ran", []activityui.Block{{Kind: "op", Verb: "Run", Code: "git diff --cc", Lang: "bash", Fenced: true},
-			{Kind: "filter", Body: "~tokens 1.2K→700"}}, []string{"Ran    git diff --cc", "       ~tokens 1.2K→700"}},
+			{Kind: "filter", Body: "output not returned to the model"}}, []string{"Ran    git diff --cc", "       output not returned to the model"}},
 		{"failed", []activityui.Block{{Kind: "op", Verb: "Run", Code: "false", Lang: "bash", Fenced: true, ExitCode: 1, Tail: []string{"boom"}}},
 			[]string{"Ran    false · exit 1", "       ┆ boom"}},
 		{"failed program", []activityui.Block{{Kind: "op", Verb: "Run", Code: "print(1)\nprint(2)", Lang: "python", Fenced: true, ExitCode: 3}},
@@ -391,7 +391,7 @@ func TestAlignVerbsPadsOnlyToAdjacentVerbs(t *testing.T) {
 	p := activityui.Painter{}
 	blocks := activityui.AlignVerbs([]activityui.Block{
 		{Kind: "op", Verb: "Run", Code: "git status", Lang: "bash", Fenced: true},
-		{Kind: "filter", Body: "~tokens 1.2K→700"},
+		{Kind: "filter", Body: "output not returned to the model"},
 		{Kind: "op", Verb: "Run JavaScript", Label: "`x()`"},
 		{Kind: "summary", Body: "**Checking**"},
 		{Kind: "op", Verb: "Read", Label: "`a.go`"},
@@ -402,7 +402,7 @@ func TestAlignVerbsPadsOnlyToAdjacentVerbs(t *testing.T) {
 		rows = append(rows, p.Block(block, 80)...)
 	}
 	// A verb wider than the default column does not widen its neighbors'.
-	want := []string{"Ran git status", "    ~tokens 1.2K→700", "Run JavaScript x()", "• Checking", "Read   a.go", "Search needle"}
+	want := []string{"Ran git status", "    output not returned to the model", "Run JavaScript x()", "• Checking", "Read   a.go", "Search needle"}
 	if got := plainLines(rows); !reflect.DeepEqual(got, want) {
 		t.Fatalf("rows = %q, want %q", got, want)
 	}

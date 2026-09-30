@@ -1015,7 +1015,7 @@ func (u *appServerUI) historyPending() bool {
 // Ordinary root activity stays in Main, but a directed message belongs at
 // both ends, and a child's start and answer show where Main follows them.
 func mainActivityEntry(entry activityPaneEntry) (activityPaneEntry, bool) {
-	main := entry.Agent == "/root" && (entry.Kind == "tool" || entry.Kind == "exit" || entry.Kind == "output_filter" || entry.Kind == "error" || entry.Kind == "reasoning" || entry.Kind == "progress")
+	main := entry.Agent == "/root" && (entry.Kind == "tool" || entry.Kind == "exit" || entry.Kind == "error" || entry.Kind == "reasoning" || entry.Kind == "progress")
 	if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil {
 		main = true
 		entry.Agent = entry.assignment.from

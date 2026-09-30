@@ -248,9 +248,6 @@ with their workspace-relative path, including restored history.
 Attached user images are inline model input, not image-view tool calls; they do
 not synthesize a `View` event or claim that the model inspected them. Skill reads use
 the colored `Skill` label; skill scripts display as `Skill  run …`.
-Router-owned output-filter reductions remain muted annotations on their command
-when the host identity matches, otherwise standalone metrics without a duplicate
-command (including unmatched Code Mode calls).
 Search rows show a muted `(N results)` when complete, attributable output supplies
 a count: local result records (or explicit count totals), or a web result array.
 Missing, truncated, failed, or ambiguous local output has no inferred count.

@@ -224,23 +224,6 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 				continue
 			}
 		}
-		if entry.Kind == "output_filter" && entry.CallID != "" {
-			matched := false
-			for i, previous := range slices.Backward(v.entries) {
-				if previous.Kind == "tool" && previous.Agent == entry.Agent && previous.CallID == entry.CallID {
-					blocks := parseLiveActivity(entry)
-					if len(blocks) == 1 && blocks[0].Kind == "filter" {
-						v.blocks[i] = append(v.blocks[i], blocks[0])
-						v.runs = nil
-						matched = true
-					}
-					break
-				}
-			}
-			if matched {
-				continue
-			}
-		}
 		if entry.Kind == "exit" {
 			for i, v0 := range slices.Backward(v.entries) {
 				if v0.Agent == entry.Agent && v0.CallID == entry.CallID && entry.CallID != "" {
@@ -253,24 +236,6 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			continue
 		}
 		blocks := parseLiveActivity(entry)
-		if entry.Kind == "tool" && entry.CallID != "" {
-			for i, previous := range v.entries {
-				if previous.Kind == "output_filter" && previous.Agent == entry.Agent && previous.CallID == entry.CallID {
-					for _, annotation := range v.blocks[i] {
-						if annotation.Kind == "filter" {
-							blocks = append(blocks, annotation)
-						}
-					}
-					entry.Seq = previous.Seq
-					v.entries[i], v.blocks[i], v.runs = entry, blocks, nil
-					blocks = nil
-					break
-				}
-			}
-			if blocks == nil {
-				continue
-			}
-		}
 		if entry.Kind == "tool" && entry.CallID != "" && len(blocks) > 0 &&
 			slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, blocks[0].Verb) {
 			// A confirmed receipt replaces the provisional Run or requested

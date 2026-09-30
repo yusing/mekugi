@@ -62,7 +62,6 @@ type activityEvent struct {
 	raw                        string // Unattributed text for the agents pane.
 	observed                   time.Time
 	queued                     time.Time // Queue retention is independent of original message time.
-	filter                     *exploreFilterEvent
 	assignment                 *activityAssignment
 	message                    *activityMessage
 	start                      *activityStart

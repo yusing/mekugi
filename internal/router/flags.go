@@ -17,7 +17,6 @@ type routerFlags struct {
 	journalCompaction   *string
 	grokEnabled         *bool
 	grokAuthFile        *string
-	exploreFilter       *bool
 	captureOutput       *string
 	debug               *bool
 }
@@ -41,7 +40,6 @@ func newRouterFlags(stderr io.Writer) routerFlags {
 		journalCompaction:   flags.String("journal-compaction", "off", "journal compaction: auto, slice, or off (default remains gated on evaluation)"),
 		grokEnabled:         flags.Bool("grok", false, "enable Grok models and plaintext collaboration projection"),
 		grokAuthFile:        flags.String("grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)"),
-		exploreFilter:       flags.Bool("explore-filter", true, "omit search results that TypeSafe Jev judges unrelated to the task when a TypeSafe API key is configured"),
 		captureOutput:       flags.String("capture-output", "", "optional sanitized capture JSONL path"),
 		debug:               flags.Bool("debug", false, "record diagnostics, capture, metrics, instructions, runtime reads, and AX report; print artifact paths on exit"),
 	}

@@ -183,10 +183,7 @@ func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
 	if len(v.entries) != 1 || v.blocks[0][0].Verb != "Run" {
 		t.Fatalf("pending command = %+v", v.blocks)
 	}
-	filter := exploreFilterEvent{Command: "python3 edit.py", LinesBefore: 20, LinesRemoved: 10}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
-		Seq: 2, Agent: caller, Kind: "output_filter", CallID: "call", Text: filter.text(), Filter: &filter,
-	}, {
 		Seq: 3, Agent: caller, Kind: "exit", CallID: "call", Text: "1",
 	}}})
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
@@ -195,9 +192,9 @@ func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
 	if len(v.entries) != 1 || v.blocks[0][0].Verb != "Edit" || v.entries[0].Seq != 1 || v.lastSeq != 4 {
 		t.Fatalf("confirmed edit did not replace Run: entries=%+v blocks=%+v", v.entries, v.blocks)
 	}
-	if len(v.blocks[0]) != 2 || v.blocks[0][1].Kind != "filter" || v.blocks[0][0].ExitCode != 1 ||
+	if len(v.blocks[0]) != 1 || v.blocks[0][0].ExitCode != 1 ||
 		!strings.Contains(ansi.Strip(strings.Join(v.painter.Block(v.blocks[0][0], 80), "\n")), "exit 1") {
-		t.Fatalf("replacement lost failure or filter: %+v", v.blocks[0])
+		t.Fatalf("replacement lost failure: %+v", v.blocks[0])
 	}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 		Seq: 5, Agent: caller, Kind: "tool", CallID: "other", Text: "Edit `other.py` +1 -0",
@@ -568,8 +565,8 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 	}
 }
 
-func TestLiveActivityFilterAlignmentAndDimStyle(t *testing.T) {
-	const summary = "~tokens 3.5K→2.4K (-29.4%) · -42/104 lines · 0.6s"
+func TestLiveActivityCommandNoteAlignmentAndDimStyle(t *testing.T) {
+	const summary = unreturnedOutputNote
 	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
 		painter := activityui.Painter{Theme: theme}
 		for _, width := range []int{8, 18, 40, 100} {

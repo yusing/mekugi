@@ -115,11 +115,18 @@ func codeModeFailureText(texts []string) (string, bool) {
 		if detail, ok := strings.CutPrefix(texts[len(texts)-1], "Script error:\n"); ok {
 			for line := range strings.SplitSeq(detail, "\n") {
 				if line = strings.TrimSpace(livediff.Safe(line, false)); line != "" {
-					text += ": " + clipExploreText(line, codeModeFailureChars)
+					text += ": " + clipCodeModeFailure(line)
 					break
 				}
 			}
 		}
 	}
 	return text, true
+}
+
+func clipCodeModeFailure(text string) string {
+	if len(text) <= codeModeFailureChars {
+		return text
+	}
+	return strings.ToValidUTF8(text[:codeModeFailureChars], "") + "…"
 }

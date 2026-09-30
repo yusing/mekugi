@@ -79,13 +79,10 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		return err
 	}
 	postCompactSet := false
-	exploreFilterSet := false
 	flags.Visit(func(item *flag.Flag) {
 		switch item.Name {
 		case "post-compact-recovery":
 			postCompactSet = true
-		case "explore-filter":
-			exploreFilterSet = true
 		}
 	})
 	if *flags.mode == "passthrough" {
@@ -104,16 +101,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if err != nil {
 		return err
 	}
-	// The filter defaults on but needs a credential; only an explicit request
-	// for it makes a missing key or passthrough mode a startup error.
-	typesafeKey := config.typeSafeAPIKey()
-	if exploreFilterSet && *flags.exploreFilter && *flags.mode != "mekugi" {
-		return errors.New("--explore-filter requires --mode mekugi")
-	}
-	if exploreFilterSet && *flags.exploreFilter && typesafeKey == "" {
-		return errors.New("--explore-filter requires a TypeSafe API key")
-	}
-	*flags.exploreFilter = *flags.exploreFilter && typesafeKey != "" && *flags.mode == "mekugi"
 	openCode := config.Providers
 	if openCode.Enabled() && *flags.mode != "mekugi" {
 		return errors.New("OpenCode providers require --mode mekugi")
@@ -251,9 +238,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			defer func() { runErr = errors.Join(runErr, os.RemoveAll(traceDirectory)) }()
 		} else {
 			issues.addNotice("", "native_trace", "Nested tool confirmation unavailable: "+traceErr.Error())
-		}
-		if *flags.exploreFilter {
-			mekugiCalls.exploreFilter = newExploreFilter(newTypesafeClient(typesafeKey))
 		}
 		mekugiCalls.noticeSink = issues.addThreadNotice
 		replayStore.storageNotice = func(session, thread, message string) {

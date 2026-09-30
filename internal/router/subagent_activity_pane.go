@@ -14,8 +14,7 @@ type activityPaneEntry struct {
 	Agent        string
 	Kind         string
 	Text         string
-	CallID       string              `json:",omitempty"`
-	Filter       *exploreFilterEvent `json:",omitempty"`
+	CallID       string `json:",omitempty"`
 	Observed     time.Time
 
 	native       *liveActivityNativeItem // In-process app-server lifecycle input, not a provider observation.
@@ -238,7 +237,7 @@ func (a *subagentActivity) syncPaneRoles(parent string, roles map[string]journal
 }
 
 func nativeObservedActivity(kind string) bool {
-	return kind == "output_filter" || kind == "error" || kind == "reply" || kind == "start" || kind == "assignment"
+	return kind == "error" || kind == "reply" || kind == "start" || kind == "assignment"
 }
 
 // takeNativeActivity drains router-owned annotations and authenticated input
@@ -261,7 +260,7 @@ func (a *subagentActivity) takeNativeActivity(root string) []activityPaneEntry {
 			kept = append(kept, event)
 			continue
 		}
-		entries = append(entries, activityPaneEntry{Agent: node.name, Kind: event.kind, Text: event.raw, CallID: event.callID, Filter: event.filter, Observed: event.observed,
+		entries = append(entries, activityPaneEntry{Agent: node.name, Kind: event.kind, Text: event.raw, CallID: event.callID, Observed: event.observed,
 			assignment: event.assignment, message: event.message, start: event.start})
 	}
 	clear(a.events[len(kept):])

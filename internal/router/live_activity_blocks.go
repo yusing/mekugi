@@ -136,10 +136,6 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		return []activityui.Block{{Kind: "error", Body: text}}
 	case "compaction":
 		return []activityui.Block{{Kind: "compaction", Body: text}}
-	case "output_filter":
-		if entry.Filter != nil {
-			return []activityui.Block{{Kind: "filter", Body: text}}
-		}
 	case "tool":
 		if entry.native != nil && len(entry.native.segments) > 0 {
 			return commandSegmentBlocks(entry)

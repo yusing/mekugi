@@ -9,55 +9,6 @@ import (
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
-func TestAppServerNativeFilterActivity(t *testing.T) {
-	for _, child := range []bool{false, true} {
-		for _, timing := range []string{"before", "during", "after"} {
-			t.Run(timing+map[bool]string{false: "/main", true: "/child"}[child], func(t *testing.T) {
-				u := newAppServerSessionTestUI(t, t.TempDir())
-				activity := newSubagentActivity()
-				activity.attachNativePane("main")
-				activity.observe("other", "", "/root", false)
-				u.proxy = &mekugiProxy{activity: activity}
-				thread := "main"
-				view := u.view
-				if child {
-					thread, view = "child", u.agents
-					activity.observe("child", "main", "/root/worker", true)
-					u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
-				}
-				item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "rg needle src"}
-				publish := func() {
-					event := exploreFilterEvent{Command: item.Command, LinesBefore: 10, LinesRemoved: 5}
-					activity.collectEvent(activityEvent{thread: thread, source: "filter", kind: "output_filter", callID: "cmd", text: event.text(), filter: &event})
-					u.applyObservedActivity()
-				}
-				if timing == "before" {
-					publish()
-				}
-				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": item})
-				if timing == "during" {
-					publish()
-				}
-				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": item})
-				if timing == "after" {
-					publish()
-				}
-				u.applyObservedActivity()
-				if len(view.entries) != 1 || len(view.blocks[0]) != 2 || view.blocks[0][0].Verb != "Search" || view.blocks[0][1].Kind != "filter" {
-					t.Fatalf("filter lifecycle: entries=%+v blocks=%+v", view.entries, view.blocks)
-				}
-				rows := strings.Join(view.painter.Block(view.blocks[0][1], 100), "\n")
-				if !strings.Contains(rows, activityui.Dim) || !strings.Contains(ansi.Strip(rows), "−5/10 lines") {
-					t.Fatalf("filter style: %q", rows)
-				}
-				if len(activity.takeNativeActivity("other")) != 0 {
-					t.Fatal("cross-thread annotations")
-				}
-			})
-		}
-	}
-}
-
 func TestAppServerSearchResultCounts(t *testing.T) {
 	for _, tc := range []struct {
 		command, output string
@@ -132,21 +83,6 @@ func TestAppServerWebSearchResults(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	if len(u.view.entries) != 1 || u.view.blocks[0][0].Results == nil || *u.view.blocks[0][0].Results != 2 {
 		t.Fatalf("completed search: %+v", u.view.blocks)
-	}
-}
-
-func TestAppServerCodeModeFilterDoesNotInventCommand(t *testing.T) {
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	activity := newSubagentActivity()
-	activity.attachNativePane("main")
-	u.proxy = &mekugiProxy{activity: activity}
-	item := appServerItem{ID: "exec-nested", Type: "commandExecution", Command: "rg needle"}
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	event := exploreFilterEvent{Command: item.Command, LinesBefore: 10, LinesRemoved: 5}
-	activity.collectEvent(activityEvent{thread: "main", source: "filtered", kind: "output_filter", callID: "outer-exec", text: event.text(), filter: &event})
-	u.applyObservedActivity()
-	if len(u.view.entries) != 2 || len(u.view.blocks[1]) != 1 || u.view.blocks[1][0].Kind != "filter" {
-		t.Fatalf("invented command for unmatched Code Mode filter: %+v", u.view.blocks)
 	}
 }
 

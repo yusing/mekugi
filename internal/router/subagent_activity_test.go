@@ -42,16 +42,15 @@ func TestNativeActivityDeduplicatesRepliesAndRetainsAssignments(t *testing.T) {
 	}
 }
 
-func TestNativeActivityOmitsHostOwnedToolSpeechButKeepsFilter(t *testing.T) {
+func TestNativeActivityOmitsHostOwnedToolSpeech(t *testing.T) {
 	a := newSubagentActivity()
 	a.attachNativePane("root")
 	a.observe("root", "", "/root", false)
 	a.observe("child", "root", "/root/reviewer", true)
 	a.collect("child", "tool", "tool", "Read private.go")
 	a.collect("child", "commentary", "commentary", "Assistant speech")
-	a.collect("child", "filter", "output_filter", "Output filtered")
 	got := a.takeNativeActivity("root")
-	if len(got) != 1 || got[0].Kind != "output_filter" {
-		t.Fatalf("host-owned speech duplicated or filter missing: %+v", got)
+	if len(got) != 0 {
+		t.Fatalf("host-owned speech duplicated: %+v", got)
 	}
 }

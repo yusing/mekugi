@@ -28,7 +28,6 @@ pjdoc:
     - changes.md
     - execution.md
     - guide.md
-    - explore_filter.md
 ---
 # Mekugi interface contracts
 
@@ -62,4 +61,3 @@ linked, not copied.
 - [`REQ-EXECUTION-001`](execution.md): stock editing, execution, and executable frontends
 - [`REQ-EXECUTION-002`](execution.md): per-segment tracking of Bash command lists
 - [`REQ-GUIDE-001`](guide.md): caller-preserving additive tool guidance
-- [`REQ-EXPLORE-FILTER-001`](explore_filter.md): decision-model filtering of search output

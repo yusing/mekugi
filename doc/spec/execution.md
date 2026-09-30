@@ -42,11 +42,7 @@ owns permissions, sandboxing, command processes, yielded sessions, and
 `write_stdin` continuation. Mekugi never reruns a stock call while observing,
 replaying, or displaying it.
 
-The credential-gated [explore output filter](explore_filter.md) is an
-exception to unchanged model-visible result text. It projects eligible completed
-native and transparent single-call Code Mode results, including command lists,
-retains their original output before exposing recovery, and never alters
-execution or continuation. Completed edit observations may append a separate
+Completed edit observations may append a separate
 agent-visible change-ID and summary text part as specified in
 [applied changes](changes.md), preserving the original result content.
 

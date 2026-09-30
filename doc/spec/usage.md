@@ -8,16 +8,6 @@ An eligible main completion updates a Markdown token-usage file without adding a
 conversation message. Unavailable usage is reported as `n/a` in that file with an
 incomplete-usage explanation. Child completion does not update the main report.
 
-When used, TypeSafe AI has a separate provider-reported usage section in the
-Markdown report, with per-agent and total rows for model, HTTP attempts, input,
-output, missing usage, and cost. Agent-model totals and cache accounting exclude
-these auxiliary calls. Only proven descendants join the root's TypeSafe total, and
-restart resets consumption just as it does agent-model usage. Retries and
-unusable answers retain any known consumption; absent, null, invalid, or partial
-usage fields count as missing rather than zero. Overflow makes the affected total
-unavailable. No TypeSafe price is configured, so its cost is `n/a`; the report
-does not claim net savings from local output-reduction estimates.
-
 The report is a Markdown table in the system temporary directory, using the Codex
 thread ID as the stable file identity across router restarts. The wrapper reports
 written file paths on exit. No usage line or table is added to the conversation.
@@ -108,4 +98,3 @@ Acceptance:
 3. Missing usage remains explicit after later successes, compaction, and session remapping.
    Unavailable evidence is `n/a`, never inferred zero; restart begins a new accounting window.
 4. Tree totals include only proven descendants and leave per-thread counters unchanged.
-   TypeSafe consumption remains separate from agent-model usage.

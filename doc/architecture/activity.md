@@ -19,8 +19,7 @@ are display data, not assistant speech. Native activity does not wait for a root
 provider response or create model turns.
 
 There is no legacy response projection or inline activity fallback. Main activity
-comes from app-server; explore-filter observations are native-only. Filter observations retain originating call
-identity and typed measurements; the filter owns reduction calculations.
+comes from app-server.
 
 The roster consumes canonical [per-thread usage](usage.md), not a second accounting
 store. Presentation cannot acknowledge journals, finalize edits, reconstruct missing

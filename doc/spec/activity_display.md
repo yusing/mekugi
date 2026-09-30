@@ -48,9 +48,9 @@ a group into one row with summed counts; Activity keeps each invocation's rows,
 since cross-pane navigation targets them.
 They retain paths and line counts but omit diff bodies in the
 pane; durable change evidence and inline receipts are unchanged. This omission
-applies only to generated tool activity, not authored text. Output-reduction
-summaries align with command text on their operation's branch and use muted,
-dimmed styling in either theme.
+applies only to generated tool activity, not authored text. Notes about output
+not returned to the model align with command text on their operation's branch
+and use muted, dimmed styling in either theme.
 Consecutive same-action target events by one agent collapse into one row, both
 within a call and across calls. Reads join ranges of the same file; Inspect,
 List, Search, and other target-only actions use the same grouping. A group that

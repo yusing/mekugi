@@ -101,26 +101,6 @@ func TestRequestedReasoningHeadsOperationTree(t *testing.T) {
 	}
 }
 
-func TestRequestedReadKeepsAttachedFilter(t *testing.T) {
-	for _, agent := range []string{"Main", "/root/worker"} {
-		v := newLiveActivityView()
-		v.childrenOnly = agent != "Main"
-		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
-			{Seq: 1, Agent: agent, Kind: "tool", CallID: "read", Text: "Read `a.go`"},
-			{Seq: 2, Agent: agent, Kind: "output_filter", CallID: "read", Text: "filtered output", Filter: &exploreFilterEvent{}},
-			{Seq: 3, Agent: agent, Kind: "tool", CallID: "search", Text: "Search `needle`"},
-		}})
-		feed := v.renderFeed(100, 80)
-		if agent == "Main" {
-			feed = v.renderConversation(100)
-		}
-		got := ansi.Strip(strings.Join(feed.lines, "\n"))
-		if !strings.Contains(got, "├ Read   a.go\n") || !strings.Contains(got, "│        filtered output") || strings.Contains(got, "└ filtered") || strings.Contains(got, "├ filtered") || !strings.Contains(got, "└ Search needle") {
-			t.Fatalf("%s detached filter from its read:\n%s", agent, got)
-		}
-	}
-}
-
 func TestRequestedInspectOperandsGroupLikeReads(t *testing.T) {
 	got := toolActivityShell("inspect_file --json --max-tokens 500 a.go b.go")
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: got})

@@ -753,7 +753,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 	return p.Markdown(block.Body, width)
 }
 
-// filterRows aligns an output-reduction note with its command text.
+// filterRows aligns an auxiliary note with its command text.
 func filterRows(body string, width, indent int) []string {
 	rows := Wrap(body, width-indent, true)
 	for i := range rows {

@@ -23,7 +23,6 @@ type tokenUsageReport struct {
 	model        string
 	rows         *[]agentTokenUsage
 	missingUsage uint64
-	typesafe     typesafeUsage
 }
 
 type agentTokenUsage struct {
@@ -163,7 +162,6 @@ func formatTokenUsageReport(report tokenUsageReport) string {
 	} else if !report.cost.known {
 		text.WriteString("\nCost unavailable: unknown model/service-tier pricing or inconsistent usage.")
 	}
-	writeTypesafeUsageReport(&text, report, rows)
 	return text.String()
 }
 

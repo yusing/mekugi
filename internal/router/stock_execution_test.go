@@ -3,11 +3,74 @@ package router
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestStockSearchOutputPassesThroughRequestPreparation(t *testing.T) {
+	for _, shape := range []string{"native", "Code Mode result", "Code Mode stdout"} {
+		t.Run(shape, func(t *testing.T) {
+			workspace := t.TempDir()
+			var stdout strings.Builder
+			for file := range 6 {
+				name := fmt.Sprintf("result-%d.go", file)
+				if err := os.WriteFile(filepath.Join(workspace, name), nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				for line := range 8 {
+					fmt.Fprintf(&stdout, "%s:%d: needle %s\n", name, line+1, strings.Repeat("matching context ", 8))
+				}
+			}
+			command := map[string]any{"cmd": "rg -n needle .", "workdir": workspace}
+			call := map[string]any{"type": "function_call", "name": "exec_command", "call_id": "search", "arguments": string(mustTestJSON(t, command))}
+			output := map[string]any{"type": "function_call_output", "call_id": "search", "output": "Chunk ID: abc\nWall time: 0.1 seconds\nProcess exited with code 0\nOutput:\n" + stdout.String()}
+			tools := testNativeResponsesTools()
+			input := []any{map[string]any{"role": "user", "content": "Find needle in result-0.go."}}
+			if shape != "native" {
+				tools = nil
+				input = append([]any{testCodeModeAdditionalTools(testCodeModeDescription)}, input...)
+				source := "text(await tools.exec_command(" + string(mustTestJSON(t, command)) + "))"
+				body := string(mustTestJSON(t, map[string]any{"exit_code": 0, "output": stdout.String(), "wall_time_seconds": 0.1}))
+				if shape == "Code Mode stdout" {
+					source = "const r = await tools.exec_command(" + string(mustTestJSON(t, command)) + "); text(r.output)"
+					body = stdout.String()
+				}
+				call = map[string]any{"type": "custom_tool_call", "name": "exec", "call_id": "search", "input": source}
+				output = map[string]any{"type": "custom_tool_call_output", "call_id": "search", "output": []any{
+					map[string]any{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+					map[string]any{"type": "input_text", "text": body},
+				}}
+			}
+			input = append(input, map[string]any{"role": "assistant", "content": "Looking for result-0.go."}, call, output)
+			request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "gpt-test", "input": input, "tools": tools}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			proxy := newManagedMekugiProxy(t)
+			attachTestReplayStore(t, proxy)
+			for range 2 { // Historical results remain identical on subsequent requests.
+				transform, err := proxy.prepareRequest(t.Context(), &request, "session", "thread", codexTurnMetadata{
+					RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil},
+				}, true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				transform.Close()
+				var projected []map[string]json.RawMessage
+				if err := json.Unmarshal(request.fields["input"], &projected); err != nil {
+					t.Fatal(err)
+				}
+				if !sameJSONValue(mustTestJSON(t, call), mustTestJSON(t, projected[len(projected)-2])) ||
+					!sameJSONValue(mustTestJSON(t, output), mustTestJSON(t, projected[len(projected)-1])) {
+					t.Fatal("stock search arguments or result changed")
+				}
+			}
+		})
+	}
+}
 
 func TestStreamedCodeModeObservedCallCommitsAtInputAndItemCompletion(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)

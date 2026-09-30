@@ -18,7 +18,5 @@ it does not generate a usage conversation message. The native roster consumes
 these same counters. App-server token usage supplies separate context/exit displays
 and is never added to router cost totals.
 
-TypeSafe consumption occupies a separate per-thread bucket, outside agent-model
-cost. Capture-owned [metrics](metrics.md) use terminal facts
-but retain independent calculation and persistence. Local output-reduction estimates
-are neither provider usage nor evidence of net savings.
+Capture-owned [metrics](metrics.md) use terminal facts but retain independent
+calculation and persistence. Local token estimates are not provider usage.
