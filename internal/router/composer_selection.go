@@ -36,7 +36,7 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 		return
 	}
 	label := composerSelectionPrefix + description + "]"
-	pending := slices.Concat(u.unsent, u.queued, u.steerParts(u.steers))
+	pending := slices.Concat(u.submission.parts, u.unsent, u.queued, u.steerParts(u.steers))
 	used := func(label string) bool {
 		return strings.Contains(u.draft, label) || slices.ContainsFunc(pending, func(d composerDraft) bool { return strings.Contains(d.text, label) })
 	}

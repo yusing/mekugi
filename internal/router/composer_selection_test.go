@@ -3,6 +3,7 @@ package router
 import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -180,6 +181,35 @@ func TestTerminalUIDiffSelectionUsesRenderedPane(t *testing.T) {
 }
 
 func TestComposerSelectionReviewEdges(t *testing.T) {
+	t.Run("rejected pending submission retains unique quotes", func(t *testing.T) {
+		u, w := newAppServerTestUI()
+		u.insertSelection("message", "first quote", "")
+		appServerTestKeys(t, u, "\r")
+		requests := appServerTurnRequests(t, w)
+		if len(requests) != 1 || requests[0].Method != "turn/start" {
+			t.Fatalf("start requests = %+v", requests)
+		}
+		u.insertSelection("message", "second quote", "")
+		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, requests[0].ID))
+		appServerTestKeys(t, u, "\r")
+		requests = appServerTurnRequests(t, w)
+		if len(requests) != 1 || requests[0].Method != "turn/start" {
+			t.Fatalf("retry requests = %+v", requests)
+		}
+		var text string
+		var frames []string
+		for _, part := range requests[0].Params.Input {
+			if attached, ok := decodeFileAttachments(part.Text); ok {
+				frames = append(frames, attached...)
+			} else if part.Type == "text" {
+				text += part.Text
+			}
+		}
+		restored := restoredSelections(text, frames)
+		if len(restored) != 2 || restored[0].text != "first quote" || restored[1].text != "second quote" || text[restored[0].start:restored[0].end] == text[restored[1].start:restored[1].end] {
+			t.Fatalf("retry lost distinct quotes: text=%q restored=%+v", text, restored)
+		}
+	})
 	t.Run("pending labels stay distinct", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.insertSelection("message", "one", "")
