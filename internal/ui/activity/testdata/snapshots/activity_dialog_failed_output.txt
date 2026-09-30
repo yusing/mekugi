@@ -1,0 +1,14 @@
+╭─ Ran · printf 'one\ntwo\n' · 125ms ────────────── 2 / 3 [×] ─╮
+│ 11 lines · exit 2                                            │
+├──────────────────────────────────────────────────────────────┤
+│  1 │ printf 'one\ntwo\n'                                     │
+│  2 │ exit 2                                                  │
+│                                                              │
+│ … 9 earlier lines not retained                               │
+│ 10 ┆ one                                                     │
+│ 11 ┆ two                                                     │
+│                                                              │
+│                                                              │
+│                                                              │
+│                                                              │
+╰─ esc close · ↑↓ scroll · c copy ─────────────────────────────╯

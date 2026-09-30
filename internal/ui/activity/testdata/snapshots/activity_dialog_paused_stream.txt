@@ -1,0 +1,9 @@
+╭─ Running · go test ./internal/ui/... ── ● live · paused [×] ─╮
+│ 6 lines                                                      │
+├──────────────────────────────────────────────────────────────┤
+│ 3 ┆ package 3: passed                                        │
+│ 4 ┆ package 4: passed                                        │
+│ 5 ┆ package 5: running                                       ▌
+│ 6 ┆ waiting for remaining packages                           ▌
+│                                                              ▌
+╰─ esc close · ↑↓ scroll · c copy ─────────────────────────────╯

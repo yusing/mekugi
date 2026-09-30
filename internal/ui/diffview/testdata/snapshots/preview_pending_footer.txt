@@ -1,0 +1,7 @@
+  main · ◐ scoped effects
+  1│ src/main.go
+▎ 2│ docs/guide.md
+
+
+
+may write · 2 scoped paths

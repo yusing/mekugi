@@ -1,0 +1,11 @@
+  Resume a previous session
+  Filter: Cwd All · /workspace
+  Type to search
+
+  Updated  Conversation
+  2m ago   Improve rendered snapsho…
+› 2h ago   Investigate a long parse…
+  2d ago   (no message yet)
+
+
+  enter resume · esc close · tab cw…

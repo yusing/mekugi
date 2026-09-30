@@ -1,0 +1,5 @@
+Ran    mchanges --summary
+       Edited   internal/ui/activity/dialog_test.go    +24 -3 ━━━━━━━━
+       Created  internal/ui/activity/snapshot_test.go  +80    ━━━━━━━━
+       Moved    old_test.go → renamed_test.go          renamed
+       Conflict conflicted_test.go                     unresolved

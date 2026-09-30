@@ -1,0 +1,11 @@
+  Resume a previous session
+  Filter: Cwd All
+  Type to search
+
+  Updated  Branch             Directory       Conversation
+  2m ago   coverage/snapshot  .               Improve rendered snapshot coverage · current
+› 2h ago   fix/parser         /other/project  Investigate a long parser failure message             
+  2d ago   main               .               (no message yet)
+
+
+  enter resume · esc close · tab cwd/all · ctrl+c close · ↑/↓ browse

@@ -1,0 +1,7 @@
+
+  internal/uisnapshot/snapshot.go
+› internal/ui/activity/snapshot_test.go                                         
+  internal/ui/diffview/snapshot_test.go
+
+
+  @! include excluded files

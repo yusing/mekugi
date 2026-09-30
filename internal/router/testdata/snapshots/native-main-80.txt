@@ -1,0 +1,16 @@
+❯ Explain the snapshot workflow.                                       12:00:00
+
+✓ Main finished                                                        12:00:00
+│ Review the rendered frame, accept its baseline, then rerun the offline check.
+
+
+
+
+
+
+
+
+╭─ Ready ──────────────────────────────────────────────────────────────────────╮
+│ ❯ Add narrow-screen coverage.                                                │
+│   Keep the interaction assertions.                                           │
+╰───────────────────────────────────────────────── snapshot-model (high) • 0% ─╯

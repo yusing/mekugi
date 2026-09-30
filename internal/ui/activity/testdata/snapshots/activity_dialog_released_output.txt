@@ -1,0 +1,14 @@
+╭─ Ran · make test-ui-snapshots ───── [×] ─╮
+│ 22 lines                                 │
+├──────────────────────────────────────────┤
+│  1 │ make test-ui-snapshots              │
+│                                          │
+│ Full output was released; its last       │
+│ available lines follow.                  │
+│ 21 ┆ ok  internal/ui/activity            │
+│ 22 ┆ ok  internal/ui/journal             │
+│                                          │
+│                                          │
+│                                          │
+│                                          │
+╰─ esc close · ↑↓ scroll · c copy ─────────╯

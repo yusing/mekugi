@@ -36,10 +36,12 @@ Use a fresh temporary Bun transpiler cache when test discovery appears stale.
 `make test-ui-snapshots` runs offline rendered-output regression tests without Codex
 or model requests. Select a case with `SNAPSHOT='^TestUISnapshotJournalReply$'`.
 The supplied journal preview lives in
-`internal/router/testdata/snapshots/journal-ui-preview.txt`. Journal panes, cards,
-details, and skills pickers have additional router fixtures; activity change-report
-fixtures live in `internal/ui/activity/testdata/snapshots/`. Other owners keep
-fixtures in their own `testdata/snapshots/` directories. Snapshot assertions replace
+`internal/router/testdata/snapshots/journal-ui-preview.txt`. Router fixtures also cover
+journal panes, cards, details, skills and file pickers, Main's composer, resume
+sessions, the Agents roster, and responsive Activity layouts. Activity blocks and
+output dialogs live in `internal/ui/activity/testdata/snapshots/`; diff navigation,
+change graphs, and streaming previews live in `internal/ui/diffview/testdata/snapshots/`.
+Other owners keep fixtures in their own `testdata/snapshots/` directories. Snapshot assertions replace
 layout/text checks, not independent state, interaction, parser, or color checks.
 
 `internal/uisnapshot.Assert` strips ANSI sequences only: spacing, blank lines,

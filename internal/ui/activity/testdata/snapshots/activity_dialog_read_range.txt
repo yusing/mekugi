@@ -1,0 +1,11 @@
+╭─ Read · sample.go ───────────────── [×] ─╮
+│ L42–43 · 2 lines                         │
+├──────────────────────────────────────────┤
+│ 42 │ func veryLongFunctionName() string  │
+│    │ {                                   │
+│ 43 │     return "a wrapped source line"  │
+│                                          │
+│                                          │
+│                                          │
+│                                          │
+╰─ esc close · ↑↓ scroll · c copy ─────────╯

@@ -1,0 +1,6 @@
+  worker · ○ M src/main.go +1 -1 · preview
+  1│ package main
+  2│ 
+  3│-const label = "old"                                               
+▎ 3│+const label = "a long replacement that wraps inside a narrow previ
+▎  │+ew"                                                               

@@ -1,0 +1,5 @@
+Ran    go test ./internal/ui/activity -run \
+         TestDialog · exit 1 · 125ms
++8     ┆ --- FAIL: TestDialog (0.00s)
+       ┆     dialog_test.go:42: unexpected …
+       ┆ FAIL
