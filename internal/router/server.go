@@ -326,7 +326,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 					mekugiCalls.execWindows.tracker = hub
 				}
 			}
-			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint)
+			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory

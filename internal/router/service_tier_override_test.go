@@ -14,8 +14,82 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/internal/livediff"
 )
+
+func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
+	directory := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", directory)
+	if actual, _ := os.UserConfigDir(); actual != directory {
+		t.Skip("platform does not use XDG_CONFIG_HOME")
+	}
+	t.Setenv("OPENCODE_API_KEY", "")
+	t.Setenv("OPENCODE_GO_API_KEY", "")
+	t.Setenv("OPENCODE_ZEN_API_KEY", "")
+	if err := os.Mkdir(filepath.Join(directory, "mekugi"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "mekugi", "config.toml"), []byte("[service_tiers]\n\"gpt-6.1-sol\" = \"fast\"\n\"gpt-6-astra\" = \"flex\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	config, err := loadMekugiConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := newAppServerSessionTestUI(t, directory)
+	u.proxy = newManagedMekugiProxy(t)
+	u.serviceTiers = config.ServiceTiers
+	u.status = "Ready"
+	u.view.painter.Theme = livediff.DarkTheme
+	for _, tc := range []struct{ model, requested, want string }{
+		{"gpt-6.1-sol", "default", "priority"},
+		{"gpt-6-astra", "priority", "flex"},
+		{"unconfigured", "default", "default"},
+		{"unconfigured", "fast", "priority"},
+	} {
+		t.Run(tc.model+"-"+tc.requested, func(t *testing.T) {
+			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": tc.model, "effort": "high", "serviceTier": tc.requested}})
+			rows, _ := u.mainFrame(100, 10, 0)
+			if frame := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(frame, tc.model+" (high) · "+tc.want) {
+				t.Fatalf("composer does not reflect routed tier: %s", frame)
+			}
+			if tc.model == "gpt-6.1-sol" {
+				assertNativeUISnapshot(t, "native-main-configured-tier", rows)
+			}
+			// Passthrough routes tiers too, but has no observation proxy.
+			proxy := u.proxy
+			u.proxy = nil
+			passthrough, _ := u.mainFrame(100, 10, 0)
+			if strings.Join(rows, "\n") != strings.Join(passthrough, "\n") {
+				t.Fatal("passthrough composer lost configured tier")
+			}
+			appServerTestKeys(t, u, "/status\r")
+			if body := statusReportText(u.statusPanel); !strings.Contains(body, "Service tier: "+tc.want) {
+				t.Fatalf("status does not reflect routed tier: %s", body)
+			}
+			u.statusPanelKey("\x1b")
+			u.proxy = proxy
+			if u.serviceTier != tc.requested || u.model != tc.model {
+				t.Fatal("presentation replaced host settings")
+			}
+			request := serverRequest(t, func(fields map[string]any) { fields["model"], fields["service_tier"] = tc.model, tc.requested })
+			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
+			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, serviceTiers: config.ServiceTiers}
+			if err := executor.execute(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "tier"); err != nil {
+				t.Fatal(err)
+			}
+			forwarded, err := parseResponsesRequest(provider.forwarded[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := jsonString(forwarded.fields, "service_tier"); got != tc.want {
+				t.Fatalf("provider tier=%s, display=%s", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestServiceTierConfig(t *testing.T) {
 	directory := t.TempDir()

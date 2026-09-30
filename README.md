@@ -380,11 +380,11 @@ new work and remaining tasks; select its expansion target to see the notes.
 
 The **Activity** pane streams child activity, messages, and replies, including
 while Main waits. The **Agents** roster below the main columns shows children
-with their elapsed time, provider round trips, and cumulative edited lines labeled
-`activity`. The roster header's `net +N -N` reports the final composed outcome
+with their elapsed time, provider round trips, and cumulative edited lines as
+`+N -N`. The roster header's `+N -N` reports the final composed outcome
 across agents, so superseded edits and files created then deleted do not inflate it.
 It uses recorded changes, not a live Git diff; incomplete or inconsistent evidence
-shows `net ?`. Main's conversation and progress stay in Main. Token and cost figures
+shows `?`. Main's conversation and progress stay in Main. Token and cost figures
 come from the router's usage accounting, not an additional app-server total.
 
 - Click an agent to inspect its activity; reply links address that agent.
@@ -508,7 +508,8 @@ Every section is optional. Settings are read at startup and never rewritten.
 - **Service tiers** replace the request's tier after model selection. The values
   are `auto`, `default`, `fast` (sent as
   `priority`), `priority`, and `flex`. The provider must support the tier you
-  choose.
+  choose. The native composer and `/status` show the effective tier, including
+  this override, rather than only Codex's requested tier.
 - **API keys:** `OPENCODE_API_KEY` overrides both file keys. The per-service
   variables override their own service. Setting one to an empty string turns
   that service off.

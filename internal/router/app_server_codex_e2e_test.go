@@ -132,7 +132,7 @@ func runAppServerPreviewWithEnvironment(t *testing.T, provider responseProvider,
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(ctx, cmd, terminal, terminal, proxy, nil, "", true)
+	wait, err := startAppServerUI(ctx, cmd, terminal, terminal, proxy, nil, "", true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -472,14 +472,16 @@ moving its controls. Drag-select visible text and use the shared Copy action
 an active selection, then closes the panel. Closing also discards its selection.
 Colors follow the terminal light/dark theme, while numeric
 percentages keep gauges readable without color. The panel includes known model,
-reasoning, service tier, provider, directory, session identity, approval policy,
+reasoning, effective service tier (including Mekugi's per-model override), provider,
+directory, session identity, approval policy,
 sandbox, loaded instruction sources, and context remaining. It works during a
 turn without sending or steering model input. Missing values are omitted, not
 represented as zero usage or an unknown-state label. Account information refreshes
 through `account/read` without refreshing credentials; ChatGPT accounts additionally
 refresh `account/rateLimits/read`. The same panel updates asynchronously with the
 account/plan, each reported quota window's percentage remaining and local reset
-time, credits, and the usage-page link. Non-ChatGPT sessions show observed input
+time with the system timezone's UTC offset (including daylight saving at reset),
+credits, and the usage-page link. Non-ChatGPT sessions show observed input
 and output tokens instead. Refresh failures stay on the panel without replacing
 turn status. Escape, Enter, q, or Ctrl-C closes the panel without interrupting a turn.
 Closing leaves no transcript entry; late responses cannot reopen or update a

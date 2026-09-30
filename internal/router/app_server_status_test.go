@@ -6,11 +6,45 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
 )
+
+func TestUISnapshotAppServerStatusSystemTimezone(t *testing.T) {
+	// CST is ambiguous: Taipei and Chicago share the abbreviation, not the offset.
+	previous := time.Local
+	t.Cleanup(func() { time.Local = previous })
+	for _, tc := range []struct {
+		name, zone, expected string
+		reset                time.Time
+	}{
+		{"taipei", "Asia/Taipei", "Jan 2 20:00 UTC+08:00", time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)},
+		{"chicago-winter", "America/Chicago", "Jan 2 06:00 UTC-06:00", time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)},
+		{"chicago-summer", "America/Chicago", "Jul 2 07:00 UTC-05:00", time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)},
+		{"utc", "UTC", "Jan 2 12:00 UTC+00:00", time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var err error
+			time.Local, err = time.LoadLocation(tc.zone)
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, _ := newAppServerTestUI()
+			u.view.painter.Theme = livediff.DarkTheme
+			appServerTestKeys(t, u, "/status\r")
+			appServerTestMessage(t, u, `{"id":1,"result":{"account":{"type":"chatgpt","planType":"pro"}}}`)
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":20,"windowDurationMins":300,"resetsAt":%d}}}}`, tc.reset.Unix()))
+			rows := u.statusPanelFrame(80, 24)
+			if body := ansi.Strip(strings.Join(rows, "\n")); !strings.Contains(body, "resets "+tc.expected) {
+				t.Fatalf("reset did not follow system timezone: %s", body)
+			}
+			assertNativeUISnapshot(t, "native-status-"+tc.name, rows)
+		})
+	}
+}
 
 func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 	u, wire := newAppServerTestUI()

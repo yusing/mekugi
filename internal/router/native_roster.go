@@ -85,7 +85,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	}
 	var totals []string
 	if v.netCounts != nil {
-		totals = append(totals, "net"+diffview.CountStats(*v.netCounts, v.painter.Theme))
+		totals = append(totals, strings.TrimSpace(diffview.CountStats(*v.netCounts, v.painter.Theme)))
 	}
 	if input+output > 0 {
 		totals = append(totals, "↑"+formatUsageTokens(input)+" ↓"+formatUsageTokens(output))
@@ -240,9 +240,6 @@ func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now t
 	parts[2], parts[3], _ = strings.Cut(timer, " · ")
 	if count, ok := v.rosterLines[agent.Name]; ok {
 		parts[4], parts[5] = v.lineCountParts(count)
-		if parts[4] != "" || parts[5] != "" {
-			parts[4] = strings.TrimSpace("activity " + parts[4])
-		}
 	}
 	if agent.InputTokens+agent.OutputTokens > 0 {
 		parts[6], parts[7] = "↑"+formatUsageTokens(agent.InputTokens), "↓"+formatUsageTokens(agent.OutputTokens)

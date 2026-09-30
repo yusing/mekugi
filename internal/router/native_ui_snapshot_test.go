@@ -94,6 +94,31 @@ func TestUISnapshotNativeAgentsRoster(t *testing.T) {
 	}
 }
 
+func TestUISnapshotNativeRosterEditCounts(t *testing.T) {
+	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	v := newLiveActivityView()
+	v.painter.Theme = livediff.DarkTheme
+	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
+		{Name: "/root", Final: true, InputTokens: 2000},
+		{Name: "/root/cleanup", Final: true, InputTokens: 1000},
+	}})
+	v.lineCounts = map[string]livediff.Counts{
+		"/root":         {Added: 3, Removed: 1},
+		"/root/cleanup": {Removed: 2},
+	}
+	v.netCounts = new(livediff.Counts{Added: 2, Removed: 1})
+	assertNativeUISnapshot(t, "native-roster-edit-counts", v.nativeRoster(100, 6, now, true))
+}
+
+func TestUISnapshotNativeLockedComposer(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.status = "Ready"
+	u.view.painter.Theme = livediff.DarkTheme
+	appServerTestKeys(t, u, "/lock\r")
+	rows, _ := u.mainFrame(100, 10, 0)
+	assertNativeUISnapshot(t, "native-main-locked", rows)
+}
+
 func TestUISnapshotNativeActivityLayouts(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	for _, width := range []int{70, 105} {

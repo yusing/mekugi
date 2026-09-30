@@ -110,11 +110,11 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	}
 	for _, width := range []int{160, 80, 120} {
 		frame := paint(width)
-		if !strings.Contains(frame, "net +3 -1") || strings.Contains(frame, "net +7 -5") {
+		if !strings.Contains(frame, "+3 -1") || strings.Contains(frame, "+7 -5") {
 			t.Fatalf("%d-column frame misreports composed outcome:\n%s", width, frame)
 		}
-		if width == 160 && (!strings.Contains(frame, "activity +4 -1") || !strings.Contains(frame, "activity +3 -4")) {
-			t.Fatalf("cumulative agent activity is not separately labeled:\n%s", frame)
+		if width == 160 && (!strings.Contains(frame, "+4 -1") || !strings.Contains(frame, "+3 -4")) {
+			t.Fatalf("cumulative agent counts are missing:\n%s", frame)
 		}
 	}
 
@@ -125,13 +125,13 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	refresh()
 	u.shell.diff.view.FilterCaller("/root/worker")
 	refresh()
-	if frame := paint(160); !strings.Contains(frame, "net +3 -1") {
+	if frame := paint(160); !strings.Contains(frame, "+3 -1") {
 		t.Fatalf("replay or caller filter changed overall outcome:\n%s", frame)
 	}
 	u.shell.diff.resetScope()
 	scope.Workspaces[workspace] = map[string]bool{"new-thread": true}
 	refresh()
-	if frame := paint(160); strings.Contains(frame, "net +") || strings.Contains(frame, "activity +") {
+	if frame := paint(160); strings.Contains(frame, "+3 -1") || strings.Contains(frame, "+4 -1") || strings.Contains(frame, "+3 -4") {
 		t.Fatalf("new thread borrowed old outcome or activity:\n%s", frame)
 	}
 }

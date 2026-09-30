@@ -274,10 +274,10 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 	for _, line := range lines {
 		rows = append(rows, ansi.Strip(line))
 	}
-	if strings.Contains(rows[0], "?") || !strings.Contains(rows[0], "net +2 -1") || strings.Contains(rows[0], "+4 -2") {
+	if strings.Contains(rows[0], "?") || !strings.Contains(rows[0], "+2 -1") || strings.Contains(rows[0], "+4 -2") {
 		t.Fatalf("session outcome was replaced by cumulative activity: %q", rows[0])
 	}
-	for i, want := range []string{"activity +3 -1  ↑2K", "activity +1 -1  ↑1K"} {
+	for i, want := range []string{"+3 -1  ↑2K", "+1 -1  ↑1K"} {
 		if !strings.Contains(rows[i+1], want) {
 			t.Fatalf("row %d lacks %q:\n%s", i+1, want, strings.Join(rows, "\n"))
 		}
@@ -290,7 +290,7 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 		t.Fatalf("line counts are not aligned:\n%s", strings.Join(rows, "\n"))
 	}
 	delete(v.lineCounts, "/root/b")
-	if header := ansi.Strip(v.nativeRoster(150, 8, now, true)[0]); !strings.Contains(header, "net +2 -1 · ↑3K") {
+	if header := ansi.Strip(v.nativeRoster(150, 8, now, true)[0]); !strings.Contains(header, "+2 -1 · ↑3K") {
 		t.Fatalf("session total missing: %q", header)
 	}
 }

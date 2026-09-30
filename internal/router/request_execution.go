@@ -211,11 +211,9 @@ func (a *requestAttempt) prepare() error {
 		exchange.history.providerModel = a.request.model()
 		exchange.history.providerReasoning = a.request.fields["reasoning"]
 	}
-	if tier := a.executor.serviceTiers[a.request.model()]; tier != "" {
+	requestedTier := jsonString(a.request.fields, "service_tier")
+	if tier := effectiveServiceTier(a.request.model(), requestedTier, a.executor.serviceTiers); tier != requestedTier {
 		a.request.fields["service_tier"] = mustMarshalJSON(tier)
-	}
-	if jsonString(a.request.fields, "service_tier") == "fast" {
-		a.request.fields["service_tier"] = mustMarshalJSON("priority")
 	}
 
 	if a.executor.mekugiCalls != nil {

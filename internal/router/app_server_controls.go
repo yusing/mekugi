@@ -16,7 +16,7 @@ func (u *appServerUI) controlsCommand(text string) (bool, error) {
 }
 
 func (u *appServerUI) lockNotice() {
-	u.setNotice("Locked · /unlock to interrupt or exit with Ctrl-C", false)
+	u.setNotice("Locked · /unlock restores Esc and Ctrl-C · /quit exits when idle", false)
 }
 
 // Only keyboard cancellation is guarded. Host lifecycle and already-admitted

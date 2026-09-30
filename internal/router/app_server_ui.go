@@ -114,6 +114,7 @@ type appServerUI struct {
 	turnStarted               time.Time // Shown as elapsed time while a turn runs.
 	model, reasoningEffort    string
 	serviceTier               string
+	serviceTiers              map[string]string // Shared invocation config; presentation only.
 	models                    []appServerModel
 	modelsLoading             bool
 	reasoningKey              *bool
@@ -166,10 +167,10 @@ type appServerUI struct {
 // still owns routing, environment, invocation-local configuration and cancellation.
 func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
-	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint)
+	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint, nil)
 }
 
-func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool) (func() error, error) {
+func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers map[string]string) (func() error, error) {
 	var resumeCwd string
 	if resumeThread == "--last" || resumeThread == resumePickerStartup {
 		var err error
@@ -185,7 +186,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread}
+	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers}
 	if proxy != nil {
 		u.execTrack = proxy.execTrack
 		if proxy.skillsManager {
@@ -1299,8 +1300,8 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		if model != "" && u.reasoningEffort != "" {
 			model += " (" + u.reasoningEffort + ")"
 		}
-		if u.serviceTier != "" {
-			model += " · " + u.serviceTier
+		if tier := u.displayServiceTier(); tier != "" {
+			model += " · " + tier
 		}
 		model = strings.ReplaceAll(livediff.Safe(model, false), "\n", " ")
 		context := contextWindowLabel(activityPaneAgent{})

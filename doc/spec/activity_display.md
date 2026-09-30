@@ -307,7 +307,7 @@ and the right column, with its own resizable divider. It shares local selection 
 no extra process, broker, or transport is needed. Each agent has one row: status, name,
 and activity, then its metrics inline in fixed-width columns: context usage (defined
 by the native layout contract), the timer, the agent's captured edit lines as
-`activity +added -removed` in the Diff pane's colors, `↑ in ↓ out` tokens, estimated
+`+added -removed` in the Diff pane's colors, `↑ in ↓ out` tokens, estimated
 USD cost to two decimal places, and provider-response turns as `T+N`. Edit lines
 total every capture attributed to the agent, independent of the Diff caller filter. Files outside
 the capturing workspace, such as rewritten scratch files, stay in the Diff pane but
@@ -315,12 +315,12 @@ are not counted; tool-managed captures still count. Unknown captures contribute 
 activity counts; known captures from that agent remain counted. An agent without
 known counts leaves the column blank. Activity counts are cumulative, not final
 outcomes, and are not summed into the roster rule.
-The rule instead shows `net +N -N` from the saved composed project changes across
+The rule instead shows `+N -N` from the saved composed project changes across
 all scoped agents, independent of the Diff caller filter, roster folding, and
 scrolling. Rewrites, moves, deletions, re-creations, and cross-agent edits compose
-in durable capture order. Full cancellation shows `net +0 -0`; no captured project
+in durable capture order. Full cancellation shows `+0 -0`; no captured project
 edits omit the net metric. Binary, incomplete, or inconsistent history shows
-`net ?`, never a sum of separate edits or a claimed zero. Scratch-only captures
+`?`, never a sum of separate edits or a claimed zero. Scratch-only captures
 outside their capturing workspace are excluded. These counts describe retained
 observed effects, not unobserved workspace edits or the Git index.
 A changed token, cost, context, or edit-line value counts toward its new value over

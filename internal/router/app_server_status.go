@@ -47,6 +47,10 @@ type appServerStatusConfig struct {
 	Instructions []string `json:"instructionSources"`
 }
 
+func (u *appServerUI) displayServiceTier() string {
+	return effectiveServiceTier(u.model, u.serviceTier, u.serviceTiers)
+}
+
 func (u *appServerUI) showStatus() error {
 	var rows []statusField
 	group := "Model"
@@ -57,7 +61,7 @@ func (u *appServerUI) showStatus() error {
 	}
 	add("Model", u.model)
 	add("Reasoning", u.reasoningEffort)
-	add("Service tier", u.serviceTier)
+	add("Service tier", u.displayServiceTier())
 	add("Model provider", u.statusConfig.Provider)
 	group = "Session"
 	add("Directory", u.session.cwd)
@@ -226,7 +230,7 @@ func (limit appServerStatusLimit) rows(id string) []statusField {
 		remaining := max(0, min(100, 100-window.Used))
 		row := statusField{group: "Usage", label: name + " " + label + " limit", value: fmt.Sprintf("%.0f%% left", remaining), remaining: new(remaining)}
 		if window.Resets != nil {
-			row.detail = "resets " + time.Unix(*window.Resets, 0).Local().Format("Jan 2 15:04 MST")
+			row.detail = "resets " + time.Unix(*window.Resets, 0).Local().Format("Jan 2 15:04 UTC-07:00")
 		}
 		rows = append(rows, row)
 	}

@@ -30,6 +30,21 @@ type mekugiConfig struct {
 	ServiceTiers map[string]string `toml:"service_tiers"`
 }
 
+// effectiveServiceTier follows request model selection and leaves host settings
+// untouched. The legacy Terra selection routes to Sol before tier lookup.
+func effectiveServiceTier(model, requested string, overrides map[string]string) string {
+	if model == "gpt-5.6-terra" {
+		model = "gpt-6-sol"
+	}
+	if tier := overrides[model]; tier != "" {
+		requested = tier
+	}
+	if requested == "fast" {
+		return "priority"
+	}
+	return requested
+}
+
 func loadMekugiConfig() (mekugiConfig, error) {
 	var config mekugiConfig
 	directory, err := os.UserConfigDir()
