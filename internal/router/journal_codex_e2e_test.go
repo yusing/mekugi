@@ -53,7 +53,7 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 		kind := jsonString(inputItem, "type")
 		content := inputItem["content"]
 		liveText := bytes.Contains(content, []byte("Native child live milestone"))
-		if (kind == "message" || kind == "agent_message") && bytes.Contains(content, []byte("Journal update")) ||
+		if (kind == "message" || kind == "agent_message") && (bytes.Contains(content, []byte("Journal update")) || bytes.Contains(content, []byte(`Journal\n`))) ||
 			kind == "message" && liveText ||
 			kind == "agent_message" && liveText && !bytes.Contains(content, []byte("Message Type: FINAL_ANSWER")) {
 
@@ -190,6 +190,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 	childLiveUpdate := false
 	rootFlushes := 0
 	lastMessage := ""
+	var messages []string
 	for line := range strings.SplitSeq(stdout.String(), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -212,12 +213,13 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 		}
 		if text != "" {
 			lastMessage = text
+			messages = append(messages, text)
 		}
 		if strings.HasPrefix(text, "Journal flush `/root`") {
 			rootFlushes++
 		}
-		childLiveUpdate = childLiveUpdate || strings.Contains(text, "Journal update `/root/journal_child`") && strings.Contains(text, "Native child live milestone")
-		if strings.Contains(text, " -> ") && (strings.Contains(text, "Completed.") || strings.Contains(text, "Journal update")) {
+		childLiveUpdate = childLiveUpdate || (strings.HasPrefix(text, "Journal\n") || strings.HasPrefix(text, "Journal update `/root/journal_child`")) && strings.Contains(text, "Native child live milestone")
+		if strings.Contains(text, " -> ") && (strings.Contains(text, "Completed.") || strings.Contains(text, "Journal update") || strings.HasPrefix(text, "Journal\n")) {
 			t.Fatalf("duplicate completion or journal recipient commentary: %s", text)
 		}
 		if strings.Contains(text, "Journal flush `/root/journal_child`") {
@@ -231,7 +233,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 		t.Fatalf("child provider requests = %d, want live update then a natural final answer without another request", provider.childRequests)
 	}
 	if !childLiveUpdate || !strings.Contains(stdout.String(), "Journal flush ") {
-		t.Fatal("native consumer did not display distinct live updates and terminal flushes")
+		t.Fatalf("native consumer did not display distinct live updates and terminal flushes; messages=%q", messages)
 	}
 	issues.mu.Lock()
 	noticeCount := len(issues.entries)
