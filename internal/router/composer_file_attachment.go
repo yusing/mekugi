@@ -38,7 +38,7 @@ func decodeFileAttachments(text string) ([]string, bool) {
 		return nil, false
 	}
 	for _, frame := range frames {
-		if len(frame) > fileAttachmentChunk+4096 || !strings.HasPrefix(frame, "Attached file ") && !selectionFrame(frame) {
+		if len(frame) > fileAttachmentChunk+4096 || !strings.HasPrefix(frame, "Attached file ") && !selectionFrame(frame) && !managedSkillFrame(frame) {
 			return nil, false
 		}
 	}
@@ -64,28 +64,11 @@ func (d *composerDraft) snapshotFileAttachments(cwd string) {
 		}
 		seen[path] = true
 		data, err := readComposerFile(path)
-		var next []string
-		if err == nil {
-			next = frameComposerFile(path, string(data))
-			candidate := append(append([]string(nil), frames...), next...)
-			// Reserve space for explicit omission notices for later files.
-			if len(encodeFileAttachments(candidate)) > fileAttachmentBudget/2 {
-				err = fmt.Errorf("attachment budget exceeded")
-			}
-		}
-		if err != nil {
-			notice := fmt.Sprintf("Attached file %q: CONTENT NOT ATTACHED (%q). Read this file separately if needed.", path, err.Error())
-			next = []string{notice}
-			if d.attachmentNotice == "" {
-				d.attachmentNotice = fmt.Sprintf("File contents omitted: %q (%s). The agent receives explicit omission notices.", file.path, err)
-			}
-		}
-		candidate := append(append([]string(nil), frames...), next...)
-		if len(encodeFileAttachments(candidate)) > fileAttachmentBudget-512 {
-			frames = append(frames, "Attached file references: remaining contents NOT ATTACHED (attachment budget exceeded). Read remaining referenced files separately if needed.")
+		var more bool
+		frames, more = d.appendAttachmentSnapshot(frames, frameComposerFile(path, string(data)), fmt.Sprintf("Attached file %q", path), err)
+		if !more {
 			break
 		}
-		frames = candidate
 	}
 	// Mentioned selections follow file contents; each fits whole or says so.
 	for _, selection := range d.selections {
@@ -110,6 +93,28 @@ func (d *composerDraft) snapshotFileAttachments(cwd string) {
 	if len(frames) > 0 {
 		d.attachments = []string{encodeFileAttachments(frames)}
 	}
+}
+
+// Files and skills share one snapshot budget and explicit omission behavior.
+func (d *composerDraft) appendAttachmentSnapshot(frames, next []string, header string, err error) ([]string, bool) {
+	kind := "file"
+	if strings.HasPrefix(header, "Attached skill ") {
+		kind = "skill"
+	}
+	if err == nil && len(encodeFileAttachments(append(append([]string(nil), frames...), next...))) > fileAttachmentBudget/2 {
+		err = fmt.Errorf("attachment budget exceeded")
+	}
+	if err != nil {
+		next = []string{fmt.Sprintf("%s: CONTENT NOT ATTACHED (%q). Read this separately if needed.", header, err.Error())}
+		if d.attachmentNotice == "" {
+			d.attachmentNotice = strings.ToUpper(kind[:1]) + kind[1:] + " contents omitted: " + strings.TrimPrefix(header, "Attached "+kind+" ") + " (" + err.Error() + "). The agent receives an explicit omission notice."
+		}
+	}
+	candidate := append(append([]string(nil), frames...), next...)
+	if len(encodeFileAttachments(candidate)) > fileAttachmentBudget-512 {
+		return append(frames, "Attached "+kind+" references: remaining contents NOT ATTACHED (attachment budget exceeded). Read remaining referenced "+kind+"s separately if needed."), false
+	}
+	return candidate, true
 }
 
 func readComposerFile(path string) ([]byte, error) {
@@ -186,9 +191,41 @@ func projectFileAttachments(request *parsedResponsesRequest) bool {
 	}
 	var projected []map[string]jsontext.Value
 	changed := false
+	attachedSkills := make(map[string]bool)
 	for _, item := range items {
 		var role string
 		_ = json.Unmarshal(item["role"], &role)
+		var parts []map[string]jsontext.Value
+		if role != "user" || json.Unmarshal(item["content"], &parts) != nil {
+			continue
+		}
+		for _, part := range parts {
+			var kind, text string
+			_ = json.Unmarshal(part["type"], &kind)
+			_ = json.Unmarshal(part["text"], &text)
+			if kind != "input_text" {
+				continue
+			}
+			frames, _ := decodeFileAttachments(text)
+			for _, frame := range frames {
+				if name, path, rest := skillAttachmentFrame(frame); name != "" && strings.HasPrefix(rest, " (UTF-8 bytes ") {
+					attachedSkills[name+"\x00"+path] = true
+				}
+			}
+		}
+	}
+	isAttachedSkill := func(text string) bool {
+		name, path := selectedSkillSource(text)
+		return name != "" && (attachedSkills[name+"\x00"] || path != "" && attachedSkills[name+"\x00"+path])
+	}
+	for _, item := range items {
+		var role string
+		_ = json.Unmarshal(item["role"], &role)
+		var selectedText string
+		if role == "user" && json.Unmarshal(item["content"], &selectedText) == nil && isAttachedSkill(selectedText) {
+			changed = true
+			continue
+		}
 		var parts []map[string]jsontext.Value
 		if role != "user" || json.Unmarshal(item["content"], &parts) != nil {
 			projected = append(projected, item)
@@ -200,6 +237,12 @@ func projectFileAttachments(request *parsedResponsesRequest) bool {
 			var kind, text string
 			_ = json.Unmarshal(part["type"], &kind)
 			_ = json.Unmarshal(part["text"], &text)
+			// Codex can independently inject the same skill from $name. The
+			// durable snapshot already supplies its selected instructions.
+			if kind == "input_text" && isAttachedSkill(text) {
+				changed = true
+				continue
+			}
 			frames, ok := decodeFileAttachments(text)
 			if kind == "input_text" && ok {
 				attached = append(attached, frames...)
@@ -208,6 +251,13 @@ func projectFileAttachments(request *parsedResponsesRequest) bool {
 			}
 		}
 		if len(attached) == 0 {
+			if len(kept) == 0 {
+				continue
+			}
+			if len(kept) != len(parts) {
+				item["content"], _ = json.Marshal(kept)
+				delete(item, "internal_chat_message_metadata_passthrough")
+			}
 			projected = append(projected, item)
 			continue
 		}

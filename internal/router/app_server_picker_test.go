@@ -74,20 +74,29 @@ func TestComposerFilePickerScopesAndCoalescesRequests(t *testing.T) {
 	}
 }
 
-func TestComposerSkillPickerFiltersAndSubmitsStructuredInput(t *testing.T) {
+func TestComposerSkillPickerFiltersAndSubmitsAttachedContents(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.session.cwd = "/work"
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "quiet", "SKILL.md")
+	const instructions = "Picker skill instructions 世界.\n"
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(instructions), 0600); err != nil {
+		t.Fatal(err)
+	}
+	u.session.cwd = workspace
 	appServerTestKeys(t, u, "$qu")
 	requests := pickerRequests(t, w)
-	if len(requests) != 1 || requests[0].Method != "skills/list" || len(requests[0].Params.Cwds) != 1 || requests[0].Params.Cwds[0] != "/work" {
+	if len(requests) != 1 || requests[0].Method != "skills/list" || len(requests[0].Params.Cwds) != 1 || requests[0].Params.Cwds[0] != workspace {
 		t.Fatalf("skill list scope = %+v", requests)
 	}
-	pickerReply(t, u, requests[0].ID, `{"data":[{"cwd":"/other","skills":[{"name":"quiet","path":"/other/SKILL.md","enabled":true}]},{"cwd":"/work","skills":[{"name":"quiet","path":"/work/quiet/SKILL.md","enabled":true,"interface":{"shortDescription":"Short help"}},{"name":"queue","path":"/work/queue/SKILL.md","enabled":false},{"name":"build","path":"/work/build/SKILL.md","enabled":true}]}]}`)
+	pickerReply(t, u, requests[0].ID, fmt.Sprintf(`{"data":[{"cwd":"/other","skills":[{"name":"quiet","path":"/other/SKILL.md","enabled":true}]},{"cwd":%q,"skills":[{"name":"quiet","path":%q,"enabled":true,"interface":{"shortDescription":"Short help"}},{"name":"queue","path":"/work/queue/SKILL.md","enabled":false},{"name":"build","path":"/work/build/SKILL.md","enabled":true}]}]}`, workspace, path))
 	if len(u.picker.choices) != 1 || u.picker.choices[0].name != "quiet" || u.picker.choices[0].description != "Short help" {
 		t.Fatalf("skill filtering = %+v", u.picker.choices)
 	}
 	appServerTestKeys(t, u, "\t")
-	if u.draft != "$quiet " || len(u.skills) != 1 || u.skills[0].path != "/work/quiet/SKILL.md" || len(u.view.entries) != 0 {
+	if u.draft != "$quiet " || len(u.skills) != 1 || u.skills[0].path != path || len(u.view.entries) != 0 {
 		t.Fatalf("skill insertion submitted or lost binding: draft=%q skills=%+v entries=%d", u.draft, u.skills, len(u.view.entries))
 	}
 	w.Reset()
@@ -96,19 +105,22 @@ func TestComposerSkillPickerFiltersAndSubmitsStructuredInput(t *testing.T) {
 		Params struct {
 			Input []struct {
 				Type string `json:"type"`
-				Name string `json:"name"`
-				Path string `json:"path"`
+				Text string `json:"text"`
 			} `json:"input"`
 		} `json:"params"`
 	}
 	if err := json.Unmarshal(bytes.TrimSpace(w.Bytes()), &request); err != nil {
 		t.Fatal(err)
 	}
-	if len(request.Params.Input) != 2 || request.Params.Input[1].Type != "skill" || request.Params.Input[1].Name != "quiet" || request.Params.Input[1].Path != "/work/quiet/SKILL.md" {
-		t.Fatalf("structured skill input = %+v", request.Params.Input)
+	if len(request.Params.Input) != 2 || request.Params.Input[1].Type != "text" {
+		t.Fatalf("skill contents were not sent in a text attachment: %+v", request.Params.Input)
+	}
+	frames, ok := decodeFileAttachments(request.Params.Input[1].Text)
+	if !ok || len(frames) != 1 || frames[0] != frameComposerSkillFromPath("quiet", path, instructions)[0] {
+		t.Fatalf("skill contents or source path missing: %+v", frames)
 	}
 	appServerTestMessage(t, u, `{"id":2,"error":{"code":-1,"message":"rejected"}}`)
-	if u.draft != "$quiet " || len(u.skills) != 1 || u.skills[0].path != "/work/quiet/SKILL.md" {
+	if u.draft != "$quiet " || len(u.skills) != 1 || u.skills[0].path != path {
 		t.Fatalf("rejected submission lost skill: draft=%q skills=%+v", u.draft, u.skills)
 	}
 }

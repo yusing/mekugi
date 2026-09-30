@@ -49,8 +49,8 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Fewer tokens and round trips.** Bounded and batched reads, semantic symbol
   lookup, structural outlines, scoped change IDs, and child change handoffs.
 - **Leaner instructions.** Blocks marked with `<!-- mekugi:omit -->` are
-  [stripped](#configuration-and-troubleshooting) before forwarding. With
-  `skills-mgr`, selected skills are sent as compact references.
+  [stripped](#configuration-and-troubleshooting) before forwarding, without
+  changing caller-owned policy outside those blocks.
 - **Resume, fork, and compaction continuity.** [Replay records](#replay-storage)
   keep tool history and references across resume, `/fork`, and `/side`. After
   compaction, a Codex hook restores a bounded journal and change snapshot. The
@@ -281,7 +281,11 @@ Mekugi differs in these ways:
 - **Skill references attach automatically.** Complete enabled `$skill-name`
   references bind when you finish the word or submit a pasted prompt. Composer
   and transcript use the same amber highlighting; unknown, disabled, or
-  ambiguous names stay plain text.
+  ambiguous names stay plain text. With `skills-mgr`, managed skills attach
+  their actual instructions automatically, with an `Attached skill` receipt;
+  unreadable or oversized contents produce an explicit omission notice.
+  Without it, contents come from the skill file identified by Codex's metadata. Manage
+  managed skills with `skills-mgr`; `/skills` toggles Codex-discovered skills.
 - **Answer images attach.** Paste an image or its file path into a question
   answer to get the same `[Image N]` attachment as in the main composer.
   Synchronous answers send their images in a companion message after the
@@ -533,8 +537,9 @@ Every section is optional. Settings are read at startup and never rewritten.
   Codex's base instructions and adds its guidance through tool descriptions. Anything between `<!-- mekugi:omit -->` and
   `<!-- /mekugi:omit -->` in instructions, including `AGENTS.md`, is removed before
   forwarding. When `skills-mgr` is on the `PATH`, Mekugi turns off Codex's stock
-  skill catalog for the session and sends each selected skill as
-  `<skill name="…"/>`. See [guidance behavior](doc/spec/guide.md).
+  skill catalog for the session. Managed `$skill` selections attach their
+  instructions in the native composer; other Codex-selected skill injections
+  remain compact name references. See [guidance behavior](doc/spec/guide.md).
 - **Issue reports:** start with `MEKUGI_DIAGNOSE=1` to give agents a
   `report_issue` tool. Each report runs the commands in `hooks.diagnose` of
   `mekugi/settings.json` in your user configuration directory. Commands are

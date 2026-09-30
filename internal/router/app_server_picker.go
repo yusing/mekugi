@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -137,6 +138,15 @@ func (u *appServerUI) completionTarget() composerTarget {
 }
 
 func (u *appServerUI) refreshPicker() {
+	for _, stack := range [][]composerDraft{u.unsent, u.queued} {
+		for i := range stack {
+			before := len(stack[i].skills)
+			u.bindSkills(&stack[i], true)
+			if len(stack[i].skills) > before {
+				u.snapshotDraftSkills(&stack[i])
+			}
+		}
+	}
 	if u.currentQuestion() != nil {
 		u.picker.open = false
 		return
@@ -203,7 +213,7 @@ func (u *appServerUI) refreshPicker() {
 	if target.kind != '@' || !strings.HasPrefix(target.query, "!") {
 		u.cancelPickerScan()
 	}
-	if target.kind == '$' && p.skillsLoaded && p.skillsCwd == cwd {
+	if target.kind == '$' && (p.skillsLoaded || p.skillsProblem != "") && p.skillsCwd == cwd {
 		p.loading = false
 		u.filterSkills(target.query)
 
@@ -344,14 +354,6 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 				problem = fmt.Sprintf("%d skill load errors: %s", len(entry.Errors), entry.Errors[0].Message)
 			}
 		}
-		if err == nil {
-
-			p.skills, p.skillsCwd, p.skillsLoaded = choices, cwd, true
-			p.skillsProblem = ""
-			if p.modal == "manage" && p.initial == nil {
-				u.rememberSkillState()
-			}
-		}
 	} else {
 		var result struct {
 			Files []struct {
@@ -378,13 +380,46 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 		choices = nil
 		problem = "Invalid search response: " + err.Error()
 	}
-	if method == "skills/list" && (m.Error != nil || err != nil) {
-		p.skillsLoaded, p.skillsCwd, p.skillsProblem = false, cwd, problem
-		if cwd == u.session.cwd {
-			u.setNotice("Skill attachment unavailable: "+problem+". References remain text.", true)
+	if method == "skills/list" {
+		available := m.Error == nil && err == nil
+		if u.skillEnvironment != nil && p.modal != "manage" && cwd == u.session.cwd {
+			parent := u.ctx
+			if parent == nil {
+				parent = context.Background()
+			}
+			ctx, cancel := context.WithTimeout(parent, 15*time.Second)
+			managed, loadErr := readManagedSkills(ctx, cwd, u.skillEnvironment)
+			cancel()
+			if loadErr == nil {
+				names := make(map[string]bool)
+				for _, choice := range managed {
+					names[choice.name] = true
+				}
+				choices = slices.DeleteFunc(choices, func(choice composerChoice) bool { return names[choice.name] })
+				choices = append(choices, managed...)
+				available = true
+			} else {
+				if problem != "" {
+					problem += "; "
+				}
+				problem += "skills-mgr: " + loadErr.Error()
+			}
 		}
-	} else if method == "skills/list" && problem != "" && cwd == u.session.cwd {
-		u.setNotice("Skill catalog incomplete: "+problem+". Unavailable references remain text.", true)
+		p.skills, p.skillsCwd, p.skillsLoaded = choices, cwd, available
+		p.skillsProblem = ""
+		if !available {
+			p.skillsProblem = problem
+		}
+		if p.modal == "manage" && p.initial == nil {
+			u.rememberSkillState()
+		}
+		if problem != "" && cwd == u.session.cwd {
+			label := "Skill catalog incomplete: "
+			if !available {
+				label = "Skill attachment unavailable: "
+			}
+			u.setNotice(label+problem+". Unavailable references remain text.", true)
+		}
 	}
 	if target == p.target && cwd == u.session.cwd {
 		p.choices, p.loading, p.problem = choices, false, problem
@@ -474,7 +509,7 @@ func (u *appServerUI) pickerKey(key string) bool {
 			slices.SortFunc(u.files, func(a, b composerFile) int { return a.start - b.start })
 		}
 		if target.kind == '$' {
-			u.skills = append(u.skills, composerSkill{target.start, target.start + len(text), choice.name, choice.path})
+			u.skills = append(u.skills, composerSkill{start: target.start, end: target.start + len(text), name: choice.name, path: choice.path})
 		}
 		if u.cursor() == len(u.draft) || u.draft[u.cursor()] != ' ' {
 			u.insertDraftText(" ")

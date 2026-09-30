@@ -32,6 +32,23 @@ func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.
 			continue
 		}
 		for _, frame := range frames {
+			if name, _, rest := skillAttachmentFrame(frame); name != "" {
+				verb, label := "Attached skill", name
+				if strings.HasPrefix(rest, ": CONTENT NOT ATTACHED (") {
+					reason, err := strconv.QuotedPrefix(strings.TrimPrefix(rest, ": CONTENT NOT ATTACHED ("))
+					if err != nil {
+						continue
+					}
+					message, _ := strconv.Unquote(reason)
+					verb, label = "Attach failed", "skill "+name+" · "+message
+				}
+				key := verb + "\x00skill\x00" + name
+				if !seen[key] {
+					seen[key] = true
+					blocks = append(blocks, activityui.Block{Kind: "op", Verb: verb, Label: livediff.Safe(label, false)})
+				}
+				continue
+			}
 			verb, label, path := "Attached", "", ""
 			rest := strings.TrimPrefix(frame, "Attached file ")
 			quoted, err := strconv.QuotedPrefix(rest)

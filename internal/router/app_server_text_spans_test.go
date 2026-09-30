@@ -2,6 +2,8 @@ package router
 
 import (
 	json "encoding/json/v2"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,6 +14,13 @@ import (
 
 func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	u, _ := newAppServerTestUI()
+	skillPath := filepath.Join(t.TempDir(), "review", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(skillPath), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(skillPath, []byte("Review instruction 世界.\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	// This tests explicit attachment identity, not catalog discovery.
 	u.picker.skillsLoaded, u.picker.skillsCwd = true, u.session.cwd
 	appServerTestKeys(t, u, "世界 literal $review @file ")
@@ -21,9 +30,23 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	appServerTestKeys(t, u, " ")
 	start := len(u.draft)
 	appServerTestKeys(t, u, "$review")
-	u.skills = append(u.skills, composerSkill{start: start, end: len(u.draft), name: "review", path: "/work/review/SKILL.md"})
+	u.skills = append(u.skills, composerSkill{start: start, end: len(u.draft), name: "review", path: skillPath})
 	draft := u.draftSnapshot()
-	content, err := json.Marshal(draft.input())
+	draft.snapshotSkillAttachments(u.session.cwd, nil)
+	input := draft.input()
+	foundSkillContents := false
+	for _, part := range input {
+		if raw, ok := part["text"].(string); ok {
+			frames, ok := decodeFileAttachments(raw)
+			if ok && len(frames) == 1 && frames[0] == frameComposerSkillFromPath("review", skillPath, "Review instruction 世界.\n")[0] {
+				foundSkillContents = true
+			}
+		}
+	}
+	if !foundSkillContents {
+		t.Fatalf("native skill source and contents missing from direct draft input: %+v", input)
+	}
+	content, err := json.Marshal(input)
 	if err != nil {
 		t.Fatal(err)
 	}

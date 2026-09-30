@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 	json "encoding/json/v2"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -54,7 +56,16 @@ func TestSkillAttachmentTypedWhitespaceAndLiteralExceptions(t *testing.T) {
 
 func TestSkillAttachmentPastedBeforeCatalogResponse(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.session.cwd = "/work"
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "review", "SKILL.md")
+	const instructions = "Review the attached source 世界.\n"
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(instructions), 0600); err != nil {
+		t.Fatal(err)
+	}
+	u.session.cwd = workspace
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~")
 	if u.picker.open || len(u.skills) != 0 {
 		t.Fatalf("paste opened picker or bound before catalog: %+v %+v", u.picker, u.skills)
@@ -64,7 +75,7 @@ func TestSkillAttachmentPastedBeforeCatalogResponse(t *testing.T) {
 	if len(requests) != 1 || requests[0].Method != "skills/list" {
 		t.Fatalf("submission did not request skill catalog: %+v", requests)
 	}
-	pickerReply(t, u, requests[0].ID, `{"data":[{"cwd":"/work","skills":[{"name":"review","path":"/work/review/SKILL.md","enabled":true}]}]}`)
+	pickerReply(t, u, requests[0].ID, `{"data":[{"cwd":`+strconv.Quote(workspace)+`,"skills":[{"name":"review","path":`+strconv.Quote(path)+`,"enabled":true}]}]}`)
 	requests = pickerRequests(t, w)
 	if len(requests) != 2 || requests[1].Method != "turn/start" {
 		t.Fatalf("submission did not continue after catalog: %+v", requests)
@@ -73,8 +84,7 @@ func TestSkillAttachmentPastedBeforeCatalogResponse(t *testing.T) {
 		Params struct {
 			Input []struct {
 				Type string `json:"type"`
-				Name string `json:"name"`
-				Path string `json:"path"`
+				Text string `json:"text"`
 			} `json:"input"`
 		} `json:"params"`
 	}
@@ -82,11 +92,15 @@ func TestSkillAttachmentPastedBeforeCatalogResponse(t *testing.T) {
 	if err := json.Unmarshal(lines[len(lines)-1], &sent); err != nil {
 		t.Fatal(err)
 	}
-	if len(sent.Params.Input) != 2 || sent.Params.Input[1].Type != "skill" || sent.Params.Input[1].Name != "review" || sent.Params.Input[1].Path != "/work/review/SKILL.md" {
-		t.Fatalf("pasted skill not sent structurally: %+v", sent.Params.Input)
+	if len(sent.Params.Input) != 2 || sent.Params.Input[1].Type != "text" {
+		t.Fatalf("pasted skill contents not attached: %+v", sent.Params.Input)
+	}
+	frames, ok := decodeFileAttachments(sent.Params.Input[1].Text)
+	if !ok || len(frames) != 1 || frames[0] != frameComposerSkillFromPath("review", path, instructions)[0] {
+		t.Fatalf("pasted skill lost its source path or contents: %+v", frames)
 	}
 	appServerTestMessage(t, u, `{"id":2,"error":{"code":-1,"message":"rejected"}}`)
-	if u.draft != "use $review please" || len(u.skills) != 1 || u.skills[0].path != "/work/review/SKILL.md" {
+	if u.draft != "use $review please" || len(u.skills) != 1 || u.skills[0].path != path {
 		t.Fatalf("rejected submission lost binding: %q %+v", u.draft, u.skills)
 	}
 }

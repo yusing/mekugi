@@ -320,14 +320,33 @@ path and byte-range frames containing the file contents. Repeated paths in a
 draft attach once. Line boundaries are preferred when splitting; long rows split
 only at UTF-8 boundaries, without dropping bytes. Supported images attach through
 the existing image composer;
-skill selections retain their exact path as structured
-Codex skill input through undo, local input history, and rejected submissions.
+skill selections retain the exact source path supplied by Codex metadata through
+undo, local input history, and rejected submissions. They attach that file's
+actual contents through the same snapshot pipeline as `@`, with a skill header,
+rather than sending only selected-skill metadata.
 Complete enabled `$name` references also bind automatically after a word boundary
 or on submission, including pasted prompts. Names must match exactly and have
-one enabled path in the active workspace's Codex catalog. Unknown, disabled,
-ambiguous names and shell variables stay literal. A pending catalog lookup delays
+one enabled path in the active workspace's Codex catalog. In Mekugi mode with
+`skills-mgr`, the client also reads `skills-mgr list --codex` in that workspace,
+using the wrapped process environment. Managed names take precedence over
+same-named Codex filesystem entries. At submission or queueing, managed selections
+read their actual instructions with `skills-mgr get --codex NAME`,
+not a name-only reference or synthetic Codex path. Repeated names read and attach
+once per submission. Instructions use the file attachment chunker and budget,
+travel in the versioned attachment envelope, and project into separate user
+messages. Transcript replay recovers identity and immutable instructions from
+that envelope without rerunning the manager. Input history restores the selected
+references; resubmitting recalled input reads current contents, as with `@`.
+The transcript shows an `Attached skill` receipt without dumping its body.
+Unreadable, oversized or budget-exceeding instructions yield explicit omission
+frames and `Attach failed` receipts, not truncated contents. Both sources reuse
+the file snapshot store, budgets, UTF-8 framing and delivery; no separate skill
+snapshot lifecycle is maintained.
+Unknown, disabled, ambiguous names and shell variables stay literal. A pending catalog lookup delays
 submission rather than silently losing the skill; lookup failure is reported and
-leaves the references as text.
+leaves unavailable references as text without blocking available skills from the
+other source. Managed metadata merges into the workspace-scoped Codex picker
+catalog; stale responses cannot bind another workspace's draft.
 
 Single-unit spans use shared logic for every bound token kind, including file
 references, skill references, selection mentions, and `[Image N]` placeholders. Navigation and deletion
@@ -481,6 +500,10 @@ Selected rows, aligned columns,
 overflow indicators, descriptions, and footer hints follow the stock picker;
 the menu and management layouts are checked against Codex snapshot fixtures.
 Plugin browsing is outside this file/skills picker scope.
+
+The enable/disable management view remains Codex-owned: managed catalog entries
+are selectable references, but are never sent to `skills/config/write` with an
+invented path. Their selection is configured through `skills-mgr`.
 
 Dragging across text in Main, the composer, Activity, or the saved Diff selects the
 visible text and offers Reference (R), Copy (Ctrl+C, also C), and Clear (Escape) in

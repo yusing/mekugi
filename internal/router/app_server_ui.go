@@ -79,6 +79,7 @@ type appServerUI struct {
 	statusConfig              appServerStatusConfig
 	statusReports             map[string]*appServerStatusReport
 	picker                    composerPicker
+	skillEnvironment          []string
 	commitReads               chan gitCommitKey // Commit objects read off the UI goroutine.
 	files                     []composerFile
 	selections                []composerSelection
@@ -185,6 +186,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread}
 	if proxy != nil {
 		u.execTrack = proxy.execTrack
+		if proxy.skillsManager {
+			u.skillEnvironment = cmd.Environ()
+		}
 	}
 	u.resumeConfig = appServerResumeConfig(cmd.Args)
 	u.notifications = &nativeNotifications{out: stdout, focused: true}

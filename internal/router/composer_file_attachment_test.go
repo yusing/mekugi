@@ -200,6 +200,59 @@ func TestComposerFileAttachmentProjectionLeavesLookalikes(t *testing.T) {
 	}
 }
 
+func TestSkillAttachmentProjectionMatchesSuccessfulSource(t *testing.T) {
+	const name = "review"
+	selected := "<skill>\n<name>review</name>\n<path>/native/SKILL.md</path>\nnative instructions\n</skill>"
+	for _, test := range []struct {
+		name, path                   string
+		omitted, compact, suppressed bool
+	}{
+		{name: "same source", path: "/native/SKILL.md", suppressed: true},
+		{name: "different source", path: "/other/SKILL.md"},
+		{name: "native omission", path: "/native/SKILL.md", omitted: true},
+		{name: "managed precedence", suppressed: true},
+		{name: "managed omission", omitted: true},
+		{name: "managed compact reference", compact: true, suppressed: true},
+		{name: "compact reference lacks native source", path: "/native/SKILL.md", compact: true},
+	} {
+		for _, multipart := range []bool{false, true} {
+			t.Run(test.name+map[bool]string{false: "/string", true: "/parts"}[multipart], func(t *testing.T) {
+				frames := frameComposerSkillFromPath(name, test.path, "snapshot instructions")
+				if test.omitted {
+					frames = []string{strings.Split(frames[0], " (UTF-8 bytes ")[0] + `: CONTENT NOT ATTACHED ("too large"). Read this separately if needed.`}
+				}
+				text := selected
+				if test.compact {
+					text = managedSkillReference(name)
+				}
+				var content any = text
+				if multipart {
+					content = []map[string]string{{"type": "input_text", "text": text}}
+				}
+				request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustMarshalJSON([]any{
+					map[string]any{"role": "user", "content": content},
+					map[string]any{"role": "user", "content": []map[string]string{{"type": "input_text", "text": encodeFileAttachments(frames)}}},
+				})}}
+				projectFileAttachments(&request)
+				var messages []map[string]jsonv1.RawMessage
+				if err := json.Unmarshal(request.fields["input"], &messages); err != nil {
+					t.Fatal(err)
+				}
+				want := 2
+				if test.suppressed {
+					want = 1
+				}
+				if len(messages) != want || !test.suppressed && !sameJSONValue(messages[0]["content"], mustMarshalJSON(content)) {
+					t.Fatalf("wrong selected-skill suppression: %s", request.fields["input"])
+				}
+				if !sameJSONValue(messages[len(messages)-1]["content"], mustMarshalJSON([]map[string]string{{"type": "input_text", "text": frames[0]}})) {
+					t.Fatal("snapshot or omission notice changed")
+				}
+			})
+		}
+	}
+}
+
 func TestComposerFileAttachmentOversizedInputRestoresDraft(t *testing.T) {
 	u, w := newAppServerTestUI()
 	d := composerDraft{text: strings.Repeat("x", composerTextLimit), attachments: []string{encodeFileAttachments([]string{"Attached file data"})}}

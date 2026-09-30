@@ -22,6 +22,9 @@ func (u *appServerUI) filterSkills(query string) {
 	}
 	p.choices = nil
 	for _, skill := range p.skills {
+		if p.modal == "manage" && skill.path == "" {
+			continue
+		}
 		if !skill.enabled && p.modal != "manage" {
 			continue
 		}
@@ -250,7 +253,10 @@ func (u *appServerUI) skillQueryCompletable(query string) bool {
 // names with different paths are ambiguous and remain literal until selected.
 func (u *appServerUI) bindSkills(d *composerDraft, final bool) {
 	p := &u.picker
-	if !p.skillsLoaded || p.skillsCwd != u.session.cwd || strings.HasPrefix(d.text, "!") || d.questionCall != nil {
+	if strings.HasPrefix(d.text, "!") || d.questionCall != nil {
+		return
+	}
+	if !p.skillsLoaded || p.skillsCwd != u.session.cwd {
 		return
 	}
 	var catalog []composerSkill

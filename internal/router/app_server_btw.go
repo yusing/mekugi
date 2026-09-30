@@ -78,6 +78,13 @@ func (u *appServerUI) flushBTW() error {
 	if b == nil || b.pending.text == "" || b.starting || u.clearing {
 		return nil
 	}
+	parts := []composerDraft{b.pending}
+	if u.waitForSkillBindings(parts) {
+		return nil
+	}
+	u.bindSkills(&parts[0], true)
+	u.snapshotDraftSkills(&parts[0])
+	b.pending = parts[0]
 	if b.thread == "" {
 		// A just-submitted main message must reach Codex before its snapshot.
 		// An already-running turn is deliberately not interrupted or awaited.
@@ -121,7 +128,7 @@ func (u *appServerUI) flushBTW() error {
 		text, _ := part["text"].(string)
 		textBytes += len(text)
 	}
-	if len(b.pending.attachments) > 0 && textBytes > composerTextLimit {
+	if (len(b.pending.attachments) > 0 || len(b.pending.skills) > 0) && textBytes > composerTextLimit {
 		u.failBTW(b, "Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.")
 		return nil
 	}

@@ -1,8 +1,6 @@
 package router
 
 import (
-	"bytes"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -21,9 +19,7 @@ func skillsManagerInPath(extraDirectory string) bool {
 	return err == nil
 }
 
-// rewriteSelectedSkillInstructions replaces Codex's complete selected-skill
-// injection with the skill identity consumed by skills-mgr guidance.
-func rewriteSelectedSkillInstructions(text string) string {
+func selectedSkillInstructions(text string) (name, path string) {
 	const (
 		open      = "<skill>\n<name>"
 		nameClose = "</name>\n"
@@ -33,25 +29,32 @@ func rewriteSelectedSkillInstructions(text string) string {
 	)
 	trimmed := strings.TrimSpace(text)
 	if !strings.HasPrefix(trimmed, open) || !strings.HasSuffix(trimmed, close) {
-		return text
+		return "", ""
 	}
 	nameEnd := strings.Index(trimmed[len(open):], nameClose)
 	if nameEnd < 0 {
-		return text
+		return "", ""
 	}
 	pathStart := len(open) + nameEnd + len(nameClose)
 	if !strings.HasPrefix(trimmed[pathStart:], pathOpen) {
-		return text
+		return "", ""
 	}
 	pathEnd := strings.Index(trimmed[pathStart+len(pathOpen):], pathClose)
 	if pathEnd < 0 {
+		return "", ""
+	}
+	return trimmed[len(open) : len(open)+nameEnd], trimmed[pathStart+len(pathOpen) : pathStart+len(pathOpen)+pathEnd]
+}
+
+// rewriteSelectedSkillInstructions replaces Codex's complete selected-skill
+// injection with the skill identity consumed by skills-mgr guidance.
+func rewriteSelectedSkillInstructions(text string) string {
+	name, _ := selectedSkillInstructions(text)
+	if name == "" {
 		return text
 	}
-	var escaped bytes.Buffer
-	if err := xml.EscapeText(&escaped, []byte(trimmed[len(open):len(open)+nameEnd])); err != nil {
-		return text
-	}
-	rewritten := `<skill name="` + escaped.String() + `"/>`
+	trimmed := strings.TrimSpace(text)
+	rewritten := managedSkillReference(name)
 	start := strings.Index(text, trimmed)
 	return text[:start] + rewritten + text[start+len(trimmed):]
 }

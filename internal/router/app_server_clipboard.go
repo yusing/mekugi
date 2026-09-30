@@ -222,9 +222,6 @@ func (d composerDraft) input() []map[string]any {
 	for _, path := range d.answerImages {
 		input = append(input, map[string]any{"type": "localImage", "path": path})
 	}
-	for _, skill := range d.skills {
-		input = append(input, map[string]any{"type": "skill", "name": skill.name, "path": skill.path})
-	}
 	for _, attachment := range d.attachments {
 		input = append(input, appserver.Input(attachment)...)
 	}

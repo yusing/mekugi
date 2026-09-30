@@ -283,13 +283,7 @@ func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, metho
 // appServerUserText renders userMessage content as the composer wrote it,
 // with each image as its "[Image N]" label.
 func appServerUserText(content jsontext.Value) (string, []activityui.TextSpan, bool) {
-	var contents []struct {
-		Type     string                `json:"type"`
-		Text     string                `json:"text"`
-		Name     string                `json:"name"`
-		Path     string                `json:"path"`
-		Elements []composerTextElement `json:"textElements"`
-	}
+	var contents []composerUserContent
 	if len(content) > 0 && json.Unmarshal(content, &contents) != nil {
 		return "", nil, false
 	}
@@ -317,14 +311,8 @@ func appServerUserText(content jsontext.Value) (string, []activityui.TextSpan, b
 			spans = append(spans, activityui.TextSpan{Start: start, End: len(text), Kind: activityui.ImageToken})
 		}
 	}
-	var skills []composerSkill
-	for _, content := range contents {
-		if content.Type == "skill" {
-			skills = append(skills, composerSkill{name: content.Name, path: content.Path})
-		}
-	}
 	draft := composerDraft{text: text}
-	draft.skills = unambiguousSkillBindings(text, skills, spans)
+	draft.skills = unambiguousSkillBindings(text, composerContentSkills(contents), spans)
 	for _, span := range draft.displaySpans() {
 		if !slices.ContainsFunc(spans, func(existing activityui.TextSpan) bool {
 			return span.Start < existing.End && span.End > existing.Start

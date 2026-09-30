@@ -191,13 +191,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 	}
 	item = u.waitItem(item, u.thread, turn.ID, item.ID, false)
 	if item.Type == "userMessage" {
-		var content []struct {
-			Type     string                `json:"type"`
-			Text     string                `json:"text"`
-			Name     string                `json:"name"`
-			Path     string                `json:"path"`
-			Elements []composerTextElement `json:"textElements"`
-		}
+		var content []composerUserContent
 		if json.Unmarshal(item.Content, &content) == nil {
 			var text strings.Builder
 			var attached []string
@@ -218,13 +212,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			}
 			draft := composerDraft{text: text.String()}
 			draft.selections = restoredSelections(draft.text, attached)
-			var skills []composerSkill
-			for _, part := range content {
-				if part.Type == "skill" {
-					skills = append(skills, composerSkill{name: part.Name, path: part.Path})
-				}
-			}
-			draft.skills = unambiguousSkillBindings(draft.text, skills, spans)
+			draft.skills = unambiguousSkillBindings(draft.text, composerContentSkills(content), spans)
 			u.rememberInput(draft)
 		}
 	}

@@ -222,9 +222,6 @@ func (a *requestAttempt) prepare() error {
 		if err := stripRequestInstructionOmissions(&a.request); err != nil {
 			return err
 		}
-		if err := rewriteRequestSelectedSkillInstructions(&a.request, a.executor.mekugiCalls.skillsManager); err != nil {
-			return err
-		}
 	}
 
 	// Only the WebSocket provider guarantees non-generating warmup for every
@@ -298,6 +295,12 @@ func (a *requestAttempt) prepareWire() error {
 		}
 	}
 	attachmentsProjected := projectFileAttachments(&a.request)
+	// Match attachment sources before compact skill rewriting drops native paths.
+	if a.executor.mekugiCalls != nil {
+		if err := rewriteRequestSelectedSkillInstructions(&a.request, a.executor.mekugiCalls.skillsManager); err != nil {
+			return err
+		}
+	}
 	nativeBody, err := a.request.wireBody(a.request.fields)
 	if err != nil {
 		return fmt.Errorf("encode native Responses request: %w", err)

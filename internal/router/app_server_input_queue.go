@@ -84,7 +84,9 @@ func (u *appServerUI) steerParts(steers []composerSubmission) []composerDraft {
 // image files until sent.
 func (u *appServerUI) takeDraft() composerDraft {
 	d := u.draftSnapshot()
+	u.bindSkills(&d, true)
 	d.snapshotFileAttachments(u.session.cwd)
+	u.snapshotDraftSkills(&d)
 	d.cursorBack = 0
 	u.loadDraft(composerDraft{})
 	u.cursorColumn = nil
@@ -185,6 +187,7 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	}
 	for i := range parts {
 		u.bindSkills(&parts[i], true)
+		u.snapshotDraftSkills(&parts[i])
 	}
 	s := composerSubmission{composerDraft: joinDrafts(parts...), parts: parts, id: rand.Text()}
 	input := s.input()
@@ -193,7 +196,7 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		text, _ := part["text"].(string)
 		textBytes += len(text)
 	}
-	if len(s.attachments) > 0 && textBytes > composerTextLimit {
+	if (len(s.attachments) > 0 || len(s.skills) > 0) && textBytes > composerTextLimit {
 		u.restoreDrafts(parts...)
 		u.setNotice("Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.", true)
 		return nil
@@ -223,7 +226,11 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		u.pendingStart = s
 	}
 	if s.attachmentNotice != "" {
-		u.setNotice(s.attachmentNotice, true)
+		notice := s.attachmentNotice
+		if strings.HasPrefix(u.notice, "Skill attachment unavailable:") || strings.HasPrefix(u.notice, "Skill catalog incomplete:") {
+			notice = u.notice + " " + notice
+		}
+		u.setNotice(notice, true)
 	}
 	if err := u.request(method, params); err != nil {
 		u.submission = composerSubmission{}
