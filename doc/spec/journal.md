@@ -79,7 +79,8 @@ thread; missing-workspace records are never rebased to the app-server cwd.
 
 ## Cross-agent reads and binding
 
-`set` accepts `agent` to bind a direct child's canonical path to one owned task.
+Task `add` accepts optional `agent` to create and bind in one atomic operation;
+`set` retains `agent` to bind a direct child's canonical path to one owned task.
 The binding cannot be changed or duplicated. It can precede the child's first
 request; until durable ancestry proves the child, only an unresolved mount appears.
 Only complete, nonconflicting ancestry in the selected workspace permits content
@@ -224,9 +225,10 @@ No dedicated journal tool is exposed. Operations are:
   an explanation; working and final children remain. A plan returns created paths
   in preorder. `reset: "slice"` records a slice boundary policy; driving context
   resets is a separate frontend capability.
-- `add {under?, kind?, title, body?, state?, reason?, before?}`: adds one node, with
-  default kind note and default task state pending. `before` changes display order,
-  not stable keys, and must name a sibling. Only tasks accept children. Ordinals are
+- `add {under?, kind?, title, body?, state?, reason?, agent?, before?}`: adds one node, with
+  default kind note and default task state pending. Only tasks accept state, reason
+  and agent. Creation and binding share validation and persistence. `before` changes
+  display order, not stable keys, and must name a sibling. Only tasks accept children. Ordinals are
   shared by every kind, so a non-task `under` rejects naming that node's kind, title
   and containing task, rather than moving a plan to another parent.
 - `set {p, title?, body?, state?, reason?, agent?}`: updates writable fields. Blocked and
@@ -239,8 +241,18 @@ No dedicated journal tool is exposed. Operations are:
 - `read {p?, agent?, depth?}`: returns the selected subtree. Depth zero omits child
   nodes. Omitted agent selects the caller; explicit agents require proven ancestry.
 
+Model-facing native inputs are operation-specific closed schemas; Code Mode guidance
+includes discriminated TypeScript input declarations. They reject unsupported fields
+and restrict creation-time agent binding to explicit task creation. These are input
+shapes, not a new JavaScript execution or static-checking authority; callers can
+type-check against the declarations before submitting. Runtime validation still
+checks identity, task kind, uniqueness and immutable binding. Planned task objects
+do not accept agent; bind an existing planned task with `set`.
+
 Mutation batches validate at the end. A done task cannot retain open descendant
-tasks. Rejection lists those paths and rolls back all nodes, ordinals and events.
+tasks. Rejection lists those paths and rolls back all nodes, ordinals and events. Invalid
+bindings, including duplicate child mounts, likewise leave the entire batch unchanged
+and do not retain a success receipt.
 A rejected operation in a batch names its one-based position and op. Undecodable
 payloads name the offending member.
 Single mutations return their affected path; plans and batches return paths in order.

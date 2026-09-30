@@ -1,6 +1,7 @@
 package router
 
 import (
+	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -23,7 +24,14 @@ const codeModeJournalEnd = "<!-- mekugi-journal:end -->"
 const codeModeJournalHint = "In Code Mode, use the exec-local journal helper for reads and mutations: record mutations with await journal(...) inside your next useful exec call, and finish with an Outcome instead of a journal call."
 
 var journalToolDescription = embeddedInstruction("journal_tool")
-var codeModeJournalGuidance = strings.Replace(embeddedInstruction("journal_code_mode"), "<journal-tool-description />", journalToolDescription, 1)
+
+//go:embed journal_input.d.ts
+var journalInputTypes string
+
+var codeModeJournalGuidance = strings.NewReplacer(
+	"<journal-tool-description />", journalToolDescription,
+	"<journal-input-types />", strings.TrimSpace(journalInputTypes),
+).Replace(embeddedInstruction("journal_code_mode"))
 
 type journalListItem struct {
 	ID       string `json:"id"`
@@ -35,27 +43,46 @@ type journalListItem struct {
 }
 
 func journalMutationsSchema() json.RawMessage {
+	text := map[string]any{"type": "string"}
+	state := map[string]any{"type": "string", "enum": []string{"pending", "working", "done", "blocked", "dropped"}}
+	agent := map[string]any{"type": "string", "description": "Bind a direct child journal on task add or set; the mount is read-only and the binding immutable."}
+	// This schema is projected under properties.journal in the host tool's
+	// parameters. Local references resolve against that complete input schema.
+	tasks := map[string]any{"type": "array", "maxItems": maxJournalItems, "items": map[string]any{
+		"anyOf": []any{text, map[string]any{"$ref": "#/properties/journal/$defs/task"}},
+	}}
+	object := func(properties map[string]any, required ...string) map[string]any {
+		return map[string]any{"type": "object", "additionalProperties": false, "properties": properties, "required": required}
+	}
+	op := func(name string) map[string]any {
+		return map[string]any{"type": "string", "enum": []string{name}}
+	}
 	return mustMarshalJSON(map[string]any{
 		"type": "array", "maxItems": maxJournalItems,
 		"description": embeddedInstruction("journal_mutations"),
-		"items": map[string]any{
-			"type": "object", "additionalProperties": false,
-			"properties": map[string]any{
-				"op":     map[string]any{"type": "string", "enum": []string{"plan", "add", "set", "log", "remove"}, "description": "Plan tasks, change state, or record established facts."},
-				"p":      map[string]any{"type": "string"},
-				"under":  map[string]any{"type": "string"},
-				"kind":   map[string]any{"type": "string", "enum": []string{"task", "note", "context"}},
-				"title":  map[string]any{"type": "string"},
-				"body":   map[string]any{"type": "string"},
-				"text":   map[string]any{"type": "string"},
-				"state":  map[string]any{"type": "string", "enum": []string{"pending", "working", "done", "blocked", "dropped"}},
-				"reason": map[string]any{"type": "string"},
-				"agent":  map[string]any{"type": "string", "description": "Bind a direct child journal with set; the mount is then read-only."},
-				"before": map[string]any{"type": "string"},
-				"reset":  map[string]any{"type": "string", "enum": []string{"slice"}},
-				"tasks":  map[string]any{"type": "array", "maxItems": maxJournalItems, "items": map[string]any{"anyOf": []any{map[string]any{"type": "string"}, map[string]any{"type": "object"}}}},
-			}, "required": []string{"op"},
-		},
+		"$defs": map[string]any{"task": object(map[string]any{
+			"p": text, "title": text, "body": text, "state": state, "reason": text, "tasks": tasks,
+		}, "title")},
+		"items": map[string]any{"anyOf": []any{
+			object(map[string]any{
+				"op": op("plan"), "under": text, "tasks": tasks,
+				"reset": map[string]any{"type": "string", "enum": []string{"slice"}},
+			}, "op", "tasks"),
+			object(map[string]any{
+				"op": op("add"), "under": text, "title": text, "body": text, "before": text,
+				"kind":  map[string]any{"type": "string", "enum": []string{"task"}},
+				"state": state, "reason": text, "agent": agent,
+			}, "op", "kind", "title"),
+			object(map[string]any{
+				"op": op("add"), "under": text, "title": text, "body": text, "before": text,
+				"kind": map[string]any{"type": "string", "enum": []string{"note", "context"}},
+			}, "op", "title"),
+			object(map[string]any{
+				"op": op("set"), "p": text, "title": text, "body": text, "state": state, "reason": text, "agent": agent,
+			}, "op", "p"),
+			object(map[string]any{"op": op("log"), "p": text, "text": text}, "op", "text"),
+			object(map[string]any{"op": op("remove"), "p": text}, "op", "p"),
+		}},
 	})
 }
 
@@ -167,8 +194,6 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 			if err == nil {
 				t.proxy.countJournalRead(t.ctx, t.directory, t.shellThreadID, "counter-read:"+callID, args.Op)
 			}
-		} else if args.Agent != "" && args.Op != "set" {
-			err = errors.New("agent is only supported by journal read, list, and set")
 		} else {
 			var ids []string
 			ids, err = t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, callID, bindJournalAnswers([]journalMutation{args.journalMutation}, t.journalQuestion))

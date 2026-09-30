@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -591,40 +590,7 @@ func TestJournalLiveSnapshotCacheRefreshesOnMutationAndTerminal(t *testing.T) {
 	transform.ReleaseDelivery()
 }
 
-func TestJournalMutationSchemaAndSharedGuidance(t *testing.T) {
-	var nested struct {
-		Items struct {
-			Properties map[string]json.RawMessage `json:"properties"`
-		} `json:"items"`
-	}
-	if err := json.Unmarshal(journalMutationsSchema(), &nested); err != nil {
-		t.Fatal(err)
-	}
-	for _, properties := range []map[string]json.RawMessage{nested.Items.Properties} {
-		for _, name := range []string{"op"} {
-			var property struct {
-				Description string `json:"description"`
-			}
-			if err := json.Unmarshal(properties[name], &property); err != nil || strings.TrimSpace(property.Description) == "" {
-				t.Fatalf("missing %s schema guidance: %s, %v", name, properties[name], err)
-			}
-		}
-		if _, visible := properties["report_now"]; visible {
-			t.Fatal("report_now remains model-visible")
-		}
-		if _, visible := properties["answer"]; visible {
-			t.Fatalf("model-visible answer property remains in journal schema: %s", mustMarshalJSON(properties))
-		}
-		var operation struct {
-			Enum []string `json:"enum"`
-		}
-		if err := json.Unmarshal(properties["op"], &operation); err != nil {
-			t.Fatalf("decode journal operation schema: %v", err)
-		}
-		if slices.Contains(operation.Enum, "finish") {
-			t.Fatalf("finish remains a model-visible journal operation: %s", properties["op"])
-		}
-	}
+func TestJournalSharedGuidance(t *testing.T) {
 	description := codeModeJournalGuidance
 	for _, required := range []string{"durable journal", "await journal", "finish naturally with an Outcome", "turn card"} {
 		if !strings.Contains(description, required) {

@@ -615,9 +615,6 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 		treeMutated := false
 		before := slices.Clone(j.Items)
 		for position, mutation := range mutations {
-			if mutation.Agent != "" && mutation.Op != "set" {
-				return errors.New("agent binding is only supported by set")
-			}
 			if mutation.Op == "plan" || mutation.Op == "set" || mutation.Op == "log" || mutation.Op == "remove" || mutation.Op == "add" && mutation.Title != nil {
 				paths, err := j.applyTree(mutation)
 				if err != nil && len(mutations) > 1 {
@@ -635,7 +632,7 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 				return errors.New("legacy journal IDs resolve only retained aliases; use p with set or remove")
 			}
 			if mutation.P != "" || mutation.Under != "" || mutation.Kind != "" || mutation.Body != nil || mutation.State != nil ||
-				mutation.Reason != nil || mutation.Before != "" || mutation.Reset != "" || mutation.Tasks != nil {
+				mutation.Reason != nil || mutation.Before != "" || mutation.Reset != "" || mutation.Tasks != nil || mutation.Agent != "" {
 				return errors.New("tree fields require plan, set, log, remove, or add with title; text-only add is the retained milestone form")
 			}
 			question := ""

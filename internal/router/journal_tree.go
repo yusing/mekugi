@@ -246,6 +246,9 @@ func (j *threadJournal) applyTree(m journalMutation) ([]string, error) {
 		if m.Reason != nil {
 			item.Reason = *m.Reason
 		}
+		if err := j.bindAgent(&item, m.Agent); err != nil {
+			return nil, err
+		}
 		index := len(j.Items)
 		if m.Before != "" {
 			index = j.treeIndex(m.Before)
@@ -267,17 +270,8 @@ func (j *threadJournal) applyTree(m journalMutation) ([]string, error) {
 		if item.Kind == "answer" {
 			return nil, errors.New("router-owned journal node is read-only")
 		}
-		if m.Agent != "" && m.Agent != item.Agent {
-			if item.Agent != "" {
-				return nil, errors.New("journal agent binding is immutable")
-			}
-			if item.Kind != "task" || journalParent(m.Agent) != j.Author || strings.TrimSpace(m.Agent) != m.Agent || !utf8.ValidString(m.Agent) {
-				return nil, errors.New("agent must name a direct child on a task")
-			}
-			if slices.ContainsFunc(j.Items, func(other journalItem) bool { return other.Agent == m.Agent }) {
-				return nil, errors.New("child journal is already mounted")
-			}
-			item.Agent = m.Agent
+		if err := j.bindAgent(item, m.Agent); err != nil {
+			return nil, err
 		}
 		transition := m.State != nil && *m.State != item.State
 		if transition && (item.State == "done" || item.State == "dropped") && *m.State != "working" {
@@ -473,8 +467,8 @@ func journalTree(items []journalItem, path string, depth *int) ([]journalNode, e
 }
 
 func validateTreeMutation(m journalMutation) error {
-	if m.Agent != "" && m.Op != "set" {
-		return errors.New("agent binding is only supported by set")
+	if m.Agent != "" && m.Op != "set" && m.Op != "add" {
+		return errors.New("agent binding is only supported by task add and set")
 	}
 	extra := false
 	switch m.Op {
@@ -492,6 +486,23 @@ func validateTreeMutation(m journalMutation) error {
 	if extra {
 		return fmt.Errorf("journal %s has fields for another operation", m.Op)
 	}
+	return nil
+}
+
+func (j *threadJournal) bindAgent(item *journalItem, agent string) error {
+	if agent == "" || agent == item.Agent {
+		return nil
+	}
+	if item.Agent != "" {
+		return errors.New("journal agent binding is immutable")
+	}
+	if item.Kind != "task" || journalParent(agent) != j.Author || strings.HasSuffix(agent, "/") || strings.TrimSpace(agent) != agent || !utf8.ValidString(agent) {
+		return errors.New("agent must name a direct child on a task")
+	}
+	if slices.ContainsFunc(j.Items, func(other journalItem) bool { return other.Agent == agent }) {
+		return errors.New("child journal is already mounted")
+	}
+	item.Agent = agent
 	return nil
 }
 

@@ -10,9 +10,9 @@ func TestJournalToolErrorsNameTreeOperations(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	for arguments, want := range map[string]string{
-		`{"op":"read","title":"Wrong"}`:      "journal read accepts only p, agent, depth",
-		`{"op":"add","agent":"/root/child"}`: "journal read, list, and set",
-		`{"op":"list","p":"/1"}`:             "journal list accepts only agent",
+		`{"op":"read","title":"Wrong"}`:                      "journal read accepts only p, agent, depth",
+		`{"op":"add","title":"Wrong","agent":"/root/child"}`: "agent must name a direct child on a task",
+		`{"op":"list","p":"/1"}`:                             "journal list accepts only agent",
 	} {
 		result, err := transform.executeJournalCall(map[string]json.RawMessage{
 			"type": mustMarshalJSON("function_call"), "name": mustMarshalJSON("journal"),
