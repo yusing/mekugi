@@ -1,0 +1,6 @@
+Search answer in internal
++3     ┆ internal/router/main.go:30:func answer() int {
+       ┆ internal/router/main.go:31:    return 42
+       ┆ internal/router/main.go:32:}
+       ┆ internal/ui/activity/output.go:40:var ready = true
+       ┆ internal/ui/activity/output.go:41:println(ready)

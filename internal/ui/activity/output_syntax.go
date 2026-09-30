@@ -10,22 +10,39 @@ import (
 // Output syntax follows the content, never the command that produced it.
 // Both inline tails and dialogs use the same bounded renderer and cache.
 func (p *Painter) outputColors(block Block, rows []string) []string {
+	return p.outputColorsAt(block, rows, nil)
+}
+
+// outputColorsAt keeps source/diff context, but independent search rows need
+// coloring only when selected. A nil selection colors every row for dialogs.
+func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []string {
+	selectRows := func(rows []string) []string {
+		if indexes == nil {
+			return rows
+		}
+		selected := make([]string, len(indexes))
+		for i, index := range indexes {
+			selected[i] = rows[index]
+		}
+		return selected
+	}
 	if len(rows) == 0 {
 		return rows
 	}
 	content := strings.Join(rows, "\n")
 	if len(content) > dialogHighlightBytes {
-		return rows
+		return selectRows(rows)
 	}
 	path := ""
 	switch {
 	case block.ReadOutput() && len(block.Reads) == 1:
 		path = block.Reads[0].Path
 	case block.Verb == "Diff" && block.VCS():
-		return p.Highlight("diff", content)
+		return selectRows(p.Highlight("diff", content))
 	case strings.Contains(content, "\n+++ ") && strings.Contains(content, "\n@@ "):
-		return p.Highlight("diff", content)
+		return selectRows(p.Highlight("diff", content))
 	case block.Verb == "Search":
+		rows = selectRows(rows)
 		colored := make([]string, len(rows))
 		for i, line := range rows {
 			colored[i] = p.dialogSearchLine(block, line)
@@ -35,9 +52,9 @@ func (p *Painter) outputColors(block Block, rows []string) []string {
 	// Supply a terminator so a retained trailing blank row keeps its position.
 	colored, err := p.syntax.ColorSource(context.Background(), p.Theme, path, content+"\n")
 	if err != nil || len(colored) != len(rows) {
-		return rows
+		return selectRows(rows)
 	}
-	return colored
+	return selectRows(colored)
 }
 
 // Color from retained context before selecting the animated tail. Blank rows
@@ -65,10 +82,8 @@ func (p *Painter) tailColors(block Block) []string {
 	if len(indexes) != len(block.Tail) {
 		return p.outputColors(block, block.Tail)
 	}
-	colored := p.outputColors(block, view.Lines[:indexes[len(indexes)-1]+1])
-	tail := make([]string, len(indexes))
+	tail := p.outputColorsAt(block, view.Lines[:indexes[len(indexes)-1]+1], indexes)
 	for i, index := range indexes {
-		tail[i] = colored[index]
 		if view.Lines[index] != block.Tail[i] {
 			tail[i] = ansi.Truncate(tail[i], ansi.StringWidth(block.Tail[i]), "…")
 		}
