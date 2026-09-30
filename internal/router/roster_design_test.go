@@ -25,7 +25,7 @@ func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 		if len(blocks) != 1 || blocks[0].Kind != "message" {
 			t.Fatalf("parsed message = %+v", blocks)
 		}
-		for _, got := range []string{ansi.Strip(strings.Join(p.Block(blocks[0], 80), "\n")), ansi.Strip(p.Summary(blocks))} {
+		for _, got := range []string{ansi.Strip(strings.Join(p.Block(blocks[0], 80), "\n")), ansi.Strip(p.Summary(blocks, 80))} {
 			if !strings.Contains(got, tc.want) || !strings.Contains(got, "Message body") {
 				t.Errorf("%s -> %s owned by %s: %q, want direction %q and body", tc.from, tc.to, tc.owner, got, tc.want)
 			}

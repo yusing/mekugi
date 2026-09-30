@@ -907,7 +907,11 @@ func (v *liveActivityView) activityHeader(rows []liveActivityRosterRow, width in
 }
 
 // current is an agent's latest activity summary and its elapsed/response timer.
-func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (string, string) {
+func (v *liveActivityView) current(agent activityPaneAgent, now time.Time, widths ...int) (string, string) {
+	width := 80 // State/timer queries before a roster has display geometry.
+	if len(widths) > 0 {
+		width = max(1, widths[0])
+	}
 	summary := activityui.Dim + "—" + activityui.Undim
 	source := v
 	if agent.Name == "/root" && v.mainView != nil {
@@ -938,7 +942,7 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (stri
 				slices.Reverse(earlier)
 				blocks = append(earlier, blocks...)
 			}
-			summary = v.painter.Summary(blocks)
+			summary = v.painter.Summary(blocks, width)
 			if v0.Kind == "reasoning" && agent.Responding {
 				summary = activityui.ReasoningShimmer(ansi.Strip(summary), now.Sub(v0.Observed), v.painter.Colors)
 			}
@@ -947,7 +951,7 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (stri
 		if agent.Name == "/root" && len(blocks) == 1 && blocks[0].Kind == "message" && blocks[0].To == "/root" {
 			block := blocks[0]
 			block.Owner = "/root"
-			summary = v.painter.Summary([]activityui.Block{block})
+			summary = v.painter.Summary([]activityui.Block{block}, width)
 			break
 		}
 	}
@@ -1167,7 +1171,6 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 	for i := start; i < end; i++ {
 		row := rows[i]
 		first := len(lines) + 2
-		summary, _ := v.current(row.agent, now)
 		name := names[i-start]
 		available := nameWidth
 		if cards && !compact {
@@ -1186,16 +1189,21 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 				line += strings.Repeat(" ", gap) + activityui.Dim + last + activityui.Undim
 			}
 			add(line)
+			summary, _ := v.current(row.agent, now, width-3-ansi.StringWidth(indents[i-start]))
 			add("   " + activityui.Dim + indents[i-start] + activityui.Undim + summary)
 		case cards:
-			add(prefix + styled + strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(name))) + "  " + summary)
+			line := prefix + styled + strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(name))) + "  "
+			summary, _ := v.current(row.agent, now, width-ansi.StringWidth(line))
+			add(line + summary)
 		default:
 			line := prefix + styled + strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(name))) + "  "
 			metric := table[i-start]
 			room := width - ansi.StringWidth(line) - 2 - ansi.StringWidth(metric)
 			if metric == "" || room < 20 {
+				summary, _ := v.current(row.agent, now, width-ansi.StringWidth(line))
 				add(line + summary)
 			} else {
+				summary, _ := v.current(row.agent, now, room)
 				add(line + liveActivityPad(summary, room) + "  " + metric)
 			}
 		}

@@ -913,8 +913,11 @@ deltas, item events, or history. Main and Activity use the same reasoning sectio
 for titled and untitled summaries. Body rows are uniformly faint and italic,
 including wrapped lines and text after inline formatting. Paragraphs and soft
 line breaks continue beneath each section's header; only explicit Markdown
-list items introduce body bullets. Inline consecutive summaries in roster status
-are comma-separated.
+list items introduce body bullets. Roster status uses each section's collapsed
+transcript label without its body or duration: titled sections show their title,
+untitled summaries too long for the status column show `Thinking…` while streaming
+or `Thought` after completion, and short summaries that fit display directly.
+Consecutive labels are comma-separated.
 Reasoning does not replace `Working` in the composer status.
 Working and its progress overrides shimmer while the turn runs. Other ongoing
 states, such as sending and interrupting, breathe smoothly together from dim to light to dim, using a continuous neutral

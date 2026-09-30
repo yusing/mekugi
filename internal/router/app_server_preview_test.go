@@ -184,7 +184,18 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	}
 	render("grok thinking", "started · grok:grok-4.7-build-fast", "• Thinking…")
 	p.until("explorer thought")
-	render("grok thought readable", "• Thought", "I should read launch.go first")
+	render("grok thought readable", "• Thought")
+	retained := false
+	for _, blocks := range p.ui.agents.blocks {
+		for _, block := range blocks {
+			if block.Kind == "summary" && block.Body == nativePreviewGrokReasoning {
+				retained = p.ui.agents.painter.DialogPage(block, 120).Text == nativePreviewGrokReasoning
+			}
+		}
+	}
+	if !retained {
+		t.Fatal("collapsed reasoning lost its complete dialog body")
+	}
 	p.until("three agents edit at once")
 	frame := render("agent dock accordion", "LIVE · 3 agents", "^B e next", "▸", "reviewer → main", "2 Diff ●")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {

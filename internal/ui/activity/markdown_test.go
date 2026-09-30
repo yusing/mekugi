@@ -151,7 +151,7 @@ func TestMarkdownMermaid(t *testing.T) {
 func TestMarkdownMermaidSummary(t *testing.T) {
 	p := activityui.Painter{}
 	for _, source := range []string{"```mermaid\nflowchart TD\nA --> B\n```", "> ```mermaid\n> flowchart TD\n> A --> B\n> ```", "```mermaid\nflowchart TD\nA -->"} {
-		got := ansi.Strip(p.Summary([]activityui.Block{{Kind: "final", Body: source}}))
+		got := ansi.Strip(p.Summary([]activityui.Block{{Kind: "final", Body: source}}, 80))
 		if !strings.Contains(got, "Mermaid: flowchart TD") || strings.ContainsAny(got, "┌─┐") {
 			t.Fatalf("diagram summary: %q", got)
 		}

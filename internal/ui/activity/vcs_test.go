@@ -40,7 +40,7 @@ func TestVCSRowsShowTheirResult(t *testing.T) {
 	if got := strings.Split(vcsRows(&p, commit, 40), "\n")[0]; got != "Committed amend! feat(router): pi… · git" {
 		t.Fatalf("narrow heading = %q", got)
 	}
-	if got := ansi.Strip(p.Summary([]Block{commit})); got != "Committed amend! feat(router): pin latest reply +11 -1 · git" {
+	if got := ansi.Strip(p.Summary([]Block{commit}, 80)); got != "Committed amend! feat(router): pin latest reply +11 -1 · git" {
 		t.Fatalf("roster summary = %q", got)
 	}
 	failed := Block{Kind: "op", Verb: "Commit", Label: "`fix: x` · git", ExitCode: 1, Tail: []string{"hook failed"}}

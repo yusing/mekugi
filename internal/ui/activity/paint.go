@@ -1533,8 +1533,9 @@ func SummaryVerb(verb string) string {
 	return VerbColor(verb) + verb + Reset + " "
 }
 
-// summary is the roster's one-line view of an agent's current activity.
-func (p *Painter) Summary(blocks []Block) string {
+// Summary is the roster's one-line view of an agent's current activity.
+// Width is the status column's available display width, without a bullet prefix.
+func (p *Painter) Summary(blocks []Block, width int) string {
 	for len(blocks) > 0 && blocks[len(blocks)-1].Kind == "filter" {
 		blocks = blocks[:len(blocks)-1]
 	}
@@ -1591,7 +1592,17 @@ func (p *Painter) Summary(blocks []Block) string {
 	case "summary":
 		var headers []string
 		for i := len(blocks) - 1; i >= 0 && blocks[i].Kind == "summary"; i-- {
-			headers = append(headers, ReasoningSummaryHeader(blocks[i].Body))
+			// Share the transcript's collapsed title, not its latest body line.
+			// Roster timers already supply elapsed time separately.
+			if label := blocks[i].Label; label != "" {
+				headers = append(headers, ansi.Strip(p.Inline(label)))
+				continue
+			}
+			section := blocks[i]
+			section.Collapsed, section.Elapsed, section.Hovered = true, "", false
+			if rows := p.blockRows(section, max(1, width)+2); len(rows) > 0 {
+				headers = append(headers, strings.TrimPrefix(ansi.Strip(rows[0]), "• "))
+			}
 		}
 		slices.Reverse(headers)
 		return Dim + strings.Join(headers, ", ") + Undim

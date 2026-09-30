@@ -99,7 +99,7 @@ func TestAppServerChildMetadataFailureKeepsActivity(t *testing.T) {
 	id := u.session.metadata["child"]
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"error":{"code":-1,"message":"not available"}}`, id))
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "mcat child.go"}})
-	if len(u.requests) != 0 || u.alert || !strings.Contains(ansi.Strip(u.agents.agentState(*u.session.agent("/root/child"))), "child.go") {
+	if len(u.requests) != 0 || u.alert || !strings.Contains(ansi.Strip(u.agents.agentState(*u.session.agent("/root/child"), 80)), "child.go") {
 		t.Fatal("metadata failure blocked activity or caused repeated reads")
 	}
 }
@@ -124,7 +124,7 @@ func TestNativeRosterShowsActivityDetails(t *testing.T) {
 		t.Fatalf("summary missing: %s", got)
 	}
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t", "status": "completed"}})
-	if got := ansi.Strip(u.agents.agentState(*u.session.agent("/root/reviewer"))); got != "done" {
+	if got := ansi.Strip(u.agents.agentState(*u.session.agent("/root/reviewer"), 80)); got != "done" {
 		t.Fatalf("finished state: %q", got)
 	}
 }

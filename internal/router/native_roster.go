@@ -155,7 +155,6 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	type agentLine struct {
 		row          liveActivityRosterRow
 		prefix       string
-		state        string
 		finishedLine string
 	}
 	var laid []agentLine
@@ -185,7 +184,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		if focused {
 			gap += strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(tree)))
 		}
-		line := agentLine{row: row, prefix: " " + v.nativeGlyph(row.agent) + " " + name + gap, state: v.agentState(row.agent)}
+		line := agentLine{row: row, prefix: " " + v.nativeGlyph(row.agent) + " " + name + gap}
 		laid = append(laid, line)
 		parts = append(parts, nativeRosterMetricParts(v, row.agent, now))
 		widest = max(widest, ansi.StringWidth(line.prefix))
@@ -202,7 +201,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			continue
 		}
 		room := max(1, stateEnd-ansi.StringWidth(item.prefix))
-		line := item.prefix + liveActivityPad(item.state, room)
+		line := item.prefix + liveActivityPad(v.agentState(item.row.agent, room), room)
 		if next < len(metrics) {
 			line += metrics[next]
 		}
@@ -437,7 +436,7 @@ func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
 
 // agentState preserves lifecycle states when idle, and shares the detailed
 // activity summary while an agent is working.
-func (v *liveActivityView) agentState(agent activityPaneAgent) string {
+func (v *liveActivityView) agentState(agent activityPaneAgent, width int) string {
 	source, owner := v, agent.Name
 	if agent.Name == "/root" && v.mainView != nil {
 		source, owner = v.mainView, "Main"
@@ -460,6 +459,6 @@ func (v *liveActivityView) agentState(agent activityPaneAgent) string {
 	case len(blocks) == 0:
 		return "working"
 	}
-	summary, _ := v.current(agent, time.Now())
+	summary, _ := v.current(agent, time.Now(), width)
 	return summary
 }

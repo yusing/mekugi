@@ -125,7 +125,7 @@ func TestMarkdownTableSummary(t *testing.T) {
 		{"> > A | B\n> > --- | ---\n> > x | y", "A: x · B: y"},
 		{"\n**A** | B\n--- | ---", "A · B"},
 	} {
-		got := p.Summary([]activityui.Block{{Kind: "final", Body: tc.source}})
+		got := p.Summary([]activityui.Block{{Kind: "final", Body: tc.source}}, 80)
 		if got != tc.want {
 			t.Fatalf("summary %q, want %q", got, tc.want)
 		}

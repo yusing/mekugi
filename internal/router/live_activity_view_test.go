@@ -546,7 +546,7 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 	if strings.Contains(full, "Journal result") || strings.Contains(full, "**") || strings.Contains(full, "Answer") {
 		t.Fatalf("legacy journal grammar leaked into the pane:\n%s", full)
 	}
-	if summary := ansi.Strip(painter.Summary(blocks)); summary != "Yes." {
+	if summary := ansi.Strip(painter.Summary(blocks, 80)); summary != "Yes." {
 		t.Fatalf("roster summary = %q", summary)
 	}
 
