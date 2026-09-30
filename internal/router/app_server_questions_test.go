@@ -285,10 +285,6 @@ func TestNativeQuestionGapsQueueAndLiteralAnswers(t *testing.T) {
 	if v.shellMode() || v.picker.open || len(v.files) != 0 || v.draft != "! @file $skill /quit" {
 		t.Fatal("answer paste was interpreted")
 	}
-	appServerTestKeys(t, v, "\x16")
-	if v.notice != "answers are text only" {
-		t.Fatal("image paste was not rejected")
-	}
 }
 
 func TestNativeQuestionBeforePaintAndSecretFrame(t *testing.T) {

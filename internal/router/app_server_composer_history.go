@@ -10,6 +10,7 @@ type composerDraft struct {
 	text             string
 	cursorBack       int
 	images           []composerImage
+	answerImages     []string // Images accompanying a complete question-reply envelope.
 	skills           []composerSkill
 	files            []composerFile
 	selections       []composerSelection
@@ -118,6 +119,12 @@ func (u *appServerUI) pruneDraftImages() {
 		}
 	}
 	stacks := [][]composerUndo{u.undoDrafts, u.redoDrafts}
+	for _, call := range u.questions.calls {
+		for _, question := range call.questions {
+			e := question.editor
+			stacks = append(stacks, e.undo, e.redo, []composerUndo{e.snapshot})
+		}
+	}
 	if u.questions.active != nil {
 		e := u.questions.parked
 		stacks = append(stacks, e.undo, e.redo, []composerUndo{e.snapshot})
@@ -133,6 +140,9 @@ func (u *appServerUI) pruneDraftImages() {
 	}
 	for _, history := range [][]composerDraft{u.inputHistory, {u.historyDraft}, u.unsent, u.queued} {
 		for _, snapshot := range history {
+			for _, path := range snapshot.answerImages {
+				used[path] = true
+			}
 			for _, image := range snapshot.images {
 				used[image.path] = true
 			}

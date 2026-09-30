@@ -68,8 +68,30 @@ func (p *questionCodexProvider) forwardExecution(ctx, _ context.Context, body []
 }
 
 func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
-	for _, mode := range []string{"async", "sync"} {
-		t.Run(mode, func(t *testing.T) {
+	for _, tc := range []struct {
+		mode  string
+		image bool
+	}{{"async", false}, {"sync", false}, {"async", true}, {"sync", true}} {
+		name := tc.mode
+		if tc.image {
+			name += "-image"
+		}
+		t.Run(name, func(t *testing.T) {
+			mode := tc.mode
+			imagePath := ""
+			if tc.image {
+				imagePath = answerImageFixture(t)
+			}
+			answer := func(terminal *appResumeTerminal) {
+				t.Helper()
+				if !tc.image {
+					terminal.send("1\r")
+					return
+				}
+				terminal.send("\x1b[200~" + imagePath + "\x1b[201~")
+				terminal.await("[Image 1]")
+				terminal.send("\r")
+			}
 			codex, err := exec.LookPath("codex")
 			if err != nil {
 				t.Fatal("installed Codex is required")
@@ -108,7 +130,7 @@ func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 				_ = next() // The async tool returns immediately; keep the turn running.
 				terminal.send("\x02q")
 				terminal.await("1 of 1")
-				terminal.send("1\r")
+				answer(terminal)
 				terminal.awaitMatch("accepted question steer", func(screen string) bool {
 					return strings.Contains(screen, "Steering after") && strings.Contains(screen, "Working") && !strings.Contains(screen, "Sending…")
 				})
@@ -122,14 +144,17 @@ func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 					t.Fatal(err)
 				}
 				encoded, _ := json.Marshal(parsed.Input)
-				if strings.Count(string(encoded), "<send_user_message_question_reply>") != 1 || !strings.Contains(string(encoded), `request_user_input_async`) || !strings.Contains(string(encoded), `Customers`) {
+				if strings.Count(string(encoded), "<send_user_message_question_reply>") != 1 || !strings.Contains(string(encoded), `request_user_input_async`) || !strings.Contains(string(encoded), map[bool]string{false: "Customers", true: "[Image 1]"}[tc.image]) {
 					t.Fatal("async reply was not included exactly once in the mid-turn provider input")
+				}
+				if tc.image {
+					assertQuestionProviderImage(t, request, imagePath)
 				}
 			} else {
 				terminal.await("Which release scope?")
 				terminal.send("\x02q") // The just-submitted composer is not idle yet.
 				terminal.await("1 of 1")
-				terminal.send("1\r")
+				answer(terminal)
 				request := next()
 				var observed struct {
 					Input []struct {
@@ -155,10 +180,20 @@ func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 						t.Fatal(err)
 					}
 					answers := result.Answers["scope"].Answers
-					found = len(answers) == 1 && answers[0] == "Narrow"
+					want := "Narrow"
+					if tc.image {
+						want = "user_note: [Image 1] "
+					}
+					found = len(answers) == 1 && answers[0] == want
 				}
 				if !found {
 					t.Fatal("sync answer was not delivered as the matching tool result")
+				}
+				if tc.image {
+					if !bytes.Contains(request, []byte(`"type":"input_image"`)) {
+						request = next()
+					}
+					assertQuestionProviderImage(t, request, imagePath)
 				}
 				terminal.awaitMatch("sync question resolved", func(screen string) bool {
 					return !strings.Contains(screen, "turn waiting") && strings.Contains(screen, "Completed")
@@ -167,5 +202,43 @@ func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 			terminal.await("completed")
 			terminal.quit()
 		})
+	}
+}
+
+func assertQuestionProviderImage(t *testing.T, request []byte, path string) {
+	t.Helper()
+	var body struct {
+		Input []struct {
+			Role    string `json:"role"`
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+				URL  string `json:"image_url"`
+			} `json:"content"`
+		} `json:"input"`
+	}
+	if err := json.Unmarshal(request, &body); err != nil {
+		t.Fatal(err)
+	}
+	images, framed := 0, false
+	for _, item := range body.Input {
+		if item.Role != "user" {
+			continue
+		}
+		for i, part := range item.Content {
+			if part.Type != "input_image" {
+				continue
+			}
+			images++
+			if !strings.HasPrefix(part.URL, "data:image/png;base64,") {
+				t.Fatal("answer image bytes missing")
+			}
+			if i > 0 && i+1 < len(item.Content) {
+				framed = strings.HasPrefix(item.Content[i-1].Text, "<image") && strings.Contains(item.Content[i-1].Text, path) && item.Content[i+1].Text == "</image>"
+			}
+		}
+	}
+	if images != 1 || !framed {
+		t.Fatalf("answer did not reuse the host image frame: images=%d framed=%v", images, framed)
 	}
 }

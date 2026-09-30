@@ -3,11 +3,13 @@ package router
 import (
 	json "encoding/json/v2"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/internal/appserver"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // Source: codex-rs/tui/src/chatwidget/skills.rs:29:136 and
@@ -242,4 +244,77 @@ func (u *appServerUI) skillQueryCompletable(query string) bool {
 		return false
 	}
 	return true
+}
+
+// The catalog, not a textual lookalike, authorizes a skill binding. Repeated
+// names with different paths are ambiguous and remain literal until selected.
+func (u *appServerUI) bindSkills(d *composerDraft, final bool) {
+	p := &u.picker
+	if !p.skillsLoaded || p.skillsCwd != u.session.cwd || strings.HasPrefix(d.text, "!") || d.questionCall != nil {
+		return
+	}
+	var catalog []composerSkill
+	for _, choice := range p.skills {
+		if choice.enabled && u.skillQueryCompletable(choice.name) {
+			catalog = append(catalog, composerSkill{name: choice.name, path: choice.path})
+		}
+	}
+	spans := d.displaySpans()
+	for _, binding := range unambiguousSkillBindings(d.text, catalog, nil) {
+		if !final && binding.end == len(d.text) {
+			continue // A still-growing word stays editable.
+		}
+		if !slices.ContainsFunc(spans, func(span activityui.TextSpan) bool {
+			return binding.start < span.End && binding.end > span.Start
+		}) {
+			d.skills = append(d.skills, binding)
+		}
+	}
+	slices.SortFunc(d.skills, func(a, b composerSkill) int { return a.start - b.start })
+}
+
+func (u *appServerUI) skillBindingQuery(d composerDraft, final bool) string {
+	if strings.HasPrefix(d.text, "!") || d.questionCall != nil {
+		return ""
+	}
+	at := 0
+	spans := d.displaySpans()
+	for word := range strings.FieldsSeq(d.text) {
+		start := at + strings.Index(d.text[at:], word)
+		at = start + len(word)
+		name, ok := strings.CutPrefix(word, "$")
+		if !ok || name == "" || !u.skillQueryCompletable(name) || !final && at == len(d.text) {
+			continue
+		}
+		bound := false
+		for _, span := range spans {
+			if start < span.End && at > span.Start {
+				bound = true
+				break
+			}
+		}
+		if !bound {
+			return name
+		}
+	}
+	return ""
+}
+
+func (u *appServerUI) waitForSkillBindings(parts []composerDraft) bool {
+	p := &u.picker
+	if p.skillsLoaded && p.skillsCwd == u.session.cwd {
+		return false
+	}
+	if p.skillsProblem != "" && p.skillsCwd == u.session.cwd {
+		return false // Catalog failure must not borrow foreground completion state.
+	}
+	for _, part := range parts {
+		if query := u.skillBindingQuery(part, true); query != "" {
+			if p.pending == nil && filepath.IsAbs(u.session.cwd) {
+				u.requestPicker(composerTarget{kind: '$', query: query}, u.session.cwd)
+			}
+			return p.skillsProblem == "" || p.skillsCwd != u.session.cwd
+		}
+	}
+	return false
 }

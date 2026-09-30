@@ -316,6 +316,12 @@ only at UTF-8 boundaries, without dropping bytes. Supported images attach throug
 the existing image composer;
 skill selections retain their exact path as structured
 Codex skill input through undo, local input history, and rejected submissions.
+Complete enabled `$name` references also bind automatically after a word boundary
+or on submission, including pasted prompts. Names must match exactly and have
+one enabled path in the active workspace's Codex catalog. Unknown, disabled,
+ambiguous names and shell variables stay literal. A pending catalog lookup delays
+submission rather than silently losing the skill; lookup failure is reported and
+leaves the references as text.
 
 Single-unit spans use shared logic for every bound token kind, including file
 references, skill references, selection mentions, and `[Image N]` placeholders. Navigation and deletion
@@ -326,7 +332,10 @@ skills amber, and selection mentions cyan, consistently across composer and tran
 not acquire attachment identity.
 File and skill span byte ranges travel in Codex text elements, relative to each
 text part, so host echoes and restored history retain their presentation without
-guessing from prompt text. Missing historical span metadata stays literal.
+guessing from prompt text. Structured skill metadata also restores complete,
+unambiguous skill references when text elements are absent; explicit text
+elements take precedence for repeated identical labels. Without either kind of
+metadata historical lookalikes stay literal.
 
 File snapshots travel in Codex-owned input history, not a router-lifetime lookup.
 Queued and restored input, fork/resume, and provider switches retain
@@ -910,15 +919,22 @@ position, file/skill tokens, images and Shell Mode. Hiding or submitting restore
 it unchanged. The frame says `draft kept` when the parked draft is non-empty.
 Each question has its own editor across navigation and hide/reopen. Answer text
 never merges into the main draft. Answer editors accept literal text, Unicode,
-paste, undo and Ctrl-G, but disable completion, Shell Mode and image attachment;
-Ctrl-V reports `answers are text only`. Secret answers are masked with `•` and
+paste, undo and Ctrl-G, but disable completion and Shell Mode. Ctrl-V and a
+bracketed paste containing one image path reuse the main composer's highlighted,
+atomic `[Image N]` attachments, editing, undo and host-owned image processing.
+Image files remain available across question navigation, hide/reopen and rejected
+submissions. Secret answers are masked with `•` and
 never enter input history. If resolution, interruption or supersession discards
 an unsent non-secret answer draft, it is saved to local input history with
 `unsent answer saved to input history`, not inserted into the main draft. Secret
 drafts are discarded. Neither main nor answer drafts survive router restart.
 
 Synchronous requests are keyed by thread and JSON-RPC request ID. Exactly one
-response is sent, preserving the original ID. Its `answers` object maps question
+response is sent, preserving the original ID. Image answers retain their
+`[Image N]` references in that text-only response and queue a companion ordinary
+composer message with the matching local images after the request resolves.
+Codex emits the same image frames as for main-composer attachments.
+Its `answers` object maps question
 IDs to `{answers: [string]}`: an option sends `[label]`; a note sends
 `[label, "user_note: …"]`; Other sends `["user_note: …"]`; skipped questions
 are omitted. All-skipped sends `{answers: {}}`. Resolution notifications,
@@ -927,7 +943,10 @@ never sent. While the dock is hidden and a sync request waits, Enter queues the
 main draft instead of steering it. The open composer says
 `answering · turn waiting`.
 
-Async answers are batched per tool call, in a single ordinary user-input envelope:
+Async answers are batched per tool call, in a single ordinary user-input envelope.
+Images accompany the complete text envelope as stock local-image inputs, with
+labels numbered across the answered questions; image bytes and framing remain
+Codex-owned:
 
 ```text
 <send_user_message_question_reply>[{"answer":"…","question":"…","questionItemId":"[\"request_user_input_async\",\"ITEM_ID\",0]"}]</send_user_message_question_reply>

@@ -286,6 +286,8 @@ func appServerUserText(content jsontext.Value) (string, []activityui.TextSpan, b
 	var contents []struct {
 		Type     string                `json:"type"`
 		Text     string                `json:"text"`
+		Name     string                `json:"name"`
+		Path     string                `json:"path"`
 		Elements []composerTextElement `json:"textElements"`
 	}
 	if len(content) > 0 && json.Unmarshal(content, &contents) != nil {
@@ -306,12 +308,31 @@ func appServerUserText(content jsontext.Value) (string, []activityui.TextSpan, b
 			}
 			text += content.Text
 		} else if content.Type == "image" || content.Type == "localImage" {
+			if len(questionReplies(text)) > 0 {
+				continue // Reply images belong to Asked, not another user-message band.
+			}
 			start := len(text)
 			imageCount++
 			text += fmt.Sprintf("[Image %d]", imageCount)
 			spans = append(spans, activityui.TextSpan{Start: start, End: len(text), Kind: activityui.ImageToken})
 		}
 	}
+	var skills []composerSkill
+	for _, content := range contents {
+		if content.Type == "skill" {
+			skills = append(skills, composerSkill{name: content.Name, path: content.Path})
+		}
+	}
+	draft := composerDraft{text: text}
+	draft.skills = unambiguousSkillBindings(text, skills, spans)
+	for _, span := range draft.displaySpans() {
+		if !slices.ContainsFunc(spans, func(existing activityui.TextSpan) bool {
+			return span.Start < existing.End && span.End > existing.Start
+		}) {
+			spans = append(spans, span)
+		}
+	}
+	slices.SortFunc(spans, func(a, b activityui.TextSpan) int { return a.Start - b.Start })
 	return text, spans, true
 }
 

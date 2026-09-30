@@ -46,6 +46,7 @@ func joinDrafts(parts ...composerDraft) composerDraft {
 		shift := len(joined.text)
 		joined.text += part.text
 		joined.attachments = append(joined.attachments, part.attachments...)
+		joined.answerImages = append(joined.answerImages, part.answerImages...)
 		if part.attachmentNotice != "" {
 			joined.attachmentNotice = part.attachmentNotice
 		}
@@ -150,6 +151,7 @@ func (u *appServerUI) flushInput() error {
 		return nil
 	}
 	var parts []composerDraft
+	fromUnsent := len(u.unsent) > 0
 	steer := u.turn != ""
 	switch {
 	case steer && u.turn == u.interrupting:
@@ -164,6 +166,15 @@ func (u *appServerUI) flushInput() error {
 	default:
 		return nil
 	}
+	if u.waitForSkillBindings(parts) {
+		if fromUnsent {
+			u.unsent = append(parts, u.unsent...)
+		} else {
+			u.queued = append(parts, u.queued...)
+		}
+		u.refreshPicker()
+		return nil
+	}
 	return u.send(parts, steer)
 }
 
@@ -171,6 +182,9 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	if len(parts) == 1 && parts[0].text == "/compact" {
 		u.compactRequest, u.manualCompact, u.starting, u.status = true, true, true, "Compacting context…"
 		return u.request("thread/compact/start", map[string]any{"threadId": u.thread})
+	}
+	for i := range parts {
+		u.bindSkills(&parts[i], true)
 	}
 	s := composerSubmission{composerDraft: joinDrafts(parts...), parts: parts, id: rand.Text()}
 	input := s.input()
@@ -200,6 +214,9 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	}
 	for _, image := range s.images {
 		delete(u.ownedImages, image.path)
+	}
+	for _, path := range s.answerImages {
+		delete(u.ownedImages, path)
 	}
 	u.submission, u.status, u.alert = s, "Sending…", false
 	if !steer {

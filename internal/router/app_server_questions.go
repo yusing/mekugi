@@ -377,7 +377,11 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 			q.note = true
 		}
 	case "\x16":
-		u.setNotice("answers are text only", false)
+		if !q.note {
+			q.selected = len(q.choices)
+		}
+		q.done, q.skipped = false, false
+		u.pasteImage()
 	case "\r", "\x1d":
 		q.editor = u.saveQuestionEditor()
 		q.skipped = key == "\x1d"
@@ -444,9 +448,11 @@ func (u *appServerUI) submitQuestions() error {
 		return nil
 	}
 	defer func() {
+		u.pruneDraftImages()
 		u.questions.autoOpen = true
 		u.autoOpenQuestions()
 	}()
+	images := questionAnswerImages(c)
 	if len(c.request) > 0 {
 		answers := make(map[string]map[string][]string)
 		for _, q := range c.questions {
@@ -463,6 +469,17 @@ func (u *appServerUI) submitQuestions() error {
 			c.questions[i].editor = questionEditor{}
 		}
 		u.renderQuestionRecord(c)
+		if len(images) > 0 {
+			d := composerDraft{text: "Images accompanying answers to " + c.item + ":\n", questionCall: c, inHistory: true}
+			for i, path := range images {
+				label := fmt.Sprintf("[Image %d]", i+1)
+				start := len(d.text)
+				d.text += label + "\n"
+				d.images = append(d.images, composerImage{start, start + len(label), path})
+			}
+			u.unsent = append(u.unsent, d)
+			return u.flushInput()
+		}
 		return nil
 	}
 	var replies []nativeQuestionReply
@@ -479,6 +496,11 @@ func (u *appServerUI) submitQuestions() error {
 		replies = append(replies, nativeQuestionReply{Answer: strings.Join(q.answer, "\n"), Question: q.Question, QuestionItemID: string(id)})
 	}
 	u.hideQuestions()
+	for i := range c.questions {
+		if c.questions[i].outcome == "skipped" {
+			c.questions[i].editor = questionEditor{}
+		}
+	}
 	c.sent = true
 	if len(replies) == 0 {
 		c.resolved = true
@@ -486,9 +508,40 @@ func (u *appServerUI) submitQuestions() error {
 		return nil
 	}
 	data, _ := json.Marshal(replies)
-	u.unsent = append(u.unsent, composerDraft{text: questionReplyStart + string(data) + questionReplyEnd, questionCall: c, inHistory: true})
+	u.unsent = append(u.unsent, composerDraft{text: questionReplyStart + string(data) + questionReplyEnd, answerImages: images, questionCall: c, inHistory: true})
 	u.renderQuestionRecord(c)
 	return u.flushInput()
+}
+
+// Answers refer to the same labels as composer images. The async envelope stays
+// a complete text part; the host processes its accompanying localImage inputs.
+func questionAnswerImages(c *nativeQuestionCall) []string {
+	var paths []string
+	for i := range c.questions {
+		q := &c.questions[i]
+		if !q.done || q.skipped || q.outcome != "" {
+			continue
+		}
+		d := q.editor.snapshot.composerDraft
+		if len(d.images) == 0 {
+			continue
+		}
+		text := d.text
+		for j := len(d.images) - 1; j >= 0; j-- {
+			image := d.images[j]
+			text = text[:image.start] + fmt.Sprintf("[Image %d]", len(paths)+j+1) + text[image.end:]
+		}
+		for _, image := range d.images {
+			paths = append(paths, image.path)
+		}
+		q.answer = []string{text}
+		if q.selected < len(q.choices) {
+			q.answer = []string{q.choices[q.selected].Label, "user_note: " + text}
+		} else if len(c.request) > 0 {
+			q.answer[0] = "user_note: " + text
+		}
+	}
+	return paths
 }
 
 const questionReplyStart = "<send_user_message_question_reply>"
@@ -565,13 +618,19 @@ func pendingQuestionReplies(parts []composerDraft) []composerDraft {
 			pending = append(pending, part)
 			continue
 		}
+		if len(c.request) > 0 {
+			pending = append(pending, part) // Sync images follow the completed tool response.
+			continue
+		}
 		if c.resolved {
 			continue
 		}
+		part.answerImages = questionAnswerImages(c)
 		var replies []nativeQuestionReply
 		for _, r := range questionReplies(part.text) {
 			item, index, ok := questionReplyIdentity(r)
 			if ok && item == c.item && index < len(c.questions) && c.questions[index].outcome == "" {
+				r.Answer = strings.Join(c.questions[index].answer, "\n")
 				replies = append(replies, r)
 			}
 		}
@@ -638,7 +697,7 @@ func (u *appServerUI) rejectQuestionParts(parts []composerDraft) []composerDraft
 	var ordinary []composerDraft
 	for _, p := range parts {
 		c := p.questionCall
-		if c == nil {
+		if c == nil || len(c.request) > 0 {
 			ordinary = append(ordinary, p)
 			continue
 		}

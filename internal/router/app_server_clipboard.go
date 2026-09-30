@@ -103,9 +103,7 @@ func (u *appServerUI) finishPaste() {
 		if !q.note {
 			q.selected = len(q.choices)
 		}
-		u.insertDraft(text)
-		u.run = runNone
-		return
+		q.done, q.skipped = false, false
 	}
 	path, ok := pastedImagePath(text)
 	if !ok {
@@ -220,6 +218,9 @@ func (d composerDraft) input() []map[string]any {
 	}
 	if at < len(d.text) || len(input) == 0 {
 		appendText(at, len(d.text))
+	}
+	for _, path := range d.answerImages {
+		input = append(input, map[string]any{"type": "localImage", "path": path})
 	}
 	for _, skill := range d.skills {
 		input = append(input, map[string]any{"type": "skill", "name": skill.name, "path": skill.path})

@@ -69,13 +69,14 @@ type composerPicker struct {
 	problem              string
 	// One in-flight request; edits coalesce until its response, which is never
 	// allowed to replace results for a different query or workspace.
-	pending      *composerTarget
-	pendingCwd   string
-	resolved     composerTarget
-	resolvedCwd  string
-	skills       []composerChoice
-	skillsCwd    string
-	skillsLoaded bool
+	pending       *composerTarget
+	pendingCwd    string
+	resolved      composerTarget
+	resolvedCwd   string
+	skills        []composerChoice
+	skillsCwd     string
+	skillsLoaded  bool
+	skillsProblem string
 }
 
 func (u *appServerUI) completionTarget() composerTarget {
@@ -144,7 +145,27 @@ func (u *appServerUI) refreshPicker() {
 		return
 	}
 	p := &u.picker
+	draft := u.draftSnapshot()
+	u.bindSkills(&draft, false)
+	u.skills = draft.skills
 	target := u.completionTarget()
+	bindingOnly := false
+	if target.kind == 0 && p.modal == "" && (!p.skillsLoaded || p.skillsCwd != u.session.cwd) {
+		query := u.skillBindingQuery(draft, false)
+		for _, part := range slices.Concat(u.unsent, u.queued) {
+			if query == "" {
+				query = u.skillBindingQuery(part, true)
+			}
+		}
+		if query != "" {
+			target, bindingOnly = composerTarget{kind: '$', query: query}, true
+		}
+	}
+	defer func() {
+		if bindingOnly {
+			p.open = false
+		}
+	}()
 	if p.modal == "menu" || p.modal == "copy" || p.modal == "settings" {
 		p.open = true
 		return
@@ -164,7 +185,7 @@ func (u *appServerUI) refreshPicker() {
 		p.target, p.choices, p.problem = target, nil, ""
 		p.resolved = composerTarget{}
 	}
-	if !p.open {
+	if !p.open && !bindingOnly {
 		p.resolved = composerTarget{}
 		p.problem = ""
 	}
@@ -203,6 +224,11 @@ func (u *appServerUI) refreshPicker() {
 	if p.pending != nil {
 		return
 	}
+	u.requestPicker(target, cwd)
+}
+
+func (u *appServerUI) requestPicker(target composerTarget, cwd string) {
+	p := &u.picker
 	method := "fuzzyFileSearch"
 	params := map[string]any{"query": target.query, "roots": []string{cwd}}
 	if target.kind == '$' {
@@ -213,6 +239,10 @@ func (u *appServerUI) refreshPicker() {
 		p.pending, p.loading = nil, false
 		p.resolved, p.resolvedCwd = target, cwd
 		p.problem = "Search failed: " + err.Error()
+		if target.kind == '$' {
+			p.skillsCwd, p.skillsProblem = cwd, p.problem
+			u.setNotice("Skill attachment unavailable: "+p.problem+". References remain text.", true)
+		}
 	}
 }
 
@@ -317,6 +347,7 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 		if err == nil {
 
 			p.skills, p.skillsCwd, p.skillsLoaded = choices, cwd, true
+			p.skillsProblem = ""
 			if p.modal == "manage" && p.initial == nil {
 				u.rememberSkillState()
 			}
@@ -346,6 +377,14 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 	if err != nil {
 		choices = nil
 		problem = "Invalid search response: " + err.Error()
+	}
+	if method == "skills/list" && (m.Error != nil || err != nil) {
+		p.skillsLoaded, p.skillsCwd, p.skillsProblem = false, cwd, problem
+		if cwd == u.session.cwd {
+			u.setNotice("Skill attachment unavailable: "+problem+". References remain text.", true)
+		}
+	} else if method == "skills/list" && problem != "" && cwd == u.session.cwd {
+		u.setNotice("Skill catalog incomplete: "+problem+". Unavailable references remain text.", true)
 	}
 	if target == p.target && cwd == u.session.cwd {
 		p.choices, p.loading, p.problem = choices, false, problem
@@ -450,19 +489,4 @@ func (u *appServerUI) pickerKey(key string) bool {
 
 func (u *appServerUI) pickerVisible() bool {
 	return u.picker.open && (u.shell == nil || u.shell.focus == 0)
-}
-
-// Rebind only complete, unambiguous skill tokens from authoritative history or
-// the edited draft. A similarly prefixed word must not activate a stale skill.
-func restoredSkillBindings(text, name, path string) []composerSkill {
-	var skills []composerSkill
-	at := 0
-	for word := range strings.FieldsSeq(text) {
-		start := at + strings.Index(text[at:], word)
-		if word == "$"+name {
-			skills = append(skills, composerSkill{start, start + len(word), name, path})
-		}
-		at = start + len(word)
-	}
-	return skills
 }

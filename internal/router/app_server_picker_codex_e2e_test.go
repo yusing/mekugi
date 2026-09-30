@@ -62,11 +62,13 @@ func TestComposerPickersNativeCodexE2E(t *testing.T) {
 	provider := &appResumeProvider{}
 	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
-	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
+	environment := routerFaultCodexEnvironment(t)
+	newCommand := func(ctx context.Context) *exec.Cmd {
 		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
-		cmd.Env, cmd.Dir = routerFaultCodexEnvironment(t), workspace
+		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
-	}, "")
+	}
+	terminal := startAppResumeTerminal(t, newCommand, "")
 	terminal.await("Ready")
 
 	terminal.send("@picker-unique-document")
@@ -172,5 +174,49 @@ func TestComposerPickersNativeCodexE2E(t *testing.T) {
 	if got := provider.snapshot(); len(got) != 0 {
 		t.Fatalf("picker invoked provider without submission: %q", got)
 	}
+	terminal.send("$" + skillName + " ")
+	terminal.awaitMatch("automatically attached exact skill", func(screen string) bool {
+		return !strings.Contains(screen, "enter insert · esc close") && terminalSkillIsAmber(terminal, "$"+skillName)
+	})
+	terminal.send("\r")
+	terminal.await("Recovered after a retry.")
+	terminal.await("completed")
+	if !terminalSkillIsAmber(terminal, "$"+skillName) {
+		t.Fatal("host echo lost amber skill identity")
+	}
 	terminal.quit()
+	resumed := startAppResumeTerminal(t, newCommand, "--last")
+	resumed.await("Ready")
+	resumed.awaitMatch("restored amber skill", func(screen string) bool {
+		return strings.Contains(screen, skillName) && terminalSkillIsAmber(resumed, "$"+skillName)
+	})
+	if got := provider.snapshot(); len(got) != 1 {
+		t.Fatalf("resume resent skill input: %q", got)
+	}
+	resumed.quit()
+}
+
+func terminalSkillIsAmber(terminal *appResumeTerminal, label string) bool {
+	r, g, b, _ := terminal.screen.IndexedColor(214).RGBA()
+	for y := 0; y < terminal.screen.Height(); y++ {
+		for x := 0; x+len(label) <= terminal.screen.Width(); x++ {
+			match := true
+			for i, char := range label {
+				cell := terminal.screen.CellAt(x+i, y)
+				if cell == nil || cell.Content != string(char) || cell.Style.Fg == nil {
+					match = false
+					break
+				}
+				cr, cg, cb, _ := cell.Style.Fg.RGBA()
+				if cr != r || cg != g || cb != b {
+					match = false
+					break
+				}
+			}
+			if match {
+				return true
+			}
+		}
+	}
+	return false
 }

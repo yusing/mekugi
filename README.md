@@ -268,6 +268,14 @@ Mekugi differs in these ways:
   `r` to add the selection as one short mention, such as `[Selected message]` or
   `[Selected diff hunk @amber1:42-45]`. The selected text is sent with the
   prompt without filling the composer.
+- **Skill references attach automatically.** Complete enabled `$skill-name`
+  references bind when you finish the word or submit a pasted prompt. Composer
+  and transcript use the same amber highlighting; unknown, disabled, or
+  ambiguous names stay plain text.
+- **Answer images attach.** Paste an image or its file path into a question
+  answer to get the same `[Image N]` attachment as in the main composer.
+  Synchronous answers send their images in a companion message after the
+  question is resolved; asynchronous answers send them with the reply.
 - **Waiting messages combine.** Steers typed while an earlier one is still
   sending, and queued messages, are sent together as one message, one entry per
   line. Alt+Up or Shift+Left brings back the last queued message.

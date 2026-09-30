@@ -12,6 +12,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/pathdisplay"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func (u *appServerUI) requestResume(thread string) error {
@@ -191,40 +192,39 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 	item = u.waitItem(item, u.thread, turn.ID, item.ID, false)
 	if item.Type == "userMessage" {
 		var content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-			Name string `json:"name"`
-			Path string `json:"path"`
+			Type     string                `json:"type"`
+			Text     string                `json:"text"`
+			Name     string                `json:"name"`
+			Path     string                `json:"path"`
+			Elements []composerTextElement `json:"textElements"`
 		}
 		if json.Unmarshal(item.Content, &content) == nil {
 			var text strings.Builder
 			var attached []string
+			var spans []activityui.TextSpan
 			for _, part := range content {
 				if part.Type == "text" {
 					if frames, ok := decodeFileAttachments(part.Text); ok {
 						attached = append(attached, frames...)
 						continue
 					}
+					for _, span := range composerElementSpans(part.Text, part.Elements) {
+						span.Start += text.Len()
+						span.End += text.Len()
+						spans = append(spans, span)
+					}
 					text.WriteString(part.Text)
 				}
 			}
 			draft := composerDraft{text: text.String()}
 			draft.selections = restoredSelections(draft.text, attached)
-			paths := make(map[string]string)
+			var skills []composerSkill
 			for _, part := range content {
 				if part.Type == "skill" {
-					if previous, ok := paths[part.Name]; ok && previous != part.Path {
-						paths[part.Name] = ""
-					} else if !ok {
-						paths[part.Name] = part.Path
-					}
+					skills = append(skills, composerSkill{name: part.Name, path: part.Path})
 				}
 			}
-			for name, path := range paths {
-				if path != "" {
-					draft.skills = append(draft.skills, restoredSkillBindings(draft.text, name, path)...)
-				}
-			}
+			draft.skills = unambiguousSkillBindings(draft.text, skills, spans)
 			u.rememberInput(draft)
 		}
 	}

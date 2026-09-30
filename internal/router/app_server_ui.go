@@ -467,6 +467,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	}()
 	if m.Method == "skills/changed" {
 		u.picker.skillsLoaded = false
+		u.picker.skillsProblem = ""
 		u.picker.resolved = composerTarget{}
 	}
 	// Input observations precede the output items that answer them. Drain
