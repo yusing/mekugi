@@ -350,7 +350,18 @@ split at gaps and the reader's range limit. Response delivery retains the prepar
 storage namespace and turn lease through the execution lifetime.
 The native completion result is the sole audience payload; the router does not send an
 additional completion notification or take over host lifecycle or audience routing.
-Live updates remain immediate. Main completion never replays descendant journals, including after router restart.
+Native Main refreshes mounted child journals after persistence. Frontends consuming
+only root Responses items, including Codex `exec --json`, receive proven descendants'
+pending live milestones on the next writable root response, before Main's terminal
+card or flush. Child-stream delivery does not acknowledge root visibility: a separate
+durable child cursor advances only after successful root downstream delivery. Failed
+root writes remain retryable after router restart. These publications include live
+events, not captured answers or child completion results, and retain exact-ID
+provenance so they never enter provider message input. Retained v1 authoring keeps
+`report_now` opt-in. No model request, host tool invocation or completion notification
+is created to open a root publication channel; while Main is waiting outside a
+response, updates remain pending. Main completion never replays descendant results,
+including after router restart.
 Child journal revisions remain available through authorized journal reads and subsequent child results.
 Failed main delivery leaves its own unacknowledged revisions pending. Failed,
 incomplete, and interrupted responses neither flush nor discard already-streamed provider output.
@@ -417,3 +428,7 @@ failure or overflow.
    work after acknowledgement, and include only the corresponding owned evaluations.
 6. Instruction projection exposes one v2 API description, keeps stock tool authority,
    removes update_plan, and directs mutations onto useful calls and finals to Outcome.
+7. Installed Codex root JSON output receives a child live milestone while the child
+   is still working, independently of the child's terminal result. Root visibility
+   acknowledgement is durable, scoped to proven descendants in the selected workspace,
+   and does not consume child live, result or terminal cursors.

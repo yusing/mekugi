@@ -87,6 +87,17 @@ the delta for retry. Agent results omit echoed assignments and opaque labels, wh
 the durable journal retains them for reads and replay. Main does not deliver child
 results again.
 
+Root-only Responses consumers read descendant live windows through the same journal
+snapshot owner and delivery lease. Each child's `root_live_seq` is independent of its
+own live/result cursors; only a confirmed root-stream write advances it. Root-visible
+legacy retractions retain per-item root-publication evidence across silent edits;
+unrelated milestones cannot establish that evidence. Forks do not inherit it.
+Root-authored publication IDs belong to the root's replay provenance. Durable workspace ancestry,
+not the live activity collector, selects descendants after restart. An attached native
+Main already owns mounted child presentation and does not receive these fallback
+response items. Publication observes writable root responses; it cannot dispatch host
+effects or wake a model to create one.
+
 Answer association accepts actual user messages and validated plaintext native assignments
 addressed to the child. Encrypted or conflicting identity cannot fall back to stale text.
 The commentary boundary carries live notices, but does not own durable journal meaning.

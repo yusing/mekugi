@@ -269,6 +269,7 @@ type mekugiJournalState struct {
 	journalDeliveries       map[string]journalDelivery
 	liveDiffCompletionReady bool
 	journalQuietFile        os.FileInfo
+	journalRootQuietFile    os.FileInfo
 	journalLiveBytes        int
 	journalNewCount         int
 	journalResponseID       string

@@ -19,6 +19,7 @@ type journalResultWindow struct {
 
 type journalDelivery struct {
 	tree      bool
+	rootLive  bool
 	sequence  uint64
 	thread    string
 	revisions map[string]uint64
@@ -84,6 +85,17 @@ func journalUpdateText(author, id, text string) string {
 }
 
 func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[string]json.RawMessage, error) {
+	messages, err := t.prepareOwnJournalDelivery(terminal)
+	if err != nil || !t.journalActive || t.subagentTurn || t.nativeJournal() != nil {
+		return messages, err
+	}
+	// Codex's exec consumer sees only root response items. Child-stream write
+	// confirmation is not evidence that Main saw that child's live milestones.
+	live := t.prepareRootJournalLive()
+	return append(live, messages...), nil
+}
+
+func (t *mekugiResponseTransform) prepareOwnJournalDelivery(terminal bool) ([]map[string]json.RawMessage, error) {
 	if !t.journalActive {
 		return nil, nil
 	}
@@ -368,6 +380,12 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 		id := jsonString(item, "id")
 		delivery, ok := t.journalDeliveries[id]
 		if !ok {
+			continue
+		}
+		if delivery.rootLive {
+			if err := t.proxy.journals.acknowledgeRootLive(t.ctx, t.proxy.replayStore, t.directory, delivery.thread, delivery.sequence); err == nil {
+				delete(t.journalDeliveries, id)
+			}
 			continue
 		}
 		if delivery.tree {

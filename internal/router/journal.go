@@ -83,7 +83,8 @@ type journalItem struct {
 	Reported     bool          `json:"reported"`
 	Flushed      bool          `json:"flushed"`
 	// A later silent edit does not erase the fact that the user saw this ID.
-	EverReported bool `json:"ever_reported,omitzero"`
+	EverReported     bool `json:"ever_reported,omitzero"`
+	RootEverReported bool `json:"root_ever_reported,omitzero"`
 }
 
 type journalReceipt struct {
@@ -121,6 +122,7 @@ type threadJournal struct {
 	NextOrdinal          map[string]uint64           `json:"next_ordinal,omitempty"`
 	SliceParents         map[string]bool             `json:"slice_parents,omitempty"`
 	LiveSeq              uint64                      `json:"live_seq,omitzero"`
+	RootLiveSeq          uint64                      `json:"root_live_seq,omitzero"`
 	FlushSeq             uint64                      `json:"flush_seq,omitzero"`
 	Parent               string                      `json:"parent,omitempty"`
 	IdentityKnown        bool                        `json:"identity_known,omitzero"`
@@ -398,6 +400,9 @@ func (s *journalStore) initialize(ctx context.Context, store *mekugiReplayStore,
 		j.LiveSeq, j.FlushSeq = source.LiveSeq, source.FlushSeq
 		j.TreeAuthored = source.TreeAuthored
 		j.Events = slices.Clone(source.Events)
+		for i := range j.Events {
+			j.Events[i].RootRetraction = false
+		}
 		j.NextOrdinal = maps.Clone(source.NextOrdinal)
 		j.SliceParents = maps.Clone(source.SliceParents)
 		j.Items = slices.Clone(source.Items)
@@ -405,6 +410,7 @@ func (s *journalStore) initialize(ctx context.Context, store *mekugiReplayStore,
 		// another parent. Historical bindings remain in the copied event log.
 		for i := range j.Items {
 			j.Items[i].Agent = ""
+			j.Items[i].RootEverReported = false
 		}
 		j.Sequence, j.NextID = source.Sequence, source.NextID
 		return nil
@@ -516,7 +522,7 @@ func (s *journalStore) workspaceJournals(store *mekugiReplayStore, workspace str
 }
 
 // Called under the delivery lease, journal mutex, and replay lock. Only complete,
-// unambiguous parent chains in this workspace can join a main terminal flush.
+// unambiguous parent chains in this workspace can publish live updates to Main.
 func (s *journalStore) descendants(store *mekugiReplayStore, workspace, root string) ([]threadJournal, error) {
 	journals, recordErrors, err := s.workspaceJournals(store, workspace)
 	if err != nil {
@@ -711,6 +717,7 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 			event := journalEvent{Legacy: true, Seq: j.Sequence, At: time.Now().UTC().Format(time.RFC3339Nano), Author: j.Author, Op: mutation.Op}
 			if mutation.Op == "delete" {
 				event.Op, event.Path, event.Fields = "remove", removed.Path, removed.node()
+				event.RootRetraction = mutation.ReportNow && removed.RootEverReported
 			} else {
 				current := slices.IndexFunc(j.Items, func(item journalItem) bool { return item.ID == ids[len(ids)-1] })
 				node := &j.Items[current]

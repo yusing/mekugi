@@ -38,14 +38,15 @@ type journalNode struct {
 }
 
 type journalEvent struct {
-	Legacy     bool        `json:"legacy,omitzero"`
-	Seq        uint64      `json:"seq"`
-	At         string      `json:"at,omitempty"`
-	Author     string      `json:"author"`
-	Op         string      `json:"op"`
-	Path       string      `json:"path"`
-	Fields     journalNode `json:"fields"`
-	Transition bool        `json:"transition,omitzero"`
+	RootRetraction bool        `json:"root_retraction,omitzero"`
+	Legacy         bool        `json:"legacy,omitzero"`
+	Seq            uint64      `json:"seq"`
+	At             string      `json:"at,omitempty"`
+	Author         string      `json:"author"`
+	Op             string      `json:"op"`
+	Path           string      `json:"path"`
+	Fields         journalNode `json:"fields"`
+	Transition     bool        `json:"transition,omitzero"`
 }
 
 func journalParent(path string) string {

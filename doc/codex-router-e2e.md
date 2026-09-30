@@ -53,6 +53,24 @@ the same installed host and mock provider. Both `off` and `slice` complete two
 planned turns and emit valid JSONL; only `slice` produces a compaction item. The
 host shuts down cleanly after the terminal event. This is not a paid comparison.
 
+### Native child journal visibility (2026-09-30)
+
+Codex CLI 0.159.2 (`rust-v0.159.2`, host commit
+`ff6aec96948b70d94983af2641a6b67c94faeff5`) does not merge child provider
+commentary into the root's `exec --json` messages. Child lifecycle events are
+not a text-publication channel in that consumer. The host's root-only
+`send_message_to_user_async` tool needs a root model call; it is not a router
+injection API.
+
+`TestJournalNativeCodexSpawnE2E` gates the child's final provider response on
+observing its live milestone in actual root JSONL output. With separate durable
+root live delivery, the gate passes while preserving the child result, one final
+root flush, and two child provider requests. Live notices do not enter provider
+message input. This deterministic local-provider check establishes consumer
+delivery, not live-model behavior. Root-only publication still needs a writable
+root response; it cannot display a new milestone during a host tool wait until
+that response channel opens again.
+
 ### Codex workspace metadata
 
 - A session started inside this Git repository declared the enclosing

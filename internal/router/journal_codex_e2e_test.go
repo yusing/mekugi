@@ -28,6 +28,7 @@ type journalCodexProvider struct {
 	childResultSeen   bool
 	journalResultSeen bool
 	childRequests     int
+	childLiveVisible  chan struct{}
 }
 
 func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []byte, headers http.Header, _ string) (*http.Response, error) {
@@ -94,6 +95,18 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 		if turn == 1 {
 			item = call("journal", map[string]any{"op": "add", "text": "Native child live milestone", "report_now": true})
 		} else {
+			if p.childLiveVisible != nil {
+				// Keep the child working until the actual root JSON consumer
+				// observes its live milestone. A terminal-only replay cannot pass.
+				p.mu.Unlock()
+				select {
+				case <-p.childLiveVisible:
+				case <-ctx.Done():
+					p.mu.Lock()
+					return nil, fmt.Errorf("child live milestone never reached root before child completion: %w", ctx.Err())
+				}
+				p.mu.Lock()
+			}
 			item = map[string]any{"type": "message", "id": fmt.Sprintf("answer_%s_%d", thread, turn), "role": "assistant",
 				"phase": "final_answer", "status": "completed",
 				"content": []any{map[string]any{"type": "output_text", "text": "Native child milestone\n\nNative child second finding"}}}
@@ -155,7 +168,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 	t.Setenv("CODEX_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	workspace := t.TempDir()
-	provider := &journalCodexProvider{turns: make(map[string]int)}
+	provider := &journalCodexProvider{turns: make(map[string]int), childLiveVisible: make(chan struct{})}
 	proxy := newManagedMekugiProxy(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -171,6 +184,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, codex,
 		"-c", config, "-c", `model_provider="journal_fixture"`,
+		"-c", "features.plugins=false",
 		"-c", `features.multi_agent_v2={enabled=true,tool_namespace="collaboration"}`,
 		"-c", "tools.update_plan.enabled=false",
 		"-c", "include_collaboration_mode_instructions=false",
@@ -178,7 +192,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 		"exec", "--ignore-user-config", "--skip-git-repo-check", "--json", "--color", "never",
 		"-C", workspace, "Exercise the native journal child fixture.")
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	cmd.Stdout, cmd.Stderr = &journalRootLiveConsumer{output: &stdout, visible: provider.childLiveVisible}, &stderr
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("native Codex fixture: %v\nstdout: %.8000s\nstderr: %.8000s", err, stdout.String(), stderr.String())
 	}
@@ -241,4 +255,37 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 	if noticeCount != 0 {
 		t.Fatalf("fixture produced %d critical notices", noticeCount)
 	}
+}
+
+// Inspect the consumer's completed JSONL messages while Codex is running, not
+// merely after the terminal flush. stdout has one writer owned by os/exec.
+type journalRootLiveConsumer struct {
+	output  *bytes.Buffer
+	pending []byte
+	visible chan struct{}
+	once    sync.Once
+}
+
+func (c *journalRootLiveConsumer) Write(data []byte) (int, error) {
+	c.output.Write(data)
+	c.pending = append(c.pending, data...)
+	for {
+		line, rest, found := bytes.Cut(c.pending, []byte("\n"))
+		if !found {
+			break
+		}
+		c.pending = rest
+		var event struct {
+			Type string `json:"type"`
+			Item struct {
+				Text string `json:"text"`
+			} `json:"item"`
+		}
+		if json.Unmarshal(line, &event) == nil && event.Type == "item.completed" &&
+			(strings.HasPrefix(event.Item.Text, "Journal\n") || strings.HasPrefix(event.Item.Text, "Journal update `/root/journal_child`")) &&
+			strings.Contains(event.Item.Text, "Native child live milestone") {
+			c.once.Do(func() { close(c.visible) })
+		}
+	}
+	return len(data), nil
 }

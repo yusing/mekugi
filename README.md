@@ -384,6 +384,10 @@ The plan strip stays above the composer while work remains. Main shows task
 transitions, plus notes while Journal is hidden. A turn card contains its outcome,
 new work and remaining tasks; select its expansion target to see the notes.
 
+With Codex `exec --json`, child journal milestones appear in Main's next response,
+separately from the child's final result. A host tool wait can delay those updates;
+the native Journal and Activity panes remain live while Main waits.
+
 ### Agents pane
 
 The **Activity** pane streams child activity, messages, and replies, including
