@@ -23,16 +23,17 @@ func catalogCacheRequest() *http.Request {
 }
 
 func TestModelsHandlerCacheReplaysBodyAndHeaders(t *testing.T) {
+	const catalog = `{"models":[{"slug":"gpt-6.1-sol","multi_agent_version":"v2","supported_reasoning_levels":[{"effort":"low"},{"effort":"medium"},{"effort":"high"},{"effort":"xhigh"},{"effort":"max"}],"context_window":1050000,"unknown_future_field":42}]}`
 	calls := 0
 	provider := newProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 		calls++
-		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}, "Cache-Control": {"private", "max-age=60"}, "Etag": {"version-one"}, "X-Private": {"not-forwarded"}}, Body: io.NopCloser(strings.NewReader(`{"models":[{"id":"one"}]}`))}, nil
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}, "Cache-Control": {"private", "max-age=60"}, "Etag": {"version-one"}, "X-Private": {"not-forwarded"}}, Body: io.NopCloser(strings.NewReader(catalog))}, nil
 	})})
 	handler := modelsHandler(provider, nil)
 	for range 3 {
 		w := httptest.NewRecorder()
 		handler(w, catalogCacheRequest())
-		if w.Code != 200 || w.Body.String() != `{"models":[{"id":"one"}]}` {
+		if w.Code != 200 || w.Body.String() != catalog {
 			t.Fatalf("response = %d %q", w.Code, w.Body.String())
 		}
 		if w.Header().Get("Content-Type") != "application/json" || w.Header().Get("ETag") != "version-one" || strings.Join(w.Header().Values("Cache-Control"), ",") != "private,max-age=60" || w.Header().Get("X-Private") != "" {

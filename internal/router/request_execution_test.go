@@ -64,7 +64,7 @@ func modelTestRequest(t *testing.T, model string) parsedResponsesRequest {
 }
 
 func TestResponsesPreserveConfiguredModelAndReasoning(t *testing.T) {
-	for _, model := range []string{"gpt-5.6", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-6-sol", "gpt-6-luna", "gpt-6-astra"} {
+	for _, model := range []string{"gpt-5.6", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-6-sol", "gpt-6.1-sol", "gpt-6-luna", "gpt-6-astra"} {
 		for _, child := range []bool{false, true} {
 			for _, stream := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/child=%t/stream=%t", model, child, stream), func(t *testing.T) {

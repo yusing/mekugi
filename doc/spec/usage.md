@@ -70,12 +70,17 @@ the explicitly requested tier supplies the reference estimate; omission at both 
 the standard reference estimate. Unresolved `auto`, malformed or null tier evidence, and
 unsupported model/tier/context combinations have unavailable cost, not guessed standard pricing.
 Rates follow the [official pricing tables](https://developers.openai.com/api/docs/pricing),
-[model pricing notes](https://developers.openai.com/api/docs/models/gpt-6-astra), and the
+[model pricing notes](https://developers.openai.com/api/docs/models/gpt-6-astra),
+[GPT-6.1 Sol pricing notes](https://developers.openai.com/api/docs/models/gpt-6.1-sol), and the
 [xAI model prices](https://docs.x.ai/developers/pricing); prefixed and unprefixed Grok IDs
 share each model's table. Grok Build Fast uses its own published rates. Grok has no
 service-tier Fast or priority reference rates, and unpublished
 cache-write rates remain unavailable rather than inferred. Reference estimates
 are not proof of the billed processing mode when the provider omits it.
+
+GPT-6.1 Sol has standard and Fast reference estimates, including long-context and
+cache-write rates. Its cached-input rate is 5% of uncached input, distinct from
+GPT-6 Sol's 10% rate.
 
 Cached input is subtracted from ordinary input; reasoning is included in output and MUST NOT be
 charged again. Optional `cache_write_tokens` are part of uncached input, not additional input

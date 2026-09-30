@@ -28,7 +28,7 @@ func TestTokenCostDisjointCategories(t *testing.T) {
 			t.Fatalf("%s: %+v", model, cost)
 		}
 	}
-	for model, want := range map[string]float64{"gpt-6-sol": 0.392, "gpt-6-luna": 0.0196} {
+	for model, want := range map[string]float64{"gpt-6-sol": 0.392, "gpt-6.1-sol": 0.386, "openai/gpt-6.1-sol": 0.386, "gpt-6-luna": 0.0196} {
 		cost := estimateTokenCost(model, "", counts)
 		if !cost.known || math.Abs(cost.uncachedInput+cost.cachedInput+cost.output-want) > 1e-10 {
 			t.Fatalf("%s: %+v", model, cost)
@@ -51,6 +51,9 @@ func TestTokenCostContextTierBoundary(t *testing.T) {
 		{"gpt-6-astra", 271_999, 1, 0.171999, 0.5},
 		{"gpt-6-astra", 272_000, 1, 0.172, 0.5},
 		{"gpt-6-astra", 272_001, 2, 0.344002, 0.75},
+		{"gpt-6.1-sol", 271_999, 0.2, 0.0171999, 0.1},
+		{"gpt-6.1-sol", 272_000, 0.2, 0.0172, 0.1},
+		{"gpt-6.1-sol", 272_001, 0.4, 0.0344002, 0.15},
 		{"gpt-5.4-mini", 272_000, 0.075, 0.0129, 0.045},
 	} {
 		counts := tokenCounts{InputTokens: tc.input, UncachedInputTokens: 100_000, OutputTokens: 10_000}

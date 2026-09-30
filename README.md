@@ -108,7 +108,7 @@ prompts in the [native UI](#native-ui). Noninteractive commands keep their
 ordinary Codex arguments and output:
 
 ```sh
-mekugi codex --yolo --model gpt-6-sol
+mekugi codex --yolo --model gpt-6.1-sol
 mekugi codex exec "Explain this repository"
 mekugi codex --yolo resume 'CONVERSATION_ID'
 ```
