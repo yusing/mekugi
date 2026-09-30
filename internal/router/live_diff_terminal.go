@@ -29,10 +29,12 @@ type liveDiffTerminalController struct {
 	data *liveDiffData
 	// callerCounts totals captured edit lines by caller key for the roster.
 	callerCounts map[string]livediff.Counts
-	scope        liveDiffScope
-	coverage     string
-	view         livediff.View
-	previewPane  diffview.PreviewPane
+	// netCounts is the unfiltered composed project outcome, not caller activity.
+	netCounts   *livediff.Counts
+	scope       liveDiffScope
+	coverage    string
+	view        livediff.View
+	previewPane diffview.PreviewPane
 
 	previewFrame      *time.Timer
 	previewFrameC     <-chan time.Time
@@ -424,6 +426,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 // root thread. Display preferences survive; files, filters and scroll do not.
 func (c *liveDiffTerminalController) resetScope() {
 	c.data, c.scope, c.callerCounts, c.coverage = newLiveDiffData(), liveDiffScope{}, nil, "CONNECTING"
+	c.netCounts = nil
 	c.view = livediff.View{Scroll: make(map[string]int), Following: true}
 	c.navigation = diffview.Navigation{Flat: c.navigation.Flat}
 	c.previewPane, c.back = diffview.PreviewPane{}, liveDiffBack{}
@@ -502,11 +505,47 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 		c.view.Merge(c.data.files())
 		c.view.RefreshVisible()
 		c.callerCounts = liveDiffCallerCounts(c.view.Files)
+		c.netCounts = liveDiffNetCounts(&c.view)
 		// The Changes tab holds view indexes; keys may arrive before a repaint.
 		c.refreshChanges()
 		c.dirty = true
 	}
 	return false, nil
+}
+
+// liveDiffNetCounts reuses the saved view's composition and workspace scope.
+// A caller filter affects navigation only, never the overall outcome. Only a
+// filtered view needs another projection; the normal case reuses its cache.
+func liveDiffNetCounts(view *livediff.View) *livediff.Counts {
+	all := *view
+	if all.Caller != "" {
+		all.Caller, all.Visible = "", nil
+	}
+	all.RefreshVisible()
+	var total *livediff.Counts
+	for _, file := range all.Files {
+		if !slices.ContainsFunc(file.Chunks, liveDiffProjectCapture) {
+			continue
+		}
+		if total == nil {
+			total = new(livediff.Counts)
+		}
+		count := all.Visible[file.Key()].NetCounts()
+		if count.Added < 0 || count.Removed < 0 {
+			return new(livediff.Counts{Added: -1, Removed: -1})
+		}
+		total.Added += count.Added
+		total.Removed += count.Removed
+	}
+	return total
+}
+
+func liveDiffProjectCapture(chunk livediff.Chunk) bool {
+	review := chunk.Review
+	return chunk.Workspace == "" || review.Origin != "" ||
+		slices.ContainsFunc([]string{review.BeforePath, review.AfterPath}, func(path string) bool {
+			return path != "" && execPathWithin(path, chunk.Workspace)
+		})
 }
 
 // liveDiffCallerCounts totals each caller's captured edit lines, regardless of
@@ -522,10 +561,7 @@ func liveDiffCallerCounts(files []livediff.File) map[string]livediff.Counts {
 			if added < 0 || removed < 0 {
 				continue
 			}
-			if review := chunk.Review; chunk.Workspace != "" && review.Origin == "" &&
-				!slices.ContainsFunc([]string{review.BeforePath, review.AfterPath}, func(path string) bool {
-					return path != "" && execPathWithin(path, chunk.Workspace)
-				}) {
+			if !liveDiffProjectCapture(chunk) {
 				continue
 			}
 			key := livediff.CallerKey(chunk.Caller)
@@ -828,9 +864,14 @@ func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 	left := "no captured edits yet"
 	if len(c.files) > 0 {
 		var total livediff.Counts
-		for _, count := range c.rendering.Counts {
-			total.Added += max(0, count.Added)
-			total.Removed += max(0, count.Removed)
+		for _, file := range c.files {
+			count := file.NetCounts()
+			if count.Added < 0 || count.Removed < 0 {
+				total = livediff.Counts{Added: -1, Removed: -1}
+				break
+			}
+			total.Added += count.Added
+			total.Removed += count.Removed
 		}
 		left = fmt.Sprintf("%d files", len(c.files))
 		if len(c.files) == 1 {

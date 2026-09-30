@@ -28,7 +28,8 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Live subagent activity.** Start notices show model and effort. Progress and
   message excerpts appear in the main conversation, or live in Mekugi’s
   [agents pane](#agents-pane), whose roster shows each agent's elapsed time,
-  provider round trips, and edited lines. Encrypted messages stay private.
+  provider round trips, and cumulative edit activity, with the composed net
+  outcome in its header. Encrypted messages stay private.
 - **Live diffs.** Mekugi’s [live diff pane](#live-diff-pane) streams tool calls
   and provisional diffs as they arrive, then shows the saved edits. Click an
   Edit event to jump to its captured file and hunk.
@@ -378,9 +379,12 @@ new work and remaining tasks; select its expansion target to see the notes.
 
 The **Activity** pane streams child activity, messages, and replies, including
 while Main waits. The **Agents** roster below the main columns shows children
-with their elapsed time, provider round trips, and edited lines; Main's
-conversation and progress stay in Main. Token and cost figures come from the
-router's usage accounting, not an additional app-server total.
+with their elapsed time, provider round trips, and cumulative edited lines labeled
+`activity`. The roster header's `net +N -N` reports the final composed outcome
+across agents, so superseded edits and files created then deleted do not inflate it.
+It uses recorded changes, not a live Git diff; incomplete or inconsistent evidence
+shows `net ?`. Main's conversation and progress stay in Main. Token and cost figures
+come from the router's usage accounting, not an additional app-server total.
 
 - Click an agent to inspect its activity; reply links address that agent.
 - Scrolling pauses following; `r` resumes it. The mouse wheel scrolls without

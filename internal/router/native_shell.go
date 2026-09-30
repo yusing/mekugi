@@ -257,6 +257,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	}
 	if u.diff != nil {
 		u.agents.lineCounts = u.diff.callerCounts
+		u.agents.netCounts = u.diff.netCounts
 	}
 	roster := u.agents.nativeRoster(width, u.rosterLimit(height), now, u.focus == 3)
 	if height-1-len(roster) < nativeFramedRows {

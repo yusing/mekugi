@@ -307,16 +307,26 @@ and the right column, with its own resizable divider. It shares local selection 
 no extra process, broker, or transport is needed. Each agent has one row: status, name,
 and activity, then its metrics inline in fixed-width columns: context usage (defined
 by the native layout contract), the timer, the agent's captured edit lines as
-`+added -removed` in the Diff pane's colors, `↑ in ↓ out` tokens, estimated USD cost
-to two decimal places, and provider-response turns as `T+N`. Edit lines total every
-capture attributed to the agent, independent of the Diff caller filter. Files outside
+`activity +added -removed` in the Diff pane's colors, `↑ in ↓ out` tokens, estimated
+USD cost to two decimal places, and provider-response turns as `T+N`. Edit lines
+total every capture attributed to the agent, independent of the Diff caller filter. Files outside
 the capturing workspace, such as rewritten scratch files, stay in the Diff pane but
-are not counted; tool-managed captures still count. An incomplete
-capture shows `?` rather than a partial count, and an agent without captures leaves
-the column blank. The roster rule totals them with the other session totals.
+are not counted; tool-managed captures still count. Unknown captures contribute no
+activity counts; known captures from that agent remain counted. An agent without
+known counts leaves the column blank. Activity counts are cumulative, not final
+outcomes, and are not summed into the roster rule.
+The rule instead shows `net +N -N` from the saved composed project changes across
+all scoped agents, independent of the Diff caller filter, roster folding, and
+scrolling. Rewrites, moves, deletions, re-creations, and cross-agent edits compose
+in durable capture order. Full cancellation shows `net +0 -0`; no captured project
+edits omit the net metric. Binary, incomplete, or inconsistent history shows
+`net ?`, never a sum of separate edits or a claimed zero. Scratch-only captures
+outside their capturing workspace are excluded. These counts describe retained
+observed effects, not unobserved workspace edits or the Git index.
 A changed token, cost, context, or edit-line value counts toward its new value over
-half a second, easing out from the value on screen, and the rule's totals follow the
-eased rows. Values seen for the first time, including restored history, show at once;
+half a second, easing out from the value on screen. Usage totals follow the eased
+rows; the composed net outcome updates immediately without interpolation.
+Values seen for the first time, including restored history, show at once;
 unknown line counts never interpolate.
 The roster shows no model label. When the row is too narrow for metrics beside a usable
 activity summary, the metrics are omitted. Metrics are uniformly dim. Within a metric,

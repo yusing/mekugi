@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 // nativeTitle names the Activity feed's filter and follow state for the
@@ -64,13 +65,8 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	responding, errors := v.statusCounts(rows)
 	var input, output uint64
 	var cost float64
-	var edited livediff.Counts
-	costKnown, partial, editedKnown := false, false, false
+	costKnown, partial := false, false
 	for _, row := range rows {
-		if count, ok := v.rosterLines[row.agent.Name]; ok && count.Added >= 0 && count.Removed >= 0 {
-			editedKnown = true
-			edited.Added, edited.Removed = edited.Added+count.Added, edited.Removed+count.Removed
-		}
 		input += row.agent.InputTokens
 		output += row.agent.OutputTokens
 		if row.agent.CostKnown {
@@ -88,11 +84,8 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		detail += activityui.Dim + " · " + activityui.Undim + activityui.Red + fmt.Sprintf("%d error", errors) + activityui.Reset
 	}
 	var totals []string
-	if editedKnown {
-		added, removed := v.lineCountParts(edited)
-		if total := strings.TrimSpace(added + " " + removed); total != "" {
-			totals = append(totals, total)
-		}
+	if v.netCounts != nil {
+		totals = append(totals, "net"+diffview.CountStats(*v.netCounts, v.painter.Theme))
 	}
 	if input+output > 0 {
 		totals = append(totals, "↑"+formatUsageTokens(input)+" ↓"+formatUsageTokens(output))
@@ -247,6 +240,9 @@ func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now t
 	parts[2], parts[3], _ = strings.Cut(timer, " · ")
 	if count, ok := v.rosterLines[agent.Name]; ok {
 		parts[4], parts[5] = v.lineCountParts(count)
+		if parts[4] != "" || parts[5] != "" {
+			parts[4] = strings.TrimSpace("activity " + parts[4])
+		}
 	}
 	if agent.InputTokens+agent.OutputTokens > 0 {
 		parts[6], parts[7] = "↑"+formatUsageTokens(agent.InputTokens), "↓"+formatUsageTokens(agent.OutputTokens)

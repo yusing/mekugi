@@ -25,6 +25,9 @@ type File struct {
 	// order. Baseline counts changes a caller filter folded into its base.
 	Origins  []Origin
 	Baseline int
+	// incomplete also covers hidden gaps and failed composition. Separate
+	// captures remain reviewable, but their sum is not a final outcome.
+	incomplete bool
 }
 type Chunk struct {
 	Key, Status   string
@@ -184,6 +187,7 @@ func (v *View) RefreshVisible() {
 		})
 		baseline := make(map[string]bool)
 		for _, chunk := range chunks {
+			visible.incomplete = visible.incomplete || chunk.Review.Incomplete != "" || chunk.Review.Binary
 			baselineChunk := !v.Shows(chunk)
 			if baselineChunk {
 				// One change may hold several captures of this file.
@@ -222,6 +226,7 @@ func (v *View) RefreshVisible() {
 			}
 		}
 		if failure != nil {
+			visible.incomplete = true
 			// A gap in retained history must not hide valid edits or invent a
 			// combined diff. Show each captured edit independently instead.
 			visible.Chunks = nil
@@ -244,6 +249,24 @@ func (v *View) RefreshVisible() {
 		}
 		v.Visible[file.Key()] = visible
 	}
+}
+
+// NetCounts reports the line counts of an already composed visible file.
+// Unknown or inconsistent evidence never becomes a cumulative-edit total.
+func (file File) NetCounts() Counts {
+	if file.incomplete {
+		return Counts{-1, -1}
+	}
+	var total Counts
+	for _, chunk := range file.Chunks {
+		added, removed := chunk.Review.LineCounts()
+		if added < 0 || removed < 0 || chunk.Review.Binary || chunk.Status != "" {
+			return Counts{-1, -1}
+		}
+		total.Added += added
+		total.Removed += removed
+	}
+	return total
 }
 
 // UnknownCaller is the filter key for captures recorded without a caller, so

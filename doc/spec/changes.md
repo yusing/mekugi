@@ -507,6 +507,8 @@ section heading lists the changes it composes. Every saved capture participates
 in composition regardless of command exit status. If retained contents cannot
 form one coherent diff, the pane shows the individual captured edits with their
 IDs instead of hiding them behind a composition error or inventing a net diff.
+The saved Diff title reports unavailable line totals for such a fallback, or for
+binary or incomplete history, rather than summing separate edits as a net outcome.
 Next/previous change navigation
 opens each file of each change in that order. A caller filter shows one
 caller's changes: other callers' captures compose as baseline, so the

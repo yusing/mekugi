@@ -51,6 +51,7 @@ type liveActivityView struct {
 	bare           bool                        // The shell's pane title replaces the heading and footer rows.
 	focused        bool                        // Native Activity shows its key hints only while it has keyboard focus.
 	lineCounts     map[string]livediff.Counts  // Captured edit lines by caller key, for the native roster.
+	netCounts      *livediff.Counts            // Composed project outcome, independent of roster rows.
 	rosterPace     map[string]rosterMetricPace // Roster metrics easing toward their latest values, by agent.
 	rosterLines    map[string]livediff.Counts  // Line counts as last shown by the roster.
 	rosterEasing   bool                        // The last roster frame showed metrics still easing.
