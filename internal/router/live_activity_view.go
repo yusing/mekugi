@@ -151,6 +151,21 @@ func newLiveActivityView() *liveActivityView {
 	}
 }
 
+// invalidateEntry keeps unrelated Activity runs, including off-screen history,
+// warm while one item streams. Main's threaded layout also depends on earlier
+// assignments and reasoning, so its cross-entry cache is invalidated together.
+func (v *liveActivityView) invalidateEntry(seq uint64) {
+	if v.conversation {
+		v.runs = nil
+		return
+	}
+	for key := range v.runs {
+		if key.first <= seq && seq <= key.last {
+			delete(v.runs, key)
+		}
+	}
+}
+
 // apply reports whether the viewer should exit.
 func (v *liveActivityView) apply(event activityPaneEvent) bool {
 	switch event.Kind {
@@ -216,7 +231,8 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 						if replaced || activityui.ReasoningSummaryHeader(previous.Text) == activityui.ReasoningSummaryHeader(entry.Text) {
 							entry.Observed = previous.Observed
 						}
-						v.entries[i], v.blocks[i], v.runs = entry, parseLiveActivity(entry), nil
+						v.entries[i], v.blocks[i] = entry, parseLiveActivity(entry)
+						v.invalidateEntry(entry.Seq)
 						updated = true
 						break
 					}
@@ -231,7 +247,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 				if v0.Agent == entry.Agent && v0.CallID == entry.CallID && entry.CallID != "" {
 					code, _ := strconv.Atoi(entry.Text)
 					v.blocks[i] = commandExitBlocks(v.blocks[i], code, entry.outputTail, entry.outputOmit)
-					v.runs = nil
+					v.invalidateEntry(v0.Seq)
 					break
 				}
 			}
@@ -255,7 +271,8 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 						blocks = append(blocks, annotation)
 					}
 				}
-				v.entries[i], v.blocks[i], v.runs = entry, blocks, nil
+				v.entries[i], v.blocks[i] = entry, blocks
+				v.invalidateEntry(entry.Seq)
 				blocks = nil
 				break
 			}
@@ -317,15 +334,13 @@ func (v *liveActivityView) pace(now time.Time) bool {
 		// A late frame catches up on every step that fell due.
 		for i >= 0 && pace.shown < len(v.blocks[i]) && !now.Before(pace.next) {
 			pace.shown, pace.next, changed = pace.shown+1, pace.next.Add(liveActivityPaceStep), true
+			v.invalidateEntry(seq)
 		}
 		if i < 0 || pace.shown >= len(v.blocks[i]) {
 			delete(v.paced, seq)
 		} else {
 			v.paced[seq] = pace
 		}
-	}
-	if changed {
-		v.runs = nil
 	}
 	return changed
 }
@@ -397,7 +412,7 @@ func (v *liveActivityView) markUnreturned(thread, call string) bool {
 			return false
 		}
 		v.blocks[i] = append(v.blocks[i], activityui.Block{Kind: "filter", Body: unreturnedOutputNote})
-		v.runs = nil
+		v.invalidateEntry(entry.Seq)
 		return true
 	}
 	return false
@@ -1461,12 +1476,14 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 				block.TailRows = 5
 			}
 		}
-		part := v.painter.Block(block, width-2)
+		var part []string
 		switch {
 		case tree:
 			part = v.painter.Event(block, width-4)
 		case v.childrenOnly:
 			part = v.painter.Event(block, width-2)
+		default:
+			part = v.painter.Block(block, width-2)
 		}
 		if len(part) == 0 {
 			continue
@@ -1653,14 +1670,12 @@ func settleActivity(now time.Time, views ...*liveActivityView) bool {
 			native := *entry.native
 			native.collapseAt, native.settled, native.collapsed = time.Time{}, time.Time{}, true
 			v.entries[i].native = &native
+			v.invalidateEntry(entry.Seq)
 			for j := range v.blocks[i] {
 				if block := &v.blocks[i][j]; block.Collapsible() {
 					block.Collapsed, changed = true, true
 				}
 			}
-		}
-		if changed {
-			v.runs = nil
 		}
 		anyChanged = changed || anyChanged
 	}

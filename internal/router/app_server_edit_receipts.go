@@ -135,7 +135,8 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 				if batch != nil {
 					blocks = append(blocks, *batch)
 				}
-				v.entries[i], v.blocks[i], v.runs = entry, blocks, nil
+				v.entries[i], v.blocks[i] = entry, blocks
+				v.invalidateEntry(entry.Seq)
 			}
 		}
 	}

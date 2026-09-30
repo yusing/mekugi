@@ -335,7 +335,8 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 		if previous.native != nil && previous.native.phase == "input/pending" && entry.Agent == "You" && entry.native.thread == previous.native.thread && entry.Text == previous.Text {
 			// Reconcile the local echo with Codex's authoritative user item.
 			entry.Seq, entry.Observed = previous.Seq, previous.Observed
-			v.entries[i], v.blocks[i], v.runs = entry, parseLiveActivity(entry), nil
+			v.entries[i], v.blocks[i] = entry, parseLiveActivity(entry)
+			v.invalidateEntry(entry.Seq)
 			return true
 		}
 		if !entry.native.sameItem(previous.native) {
@@ -377,7 +378,7 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 			}
 		}
 		v.entries[i], v.blocks[i] = entry, blocks
-		v.runs = nil
+		v.invalidateEntry(entry.Seq)
 		return true
 	}
 	return false
