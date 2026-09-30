@@ -135,7 +135,9 @@ Before running tests or generating assets, read `CONTEXT-TESTS.md`; before autom
 tests, also read `CONTEXT-AUTOMATED-TESTS.md`.
 
 User-visible terminal UI changes require rendered-output snapshot coverage, adding a case
-when none covers the changed behavior. Keep reviewed plain-text fixtures in the owning
+when none covers the changed behavior. Prefer snapshots over unit tests for UI appearance
+assertions, including labels, rows, and layout. Keep unit tests for state, timing, interaction,
+and other behavior snapshots cannot establish. Keep reviewed plain-text fixtures in the owning
 package's `testdata/snapshots/` and compare actual renderer output with
 `internal/uisnapshot`, using test names prefixed `TestUISnapshot`. Fix nondeterministic
 inputs; preserve layout and whitespace. Review intentional snapshot changes before
