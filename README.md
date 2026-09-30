@@ -621,6 +621,22 @@ Replay records live in `$XDG_STATE_HOME/mekugi/replay`, or
 conversations need no extra flag. Replay doesn't rerun old commands or restore
 processes.
 
+Snapshots share repeated contents and use compressed storage. For read-only
+diagnosis, inspect one retained call without executing it:
+
+```sh
+mekugi inspect-storage --workspace /absolute/workspace --call-id CALL_ID
+mekugi inspect-storage --workspace /absolute/workspace --call-id CALL_ID --field baseline
+```
+
+The default returns sizes, hashes and dependency counts, not private text.
+`--field` selects `all`, `baseline`, `exec`, `patches`, `review`, or `refs`.
+Text is limited to 4 KiB; use `--text-bytes` (up to 64 KiB) and the returned
+`next_offset` with `--offset` to continue. `--field refs` identifies compressed
+objects, which can be inspected with `--object NAME --field all`.
+`--replay-dir DIR` selects a different store. Missing or corrupt evidence produces
+a precise error, not an empty successful snapshot.
+
 Mekugi deletes session data after **14 days without activity**. When storage is
 full, it removes the least recently active inactive sessions first, and never
 touches running work. **Your Codex chats and workspace files are never deleted.**

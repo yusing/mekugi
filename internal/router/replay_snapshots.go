@@ -243,7 +243,7 @@ func (s *mekugiReplayStore) restoreSnapshots(r *replayRecord) error {
 		}
 		data, exists, err := s.snapshotData(name)
 		if err != nil {
-			return files, err
+			return files, fmt.Errorf("snapshot %s: %w", name, err)
 		}
 		if !exists {
 			return files, fmt.Errorf("retained snapshot %s is unavailable", name)
@@ -265,7 +265,7 @@ func (s *mekugiReplayStore) restoreSnapshots(r *replayRecord) error {
 			contents[ref] = true
 			data, exists, err := s.snapshotData(ref)
 			if err != nil {
-				return files, err
+				return files, fmt.Errorf("snapshot content %s: %w", ref, err)
 			}
 			if !exists {
 				return files, fmt.Errorf("retained snapshot content %s is unavailable", ref)
@@ -391,5 +391,6 @@ func (s *mekugiReplayStore) snapshotDependencies(name string) ([]string, error) 
 			return nil, errors.New("invalid snapshot dependency identity")
 		}
 	}
-	return names, nil
+	slices.Sort(names)
+	return slices.Compact(names), nil
 }

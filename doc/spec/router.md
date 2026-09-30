@@ -112,6 +112,16 @@ failed cleanup reports an error and does not claim complete reclamation.
 Change-index retirement preserves stream high-water counters so old IDs are never reused.
 Partially retired change histories explicitly identify removed attempts. Missing recovery references
 explain session expiry or storage pressure and never replay an operation.
+
+`mekugi inspect-storage` validates one explicitly selected retained call or snapshot
+object without opening a writable store, starting a router, acquiring storage locks,
+changing permissions, or executing inputs. Its JSON result uses schema
+`mekugi.storage.v1` and reports the selected target, decoded byte count, content
+hash and dependency count. Private text requires an explicit field selection;
+text windows are UTF-8 aligned, bounded to 64 KiB, and carry a continuation offset.
+Missing objects, invalid references, corrupt compressed content, hash mismatches
+and invalid offsets report target-qualified errors on stderr with nonzero status.
+No scan of other sessions substitutes evidence for an unavailable selection.
 `--capture-output PATH` appends sanitized capture records. Main completion and
 wrapper exit do not create token-usage Markdown files or announce metrics paths.
 

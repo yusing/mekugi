@@ -28,6 +28,7 @@ func newRouterFlags(stderr io.Writer) routerFlags {
 		fmt.Fprintln(stderr, "Usage: mekugi [flags] codex [Codex arguments...]")
 		fmt.Fprintln(stderr, "       mekugi [flags] codex headless --yolo [-m MODEL] [-c KEY=VALUE] < prompt.txt")
 		fmt.Fprintln(stderr, "       mekugi inspect-session --session PATH [options]")
+		fmt.Fprintln(stderr, "       mekugi inspect-storage --workspace DIR --call-id ID [options]")
 		flags.PrintDefaults()
 	}
 	return routerFlags{
