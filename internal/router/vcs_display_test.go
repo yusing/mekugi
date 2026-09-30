@@ -133,7 +133,7 @@ func TestVCSStatAndCommitShowSharedFileCodes(t *testing.T) {
 		{"git commit -m 'file codes'", commit},
 	} {
 		t.Run(tc.command, func(t *testing.T) {
-			u := vcsCommandUI(t)
+			u := vcsCommandUI(t, g.dir)
 			item := map[string]any{"id": "codes", "type": "commandExecution", "command": tc.command, "cwd": g.dir,
 				"status": "completed", "exitCode": 0, "aggregatedOutput": tc.output}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})

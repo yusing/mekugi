@@ -518,6 +518,7 @@ func TestWrapCodexStartupFailures(t *testing.T) {
 }
 
 func TestWrapDebugPassesAXJournalToCodex(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	directory, debugDirectory := t.TempDir(), t.TempDir()
 	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("TMPDIR", debugDirectory)

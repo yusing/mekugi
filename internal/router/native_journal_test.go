@@ -126,6 +126,7 @@ func TestNativeJournalPlanStripOnlyWithOpenTask(t *testing.T) {
 func TestNativeJournalComposerTypesLeadingCapitalJ(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
+	journalOpen := u.shell.journalOpen
 	t.Cleanup(u.shell.diff.close)
 	journal := nativeJournalFixture()
 	u.journal = &nativeJournalSink{tree: &journal}
@@ -134,7 +135,7 @@ func TestNativeJournalComposerTypesLeadingCapitalJ(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if u.draft != "Just" || u.shell.focus != 0 || u.shell.journalOpen {
+	if u.draft != "Just" || u.shell.focus != 0 || u.shell.journalOpen != journalOpen {
 		t.Fatalf("leading J was taken as a pane key: draft=%q focus=%d", u.draft, u.shell.focus)
 	}
 }

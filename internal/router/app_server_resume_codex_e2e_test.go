@@ -313,7 +313,7 @@ func TestAppServerResumePickerNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &appResumeProvider{}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	environment := routerFaultCodexEnvironment(t)

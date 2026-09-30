@@ -12,6 +12,7 @@ func TestDebugPathsPrintAfterCodexExit(t *testing.T) {
 	for _, exit := range []string{"0", "23"} {
 		t.Run(exit, func(t *testing.T) {
 			directory := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 			t.Setenv("TMPDIR", directory)
 			t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
 			if err := os.WriteFile(filepath.Join(directory, "codex"), []byte("#!/bin/sh\necho codex-finished >&2\nexit "+exit+"\n"), 0o700); err != nil {

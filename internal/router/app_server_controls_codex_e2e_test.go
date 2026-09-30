@@ -15,7 +15,7 @@ import (
 
 func TestNativeControlsChildPaneNativeCodexE2E(t *testing.T) {
 	provider := &appServerChildMetadataProvider{turns: make(map[string]int)}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
