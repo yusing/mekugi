@@ -1,13 +1,17 @@
 package router
 
 import (
+	"cmp"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/rivo/uniseg"
+	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/pathdisplay"
 )
 
 type terminalSelection struct {
@@ -21,6 +25,9 @@ type terminalSelection struct {
 	pane                       terminalRect
 	questions                  []uint64
 	snippets                   []liveActivitySnippet
+	mention                    string                // Concise description Reference inserts.
+	diff                       []livediff.LineSource // Diff row attribution, aligned with rows.
+	workspace                  string                // Diff workspace for the mentioned path.
 }
 
 // selectionSpan is the text a row offers for selection within [left, right).
@@ -157,8 +164,14 @@ func (u *terminalUI) selectionAction(action byte) {
 	}
 	switch action {
 	case 'r':
-		u.main.run = runNone
-		u.main.insertDraft("> " + u.selection.text() + "\n\n")
+		if u.main.currentQuestion() != nil {
+			// A question answer is plain text; it cannot carry a mention's quote.
+			u.main.run = runNone
+			u.main.insertDraft("> " + u.selection.text() + "\n\n")
+		} else {
+			description, source := u.selection.mentionDescription()
+			u.main.insertSelection(description, u.selection.text(), source)
+		}
 		u.main.refreshPicker()
 		u.main.run = runNone
 		u.focus = 0
@@ -221,11 +234,16 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	}
 	var view *liveActivityView
 	var pane terminalRect
+	mention := "message"
 	switch {
 	case u.layout.codex.contains(x, y):
 		view, pane = u.main.view, u.layout.codex
 	case u.layout.agents.contains(x, y):
-		view, pane = u.agents, u.layout.agents
+		view, pane, mention = u.agents, u.layout.agents, "activity"
+	case u.layout.diff.contains(x, y):
+		// The press still reaches the diff pane, so clicks keep their meaning.
+		u.selection = u.diffSelection(x, y)
+		return false
 	default:
 		return false
 	}
@@ -247,12 +265,12 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 		composer.x += pane.x
 		composer.y += pane.y
 		if composer.contains(x, y) {
-			rect = composer
+			rect, mention = composer, "text"
 			questions, snippets = nil, nil
 		}
 	}
 	if view == u.main.view && u.main.statusPanel != nil {
-		rect = u.main.statusPanel.rect
+		rect, mention = u.main.statusPanel.rect, "status"
 		rect.x += pane.x
 		rect.y += pane.y
 		questions, snippets = nil, nil
@@ -260,13 +278,26 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	if !rect.contains(x, y) || len(u.paintedRows) != u.height {
 		return false
 	}
-	screen := vt.NewEmulator(u.width, u.height)
-	defer screen.Close()
 	source := u.paintedRows
 	if previous != nil && previous.view == view && previous.rect.contains(x, y) {
 		source, rect = previous.rows, previous.rect
-		questions, snippets = previous.questions, previous.snippets
+		questions, snippets, mention = previous.questions, previous.snippets, previous.mention
 	}
+	rows, link := u.selectionScreen(source, x, y)
+	if view == u.main.view {
+		u.focus = 0
+	} else {
+		u.focus = 2
+	}
+	u.selection = &terminalSelection{rect: rect, rows: rows, startX: x, startY: y, endX: x, endY: y, dragging: true, link: link, view: view, pane: pane, questions: questions, snippets: snippets, mention: mention}
+	return true
+}
+
+// selectionScreen snapshots painted rows as a terminal shows them, with the
+// hyperlink under the pointer.
+func (u *terminalUI) selectionScreen(source []string, x, y int) ([]string, string) {
+	screen := vt.NewEmulator(u.width, u.height)
+	defer screen.Close()
 	for row, line := range source {
 		fmt.Fprintf(screen, "\x1b[%d;1H%s", row+1, line)
 	}
@@ -277,13 +308,81 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	if parsed, err := url.Parse(link); err == nil && parsed.Scheme == "file" {
 		link = parsed.Path
 	}
-	if view == u.main.view {
-		u.focus = 0
-	} else {
-		u.focus = 2
+	return strings.Split(screen.Render(), "\n"), link
+}
+
+// diffSelection starts a selection right of the file navigator and its
+// divider; each row's text starts after its gutter and line number.
+func (u *terminalUI) diffSelection(x, y int) *terminalSelection {
+	c, pane := u.diff, u.layout.diff
+	if c == nil || !c.diffMode || u.diffFailure != "" || len(c.painted) <= c.sourceY || len(u.paintedRows) != u.height {
+		return nil
 	}
-	u.selection = &terminalSelection{rect: rect, rows: strings.Split(screen.Render(), "\n"), startX: x, startY: y, endX: x, endY: y, dragging: true, link: link, view: view, pane: pane, questions: questions, snippets: snippets}
-	return true
+	// Rows above sourceY are the title or a stacked navigator and its rule.
+	rect := terminalRect{pane.x + c.sourceX, pane.y + c.sourceY, pane.w - c.sourceX, min(pane.h, len(c.painted)) - c.sourceY}
+	if !rect.contains(x, y) {
+		return nil
+	}
+	rows, _ := u.selectionScreen(u.paintedRows, x, y)
+	contentLeft := make([]int, rect.y+rect.h)
+	sources := make([]livediff.LineSource, rect.y+rect.h)
+	for row, source := range c.painted[c.sourceY : c.sourceY+rect.h] {
+		contentLeft[rect.y+row] = rect.x + source.Content
+		sources[rect.y+row] = source
+	}
+	return &terminalSelection{rect: rect, rows: rows, contentLeft: contentLeft, startX: x, startY: y, endX: x, endY: y, dragging: true, pane: pane, diff: sources, workspace: c.workspace}
+}
+
+// mentionDescription names the selection concisely: its pane, or for the
+// saved diff, the change IDs and gutter lines the selected rows show.
+func (s *terminalSelection) mentionDescription() (string, string) {
+	if s.diff == nil {
+		return s.mention, ""
+	}
+	_, first, _, last := s.ordered()
+	var changes, paths []string
+	// Gutter lines of changed rows, used only for one change. New-file
+	// coordinates win; a deletion-only selection names old-file lines.
+	low, high, oldLow, oldHigh := 0, 0, 0, 0
+	for y := first; y <= last && y < len(s.diff); y++ {
+		if left, right := s.bounds(y); right <= left {
+			continue
+		}
+		source := s.diff[y]
+		if source.Path != "" && !slices.Contains(paths, source.Path) {
+			paths = append(paths, source.Path)
+		}
+		if source.Change == "" {
+			continue
+		}
+		if !slices.Contains(changes, source.Change) {
+			changes = append(changes, source.Change)
+		}
+		switch {
+		case source.Line > 0 && source.Deleted:
+			oldLow, oldHigh = cmp.Or(min(oldLow, source.Line), source.Line), max(oldHigh, source.Line)
+		case source.Line > 0:
+			low, high = cmp.Or(min(low, source.Line), source.Line), max(high, source.Line)
+		}
+	}
+	if high == 0 {
+		low, high = oldLow, oldHigh
+	}
+	path := ""
+	if len(paths) == 1 {
+		path = pathdisplay.ForWorkspace(s.workspace, paths[0])
+	}
+	switch {
+	case len(changes) == 0:
+		return "diff", path
+	case len(changes) > 1:
+		return fmt.Sprintf("diff hunks @%s +%d", changes[0], len(changes)-1), path
+	case high == 0:
+		return "diff hunk @" + changes[0], path
+	case low == high:
+		return fmt.Sprintf("diff hunk @%s:%d", changes[0], low), path
+	}
+	return fmt.Sprintf("diff hunk @%s:%d-%d", changes[0], low, high), path
 }
 
 func (u *terminalUI) paintSelection(rows []string) {
@@ -291,7 +390,7 @@ func (u *terminalUI) paintSelection(rows []string) {
 	if s == nil {
 		return
 	}
-	if len(s.rows) != len(rows) || u.paintedWidth != u.width || s.pane != u.layout.codex && s.pane != u.layout.agents {
+	if len(s.rows) != len(rows) || u.paintedWidth != u.width || s.pane != u.layout.codex && s.pane != u.layout.agents && s.pane != u.layout.diff {
 		u.selection = nil
 		return
 	}

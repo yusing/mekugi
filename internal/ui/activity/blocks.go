@@ -24,6 +24,8 @@ type Block struct {
 	Verb        string // Operation verb, or a message headline.
 	Label       string // Markdown remainder of the operation label.
 	Path        string // Literal operation target, rendered with shared path styling.
+	Workdir     string // Display path of a command directory other than the workspace; set on every row it applies to.
+	ShowWorkdir bool   // The invocation's first row labels Workdir.
 	Code        string // Inline code or fenced program under the label.
 	Lang        string
 	Fenced      bool
@@ -514,7 +516,7 @@ func mergesReads(last, next Block) bool {
 		return b.Kind == "reads" && b.Results == nil && b.ExitCode == 0 && b.Started.IsZero() && b.Duration == 0 &&
 			(len(b.Tail) == 0 && b.TailOmitted == 0 || b.readContent())
 	}
-	return last.Verb == next.Verb && joins(last) && joins(next)
+	return last.Verb == next.Verb && last.Workdir == next.Workdir && joins(last) && joins(next)
 }
 
 // readContent reports collapsed content that one target's row can count.

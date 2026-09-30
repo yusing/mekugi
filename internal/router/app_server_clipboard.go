@@ -57,6 +57,12 @@ func (d *composerDraft) renumberImages() {
 				d.files[j].end += delta
 			}
 		}
+		for j := range d.selections {
+			if d.selections[j].start >= attachment.end {
+				d.selections[j].start += delta
+				d.selections[j].end += delta
+			}
+		}
 		attachment.end += delta
 		for j := i + 1; j < len(d.images); j++ {
 			d.images[j].start += delta

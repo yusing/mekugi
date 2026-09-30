@@ -61,6 +61,10 @@ func joinDrafts(parts ...composerDraft) composerDraft {
 			file.start, file.end = file.start+shift, file.end+shift
 			joined.files = append(joined.files, file)
 		}
+		for _, selection := range part.selections {
+			selection.start, selection.end = selection.start+shift, selection.end+shift
+			joined.selections = append(joined.selections, selection)
+		}
 		joined.cursorBack = part.cursorBack // The caret stays in the last entry.
 	}
 	joined.renumberImages()

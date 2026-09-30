@@ -75,6 +75,11 @@ type liveDiffTerminalController struct {
 	// list's rows in a narrow native pane.
 	navRows int
 	stack   int
+	// painted attributes each painted pane row to its source (zero for chrome);
+	// empty when the last frame showed no selectable diff. The diff source
+	// starts at pane column sourceX and row sourceY.
+	painted          []livediff.LineSource
+	sourceX, sourceY int
 	// back undoes the last list action on Esc.
 	back  liveDiffBack
 	theme livediff.Theme
@@ -257,6 +262,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	if titled {
 		writeRow(1, header)
 	}
+	c.painted = nil
 	if c.diffMode {
 		var nav []string
 		renderNav := func(width, rows int) []string {
@@ -291,6 +297,19 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		if !titled && len(c.view.Files) > 0 && offset > c.rendering.Starts[c.view.Selected] {
 			sticky = c.rendering.Starts[c.view.Selected]
 		}
+		top := 0 // Pane rows above the diff source rows.
+		switch {
+		case titled:
+			top = 1
+		case stack > 0:
+			top = stack + 1
+		}
+		if !overlay && !c.help && rows > 0 {
+			c.painted, c.sourceX, c.sourceY = make([]livediff.LineSource, top+rows), 0, top
+			if navWidth > 0 {
+				c.sourceX = navWidth + 1
+			}
+		}
 		for row := range rows {
 			text := ""
 			index := offset + row
@@ -303,6 +322,13 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 				text = lines[index]
 			} else if row == 0 && len(lines) == 0 && (navWidth > 0 || c.native) {
 				text = header
+			}
+			if c.painted != nil {
+				if row == 0 && sticky >= 0 && sticky < len(c.rendering.Sources) {
+					c.painted[top+row] = c.rendering.Sources[sticky]
+				} else if index < len(lines) && index < len(c.rendering.Sources) {
+					c.painted[top+row] = c.rendering.Sources[index]
+				}
 			}
 			if overlay {
 				text = nav[row]

@@ -38,7 +38,7 @@ func decodeFileAttachments(text string) ([]string, bool) {
 		return nil, false
 	}
 	for _, frame := range frames {
-		if len(frame) > fileAttachmentChunk+4096 || !strings.HasPrefix(frame, "Attached file ") {
+		if len(frame) > fileAttachmentChunk+4096 || !strings.HasPrefix(frame, "Attached file ") && !selectionFrame(frame) {
 			return nil, false
 		}
 	}
@@ -48,7 +48,7 @@ func decodeFileAttachments(text string) ([]string, bool) {
 // snapshotFileAttachments runs only when the user submits/queues a composer
 // draft. Queued and accepted-but-resent input carries the same immutable text.
 func (d *composerDraft) snapshotFileAttachments(cwd string) {
-	if len(d.files) == 0 {
+	if len(d.files) == 0 && len(d.selections) == 0 {
 		return
 	}
 	var frames []string
@@ -86,6 +86,26 @@ func (d *composerDraft) snapshotFileAttachments(cwd string) {
 			break
 		}
 		frames = candidate
+	}
+	// Mentioned selections follow file contents; each fits whole or says so.
+	for _, selection := range d.selections {
+		label := d.text[selection.start:selection.end]
+		next := d.selectionFrames(selection)
+		fits := func(next []string) bool {
+			return len(encodeFileAttachments(append(append([]string(nil), frames...), next...))) <= fileAttachmentBudget-512
+		}
+		if !fits(next) {
+			if d.attachmentNotice == "" {
+				d.attachmentNotice = fmt.Sprintf("Selection omitted: %s (attachment budget exceeded). The agent receives an explicit omission notice.", label)
+			}
+			next = []string{fmt.Sprintf(selectionFramePrefix+"%q: CONTENT NOT ATTACHED (attachment budget exceeded). Ask the user to paste it if needed.", label)}
+			if !fits(next) {
+				// The reserved tail holds one notice for every remaining mention.
+				frames = append(frames, selectionFramePrefix+"remaining mentions: CONTENT NOT ATTACHED (attachment budget exceeded). Ask the user to paste them if needed.")
+				break
+			}
+		}
+		frames = append(frames, next...)
 	}
 	if len(frames) > 0 {
 		d.attachments = []string{encodeFileAttachments(frames)}
@@ -125,6 +145,14 @@ func readComposerFile(path string) ([]byte, error) {
 }
 
 func frameComposerFile(path, content string) []string {
+	return frameAttachmentText(content, func(start, end, total int) string {
+		return fmt.Sprintf("Attached file %q (UTF-8 bytes %d:%d of %d; file content, not a separate request):\n", path, start, end, total)
+	})
+}
+
+// frameAttachmentText splits content into bounded frames, preferring line
+// boundaries and otherwise splitting only at UTF-8 boundaries.
+func frameAttachmentText(content string, header func(start, end, total int) string) []string {
 	var frames []string
 	for offset := 0; offset < len(content) || len(frames) == 0; {
 		end := min(offset+fileAttachmentChunk, len(content))
@@ -137,7 +165,7 @@ func frameComposerFile(path, content string) []string {
 				}
 			}
 		}
-		frames = append(frames, fmt.Sprintf("Attached file %q (UTF-8 bytes %d:%d of %d; file content, not a separate request):\n%s", path, offset, end, len(content), content[offset:end]))
+		frames = append(frames, header(offset, end, len(content))+content[offset:end])
 		offset = end
 		if offset == len(content) {
 			break

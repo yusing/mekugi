@@ -68,6 +68,13 @@ omitted as display decoration, including colon-ended labels and bordered heading
 Live and successful tracked heading segments are omitted too; failed ones remain
 visible. Standalone, redirected, escaped, or dynamic headings remain `Run` operations.
 Literal `mread` recovery calls omit activity entries rather than appearing as `Run`.
+When the host reports a command directory other than the workspace the activity
+is shown against, the invocation's first row ends with a muted `· in DIR`, using
+the shared path display: a workspace subdirectory is relative, and an outside
+directory stays absolute. That invocation's operation paths display relative to
+DIR. A command in the workspace, or with an unknown directory or workspace, has
+no directory label. Live and restored rows derive it from the same host item, and
+adjacent reads in different directories do not merge.
 Wait and input presentation follows typed host events and their command/item
 identity. The activity observer does not reconstruct process or Code Mode cell
 state from request history, guess a command for an uncorrelated poll, or treat

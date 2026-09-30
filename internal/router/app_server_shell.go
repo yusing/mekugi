@@ -26,7 +26,7 @@ func (u *appServerUI) submitShell() error {
 		u.setNotice("Waiting for the pending request · press Enter again when ready", false)
 		return nil
 	}
-	if len(u.images) != 0 || len(u.skills) != 0 || len(u.files) != 0 {
+	if len(u.images) != 0 || len(u.skills) != 0 || len(u.files) != 0 || len(u.selections) != 0 {
 		u.setNotice("Shell commands use plain text · remove attachments and picker tokens first", true)
 		return nil
 	}

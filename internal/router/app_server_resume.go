@@ -198,15 +198,18 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 		}
 		if json.Unmarshal(item.Content, &content) == nil {
 			var text strings.Builder
+			var attached []string
 			for _, part := range content {
 				if part.Type == "text" {
-					if _, attached := decodeFileAttachments(part.Text); attached {
+					if frames, ok := decodeFileAttachments(part.Text); ok {
+						attached = append(attached, frames...)
 						continue
 					}
 					text.WriteString(part.Text)
 				}
 			}
 			draft := composerDraft{text: text.String()}
+			draft.selections = restoredSelections(draft.text, attached)
 			paths := make(map[string]string)
 			for _, part := range content {
 				if part.Type == "skill" {
@@ -246,7 +249,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			text = appServerEditText(item, u.session.cwd)
 		}
 		entry := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, searchResults: appServerSearchResults(item)}}
+			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, searchResults: appServerSearchResults(item), workdir: appServerCommandWorkdir(item, u.session.cwd)}}
 		u.session.retainOutput(entry.native, item)
 		appServerSucceededOutput(&entry, item, time.Time{})
 		u.restoreCommandSegments(&entry, item, u.session.cwd)

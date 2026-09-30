@@ -36,6 +36,8 @@ func composerElementSpans(text string, elements []composerTextElement) []activit
 		case strings.HasPrefix(label, "@"):
 		case strings.HasPrefix(label, "$"):
 			kind = activityui.SkillToken
+		case composerSelectionLabel(label):
+			kind = activityui.SelectionToken
 		default:
 			continue
 		}

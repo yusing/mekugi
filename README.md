@@ -264,6 +264,10 @@ Mekugi differs in these ways:
   VCS metadata such as `.git`. Selected text files attach their contents when
   you submit or queue the prompt, and large or unreadable files produce an
   explicit omission notice instead of truncated content.
+- **Select to mention.** Drag across Main, Activity, or the saved Diff and press
+  `r` to add the selection as one short mention, such as `[Selected message]` or
+  `[Selected diff hunk @amber1:42-45]`. The selected text is sent with the
+  prompt without filling the composer.
 - **Waiting messages combine.** Steers typed while an earlier one is still
   sending, and queued messages, are sent together as one message, one entry per
   line. Alt+Up or Shift+Left brings back the last queued message.

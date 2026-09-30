@@ -12,6 +12,7 @@ type composerDraft struct {
 	images           []composerImage
 	skills           []composerSkill
 	files            []composerFile
+	selections       []composerSelection
 	attachments      []string // Immutable snapshots captured when queued/submitted.
 	attachmentNotice string
 	inHistory        bool // An accepted steer being resent is already in input history.
@@ -49,16 +50,17 @@ func (u *appServerUI) recallInput(backward bool) {
 	u.draft, u.cursorBack, u.images = snapshot.text, snapshot.cursorBack, slices.Clone(snapshot.images)
 	u.skills = slices.Clone(snapshot.skills)
 	u.files = slices.Clone(snapshot.files)
+	u.selections = slices.Clone(snapshot.selections)
 	u.cursorColumn = nil
 }
 
 func (u *appServerUI) draftSnapshot() composerDraft {
-	return composerDraft{text: u.draft, cursorBack: u.cursorBack, images: slices.Clone(u.images), skills: slices.Clone(u.skills), files: slices.Clone(u.files)}
+	return composerDraft{text: u.draft, cursorBack: u.cursorBack, images: slices.Clone(u.images), skills: slices.Clone(u.skills), files: slices.Clone(u.files), selections: slices.Clone(u.selections)}
 }
 
 func (u *appServerUI) loadDraft(d composerDraft) {
 	u.draft, u.cursorBack, u.images = d.text, d.cursorBack, slices.Clone(d.images)
-	u.skills, u.files = slices.Clone(d.skills), slices.Clone(d.files)
+	u.skills, u.files, u.selections = slices.Clone(d.skills), slices.Clone(d.files), slices.Clone(d.selections)
 }
 
 type composerUndo struct {
@@ -100,6 +102,7 @@ func (u *appServerUI) undoDraft(redo bool) {
 	u.draft, u.cursorBack, u.images = snapshot.text, snapshot.cursorBack, slices.Clone(snapshot.images)
 	u.skills = slices.Clone(snapshot.skills)
 	u.files = slices.Clone(snapshot.files)
+	u.selections = slices.Clone(snapshot.selections)
 }
 
 // Images referenced by undo/redo remain usable. Submission transfers file

@@ -64,6 +64,12 @@ func (u *appServerUI) insertDraftText(text string) {
 			u.images[i].end += len(text)
 		}
 	}
+	for i := range u.selections {
+		if u.selections[i].start >= at {
+			u.selections[i].start += len(text)
+			u.selections[i].end += len(text)
+		}
+	}
 }
 
 // displaySpans is the shared editing and presentation boundary for every
@@ -79,13 +85,16 @@ func (d composerDraft) displaySpans() []activityui.TextSpan {
 	for _, token := range d.files {
 		spans = append(spans, activityui.TextSpan{Start: token.start, End: token.end, Kind: activityui.FileToken})
 	}
+	for _, token := range d.selections {
+		spans = append(spans, activityui.TextSpan{Start: token.start, End: token.end, Kind: activityui.SelectionToken})
+	}
 	slices.SortFunc(spans, func(a, b activityui.TextSpan) int { return a.Start - b.Start })
 	return spans
 }
 
 func (u *appServerUI) draftTokenSpans() iter.Seq2[int, int] {
 	return func(yield func(int, int) bool) {
-		for _, token := range (composerDraft{images: u.images, skills: u.skills, files: u.files}).displaySpans() {
+		for _, token := range (composerDraft{images: u.images, skills: u.skills, files: u.files, selections: u.selections}).displaySpans() {
 			if !yield(token.Start, token.End) {
 				return
 			}
@@ -189,6 +198,18 @@ func (u *appServerUI) removeDraft(start, end int, run composerRun) {
 		keptFiles = append(keptFiles, file)
 	}
 	u.files = keptFiles
+	keptSelections := u.selections[:0]
+	for _, selection := range u.selections {
+		if selection.start < end && selection.end > start {
+			continue
+		}
+		if selection.start >= end {
+			selection.start -= end - start
+			selection.end -= end - start
+		}
+		keptSelections = append(keptSelections, selection)
+	}
+	u.selections = keptSelections
 	u.draft = u.draft[:start] + u.draft[end:]
 	u.cursorBack = len(u.draft) - start
 	u.renumberImages()
@@ -225,7 +246,7 @@ func (u *appServerUI) draftLayout() ([]string, []activityui.TextPoint) {
 	if width == 0 {
 		width = 80
 	}
-	rows, points := activityui.LayoutSpans(u.draft, (composerDraft{images: u.images, skills: u.skills, files: u.files}).displaySpans(), width)
+	rows, points := activityui.LayoutSpans(u.draft, (composerDraft{images: u.images, skills: u.skills, files: u.files, selections: u.selections}).displaySpans(), width)
 	last := points[len(points)-1]
 	if width > 1 && last.Column >= width {
 		rows = append(rows, "")

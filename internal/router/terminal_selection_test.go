@@ -96,8 +96,11 @@ func TestTerminalUISelectionReferencePreservesDraftAndUndo(t *testing.T) {
 	if err := u.key('r'); err != nil {
 		t.Fatal(err)
 	}
-	if u.main.draft != "before > hello\n\nafter" || u.focus != 0 || u.selection != nil {
+	if u.main.draft != "before [Selected message] after" || u.focus != 0 || u.selection != nil {
 		t.Fatalf("reference: draft=%q focus=%d selection=%v", u.main.draft, u.focus, u.selection)
+	}
+	if got := u.main.selections; len(got) != 1 || got[0].text != "hello" || u.main.draft[got[0].start:got[0].end] != "[Selected message]" {
+		t.Fatalf("reference token = %+v", got)
 	}
 	u.main.undoDraft(false)
 	if u.main.draft != "before after" || u.main.cursorBack != len("after") {
@@ -294,8 +297,12 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 		if err := u.shell.mouse("\x1b[<0;2;30M"); err != nil {
 			t.Fatal(err)
 		}
-		if u.draft != "> report\n\n" {
-			t.Fatalf("reference=%q", u.draft)
+		mention := "[Selected message] "
+		if activity {
+			mention = "[Selected activity] "
+		}
+		if u.draft != mention || len(u.selections) != 1 || u.selections[0].text != "report" {
+			t.Fatalf("reference=%q %+v", u.draft, u.selections)
 		}
 	}
 }

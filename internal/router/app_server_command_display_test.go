@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -160,5 +161,85 @@ func TestLiveActivitySkillRendering(t *testing.T) {
 				t.Fatalf("skill run spacing: %q", rows)
 			}
 		}
+	}
+}
+
+func TestAppServerCommandWorkdirDisplay(t *testing.T) {
+	workspace := t.TempDir()
+	other := t.TempDir()
+	for _, tc := range []struct {
+		name, cwd, workdir string
+		actions            []appServerCommandAction
+		command, text      string
+	}{
+		{name: "workspace", cwd: workspace, command: "go test ./...", text: "Run\n```bash\ngo test ./...\n```"},
+		{name: "unknown", command: "go test ./...", text: "Run\n```bash\ngo test ./...\n```"},
+		{name: "outside", cwd: other, workdir: other, command: "go test ./...", text: "Run\n```bash\ngo test ./...\n```"},
+		{name: "subdirectory", cwd: filepath.Join(workspace, "sub"), workdir: "sub", command: "cat a.go",
+			actions: []appServerCommandAction{{Type: "read", Command: "cat a.go", Path: filepath.Join(workspace, "sub", "a.go")}}, text: "Read `a.go`"},
+		{name: "list", cwd: other, workdir: other, command: "ls src",
+			actions: []appServerCommandAction{{Type: "listFiles", Command: "ls src", Path: "src"}}, text: "List `src`"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.actions == nil {
+				tc.actions = []appServerCommandAction{{Type: "unknown", Command: tc.command}}
+			}
+			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: tc.command, Cwd: tc.cwd, CommandActions: tc.actions}
+			check := func(u *appServerUI) {
+				t.Helper()
+				if len(u.view.entries) != 1 || u.view.entries[0].Text != tc.text || u.view.entries[0].native.workdir != tc.workdir {
+					t.Fatalf("entries = %+v; want text %q in %q", u.view.entries, tc.text, tc.workdir)
+				}
+				blocks := parseLiveActivity(u.view.entries[0])
+				if len(blocks) == 0 || blocks[0].Workdir != tc.workdir {
+					t.Fatalf("blocks = %+v; want workdir %q", blocks, tc.workdir)
+				}
+				row := ansi.Strip((&activityui.Painter{Theme: livediff.DarkTheme}).Block(blocks[0], 200)[0])
+				if want := "· in " + tc.workdir; (tc.workdir != "") != strings.Contains(row, want) || tc.workdir == "" && strings.Contains(row, "· in ") {
+					t.Fatalf("row = %q; want workdir %q", row, tc.workdir)
+				}
+			}
+			u := newAppServerSessionTestUI(t, workspace)
+			for _, method := range []string{"item/started", "item/completed"} {
+				appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
+			}
+			check(u)
+			restored := newAppServerSessionTestUI(t, workspace)
+			restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+			check(restored)
+		})
+	}
+}
+
+func TestActivityReadsKeepInvocationWorkdirsApart(t *testing.T) {
+	other := t.TempDir()
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	for _, item := range []appServerItem{
+		{ID: "a", Type: "commandExecution", Command: "rg x; cat a.go", Cwd: other, CommandActions: []appServerCommandAction{{Type: "search", Command: "rg x", Query: "x"}, {Type: "read", Command: "cat a.go", Path: other + "/a.go"}}},
+		{ID: "b", Type: "commandExecution", Command: "cat b.go", Cwd: u.session.cwd, CommandActions: []appServerCommandAction{{Type: "read", Command: "cat b.go", Path: u.session.cwd + "/b.go"}}},
+	} {
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	}
+	var blocks []activityui.Block
+	for _, entry := range u.view.entries {
+		blocks = append(blocks, parseLiveActivity(entry)...)
+	}
+	if len(blocks) != 3 || !blocks[0].ShowWorkdir || blocks[1].ShowWorkdir || blocks[1].Workdir != other {
+		t.Fatalf("blocks = %+v", blocks)
+	}
+	if merged := activityui.MergeLiveActivityReads(blocks); len(merged) != 3 {
+		t.Fatalf("reads across directories merged: %+v", merged)
+	}
+}
+
+func TestActivityReadsKeepWorkdirsApart(t *testing.T) {
+	read := func(workdir string) activityui.Block {
+		return activityui.Block{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "a.go"}}, Workdir: workdir}
+	}
+	if merged := activityui.MergeLiveActivityReads([]activityui.Block{read(""), read("/other")}); len(merged) != 2 {
+		t.Fatalf("reads in different directories merged: %+v", merged)
+	}
+	if merged := activityui.MergeLiveActivityReads([]activityui.Block{read("/other"), read("/other")}); len(merged) != 1 {
+		t.Fatalf("reads in one directory did not merge: %+v", merged)
 	}
 }

@@ -66,9 +66,9 @@ func vcsCommitFixture(t *testing.T, subject string) (gitFixture, string) {
 	return g, g.run("commit", "-m", subject, "-m", "body")
 }
 
-func vcsCommandUI(t *testing.T) *appServerUI {
+func vcsCommandUI(t *testing.T, workspace string) *appServerUI {
 	t.Helper()
-	u := newAppServerSessionTestUI(t, t.TempDir())
+	u := newAppServerSessionTestUI(t, workspace)
 	u.view.conversation = true
 	return u
 }
@@ -77,7 +77,7 @@ func TestVCSCommitShowsTheRecordedCommit(t *testing.T) {
 	g, output := vcsCommitFixture(t, "amend! feat(router): pin latest reply")
 	hash := gitCommitHead.FindStringSubmatch(strings.Split(output, "\n")[0])[2]
 	script := "git diff --check && git add a.go b.go gone.txt && git commit -F - <<'EOF'\namend! feat(router): pin latest reply\n\nbody\nEOF"
-	u := vcsCommandUI(t)
+	u := vcsCommandUI(t, g.dir)
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "cwd": g.dir, "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	u.view.pace(time.Now().Add(time.Second))
@@ -229,7 +229,7 @@ func TestVCSCommitReadDoesNotBlockTheUI(t *testing.T) {
 		return run(ctx, dir, args...)
 	}
 	t.Cleanup(func() { gitShowRun = run })
-	u := vcsCommandUI(t)
+	u := vcsCommandUI(t, g.dir)
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "git commit -m 'feat: slow'", "cwd": g.dir,
 		"status": "completed", "exitCode": 0, "aggregatedOutput": output}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
@@ -265,6 +265,7 @@ func TestVCSCommitOfManyFilesClosesOnce(t *testing.T) {
 func TestVCSTrackedCommitShowsItsRows(t *testing.T) {
 	g, output := vcsCommitFixture(t, "feat: tracked")
 	u, hub := newTrackedAppServerUI(t)
+	u.session.cwd = g.dir
 	script := "git add a.go b.go && git commit -m 'feat: tracked'"
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "cwd": g.dir, "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})

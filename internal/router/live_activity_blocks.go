@@ -54,7 +54,16 @@ func setCommandTiming(blocks []activityui.Block, entry activityPaneEntry) {
 }
 
 func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
-	defer func() { setCommandTiming(blocks, entry) }()
+	defer func() {
+		setCommandTiming(blocks, entry)
+		if entry.Kind == "tool" && entry.native != nil && entry.native.workdir != "" && len(blocks) > 0 {
+			// Every row keeps the directory for merging; one label per invocation.
+			for i := range blocks {
+				blocks[i].Workdir = livediff.Safe(entry.native.workdir, false)
+			}
+			blocks[0].ShowWorkdir = true
+		}
+	}()
 	text := livediff.Safe(entry.Text, false)
 	switch entry.Kind {
 	case "journal_card":

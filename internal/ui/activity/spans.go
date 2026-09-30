@@ -17,6 +17,7 @@ const (
 	ImageToken TokenKind = iota
 	FileToken
 	SkillToken
+	SelectionToken // A screen selection quoted as one mention.
 )
 
 type TextSpan struct {
@@ -30,6 +31,8 @@ func tokenStyle(kind TokenKind) string {
 		return "\x1b[1m" + Green
 	case SkillToken:
 		return "\x1b[1m" + Amber
+	case SelectionToken:
+		return "\x1b[1;36m"
 	default:
 		return "\x1b[1;35m"
 	}

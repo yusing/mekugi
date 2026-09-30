@@ -332,7 +332,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		item := p.Item
 		id := cmp.Or(p.ItemID, item.ID)
 		item = u.waitItem(item, p.ThreadID, p.TurnID, id, m.Method == "item/started")
-		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method, live: true, command: item.Command, duration: appServerDuration(item)}
+		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method, live: true, command: item.Command, duration: appServerDuration(item), workdir: appServerCommandWorkdir(item, s.cwd)}
 		agent := s.path(p.ThreadID)
 		if m.Method != "item/completed" && item.Type != "reasoning" && item.Type != "userMessage" {
 			// Other output started first: that request streamed no reasoning.
@@ -641,10 +641,25 @@ func (u *appServerUI) observeCost(thread string, agent *activityPaneAgent) {
 	agent.Roundtrips = u.proxy.usage.roundtrips(thread)
 }
 
+// appServerCommandWorkdir is the display form of the directory the host ran
+// a command in, when it is not the workspace its activity is shown against.
+// An unknown workspace or directory gets no label.
+func appServerCommandWorkdir(item appServerItem, workspace string) string {
+	if item.Type != "commandExecution" || !filepath.IsAbs(item.Cwd) || !filepath.IsAbs(workspace) || filepath.Clean(item.Cwd) == filepath.Clean(workspace) {
+		return ""
+	}
+	return pathdisplay.ForWorkspace(workspace, filepath.Clean(item.Cwd))
+}
+
 // appServerCommandText uses Codex's typed classification, then the shared
 // display classifier for frontends that Codex does not recognize. Neither
-// classification changes the executed command or retained host item.
+// classification changes the executed command or retained host item. Paths
+// display relative to the directory the command ran in, which
+// appServerCommandWorkdir labels when it differs from the workspace.
 func appServerCommandText(item appServerItem, cwd string) string {
+	if appServerCommandWorkdir(item, cwd) != "" {
+		cwd = item.Cwd
+	}
 	var parts []string
 	for _, action := range item.CommandActions {
 		switch action.Type {

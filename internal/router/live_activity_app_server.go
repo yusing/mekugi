@@ -159,6 +159,7 @@ type liveActivityNativeItem struct {
 	phase              string
 	wait               *activityui.Block // Structured wait progress is roster-only.
 	command, status    string
+	workdir            string // Display form of a command's directory outside the shown workspace.
 	searchResults      *int
 	running            bool                   // Started live and not yet completed; replay never sets it.
 	live               bool                   // From a live notification; restored history never sets it.

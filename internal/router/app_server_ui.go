@@ -80,6 +80,7 @@ type appServerUI struct {
 	picker                    composerPicker
 	commitReads               chan gitCommitKey // Commit objects read off the UI goroutine.
 	files                     []composerFile
+	selections                []composerSelection
 	skills                    []composerSkill
 	client                    *appserver.Client
 	view                      *liveActivityView

@@ -499,6 +499,14 @@ func liveActivityIndent(lines []string, prefix string) []string {
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
 	lines := p.blockRows(block, width)
+	if block.ShowWorkdir && block.Workdir != "" && block.Verb != "Run" && len(lines) > 0 {
+		// Run rows carry it in their label, ahead of the exit and elapsed time.
+		if suffix := " " + workdirLabel(block.Workdir); ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
+			lines[0] += suffix
+		} else {
+			lines = slices.Insert(lines, 1, liveActivityHang(strings.Repeat(" ", block.cell(RowVerb(block))), workdirLabel(block.Workdir), width)...)
+		}
+	}
 	if block.Verb != "Run" && !block.Skipped && len(lines) > 0 {
 		if elapsed := RunElapsed(block, time.Now()); elapsed != "" {
 			suffix := Dim + " · " + elapsed + Undim
@@ -525,6 +533,12 @@ func (p *Painter) Block(block Block, width int) []string {
 		block.Tail = p.outputColors(block, block.Tail)
 	}
 	return outputRows(block, lines, width)
+}
+
+// workdirLabel names the directory a command ran in when it is not the
+// workspace, so its relative paths do not read as workspace paths.
+func workdirLabel(workdir string) string {
+	return Dim + "· in " + Undim + Path(workdir)
 }
 
 // segmentTrailer names a tracked segment's outcome where its row would not:
@@ -953,6 +967,9 @@ func (p *Painter) ranRow(block Block, width int) []string {
 		if span, end, ok := liveActivityCodeSpan(block.Label, 0); ok && end == len(block.Label) {
 			code, label = span, ""
 		}
+	}
+	if block.ShowWorkdir && block.Workdir != "" {
+		label = strings.TrimSpace(label + " " + workdirLabel(block.Workdir))
 	}
 	color, exit := VerbColor("Run"), ""
 	if block.ExitCode != 0 {

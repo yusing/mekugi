@@ -1,6 +1,7 @@
 package livediff
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -170,6 +171,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 	}
 	render := Render{Starts: make([]int, len(files)), Counts: make([]Counts, len(files))}
 	renderedBytes := 0
+	var source LineSource // Attribution of the rows being appended.
 	appendLine := func(line string, highlighted, continuation bool) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -183,6 +185,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 			render.RowStarts = append(render.RowStarts, len(render.Lines))
 		}
 		render.Lines = append(render.Lines, line)
+		render.Sources = append(render.Sources, source)
 		return nil
 	}
 	focusHunks, err := focus.Review.Hunks()
@@ -219,6 +222,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 		if len(file.Chunks) == 0 {
 			continue
 		}
+		source = LineSource{Path: file.Path, Content: gutterWidth}
 		fileNumber++
 		action := ""
 		pathLabel := pathdisplay.ForWorkspace(workspace, file.Path)
@@ -302,6 +306,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 			review := chunk.Review
 			hunks := fileHunks[j]
 			chunkStart := len(render.Lines)
+			source = LineSource{Change: cmp.Or(chunk.Change, originChanges(file.Origins)), Path: file.Path, Content: gutterWidth}
 			if chunk.Status != "" {
 				label := chunk.Status
 				if origin := r.originLabel(Origin{Caller: chunk.Caller, Source: chunk.Source}); origin != "" && chunk.Change != "" {
@@ -347,17 +352,19 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 					if isFocus {
 						bestDistance, bestKind = distance, row.Kind
 					}
-					number, text := "", ""
+					coordinate, text := 0, ""
 					if row.Kind != '+' {
-						number, text = strconv.Itoa(oldLine), before[oldIndex]
+						coordinate, text = oldLine, before[oldIndex]
 						oldLine++
 						oldIndex++
 					}
 					if row.Kind != '-' {
-						number, text = strconv.Itoa(newLine), after[newIndex]
+						coordinate, text = newLine, after[newIndex]
 						newLine++
 						newIndex++
 					}
+					number := strconv.Itoa(coordinate)
+					source.Line, source.Deleted = coordinate, row.Kind == '-'
 					numbers := ""
 					if numberWidth > 0 {
 						numbers = Subtle + strings.Repeat(" ", max(0, digits-len(number))) + number + "│" + SubtleReset
@@ -380,6 +387,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 							prefix = continuationNumbers
 						}
 						line := SourceLine(theme, width, prefix, fragment, row.Kind)
+						source.Content = gutterWidth + ansi.StringWidth(prefix)
 						if err := appendLine(line, chunk.Highlighted, continuation); err != nil {
 							return Render{}, err
 						}
@@ -389,6 +397,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 						render.FocusRow = len(render.Lines) - 1
 						render.FocusOffset = max(hunkStart, render.FocusRow-3)
 					}
+					source.Line, source.Deleted, source.Content = 0, false, gutterWidth
 					if !strings.HasSuffix(row.Text, "\n") {
 						if err := appendLine(Subtle+"\\ No newline at end of file"+SubtleReset, chunk.Highlighted, false); err != nil {
 							return Render{}, err
@@ -399,6 +408,21 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 		}
 	}
 	return render, nil
+}
+
+// originChanges names the changes a composed file shows, comma-separated;
+// more than three keep the first three and a count.
+func originChanges(origins []Origin) string {
+	var changes []string
+	for _, origin := range origins {
+		if origin.Change != "" {
+			changes = append(changes, origin.Change)
+		}
+	}
+	if len(changes) > 3 {
+		return strings.Join(changes[:3], ",") + fmt.Sprintf(" +%d", len(changes)-3)
+	}
+	return strings.Join(changes, ",")
 }
 
 func SourceLine(theme Theme, width int, numbers, fragment string, kind byte) string {

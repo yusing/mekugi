@@ -123,6 +123,11 @@ func (u *appServerUI) completionTarget() composerTarget {
 			return composerTarget{}
 		}
 	}
+	for _, selection := range u.selections {
+		if start < selection.end && end > selection.start {
+			return composerTarget{}
+		}
+	}
 	query := u.draft[start+1 : end]
 	if u.draft[start] == '$' && !u.skillQueryCompletable(query) {
 		return composerTarget{}

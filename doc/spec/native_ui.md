@@ -318,11 +318,11 @@ skill selections retain their exact path as structured
 Codex skill input through undo, local input history, and rejected submissions.
 
 Single-unit spans use shared logic for every bound token kind, including file
-references, skill references, and `[Image N]` placeholders. Navigation and deletion
+references, skill references, selection mentions, and `[Image N]` placeholders. Navigation and deletion
 never split a token. Composer and submitted-input rendering keep a token on one
 row when it fits; oversized tokens wrap only at grapheme boundaries without losing
-content. Token types have distinct colors: images are magenta, files green, and
-skills amber, consistently across composer and transcript. Literal lookalikes do
+content. Token types have distinct colors: images are magenta, files green,
+skills amber, and selection mentions cyan, consistently across composer and transcript. Literal lookalikes do
 not acquire attachment identity.
 File and skill span byte ranges travel in Codex text elements, relative to each
 text part, so host echoes and restored history retain their presentation without
@@ -467,11 +467,33 @@ overflow indicators, descriptions, and footer hints follow the stock picker;
 the menu and management layouts are checked against Codex snapshot fixtures.
 Plugin browsing is outside this file/skills picker scope.
 
-Dragging across text in Main, the composer, or Activity selects the visible text
-and offers Reference (R), Copy (Ctrl+C, also C), and Clear (Escape) in the status bar.
-Selection actions and the existing pane shortcut bar share bold key labels and
-bullet separators. Composer selection excludes its prompt and borders.
-Reference inserts `> SELECTED_MESSAGE\n\n` at the composer caret without submitting;
+Dragging across text in Main, the composer, Activity, or the saved Diff selects the
+visible text and offers Reference (R), Copy (Ctrl+C, also C), and Clear (Escape) in
+the status bar. Selection actions and the existing pane shortcut bar share bold key
+labels and bullet separators. Composer selection excludes its prompt and borders;
+Diff selection covers only the source column, excluding the file navigator, gutters,
+and line numbers, and keeps each row's `+`, `-`, or space marker. A press in the Diff
+still reaches the pane, so clicks keep their meaning.
+Reference inserts a concise mention at the composer caret without submitting:
+`[Selected message]` from Main, `[Selected activity]` from Activity,
+`[Selected text]` from the composer, `[Selected status]` from the status panel,
+and `[Selected diff hunk @amber1:42-45]` from the Diff, naming the selected
+rows' change and gutter lines (`:42` for one line). Lines are new-file
+coordinates, or old-file ones when only deletions are selected. A composed file
+names its changes comma-separated; rows from several changes read
+`[Selected diff hunks @amber1 +N]`, and rows without a change read
+`[Selected diff]`. A label already in the draft or in queued, unsent, or
+steering input gains a counter, such as `[Selected message 2]`. The mention is one
+atomic cyan composer token through navigation, deletion, undo, queueing, input
+history, the external editor, and rejected submissions, and the host echo keeps it
+as a styled transcript token through its text element. After resume, recalled
+input rebinds a mention to its submitted quote when its label occurs once.
+On submission or queueing, each mention's selected text follows any file contents
+in the same versioned attachment envelope, as its own user message framed with the
+label and, for Diff, the file path. A selection over 96 KiB is refused with a
+notice; one that exceeds the remaining envelope budget is replaced by an explicit
+omission frame, and the composer reports it. While a question is open, Reference
+inserts `> SELECTED_TEXT\n\n` instead, since an answer is plain text.
 Copy requests the terminal clipboard via OSC 52, and Clear leaves the draft intact.
 The selected viewport stays stable while the selection is active; resizing,
 scrolling, or resuming editing dismisses it. Clicking a Markdown absolute local

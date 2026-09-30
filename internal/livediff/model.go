@@ -377,6 +377,19 @@ func Header(text string, width int, counts Counts, theme Theme) string {
 	return header
 }
 
+// gutterWidth is the display width of Gutter.
+const gutterWidth = 2
+
+// LineSource attributes a display row. Chrome rows have no Line.
+type LineSource struct {
+	// Change names the capture a row shows, or for a composed file the
+	// comma-separated changes it combines.
+	Change, Path string
+	Line         int  // Gutter coordinate: old for deletions, new otherwise.
+	Deleted      bool // Line is an old-file coordinate.
+	Content      int  // Display column where the row's text starts, after gutters.
+}
+
 type Counts struct {
 	Added, Removed int
 }
@@ -384,8 +397,9 @@ type Counts struct {
 type Render struct {
 	Lines       []string
 	Starts      []int
-	Hunks       []int // Display offsets for hunk navigation.
-	RowStarts   []int // First display row of each logical row, including chrome.
+	Hunks       []int        // Display offsets for hunk navigation.
+	RowStarts   []int        // First display row of each logical row, including chrome.
+	Sources     []LineSource // Aligned with Lines.
 	Counts      []Counts
 	FocusOffset int // Hunk/context anchor retained while locating the target.
 	FocusRow    int // Latest changed row to center in the viewport.

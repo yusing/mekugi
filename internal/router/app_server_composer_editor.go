@@ -83,6 +83,18 @@ func (u *appServerUI) applyEditorDraft(text string) error {
 			images = append(images, image)
 		}
 	}
+	var selections []composerSelection
+	for _, selection := range u.selections {
+		label := u.draft[selection.start:selection.end]
+		if strings.Count(text, label) > 1 {
+			return fmt.Errorf("selection %s appears more than once", label)
+		}
+		if start := strings.Index(text, label); start >= 0 {
+			selection.start, selection.end = start, start+len(label)
+			selections = append(selections, selection)
+		}
+	}
+	slices.SortFunc(selections, func(a, b composerSelection) int { return a.start - b.start })
 	var skills []composerSkill
 	for _, skill := range u.skills {
 		bindings := restoredSkillBindings(text, skill.name, skill.path)
@@ -122,6 +134,7 @@ func (u *appServerUI) applyEditorDraft(text string) error {
 	slices.SortFunc(files, func(a, b composerFile) int { return a.start - b.start })
 	u.recordDraft()
 	u.files = files
+	u.selections = selections
 	u.skills = skills
 	u.draft, u.images, u.cursorBack = text, images, 0
 	u.cursorColumn = nil
