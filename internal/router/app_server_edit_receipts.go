@@ -117,7 +117,12 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 				}
 				text = strings.Join(remaining, "\n\n")
 			}
-			if entry.Text != text {
+			if entry.Text != text || entry.native.capturedEdit != receipt {
+				// Keep the receipt on this view's projection so segment refreshes
+				// and dialog reparses cannot fall back to requested edit labels.
+				native := *entry.native
+				native.capturedEdit = receipt
+				entry.native = &native
 				entry.Text = text
 				blocks := parseLiveActivity(entry)
 				// Reparsed tracked blocks already carry each segment's own exit.

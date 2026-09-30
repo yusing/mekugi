@@ -82,7 +82,10 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	}
 	history := mekugiHistory{ExecutingThread: "main", CorrelationID: "cmd\x00exec", ChangeID: "c1",
 		ExecOutcome: &execOutcome{Status: execStatusCompleted, Coverage: execCoverageExact, Labels: []string{"cat", "python3"}},
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("a.go", "a.go", "old\n", "new\n")}}
+		ReviewFiles: []mekugi.ReviewFile{
+			mekugi.RenderReviewFile("a.go", "a.go", "old\n", "new\n"),
+			mekugi.RenderReviewFile("b.go", "b.go", "old\n", "first\nsecond\n"),
+		}}
 	for i := range 8 {
 		path := fmt.Sprintf("PRIVATE_UNKNOWN_FILE_%02d.go", i)
 		history.ReviewFiles = append(history.ReviewFiles, mekugi.ReviewFile{BeforePath: path, AfterPath: path, Incomplete: "unavailable"})
@@ -95,12 +98,23 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	data.order = []string{"receipt"}
 	data.attempts["receipt"] = liveDiffAttempt{receipt: receipt}
 	u.shell.diff.data = data
+	// Completed tracked edit segments must receive the same captured counts
+	// as untracked commands while the neighboring test keeps its own state.
+	for i := range u.view.entries {
+		if native := u.view.entries[i].native; native != nil && native.item == "cmd" {
+			native.segments = []commandSegment{
+				{source: "cat >> a.go", text: "Edit `a.go` · cat (requested)"},
+				{source: "python3", text: "Edit `b.go` · python3 (requested)"},
+				{source: "go test ./internal/router", text: "Run `go test ./internal/router`", running: true},
+			}
+		}
+	}
 	u.applyCapturedEdits()
 	if err := u.paint(slave, width, height); err != nil {
 		t.Fatal(err)
 	}
 	frame = nextFrame()
-	for _, want := range []string{"Edit", "a.go", "Capture", "incomplete", "8 paths"} {
+	for _, want := range []string{"Edited", "a.go", "+1 -1", "b.go", "+2 -1", "━", "Running", "go test", "Capture", "incomplete", "8 paths"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("confirmed receipt missing %q from terminal frame:\n%s", want, frame)
 		}
@@ -113,7 +127,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	// exit status after the Capture notice replaces its original Run row.
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "cmd", "type": "commandExecution", "command": command, "exitCode": 2}})
-	history.ReviewFiles = history.ReviewFiles[1:]
+	history.ReviewFiles = history.ReviewFiles[2:]
 	data.attempts["receipt"] = liveDiffAttempt{receipt: capturedEditActivity(workspace, history)}
 	u.applyCapturedEdits()
 	if err := u.paint(slave, width, height); err != nil {

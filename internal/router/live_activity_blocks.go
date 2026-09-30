@@ -267,6 +267,11 @@ func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitt
 // follows the last segment shown.
 func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 	var blocks []activityui.Block
+	receipt := entry.native.capturedEdit
+	if receipt != nil && len(receipt.calls) > 0 && receipt.calls[0] == entry.native.item {
+		// Counts belong to the capture as a whole, not any individual segment.
+		blocks = append(blocks, toolOperationBlocks(livediff.Safe(receipt.text, false))...)
+	}
 	// Classify decoration in the full script, not as a standalone segment.
 	// Keep failed headings visible, and retain every segment for replay/output.
 	command := entry.native.command
@@ -281,6 +286,21 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 			}
 		}
 		operations := toolOperationBlocks(livediff.Safe(segment.text, false))
+		if receipt != nil && !segment.running && !segment.skipped && segment.exit == 0 {
+			operations = slices.DeleteFunc(operations, func(block activityui.Block) bool {
+				return slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb)
+			})
+			// The capture replaces edit intent, never the host's output. Keep
+			// an output-bearing edit-only segment as its real shell command.
+			hasOutput := len(segment.tail) > 0 || segment.omit > 0
+			if segment.output != nil {
+				output := segment.output.View()
+				hasOutput = hasOutput || len(output.Lines) > 0 || output.Dropped > 0 || output.Released
+			}
+			if len(operations) == 0 && hasOutput {
+				operations = []activityui.Block{{Kind: "op", Verb: "Run", Code: livediff.Safe(segment.source, false), Lang: "bash", Fenced: true}}
+			}
+		}
 		for i := range operations {
 			operations[i].Running, operations[i].Skipped = segment.running, segment.skipped
 			if block := &operations[i]; !segment.running && strings.HasSuffix(block.EditSource, " (requested)") {
@@ -308,7 +328,17 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 		last.Changes = commitChanges(segment.changes, segment.commit)
 		blocks = append(blocks, operations...)
 	}
-	if len(entry.outputTail) > 0 {
+	hasCombinedOutput := len(entry.outputTail) > 0 || entry.outputOmit > 0
+	if len(blocks) == 0 && entry.native.output != nil {
+		output := entry.native.output.View()
+		hasCombinedOutput = hasCombinedOutput || len(output.Lines) > 0 || output.Dropped > 0 || output.Released
+	}
+	if hasCombinedOutput {
+		// Grouped sibling edits may have no remaining intent rows, while
+		// terminal/lossy tracking still supplies invocation-level output.
+		if len(blocks) == 0 {
+			blocks = append(blocks, activityui.Block{Kind: "op", Verb: "Run", Code: livediff.Safe(command, false), Lang: "bash", Fenced: true})
+		}
 		for i := len(blocks) - 1; i >= 0; i-- {
 			if !blocks[i].Skipped {
 				blocks[i].Tail, blocks[i].TailOmitted, blocks[i].Output = entry.outputTail, entry.outputOmit, entry.native.output

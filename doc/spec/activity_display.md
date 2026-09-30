@@ -37,7 +37,10 @@ take their own row in the verb column.
 File rows' line counts share one column within a group of more than one row when
 the row fits, and zero counts are omitted. In an `Edited` group of more than one
 row, an eight-cell bar after the counts scales each row's changed lines against
-the group's largest.
+the group's largest. Confirmed capture counts replace successful requested edit
+rows even when the shell invocation has tracked segments. A grouped capture
+appears once on its owning invocation, not once per segment; neighboring command
+output, failed/skipped edits, and per-command exit statuses remain visible.
 A path too wide for its row gives way before the row's other parts: it drops
 whole leading directories behind `…/`, keeping its nearest directories and file
 name, or elides the middle of the name itself when that alone is too wide; below

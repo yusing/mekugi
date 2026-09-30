@@ -173,6 +173,7 @@ type liveActivityNativeItem struct {
 	thought            time.Duration          // Reasoning time from its start to completion.
 	replaces           string                 // Pending thinking block this reasoning item takes over.
 	attachments        []activityui.Block     // Submitted file snapshot outcomes, recovered from host history.
+	capturedEdit       *capturedActivityEdit  // Exact invocation receipt reconciled by the live diff owner.
 	segments           []commandSegment       // A tracked command's own segments, replacing its single row.
 	output             *activityui.Output     // A command's retained host output, which the output dialog reads.
 }
