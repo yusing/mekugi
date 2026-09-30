@@ -299,7 +299,10 @@ Mekugi differs in these ways:
   sending, and queued messages, are sent together as one message, one entry per
   line. Alt+Up or Shift+Left brings back the last queued message.
 - **Session controls.** `/compact` compacts context, waiting for the current turn
-  when busy. `/clear` starts a fresh session and clears its transcript; it is
+  when busy. After successful queued compaction, waiting input runs next; without
+  waiting input, Mekugi sends a visible continuation message to resume the task.
+  Idle compaction stays idle, and failure or interruption never automatically
+  continues it. `/clear` starts a fresh session and clears its transcript; it is
   available while idle and does not delete saved sessions or filesystem changes.
   Interrupt returns unsent input to the composer without automatically resending
   it. Interrupting an uncommitted first message leaves an empty transcript.
@@ -326,12 +329,23 @@ conversation, and it can't be resumed.
 
 ### Resume
 
-`resume THREAD_ID` and `resume --last` work as in Codex. Resuming also restores
+`resume THREAD_ID` and `resume --last` work as in Codex. Startup resume and `/resume`
+restore the session's saved model, reasoning effort, and service tier; explicit
+`-m` and `-c` flags override only the settings they name. Resuming also restores
 pane layout, keyboard focus, the agent roster, Activity history, and the
 session's retained Diff changes. Scroll positions, filters, selections, and
-drafts are not restored. Main histories larger than 16 MiB cannot resume in the
-native UI. Paginated child histories load recent Activity first; older content
-remains available on demand rather than delaying the conversation.
+drafts are not restored. Successfully applied settings survive a fresh launch,
+including priority and default selections made before the first turn. Storage failures are
+reported in Activity. Older sessions can recover settings from the last 8 MiB of
+Codex history, with newer history taking precedence over retained preferences.
+If no saved model settings are available, a notice explains that Codex defaults
+and explicit flags apply instead. Main histories larger than 16 MiB cannot resume
+in the native UI. Paginated child histories load recent Activity first; older
+content remains available on demand rather than delaying the conversation.
+Codex does not save an empty conversation before its first turn; retained
+settings do not make an unsaved conversation resumable.
+If Codex rejects restoring default reasoning, waiting input returns to the
+composer and stays blocked until you choose `/effort VALUE` or restart resume.
 
 Bare `resume`, or `/resume` inside a session, opens a picker of saved sessions
 for the current workspace, newest first. Type to search, Tab to show every

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	json "encoding/json/v2"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,7 +18,88 @@ import (
 
 func (u *appServerUI) requestResume(thread string) error {
 	u.status = "Resuming thread…"
-	return u.request("thread/resume", map[string]any{"threadId": thread, "approvalPolicy": "never", "sandbox": "danger-full-access", "config": u.resumeConfig, "modelProvider": u.resumeConfig["model_provider"]})
+	_, err := u.requestAs("thread/read", "resume/settings", map[string]any{"threadId": thread, "includeTurns": false})
+	return err
+}
+
+func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
+	fail := func(message string) error {
+		if u.switching != "" {
+			return u.resumeSessionFailed(message)
+		}
+		return fmt.Errorf("read resume settings: %s", message)
+	}
+	if m.Error != nil {
+		return fail(m.Error.Message)
+	}
+	var result struct {
+		Thread appServerThreadInfo `json:"thread"`
+	}
+	if err := json.Unmarshal(m.Result, &result); err != nil {
+		return fail(err.Error())
+	}
+	thread := cmp.Or(u.switching, u.resumeThread)
+	if result.Thread.ID != thread {
+		return fail("thread/read returned a different thread identity")
+	}
+	// Codex skips persisted model/effort when the routing provider is explicit.
+	// Read settings before resume can write its new defaults into the rollout.
+	config := maps.Clone(u.resumeConfig)
+	if config == nil {
+		config = make(map[string]any)
+	}
+	var retained nativeAppliedSettings
+	var recovery nativeResumeEvidence
+	var newerThan time.Time
+	if u.panes != nil {
+		state, err := u.panes.read(result.Thread.Cwd, thread)
+		if err != nil {
+			u.paneError(err)
+		} else {
+			retained = state.Settings
+			newerThan = retained.Observed
+			if state.ResumeEvidence.Model != "" && state.ResumeObserved.After(newerThan) {
+				recovery = state.ResumeEvidence
+				newerThan = state.ResumeObserved
+			}
+		}
+	}
+	saved := retained.config()
+	if recovery.Model != "" {
+		saved = recovery.config()
+	}
+	if saved == nil {
+		saved = make(map[string]any)
+	}
+	maps.Copy(saved, readResumeSettings(result.Thread, newerThan))
+	u.resumeEvidence.Model, _ = saved["model"].(string)
+	u.resumeEvidence.Effort, _ = saved["model_reasoning_effort"].(string)
+	u.resumeEvidence.Tier, _ = saved["service_tier"].(string)
+	_, u.resumeEvidence.TierKnown = saved["service_tier"]
+	u.resumeNotice = ""
+	if len(saved) == 0 {
+		u.resumeNotice = "Saved model settings unavailable; using Codex defaults and explicit flags"
+		u.setNotice(u.resumeNotice, true)
+	}
+	params := map[string]any{"threadId": thread, "approvalPolicy": "never", "sandbox": "danger-full-access", "config": config, "modelProvider": config["model_provider"]}
+	u.resumePendingEffort = false
+	for field, value := range saved {
+		if _, explicit := config[field]; explicit {
+			continue
+		}
+		if field == "model_reasoning_effort" && value == nil {
+			// TOML config cannot express null. Clear via the host settings API
+			// before any resumed input is accepted instead.
+			u.resumePendingEffort = true
+		} else {
+			config[field] = value
+		}
+	}
+	if tier, ok := config["service_tier"]; ok {
+		params["serviceTier"] = tier
+		delete(config, "service_tier")
+	}
+	return u.request("thread/resume", params)
 }
 
 // resumableThreads lists the sessions `resume --last` and the picker choose
@@ -98,7 +180,7 @@ func appServerResumeConfig(args []string) map[string]any {
 		i++
 		key, value, ok := strings.Cut(args[i], "=")
 		key = strings.TrimSpace(key)
-		if !ok || (key != "model" && key != "model_provider" && key != "model_reasoning_effort") {
+		if !ok || (key != "model" && key != "model_provider" && key != "model_reasoning_effort" && key != "service_tier") {
 			continue
 		}
 		var parsed map[string]any

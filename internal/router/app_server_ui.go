@@ -140,6 +140,7 @@ type appServerUI struct {
 	compactRequest            bool // Compact RPC acknowledgement still pending.
 	clearing                  bool // Fresh-thread request; keep old presentation until success.
 	manualCompact             bool // Compact turn has not completed yet.
+	continueAfterCompact      bool // A busy-queued compact owes task continuation.
 	retiredThreads            map[string]string
 	composerRect              terminalRect // Visible draft text, relative to Main.
 	cursorBack, composerWidth int
@@ -159,6 +160,10 @@ type appServerUI struct {
 	resumeThread              string
 	resumeCwd                 string
 	resumeConfig              map[string]any
+	resumeClearEffort         bool
+	resumePendingEffort       bool // Target intent stays separate while the source thread is live.
+	resumeEvidence            nativeResumeEvidence
+	resumeNotice              string // Settings fallback survives the old session's presentation reset.
 	resumePending             []appserver.Message
 	panes                     *nativePanePersistence
 	waitRelease               func()
@@ -402,7 +407,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 			u.dirty = true
 		}
 		if saveErr := u.panes.save(u.shell, u.now(), true); saveErr != nil {
-			fmt.Fprintln(stdout, "Pane layout could not be saved:", livediff.Safe(saveErr.Error(), false))
+			fmt.Fprintln(stdout, "Pane layout or settings could not be saved:", livediff.Safe(saveErr.Error(), false))
 		}
 		if !exited {
 			if err == nil {
@@ -523,6 +528,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		if strings.HasPrefix(method, "activity/") {
 			return u.childHistoryResponse(method, m)
 		}
+		if method == "resume/settings" {
+			return u.resumeSettingsResponse(m)
+		}
 		if method == "config/read" {
 			u.notificationConfig(m)
 			return nil
@@ -559,6 +567,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		if method == "thread/compact/start" {
 			u.compactRequest = false
 			if m.Error != nil {
+				u.continueAfterCompact = false
 				u.starting, u.interruptBeforeStart, u.manualCompact = false, false, false
 				u.restoreDrafts(append([]composerDraft{{text: "/compact"}}, slices.Concat(u.unsent, u.queued)...)...)
 				u.unsent, u.queued = nil, nil
@@ -615,10 +624,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return u.startThread()
 		case "thread/start", "thread/resume":
 			var result struct {
-				Model           string              `json:"model"`
-				ReasoningEffort string              `json:"reasoningEffort"`
-				ServiceTier     string              `json:"serviceTier"`
-				Thread          appServerThreadInfo `json:"thread"`
+				Model             string              `json:"model"`
+				ReasoningEffort   string              `json:"reasoningEffort"`
+				ServiceTier       string              `json:"serviceTier"`
+				CollaborationMode map[string]any      `json:"collaborationMode"`
+				Thread            appServerThreadInfo `json:"thread"`
 			}
 			if err := json.Unmarshal(m.Result, &result); err != nil {
 				return err
@@ -649,6 +659,12 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			u.thread, u.status = result.Thread.ID, "Ready"
 			u.model, u.reasoningEffort, u.serviceTier = result.Model, result.ReasoningEffort, result.ServiceTier
+			if method == "thread/resume" {
+				u.resumeClearEffort, u.resumePendingEffort = u.resumePendingEffort, false
+			}
+			if method == "thread/start" {
+				u.resumeClearEffort = false
+			}
 			u.models, u.modelsLoading = nil, true // A cleared or switched session lists them again.
 			if err := u.request("model/list", map[string]any{"includeHidden": true}); err != nil {
 				return err
@@ -703,8 +719,42 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				u.paneError(u.panes.open(u.shell, result.Thread.Cwd, u.thread, method == "thread/resume"))
 			}
 			if method == "thread/resume" {
+				if u.resumeClearEffort {
+					// effort:null means no change in the host RPC. Its complete
+					// collaboration-mode snapshot can express a nullable effort,
+					// without replacing the host's mode or developer instructions.
+					settings, ok := result.CollaborationMode["settings"].(map[string]any)
+					if !ok {
+						if u.reasoningEffort != "" {
+							return errors.New("Codex did not return the settings needed to restore default reasoning")
+						}
+						u.resumeClearEffort = false
+					} else if settings["reasoning_effort"] != nil {
+						// Codex checkpoints resume defaults before this response.
+						// Do not let that transient effort replace saved null intent
+						// on a fresh-process retry if the corrective update fails.
+						if u.panes != nil && u.resumeEvidence.Model != "" {
+							u.panes.resumeObserved = u.now()
+							u.panes.resumeEvidence = u.resumeEvidence
+							u.paneError(u.panes.save(u.shell, u.now(), true))
+						}
+						settings["reasoning_effort"] = nil
+						if _, err := u.updateSettings(map[string]any{"collaborationMode": result.CollaborationMode}); err != nil {
+							return err
+						}
+					} else {
+						u.resumeClearEffort = false
+						u.reasoningEffort = ""
+					}
+				}
+				if u.resumeNotice != "" {
+					u.setNotice(u.resumeNotice, true)
+					u.resumeNotice = ""
+				}
+				u.retainAppliedSettings()
 				return u.restorePaneContent(result.Thread)
 			}
+			u.retainAppliedSettings()
 		}
 		return nil
 	}
@@ -762,6 +812,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 		}
 		if p.ThreadID == u.thread && p.Turn.ID == u.turn {
+			if u.manualCompact && p.Turn.Status != "completed" {
+				u.continueAfterCompact = false
+			}
 			u.shellStandalone, u.manualCompact = false, false
 			u.endSyncQuestions(p.Turn.ID)
 			u.turn, u.starting = "", false
@@ -1529,6 +1582,7 @@ func (u *appServerUI) applyObservedActivity() {
 
 // interruptTurn preserves the composer while interrupting the active turn.
 func (u *appServerUI) interruptTurn() error {
+	u.continueAfterCompact = false
 	if u.turn == "" {
 		if u.starting || u.submission.text != "" {
 			u.interruptBeforeStart = true

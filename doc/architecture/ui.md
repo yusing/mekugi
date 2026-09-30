@@ -30,6 +30,38 @@ terminal write succeeds. Preview workers and brokers remain with router observat
 not the view package. The launcher still owns invocation configuration and cancellation
 before handoff; the native client never executes model-requested tools.
 
+The existing native pane-preference owner also retains a complete applied-settings
+snapshot and its observation time. Host start/resume results and matching
+`thread/settings/updated` notifications are authoritative; enqueue acknowledgements
+and pending intent are not. Settings flush atomically without the layout debounce,
+including nullable defaults before any turn. The record is keyed by host workspace
+and thread; reading a different namespace does not redirect the live writer.
+
+Resume first obtains host identity/workspace through metadata-only `thread/read`,
+then reads those preferences and the host-selected absolute rollout validated
+against that thread's session metadata. Reads examine complete records in the last
+8 MiB, never router cwd or another thread's settings. Newer timestamped
+`thread_settings_applied` snapshots override preferences; newer `turn_context`
+records supply model/effort without erasing retained tier evidence. Reads precede
+`thread/resume`, which can persist invocation defaults. Explicit launch settings
+override only matching fields. Codex owns validation and the effective result.
+To restore nullable reasoning, the client copies the host-returned collaboration
+mode, changes only its reasoning effort to null, and submits `thread/settings/update`:
+the RPC's plain `effort:null` means no change. Input and snapshot replacement remain
+gated until the authoritative notification arrives. Session preferences contain
+no transcript, authorization or live resources; no user configuration is written.
+An unfinished nullable restore retains the exact authoritative settings evidence
+selected before resume alongside a resume-observation watermark. Fresh-process
+retry excludes the transient host checkpoint without discarding newer selected
+history or rollout-only evidence. Confirmation clears this recovery record.
+
+Queued manual compaction is native-client intent, not replayed lifecycle evidence.
+The composer tracks continuation intent only for a command queued while Main was
+busy. Both the compact RPC acknowledgement and successful compact-turn completion
+must precede a new `turn/start`. Waiting user input takes precedence over the one
+automatic continuation message. Interrupt cancels that intent immediately; replay
+and session switching never revive it. Codex still owns compaction and execution.
+
 Dependencies point from router integration into the client and presentation packages,
 not back into router internals. Shared diff rendering remains in `internal/livediff`;
 UI extraction does not introduce a second capturer, history store, or transcript.

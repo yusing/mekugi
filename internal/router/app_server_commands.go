@@ -43,6 +43,7 @@ func (u *appServerUI) sessionCommand(command string) error {
 	if command == "/compact" {
 		u.unsent = append(u.unsent, u.takeDraft())
 		u.unsent[len(u.unsent)-1].text = "/compact"
+		u.unsent[len(u.unsent)-1].continueTask = u.turn != "" || u.starting
 		return u.flushInput()
 	}
 	if u.sessionBusy() {

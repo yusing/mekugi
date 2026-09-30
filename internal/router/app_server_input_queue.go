@@ -149,8 +149,14 @@ func (u *appServerUI) flushInput() error {
 	if u.shellOrigin != nil && u.turn != *u.shellOrigin {
 		return nil // Main ended before Codex identified the shell's turn.
 	}
-	if u.waitingQuestion() || u.thread == "" || u.restoring != nil || u.submission.text != "" || u.clearing || u.compactRequest || u.manualCompact || u.starting || u.settingsPending || u.shellPending.text != "" || u.shellStandalone {
+	if u.waitingQuestion() || u.thread == "" || u.restoring != nil || u.submission.text != "" || u.clearing || u.compactRequest || u.manualCompact || u.starting || u.settingsPending || u.resumeClearEffort || u.shellPending.text != "" || u.shellStandalone {
 		return nil
+	}
+	if u.continueAfterCompact && u.turn == "" {
+		u.continueAfterCompact = false
+		if len(u.unsent)+len(u.queued) == 0 {
+			u.unsent = append(u.unsent, composerDraft{text: "Continue the task from where you left off before compaction."})
+		}
 	}
 	var parts []composerDraft
 	fromUnsent := len(u.unsent) > 0
@@ -182,6 +188,7 @@ func (u *appServerUI) flushInput() error {
 
 func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	if len(parts) == 1 && parts[0].text == "/compact" {
+		u.continueAfterCompact = parts[0].continueTask
 		u.compactRequest, u.manualCompact, u.starting, u.status = true, true, true, "Compacting context…"
 		return u.request("thread/compact/start", map[string]any{"threadId": u.thread})
 	}
@@ -417,7 +424,7 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 	case len(u.unsent) > 0 && u.unsent[0].text == "/compact":
 		header = "Compaction queued after this turn · ctrl+c restores input"
 	case u.turn != "" || u.starting:
-	case u.settingsPending:
+	case u.settingsPending || u.resumeClearEffort:
 		header = "Sending when settings apply"
 	default:
 		header = "Waiting to send"

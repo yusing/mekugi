@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"io"
+	"iter"
 	"os"
 	"path/filepath"
 )
@@ -15,32 +16,7 @@ func restoreContextUsage(agent *activityPaneAgent, info appServerThreadInfo) {
 	if agent == nil || agent.ContextKnown {
 		return
 	}
-	f, stat, ok := openThreadRollout(info)
-	if !ok {
-		return
-	}
-	defer f.Close()
-	// Bound startup I/O and memory independently of transcript size. A missing
-	// retained snapshot leaves the existing state alone, never a fabricated count.
-	const tailLimit = 8 << 20
-	start := max(int64(0), stat.Size()-tailLimit)
-	data, err := io.ReadAll(io.NewSectionReader(f, start, stat.Size()-start))
-	if err != nil {
-		return
-	}
-	if start > 0 {
-		_, data, _ = bytes.Cut(data, []byte{'\n'})
-	}
-	// Ignore a writer's unfinished final record.
-	end := bytes.LastIndexByte(data, '\n')
-	if end < 0 {
-		return
-	}
-	data = data[:end]
-	for len(data) > 0 {
-		previous := bytes.LastIndexByte(data, '\n')
-		line := data[previous+1:]
-		data = data[:max(0, previous)]
+	for line := range reverseThreadRolloutRecords(info) {
 		var event struct {
 			Type    string `json:"type"`
 			Payload struct {
@@ -58,6 +34,40 @@ func restoreContextUsage(agent *activityPaneAgent, info appServerThreadInfo) {
 		}
 		agent.ContextTokens, agent.ContextWindow, agent.ContextKnown = event.Payload.Info.Last.Total, event.Payload.Info.Window, true
 		return
+	}
+}
+
+// Bound each observational read independently of transcript size and ignore
+// boundary fragments. Missing evidence never becomes a fabricated snapshot.
+func reverseThreadRolloutRecords(info appServerThreadInfo) iter.Seq[[]byte] {
+	return func(yield func([]byte) bool) {
+		f, stat, ok := openThreadRollout(info)
+		if !ok {
+			return
+		}
+		defer f.Close()
+		const tailLimit = 8 << 20
+		start := max(int64(0), stat.Size()-tailLimit)
+		data, err := io.ReadAll(io.NewSectionReader(f, start, stat.Size()-start))
+		if err != nil {
+			return
+		}
+		if start > 0 {
+			_, data, _ = bytes.Cut(data, []byte{'\n'})
+		}
+		end := bytes.LastIndexByte(data, '\n')
+		if end < 0 {
+			return
+		}
+		data = data[:end]
+		for len(data) > 0 {
+			previous := bytes.LastIndexByte(data, '\n')
+			line := data[previous+1:]
+			data = data[:max(0, previous)]
+			if !yield(line) {
+				return
+			}
+		}
 	}
 }
 

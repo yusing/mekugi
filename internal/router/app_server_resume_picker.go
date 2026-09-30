@@ -218,6 +218,7 @@ func (u *appServerUI) resumeSession(id string) error {
 // reaching the old thread.
 func (u *appServerUI) resumeSessionFailed(message string) error {
 	u.clearing, u.switching = false, ""
+	u.resumePendingEffort = false
 	u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 	u.unsent, u.queued = nil, nil
 	u.status = "Ready"

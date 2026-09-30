@@ -18,8 +18,9 @@ func TestAppServerResumeStartup(t *testing.T) {
 	u.agents = newLiveActivityView()
 	u.requests["0"] = "initialize"
 	appServerTestMessage(t, u, `{"id":0,"result":{}}`)
+	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"saved"}}}`)
 	lines := bytes.Split(bytes.TrimSpace(w.Bytes()), []byte("\n"))
-	if len(lines) != 2 {
+	if len(lines) != 3 {
 		t.Fatalf("startup requests: %s", w.Bytes())
 	}
 	var request struct {
@@ -32,7 +33,7 @@ func TestAppServerResumeStartup(t *testing.T) {
 			ModelProvider string         `json:"modelProvider"`
 		} `json:"params"`
 	}
-	if err := json.Unmarshal(lines[1], &request); err != nil {
+	if err := json.Unmarshal(lines[2], &request); err != nil {
 		t.Fatal(err)
 	}
 	if request.Method != "thread/resume" || request.Params.ThreadID != "saved" || request.Params.Approval != "never" || request.Params.Sandbox != "danger-full-access" || request.Params.Config["model"] != "override" || request.Params.ModelProvider != "routed" {
@@ -44,11 +45,11 @@ func TestAppServerResumeStartup(t *testing.T) {
 		t.Fatal("input submitted before resume succeeded")
 	}
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"saved","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
-	appServerTestMessage(t, u, `{"id":1,"result":{"model":"model","reasoningEffort":"high","thread":{"id":"saved","cwd":"/workspace","turns":[{"id":"old","status":"completed","items":[{"type":"userMessage","id":"question","content":[{"type":"text","text":"Saved question"}]},{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`)
+	appServerTestMessage(t, u, `{"id":2,"result":{"model":"model","reasoningEffort":"high","thread":{"id":"saved","cwd":"/workspace","turns":[{"id":"old","status":"completed","items":[{"type":"userMessage","id":"question","content":[{"type":"text","text":"Saved question"}]},{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`)
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "saved", "tokenUsage": map[string]any{"last": map[string]any{"totalTokens": 120000}, "modelContextWindow": 400000}})
-	appServerTestMessage(t, u, `{"id":2,"result":{"data":[],"nextCursor":null}}`)
 	appServerTestMessage(t, u, `{"id":3,"result":{"data":[],"nextCursor":null}}`)
 	appServerTestMessage(t, u, `{"id":4,"result":{"data":[],"nextCursor":null}}`)
+	appServerTestMessage(t, u, `{"id":5,"result":{"data":[],"nextCursor":null}}`)
 	if u.thread != "saved" || u.status != "Ready" || u.model != "model" || u.reasoningEffort != "high" || len(u.view.entries) != 2 || u.view.entries[0].Text != "Saved question" || u.view.entries[1].Text != "Saved answer" {
 		t.Fatalf("resume state: %+v, entries=%+v", u, u.view.entries)
 	}
@@ -122,8 +123,8 @@ func TestAppServerResumePendingBound(t *testing.T) {
 }
 
 func TestAppServerResumeConfig(t *testing.T) {
-	config := appServerResumeConfig([]string{"codex", "app-server", "-c", `model="old"`, "-c", `model = 'new'`, "-c", "model_provider=preview", "-c", `model_reasoning_effort="high"`, "-c", "other=true"})
-	if len(config) != 3 || config["model"] != "new" || config["model_provider"] != "preview" || config["model_reasoning_effort"] != "high" {
+	config := appServerResumeConfig([]string{"codex", "app-server", "-c", `model="old"`, "-c", `model = 'new'`, "-c", "model_provider=preview", "-c", `model_reasoning_effort="high"`, "-c", `service_tier="flex"`, "-c", "other=true"})
+	if len(config) != 4 || config["model"] != "new" || config["model_provider"] != "preview" || config["model_reasoning_effort"] != "high" || config["service_tier"] != "flex" {
 		t.Fatalf("explicit resume settings: %+v", config)
 	}
 }
@@ -155,6 +156,11 @@ func TestAppServerResumeLastStartup(t *testing.T) {
 		t.Fatal("submitted input during lookup")
 	}
 	appServerTestMessage(t, u, `{"id":1,"result":{"data":[{"id":"latest","cwd":"/workspace"}],"nextCursor":null}}`)
+	preflight := resumeTestOne(t, w, "thread/read")
+	if preflight.Params.ThreadID != "latest" || preflight.Params.IncludeTurns == nil || *preflight.Params.IncludeTurns {
+		t.Fatalf("latest preflight: %+v", preflight)
+	}
+	appServerTestMessage(t, u, `{"id":2,"result":{"thread":{"id":"latest"}}}`)
 	request.Params = nil
 	if err := json.Unmarshal(bytes.TrimSpace(w.Bytes()), &request); err != nil {
 		t.Fatal(err)

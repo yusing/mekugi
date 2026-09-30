@@ -1,0 +1,12 @@
+Mekugi dev • codex
+
+
+
+
+
+
+
+
+╭─ Resuming thread… · ✗ Saved model settings unavailable; using Codex defaults and explicit flags ─╮
+│ ❯                                                                                                │
+╰───────────────────────────────────────────────────────────────────────────────────────────── 0% ─╯

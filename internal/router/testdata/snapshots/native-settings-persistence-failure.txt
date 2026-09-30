@@ -1,0 +1,14 @@
+● Session                                                                                  12:00:00
+│ Pane layout or settings could not be restored or saved: session preferences storage unavailable
+
+
+
+
+
+
+
+
+
+╭─ Ready ──────────────────────────────────────────────────────────────────────────────────────────╮
+│ ❯                                                                                                │
+╰───────────────────────────────────────────────────────────────────── snapshot-model (high) • 0% ─╯

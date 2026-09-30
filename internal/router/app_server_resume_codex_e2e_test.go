@@ -5,12 +5,15 @@ package router
 import (
 	"bytes"
 	"context"
+	json "encoding/json/v2"
 	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -25,11 +28,24 @@ import (
 )
 
 type appResumeProvider struct {
-	mu      sync.Mutex
-	threads []string
+	mu       sync.Mutex
+	threads  []string
+	settings []appResumeInferenceSettings
 }
 
-func (p *appResumeProvider) forwardExecution(_, _ context.Context, _ []byte, headers http.Header, _ string) (*http.Response, error) {
+type appResumeInferenceSettings struct {
+	Model     string `json:"model"`
+	Tier      string `json:"service_tier"`
+	Reasoning struct {
+		Effort string `json:"effort"`
+	} `json:"reasoning"`
+}
+
+func (p *appResumeProvider) forwardExecution(_, _ context.Context, body []byte, headers http.Header, _ string) (*http.Response, error) {
+	var settings appResumeInferenceSettings
+	if err := json.Unmarshal(body, &settings); err != nil {
+		return nil, err
+	}
 	thread := headers.Get(threadIDHeader)
 	if thread == "" {
 		metadata, _ := decodeCodexTurnMetadata(headers)
@@ -37,8 +53,22 @@ func (p *appResumeProvider) forwardExecution(_, _ context.Context, _ []byte, hea
 	}
 	p.mu.Lock()
 	p.threads = append(p.threads, thread)
+	p.settings = append(p.settings, settings)
 	p.mu.Unlock()
 	return routerFaultCodexSuccessResponse(), nil
+}
+
+func (p *appResumeProvider) assertSettings(t *testing.T, index int, model, effort, tier string) {
+	t.Helper()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if index >= len(p.settings) {
+		t.Fatalf("missing inference %d: %d requests", index, len(p.settings))
+	}
+	got := p.settings[index]
+	if got.Model != model || got.Reasoning.Effort != effort || got.Tier != tier {
+		t.Fatalf("inference %d settings: %+v, want %s/%s/%s", index, got, model, effort, tier)
+	}
 }
 
 func (p *appResumeProvider) snapshot() []string {
@@ -61,6 +91,7 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 	environment := routerFaultCodexEnvironment(t)
 	workspace := t.TempDir()
 	model := "gpt-6-astra"
+	var extraOverrides []string
 	providerName := "savedpreview"
 	newCommand := func(ctx context.Context) *exec.Cmd {
 		cmd := exec.CommandContext(ctx, codex, "app-server",
@@ -70,6 +101,7 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 		if model != "" {
 			cmd.Args = append(cmd.Args, "-c", "model="+strconv.Quote(model))
 		}
+		cmd.Args = append(cmd.Args, extraOverrides...)
 		cmd.Env = environment
 		cmd.Dir = workspace
 		return cmd
@@ -77,9 +109,17 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 
 	first := startAppResumeTerminal(t, newCommand, "")
 	first.await("Ready")
+	first.send("/model gpt-6-sol\r")
+	first.await("gpt-6-sol")
+	first.send("/reasoning high\r")
+	first.await("gpt-6-sol (high)")
+	first.send("/tier flex\r")
+	first.await("gpt-6-sol (high) · flex")
 	first.send("First resume question\r")
 	first.await("Recovered after a retry.")
 	first.await("completed")
+	first.send("/tier priority\r") // Idle changes after the last turn must also restore.
+	first.await("Settings saved")
 	first.send("\x022") // Focus Diff, then widen Main before persisting this UI state.
 	first.await("s files")
 	first.send("\x02l")
@@ -93,10 +133,38 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 		t.Fatalf("first turn identities: %q", threads)
 	}
 	thread := threads[0]
+	provider.assertSettings(t, 0, "gpt-6-sol", "high", "flex")
+	foundSaved := false
+	for _, variable := range environment {
+		if home, ok := strings.CutPrefix(variable, "CODEX_HOME="); ok {
+			err := filepath.WalkDir(filepath.Join(home, "sessions"), func(path string, entry fs.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				if entry.IsDir() || !strings.HasSuffix(path, ".jsonl") {
+					return nil
+				}
+				if saved := readResumeSettings(appServerThreadInfo{ID: thread, Path: path}, time.Time{}); saved["model"] != nil {
+					foundSaved = true
+					if saved["model"] != "gpt-6-sol" || saved["model_reasoning_effort"] != "high" || saved["service_tier"] != "priority" {
+						t.Fatalf("host persisted settings: %#v", saved)
+					}
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if !foundSaved {
+		t.Fatal("host did not retain the completed thread's settings")
+	}
 
 	model, providerName = "", "preview"
 	second := startAppResumeTerminal(t, newCommand, "--last")
 	second.await("Ready")
+	second.await("gpt-6-sol (high)") // Retained usage can crowd the tier out of the narrow footer.
 	second.await("First resume question")
 	second.await("Recovered after a retry.")
 	second.awaitMatch("restored Diff focus and split", func(screen string) bool {
@@ -111,16 +179,29 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 	second.await("completed")
 	second.quit()
 	threads = provider.snapshot()
+	provider.assertSettings(t, 1, "gpt-6-sol", "high", "priority")
 	if len(threads) != 2 || threads[1] != thread {
 		t.Fatalf("turns did not retain one thread with no duplicate submission: %q", threads)
 	}
-	model = "gpt-6-sol"
+	model = "gpt-6-astra"
 	third := startAppResumeTerminal(t, newCommand, thread)
 	third.await("Ready")
-	third.await("gpt-6-sol")
+	third.await("gpt-6-astra (high)")
+	third.send("Explicit model keeps saved effort and tier\r")
+	third.await("completed")
 	third.quit()
-	if got := provider.snapshot(); len(got) != 2 {
-		t.Fatalf("model override resume resent a turn: %q", got)
+	provider.assertSettings(t, 2, "gpt-6-astra", "high", "priority")
+	model = ""
+	extraOverrides = []string{"-c", `model_reasoning_effort="low"`, "-c", `service_tier="flex"`}
+	fourth := startAppResumeTerminal(t, newCommand, thread)
+	fourth.await("Ready")
+	fourth.await("gpt-6-astra (low)")
+	fourth.send("Explicit effort and tier keep saved model\r")
+	fourth.await("completed")
+	fourth.quit()
+	provider.assertSettings(t, 3, "gpt-6-astra", "low", "flex")
+	if got := provider.snapshot(); len(got) != 4 {
+		t.Fatalf("resume resent an unrequested turn: %q", got)
 	}
 }
 

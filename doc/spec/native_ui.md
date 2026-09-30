@@ -122,10 +122,26 @@ status line, leaves an error row with the recorded failure. Buffered notificatio
 item identity. Historical tools are display-only: they do not recreate live
 edit previews, processes or delivery receipts. Subsequent input
 starts a turn on the same thread; an active snapshot retains its steer/interrupt
-target. Resume keeps the returned workspace and effective model metadata, with
-journal sinks scoped to that thread. Explicit invocation model/effort settings
-and the routed provider are forwarded as resume overrides; Codex owns their
-precedence and reports the effective configuration. Full-history
+target. Resume keeps the returned workspace, with journal sinks scoped to that
+thread. Startup and in-session resume restore the last saved model, reasoning
+effort and service tier, including changes before the first turn and idle changes
+after the last turn. Successfully applied settings survive a fresh router/process
+through workspace/thread-scoped preferences; an explicit default/null selection
+is saved intent, not missing evidence. Failed or pending changes cannot replace
+the saved settings, and a branch or another workspace cannot borrow them.
+Restoration requires a host-resumable thread; retaining preferences cannot create
+host session history for a conversation that has not had its first turn.
+Explicit invocation flags take precedence independently for each named setting;
+the routing provider remains invocation-local. Missing retained settings leave
+Codex defaults in effect, with a notice when no saved model settings are available.
+When preferences and host history both exist, newer host settings take precedence.
+Missing tier evidence retains Codex's tier default. Preference-storage failures
+are visible in Activity without blocking the applied host setting. Restoration
+must finish before accepting resumed input and cannot modify user configuration
+or replay a turn. Rejected default-reasoning restoration returns waiting input
+to the composer without submitting it; successful restoration or an explicit
+reasoning selection releases the gate. The [UI boundary](../architecture/ui.md)
+owns settings evidence and the host RPC boundary. Full-history
 resume is limited by the 16 MiB RPC frame cap; oversized histories fail rather
 than bypassing the transport bound. Main's paginated hydration remains unfinished.
 
@@ -669,9 +685,13 @@ implements instant steering by aborting a turn or replaying a tool.
 
 `/compact` asks Codex to compact the current conversation. While busy it appears
 in the pending-input list and runs after the active turn; it never replaces that
-turn or becomes model input. It separates surrounding text batches, and later
-input waits until compaction finishes. Interrupt restores a still-queued command
-along with other unsent input. Host compaction progress and failures remain visible.
+turn, and the command itself never becomes model input. It separates surrounding
+text batches, and later input waits until compaction finishes. Successful busy-queued
+compaction continues with waiting input, or sends one visible task-continuation
+message if none is waiting. Idle `/compact` stays idle. Failure or interruption
+cancels automatic continuation, including an interrupt racing successful completion.
+Interrupt restores a still-queued command along with other unsent input. Host
+compaction progress and failures remain visible.
 `/clear` clears Main, Activity, and journal presentation and starts a fresh Codex
 session with the current workspace and model settings. It is unavailable while a
 task or submission is in progress. Existing saved threads and filesystem changes

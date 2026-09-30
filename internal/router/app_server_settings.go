@@ -57,10 +57,14 @@ func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
 	unchanged := true
 	for field, value := range change {
 		switch field {
+		case "collaborationMode":
+			// Resume passes the host-returned snapshot with only its effort
+			// cleared. A changed complete mode requires host confirmation.
+			unchanged = false
 		case "model":
 			unchanged = unchanged && value == u.model
 		case "effort":
-			unchanged = unchanged && value == u.reasoningEffort
+			unchanged = unchanged && (value == u.reasoningEffort || value == nil && u.reasoningEffort == "")
 		case "serviceTier":
 			// Codex normalizes the legacy fast spelling to priority.
 			// Source: codex-rs/core/src/session/step_settings.rs:274:283@86be5320
@@ -73,6 +77,10 @@ func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
 	// needs no thread update, but can still repair a previously rejected live one.
 	if unchanged {
 		if u.turn == "" {
+			if _, explicit := change["effort"]; explicit && u.resumeClearEffort {
+				u.resumeClearEffort = false
+				u.retainAppliedSettings()
+			}
 			u.setNotice("Settings unchanged", false)
 			return true, nil
 		}
@@ -240,7 +248,13 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	if method == "thread/settings/update" || method == "turn/settings/update" {
 		if m.Error != nil {
 			u.settingsPending, u.settingsChange = false, nil
-			u.setNotice(method+": "+m.Error.Message, true)
+			if u.resumeClearEffort {
+				u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
+				u.unsent, u.queued = nil, nil
+				u.setNotice("Could not restore default reasoning: "+m.Error.Message+" · choose /effort VALUE or restart resume", true)
+			} else {
+				u.setNotice(method+": "+m.Error.Message, true)
+			}
 			return true, nil
 		}
 		// Thread RPC acknowledges enqueueing only; the notification is authoritative.
@@ -299,6 +313,10 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		u.session.cwd = event.Settings.Cwd
 	}
 	u.model, u.reasoningEffort, u.serviceTier = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
+	if _, explicit := u.settingsChange["effort"]; explicit || u.reasoningEffort == "" {
+		u.resumeClearEffort = false
+	}
+	u.retainAppliedSettings()
 	if !u.settingsPending || u.settingsChange == nil {
 		return true, nil
 	}
@@ -313,6 +331,9 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	} else {
 		u.settingsPending = false
 		u.setNotice("Settings saved for next turn", false)
+		if u.resumeClearEffort {
+			u.setNotice("Default reasoning still needs restoration · choose /effort VALUE or restart resume", true)
+		}
 	}
 	return true, nil
 }

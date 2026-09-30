@@ -17,12 +17,13 @@ type resumeTestRequest struct {
 	ID     int    `json:"id"`
 	Method string `json:"method"`
 	Params struct {
-		ThreadID    string   `json:"threadId"`
-		Cwd         *string  `json:"cwd"`
-		Cursor      string   `json:"cursor"`
-		Ancestor    string   `json:"ancestorThreadId"`
-		SourceKinds []string `json:"sourceKinds"`
-		Limit       int      `json:"limit"`
+		ThreadID     string   `json:"threadId"`
+		IncludeTurns *bool    `json:"includeTurns"`
+		Cwd          *string  `json:"cwd"`
+		Cursor       string   `json:"cursor"`
+		Ancestor     string   `json:"ancestorThreadId"`
+		SourceKinds  []string `json:"sourceKinds"`
+		Limit        int      `json:"limit"`
 	} `json:"params"`
 }
 
@@ -38,6 +39,17 @@ func resumeTestOne(t *testing.T, w *appServerTestInput, method string) resumeTes
 		t.Fatalf("requests = %+v, want one %s", requests, method)
 	}
 	return requests[0]
+}
+
+// Complete the metadata-only settings preflight before asserting the resume RPC.
+func resumeTestPrepared(t *testing.T, u *appServerUI, w *appServerTestInput) resumeTestRequest {
+	t.Helper()
+	read := resumeTestOne(t, w, "thread/read")
+	if read.Params.IncludeTurns == nil || *read.Params.IncludeTurns || read.Params.ThreadID == "" {
+		t.Fatalf("resume preflight read: %+v", read)
+	}
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":%q}}}`, read.ID, read.Params.ThreadID))
+	return resumeTestOne(t, w, "thread/resume")
 }
 
 // resumeTestSettle answers restoration and setup requests with empty results
@@ -123,7 +135,7 @@ func TestAppServerResumePickerStartup(t *testing.T) {
 		t.Fatalf("picker frame shows wrong rows or columns:\n%s", frame)
 	}
 	resumeTestKeys(t, u, "\x1b[B", "\r")
-	resume := resumeTestOne(t, w, "thread/resume")
+	resume := resumeTestPrepared(t, u, w)
 	if resume.Params.ThreadID != "named" || u.resumePicker != nil || u.resumeThread != "named" {
 		t.Fatalf("picker resumed %+v; state resume=%q", resume.Params, u.resumeThread)
 	}
@@ -232,7 +244,7 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 	list = resumeTestOne(t, w, "thread/list")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[{"id":"main","preview":"old transcript"},{"id":"saved","preview":"Saved question"}],"nextCursor":null}}`, list.ID))
 	resumeTestKeys(t, u, "\x1b[B", "\r")
-	resume := resumeTestOne(t, w, "thread/resume")
+	resume := resumeTestPrepared(t, u, w)
 	if resume.Params.ThreadID != "saved" || !u.clearing || u.thread != "main" || len(u.view.entries) != 1 {
 		t.Fatalf("switch request/state: %+v thread=%q entries=%+v", resume.Params, u.thread, u.view.entries)
 	}
@@ -268,7 +280,7 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 
 	// Returning readmits the first session's events.
 	appServerTestKeys(t, u, "/resume main\r")
-	back := resumeTestOne(t, w, "thread/resume")
+	back := resumeTestPrepared(t, u, w)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"main","cwd":"/work","turns":[]}}}`, back.ID))
 	resumeTestSettle(t, u, w)
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"again"}}}`)
@@ -281,7 +293,7 @@ func TestAppServerResumeSwitchFailureKeepsSession(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
 	appServerTestUserMessage(t, u, "old-user", "", "keep this")
 	appServerTestKeys(t, u, "/resume missing\r")
-	resume := resumeTestOne(t, w, "thread/resume")
+	resume := resumeTestPrepared(t, u, w)
 	appServerTestKeys(t, u, "held\r")
 	appServerTestUserMessage(t, u, "during", "", "arrived while switching")
 	if len(resumeTestRequests(t, w)) != 0 {
@@ -381,7 +393,7 @@ func TestAppServerResumeSwitchKeepsCurrentSessionLive(t *testing.T) {
 	u.session.registerThread(appServerThreadInfo{ID: "child", ParentThreadID: "main", AgentNickname: "worker", AgentRole: "worker",
 		Source: jsontext.Value(`{"subAgent":{"thread_spawn":{"agent_path":"/root/worker","agent_role":"worker"}}}`)})
 	appServerTestKeys(t, u, "/resume saved\r")
-	resume := resumeTestOne(t, w, "thread/resume")
+	resume := resumeTestPrepared(t, u, w)
 	for range 300 {
 		appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"child","turnId":"c","itemId":"m","delta":"x"}}`)
 	}
@@ -418,7 +430,7 @@ func TestAppServerResumeSwitchWaitsForDiffResync(t *testing.T) {
 	sub := auto.events.subscribe()
 	u.shell.applyDiff(t.Context(), <-sub.events)
 	appServerTestKeys(t, u, "/resume saved\r")
-	resume := resumeTestOne(t, w, "thread/resume")
+	resume := resumeTestPrepared(t, u, w)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"saved","cwd":%q,"turns":[]}}}`, resume.ID, workspace))
 	resumeTestSettle(t, u, w)
 	if u.status != "Restoring saved Diff…" || u.restoring == nil {

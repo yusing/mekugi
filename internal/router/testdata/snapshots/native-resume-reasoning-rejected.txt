@@ -1,0 +1,16 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+╭─ Ready · ✗ Could not restore default reasoning: host rejected update · choose /effort VALUE or… ─╮
+│ ❯ held input                                                                                     │
+╰──────────────────────────────────────────────────────────────────────── saved-model (high) • 0% ─╯
