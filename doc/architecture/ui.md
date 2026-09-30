@@ -8,7 +8,8 @@ capture, accounting, or replay authority. Observable terminal behavior belongs t
 [capture-owned metrics contract](metrics.md).
 
 - `internal/ui/activity` owns display blocks, journal-result layout, Markdown and
-  syntax presentation, agent labels/colors, and reasoning/status animation. Its journal
+  syntax presentation, source-aware Markdown copy annotations and reconstruction,
+  agent labels/colors, and reasoning/status animation. Its journal
   model is a presentation value, not the durable journal or a delivery receipt.
 - `internal/ui/diffview` owns file/change navigation and live preview cards, including
   their viewport and reveal animation. It consumes shared `internal/livediff` models
@@ -25,7 +26,13 @@ capture, accounting, or replay authority. Observable terminal behavior belongs t
 The router remains the integration owner for the native session, composer, transcript
 and roster state, and app-server event reconciliation. It adapts authenticated activity,
 scoped replay/change observations, accounting, and journal publications into display
-values. Journal acknowledgements remain with their owner and occur only after the
+values. Shared Markdown annotations travel with rendered fragments through wrapping,
+record layouts, gutters and viewport clipping. The router resolves them against the
+composed visible frame and removes their private transport before terminal delivery.
+A selection snapshots those annotations with its rows, so later streaming cannot
+change the selected source. Atomic submitted tokens consume the same bound composer
+spans through Codex text elements, rather than recognizing lookalike prompt text.
+Journal acknowledgements remain with their owner and occur only after the
 terminal write succeeds. Preview workers and brokers remain with router observation,
 not the view package. The launcher still owns invocation configuration and cancellation
 before handoff; the native client never executes model-requested tools.

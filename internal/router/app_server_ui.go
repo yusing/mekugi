@@ -869,10 +869,14 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 }
 
 func (u *appServerUI) key(key byte) (bool, error) {
+	if u.paste {
+		u.pasteByte(key)
+		return false, nil
+	}
 	if u.questions.active != nil && !u.questions.painted {
 		u.hideQuestions()
 	}
-	if !u.paste && u.escape == "" && key != 27 {
+	if u.escape == "" && key != 27 {
 		if handled, err := u.questionKey(string([]byte{key})); handled {
 			return false, err
 		}
@@ -881,16 +885,16 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	if u.statusPanelKey(string([]byte{key})) {
 		return false, nil
 	}
-	if !u.paste && u.escape == "" && key != 27 && u.pickerKey(string([]byte{key})) {
+	if u.escape == "" && key != 27 && u.pickerKey(string([]byte{key})) {
 		return false, nil
 	}
-	if u.escape == "\x1b" && (key == 127 || key == 8) && !u.paste {
+	if u.escape == "\x1b" && (key == 127 || key == 8) {
 		u.escape = ""
 		u.deleteWord(true)
 		return false, nil
 	}
 	// macOS terminals commonly encode Option+Left/Right as Meta-b/f.
-	if u.escape == "\x1b" && (key == 'b' || key == 'f') && !u.paste {
+	if u.escape == "\x1b" && (key == 'b' || key == 'f') {
 		sequence := u.escape + string(key)
 		u.escape = ""
 		u.moveDraft(sequence)
@@ -902,7 +906,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.pickerKey("\x1b")
 		u.escape = ""
 	}
-	if !u.paste && u.escape == "" {
+	if u.escape == "" {
 		if u.currentQuestion() == nil && key == '?' && u.draft == "" && (u.shell == nil || u.shell.focus == 0) {
 			u.keybindings = !u.keybindings
 			return false, nil
@@ -915,13 +919,11 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		if key >= 0x40 && key <= 0x7e || len(u.escape) > 32 {
-			if !u.paste {
-				if handled, err := u.questionKey(u.escape); handled {
-					u.escape = ""
-					return false, err
-				}
+			if handled, err := u.questionKey(u.escape); handled {
+				u.escape = ""
+				return false, err
 			}
-			if !u.paste && u.pickerKey(u.escape) {
+			if u.pickerKey(u.escape) {
 				u.escape = ""
 				return false, nil
 			}
@@ -929,67 +931,32 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			case "\x1b[1;2A", "\x1b[1;2B":
 				sequence := u.escape
 				u.escape = ""
-				if !u.paste {
-					return false, u.stepReasoning(strings.HasSuffix(sequence, "A"))
-				}
+				return false, u.stepReasoning(strings.HasSuffix(sequence, "A"))
 			case "\x1b[1;3A", "\x1b[1;2D":
-				if !u.paste {
-					u.editQueued()
-				}
+				u.editQueued()
 			case "\x1b[122;6u":
-				if !u.paste {
-					u.undoDraft(true)
-				}
+				u.undoDraft(true)
 			case "\x1b[3;3~":
-				if !u.paste {
-					u.deleteWord(false)
-				}
+				u.deleteWord(false)
 			case "\x1b[127;3u", "\x1b[8;3u":
-				if !u.paste {
-					u.deleteWord(true)
-				}
+				u.deleteWord(true)
 			case "\x1b[3~":
-				if !u.paste {
-					u.deleteDraft(false)
-				}
+				u.deleteDraft(false)
 			case "\x1b[200~":
 				u.paste = true
+				u.pasted = nil
 				u.run = runNone
-			case "\x1b[201~":
-				u.paste = false
-				if u.picker.modal == "manage" {
-					u.picker.query += string(u.pasted)
-					u.pasted = nil
-				} else if u.picker.modal == "menu" || u.picker.modal == "copy" || u.picker.modal == "settings" {
-					u.pasted = nil
-				} else {
-					u.finishPaste()
-				}
-				u.picker.dismissed, u.picker.open = u.completionTarget(), false
+			case "\x1b[201~": // A stray terminator is not composer input.
+
 			case "\x1b[5~":
-				if !u.paste {
-					u.view.scrollKey('b')
-				}
+				u.view.scrollKey('b')
 			case "\x1b[6~":
-				if !u.paste {
-					u.view.scrollKey(' ')
-				}
+				u.view.scrollKey(' ')
 			default:
 				// Only caret movement ends an edit run; forward deletes still group.
-				if !u.paste {
-					u.moveDraft(u.escape)
-				}
+				u.moveDraft(u.escape)
 			}
 			u.escape = ""
-		}
-		return false, nil
-	}
-	if u.paste {
-		if key == '\r' {
-			key = '\n'
-		}
-		if key >= 32 || key == '\n' || key == '\t' {
-			u.pasted = append(u.pasted, key)
 		}
 		return false, nil
 	}
@@ -1211,6 +1178,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
 			dockRect.y++
 			u.composerRect.y++
+			if u.btw != nil && u.btw.rect.h > 0 {
+				u.btw.rect.y++
+			}
 			u.view.feedTop++
 		}()
 	}
@@ -1299,6 +1269,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	u.view.feedQuestions, u.view.feedSnippets = nil, nil
 	if room > 0 {
 		frame = u.view.render(width, room, u.now())
+		for row := range frame {
+			frame[row] = activityui.AttachCopy(frame[row], u.view.copyRows[row])
+		}
 		if u.keybindings && (u.shell == nil || u.shell.focus == 0) {
 			u.mainContentPainted = false
 			frame = renderNativeKeybindings(width, room)
@@ -1316,6 +1289,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	dockAt := len(frame)
 	frame = append(frame, make([]string, dock)...)
 	frame = append(frame, pending...)
+	if u.btw != nil {
+		u.btw.rect = terminalRect{2, len(frame) + 1, max(0, width-2), max(0, len(btwRows)-2)}
+	}
 	frame = append(frame, btwRows...)
 	u.questions.rect = terminalRect{0, len(frame), width, len(questionRows)}
 	frame = append(frame, questionRows...)
@@ -1467,7 +1443,7 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 }
 
 func (u *appServerUI) sessionAnimating() bool {
-	return !u.alert && (u.turn != "" || u.starting || u.submission.text != "" || u.restoring != nil || u.thread == "")
+	return u.btw != nil && (u.btw.busy || u.btw.starting) || !u.alert && (u.turn != "" || u.starting || u.submission.text != "" || u.restoring != nil || u.thread == "")
 }
 
 func (u *appServerUI) sessionLabel(now time.Time) string {

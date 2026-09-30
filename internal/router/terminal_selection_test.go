@@ -302,7 +302,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 		if activity {
 			mention = "[Selected activity] "
 		}
-		if u.draft != mention || len(u.selections) != 1 || u.selections[0].text != "report" {
+		if u.draft != mention || len(u.selections) != 1 || u.selections[0].text != "[report](</tmp/my project/report.go:12>)" {
 			t.Fatalf("reference=%q %+v", u.draft, u.selections)
 		}
 	}

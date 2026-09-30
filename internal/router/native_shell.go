@@ -400,6 +400,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			// roster's targets, which were laid out before the Activity pane.
 			rosterHits := u.agents.hits
 			body = u.agents.render(iw, content, now)
+			for row := range body {
+				body[row] = activityui.AttachCopy(body[row], u.agents.copyRows[row])
+			}
 			u.agents.hits = rosterHits
 			if u.main != nil {
 				u.main.updateHistoryHint()
@@ -429,6 +432,10 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	}
 	rows[height-1] += "\x1b[1G\x1b[0m" + ansi.Truncate(u.nativeStatus(), width, "")
 	u.layout = l
+	copyRows := make([][]activityui.CopySpan, len(rows))
+	for y := range rows {
+		rows[y], copyRows[y] = activityui.ExtractCopy(rows[y])
+	}
 	u.paintSelection(rows)
 	var b strings.Builder
 	b.WriteString(u.clipboard)
@@ -448,6 +455,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	if err == nil {
 		u.clipboard = ""
 		u.paintedRows, u.paintedWidth = rows, u.width
+		u.paintedCopy = copyRows
 	}
 	return err
 }

@@ -454,7 +454,9 @@ Delivery uses OSC 52 and reports a request sent, not confirmed clipboard access.
 `/btw QUESTION` asks a temporary side question without switching away from Main,
 steering it, interrupting it, or adding side messages to its conversation. This is
 not `/fork` or `/side`: only the side question and streamed answer appear in a
-bounded Markdown dock above the composer, alongside queued input. Ordinary
+bounded Markdown dock above the composer, alongside queued input. While answering,
+its Answering label shimmers and shows elapsed time separated by a bullet, such as
+`Answering · 1m15s`; it stops when the side turn completes or fails. Ordinary
 composer input continues to target Main. `/btw QUESTION` after completion follows
 up in the same side conversation and replaces the dock's displayed exchange.
 While the side answer is running, another `/btw` remains an unsent draft with a
@@ -485,8 +487,12 @@ capability, avoiding model prewarm and streaming turns to the router over HTTP.
 The fork does not replace provider transport settings. The router's upstream
 WebSocket support remains unchanged. No warmup response is fabricated or discarded.
 
-PgUp/PgDn scroll the side answer while the dock is open. Esc, after dismissing
-active questions or command menus, closes the dock without changing the main
+The question and visible answer are selectable through the shared Reference, Copy,
+and Clear actions, excluding the dock border, status and hints. Selected answer
+content uses the same source-aware Markdown copying as Main and Activity.
+PgUp/PgDn scroll the side answer while the dock is open, dismissing a selection.
+Esc first clears a selection. After dismissing active questions or command menus,
+it closes the dock without changing the main
 draft or canceling Main. It cancels only a running side turn and unsubscribes its
 thread; delayed fork/start acknowledgements still finish that cleanup and cannot
 replace a newer dock. The display retains at most 256 KiB across 256 answer items
@@ -566,16 +572,26 @@ The enable/disable management view remains Codex-owned: managed catalog entries
 are selectable references, but are never sent to `skills/config/write` with an
 invented path. Their selection is configured through `skills-mgr`.
 
-Dragging across text in Main, the composer, Activity, or the saved Diff selects the
-visible text and offers Reference (R), Copy (Ctrl+C, also C), and Clear (Escape) in
+Dragging across text in Main, the composer, Activity, a side-question dock, or the
+saved Diff selects the visible text and offers Reference (R), Copy (Ctrl+C, also C), and Clear (Escape) in
 the status bar. Selection actions and the existing pane shortcut bar share bold key
 labels and bullet separators. Composer selection excludes its prompt and borders;
 Diff selection covers only the source column, excluding the file navigator, gutters,
-and line numbers, and keeps each row's `+`, `-`, or space marker. A press in the Diff
-still reaches the pane, so clicks keep their meaning.
+and line numbers, and keeps each row's `+`, `-`, or space marker. Markdown selections
+reconstruct only selected source fragments, balancing inline formatting and
+preserving code indentation, trailing whitespace, blank code rows, and hard breaks.
+Soft wraps rejoin logical lines rather than inserting display newlines. Selected
+table cells reconstruct Markdown independently of grid wrapping or narrow record
+layouts; unselected cells remain empty, with a structural header and delimiter
+when needed. Reconstructed tables retain their source blockquote nesting, without
+copying the visible quote bars. A single selected cell without a selected separator
+copies just its content. Forward and reverse drags use the same source ranges; wide graphemes
+are never split. Pinned replies use the same annotations as transcript content.
+A press in the Diff still reaches the pane, so clicks keep their meaning.
 Reference inserts a concise mention at the composer caret without submitting:
 `[Selected message]` from Main, `[Selected activity]` from Activity,
-`[Selected text]` from the composer, `[Selected status]` from the status panel,
+`[Selected text]` from the composer, `[Selected side answer]` from the side-question
+dock, `[Selected status]` from the status panel,
 and `[Selected diff hunk @amber1:42-45]` from the Diff, naming the selected
 rows' change and gutter lines (`:42` for one line). Lines are new-file
 coordinates, or old-file ones when only deletions are selected. A composed file
@@ -639,7 +655,12 @@ image from the desktop clipboard and inserts a highlighted, atomic `[Image N]`
 attachment. A bracketed paste that is exactly one absolute path to a PNG, JPEG
 or GIF file (plain, shell-quoted or escaped, or a local `file://` URL) attaches
 that file the same way, followed by a space; the file stays user-owned and is
-never removed. Other pastes insert as text. Images are individual units for character and word navigation and
+never removed. Other pastes insert as text. Bracketed-paste payloads never execute key or escape-sequence commands; only
+the exact closing marker ends a paste. Terminal control sequences are removed
+after the payload boundary is found.
+A partial escape inside pasted content cannot swallow that marker, combine
+consecutive pastes, or leave the composer locked. Editing resumes immediately
+after an image-path paste without requiring another paste. Images are individual units for character and word navigation and
 deletion, including when immediately adjacent to text. Ctrl+Z undoes and Ctrl+Y
 redoes draft edits; each typed word, run of Backspace or Delete presses,
 bracketed paste, attachment, draft clear, and editor save is an undoable unit. History is bounded to 100 edits and resets on submission.

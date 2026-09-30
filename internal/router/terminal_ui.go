@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
@@ -43,6 +44,7 @@ type terminalUI struct {
 	layout                                         terminalLayout
 	paneTabs                                       [5]terminalRect // Visible status-bar selectors, indexed by pane.
 	paintedRows                                    []string
+	paintedCopy                                    [][]activityui.CopySpan
 	paintedWidth                                   int
 	faint                                          bool // Output capability is local to this terminal, not request or global state.
 }
@@ -353,7 +355,12 @@ func (u *terminalUI) send(s string) error {
 		return nil
 	}
 	if u.main != nil && u.focus == 0 && !u.main.paste {
+		if s == "\x1b" && u.selection != nil {
+			u.selection = nil
+			return nil
+		}
 		if handled, err := u.main.btwKey(s); handled {
+			u.selection = nil
 			return err
 		}
 	}

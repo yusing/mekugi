@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/appserver"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
@@ -205,7 +206,7 @@ func (d composerDraft) input() []map[string]any {
 				})
 			}
 		}
-		part["textElements"] = elements
+		part["text_elements"] = elements
 		input = append(input, part)
 	}
 	at := 0
@@ -286,4 +287,54 @@ func clipboardImage(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return file.Name(), nil
+}
+
+// Paste payload is opaque. Match only the complete terminator, even after an
+// incomplete OSC/CSI or a second Escape; no payload byte enters the key parser.
+func (u *appServerUI) pasteByte(key byte) {
+	u.pasted = append(u.pasted, key)
+	const end = "\x1b[201~"
+	if key != '~' || !bytes.HasSuffix(u.pasted, []byte(end)) {
+		return
+	}
+	u.pasted = u.pasted[:len(u.pasted)-len(end)]
+	u.paste = false
+	u.escape = ""
+	// Normalize terminal line endings only after finding the exact boundary.
+	u.pasted = pasteText(u.pasted)
+	switch u.picker.modal {
+	case "manage":
+		u.picker.query += string(u.pasted)
+		u.pasted = nil
+	case "menu", "copy", "settings":
+		u.pasted = nil
+	default:
+		u.finishPaste()
+	}
+	u.picker.dismissed, u.picker.open = u.completionTarget(), false
+	u.refreshPicker()
+}
+
+// Keep the composer's existing text-only paste contract, but sanitize only
+// after delimiting the payload. A partial escape can no longer eat its boundary.
+func pasteText(payload []byte) []byte {
+	var text []byte
+	for len(payload) > 0 {
+		b := payload[0]
+		if b == 27 && len(payload) > 1 && (payload[1] == '[' || payload[1] == ']') {
+			_, _, n, _ := ansi.DecodeSequence(payload, 0, nil)
+			if n > 0 {
+				payload = payload[n:]
+				continue
+			}
+		}
+		payload = payload[1:]
+		if b == '\r' {
+			b = '\n'
+		}
+		if b >= 32 || b == '\n' || b == '\t' {
+			text = append(text, b)
+		}
+	}
+	return text
 }

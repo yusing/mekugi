@@ -3,6 +3,7 @@ package router
 import (
 	json "encoding/json/v2"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
@@ -22,6 +23,8 @@ type appServerBTW struct {
 	truncated                      bool
 	attachmentNotice               string
 	scroll, rows                   int
+	started                        time.Time
+	rect                           terminalRect
 }
 
 type btwAnswer struct{ id, text string }
@@ -56,6 +59,7 @@ func (u *appServerUI) submitBTW() error {
 	b.attachmentNotice = b.pending.attachmentNotice
 	b.question, b.answer, b.scroll = question, nil, 0
 	b.truncated = false
+	b.started = time.Time{}
 	b.busy, b.alert, b.status = true, false, "Waiting for Main's submission…"
 	u.setNotice("", false)
 	return u.flushBTW()
@@ -114,7 +118,8 @@ func (u *appServerUI) flushBTW() error {
 		}
 		return u.btwRequest(b, "thread/fork", params)
 	}
-	b.starting, b.status = true, "Answering…"
+	b.starting, b.status = true, "Answering"
+	b.started = u.now()
 	input := b.pending.input()
 	input = append(appserver.Input("This is a /btw side question. Answer only the side question using the conversation context. Do not continue the main task or use tools."), input...)
 	textBytes := 0
@@ -362,7 +367,12 @@ func (u *appServerUI) btwRows(width, height int) []string {
 	if b.alert {
 		color = activityui.Red
 	}
-	label := " /btw · " + livediff.Safe(b.status, false)
+	status := livediff.Safe(b.status, false)
+	if (b.busy || b.starting) && b.status == "Answering" && !b.alert && !b.started.IsZero() {
+		elapsed := max(time.Duration(0), u.now().Sub(b.started))
+		status = activityui.ReasoningShimmer("Answering", elapsed, u.view.painter.Colors) + activityui.Dim + " · " + liveActivityAge(elapsed) + activityui.Reset
+	}
+	label := " /btw · " + status
 	rows := []string{ansi.Truncate(color+"╭─"+label+activityui.Reset, width, "…")}
 	inner := max(1, width-2)
 	question := activityui.Wrap(livediff.Safe(b.question, false), inner, true)
@@ -373,8 +383,9 @@ func (u *appServerUI) btwRows(width, height int) []string {
 		rows = append(rows, ansi.Truncate(activityui.Red+"│ "+livediff.Safe(b.attachmentNotice, false)+activityui.Reset, width, "…"))
 	}
 	var answer []string
-	for _, item := range b.answer {
-		answer = append(answer, u.view.painter.Markdown(livediff.Safe(item.text, false), inner)...)
+	for index, item := range b.answer {
+		u.view.painter.CopyScope = uint64(index + 1)
+		answer = append(answer, u.view.painter.Markdown(item.text, inner)...)
 	}
 	b.rows = max(0, height-len(rows)-1)
 	b.scroll = min(b.scroll, max(0, len(answer)-b.rows))

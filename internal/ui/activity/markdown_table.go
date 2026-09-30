@@ -7,8 +7,9 @@ import (
 )
 
 type markdownTable struct {
-	rows  [][]string
-	align []byte
+	rows   [][]string
+	align  []byte
+	copyID uint64
 }
 
 // Table recognition requires a complete delimiter row. Until it arrives,
@@ -103,11 +104,27 @@ func (p *Painter) markdownTable(table markdownTable, width int) []string {
 	n := len(table.align)
 	widths := make([]int, n)
 	styled := make([][]string, len(table.rows))
+	var copies [][]CopyFragment
+	if p.CopySource && !p.LayoutOnly {
+		copies = make([][]CopyFragment, len(table.rows))
+	}
+	identity := table.copyID
+	alignment := string(table.align)
 	total := 3*n + 1 // outside borders, separators, and cell padding
 	for r, row := range table.rows {
 		styled[r] = make([]string, n)
+		if copies != nil {
+			copies[r] = make([]CopyFragment, n)
+		}
 		for c, cell := range row {
 			styled[r][c] = p.Inline(cell)
+			if copies != nil {
+				f := copyInline(cell)
+				f.ID = copyID(cell, identity+uint64(r*n+c))
+				f.Table, f.Row, f.Cell, f.Align = identity, r, c, alignment
+				f.Hard = false
+				copies[r][c] = f
+			}
 			if r == 0 {
 				styled[r][c] = "\x1b[1m" + styled[r][c] + Reset
 			}
@@ -121,7 +138,7 @@ func (p *Painter) markdownTable(table markdownTable, width int) []string {
 		minimum += min(w, 4)
 	}
 	if minimum > width {
-		return p.markdownTableRecords(styled, width)
+		return p.markdownTableRecords(styled, copies, width)
 	}
 	for _, w := range widths {
 		total += w
@@ -141,14 +158,18 @@ func (p *Painter) markdownTable(table markdownTable, width int) []string {
 		for c, w := range widths {
 			parts[c] = strings.Repeat("─", w+2)
 		}
-		return Dim + left + strings.Join(parts, joint) + right + Undim
+		row := Dim + left + strings.Join(parts, joint) + right + Undim
+		if p.CopySource && !p.LayoutOnly {
+			row = copyTag(CopyFragment{Table: identity, Align: alignment, Rule: true, Width: ansi.StringWidth(row)}) + row
+		}
+		return row
 	}
 	lines := []string{border("┌", "┬", "┐")}
 	for r, row := range styled {
 		wrapped := make([][]string, n)
 		height := 1
 		for c, cell := range row {
-			wrapped[c] = tableCellLines(cell, widths[c])
+			wrapped[c] = p.copyTableCell(tableCellLines(cell, widths[c]), copies, r, c)
 			height = max(height, len(wrapped[c]))
 		}
 		for y := range height {
@@ -180,11 +201,11 @@ func (p *Painter) markdownTable(table markdownTable, width int) []string {
 	return append(lines, border("└", "┴", "┘"))
 }
 
-func (p *Painter) markdownTableRecords(rows [][]string, width int) []string {
+func (p *Painter) markdownTableRecords(rows [][]string, copies [][]CopyFragment, width int) []string {
 	var lines []string
 	if len(rows) == 1 {
-		for _, cell := range rows[0] {
-			lines = append(lines, tableCellLines(cell, width)...)
+		for c, cell := range rows[0] {
+			lines = append(lines, p.copyTableCell(tableCellLines(cell, width), copies, 0, c)...)
 		}
 		return lines
 	}
@@ -194,15 +215,22 @@ func (p *Painter) markdownTableRecords(rows [][]string, width int) []string {
 	}
 	for r, row := range rows[1:] {
 		if r > 0 {
-			lines = append(lines, Dim+strings.Repeat("─", width)+Undim)
+			rule := Dim + strings.Repeat("─", width) + Undim
+			if p.CopySource && !p.LayoutOnly {
+				f := copies[0][0]
+				f.Rule, f.Width = true, width
+				rule = copyTag(f) + rule
+			}
+			lines = append(lines, rule)
 		}
 		for c, cell := range row {
-			label := "\x1b[1m" + rows[0][c] + Reset + ": "
+			header := p.copyTableCell([]string{"\x1b[1m" + rows[0][c] + Reset}, copies, 0, c)[0]
+			label := header + ": "
 			if labelWidth > width/2 {
-				lines = append(lines, tableCellLines(strings.TrimSpace(label), width)...)
-				lines = append(lines, tableCellLines(cell, width)...)
+				lines = append(lines, p.copyTableCell(tableCellLines("\x1b[1m"+rows[0][c]+Reset+":", width), copies, 0, c)...)
+				lines = append(lines, p.copyTableCell(tableCellLines(cell, width), copies, r+1, c)...)
 			} else {
-				for i, part := range tableCellLines(cell, width-labelWidth) {
+				for i, part := range p.copyTableCell(tableCellLines(cell, width-labelWidth), copies, r+1, c) {
 					prefix := strings.Repeat(" ", labelWidth)
 					if i == 0 {
 						prefix = label + strings.Repeat(" ", labelWidth-ansi.StringWidth(label))
@@ -223,4 +251,11 @@ func tableCellLines(cell string, width int) []string {
 		rows[i] = ansi.Truncate(row, width, "…") + Reset + "\x1b]8;;\x1b\\"
 	}
 	return rows
+}
+
+func (p *Painter) copyTableCell(rows []string, copies [][]CopyFragment, row, column int) []string {
+	if copies == nil {
+		return rows
+	}
+	return p.copyWrapped(rows, copies[row][column], 0)
 }

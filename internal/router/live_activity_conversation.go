@@ -396,6 +396,7 @@ func (c *conversationLines) hang(lead, indent string, lines []string) {
 
 func (v *liveActivityView) conversationItem(first, last, width int, thread conversationThread) liveActivityRun {
 	entry := v.entries[first]
+	v.painter.CopyScope = entry.Seq
 	blocks := v.blocks[first]
 	if v.conversationEmpty(first) {
 		return liveActivityRun{}
@@ -511,7 +512,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 				}
 			}
 		}
-		out.hang(gutter, gutter, p.Markdown(livediff.Safe(entry.Text, false), width-2))
+		out.hang(gutter, gutter, p.Markdown(entry.Text, width-2))
 	default:
 		v.agentItem(&out, entry, blocks, first, width, thread)
 	}
@@ -530,7 +531,7 @@ func conversationHeading(glyph, name, detail string, entry activityPaneEntry, wi
 	if gap := width - ansi.StringWidth(head) - ansi.StringWidth(stamp); gap >= 2 {
 		head += strings.Repeat(" ", gap) + stamp
 	}
-	return head
+	return activityui.CopyDecoration(head)
 }
 
 // mainHeading and mainGutter mark Main's own replies the way agent traffic
@@ -562,8 +563,9 @@ func (v *liveActivityView) pinnedMainReply(width, height, rows int, feed liveAct
 		return nil
 	}
 	entry := *feed.mainReply
+	v.painter.CopyScope = entry.Seq
 	p := &v.painter
-	body := p.Markdown(livediff.Safe(entry.Text, false), max(1, width-2))
+	body := p.Markdown(entry.Text, max(1, width-2))
 	limit := budget - 2 // Heading and separator leave room for scrolling activity.
 	if len(body) > limit {
 		body = body[:limit]
@@ -631,7 +633,7 @@ func (v *liveActivityView) userItemContinued(out *conversationLines, entry activ
 		// Bound input stays literal; Markdown must not consume token text.
 		rows, _ = activityui.LayoutSpans(entry.Text, entry.native.spans, width-2)
 	} else {
-		rows = v.paintBlock(len(out.lines), 0, func() []string { return v.painter.Markdown(livediff.Safe(entry.Text, false), width-2) })
+		rows = v.paintBlock(len(out.lines), 0, func() []string { return v.painter.Markdown(entry.Text, width-2) })
 	}
 	if len(rows) == 0 {
 		rows = []string{""}

@@ -170,5 +170,5 @@ func (c *Client) Initialize() (string, error) {
 }
 
 func Input(text string) []map[string]any {
-	return []map[string]any{{"type": "text", "text": text, "textElements": []any{}}}
+	return []map[string]any{{"type": "text", "text": text, "text_elements": []any{}}}
 }

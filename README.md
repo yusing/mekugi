@@ -278,11 +278,14 @@ Mekugi differs in these ways:
 - **File contents attach.** `@!` also finds ignored files; neither picker lists
   VCS metadata such as `.git`. Selected text files attach their contents when
   you submit or queue the prompt, and large or unreadable files produce an
-  explicit omission notice instead of truncated content.
+  explicit omission notice instead of truncated content. Bound file references
+  use the same green highlighting in the composer and submitted messages.
 - **Select to mention.** Drag across Main, Activity, or the saved Diff and press
   `r` to add the selection as one short mention, such as `[Selected message]` or
   `[Selected diff hunk @amber1:42-45]`. The selected text is sent with the
-  prompt without filling the composer.
+  prompt without filling the composer. Selection copying and mentions preserve
+  Markdown formatting, selected table cells, code whitespace, and hard breaks,
+  without panel decoration.
 - **Skill references attach automatically.** Complete enabled `$skill-name`
   references bind when you finish the word or submit a pasted prompt. Composer
   and transcript use the same amber highlighting; unknown, disabled, or
@@ -322,8 +325,11 @@ Mekugi differs in these ways:
   `wl-paste` (Wayland) or `xclip` (X11).
 
 `/btw QUESTION` asks a side question about a snapshot of the conversation, even
-while Main is working. The answer streams in a panel above the composer. Repeat
-`/btw QUESTION` to follow up, use PgUp/PgDn to scroll, and press Esc to close;
+while Main is working. The answer streams in a panel above the composer, with
+shimmering Answering status and elapsed time. Drag across its content to copy or
+reference it, just as in Main. Repeat
+`/btw QUESTION` to follow up, use PgUp/PgDn to scroll, and press Esc to clear a
+selection or close the panel;
 Main keeps working and your draft stays. Closing discards the side
 conversation, and it can't be resumed.
 

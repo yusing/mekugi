@@ -65,6 +65,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		}
 	}()
 	text := livediff.Safe(entry.Text, false)
+	source := activityui.MarkdownSource(entry.Text)
 	switch entry.Kind {
 	case "journal_card":
 		return []activityui.Block{{Kind: "summary", Label: "Journal", Body: text, Collapsed: true}}
@@ -96,7 +97,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 			return []activityui.Block{{Kind: "message", From: entry.assignment.from, To: entry.assignment.to, Owner: entry.Agent, Body: livediff.Safe(entry.assignment.text, false)}}
 		}
 	case "reasoning":
-		block := activityui.Block{Kind: "summary", Body: text}
+		block := activityui.Block{Kind: "summary", Body: source}
 		if entry.native != nil {
 			block.Live = entry.native.phase == "summary" || entry.native.phase == "item/started"
 			block.Collapsed = entry.native.collapsed && block.Collapsible()
@@ -131,7 +132,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		}
 	case "final":
 		journal, _ := activityui.ParseJournal(text)
-		return []activityui.Block{{Kind: "final", Body: text, Journal: journal, Owner: entry.Agent}}
+		return []activityui.Block{{Kind: "final", Body: source, Journal: journal, Owner: entry.Agent}}
 	case "start":
 		if entry.start != nil {
 			block := activityui.Block{Kind: "start", Label: livediff.Safe(entry.start.label(), false)}
@@ -172,7 +173,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		}
 		return activityui.GroupOperations(blocks)
 	}
-	return []activityui.Block{{Kind: "text", Body: text}}
+	return []activityui.Block{{Kind: "text", Body: source}}
 }
 
 // toolOperationBlocks parses a tool entry's operations, one per paragraph,

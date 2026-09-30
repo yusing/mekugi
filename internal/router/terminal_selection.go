@@ -12,11 +12,13 @@ import (
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/pathdisplay"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 type terminalSelection struct {
 	rect                       terminalRect
 	rows                       []string
+	copySource                 [][]activityui.CopySpan
 	contentLeft                []int // Optional per-row start after numbered gutters.
 	startX, startY, endX, endY int
 	dragging, moved            bool
@@ -83,7 +85,25 @@ func (s *terminalSelection) bounds(y int) (int, int) {
 		return 0, 0
 	}
 	var left, right int
-	if y < len(s.contentLeft) {
+	annotated := false
+	if y < len(s.copySource) {
+		for _, span := range s.copySource[y] {
+			if span.Column < s.rect.x || span.Column >= s.rect.x+s.rect.w {
+				continue
+			}
+			if !annotated {
+				left, right = span.Column, span.Column
+				annotated = true
+			}
+			if !span.Rule && !span.Omit && span.Width > 0 {
+				left = min(left, span.Column)
+				right = max(right, span.Column+span.Width)
+			}
+		}
+	}
+	if annotated {
+		right = min(right, s.rect.x+s.rect.w)
+	} else if y < len(s.contentLeft) {
 		// Dialog rows have explicit gutters; glyphs inside their content are
 		// literal output, including box drawing and block characters.
 		left = max(s.rect.x, s.contentLeft[y])
@@ -116,27 +136,6 @@ func (s *terminalSelection) bounds(y int) (int, int) {
 		}
 	}
 	return left, right
-}
-
-// text joins the selected rows. Rows without text inside the selection keep
-// one paragraph break, so frame edges add no blank lines of their own.
-func (s *terminalSelection) text() string {
-	_, first, _, last := s.ordered()
-	var lines []string
-	for y := first; y <= last && y < len(s.rows); y++ {
-		line := ""
-		if left, right := s.bounds(y); right > left {
-			line = strings.TrimRight(ansi.Strip(ansi.Cut(s.rows[y], left, right)), " ")
-		}
-		if line == "" && (len(lines) == 0 || lines[len(lines)-1] == "") {
-			continue
-		}
-		lines = append(lines, line)
-	}
-	if len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
-	return strings.Join(lines, "\n")
 }
 
 // move follows a drag within its snapshot, including a release outside it.
@@ -251,7 +250,15 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	rect.w = min(rect.w, pane.x+pane.w-rect.x)
 	rect.h = min(rect.h, pane.y+pane.h-rect.y)
 	questions, snippets := view.feedQuestions, view.feedSnippets
-	if view == u.main.view && view.conversation && view.pinMainReply && view.feedTop > 1 {
+	if view == u.main.view && u.main.btw != nil {
+		btw := u.main.btw.rect
+		btw.x += pane.x
+		btw.y += pane.y
+		if btw.contains(x, y) {
+			rect, mention, questions, snippets = btw, "side answer", nil, nil
+		}
+	}
+	if view == u.main.view && mention == "message" && view.conversation && view.pinMainReply && view.feedTop > 1 {
 		// Include the pinned copy in native text selection, without inventing
 		// transcript links for its rows. Feed pointer geometry stays unchanged.
 		pinned := view.feedTop - 1
@@ -279,8 +286,10 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 		return false
 	}
 	source := u.paintedRows
+	copySource := u.paintedCopy
 	if previous != nil && previous.view == view && previous.rect.contains(x, y) {
 		source, rect = previous.rows, previous.rect
+		copySource = previous.copySource
 		questions, snippets, mention = previous.questions, previous.snippets, previous.mention
 	}
 	rows, link := u.selectionScreen(source, x, y)
@@ -289,7 +298,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	} else {
 		u.focus = 2
 	}
-	u.selection = &terminalSelection{rect: rect, rows: rows, startX: x, startY: y, endX: x, endY: y, dragging: true, link: link, view: view, pane: pane, questions: questions, snippets: snippets, mention: mention}
+	u.selection = &terminalSelection{rect: rect, rows: rows, copySource: copySource, startX: x, startY: y, endX: x, endY: y, dragging: true, link: link, view: view, pane: pane, questions: questions, snippets: snippets, mention: mention}
 	return true
 }
 
@@ -401,4 +410,57 @@ func (u *terminalUI) paintSelection(rows []string) {
 	if !s.dragging {
 		rows[len(rows)-1] = "\x1b[1G\x1b[0m" + ansi.Truncate(selectionHints.render(), u.width, "")
 	}
+}
+
+// text uses the frozen visible annotations. Unannotated UI rows retain
+// ordinary selection behavior, but never supply table contents or code fill.
+func (s *terminalSelection) text() string {
+	_, first, _, last := s.ordered()
+	var parts []activityui.CopyFragment
+	var out []string
+	flush := func() {
+		if len(parts) > 0 {
+			out = append(out, activityui.CopyText(parts))
+			parts = nil
+		}
+	}
+	ax, ay, bx, by := s.ordered()
+	for y := first; y <= last && y < len(s.rows); y++ {
+		left, right := s.rect.x, s.rect.x+s.rect.w
+		if y == ay {
+			left = max(left, ax)
+		}
+		if y == by {
+			right = min(right, bx+1)
+		}
+		annotated := false
+		if y < len(s.copySource) {
+			for _, span := range s.copySource[y] {
+				// Ignore metadata belonging to another pane in this composed screen row.
+				if span.Column < s.rect.x || span.Column >= s.rect.x+s.rect.w {
+					continue
+				}
+				annotated = true
+				if f, ok := span.Clip(left, right); ok {
+					parts = append(parts, f)
+				}
+			}
+		}
+		if annotated {
+			continue
+		}
+		flush()
+		line := ""
+		if l, r := s.bounds(y); r > l {
+			line = strings.TrimRight(ansi.Strip(ansi.Cut(s.rows[y], l, r)), " ")
+		}
+		if line != "" || len(out) > 0 && out[len(out)-1] != "" {
+			out = append(out, line)
+		}
+	}
+	flush()
+	for len(out) > 0 && out[len(out)-1] == "" {
+		out = out[:len(out)-1]
+	}
+	return strings.Join(out, "\n")
 }

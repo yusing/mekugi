@@ -33,6 +33,9 @@ type Painter struct {
 	// LayoutOnly skips syntax decoration while retaining exact text geometry.
 	// The feed uses it for cold off-screen runs, never visible rows or dialogs.
 	LayoutOnly bool
+	// CopySource carries semantic annotations to the native viewport.
+	CopySource bool
+	CopyScope  uint64 // Stable native entry/block scope for cached source identities.
 }
 
 func VerbColor(verb string) string {
@@ -287,6 +290,7 @@ func (p *Painter) Label(verb, label string) string {
 
 // inline renders the commentary Markdown inline subset.
 func (p *Painter) Inline(line string) string {
+	line = livediff.Safe(line, false)
 	var out strings.Builder
 	bold := false
 	for i := 0; i < len(line); {
@@ -356,6 +360,31 @@ func (p *Painter) Markdown(text string, width int) []string {
 // Reasoning keeps source indentation on soft-wrapped continuation rows too.
 // Ordinary authored message layout is unchanged.
 func (p *Painter) markdown(text string, width int, reasoning bool) []string {
+	copying := p.CopySource && !p.LayoutOnly
+	identity := uint64(0)
+	if copying {
+		identity = copyID(text, p.CopyScope)
+	}
+	annotate := func(rows []string, source, prefix string, gutter, index int) []string {
+		if !copying {
+			return rows
+		}
+		f := copyInline(source)
+		f.ID = copyID(strconv.Itoa(index), identity)
+		f.Prefix = prefix
+		return p.copyWrapped(rows, f, gutter)
+	}
+	annotateHang := func(rows []string, source, prefix string, gutter, index int) []string {
+		if !copying {
+			return rows
+		}
+		if gutter > width/2 && len(rows) > 1 {
+			rows[0] = CopyDecoration(rows[0])
+			annotate(rows[1:], source, prefix, 2, index)
+			return rows
+		}
+		return annotate(rows, source, prefix, gutter, index)
+	}
 	var lines, program, quote []string
 	flushQuote := func() {
 		if len(quote) > 0 {
@@ -364,23 +393,25 @@ func (p *Painter) markdown(text string, width int, reasoning bool) []string {
 		}
 	}
 	fence, lang := "", ""
+	fenceIdentity := uint64(0)
 	source := strings.Split(text, "\n")
 	for i := 0; i < len(source); i++ {
-		line := source[i]
+		raw := source[i]
+		line := livediff.Safe(raw, false)
 		if fence != "" {
 			if line != fence {
-				program = append(program, line)
+				program = append(program, raw)
 				continue
 			}
 			body := strings.Join(program, "\n")
 			var diagram []string
 			if strings.EqualFold(lang, "mermaid") {
-				diagram, _ = mermaid.Render(body, width)
+				diagram, _ = mermaid.Render(livediff.Safe(body, false), width)
 			}
 			if len(diagram) > 0 {
 				lines = append(lines, diagram...)
 			} else {
-				lines = append(lines, p.fenced(lang, body, width)...)
+				lines = append(lines, p.fenced(lang, body, width, fenceIdentity)...)
 			}
 			fence, program = "", nil
 			continue
@@ -393,9 +424,15 @@ func (p *Painter) markdown(text string, width int, reasoning bool) []string {
 		flushQuote()
 		if delimiter, ok := FenceDelimiter(line); ok {
 			fence, lang = delimiter, strings.TrimSpace(line[len(delimiter):])
+			if copying {
+				fenceIdentity = copyID(strconv.Itoa(i), identity)
+			}
 			continue
 		}
 		if table, consumed := parseMarkdownTable(source[i:]); consumed > 0 {
+			if copying {
+				table.copyID = copyID(strings.Join(source[i:i+consumed], "\n"), identity+uint64(i))
+			}
 			lines = append(lines, p.markdownTable(table, max(1, width))...)
 			i += consumed - 1
 			continue
@@ -403,20 +440,20 @@ func (p *Painter) markdown(text string, width int, reasoning bool) []string {
 		indent := line[:len(line)-len(trimmed)]
 		switch {
 		case strings.HasPrefix(trimmed, "#"):
-			lines = append(lines, Wrap("\x1b[1m"+p.Inline(strings.TrimLeft(trimmed, "# "))+Undim, width, false)...)
+			lines = append(lines, annotate(Wrap("\x1b[1m"+p.Inline(strings.TrimLeft(trimmed, "# "))+Undim, width, false), strings.TrimLeft(trimmed, "# "), trimmed[:len(trimmed)-len(strings.TrimLeft(trimmed, "# "))], 0, i)...)
 		case strings.HasPrefix(trimmed, "- "), strings.HasPrefix(trimmed, "* "):
-			lines = append(lines, liveActivityHang(indent+Dim+"•"+Undim+" ", p.Inline(trimmed[2:]), width)...)
+			lines = append(lines, annotateHang(liveActivityHang(indent+Dim+"•"+Undim+" ", p.Inline(trimmed[2:]), width), trimmed[2:], indent+trimmed[:2], ansi.StringWidth(indent)+2, i)...)
 		default:
 			if reasoning && indent != "" {
-				lines = append(lines, liveActivityHang(indent, p.Inline(trimmed), width)...)
+				lines = append(lines, annotateHang(liveActivityHang(indent, p.Inline(trimmed), width), trimmed, indent, ansi.StringWidth(indent), i)...)
 			} else {
-				lines = append(lines, Wrap(p.Inline(line), width, false)...)
+				lines = append(lines, annotate(Wrap(p.Inline(line), width, false), line, "", 0, i)...)
 			}
 		}
 	}
 	flushQuote()
 	if fence != "" {
-		lines = append(lines, p.fenced(lang, strings.Join(program, "\n"), width)...)
+		lines = append(lines, p.fenced(lang, strings.Join(program, "\n"), width, fenceIdentity)...)
 	}
 	// Providers may open or close a message with blank lines; they only pad the block.
 	for len(lines) > 0 && ansi.Strip(lines[len(lines)-1]) == "" {
@@ -437,6 +474,13 @@ func (p *Painter) Quote(text string, width int) []string {
 		rows = []string{""}
 	}
 	for i, row := range rows {
+		if p.CopySource && !p.LayoutOnly {
+			clean, spans := ExtractCopy(row)
+			for j := range spans {
+				spans[j].Quote = "> " + spans[j].Quote
+			}
+			row = AttachCopy(clean, spans)
+		}
 		rows[i] = ansi.Truncate(Dim+"▎"+Undim+" "+row, max(1, width), "")
 	}
 	return rows
@@ -457,14 +501,22 @@ func (p *Painter) program(lang, source string, width int) []string {
 // quote. An undetected theme (as behind mosh, which answers no OSC 11 query)
 // gets a self-contained dark block: highlighting already assumes dark, and an
 // explicit foreground keeps plain text readable on either terminal theme.
-func (p *Painter) fenced(lang, source string, width int) []string {
+func (p *Painter) fenced(lang, source string, width int, identity uint64) []string {
 	fill, ink := p.codeBackground(), ""
 	if fill == "" {
 		fill, ink = "\x1b[48;2;32;35;40m", "\x1b[38;2;230;237;243m"
 	}
 	var lines []string
-	for _, line := range p.Highlight(lang, source) {
-		for _, part := range Wrap(line, width-2, true) {
+	var sources []string
+	if p.CopySource && !p.LayoutOnly {
+		sources = strings.Split(source, "\n")
+	}
+	for index, line := range p.Highlight(lang, livediff.Safe(source, false)) {
+		parts := Wrap(line, width-2, true)
+		if len(sources) > 0 {
+			parts = p.copyWrapped(parts, copyCode(sources[index], copyID(strconv.Itoa(index), identity)), 0)
+		}
+		for _, part := range parts {
 			if ink != "" {
 				part = strings.ReplaceAll(part, "\x1b[39m", ink)
 			}

@@ -80,6 +80,7 @@ type liveActivityView struct {
 	feedLines, feedRows int
 	feedSnippets        []liveActivitySnippet
 	feedQuestions       []uint64
+	copyRows            [][]activityui.CopySpan
 	questionRows        map[uint64]int
 	pendingTarget       uint64 // Cross-pane jump resolved after the destination layout is rendered.
 	// questionHover is the pointed feed line plus one; zero points at none.
@@ -152,7 +153,7 @@ type liveActivityRunKey struct {
 func newLiveActivityView() *liveActivityView {
 	return &liveActivityView{
 		following: true, status: "CONNECTING",
-		painter: activityui.Painter{Theme: livediff.EnvironmentTheme(os.Getenv("COLORFGBG"))},
+		painter: activityui.Painter{CopySource: true, Theme: livediff.EnvironmentTheme(os.Getenv("COLORFGBG"))},
 	}
 }
 
@@ -804,6 +805,10 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 	}
 	if footer {
 		lines = append(lines, v.footer(text))
+	}
+	v.copyRows = make([][]activityui.CopySpan, len(lines))
+	for row := range lines {
+		lines[row], v.copyRows[row] = activityui.ExtractCopy(lines[row])
 	}
 	return lines
 }
@@ -1524,7 +1529,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		heading = head + strings.Repeat(" ", max(1, width-ansi.StringWidth(head)-ansi.StringWidth(stamp))) + activityui.Dim + stamp + activityui.Undim
 	}
 	run := liveActivityRun{
-		lines:     []string{ansi.Truncate(heading, width, "")},
+		lines:     []string{activityui.CopyDecoration(ansi.Truncate(heading, width, ""))},
 		snippets:  make([]liveActivitySnippet, 1),
 		questions: make([]uint64, 1),
 		entryRows: make(map[uint64]int),
@@ -1543,6 +1548,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 	blocks = activityui.AlignVerbs(activityui.GroupOperations(blocks))
 	run.blocks = blocks
 	for index, block := range blocks {
+		v.painter.CopyScope = first + uint64(index)
 		// Native Activity joins consecutive operations into one tree.
 		tree := v.childrenOnly && operation(block) && !continued(block)
 		toggle := v.clickTarget(&block, liveActivitySnippet{run: first, block: index})

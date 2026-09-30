@@ -52,7 +52,7 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 	if len(input) != 2 {
 		t.Fatalf("input = %+v", input)
 	}
-	elements, _ := input[0]["textElements"].([]composerTextElement)
+	elements, _ := input[0]["text_elements"].([]composerTextElement)
 	if input[0]["text"] != "explain [Selected diff hunk @amber1:42-45] " || len(elements) != 1 || elements[0].Placeholder != "[Selected diff hunk @amber1:42-45]" {
 		t.Fatalf("prompt part = %+v", input[0])
 	}

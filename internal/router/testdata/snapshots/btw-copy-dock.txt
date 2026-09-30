@@ -1,0 +1,8 @@
+╭─ /btw · Answering · 1m15s
+│ Which option?
+│ ┌───────┬───────┐
+│ │ Name  │ Value │
+│ ├───────┼───────┤
+│ │ alpha │ x     │
+│ └───────┴───────┘
+╰─ /btw follow-up · Esc close

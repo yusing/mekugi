@@ -111,7 +111,7 @@ func TestSkillAttachmentTranscriptAndHistoryMetadata(t *testing.T) {
 		wantStart     int
 	}{
 		{"metadata only", `[{"type":"text","text":"use $review please"},{"type":"skill","name":"review","path":"/work/review/SKILL.md"}]`, 4},
-		{"selected second occurrence", `[{"type":"text","text":"$review then $review","textElements":[{"byteRange":{"start":13,"end":20},"placeholder":"$review"}]},{"type":"skill","name":"review","path":"/work/review/SKILL.md"}]`, 13},
+		{"selected second occurrence", `[{"type":"text","text":"$review then $review","text_elements":[{"byteRange":{"start":13,"end":20},"placeholder":"$review"}]},{"type":"skill","name":"review","path":"/work/review/SKILL.md"}]`, 13},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			text, spans, ok := appServerUserText([]byte(tc.content))

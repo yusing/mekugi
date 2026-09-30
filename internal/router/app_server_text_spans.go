@@ -95,9 +95,11 @@ type composerUserContent struct {
 	Text     string                `json:"text"`
 	Name     string                `json:"name"`
 	Path     string                `json:"path"`
-	Elements []composerTextElement `json:"textElements"`
+	Elements []composerTextElement `json:"text_elements"`
 }
 
+// Source: codex-rs/app-server-protocol/src/protocol/v2/turn.rs:423:431@75a714843.
+// The enum field is text_elements; TextElement itself uses camelCase.
 // Codex TextElement ranges are relative to each text part, not the whole draft.
 type composerByteRange struct {
 	Start int `json:"start"`
