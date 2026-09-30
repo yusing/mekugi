@@ -101,17 +101,20 @@ type execOmission struct {
 // execObservation is the durable pre-call capture of one observed call: a
 // native exec_command, or all literal commands of one Code Mode cell.
 type execObservation struct {
-	Commands    []execCommandInput
-	Class       string
-	Labels      []string `json:",omitempty"`
-	Reason      string   `json:",omitempty"`
-	Files       []execFileSnapshot
-	Omitted     []execOmission `json:",omitempty"`
-	Listings    []execListing  `json:",omitempty"`
-	CodeMode    bool           `json:",omitzero"`
-	Roots       []string       `json:",omitempty"`
-	WindowStart time.Time      `json:",omitzero"`
-	Programs    []execProgram  `json:",omitempty"`
+	Commands []execCommandInput
+	// CommandClasses retain pre-call classification for repeated literal
+	// occurrences, without reclassifying providers after execution.
+	CommandClasses []string `json:",omitempty"`
+	Class          string
+	Labels         []string `json:",omitempty"`
+	Reason         string   `json:",omitempty"`
+	Files          []execFileSnapshot
+	Omitted        []execOmission `json:",omitempty"`
+	Listings       []execListing  `json:",omitempty"`
+	CodeMode       bool           `json:",omitzero"`
+	Roots          []string       `json:",omitempty"`
+	WindowStart    time.Time      `json:",omitzero"`
+	Programs       []execProgram  `json:",omitempty"`
 	// Group identifies the response that emitted the call, so parallel
 	// siblings finalized together share one record.
 	Group string `json:",omitempty"`
@@ -147,6 +150,16 @@ type execOutcome struct {
 	// SharedWith names the record of a parallel sibling that holds this
 	// call's effects.
 	SharedWith string `json:",omitempty"`
+}
+
+func (o execObservation) commandClasses() []string {
+	classes := slices.Clone(o.CommandClasses)
+	// Older or timed-out captures without per-command facts can establish
+	// neutrality only for their aggregate original scope.
+	for len(classes) < len(o.Commands) {
+		classes = append(classes, cmp.Or(o.LiteralClass, o.Class))
+	}
+	return classes
 }
 
 const (
@@ -188,7 +201,7 @@ func execCommandArguments(arguments, directory, sessionShell string) (execComman
 		Shell         string          `json:"shell"`
 		EnvironmentID json.RawMessage `json:"environment_id"`
 	}
-	if json.Unmarshal([]byte(arguments), &args) != nil || args.Cmd == "" || len(args.EnvironmentID) != 0 && string(args.EnvironmentID) != "null" {
+	if json.Unmarshal([]byte(arguments), &args) != nil || args.Cmd == "" || !execLocalEnvironment(args.EnvironmentID) {
 		return execCommandInput{}, false
 	}
 	workdir := args.Workdir
@@ -199,6 +212,10 @@ func execCommandArguments(arguments, directory, sessionShell string) (execComman
 		workdir = filepath.Join(directory, workdir)
 	}
 	return execCommandInput{Command: args.Cmd, Workdir: filepath.Clean(workdir), Shell: cmp.Or(args.Shell, sessionShell)}, true
+}
+
+func execLocalEnvironment(environmentID []byte) bool {
+	return len(environmentID) == 0 || string(environmentID) == "null"
 }
 
 // requestSessionShell reads the session shell from the latest environment
@@ -320,6 +337,7 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 	var scope []execScopeEntry
 	for _, command := range commands {
 		plan := classifyExecShellWithin(command.Command, command.Workdir, command.Shell, started.Add(execProviderBudget), 0, env.changes)
+		observation.CommandClasses = append(observation.CommandClasses, plan.Class.String())
 		if plan.Class > class {
 			class = plan.Class
 		}
@@ -1270,6 +1288,7 @@ func mergeExecObservations(members []execCompletion) execObservation {
 		return merged
 	}
 	merged.Commands = slices.Clone(merged.Commands)
+	merged.CommandClasses = merged.commandClasses()
 	merged.Labels = slices.Clone(merged.Labels)
 	merged.Programs = slices.Clone(merged.Programs)
 	merged.Roots = slices.Clone(merged.Roots)
@@ -1282,6 +1301,7 @@ func mergeExecObservations(members []execCompletion) execObservation {
 		merged.CodeMode = merged.CodeMode || other.CodeMode
 		merged.RepeatedPaths = merged.RepeatedPaths || other.RepeatedPaths
 		merged.Commands = append(merged.Commands, other.Commands...)
+		merged.CommandClasses = append(merged.CommandClasses, other.commandClasses()...)
 		if execClassRank(other.Class) > execClassRank(merged.Class) {
 			merged.Class, merged.Reason = other.Class, other.Reason
 		}

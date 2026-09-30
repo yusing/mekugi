@@ -410,6 +410,51 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 	if processHistory.status != 0 || !strings.Contains(processHistory.stdout, "host tool ") || !strings.Contains(processHistory.stdout, "; exit 0") || !strings.Contains(processHistory.stdout, "+process-result") {
 		t.Fatalf("completed-cell process confirmation missing: %+v", processHistory)
 	}
+
+	// Literal loops have one static call site and no dynamic inventory. The
+	// second patch is rejected by the host, but its distinct outcome survives;
+	// both shell calls append once, proving observation does not replay effects.
+	loopWorkspace := t.TempDir()
+	writeTestFile(t, filepath.Join(loopWorkspace, "loop-patch.txt"), "before\n")
+	loopPatch := "*** Begin Patch\n*** Update File: loop-patch.txt\n@@\n-before\n+after\n*** End Patch\n"
+	loopCommand := "printf x >> loop-command.txt"
+	loopProgram := "for (let i = 0; i < 2; i++) { try { await tools.apply_patch(" + string(mustMarshalJSON(loopPatch)) + "); } catch {} } " +
+		"for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(mustMarshalJSON(loopCommand)) + "});"
+	loopProvider := &mchangesNestedCodexProvider{program: loopProgram, callID: "nested-literal-loop", finalMessage: "literal loops completed"}
+	loopThread := runMChangesNestedCodexCell(t, codex, registry, store, loopWorkspace, loopProvider)
+	loopContext, releaseLoop, err := store.beginSession(t.Context(), loopThread, "mchanges-literal-loops")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releaseLoop()
+	loopStore := store.scoped(loopContext)
+	original, found, err := loopStore.lookup(loopContext, loopWorkspace, loopProvider.callID)
+	if err != nil || !found || original.ResolvedBaseline != nil || len(original.NativePatches) != 1 || len(original.ExecObservation.Commands) != 1 {
+		t.Fatalf("literal loops must reuse static baselines without an inventory: %+v, %v", original, err)
+	}
+	var previousPatchCall string
+	for index, status := range []string{"completed", "failed"} {
+		attempt, found, err := loopStore.lookup(loopContext, loopWorkspace, nativePatchDerivedCallID(loopProvider.callID, index))
+		if err != nil || !found || len(attempt.HostResults) != 1 || attempt.HostResults[0].Status != status || attempt.HostResults[0].CallID == previousPatchCall {
+			t.Fatalf("literal loop patch %d lost its distinct host outcome: %+v, %v", index, attempt, err)
+		}
+		previousPatchCall = attempt.HostResults[0].CallID
+		if index == 0 && len(attempt.ReviewFiles) != 1 || index == 1 && (len(attempt.ReviewFiles) != 0 || attempt.TranslationError == "") {
+			t.Fatalf("literal loop patch %d duplicated effects or lost failure", index)
+		}
+	}
+	commandAttempt, found, err := loopStore.lookup(loopContext, loopWorkspace, execDerivedCallID(loopProvider.callID, true))
+	if err != nil || !found || len(commandAttempt.HostResults) != 2 || commandAttempt.HostResults[0].CallID == commandAttempt.HostResults[1].CallID ||
+		len(commandAttempt.ReviewFiles) != 1 || commandAttempt.ExecOutcome.Coverage != execCoverageExact {
+		t.Fatalf("literal command loop lost host occurrences or scoped effects: %+v, %v", commandAttempt, err)
+	}
+	if content, err := os.ReadFile(filepath.Join(loopWorkspace, "loop-command.txt")); err != nil || string(content) != "xx" {
+		t.Fatalf("literal command must execute exactly twice: %q, %v", content, err)
+	}
+	loopNet := runMChangesNestedShell(t, registry, loopWorkspace, loopThread, "mchanges --mine --net")
+	if loopNet.status != 0 || loopNet.stderr != "" || !strings.Contains(loopNet.stdout, "+after") || !strings.Contains(loopNet.stdout, "+xx") {
+		t.Fatalf("literal loops lost composed net evidence: %+v", loopNet)
+	}
 }
 
 type mchangesNestedShellResult struct {

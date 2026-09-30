@@ -50,11 +50,12 @@ type nativeToolResult struct {
 
 type nativeTraceTool struct {
 	nativeToolResult
-	input     string
-	command   execCommandInput
-	session   string
-	terminal  bool
-	stdinPoll bool
+	input         string
+	command       execCommandInput
+	environmentID jsontext.Value
+	session       string
+	terminal      bool
+	stdinPoll     bool
 }
 
 type nativeTraceRef struct {
@@ -212,14 +213,16 @@ func (b *nativeTraceBundle) event(directory string, event nativeTraceEvent) erro
 		}
 		if tool.Tool == "exec_command" {
 			var args struct {
-				Command string `json:"cmd"`
-				Workdir string `json:"workdir"`
-				Shell   string `json:"shell"`
+				Command       string         `json:"cmd"`
+				Workdir       string         `json:"workdir"`
+				Shell         string         `json:"shell"`
+				EnvironmentID jsontext.Value `json:"environment_id"`
 			}
 			if err := json.Unmarshal([]byte(invocation.Payload.Arguments), &args); err != nil {
 				return err
 			}
 			tool.command = execCommandInput{Command: args.Command, Workdir: args.Workdir, Shell: args.Shell}
+			tool.environmentID = args.EnvironmentID
 		}
 		if tool.Tool == "write_stdin" {
 			var args struct {
@@ -229,7 +232,7 @@ func (b *nativeTraceBundle) event(directory string, event nativeTraceEvent) erro
 		}
 		cell.tools = append(cell.tools, tool)
 		b.calls[event.Thread+"\x00"+p.Tool] = tool
-		b.bytes += len(tool.input) + len(tool.command.Command) + len(tool.command.Workdir) + len(tool.command.Shell) + len(tool.CallID) + 256
+		b.bytes += len(tool.input) + len(tool.command.Command) + len(tool.command.Workdir) + len(tool.command.Shell) + len(tool.environmentID) + len(tool.CallID) + 256
 		if b.bytes > 64<<20 {
 			return errors.New("native trace evidence cache limit exceeded")
 		}
@@ -356,6 +359,7 @@ func (t *nativeToolTrace) readCell(thread, callID, source string) *nativeTraceCe
 			copy.tools = nil
 			for _, tool := range cell.tools {
 				clone := *tool
+				clone.environmentID = append(jsontext.Value(nil), tool.environmentID...)
 				copy.tools = append(copy.tools, &clone)
 			}
 			found = &copy
@@ -445,6 +449,9 @@ func (c *nativeTraceCell) commands(history *mekugiHistory, workspace string) ([]
 	for _, tool := range c.tools {
 		if tool.Tool != "exec_command" {
 			continue
+		}
+		if !execLocalEnvironment(tool.environmentID) {
+			return nil, false
 		}
 		command := normalize(tool.command)
 		if command.Shell == "" {

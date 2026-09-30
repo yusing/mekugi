@@ -122,6 +122,9 @@ func captureResolvedBaseline(workspace, shell string) *resolvedStockBaseline {
 
 func (b *resolvedStockBaseline) file(path string) execFileSnapshot {
 	path = filepath.Clean(path)
+	if b == nil {
+		return execFileSnapshot{Path: path, Error: "resolved path has no pre-cell baseline"}
+	}
 	for _, file := range b.Files {
 		if file.Path == path {
 			return file
@@ -145,7 +148,7 @@ func (b *resolvedStockBaseline) file(path string) execFileSnapshot {
 // They share the original cell window, not an invented per-nested-call window.
 func resolveStockEdits(history *mekugiHistory, workspace string) {
 	b := history.ResolvedBaseline
-	if b == nil {
+	if b == nil && (history.nativeCell == nil || !history.nativeCell.ended) {
 		return
 	}
 	// The pre-cell carrier is immutable replay evidence. Resolve on a copy;
@@ -154,6 +157,7 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 	if original := history.ExecObservation; original != nil {
 		copy := *original
 		copy.Commands = slices.Clone(original.Commands)
+		copy.CommandClasses = original.commandClasses()
 		copy.Files = slices.Clone(original.Files)
 		copy.Omitted = slices.Clone(original.Omitted)
 		copy.Labels = slices.Clone(original.Labels)
@@ -170,6 +174,7 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 		return
 	}
 	patches := slices.Clone(history.NativePatches)
+	literalPatches := slices.Clone(patches)
 	commands := []execCommandInput(nil)
 	if history.ExecObservation != nil {
 		commands = slices.Clone(history.ExecObservation.Commands)
@@ -181,6 +186,8 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 			}
 		}
 	}
+	literalCommands := slices.Clone(commands)
+	literalClasses := slices.Clone(history.ExecObservation.CommandClasses)
 	for _, tool := range history.nativeCell.tools {
 		switch tool.Tool {
 		case applyPatchToolName:
@@ -188,6 +195,12 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 				// A literal baseline covers one call, not all calls with the
 				// same input. Additional resolved attempts remain observable.
 				patches = slices.Delete(patches, index, index+1)
+				continue
+			}
+			if index := slices.IndexFunc(literalPatches, func(p nativePatchObservation) bool { return p.Input == tool.input }); index >= 0 {
+				// Repeated execution of a literal call site shares its original
+				// cell-window baseline; it does not need a workspace inventory.
+				history.NativePatches = append(history.NativePatches, literalPatches[index])
 				continue
 			}
 			paths, err := nativePatchPaths(tool.input, workspace)
@@ -216,18 +229,52 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 			}
 			history.NativePatches = append(history.NativePatches, patch)
 		case nativeExecCommandToolName:
+			if !execLocalEnvironment(tool.environmentID) {
+				history.ExecObservation.Class = execOpaque.String()
+				history.ExecObservation.Reason = "resolved command targets another environment; local capture unavailable"
+				continue
+			}
 			command := tool.command
 			if command.Workdir == "" {
 				command.Workdir = workspace
 			} else if !filepath.IsAbs(command.Workdir) {
 				command.Workdir = filepath.Join(workspace, command.Workdir)
 			}
-			command.Shell = cmp.Or(command.Shell, b.Shell)
+			command.Workdir = filepath.Clean(command.Workdir)
+			if b != nil {
+				command.Shell = cmp.Or(command.Shell, b.Shell)
+			} else if command.Shell == "" {
+				// Without a dynamic inventory, recover the default shell only
+				// when the pre-captured matching inputs agree on it.
+				var shells []string
+				for _, literal := range literalCommands {
+					if literal.Command == command.Command && literal.Workdir == command.Workdir && !slices.Contains(shells, literal.Shell) {
+						shells = append(shells, literal.Shell)
+					}
+				}
+				if len(shells) == 1 {
+					command.Shell = shells[0]
+				}
+			}
 			if index := slices.Index(commands, command); index >= 0 {
 				commands = slices.Delete(commands, index, index+1)
 				continue
 			}
 			if history.lowersJournalCommand(nativeJournalCommand.FindStringSubmatch(command.Command)) {
+				continue
+			}
+			if index := slices.Index(literalCommands, command); index >= 0 {
+				history.ExecObservation.Commands = append(history.ExecObservation.Commands, command)
+				class := literalClasses[index]
+				history.ExecObservation.CommandClasses = append(history.ExecObservation.CommandClasses, class)
+				history.ExecObservation.RepeatedPaths = history.ExecObservation.RepeatedPaths || class != execNeutral.String()
+				continue
+			}
+			if b == nil {
+				history.ExecObservation.Commands = append(history.ExecObservation.Commands, command)
+				history.ExecObservation.CommandClasses = append(history.ExecObservation.CommandClasses, execOpaque.String())
+				history.ExecObservation.Class = execOpaque.String()
+				history.ExecObservation.Reason = "resolved command scope has no pre-cell baseline"
 				continue
 			}
 			// Scope classification is read-only. State-dependent destinations,
@@ -239,6 +286,7 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 				history.ExecObservation = observation
 			}
 			observation.Commands = append(observation.Commands, command)
+			observation.CommandClasses = append(observation.CommandClasses, plan.Class.String())
 			observation.Labels = append(observation.Labels, plan.Labels...)
 			if plan.Class == execDeclared && execClassRank(observation.Class) < execClassRank(execDeclared.String()) {
 				observation.Class = execDeclared.String()

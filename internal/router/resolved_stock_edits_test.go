@@ -144,6 +144,57 @@ func TestResolvedStockEditsDoNotInventMissingBaselines(t *testing.T) {
 	}
 }
 
+func TestResolvedRemoteCommandsCannotAcquireLocalEvidence(t *testing.T) {
+	for _, concurrentWrite := range []bool{false, true} {
+		t.Run(fmt.Sprintf("concurrentWrite=%v", concurrentWrite), func(t *testing.T) {
+			f := newMChangesSliceFixture(t, "remote-stock")
+			path := filepath.Join(f.workspace, "shared.txt")
+			writeTestFile(t, path, "local before\n")
+			command := "printf remote > shared.txt"
+			arguments := string(mustMarshalJSON(map[string]any{"cmd": command, "environment_id": "remote"}))
+			source := "await tools.exec_command(" + arguments + ");"
+			commands, dynamic := stockLiteralExecCommands(source, f.workspace, "bash")
+			if len(commands) != 0 || !dynamic {
+				t.Fatal("remote call must not have a literal local observation")
+			}
+			observation, _ := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: f.workspace})
+			history := mekugiHistory{ToolName: "exec", ExecutingThread: f.thread, ExecObservation: observation,
+				ResolvedBaseline: captureResolvedBaseline(f.workspace, "bash")}
+			trace := newNativeTraceFixture(t)
+			trace.start(f.thread, "runtime", "remote-cell", source)
+			trace.tool(f.thread, "runtime", "remote-command", nativeExecCommandToolName, arguments)
+			trace.result(f.thread, "remote-command", "completed", map[string]any{"exit_code": 0})
+			trace.end(f.thread, "runtime")
+			history.nativeCell = (&nativeToolTrace{directory: trace.root}).readCell(f.thread, "remote-cell", source)
+			if history.nativeCell == nil || string(history.nativeCell.tools[0].environmentID) != `"remote"` {
+				t.Fatal("native trace lost environment selection")
+			}
+			if _, ok := history.nativeCell.commands(observedCommands(execCommandInput{Command: command}), f.workspace); ok {
+				t.Fatal("remote host call confirmed a matching local command")
+			}
+			if concurrentWrite {
+				writeTestFile(t, path, "unrelated local writer\n")
+			}
+			resolveStockEdits(&history, f.workspace)
+			if len(history.ExecObservation.Files) != 0 || len(history.ExecObservation.Commands) != 0 {
+				t.Fatal("remote call consumed local scope or baseline")
+			}
+			proxy := &mekugiProxy{replayStore: f.store}
+			output := mustMarshalJSON("Script completed\nWall time 0.1 seconds\nOutput:\n")
+			if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: "remote-cell", history: history, output: output}}); err != nil {
+				t.Fatal(err)
+			}
+			record, found, err := f.store.lookup(f.ctx, f.workspace, execDerivedCallID("remote-cell", true))
+			if err != nil || !found || record.ChangeID == "" || record.ExecOutcome.Coverage != execCoveragePartial || len(record.ReviewFiles) != 0 {
+				t.Fatalf("remote call claimed local evidence or authoritative zero: %+v, %v", record, err)
+			}
+			if _, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{record.ChangeID}, view: "net"}); err == nil {
+				t.Fatal("remote call established a complete local net")
+			}
+		})
+	}
+}
+
 func TestResolvedStockInventoryCannotOverflowSupportedCarrier(t *testing.T) {
 	content := strings.Repeat("x", maxNativePatchFileBytes)
 	history := mekugiHistory{ResolvedBaseline: &resolvedStockBaseline{Root: "/workspace", Files: []execFileSnapshot{{Path: "/workspace/file", Content: content}}}}
@@ -364,62 +415,135 @@ func TestResolvedCommandKeepsPreCapturedProviderScope(t *testing.T) {
 }
 
 func TestResolvedRepeatedStockCallsRetainEveryOutcome(t *testing.T) {
-	f := newMChangesSliceFixture(t, "repeated-stock")
-	patch := "*** Begin Patch\n*** Add File: repeated-patch.txt\n+after\n*** End Patch\n"
-	command := "printf after > repeated-command.txt"
-	source := "await tools.apply_patch(" + string(mustMarshalJSON(patch)) + "); const patch = buildPatch(); await tools.apply_patch(patch); " +
-		"await tools.exec_command({cmd: " + string(mustMarshalJSON(command)) + "}); const args = getCommand(); await tools.exec_command(args);"
-	commands, dynamic := stockLiteralExecCommands(source, f.workspace, "bash")
-	observation, _ := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: f.workspace})
-	history := mekugiHistory{ToolName: "exec", ExecutingThread: f.thread,
-		NativePatches: nativePatchesInCall("exec", source, f.workspace), ExecObservation: observation,
-		ResolvedBaseline: captureResolvedBaseline(f.workspace, "bash")}
-	if len(history.NativePatches) != 1 || len(commands) != 1 || !dynamic {
-		t.Fatal("fixture must pre-capture only one occurrence of each call")
+	for _, literalLoop := range []bool{false, true} {
+		t.Run(fmt.Sprintf("literalLoop=%v", literalLoop), func(t *testing.T) {
+			f := newMChangesSliceFixture(t, "repeated-stock")
+			patch := "*** Begin Patch\n*** Add File: repeated-patch.txt\n+after\n*** End Patch\n"
+			command := "printf after > repeated-command.txt"
+			source := "await tools.apply_patch(" + string(mustMarshalJSON(patch)) + "); const patch = buildPatch(); await tools.apply_patch(patch); " +
+				"await tools.exec_command({cmd: " + string(mustMarshalJSON(command)) + "}); const args = getCommand(); await tools.exec_command(args);"
+			if literalLoop {
+				source = "for (let i = 0; i < 2; i++) await tools.apply_patch(" + string(mustMarshalJSON(patch)) + "); " +
+					"for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(mustMarshalJSON(command)) + "});"
+			}
+			commands, dynamic := stockLiteralExecCommands(source, f.workspace, "bash")
+			observation, _ := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: f.workspace})
+			history := mekugiHistory{ToolName: "exec", ExecutingThread: f.thread,
+				NativePatches: nativePatchesInCall("exec", source, f.workspace), ExecObservation: observation}
+			if !literalLoop {
+				history.ResolvedBaseline = captureResolvedBaseline(f.workspace, "bash")
+			}
+			if literalLoop {
+				if dynamic || stockDynamicPatchInputs(source, len(history.NativePatches)) {
+					t.Fatal("literal loop must not request a dynamic inventory")
+				}
+			}
+			if len(history.NativePatches) != 1 || len(commands) != 1 || dynamic == literalLoop {
+				t.Fatal("fixture must pre-capture only one occurrence of each call")
+			}
+			trace := newNativeTraceFixture(t)
+			trace.start(f.thread, "runtime", "repeated-cell", source)
+			trace.tool(f.thread, "runtime", "patch-first", applyPatchToolName, patch)
+			trace.result(f.thread, "patch-first", "completed", map[string]any{})
+			trace.tool(f.thread, "runtime", "patch-second", applyPatchToolName, patch)
+			trace.result(f.thread, "patch-second", "failed", nil)
+			trace.tool(f.thread, "runtime", "command-first", nativeExecCommandToolName, string(mustMarshalJSON(map[string]any{"cmd": command})))
+			trace.result(f.thread, "command-first", "completed", map[string]any{"exit_code": 0})
+			trace.tool(f.thread, "runtime", "command-second", nativeExecCommandToolName, string(mustMarshalJSON(map[string]any{"cmd": command})))
+			trace.result(f.thread, "command-second", "completed", map[string]any{"exit_code": 7})
+			trace.end(f.thread, "runtime")
+			history.nativeCell = (&nativeToolTrace{directory: trace.root}).readCell(f.thread, "repeated-cell", source)
+			writeTestFile(t, filepath.Join(f.workspace, "repeated-patch.txt"), "after\n")
+			writeTestFile(t, filepath.Join(f.workspace, "repeated-command.txt"), "after")
+			resolveStockEdits(&history, f.workspace)
+			if len(history.NativePatches) != 2 || len(history.ExecObservation.Commands) != 2 {
+				t.Fatalf("resolved duplicate attempt lost: patches=%d commands=%d", len(history.NativePatches), len(history.ExecObservation.Commands))
+			}
+			proxy := &mekugiProxy{replayStore: f.store}
+			output := mustMarshalJSON("Script completed\nWall time 0.1 seconds\nOutput:\n")
+			if err := proxy.finalizeNativePatches(f.ctx, f.workspace, f.thread, "repeated-cell", history, output); err != nil {
+				t.Fatal(err)
+			}
+			if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: "repeated-cell", history: history, output: output}}); err != nil {
+				t.Fatal(err)
+			}
+			for index, want := range []string{"patch-first", "patch-second"} {
+				record, found, err := f.store.lookup(f.ctx, f.workspace, nativePatchDerivedCallID("repeated-cell", index))
+				if err != nil || !found || len(record.HostResults) != 1 || record.HostResults[0].CallID != want {
+					t.Fatalf("patch occurrence %d lost host outcome: %+v, %v", index, record, err)
+				}
+				if index == 0 && (len(record.ReviewFiles) != 1 || record.ReviewFiles[0].BeforePath != "") {
+					t.Fatal("initial creation provenance lost")
+				}
+				if index == 1 && (len(record.ReviewFiles) != 0 || record.TranslationError == "" || record.HostResults[0].Status != "failed") {
+					t.Fatal("duplicate failure borrowed cell-window effects or lost failure")
+				}
+			}
+			record, found, err := f.store.lookup(f.ctx, f.workspace, execDerivedCallID("repeated-cell", true))
+			if err != nil || !found || len(record.HostResults) != 2 || record.HostResults[0].CallID != "command-first" ||
+				record.HostResults[1].CallID != "command-second" || record.HostResults[1].ExitCode == nil || *record.HostResults[1].ExitCode != 7 ||
+				strings.Count(record.Script, command) != 2 || len(record.ReviewFiles) != 1 || record.ExecOutcome.Coverage != execCoverageExact {
+				t.Fatalf("command occurrences lost outcomes or duplicated scoped effects: %+v, %v", record, err)
+			}
+		})
 	}
+}
+
+func TestResolvedLiteralReadLoopsDoNotInventWriters(t *testing.T) {
+	workspace := t.TempDir()
+	writeTestFile(t, filepath.Join(workspace, "file.txt"), "unchanged")
+	writer := "printf unchanged > file.txt"
+	reader := "cat file.txt"
+	source := "await tools.exec_command({cmd: " + string(mustMarshalJSON(writer)) + "}); " +
+		"for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(mustMarshalJSON(reader)) + "});"
+	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
+	if dynamic || len(commands) != 2 {
+		t.Fatal("fixture must have only literal call sites")
+	}
+	observation, _ := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
 	trace := newNativeTraceFixture(t)
-	trace.start(f.thread, "runtime", "repeated-cell", source)
-	trace.tool(f.thread, "runtime", "patch-first", applyPatchToolName, patch)
-	trace.result(f.thread, "patch-first", "completed", map[string]any{})
-	trace.tool(f.thread, "runtime", "patch-second", applyPatchToolName, patch)
-	trace.result(f.thread, "patch-second", "failed", nil)
-	trace.tool(f.thread, "runtime", "command-first", nativeExecCommandToolName, string(mustMarshalJSON(map[string]any{"cmd": command})))
-	trace.result(f.thread, "command-first", "completed", map[string]any{"exit_code": 0})
-	trace.tool(f.thread, "runtime", "command-second", nativeExecCommandToolName, string(mustMarshalJSON(map[string]any{"cmd": command})))
-	trace.result(f.thread, "command-second", "completed", map[string]any{"exit_code": 7})
-	trace.end(f.thread, "runtime")
-	history.nativeCell = (&nativeToolTrace{directory: trace.root}).readCell(f.thread, "repeated-cell", source)
-	writeTestFile(t, filepath.Join(f.workspace, "repeated-patch.txt"), "after\n")
-	writeTestFile(t, filepath.Join(f.workspace, "repeated-command.txt"), "after")
-	resolveStockEdits(&history, f.workspace)
-	if len(history.NativePatches) != 2 || len(history.ExecObservation.Commands) != 2 {
-		t.Fatalf("resolved duplicate attempt lost: patches=%d commands=%d", len(history.NativePatches), len(history.ExecObservation.Commands))
+	trace.start("author", "runtime", "read-loop", source)
+	for index, command := range []string{writer, reader, reader} {
+		id := fmt.Sprint(index)
+		trace.tool("author", "runtime", id, nativeExecCommandToolName, string(mustMarshalJSON(map[string]any{"cmd": command})))
+		trace.result("author", id, "completed", map[string]any{"exit_code": 0})
 	}
-	proxy := &mekugiProxy{replayStore: f.store}
-	output := mustMarshalJSON("Script completed\nWall time 0.1 seconds\nOutput:\n")
-	if err := proxy.finalizeNativePatches(f.ctx, f.workspace, f.thread, "repeated-cell", history, output); err != nil {
-		t.Fatal(err)
+	trace.end("author", "runtime")
+	history := mekugiHistory{ExecObservation: observation, nativeCell: (&nativeToolTrace{directory: trace.root}).readCell("author", "read-loop", source)}
+	resolveStockEdits(&history, workspace)
+	reviews, complete, coverage, _ := reconcileExecObservation(*history.ExecObservation, execReconcileEnv{})
+	results, confirmed := history.nativeCell.commands(&history, workspace)
+	if !complete || coverage != execCoverageExact || len(reviews) != 0 || history.ExecObservation.RepeatedPaths || !confirmed || len(results) != 3 {
+		t.Fatalf("read loop became an incomplete writer: %+v, complete=%v coverage=%s results=%v", history.ExecObservation, complete, coverage, results)
 	}
-	if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: "repeated-cell", history: history, output: output}}); err != nil {
-		t.Fatal(err)
+}
+
+func TestResolvedLiteralProviderLoopsReusePreCallClassification(t *testing.T) {
+	workspace := t.TempDir()
+	python, _ := interpreterForTest("python3", "python")
+	writeTestFile(t, filepath.Join(workspace, "file.txt"), "unchanged")
+	script := filepath.Join(workspace, "script.py")
+	writeTestFile(t, script, "from pathlib import Path\nPath('file.txt').write_text('temporary')\n")
+	command := python + " script.py"
+	source := "for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(mustMarshalJSON(command)) + "});"
+	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
+	observation, _ := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
+	if dynamic || len(observation.CommandClasses) != 1 || observation.CommandClasses[0] != execScoped.String() {
+		t.Fatal("fixture must pre-capture one scoped literal provider")
 	}
-	for index, want := range []string{"patch-first", "patch-second"} {
-		record, found, err := f.store.lookup(f.ctx, f.workspace, nativePatchDerivedCallID("repeated-cell", index))
-		if err != nil || !found || len(record.HostResults) != 1 || record.HostResults[0].CallID != want {
-			t.Fatalf("patch occurrence %d lost host outcome: %+v, %v", index, record, err)
-		}
-		if index == 0 && (len(record.ReviewFiles) != 1 || record.ReviewFiles[0].BeforePath != "") {
-			t.Fatal("initial creation provenance lost")
-		}
-		if index == 1 && (len(record.ReviewFiles) != 0 || record.TranslationError == "" || record.HostResults[0].Status != "failed") {
-			t.Fatal("duplicate failure borrowed cell-window effects or lost failure")
-		}
-	}
-	record, found, err := f.store.lookup(f.ctx, f.workspace, execDerivedCallID("repeated-cell", true))
-	if err != nil || !found || len(record.HostResults) != 2 || record.HostResults[0].CallID != "command-first" ||
-		record.HostResults[1].CallID != "command-second" || record.HostResults[1].ExitCode == nil || *record.HostResults[1].ExitCode != 7 ||
-		strings.Count(record.Script, command) != 2 || len(record.ReviewFiles) != 1 || record.ExecOutcome.Coverage != execCoverageExact {
-		t.Fatalf("command occurrences lost outcomes or duplicated scoped effects: %+v, %v", record, err)
+	// The provider source changed after capture. Its original classification
+	// must be reused; late source cannot explain the prior call occurrences.
+	writeTestFile(t, script, "print('read only now')\n")
+	history := mekugiHistory{ExecObservation: observation, nativeCell: &nativeTraceCell{ended: true, tools: []*nativeTraceTool{
+		{nativeToolResult: nativeToolResult{Tool: nativeExecCommandToolName}, command: commands[0], terminal: true},
+		{nativeToolResult: nativeToolResult{Tool: nativeExecCommandToolName}, command: commands[0], terminal: true},
+	}}}
+	resolveStockEdits(&history, workspace)
+	reviews, complete, coverage, _ := reconcileExecObservation(*history.ExecObservation, execReconcileEnv{})
+	if len(history.ExecObservation.Commands) != 2 || len(history.ExecObservation.CommandClasses) != 2 ||
+		history.ExecObservation.CommandClasses[1] != execScoped.String() || !history.ExecObservation.RepeatedPaths ||
+		len(reviews) != 1 || !complete || coverage != execCoverageExact {
+		t.Fatalf("late provider state erased repeated-write uncertainty: %+v, complete=%v coverage=%s", history.ExecObservation, complete, coverage)
 	}
 }
 

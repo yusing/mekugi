@@ -36,6 +36,9 @@ Each scoped path's resulting difference is recorded once, at its first
 patch observation, while all patch attempts and available host outcomes remain
 in history. Repeated identical inputs consume literal observations one-to-one
 and retain each resolved occurrence's native result in host dispatch order.
+Repeated literal call sites reuse their captured cell-window baselines without
+requesting a dynamic inventory. Commands targeting another environment cannot
+consume local baselines or establish a complete local net.
 These are cell-window effects, not independently observed per-patch
 effects. Moves whose endpoints overlap another patch are recorded as separate
 source/target differences rather than inferred intermediate renames.
