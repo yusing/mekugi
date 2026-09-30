@@ -19,11 +19,16 @@ type nativePaneState struct {
 	Split            int  `json:"split"`
 	DiffOpen         bool `json:"diffOpen"`
 	JournalOpen      bool `json:"journalOpen,omitzero"`
+	InterruptLocked  bool `json:"interruptLocked,omitzero"`
 	NavigatorColumns int  `json:"navigatorColumns"`
 }
 
 func (u *terminalUI) paneState() nativePaneState {
-	return nativePaneState{Version: 1, Focus: u.focus, Split: u.split, DiffOpen: u.diffOpen, JournalOpen: u.journalOpen, NavigatorColumns: u.diff.navigation.Columns}
+	state := nativePaneState{Version: 1, Focus: u.focus, Split: u.split, DiffOpen: u.diffOpen, JournalOpen: !u.diffOpen && (u.journalOpen || u.autoActivity), NavigatorColumns: u.diff.navigation.Columns}
+	if u.main != nil {
+		state.InterruptLocked = u.main.interruptLocked
+	}
+	return state
 }
 
 type nativePanePersistence struct {
@@ -67,6 +72,7 @@ func (p *nativePanePersistence) open(u *terminalUI, workspace, thread string, re
 		return errors.New("invalid or unsupported pane state")
 	}
 	u.focus, u.split, u.diffOpen, u.journalOpen = state.Focus, state.Split, state.DiffOpen, state.JournalOpen
+	u.main.interruptLocked = state.InterruptLocked
 	u.diff.navigation.Columns = state.NavigatorColumns
 	return nil
 }

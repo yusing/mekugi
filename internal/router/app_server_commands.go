@@ -24,6 +24,8 @@ var nativeCommands = []composerChoice{
 	{name: "/resume", description: "Resume a saved session"},
 	{name: "/compact", description: "Compact context, or queue compaction while busy"},
 	{name: "/clear", description: "Clear the transcript and start a new session"},
+	{name: "/lock", description: "Prevent accidental keyboard interruption"},
+	{name: "/unlock", description: "Allow keyboard interruption again"},
 	{name: "/quit", description: "Quit the session"},
 }
 
@@ -129,6 +131,10 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.agents.childrenOnly, u.agents.bare = true, true
 	}
 	if u.shell != nil {
+		if u.shell.autoActivity {
+			u.shell.journalOpen = true
+		}
+		u.activeChildren, u.shell.autoActivity = nil, false
 		u.shell.selection, u.shell.output = nil, nil
 		u.shell.focus, u.shell.drag = 0, 0
 	}

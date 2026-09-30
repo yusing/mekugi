@@ -139,6 +139,7 @@ func TestPaneScrollUnified(t *testing.T) {
 func TestTerminalUIMainLivePreservesActivity(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
+	u.shell.journalOpen = false // Explicit Activity preference.
 	defer u.shell.diffScreen.Close()
 	screen := vt.NewEmulator(120, 40)
 	defer screen.Close()
@@ -211,6 +212,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					u.ensureShell()
 					defer u.shell.diffScreen.Close()
 					u.shell.diffOpen = saved
+					u.shell.journalOpen = false // Test Diff/Activity dock reclamation.
 					if child {
 						u.agents.agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 					}

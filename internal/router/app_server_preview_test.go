@@ -151,6 +151,8 @@ func TestNativeUIPreview(t *testing.T) {
 func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	p := newNativePreview(t)
 	defer p.close()
+	// These renderer assertions exercise Activity, not automatic pane choice.
+	p.ui.shell.journalOpen = false
 	p.ui.draft = "Keep my draft"
 	render := func(name string, want ...string) string {
 		t.Helper()

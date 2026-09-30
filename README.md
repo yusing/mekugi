@@ -213,8 +213,8 @@ explicit `-c model_catalog_json=...` instead.
 
 ## Native UI
 
-An interactive `mekugi codex --yolo` launch lays out Main, Diff, Activity, and
-Agents panes in one terminal without an external pane manager. Main holds the
+An interactive `mekugi codex --yolo` launch lays out Main, Diff, Activity, Journal,
+and Agents panes in one terminal without an external pane manager. Main holds the
 conversation and composer. Markdown tables render as aligned grids that switch
 to a record layout in narrow panes. Completed Mermaid flowchart fences render as
 terminal diagrams with labeled solid/dashed edges and `&` fan-in/fan-out groups.
@@ -228,6 +228,9 @@ the shared scrollable dialog without leaving your current view. Close it with
 
 - `Ctrl-B`, then `1`/`2`/`3`/`4`/`5`, focuses Main, Diff, Activity, Agents, or Journal.
   Diff, Activity and Journal share the right column. Click a pane to focus it.
+  New sessions show Journal there. A live child spawn or follow-up temporarily
+  shows Activity; when all children finish, Journal returns unless you selected
+  another pane. Saved pane preferences still apply on resume.
 - Drag the dividers to resize panes or the file navigator. `Ctrl-B`, then arrow
   keys, resizes the main splits (up/down in the roster adjusts its height);
   `Ctrl-B`, then `[`/`]`, resizes the file navigator. Narrow terminals show the
@@ -249,6 +252,13 @@ The composer works like Codex's: input history and editing keys, `@` file and
 Enter to steer and Tab to queue during a turn, Esc or Ctrl-C to interrupt,
 Shift+Up/Down for reasoning, `/model`, and `/copy`. Type `?` in an empty
 composer for the full shortcut list.
+
+Use `/lock` to prevent Esc or Ctrl-C from interrupting work and to disable
+Ctrl-C exit on an empty draft. `/unlock` restores those shortcuts. Draft clearing,
+copying, and closing pickers still work while locked; `/quit` remains an explicit
+exit when idle. A persistent Locked indicator shows the protection, which is
+restored with the session on resume. It does not block explicit commands or
+steering new input.
 
 With Codex 0.159.0, opt in to instant steering with
 `mekugi codex --yolo --enable instant_interrupt` (or

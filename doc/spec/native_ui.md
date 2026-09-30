@@ -18,6 +18,12 @@ key opens it, so composer text that starts with any letter is typed. Its plan st
 terminal card follow [journal presentation](journal.md#native-main-presentation).
 Pane preferences retain its visibility and focus; transient selection and expansion
 remain local to the active frontend.
+New sessions default to Journal. Live child spawns and follow-up turns temporarily
+show Activity without moving Main's keyboard focus. Journal returns after the last
+outstanding child completes, fails, or is interrupted, unless the user explicitly
+selected an auxiliary pane or the roster. Existing manual Diff/Activity choices are
+not replaced on a spawn. Temporary Activity visibility is not persisted as a pane
+preference; replay cannot revive pending child lifecycles.
 
 `mekugi codex` uses the native client of `codex app-server` for interactive
 terminal launches. Explicit `--yolo` remains required; without it startup rejects
@@ -210,8 +216,8 @@ visible, without internal capture-bookkeeping placeholders. Incomplete capture p
 one coverage notice with a `mchanges` reference, not labeled as confirmed edits;
 the durable records retain each path and its reason.
 
-The shell frames Main on the left and one right pane: the saved diff (2) or
-Activity (3), toggled and each filling the pane. A roster (4) below them fits its
+The shell frames Main on the left and one right pane: the saved diff (2),
+Activity (3), or Journal (5), each filling the pane. A roster (4) below them fits its
 content, four rows unfocused and up to 40% of the screen when focused; finished
 agents fold into one row. The roster immediately follows the pane borders, with one blank row below it
 before the status bar when terminal height permits. Collapsed rows place activity directly after the name
@@ -625,6 +631,14 @@ Stacked image files stay owned until sent.
 Escape in the focused composer interrupts an active turn without clearing its draft
 and never quits. Dismissing a picker, help, or selection and returning a paused
 transcript to the bottom take precedence.
+
+`/lock` protects against keyboard interruption: composer Escape and Ctrl-C cannot
+interrupt active or starting work or discard waiting input, and Ctrl-C cannot exit
+with an empty draft. `/unlock` restores those shortcuts. Draft clearing, undo,
+contextual dismissal and copying remain available. `/quit`, explicit commands and
+normal steering retain their behavior. A persistent Locked indicator includes
+`/unlock`; the preference is restored for that workspace/thread on resume. Host
+lifecycle events and an already-requested interrupt are unaffected.
 
 Ctrl-C first clears a non-empty draft (Ctrl+Z restores it), then interrupts the
 active or starting turn, and exits like `/quit` only when no input is waiting.

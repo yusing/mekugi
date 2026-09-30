@@ -30,6 +30,7 @@ type terminalUI struct {
 	focus, drag                                    int // 0 Main, 1 diff, 2 agents, 3 roster; drag 1 main, 2 auxiliary, 3 files, 4 roster
 	side, activityOpen                             bool
 	journalOpen                                    bool
+	autoActivity                                   bool // Temporarily shows children over the preferred Journal.
 	diffOpen                                       bool
 	diffUnseen                                     bool // Saved changes arrived while Activity held the right column.
 	liveDock                                       diffview.PreviewPane
@@ -199,13 +200,16 @@ func (u *terminalUI) key(key byte) error {
 		case '1':
 			u.focus = 0
 		case '2':
+			u.autoActivity = false
 			u.journalOpen = false
 			u.focus = 1
 			u.side = true
 			u.diffOpen = true
 		case '5':
+			u.autoActivity = false
 			u.focus, u.journalOpen, u.diffOpen = 4, true, false
 		case '3', '4':
+			u.autoActivity = false
 			if key == '3' {
 				u.journalOpen = false
 			}
@@ -394,7 +398,7 @@ func (u *terminalUI) send(s string) error {
 
 	if s == "\x1b" && u.focus == 0 && u.main != nil && !u.main.paste {
 		if u.main.turn != "" || u.main.starting || u.main.submission.text != "" || len(u.main.unsent)+len(u.main.queued) > 0 {
-			return u.main.interruptTurn()
+			return u.main.keyboardInterrupt()
 		}
 		return nil
 	}
@@ -548,6 +552,7 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	if u.layout.live.contains(x, y) {
 		if button&^28 == 0 && !release {
+			u.autoActivity = false
 			u.focus = 2
 			if u.diffOpen {
 				u.focus = 1
@@ -582,6 +587,9 @@ func (u *terminalUI) mouse(s string) error {
 	}
 
 	if button&^28 == 0 && !release {
+		if pane != 0 {
+			u.autoActivity = false
+		}
 		u.focus = pane
 	}
 	translated := fmt.Sprintf("\x1b[<%d;%d;%dM", button, x-r.x+1, y-r.y+1)

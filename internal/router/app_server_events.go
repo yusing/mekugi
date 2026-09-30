@@ -464,6 +464,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			return true, nil
 		}
 	}
+	u.updateAgentPane(m.Method, p)
 	u.applyActivity(entries, slices.Clone(s.agents))
 	// Main's turn lifecycle also drives the composer state.
 	return !main || !strings.HasPrefix(m.Method, "turn/"), nil

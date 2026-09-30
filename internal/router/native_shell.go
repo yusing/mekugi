@@ -483,6 +483,9 @@ func (u *terminalUI) nativeStatus() string {
 	pair := activityui.Dim + "[" + activityui.Undim + tab(2, "Diff", diffBadge, u.diffOpen) + activityui.Dim + "│" + activityui.Undim +
 		tab(3, "Activity", "", !u.diffOpen && !u.journalOpen) + activityui.Dim + "│" + activityui.Undim + tab(5, "Journal", "", u.journalOpen) + activityui.Dim + "]" + activityui.Undim
 	tabs := tab(1, "Main", "", true) + " " + pair + " " + tab(4, "Agents", agentsBadge, true)
+	if u.main != nil && u.main.interruptLocked {
+		tabs += "  " + activityui.Amber + "Locked · /unlock" + activityui.Reset
+	}
 	var hints terminalHints
 	switch {
 	case u.prefix:
@@ -521,6 +524,7 @@ func superscript(n int) string {
 // filter, the native right pane leaves the saved diff for Activity.
 func (u *terminalUI) showRosterPick(only bool, selected string) {
 	if u.main != nil && (u.agents.only != only || u.agents.selected != selected) {
+		u.autoActivity, u.journalOpen = false, false
 		u.diffOpen = false
 	}
 }

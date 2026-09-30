@@ -37,6 +37,7 @@ type appServerItem struct {
 	Summary          []string                  `json:"summary"`
 	AgentThreadID    string                    `json:"agentThreadId"`
 	AgentPath        string                    `json:"agentPath"`
+	Kind             string                    `json:"kind"` // subAgentActivity lifecycle.
 	Command          string                    `json:"command"`
 	Cwd              string                    `json:"cwd"` // commandExecution: the directory the host ran it in.
 	Source           string                    `json:"source"`
@@ -96,6 +97,8 @@ type appServerUI struct {
 	session                   appServerSession
 	ctx                       context.Context
 	quitRequested             bool
+	interruptLocked           bool
+	activeChildren            map[string]bool // Live host lifecycles only, never replayed processes.
 	mainContentPainted        bool
 	thread, turn, status      string
 	exitUsage                 appServerTokenUsage
@@ -951,10 +954,17 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			if u.turn != "" || u.starting || u.submission.text != "" {
 				u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
 			}
+			if u.interruptLocked {
+				u.setNotice("Draft cleared · Ctrl+Z restores · Locked · /unlock", false)
+			}
 			return false, nil
 		}
 		if u.turn != "" || u.starting || u.submission.text != "" || len(u.unsent)+len(u.queued) > 0 {
-			return false, u.interruptTurn()
+			return false, u.keyboardInterrupt()
+		}
+		if u.interruptLocked {
+			u.lockNotice()
+			return false, nil
 		}
 		return true, nil
 	case 127, 8:
@@ -963,6 +973,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.insertDraft("\n")
 	case '\r':
 		text := strings.TrimSpace(u.draft)
+		if handled, err := u.controlsCommand(text); handled {
+			return false, err
+		}
 		if text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
 			return false, u.submitBTW()
 		}
@@ -1444,7 +1457,7 @@ func (u *appServerUI) ensureShell() {
 		auto = u.proxy.autoLiveDiff
 	}
 	u.agents.bare = true
-	shell := &terminalUI{main: u, agents: u.agents, side: true, activityOpen: true, auto: auto, diffScreen: vt.NewEmulator(1, 3)}
+	shell := &terminalUI{main: u, agents: u.agents, side: true, activityOpen: true, journalOpen: true, auto: auto, diffScreen: vt.NewEmulator(1, 3)}
 	shell.diff = newLiveDiffTerminalController(store, "", os.Stdout)
 	shell.diff.native, shell.diff.diffMode = true, true
 	shell.diff.stdout = shell.diffScreen
