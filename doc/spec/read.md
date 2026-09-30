@@ -27,9 +27,13 @@ accepted as `1:END`. The start line must exist; an end past EOF returns through 
 line without a diagnostic. Each range applies to the preceding path. A numeric range after a path is
 therefore an operand, so prefix a range-like filename with `./`. `--` ends
 option parsing. Several ranges may follow one path, each counting toward the maximum of
-16 reads. Before reading sources, `A:+N`, `A,B`, and bare numeric operands reject with a
+16 reads. Over-limit invocations reject before reading sources with the full read count
+after shell argument expansion, the limit, and a batching suggestion naming the number
+of calls needed. When splitting ranges across calls, repeat their source path.
+Before reading sources, `A:+N`, `A,B`, and bare numeric operands reject with a
 corrected command. A nonexistent `PATH:N` operand suggests `mcat PATH N:N`; an existing
 literal file retains its ordinary meaning. `-n A:B` suggests `mcat PATH A:B`.
+Read failures name the quoted source path, including missing-file errors.
 Start-past-EOF messages use colon ranges and the observed row count.
 
 The executable inherits the stock executor's working directory and environment.

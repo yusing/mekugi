@@ -31,6 +31,19 @@ test("accepts colon and dash spans with the same inclusive rows", async () => {
   expect(dash).toEqual(colon);
 });
 
+test("names missing paths without syscall noise and preserves not_found classification", async () => {
+  const directory = await temporaryDirectory();
+  const tool = createMCatTool("");
+  for (const name of ["missing.txt", 'missing \"quoted\" file.txt', "missing\nfile.txt"]) {
+    const file = path.join(directory, name);
+    expect(await tool.execute([file], executionContext)).toEqual({
+      stderr: `mcat: ${JSON.stringify(file)}: ENOENT: no such file or directory\n`,
+      exitCode: 1,
+      failureClass: "not_found",
+    });
+  }
+});
+
 test("--number uses absolute source lines and numbers blank rows like nl -ba", async () => {
   const directory = await temporaryDirectory();
   const file = path.join(directory, "rows.txt");
@@ -60,7 +73,7 @@ test("reports the exact omitted EOF span and preserves start-past-EOF failure st
     exitCode: 0,
   });
   expect(await tool.execute([file, "4:9"], executionContext)).toEqual({
-    stderr: "mcat: rows 4:9 past EOF (3 rows)\n",
+    stderr: `mcat: ${JSON.stringify(file)}: rows 4:9 past EOF (3 rows)\n`,
     exitCode: 1,
     failureClass: "reader_error",
   });

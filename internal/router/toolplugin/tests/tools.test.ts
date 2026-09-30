@@ -599,19 +599,22 @@ describe("mcat built-in plugin", () => {
 
     const outside = await tool.execute(["plain.txt", "4:5"], executionContext);
     expect(outside).toEqual({
-      stderr: "mcat: rows 4:5 past EOF (3 rows)\n",
+      stderr: 'mcat: "plain.txt": rows 4:5 past EOF (3 rows)\n',
       exitCode: 1,
       failureClass: "reader_error",
     });
 
     const missing = await tool.execute(["missing.txt"], executionContext);
     expect(missing).toEqual({
-      stderr: "mcat: ENOENT: no such file or directory\n",
+      stderr: 'mcat: "missing.txt": ENOENT: no such file or directory\n',
       exitCode: 1,
       failureClass: "not_found",
     });
 
-    expect(await tool.execute(["@shell/call-id"], executionContext)).toEqual(missing);
+    expect(await tool.execute(["@shell/call-id"], executionContext)).toEqual({
+      ...missing,
+      stderr: 'mcat: "@shell/call-id": ENOENT: no such file or directory\n',
+    });
   });
 
   test("rejects malformed ranges, non-regular files, and invalid UTF-8", async () => {

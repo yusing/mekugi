@@ -14,6 +14,7 @@ import (
 )
 
 const readBundleUsage = "mcat [-n N] [--max-tokens N] [--tail] [--number] PATH [START:END ...] [PATH [START:END ...] ...]"
+const maxReadBundleReads = 16
 
 type readBundleSpec struct {
 	path string
@@ -86,9 +87,6 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 			if specs[len(specs)-1].span == "" {
 				specs[len(specs)-1].span = operand
 			} else {
-				if len(specs) == 16 {
-					return nil, 0, errors.New(readBundleUsage + " (1–16 reads)")
-				}
 				specs = append(specs, readBundleSpec{path: specs[len(specs)-1].path, span: operand})
 			}
 			continue
@@ -105,13 +103,17 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 				return nil, 0, fmt.Errorf("ranges must be separate operands; retry: %s", workerCommand("mcat", []string{path, row + ":" + row}))
 			}
 		}
-		if operand == "" || len(specs) == 16 {
+		if operand == "" {
 			return nil, 0, errors.New(readBundleUsage + " (1–16 reads)")
 		}
 		specs = append(specs, readBundleSpec{path: operand})
 	}
 	if len(specs) == 0 {
 		return nil, 0, errors.New(readBundleUsage)
+	}
+	if len(specs) > maxReadBundleReads {
+		calls := (len(specs) + maxReadBundleReads - 1) / maxReadBundleReads
+		return nil, 0, fmt.Errorf("received %d reads after argument expansion, exceeding the %d-read limit; split into %d mcat calls of at most %d reads each; repeat the path when splitting its ranges", len(specs), maxReadBundleReads, calls, maxReadBundleReads)
 	}
 	if tailOption && !tokenOption && !lineOption {
 		return nil, 0, errors.New("--tail requires -n or --max-tokens")
@@ -326,8 +328,8 @@ func executeMCatBundle(
 				state, omitted = "incomplete", "unavailable"
 			}
 		}
-		// Source diagnostics are short and path-free, so they stay visible with
-		// a path prefix; only omitted output needs a retained continuation.
+		// Keep source diagnostics visible with one path prefix; only omitted
+		// output needs a retained continuation.
 		for line := range strings.Lines(execution.Stderr) {
 			if execution.FailureClass == "output_limit" && strings.HasPrefix(line, "mcat: output incomplete:") {
 				continue
@@ -444,7 +446,7 @@ func renderReadBundle(entries []readBundleEntry) string {
 }
 
 // prefixReadBundleDiagnostic names the source path on each diagnostic line,
-// replacing the generated reader's own "mcat: " prefix when present.
+// preserving the generated reader's quoted path when already present.
 func prefixReadBundleDiagnostic(path string, stderr string) string {
 	if stderr == "" {
 		return ""
@@ -452,8 +454,12 @@ func prefixReadBundleDiagnostic(path string, stderr string) string {
 	prefix := "mcat: " + string(mustMarshalJSON(path)) + ": "
 	var out strings.Builder
 	for line := range strings.Lines(stderr) {
-		out.WriteString(prefix)
-		out.WriteString(strings.TrimPrefix(line, "mcat: "))
+		if strings.HasPrefix(line, "mcat: \"") {
+			out.WriteString(line)
+		} else {
+			out.WriteString(prefix)
+			out.WriteString(strings.TrimPrefix(line, "mcat: "))
+		}
 	}
 	if !strings.HasSuffix(stderr, "\n") {
 		out.WriteByte('\n')

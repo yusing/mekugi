@@ -38,8 +38,9 @@ func TestParseReadBundleCountsMultipleRangesTowardSixteenReadLimit(t *testing.T)
 		t.Fatalf("16 ranges for one path: specs=%+v err=%v", specs, err)
 	}
 	args = append(args, "17:17")
-	if _, _, err := parseReadBundle(args); err == nil {
-		t.Fatal("accepted 17 reads represented as ranges on one path")
+	want := "received 17 reads after argument expansion, exceeding the 16-read limit; split into 2 mcat calls of at most 16 reads each; repeat the path when splitting its ranges"
+	if _, _, err := parseReadBundle(args); err == nil || err.Error() != want {
+		t.Fatalf("17 ranges: error=%v, want %q", err, want)
 	}
 }
 
@@ -116,7 +117,7 @@ func TestMCatDashFilenameAndEOFRangeMessages(t *testing.T) {
 	}
 	out, diagnostic, status = runShellWorkerTest(t, registry, "bash", nil,
 		"mcat rows 4:9", nil, newShellWorkerTestInvocation(directory))
-	if status != 1 || out != "" || diagnostic != "mcat: rows 4:9 past EOF (3 rows)\n" {
+	if status != 1 || out != "" || diagnostic != "mcat: \"rows\": rows 4:9 past EOF (3 rows)\n" {
 		t.Fatalf("range starting past EOF: status=%d stdout=%q stderr=%q", status, out, diagnostic)
 	}
 }

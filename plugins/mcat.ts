@@ -391,7 +391,7 @@ Limited output contains complete rows and exits nonzero; retained omissions prov
           ...(result.incomplete ? {failureClass: "output_limit" as const} : {}),
         };
       } catch (error) {
-        return {stderr: `mcat: ${conciseErrorText(error)}\n`, exitCode: 1, failureClass: readerFailureClass(error)};
+        return {stderr: `mcat: ${JSON.stringify(spec.path)}: ${conciseErrorText(error)}\n`, exitCode: 1, failureClass: readerFailureClass(error)};
       }
     },
   });

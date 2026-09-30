@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -27,6 +28,74 @@ func TestReadBundleDefaultMultiFileBudget(t *testing.T) {
 	specs, budget, err := parseReadBundle([]string{"first.go", "second.go"})
 	if err != nil || budget != 6000 || len(specs) != 2 {
 		t.Fatalf("parse default multi-file bundle: specs=%+v budget=%d err=%v", specs, budget, err)
+	}
+}
+
+func TestReadBundleLimitReportsFullReadCount(t *testing.T) {
+	for _, count := range []int{16, 17, 21, 33} {
+		args := append([]string{"--max-tokens=2000"}, slices.Repeat([]string{"source"}, count)...)
+		specs, budget, err := parseReadBundle(args)
+		if count == 16 {
+			if err != nil || len(specs) != count || budget != 2000 {
+				t.Fatalf("limit boundary: specs=%+v budget=%d err=%v", specs, budget, err)
+			}
+			continue
+		}
+		want := fmt.Sprintf("received %d reads after argument expansion, exceeding the 16-read limit; split into %d mcat calls of at most 16 reads each; repeat the path when splitting its ranges", count, (count+15)/16)
+		if err == nil || err.Error() != want {
+			t.Fatalf("%d paths: error=%v, want %q", count, err, want)
+		}
+	}
+	args := []string{"first", "1:1", "2:2"}
+	args = append(args, slices.Repeat([]string{"other"}, 19)...)
+	_, _, err := parseReadBundle(args)
+	if err == nil || !strings.HasPrefix(err.Error(), "received 21 reads after argument expansion,") {
+		t.Fatalf("mixed paths and ranges: error=%v", err)
+	}
+}
+
+func TestMCatExpandedGlobLimitAndBatchedRecovery(t *testing.T) {
+	t.Parallel()
+	registry := sharedProxyTestRegistry(t)
+	directory := t.TempDir()
+	for i := range 21 {
+		name := fmt.Sprintf("snapshot-%02d.txt", i)
+		if err := os.WriteFile(filepath.Join(directory, name), fmt.Appendf(nil, "payload %d\n", i), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
+		"mcat *.txt", nil, newShellWorkerTestInvocation(directory))
+	want := "mcat: received 21 reads after argument expansion, exceeding the 16-read limit; split into 2 mcat calls of at most 16 reads each; repeat the path when splitting its ranges\n"
+	if status != 1 || out != "" || diagnostic != want {
+		t.Fatalf("expanded glob: status=%d stdout=%q stderr=%q", status, out, diagnostic)
+	}
+	out, diagnostic, status = runShellWorkerTest(t, registry, "bash", nil,
+		`files=( *.txt ); mcat "${files[@]:0:16}" && mcat "${files[@]:16}"`, nil, newShellWorkerTestInvocation(directory))
+	if status != 0 || diagnostic != "" || strings.Count(out, "payload ") != 21 {
+		t.Fatalf("batched recovery: status=%d stdout=%q stderr=%q", status, out, diagnostic)
+	}
+}
+
+func TestMCatMissingPathDiagnostics(t *testing.T) {
+	t.Parallel()
+	registry := sharedProxyTestRegistry(t)
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "good"), []byte("available source\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, missing := range []string{"missing", "missing file", filepath.Join(directory, "missing file"), "missing\u2028file"} {
+		want := "mcat: " + string(mustMarshalJSON(missing)) + ": ENOENT: no such file or directory\n"
+		// JSON.stringify keeps U+2028 literal; Go's protocol encoder escapes it.
+		want = strings.ReplaceAll(want, `\u2028`, "\u2028")
+		for _, args := range [][]string{{missing}, {missing, "good"}} {
+			out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
+				workerCommand("mcat", args), nil, newShellWorkerTestInvocation(directory))
+			if status != 1 || diagnostic != want || (len(args) == 1 && out != "") ||
+				(len(args) == 2 && !strings.Contains(out, "available source\n")) {
+				t.Fatalf("%q: status=%d stdout=%q stderr=%q, want stderr=%q", args, status, out, diagnostic, want)
+			}
+		}
 	}
 }
 
