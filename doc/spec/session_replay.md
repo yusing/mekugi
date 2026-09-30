@@ -2,8 +2,12 @@
 
 ## REQ-SESSION-REPLAY-001 — Offline timed presentation
 
-`mekugi replay-session --session PATH` reconstructs native UI presentation from
-retained Codex rollout records. It creates no Codex process, provider transport,
+`mekugi replay-session --session ID` requires a literal session ID, not a path.
+It searches `sessions` and `archived_sessions` under `CODEX_HOME` (default
+`~/.codex`), using the exact first metadata ID to identify filename candidates.
+Missing or ambiguous sessions fail rather than choosing a rollout arbitrarily.
+It reconstructs native UI presentation from retained Codex rollout records.
+It creates no Codex process, provider transport,
 command executor, live observer, journal delivery, or replay-store writer.
 Playback keys control presentation only; recorded content cannot submit intent.
 

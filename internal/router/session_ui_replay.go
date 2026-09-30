@@ -230,7 +230,7 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stderr *os.File) int {
 	f := flag.NewFlagSet("replay-session", flag.ContinueOnError)
 	f.SetOutput(stderr)
-	path := f.String("session", "", "Codex rollout JSONL (required)")
+	session := f.String("session", "", "Codex session ID (required; searches CODEX_HOME or ~/.codex)")
 	debug := f.String("debug-dir", "", "optional debug bundle with provider timing capture.jsonl")
 	speed := f.Float64("speed", 1, "playback speed, 0.1 to 100 (1 = original wall timing)")
 	seed := f.Uint64("seed", 1, "repeatable seed for simulated streaming cadence")
@@ -242,7 +242,7 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 	cpu := f.String("cpu-profile", "", "write CPU pprof to a new file")
 	heap := f.String("heap-profile", "", "write heap pprof to a new file")
 	f.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: mekugi replay-session --session PATH [options]\nOffline native UI playback. Recorded item timing; simulated streaming, not a screen recording.")
+		fmt.Fprintln(stderr, "Usage: mekugi replay-session --session ID [options]\nOffline native UI playback. Recorded item timing; simulated streaming, not a screen recording.")
 		f.PrintDefaults()
 	}
 	if err := f.Parse(args); err != nil {
@@ -252,7 +252,7 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 		return 2
 	}
 	fail := func(err error) int { fmt.Fprintln(stderr, "mekugi replay-session:", err); return 1 }
-	if f.NArg() != 0 || *path == "" || math.IsNaN(*speed) || math.IsInf(*speed, 0) || *speed < 0.1 || *speed > 100 || *width < 20 || *width > 1000 || *height < 8 || *height > 500 || *from < 0 || *until < 0 {
+	if f.NArg() != 0 || strings.TrimSpace(*session) == "" || strings.ContainsAny(*session, `/\*?[]`) || math.IsNaN(*speed) || math.IsInf(*speed, 0) || *speed < 0.1 || *speed > 100 || *width < 20 || *width > 1000 || *height < 8 || *height > 500 || *from < 0 || *until < 0 {
 		f.Usage()
 		return 2
 	}
@@ -260,7 +260,18 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 		return fail(errors.New("interactive playback requires a terminal; use --headless for profiling"))
 	}
 	fmt.Fprintln(stderr, "Loading recorded session and child items…")
-	source, err := readSessionUIReplay(ctx, *path, *debug, *seed)
+	rollouts, err := discoverDebugRollouts(ctx, []string{*session})
+	if err != nil {
+		return fail(err)
+	}
+	paths := rollouts[*session]
+	if len(paths) == 0 {
+		return fail(fmt.Errorf("session %q not found in Codex sessions or archived_sessions", *session))
+	}
+	if len(paths) != 1 {
+		return fail(fmt.Errorf("session %q has multiple rollouts in Codex sessions or archived_sessions", *session))
+	}
+	source, err := readSessionUIReplay(ctx, paths[0], *debug, *seed)
 	if err != nil {
 		return fail(err)
 	}

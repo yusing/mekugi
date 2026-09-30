@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"maps"
@@ -158,7 +159,7 @@ func discoverDebugRollouts(ctx context.Context, threads []string) (map[string][]
 				// in "thread". Attribute by the rollout's exact metadata ID.
 				id, err := debugRolloutIdentity(path)
 				if err != nil {
-					return err
+					return fmt.Errorf("%s: %w", path, err)
 				}
 				if slices.Contains(threads, id) {
 					found[id] = append(found[id], path)

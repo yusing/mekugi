@@ -646,9 +646,13 @@ Review a retained session through the current native UI without running Codex,
 calling providers, executing commands, or answering questions:
 
 ```sh
-mekugi replay-session --session /path/to/rollout.jsonl
-mekugi replay-session --session /path/to/rollout.jsonl --debug-dir /path/to/debug --speed 4
+mekugi replay-session --session SESSION_ID
+mekugi replay-session --session SESSION_ID --debug-dir /path/to/debug --speed 4
 ```
+
+Use the full session ID, not a rollout path. Mekugi finds the session in
+`sessions` or `archived_sessions` under `CODEX_HOME` (default `~/.codex`). Missing
+or duplicate rollouts are reported as errors.
 
 Playback defaults to **1.0x**. It preserves recorded item start/end times and gaps,
 including command duration and retained question/answer arrivals. Referenced child
@@ -668,7 +672,7 @@ first. The current terminal size controls layout.
 For profiling without a terminal:
 
 ```sh
-mekugi replay-session --session /path/to/rollout.jsonl --headless \
+mekugi replay-session --session SESSION_ID --headless \
   --width 160 --height 48 --cpu-profile /tmp/replay-cpu.pprof \
   --heap-profile /tmp/replay-heap.pprof
 go tool pprof -top /tmp/replay-cpu.pprof
