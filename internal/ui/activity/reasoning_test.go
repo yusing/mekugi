@@ -1,10 +1,13 @@
 package activity_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -36,41 +39,43 @@ func TestThinkingBlock(t *testing.T) {
 	if got := plain(activityui.Block{Kind: "summary", Body: "one"}); strings.Join(got, "|") != "• Thought|  one" {
 		t.Fatalf("untimed thinking = %q", got)
 	}
-	// Codex summaries keep their bullet body, even while streaming.
-	if got := plain(activityui.Block{Kind: "summary", Body: "**Checking**\n\nPublic summary.", Live: true}); strings.Join(got, "|") != "• Public summary." {
+	// Titled and untitled summaries share the streaming lifecycle.
+	if got := plain(activityui.Block{Kind: "summary", Body: "**Checking**\n\nPublic summary.", Live: true}); strings.Join(got, "|") != "• Thinking…|  Public summary." {
 		t.Fatalf("titled summary = %q", got)
 	}
-	if got := plain(activityui.Block{Kind: "summary", Body: "**Check", Live: true}); strings.Contains(strings.Join(got, "|"), "Thinking") {
-		t.Fatalf("partial title rendered as thinking = %q", got)
+	if got := plain(activityui.Block{Kind: "summary", Body: "**Check", Live: true}); !strings.Contains(strings.Join(got, "|"), "Thinking…") {
+		t.Fatalf("partial title lost thinking header = %q", got)
 	}
 }
 
-func TestConsecutiveReasoningGroups(t *testing.T) {
+func TestReasoningMultilineStyles(t *testing.T) {
 	var p activityui.Painter
-	summaries := []activityui.Block{
-		{Kind: "summary", Body: "**First**\n\nEarlier body\nextra detail", Source: 1},
-		{Kind: "summary", Body: "**Second**", Source: 2},
-		{Kind: "summary", Body: "Latest body", Source: 3, Collapsed: true},
-	}
-	grouped := activityui.GroupReasoning(summaries)
-	if len(grouped) != 2 || len(grouped[0].Members) != 2 || grouped[1].Source != 3 || grouped[1].Collapsed {
-		t.Fatalf("group = %+v", grouped)
-	}
-	collapsed := ansi.Strip(strings.Join(p.Block(grouped[0], 80), "\n"))
-	if collapsed != "• extra detail, Second" {
-		t.Fatalf("collapsed = %q", collapsed)
-	}
-	grouped[0].Collapsed = false
-	expanded := ansi.Strip(strings.Join(p.Block(grouped[0], 80), "\n"))
-	if !strings.Contains(expanded, "Earlier body") || !strings.Contains(expanded, "Second") {
-		t.Fatalf("expanded = %q", expanded)
-	}
-	if got := ansi.Strip(p.Summary(summaries)); got != "extra detail, Second, Latest body" {
-		t.Fatalf("inline = %q", got)
-	}
-	separated := append(append([]activityui.Block{}, summaries[:1]...), activityui.Block{Kind: "op", Verb: "Read"})
-	separated = append(separated, summaries[1:]...)
-	if got := activityui.GroupReasoning(separated); len(got) != 4 || got[0].Collapsed || got[1].Kind != "op" {
-		t.Fatalf("action boundary = %+v", got)
+	body := "**Checking**\n\nFirst **bold** then normal and `code` then normal.\nSoft continuation with [link](https://example.com) then normal.\n\n- One long explicit list item that wraps across lines\n  still the same item.\n\nLast paragraph."
+	for _, width := range []int{24, 80} {
+		rows := p.Block(activityui.Block{Kind: "summary", Body: body}, width)
+		screen := vt.NewEmulator(width, len(rows)+1)
+		fmt.Fprint(screen, strings.Join(rows, "\r\n")+"\r\n"+"Answer")
+		for y := 1; y < len(rows); y++ {
+			for x := range width {
+				cell := screen.CellAt(x, y)
+				if cell == nil || strings.TrimSpace(cell.Content) == "" {
+					continue
+				}
+				if cell.Style.Attrs&(uv.AttrFaint|uv.AttrItalic) != uv.AttrFaint|uv.AttrItalic {
+					t.Errorf("width %d cell (%d,%d) %q lost reasoning style: %+v", width, x, y, cell.Content, cell.Style)
+				}
+			}
+		}
+		if cell := screen.CellAt(0, len(rows)); cell.Style.Attrs&(uv.AttrFaint|uv.AttrItalic) != 0 {
+			t.Error("reasoning style leaked to the answer")
+		}
+		screen.Close()
+		plain := ansi.Strip(strings.Join(rows, "\n"))
+		if strings.Count(plain, "•") != 2 {
+			t.Fatalf("paragraphs introduced extra bullets: %s", plain)
+		}
+		if strings.Contains(plain, "**") || strings.Contains(plain, "`") {
+			t.Fatal("inline Markdown not rendered")
+		}
 	}
 }

@@ -409,6 +409,7 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 	}
 	switch item.Type {
 	case "reasoning":
+		entry.native.collapsed = true
 		entry.Kind, entry.Text = "reasoning", strings.Join(item.Summary, "\n\n")
 		if strings.TrimSpace(entry.Text) != "" {
 			*entries = append(*entries, entry)

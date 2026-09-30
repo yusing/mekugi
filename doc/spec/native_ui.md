@@ -826,10 +826,12 @@ running` only for agents whose reported state is running, without claiming
 that missing state means success or continued work.
 
 Native public reasoning summaries appear for Main and children, from summary
-deltas or completed/history items. Main retains dim italic summary bodies in its
-transcript; consecutive summaries without an intervening action fold the earlier
-summaries into one expandable, comma-separated row, leaving the latest summary
-expanded. Inline consecutive summaries are comma-separated too.
+deltas, item events, or history. Main and Activity use the same thinking block
+for titled and untitled summaries. Body rows are uniformly faint and italic,
+including wrapped lines and text after inline formatting. Paragraphs and soft
+line breaks continue beneath the block's single header; only explicit Markdown
+list items introduce body bullets. Inline consecutive summaries in roster status
+are comma-separated.
 Reasoning does not replace `Working` in the composer status.
 Working and its progress overrides shimmer while the turn runs. Other ongoing
 states, such as sending and interrupting, breathe smoothly together from dim to light to dim, using a continuous neutral
@@ -848,21 +850,20 @@ that stops when superseded or finished. The sweep blends between
 the terminal's reported (OSC 10/11) foreground and background; without both
 reports it steps through dim, normal and bold. Raw and encrypted
 reasoning stay excluded.
-Summaries without a leading bold title are third-party provider reasoning and
-render as thinking blocks, following grok-build: a dim `• Thinking…` header
+Reasoning renders as thinking blocks, following grok-build: a dim `• Thinking…` header
 over the latest three text rows while it streams, with `· +N lines` counting
-the rows above them, then `• Thought for 12s` (or `• Thought` when it lasted under a second or no
-delta was observed) over the complete body. As in grok-build, each forwarded request
+the rows above them, then `• Thought for 12s` (or `• Thought` when it lasted under a second or timing
+is unavailable) over the complete body. As in grok-build, each forwarded request
 to such a provider shows `• Thinking…` from the request start, so the wait for the
 first delta is not silent; the request's first reasoning item takes over that block.
 Other output starting first, or the turn's end, removes the still-empty block; a
 late completion of the previous request's item does not. Time runs from
-the request start (or the first summary delta without one) to item completion; a turn
+the request start (or the first visible summary without one) to item completion; a turn
 that ends first completes its unfinished blocks.
 One second after an observed completion, the block folds to its header row in
-Main and Activity; a click opens its body in the shared dialog. Restored history keeps
-its body. In a consecutive run, the latest summary stays expanded instead of
-folding on that timer. Titled summaries keep the Codex rendering.
+Main and Activity; a click opens its body in the shared dialog. Restored history
+starts folded, retaining each body for the dialog. Consecutive items keep their
+own headers and collapse independently, including the latest item.
 
 Successful output eligible to fold shares one debounce deadline across Main and Activity,
 including late completions, so it collapses in a single screen update rather than

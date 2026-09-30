@@ -1,0 +1,8 @@
+• Thought for 12s
+  First I will inspect the stream renderer and its existing dialog.
+  This continues the same paragraph with emphasis and inline code.
+  
+  • Keep the same bullet when its explanation wraps across the available width.
+    This line continues that bullet with more detail.
+  • Preserve the final observation and reopen the complete reasoning after
+    collapse.

@@ -350,6 +350,12 @@ func liveActivityLink(s string) (label, target string, end int, ok bool) {
 // markdown renders authored text: fenced programs are highlighted on a
 // fill, list items hang, and tables lay out within the available width.
 func (p *Painter) Markdown(text string, width int) []string {
+	return p.markdown(text, width, false)
+}
+
+// Reasoning keeps source indentation on soft-wrapped continuation rows too.
+// Ordinary authored message layout is unchanged.
+func (p *Painter) markdown(text string, width int, reasoning bool) []string {
 	var lines, program, quote []string
 	flushQuote := func() {
 		if len(quote) > 0 {
@@ -401,7 +407,11 @@ func (p *Painter) Markdown(text string, width int) []string {
 		case strings.HasPrefix(trimmed, "- "), strings.HasPrefix(trimmed, "* "):
 			lines = append(lines, liveActivityHang(indent+Dim+"•"+Undim+" ", p.Inline(trimmed[2:]), width)...)
 		default:
-			lines = append(lines, Wrap(p.Inline(line), width, false)...)
+			if reasoning && indent != "" {
+				lines = append(lines, liveActivityHang(indent, p.Inline(trimmed), width)...)
+			} else {
+				lines = append(lines, Wrap(p.Inline(line), width, false)...)
+			}
 		}
 	}
 	flushQuote()
@@ -565,23 +575,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 	case "progress":
 		return Wrap(Dim+"• "+block.progressText(true)+Reset, width, false)
 	case "summary":
-		if len(block.Members) > 0 {
-			if block.Collapsed {
-				label := p.Inline(block.Label)
-				if block.Hovered {
-					label = Underline(label)
-				}
-				return liveActivityHang(Dim+"• ", label+Undim, width)
-			}
-			var rows []string
-			for _, member := range block.Members {
-				member.Collapsed = false
-				rows = append(rows, p.Block(member, width)...)
-			}
-			return rows
-		}
-		// Codex keeps summary bodies in detailed transcript, dim and italic,
-		// with a bullet rather than a separate "Reasoning summary" card.
+		// Public reasoning shares one streaming block across providers.
 		body := ReasoningSummaryBody(block.Body)
 		if body == "" {
 			// A request's thinking block before its first delta.
@@ -590,40 +584,24 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			}
 			return nil
 		}
-		style := Dim + "\x1b[3m"
-		rows := p.Markdown(body, width-2)
-		titled := ReasoningTitled(block.Body)
-		// Untitled provider reasoning is a thinking block: a header, then only
-		// the latest rows while it streams.
-		header := ""
-		if !titled {
-			header = ThinkingHeader(block.Live, block.Elapsed)
-			if block.Live {
-				var hidden int
-				if rows, hidden = TailRows(rows, ThinkingTailRows); hidden > 0 {
-					header += " · " + Elision{Hidden: hidden, Form: ElisionSuffix}.String() + Dim
-				}
+		header := ThinkingHeader(block.Live, block.Elapsed)
+		if block.Collapsed {
+			if block.Hovered {
+				header = Underline(header)
 			}
-			if block.Collapsed {
-				if block.Hovered {
-					header = Underline(header)
-				}
-				return []string{Dim + "• " + header + Undim}
+			return []string{Dim + "• " + header + Undim}
+		}
+		rows := p.markdown(body, max(1, width-2), true)
+		if block.Live {
+			var hidden int
+			if rows, hidden = TailRows(rows, ThinkingTailRows); hidden > 0 {
+				header += " · " + Elision{Hidden: hidden, Form: ElisionSuffix}.String() + Dim
 			}
-			header = Dim + "• " + header + Undim
 		}
 		for i, row := range rows {
-			row = strings.NewReplacer(Reset, Reset+style, "\x1b[22m", "\x1b[22m"+style, "\x1b[24;39m", "\x1b[24m"+Dim, "\x1b[39m", Dim, "\x1b[23m", style).Replace(row)
-			prefix := "  "
-			if i == 0 && titled {
-				prefix = "• "
-			}
-			rows[i] = style + prefix + row + Reset
+			rows[i] = reasoningRow("  " + row)
 		}
-		if header == "" {
-			return rows
-		}
-		return append([]string{header}, rows...)
+		return append([]string{Dim + "• " + header + Undim}, rows...)
 	case "final":
 		if block.Journal != nil {
 			return p.Journal(block.Journal, width, true)

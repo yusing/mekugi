@@ -325,13 +325,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		text += p.Delta
 		s.reasoning[key] = text
 		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: p.ItemID, phase: "summary"}
-		if _, ok := s.thinking[key]; !ok {
-			s.thinking[key] = now
-			if pending, ok := s.pendingThinking[p.ThreadID]; ok {
-				delete(s.pendingThinking, p.ThreadID)
-				s.thinking[key], native.replaces = pending.at, pending.item
-			}
-		}
+		s.startThinking(key, native, now)
 		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(p.ThreadID), Kind: "reasoning", Text: text, CallID: p.ItemID, Observed: now, native: native})
 	case "item/started", "item/completed", "item/agentMessage/delta":
 		item := p.Item
@@ -370,6 +364,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		case "reasoning":
 			key := [3]string{p.ThreadID, p.TurnID, id}
 			text := strings.Join(item.Summary, "\n\n")
+			if m.Method == "item/started" && strings.TrimSpace(text) != "" {
+				s.startThinking(key, native, now)
+			}
 			if m.Method == "item/completed" {
 				native.collapseAt = now.Add(activityui.ThinkingLinger)
 				if pending, ok := s.pendingThinking[p.ThreadID]; ok && s.thinking[key].IsZero() && strings.TrimSpace(text) != "" {
@@ -532,6 +529,19 @@ func (s *appServerSession) dropThinking(thread string) []activityPaneEntry {
 	delete(s.pendingThinking, thread)
 	return []activityPaneEntry{{Seq: s.next(), Agent: s.path(thread), Kind: "reasoning", CallID: pending.item,
 		native: &liveActivityNativeItem{thread: thread, item: pending.item, phase: "discarded"}}}
+}
+
+// startThinking tracks the first visible summary, whether supplied with the
+// item or as a delta, and takes over the request's pending block at most once.
+func (s *appServerSession) startThinking(key [3]string, native *liveActivityNativeItem, now time.Time) {
+	if _, ok := s.thinking[key]; ok {
+		return
+	}
+	s.thinking[key] = now
+	if pending, ok := s.pendingThinking[key[0]]; ok {
+		delete(s.pendingThinking, key[0])
+		s.thinking[key], native.replaces = pending.at, pending.item
+	}
 }
 
 // endThinking completes reasoning a finished turn never completed, such as

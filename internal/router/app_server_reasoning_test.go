@@ -60,9 +60,17 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 	u.restoreActivityThread(appServerThreadInfo{ID: "child", Turns: turns})
 	u.agents.only, u.agents.selected = false, "/root/worker"
 	for _, view := range []*liveActivityView{u.view, u.agents} {
-		got := ansi.Strip(strings.Join(view.renderFeed(90, 40).lines, "\n"))
-		if strings.Count(got, "Public restored summary.") != 1 || strings.Contains(got, "PRIVATE") {
-			t.Fatalf("restored summary: %q", got)
+		feed := view.renderFeed(90, 40)
+		got := ansi.Strip(strings.Join(feed.lines, "\n"))
+		if !strings.Contains(got, "• Thought") || strings.Contains(got, "Public restored summary.") || strings.Contains(got, "PRIVATE") {
+			t.Fatalf("restored summary did not fold: %q", got)
+		}
+		row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
+		if row < 0 || !u.shell.openOutput(view, feed.snippets[row]) {
+			t.Fatal("restored reasoning cannot reopen")
+		}
+		if page := view.painter.DialogPage(u.shell.output.pages[0], 80); page.Text != "Public restored summary." {
+			t.Fatalf("restored reasoning lost its public body: %q", page.Text)
 		}
 	}
 	// Raw-only items are decodable but produce no visible entry.
@@ -209,7 +217,7 @@ func TestAppServerProviderThinking(t *testing.T) {
 	}
 	appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r2", "delta": "Interrupted thought."})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t", "status": "interrupted"}})
-	if got := feed(); strings.Contains(got, "Thinking…") || strings.Count(got, "• Thought") != 1 || !strings.Contains(got, "• Fourth.") || !strings.Contains(got, "Interrupted thought.") {
+	if got := feed(); strings.Contains(got, "Thinking…") || strings.Count(got, "• Thought") != 2 || !strings.Contains(got, "First thought.") || !strings.Contains(got, "Interrupted thought.") {
 		t.Fatalf("turn end left thinking live: %q", got)
 	}
 }
@@ -220,7 +228,7 @@ func TestAppServerThinkingFolds(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	u.agents.only, u.agents.selected = false, "/root/worker"
-	body := "Alpha.\n\nBravo.\n\nCharlie.\n\nDelta."
+	body := "**Reviewing**\n\nAlpha.\n\nBravo.\n\nCharlie.\n\nDelta."
 	for _, thread := range []string{"main", "child"} {
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
 		appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": body})
@@ -250,6 +258,10 @@ func TestAppServerThinkingFolds(t *testing.T) {
 			}
 			if !u.shell.openOutput(view, feed.snippets[row]) {
 				t.Fatal("folded thinking did not request dialog")
+			}
+			page := view.painter.DialogPage(u.shell.output.pages[0], 80)
+			if page.Text != body || len(page.Lines) < 4 {
+				t.Fatalf("dialog lost full reasoning: %+v", page)
 			}
 			if got := plain(render()); strings.Contains(got, "Alpha.") {
 				t.Fatalf("dialog request unfolded thinking in the feed: %q", got)
@@ -354,5 +366,40 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	activity.beginResponse("other", true)
 	if starts := activity.takeRequestStarts("main"); len(starts) != 0 || len(activity.starts) != 0 {
 		t.Fatalf("request start crossed roots: %+v, retained %+v", starts, activity.starts)
+	}
+}
+
+func TestAppServerStartedSummarySettlesWithoutDelta(t *testing.T) {
+	for _, interrupted := range []bool{false, true} {
+		t.Run(map[bool]string{false: "completed", true: "interrupted"}[interrupted], func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
+			u.agents.only, u.agents.selected = false, "/root/worker"
+			for _, thread := range []string{"main", "child"} {
+				appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
+				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{"**Checking**\n\nStarted public body."}}})
+				view := u.view
+				if thread == "child" {
+					view = u.agents
+				}
+				if got := ansi.Strip(strings.Join(view.renderFeed(90, 40).lines, "\n")); !strings.Contains(got, "Thinking…") || !strings.Contains(got, "Started public body.") {
+					t.Fatalf("started summary is not streaming: %s", got)
+				}
+				if interrupted {
+					appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "interrupted"}})
+				} else {
+					appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
+				}
+				settleActivity(time.Now().Add(activityui.ThinkingLinger), view)
+				feed := view.renderFeed(90, 40)
+				if got := ansi.Strip(strings.Join(feed.lines, "\n")); strings.Contains(got, "Thinking…") || !strings.Contains(got, "Thought") || strings.Contains(got, "Started public body.") {
+					t.Fatalf("started summary did not settle: %s", got)
+				}
+				row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
+				if row < 0 || !u.shell.openOutput(view, feed.snippets[row]) || !strings.Contains(u.shell.output.pages[0].Body, "Started public body.") {
+					t.Fatal("started summary lost its dialog body")
+				}
+			}
+		})
 	}
 }

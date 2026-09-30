@@ -200,7 +200,7 @@ func TestConversationMainToolsFollowTheirLead(t *testing.T) {
 	card, seed, tool = row(plain, "lookup"), row(plain, "Preparing regression seed"), row(plain, "Edit")
 	resumed := row(plain, "continued")
 	// The read branches from its reasoning row.
-	if seed != 0 || row(plain, "└ Read") != seed+1 || resumed < card || !strings.Contains(plain[resumed], "Preparing regression seed") || tool != resumed+1 {
+	if seed != 1 || row(plain, "└ Read") != seed+1 || resumed < card || !strings.Contains(plain[resumed], "Thought") || tool != resumed+1 {
 		t.Fatalf("Main's later tools do not continue their reasoning:\n%s", text)
 	}
 	for _, line := range plain {
@@ -210,50 +210,48 @@ func TestConversationMainToolsFollowTheirLead(t *testing.T) {
 	}
 
 	// Tools directly under their lead branch from it.
-	if plain := render(reasoning, edit, done); row(plain, "Edit") != 1 || row(plain, "continued") >= 0 {
+	if plain := render(reasoning, edit, done); row(plain, "Edit") != 2 || row(plain, "continued") >= 0 {
 		t.Fatalf("uninterrupted tools moved:\n%s", strings.Join(plain, "\n"))
 	}
 }
 
 func TestConversationConsecutiveReasoning(t *testing.T) {
-	v := newLiveActivityView()
-	v.conversation = true
-	v.entries = []activityPaneEntry{
-		{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "**First**\n\nOld body\nOld tail"},
-		{Seq: 2, Agent: "Main", Kind: "reasoning", Text: "**Second**"},
-		{Seq: 3, Agent: "Main", Kind: "reasoning", Text: "**Latest**\n\nCurrent body"},
-		{Seq: 4, Agent: "Main", Kind: "tool", Text: "Read `Makefile`"},
-		{Seq: 5, Agent: "Main", Kind: "reasoning", Text: "**After action**\n\nSeparate body"},
-	}
-	for _, entry := range v.entries {
-		v.blocks = append(v.blocks, parseLiveActivity(entry))
-	}
-	feed := v.renderFeed(80, 40)
-	got := strings.Join(threadPlain(feed), "\n")
-	if !strings.Contains(got, "Old tail, Second") || strings.Contains(got, "Old body") || !strings.Contains(got, "Current body\n└ Read") || !strings.Contains(got, "Separate body") {
-		t.Fatalf("collapsed run:\n%s", got)
-	}
-	snippet := feed.snippets[0]
-	if snippet == (liveActivitySnippet{}) {
-		t.Fatal("collapsed summaries cannot open")
-	}
-	shell := &terminalUI{}
-	if !shell.openOutput(v, snippet) {
-		t.Fatal("summary did not request dialog")
-	}
-	got = strings.Join(threadPlain(v.renderFeed(80, 40)), "\n")
-	if strings.Contains(got, "Old body") {
-		t.Fatalf("summary expanded in the feed:\n%s", got)
-	}
-	// The Activity view applies the same policy, independently of Main grouping.
-	v.conversation, v.childrenOnly, v.runs = false, true, nil
-	for i := range v.entries {
-		v.entries[i].Agent = "/root/worker"
-	}
-	v.opening = liveActivitySnippet{}
-	got = strings.Join(threadPlain(v.renderFeed(80, 60)), "\n")
-	if !strings.Contains(got, "Old tail, Second") || strings.Contains(got, "Old body") || !strings.Contains(got, "Current body") {
-		t.Fatalf("activity run:\n%s", got)
+	for _, main := range []bool{true, false} {
+		v := newLiveActivityView()
+		v.conversation, v.childrenOnly = main, !main
+		agent := "Main"
+		if !main {
+			agent = "/root/worker"
+		}
+		for i, body := range []string{"**First**\n\nOld body", "**Second**\n\nSecond body", "Latest body"} {
+			entry := activityPaneEntry{Seq: uint64(i + 1), Agent: agent, Kind: "reasoning", Text: body,
+				native: &liveActivityNativeItem{thread: "thread", turn: "turn", item: body, phase: "item/completed", collapsed: true, thought: 12 * time.Second}}
+			v.entries = append(v.entries, entry)
+			v.blocks = append(v.blocks, parseLiveActivity(entry))
+		}
+		feed := v.renderFeed(80, 40)
+		got := strings.Join(threadPlain(feed), "\n")
+		if strings.Count(got, "Thought for 12s") != 3 || strings.Contains(got, "body") {
+			t.Fatalf("independent folded items: %s", got)
+		}
+		shell := &terminalUI{}
+		opened := 0
+		for _, snippet := range feed.snippets {
+			if snippet == (liveActivitySnippet{}) {
+				continue
+			}
+			if !shell.openOutput(v, snippet) {
+				t.Fatal("reasoning did not request dialog")
+			}
+			page := v.painter.DialogPage(shell.output.pages[0], 80)
+			if page.Text != v.entries[opened].Text {
+				t.Fatalf("wrong item opened: %q", page.Text)
+			}
+			opened++
+		}
+		if opened != 3 {
+			t.Fatalf("only %d items could reopen", opened)
+		}
 	}
 }
 

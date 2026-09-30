@@ -424,9 +424,9 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 				}
 			}
 		}
-		laid = activityui.GroupReasoning(summaries)
+		laid = summaries
 		for index, block := range laid {
-			// Settled provider thinking shows its header; a click toggles it.
+			// Settled thinking shows its header; a click opens its dialog.
 			snippet := liveActivitySnippet{run: entry.Seq, block: index}
 			toggle := v.clickTarget(&block, snippet)
 			for _, row := range v.paintBlock(len(out.lines), 0, func() []string { return p.Block(block, width) }) {

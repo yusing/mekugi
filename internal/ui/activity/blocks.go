@@ -58,8 +58,7 @@ type Block struct {
 	Changes     []ChangeRow // Change history rows open output shows instead of Tail.
 	Output      *Output     // The invocation's retained output, which the output dialog reads.
 	// Members are the invocations a merged read row stands for, each with its
-	// own output, which the output dialog pages through. For a summary group,
-	// Members retain the earlier summaries for expansion.
+	// own output, which the output dialog pages through.
 	Members    []Block
 	SourceRows int    // Rows a command or program preview may use; 0 shows it whole.
 	Flash      bool   // Presentation-only: another pane just opened this entry.
@@ -86,12 +85,12 @@ const (
 )
 
 // Collapsible reports a settled block that can show as one row: finished
-// provider thinking as its header, or a successful command's output as its
+// thinking as its header, or a successful command's output as its
 // line count.
 func (b Block) Collapsible() bool {
 	switch b.Kind {
 	case "summary":
-		return !b.Live && !ReasoningTitled(b.Body)
+		return !b.Live
 	case "op", "reads":
 		return !b.Running && !b.Skipped && b.ExitCode == 0 && len(b.Tail)+b.TailOmitted > 1
 	}

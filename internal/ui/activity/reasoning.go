@@ -3,6 +3,8 @@ package activity
 import (
 	"slices"
 	"strings"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Source: codex-rs/tui/src/chatwidget/streaming.rs:9:24@86be5320 latest_summary_line.
@@ -47,18 +49,11 @@ func ReasoningSummaryBody(text string) string {
 	return text
 }
 
-// ReasoningTitled reports a Codex summary, which opens with a bold heading.
-// Third-party providers stream untitled plaintext reasoning instead.
-// A heading still streaming counts, so the block never flips style.
-func ReasoningTitled(text string) bool {
-	return strings.HasPrefix(strings.TrimSpace(text), "**")
-}
-
-// ThinkingTailRows is how much of untitled reasoning stays visible while it
+// ThinkingTailRows is how much reasoning stays visible while it
 // streams, following grok-build's truncated thinking blocks.
 const ThinkingTailRows = 3
 
-// ThinkingHeader labels untitled reasoning the way grok-build does.
+// ThinkingHeader labels reasoning the way grok-build does.
 func ThinkingHeader(live bool, elapsed string) string {
 	switch {
 	case live:
@@ -69,31 +64,25 @@ func ThinkingHeader(live bool, elapsed string) string {
 	return "Thought"
 }
 
-// GroupReasoning folds earlier summaries in each uninterrupted run into one
-// expandable row. The latest summary stays expanded.
-func GroupReasoning(blocks []Block) []Block {
-	var out []Block
-	for i := 0; i < len(blocks); {
-		end := i + 1
-		if blocks[i].Kind == "summary" {
-			for end < len(blocks) && blocks[end].Kind == "summary" {
-				end++
-			}
+// reasoningRow keeps the whole row faint and italic, including text after
+// Markdown's combined style resets. Reapply only these attributes, preserving
+// inline colors, hyperlinks, and the remaining Markdown styles.
+func reasoningRow(row string) string {
+	const style = Dim + "\x1b[3m"
+	var out strings.Builder
+	out.WriteString(style)
+	var state byte
+	for len(row) > 0 {
+		seq, _, n, next := ansi.DecodeSequence(row, state, nil)
+		if n == 0 {
+			break
 		}
-		if end-i > 1 {
-			members := slices.Clone(blocks[i : end-1])
-			headers := make([]string, 0, len(members))
-			for _, member := range members {
-				headers = append(headers, ReasoningSummaryHeader(member.Body))
-			}
-			out = append(out, Block{Kind: "summary", Source: blocks[i].Source, Label: strings.Join(headers, ", "), Members: members, Collapsed: true})
-			latest := blocks[end-1]
-			latest.Collapsed = false
-			out = append(out, latest)
-		} else {
-			out = append(out, blocks[i])
+		state, row = next, row[n:]
+		out.WriteString(seq)
+		if strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
+			out.WriteString(style)
 		}
-		i = end
 	}
-	return out
+	out.WriteString(Reset)
+	return out.String()
 }

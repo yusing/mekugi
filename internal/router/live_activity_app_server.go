@@ -217,6 +217,7 @@ func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, metho
 	} else {
 		switch item.Type {
 		case "reasoning":
+			entry.native.collapsed = method == "item/completed"
 			entry.Kind, entry.CallID, entry.Text = "reasoning", id, strings.Join(item.Summary, "\n\n")
 			if strings.TrimSpace(entry.Text) == "" {
 				return

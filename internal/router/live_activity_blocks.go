@@ -98,7 +98,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 	case "reasoning":
 		block := activityui.Block{Kind: "summary", Body: text}
 		if entry.native != nil {
-			block.Live = entry.native.phase == "summary"
+			block.Live = entry.native.phase == "summary" || entry.native.phase == "item/started"
 			block.Collapsed = entry.native.collapsed && block.Collapsible()
 			// Whole seconds only: a sub-second block reads as "Thought", not "0s".
 			if entry.native.thought >= time.Second {

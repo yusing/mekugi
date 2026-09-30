@@ -92,7 +92,7 @@ func TestRequestedReasoningHeadsOperationTree(t *testing.T) {
 				feed = v.renderConversation(100)
 			}
 			plain := plainLines(feed.lines)
-			row := slices.IndexFunc(plain, func(row string) bool { return strings.Contains(row, "• Locating targeted files") })
+			row := slices.IndexFunc(plain, func(row string) bool { return strings.Contains(row, "Locating targeted files") })
 			// The operations branch from the reasoning row with no gap between.
 			if row < 0 || row+1 >= len(plain) || !strings.Contains(plain[row+1], operation.first) || strings.Count(strings.Join(plain, "\n"), "Locating targeted files") != 1 {
 				t.Fatalf("%s reasoning does not head its operations:\n%s", agent, strings.Join(plain, "\n"))

@@ -1,0 +1,4 @@
+• Thinking… · +3 lines
+    This line continues that bullet with more detail.
+  • Preserve the final observation and reopen the complete reasoning after
+    collapse.

@@ -114,7 +114,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		gap()
 		rows := block.Rows
 		if rows == nil {
-			rows = func(width int) []string { return p.Markdown(block.Body, width) }
+			rows = func(width int) []string { return p.markdown(block.Body, width, block.Kind == "summary") }
 		}
 		for _, row := range rows(width) {
 			add(DialogLine{Text: row})

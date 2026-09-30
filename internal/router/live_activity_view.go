@@ -1538,7 +1538,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		return block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart
 	}
 	rail := ""
-	blocks = activityui.AlignVerbs(activityui.GroupOperations(activityui.GroupReasoning(blocks)))
+	blocks = activityui.AlignVerbs(activityui.GroupOperations(blocks))
 	run.blocks = blocks
 	for index, block := range blocks {
 		// Native Activity joins consecutive operations into one tree.
