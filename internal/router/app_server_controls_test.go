@@ -149,6 +149,35 @@ func TestNativeControlsPanePersistence(t *testing.T) {
 	}
 }
 
+func TestNativeControlsManualJournalSurvivesOverlappingChildren(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	spawn := func(thread string) {
+		appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": thread}})
+	}
+	finish := func(thread string) {
+		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "completed"}})
+	}
+	spawn("a")
+	for _, key := range []byte("\x025") {
+		if err := u.shell.key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	spawn("b")
+	if !u.shell.journalOpen || u.shell.autoActivity || u.shell.focus != 4 {
+		t.Fatal("overlapping child replaced manual Journal selection or focus")
+	}
+	finish("a")
+	finish("b")
+	if !u.shell.journalOpen || u.shell.focus != 4 {
+		t.Fatal("completion replaced manual Journal selection")
+	}
+	spawn("c")
+	if u.shell.journalOpen || !u.shell.autoActivity {
+		t.Fatal("a new child lifecycle did not reveal Activity")
+	}
+}
+
 func TestNativeControlsActivityEventsAndManualSelection(t *testing.T) {
 	for _, manual := range []bool{false, true} {
 		u := newAppServerSessionTestUI(t, t.TempDir())

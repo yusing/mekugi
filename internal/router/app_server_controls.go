@@ -52,12 +52,13 @@ func (u *appServerUI) updateAgentPane(method string, event appServerEvent) {
 	}
 	switch method {
 	case "thread/started", "turn/started":
+		firstChild := len(u.activeChildren) == 0
 		if u.activeChildren == nil {
 			u.activeChildren = make(map[string]bool)
 		}
 		u.activeChildren[thread] = true
 		u.ensureShell()
-		if u.shell.journalOpen && !u.shell.diffOpen {
+		if firstChild && u.shell.journalOpen && !u.shell.diffOpen {
 			u.shell.journalOpen, u.shell.autoActivity = false, true
 			if u.shell.focus == 4 {
 				u.shell.focus = 0
