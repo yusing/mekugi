@@ -395,6 +395,12 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				fmt.Fprintf(&output, "observed alongside %s\n", strings.Join(alongside, ", "))
 			}
 			status := "no changes"
+			if history.ExecOutcome != nil && history.ExecOutcome.Coverage != "" && history.ExecOutcome.Coverage != execCoverageExact {
+				status = "incomplete captured scope"
+				if options.view == "summary" || options.view == "" {
+					fmt.Fprintf(&output, "%s incomplete captured scope; use --history for diagnostics\n", id)
+				}
+			}
 			if len(history.ReviewFiles) != 0 {
 				status = "applied"
 			}
@@ -465,24 +471,8 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 	slices.SortStableFunc(summary, func(a, b changeCapture) int { return cmp.Compare(a.order, b.order) })
 	for _, capture := range summary {
 		file := capture.files[0]
-		if file.Origin != "" && len(options.paths) == 0 {
-			if file.Incomplete != "" {
-				managedReasons[file.Incomplete]++
-			} else if file.Binary {
-				managedUnknown++
-			} else {
-				managedKnown++
-				a, r := file.LineCounts()
-				managedAdded += a
-				managedRemoved += r
-			}
-			continue
-		}
 		key := func(path string) string {
 			path = pathdisplay.ForWorkspace(options.workspace, path)
-			if file.Origin != "" {
-				path = "tool-managed\t" + path
-			}
 			return path
 		}
 		before, after := file.BeforePath, file.AfterPath
@@ -500,6 +490,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		}
 		stats[key(after)] = entry
 		entry.status.Add(file)
+		entry.managed = entry.managed && file.Origin != ""
 		if file.Incomplete != "" && !slices.Contains(entry.reasons, file.Incomplete) {
 			entry.reasons = append(entry.reasons, file.Incomplete)
 		}
@@ -521,11 +512,38 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		}
 		if !entry.uncomposable {
 			var regions []mekugi.ReviewFile
+			entry.added, entry.removed = 0, 0
 			for _, region := range entry.composition.FilesWithHighlights() {
 				regions = append(regions, region.ReviewFile)
+				added, removed := region.ReviewFile.LineCounts()
+				entry.added += added
+				entry.removed += removed
 			}
 			composed := diffview.StatusOf(regions...)
 			entry.status.Edited, entry.status.Conflict = composed.Edited, composed.Conflict
+		} else {
+			if !entry.incomplete && len(entry.reasons) == 0 {
+				entry.reasons = append(entry.reasons, "captured changes cannot be composed")
+				entry.status.Incomplete = true
+			}
+			entry.incomplete = true
+		}
+		if !entry.incomplete && entry.added == 0 && entry.removed == 0 && entry.status.Before == entry.status.After {
+			continue
+		}
+		if entry.managed && len(options.paths) == 0 {
+			if len(entry.reasons) != 0 {
+				for _, reason := range entry.reasons {
+					managedReasons[reason]++
+				}
+			} else if entry.incomplete {
+				managedUnknown++
+			} else {
+				managedKnown++
+				managedAdded += entry.added
+				managedRemoved += entry.removed
+			}
+			continue
 		}
 		path := entry.status.After
 		if path == "" {

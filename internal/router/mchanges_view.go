@@ -68,6 +68,7 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 				hasFiles = hasFiles || len(history.ReviewFiles) != 0
 				if history.ExecOutcome != nil {
 					next.coverage = history.ExecOutcome.Coverage
+					next.unknown = next.unknown || next.coverage != "" && next.coverage != execCoverageExact
 				}
 				for _, file := range history.ReviewFiles {
 					next.unknown = next.unknown || file.Incomplete != ""
@@ -84,7 +85,7 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 					next.removed += removed
 				}
 			}
-			if !hasFiles && change.RetiredCalls == 0 {
+			if !hasFiles && !next.unknown && change.RetiredCalls == 0 {
 				// Older routers allocated no-op IDs. Keep explicit reads valid,
 				// but do not advertise them or compress a range across their gap.
 				flush()
@@ -124,7 +125,7 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 
 func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
 	if len(options.ids) == 0 {
-		return "no net changes in selected captured history\n", nil
+		return fmt.Sprintf("no captures selected in workspace %q; own-thread selection excludes other agents, use explicit IDs\n", options.workspace), nil
 	}
 	for _, id := range options.ids {
 		change, found := index.Changes[id]
@@ -147,10 +148,14 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 		return "", err
 	}
 	var failures []error
+	matched := len(options.paths) == 0
 	chains := make(map[string]*mekugi.ReviewComposition)
 	var ordered []*mekugi.ReviewComposition
 	for _, capture := range captures {
-		if len(capture.files) != 0 && capture.coverage != "" && capture.coverage != execCoverageExact {
+		for _, file := range capture.files {
+			matched = matched || changePathMatches(options, file.BeforePath) || changePathMatches(options, file.AfterPath)
+		}
+		if capture.coverage != "" && capture.coverage != execCoverageExact {
 			failures = append(failures, fmt.Errorf("change %s has partial captured effects; read without --net to inspect them", capture.id))
 			continue
 		}
@@ -191,7 +196,9 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 			}
 		}
 	}
-	if output.Len() == 0 && len(failures) == 0 {
+	if !matched && len(failures) == 0 {
+		fmt.Fprintf(&output, "no captured files match paths after -- in workspace %q\n", options.workspace)
+	} else if output.Len() == 0 && len(failures) == 0 {
 		output.WriteString("no net changes in selected captured history\n")
 	}
 	if len(failures) > 0 {

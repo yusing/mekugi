@@ -614,9 +614,18 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		patches := nativePatchesInCall(name, originalInput, t.directory)
 		t.primePreviewSources(item.ID, patches)
 		execs, dynamic := stockLiteralExecCommands(originalInput, t.directory, t.sessionShell)
+		var baselineReady chan *resolvedStockBaseline
+		if dynamic || stockDynamicPatchInputs(originalInput, len(patches)) {
+			baselineReady = make(chan *resolvedStockBaseline, 1)
+			go func() { baselineReady <- captureResolvedBaseline(t.directory, t.sessionShell) }()
+		}
 		observation, observed := captureExecObservation(execs, dynamic, true, t.execCaptureEnvironment(patches))
+		var resolvedBaseline *resolvedStockBaseline
+		if baselineReady != nil {
+			resolvedBaseline = <-baselineReady
+		}
 		t.openExecWindow(callID, observation, patches)
-		if !changed && len(patches) == 0 && !observed {
+		if !changed && len(patches) == 0 && !observed && resolvedBaseline == nil {
 			return false, nil
 		}
 		// Retain the provider input and captured baseline before exposing any
@@ -625,11 +634,12 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 			ToolName: name,
 			Script:   originalInput, CarrierKind: codeModeCarrierCustom,
 			CarrierName: name, CarrierPayload: input, UpstreamItem: item.cloneFields(),
-			ReplayCarrier:   !changed,
-			NativePatches:   patches,
-			ExecObservation: observation,
-			ExecutingThread: t.shellThreadID,
-			Caller:          t.operationCaller(),
+			ReplayCarrier:    !changed,
+			NativePatches:    patches,
+			ResolvedBaseline: resolvedBaseline,
+			ExecObservation:  observation,
+			ExecutingThread:  t.shellThreadID,
+			Caller:           t.operationCaller(),
 		}
 		if !changed {
 			history.CommentaryMessageIDs = []string{commentaryMessageID(callID)}

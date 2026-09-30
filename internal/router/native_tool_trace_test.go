@@ -94,7 +94,7 @@ func TestNativeTraceConfirmsEachToolWithoutPrintedOutput(t *testing.T) {
 	}
 	f.end("author", "1")
 	cell := trace.readCell("author", "outer", "// @exec: {\"yield_time_ms\": 1000}\nsource")
-	patch, ok := cell.patch("patch input")
+	patch, ok := cell.patch("patch input", 0)
 	if !ok || patch.Status != "completed" || patch.CallID != "patch" {
 		t.Fatalf("patch receipt = %+v, %t", patch, ok)
 	}
@@ -102,7 +102,7 @@ func TestNativeTraceConfirmsEachToolWithoutPrintedOutput(t *testing.T) {
 	if !ok || len(results) != 1 || results[0].ExitCode == nil || *results[0].ExitCode != 0 {
 		t.Fatalf("command receipts = %+v, %t", results, ok)
 	}
-	if _, ok := cell.patch("skipped patch"); ok {
+	if _, ok := cell.patch("skipped patch", 0); ok {
 		t.Fatal("unexecuted literal patch confirmed")
 	}
 	if trace.readCell("reviewer", "outer", "source") != nil || trace.readCell("author", "outer", "different source") != nil {
@@ -111,7 +111,7 @@ func TestNativeTraceConfirmsEachToolWithoutPrintedOutput(t *testing.T) {
 	// A new reader can recover native facts; persisted change records need not
 	// retain this disposable trace after finalization.
 	reopened := &nativeToolTrace{directory: f.root}
-	if _, ok := reopened.readCell("author", "outer", "source").patch("patch input"); !ok {
+	if _, ok := reopened.readCell("author", "outer", "source").patch("patch input", 0); !ok {
 		t.Fatal("could not reread host evidence")
 	}
 }
@@ -131,7 +131,7 @@ func TestNativeTraceFailuresAndYieldAreNotSuccess(t *testing.T) {
 	if !cell.pending() {
 		t.Fatal("yielded process treated as finished")
 	}
-	if patch, ok := cell.patch("bad input"); !ok || patch.Status != "failed" {
+	if patch, ok := cell.patch("bad input", 0); !ok || patch.Status != "failed" {
 		t.Fatal("caught patch failure lost")
 	}
 	commands := observedCommands(execCommandInput{Command: "exit 7"}, execCommandInput{Command: "sleep 1"})
@@ -143,6 +143,29 @@ func TestNativeTraceFailuresAndYieldAreNotSuccess(t *testing.T) {
 	results, ok := cell.commands(commands, "/work")
 	if !ok || cell.pending() || len(results) != 2 || results[0].Status != "failed" || *results[0].ExitCode != 7 || *results[1].ExitCode != 0 {
 		t.Fatalf("terminal results = %+v, %t", results, ok)
+	}
+}
+
+func TestNativeTracePatchOccurrencesKeepDistinctOutcomes(t *testing.T) {
+	f := newNativeTraceFixture(t)
+	f.start("author", "runtime", "outer", "source")
+	f.tool("author", "runtime", "first", applyPatchToolName, "same input")
+	f.result("author", "first", "completed", map[string]any{})
+	f.tool("author", "runtime", "second", applyPatchToolName, "same input")
+	f.result("author", "second", "failed", nil)
+	f.tool("author", "runtime", "third", applyPatchToolName, "same input")
+	f.end("author", "runtime")
+	cell := (&nativeToolTrace{directory: f.root}).readCell("author", "outer", "source")
+	for index, want := range []nativeToolResult{{CallID: "first", Status: "completed"}, {CallID: "second", Status: "failed"}} {
+		result, ok := cell.patch("same input", index)
+		if !ok || result.CallID != want.CallID || result.Status != want.Status {
+			t.Fatalf("occurrence %d: %+v, %v", index, result, ok)
+		}
+	}
+	for _, index := range []int{-1, 2, 3} {
+		if _, ok := cell.patch("same input", index); ok {
+			t.Fatalf("pending or absent occurrence %d confirmed", index)
+		}
 	}
 }
 
@@ -161,7 +184,7 @@ func TestNativeTraceRuntimeExitSurvivesYieldedDispatchResult(t *testing.T) {
 }
 
 func TestNativeTraceMissingAndCorruptEvidenceNeverConfirms(t *testing.T) {
-	for _, kind := range []string{"missing result", "sequence gap", "payload escape", "duplicate input"} {
+	for _, kind := range []string{"missing result", "sequence gap", "payload escape"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newNativeTraceFixture(t)
 			f.start("t", "1", "outer", "source")
@@ -175,13 +198,9 @@ func TestNativeTraceMissingAndCorruptEvidenceNeverConfirms(t *testing.T) {
 			if kind == "payload escape" {
 				f.event("t", map[string]any{"type": "tool_call_started", "tool_call_id": "other", "requester": map[string]string{"type": "code_cell", "runtime_cell_id": "1"}, "invocation_payload": map[string]string{"path": "../outside.json"}})
 			}
-			if kind == "duplicate input" {
-				f.tool("t", "1", "other", "apply_patch", "input")
-				f.result("t", "other", "completed", map[string]any{})
-			}
 			f.end("t", "1")
 			trace := &nativeToolTrace{directory: f.root}
-			if _, ok := trace.readCell("t", "outer", "source").patch("input"); ok {
+			if _, ok := trace.readCell("t", "outer", "source").patch("input", 0); ok {
 				t.Fatal("ambiguous/missing evidence became success")
 			}
 		})

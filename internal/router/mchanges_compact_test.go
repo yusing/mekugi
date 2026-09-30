@@ -37,7 +37,7 @@ func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
 		t.Fatalf("compact list: %q %v", list, err)
 	}
 	summary, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, view: "summary"})
-	if err != nil || summary != "M\t1\t1\tdirect.go\nM +1 -0\n? tool-managed: incomplete evidence for 1 path (not confirmed edits): 1 × \"capture deadline\"; use --history for paths and full reasons\n" {
+	if err != nil || summary != id+" incomplete captured scope; use --history for diagnostics\nM\t1\t1\tdirect.go\nM +1 -0\n? tool-managed: incomplete evidence for 1 path (not confirmed edits): 1 × \"capture deadline\"; use --history for paths and full reasons\n" {
 		t.Fatalf("compact summary: %q %v", summary, err)
 	}
 	details, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, view: "history"})
@@ -49,7 +49,7 @@ func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
 		t.Fatalf("managed content leaked into default diff: %q %v", review, err)
 	}
 	named, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, view: "summary", paths: []string{"formatted.go"}})
-	if err != nil || named != "A\t1\t0\ttool-managed\tformatted.go\n" {
+	if err != nil || named != id+" incomplete captured scope; use --history for diagnostics\nA\t1\t0\ttool-managed\tformatted.go\n" {
 		t.Fatalf("explicit managed path unavailable: %q %v", named, err)
 	}
 }
@@ -119,7 +119,7 @@ func TestMChangesSummaryFileStatusesMatchDiffPane(t *testing.T) {
 		later []mekugi.ReviewFile
 		want  string
 	}{
-		{name: "added then edited", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("", "file", "", "a\n"), mekugi.RenderReviewFile("file", "file", "a\n", "b\n")}, want: "A\t2\t1\tfile\n"},
+		{name: "added then edited", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("", "file", "", "a\n"), mekugi.RenderReviewFile("file", "file", "a\n", "b\n")}, want: "A\t1\t0\tfile\n"},
 		{name: "created then deleted", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("", "file", "", "a\n")}, later: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "", "a\n", "")}, want: ""},
 		{name: "deleted", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "", "a\n", "")}, want: "D\t0\t1\tfile\n"},
 		{name: "unknown candidate", files: []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("file", "file", "capture deadline")}, want: "?\t-\t-\tfile\t\"capture deadline\"\n"},
@@ -132,7 +132,7 @@ func TestMChangesSummaryFileStatusesMatchDiffPane(t *testing.T) {
 		{name: "rename incomplete", files: []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("old", "new", "capture unavailable")}, want: "?\t-\t-\told => new\t\"capture unavailable\"\n"},
 		{name: "binary rename", files: []mekugi.ReviewFile{mekugi.RenderBinaryReviewFile("old", "new", 3, 3, "abc", "abc")}, want: "R\t-\t-\told => new\n"},
 		{name: "conflict", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n")}, want: "UU\t4\t0\tfile\n"},
-		{name: "resolved conflict in later change", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n")}, later: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n", "c\n")}, want: "M\t5\t5\tfile\n"},
+		{name: "resolved conflict in later change", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n")}, later: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n", "c\n")}, want: "M\t1\t1\tfile\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			store, err := openMekugiReplayStore(t.TempDir())

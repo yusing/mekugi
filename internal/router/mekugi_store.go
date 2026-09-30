@@ -48,6 +48,14 @@ func durableHistory(h mekugiHistory) mekugiHistory {
 	if len(h.NativePatches) == 0 {
 		h.NativePatches = nil // Empty omitted slices read back as nil.
 	}
+	if h.ResolvedBaseline != nil {
+		baseline := *h.ResolvedBaseline
+		baseline.Files = slices.Clone(baseline.Files)
+		for i := range baseline.Files {
+			baseline.Files[i].watchStamp = ""
+		}
+		h.ResolvedBaseline = &baseline
+	}
 	if h.ExecObservation != nil {
 		observation := *h.ExecObservation
 		observation.WindowStart = observation.WindowStart.UTC()

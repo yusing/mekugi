@@ -205,6 +205,9 @@ func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
 		id := f.reserve(t, f.thread, correlation)
 		ids = append(ids, id)
 		before, after := fmt.Sprintf("before-%d\n", i+1), fmt.Sprintf("after-%d\n", i+1)
+		if i == 1 {
+			before = "after-1\n"
+		}
 		f.publish(t, id, correlation, correlation+"-call", mekugiHistory{
 			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", before, after)},
 		})
@@ -213,7 +216,7 @@ func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
 		t.Fatalf("fixture IDs = %v", ids)
 	}
 	stdout, stderr, status := f.run(t, "mchanges amber1..2 --summary")
-	if status != 0 || stderr != "" || stdout != "M\t2\t2\tfile.txt\n" {
+	if status != 0 || stderr != "" || stdout != "M\t1\t1\tfile.txt\n" {
 		t.Fatalf("numeric range end: %q, %q, %d", stdout, stderr, status)
 	}
 	stdout, stderr, status = f.run(t, "mchanges "+ids[0]+" --summary")
@@ -364,7 +367,7 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 		correlation := fmt.Sprintf("mine-%d", row+1)
 		id := f.reserve(t, f.thread, correlation)
 		f.publish(t, id, correlation, correlation+"-call", mekugiHistory{
-			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("own.txt", "own.txt", fmt.Sprintf("old-%d\n", row), fmt.Sprintf("new-%d\n", row))},
+			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("own.txt", "own.txt", fmt.Sprintf("state-%d\n", row), fmt.Sprintf("state-%d\n", row+1))},
 		})
 	}
 	pending := f.reserve(t, f.thread, "own-pending")
@@ -394,7 +397,7 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 		t.Fatalf("bare mchanges differs from --mine: %q vs %q", bareOutput, mineOutput)
 	}
 	stdout, stderr, status := f.run(t, "mchanges --mine --summary")
-	if status != 0 || stderr != "" || !strings.Contains(stdout, "M\t3\t3\town.txt\n") ||
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "M\t1\t1\town.txt\n") ||
 		!strings.Contains(stdout, pending+" pending") || !strings.Contains(stdout, retired+" retired") ||
 		strings.Contains(stdout, "outsider.txt") {
 		t.Fatalf("mine summary: %q, %q, %d", stdout, stderr, status)
@@ -526,7 +529,7 @@ func TestMChangesNetWithoutOwnStreamExcludesSiblingChanges(t *testing.T) {
 		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("sibling.txt", "sibling.txt", "old\n", "new\n")},
 	})
 	stdout, stderr, status := f.run(t, "mchanges --mine --net")
-	if status != 0 || stderr != "" || stdout != "no net changes in selected captured history\n" ||
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "no captures selected") || !strings.Contains(stdout, "use explicit IDs") ||
 		strings.Contains(stdout, "sibling.txt") {
 		t.Fatalf("empty own-thread net selection included sibling effects: %q, %q, %d", stdout, stderr, status)
 	}

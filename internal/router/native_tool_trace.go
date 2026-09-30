@@ -50,10 +50,11 @@ type nativeToolResult struct {
 
 type nativeTraceTool struct {
 	nativeToolResult
-	input    string
-	command  execCommandInput
-	session  string
-	terminal bool
+	input     string
+	command   execCommandInput
+	session   string
+	terminal  bool
+	stdinPoll bool
 }
 
 type nativeTraceRef struct {
@@ -220,6 +221,12 @@ func (b *nativeTraceBundle) event(directory string, event nativeTraceEvent) erro
 			}
 			tool.command = execCommandInput{Command: args.Command, Workdir: args.Workdir, Shell: args.Shell}
 		}
+		if tool.Tool == "write_stdin" {
+			var args struct {
+				Chars string `json:"chars"`
+			}
+			tool.stdinPoll = json.Unmarshal([]byte(invocation.Payload.Arguments), &args) == nil && args.Chars == ""
+		}
 		cell.tools = append(cell.tools, tool)
 		b.calls[event.Thread+"\x00"+p.Tool] = tool
 		b.bytes += len(tool.input) + len(tool.command.Command) + len(tool.command.Workdir) + len(tool.command.Shell) + len(tool.CallID) + 256
@@ -357,24 +364,30 @@ func (t *nativeToolTrace) readCell(thread, callID, source string) *nativeTraceCe
 	return found
 }
 
-func (c *nativeTraceCell) patch(input string) (nativeToolResult, bool) {
-	if c == nil || !c.ended {
-		return nativeToolResult{}, false
+// patchCall selects one occurrence, so repeated identical inputs retain their
+// own native identities and outcomes in host dispatch order.
+func (c *nativeTraceCell) patchCall(input string, occurrence int) *nativeTraceTool {
+	if c == nil || occurrence < 0 {
+		return nil
 	}
-	var found *nativeTraceTool
 	for _, tool := range c.tools {
 		if tool.Tool != "apply_patch" || tool.input != input {
 			continue
 		}
-		if found != nil || !tool.terminal {
-			return nativeToolResult{}, false
+		if occurrence == 0 {
+			return tool
 		}
-		found = tool
+		occurrence--
 	}
-	if found == nil {
+	return nil
+}
+
+func (c *nativeTraceCell) patch(input string, occurrence int) (nativeToolResult, bool) {
+	tool := c.patchCall(input, occurrence)
+	if tool == nil || !c.ended || !tool.terminal {
 		return nativeToolResult{}, false
 	}
-	return found.nativeToolResult, true
+	return tool.nativeToolResult, true
 }
 
 // execCommands lists an ended cell's nested exec_command calls.
@@ -396,6 +409,9 @@ func (c *nativeTraceCell) pending() bool {
 		return false
 	}
 	for _, tool := range c.tools {
+		if tool.Tool == applyPatchToolName && !tool.terminal {
+			return true
+		}
 		if tool.Tool == "exec_command" && !tool.terminal && tool.session != "" {
 			return true
 		}
@@ -405,8 +421,8 @@ func (c *nativeTraceCell) pending() bool {
 
 // commands confirms each observed command by exactly one terminal host call.
 // Journal publications the router lowered into history's carrier are not
-// observed commands and do not affect the outcome; any other unobserved or
-// repeated command leaves the outcome unconfirmed.
+// observed commands and do not affect the outcome; any unobserved occurrence
+// leaves the outcome unconfirmed.
 func (c *nativeTraceCell) commands(history *mekugiHistory, workspace string) ([]nativeToolResult, bool) {
 	if c == nil || !c.ended || history.ExecObservation == nil {
 		return nil, false

@@ -281,11 +281,11 @@ func TestChangesSummaryAggregatesEvaluations(t *testing.T) {
 	}
 	options := changeReadOptions{workspace: workspace, ids: ids, view: "summary"}
 	got, err := store.readChanges(t.Context(), options)
-	if want := "M\t3\t2\tfile\nA\t0\t0\tempty\n?\t-\t-\tunknown\t\"missing capture\"\n"; err != nil || got != want {
+	if want := "M\t2\t1\tfile\nA\t0\t0\tempty\n?\t-\t-\tunknown\t\"missing capture\"\n"; err != nil || got != want {
 		t.Fatalf("summary = %q, %v; want %q", got, err, want)
 	}
 	options.paths = []string{"file"}
-	if got, err := store.readChanges(t.Context(), options); err != nil || got != "M\t3\t2\tfile\n" {
+	if got, err := store.readChanges(t.Context(), options); err != nil || got != "M\t2\t1\tfile\n" {
 		t.Fatalf("filtered summary = %q, %v", got, err)
 	}
 	pending, err := store.reserveChange(t.Context(), workspace, "author", "pending")
@@ -293,7 +293,7 @@ func TestChangesSummaryAggregatesEvaluations(t *testing.T) {
 		t.Fatal(err)
 	}
 	options.ids = append(ids, pending)
-	if got, err := store.readChanges(t.Context(), options); err != nil || got != pending+" pending (no completed result)\nM\t3\t2\tfile\n" {
+	if got, err := store.readChanges(t.Context(), options); err != nil || got != pending+" pending (no completed result)\nM\t2\t1\tfile\n" {
 		t.Fatalf("pending summary = %q, %v", got, err)
 	}
 }
@@ -319,7 +319,7 @@ func TestChangesSummaryRecoveryAndRetiredHistory(t *testing.T) {
 		}
 	}
 	options := changeReadOptions{workspace: workspace, ids: []string{id}, view: "summary"}
-	if got, err := store.readChanges(t.Context(), options); err != nil || got != "M\t3\t2\tfile\n" {
+	if got, err := store.readChanges(t.Context(), options); err != nil || got != "M\t2\t1\tfile\n" {
 		t.Fatalf("recovery summary = %q, %v", got, err)
 	}
 	index, err := store.readChangeIndex(workspace)
@@ -329,7 +329,7 @@ func TestChangesSummaryRecoveryAndRetiredHistory(t *testing.T) {
 	change := index.Changes[id]
 	change.RetiredCalls = 1
 	index.Changes[id] = change
-	if got, err := store.renderChanges(t.Context(), options, index); err != nil || got != id+" retired (partial history)\nM\t3\t2\tfile\n" {
+	if got, err := store.renderChanges(t.Context(), options, index); err != nil || got != id+" retired (partial history)\nM\t2\t1\tfile\n" {
 		t.Fatalf("retired summary = %q, %v", got, err)
 	}
 }

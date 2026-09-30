@@ -117,6 +117,12 @@ type execObservation struct {
 	Group string `json:",omitempty"`
 	// Excluded paths belong to patch records of the same call.
 	Excluded []string `json:",omitempty"`
+	// RepeatedPaths names multiple potential writes in one call window. A
+	// final equality cannot prove those intermediate attempts had no effects.
+	RepeatedPaths bool `json:",omitzero"`
+	// LiteralClass preserves pre-captured scope independently of uncertainty
+	// about additional Code Mode calls whose arguments are not yet resolved.
+	LiteralClass string `json:",omitempty"`
 }
 
 // execOutcome is the finalized status of an observed exec record.
@@ -337,6 +343,7 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 		observation.Roots = execAddRoot(observation.Roots, execCaptureRoot(command.Workdir, env.directory))
 	}
 	if dynamic {
+		observation.LiteralClass = class.String()
 		class, observation.Reason = execOpaque, "Code Mode cell has a non-literal command"
 		observation.Programs = append(observation.Programs, execProgram{Label: "Code Mode command"})
 		if filepath.IsAbs(env.directory) {
@@ -353,6 +360,15 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 		observation.WindowStart = execWindowStart(cmp.Or(env.clock, os.TempDir()))
 	}
 	observation.Excluded = env.excluded
+	seenWrites := make(map[string]bool)
+	for _, entry := range scope {
+		for _, operand := range entry.Operands {
+			if !operand.Glob {
+				observation.RepeatedPaths = observation.RepeatedPaths || seenWrites[operand.Path]
+				seenWrites[operand.Path] = true
+			}
+		}
+	}
 	capture := newExecCapture(started.Add(execCaptureHold))
 	capture.scopeRoots = observation.Roots
 	for _, managed := range []bool{false, true} {
@@ -1114,6 +1130,14 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 	if (!complete || deferredChanged) && coverage == execCoverageExact {
 		coverage = execCoveragePartial
 	}
+	if observation.Class == execOpaque.String() || observation.Reason == "capture deadline" {
+		complete, coverage = false, execCoveragePartial
+	}
+	if observation.RepeatedPaths && len(reviews) == 0 {
+		// Before/after equality is not intermediate edit history. Keep a
+		// readable incomplete attempt, without inventing intermediate bytes.
+		complete, coverage = false, execCoveragePartial
+	}
 	return reviews, complete, coverage, unswept
 }
 
@@ -1256,6 +1280,7 @@ func mergeExecObservations(members []execCompletion) execObservation {
 	for _, member := range members[1:] {
 		other := member.history.ExecObservation
 		merged.CodeMode = merged.CodeMode || other.CodeMode
+		merged.RepeatedPaths = merged.RepeatedPaths || other.RepeatedPaths
 		merged.Commands = append(merged.Commands, other.Commands...)
 		if execClassRank(other.Class) > execClassRank(merged.Class) {
 			merged.Class, merged.Reason = other.Class, other.Reason
@@ -1362,6 +1387,9 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		CodeMode:    observation.CodeMode, Overlaps: view.overlaps, Background: background,
 	}
 	outcome.Scope = observation.scopePaths()
+	if observation.RepeatedPaths {
+		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; intermediate writes unobserved (call-window comparison only)", "; ")
+	}
 	var reports, failureReports []string
 	var hostResults []nativeToolResult
 	for index, member := range members {
@@ -1423,7 +1451,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		ReplayCarrier:   true,
 		UpstreamItem:    execDerivedUpstreamItem(derivedCallID, arguments),
 	}
-	if len(reviews) != 0 {
+	if len(reviews) != 0 || coverage != execCoverageExact {
 		changeID, err := p.replayStore.reserveChange(ctx, workspace, thread, correlation)
 		if err != nil {
 			return err

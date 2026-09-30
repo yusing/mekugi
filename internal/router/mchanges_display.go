@@ -16,7 +16,7 @@ import (
 // renderChanges print them.
 var (
 	mchangesListRow       = regexp.MustCompile(`^(\S+?)((?: (?:pending|retired|unknown|history:partial))?)(?: \+(\d+) -(\d+))?( \?)?(?: managed:(\d+))?$`)
-	mchangesStatusRow     = regexp.MustCompile(`^(\S+) (retired \(partial history\)|pending \(no completed result\)|retired|unknown)$`)
+	mchangesStatusRow     = regexp.MustCompile(`^(\S+) (retired \(partial history\)|pending \(no completed result\)|retired|unknown|incomplete captured scope; use --history for diagnostics)$`)
 	mchangesManagedRow    = regexp.MustCompile(`^M \+(\d+) -(\d+)(?:; (\d+ counts unavailable))?$`)
 	mchangesManagedGapRow = regexp.MustCompile(`^\? tool-managed: (.+); use --history for paths and full reasons$`)
 	mchangesSummaryVerbs  = map[string]string{"A": "Created", "M": "Edited", "D": "Deleted", "R": "Moved", "RM": "Moved", "UU": "Conflict", "?": "?"}

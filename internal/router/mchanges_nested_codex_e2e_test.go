@@ -219,9 +219,9 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 
 	patch := "*** Begin Patch\n*** Add File: nested-patch.txt\n+patch-result\n*** End Patch\n"
 	shellCommand := "echo command-result > nested-command.txt"
-	successProgram := "await tools.apply_patch(" + string(mustMarshalJSON(patch)) + ");\n" +
-		"await tools.exec_command({cmd:" + string(mustMarshalJSON(shellCommand)) +
-		",workdir:" + string(mustMarshalJSON(workspace)) + "});"
+	successProgram := "const rows = " + string(mustMarshalJSON(strings.Split(patch, "\n"))) + "; await tools.apply_patch(rows.join('\\n'));\n" +
+		"const command = {cmd:" + string(mustMarshalJSON(shellCommand)) +
+		",workdir:" + string(mustMarshalJSON(workspace)) + "}; await tools.exec_command(command);"
 	successProvider := &mchangesNestedCodexProvider{
 		program: successProgram, callID: "nested-success-call", finalMessage: "nested edits completed",
 	}

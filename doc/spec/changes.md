@@ -17,14 +17,26 @@ transition, including when reading older retained records.
 The observer captures bounded pre-edit UTF-8 contents for paths named by a
 complete patch and compares them with the resulting files. Missing source is
 retained as incomplete file evidence rather than an invented diff. Calls with
-no file differences remain in command history without a new change ID.
+complete evidence and no file differences remain in command history without a new change ID.
 An unfinished call has no completed record. Storage failure must not expose
 dependent review evidence as durable.
 
-Literal patches inside one Code Mode cell share a pre-cell/post-cell observation
-window. Each scoped path's resulting difference is recorded once, at its first
+Patches inside one Code Mode cell share a pre-cell/post-cell observation
+window. Literal arguments name their baselines before execution. For dynamic
+patch or command arguments, a bounded pre-cell inventory of the selected workspace
+retains candidate baselines without evaluating JavaScript. Resolved native host
+inputs select the paths that may consume that inventory; unrelated changes are
+never compared or attributed. The inventory excludes VCS metadata and dependency
+trees and shares the command capture's byte, encoded-size, enumeration and time
+bounds. A complete inventory proves initial absence; an omitted, outside-root,
+or symlink-directory path has incomplete evidence, never a post-edit baseline.
+Resolved shell commands support literal, filesystem-independent file scopes;
+late globs, directory destinations and provider-dependent scopes remain incomplete.
+Each scoped path's resulting difference is recorded once, at its first
 patch observation, while all patch attempts and available host outcomes remain
-in history. These are cell-window effects, not independently observed per-patch
+in history. Repeated identical inputs consume literal observations one-to-one
+and retain each resolved occurrence's native result in host dispatch order.
+These are cell-window effects, not independently observed per-patch
 effects. Moves whose endpoints overlap another patch are recorded as separate
 source/target differences rather than inferred intermediate renames.
 When a Code Mode cell has completed, its patch captures finalize independently
@@ -76,8 +88,8 @@ diagnostics for `--history`. A nonzero exit is a command failure, not a failed
 file change. Native receipts retain per-tool results for Code Mode; absent receipts
 do not invent exit codes or delay captured file changes. Each observed command must
 match exactly one terminal host call. Journal publications that Mekugi lowered into
-the same cell are transport, not observed commands. Any other unobserved or repeated
-command call leaves the per-tool results absent. Yielded calls wait for
+the same cell are transport, not observed commands. Any unobserved command
+occurrence leaves the per-tool results absent. Yielded calls wait for
 their terminal `write_stdin` or `wait` result before capture completes.
 
 Coverage describes only the captured scope: complete comparisons are `exact`;
@@ -85,8 +97,21 @@ incomplete baselines are `partial`. A deletion and an addition with identical,
 nonempty content form one move. A created copy names its source when the content
 matches. Binary content is shown as sizes and hashes rather than rows, and a
 symlink change as its link target. A path that could not be compared is incomplete.
-A command with no observed effect is retained without a change ID. Edit summaries
+A complete command with no observed effect is retained without a change ID.
+Unsupported scope or missing resolved host evidence receives an explicit incomplete
+capture ID even when no file difference can be established. Such an ID stays in
+`--list`, is explained in `--summary` and `--history`, and cannot establish an empty
+successful `--net` result. Edit summaries
 describe saved file differences independently of the command exit status.
+
+Capture observes call-window endpoints, not every filesystem write inside an
+interpreter or shell process. A temporary replacement restored before return has
+no recoverable intermediate diff. Repeated named write scopes retain an
+`intermediate writes unobserved` diagnostic; when their final comparison is empty,
+the attempt receives an incomplete ID rather than disappearing as a confirmed
+no-effect edit. History preserves the original script, not invented intermediate
+contents. Recovering those bytes would require host-supplied per-write evidence;
+Mekugi does not rerun or instrument the user's process to obtain it.
 
 Sibling calls emitted in one response and completed in one request share
 one record. Overlapping writer windows retain call references or change IDs for
@@ -188,7 +213,7 @@ their visible stream under the fork's identity; resume uses the durable identity
 `--list` without operands selects the calling thread; explicit IDs and ranges may
 select captured changes across agents. It shows IDs and counts, without execution outcomes or capture diagnostics.
 It compresses consecutive comparable complete IDs and
-shows known direct `+N -N` counts. Partial or unswept IDs remain separate;
+shows known direct `+N -N` capture counts, not a composed net total. Partial or unswept IDs remain separate;
 `?` marks unknown direct counts, while `managed:N` counts tool-managed review
 files excluded from the default diff. Pending and retired IDs remain visible;
 sibling threads' IDs are not exposed by implicit selection. Explicit IDs can still be read across
@@ -196,6 +221,9 @@ agents in the shared namespace. The default view shows each ID and unified
 file diff. `--summary` prefixes each path's added and removed line counts with the same
 file status as the diff pane (`A`, `M`, `D`, `R`, `RM`, `UU`, or `?` for incomplete evidence), aggregating across
 selected records in durable capture order, regardless of argument or author order.
+Counts come from the composed file differences, not the sum of repeated attempts.
+Direct and tool-managed edits to one file compose together; any direct edit keeps
+that file expanded. Inconsistent chains have unknown counts and a retained reason.
 A created-then-deleted file has no summary row, matching the empty saved diff.
 Paths inside the selected workspace are shortened. By default,
 confirmed managed files become one compact `M +added -removed` row with a separate binary unavailable-count tally;
@@ -236,7 +264,10 @@ Complete captured diffs remain composable regardless of command exit status,
 including older retained records. Normal views
 describe captured file differences, not command outcomes; execution and capture
 diagnostics are available in `--history` only.
-Path filters apply to the composed files. An empty composition is explicit.
+Path filters apply to the composed files. An empty composition is explicit and
+distinct from no selected captures or a path filter matching no captured files.
+An empty own-thread selection names the workspace and suggests explicit IDs for
+other agents; it does not imply that their captures are missing.
 Mutations still require explicit IDs; `--mine` never selects writes. `--history` includes the original observed patch or command input, the
 host result, and for a command the observed scope. Paths after `--` filter review files without re-reading the
 current filesystem. `--workspace ..` selects the owning workspace index when

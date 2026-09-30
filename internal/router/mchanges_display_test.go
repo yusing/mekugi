@@ -9,7 +9,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	mekugi "github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func mchangesDisplay(t *testing.T, command, output string) *appServerUI {
@@ -23,6 +25,13 @@ func mchangesDisplay(t *testing.T, command, output string) *appServerUI {
 
 func mainFeed(u *appServerUI, width int) string {
 	return ansi.Strip(strings.Join(u.view.renderFeed(width, 60).lines, "\n"))
+}
+
+func TestUISnapshotMChangesCaptureCompleteness(t *testing.T) {
+	output := "amber1 incomplete captured scope; use --history for diagnostics\nA\t2\t0\ttestdata/snapshots/new.txt\n?\t-\t-\toutside.txt\t\"resolved path is outside the pre-cell baseline\"\n"
+	u := mchangesDisplay(t, "mchanges amber1 --summary", output)
+	u.view.painter.Theme = livediff.DarkTheme
+	uisnapshot.Assert(t, "testdata/snapshots/mchanges-capture-completeness.txt", mainFeed(u, 100)+"\n")
 }
 
 func TestMChangesSummaryShowsEditRows(t *testing.T) {

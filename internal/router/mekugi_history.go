@@ -31,18 +31,19 @@ type mekugiHistory struct {
 	ExecutingThread string `json:",omitempty"`
 	// Caller is the canonical agent path that issued the call; Source names
 	// the edit's program when the tool name alone does not (exec_command).
-	Caller          string `json:",omitempty"`
-	Source          string `json:",omitempty"`
-	ChangeID        string
-	ReviewFiles     []mekugi.ReviewFile
-	NativePatches   []nativePatchObservation `json:",omitempty"`
-	ExecObservation *execObservation         `json:",omitempty"`
-	ExecOutcome     *execOutcome             `json:",omitempty"`
-	HostResults     []nativeToolResult       `json:",omitempty"`
-	CommandSegments *retainedCommandSegments `json:",omitempty"`
-	CarrierName     string
-	CarrierKind     codeModeCarrierKind
-	CarrierPayload  string
+	Caller           string `json:",omitempty"`
+	Source           string `json:",omitempty"`
+	ChangeID         string
+	ReviewFiles      []mekugi.ReviewFile
+	NativePatches    []nativePatchObservation `json:",omitempty"`
+	ResolvedBaseline *resolvedStockBaseline   `json:",omitempty"`
+	ExecObservation  *execObservation         `json:",omitempty"`
+	ExecOutcome      *execOutcome             `json:",omitempty"`
+	HostResults      []nativeToolResult       `json:",omitempty"`
+	CommandSegments  *retainedCommandSegments `json:",omitempty"`
+	CarrierName      string
+	CarrierKind      codeModeCarrierKind
+	CarrierPayload   string
 
 	Report string
 	// Deferred diagnostics are projected onto the model-visible result, never
@@ -146,6 +147,9 @@ func (p *mekugiProxy) rememberBatch(sessionID string, histories map[string]mekug
 			for _, file := range patch.Files {
 				history.bytes += len(file.BeforePath) + len(file.AfterPath) + len(file.Before) + len(file.Error)
 			}
+		}
+		if history.ResolvedBaseline != nil {
+			history.bytes += len(mustMarshalJSON(history.ResolvedBaseline))
 		}
 		history.bytes += len(history.ChangeID) + len(history.ExecutingThread) + len(history.Caller) + len(history.Source)
 		for _, file := range history.ReviewFiles {
@@ -408,7 +412,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 		}
 		carrierKind := history.effectiveCarrierKind()
 		if itemType == carrierOutputItemType(carrierKind) {
-			if len(history.NativePatches) != 0 || history.ExecObservation != nil {
+			if len(history.NativePatches) != 0 || history.ExecObservation != nil || history.ResolvedBaseline != nil {
 				patch := completedNativePatch{callID: callID, history: history, output: bytes.Clone(item["output"])}
 				if terminal, _, _, _, pending := execResultState(history.ToolName, item["output"]); terminal {
 					completedPatches = append(completedPatches, patch)
@@ -488,6 +492,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 				source = completed.history.Script
 			}
 			completed.history.nativeCell = p.nativeTrace.readCell(completed.history.ExecutingThread, completed.callID, source)
+			resolveStockEdits(&completed.history, workspace)
 		}
 	}
 	execGroups := make(map[string][]execCompletion)
@@ -570,6 +575,7 @@ func appendToolOutputWarning(raw json.RawMessage, warning string) (json.RawMessa
 }
 
 func (t *mekugiResponseTransform) recordLocal(callID string, history *mekugiHistory) {
+	boundResolvedStockBaseline(history, t.directory, callID)
 	t.featureTrace.toolCall(callID, history.ToolName)
 	t.localSequence++
 	history.sequence = t.localSequence

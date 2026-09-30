@@ -527,7 +527,13 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 		return nil
 	}
 	windowFiles := nativePatchWindowFiles(history.NativePatches)
+	occurrences := make(map[string]int)
 	for index, observation := range history.NativePatches {
+		occurrence := occurrences[observation.Input]
+		occurrences[observation.Input]++
+		if tool := history.nativeCell.patchCall(observation.Input, occurrence); tool != nil && !tool.terminal {
+			continue // Outer completion cannot finish a still-running nested edit.
+		}
 		derivedCallID := nativePatchDerivedCallID(callID, index)
 		if retained, found, err := p.replayStore.lookup(ctx, workspace, derivedCallID); err != nil {
 			return err
@@ -550,7 +556,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			}
 		}
 		success := history.ToolName == applyPatchToolName && reportedSuccess && complete
-		nested, confirmed := history.nativeCell.patch(observation.Input)
+		nested, confirmed := history.nativeCell.patch(observation.Input, occurrence)
 		if confirmed {
 			success = nested.Status == "completed" && complete
 		}

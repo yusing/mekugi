@@ -206,6 +206,29 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 	if history.ExecObservation != nil {
 		calls = append(calls, execDerivedCallID(callID, history.ExecObservation.CodeMode))
 	}
+	if history.ResolvedBaseline != nil {
+		// Dynamic nested calls are unknown in the immutable pre-cell carrier.
+		// Find their durable derived attempts, not the disposable native trace.
+		scoped := s.scoped(ctx)
+		if err := scoped.locked(ctx, func() error {
+			index, err := scoped.readChangeIndex(workspace)
+			if err != nil {
+				return err
+			}
+			for _, change := range index.Changes {
+				if strings.HasPrefix(change.Correlation, callID+"\x00") {
+					for _, call := range change.Calls {
+						calls = append(calls, call.ID)
+					}
+				}
+			}
+			return nil
+		}); err != nil {
+			return "", err
+		}
+		slices.Sort(calls)
+		calls = slices.Compact(calls)
+	}
 	var ids []string
 	seen := make(map[string]bool)
 	for _, derived := range calls {

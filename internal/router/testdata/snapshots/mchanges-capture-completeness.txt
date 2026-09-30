@@ -1,0 +1,4 @@
+└ Diff amber1 · mchanges --summary
+               amber1                      incomplete captured scope; use --history for diagnostics
+       Created testdata/snapshots/new.txt  +2 ━━━━━━━━
+       ?       outside.txt                 resolved path is outside the pre-cell baseline
