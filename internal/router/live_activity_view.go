@@ -640,10 +640,10 @@ func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 }
 
 // clickTarget prepares a block whose rows a click acts on, and reports whether
-// they do: operations and collapsed narrative text open the shared dialog.
+// they do: operations, compact reasoning and collapsed narrative text open the shared dialog.
 // Under the pointer, the block underlines its count.
 func (v *liveActivityView) clickTarget(block *activityui.Block, snippet liveActivitySnippet) bool {
-	if outputBlock(*block) {
+	if outputBlock(*block) || block.Kind == "summary" && strings.TrimSpace(block.Body) != "" {
 		block.Hovered = v.snippet == snippet
 		return true
 	}
