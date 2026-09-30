@@ -226,6 +226,11 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 // Reasoning shortcuts are session-local Codex config overrides. Preserve option
 // operands and everything after -- rather than interpreting prompt contents.
 func expandReasoningShortcuts(args []string) []string {
+	// Non-session subcommands can own trailing child-process arguments without
+	// a -- delimiter (for example mcp add and sandbox). Leave those intact.
+	if !interactiveCodexArgs(args) && (len(args) == 0 || args[0] != "headless") {
+		return args
+	}
 	result := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		arg := args[i]

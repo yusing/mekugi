@@ -16,7 +16,7 @@ func TestReasoningShortcuts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, args := range [][]string{{"--", "--high"}, {"-m", "--high"}, {"--config", "--low"}, {"--image", "--max"}} {
+	for _, args := range [][]string{{"--", "--high"}, {"-m", "--high"}, {"--config", "--low"}, {"--image", "--max"}, {"mcp", "add", "example", "executable", "--high"}, {"sandbox", "linux", "executable", "--low"}} {
 		if got := expandReasoningShortcuts(args); !slices.Equal(got, args) {
 			t.Fatalf("operands changed: %q -> %q", args, got)
 		}

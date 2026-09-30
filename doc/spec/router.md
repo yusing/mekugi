@@ -14,7 +14,7 @@ Provider-selection arguments are rejected. Mekugi flags precede `codex`; subsequ
 noninteractive arguments remain intact, including subcommands and `--` delimiters.
 Interactive terminal arguments follow the native client mapping below.
 
-After `codex`, `--low`, `--medium`, `--high`, `--xhigh`, `--max`, and `--ultra`
+For interactive sessions, after `codex`, `--low`, `--medium`, `--high`, `--xhigh`, `--max`, and `--ultra`
 expand to invocation-local `model_reasoning_effort` config overrides. They may
 also follow `headless`. Option values and arguments after `--` remain literal;
 the selected model determines which reasoning efforts it supports.
