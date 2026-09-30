@@ -177,8 +177,8 @@ the durable records retain each path and its reason.
 The shell frames Main on the left and one right pane: the saved diff (2) or
 Activity (3), toggled and each filling the pane. A roster (4) below them fits its
 content, four rows unfocused and up to 40% of the screen when focused; finished
-agents fold into one row. One blank row above and below separates the roster
-from the panes and status bar when terminal height permits. Collapsed rows place activity directly after the name
+agents fold into one row. The roster immediately follows the pane borders, with one blank row below it
+before the status bar when terminal height permits. Collapsed rows place activity directly after the name
 without reserving name-column padding. Each row shows state, timer, tokens, cost
 and turns, dropping from the right when narrow. Observed roles color the status
 glyphs, with a color-to-role legend only in the expanded Agents pane; role labels

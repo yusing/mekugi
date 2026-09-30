@@ -263,15 +263,15 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		roster = nil // A short terminal keeps its rows for Main.
 	}
 	padding := 0
-	if len(roster) > 0 && height-1-len(roster)-2 >= nativeFramedRows {
+	if len(roster) > 0 && height-1-len(roster)-1 >= nativeFramedRows {
 		padding = 1
 	}
-	top := max(0, height-1-len(roster)-2*padding)
+	top := max(0, height-1-len(roster)-padding)
 	framed := top >= nativeFramedRows
 	l := terminalLayout{vertical: -1, horizontal: -1, rosterHorizontal: -1}
 	if len(roster) > 0 {
-		l.rosterHorizontal = top + padding
-		l.roster = terminalRect{0, top + padding, width, len(roster)}
+		l.rosterHorizontal = top
+		l.roster = terminalRect{0, top, width, len(roster)}
 	}
 	var left, right terminalRect
 	wide := width >= 100 && top >= 12

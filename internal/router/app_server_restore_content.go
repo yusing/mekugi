@@ -149,7 +149,7 @@ func (u *appServerUI) readRestoredChildren() error {
 		u.session.registerThread(info)
 		u.restoreDiffThread(info, false)
 		agent := u.session.agent(u.session.paths[id])
-		agent.Started, agent.LastResponse = historyTime(info.CreatedAt), historyTime(info.UpdatedAt)
+		agent.Started, agent.LastResponse = restoredAgentTimes(info)
 	}
 	u.readRestoredRollouts()
 	for _, turn := range r.root.Turns {
@@ -306,6 +306,18 @@ func (u *appServerUI) applyRestoredActivity(entries []activityPaneEntry) {
 	u.applyCapturedEdits()
 }
 
+func restoredAgentTimes(info appServerThreadInfo) (start, last time.Time) {
+	for _, turn := range info.Turns {
+		if at := historyTime(turn.StartedAt); !at.IsZero() && (start.IsZero() || at.Before(start)) {
+			start = at
+		}
+		if at := historyTime(turn.CompletedAt); at.After(last) {
+			last = at
+		}
+	}
+	return start, last
+}
+
 // Observational history never opens previews, resumes children, or fabricates
 // a live response. Only a subsequent live notification can mark an agent busy.
 func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
@@ -313,7 +325,7 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 	name := s.paths[info.ID]
 	agent := s.agent(name)
 	restoreContextUsage(agent, info)
-	agent.Started, agent.LastResponse = historyTime(info.CreatedAt), historyTime(info.UpdatedAt)
+	agent.Started, agent.LastResponse = restoredAgentTimes(info)
 	agent.Turns, agent.Responding = uint64(len(info.Turns)), false
 	u.observeCost(info.ID, agent)
 	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(s.agents)})

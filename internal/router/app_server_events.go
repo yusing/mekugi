@@ -118,7 +118,7 @@ type appServerEvent struct {
 
 func (s *appServerSession) start(thread, cwd string) {
 	s.paths = map[string]string{thread: "/root"}
-	s.agents = []activityPaneAgent{{Name: "/root", Role: "main", Started: time.Now()}}
+	s.agents = []activityPaneAgent{{Name: "/root", Role: "main"}}
 	s.reasoning = make(map[[3]string]string)
 	s.thinking = make(map[[3]string]time.Time)
 	s.pendingThinking = make(map[string]pendingThinking)
@@ -154,7 +154,7 @@ func (s *appServerSession) registerThread(info appServerThreadInfo) {
 	if old := s.paths[info.ID]; old != "" {
 		s.agent(old).Name = path
 	} else {
-		s.agents = append(s.agents, activityPaneAgent{Name: path, Started: time.Now()})
+		s.agents = append(s.agents, activityPaneAgent{Name: path})
 	}
 	s.paths[info.ID] = path
 	s.agent(path).Role = cmp.Or(info.AgentRole, spawn.AgentRole, s.agent(path).Role)
@@ -177,7 +177,7 @@ func (s *appServerSession) path(thread string) string {
 	}
 	path := appServerPlaceholder(thread)
 	s.paths[thread] = path
-	s.agents = append(s.agents, activityPaneAgent{Name: path, Started: time.Now()})
+	s.agents = append(s.agents, activityPaneAgent{Name: path})
 	return path
 }
 
@@ -270,6 +270,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		}
 		agent := s.agent(s.path(p.ThreadID))
 		agent.Responding, agent.Final = true, false
+		if agent.Started.IsZero() {
+			agent.Started = now
+		}
 		agent.Turns++
 		s.finals[p.ThreadID] = false
 		delete(s.messages, p.ThreadID)

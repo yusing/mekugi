@@ -91,8 +91,8 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			}
 			lines := strings.Split(frame, "\n")
 			r := u.shell.layout.roster
-			if r.h == 0 || strings.TrimSpace(lines[r.y-1]) != "" || strings.TrimSpace(lines[r.y+r.h]) != "" {
-				t.Fatalf("roster lacks padding:\n%s", frame)
+			if r.h == 0 || !strings.Contains(lines[r.y-1], "┘") || strings.TrimSpace(lines[r.y+r.h]) != "" {
+				t.Fatalf("roster must immediately follow the pane border with padding only below:\n%s", frame)
 			}
 			u.setLivePane("on")
 			if !strings.Contains(paint(), "VISIBLE_EDIT") {

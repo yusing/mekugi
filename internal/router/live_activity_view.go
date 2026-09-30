@@ -959,10 +959,6 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time) (stri
 	// Before its first response, an agent's last activity is its start.
 	last := cmp.Or(agent.LastResponse, agent.Started)
 	if agent.Started.IsZero() {
-		if latest := v.latest(agent.Name); latest >= 0 {
-			observed := v.entries[latest].Observed
-			return summary, liveActivityAge(max(0, now.Sub(observed))) + " · " + liveActivityLast(cmp.Or(last, observed), now)
-		}
 		return summary, ""
 	}
 	// Elapsed time stops when the agent stops responding; the last-response

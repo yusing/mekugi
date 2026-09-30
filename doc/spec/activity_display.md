@@ -281,8 +281,10 @@ The upstream subset and layout come from
 ### Agents roster and navigation
 
 The main agent and its children appear as a canonical-path tree in observation order, with each agent's
-current activity and an elapsed-time timer (`elapsed · age ago`, or `just now`; `—` until
-its first response completes). Elapsed time stops at the last response while the agent
+current activity and an elapsed-time timer (`elapsed · age ago`, or `just now`).
+The timer is absent before the first turn starts; opening or registering a thread
+does not start it. Restored timers use retained turn timestamps, not thread creation
+or metadata-update times. Elapsed time stops at the last response while the agent
 is not responding; the age keeps counting. The root summary shows its latest observed activity or a newer message addressed
 to `/root`, or a dim `—` when neither is retained. Main activity is pane-only
 and never copied back into its conversation. Visible provider reasoning summaries come from app-server items; raw and encrypted

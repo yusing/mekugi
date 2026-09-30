@@ -34,6 +34,57 @@ func newAppServerSessionTestUI(t *testing.T, workspace string) *appServerUI {
 	return u
 }
 
+func TestAppServerAgentTimerStartsAtFirstTurn(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
+	u.session.path("early")
+	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "/root/worker", Kind: "status", Text: "Assigned", Observed: time.Now()}}})
+	for _, agent := range u.session.agents {
+		if !agent.Started.IsZero() {
+			t.Fatalf("thread registration started timer: %+v", agent)
+		}
+		if _, timer := u.agents.current(agent, time.Now().Add(time.Hour)); timer != "" {
+			t.Fatalf("unstarted thread shows timer %q", timer)
+		}
+	}
+	for _, thread := range []string{"main", "child", "early"} {
+		before := time.Now()
+		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "first"}})
+		agent := u.session.agent(u.session.paths[thread])
+		start := agent.Started
+		if start.Before(before) || start.After(time.Now()) {
+			t.Fatalf("timer does not use turn start: %+v", agent)
+		}
+		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "first", "status": "completed"}})
+		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "second"}})
+		if !agent.Started.Equal(start) {
+			t.Fatal("subsequent turn reset session timer")
+		}
+	}
+}
+
+func TestAppServerRestoredAgentTimerUsesTurns(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	info := appServerThreadInfo{ID: "main", CreatedAt: 100, UpdatedAt: 900}
+	u.restoreMainHistory(info.Turns, nil, nil)
+	agent := u.session.agent("/root")
+	if !agent.Started.IsZero() || !agent.LastResponse.IsZero() {
+		t.Fatal("empty restored thread started timer")
+	}
+	info.Turns = []appServerHistoryTurn{{ID: "a", StartedAt: 200, CompletedAt: 250}, {ID: "b", StartedAt: 300, CompletedAt: 350}}
+	u.restoreMainHistory(info.Turns, nil, nil)
+	if !agent.Started.Equal(historyTime(200)) || !agent.LastResponse.Equal(historyTime(350)) {
+		t.Fatalf("restored timer used metadata instead of turns: %+v", agent)
+	}
+	u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
+	info.ID = "child"
+	u.restoreActivityThread(info)
+	child := u.session.agent("/root/worker")
+	if !child.Started.Equal(agent.Started) || !child.LastResponse.Equal(agent.LastResponse) {
+		t.Fatalf("child restored timer differs from Main: %+v", child)
+	}
+}
+
 func TestAppServerSessionProjectsChildThreads(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentRole": "explore",
