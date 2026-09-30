@@ -341,9 +341,9 @@ restore the session's saved model, reasoning effort, and service tier; explicit
 pane layout, keyboard focus, the agent roster, Activity history, and the
 session's retained Diff changes. Scroll positions, filters, selections, and
 drafts are not restored. Successfully applied settings survive a fresh launch,
-including priority and default selections made before the first turn. Storage failures are
-reported in Activity. Older sessions can recover settings from the last 8 MiB of
-Codex history, with newer history taking precedence over retained preferences.
+including priority and default selections made before the first turn. Storage
+failures are reported in Activity. Older sessions can recover settings from the
+last 8 MiB of Codex history, with newer history taking precedence over retained preferences.
 If no saved model settings are available, a notice explains that Codex defaults
 and explicit flags apply instead. Main histories larger than 16 MiB cannot resume
 in the native UI. Paginated child histories load recent Activity first; older

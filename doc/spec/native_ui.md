@@ -352,19 +352,22 @@ the prompt with its inline `@` tokens, followed by separate user messages with
 path and byte-range frames containing the file contents. Repeated paths in a
 draft attach once. Line boundaries are preferred when splitting; long rows split
 only at UTF-8 boundaries, without dropping bytes. Supported images attach through
-the existing image composer;
-skill selections retain the exact source path supplied by Codex metadata through
-undo, local input history, and rejected submissions. They attach that file's
+the existing image composer.
+Native skill selections retain the exact source path supplied by Codex metadata
+through undo, local input history, and rejected submissions. They attach that file's
 actual contents through the same snapshot pipeline as `@`, with a skill header,
-rather than sending only selected-skill metadata.
+rather than sending only selected-skill metadata. Generated managed placeholders
+resolve through the manager instead of attaching their frontmatter-only metadata.
 Complete enabled `$name` references also bind automatically after a word boundary
 or on submission, including pasted prompts. Names must match exactly and have
 one enabled path in the active workspace's Codex catalog. In Mekugi mode with
 `skills-mgr`, the client also reads `skills-mgr list --codex` in that workspace,
 using the wrapped process environment. Managed names take precedence over
 same-named Codex filesystem entries. At submission or queueing, managed selections
-read their actual instructions with `skills-mgr get --codex NAME`,
-not a name-only reference or synthetic Codex path. Repeated names read and attach
+and generated placeholders read their actual instructions with
+`skills-mgr get --codex NAME`, including user-invoked skills omitted from the managed
+model catalog, not a name-only reference or synthetic Codex path. Native placeholder selections
+retain their metadata source identity. Repeated names read and attach
 once per submission. Instructions use the file attachment chunker and budget,
 travel in the versioned attachment envelope, and project into separate user
 messages. Transcript replay recovers identity and immutable instructions from
