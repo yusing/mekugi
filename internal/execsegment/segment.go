@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/internal/shellsyntax"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -47,7 +48,7 @@ func Split(script string) ([]Segment, bool) {
 			return
 		}
 		start, end := int(stmt.Pos().Offset()), int(stmtEnd(stmt).Offset())
-		segments = append(segments, Segment{Start: start, End: end, Source: source(script, stmt, start, end)})
+		segments = append(segments, Segment{Start: start, End: end, Source: shellsyntax.StatementSource(stmt, script[start:end])})
 	}
 	for _, stmt := range program.Stmts {
 		add(stmt)
@@ -110,25 +111,6 @@ func stmtEnd(stmt *syntax.Stmt) syntax.Pos {
 		}
 	}
 	return end
-}
-
-// source is the segment's display text. A heredoc body is not contiguous with
-// its statement, so a statement that owns one is printed from its syntax.
-func source(script string, stmt *syntax.Stmt, start, end int) string {
-	heredoc := false
-	syntax.Walk(stmt, func(node syntax.Node) bool {
-		if redirect, ok := node.(*syntax.Redirect); ok && redirect.Hdoc != nil {
-			heredoc = true
-		}
-		return !heredoc
-	})
-	if heredoc {
-		var printed strings.Builder
-		if syntax.NewPrinter().Print(&printed, stmt) == nil {
-			return strings.TrimRight(printed.String(), "\n")
-		}
-	}
-	return script[start:end]
 }
 
 // trapsFirst reports whether the script's first command runs in the shell

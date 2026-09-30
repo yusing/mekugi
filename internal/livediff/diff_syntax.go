@@ -76,23 +76,30 @@ func (r *Renderer) ColorDiff(ctx context.Context, theme Theme, source string) ([
 		if err != nil {
 			return nil, err
 		}
-		oldIndex, newIndex := 0, 0
+		AlignHunkColors(rows, before, after)
 		for j, row := range rows {
-			text := ""
-			if row.Kind != '+' {
-				text = before[oldIndex]
-				oldIndex++
-			}
-			if row.Kind != '-' {
-				text = after[newIndex]
-				newIndex++
-			}
 			if lines[indexes[j]] != "" {
-				lines[indexes[j]] = SourceLine(theme, ansi.StringWidth(text)+4, "", text, row.Kind)
+				lines[indexes[j]] = SourceLine(theme, ansi.StringWidth(row.Text)+4, "", row.Text, row.Kind)
 			}
 		}
 	}
 	return lines, nil
+}
+
+// AlignHunkColors replaces caller-owned row text with its before/after color,
+// preserving hunk geometry without allocating another row slice.
+func AlignHunkColors(rows []mekugi.ReviewRow, before, after []string) {
+	oldIndex, newIndex := 0, 0
+	for i, row := range rows {
+		if row.Kind != '+' {
+			rows[i].Text = before[oldIndex]
+			oldIndex++
+		}
+		if row.Kind != '-' {
+			rows[i].Text = after[newIndex]
+			newIndex++
+		}
+	}
 }
 
 // Output retention expands the separator tab in diff -u timestamp headers.

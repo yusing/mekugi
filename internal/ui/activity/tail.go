@@ -111,11 +111,10 @@ func UnderlineEdit(text string) string {
 // starts its line over, as a terminal redraws a progress line. Complete lines
 // wait until revealed, so a burst can scroll through rather than jump.
 type OutputTail struct {
+	outputLineBuffer
 	lines   []outputLine // Last revealed non-blank complete lines, sanitized.
 	pending []outputLine // Complete lines awaiting a reveal, oldest first.
-	line    []byte       // Current line's head, one byte past the display bound.
 	count   int          // Lines before the current line.
-	cr      bool         // A carriage return awaits the next byte.
 }
 
 type outputLine struct {
@@ -132,28 +131,18 @@ func TailOutput(output string) ([]string, int) {
 }
 
 func (t *OutputTail) Write(output string) {
-	for i := range len(output) {
-		c := output[i]
-		if t.cr && c != '\n' {
-			t.line = t.line[:0]
-		}
-		t.cr = false
-		switch {
-		case c == '\r':
-			t.cr = true
-		case c == '\n':
-			if text := outputText(t.line); text != "" {
-				t.pending = append(t.pending, outputLine{t.count, text})
-				if len(t.pending) > OutputPendingLines {
-					t.pending = slices.Delete(t.pending, 0, 1)
-				}
-			}
-			t.count++
-			t.line = t.line[:0]
-		case len(t.line) <= OutputTailBytes:
-			t.line = append(t.line, c)
+	t.outputLineBuffer.write(output, OutputTailBytes, t.endLine)
+}
+
+func (t *OutputTail) endLine() {
+	if text := outputText(t.line); text != "" {
+		t.pending = append(t.pending, outputLine{t.count, text})
+		if len(t.pending) > OutputPendingLines {
+			t.pending = slices.Delete(t.pending, 0, 1)
 		}
 	}
+	t.count++
+	t.line = t.line[:0]
 }
 
 // Pending counts complete lines awaiting a reveal.

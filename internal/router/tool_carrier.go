@@ -3,6 +3,7 @@ package router
 import (
 	"strings"
 
+	"github.com/yusing/mekugi/internal/shellsyntax"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -53,7 +54,7 @@ func shellQuoteArgument(value string) string {
 	if err == nil {
 		return quoted
 	}
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+	return shellsyntax.Quote(value)
 }
 
 func workerCommand(executable string, arguments []string) string {

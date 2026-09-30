@@ -31,27 +31,12 @@ type execSourceScope struct {
 	walkDepth, pathDepth, nodes int
 }
 
-// The caller owns the returned tree and its cancellation policy.
-func parseExecSource(data []byte, language *sitter.Language, canceled func() bool) (*sitter.Tree, error) {
-	parser := sitter.NewParser()
-	defer parser.Close()
-	if err := parser.SetLanguage(language); err != nil {
-		return nil, err
-	}
-	return parser.ParseWithOptions(func(offset int, _ sitter.Point) []byte {
-		if offset >= len(data) {
-			return nil
-		}
-		return data[offset:]
-	}, nil, &sitter.ParseOptions{ProgressCallback: func(sitter.ParseState) bool { return canceled() }}), nil
-}
-
 func inspectExecSource(input execProviderInput, source, script string, language *sitter.Language, python bool) execProviderResult {
 	if len(source) > maxExecProgramBytes {
 		return execProviderResult{open: true, reason: "interpreter source exceeds capture bound"}
 	}
 	data := []byte(source)
-	tree, err := parseExecSource(data, language, func() bool { return time.Now().After(input.deadline) })
+	tree, err := parseSourceTree(data, language, func() bool { return time.Now().After(input.deadline) })
 	if err != nil {
 		return execProviderResult{open: true, reason: "interpreter parser unavailable"}
 	}

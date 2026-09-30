@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
@@ -42,9 +41,9 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 				return nil, 0, errors.New(maxTokensArgumentError)
 			}
 			i++
-			n, err := strconv.Atoi(args[i])
-			if err != nil || n < 1 || n > maxOutputTokens || strconv.Itoa(n) != args[i] {
-				return nil, 0, errors.New(maxTokensArgumentError)
+			n, err := parseMaxTokens(args[i])
+			if err != nil {
+				return nil, 0, err
 			}
 			budget, tokenOption = n, true
 		case "-n":
@@ -168,36 +167,13 @@ func executeMCat(
 	args []string,
 	mcat toolContribution,
 ) (execution toolplugin.ExecutionOutput, err error) {
-	journal := manifest.AXReadOutput
-	if journal == "" {
-		journal = os.Getenv(capturer.AXReadOutputEnvironment)
-	}
-	observation, observeErr := capturer.StartAXReadWithContext(
-		journal,
-		os.Getenv(codexThreadIDEnvironment),
-		"mcat",
-		capturer.AXReadContext{},
-	)
-	var notices strings.Builder
-	if observeErr != nil {
-		fmt.Fprintf(&notices, "mcat: AX read evidence unavailable: %v\n", observeErr)
-	}
+	finish := beginFrontendRead(manifest, "mcat")
 	defer func() {
-		class := execution.FailureClass
-		if err != nil {
-			class = "execution_error"
-		}
+		class := frontendExecutionFailure(execution, err)
 		if ctx.Err() != nil {
 			class = "canceled"
 		}
-		var exitCode *int
-		if err == nil {
-			exitCode = new(execution.ExitCode)
-		}
-		if finishErr := observation.FinishResult(err == nil && execution.ExitCode == 0, class, exitCode); finishErr != nil {
-			fmt.Fprintf(&notices, "mcat: AX read evidence incomplete: %v\n", finishErr)
-		}
-		execution.Stderr = notices.String() + execution.Stderr
+		finish(&execution, err, err == nil && execution.ExitCode == 0, class)
 	}()
 
 	specs, budget, parseErr := parseReadBundle(args)

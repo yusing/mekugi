@@ -22,39 +22,15 @@ func executeFrontendReader(
 	args []string,
 	contribution toolContribution,
 ) (execution toolplugin.ExecutionOutput, err error) {
-	journal := manifest.AXReadOutput
-	if journal == "" {
-		journal = os.Getenv(capturer.AXReadOutputEnvironment)
-	}
-	observation, observeErr := capturer.StartAXReadWithContext(
-		journal,
-		os.Getenv(codexThreadIDEnvironment),
-		contribution.Name,
-		capturer.AXReadContext{},
-	)
-	var notices strings.Builder
-	if observeErr != nil {
-		fmt.Fprintf(&notices, "%s: AX read evidence unavailable: %v\n", contribution.Name, observeErr)
-	}
+	finish := beginFrontendRead(manifest, contribution.Name)
 	defer func() {
-		class := execution.FailureClass
-		if err != nil {
-			class = "execution_error"
-		}
+		class := frontendExecutionFailure(execution, err)
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			class = "deadline_exceeded"
 		} else if ctx.Err() != nil {
 			class = "canceled"
 		}
-		var exitCode *int
-		if err == nil {
-			exitCode = new(execution.ExitCode)
-		}
-		succeeded := err == nil && execution.ExitCode == 0 && ctx.Err() == nil
-		if finishErr := observation.FinishResult(succeeded, class, exitCode); finishErr != nil {
-			fmt.Fprintf(&notices, "%s: AX read evidence incomplete: %v\n", contribution.Name, finishErr)
-		}
-		execution.Stderr = notices.String() + execution.Stderr
+		finish(&execution, err, err == nil && execution.ExitCode == 0 && ctx.Err() == nil, class)
 	}()
 
 	return toolplugin.Execute(
@@ -68,4 +44,39 @@ func executeFrontendReader(
 		"",
 		nil,
 	)
+}
+
+func frontendExecutionFailure(execution toolplugin.ExecutionOutput, err error) string {
+	if err != nil {
+		return "execution_error"
+	}
+	return execution.FailureClass
+}
+
+// beginFrontendRead owns AX setup and publication, not reader outcome policy.
+func beginFrontendRead(manifest toolWorkerManifest, name string) func(*toolplugin.ExecutionOutput, error, bool, string) {
+	journal := manifest.AXReadOutput
+	if journal == "" {
+		journal = os.Getenv(capturer.AXReadOutputEnvironment)
+	}
+	observation, observeErr := capturer.StartAXReadWithContext(
+		journal,
+		os.Getenv(codexThreadIDEnvironment),
+		name,
+		capturer.AXReadContext{},
+	)
+	var notices strings.Builder
+	if observeErr != nil {
+		fmt.Fprintf(&notices, "%s: AX read evidence unavailable: %v\n", name, observeErr)
+	}
+	return func(execution *toolplugin.ExecutionOutput, err error, succeeded bool, class string) {
+		var exitCode *int
+		if err == nil {
+			exitCode = new(execution.ExitCode)
+		}
+		if finishErr := observation.FinishResult(succeeded, class, exitCode); finishErr != nil {
+			fmt.Fprintf(&notices, "%s: AX read evidence incomplete: %v\n", name, finishErr)
+		}
+		execution.Stderr = notices.String() + execution.Stderr
+	}
 }

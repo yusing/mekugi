@@ -94,6 +94,13 @@ func tokenLongContextApplies(model string, price tokenPrice, input uint64) bool 
 	return input > after
 }
 
+func validCostCounts(counts tokenCounts) bool {
+	return !counts.Incomplete && !counts.Inconsistent &&
+		counts.UncachedInputTokens <= counts.InputTokens &&
+		counts.ReasoningTokens <= counts.OutputTokens &&
+		counts.CacheWriteTokens <= counts.UncachedInputTokens
+}
+
 func estimateTokenCost(model, serviceTier string, counts tokenCounts) tokenCost {
 	model = tokenCostModel(model)
 	price, ok := tokenReferencePrices[model]
@@ -108,7 +115,7 @@ func estimateTokenCost(model, serviceTier string, counts tokenCounts) tokenCost 
 	default:
 		return tokenCost{}
 	}
-	if !ok || counts.Incomplete || counts.Inconsistent || counts.UncachedInputTokens > counts.InputTokens || counts.ReasoningTokens > counts.OutputTokens || counts.CacheWriteTokens > counts.UncachedInputTokens {
+	if !ok || !validCostCounts(counts) {
 		return tokenCost{}
 	}
 	// Select the tier per response, never from cumulative thread input.

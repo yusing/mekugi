@@ -37,9 +37,9 @@ func parseMRunArguments(arguments []string) (mrunOptions, []string, error) {
 				return options, nil, errors.New(maxTokensArgumentError)
 			}
 			value := arguments[1]
-			number, err := strconv.Atoi(value)
-			if err != nil || number < 1 || number > maxOutputTokens || strconv.Itoa(number) != value {
-				return options, nil, errors.New(maxTokensArgumentError)
+			number, err := parseMaxTokens(value)
+			if err != nil {
+				return options, nil, err
 			}
 			options.maxTokens = number
 			arguments = arguments[2:]

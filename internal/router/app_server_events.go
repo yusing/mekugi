@@ -96,6 +96,14 @@ type appServerTokenUsage struct {
 	ReasoningOutputTokens uint64 `json:"reasoningOutputTokens"`
 }
 
+type appServerTurn struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+	Error  *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
 type appServerEvent struct {
 	ThreadID   string              `json:"threadId"`
 	TurnID     string              `json:"turnId"`
@@ -110,10 +118,7 @@ type appServerEvent struct {
 		Last               *appServerTokenUsage `json:"last"`
 		ModelContextWindow uint64               `json:"modelContextWindow"`
 	} `json:"tokenUsage"`
-	Turn struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
-	} `json:"turn"`
+	Turn appServerTurn `json:"turn"`
 }
 
 func (s *appServerSession) start(thread, cwd string) {

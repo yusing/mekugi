@@ -717,13 +717,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		ItemID   string        `json:"itemId"`
 		Delta    string        `json:"delta"`
 		Item     appServerItem `json:"item"`
-		Turn     struct {
-			ID     string `json:"id"`
-			Status string `json:"status"`
-			Error  *struct {
-				Message string `json:"message"`
-			} `json:"error"`
-		} `json:"turn"`
+		Turn     appServerTurn `json:"turn"`
 	}
 	if err := json.Unmarshal(m.Params, &p); err != nil {
 		return fmt.Errorf("%s: %w", m.Method, err)

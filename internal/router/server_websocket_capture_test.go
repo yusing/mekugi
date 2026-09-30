@@ -41,21 +41,7 @@ func TestResponsesWebSocketCaptureSeparatesSteeringAndAutomaticRequest(t *testin
 			t.Error(err)
 			return
 		}
-		if err := providerSocketWrite(ctx, conn, map[string]any{"type": "response.steer.accepted", "steer": map[string]string{"id": "accepted", "previous_response_id": "parent"}}); err != nil {
-			t.Error(err)
-			return
-		}
-		if err := providerSocketWrite(ctx, conn, map[string]any{"type": "response.incomplete", "response": map[string]any{
-			"id": "parent", "status": "incomplete", "incomplete_details": map[string]string{"reason": "steered"}, "output": []any{},
-		}}); err != nil {
-			t.Error(err)
-			return
-		}
-		if err := providerSocketWrite(ctx, conn, socketEvent("response.created", "successor")); err != nil {
-			t.Error(err)
-			return
-		}
-		if err := providerSocketWrite(ctx, conn, socketEvent("response.completed", "successor")); err != nil {
+		if err := providerSocketSteeredSuccessor(ctx, conn, "accepted"); err != nil {
 			t.Error(err)
 			return
 		}

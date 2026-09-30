@@ -5,21 +5,16 @@ import (
 	jsonv1 "encoding/json"
 	"fmt"
 	"strings"
-	"time"
 )
 
 func journalTaskText(node journalNode) string {
-	glyph := map[string]string{"pending": "○", "working": "◐", "done": "●", "blocked": "⚠", "dropped": "⊘"}[node.State]
+	glyph := journalGlyphs[node.State]
 	text := fmt.Sprintf("%s %s %s", glyph, node.Path, node.Title)
 	if node.Reason != "" {
 		text += " · " + node.Reason
 	}
-	if node.Started != nil && node.Finished != nil {
-		start, firstErr := time.Parse(time.RFC3339Nano, node.Started.At)
-		end, lastErr := time.Parse(time.RFC3339Nano, node.Finished.At)
-		if firstErr == nil && lastErr == nil && !end.Before(start) {
-			text += " · " + end.Sub(start).Round(time.Second).String()
-		}
+	if elapsed := journalTaskElapsed(node); elapsed != "" {
+		text += " · " + elapsed
 	}
 	return text
 }

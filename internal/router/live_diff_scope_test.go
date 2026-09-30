@@ -176,24 +176,7 @@ func TestLiveDiffSessionTerminalEmptyEditsAndExit(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer terminal.Close()
-	chunks := make(chan string, 64)
-	go func() {
-		defer close(chunks)
-		var buf [8192]byte
-		for {
-			n, err := terminal.Read(buf[:])
-			if n > 0 {
-				select {
-				case chunks <- string(buf[:n]):
-				case <-ctx.Done():
-					return
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
+	chunks := readPTYChunks(ctx, terminal, 8192, 64)
 	wait := func(want string) string {
 		t.Helper()
 		var text strings.Builder
@@ -203,7 +186,7 @@ func TestLiveDiffSessionTerminalEmptyEditsAndExit(t *testing.T) {
 				if !ok {
 					t.Fatalf("viewer stopped waiting for %q: %s", want, text.String())
 				}
-				text.WriteString(chunk)
+				text.Write(chunk)
 				if strings.Contains(ansi.Strip(text.String()), want) {
 					if strings.Contains(text.String(), "unrelated.go") {
 						t.Fatal("viewer displayed another session")

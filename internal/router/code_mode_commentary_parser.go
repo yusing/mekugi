@@ -11,12 +11,10 @@ var codeModeJavaScriptLanguage = sitter.NewLanguage(treeSitterJavaScript.Languag
 
 func findCodeModeCommentaryCalls(source string) ([]codeModeCommentaryCall, error) {
 	sourceBytes := []byte(source)
-	parser := sitter.NewParser()
-	defer parser.Close()
-	if err := parser.SetLanguage(codeModeJavaScriptLanguage); err != nil {
+	tree, err := parseSourceTree(sourceBytes, codeModeJavaScriptLanguage, nil)
+	if err != nil {
 		return nil, err
 	}
-	tree := parser.Parse(sourceBytes, nil)
 	if tree == nil {
 		return nil, errors.New("parse Code Mode commentary program")
 	}

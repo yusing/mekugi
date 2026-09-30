@@ -153,27 +153,9 @@ func catalogConfigArgs(args []string) (overrides []string, cwd string, err error
 		if arg == "--ignore-user-config" || strings.HasPrefix(arg, "--ignore-user-config=") {
 			return nil, "", errors.New("third-party model catalogs (--grok or OpenCode) do not support --ignore-user-config: codex debug models cannot exclude user configuration")
 		}
-		var kind, value string
-		switch {
-		case arg == "-c" || arg == "--config" || arg == "-C" || arg == "--cd":
-			if i+1 == len(args) {
-				continue
-			}
-			i++
-			kind, value = arg, args[i]
-		case strings.HasPrefix(arg, "--config="):
-			kind, value = "-c", strings.TrimPrefix(arg, "--config=")
-		case strings.HasPrefix(arg, "--cd="):
-			kind, value = "-C", strings.TrimPrefix(arg, "--cd=")
-		case strings.HasPrefix(arg, "-c"):
-			kind, value = "-c", strings.TrimPrefix(strings.TrimPrefix(arg, "-c"), "=")
-		case strings.HasPrefix(arg, "-C"):
-			kind, value = "-C", strings.TrimPrefix(strings.TrimPrefix(arg, "-C"), "=")
-		}
-		switch kind {
-		case "-c", "--config":
+		if value, ok := codexArgumentValue(args, &i, "-c", "--config"); ok {
 			overrides = append(overrides, "-c", value)
-		case "-C", "--cd":
+		} else if value, ok := codexArgumentValue(args, &i, "-C", "--cd"); ok {
 			cwd = value
 		}
 	}

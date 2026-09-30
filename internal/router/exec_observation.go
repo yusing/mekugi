@@ -1484,14 +1484,9 @@ func stockLiteralExecCommands(source, directory, sessionShell string) (commands 
 	if len(source) > maxMekugiScriptBytes || !strings.Contains(source, "tools") {
 		return nil, false
 	}
-	parser := sitter.NewParser()
-	defer parser.Close()
-	if parser.SetLanguage(codeModeJavaScriptLanguage) != nil {
-		return nil, true
-	}
 	bytes := []byte(source)
-	tree := parser.Parse(bytes, nil)
-	if tree == nil {
+	tree, err := parseSourceTree(bytes, codeModeJavaScriptLanguage, nil)
+	if err != nil || tree == nil {
 		return nil, true
 	}
 	defer tree.Close()

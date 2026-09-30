@@ -83,7 +83,7 @@ func liveDiffSourceTerminated(ctx context.Context, path, source string) bool {
 	if !ok {
 		return false
 	}
-	tree, err := parseExecSource([]byte(source), language, func() bool { return ctx.Err() != nil })
+	tree, err := parseSourceTree([]byte(source), language, func() bool { return ctx.Err() != nil })
 	if err != nil || tree == nil {
 		return false
 	}
@@ -147,7 +147,7 @@ func liveDiffSourceComplete(ctx context.Context, path, source string) bool {
 		return true
 	}
 	canceled := func() bool { return ctx.Err() != nil }
-	tree, err := parseExecSource([]byte(source), language, canceled)
+	tree, err := parseSourceTree([]byte(source), language, canceled)
 	if err != nil || tree == nil {
 		return false
 	}
@@ -191,7 +191,7 @@ func liveDiffSourceComplete(ctx context.Context, path, source string) bool {
 		return false
 	}
 	slices.Reverse(closers)
-	closed, err := parseExecSource([]byte(source+strings.Join(closers, "")), language, canceled)
+	closed, err := parseSourceTree([]byte(source+strings.Join(closers, "")), language, canceled)
 	if err != nil || closed == nil {
 		return false
 	}

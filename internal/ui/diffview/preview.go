@@ -568,7 +568,7 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 	var err error
 	if p.Current.Input != "" {
 		// Raw diff tails and pending scope lists are plain text.
-		for _, row := range p.Source[colorStart:end] {
+		for _, row := range source {
 			after = append(after, livediff.Safe(strings.TrimSuffix(row.Text, "\n"), false))
 		}
 		before = after
@@ -579,18 +579,10 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 	if err != nil {
 		return nil, err
 	}
-	oldIndex, newIndex := 0, 0
+	livediff.AlignHunkColors(source, before, after)
 	for i := colorStart; i < end && len(lines) <= rows; i++ {
 		row := p.Source[i]
-		text := ""
-		if row.Kind != '+' {
-			text = before[oldIndex]
-			oldIndex++
-		}
-		if row.Kind != '-' {
-			text = after[newIndex]
-			newIndex++
-		}
+		text := source[i-colorStart].Text
 		if i < start {
 			continue
 		}

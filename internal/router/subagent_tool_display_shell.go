@@ -199,20 +199,7 @@ func toolActivityReads(script string) (string, bool) {
 // Heredoc bodies are deferred past Stmt.End(), sometimes past a sibling on
 // the same line. Print the owning AST instead of slicing off or borrowing bodies.
 func toolActivityStatementSource(script string, statement *syntax.Stmt) string {
-	hasHeredoc := false
-	syntax.Walk(statement, func(node syntax.Node) bool {
-		if redirect, ok := node.(*syntax.Redirect); ok && redirect.Hdoc != nil {
-			hasHeredoc = true
-		}
-		return !hasHeredoc
-	})
-	if hasHeredoc {
-		var source strings.Builder
-		if syntax.NewPrinter().Print(&source, statement) == nil {
-			return strings.TrimRight(source.String(), "\n")
-		}
-	}
-	return script[int(statement.Pos().Offset()):toolActivityStatementDisplayEnd(script, statement)]
+	return shellsyntax.StatementSource(statement, script[int(statement.Pos().Offset()):toolActivityStatementDisplayEnd(script, statement)])
 }
 
 // A statement's End includes its separator. Keep that separator in the

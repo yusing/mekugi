@@ -1254,20 +1254,8 @@ func (w *execShellWalker) copyLike(identity string, args []*syntax.Word, move bo
 		// cp opens an existing destination; install and mv replace it.
 		Through: identity == "cp" && !options.has("--remove-destination", "-l", "--link", "-s", "--symbolic-link"),
 	}
-	if target, ok := options.value("-t", "--target-directory"); ok {
-		operand, ok := w.operand(&syntax.Word{Parts: []syntax.WordPart{&syntax.Lit{Value: target}}})
-		if !ok || operand.Glob {
-			w.opaque("dynamic target directory")
-			return
-		}
-		entry.Dest, entry.DestDir, entry.Operands = operand.Path, true, operands
-	} else {
-		if len(operands) < 2 || operands[len(operands)-1].Glob {
-			w.opaque(identity + " without a literal destination")
-			return
-		}
-		entry.Dest, entry.Operands = operands[len(operands)-1].Path, operands[:len(operands)-1]
-		entry.DestDir = len(entry.Operands) > 1
+	if !w.intoTarget(identity, options, operands, &entry) {
+		return
 	}
 	if len(entry.Operands) == 0 {
 		w.opaque(identity + " without sources")
@@ -1301,31 +1289,38 @@ func (w *execShellWalker) link(args []*syntax.Word) {
 	// Only the link names change; ln never writes its targets. A lone target
 	// links into the current directory.
 	entry := execScopeEntry{Kind: execScopeInto, NoTarget: options.has("-T", "--no-target-directory"), NoDereference: options.has("-n", "--no-dereference"), Backup: backup}
-	switch target, hasTarget := options.value("-t", "--target-directory"); {
-	case hasTarget:
-		operand, ok := w.operand(&syntax.Word{Parts: []syntax.WordPart{&syntax.Lit{Value: target}}})
-		if !ok || operand.Glob {
-			w.opaque("dynamic target directory")
-			return
-		}
-		entry.Dest, entry.DestDir, entry.Operands = operand.Path, true, operands
-	case len(operands) == 1:
+	_, hasTarget := options.value("-t", "--target-directory")
+	if !hasTarget && len(operands) == 1 {
 		if w.cwd == "" {
 			w.opaque("ln into an unknown directory")
 			return
 		}
 		entry.Dest, entry.DestDir, entry.Operands = w.cwd, true, operands
-	default:
-		if operands[len(operands)-1].Glob {
-			w.opaque("ln without a literal destination")
-			return
-		}
-		entry.Dest, entry.Operands = operands[len(operands)-1].Path, operands[:len(operands)-1]
-		entry.DestDir = len(entry.Operands) > 1
+	} else if !w.intoTarget("ln", options, operands, &entry) {
+		return
 	}
 	w.plan.raise(execDeclared, "")
 	w.plan.label("ln")
 	w.plan.add(entry)
+}
+
+func (w *execShellWalker) intoTarget(identity string, options execParsedOptions, operands []execOperand, entry *execScopeEntry) bool {
+	if target, ok := options.value("-t", "--target-directory"); ok {
+		operand, ok := w.operand(&syntax.Word{Parts: []syntax.WordPart{&syntax.Lit{Value: target}}})
+		if !ok || operand.Glob {
+			w.opaque("dynamic target directory")
+			return false
+		}
+		entry.Dest, entry.DestDir, entry.Operands = operand.Path, true, operands
+	} else {
+		if len(operands) < 2 || operands[len(operands)-1].Glob {
+			w.opaque(identity + " without a literal destination")
+			return false
+		}
+		entry.Dest, entry.Operands = operands[len(operands)-1].Path, operands[:len(operands)-1]
+		entry.DestDir = len(entry.Operands) > 1
+	}
+	return true
 }
 
 func (w *execShellWalker) remove(args []*syntax.Word) {

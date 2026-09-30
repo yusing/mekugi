@@ -201,10 +201,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		}
 		used[key] = run
 		if len(feed.lines) > 0 && !thread.joined && !it.attached {
-			feed.lines = append(feed.lines, "")
-			feed.heads = append(feed.heads, len(feed.lines)-1)
-			feed.snippets = append(feed.snippets, liveActivitySnippet{})
-			feed.questions = append(feed.questions, 0)
+			feed.separator()
 		}
 		head := len(feed.lines)
 		// A sent message shrinking above a scrolled viewport keeps its rows still.
@@ -235,9 +232,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			}
 			feed.heads = append(feed.heads, start)
 		}
-		feed.lines = append(feed.lines, run.lines...)
-		feed.snippets = append(feed.snippets, run.snippets...)
-		feed.questions = append(feed.questions, run.questions...)
+		feed.appendRows(run)
 		if v.sentMessage(it.first) {
 			feed.sent = append(feed.sent, liveActivitySent{v.entries[it.first].Seq, len(feed.lines)})
 		}

@@ -73,26 +73,14 @@ func stripRequestInstructionOmissions(request *parsedResponsesRequest) error {
 			request.fields["instructions"] = mustMarshalJSON(stripped)
 		}
 	}
-	if len(request.fields["input"]) == 0 {
-		return nil
-	}
-	input, err := decodeResponsesInput(request.fields["input"])
-	if err != nil {
-		return fmt.Errorf("decode instruction omissions: %w", err)
-	}
-	changed := false
-	for index, raw := range input.items {
-		item, ok := decodeResponsesItem(raw)
-		if !ok || item.Type != "" && item.Type != "message" {
-			continue
-		}
+	return rewriteRequestMessages(request, "instruction omissions", func(item responsesItem) ([]byte, bool, error) {
 		transform := stripInstructionOmissions
 		switch item.Role {
 		case "system", "developer":
 		case "user":
 			transform = stripUserInstructionOmissions
 		default:
-			continue
+			return nil, false, nil
 		}
 		textChanged := false
 		content, _, err := transformResponsesTextContent(item.Content, func(text string) string {
@@ -101,21 +89,8 @@ func stripRequestInstructionOmissions(request *parsedResponsesRequest) error {
 			return stripped
 		}, isResponsesInputTextPart)
 		if err != nil {
-			return fmt.Errorf("strip instruction omissions: %w", err)
+			return nil, false, fmt.Errorf("strip instruction omissions: %w", err)
 		}
-		if !textChanged {
-			continue
-		}
-		item.setContent(content)
-		input.items[index] = mustMarshalJSON(item)
-		changed = true
-	}
-	if changed {
-		encoded, err := input.encode()
-		if err != nil {
-			return fmt.Errorf("encode instruction omissions: %w", err)
-		}
-		request.setInput(encoded)
-	}
-	return nil
+		return content, textChanged, nil
+	})
 }

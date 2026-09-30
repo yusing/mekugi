@@ -169,44 +169,26 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	var waitErr error
 	go func() { waitErr = cmd.Wait(); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })
-	chunks := make(chan string, 64)
-	go func() {
-		defer close(chunks)
-		var buf [8192]byte
-		for {
-			n, err := terminal.Read(buf[:])
-			if n > 0 {
-				select {
-				case chunks <- string(buf[:n]):
-				case <-ctx.Done():
-					return
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
+	chunks := readPTYChunks(ctx, terminal, 8192, 64)
 	topLine, uiHeader := "", ""
 	mouseEnabled := false
 	waitFrame := func(check func(string) bool) string {
 		t.Helper()
-		var pending, lastFrame string
+		var pending synchronizedFrameBuffer
+		var lastFrame string
 		for {
 			select {
 			case chunk, open := <-chunks:
-				if strings.Contains(pending+chunk, "\x1b[?1000;1006h") {
+				pending.Append(chunk)
+				if strings.Contains(string(pending.pending), "\x1b[?1000;1006h") {
 					mouseEnabled = true
 				}
-				pending += chunk
 				for {
-					end := strings.Index(pending, "\x1b[?2026l")
-					if end < 0 {
+					data, ok := pending.Next()
+					if !ok {
 						break
 					}
-					end += len("\x1b[?2026l")
-					frame := pending[:end]
-					pending = pending[end:]
+					frame := string(data)
 					if start := strings.LastIndex(frame, "\x1b[1;1H"); start >= 0 {
 						_, uiHeader, _ = strings.Cut(frame[start:], "\x1b[1;1H\x1b[0m\x1b[2K")
 						uiHeader, _, _ = strings.Cut(uiHeader, "\x1b[2;1H\x1b[0m\x1b[2K")
@@ -222,10 +204,10 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 					}
 				}
 				if !open {
-					t.Fatalf("viewer exited before expected frame: %q", pending)
+					t.Fatalf("viewer exited before expected frame: %q", pending.pending)
 				}
 			case <-ctx.Done():
-				t.Fatalf("waiting for frame: last=%q pending=%q", lastFrame, pending)
+				t.Fatalf("waiting for frame: last=%q pending=%q", lastFrame, pending.pending)
 			}
 		}
 	}
@@ -364,7 +346,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	}
 	var tail strings.Builder
 	for chunk := range chunks {
-		tail.WriteString(chunk)
+		tail.Write(chunk)
 	}
 	if !strings.Contains(tail.String(), "\x1b[?1000;1006l") {
 		t.Fatal("viewer did not disable mouse reporting on exit")

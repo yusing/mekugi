@@ -23,7 +23,7 @@ import (
 type liveDiffTerminalHarness struct {
 	ctx     context.Context
 	pty     *os.File
-	chunks  <-chan string
+	chunks  <-chan []byte
 	height  uint16
 	done    chan struct{}
 	waitErr error
@@ -45,24 +45,7 @@ func startLiveDiffTerminal(t *testing.T, workspace, replay, connection string, h
 	}
 	done := make(chan struct{})
 	t.Cleanup(func() { cancel(); terminal.Close(); <-done })
-	chunks := make(chan string, 64)
-	go func() {
-		defer close(chunks)
-		var buffer [8192]byte
-		for {
-			n, err := terminal.Read(buffer[:])
-			if n > 0 {
-				select {
-				case chunks <- string(buffer[:n]):
-				case <-ctx.Done():
-					return
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
+	chunks := readPTYChunks(ctx, terminal, 8192, 64)
 	harness := &liveDiffTerminalHarness{ctx: ctx, pty: terminal, chunks: chunks, height: height, done: done}
 	go func() { harness.waitErr = cmd.Wait(); close(done) }()
 	return harness
@@ -97,7 +80,7 @@ func (h *liveDiffTerminalHarness) frame(t *testing.T, check func(string) bool) s
 			if !open {
 				t.Fatalf("viewer exited before expected frame: %q", last)
 			}
-			h.pending += chunk
+			h.pending += string(chunk)
 		case <-h.ctx.Done():
 			t.Fatalf("waiting for terminal frame: last=%q pending=%q", last, h.pending)
 		}

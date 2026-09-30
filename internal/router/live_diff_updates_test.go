@@ -58,37 +58,17 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 	var waitErr error
 	go func() { waitErr = cmd.Wait(); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })
-	chunks := make(chan string, 64)
-	go func() {
-		defer close(chunks)
-		var buf [8192]byte
-		for {
-			n, err := terminal.Read(buf[:])
-			if n > 0 {
-				select {
-				case chunks <- string(buf[:n]):
-				case <-ctx.Done():
-					return
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-	pending := ""
+	chunks := readPTYChunks(ctx, terminal, 8192, 64)
+	var pending synchronizedFrameBuffer
 	waitMatchingFrame := func(matches func(string) bool) string {
 		t.Helper()
 		for {
 			for {
-				const endMarker = "\x1b[?2026l"
-				end := strings.Index(pending, endMarker)
-				if end < 0 {
+				data, ok := pending.Next()
+				if !ok {
 					break
 				}
-				end += len(endMarker)
-				frame := pending[:end]
-				pending = pending[end:]
+				frame := string(data)
 				if matches(frame) {
 					return frame
 				}
@@ -96,11 +76,11 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 			select {
 			case chunk, open := <-chunks:
 				if !open {
-					t.Fatalf("viewer exited before expected terminal frame: %q", pending)
+					t.Fatalf("viewer exited before expected terminal frame: %q", pending.pending)
 				}
-				pending += chunk
+				pending.Append(chunk)
 			case <-ctx.Done():
-				t.Fatalf("waiting for expected terminal frame: %q", pending)
+				t.Fatalf("waiting for expected terminal frame: %q", pending.pending)
 			}
 		}
 	}

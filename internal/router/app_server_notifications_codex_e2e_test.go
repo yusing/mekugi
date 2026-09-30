@@ -47,24 +47,7 @@ func TestAppServerNotificationsNativeCodexE2E(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() { done <- wait() }()
-	chunks := make(chan []byte, 128)
-	go func() {
-		defer close(chunks)
-		buf := make([]byte, 65536)
-		for {
-			n, err := outer.Read(buf)
-			if n > 0 {
-				select {
-				case chunks <- bytes.Clone(buf[:n]):
-				case <-ctx.Done():
-					return
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
+	chunks := readPTYChunks(ctx, outer, 65536, 128)
 	screen := vt.NewEmulator(100, 30)
 	defer screen.Close()
 	go func() { _, _ = io.Copy(outer, screen) }()

@@ -381,9 +381,7 @@ func (price openCodePrice) forInput(input uint64) (openCodePrice, bool) {
 }
 
 func (price openCodePrice) estimate(tier string, counts tokenCounts) tokenCost {
-	if (tier != "" && tier != "default") || counts.Incomplete || counts.Inconsistent ||
-		counts.UncachedInputTokens > counts.InputTokens || counts.CacheWriteTokens > counts.UncachedInputTokens ||
-		counts.ReasoningTokens > counts.OutputTokens {
+	if (tier != "" && tier != "default") || !validCostCounts(counts) {
 		return tokenCost{}
 	}
 	var priceOK bool

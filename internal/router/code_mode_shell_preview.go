@@ -28,11 +28,8 @@ func codeModeShellFragments(source string) []codeModeShellCall {
 	regexIndex := 0
 	var calls []codeModeShellCall
 	for at := 0; at < len(source); {
-		for regexIndex < len(regexRanges) && at >= regexRanges[regexIndex].end {
-			regexIndex++
-		}
-		if regexIndex < len(regexRanges) && at >= regexRanges[regexIndex].start {
-			at = regexRanges[regexIndex].end
+		if end := codeModeRangeEnd(regexRanges, &regexIndex, at); end > at {
+			at = end
 			continue
 		}
 		if next := codeModeSkipLiteral(source, at); next > at {
@@ -89,6 +86,17 @@ func codeModeShellFragments(source string) []codeModeShellCall {
 }
 
 type codeModeSourceRange struct{ start, end int }
+
+func codeModeRangeEnd(ranges []codeModeSourceRange, index *int, at int) int {
+	for *index < len(ranges) && at >= ranges[*index].end {
+		*index++
+	}
+	if *index < len(ranges) && at >= ranges[*index].start {
+		return ranges[*index].end
+	}
+	return at
+}
+
 type codeModeStaticObject struct {
 	end  int
 	call codeModeShellCall
@@ -99,14 +107,9 @@ type codeModeStaticObject struct {
 // unfinished. It also validates closed argument objects before their literal
 // command can be shown as a stable Bash preview.
 func codeModePreviewSyntax(source string) ([]codeModeSourceRange, map[int]codeModeStaticObject, map[int]bool) {
-	parser := sitter.NewParser()
-	defer parser.Close()
-	if parser.SetLanguage(codeModeJavaScriptLanguage) != nil {
-		return nil, nil, nil
-	}
 	bytes := []byte(source)
-	tree := parser.Parse(bytes, nil)
-	if tree == nil {
+	tree, err := parseSourceTree(bytes, codeModeJavaScriptLanguage, nil)
+	if err != nil || tree == nil {
 		return nil, nil, nil
 	}
 	defer tree.Close()

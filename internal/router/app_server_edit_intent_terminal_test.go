@@ -1,7 +1,6 @@
 package router
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 	"testing"
@@ -25,22 +24,20 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	}
 	frames := make(chan string, 3)
 	go func() {
-		var pending []byte
+		var pending synchronizedFrameBuffer
 		buffer := make([]byte, 8192)
 		for {
 			n, err := master.Read(buffer)
 			if err != nil {
 				return
 			}
-			pending = append(pending, buffer[:n]...)
+			pending.Append(buffer[:n])
 			for {
-				end := bytes.Index(pending, []byte("\x1b[?2026l"))
-				if end < 0 {
+				frame, ok := pending.Next()
+				if !ok {
 					break
 				}
-				end += len("\x1b[?2026l")
-				frames <- string(pending[:end])
-				pending = pending[end:]
+				frames <- string(frame)
 			}
 		}
 	}()

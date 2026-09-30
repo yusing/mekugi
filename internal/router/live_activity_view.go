@@ -1317,6 +1317,20 @@ type liveActivitySent struct {
 	end int
 }
 
+func (feed *liveActivityFeed) separator() {
+	feed.heads = append(feed.heads, len(feed.lines))
+	feed.lines = append(feed.lines, "")
+	feed.snippets = append(feed.snippets, liveActivitySnippet{})
+	feed.questions = append(feed.questions, 0)
+}
+
+// appendRows keeps row content and metadata aligned; each renderer owns heads.
+func (feed *liveActivityFeed) appendRows(run liveActivityRun) {
+	feed.lines = append(feed.lines, run.lines...)
+	feed.snippets = append(feed.snippets, run.snippets...)
+	feed.questions = append(feed.questions, run.questions...)
+}
+
 // renderFeed groups consecutive entries of one agent under a heading with a
 // colored gutter. Adjacent reads collapse into one row. In the interleaved
 // view each block is clipped to five rows; full content opens in a dialog.
@@ -1386,10 +1400,7 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 		}
 		used[key] = run
 		if len(feed.lines) > 0 {
-			feed.lines = append(feed.lines, "")
-			feed.heads = append(feed.heads, len(feed.lines)-1)
-			feed.snippets = append(feed.snippets, liveActivitySnippet{})
-			feed.questions = append(feed.questions, 0)
+			feed.separator()
 		}
 		head := len(feed.lines)
 		for seq, row := range run.entryRows {
@@ -1398,9 +1409,7 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 		for range run.lines {
 			feed.heads = append(feed.heads, head)
 		}
-		feed.lines = append(feed.lines, run.lines...)
-		feed.snippets = append(feed.snippets, run.snippets...)
-		feed.questions = append(feed.questions, run.questions...)
+		feed.appendRows(run)
 		i = j
 	}
 	v.runs = used

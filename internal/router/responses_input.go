@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 )
 
 // responsesInput keeps provider-owned JSON raw while exposing its two standard
@@ -51,6 +52,43 @@ func (input responsesInput) encode() (json.RawMessage, error) {
 		return marshalProtocolJSON(input.items)
 	}
 	return bytes.Clone(input.raw), nil
+}
+
+// rewriteRequestMessages retains each projection's role and content policy.
+// Unselected items and non-message input keep their provider-owned bytes.
+func rewriteRequestMessages(request *parsedResponsesRequest, topic string, transform func(responsesItem) ([]byte, bool, error)) error {
+	if len(request.fields["input"]) == 0 {
+		return nil
+	}
+	input, err := decodeResponsesInput(request.fields["input"])
+	if err != nil {
+		return fmt.Errorf("decode %s: %w", topic, err)
+	}
+	changed := false
+	for index, raw := range input.items {
+		item, ok := decodeResponsesItem(raw)
+		if !ok || item.Type != "" && item.Type != "message" {
+			continue
+		}
+		content, updated, err := transform(item)
+		if err != nil {
+			return err
+		}
+		if updated {
+			item.setContent(content)
+			input.items[index] = mustMarshalJSON(item)
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	encoded, err := input.encode()
+	if err != nil {
+		return fmt.Errorf("encode %s: %w", topic, err)
+	}
+	request.setInput(encoded)
+	return nil
 }
 
 // transformResponsesTextContent transforms selected text parts in message content.

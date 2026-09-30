@@ -1,7 +1,6 @@
 package router
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 	"testing"
@@ -21,19 +20,17 @@ func TestNativeDialogPTYCloseAndResize(t *testing.T) {
 	defer slave.Close()
 	frames := make(chan []byte, 4)
 	go func() {
-		var pending []byte
+		var pending synchronizedFrameBuffer
 		buf := make([]byte, 8192)
 		for {
 			n, err := master.Read(buf)
-			pending = append(pending, buf[:n]...)
+			pending.Append(buf[:n])
 			for {
-				end := bytes.Index(pending, []byte("\x1b[?2026l"))
-				if end < 0 {
+				frame, ok := pending.Next()
+				if !ok {
 					break
 				}
-				end += len("\x1b[?2026l")
-				frames <- append([]byte(nil), pending[:end]...)
-				pending = pending[end:]
+				frames <- append([]byte(nil), frame...)
 			}
 			if err != nil {
 				return

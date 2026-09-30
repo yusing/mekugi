@@ -85,7 +85,7 @@ func toolActivityEditStatement(statement *syntax.Stmt) (string, bool) {
 	}
 	deadline := time.Now().Add(execProviderBudget)
 	data := []byte(projection.Source)
-	tree, err := parseExecSource(data, language, func() bool { return time.Now().After(deadline) })
+	tree, err := parseSourceTree(data, language, func() bool { return time.Now().After(deadline) })
 	if err != nil || tree == nil {
 		return "", false
 	}

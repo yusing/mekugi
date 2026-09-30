@@ -1,8 +1,9 @@
 package execsegment
 
 import (
-	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 // Guard marks a shell that already decided whether to track its command, so
@@ -27,7 +28,7 @@ func Hook(tracker string) string {
   *)
     export ` + Guard + `=1
     case $BASH_EXECUTION_STRING in
-    *[\;\&\|]*|*$'\n'*) . ` + quote(tracker) + ` ;;
+    *[\;\&\|]*|*$'\n'*) . ` + shellsyntax.Quote(tracker) + ` ;;
     esac ;;
   esac
 fi
@@ -50,7 +51,7 @@ fi
 // whose first command fires that trap before it has any effect.
 func Tracker(helper, socket, directory string) string {
 	return `exec {__mekugi_o}>&1 {__mekugi_x}>&2
-coproc __MEKUGI_EXEC { exec ` + quote(helper) + ` ` + quote(socket) + ` ` + quote(directory) + ` "$BASH_EXECUTION_STRING" 3>&"$__mekugi_o" 4>&"$__mekugi_x" 2>/dev/null; } 2>/dev/null
+coproc __MEKUGI_EXEC { exec ` + shellsyntax.Quote(helper) + ` ` + shellsyntax.Quote(socket) + ` ` + shellsyntax.Quote(directory) + ` "$BASH_EXECUTION_STRING" 3>&"$__mekugi_o" 4>&"$__mekugi_x" 2>/dev/null; } 2>/dev/null
 exec {__mekugi_o}>&- {__mekugi_x}>&-
 __mekugi_c=${__MEKUGI_EXEC[1]-} __mekugi_a=${__MEKUGI_EXEC[0]-} __mekugi_m= __mekugi_d=
 [ -n "$__mekugi_a" ] && IFS=' ' read -r __mekugi_m __mekugi_d <&"$__mekugi_a"
@@ -74,8 +75,6 @@ relay|status)
 esac
 `
 }
-
-func quote(value string) string { return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'" }
 
 // Protocol is the helper-to-router message version.
 const Protocol = 3

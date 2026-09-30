@@ -59,6 +59,24 @@ func socketEvent(kind, id string) map[string]any {
 	return map[string]any{"type": kind, "response": map[string]any{"id": id, "status": status, "output": []any{}}}
 }
 
+// providerSocketSteeredSuccessor emits the fixture's automatic successor without
+// reading or fabricating a response.create request from the client.
+func providerSocketSteeredSuccessor(ctx context.Context, conn *websocket.Conn, steerID string) error {
+	for _, event := range []any{
+		map[string]any{"type": "response.steer.accepted", "steer": map[string]string{"id": steerID, "previous_response_id": "parent"}},
+		map[string]any{"type": "response.incomplete", "response": map[string]any{
+			"id": "parent", "status": "incomplete", "incomplete_details": map[string]string{"reason": "steered"}, "output": []any{},
+		}},
+		socketEvent("response.created", "successor"),
+		socketEvent("response.completed", "successor"),
+	} {
+		if err := providerSocketWrite(ctx, conn, event); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func testResponsesSocket(t *testing.T, ctx context.Context, upstream http.Handler, proxy *mekugiProxy, headers http.Header) *websocket.Conn {
 	t.Helper()
 	provider := httptest.NewServer(upstream)
@@ -110,21 +128,7 @@ func TestResponsesWebSocketSteeringAndAutomaticSuccessor(t *testing.T) {
 		if jsonString(steer, "type") != "response.steer" || jsonString(steer, "input") != "change direction" {
 			t.Errorf("steer = %s", mustMarshalJSON(steer))
 		}
-		if err := providerSocketWrite(ctx, upstream, map[string]any{"type": "response.steer.accepted", "steer": map[string]string{"id": "s1", "previous_response_id": "parent"}}); err != nil {
-			t.Error(err)
-			return
-		}
-		if err := providerSocketWrite(ctx, upstream, map[string]any{"type": "response.incomplete", "response": map[string]any{
-			"id": "parent", "status": "incomplete", "incomplete_details": map[string]string{"reason": "steered"}, "output": []any{},
-		}}); err != nil {
-			t.Error(err)
-			return
-		}
-		if err := providerSocketWrite(ctx, upstream, socketEvent("response.created", "successor")); err != nil {
-			t.Error(err)
-			return
-		}
-		if err := providerSocketWrite(ctx, upstream, socketEvent("response.completed", "successor")); err != nil {
+		if err := providerSocketSteeredSuccessor(ctx, upstream, "s1"); err != nil {
 			t.Error(err)
 			return
 		}

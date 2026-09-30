@@ -249,13 +249,6 @@ func (u *appServerUI) btwMessage(m appserver.Message) (bool, error) {
 		Error *struct {
 			Message string `json:"message"`
 		} `json:"error"`
-		Turn struct {
-			ID     string `json:"id"`
-			Status string `json:"status"`
-			Error  *struct {
-				Message string `json:"message"`
-			} `json:"error"`
-		} `json:"turn"`
 	}
 	if err := json.Unmarshal(m.Params, &p); err != nil {
 		return false, nil // The normal dispatcher owns other message shapes.

@@ -63,18 +63,9 @@ func rewriteRequestSelectedSkillInstructions(request *parsedResponsesRequest, en
 	if !enabled {
 		return nil
 	}
-	if len(request.fields["input"]) == 0 {
-		return nil
-	}
-	input, err := decodeResponsesInput(request.fields["input"])
-	if err != nil {
-		return fmt.Errorf("decode selected skill instructions: %w", err)
-	}
-	changed := false
-	for index, raw := range input.items {
-		item, ok := decodeResponsesItem(raw)
-		if !ok || item.Role != "user" || item.Type != "" && item.Type != "message" {
-			continue
+	return rewriteRequestMessages(request, "selected skill instructions", func(item responsesItem) ([]byte, bool, error) {
+		if item.Role != "user" {
+			return nil, false, nil
 		}
 		textChanged := false
 		content, _, err := transformResponsesTextContent(item.Content, func(text string) string {
@@ -83,22 +74,8 @@ func rewriteRequestSelectedSkillInstructions(request *parsedResponsesRequest, en
 			return rewritten
 		}, isResponsesInputTextPart)
 		if err != nil {
-			return fmt.Errorf("rewrite selected skill instructions: %w", err)
+			return nil, false, fmt.Errorf("rewrite selected skill instructions: %w", err)
 		}
-		if !textChanged {
-			continue
-		}
-		item.setContent(content)
-		input.items[index] = mustMarshalJSON(item)
-		changed = true
-	}
-	if !changed {
-		return nil
-	}
-	encoded, err := input.encode()
-	if err != nil {
-		return fmt.Errorf("encode selected skill instructions: %w", err)
-	}
-	request.setInput(encoded)
-	return nil
+		return content, textChanged, nil
+	})
 }

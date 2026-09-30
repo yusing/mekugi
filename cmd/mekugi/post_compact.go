@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 const (
@@ -29,28 +31,14 @@ func postCompactHookArgs(args []string, executable string) ([]string, bool) {
 		index = len(args)
 	}
 	for i := 0; i < index; i++ {
-		argument := args[i]
-		var setting string
-		switch {
-		case argument == "-c" || argument == "--config":
-			if i+1 < index {
-				i++
-				setting = args[i]
-			}
-		case strings.HasPrefix(argument, "--config="):
-			setting = strings.TrimPrefix(argument, "--config=")
-		case strings.HasPrefix(argument, "-c="):
-			setting = strings.TrimPrefix(argument, "-c=")
-		case strings.HasPrefix(argument, "-c"):
-			setting = strings.TrimPrefix(argument, "-c")
-		}
+		setting, _ := codexArgumentValue(args[:index], &i, "-c", "--config")
 		key, _, _ := strings.Cut(setting, "=")
 		key = strings.TrimSpace(key)
 		if key == "hooks" || strings.HasPrefix(key, "hooks.") {
 			return args, false
 		}
 	}
-	command := "'" + strings.ReplaceAll(executable, "'", "'\\''") + "' post-compact"
+	command := shellsyntax.Quote(executable) + " post-compact"
 	hook := fmt.Sprintf(`hooks.SessionStart=[{matcher=%q,hooks=[{type="command",command=%q,timeout=%d,additionalContextLimit=%d,statusMessage=%q}]}]`,
 		postCompactMatcher, command, postCompactTimeout, postCompactContextLimit, postCompactStatusMessage)
 	// Trust only this exact session hook. The key contains dots, which Codex's -c

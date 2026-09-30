@@ -37,12 +37,17 @@ func (r appServerTurnRequest) text() string {
 // appServerTurnRequests drains the requests written since the last call.
 func appServerTurnRequests(t *testing.T, w *appServerTestInput) []appServerTurnRequest {
 	t.Helper()
-	var requests []appServerTurnRequest
+	return appServerDrainRequests[appServerTurnRequest](t, w)
+}
+
+func appServerDrainRequests[T any](t *testing.T, w *appServerTestInput) []T {
+	t.Helper()
+	var requests []T
 	for line := range bytes.SplitSeq(bytes.TrimSpace(w.Bytes()), []byte{'\n'}) {
 		if len(line) == 0 {
 			continue
 		}
-		var request appServerTurnRequest
+		var request T
 		if err := json.Unmarshal(line, &request); err != nil {
 			t.Fatal(err)
 		}

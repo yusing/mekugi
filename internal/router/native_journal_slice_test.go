@@ -238,19 +238,17 @@ func TestNativeJournalSliceDescendantTerminalClickScrollAndEscape(t *testing.T) 
 	}
 	frames := make(chan []byte, 4)
 	go func() {
-		var pending []byte
+		var pending synchronizedFrameBuffer
 		buffer := make([]byte, 8192)
 		for {
 			n, err := master.Read(buffer)
-			pending = append(pending, buffer[:n]...)
+			pending.Append(buffer[:n])
 			for {
-				end := bytes.Index(pending, []byte("\x1b[?2026l"))
-				if end < 0 {
+				frame, ok := pending.Next()
+				if !ok {
 					break
 				}
-				end += len("\x1b[?2026l")
-				frames <- bytes.Clone(pending[:end])
-				pending = pending[end:]
+				frames <- bytes.Clone(frame)
 			}
 			if err != nil {
 				return

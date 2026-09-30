@@ -64,7 +64,7 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 	}
 	canceled := func() bool { return ctx.Err() != nil || time.Now().After(input.deadline) }
 	data := []byte(source)
-	tree, err := parseExecSource(data, language, canceled)
+	tree, err := parseSourceTree(data, language, canceled)
 	if err != nil {
 		return nil, false, err
 	}
@@ -79,7 +79,7 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 		}
 		tree.Close()
 		data = []byte(source + closer)
-		tree, err = parseExecSource(data, language, canceled)
+		tree, err = parseSourceTree(data, language, canceled)
 		if err != nil {
 			return nil, false, err
 		}
@@ -268,7 +268,7 @@ func liveDiffPythonEditIntent(node *sitter.Node, source []byte, depth int) bool 
 // source, which streams like any other file.
 func liveDiffPythonSetup(ctx context.Context, source string) bool {
 	data := []byte(source)
-	tree, err := parseExecSource(data, execPythonLanguage, func() bool { return ctx.Err() != nil })
+	tree, err := parseSourceTree(data, execPythonLanguage, func() bool { return ctx.Err() != nil })
 	if err != nil || tree == nil {
 		return true
 	}

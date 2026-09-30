@@ -17,6 +17,7 @@ import (
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/router"
+	"github.com/yusing/mekugi/internal/shellsyntax"
 	"golang.org/x/term"
 )
 
@@ -282,12 +283,11 @@ func frontendShellEnvironment(environment []string, directory, helper string) ([
 			basePath = value
 		}
 	}
-	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
 	startup := ""
 	if previous != "" {
-		startup = ". " + quote(previous) + "\n"
+		startup = ". " + shellsyntax.Quote(previous) + "\n"
 	}
-	startup += "PATH=" + quote(directory) + ":\"$PATH\"; export PATH\n"
+	startup += "PATH=" + shellsyntax.Quote(directory) + ":\"$PATH\"; export PATH\n"
 	if helper != "" {
 		socket, trackDirectory := router.ExecTrackPaths(directory)
 		tracker := filepath.Join(filepath.Dir(directory), "exec-track.bash")

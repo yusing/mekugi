@@ -126,14 +126,21 @@ func readNativePatchFile(path string) (content string, exists bool, err error) {
 	if !info.Mode().IsRegular() || info.Size() > maxNativePatchFileBytes {
 		return "", true, errors.New("file is not a bounded regular file")
 	}
-	data, err := io.ReadAll(io.LimitReader(file, maxNativePatchFileBytes+1))
+	content, err = readNativeText(file, maxNativePatchFileBytes, "file exceeds capture capacity or is not UTF-8")
+	return content, true, err
+}
+
+// readNativeText shares bounded text decoding; callers own file identity,
+// existence, opening policy and operation-specific capacity diagnostics.
+func readNativeText(file *os.File, limit int, invalid string) (string, error) {
+	data, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
 	if err != nil {
-		return "", true, err
+		return "", err
 	}
-	if len(data) > maxNativePatchFileBytes || !utf8.Valid(data) {
-		return "", true, errors.New("file exceeds capture capacity or is not UTF-8")
+	if len(data) > limit || !utf8.Valid(data) {
+		return "", errors.New(invalid)
 	}
-	return string(data), true, nil
+	return string(data), nil
 }
 
 func captureNativePatch(input, workspace string) (nativePatchObservation, error) {
@@ -205,14 +212,9 @@ func stockLiteralPatchInputs(source string) []string {
 	if len(source) > maxMekugiScriptBytes {
 		return nil
 	}
-	parser := sitter.NewParser()
-	defer parser.Close()
-	if parser.SetLanguage(codeModeJavaScriptLanguage) != nil {
-		return nil
-	}
 	bytes := []byte(source)
-	tree := parser.Parse(bytes, nil)
-	if tree == nil {
+	tree, err := parseSourceTree(bytes, codeModeJavaScriptLanguage, nil)
+	if err != nil || tree == nil {
 		return nil
 	}
 	defer tree.Close()
@@ -295,11 +297,8 @@ func stockPatchFragment(source string) string {
 	rangeIndex := 0
 	patch := ""
 	for at := 0; at < len(source); {
-		for rangeIndex < len(ranges) && at >= ranges[rangeIndex].end {
-			rangeIndex++
-		}
-		if rangeIndex < len(ranges) && at >= ranges[rangeIndex].start {
-			at = ranges[rangeIndex].end
+		if end := codeModeRangeEnd(ranges, &rangeIndex, at); end > at {
+			at = end
 			continue
 		}
 		if next := codeModeSkipComment(source, at); next > at {

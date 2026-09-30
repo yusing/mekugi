@@ -55,9 +55,9 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 			}
 			value := arguments[0]
 			arguments = arguments[1:]
-			number, err := strconv.Atoi(value)
-			if err != nil || number < 1 || number > maxOutputTokens || strconv.Itoa(number) != value {
-				return options, errors.New(maxTokensArgumentError)
+			number, err := parseMaxTokens(value)
+			if err != nil {
+				return options, err
 			}
 			options.maxTokens = number
 		default:

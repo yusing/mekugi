@@ -12,12 +12,11 @@ import (
 // a count of the lines before them. A Retention bounds what a session keeps
 // across commands. Outputs belong to the UI goroutine.
 type Output struct {
+	outputLineBuffer
 	lines     []string
-	line      []byte // Current line's head, one byte past OutputLineBytes.
-	cr        bool   // A carriage return awaits the next byte.
-	bytes     int    // Retained line bytes, charged to the retention.
-	dropped   int    // Lines before lines.
-	truncated bool   // At least one completed line exceeded OutputLineBytes.
+	bytes     int  // Retained line bytes, charged to the retention.
+	dropped   int  // Lines before lines.
+	truncated bool // At least one completed line exceeded OutputLineBytes.
 	released  bool
 	done      bool
 	exited    bool // The host reported an exit status.
@@ -72,21 +71,7 @@ func (o *Output) Write(output string) {
 		return
 	}
 	before := o.bytes + len(o.line)
-	for i := range len(output) {
-		c := output[i]
-		if o.cr && c != '\n' {
-			o.line = o.line[:0]
-		}
-		o.cr = false
-		switch {
-		case c == '\r':
-			o.cr = true
-		case c == '\n':
-			o.endLine()
-		case len(o.line) <= OutputLineBytes:
-			o.line = append(o.line, c)
-		}
-	}
+	o.outputLineBuffer.write(output, OutputLineBytes, o.endLine)
 	o.trim()
 	o.version++
 	if o.owner != nil {

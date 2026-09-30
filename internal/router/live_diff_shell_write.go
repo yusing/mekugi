@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,14 +119,8 @@ func liveDiffPreviewFile(path string) (string, bool, error) {
 		return "", false, err
 	}
 	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, liveDiffPreviewFileLimit+1))
-	if err != nil {
-		return "", false, err
-	}
-	if len(data) > liveDiffPreviewFileLimit || !utf8.Valid(data) {
-		return "", false, errors.New("streaming file preview source exceeds capacity or is not UTF-8")
-	}
-	return string(data), true, nil
+	content, err := readNativeText(file, liveDiffPreviewFileLimit, "streaming file preview source exceeds capacity or is not UTF-8")
+	return content, err == nil, err
 }
 
 // liveDiffShellFileOperation predicts literal cp, mv, rm, and tee heredoc

@@ -3,7 +3,6 @@
 package router
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -139,24 +138,7 @@ func runAppServerPreviewWithEnvironment(t *testing.T, provider responseProvider,
 	}
 	done := make(chan error, 1)
 	go func() { done <- wait() }()
-	frames := make(chan []byte, 32)
-	go func() {
-		defer close(frames)
-		buf := make([]byte, 65536)
-		for {
-			n, err := outer.Read(buf)
-			if n > 0 {
-				select {
-				case frames <- bytes.Clone(buf[:n]):
-				case <-ctx.Done():
-					return
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
+	frames := readPTYChunks(ctx, outer, 65536, 32)
 	screen := vt.NewEmulator(100, 30)
 	defer screen.Close()
 	go func() { _, _ = io.Copy(outer, screen) }()

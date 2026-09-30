@@ -246,7 +246,7 @@ var journalStateOrder = []string{"working", "blocked", "pending", "done", "dropp
 
 // journalStateGlyph colors a task state the way Activity colors agent states.
 func journalStateGlyph(state string) string {
-	glyph := map[string]string{"pending": "○", "working": "◐", "done": "●", "blocked": "⚠", "dropped": "⊘"}[state]
+	glyph := journalGlyphs[state]
 	switch state {
 	case "working":
 		return activityui.Amber + glyph + activityui.Reset
@@ -793,12 +793,8 @@ func journalNodeParts(theme livediff.Theme, node journalNode, verb string) (lead
 	if node.Reason != "" {
 		details = append(details, safe(node.Reason))
 	}
-	if node.Started != nil && node.Finished != nil {
-		start, firstErr := time.Parse(time.RFC3339Nano, node.Started.At)
-		end, lastErr := time.Parse(time.RFC3339Nano, node.Finished.At)
-		if firstErr == nil && lastErr == nil && !end.Before(start) {
-			details = append(details, end.Sub(start).Round(time.Second).String())
-		}
+	if elapsed := journalTaskElapsed(node); elapsed != "" {
+		details = append(details, elapsed)
 	}
 	if node.State == "dropped" {
 		title = activityui.Dim + title + activityui.Undim

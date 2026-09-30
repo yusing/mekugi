@@ -23,18 +23,16 @@ func TestNativeControlsTerminalFrames(t *testing.T) {
 	}
 	frames := make(chan []byte, 4)
 	go func() {
-		var pending []byte
+		var pending synchronizedFrameBuffer
 		buffer := make([]byte, 8192)
 		for {
 			n, err := master.Read(buffer)
 			if err != nil {
 				return
 			}
-			pending = append(pending, buffer[:n]...)
-			if end := bytes.Index(pending, []byte("\x1b[?2026l")); end >= 0 {
-				end += len("\x1b[?2026l")
-				frames <- bytes.Clone(pending[:end])
-				pending = pending[end:]
+			pending.Append(buffer[:n])
+			if frame, ok := pending.Next(); ok {
+				frames <- bytes.Clone(frame)
 			}
 		}
 	}()

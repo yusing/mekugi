@@ -1,9 +1,7 @@
 package router
 
 import (
-	"bytes"
 	"encoding/json/jsontext"
-	json "encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,19 +28,7 @@ type resumeTestRequest struct {
 
 func resumeTestRequests(t *testing.T, w *appServerTestInput) []resumeTestRequest {
 	t.Helper()
-	var requests []resumeTestRequest
-	for line := range bytes.SplitSeq(bytes.TrimSpace(w.Bytes()), []byte{'\n'}) {
-		if len(line) == 0 {
-			continue
-		}
-		var request resumeTestRequest
-		if err := json.Unmarshal(line, &request); err != nil {
-			t.Fatal(err)
-		}
-		requests = append(requests, request)
-	}
-	w.Reset()
-	return requests
+	return appServerDrainRequests[resumeTestRequest](t, w)
 }
 
 func resumeTestOne(t *testing.T, w *appServerTestInput, method string) resumeTestRequest {

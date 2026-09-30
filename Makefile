@@ -4,9 +4,7 @@ GO ?= go
 
 SNAPSHOT ?= ^TestUISnapshot
 
-install:
-	bun install --cwd plugins --frozen-lockfile
-	go generate ./internal/router/toolplugin
+install: preview-assets
 	$(GO) install ./cmd/mekugi ./cmd/mekugi-exec
 
 uninstall:
