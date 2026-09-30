@@ -2,20 +2,21 @@
 
 Tagged router fixtures use the installed Codex consumer with a deterministic
 local provider. They exercise stock execution and native collaboration without
-credentials or live model usage:
+credentials or live model usage. These tests require the `journal_e2e` build tag.
 
-```sh
-go test -tags journal_e2e ./internal/router -run '^TestConfiguredToolFrontendNativeCodexE2E$'
-go test -tags journal_e2e ./internal/router -run '^TestMChangesNestedNativeCodexE2E$'
-go test -tags journal_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'
-go test -tags journal_e2e ./internal/router -run '^TestJournalNativeCodexSpawnE2E$'
-go test -tags journal_e2e ./internal/router -run '^TestPostCompactNativeCodexE2E$'
-go test -tags journal_e2e ./internal/router -run '^TestJournalCompactionNativeCodexE2E$'
-go test -tags journal_e2e ./internal/router -run '^TestJournalSliceResetNativeCodexE2E$'
-go test -tags journal_e2e ./internal/router -run '^TestJournalHeadlessNativeCodexE2E$'
-go test -tags journal_e2e ./internal/router -run '^TestAppServerReasoningStreamNativeCodexE2E$'
-go test -tags journal_e2e ./internal/router -run '^(TestRouterTransformFaultNativeCodexE2E|TestRetryablePrestream5xxStillRetriesInNativeCodexE2E)$'
-```
+## internal/router
+
+- `TestConfiguredToolFrontendNativeCodexE2E`
+- `TestMChangesNestedNativeCodexE2E`
+- `TestMRunNativeCodexYieldAndWriteStdinE2E`
+- `TestJournalNativeCodexSpawnE2E`
+- `TestPostCompactNativeCodexE2E`
+- `TestJournalCompactionNativeCodexE2E`
+- `TestJournalSliceResetNativeCodexE2E`
+- `TestJournalHeadlessNativeCodexE2E`
+- `TestAppServerReasoningStreamNativeCodexE2E`
+- `TestRouterTransformFaultNativeCodexE2E`
+- `TestRetryablePrestream5xxStillRetriesInNativeCodexE2E`
 
 The frontend fixture invokes an authenticated configured command through
 stock Code Mode `tools.exec_command`, including cwd, environment, argv, stdin
