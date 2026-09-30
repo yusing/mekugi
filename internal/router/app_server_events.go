@@ -244,7 +244,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		}
 	}
 	var entries []activityPaneEntry
-	now := time.Now()
+	now := u.now()
 	switch m.Method {
 	case "thread/started":
 		info := p.Thread
@@ -579,7 +579,7 @@ func (u *appServerUI) flushCommandOutput() {
 			for _, done := range run.done {
 				done.Agent = entry.Agent
 				if done.native != nil && !done.native.settled.IsZero() {
-					done.native.settled = time.Now() // Output settles once it has shown.
+					done.native.settled = u.now() // Output settles once it has shown.
 				}
 				entries = append(entries, done)
 			}

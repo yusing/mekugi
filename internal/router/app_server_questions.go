@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/appserver"
@@ -316,7 +315,7 @@ func (u *appServerUI) recordSyncQuestionAnswer(c *nativeQuestionCall) {
 				native.replySource = previous.Text
 			}
 		}
-		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.lastSeq + 1, Agent: "Main", Kind: "question_reply", Text: strings.Join(answers, "\n"), Observed: time.Now(), native: native}}})
+		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.lastSeq + 1, Agent: "Main", Kind: "question_reply", Text: strings.Join(answers, "\n"), Observed: u.now(), native: native}}})
 	}
 }
 func (u *appServerUI) endSyncQuestions(turn string) {
@@ -769,7 +768,7 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 		if v == nil {
 			continue
 		}
-		entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "question", Text: text, Observed: time.Now(), native: &liveActivityNativeItem{thread: c.thread, turn: c.turn, item: id, phase: "question", questions: records}}
+		entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "question", Text: text, Observed: u.now(), native: &liveActivityNativeItem{thread: c.thread, turn: c.turn, item: id, phase: "question", questions: records}}
 		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	}
 }

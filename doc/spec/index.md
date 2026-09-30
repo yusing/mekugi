@@ -56,6 +56,7 @@ linked, not copied.
 - [`REQ-DIAGNOSE-001`](diagnose.md): opt-in agent issue reports
 - [`REQ-AX-001`](ax.md): runtime reads and evidence-backed AX reporting
 - [`REQ-SESSION-001`](session.md): offline logical session inspection
+- [`REQ-SESSION-REPLAY-001`](session_replay.md): timed offline native UI replay and profiling
 - [`REQ-METRICS-001`](metrics.md): in-process captured Responses metrics
 - [`REQ-CHANGES-001`](changes.md): observed stock edits and command effects, durable change IDs, and bounded review reads
 - [`REQ-EXECUTION-001`](execution.md): stock editing, execution, and executable frontends

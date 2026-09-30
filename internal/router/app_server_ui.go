@@ -66,6 +66,8 @@ type appServerItem struct {
 }
 
 type appServerUI struct {
+	replay                    *uiReplayPlayback // Offline transport controls; nil for live sessions.
+	clock                     func() time.Time  // Optional presentation clock for offline replay.
 	backendVersion            string
 	reset                     *journalResetDriver
 	btw                       *appServerBTW
@@ -236,7 +238,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 				tick := time.NewTicker(33 * time.Millisecond)
 				defer tick.Stop()
 				width, height := 0, 0
-				agePaint := time.Now()
+				agePaint := u.now()
 				for {
 					select {
 					case <-ctx.Done():
@@ -299,7 +301,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						u.dirty = true
 					case <-tick.C:
-						if err := u.tickJournalReset(time.Now()); err != nil {
+						if err := u.tickJournalReset(u.now()); err != nil {
 							u.setNotice(err.Error(), true)
 						}
 						u.applyObservedActivity()
@@ -308,11 +310,11 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						u.flushCommandOutput()
 						u.startCommitReads()
-						u.paneError(u.panes.save(u.shell, time.Now(), false))
-						if u.expireNotice(time.Now()) {
+						u.paneError(u.panes.save(u.shell, u.now(), false))
+						if u.expireNotice(u.now()) {
 							u.dirty = true
 						}
-						now := time.Now()
+						now := u.now()
 						if u.shell.output != nil && u.shell.output.expireFlash(now) {
 							u.dirty = true
 						}
@@ -332,7 +334,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						if u.shell.activityOpen && time.Since(agePaint) >= time.Second {
 							u.dirty = true
-							agePaint = time.Now()
+							agePaint = u.now()
 						}
 						if err := u.drainKeys(keys); err != nil || u.quitRequested {
 							return err
@@ -350,7 +352,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 							}
 							u.dirty = u.dirty || len(items) > 0
 						}
-						if u.shell.animating(time.Now()) || u.agents.rosterEasing {
+						if u.shell.animating(u.now()) || u.agents.rosterEasing {
 							u.dirty = true
 						}
 						w, h, err := term.GetSize(int(stdout.Fd()))
@@ -379,7 +381,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 							u.dirty = false
 						}
 					}
-					u.writeTerminalTitle(time.Now())
+					u.writeTerminalTitle(u.now())
 				}
 			})
 			if !errors.Is(err, errOpenComposerEditor) {
@@ -388,7 +390,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 			u.openComposerEditor(stdin, stdout)
 			u.dirty = true
 		}
-		if saveErr := u.panes.save(u.shell, time.Now(), true); saveErr != nil {
+		if saveErr := u.panes.save(u.shell, u.now(), true); saveErr != nil {
 			fmt.Fprintln(stdout, "Pane layout could not be saved:", livediff.Safe(saveErr.Error(), false))
 		}
 		if !exited {
@@ -673,7 +675,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if method == "thread/resume" {
 				for _, turn := range result.Thread.Turns {
 					if turn.Status == "inProgress" {
-						u.turn, u.status, u.turnStarted = turn.ID, "Working", time.Now()
+						u.turn, u.status, u.turnStarted = turn.ID, "Working", u.now()
 						u.session.agent("/root").Responding = true
 					}
 				}
@@ -697,7 +699,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		// visibly blocked, until interrupted.
 		u.status, u.alert = "Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true
 		u.blockNotification(m)
-		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Session", Kind: "text", Text: u.status, Observed: time.Now()}}})
+		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Session", Kind: "text", Text: u.status, Observed: u.now()}}})
 		return nil
 	}
 	if handled, err := u.settingsMessage("", m); handled || err != nil {
@@ -728,7 +730,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if u.shellOrigin != nil && p.Turn.ID != *u.shellOrigin {
 				u.shellStandalone, u.shellOrigin = true, nil
 			}
-			u.turn, u.status, u.starting, u.alert, u.turnStarted = p.Turn.ID, "Working", false, false, time.Now()
+			u.turn, u.status, u.starting, u.alert, u.turnStarted = p.Turn.ID, "Working", false, false, u.now()
 			if u.interruptBeforeStart {
 				return u.interruptTurn()
 			}
@@ -747,7 +749,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.turn, u.starting = "", false
 			u.status, u.alert = strings.ToUpper(p.Turn.Status[:min(1, len(p.Turn.Status))])+p.Turn.Status[min(1, len(p.Turn.Status)):], p.Turn.Status == "failed"
 			if p.Turn.Status == "completed" && !u.turnStarted.IsZero() {
-				u.status += " in " + liveActivityAge(time.Since(u.turnStarted))
+				u.status += " in " + liveActivityAge(u.now().Sub(u.turnStarted))
 			}
 			if p.Turn.Error != nil {
 				u.status, u.alert = u.status+": "+p.Turn.Error.Message, true
@@ -1221,7 +1223,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	u.view.feedRows = 0
 	u.view.feedQuestions, u.view.feedSnippets = nil, nil
 	if room > 0 {
-		frame = u.view.render(width, room, time.Now())
+		frame = u.view.render(width, room, u.now())
 		if u.keybindings && (u.shell == nil || u.shell.focus == 0) {
 			u.mainContentPainted = false
 			frame = renderNativeKeybindings(width, room)
@@ -1262,7 +1264,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	const inputColor = "\x1b[39m"
 	focused := u.shell == nil || u.shell.focus == 0
 	if boxed {
-		frame = append(frame, composerBorder("╭", "╮", u.stateLabel(time.Now()), "", width, border))
+		frame = append(frame, composerBorder("╭", "╮", u.stateLabel(u.now()), "", width, border))
 	}
 	textX := min(2, inset)
 	if boxed {
@@ -1344,7 +1346,7 @@ func (u *appServerUI) setNotice(text string, alert bool) {
 	u.notice, u.noticeAlert = text, alert
 	u.noticeUntil = time.Time{}
 	if text != "" && !alert {
-		u.noticeUntil = time.Now().Add(3 * time.Second)
+		u.noticeUntil = u.now().Add(3 * time.Second)
 	}
 }
 
@@ -1551,7 +1553,7 @@ func (u *appServerUI) applyCriticalNotices() *criticalNoticeDelivery {
 			activity.mu.Unlock()
 		}
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
-			Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "error", Text: text, Observed: time.Now(),
+			Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "error", Text: text, Observed: u.now(),
 		}}})
 		u.noticeEntries[notice.id] = true
 	}

@@ -235,7 +235,7 @@ func nativeTitle(digit int, name, detail string, focused bool) string {
 // below, and a status bar for the focused pane.
 func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	width, height := max(1, u.width), max(1, u.height)
-	now := time.Now()
+	now := u.main.now()
 	if u.focus == 1 || u.focus == 2 {
 		u.journalOpen = false
 	}
@@ -460,6 +460,9 @@ func (u *terminalUI) rosterLimit(height int) int {
 // nativeStatus shows the pane tabs, with Diff and Activity marked as the pair
 // sharing the right column, and only the focused pane's keys.
 func (u *terminalUI) nativeStatus() string {
+	if u.main != nil && u.main.replay != nil {
+		return u.main.replay.bar(u.width)
+	}
 	tab := func(digit int, name, badge string, shown bool) string {
 		text := fmt.Sprintf(" %d %s", digit, name)
 		switch {

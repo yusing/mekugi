@@ -52,7 +52,7 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 			}
 		}
 	}
-	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "native_journal", Text: item.Text, Observed: time.Now(), journal: &item,
+	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "native_journal", Text: item.Text, Observed: v.now(), journal: &item,
 		native: &liveActivityNativeItem{thread: thread, turn: "journal", item: item.ID, phase: "journal"}}
 	if targets[item.ID] == 0 && item.Question != "" {
 		for _, question := range slices.Backward(v.entries) {
@@ -198,7 +198,7 @@ func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, metho
 	if thread == "" || turn == "" || id == "" {
 		return
 	}
-	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "text", Text: item.Text, Observed: time.Now(),
+	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "text", Text: item.Text, Observed: v.now(),
 		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, command: item.Command, status: item.Status, duration: appServerDuration(item)}}
 	if thread != main {
 		entry.Agent = "Thread " + thread

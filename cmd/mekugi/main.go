@@ -38,6 +38,9 @@ func run() int {
 	if len(os.Args) > 1 && os.Args[1] == "inspect-sessions" {
 		return router.RunSessionCorpusInspection(ctx, os.Args[2:], os.Stdout, os.Stderr)
 	}
+	if len(os.Args) > 1 && os.Args[1] == "replay-session" {
+		return router.RunSessionUIReplay(ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
+	}
 	if len(os.Args) > 1 && os.Args[1] == "inspect-session" {
 		return router.RunSessionInspection(ctx, os.Args[2:], os.Stdout, os.Stderr)
 	}

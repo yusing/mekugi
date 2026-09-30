@@ -62,7 +62,8 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Usage and cost.** Eligible main completions update a Markdown usage
   snapshot. A per-launch browser dashboard shows request metrics and cache
   diagnostics. Costs are API estimates, not subscription charges.
-- **Diagnostics.** [Inspect past sessions](#inspect-a-session) offline, record
+- **Diagnostics.** [Replay session UI](#replay-a-session) with adjustable speed and
+  CPU/heap profiles, [inspect past sessions](#inspect-a-session) offline, record
   debug evidence, or let agents [report issues](#configuration-and-troubleshooting)
   to your own command.
 - **Other providers and tiers.** [Grok](#grok-models) and
@@ -586,6 +587,52 @@ The default JSON holds tool names, call IDs, outcomes, and sizes, but no
 private text. Values you request with `--field` may include source and command
 output. See [session inspection](doc/spec/session.md) and
 [AX evidence](doc/spec/ax.md).
+
+### Replay a session
+
+Review a retained session through the current native UI without running Codex,
+calling providers, executing commands, or answering questions:
+
+```sh
+mekugi replay-session --session /path/to/rollout.jsonl
+mekugi replay-session --session /path/to/rollout.jsonl --debug-dir /path/to/debug --speed 4
+```
+
+Playback defaults to **1.0x**. It preserves recorded item start/end times and gaps,
+including command duration and retained question/answer arrivals. Referenced child
+rollouts in the same directory are included. Optional debug captures add provider
+request intervals. Streaming is **simulated**, not a screen recording: retained
+text is released in seeded, irregular chunks within its recorded interval. The
+default `--seed 1` makes comparisons repeatable. Missing children and unsupported
+item kinds are reported. Original keystrokes, window sizes, journal cards, and
+live diff previews are not reconstructed; file-change activity is retained.
+
+The playback bar shows position, speed, and simulated-streaming status. **Space**
+pauses, **+/-** changes speed, **[/]** seeks ten seconds, **r** restarts, **j/k**
+scrolls Main, and **q** quits. Playback stops on its final frame until you quit.
+Use `--from 5m --until 6m` to review a recorded interval; earlier state is loaded
+first. The current terminal size controls layout.
+
+For profiling without a terminal:
+
+```sh
+mekugi replay-session --session /path/to/rollout.jsonl --headless \
+  --width 160 --height 48 --cpu-profile /tmp/replay-cpu.pprof \
+  --heap-profile /tmp/replay-heap.pprof
+go tool pprof -top /tmp/replay-cpu.pprof
+```
+
+Profile destinations must not already exist. Headless playback still lays out and
+paints the UI, but discards terminal bytes; it cannot measure terminal backpressure.
+Its final JSON reports frame timing percentiles, maximum frame time, and write
+time. Profiles exclude initial input loading and state reconstruction before
+`--from`, but include cold first-frame rendering. Seeking skips intermediate
+paints and flushes completed output, so its initial output visibility and collapse
+timing can differ from continuous playback. Use continuous playback to measure
+steady-state behavior rather than treating a seek-start profile as warmed up.
+Accelerated playback changes event batching per frame: use 1.0x for
+representative wall-time latency, and the same seed, speed, dimensions, and inputs
+for comparisons. Session contents remain local and may appear on screen.
 
 ### Older installations
 

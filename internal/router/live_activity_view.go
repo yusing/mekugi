@@ -27,6 +27,7 @@ const (
 // Main and Activity each own one of these views, sharing the renderer. Entries carry
 // sequence numbers, so a reconnect snapshot merges without duplicating retained rows.
 type liveActivityView struct {
+	clock          func() time.Time // Shared with the owning replay UI, nil for live time.
 	agents         []activityPaneAgent
 	entries        []activityPaneEntry
 	blocks         [][]activityui.Block // Parsed entries, aligned with entries.
@@ -268,7 +269,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			if v.events == nil {
 				v.events = make(map[string]liveActivityEvent)
 			}
-			v.events[entry.Agent] = liveActivityEvent{entry.Seq, cmp.Or(entry.Observed, time.Now())}
+			v.events[entry.Agent] = liveActivityEvent{entry.Seq, cmp.Or(entry.Observed, v.now())}
 		}
 		if !v.following && v.visible(entry) {
 			v.unseen++
@@ -284,7 +285,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			}
 		}
 	}
-	v.trackPace(time.Now())
+	v.trackPace(v.now())
 	v.keepSelection()
 	return false
 }
@@ -562,7 +563,7 @@ func (v *liveActivityView) handleMouse(action byte, row, column int) bool {
 			if target, ok := v.questionRows[v.feedQuestions[index]]; ok {
 				v.offset, v.following = target, false
 				v.flashQuestion = v.feedQuestions[index]
-				v.flashUntil = time.Now().Add(700 * time.Millisecond)
+				v.flashUntil = v.now().Add(700 * time.Millisecond)
 				return true
 			}
 		}
@@ -1341,10 +1342,10 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 	clip := 5
 	// A cross-pane jump flashes its target from the first frame that shows it.
 	if v.pendingTarget != 0 && slices.ContainsFunc(v.entries, func(entry activityPaneEntry) bool { return entry.Seq == v.pendingTarget && v.visible(entry) }) {
-		v.flashQuestion, v.flashUntil = v.pendingTarget, time.Now().Add(700*time.Millisecond)
+		v.flashQuestion, v.flashUntil = v.pendingTarget, v.now().Add(700*time.Millisecond)
 	}
 	flash := uint64(0)
-	if time.Now().Before(v.flashUntil) {
+	if v.now().Before(v.flashUntil) {
 		flash = v.flashQuestion
 	}
 	var feed liveActivityFeed
@@ -1590,7 +1591,7 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 		v.feedQuestions[0] = 0
 	}
 	// Activity's painter flashes its own entries; Main flashes whole items.
-	if target, ok := v.questionRows[v.flashQuestion]; ok && v.conversation && time.Now().Before(v.flashUntil) {
+	if target, ok := v.questionRows[v.flashQuestion]; ok && v.conversation && v.now().Before(v.flashUntil) {
 		for row := range lines {
 			if index := v.offset + row; index < len(feed.heads) && feed.heads[index] == target {
 				lines[row] = v.selectRow(lines[row], ansi.StringWidth(lines[row]))
