@@ -1,0 +1,55 @@
+
+
+
+
+
+
+
+    ╭ Session · Overview ───────────────────────────────────────────────── Esc close ╮
+    │                                                                                │
+    │  Requests  ──────────────────────────────────────────────────────────────────  │
+    │  Scope             All threads in this launch · mekugi                         │
+    │  Logical           2                                                           │
+    │  Attempts          3                                                           │
+    │  Completed         2                                                           │
+    │  Failed            0                                                           │
+    │                                                                                │
+    │  Usage  ─────────────────────────────────────────────────────────────────────  │
+    │  Provider-reported consumption, not local estimates. Missing normalized        │
+    │  telemetry may default to zero; inspect Exchanges for explicit evidence.       │
+    │  Input             120                                                         │
+    │  Cached input      0                                                           │
+    │  Uncached input    120                                                         │
+    │  Output            12                                                          │
+    │  Reasoning         4                                                           │
+    │  Attempts          2                                                           │
+    │                                                                                │
+    │  Cache  ─────────────────────────────────────────────────────────────────────  │
+    │  Provider rate     0.0%                                                        │
+    │  Prefix rate       unavailable                                                 │
+    │  Cold / new        0                                                           │
+    │  Eligible          0                                                           │
+    │  Prefix cached     0                                                           │
+    │  Prefix misses     0                                                           │
+    │  Basis             previous_input_length_estimate                              │
+    │  Eligible prefix is a previous-input estimate, not model-token prefix or       │
+    │  cache residency. Prefix equality does not guarantee reuse.                    │
+    │                                                                                │
+    │  Capture  ───────────────────────────────────────────────────────────────────  │
+    │  Records           5                                                           │
+    │  Errors            0                                                           │
+    │  Incomplete        0                                                           │
+    │  Missing provider  0                                                           │
+    │  Attempt gaps      0                                                           │
+    │  Write errors      0                                                           │
+    │  Skipped           0                                                           │
+    │  Dropped detail    7                                                           │
+    │                                                                                │
+    ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close ─────────────────────────────────╯
+
+
+
+
+
+
+

@@ -70,7 +70,7 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 		t.Fatalf("goals not disabled: %q", args)
 	}
 	provider := config.Providers[config.ModelProvider]
-	if provider.Name == "" || provider.BaseURL != "http://127.0.0.1:12345/v1" || provider.WireAPI != "responses" || !provider.Auth || !provider.WebSockets {
+	if provider.Name == "" || provider.BaseURL != "http://127.0.0.1:12345/v1" || provider.WireAPI != "responses" || !provider.Auth || provider.WebSockets {
 		t.Fatalf("provider = %+v", provider)
 	}
 	withoutDelimiter := []string{"exec", "-c", `model="example"`, "prompt"}
@@ -315,9 +315,8 @@ func TestWrapTerminalInterruptAndTermination(t *testing.T) {
 	if stdout.String() != "codex stdout\n" || !strings.Contains(logs.String(), "codex stderr\n") {
 		t.Fatal("Codex output was not inherited")
 	}
-	announcement := "mekugi dashboard: " + strings.TrimSuffix(baseURL, "/v1") + "/\n"
-	if !strings.Contains(logs.String(), announcement+"codex stderr\n") || strings.Count(logs.String(), "mekugi dashboard: ") != 1 {
-		t.Fatalf("dashboard announcement must precede Codex output exactly once: %q", logs.String())
+	if strings.Contains(logs.String(), "mekugi dashboard:") {
+		t.Fatalf("superseded dashboard announcement: %q", logs.String())
 	}
 	if entries, err := os.ReadDir(logDirectory); err != nil || len(entries) != 0 {
 		t.Fatalf("unexpected log files: %v %v", entries, err)

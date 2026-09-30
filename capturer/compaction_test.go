@@ -49,7 +49,7 @@ func TestCompactionMetricsExport(t *testing.T) {
 			if err := recorder.WriteMetrics(&exported); err != nil {
 				t.Fatal(err)
 			}
-			var snapshot metricsSnapshot
+			var snapshot MetricsSnapshot
 			if err := json.Unmarshal(exported.Bytes(), &snapshot); err != nil {
 				t.Fatal(err)
 			}

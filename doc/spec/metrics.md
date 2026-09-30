@@ -8,16 +8,16 @@ MUST serve `POST /v1/responses`, WebSocket upgrades at `GET /v1/responses`,
 `--capture-output PATH` MUST append sanitized schema-7 JSONL records at `PATH`; it MUST NOT start or
 require a capturer service, listener, proxy, or network hop.
 
-The same listener MUST serve a human-readable dashboard at `GET /`. The dashboard MUST consume the
-capturer snapshot and MUST NOT own counters, histories, classifications, or alternate calculations.
-It MUST present every aggregate group plus the retained exchange, provider-attempt, provider-tool,
-and delivered-tool detail rather than substituting a reduced dashboard-specific metric set.
-Provider-attempt detail MUST display the snapshot's transport marker as
-`WebSocket`, or `HTTP` when absent, without claiming that every HTTP attempt is
-an SSE fallback. Unknown transport markers remain visible rather than being
-misclassified as HTTP. The empty-table row MUST span all displayed columns.
-Dashboard polling MUST not overlap requests or replace a newer snapshot with an older response.
-Polling MUST resume after a failed request.
+The native `/session` dialog MUST consume the capturer snapshot and MUST NOT own
+counters, histories, classifications, or alternate calculations. It MUST present
+every aggregate group plus retained exchange, provider-attempt, provider-tool and
+delivered-tool detail. Provider-attempt detail MUST display the snapshot transport
+marker as `WebSocket`, or `HTTP` when absent, without claiming that every HTTP
+attempt is an SSE fallback. Unknown transport markers remain visible. Empty and
+unavailable observations MUST have explicit presentation. The open dialog refreshes
+from a detached in-process snapshot; it requires no HTTP polling or separate
+listener. `GET /` no longer serves HTML. Navigation and lifecycle belong to the
+[native UI contract](native_ui.md#session-metrics).
 
 The capturer MUST observe both the Codex-facing Responses handler and every provider-facing
 Responses or Chat Completions attempt made by that request. Correlation MUST remain process-private and MUST NOT add a
@@ -63,7 +63,7 @@ provider wire request.
 
 `GET /api/metrics` MUST return `mekugi.capture.metrics.v6`. Provider and transport
 calculations belong to the capturer, not the router, engine, plugin, comparison
-report or dashboard. Journal operation evidence comes from its durable owner.
+report or session dialog. Journal operation evidence comes from its durable owner.
 
 Exchange details retain wall-clock duration in milliseconds, including local
 compaction, without treating local token estimates as provider usage or savings.
@@ -118,7 +118,7 @@ response measurements, not acknowledgements of downstream delivery or savings.
 
 Cache attribution is a previous-input-length estimate, not a measurement of matching
 provider-token prefixes or cache eligibility. `cache.attribution_basis` is
-`previous_input_length_estimate`; dashboards label those fields as estimates.
+`previous_input_length_estimate`; session dialogs label those fields as estimates.
 The provider cache rate remains the measured cached-input/total-input ratio.
 
 Provider usage is authoritative for model consumption. Local token estimates MUST count decoded
@@ -196,7 +196,7 @@ MUST break comparison. Retries MUST retain their individual fingerprints and act
 Each stage reports identical, appended, changed, or unavailable, the common leading item count,
 and changed fixed field categories. It MUST compare body cache-key and actual outgoing route-key
 stability separately. These are observable representation differences, not the provider's hidden
-model-token prefix, cache residency, or a guarantee of cache reuse. Reports and the dashboard MUST
+model-token prefix, cache residency, or a guarantee of cache reuse. Reports and the session dialog MUST
 show unavailable evidence explicitly and correlate stage changes with authoritative input/cached
 usage without labeling inferred shortfalls as proven router-induced cache misses.
 Older captures without these additive fields remain valid for their existing metrics but cannot
@@ -225,7 +225,7 @@ Identifiers MUST be limited to 256 ASCII letters, digits, `-`, `_`, `.`, `:`, an
 missing or invalid identifiers are omitted. The response model MUST NOT fall back to the
 request model. Header and body model values remain separate provider claims, not proof of
 the backend identity. Arbitrary headers, credentials, routing tokens, and response content
-MUST NOT be retained. Provider request IDs MAY appear in local dashboard details for support
+MUST NOT be retained. Provider request IDs MAY appear in local session details for support
 correlation, but MUST NOT appear in public summaries.
 
 `cached_tokens_state` MUST distinguish `present`, `missing`, `null`, `invalid`, and
@@ -238,7 +238,7 @@ JSON, SSE, and supported compressed payloads MUST follow the same rules.
 
 This evidence is part of schema-7/metrics-v6 and does not change existing normalized
 usage counters. Missing older evidence is unavailable, never explicit zero. Reports and
-dashboard MUST warn that normalized aggregate counters may default missing telemetry to zero
+the session dialog MUST warn that normalized aggregate counters may default missing telemetry to zero
 and MUST show per-attempt field state and explicit counts separately. All retries retain their
 own response evidence.
 
@@ -250,7 +250,7 @@ change existing normalized metric calculations. Offline corpus inspection exclud
 false/unknown completeness from observed totals rather than presenting missing fields
 as zero consumption.
 
-The capturer's snapshot remains available from the dashboard API while the router
+The capturer's snapshot remains available from the metrics API while the router
 runs. Explicit `--capture-output PATH` appends sanitized capture records.
 
 ### WebSocket capture
@@ -307,7 +307,7 @@ direction, even if steering fails or the socket closes before a successor.
 Sanitized `codex_control` and `provider_control` records MUST contain only
 measurement and direction metadata, never raw control payloads. They MUST NOT
 increment logical requests, provider attempts, usage, or completion counts.
-Snapshots and the dashboard MUST expose the four
+Snapshots and the session dialog MUST expose the four
 `transport` measures `client_control_requests`, `client_control_responses`,
 `provider_control_requests`, and `provider_control_responses`. These measures
 are separate from ordinary request and response totals, not counted twice.

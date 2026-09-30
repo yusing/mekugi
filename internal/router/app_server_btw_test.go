@@ -70,18 +70,18 @@ func btwTestStart(t *testing.T, u *appServerUI, w *appServerTestInput) {
 	btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
 }
 
-func TestAppServerBTWDisablesOnlyForkPrewarm(t *testing.T) {
+func TestAppServerBTWInheritsInvocationTransport(t *testing.T) {
 	for _, effort := range []string{"", "high"} {
 		t.Run(effort, func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			u.statusConfig.Provider, u.reasoningEffort = "mekugi_wrap", effort
 			appServerTestKeys(t, u, "/btw question\r")
 			r := btwTestRequest(t, w, "thread/fork", "main")
-			if value, ok := r.Params.Config["model_providers.mekugi_wrap.supports_websockets"]; !ok || value != false {
-				t.Fatalf("fork did not disable provider prewarm: %+v", r.Params.Config)
+			if _, ok := r.Params.Config["model_providers.mekugi_wrap.supports_websockets"]; ok {
+				t.Fatal("fork must inherit invocation transport without overriding its provider")
 			}
 			if effort != "" && r.Params.Config["model_reasoning_effort"] != effort {
-				t.Fatal("prewarm override replaced reasoning override")
+				t.Fatal("fork lost reasoning override")
 			}
 			appServerTestKeys(t, u, "Main stays independent\r")
 			main := btwTestRequest(t, w, "turn/start", "main")

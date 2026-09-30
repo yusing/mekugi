@@ -1,0 +1,55 @@
+
+
+
+
+
+
+
+
+
+
+
+
+    ╭ Session · Transport ──────────────────────────────────────────────── Esc close ╮
+    │                                                                                │
+    │  Transport  ─────────────────────────────────────────────────────────────────  │
+    │  Exact wire bytes; decoded-content token estimates. Includes router-generated  │
+    │  commentary.                                                                   │
+    │  Client requests             100 bytes · 10 estimated tokens                   │
+    │  Provider requests           250 bytes · 25 estimated tokens                   │
+    │  Provider responses          900 bytes · 90 estimated tokens                   │
+    │  Client responses            950 bytes · 95 estimated tokens                   │
+    │  Client control requests     11 bytes · 1 estimated tokens                     │
+    │  Client control responses    22 bytes · 2 estimated tokens                     │
+    │  Provider control requests   33 bytes · 3 estimated tokens                     │
+    │  Provider control responses  44 bytes · 4 estimated tokens                     │
+    │                                                                                │
+    │  Semantic output  ───────────────────────────────────────────────────────────  │
+    │  Complete model-origin output arrays. Excludes router commentary and echoed    │
+    │  response metadata.                                                            │
+    │  Provider                    80 bytes · 8 estimated tokens                     │
+    │  Client                      85 bytes · 9 estimated tokens                     │
+    │                                                                                │
+    │  Provider tools  ────────────────────────────────────────────────────────────  │
+    │  exec_command                2 calls                                           │
+    │  Input                       12 bytes · 3 estimated tokens                     │
+    │  Items                       30 bytes · 7 estimated tokens                     │
+    │                                                                                │
+    │  Delivered tools  ───────────────────────────────────────────────────────────  │
+    │  exec_command                1 calls                                           │
+    │  Input                       18 bytes · 4 estimated tokens                     │
+    │  Items                       40 bytes · 9 estimated tokens                     │
+    │                                                                                │
+    ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close ─────────────────────────────────╯
+
+
+
+
+
+
+
+
+
+
+
+

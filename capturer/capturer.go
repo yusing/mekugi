@@ -115,7 +115,7 @@ type Recorder struct {
 	codec               tokenizer.Codec
 	mode                string
 	requestSequence     uint64
-	metrics             metricsSnapshot
+	metrics             MetricsSnapshot
 	previousInput       map[string]uint64
 	cacheQueues         map[string][]*requestState
 }

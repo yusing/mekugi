@@ -16,10 +16,10 @@ unavailable or incomplete, never inferred as zero or success. Provider usage rem
 authoritative over local token estimates.
 
 Production feature owners supply only validated observation facts at existing seams. They
-do not keep synthetic baselines, metric callbacks, parallel histories, or dashboard-owned
+do not keep synthetic baselines, metric callbacks, parallel histories, or presentation-owned
 calculations. Terminal parsing provides usage;
 private reader execution provides opt-in AX events. Capturer calculations are reused by the
-dashboard and controlled-comparison exports.
+session dialog and controlled-comparison exports.
 
 Debug artifacts are a separate router-owned, explicitly requested surface. They may combine
 sanitized capture exports with instruction snapshots, lifecycle outcomes, and feature events,

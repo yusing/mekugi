@@ -16,8 +16,8 @@ sessions, and patch review. No fork, no config edits, no daemon.
 
 - **Stock Codex workflow.** Code Mode JavaScript, `exec_command`, and
   `apply_patch` behave as usual. Mekugi never re-runs an edit and changes no
-  configuration or instruction files. A persistent WebSocket lets a supporting
-  Codex client [steer a running turn](#composer).
+  configuration or instruction files. The native composer lets you
+  [steer a running turn](#composer).
 - **Native terminal UI.** [Main, Diff, Activity, Journal, and Agents](#native-ui) share
   one terminal without an external pane manager. The composer works like
   Codex's and adds [`/btw` side questions](#composer) that don't interrupt
@@ -60,7 +60,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Custom tools.** Add your own [plugins](doc/spec/plugin.md) as JavaScript
   modules.
 - **Usage and cost.** The native Agents roster shows per-thread usage and cost.
-  A per-launch browser dashboard shows request metrics and cache
+  The `/session` dialog shows launch-wide request metrics, transport and cache
   diagnostics. Costs are API estimates, not subscription charges.
 - **Diagnostics.** [Replay session UI](#replay-a-session) with adjustable speed and
   CPU/heap profiles, [inspect past sessions](#inspect-a-session) offline, record
@@ -89,7 +89,7 @@ mekugi codex --yolo
 ```
 
 Add `$GOBIN`, or `$(go env GOPATH)/bin` if that is unset, to your `PATH`. Mekugi
-prints a dashboard URL, then opens its native Main, Diff, Activity, Journal, and Agents UI.
+opens its native Main, Diff, Activity, Journal, and Agents UI.
 Interactive launches currently require explicit `--yolo` (no approvals or sandbox).
 Codex remains the agent runtime and tool executor. With `mekugi-exec` installed
 beside `mekugi`, a command list such as `cd app && make && make test` shows each
@@ -126,8 +126,10 @@ Each invocation:
   legacy `gpt-5.6-terra` to `gpt-6-sol`.
 - explicitly selects standard cybersecurity safeguards for ChatGPT requests,
   disabling automatic Daybreak selection and overriding client Daybreak choices.
-- connects to ChatGPT over WebSockets, so a supporting client and model can use
-  [mid-turn steering](https://developers.openai.com/api/docs/guides/steering).
+- skips Codex model prewarm by sending Codex-to-router turns over HTTP. The
+  router still connects to ChatGPT over WebSockets. Codex owns native steering
+  and instant interruption; direct Responses WebSocket controls are not used
+  by the wrapped HTTP client.
   Your network must allow secure WebSockets. Mekugi falls back to HTTP only when
   ChatGPT explicitly rejects the upgrade, and never silently replays a request.
 - keeps private [replay records](#replay-storage) on disk, including tool inputs
@@ -475,15 +477,23 @@ and [execution contract](doc/spec/execution.md).
 
 ## Metrics
 
-The dashboard URL printed at startup works only while that session runs. Over
-SSH, forward its port first.
+Open `/session` in Main for the current launch's request counts, provider usage,
+cache diagnostics, capture health, transport, tool measurements, and retained
+exchange details. Left/Right or Tab switches Overview, Transport, and Exchanges;
+Up/Down, mouse wheel, and PgUp/PgDn scroll. In Exchanges, `[` selects older and
+`]` newer observations. `r` refreshes immediately; the open dialog also refreshes
+once per second. Escape closes without interrupting a turn. Metrics include all
+threads in this launch, not just the currently displayed session, and do not
+restore historical totals after resume. There is no browser dashboard.
+
+The same sanitized metrics remain available through the local API:
 
 ```sh
 curl -sS "${MEKUGI_BASE_URL%/v1}/api/metrics"
 mekugi --capture-output capture.jsonl codex
 ```
 
-Dashboard metrics stay in memory unless captured with `--capture-output`;
+Launch metrics stay in memory unless captured with `--capture-output`;
 captures hold sanitized measurements only, with no prompts, patches, or
 credentials. Provider-reported usage is authoritative; local token estimates
 are not billing figures. See the

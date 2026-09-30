@@ -34,7 +34,7 @@ func renderNativeKeybindings(width, height int) []string {
 			{"tab", "Queue for next turn"},
 			{"alt+↑ / shift+←", "Edit last queued"},
 			{"shift+↑ / shift+↓", "Raise / lower reasoning"},
-			{"/status", "Session status and usage"},
+			{"/status /session", "Settings / launch metrics"},
 			{"/copy", "Copy response or part of it"},
 			{"/btw QUESTION", "Side question / follow-up"},
 			{"/model /effort /tier", "Open picker or set VALUE"},

@@ -18,6 +18,10 @@ import (
 // Unlike Codex, status is an ephemeral panel, never a transcript entry.
 // Each asynchronous refresh belongs only to the panel that requested it.
 type appServerStatusReport struct {
+	title     string
+	groups    []string
+	controls  string
+	metrics   *sessionMetricsPanel
 	rect      terminalRect // Selectable body, relative to Main.
 	fields    []statusField
 	top, rows int
@@ -248,6 +252,9 @@ func (u *appServerUI) statusPanelKey(key string) bool {
 	p := u.statusPanel
 	if p == nil {
 		return false
+	}
+	if p.metrics != nil && u.sessionMetricsKey(key) {
+		return true
 	}
 	switch key {
 	case "\x1b", "q", "\r", "\x03":

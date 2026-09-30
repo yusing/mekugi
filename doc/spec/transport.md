@@ -5,9 +5,12 @@
 ### Codex WebSocket transport
 
 The router accepts Responses WebSocket upgrades at `GET /v1/responses`. The
-wrapper advertises `supports_websockets=true` in its invocation-only provider
-override without modifying Codex configuration. HTTP `POST /v1/responses` remains
-available for streaming SSE and nonstream terminal JSON. Models discovery and
+wrapper sets `supports_websockets=false` in its invocation-only provider override
+to disable Codex model prewarm, without modifying user configuration. Wrapped
+turns use HTTP `POST /v1/responses` for streaming SSE and nonstream terminal JSON,
+with pooled provider WebSockets as described below. The WebSocket endpoint retains
+its transport contract for compatible clients; native `turn/steer` remains Codex-owned,
+not a router translation of HTTP input into `response.steer`. Models discovery and
 Grok and OpenCode retain their HTTP provider transports.
 
 The Codex-facing endpoint supports one unnamed response lane per connection.

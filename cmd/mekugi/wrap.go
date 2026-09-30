@@ -122,8 +122,6 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		args = slices.Insert(slices.Clone(args), index, "-c", fmt.Sprintf("model_catalog_json=%q", catalogPath))
 	}
 
-	// Announce once before Codex takes over the terminal, never during its UI.
-	fmt.Fprintf(os.Stderr, "mekugi dashboard: %s/\n", strings.TrimSuffix(session.BaseURL, "/v1"))
 	if session.PostCompactRecovery {
 		hookExecutable, err := os.Executable()
 		if err != nil {
@@ -336,7 +334,7 @@ func codexArgs(baseURL string, args []string, journal, skillsManagerAvailable bo
 		"--disable", "goals",
 		"-c", "features.goals=false",
 		"-c", `model_provider="mekugi_wrap"`,
-		"-c", fmt.Sprintf(`model_providers.mekugi_wrap={name="mekugi",base_url=%q,wire_api="responses",requires_openai_auth=true,supports_websockets=true}`, baseURL),
+		"-c", fmt.Sprintf(`model_providers.mekugi_wrap={name="mekugi",base_url=%q,wire_api="responses",requires_openai_auth=true,supports_websockets=false}`, baseURL),
 		"-c", `include_collaboration_mode_instructions=false`,
 	}
 	if skillsManagerAvailable {

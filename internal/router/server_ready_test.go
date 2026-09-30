@@ -55,6 +55,14 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("metrics status = %d", response.StatusCode)
 	}
+	response, err = client.Get(strings.TrimSuffix(baseURL, "/v1") + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("superseded HTML dashboard is still served: %d", response.StatusCode)
+	}
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)

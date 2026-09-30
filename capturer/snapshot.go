@@ -130,7 +130,8 @@ type exchangeMetrics struct {
 	DeliveredTools      []toolCallMetrics        `json:"delivered_tools,omitempty"`
 }
 
-type metricsSnapshot struct {
+// MetricsSnapshot is a detached, capture-owned metrics view.
+type MetricsSnapshot struct {
 	Schema         string                   `json:"schema"`
 	Mode           string                   `json:"mode"`
 	Requests       requestTotals            `json:"requests"`
@@ -154,12 +155,15 @@ func (r *Recorder) ServeHTTP(writer http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-// WriteMetrics exports the same capture-owned snapshot served by the dashboard.
+// WriteMetrics exports the same capture-owned snapshot used by the session dialog.
 func (r *Recorder) WriteMetrics(writer io.Writer) error {
 	return json.NewEncoder(writer).Encode(r.snapshot())
 }
 
-func (r *Recorder) snapshot() metricsSnapshot {
+// Snapshot returns an independent view safe for presentation without holding recorder locks.
+func (r *Recorder) Snapshot() MetricsSnapshot { return r.snapshot() }
+
+func (r *Recorder) snapshot() MetricsSnapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	snapshot := cloneMetricsSnapshot(r.metrics)
@@ -167,8 +171,8 @@ func (r *Recorder) snapshot() metricsSnapshot {
 	return snapshot
 }
 
-func newMetricsSnapshot(mode string) metricsSnapshot {
-	return metricsSnapshot{
+func newMetricsSnapshot(mode string) MetricsSnapshot {
+	return MetricsSnapshot{
 		Schema:         "mekugi.capture.metrics.v6",
 		Mode:           mode,
 		Cache:          cacheMetrics{AttributionBasis: "previous_input_length_estimate"},
@@ -298,7 +302,7 @@ func (r *Recorder) recordCacheObservation(state *requestState, observed *Provide
 	}
 }
 
-func cloneMetricsSnapshot(source metricsSnapshot) metricsSnapshot {
+func cloneMetricsSnapshot(source MetricsSnapshot) MetricsSnapshot {
 	clone := source
 	clone.ProviderTools = maps.Clone(source.ProviderTools)
 	clone.DeliveredTools = maps.Clone(source.DeliveredTools)
@@ -313,6 +317,15 @@ func cloneMetricsSnapshot(source metricsSnapshot) metricsSnapshot {
 	clone.Exchanges = make([]exchangeMetrics, len(source.Exchanges))
 	for index, exchange := range source.Exchanges {
 		clone.Exchanges[index] = exchange
+		if exchange.CompactionSummaryBytes != nil {
+			clone.Exchanges[index].CompactionSummaryBytes = new(*exchange.CompactionSummaryBytes)
+		}
+		if exchange.CompactionChanges != nil {
+			clone.Exchanges[index].CompactionChanges = new(*exchange.CompactionChanges)
+		}
+		if exchange.CompactionFailures != nil {
+			clone.Exchanges[index].CompactionFailures = new(*exchange.CompactionFailures)
+		}
 		clone.Exchanges[index].Journal = exchange.Journal.Clone()
 		clone.Exchanges[index].ClientFingerprint = cloneFingerprint(exchange.ClientFingerprint)
 		clone.Exchanges[index].DeliveredTools = slices.Clone(exchange.DeliveredTools)
@@ -323,6 +336,9 @@ func cloneMetricsSnapshot(source metricsSnapshot) metricsSnapshot {
 			clone.Exchanges[index].ProviderAttempts[attemptIndex].Fingerprint = cloneFingerprint(attempt.Fingerprint)
 			clone.Exchanges[index].ProviderAttempts[attemptIndex].ProjectedFingerprint = cloneFingerprint(attempt.ProjectedFingerprint)
 			clone.Exchanges[index].ProviderAttempts[attemptIndex].Tools = slices.Clone(attempt.Tools)
+			if attempt.ProjectedRequest != nil {
+				clone.Exchanges[index].ProviderAttempts[attemptIndex].ProjectedRequest = new(*attempt.ProjectedRequest)
+			}
 			if attempt.Usage != nil {
 				usage := *attempt.Usage
 				clone.Exchanges[index].ProviderAttempts[attemptIndex].Usage = &usage

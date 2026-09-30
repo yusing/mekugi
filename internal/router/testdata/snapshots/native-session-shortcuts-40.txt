@@ -1,0 +1,40 @@
+
+  Keyboard shortcuts
+
+  Compose
+  !                     Shell Mode
+  ctrl+j                New line
+  / / @ / $             Pick command / f
+  arrows                Move caret / inp
+  ctrl+← / ctrl+→       Previous / next 
+  alt/option+← / →      Previous / next 
+  ctrl+↑ / ctrl+↓       Start / end of l
+  alt/option+backspace  Delete previous 
+  ctrl+w / alt+del      Delete previous 
+  ctrl+k                Delete to end of
+  ctrl+z / ctrl+y       Undo / redo
+  ctrl+v                Paste image
+  ctrl+g                External editor
+
+  Session
+  enter                 Send / steer
+  tab                   Queue for next t
+  alt+↑ / shift+←       Edit last queued
+  shift+↑ / shift+↓     Raise / lower re
+  /status /session      Settings / launc
+  /copy                 Copy response or
+  /btw QUESTION         Side question / 
+  /model /effort /tier  Open picker or s
+  ctrl+c                Clear / interrup
+  esc                   Interrupt, keep 
+  ctrl+b 1–5            Focus pane
+  J (empty draft)       Open journal
+  ctrl+b e              Next live item
+  ctrl+b q              Answer questions
+  ctrl+b ← / →          Resize panes
+
+  Transcript
+  pgup / pgdn  Scroll
+  esc          Back to bottom
+
+  ? / esc  Close shortcuts

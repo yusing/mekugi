@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
-	"github.com/yusing/mekugi/internal/ui/dashboard"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
 
@@ -285,7 +284,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", dashboard.ServeHTTP)
 	mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
 	if mekugiCalls != nil {
@@ -326,7 +324,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 					mekugiCalls.execWindows.tracker = hub
 				}
 			}
-			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers)
+			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory

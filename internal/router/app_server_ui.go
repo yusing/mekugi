@@ -18,6 +18,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/rivo/uniseg"
+	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -76,6 +77,7 @@ type appServerUI struct {
 	notifications             *nativeNotifications
 	questions                 nativeQuestionDock
 	statusPanel               *appServerStatusReport
+	sessionCapture            *capturer.Recorder
 	resumePicker              *appServerResumePicker
 	switching                 string // Saved thread a clearing request resumes.
 	statusConfig              appServerStatusConfig
@@ -169,10 +171,10 @@ type appServerUI struct {
 // still owns routing, environment, invocation-local configuration and cancellation.
 func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
-	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint, nil)
+	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint, nil, nil)
 }
 
-func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers map[string]string) (func() error, error) {
+func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers map[string]string, capture *capturer.Recorder) (func() error, error) {
 	var resumeCwd string
 	if resumeThread == "--last" || resumeThread == resumePickerStartup {
 		var err error
@@ -195,6 +197,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 			u.skillEnvironment = cmd.Environ()
 		}
 	}
+	u.sessionCapture = capture
 	u.resumeConfig = appServerResumeConfig(cmd.Args)
 	u.notifications = &nativeNotifications{out: stdout, focused: true}
 	u.resumeCwd = resumeCwd
@@ -306,6 +309,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						u.dirty = true
 					case <-tick.C:
+						u.refreshSessionMetrics(false)
 						if err := u.tickJournalReset(u.now()); err != nil {
 							u.setNotice(err.Error(), true)
 						}
@@ -997,6 +1001,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if text == "/resume" || strings.HasPrefix(text, "/resume ") {
 			return false, u.resumeCommand(text)
 		}
+		if text == "/session" {
+			u.showSessionMetrics()
+			return false, nil
+		}
 		if text == "/status" {
 			return false, u.showStatus()
 		}
@@ -1021,7 +1029,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /compact, /clear, /resume, /btw, /status, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /compact, /clear, /resume, /btw, /status, /session, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil {

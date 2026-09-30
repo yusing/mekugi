@@ -20,6 +20,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi/capturer"
 	"golang.org/x/term"
 )
 
@@ -150,7 +151,7 @@ func startAppResumeTerminal(t *testing.T, newCommand func(context.Context) *exec
 	return startAppResumeTerminalWithProxy(t, newCommand, resumeThread, nil)
 }
 
-func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Context) *exec.Cmd, resumeThread string, proxy *mekugiProxy) *appResumeTerminal {
+func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Context) *exec.Cmd, resumeThread string, proxy *mekugiProxy, capture ...*capturer.Recorder) *appResumeTerminal {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	outer, inner, err := pty.Open()
@@ -166,7 +167,11 @@ func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Conte
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(ctx, newCommand(ctx), inner, inner, proxy, nil, resumeThread, true, nil)
+	var recorder *capturer.Recorder
+	if len(capture) > 0 {
+		recorder = capture[0]
+	}
+	wait, err := startAppServerUI(ctx, newCommand(ctx), inner, inner, proxy, nil, resumeThread, true, nil, recorder)
 	if err != nil {
 		t.Fatal(err)
 	}

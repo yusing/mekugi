@@ -68,7 +68,7 @@ func TestJournalMetricsExportBoundaryAndIsolation(t *testing.T) {
 			*state.journal.LastOutcomeEmpty = !*state.journal.LastOutcomeEmpty
 		}
 	}
-	check := func(snapshot metricsSnapshot) {
+	check := func(snapshot MetricsSnapshot) {
 		t.Helper()
 		if len(snapshot.Exchanges) != len(wants) {
 			t.Fatalf("exchanges = %d", len(snapshot.Exchanges))
@@ -88,7 +88,7 @@ func TestJournalMetricsExportBoundaryAndIsolation(t *testing.T) {
 	if err := recorder.WriteMetrics(&exported); err != nil {
 		t.Fatal(err)
 	}
-	var decoded metricsSnapshot
+	var decoded MetricsSnapshot
 	if err := json.Unmarshal(exported.Bytes(), &decoded); err != nil {
 		t.Fatal(err)
 	}

@@ -102,12 +102,6 @@ func (u *appServerUI) flushBTW() error {
 			params["model"] = u.model
 		}
 		config := make(map[string]any)
-		if provider := u.statusConfig.Provider; provider != "" {
-			// Codex starts a model prewarm for each WebSocket-enabled fork.
-			// The side question is already ready: stream it over HTTP to the
-			// router instead. Main and the router's upstream transport stay intact.
-			config["model_providers."+provider+".supports_websockets"] = false
-		}
 		if u.reasoningEffort != "" {
 			config["model_reasoning_effort"] = u.reasoningEffort
 		}

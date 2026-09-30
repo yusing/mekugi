@@ -402,7 +402,7 @@ results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
 Typing `/` at the start of an otherwise single-token draft opens a local command
-catalog with descriptions for `/compact`, `/clear`, `/resume`, `/btw`, `/status`, `/copy`,
+catalog with descriptions for `/compact`, `/clear`, `/resume`, `/btw`, `/status`, `/session`, `/copy`,
 `/model`, `/effort`, `/reasoning`, `/tier`, `/live`, `/skills`, and `/quit`.
 Typing filters commands with fuzzy matching; Up/Down selects, Tab
 completes without executing, Enter runs the selected command, and Escape closes
@@ -451,11 +451,10 @@ side cache affinity, which may share Main's key despite a distinct thread identi
 actual cache reuse is provider-dependent. No router cache-key rewrite or reconstructed
 conversation is used to simulate a branch.
 
-The fork alone disables its provider's Codex-facing WebSocket capability using a
-thread-local config override. This skips Codex's redundant startup model prewarm
-when the side question is already ready and streams the turn to the router over
-HTTP. Main's transport, provider/auth configuration, and the router's upstream
-WebSocket support remain unchanged. No warmup response is fabricated or discarded.
+Main and side threads inherit the invocation's disabled Codex-facing WebSocket
+capability, avoiding model prewarm and streaming turns to the router over HTTP.
+The fork does not replace provider transport settings. The router's upstream
+WebSocket support remains unchanged. No warmup response is fabricated or discarded.
 
 PgUp/PgDn scroll the side answer while the dock is open. Esc, after dismissing
 active questions or command menus, closes the dock without changing the main
@@ -465,6 +464,33 @@ replace a newer dock. The display retains at most 256 KiB across 256 answer item
 and reports truncation; Codex retains the full side context for follow-ups.
 The dock is not persisted or restored on resume, and closing it makes the next
 `/btw` take a new snapshot. No processes or handles are replayed.
+
+### Session metrics
+
+`/session` opens a temporary, bordered metrics dialog, never a transcript entry
+or model request. It uses the same themed, responsive, scrollable and selectable
+panel as `/status`, with fixed close and navigation hints. Left/Right, Tab and
+Shift-Tab cycle Overview, Transport and Exchanges. Up/Down, mouse wheel and
+PgUp/PgDn scroll the selected view. Escape, Enter, q or Ctrl-C closes without
+interrupting a turn; Escape first clears a text selection.
+
+Overview groups request counts, provider usage, cache attribution and capture
+health. Transport groups wire and semantic output measurements, including all
+four control-message directions, plus provider/delivered tool aggregates.
+Exchanges shows one retained exchange with its provider attempts, explicit
+telemetry, cache-prefix diagnostics, compaction/journal observations and tool
+calls. `[` and `]` navigate older/newer retained exchanges; newest follows new
+observations, while an older selection stays on its sequence until retention
+reclaims it. Each view distinguishes absent usage from explicit zero evidence
+and identifies local token estimates separately from provider usage.
+
+The dialog consumes the capture-owned snapshot directly, refreshed once per
+second only while open; `r` refreshes immediately. It covers all threads in this
+router invocation, not just the active thread. Closing releases its view; replay
+and resume never reconstruct historical launch metrics or revive resources.
+An unavailable capturer and an empty exchange history have explicit empty
+states. The metrics JSON endpoint remains available; no HTML dashboard or
+startup dashboard announcement remains.
 
 ### Session status
 
@@ -889,9 +915,8 @@ real composer path, and the preview answers its turn start, steer and interrupt
 requests as app-server would, echoing each user message's client ID; an interrupt ends every running turn and the
 remaining playback.
 
-The native client replaces the wrapped Codex terminal. The dashboard remains
-available at the invocation URL. Redirected and noninteractive commands do not
-start the native UI.
+The native client replaces the wrapped Codex terminal. Redirected and
+noninteractive commands do not start the native UI.
 
 ### Terminal notifications and lifecycle titles
 

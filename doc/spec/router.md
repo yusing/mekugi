@@ -25,6 +25,12 @@ Wrapped sessions disable Codex goals through invocation-only feature and config
 overrides. The host does not expose `/goal`, goal tools or goal instructions;
 journal slice continuation does not coordinate with goals.
 
+The wrapped provider sets `supports_websockets=false` in the final invocation-only
+config layer. Codex does not start model prewarm on startup, resume, forks or
+model changes; its turns stream to the router over HTTP. This does not disable
+router-to-provider WebSockets, rewrite prewarm responses or edit user configuration.
+The router retains its existing transport handling for other supported requests.
+
 ChatGPT requests explicitly select `access_programs.cyber="standard"`, including
 prewarming and continuations over either transport. This overrides client Daybreak
 choices without changing the model or other access programs. Grok and OpenCode
@@ -47,10 +53,8 @@ and cancellation clean up owned runtime resources. Ordinary exit status is
 preserved; signal exits use `128 + signal`. Unexpected router termination also
 terminates Codex rather than leaving a dead provider connection.
 
-After successful binding and before launching Codex, the wrapper prints exactly
-one `mekugi dashboard: http://127.0.0.1:PORT/` line to stderr. It does not write
-the announcement to stdout or repeat it during the active Codex UI. The URL and
-in-memory metrics belong to this invocation and expire on shutdown.
+Launch does not announce a browser URL. The local metrics API and `/session`
+native dialog expose invocation-owned metrics, which expire on shutdown.
 
 Interactive launches use Mekugi-owned terminal splits, including a
 [live diff pane](changes.md#live-terminal-view), under its session and lifecycle contract.

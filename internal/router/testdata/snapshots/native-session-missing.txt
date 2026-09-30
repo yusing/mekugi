@@ -1,0 +1,14 @@
+
+
+
+  ╭ Session · Overview ─────────────────────────────────────────── Esc close ╮
+  │                                                                          │
+  │  Capture  ─────────────────────────────────────────────────────────────  │
+  │  Metrics are unavailable for this frontend. Live launch metrics are not  │
+  │  restored from saved sessions.                                           │
+  │                                                                          │
+  ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close ───────────────────────────╯
+
+
+
+

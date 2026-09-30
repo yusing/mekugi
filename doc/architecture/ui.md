@@ -4,7 +4,7 @@
 
 Presentation consumes observations and user intent. It does not become an execution,
 capture, accounting, or replay authority. Observable terminal behavior belongs to the
-[native UI contract](../spec/native_ui.md); the dashboard consumes the
+[native UI contract](../spec/native_ui.md); the session dialog consumes the
 [capture-owned metrics contract](metrics.md).
 
 - `internal/ui/activity` owns display blocks, journal-result layout, Markdown and
@@ -16,8 +16,8 @@ capture, accounting, or replay authority. Observable terminal behavior belongs t
 - `internal/ui/terminal` owns raw-terminal restoration, cancellable input reading,
   mouse decoding, and shared scrolling primitives. Callers retain pane composition,
   focus, follow policy, and the enclosing session lifetime.
-- `internal/ui/dashboard` owns the embedded browser interface and its HTTP handler.
-  It uses the existing metrics endpoint, without a separate listener or metric store.
+- Router-native `/session` presentation consumes a detached capturer snapshot.
+  It owns only view, scroll and retained-exchange selection, never a metric store.
 - `internal/appserver` owns newline-delimited stdio RPC and the launched Codex process:
   framing, bounded diagnostics, initialization, and shutdown. It does not import the
   router or terminal UI and does not interpret model responses.

@@ -1,6 +1,7 @@
 package router
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 
@@ -36,6 +37,10 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 	if !boxed {
 		contentWidth = max(1, panelWidth-2)
 	}
+	labelLimit, valueColumn := 14, 16
+	if p.metrics != nil {
+		labelLimit, valueColumn = 26, 28
+	}
 	type line struct{ label, text string }
 	var lines []line
 	appendText := func(text string) {
@@ -43,7 +48,11 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 			lines = append(lines, line{text: part})
 		}
 	}
-	for _, group := range []string{"Model", "Usage", "Account", "Session", "Permissions"} {
+	groups := p.groups
+	if groups == nil {
+		groups = []string{"Model", "Usage", "Account", "Session", "Permissions"}
+	}
+	for _, group := range groups {
 		started := false
 		for _, field := range p.fields {
 			if field.group != group {
@@ -91,8 +100,8 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 			}
 			// Reserve a bounded label column for wrapping. Actual alignment is measured
 			// below from visible rows only, so off-screen labels cannot widen it.
-			if contentWidth >= 38 && ansi.StringWidth(label) <= 14 && label != "" {
-				for i, part := range pickerWrap(value, contentWidth-16) {
+			if contentWidth >= valueColumn+22 && ansi.StringWidth(label) <= labelLimit && label != "" {
+				for i, part := range pickerWrap(value, contentWidth-valueColumn) {
 					item := line{text: style + part + reset}
 					if i == 0 {
 						item.label = label
@@ -129,7 +138,7 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 		return text + strings.Repeat(" ", max(0, n-ansi.StringWidth(text)))
 	}
 	if boxed {
-		title := ansi.Truncate(" Session status ", panelWidth-2, "")
+		title := ansi.Truncate(" "+cmp.Or(p.title, "Session status")+" ", panelWidth-2, "")
 		closeHint := " Esc close "
 		if panelWidth < 36 {
 			closeHint = ""
@@ -137,7 +146,7 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 		put(y, dim+"╭"+reset+bold+accent+title+reset+dim+strings.Repeat("─", max(0, panelWidth-2-ansi.StringWidth(title+closeHint)))+reset+closeHint+dim+"╮"+reset)
 		put(y+1, dim+"│"+reset+strings.Repeat(" ", panelWidth-2)+dim+"│"+reset)
 	} else {
-		put(y, bold+accent+"Status"+reset)
+		put(y, bold+accent+cmp.Or(p.title, "Status")+reset)
 	}
 	start := y + 1
 	if boxed {
@@ -169,6 +178,15 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 	}
 	if panelWidth < 40 {
 		controls = "↑↓ scroll  Esc close"
+	}
+	if p.controls != "" {
+		controls = p.controls
+		if panelWidth < 54 {
+			controls = "←→ views  ↑↓ scroll  Esc"
+		}
+		if panelWidth < 28 {
+			controls = "←→  ↑↓  Esc"
+		}
 	}
 	if len(lines) > p.rows && panelWidth >= 54 {
 		controls += fmt.Sprintf("  %d–%d / %d", p.top+1, p.top+len(visible), len(lines))

@@ -119,7 +119,7 @@ func TestGrokTextMeasurementMatchesAcrossBoundaries(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var decoded metricsSnapshot
+			var decoded MetricsSnapshot
 			if err := json.Unmarshal(data, &decoded); err != nil {
 				t.Fatal(err)
 			}

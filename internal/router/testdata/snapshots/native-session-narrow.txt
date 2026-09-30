@@ -1,0 +1,18 @@
+╭ Session · Transport ───────╮
+│                            │
+│  Transport  ─────────────  │
+│  Exact wire bytes;         │
+│  decoded-content token     │
+│  estimates. Includes       │
+│  router-generated          │
+│  commentary.               │
+│  Client requests           │
+│  100 bytes · 10 estimated  │
+│  tokens                    │
+│  Provider requests         │
+│  250 bytes · 25 estimated  │
+│  tokens                    │
+│  Provider responses        │
+│  900 bytes · 90 estimated  │
+│                            │
+╰─ ←→ views  ↑↓ scroll  Esc ─╯

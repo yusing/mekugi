@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/capturer"
 )
 
 type btwPrewarmRequest struct {
@@ -89,7 +90,7 @@ func (p *btwPrewarmProvider) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func TestAppServerBTWNoForkPrewarmNativeCodexE2E(t *testing.T) {
+func TestAppServerNoModelPrewarmNativeCodexE2E(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	codex, err := exec.LookPath("codex")
 	if err != nil {
@@ -98,7 +99,15 @@ func TestAppServerBTWNoForkPrewarmNativeCodexE2E(t *testing.T) {
 	provider := &btwPrewarmProvider{requests: make(chan btwPrewarmRequest, 20)}
 	upstream := httptest.NewServer(http.HandlerFunc(provider.serve))
 	defer upstream.Close()
+	capture, err := capturer.New(capturer.Config{Mode: "mekugi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer capture.Close()
 	proxy := newManagedMekugiProxy(t)
+	// Match production's durable journal/replay owner rather than a memory-only
+	// fixture whose early export-only reads can leave a phantom empty journal.
+	attachTestReplayStore(t, proxy)
 	providerClient := newProviderClient(upstream.URL, upstream.Client())
 	providerClient.enableWebSockets(t.Context())
 	defer providerClient.websockets.close()
@@ -106,7 +115,7 @@ func TestAppServerBTWNoForkPrewarmNativeCodexE2E(t *testing.T) {
 	defer ws.Close()
 	httpResponses := responsesHandler(t.Context(), time.Minute, providerClient, nil, proxy)
 	downstream := make(chan string, 10)
-	router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	router := httptest.NewServer(capture.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Deterministic fixture credentials terminate at the local mock.
 		for key, values := range codexAuthHeaders() {
 			r.Header[key] = values
@@ -118,15 +127,15 @@ func TestAppServerBTWNoForkPrewarmNativeCodexE2E(t *testing.T) {
 			downstream <- "http"
 			httpResponses.ServeHTTP(w, r)
 		}
-	}))
+	})))
 	defer router.Close()
 	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 	command := func(ctx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="OpenAI",base_url=`+strconv.Quote(router.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false,supports_websockets=true}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="OpenAI",base_url=`+strconv.Quote(router.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false,supports_websockets=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}
-	terminal := startAppResumeTerminalWithProxy(t, command, "", proxy)
+	terminal := startAppResumeTerminalWithProxy(t, command, "", proxy, capture)
 	next := func() btwPrewarmRequest {
 		t.Helper()
 		select {
@@ -161,14 +170,10 @@ func TestAppServerBTWNoForkPrewarmNativeCodexE2E(t *testing.T) {
 		}
 	}
 	terminal.await("Ready")
-	if got := nextDownstream(); got != "ws" {
-		t.Fatalf("Main transport = %s, want WebSocket", got)
-	}
-	initial := next()
-	if initial.transport != "ws" || !initial.prewarm {
-		t.Fatalf("Main startup did not use WebSocket prewarm: %+v", initial)
-	}
 	terminal.send("Main seed\r")
+	if got := nextDownstream(); got != "http" {
+		t.Fatalf("Main transport = %s, want HTTP", got)
+	}
 	awaitPrompt("Main seed", "ws")
 	terminal.await("completed")
 	terminal.send("/btw Side question\r")
@@ -195,9 +200,24 @@ func TestAppServerBTWNoForkPrewarmNativeCodexE2E(t *testing.T) {
 	terminal.send("\x1b")
 	terminal.awaitMatch("side closed", func(frame string) bool { return !strings.Contains(frame, "╭─ /btw") })
 	terminal.send("Main after\r")
+	if got := nextDownstream(); got != "http" {
+		t.Fatalf("Main transport after side questions = %s, want HTTP", got)
+	}
 	awaitPrompt("Main after", "ws")
 	terminal.await("Main after")
 	terminal.await("completed")
+	terminal.send("/session\r")
+	terminal.await("Session · Overview")
+	terminal.awaitMatch("launch counts", func(frame string) bool {
+		return strings.Contains(frame, "Logical") && strings.Contains(frame, "All threads in this launch")
+	})
+	if got := capture.Snapshot().Requests.Logical; got != 5 {
+		t.Fatalf("launch captured %d requests, want five turns without prewarm", got)
+	}
+	terminal.send("\x1b[C\x1b[C")
+	terminal.await("Session · Exchanges")
+	terminal.send("\x1b")
+	terminal.awaitMatch("session dialog closed", func(frame string) bool { return !strings.Contains(frame, "Session · Exchanges") })
 	select {
 	case request := <-provider.requests:
 		t.Fatalf("unexpected extra provider request: transport=%s prewarm=%t", request.transport, request.prewarm)

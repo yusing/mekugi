@@ -1,0 +1,25 @@
+    ╭ Session · Exchanges ──────────────────────────────────────────────── Esc close ╮
+    │                                                                                │
+    │  Final text        0 bytes · 0 estimated tokens                                │
+    │  Usage             unavailable                                                 │
+    │  Telemetry         unavailable                                                 │
+    │                                                                                │
+    │  Provider attempt 2  ────────────────────────────────────────────────────────  │
+    │  Transport         WebSocket                                                   │
+    │  Status            completed                                                   │
+    │  Complete          true                                                        │
+    │  Request           0 bytes · 0 estimated tokens                                │
+    │  Stream            0 bytes · 0 estimated tokens                                │
+    │  Model output      0 bytes · 0 estimated tokens                                │
+    │  Final text        0 bytes · 0 estimated tokens                                │
+    │  Input             120                                                         │
+    │  Cached input      0                                                           │
+    │  Uncached input    120                                                         │
+    │  Output            12                                                          │
+    │  Reasoning         0                                                           │
+    │  Response model    gpt-6-sol                                                   │
+    │  Header model      unavailable                                                 │
+    │  Request ID        req-2                                                       │
+    │  Cached telemetry  present                                                     │
+    │                                                                                │
+    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  28–48 / 57 ─────────────╯

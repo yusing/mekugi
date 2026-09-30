@@ -1,0 +1,14 @@
+
+
+
+
+  ╭ Session · Exchanges ────────────────────────────────────────── Esc close ╮
+  │                                                                          │
+  │  Exchanges  ───────────────────────────────────────────────────────────  │
+  │  No completed exchanges yet. Active requests appear when they settle.    │
+  │                                                                          │
+  ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close ───────────────────╯
+
+
+
+
