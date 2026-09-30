@@ -21,6 +21,13 @@ complete evidence and no file differences remain in command history without a ne
 An unfinished call has no completed record. Storage failure must not expose
 dependent review evidence as durable.
 
+Persisted filesystem snapshots deduplicate identical evidence collections across
+calls and compress their stored representation without narrowing capture scope
+or changing review, recovery, or replay facts. Missing or corrupt shared content
+is unavailable evidence, never an empty successful comparison. Snapshot limits
+apply to expanded evidence as well as stored records. Retained inline records
+remain readable; new storage does not change retention age or pressure policy.
+
 Patches inside one Code Mode cell share a pre-cell/post-cell observation
 window. Literal arguments name their baselines before execution. For dynamic
 patch or command arguments, a bounded pre-cell inventory of the selected workspace

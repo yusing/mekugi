@@ -165,7 +165,7 @@ func (s *mekugiReplayStore) compactionWorkspace(thread string) (string, error) {
 			}
 		} else {
 			var record replayRecord
-			if json.Unmarshal(data, &record) != nil || record.Version != 1 || replayRecordName(record.Workspace, record.CallID, record.Commentary) != name {
+			if json.Unmarshal(data, &record) != nil || (record.Version != 1 && record.Version != 2) || replayRecordName(record.Workspace, record.CallID, record.Commentary) != name {
 				return "", errors.New("invalid retained workspace evidence")
 			}
 			if record.History.ExecutingThread == thread {

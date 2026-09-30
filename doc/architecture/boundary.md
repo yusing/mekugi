@@ -27,6 +27,21 @@ ancestry from one request view without deleting records needed by other
 branches. Expired output references and Codex process handles are not revived.
 
 Session retention keeps shared durable dependencies and protects running work.
+Version-2 call envelopes reference immutable filesystem-evidence collections by
+SHA-256 of their deterministic, uncompressed JSON. The shared objects use gzip
+and exact `snapshot-<64 lowercase hex>.json.gz` names in the replay store.
+Patch baselines, command file snapshots, workspace recovery inventories and
+completed review files share identical collections across calls.
+Large text content is interned separately from collection metadata, so unchanged
+file contents remain shared when another file or path in an inventory changes.
+Manifests use explicit text-slot references; envelopes enumerate their complete
+object dependencies for retention without decompressing content during cleanup.
+Call identity, host outcomes and ordering remain in their own envelopes. Readers
+validate hashes and bounded expansion before restoring evidence; version-1
+inline records remain readable without bulk migration. Snapshot objects are
+synced before publishing dependent envelopes. Ownership adoption includes their
+dependencies, and cleanup protects shared and in-flight objects and removes
+envelopes before their last-owned snapshots.
 Cleanup operates only on exact managed record names under the store lock; it
 never traverses user workspaces or Codex transcripts. The age and
 storage-pressure policy belongs to [REQ-ROUTER-001](../spec/router.md).

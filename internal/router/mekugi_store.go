@@ -31,6 +31,9 @@ type mekugiReplayStore struct {
 	storageNotice      func(string, string, string)
 	liveDiff           func([]liveDiffChange)
 	maxCommentaryBytes int64
+	// Only under store.lock, during one envelope write. Cleanup must not
+	// reclaim dependencies already selected by an unpublished envelope.
+	snapshotPins map[string]bool
 }
 type replayRecord struct {
 	Version      int
@@ -39,6 +42,7 @@ type replayRecord struct {
 	Commentary   bool
 	CaptureOrder uint64 `json:",omitzero"`
 	History      mekugiHistory
+	Snapshots    *replaySnapshots `json:",omitempty"`
 }
 
 // Keep request-local state out of immutable replay comparisons as well as JSON.
@@ -222,9 +226,14 @@ func (s *mekugiReplayStore) read(workspace, callID string, commentary bool) (rep
 	if err := dec.Decode(new(any)); !errors.Is(err, io.EOF) {
 		return r, false, errors.New("trailing replay record data")
 	}
-	if r.Version != 1 || r.Workspace != workspace || r.CallID != callID || r.Commentary != commentary {
+	if (r.Version != 1 && r.Version != 2) || r.Workspace != workspace || r.CallID != callID || r.Commentary != commentary {
 		return r, false, errors.New("replay record identity/version mismatch")
 	}
+	if err := s.restoreSnapshots(&r); err != nil {
+		return r, false, err
+	}
+	// Consumers and immutable comparisons use the expanded version-1 facts.
+	r.Version, r.Snapshots = 1, nil
 	return r, true, nil
 }
 func (s *mekugiReplayStore) lookup(ctx context.Context, workspace, callID string) (h mekugiHistory, found bool, err error) {
@@ -340,6 +349,16 @@ func mergeReplayHistory(old, next mekugiHistory) (mekugiHistory, error) {
 	return next, nil
 }
 func (s *mekugiReplayStore) write(r replayRecord) (err error) {
+	previousPins := s.snapshotPins
+	s.snapshotPins = map[string]bool{replayRecordName(r.Workspace, r.CallID, r.Commentary): true}
+	defer func() { s.snapshotPins = previousPins }()
+	dependencies, err := s.snapshotDependencies(replayRecordName(r.Workspace, r.CallID, r.Commentary))
+	if err != nil {
+		return err
+	}
+	for _, name := range dependencies {
+		s.snapshotPins[name] = true
+	}
 	previous, exists, err := s.read(r.Workspace, r.CallID, r.Commentary)
 	if err != nil {
 		return err
@@ -369,6 +388,13 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 	}
 	if len(data) > maxReplayRecordBytes {
 		return storageCapacityError("replay record", int64(len(data)), maxReplayRecordBytes, "Split the tool call or reduce its retained output before retrying.")
+	}
+	if err := s.compactSnapshots(&r); err != nil {
+		return err
+	}
+	data, err = marshalProtocolJSON(r)
+	if err != nil {
+		return err
 	}
 	name := replayRecordName(r.Workspace, r.CallID, r.Commentary)
 	prefix := "call-"

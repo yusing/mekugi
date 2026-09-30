@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -162,6 +163,9 @@ func (s *mekugiReplayStore) readRetainedSession(name string) (retainedSession, e
 }
 
 func retainedDataName(name string) bool {
+	if validSnapshotName(name) {
+		return true
+	}
 	if filepath.Base(name) != name || !strings.HasSuffix(name, ".json") {
 		return false
 	}
@@ -196,6 +200,16 @@ func storageCatalogName(name string) bool {
 func (s *mekugiReplayStore) retainFiles(names ...string) error {
 	if s.session.Thread == "" {
 		return nil
+	}
+	// A fork, retained change selection or recovered output adopts the call's
+	// shared snapshots together with its envelope, under the same store lock.
+	names = slices.Clone(names)
+	for _, name := range slices.Clone(names) {
+		dependencies, err := s.snapshotDependencies(name)
+		if err != nil {
+			return err
+		}
+		names = append(names, dependencies...)
 	}
 	name := storageSessionName(s.session.Thread)
 	session, err := s.readRetainedSession(name)
@@ -530,12 +544,37 @@ func (s *mekugiReplayStore) storageSnapshot() (storageSnapshot, error) {
 	// Older output and replay records have no trustworthy chat identity.
 	// Keep them as legacy records, ordered by last write, never infer an owner
 	// from a filename or borrow another workspace's session.
-	for name := range snapshot.files {
+	// Expand dependencies even for older catalogs and uncatalogued calls.
+	// Process calls before considering orphan blobs as legacy candidates.
+	addDependencies := func(candidate *storageCandidate) error {
+		for _, name := range slices.Sorted(maps.Keys(candidate.files)) {
+			dependencies, err := s.snapshotDependencies(name)
+			if err != nil {
+				return err
+			}
+			for _, dependency := range dependencies {
+				if !candidate.files[dependency] {
+					candidate.files[dependency] = true
+					snapshot.owners[dependency]++
+				}
+			}
+		}
+		return nil
+	}
+	for i := range snapshot.sessions {
+		if err := addDependencies(&snapshot.sessions[i]); err != nil {
+			return snapshot, err
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(snapshot.files)) {
 		if snapshot.owners[name] == 0 && retainedDataName(name) && !strings.HasPrefix(name, changeIndexPrefix) {
 			snapshot.sessions = append(snapshot.sessions, storageCandidate{
 				used: times[name], files: map[string]bool{name: true}, legacy: true,
 			})
 			snapshot.owners[name]++
+			if err := addDependencies(&snapshot.sessions[len(snapshot.sessions)-1]); err != nil {
+				return snapshot, err
+			}
 		}
 	}
 	slices.SortFunc(snapshot.sessions, func(a, b storageCandidate) int {
@@ -797,9 +836,11 @@ func (s *mekugiReplayStore) maintainStorage(replacement string, size int64, expi
 			if lease != nil {
 				defer lease.Unlock()
 			}
-			for file := range candidate.files {
+			// Envelopes precede snapshot blobs. A partial cleanup failure must
+			// never leave a surviving call whose dependent snapshot was deleted.
+			for _, file := range slices.Sorted(maps.Keys(candidate.files)) {
 				// Shared inherited facts survive until their last owner expires.
-				if snapshot.owners[file] > 1 || file == replacement || strings.HasPrefix(file, changeIndexPrefix) {
+				if snapshot.owners[file] > 1 || file == replacement || s.snapshotPins[file] || strings.HasPrefix(file, changeIndexPrefix) {
 					continue
 				}
 				if err := os.Remove(filepath.Join(s.directory, file)); err != nil && !errors.Is(err, os.ErrNotExist) {

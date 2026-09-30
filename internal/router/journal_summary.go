@@ -53,7 +53,7 @@ func (s *mekugiReplayStore) journalFailures(workspace, thread string, since uint
 		if record.Workspace != workspace || record.History.ExecutingThread != thread {
 			continue
 		}
-		if record.Version != 1 || replayRecordName(record.Workspace, record.CallID, record.Commentary) != name {
+		if (record.Version != 1 && record.Version != 2) || replayRecordName(record.Workspace, record.CallID, record.Commentary) != name {
 			return nil, errors.New("invalid journal execution evidence identity")
 		}
 		outcome := record.History.ExecOutcome
