@@ -32,7 +32,7 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 	}
 	proxy.replayStore = store
 	provider := &journalCodexProvider{store: store, turns: make(map[string]int)}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy))
 	defer server.Close()
 	newCommand := func(ctx context.Context) *exec.Cmd {
 		cmd := exec.CommandContext(ctx, codex, "app-server",

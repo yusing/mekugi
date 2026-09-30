@@ -27,7 +27,6 @@ pjdoc:
     - metrics.md
     - changes.md
     - execution.md
-    - mentor.md
     - guide.md
     - explore_filter.md
 ---
@@ -62,6 +61,5 @@ linked, not copied.
 - [`REQ-CHANGES-001`](changes.md): observed stock edits and command effects, durable change IDs, and bounded review reads
 - [`REQ-EXECUTION-001`](execution.md): stock editing, execution, and executable frontends
 - [`REQ-EXECUTION-002`](execution.md): per-segment tracking of Bash command lists
-- [`REQ-MENTOR-001`](mentor.md): main and subagent Mentor Handoff schedule
 - [`REQ-GUIDE-001`](guide.md): caller-preserving additive tool guidance
 - [`REQ-EXPLORE-FILTER-001`](explore_filter.md): decision-model filtering of search output

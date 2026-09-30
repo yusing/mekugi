@@ -102,9 +102,9 @@ func TestAppServerBTWNoForkPrewarmNativeCodexE2E(t *testing.T) {
 	providerClient := newProviderClient(upstream.URL, upstream.Client())
 	providerClient.enableWebSockets(t.Context())
 	defer providerClient.websockets.close()
-	ws := responsesWebSocketHandler(t.Context(), time.Minute, providerClient, nil, proxy, nil)
+	ws := responsesWebSocketHandler(t.Context(), time.Minute, providerClient, nil, proxy)
 	defer ws.Close()
-	httpResponses := responsesHandler(t.Context(), time.Minute, providerClient, nil, proxy, nil)
+	httpResponses := responsesHandler(t.Context(), time.Minute, providerClient, nil, proxy)
 	downstream := make(chan string, 10)
 	router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Deterministic fixture credentials terminate at the local mock.

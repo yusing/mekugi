@@ -18,20 +18,19 @@ import (
 	"github.com/coder/websocket"
 )
 
-func TestTokenUsageMentorAndManualSwitch(t *testing.T) {
+func TestTokenUsageManualSwitch(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprint(stream), func(t *testing.T) {
 			t.Setenv("TMPDIR", t.TempDir())
 			proxy := newManagedMekugiProxy(t)
-			mentor := newMentorHandoff(true, true)
 			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
-			// First request exhausts Mentor input budget; second uses configured Sol;
-			// third is a manual switch to Luna. Each response uses the same stable thread.
+			// Manual switches retain the same stable thread and price each response
+			// using the model actually sent upstream.
 			wants := []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-luna"}
 			var out bytes.Buffer
-			for i, model := range []string{"gpt-5.6-sol", "gpt-5.6-sol", "gpt-5.6-luna"} {
+			for i, model := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-luna"} {
 				req := serverRequest(t, func(f map[string]any) { f["model"] = model; f["stream"] = stream })
-				body := map[string]any{"id": fmt.Sprint("handoff-", i), "status": "completed", "output": []any{},
+				body := map[string]any{"id": fmt.Sprint("switch-", i), "status": "completed", "output": []any{},
 					"usage": map[string]any{"input_tokens": 100000, "input_tokens_details": map[string]any{"cached_tokens": 40000}, "output_tokens": 10000, "output_tokens_details": map[string]any{"reasoning_tokens": 5000}}}
 				body["output"] = []any{map[string]any{"id": "answer", "type": "message", "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "Answer"}}}}
 				wire := string(mustTestJSON(t, body))
@@ -44,7 +43,7 @@ func TestTokenUsageMentorAndManualSwitch(t *testing.T) {
 				}
 				provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 				out.Reset()
-				if err := executeRequest(t.Context(), t.Context(), req, headers, fmt.Sprint("session-", i), provider, &out, nil, proxy, mentor); err != nil {
+				if err := executeRequest(t.Context(), t.Context(), req, headers, fmt.Sprint("session-", i), provider, &out, nil, proxy); err != nil {
 					t.Fatal(err)
 				}
 				forwarded, err := parseResponsesRequest(provider.forwarded[0])
@@ -116,7 +115,7 @@ func TestTokenUsageWebSocketHandshakeRecovery(t *testing.T) {
 				_, _, _ = upstream.Read(ctx)
 			}))
 			defer provider.Close()
-			endpoint := responsesWebSocketHandler(ctx, 10*time.Second, newProviderClient(provider.URL, provider.Client()), nil, proxy, nil)
+			endpoint := responsesWebSocketHandler(ctx, 10*time.Second, newProviderClient(provider.URL, provider.Client()), nil, proxy)
 			defer endpoint.Close()
 			router := httptest.NewServer(endpoint)
 			defer router.Close()
@@ -235,7 +234,7 @@ func TestTokenUsageGapRetainsObservedTotals(t *testing.T) {
 					}
 					provider := &serverFakeProvider{results: []serverForwardResult{result}}
 					var out bytes.Buffer
-					err := executeRequest(t.Context(), t.Context(), req, currentHeaders, "session", provider, &out, nil, proxy, nil)
+					err := executeRequest(t.Context(), t.Context(), req, currentHeaders, "session", provider, &out, nil, proxy)
 					wantErr := step == 1 && (gap == "interrupted" || gap == "transport-error")
 					if (err != nil) != wantErr {
 						t.Fatalf("step=%d err=%v", step, err)
@@ -274,27 +273,26 @@ func TestTokenUsageGapRetainsObservedTotals(t *testing.T) {
 	}
 }
 
-func TestTokenUsageAutomaticSuccessorAtHandoff(t *testing.T) {
+func TestTokenUsageAutomaticSuccessorAndManualSwitch(t *testing.T) {
 	for _, tc := range []struct {
 		configured, leader, requestedTier, servedTier string
-		mentorCost, configuredCost                    float64
+		initialCost, configuredCost                   float64
 	}{
 		{"gpt-5.6-terra", "gpt-6-sol", "default", "default", .228, .228},
-		{"gpt-5.6-sol", "gpt-6-astra", "default", "default", 1.14, .456},
+		{"gpt-5.6-sol", "gpt-5.6-sol", "default", "default", .456, 1.14},
 		{"gpt-5.6-terra", "gpt-6-sol", "fast", "priority", .456, .456},
-		{"gpt-5.6-sol", "gpt-6-astra", "priority", "fast", 2.28, .912},
+		{"gpt-5.6-sol", "gpt-5.6-sol", "priority", "fast", .912, 2.28},
 	} {
 		t.Run(tc.configured+"/"+tc.requestedTier, func(t *testing.T) {
-			testTokenUsageAutomaticSuccessor(t, tc.configured, tc.leader, tc.requestedTier, tc.servedTier, tc.mentorCost, tc.configuredCost)
+			testTokenUsageAutomaticSuccessor(t, tc.configured, tc.leader, tc.requestedTier, tc.servedTier, tc.initialCost, tc.configuredCost)
 		})
 	}
 }
 
-func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requestedTier, servedTier string, mentorCost, configuredCost float64) {
+func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requestedTier, servedTier string, initialCost, configuredCost float64) {
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
 	proxy := newManagedMekugiProxy(t)
-	mentor := newMentorHandoff(true, true)
 	usage := map[string]any{"input_tokens": 100000, "input_tokens_details": map[string]any{"cached_tokens": 40000}, "output_tokens": 10000, "output_tokens_details": map[string]any{"reasoning_tokens": 5000}}
 	journalFlushIDs := make(chan string, 1)
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -357,7 +355,7 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		if wantTier == "fast" {
 			wantTier = "priority"
 		}
-		wantModel := configured
+		wantModel := "gpt-6-astra"
 		if configured == "gpt-5.6-terra" {
 			wantModel = "gpt-6-sol"
 		}
@@ -400,20 +398,20 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 				return
 			}
 		}
-		if err = providerSocketWrite(ctx, upstream, map[string]any{"type": "response.completed", "response": map[string]any{"id": "last", "model": configured, "service_tier": servedTier, "status": "completed", "output": []any{}, "usage": usage}}); err != nil {
+		if err = providerSocketWrite(ctx, upstream, map[string]any{"type": "response.completed", "response": map[string]any{"id": "last", "model": wantModel, "service_tier": servedTier, "status": "completed", "output": []any{}, "usage": usage}}); err != nil {
 			t.Error(err)
 			return
 		}
 		_, _, _ = upstream.Read(ctx)
 	}))
 	defer provider.Close()
-	endpoint := responsesWebSocketHandler(ctx, 10*time.Second, newProviderClient(provider.URL, provider.Client()), nil, proxy, mentor)
+	endpoint := responsesWebSocketHandler(ctx, 10*time.Second, newProviderClient(provider.URL, provider.Client()), nil, proxy)
 	defer endpoint.Close()
 	router := httptest.NewServer(endpoint)
 	defer router.Close()
 	headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 	maps.Copy(headers, codexAuthHeaders())
-	headers.Set(sessionIDHeader, "handoff-socket")
+	headers.Set(sessionIDHeader, "steering-socket")
 	conn, _, err := websocket.Dial(ctx, router.URL, &websocket.DialOptions{HTTPHeader: headers})
 	if err != nil {
 		t.Fatal(err)
@@ -450,8 +448,11 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 	journalFlushIDs <- journalFlushID
 	got, ok := proxy.usage.snapshot("thread-1")
 	total := got.cost.uncachedInput + got.cost.cachedInput + got.cost.output
-	if !ok || !got.cost.known || got.InputTokens != 200000 || math.Abs(total-2*mentorCost) > 1e-10 {
-		t.Fatalf("successor repriced unsent model: report=%+v total=%v want=%v", got, total, 2*mentorCost)
+	if !ok || !got.cost.known || got.InputTokens != 200000 || math.Abs(total-2*initialCost) > 1e-10 {
+		t.Fatalf("successor repriced unsent model: report=%+v total=%v want=%v", got, total, 2*initialCost)
+	}
+	if configured != "gpt-5.6-terra" {
+		request.fields["model"] = mustMarshalJSON("gpt-6-astra")
 	}
 	request.fields["previous_response_id"] = mustMarshalJSON("successor")
 	request.fields["input"] = mustMarshalJSON([]any{map[string]any{"role": "user", "content": "next task"}})
@@ -467,7 +468,7 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 	}
 	got, ok = proxy.usage.snapshot("thread-1")
 	total = got.cost.uncachedInput + got.cost.cachedInput + got.cost.output
-	if !ok || !got.cost.known || got.InputTokens != 300000 || math.Abs(total-(2*mentorCost+configuredCost)) > 1e-10 {
+	if !ok || !got.cost.known || got.InputTokens != 300000 || math.Abs(total-(2*initialCost+configuredCost)) > 1e-10 {
 		t.Fatalf("explicit successor failed to change price: report=%+v total=%v", got, total)
 	}
 }

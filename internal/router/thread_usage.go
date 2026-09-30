@@ -23,15 +23,12 @@ type usageTurnKey struct{ thread, turn string }
 const maxTrackedUsageTurns = 4096
 
 type threadUsageTotal struct {
-	mentorFrom     string
-	lastModel      string
-	mentorRevision uint64
-	cost           tokenCost
-	counts         tokenCounts
-	complete       bool
-	missingUsage   uint64
-	roundtrips     uint64
-	models         []string
+	cost         tokenCost
+	counts       tokenCounts
+	complete     bool
+	missingUsage uint64
+	roundtrips   uint64
+	models       []string
 }
 
 type threadUsageObservation struct {
@@ -91,7 +88,6 @@ func (u *threadUsage) add(thread, model, reasoning, serviceTier string, counts t
 }
 
 func addThreadUsageTotal(total *threadUsageTotal, model, reasoning, serviceTier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
-	total.lastModel = model
 	total.roundtrips++ // Forwarded requests count whether or not usage arrived.
 	displayModel := usageModelLabel(model, reasoning, serviceTier)
 	if displayModel != "" && !slices.Contains(total.models, displayModel) {
@@ -193,37 +189,6 @@ func (u *threadUsage) turnSnapshot(thread, turn string) (tokenUsageReport, bool)
 	return usageTotalReport(u.turns[usageTurnKey{thread, turn}])
 }
 
-func (u *threadUsage) mentorTransition(thread, from string) {
-	if u == nil {
-		return
-	}
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	if u.closed {
-		return
-	}
-	if total := u.threads[thread]; total != nil {
-		total.mentorFrom = from
-		total.mentorRevision++
-	}
-}
-
-func (u *threadUsage) mentorNote(thread, model string) (string, uint64) {
-	if u == nil {
-		return "", 0
-	}
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	total := u.threads[thread]
-	if model == "" && total != nil {
-		model = total.lastModel
-	}
-	if u.closed || total == nil || total.mentorFrom == "" || total.mentorFrom == model {
-		return "", 0
-	}
-	return "Mentor " + total.mentorFrom + " → " + model, total.mentorRevision
-}
-
 func (u *threadUsage) snapshot(thread string) (tokenUsageReport, bool) {
 	if u == nil {
 		return tokenUsageReport{}, false
@@ -290,12 +255,6 @@ func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, boo
 		turn.Incomplete = true
 	}
 	report.turn = &turn
-	var revision uint64
-	report.mentor, revision = t.usageTracker.totals.mentorNote(t.usageTracker.thread, t.usageTracker.model)
-	t.usageMentorRevisions = make(map[string]uint64)
-	if revision != 0 {
-		t.usageMentorRevisions[t.usageTracker.thread] = revision
-	}
 
 	if t.proxy != nil && t.journalAvailable {
 		journals := t.proxy.journals
@@ -323,13 +282,6 @@ func (t *mekugiResponseTransform) completionUsageReport() (tokenUsageReport, boo
 			return report, true
 		}
 		for _, child := range children {
-			if note, revision := t.usageTracker.totals.mentorNote(child.Thread, ""); revision != 0 {
-				if report.mentor != "" {
-					report.mentor += " · "
-				}
-				report.mentor += child.Author + " " + note
-				t.usageMentorRevisions[child.Thread] = revision
-			}
 			counts, ok := t.usageTracker.totals.snapshot(child.Thread)
 			if !ok {
 				counts.Incomplete = true

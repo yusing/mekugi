@@ -63,8 +63,7 @@ const (
 	Compaction RequestKind = "compaction"
 )
 
-func (k RequestKind) Known() bool     { return k == Turn || k == Prewarm || k == Compaction }
-func (k RequestKind) Scheduled() bool { return k == Turn || k == Compaction }
+func (k RequestKind) Known() bool { return k == Turn || k == Prewarm || k == Compaction }
 
 // FunctionArguments identifies protocol argument fragments. Recognition does not
 // authorize evaluation; consumers still require complete, validated calls.

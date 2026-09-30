@@ -59,7 +59,7 @@ func TestJournalCompactionDeliversDurableSummaryWithoutProvider(t *testing.T) {
 	proxy.replayStore = reopened
 	provider := &serverFakeProvider{}
 	var output bytes.Buffer
-	if err := executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, &output, nil, proxy, nil); err != nil {
+	if err := executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, &output, nil, proxy); err != nil {
 		t.Fatal(err)
 	}
 	if len(provider.forwarded) != 0 || !strings.Contains(output.String(), "Continue parser") || !strings.Contains(output.String(), "response.completed") {
@@ -85,7 +85,7 @@ func TestJournalCompactionDeliversDurableSummaryWithoutProvider(t *testing.T) {
 			t.Fatal("synthesis provenance crossed response/thread/workspace identity")
 		}
 	}
-	if err := executeRequest(t.Context(), t.Context(), request, headers, "compact-failed", provider, serverErrorWriter{err: io.ErrClosedPipe}, nil, proxy, nil); err == nil {
+	if err := executeRequest(t.Context(), t.Context(), request, headers, "compact-failed", provider, serverErrorWriter{err: io.ErrClosedPipe}, nil, proxy); err == nil {
 		t.Fatal("downstream failure was swallowed")
 	}
 	if len(provider.forwarded) != 0 {
@@ -148,7 +148,7 @@ func TestJournalCompactionFallbackPreservesProviderRequest(t *testing.T) {
 			response.Header.Set("Content-Type", "text/event-stream")
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 			var output bytes.Buffer
-			if err := executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, &output, nil, proxy, nil); err != nil {
+			if err := executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, &output, nil, proxy); err != nil {
 				t.Fatal(err)
 			}
 			if len(provider.forwarded) != 1 || !bytes.Equal(provider.forwarded[0], original) || !bytes.Equal(output.Bytes(), wire) {
@@ -182,7 +182,7 @@ func TestJournalCompactionUsesChangeOnlyEvidence(t *testing.T) {
 	request, headers := journalCompactionRequest(t, workspace, thread)
 	provider := &serverFakeProvider{}
 	var output bytes.Buffer
-	if err := executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, &output, nil, proxy, nil); err != nil {
+	if err := executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, &output, nil, proxy); err != nil {
 		t.Fatal(err)
 	}
 	if len(provider.forwarded) != 0 || !strings.Contains(output.String(), id) || !strings.Contains(output.String(), "change.txt") {
@@ -230,7 +230,7 @@ func TestJournalCompactionFlagGate(t *testing.T) {
 	}
 }
 
-func TestJournalCompactionPreservesMentorAndRoutingPolicy(t *testing.T) {
+func TestJournalCompactionPreservesRoutingPolicy(t *testing.T) {
 	for _, mode := range []string{"off", "auto"} {
 		for _, failed := range []bool{false, true} {
 			name := mode + "/completed"
@@ -241,8 +241,6 @@ func TestJournalCompactionPreservesMentorAndRoutingPolicy(t *testing.T) {
 				transform, proxy, _, workspace := newDurableTreeTransform(t)
 				thread := transform.shellThreadID
 				proxy.journalCompaction = mode
-				mentor := newMentorHandoff(true, true)
-				mentor.sessions[thread] = mentorSession{complete: true}
 				request, headers := journalCompactionRequest(t, workspace, thread)
 				request.fields["model"] = mustTestJSON(t, "gpt-5.6-terra")
 				wire, err := journalCompactionSSE("upstream", "gpt-6-sol", "Provider summary")
@@ -257,16 +255,12 @@ func TestJournalCompactionPreservesMentorAndRoutingPolicy(t *testing.T) {
 					output = serverErrorWriter{err: io.ErrClosedPipe}
 				}
 				executor := requestExecutor{
-					provider: provider, output: output, mekugiCalls: proxy, mentor: mentor,
+					provider: provider, output: output, mekugiCalls: proxy,
 					serviceTiers: map[string]string{"gpt-6-sol": "fast"},
 				}
 				err = executor.execute(t.Context(), t.Context(), request, headers, "compact")
 				if (err != nil) != failed {
 					t.Fatalf("delivery: %v, want failure=%t", err, failed)
-				}
-				state, exists := mentor.sessions[thread]
-				if failed && (!exists || !state.complete) || !failed && exists {
-					t.Fatalf("compaction failed=%t left Mentor state=%+v exists=%t", failed, state, exists)
 				}
 				if mode == "off" {
 					if len(provider.forwarded) != 1 {
@@ -301,7 +295,7 @@ func TestForwardedCompactionKeepsRequestProjections(t *testing.T) {
 	response := serverHTTPResponse(string(wire))
 	response.Header.Set("Content-Type", "text/event-stream")
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
-	if err := executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, io.Discard, nil, proxy, nil); err != nil {
+	if err := executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, io.Discard, nil, proxy); err != nil {
 		t.Fatal(err)
 	}
 	if len(provider.forwarded) != 1 {

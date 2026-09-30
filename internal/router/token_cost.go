@@ -17,8 +17,7 @@ type tokenCost struct {
 }
 
 type tokenUsageReport struct {
-	turn   *tokenUsageReport
-	mentor string
+	turn *tokenUsageReport
 	tokenCounts
 	cost         tokenCost
 	model        string

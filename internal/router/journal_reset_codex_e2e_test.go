@@ -232,7 +232,7 @@ func journalResetCodexFixture(t *testing.T) (context.Context, *exec.Cmd, *journa
 	attachTestReplayStore(t, proxy)
 	proxy.journalCompaction = "slice"
 	provider := &journalResetCodexProvider{proxy: proxy, workspace: workspace}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy))
 	t.Cleanup(server.Close)
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	t.Cleanup(cancel)

@@ -68,8 +68,8 @@ adding that display text to later model context.
 ### Evaluate optimizations with real evidence
 
 Operators compare isolated control and treatment runs using hidden correctness
-graders and captured provider traffic. Model handoff is judged separately from
-task correctness and transport-only byte changes.
+graders and captured provider traffic. Task correctness is judged separately from
+transport-only byte changes.
 
 ## Scope
 
@@ -83,7 +83,7 @@ Mekugi includes:
 - router-local executable plugin declarations;
 - durable replay, journals, session inspection, commentary, diagnostics, and
   provider-authoritative usage reporting;
-- optional model handoff and authenticated third-party model routing; and
+- authenticated third-party model routing; and
 - content-safe captured metrics for evaluating real traffic.
 
 User installation, configuration, and commands belong in the

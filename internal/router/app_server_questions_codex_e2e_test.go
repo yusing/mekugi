@@ -76,7 +76,7 @@ func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 			}
 			provider := &questionCodexProvider{mode: mode, requests: make(chan []byte, 8), gate: make(chan struct{})}
 			gateClosed := false
-			server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
+			server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
 			defer server.Close()
 			defer func() {
 				if !gateClosed {

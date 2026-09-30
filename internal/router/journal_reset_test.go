@@ -158,7 +158,7 @@ func TestJournalSliceCompactionConsumesOnlyArmedManualIntent(t *testing.T) {
 		providerResponse.Header.Set("Content-Type", "text/event-stream")
 		provider.results = append(provider.results, serverForwardResult{response: providerResponse})
 		var output bytes.Buffer
-		if err := executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, &output, nil, proxy, nil); err != nil {
+		if err := executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, &output, nil, proxy); err != nil {
 			t.Fatal(err)
 		}
 		return output.String()
@@ -177,7 +177,7 @@ func TestJournalSliceCompactionConsumesOnlyArmedManualIntent(t *testing.T) {
 	metadata.Compaction = mustTestJSON(t, map[string]any{"trigger": "manual", "phase": "standalone_turn", "reason": "user_requested", "implementation": "responses", "strategy": "memento"})
 	headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, metadata)))
 	var output bytes.Buffer
-	if err := executeRequest(t.Context(), t.Context(), request, headers, "armed-compact", provider, &output, nil, proxy, nil); err != nil {
+	if err := executeRequest(t.Context(), t.Context(), request, headers, "armed-compact", provider, &output, nil, proxy); err != nil {
 		t.Fatal(err)
 	}
 	if len(provider.forwarded) != 2 || !strings.Contains(output.String(), "Second") {

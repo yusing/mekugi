@@ -54,7 +54,7 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &appResumeProvider{}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 	t.Setenv("XDG_STATE_HOME", t.TempDir()) // State belongs to the parent UI, not just its Codex child.
 	environment := routerFaultCodexEnvironment(t)
@@ -282,7 +282,7 @@ func TestAppServerOptionWordNavigationNativeCodex(t *testing.T) {
 	environment := routerFaultCodexEnvironment(t)
 	workspace := t.TempDir()
 	provider := &appResumeProvider{}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
 		cmd := exec.CommandContext(ctx, codex, "app-server",

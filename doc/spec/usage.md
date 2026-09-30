@@ -10,8 +10,8 @@ incomplete-usage explanation. Child completion does not update the main report.
 
 When used, TypeSafe AI has a separate provider-reported usage section in the
 Markdown report, with per-agent and total rows for model, HTTP attempts, input,
-output, missing usage, and cost. Agent-model totals, cache accounting, and mentor state exclude these
-auxiliary calls. Only proven descendants join the root's TypeSafe total, and
+output, missing usage, and cost. Agent-model totals and cache accounting exclude
+these auxiliary calls. Only proven descendants join the root's TypeSafe total, and
 restart resets consumption just as it does agent-model usage. Retries and
 unusable answers retain any known consumption; absent, null, invalid, or partial
 usage fields count as missing rather than zero. Overflow makes the affected total
@@ -108,4 +108,4 @@ Acceptance:
 3. Missing usage remains explicit after later successes, compaction, and session remapping.
    Unavailable evidence is `n/a`, never inferred zero; restart begins a new accounting window.
 4. Tree totals include only proven descendants and leave per-thread counters unchanged.
-   TypeSafe consumption remains separate from agent-model usage and Mentor counters.
+   TypeSafe consumption remains separate from agent-model usage.

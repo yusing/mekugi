@@ -24,7 +24,6 @@ type requestExecutor struct {
 	output       io.Writer
 	issues       *CriticalErrors
 	mekugiCalls  *mekugiProxy
-	mentor       *mentorHandoff
 }
 
 type requestContinuation struct {
@@ -54,7 +53,6 @@ type requestAttempt struct {
 	metadata      codexTurnMetadata
 	metadataValid bool
 	threadID      string
-	handoff       *mentorRequest
 	prewarm       bool
 
 	mekugiTransform *mekugiResponseTransform
@@ -190,11 +188,6 @@ func (a *requestAttempt) prepare() error {
 			return err
 		}
 	}
-	handoff, err := a.executor.mentor.prepare(a.headers, a.metadata, a.metadataValid, &a.request)
-	if err != nil {
-		return fmt.Errorf("prepare Mentor Handoff: %w", err)
-	}
-	a.handoff = handoff
 	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.history != nil {
 		if exchange.automatic {
 			parent := exchange.history.parent
@@ -210,7 +203,7 @@ func (a *requestAttempt) prepare() error {
 		}
 	}
 	// Terra remains a selectable legacy Codex model, but all provider requests
-	// use Sol. Do this after Mentor and automatic-continuation selection.
+	// use Sol. Do this after automatic-continuation selection.
 	if a.request.model() == "gpt-5.6-terra" {
 		a.request.fields["model"] = mustMarshalJSON("gpt-6-sol")
 	}
@@ -223,18 +216,6 @@ func (a *requestAttempt) prepare() error {
 	}
 	if jsonString(a.request.fields, "service_tier") == "fast" {
 		a.request.fields["service_tier"] = mustMarshalJSON("priority")
-	}
-	if a.handoff != nil {
-		a.hooks.output = &a.handoff.observation
-	}
-	a.hooks.onFinished = func(result requestCompletion) {
-		if a.handoff == nil {
-			return
-		}
-		progress := a.handoff.record(result)
-		if progress.transitioned && a.mekugiTransform != nil {
-			a.executor.mekugiCalls.usage.mentorTransition(a.threadID, a.request.model())
-		}
 	}
 
 	if a.executor.mekugiCalls != nil {
@@ -252,6 +233,7 @@ func (a *requestAttempt) prepare() error {
 	a.prewarm = webSocketRequest && a.metadataValid &&
 		a.metadata.RequestKind == responses.Prewarm && string(a.request.fields["generate"]) == "false"
 	if a.executor.mekugiCalls != nil {
+		var err error
 		a.mekugiTransform, err = a.executor.mekugiCalls.prepareModelRequest(
 			a.startCtx,
 			&a.request,
@@ -466,9 +448,6 @@ func (a *requestAttempt) prepareResponse() error {
 			ReasoningTokens:  counts.ReasoningTokens,
 		})
 	}
-	if a.response.StatusCode < http.StatusOK || a.response.StatusCode >= http.StatusMultipleChoices {
-		a.hooks.output = nil
-	}
 	return nil
 }
 
@@ -556,7 +535,6 @@ func (a *requestAttempt) deliver() (*requestContinuation, error) {
 		a.finalization.upstreamTerminalState == responseTerminalSteered ||
 		a.finalization.upstreamTerminalState == responseTerminalInterrupted:
 		a.finalization.observation.outcome = requestOutcomeCompleted
-		a.hooks.finish(a.finalization.completion())
 	case a.finalization.upstreamTerminalState == responseTerminalFailed:
 		a.finalization.observation.outcome = requestOutcomeFailed
 		a.finalization.failurePhase = requestFailureTerminalValidation
@@ -589,7 +567,6 @@ func (a *requestAttempt) continueJournal() (*requestContinuation, error) {
 	// Close this completed attempt before its successor can publish cumulative
 	// usage or journal output. finish repeats these idempotent operations after
 	// the continuation chain returns, matching ordinary attempt cleanup.
-	a.hooks.finish(a.finalization.completion())
 	a.usageTracker.finish()
 	return &requestContinuation{startCtx: start, executionCtx: nextCtx, request: next}, nil
 }
@@ -636,7 +613,6 @@ func (a *requestAttempt) finish(requestErr error) error {
 			a.executor.issues.mu.Unlock()
 		}
 	}
-	a.hooks.finish(a.finalization.completion())
 	fields := map[string]any{
 		"event": "request_complete", "request_id": a.debugID,
 		"client_request_id": a.headers.Get("x-client-request-id"),

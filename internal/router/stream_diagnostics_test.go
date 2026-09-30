@@ -98,7 +98,7 @@ func TestStreamDiagnosticsRequestLog(t *testing.T) {
 				Header:     http.Header{"Content-Type": {"text/event-stream"}},
 				Body:       io.NopCloser(strings.NewReader(stream)),
 			}}}}
-			_ = executeRequest(ctx, ctx, request, serverMetadataHeaders(t, "turn", nil), "diagnostic-session", provider, io.Discard, NewCriticalErrors(), nil, nil)
+			_ = executeRequest(ctx, ctx, request, serverMetadataHeaders(t, "turn", nil), "diagnostic-session", provider, io.Discard, NewCriticalErrors(), nil)
 			data, err := os.ReadFile(debug.paths[0])
 			if err != nil {
 				t.Fatal(err)
@@ -208,7 +208,7 @@ func TestStreamDiagnosticsNativeMetadata(t *testing.T) {
 		_, _, _ = conn.Read(ctx)
 	}))
 	defer upstream.Close()
-	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, newProviderClient(upstream.URL, upstream.Client()), nil, nil, nil)
+	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, newProviderClient(upstream.URL, upstream.Client()), nil, nil)
 	defer endpoint.Close()
 	router := httptest.NewServer(debug.handler(endpoint))
 	defer router.Close()

@@ -27,7 +27,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &appServerChildMetadataProvider{turns: make(map[string]int)}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()

@@ -190,7 +190,7 @@ func TestJournalFinishEndsWithoutProviderContinuation(t *testing.T) {
 				provider := &serverFakeProvider{results: []serverForwardResult{{response: journalFinishResponse(t, stream, "completed", snapshot, calls...)}}}
 				request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
 				var output bytes.Buffer
-				if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "session", provider, &output, NewCriticalErrors(), proxy, nil); err != nil {
+				if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "session", provider, &output, NewCriticalErrors(), proxy); err != nil {
 					t.Fatal(err)
 				}
 				if len(provider.forwarded) != 1 {
@@ -263,7 +263,7 @@ func TestJournalFinishDoesNotHidePendingCallsOrFlushFailures(t *testing.T) {
 				}
 				request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
 				var output bytes.Buffer
-				err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "session", provider, &output, NewCriticalErrors(), proxy, nil)
+				err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "session", provider, &output, NewCriticalErrors(), proxy)
 				if status == "completed" && err != nil {
 					t.Fatal(err)
 				}
@@ -334,7 +334,7 @@ func TestJournalFinishWithHostCallReturnsOneCorrectableResult(t *testing.T) {
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: journalFinishResponse(t, scenario.stream, "completed", scenario.snapshot, calls...)}}}
 			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = scenario.stream })
 			var output bytes.Buffer
-			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "mixed-host-turn", provider, &output, NewCriticalErrors(), proxy, nil); err != nil {
+			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "mixed-host-turn", provider, &output, NewCriticalErrors(), proxy); err != nil {
 				t.Fatal(err)
 			}
 			if len(provider.forwarded) != 1 || strings.Contains(output.String(), "Journal flush") {
@@ -368,7 +368,7 @@ func TestJournalFinishHostRetrySucceedsOnNextTurn(t *testing.T) {
 		journalFinishCall(`{"op":"finish","journal":[{"op":"add","text":"Milestone survives retry"}]}`), hostCall)
 	firstProvider := &serverFakeProvider{results: []serverForwardResult{{response: firstResponse}}}
 	var firstOutput bytes.Buffer
-	if err := executeRequest(t.Context(), t.Context(), serverRequest(t, nil), headers, "first-turn", firstProvider, &firstOutput, NewCriticalErrors(), proxy, nil); err != nil {
+	if err := executeRequest(t.Context(), t.Context(), serverRequest(t, nil), headers, "first-turn", firstProvider, &firstOutput, NewCriticalErrors(), proxy); err != nil {
 		t.Fatal(err)
 	}
 	if len(firstProvider.forwarded) != 1 {
@@ -395,7 +395,7 @@ func TestJournalFinishHostRetrySucceedsOnNextTurn(t *testing.T) {
 	}
 	secondProvider := &serverFakeProvider{results: []serverForwardResult{{response: journalFinishResponse(t, false, "completed", "full", retryFinish)}}}
 	var secondOutput bytes.Buffer
-	if err := executeRequest(t.Context(), t.Context(), input, headers, "retry-turn", secondProvider, &secondOutput, NewCriticalErrors(), proxy, nil); err != nil {
+	if err := executeRequest(t.Context(), t.Context(), input, headers, "retry-turn", secondProvider, &secondOutput, NewCriticalErrors(), proxy); err != nil {
 		t.Fatal(err)
 	}
 	if len(secondProvider.forwarded) != 1 {
@@ -443,7 +443,7 @@ func TestJournalFinishReplayDoesNotFinishLaterCRUD(t *testing.T) {
 	headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: journalFinishResponse(t, false, "completed", "full", journalFinishCall(`{"op":"finish","journal":[{"op":"add","text":"First task completed"}]}`))}}}
 	var completed bytes.Buffer
-	if err := executeRequest(t.Context(), t.Context(), serverRequest(t, nil), headers, "original-session", provider, &completed, NewCriticalErrors(), proxy, nil); err != nil {
+	if err := executeRequest(t.Context(), t.Context(), serverRequest(t, nil), headers, "original-session", provider, &completed, NewCriticalErrors(), proxy); err != nil {
 		t.Fatal(err)
 	}
 	history := journalFinishClientOutput(t, false, completed.Bytes())
@@ -466,7 +466,7 @@ func TestJournalFinishReplayDoesNotFinishLaterCRUD(t *testing.T) {
 		{response: journalFinishResponse(t, false, "completed", "full", pending)},
 	}}
 	var output bytes.Buffer
-	if err := executeRequest(t.Context(), t.Context(), request, headers, "fresh-session", provider, &output, NewCriticalErrors(), resumed, nil); err != nil {
+	if err := executeRequest(t.Context(), t.Context(), request, headers, "fresh-session", provider, &output, NewCriticalErrors(), resumed); err != nil {
 		t.Fatal(err)
 	}
 	if len(provider.forwarded) != 2 {
@@ -634,7 +634,7 @@ func TestJournalListContinuationCapturesNaturalAnswer(t *testing.T) {
 			}}
 			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
 			var output bytes.Buffer
-			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil}), "session", provider, &output, NewCriticalErrors(), proxy, nil); err != nil {
+			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil}), "session", provider, &output, NewCriticalErrors(), proxy); err != nil {
 				t.Fatal(err)
 			}
 			if len(provider.forwarded) != 2 {
@@ -720,7 +720,7 @@ func TestJournalEmptyFinishPersistsTokenMetricsSilently(t *testing.T) {
 				provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 				request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
 				var output bytes.Buffer
-				if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "session", provider, &output, nil, proxy, nil); err != nil {
+				if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "session", provider, &output, nil, proxy); err != nil {
 					t.Fatal(err)
 				}
 				if len(provider.forwarded) != 1 {

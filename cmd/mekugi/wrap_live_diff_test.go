@@ -30,7 +30,7 @@ func TestAutoWrapProcess(t *testing.T) {
 		if os.Getenv("MEKUGI_AUTO_WRAP_HEADLESS") == "1" {
 			args = []string{"headless", "--yolo"}
 		}
-		code, err := wrapCodex(t.Context(), []string{"--mentor-handoff=false"}, args)
+		code, err := wrapCodex(t.Context(), nil, args)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		}

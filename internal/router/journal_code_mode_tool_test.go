@@ -165,7 +165,7 @@ func TestCodeModeJournalCompletionAvoidsProviderContinuation(t *testing.T) {
 					}
 				})
 				var output bytes.Buffer
-				if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "session", provider, &output, NewCriticalErrors(), proxy, nil); err != nil {
+				if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "session", provider, &output, NewCriticalErrors(), proxy); err != nil {
 					t.Fatal(err)
 				}
 				if len(provider.forwarded) != test.requests {

@@ -715,7 +715,7 @@ func TestProviderWebSocketAncillaryEventsAndEventOwnedCompletion(t *testing.T) {
 			defer client.websockets.close()
 			parsed := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
 			output := httptest.NewRecorder()
-			if err := executeRequest(t.Context(), t.Context(), parsed, codexAuthHeaders(), "session", client, output, nil, nil, nil); err != nil {
+			if err := executeRequest(t.Context(), t.Context(), parsed, codexAuthHeaders(), "session", client, output, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			if stream {

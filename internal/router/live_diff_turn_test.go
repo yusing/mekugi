@@ -107,7 +107,6 @@ func TestRequestPreparationBeginsOnlyNewRootTurn(t *testing.T) {
 		provider:    &serverFakeProvider{},
 		issues:      NewCriticalErrors(),
 		mekugiCalls: proxy,
-		mentor:      newMentorHandoff(true, true),
 	}
 	headers := func(turnID string) http.Header {
 		metadata := codexTurnMetadata{

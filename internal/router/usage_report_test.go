@@ -131,17 +131,16 @@ func TestMainCompletionPersistsTokenMetricsWithoutCommentary(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	first := &mekugiResponseTransform{
 		ctx: t.Context(), proxy: proxy, threadID: "root", shellThreadID: "root",
-		usageTracker: proxy.usage.observationForTurn("root", "root", "turn-mentor", "gpt-6-astra", ""),
+		usageTracker: proxy.usage.observationForTurn("root", "root", "turn-first", "gpt-6-astra", ""),
 	}
 	first.observeResponseUsage(tokenCounts{InputTokens: 100, UncachedInputTokens: 100, OutputTokens: 10})
-	proxy.usage.mentorTransition("root", "gpt-6-astra")
 
 	main := &mekugiResponseTransform{
 		ctx: t.Context(), proxy: proxy, threadID: "root", shellThreadID: "root",
 		usageTracker: proxy.usage.observationForTurn("root", "root", "turn-configured", "gpt-5.6-sol", ""),
 	}
 	main.observeResponseUsage(tokenCounts{InputTokens: 50, UncachedInputTokens: 50, OutputTokens: 5})
-	response := []byte(`{"id":"mentor-switch-response","status":"completed","output":[{"type":"message","id":"answer","role":"assistant","phase":"final_answer","status":"completed","content":[{"type":"output_text","text":"The task is complete."}]}]}`)
+	response := []byte(`{"id":"model-switch-response","status":"completed","output":[{"type":"message","id":"answer","role":"assistant","phase":"final_answer","status":"completed","content":[{"type":"output_text","text":"The task is complete."}]}]}`)
 	transformed, err := main.TransformJSON(response)
 	if err != nil {
 		t.Fatal(err)

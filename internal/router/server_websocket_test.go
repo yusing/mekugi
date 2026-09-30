@@ -63,7 +63,7 @@ func testResponsesSocket(t *testing.T, ctx context.Context, upstream http.Handle
 	t.Helper()
 	provider := httptest.NewServer(upstream)
 	t.Cleanup(provider.Close)
-	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, newProviderClient(provider.URL, provider.Client()), nil, proxy, nil)
+	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, newProviderClient(provider.URL, provider.Client()), nil, proxy)
 	t.Cleanup(endpoint.Close)
 	router := httptest.NewServer(endpoint)
 	t.Cleanup(router.Close)
@@ -310,7 +310,7 @@ func TestResponsesWebSocketGrokPrewarmContinuationAndDisconnect(t *testing.T) {
 			return nil, request.Context().Err()
 		}),
 	}}
-	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, provider, nil, nil, nil)
+	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, provider, nil, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
 	defer server.Close()
@@ -371,7 +371,7 @@ func TestResponsesWebSocketEndpointCloseWaitsAndRejectsNewAdmission(t *testing.T
 		_, _, _ = conn.Read(ctx)
 	}))
 	defer provider.Close()
-	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, newProviderClient(provider.URL, provider.Client()), nil, nil, nil)
+	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, newProviderClient(provider.URL, provider.Client()), nil, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
 	defer server.Close()
@@ -492,7 +492,7 @@ func TestMekugiPrewarmRequiresExplicitNonGeneratingRequest(t *testing.T) {
 				request.fields["generate"] = json.RawMessage(generate)
 			}
 			proxy := &mekugiProxy{}
-			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "prewarm", nil), "session", &webSocketExchange{}, io.Discard, nil, proxy, nil); err == nil {
+			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "prewarm", nil), "session", &webSocketExchange{}, io.Discard, nil, proxy); err == nil {
 				t.Fatal("generating prewarm bypassed turn validation")
 			}
 		})
@@ -506,7 +506,7 @@ func TestResponsesHTTPPrewarmCannotBypassPreparation(t *testing.T) {
 	request.Header.Set(threadIDHeader, "prewarm-thread")
 	provider := &serverFakeProvider{}
 	recorder := httptest.NewRecorder()
-	responsesHandler(t.Context(), time.Minute, provider, nil, &mekugiProxy{}, nil)(recorder, request)
+	responsesHandler(t.Context(), time.Minute, provider, nil, &mekugiProxy{})(recorder, request)
 	if len(provider.forwarded) != 0 {
 		t.Fatal("HTTP prewarm reached a potentially generating provider")
 	}

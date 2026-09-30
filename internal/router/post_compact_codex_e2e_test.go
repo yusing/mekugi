@@ -200,7 +200,7 @@ func testPostCompactNativeCodexE2E(t *testing.T, synthesized bool) {
 		proxy.replayStore = store
 		proxy.journalCompaction = "auto"
 	}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy))
 	defer server.Close()
 	executable, err := os.Executable()
 	if err != nil {

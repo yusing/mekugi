@@ -73,8 +73,6 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Diagnostics.** [Inspect past sessions](#inspect-a-session) offline, record
   debug evidence, or let agents [report issues](#configuration-and-troubleshooting)
   to your own command.
-- **Mentor Handoff.** [Eligible threads](doc/spec/mentor.md) start on a stronger
-  model and then return to their configured one. It is on by default.
 - **Other providers and tiers.** [Grok](#grok-models) and
   [OpenCode Go or Zen](#opencode-go-and-zen) run alongside OpenAI models.
   [Service tiers](#mekugi-settings) can be set per model.
@@ -121,7 +119,6 @@ ordinary Codex arguments and output:
 mekugi codex --yolo --model gpt-6-sol
 mekugi codex exec "Explain this repository"
 mekugi codex --yolo resume 'CONVERSATION_ID'
-mekugi --mentor-handoff=false codex --yolo
 ```
 
 Each invocation:
@@ -174,9 +171,7 @@ exit means the run or its shutdown failed. Ordinary `codex exec` is unchanged.
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `--ansi-faint` | `auto` | Dimming: `auto` detects mosh ancestry, `on` uses ANSI faint, `off` uses fixed muted colors |
-| `--mode` | `mekugi` | Use `passthrough` to forward traffic without mekugi tools, plugins, or Mentor Handoff |
-| `--main-mentor-handoff` | `true` | Enable mentor handoff for eligible main sessions and ordinary forks |
-| `--mentor-handoff` | `true` | Use `false` to keep subagents on their configured models |
+| `--mode` | `mekugi` | Use `passthrough` to forward traffic without Mekugi tools or plugins |
 | `--post-compact-recovery` | `true` | Use `false` to skip the post-compaction context hook |
 | `--journal-compaction` | `off` | Experimental `auto` uses journal summaries without a provider request; `slice` resets only between planned slices |
 | `--grok` | `false` | Enable Grok models in mekugi mode |
@@ -488,8 +483,8 @@ api_key = "your-typesafe-key"
 
 Every section is optional. Settings are read at startup and never rewritten.
 
-- **Service tiers** replace the request's tier after model selection, Mentor
-  Handoff included. The values are `auto`, `default`, `fast` (sent as
+- **Service tiers** replace the request's tier after model selection. The values
+  are `auto`, `default`, `fast` (sent as
   `priority`), `priority`, and `flex`. The provider must support the tier you
   choose.
 - **API keys:** `OPENCODE_API_KEY` overrides both file keys. The per-service

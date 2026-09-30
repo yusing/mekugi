@@ -78,8 +78,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if err != nil {
 		return err
 	}
-	mainMentorSet := false
-	mentorSet := false
 	postCompactSet := false
 	exploreFilterSet := false
 	flags.Visit(func(item *flag.Flag) {
@@ -88,24 +86,12 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			postCompactSet = true
 		case "explore-filter":
 			exploreFilterSet = true
-		case "main-mentor-handoff":
-			mainMentorSet = true
-		case "mentor-handoff":
-			mentorSet = true
 		}
 	})
 	if *flags.mode == "passthrough" {
-		if mentorSet && *flags.mentorHandoffEnabled {
-			return errors.New("--mentor-handoff requires --mode mekugi")
-		}
-		if mainMentorSet && *flags.mainMentorHandoffEnabled {
-			return errors.New("--main-mentor-handoff requires --mode mekugi")
-		}
 		if postCompactSet && *flags.postCompactRecovery {
 			return errors.New("--post-compact-recovery requires --mode mekugi")
 		}
-		*flags.mainMentorHandoffEnabled = false
-		*flags.mentorHandoffEnabled = false
 		*flags.postCompactRecovery = false
 	}
 	if *flags.grokEnabled && *flags.mode != "mekugi" {
@@ -223,16 +209,12 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}
 	var frontendDirectory string
 	var dataDirectory string
-	var mentor *mentorHandoff
 	if *flags.mode == "mekugi" {
 		var err error
 		dataDirectory, err = mekugiDataDirectory()
 		if err != nil {
 			return fmt.Errorf("initialize mekugi response proxy: %w", err)
 		}
-	}
-	if *flags.mentorHandoffEnabled || *flags.mainMentorHandoffEnabled {
-		mentor = newMentorHandoff(*flags.mainMentorHandoffEnabled, *flags.mentorHandoffEnabled)
 	}
 	titles := newSessionTitleCache()
 	if issues != nil {
@@ -328,10 +310,10 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if mekugiCalls != nil {
 		mux.HandleFunc("POST "+commentaryPublisherPath, mekugiCalls.commentary.serveHTTP)
 	}
-	webSocketEndpoint := responsesWebSocketHandler(ctx, *flags.timeout, provider, issues, mekugiCalls, mentor)
+	webSocketEndpoint := responsesWebSocketHandler(ctx, *flags.timeout, provider, issues, mekugiCalls)
 	defer webSocketEndpoint.Close()
 	mux.Handle("GET /v1/responses", webSocketEndpoint)
-	mux.HandleFunc("POST /v1/responses", responsesHandler(ctx, *flags.timeout, provider, issues, mekugiCalls, mentor))
+	mux.HandleFunc("POST /v1/responses", responsesHandler(ctx, *flags.timeout, provider, issues, mekugiCalls))
 
 	server := &http.Server{
 		ErrorLog:          log.New(io.Discard, "", 0), // Disable net/http terminal diagnostics while Codex owns it.
@@ -512,7 +494,6 @@ func responsesHandler(
 	provider responseProvider,
 	issues *CriticalErrors,
 	mekugiCalls *mekugiProxy,
-	mentor *mentorHandoff,
 ) http.HandlerFunc {
 	var serviceTiers map[string]string
 	if client, ok := provider.(*providerClient); ok {
@@ -537,7 +518,7 @@ func responsesHandler(
 		startCtx, executionCtx, cancelRequest := requestContexts(request.Context(), lifecycle, responseStartTimeout)
 		defer cancelRequest()
 		sessionID := routingSessionID(request.Header, parsedRequest)
-		executor := requestExecutor{provider: provider, output: trackedWriter, issues: issues, mekugiCalls: mekugiCalls, mentor: mentor, serviceTiers: serviceTiers}
+		executor := requestExecutor{provider: provider, output: trackedWriter, issues: issues, mekugiCalls: mekugiCalls, serviceTiers: serviceTiers}
 		if err := executor.execute(startCtx, executionCtx, parsedRequest, request.Header, sessionID); err != nil {
 			writeRequestError(trackedWriter, err)
 		}

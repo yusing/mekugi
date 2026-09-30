@@ -242,7 +242,7 @@ func TestWrappedRouterProcess(t *testing.T) {
 	if os.Getenv("MEKUGI_TEST_ROUTER") != "1" {
 		return
 	}
-	os.Args = []string{os.Args[0], "--grok", "--mentor-handoff=false", "codex"}
+	os.Args = []string{os.Args[0], "--grok", "codex"}
 	os.Exit(run())
 }
 

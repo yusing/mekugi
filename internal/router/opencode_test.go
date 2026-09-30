@@ -284,7 +284,7 @@ func TestOpenCodeWebSocketPrewarmContinuationAndDisconnect(t *testing.T) {
 			return nil, request.Context().Err()
 		}),
 	}}}
-	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, provider, nil, nil, nil)
+	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, provider, nil, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
 	defer server.Close()
@@ -411,7 +411,7 @@ func TestOpenCodeStartupAndMode(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	ready := false
-	err := RunSession(ctx, []string{"--mentor-handoff=false"}, nil, func(session Session) {
+	err := RunSession(ctx, nil, nil, func(session Session) {
 		ready = true
 		if session.GrokEnabled || session.OpenCode.Go.APIKey != "go-test" || session.OpenCode.Zen.APIKey != "zen-test" {
 			t.Error("startup lost separate OpenCode settings")

@@ -29,7 +29,7 @@ func TestComposerFileAttachmentsNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &appQueueProvider{requests: make(chan []byte, 8)}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	t.Cleanup(func() { server.Close() })
 	newCommand := func(ctx context.Context) *exec.Cmd {
 		cmd := exec.CommandContext(ctx, codex, "app-server",
@@ -96,7 +96,7 @@ func TestComposerFileAttachmentsNativeCodexE2E(t *testing.T) {
 	}
 	// Fresh router handler and Codex process must recover only the submitted snapshot.
 	server.Close()
-	server = httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
+	server = httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	second := startAppResumeTerminal(t, newCommand, "--last")
 	second.await("Ready")
 	second.await("Attached")

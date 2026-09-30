@@ -146,7 +146,7 @@ Acceptance:
    commentary is excluded from model output while genuine model commentary is kept,
    even with identical text.
 4. Snapshot totals reconcile their exchanges and provider attempts; capture-health errors remain visible.
-5. Passthrough, Mekugi, and Mentor Handoff use the same capture owner and endpoint;
+5. Passthrough and Mekugi use the same capture owner and endpoint;
    none requires another listener.
 6. Cumulative metrics remain complete after the detailed exchange window fills, while health marks
    the discarded detail.

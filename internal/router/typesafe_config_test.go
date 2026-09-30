@@ -80,7 +80,7 @@ func TestRunSessionTypeSafeConfigOverridesEnvironment(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	called := false
-	err := RunSession(ctx, []string{"--explore-filter", "--mentor-handoff=false"}, nil, func(Session) {
+	err := RunSession(ctx, []string{"--explore-filter"}, nil, func(Session) {
 		called = true
 		cancel()
 	}, nil)

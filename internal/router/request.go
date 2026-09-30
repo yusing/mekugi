@@ -186,32 +186,6 @@ func (r parsedResponsesRequest) reasoningEffort() string {
 	return strings.TrimSpace(reasoning.Effort)
 }
 
-// setModelAndReasoningEffort updates the model and reasoning effort fields in the request.
-func (r *parsedResponsesRequest) setModelAndReasoningEffort(model, effort string) error {
-	encodedModel, err := marshalProtocolJSON(model)
-	if err != nil {
-		return fmt.Errorf("encode model: %w", err)
-	}
-	reasoning := map[string]json.RawMessage{}
-	if raw, ok := r.fields["reasoning"]; ok && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-		if err := json.Unmarshal(raw, &reasoning); err != nil || reasoning == nil {
-			return errors.New("reasoning must be an object")
-		}
-	}
-	encodedEffort, err := marshalProtocolJSON(effort)
-	if err != nil {
-		return fmt.Errorf("encode reasoning effort: %w", err)
-	}
-	reasoning["effort"] = encodedEffort
-	encodedReasoning, err := marshalProtocolJSON(reasoning)
-	if err != nil {
-		return fmt.Errorf("encode reasoning: %w", err)
-	}
-	r.fields["model"] = encodedModel
-	r.fields["reasoning"] = encodedReasoning
-	return nil
-}
-
 // promptCacheKey returns the prompt cache key from the request.
 func (r parsedResponsesRequest) promptCacheKey() string {
 	raw, ok := r.fields["prompt_cache_key"]

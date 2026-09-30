@@ -85,7 +85,7 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 	headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, metadata)))
 	recorder := httptest.NewRecorder()
 	err = executeRequest(t.Context(), t.Context(), request, headers, "router-fault-session",
-		provider, &trackedResponseWriter{ResponseWriter: recorder}, issues, proxy, nil)
+		provider, &trackedResponseWriter{ResponseWriter: recorder}, issues, proxy)
 	if err == nil {
 		t.Fatal("malformed intercepted event unexpectedly completed")
 	}

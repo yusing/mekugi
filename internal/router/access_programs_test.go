@@ -12,7 +12,7 @@ func TestRequestCyberAccessOptOut(t *testing.T) {
 	for _, model := range []string{"gpt-6-sol", "gpt-6-astra", "gpt-6-luna", grokModel, "opencode-go:test"} {
 		for _, raw := range []string{"", "null", `{}`, `{"cyber":"daybreak_blue"}`, `{"cyber":"daybreak_red","other":{"id":9007199254740993}}`, `{"cyber":"standard"}`} {
 			t.Run(model+"/"+raw, func(t *testing.T) {
-				request := mentorTestRequest(t, model)
+				request := modelTestRequest(t, model)
 				if raw != "" {
 					request.fields["access_programs"] = []byte(raw)
 				}

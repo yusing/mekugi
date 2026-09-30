@@ -47,7 +47,7 @@ func TestAppServerSteerAndQueueNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &appQueueProvider{requests: make(chan []byte, 8), gates: []chan struct{}{make(chan struct{}), make(chan struct{})}}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, p, nil, nil, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, p, nil, nil))
 	defer server.Close()
 	defer func() {
 		for _, gate := range p.gates {

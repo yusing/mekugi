@@ -9,19 +9,17 @@ import (
 
 type routerFlags struct {
 	*flag.FlagSet
-	timeout                  *time.Duration
-	streamIdleTimeout        *time.Duration
-	mode                     *string
-	ansiFaint                *string
-	mainMentorHandoffEnabled *bool
-	mentorHandoffEnabled     *bool
-	postCompactRecovery      *bool
-	journalCompaction        *string
-	grokEnabled              *bool
-	grokAuthFile             *string
-	exploreFilter            *bool
-	captureOutput            *string
-	debug                    *bool
+	timeout             *time.Duration
+	streamIdleTimeout   *time.Duration
+	mode                *string
+	ansiFaint           *string
+	postCompactRecovery *bool
+	journalCompaction   *string
+	grokEnabled         *bool
+	grokAuthFile        *string
+	exploreFilter       *bool
+	captureOutput       *string
+	debug               *bool
 }
 
 func newRouterFlags(stderr io.Writer) routerFlags {
@@ -34,20 +32,18 @@ func newRouterFlags(stderr io.Writer) routerFlags {
 		flags.PrintDefaults()
 	}
 	return routerFlags{
-		FlagSet:                  flags,
-		ansiFaint:                flags.String("ansi-faint", "auto", "dim text: auto (detect mosh), on (ANSI faint), or off (fixed colors)"),
-		timeout:                  flags.Duration("timeout", defaultRequestTimeout, "upstream response-start timeout"),
-		streamIdleTimeout:        flags.Duration("stream-idle-timeout", defaultStreamIdleTimeout, "maximum upstream inactivity between WebSocket messages or HTTP response bytes"),
-		mode:                     flags.String("mode", defaultRewriteMode, "response mode: mekugi or passthrough"),
-		mainMentorHandoffEnabled: flags.Bool("main-mentor-handoff", true, "start eligible main threads with a mentor model"),
-		mentorHandoffEnabled:     flags.Bool("mentor-handoff", true, "start eligible spawned subagents with a mentor model"),
-		postCompactRecovery:      flags.Bool("post-compact-recovery", true, "restore journal and change context after compaction through a pre-trusted Codex hook"),
-		journalCompaction:        flags.String("journal-compaction", "off", "journal compaction: auto, slice, or off (default remains gated on evaluation)"),
-		grokEnabled:              flags.Bool("grok", false, "enable Grok models and plaintext collaboration projection"),
-		grokAuthFile:             flags.String("grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)"),
-		exploreFilter:            flags.Bool("explore-filter", true, "omit search results that TypeSafe Jev judges unrelated to the task when a TypeSafe API key is configured"),
-		captureOutput:            flags.String("capture-output", "", "optional sanitized capture JSONL path"),
-		debug:                    flags.Bool("debug", false, "record diagnostics, capture, metrics, instructions, runtime reads, and AX report; print artifact paths on exit"),
+		FlagSet:             flags,
+		ansiFaint:           flags.String("ansi-faint", "auto", "dim text: auto (detect mosh), on (ANSI faint), or off (fixed colors)"),
+		timeout:             flags.Duration("timeout", defaultRequestTimeout, "upstream response-start timeout"),
+		streamIdleTimeout:   flags.Duration("stream-idle-timeout", defaultStreamIdleTimeout, "maximum upstream inactivity between WebSocket messages or HTTP response bytes"),
+		mode:                flags.String("mode", defaultRewriteMode, "response mode: mekugi or passthrough"),
+		postCompactRecovery: flags.Bool("post-compact-recovery", true, "restore journal and change context after compaction through a pre-trusted Codex hook"),
+		journalCompaction:   flags.String("journal-compaction", "off", "journal compaction: auto, slice, or off (default remains gated on evaluation)"),
+		grokEnabled:         flags.Bool("grok", false, "enable Grok models and plaintext collaboration projection"),
+		grokAuthFile:        flags.String("grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)"),
+		exploreFilter:       flags.Bool("explore-filter", true, "omit search results that TypeSafe Jev judges unrelated to the task when a TypeSafe API key is configured"),
+		captureOutput:       flags.String("capture-output", "", "optional sanitized capture JSONL path"),
+		debug:               flags.Bool("debug", false, "record diagnostics, capture, metrics, instructions, runtime reads, and AX report; print artifact paths on exit"),
 	}
 }
 

@@ -211,7 +211,7 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 	proxy.replayStore = store
 	issues := NewCriticalErrors()
 	issues.failureStore = store
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy))
 	defer server.Close()
 
 	stdout, stderr, runErr := runRouterFaultNativeCodex(t, server.URL, "Run the deterministic router fault fixture.")
@@ -270,7 +270,7 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 func TestRetryablePrestream5xxStillRetriesInNativeCodexE2E(t *testing.T) {
 	provider := &routerFaultCodexProvider{mode: "retry"}
 	proxy := newManagedMekugiProxy(t)
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, NewCriticalErrors(), proxy, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, NewCriticalErrors(), proxy))
 	defer server.Close()
 
 	stdout, stderr, runErr := runRouterFaultNativeCodex(t, server.URL, "Complete after one retryable provider error.")

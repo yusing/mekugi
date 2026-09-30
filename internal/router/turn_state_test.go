@@ -71,7 +71,7 @@ func TestTurnStateRoundTrip(t *testing.T) {
 					})
 					original := bytes.Clone(parsed.originalBody)
 					output := httptest.NewRecorder()
-					if err := executeRequest(t.Context(), t.Context(), parsed, headers, "stable-session", provider, output, nil, proxy, nil); err != nil {
+					if err := executeRequest(t.Context(), t.Context(), parsed, headers, "stable-session", provider, output, nil, proxy); err != nil {
 						t.Fatal(err)
 					}
 					if step == 0 {

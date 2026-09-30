@@ -25,7 +25,7 @@ import (
 // A downstream socket owns a dedicated provider socket. In particular it never
 // enters the HTTP pool: accepted steering and previous_response_id are scoped
 // to this connection, including the quiet interval after response.completed.
-func responsesWebSocketHandler(lifecycle context.Context, timeout time.Duration, provider *providerClient, issues *CriticalErrors, proxy *mekugiProxy, mentor *mentorHandoff) *responsesWebSocketEndpoint {
+func responsesWebSocketHandler(lifecycle context.Context, timeout time.Duration, provider *providerClient, issues *CriticalErrors, proxy *mekugiProxy) *responsesWebSocketEndpoint {
 	lifecycle, cancel := context.WithCancel(lifecycle)
 	endpoint := &responsesWebSocketEndpoint{cancel: cancel}
 	endpoint.handler = func(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +45,7 @@ func responsesWebSocketHandler(lifecycle context.Context, timeout time.Duration,
 		defer stop()
 		s := &responsesWebSocket{
 			ctx: ctx, downstream: conn, provider: provider, headers: r.Header.Clone(),
-			timeout: timeout, issues: issues, proxy: proxy, mentor: mentor,
+			timeout: timeout, issues: issues, proxy: proxy,
 			clientMessages: readResponsesWebSocket(ctx, conn, cancel), histories: make(map[string]*webSocketHistory),
 		}
 		defer func() {
@@ -211,8 +211,7 @@ type webSocketHistory struct {
 	input    []json.RawMessage
 	output   []json.RawMessage
 	settings map[string]json.RawMessage
-	// Automatic steering successors execute the already-sent model contract,
-	// even if the preceding terminal completed the Mentor schedule.
+	// Automatic steering successors execute the already-sent model contract.
 	providerModel     string
 	providerReasoning json.RawMessage
 	providerHistory   providerHistory
@@ -247,7 +246,6 @@ type responsesWebSocket struct {
 	timeout          time.Duration
 	issues           *CriticalErrors
 	proxy            *mekugiProxy
-	mentor           *mentorHandoff
 	histories        map[string]*webSocketHistory
 	lastID           string
 	steers           []webSocketSteer
@@ -550,7 +548,7 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 	defer cancel()
 	exchange.ctx = executionCtx
 	output := &webSocketOutput{exchange: exchange}
-	executor := requestExecutor{provider: exchange, output: output, issues: s.issues, mekugiCalls: s.proxy, mentor: s.mentor, serviceTiers: s.provider.serviceTiers}
+	executor := requestExecutor{provider: exchange, output: output, issues: s.issues, mekugiCalls: s.proxy, serviceTiers: s.provider.serviceTiers}
 	err = executor.execute(startCtx, executionCtx, parsed, headers, routingSessionID(headers, parsed))
 	if err != nil && executionCtx.Err() == nil && !s.errorDelivered {
 		if payload, writeErr := s.writeError(executionCtx, err); writeErr == nil {

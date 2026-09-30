@@ -113,7 +113,7 @@ func runAppServerPreviewWithEnvironment(t *testing.T, provider responseProvider,
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy))
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()

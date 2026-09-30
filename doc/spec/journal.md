@@ -137,8 +137,8 @@ forwarded to the provider.
 Synthesis requires one selected workspace, an unambiguous requesting thread and
 durable journal or executing-thread-owned change evidence. Conflicted identities,
 missing evidence, rendering failures and persistence failures forward the request
-without journal/tool projection. Existing model aliases, service-tier policy and
-successful-compaction Mentor resets still apply. Invalid compaction protocol requests retain the existing validation
+without journal/tool projection. Existing model aliases and service-tier policy
+still apply. Invalid compaction protocol requests retain the existing validation
 errors. A summary is never empty. A downstream delivery failure is reported, not
 retried as a second provider request.
 

@@ -157,7 +157,7 @@ func TestInvalidNativeCatalogIsBadRequestBeforeForwarding(t *testing.T) {
 		request.Header = serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 		request.Header.Set(sessionIDHeader, "one")
 		output := httptest.NewRecorder()
-		responsesHandler(t.Context(), time.Minute, provider, NewCriticalErrors(), proxy, nil)(output, request)
+		responsesHandler(t.Context(), time.Minute, provider, NewCriticalErrors(), proxy)(output, request)
 		if output.Code != 400 || len(provider.forwarded) != 0 {
 			t.Fatalf("catalog reached upstream or remained retryable: %d %s", output.Code, output.Body.String())
 		}
@@ -201,7 +201,7 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 			}
 			issues := NewCriticalErrors()
 			provider := &serverFakeProvider{results: []serverForwardResult{{err: test.err}}}
-			err = executeRequest(ctx, ctx, request, serverMetadataHeaders(t, "turn", nil), "diagnostic-session", provider, io.Discard, issues, nil, nil)
+			err = executeRequest(ctx, ctx, request, serverMetadataHeaders(t, "turn", nil), "diagnostic-session", provider, io.Discard, issues, nil)
 			if !errors.Is(err, test.err) {
 				t.Fatalf("original cause lost: %v", err)
 			}
@@ -274,7 +274,7 @@ func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
 				StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}},
 				Body: io.NopCloser(strings.NewReader(test.body)),
 			}}}}
-			_ = executeRequest(ctx, ctx, request, serverMetadataHeaders(t, "turn", nil), "diagnostic-session", provider, test.output, issues, nil, nil)
+			_ = executeRequest(ctx, ctx, request, serverMetadataHeaders(t, "turn", nil), "diagnostic-session", provider, test.output, issues, nil)
 			data, err := os.ReadFile(debug.paths[0])
 			if err != nil {
 				t.Fatal(err)

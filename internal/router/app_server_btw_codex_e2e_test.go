@@ -118,7 +118,7 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 			}
 			p := &btwCodexProvider{requests: make(chan btwCodexRequest, 12), mainGate: make(chan struct{}), sideGate: make(chan struct{}), cancelGate: make(chan struct{}), canceled: make(chan struct{})}
 			proxy := newManagedMekugiProxy(t)
-			server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, p, nil, proxy, nil))
+			server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, p, nil, proxy))
 			defer server.Close()
 			defer func() {
 				for _, gate := range []chan struct{}{p.mainGate, p.sideGate, p.cancelGate} {

@@ -132,7 +132,7 @@ func TestInstantInterruptNativeCodexE2E(t *testing.T) {
 			provider.program = "// @exec: {\"yield_time_ms\": 60000}\nconst result = await tools.exec_command({cmd: " + string(mustMarshalJSON(shell)) + ", workdir: " + string(mustMarshalJSON(workspace)) + ", yield_time_ms: 30000}); text(result.output);"
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
-			server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy, nil))
+			server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy))
 			defer server.Close()
 			defer close(provider.gate)
 			environment := routerFaultCodexEnvironment(t)

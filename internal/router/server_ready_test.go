@@ -67,7 +67,7 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 }
 
 func TestRunSessionDoesNotNotifyOnStartupFailure(t *testing.T) {
-	for _, args := range [][]string{{"--mode", "unknown"}, {"--mode", "passthrough", "--main-mentor-handoff=true"}, {"--mode", "passthrough", "--mentor-handoff=true"}, {"--stream-idle-timeout", "0"}, {"--listen", "127.0.0.1:0"}, {"--provider-base-url", "https://example.com"}} {
+	for _, args := range [][]string{{"--mode", "unknown"}, {"--stream-idle-timeout", "0"}, {"--listen", "127.0.0.1:0"}, {"--provider-base-url", "https://example.com"}} {
 		if err := RunSession(t.Context(), args, nil, func(Session) { t.Error("ready called despite startup failure") }, nil); err == nil {
 			t.Fatalf("accepted %q", args)
 		}
@@ -77,7 +77,7 @@ func TestRunSessionDoesNotNotifyOnStartupFailure(t *testing.T) {
 func TestRunSessionServesMetricsWithoutLogging(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	err := RunSession(ctx, []string{"--mode", "passthrough", "--mentor-handoff=false"}, NewCriticalErrors(), func(session Session) {
+	err := RunSession(ctx, []string{"--mode", "passthrough"}, NewCriticalErrors(), func(session Session) {
 		if session.FrontendDirectory != "" {
 			t.Error("passthrough installed frontends")
 		}
@@ -124,7 +124,7 @@ func TestRunSessionRejectsUnusableReplayStorageBeforeReady(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(state, "mekugi"), []byte("not a directory"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	err := RunSession(t.Context(), []string{"--mode", "mekugi", "--mentor-handoff=false"}, nil, func(Session) { t.Error("unusable replay storage reached readiness") }, nil)
+	err := RunSession(t.Context(), []string{"--mode", "mekugi"}, nil, func(Session) { t.Error("unusable replay storage reached readiness") }, nil)
 	if err == nil || !strings.Contains(err.Error(), "initialize replay storage") {
 		t.Fatalf("startup error = %v", err)
 	}

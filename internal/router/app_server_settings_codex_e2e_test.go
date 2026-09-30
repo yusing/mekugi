@@ -47,7 +47,7 @@ func TestAppServerLiveSettingsNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &appSettingsProvider{requests: make(chan []byte, 8), release: make(chan struct{})}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, p, nil, nil, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, p, nil, nil))
 	defer server.Close()
 	defer func() {
 		select {
@@ -135,7 +135,7 @@ func TestAppServerSettingsCatalogNativeCodex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, &appPreviewProvider{}, nil, nil, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, &appPreviewProvider{}, nil, nil))
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()

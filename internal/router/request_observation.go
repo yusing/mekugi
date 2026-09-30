@@ -7,7 +7,7 @@ import (
 )
 
 // tokenCounts carries one provider-authoritative terminal usage observation to
-// Mentor Handoff, user-only commentary, and the capturer. Aggregate reporting
+// user-only commentary and the capturer. Aggregate reporting
 // for provider metrics belongs to capture; lifetime commentary totals are separate.
 type tokenCounts struct {
 	// TotalsKnown distinguishes reported zero totals from absent totals.

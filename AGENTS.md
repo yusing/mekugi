@@ -57,9 +57,9 @@ The linked contracts own interface details, exceptions, and acceptance cases.
   including a fresh router process. Restore inherited authorization from
   visible history and durable workspace records, not routing-session IDs or
   a live parent. Replay does not revive processes, continuation handles, or
-  expired checkpoints; Mentor schedules are router-lifetime. See
+  expired checkpoints. See
   [replay](doc/spec/plugin.md), [changes](doc/spec/changes.md),
-  [guidance](doc/spec/guide.md), and [Mentor](doc/spec/mentor.md).
+  and [guidance](doc/spec/guide.md).
 - **State isolation:** Keep request views, stable thread identity, workspace
   replay, and process resources distinct. Concurrent requests and branches
   must not borrow another thread's state. Compaction removes invisible

@@ -101,7 +101,7 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 				fields["model"], fields["service_tier"], fields["stream"] = "gpt-6-astra", "default", transport != "http"
 			})
 			if transport == "websocket" {
-				endpoint := responsesWebSocketHandler(ctx, 10*time.Second, client, nil, nil, nil)
+				endpoint := responsesWebSocketHandler(ctx, 10*time.Second, client, nil, nil)
 				defer endpoint.Close()
 				server := httptest.NewServer(endpoint)
 				defer server.Close()
@@ -120,7 +120,7 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 				req := httptest.NewRequest("POST", "/v1/responses", bytes.NewReader(mustTestJSON(t, request.fields)))
 				req.Header = codexAuthHeaders()
 				recorder := httptest.NewRecorder()
-				responsesHandler(ctx, 10*time.Second, client, nil, nil, nil)(recorder, req)
+				responsesHandler(ctx, 10*time.Second, client, nil, nil)(recorder, req)
 				if recorder.Code != 200 {
 					t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body)
 				}
@@ -138,19 +138,13 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 }
 
 func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
-	for _, mentorEnabled := range []bool{false, true} {
-		t.Run(fmt.Sprint(mentorEnabled), func(t *testing.T) {
+	for _, model := range []string{"gpt-5.6-luna", "gpt-5.6-terra"} {
+		t.Run(model, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
-			request := serverRequest(t, func(fields map[string]any) {
-				fields["model"], fields["service_tier"] = "gpt-5.6-luna", "flex"
-			})
+			request := serverRequest(t, func(fields map[string]any) { fields["model"], fields["service_tier"] = model, "flex" })
 			headers := serverMetadataHeaders(t, "turn", nil)
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, mekugiCalls: proxy,
-				serviceTiers: map[string]string{"gpt-6-astra": "fast"}}
-			if mentorEnabled {
-				executor.mentor = newMentorHandoff(true, true)
-			}
+			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, mekugiCalls: proxy, serviceTiers: map[string]string{"gpt-6-sol": "fast"}}
 			if err := executor.execute(t.Context(), t.Context(), request, headers, "tier"); err != nil {
 				t.Fatal(err)
 			}
@@ -158,19 +152,15 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := "flex"
-			if mentorEnabled {
-				want = "priority"
+			wantTier, wantModel := "flex", model
+			if model == "gpt-5.6-terra" {
+				wantTier, wantModel = "priority", "gpt-6-sol"
 			}
-			if got := jsonString(forwarded.fields, "service_tier"); got != want {
-				t.Fatalf("tier=%s want=%s", got, want)
-			}
-			wantModel := "gpt-5.6-luna"
-			if mentorEnabled {
-				wantModel = "gpt-6-astra"
+			if got := jsonString(forwarded.fields, "service_tier"); got != wantTier {
+				t.Fatalf("tier=%s want=%s", got, wantTier)
 			}
 			start := nativeSubagentStart(&forwarded)
-			if start == nil || start.model != wantModel || start.tier != strings.ReplaceAll(want, "priority", "fast") {
+			if start == nil || start.model != wantModel || start.tier != strings.ReplaceAll(wantTier, "priority", "fast") {
 				t.Fatalf("start=%+v", start)
 			}
 		})
@@ -227,12 +217,14 @@ func TestServiceTierSurvivesProviderTranslation(t *testing.T) {
 	}
 }
 
-func TestServiceTierJournalHandoffAndRootNotice(t *testing.T) {
+func TestServiceTierJournalContinuationAndRootNotice(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	root, _ := prepareActivityTest(t, proxy, "root-session", "root", "", "/root", nil)
 	proxy.activity.attachNativePane("root")
 	defer root.Close()
-	headers := mentorTestHeaders(t, "child")
+	headers := serverMetadataHeaders(t, "turn", nil)
+	headers.Set(openAISubagentHeader, threadSpawnSubagent)
+	headers.Set(threadIDHeader, "child")
 	headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, codexTurnMetadata{
 		RequestKind: "turn", ThreadID: "child", ParentThreadID: "root",
 		AgentName: "/root/tier-test", SubagentKind: "thread_spawn",
@@ -249,13 +241,13 @@ func TestServiceTierJournalHandoffAndRootNotice(t *testing.T) {
 				"call_id": fmt.Sprintf("call-%d", index), "name": "journal",
 				"arguments": fmt.Sprintf(`{"op":%q}`, op), "status": "completed",
 			}},
-			"usage": map[string]any{"input_tokens": mentorInputTokenLimit},
+			"usage": map[string]any{"input_tokens": 50_000},
 		})
 		provider.results = append(provider.results, serverForwardResult{response: serverHTTPResponse(string(body))})
 	}
 	executor := requestExecutor{
 		provider: provider, output: &bytes.Buffer{}, mekugiCalls: proxy,
-		mentor: newMentorHandoff(true, true), serviceTiers: map[string]string{"gpt-6-astra": "fast"},
+		serviceTiers: map[string]string{"gpt-5.6-sol": "fast"},
 	}
 	if err := executor.execute(t.Context(), t.Context(), request, headers, "child-session"); err != nil {
 		t.Fatal(err)
@@ -263,7 +255,7 @@ func TestServiceTierJournalHandoffAndRootNotice(t *testing.T) {
 	if len(provider.forwarded) != 2 {
 		t.Fatalf("forwarded=%d", len(provider.forwarded))
 	}
-	for index, want := range []string{"priority", "flex"} {
+	for index, want := range []string{"priority", "priority"} {
 		forwarded, err := parseResponsesRequest(provider.forwarded[index])
 		if err != nil {
 			t.Fatal(err)

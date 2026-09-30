@@ -343,10 +343,9 @@ type mekugiJournalState struct {
 }
 
 type mekugiDeliveryState struct {
-	usageTracker         *threadUsageObservation
-	usageMentorRevisions map[string]uint64
-	finalAnswer          finalAnswerStream
-	usageObserved        bool
+	usageTracker  *threadUsageObservation
+	finalAnswer   finalAnswerStream
+	usageObserved bool
 }
 
 type mekugiResponseTransform struct {

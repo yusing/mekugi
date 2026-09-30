@@ -362,7 +362,7 @@ func TestJournalCompactionConsumesOnlyCurrentTurnResetIntent(t *testing.T) {
 			response := serverHTTPResponse(string(wire))
 			response.Header.Set("Content-Type", "text/event-stream")
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
-			if err := executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, io.Discard, nil, d.proxy, nil); err != nil {
+			if err := executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, io.Discard, nil, d.proxy); err != nil {
 				t.Fatal(err)
 			}
 			intent, err := d.proxy.replayStore.resetIntent(t.Context(), d.workspace, d.thread)

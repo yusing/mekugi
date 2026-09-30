@@ -19,6 +19,6 @@ these same counters. App-server token usage supplies separate context/exit displ
 and is never added to router cost totals.
 
 TypeSafe consumption occupies a separate per-thread bucket, outside agent-model
-cost and Mentor counters. Capture-owned [metrics](metrics.md) use terminal facts
+cost. Capture-owned [metrics](metrics.md) use terminal facts
 but retain independent calculation and persistence. Local output-reduction estimates
 are neither provider usage nor evidence of net savings.

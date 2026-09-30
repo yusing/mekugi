@@ -202,7 +202,7 @@ func TestConfiguredToolFrontendNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &toolFrontendCodexProvider{workspace: workspace}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 
 	t.Setenv("CODEX_HOME", t.TempDir())
@@ -271,7 +271,7 @@ text(JSON.stringify({started, completed}));`
 		expected:  []string{"continued:codex-input", `\"exit_code\":0`, "session_id"},
 		finalText: "mrun continuation accepted",
 	}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 
 	t.Setenv("CODEX_HOME", t.TempDir())

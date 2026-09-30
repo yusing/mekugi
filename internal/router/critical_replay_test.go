@@ -18,7 +18,7 @@ func TestCriticalNoticeNeverEntersProviderResponses(t *testing.T) {
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: criticalTestResponse(stream)}}}
 			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
 			var visible bytes.Buffer
-			if err := executeRequest(t.Context(), t.Context(), request, nil, "session", provider, &visible, issues, nil, nil); err != nil {
+			if err := executeRequest(t.Context(), t.Context(), request, nil, "session", provider, &visible, issues, nil); err != nil {
 				t.Fatal(err)
 			}
 			if bytes.Contains(visible.Bytes(), []byte(noticeID)) || bytes.Contains(visible.Bytes(), []byte("Enable supported tools.")) {
@@ -53,7 +53,7 @@ func TestPreviouslyGeneratedNoticeReplayUsesDurableExactProvenance(t *testing.T)
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: criticalTestResponse(false)}}}
 	if err := executeRequest(t.Context(), t.Context(), replay,
 		serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}),
-		"fork-session", provider, io.Discard, NewCriticalErrors(), fresh, nil); err != nil {
+		"fork-session", provider, io.Discard, NewCriticalErrors(), fresh); err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(provider.forwarded[0], []byte(legacyID)) || !bytes.Contains(provider.forwarded[0], []byte("model-owned")) {

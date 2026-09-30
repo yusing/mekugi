@@ -13,7 +13,6 @@ func TestSplitCommand(t *testing.T) {
 		{"--ansi-faint", "on"},
 		{"--ansi-faint=auto"},
 		{"--debug", "--capture-output", "capture.jsonl"},
-		{"--main-mentor-handoff", "--mentor-handoff=false"},
 		{"--grok"},
 		{"--grok=false", "--timeout", "30s"},
 		{"--capture-output", "wrap", "--grok"},
@@ -33,6 +32,10 @@ func TestSplitCommandRestrictionsAndDelimiter(t *testing.T) {
 		{"--listen", "127.0.0.1:8080", "codex"},
 		{"--provider-base-url=https://example.com", "codex"},
 		{"--unknown", "codex"},
+		{"--mentor-handoff", "codex"},
+		{"--mentor-handoff=false", "codex"},
+		{"--main-mentor-handoff", "codex"},
+		{"--main-mentor-handoff=false", "codex"},
 	} {
 		if _, _, err := SplitCommand(args); err == nil {
 			t.Errorf("accepted %q", args)

@@ -14,7 +14,6 @@ pjdoc:
     - notices.md
     - activity.md
     - usage.md
-    - mentor.md
     - boundary.md
     - plugin.md
     - execution.md
@@ -38,7 +37,6 @@ collaborators without restating implementation.
 - [`CTR-NOTICES-001`](notices.md): native diagnostic delivery and recovery
 - [`CTR-ACTIVITY-001`](activity.md): activity identity, collection, and native integration
 - [`CTR-USAGE-001`](usage.md): provider accounting and report ownership
-- [`CTR-MENTOR-001`](mentor.md): router-owned main and subagent model schedule
 - [`CTR-BOUNDARY-001`](boundary.md): filesystem, history, and output authority
 - [`CTR-PLUGIN-001`](plugin.md): authenticated executable plugin registry
 - [`CTR-EXECUTION-001`](execution.md): host-owned editing and process lifecycle

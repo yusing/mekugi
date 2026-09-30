@@ -8,7 +8,7 @@ import (
 )
 
 // TypeSafe consumption has its own provider bucket. It must not change an
-// agent's active model, mentor schedule, cache counters, or estimated API cost.
+// agent's active model, cache counters, or estimated API cost.
 func (u *threadUsage) addTypesafe(thread string, usage typesafeUsage) {
 	if u == nil || thread == "" || len(thread) > maxCommentaryPublicationBytes {
 		return

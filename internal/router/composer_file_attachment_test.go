@@ -86,7 +86,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 }
 
 func TestComposerFileAttachmentWireAndProviderPrefix(t *testing.T) {
-	request := mentorTestRequest(t, "gpt-6-sol")
+	request := modelTestRequest(t, "gpt-6-sol")
 	raw := mustMarshalJSON([]any{map[string]any{"role": "user", "content": []any{
 		map[string]any{"type": "input_text", "text": "Review @example"},
 		map[string]any{"type": "input_text", "text": encodeFileAttachments([]string{"Attached file /work/example:\nexact content"})},

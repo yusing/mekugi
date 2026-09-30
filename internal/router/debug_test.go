@@ -200,7 +200,7 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 	proxy := newToolPluginTestProxy(t)
-	endpoint := responsesWebSocketHandler(ctx, 10*time.Second, newProviderClient(upstream.URL, upstream.Client()), nil, proxy, nil)
+	endpoint := responsesWebSocketHandler(ctx, 10*time.Second, newProviderClient(upstream.URL, upstream.Client()), nil, proxy)
 	t.Cleanup(endpoint.Close)
 	server := httptest.NewServer(d.handler(endpoint))
 	t.Cleanup(server.Close)

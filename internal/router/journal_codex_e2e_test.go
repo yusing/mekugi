@@ -165,7 +165,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 	provider.store = store
 	proxy.replayStore = store
 	issues := NewCriticalErrors()
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy, nil))
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy))
 	defer server.Close()
 	config := `model_providers.journal_fixture={name="journal_fixture",base_url=` + strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
