@@ -7,6 +7,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/appserver"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 // Only commands implemented by the native shell belong in this catalog.
@@ -20,6 +21,7 @@ var nativeCommands = []composerChoice{
 	{name: "/btw", description: "Ask a side question without changing Main"},
 	{name: "/status", description: "Show session settings and usage limits"},
 	{name: "/copy", description: "Copy the last response or part of it"},
+	{name: "/resume", description: "Resume a saved session"},
 	{name: "/compact", description: "Compact context, or queue compaction while busy"},
 	{name: "/clear", description: "Clear the transcript and start a new session"},
 	{name: "/quit", description: "Quit the session"},
@@ -40,7 +42,7 @@ func (u *appServerUI) sessionCommand(command string) error {
 		u.unsent[len(u.unsent)-1].text = "/compact"
 		return u.flushInput()
 	}
-	if u.turn != "" || u.starting || u.compactRequest || u.submission.text != "" || u.settingsPending || u.shellPending.text != "" || len(u.unsent)+len(u.queued) > 0 || u.reset.active() {
+	if u.sessionBusy() {
 		u.setNotice("/clear is disabled while a task is in progress", true)
 		return nil
 	}
@@ -70,6 +72,11 @@ func (u *appServerUI) sessionCommand(command string) error {
 	return nil
 }
 
+// sessionBusy reports work that leaving the current thread would strand.
+func (u *appServerUI) sessionBusy() bool {
+	return u.turn != "" || u.starting || u.compactRequest || u.submission.text != "" || u.settingsPending || u.shellPending.text != "" || len(u.unsent)+len(u.queued) > 0 || u.reset.active()
+}
+
 // Detach presentation only after the new host thread exists. Saved threads,
 // journal evidence, and running children remain owned by Codex.
 func (u *appServerUI) clearSessionPresentation() error {
@@ -81,11 +88,11 @@ func (u *appServerUI) clearSessionPresentation() error {
 	}
 	u.cancelPickerScan()
 	if u.retiredThreads == nil {
-		u.retiredThreads = make(map[string]bool)
+		u.retiredThreads = make(map[string]string)
 	}
-	u.retiredThreads[u.thread] = true
+	u.retiredThreads[u.thread] = u.thread
 	for thread := range u.session.paths {
-		u.retiredThreads[thread] = true
+		u.retiredThreads[thread] = u.thread
 	}
 	if u.proxy != nil {
 		u.proxy.journals.detachNative(u.journal)
@@ -104,8 +111,8 @@ func (u *appServerUI) clearSessionPresentation() error {
 		return err
 	}
 	u.picker = composerPicker{}
-	u.resumeThread, u.resumeCwd, u.resumePending = "", "", nil
-	u.compacting, u.polling = nil, nil
+	u.resumeThread, u.resumeCwd = "", ""           // A switch keeps its buffered events for restoration.
+	u.turn, u.compacting, u.polling = "", nil, nil // The left session stayed live until now.
 	u.pendingStart = composerSubmission{}
 	u.turnStarted = time.Time{}
 	u.exitUsage = appServerTokenUsage{}
@@ -139,10 +146,32 @@ func (u *appServerUI) retiredSessionEvent(m appserver.Message) bool {
 	if json.Unmarshal(m.Params, &p) != nil {
 		return false
 	}
-	if u.retiredThreads[p.Thread.ParentThreadID] {
-		u.retiredThreads[p.Thread.ID] = true
+	if root := u.retiredThreads[p.Thread.ParentThreadID]; root != "" {
+		u.retiredThreads[p.Thread.ID] = root
 	}
-	return u.retiredThreads[p.ThreadID] || u.retiredThreads[p.Thread.ID]
+	return u.retiredThreads[p.ThreadID] != "" || u.retiredThreads[p.Thread.ID] != ""
+}
+
+// releaseRetired readmits a session the UI returns to, with its descendants.
+// retiredThreads maps each retired thread to the session root it belonged to.
+func (u *appServerUI) releaseRetired(root string) {
+	delete(u.retiredThreads, root)
+	for thread, owner := range u.retiredThreads {
+		if owner == root {
+			delete(u.retiredThreads, thread)
+		}
+	}
+}
+
+// resetDiffScope starts the saved Diff over for a resumed root thread; its
+// restoration then includes only that thread and its descendants.
+func (u *appServerUI) resetDiffScope() {
+	if u.shell == nil || u.shell.auto == nil {
+		return
+	}
+	u.shell.diff.resetScope()
+	u.shell.liveDock, u.shell.diffFailure, u.shell.diffUnseen = diffview.PreviewPane{}, "", false
+	u.shell.auto.resetScope()
 }
 
 func (u *appServerUI) filterCommands(query string) {

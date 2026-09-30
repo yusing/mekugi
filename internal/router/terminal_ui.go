@@ -79,7 +79,7 @@ func (u *terminalUI) key(key byte) error {
 		}
 		// The status panel and output dialog are not input destinations. Keep
 		// paste termination entirely in this decoder, including the final marker byte.
-		if u.output != nil || u.main != nil && u.main.statusPanel != nil {
+		if u.output != nil || u.main != nil && (u.main.statusPanel != nil || u.main.resumePicker != nil) {
 			return nil
 		}
 		if u.focus == 0 {
@@ -347,6 +347,9 @@ func (u *terminalUI) send(s string) error {
 		u.main.statusPanelKey(s)
 		return nil
 	}
+	if u.main != nil && u.focus == 0 && u.main.resumePicker != nil {
+		return u.main.resumePickerKey(s)
+	}
 
 	if s == "\x1b" && u.main != nil && u.focus == 0 && !u.main.paste {
 		if handled, err := u.main.questionKey(s); handled {
@@ -468,6 +471,15 @@ func (u *terminalUI) mouse(s string) error {
 			}
 		}
 		return nil
+	}
+	if u.main != nil && u.main.resumePicker != nil && u.layout.codex.contains(x, y) {
+		if release {
+			return nil
+		}
+		if button&^28 == 0 {
+			u.focus = 0
+		}
+		return u.main.resumePickerMouse(button&^28, y-u.layout.codex.y)
 	}
 	if u.main != nil && u.main.questions.rect.contains(x-u.layout.codex.x, y-u.layout.codex.y) {
 		if !release && button&^28 == 0 {

@@ -62,12 +62,12 @@ func appServerArgs(args []string) ([]string, string, error) {
 			} else if resumeCommand && resume == "" && !strings.HasPrefix(arg, "-") && strings.TrimSpace(arg) != "" {
 				resume = arg
 			} else {
-				return nil, "", fmt.Errorf("native UI does not yet support %q; use --yolo, -m, -c, --enable, --disable, and resume THREAD_ID or resume --last, and enter prompts in Main", arg)
+				return nil, "", fmt.Errorf("native UI does not yet support %q; use --yolo, -m, -c, --enable, --disable, and resume [THREAD_ID | --last], and enter prompts in Main", arg)
 			}
 		}
 	}
 	if resumeCommand && resume == "" {
-		return nil, "", fmt.Errorf("native UI resume requires a thread ID or --last; picker is not supported yet")
+		resume = "--pick" // The native UI opens its session picker.
 	}
 	if !yolo {
 		return nil, "", fmt.Errorf("native UI currently requires explicit --yolo")

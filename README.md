@@ -102,7 +102,7 @@ start a new session to pick up an update.
 ## Usage
 
 Mekugi flags go **before** `codex`. Interactive launches accept `--yolo`, model
-and config options, and [`resume THREAD_ID` or `resume --last`](#resume); enter
+and config options, and [`resume`, `resume THREAD_ID` or `resume --last`](#resume); enter
 prompts in the [native UI](#native-ui). Noninteractive commands keep their
 ordinary Codex arguments and output:
 
@@ -295,9 +295,15 @@ conversation, and it can't be resumed.
 `resume THREAD_ID` and `resume --last` work as in Codex. Resuming also restores
 pane layout, keyboard focus, the agent roster, Activity history, and the
 session's retained Diff changes. Scroll positions, filters, selections, and
-drafts are not restored. The resume picker and switching threads inside the UI
-are not supported yet, and threads with more than 16 MiB of history can't
-resume in the native UI.
+drafts are not restored. Threads with more than 16 MiB of history can't resume
+in the native UI.
+
+Bare `resume`, or `/resume` inside a session, opens a picker of saved sessions
+for the current workspace, newest first. Type to search, Tab to show every
+workspace, and Enter to resume. Esc clears the search, then starts a new session
+at launch or closes the picker in a session; Ctrl-C quits at launch. `/resume`
+switches the UI to the chosen session and is unavailable while a task runs;
+`/resume THREAD_ID` switches directly.
 
 ### Live diff pane
 

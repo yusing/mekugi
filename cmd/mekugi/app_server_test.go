@@ -73,7 +73,7 @@ func TestAppServerModelFlagForms(t *testing.T) {
 }
 
 func TestAppServerArgsRejectsUnmappedAndImplicitAuthorization(t *testing.T) {
-	for _, args := range [][]string{nil, {"-c", `approval_policy="never"`}, {"--yolo", "--full-auto"}, {"--yolo", "resume"}, {"--yolo", "prompt"}, {"--yolo", "--model"}, {"--yolo", "-c"}, {"--yolo", "--sandbox", "workspace-write"}} {
+	for _, args := range [][]string{nil, {"-c", `approval_policy="never"`}, {"--yolo", "--full-auto"}, {"--yolo", "prompt"}, {"--yolo", "--model"}, {"--yolo", "-c"}, {"--yolo", "--sandbox", "workspace-write"}} {
 		if got, _, err := appServerArgs(args); err == nil {
 			t.Errorf("appServerArgs(%q) = %q, wanted rejection", args, got)
 		}
@@ -100,5 +100,17 @@ func TestAppServerResumeLastArgs(t *testing.T) {
 		if err != nil || thread != "--last" || got[0] != "app-server" || slices.Contains(got, "resume") || slices.Contains(got, "--last") {
 			t.Fatalf("resume last launch: %q %q %v", got, thread, err)
 		}
+	}
+}
+
+func TestAppServerResumePickerArgs(t *testing.T) {
+	for _, args := range [][]string{{"--yolo", "resume"}, {"resume", "--yolo", "-m", "gpt-6-sol"}} {
+		got, thread, err := appServerArgs(args)
+		if err != nil || thread != "--pick" || got[0] != "app-server" || slices.Contains(got, "resume") {
+			t.Fatalf("resume picker launch: %q %q %v", got, thread, err)
+		}
+	}
+	if _, _, err := appServerArgs([]string{"resume"}); err == nil {
+		t.Fatal("resume picker bypassed explicit --yolo")
 	}
 }

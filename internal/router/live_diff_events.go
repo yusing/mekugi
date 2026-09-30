@@ -134,6 +134,19 @@ func (b *liveDiffBroker) setScope(scope liveDiffScope) {
 	b.emitLocked(b.scopeEventLocked())
 }
 
+// resync replaces the scope and detaches the subscriber through its gap, as
+// on overflow. Resubscription restores display state from a fresh snapshot;
+// previews outside the new scope stay out of the view.
+func (b *liveDiffBroker) resync(scope liveDiffScope) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.scope = cloneLiveDiffScope(scope)
+	if b.subscriber != nil {
+		close(b.subscriber.gap)
+		b.subscriber = nil
+	}
+}
+
 func (b *liveDiffBroker) publish(changes []liveDiffChange) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

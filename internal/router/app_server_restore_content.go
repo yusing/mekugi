@@ -263,14 +263,7 @@ func (u *appServerUI) finishRestoredContent() error {
 	if u.turn != "" {
 		u.status = "Working"
 	}
-	pending := u.resumePending
-	u.resumePending = nil
-	for _, event := range pending {
-		if err := u.message(event); err != nil {
-			return err
-		}
-	}
-	return nil
+	return u.replayResumePending()
 }
 
 func (u *appServerUI) restoredCollab(item appServerItem, observed time.Time) []activityPaneEntry {

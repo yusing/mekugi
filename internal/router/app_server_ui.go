@@ -1,6 +1,7 @@
 package router
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
@@ -72,6 +73,8 @@ type appServerUI struct {
 	notifications             *nativeNotifications
 	questions                 nativeQuestionDock
 	statusPanel               *appServerStatusReport
+	resumePicker              *appServerResumePicker
+	switching                 string // Saved thread a clearing request resumes.
 	statusConfig              appServerStatusConfig
 	statusReports             map[string]*appServerStatusReport
 	picker                    composerPicker
@@ -125,7 +128,7 @@ type appServerUI struct {
 	compactRequest            bool // Compact RPC acknowledgement still pending.
 	clearing                  bool // Fresh-thread request; keep old presentation until success.
 	manualCompact             bool // Compact turn has not completed yet.
-	retiredThreads            map[string]bool
+	retiredThreads            map[string]string
 	composerRect              terminalRect // Visible draft text, relative to Main.
 	cursorBack, composerWidth int
 	cursorColumn              *int
@@ -161,7 +164,7 @@ func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 
 func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool) (func() error, error) {
 	var resumeCwd string
-	if resumeThread == "--last" {
+	if resumeThread == "--last" || resumeThread == resumePickerStartup {
 		var err error
 		resumeCwd, err = filepath.Abs(cmd.Dir)
 		if err != nil {
@@ -292,6 +295,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 							u.setNotice(err.Error(), true)
 						}
 						u.applyObservedActivity()
+						if err := u.fillResumePicker(); err != nil {
+							return err
+						}
 						u.flushCommandOutput()
 						u.startCommitReads()
 						u.paneError(u.panes.save(u.shell, time.Now(), false))
@@ -409,6 +415,12 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 }
 
 func (u *appServerUI) request(method string, params any) error {
+	_, err := u.requestAs(method, method, params)
+	return err
+}
+
+// requestAs correlates the response by label, for owners that share a method.
+func (u *appServerUI) requestAs(method, label string, params any) (string, error) {
 	var id string
 	var err error
 	if method == "initialize" {
@@ -417,9 +429,9 @@ func (u *appServerUI) request(method string, params any) error {
 		id, err = u.client.Send(method, params, true)
 	}
 	if err == nil {
-		u.requests[id] = method
+		u.requests[id] = label
 	}
-	return err
+	return id, err
 }
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
@@ -460,12 +472,18 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	// before a completion, not just on the next paint tick, so links bind once.
 	u.applyObservedActivity()
 	u.applyPendingJournal()
-	if u.resumeThread != "" && (u.thread == "" || u.restoring != nil) && m.Method != "" {
-		if len(u.resumePending) == 256 {
-			return errors.New("resume event capacity exceeded; session state is incomplete")
+	resuming := u.resumeThread != "" && u.resumeThread != resumePickerStartup && (u.thread == "" || u.restoring != nil)
+	if (resuming || u.switching != "") && m.Method != "" {
+		if hold, keep := u.holdResumeEvent(m, resuming); hold {
+			if !keep {
+				return nil
+			}
+			if len(u.resumePending) == 256 {
+				return errors.New("resume event capacity exceeded; session state is incomplete")
+			}
+			u.resumePending = append(u.resumePending, m)
+			return nil
 		}
-		u.resumePending = append(u.resumePending, m)
-		return nil
 	}
 	if m.Method == "" {
 		method := u.requests[string(m.ID)]
@@ -476,6 +494,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		if method == "config/read" {
 			u.notificationConfig(m)
 			return nil
+		}
+		if method == resumePickerList {
+			return u.resumePickerResponse(m)
 		}
 		if handled, err := u.statusMessage(method, m); handled {
 			return err
@@ -522,6 +543,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.setNotice("Could not clear session: "+m.Error.Message, true)
 			return nil
 		}
+		if method == "thread/resume" && u.switching != "" && m.Error != nil {
+			return u.resumeSessionFailed(m.Error.Message)
+		}
 		if m.Error != nil {
 			u.status, u.alert = method+": "+m.Error.Message, true
 			if method == "initialize" || method == "thread/start" || method == "thread/resume" {
@@ -543,18 +567,20 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if _, err := u.client.Send("initialized", map[string]any{}, false); err != nil {
 				return err
 			}
+			if u.resumeThread == resumePickerStartup {
+				u.status = "Choose a session"
+				return u.openResumePicker(true)
+			}
 			if u.resumeThread != "" {
 				if u.resumeThread == "--last" {
 					u.status = "Finding latest thread…"
-					return u.request("thread/list", map[string]any{
-						"cwd": u.resumeCwd, "limit": 1, "sortKey": "updated_at", "archived": false,
-						"modelProviders": []string{}, "sourceKinds": []string{"cli", "vscode", "appServer"},
-					})
+					params := resumableThreads(1)
+					params["cwd"] = u.resumeCwd
+					return u.request("thread/list", params)
 				}
-				return u.requestResume()
+				return u.requestResume(u.resumeThread)
 			}
-			u.status = "Starting thread…"
-			return u.request("thread/start", map[string]any{"approvalPolicy": "never", "sandbox": "danger-full-access"})
+			return u.startThread()
 		case "thread/start", "thread/resume":
 			var result struct {
 				Model           string              `json:"model"`
@@ -568,14 +594,22 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if result.Thread.ID == "" {
 				return fmt.Errorf("%s returned no thread identity", method)
 			}
-			if method == "thread/resume" && result.Thread.ID != u.resumeThread {
+			if method == "thread/resume" && result.Thread.ID != cmp.Or(u.switching, u.resumeThread) {
 				return errors.New("thread/resume returned a different thread identity")
 			}
 			if u.clearing {
 				if err := u.clearSessionPresentation(); err != nil {
 					return err
 				}
-				delete(u.retiredThreads, result.Thread.ID)
+				u.releaseRetired(result.Thread.ID)
+				if method == "thread/resume" {
+					// Restoration below replays events buffered during the switch.
+					u.resumeThread, u.switching = result.Thread.ID, ""
+					u.resetDiffScope()
+				} else {
+					// Seed the Diff's lineage; after a switch, requests alone cannot.
+					u.restoreDiffThread(result.Thread, true)
+				}
 			}
 			u.statusConfig = appServerStatusConfig{}
 			if err := json.Unmarshal(m.Result, &u.statusConfig); err != nil {
@@ -583,7 +617,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			u.thread, u.status = result.Thread.ID, "Ready"
 			u.model, u.reasoningEffort, u.serviceTier = result.Model, result.ReasoningEffort, result.ServiceTier
-			u.modelsLoading = true
+			u.models, u.modelsLoading = nil, true // A cleared or switched session lists them again.
 			if err := u.request("model/list", map[string]any{"includeHidden": true}); err != nil {
 				return err
 			}
@@ -936,6 +970,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if text == "/compact" || text == "/clear" {
 			return false, u.sessionCommand(text)
 		}
+		if text == "/resume" || strings.HasPrefix(text, "/resume ") {
+			return false, u.resumeCommand(text)
+		}
 		if text == "/status" {
 			return false, u.showStatus()
 		}
@@ -960,7 +997,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /compact, /clear, /btw, /status, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /compact, /clear, /resume, /btw, /status, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil {
@@ -1075,7 +1112,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 // the session state; the bottom border the model. dock rows are left blank
 // between the two, in the returned rectangle, for the live edit dock.
 func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, dockRect terminalRect) {
-	if len(u.view.entries) == 0 && u.draft == "" && height > 10 && u.statusPanel == nil && !u.pickerVisible() {
+	if len(u.view.entries) == 0 && u.draft == "" && height > 10 && u.statusPanel == nil && u.resumePicker == nil && !u.pickerVisible() {
 		height--
 		defer func() {
 			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
@@ -1090,6 +1127,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	u.questions.rect = terminalRect{}
 	if u.statusPanel != nil {
 		return u.statusPanelFrame(width, height), terminalRect{}
+	}
+	if u.resumePicker != nil {
+		return u.resumePickerFrame(width, height), terminalRect{}
 	}
 	if u.pickerVisible() && u.picker.modal != "" {
 		return u.skillsModalFrame(width, height), terminalRect{}

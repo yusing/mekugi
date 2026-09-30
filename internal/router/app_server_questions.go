@@ -118,7 +118,7 @@ func (u *appServerUI) openQuestions() {
 // Only an empty, idle composer yields to pending live questions. Explicitly
 // hiding the dock and history restoration leave manual reopening available.
 func (u *appServerUI) autoOpenQuestions() {
-	if !u.questions.autoOpen || u.questions.active != nil || u.draft != "" || len(u.images) > 0 || len(u.files) > 0 || len(u.skills) > 0 || u.paste || u.escape != "" || u.pickerVisible() || u.keybindings || u.statusPanel != nil {
+	if !u.questions.autoOpen || u.questions.active != nil || u.draft != "" || len(u.images) > 0 || len(u.files) > 0 || len(u.skills) > 0 || u.paste || u.escape != "" || u.pickerVisible() || u.keybindings || u.statusPanel != nil || u.resumePicker != nil {
 		return
 	}
 	if u.shell != nil && (u.shell.focus != 0 || u.shell.paste || u.shell.sequence != "") {

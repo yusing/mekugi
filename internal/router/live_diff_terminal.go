@@ -63,6 +63,9 @@ type liveDiffTerminalController struct {
 	// frame has neither a heading nor a footer row, and a completed turn never
 	// switches what the pane shows.
 	native bool
+	// awaitingResync ignores the previous subscription's queued events after
+	// the view switched root threads, until the broker's snapshot arrives.
+	awaitingResync bool
 
 	files  []livediff.File
 	lines  []string
@@ -391,9 +394,28 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	return nil
 }
 
+// resetScope drops the saved-diff projection before the view follows another
+// root thread. Display preferences survive; files, filters and scroll do not.
+func (c *liveDiffTerminalController) resetScope() {
+	c.data, c.scope, c.callerCounts, c.coverage = newLiveDiffData(), liveDiffScope{}, nil, "CONNECTING"
+	c.view = livediff.View{Scroll: make(map[string]int), Following: true}
+	c.navigation = diffview.Navigation{Flat: c.navigation.Flat}
+	c.previewPane, c.back = diffview.PreviewPane{}, liveDiffBack{}
+	c.files, c.lines, c.offset, c.rendered = nil, nil, 0, nil
+	c.renderedFocus, c.renderedFocusFile = livediff.Chunk{}, -1
+	c.awaitingResync, c.dirty, c.followDirty = true, true, true
+	c.refreshChanges()
+}
+
 func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveDiffEvent) (bool, error) {
 	if err := validateLiveDiffEvent(event); err != nil {
 		return false, err
+	}
+	if c.awaitingResync {
+		if event.Kind != "scope" || !event.Resync {
+			return false, nil
+		}
+		c.awaitingResync = false
 	}
 	switch event.Kind {
 	case "end":

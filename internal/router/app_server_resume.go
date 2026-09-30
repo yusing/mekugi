@@ -14,9 +14,55 @@ import (
 	"github.com/yusing/mekugi/internal/pathdisplay"
 )
 
-func (u *appServerUI) requestResume() error {
+func (u *appServerUI) requestResume(thread string) error {
 	u.status = "Resuming thread…"
-	return u.request("thread/resume", map[string]any{"threadId": u.resumeThread, "approvalPolicy": "never", "sandbox": "danger-full-access", "config": u.resumeConfig, "modelProvider": u.resumeConfig["model_provider"]})
+	return u.request("thread/resume", map[string]any{"threadId": thread, "approvalPolicy": "never", "sandbox": "danger-full-access", "config": u.resumeConfig, "modelProvider": u.resumeConfig["model_provider"]})
+}
+
+// resumableThreads lists the sessions `resume --last` and the picker choose
+// from: interactive and app-server sessions from every provider. Exec runs and
+// spawned agents are not resumable conversations.
+func resumableThreads(limit int) map[string]any {
+	return map[string]any{
+		"limit": limit, "sortKey": "updated_at", "archived": false,
+		"modelProviders": []string{}, "sourceKinds": []string{"cli", "vscode", "appServer"},
+	}
+}
+
+// holdResumeEvent decides whether an event waits for a resuming thread's
+// history. During an in-session switch the current session stays live, so
+// only events for other threads wait. Streaming deltas from the resumed
+// thread's descendants are dropped rather than kept: their completed items
+// carry the full content, and busy children must not exhaust the bounded
+// buffer.
+func (u *appServerUI) holdResumeEvent(m appserver.Message, resuming bool) (hold, keep bool) {
+	var p struct {
+		ThreadID string `json:"threadId"`
+		Thread   struct {
+			ID             string `json:"id"`
+			ParentThreadID string `json:"parentThreadId"`
+		} `json:"thread"`
+	}
+	_ = json.Unmarshal(m.Params, &p)
+	thread := cmp.Or(p.ThreadID, p.Thread.ID)
+	if !resuming && (thread == "" || u.session.paths[thread] != "" || u.session.paths[p.Thread.ParentThreadID] != "") {
+		return false, false
+	}
+	root := cmp.Or(u.switching, u.resumeThread)
+	delta := strings.HasSuffix(m.Method, "/delta") || strings.HasSuffix(m.Method, "Delta")
+	return true, !delta || thread == "" || thread == root
+}
+
+// replayResumePending delivers events buffered while a thread was pending.
+func (u *appServerUI) replayResumePending() error {
+	pending := u.resumePending
+	u.resumePending = nil
+	for _, event := range pending {
+		if err := u.message(event); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (u *appServerUI) resumeLastResponse(m appserver.Message) error {
@@ -36,7 +82,7 @@ func (u *appServerUI) resumeLastResponse(m appserver.Message) error {
 		return fmt.Errorf("thread/list returned no thread identity")
 	}
 	u.resumeThread = result.Data[0].ID
-	return u.requestResume()
+	return u.requestResume(u.resumeThread)
 }
 
 // Codex merges saved model metadata after loading process CLI configuration.

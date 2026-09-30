@@ -303,3 +303,73 @@ func TestAppServerOptionWordNavigationNativeCodex(t *testing.T) {
 		t.Fatalf("word navigation submitted a model request: %q", got)
 	}
 }
+
+// The picker lists installed Codex's saved sessions, switches the running UI
+// to one, and serves a bare startup resume. Provider thread identities prove
+// where later input went.
+func TestAppServerResumePickerNativeCodex(t *testing.T) {
+	codex, err := exec.LookPath("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &appResumeProvider{}
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil, nil))
+	defer server.Close()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	environment := routerFaultCodexEnvironment(t)
+	workspace := t.TempDir()
+	newCommand := func(ctx context.Context) *exec.Cmd {
+		cmd := exec.CommandContext(ctx, codex, "app-server",
+			"-c", `model_providers.pickerpreview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`,
+			"-c", `model_provider="pickerpreview"`, "-c", `model="gpt-6-astra"`,
+			"-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+		cmd.Env = environment
+		cmd.Dir = workspace
+		return cmd
+	}
+
+	first := startAppResumeTerminal(t, newCommand, "")
+	first.await("Ready")
+	first.send("Picker first question\r")
+	first.await("completed")
+	first.quit()
+
+	second := startAppResumeTerminal(t, newCommand, "")
+	second.await("Ready")
+	second.send("Picker second question\r")
+	second.await("completed")
+	second.send("/resume\r")
+	second.await("Resume a previous session")
+	second.awaitMatch("both saved sessions", func(screen string) bool {
+		return strings.Contains(screen, "Picker first question") && strings.Contains(screen, "Picker second question · current")
+	})
+	second.send("\x1b[B\r")
+	second.awaitMatch("switched transcript", func(screen string) bool {
+		return strings.Contains(screen, "Picker first question") && !strings.Contains(screen, "Picker second question") && !strings.Contains(screen, "Resume a previous session")
+	})
+	second.await("Ready")
+	second.send("Picker follow-up\r")
+	second.await("Picker follow-up")
+	second.await("completed")
+	second.quit()
+	threads := provider.snapshot()
+	if len(threads) != 3 || threads[0] == threads[1] || threads[2] != threads[0] {
+		t.Fatalf("switched input did not reach the chosen thread: %q", threads)
+	}
+
+	third := startAppResumeTerminal(t, newCommand, resumePickerStartup)
+	third.await("Resume a previous session")
+	third.await("esc start new")
+	// The follow-up made the first session the most recently updated.
+	third.awaitMatch("recent session first", func(screen string) bool {
+		first, second := strings.Index(screen, "Picker first question"), strings.Index(screen, "Picker second question")
+		return first >= 0 && second > first
+	})
+	third.send("\r")
+	third.await("Picker follow-up")
+	third.await("Ready")
+	third.quit()
+	if got := provider.snapshot(); len(got) != 3 {
+		t.Fatalf("startup picker resent a turn: %q", got)
+	}
+}

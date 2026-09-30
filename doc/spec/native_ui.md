@@ -22,7 +22,7 @@ remain local to the active frontend.
 `mekugi codex` uses the native client of `codex app-server` for interactive
 terminal launches. Explicit `--yolo` remains required; without it startup rejects
 before launching Codex. There is no legacy UI selection or fallback. It maps explicit `--yolo`, model, config, and feature-toggle (`--enable` / `--disable`)
-arguments plus `resume THREAD_ID` or `resume --last`, and rejects other interactive arguments rather
+arguments plus `resume`, `resume THREAD_ID` or `resume --last`, and rejects other interactive arguments rather
 than ignoring them.
 Router readiness, provider catalogs, invocation overrides, native recovery hooks
 and frontend environment keep their owners; redirected and noninteractive
@@ -65,6 +65,42 @@ launch directory through `thread/list`, including CLI, VS Code and app-server
 sources across providers, excluding exec and child-agent sessions. Lookup failure
 or an empty result exits without creating a thread.
 
+Bare startup `resume` and in-session `/resume` open a session picker that
+replaces Main. It lists saved threads through `thread/list` in pages of 25,
+most recently updated first, with the same source kinds and providers as
+`resume --last`; exec and child-agent sessions are excluded. It starts filtered
+to the thread's workspace (the launch directory at startup); Tab toggles all
+workspaces, adding a Directory column shown with the shared workspace-relative
+path formatting, and restarts the listing. Rows show relative update time, Git
+branch and the thread name, else its first-message preview; column widths come
+from visible rows. Typing filters loaded rows by title, branch, directory and
+thread ID, loading further pages until matches appear or 1,000 sessions were
+scanned. Scrolling within five rows of the loaded end, or an unfilled viewport,
+loads the next page. Only the latest request's page is applied, so a filter
+change never mixes stale results. Loading, empty, no-match and failure states
+stay in the picker; a failed page stops automatic paging until Tab restarts the
+listing. Enter resumes the selected row; Escape first clears the
+search. At startup Escape then starts a new thread and Ctrl-C quits without
+one; in-session both close the picker and keep the current thread.
+
+`/resume` and `/resume THREAD_ID` follow `/clear`'s availability: they are
+refused while a task, submission or stacked input is pending, and the current
+thread is marked in the list. Choosing it only reports that it is already
+open. Switching uses `thread/resume` with the same invocation overrides as
+startup resume. The current session stays live until Codex returns the chosen
+thread; meanwhile input stacks locally and events for other threads are
+buffered. Success unsubscribes the previous thread, retires its and its
+descendants' late events, and then restores the chosen thread exactly as
+startup resume does: Main, roster, Activity, pane preferences, and a saved Diff
+rescoped to that thread and its descendants. After the rescope, observed model
+requests join the Diff only when the thread or its parent is already in scope,
+so the previous session's running children stay out. While any resumed thread
+restores, streaming deltas from its descendants are not buffered; their
+completed items carry the content. Returning to a previously left thread
+readmits its events.
+Failure keeps the current thread, replays its buffered events and returns
+stacked input to the composer. Drafts are not kept per thread.
+
 Startup `resume THREAD_ID` uses `thread/resume`, not a new thread or a replayed
 prompt. The returned thread identity must match the requested ID; failure exits
 without falling back to a new conversation. Main hydrates text messages and
@@ -79,7 +115,7 @@ starts a turn on the same thread; an active snapshot retains its steer/interrupt
 target. Resume keeps the returned workspace and effective model metadata, with
 journal sinks scoped to that thread. Explicit invocation model/effort settings
 and the routed provider are forwarded as resume overrides; Codex owns their
-precedence and reports the effective configuration. Thread picker and in-session thread switching remain outside this increment. Full-history
+precedence and reports the effective configuration. Full-history
 resume is limited by the 16 MiB RPC frame cap; oversized histories fail rather
 than bypassing the transport bound. Paginated hydration remains unfinished.
 
@@ -328,7 +364,7 @@ results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
 Typing `/` at the start of an otherwise single-token draft opens a local command
-catalog with descriptions for `/compact`, `/clear`, `/btw`, `/status`, `/copy`,
+catalog with descriptions for `/compact`, `/clear`, `/resume`, `/btw`, `/status`, `/copy`,
 `/model`, `/effort`, `/reasoning`, `/tier`, `/live`, `/skills`, and `/quit`.
 Typing filters commands with fuzzy matching; Up/Down selects, Tab
 completes without executing, Enter runs the selected command, and Escape closes

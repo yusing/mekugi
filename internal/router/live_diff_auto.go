@@ -26,7 +26,10 @@ type autoLiveDiff struct {
 	scopeBytes   int
 	turn         liveDiffTurn
 	turnComplete bool
-	changed      chan struct{}
+	// lineage admits observed threads only when they or their parent are in
+	// scope. A reset sets it so a previous session's children stay out.
+	lineage bool
+	changed chan struct{}
 
 	stopped bool // The UI session ended; later requests cannot be served.
 }
@@ -78,7 +81,36 @@ func (a *autoLiveDiff) observe(workspace, thread string, metadata codexTurnMetad
 		metadata.activityIdentityInvalid || metadata.RequestKind != "turn" {
 		return
 	}
-	a.includeThread(workspace, thread, metadata.SubagentKind == "")
+	a.mu.Lock()
+	admitted := !a.lineage || a.scopeHas(thread) || a.scopeHas(metadata.ParentThreadID)
+	a.mu.Unlock()
+	if admitted {
+		a.includeThread(workspace, thread, metadata.SubagentKind == "")
+	}
+}
+
+func (a *autoLiveDiff) scopeHas(thread string) bool {
+	for _, threads := range a.scope.Workspaces {
+		if thread != "" && threads[thread] {
+			return true
+		}
+	}
+	return false
+}
+
+// resetScope empties the presentation scope when the UI switches to another
+// saved root thread. The subscriber must resynchronize, so queued events for
+// the previous scope cannot reach the new view.
+func (a *autoLiveDiff) resetScope() {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.workspace, a.requested, a.lineage = "", false, true
+	a.scope = liveDiffScope{Workspaces: make(map[string]map[string]bool)}
+	a.scopeBytes = len(`{"Workspaces":{}}`)
+	a.events.resync(a.scope)
 }
 
 // includeThread also accepts identities established by observational resume
