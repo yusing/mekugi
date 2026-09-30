@@ -219,9 +219,13 @@ timing, since the commit names what it recorded. A timed, failed or skipped stag
 or one before a skipped commit, stays.
 A commit reads `Committed` only once the host completed it and its output named the
 commit. Successful output becomes rows beneath the heading instead of a tail, laid
-out like `mchanges --summary` rows: files under their verbs with shared path and
-count columns and scaled bars, a note such as `binary` or `N lines`, or a two-cell
-status code, staged state green and unstaged, untracked, or conflicted state red.
+out like `mchanges --summary` rows, with shared path and count columns, scaled
+bars, and notes such as `binary` or `N lines`. Where output identifies a state,
+Git commit and file-summary rows, and unified patch reads, use shared short file
+statuses (`M`, `A`, `D`, `R`, `RM`, `UU`, or `?`) rather than status verbs.
+SVN commit and summary rows retain their status verbs. Working-tree status rows
+use a two-cell status code, staged state green and unstaged, untracked, or
+conflicted state red.
 A gold-led closing row follows any `… +N more`: a commit's hash, `on BRANCH`, and
 totals; a status's branch, `↑N ↓N`, and `clean`; an svn revision `rN`; or a diff's
 file count and totals when it has more files than show. These rows are the

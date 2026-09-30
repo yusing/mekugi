@@ -12,7 +12,7 @@ import (
 // confirmed edit rows.
 type ChangeRow struct {
 	Verb           string // Edited, Created, Deleted, Moved, Conflict or ?; empty for a change ID.
-	Code           string // Two-cell VCS status, staged then unstaged, shown in the verb column.
+	Code           string // Short file status, or staged/unstaged VCS status, shown in the verb column.
 	From           string // A moved file's earlier path.
 	Label          string // File path or change ID range; a footer's lead, such as a commit hash.
 	Added, Removed int    // Known line counts; zero counts are omitted.

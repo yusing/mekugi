@@ -19,6 +19,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -777,18 +778,22 @@ func gitCommitRows(call vcsCall, cwd string, lines []string) ([]activityui.Chang
 // gitSummaryRow reads one --summary line: a created, deleted, or moved file.
 func gitSummaryRow(line string) (activityui.ChangeRow, bool) {
 	if match := gitSummaryMode.FindStringSubmatch(line); match != nil {
-		verb := "Created"
+		path := vcsPath(match[2])
+		status := diffview.Status{After: path}
 		if match[1] == "delete" {
-			verb = "Deleted"
+			status.Before, status.After = path, ""
 		}
-		return activityui.ChangeRow{Verb: verb, Label: vcsPath(match[2])}, true
+		return activityui.ChangeRow{Code: status.ShortCode(), Label: path}, true
 	}
 	if match := gitSummaryMove.FindStringSubmatch(line); match != nil {
 		from, to := gitRenamePaths(match[2])
-		row := activityui.ChangeRow{Verb: "Moved", From: vcsPath(from), Label: vcsPath(to)}
+		from, to = vcsPath(from), vcsPath(to)
+		status := diffview.Status{Before: from, After: to}
+		row := activityui.ChangeRow{From: from, Label: to}
 		if match[1] == "copy" {
-			row.Verb, row.From, row.Note = "Created", "", "copy of "+vcsPath(from)
+			status.Before, row.From, row.Note = "", "", "copy of "+from
 		}
+		row.Code = status.ShortCode()
 		return row, true
 	}
 	return activityui.ChangeRow{}, false
@@ -1091,17 +1096,19 @@ func patchRows(lines []string) []activityui.ChangeRow {
 	var rows []activityui.ChangeRow
 	index := make(map[string]int)
 	for _, file := range files {
-		row := activityui.ChangeRow{Verb: "Edited", Label: file.to, Added: file.added, Removed: file.removed}
+		status := diffview.Status{Before: file.from, After: file.to, Edited: file.added+file.removed > 0}
+		row := activityui.ChangeRow{Label: file.to, Added: file.added, Removed: file.removed}
 		switch {
 		case file.copied:
-			row.Verb, row.Note = "Created", "copy of "+file.from
+			status.Before, row.Note = "", "copy of "+file.from
 		case file.created && !file.deleted:
-			row.Verb = "Created"
+			status.Before = ""
 		case file.deleted || file.to == "":
-			row.Verb, row.Label = "Deleted", file.from
+			status.After, row.Label = "", file.from
 		case file.from != "" && file.from != file.to:
-			row.Verb, row.From = "Moved", file.from
+			row.From = file.from
 		}
+		row.Code = status.ShortCode()
 		if file.binary {
 			if row.Note != "" {
 				row.Note += " · "
@@ -1219,7 +1226,6 @@ var (
 	gitNumstatRow    = regexp.MustCompile(`^(\d+|-)\t(\d+|-)\t(.+)$`)
 	gitStatRow       = regexp.MustCompile(`^ (.+?) +\| +(?:(\d+)(?: ([+-]+))?|(Bin.*))$`)
 	gitNameStatusRow = regexp.MustCompile(`^([ACDMRTUXB])(\d*)\t([^\t]+)(?:\t(.+))?$`)
-	gitNameStatus    = map[string]string{"A": "Created", "C": "Created", "D": "Deleted", "M": "Edited", "T": "Edited", "R": "Moved", "U": "Conflict", "X": "?", "B": "Edited"}
 	gitShowHeader    = regexp.MustCompile(`^(?:commit [0-9a-f]{7,}|Merge: |Author: |AuthorDate: |Commit: |CommitDate: |Date: )`)
 )
 
@@ -1253,9 +1259,9 @@ func gitStatRows(format string, lines []string) []activityui.ChangeRow {
 		case "numstat":
 			if match := gitNumstatRow.FindStringSubmatch(line); match != nil {
 				from, to := gitRenamePaths(match[3])
-				row := activityui.ChangeRow{Verb: "Edited", Label: vcsPath(to)}
+				row := activityui.ChangeRow{Code: (diffview.Status{Before: from, After: to}).ShortCode(), Label: vcsPath(to)}
 				if from != to {
-					row.Verb, row.From = "Moved", vcsPath(from)
+					row.From = vcsPath(from)
 				}
 				if match[1] == "-" {
 					row.Note = "binary"
@@ -1271,9 +1277,9 @@ func gitStatRows(format string, lines []string) []activityui.ChangeRow {
 				continue
 			}
 			from, to := gitRenamePaths(match[1])
-			row := activityui.ChangeRow{Verb: "Edited", Label: vcsPath(to)}
+			row := activityui.ChangeRow{Code: (diffview.Status{Before: from, After: to}).ShortCode(), Label: vcsPath(to)}
 			if from != to {
-				row.Verb, row.From = "Moved", vcsPath(from)
+				row.From = vcsPath(from)
 			}
 			total, _ := strconv.Atoi(match[2])
 			added, removed := strings.Count(match[3], "+"), strings.Count(match[3], "-")
@@ -1292,15 +1298,25 @@ func gitStatRows(format string, lines []string) []activityui.ChangeRow {
 			if match == nil {
 				continue
 			}
-			row := activityui.ChangeRow{Verb: gitNameStatus[match[1]], Label: vcsPath(match[3])}
+			path := vcsPath(match[3])
+			status := diffview.Status{Before: path, After: path, Conflict: match[1] == "U", Incomplete: match[1] == "X"}
+			switch match[1] {
+			case "A", "C":
+				status.Before = ""
+			case "D":
+				status.After = ""
+			}
+			row := activityui.ChangeRow{Label: path}
 			if match[4] != "" {
 				row.Label = vcsPath(match[4])
 				if match[1] == "R" {
 					row.From = vcsPath(match[3])
+					status.After = row.Label
 				} else {
 					row.Note = "copy of " + vcsPath(match[3])
 				}
 			}
+			row.Code = status.ShortCode()
 			rows = append(rows, row)
 		case "name-only":
 			if line != "" && !strings.HasPrefix(line, " ") && !gitShowHeader.MatchString(line) {
@@ -1319,7 +1335,7 @@ func gitStatRows(format string, lines []string) []activityui.ChangeRow {
 	}
 	for i, row := range rows {
 		if summary, found := verbs[row.Label]; found {
-			rows[i].Verb, rows[i].From = summary.Verb, summary.From
+			rows[i].Code, rows[i].From = summary.Code, summary.From
 			if summary.Note != "" {
 				rows[i].Note = summary.Note
 				if row.Note != "" {

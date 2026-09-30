@@ -21,16 +21,16 @@ func TestVCSRowsShowTheirResult(t *testing.T) {
 		t.Fatalf("autosquash marker is not a marker: %q", raw)
 	}
 	// Without a named commit, output does not make the request a recorded commit.
-	commit.Changes = []ChangeRow{{Verb: "Edited", Label: "a.go", Added: 2, Removed: 1}}
+	commit.Changes = []ChangeRow{{Code: "M", Label: "a.go", Added: 2, Removed: 1}}
 	if got := RowVerb(commit); got != "Commit" {
 		t.Fatalf("unnamed commit verb = %q", got)
 	}
-	commit.Changes = append(commit.Changes, ChangeRow{Verb: "Created", Label: "doc/b.md", Added: 9}, ChangeRow{Footer: true, Label: "3a1f9c2", Note: "on main · 2 files", Added: 11, Removed: 1})
+	commit.Changes = append(commit.Changes, ChangeRow{Code: "A", Label: "doc/b.md", Added: 9}, ChangeRow{Footer: true, Label: "3a1f9c2", Note: "on main · 2 files", Added: 11, Removed: 1})
 	commit.Tail, commit.Collapsed = []string{"[main 3a1f9c2] x", " 2 files changed"}, true
 	want := strings.Join([]string{
 		"Committed amend! feat(router): pin latest reply · git",
-		"          Edited  a.go      +2 -1 ━━━━━━━━",
-		"          Created doc/b.md  +9    ━━━━━━━━",
+		"          M  a.go      +2 -1 ━━━━━━━━",
+		"          A  doc/b.md  +9    ━━━━━━━━",
 		"          3a1f9c2 on main · 2 files +11 -1",
 	}, "\n")
 	if got := vcsRows(&p, commit, 80); got != want {
@@ -97,7 +97,7 @@ func TestVCSStatusRowsUseTwoCellCodes(t *testing.T) {
 func TestVCSFooterFollowsElidedRows(t *testing.T) {
 	var rows []ChangeRow
 	for range ChangeRowsShown + 2 {
-		rows = append(rows, ChangeRow{Verb: "Edited", Label: "a.go", Added: 1})
+		rows = append(rows, ChangeRow{Code: "M", Label: "a.go", Added: 1})
 	}
 	rows = append(rows, ChangeRow{Footer: true, Note: "14 files", Added: 14})
 	lines := changeRows(rows, "", 60)

@@ -128,11 +128,11 @@ func TestVCSPatchCopiesKeepTheirSource(t *testing.T) {
 				if row.Label == "modified.txt" {
 					added = 1
 				}
-				if row.Verb != "Created" || row.From != "" || row.Note != "copy of source.txt" || row.Added != added || row.Removed != 0 {
+				if row.Code != "A" || row.From != "" || row.Note != "copy of source.txt" || row.Added != added || row.Removed != 0 {
 					t.Fatalf("copy misrepresented: %+v", row)
 				}
 			case "other.txt":
-				if row.Verb != "Edited" || row.Added != 1 || row.Removed != 1 {
+				if row.Code != "M" || row.Added != 1 || row.Removed != 1 {
 					t.Fatalf("neighbor lost: %+v", row)
 				}
 			default:
