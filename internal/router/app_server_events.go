@@ -85,6 +85,7 @@ type appServerThreadInfo struct {
 	Source         jsontext.Value         `json:"source"`
 	CreatedAt      int64                  `json:"createdAt"`
 	UpdatedAt      int64                  `json:"updatedAt"`
+	HistoryMode    string                 `json:"historyMode"`
 	Turns          []appServerHistoryTurn `json:"turns"`
 }
 
@@ -238,6 +239,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		}
 	}
 	main := p.ThreadID == u.thread
+	if h := u.childHistory[p.ThreadID]; h != nil {
+		h.live = true
+	}
 	if p.ThreadID != "" && !main {
 		if err := u.requestThreadMetadata(p.ThreadID); err != nil {
 			return true, err

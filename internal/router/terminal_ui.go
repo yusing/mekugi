@@ -314,6 +314,9 @@ func (u *terminalUI) terminalColor(reply string) {
 }
 
 func (u *terminalUI) send(s string) error {
+	if s == "\x1b" && u.focus == 2 && u.main != nil && u.main.historyLoading != nil {
+		return u.main.cancelOlderActivity()
+	}
 	if s == "\x1b" && u.main != nil && u.main.reset.cancellable() && !u.main.reset.cancelled {
 		err := u.main.reset.cancel()
 		u.main.showResetNotice()
@@ -387,6 +390,11 @@ func (u *terminalUI) send(s string) error {
 
 	if u.focus == 4 {
 		return u.journalKey(s)
+	}
+	if u.focus == 2 && u.main != nil {
+		if s == "o" {
+			return u.main.loadOlderActivity()
+		}
 	}
 	if u.focus == 0 {
 		for _, key := range []byte(s) {

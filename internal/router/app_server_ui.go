@@ -163,6 +163,8 @@ type appServerUI struct {
 	panes                     *nativePanePersistence
 	waitRelease               func()
 	restoring                 *appServerActivityRestore
+	childHistory              map[string]*appServerChildHistory
+	historyLoading            *appServerChildHistory
 	starting                  bool
 }
 
@@ -496,6 +498,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	// before a completion, not just on the next paint tick, so links bind once.
 	u.applyObservedActivity()
 	u.applyPendingJournal()
+	if held, err := u.holdOlderHistoryEvent(m); held || err != nil {
+		return err
+	}
 	resuming := u.resumeThread != "" && u.resumeThread != resumePickerStartup && (u.thread == "" || u.restoring != nil)
 	if (resuming || u.switching != "") && m.Method != "" {
 		if hold, keep := u.holdResumeEvent(m, resuming); hold {
@@ -515,6 +520,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return nil
 		}
 		delete(u.requests, string(m.ID))
+		if strings.HasPrefix(method, "activity/") {
+			return u.childHistoryResponse(method, m)
+		}
 		if method == "config/read" {
 			u.notificationConfig(m)
 			return nil
@@ -1111,7 +1119,7 @@ func mainActivityLinked(entry activityPaneEntry) bool {
 func (u *appServerUI) applyMainActivity(entry activityPaneEntry) {
 	entry.Seq = u.view.lastSeq + 1
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
-	if entry.Kind == "final" {
+	if entry.Kind == "final" && (u.restoring == nil || !u.restoring.paging) {
 		u.view.linkChildAnswers(u.view.entrySeq(entry))
 	}
 }

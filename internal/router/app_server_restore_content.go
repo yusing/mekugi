@@ -15,6 +15,11 @@ import (
 
 const appServerRestoreThreadLimit = 128
 
+type restoredHistoryNotice struct {
+	message    string
+	incomplete bool // Permanent discovery/evidence gap, not a retryable item read.
+}
+
 type appServerActivityRestore struct {
 	root     appServerThreadInfo
 	threads  map[string]appServerThreadInfo
@@ -30,8 +35,9 @@ type appServerActivityRestore struct {
 	itemAt   map[string]map[string]time.Time
 	pane     map[string][]*restoredPlacement
 	main     []*restoredPlacement
-	notices  []string
+	notices  []restoredHistoryNotice
 	rendered bool
+	paging   bool // Bind cumulative answers only after a page has its chronological position.
 }
 
 func (u *appServerUI) restorePaneContent(root appServerThreadInfo) error {
@@ -68,9 +74,15 @@ func (u *appServerUI) restoreList(cursor string) error {
 }
 
 func (u *appServerUI) restoreContentNotice(message string) {
-	u.agents.status = "History incomplete"
+	u.restoreHistoryNotice(message, true)
+}
+
+func (u *appServerUI) restoreHistoryNotice(message string, incomplete bool) {
+	if incomplete {
+		u.agents.status = "History incomplete"
+	}
 	if r := u.restoring; r != nil && !r.rendered {
-		r.notices = append(r.notices, message) // Shown after Main's history.
+		r.notices = append(r.notices, restoredHistoryNotice{message, incomplete}) // Shown after Main's history.
 		return
 	}
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Session", Kind: "text", Text: message, Observed: time.Now()}}})
@@ -133,6 +145,8 @@ func (u *appServerUI) restoreActivityResponse(method string, m appserver.Message
 		u.restoreContentNotice("Invalid Activity history: " + err.Error())
 	} else if result.Thread.ID != r.order[r.next] {
 		u.restoreContentNotice("Activity history returned a different thread identity.")
+	} else if result.Thread.HistoryMode == "paginated" {
+		return u.startChildHistory(result.Thread)
 	} else {
 		u.restoreActivityThread(result.Thread)
 	}
@@ -214,7 +228,7 @@ func (u *appServerUI) readNextRestoredChild() error {
 	r := u.restoring
 	if r.next < len(r.order) {
 		u.status = fmt.Sprintf("Restoring Activity %d/%d…", r.next+1, len(r.order))
-		return u.request("thread/read", map[string]any{"threadId": r.order[r.next], "includeTurns": true})
+		return u.request("thread/read", map[string]any{"threadId": r.order[r.next], "includeTurns": r.threads[r.order[r.next]].HistoryMode != "paginated"})
 	}
 	if !r.rendered {
 		// Evidence for a child whose history could not be read still reaches Main.
@@ -229,7 +243,7 @@ func (u *appServerUI) readNextRestoredChild() error {
 		u.restoreMainHistory(r.root.Turns, r.main, r.itemAt[r.root.ID])
 		r.root.Turns, r.main, r.rendered = nil, nil, true
 		for _, notice := range r.notices {
-			u.restoreContentNotice(notice)
+			u.restoreHistoryNotice(notice.message, notice.incomplete)
 		}
 		r.notices = nil
 	}
@@ -259,6 +273,7 @@ func (u *appServerUI) finishRestoredContent() error {
 		}
 	}
 	u.restoring = nil
+	u.updateHistoryHint()
 	u.status = "Ready"
 	if u.turn != "" {
 		u.status = "Working"
@@ -292,7 +307,7 @@ func (u *appServerUI) applyRestoredActivity(entries []activityPaneEntry) {
 	}
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: entries, Agents: slices.Clone(u.session.agents)})
 	for _, entry := range entries {
-		if entry.Kind == "final" {
+		if entry.Kind == "final" && (u.restoring == nil || !u.restoring.paging) {
 			u.agents.linkChildAnswers(u.agents.entrySeq(entry))
 		}
 	}
@@ -356,11 +371,11 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 		lastMessage := -1
 		for i, item := range turn.Items {
 			first := len(entries)
-			u.restoreActivityItem(info, turn, item, name, observed, &entries, &lastMessage)
 			at, ok := itemAt[item.ID]
 			if !ok {
 				at = observed
 			}
+			u.restoreActivityItem(info, turn, item, name, at, &entries, &lastMessage)
 			for range entries[first:] {
 				times = append(times, at)
 			}
@@ -368,10 +383,10 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 		}
 		agent = s.agent(name)
 		agent.Final = turn.Status == "completed"
-		if agent.Final && lastMessage >= 0 {
+		if agent.Final && lastMessage >= 0 && !turn.olderPage {
 			entries[lastMessage].Kind = "final"
 		}
-		if turn.Status == "failed" || turn.Status == "interrupted" || turn.Status == "inProgress" {
+		if !turn.olderPage && (turn.Status == "failed" || turn.Status == "interrupted" || turn.Status == "inProgress") {
 			text := "Recorded turn: " + turn.Status + " (history only)"
 			if turn.Error != nil {
 				text += ": " + turn.Error.Message

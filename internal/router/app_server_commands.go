@@ -110,6 +110,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 	}
 	u.statusPanel, u.statusReports = nil, nil
 	u.requests = make(map[string]string) // Retire old-thread response correlation.
+	u.childHistory, u.historyLoading = nil, nil
 	if err := u.request("thread/unsubscribe", map[string]any{"threadId": u.thread}); err != nil {
 		return err
 	}

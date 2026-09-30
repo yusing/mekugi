@@ -71,6 +71,32 @@ delivery, not live-model behavior. Root-only publication still needs a writable
 root response; it cannot display a new milestone during a host tool wait until
 that response channel opens again.
 
+### Anchored child Activity history (2026-09-30)
+
+Codex CLI 0.159.2 accepted `thread/items/list` item anchors introduced by
+`de9e78e3e` (#48151), including anchors in a fork's inherited visible turn.
+`TestAppServerAnchoredHistoryNativeCodexE2E` exercises the native child loader
+against an isolated, host-migrated synthetic rollout with 2,000 assistant
+messages and one user item. It verifies the newest 100 items, the next older
+100, chronological projection, stable page boundaries, and turn timing.
+No provider or account is used. The existing native resume PTY fixture also
+passes with the installed host.
+
+The full result was 8,467,204 bytes; metadata plus the first 100-item page
+was 434,124 bytes, about 94.9% less initial payload. One local diagnostic run
+measured full read plus projection at 264 ms versus paged hydration at 87 ms.
+These synthetic, single-machine timings are not a live-session latency SLA,
+model-consumption claim, or proof of provider performance. The repeatable
+acceptance asserts bounded payload and content, not a timing threshold.
+
+The host item-list API supports paginated histories, not legacy rollouts.
+Mekugi observes the reported history mode; it does not migrate user sessions
+or fall back to an unbounded read after a paginated read fails. Main's
+full-history resume and oversized individual items remain subject to the
+existing 16 MiB RPC frame cap. New older-history controls have rendered
+snapshots and interaction tests, but no dedicated interactive PTY paging
+fixture; the installed-host acceptance drives the real loader directly.
+
 ### Codex workspace metadata
 
 - A session started inside this Git repository declared the enclosing

@@ -127,7 +127,7 @@ journal sinks scoped to that thread. Explicit invocation model/effort settings
 and the routed provider are forwarded as resume overrides; Codex owns their
 precedence and reports the effective configuration. Full-history
 resume is limited by the 16 MiB RPC frame cap; oversized histories fail rather
-than bypassing the transport bound. Paginated hydration remains unfinished.
+than bypassing the transport bound. Main's paginated hydration remains unfinished.
 
 Resume also restores the Agents roster and Activity from Codex's observational
 history APIs, including archived descendants. Names/roles, retained assignments,
@@ -143,6 +143,18 @@ follows the host item it was recorded after, or, for another thread's
 record, its completion time. Reading is bounded to each rollout's last 64 MiB;
 older evidence shows only what the host's history does. A later live request
 that carries restored messages again does not repeat them.
+Paginated child Activity opens on the newest turn's recent items. Older content
+is intentionally unloaded, not missing evidence: the Activity title offers an
+older-history action. With Activity focused, `o` loads one older page for the
+selected child, or the first eligible child in the shared view. Loading does
+not block Main's conversation. Esc cancels this observational read without
+interrupting the child; errors retain already loaded content and offer retry.
+Older pages appear before newer child entries and retain their original answer
+links. They must not turn older commentary into a final answer, repeat turn
+status rows, or overwrite newer live status, usage, or timing. Rollout evidence
+anchored to unloaded items waits for its page rather than appearing at a false
+position or becoming a missing-evidence report.
+
 Usage is shown only when available from its existing owner, never reconstructed
 from transcript text. Missing child history is marked incomplete without
 preventing the parent conversation from continuing.
@@ -156,8 +168,9 @@ automatic-diff owner. Retention gaps remain gaps, not successful recapture.
 Activity hydration reports progress, buffers live notifications, and keeps typed
 input as an unsent draft until reconciliation; `/quit` or Ctrl-C on an empty draft can exit while loading.
 Discovery is bounded to 128 descendants and eight list pages, with an explicit
-partial-history notice at the limit. Child histories share the current 16 MiB
-RPC frame limit; paginated turn/item hydration remains unfinished. No additional
+partial-history notice at the limit. Legacy child histories still use full reads
+and share the 16 MiB RPC frame limit. Paginated children use bounded item pages;
+a single oversized item can still exceed that transport bound. No additional
 model requests or execution occur merely to restore pane content.
 
 Native pane preferences persist separately from replay/correctness records under

@@ -401,6 +401,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			rosterHits := u.agents.hits
 			body = u.agents.render(iw, content, now)
 			u.agents.hits = rosterHits
+			if u.main != nil {
+				u.main.updateHistoryHint()
+			}
 			detail, state := u.agents.nativeTitle()
 			title, label = nativeTitle(3, "Activity", detail, u.focus == 2), state
 		}

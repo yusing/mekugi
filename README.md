@@ -329,8 +329,9 @@ conversation, and it can't be resumed.
 `resume THREAD_ID` and `resume --last` work as in Codex. Resuming also restores
 pane layout, keyboard focus, the agent roster, Activity history, and the
 session's retained Diff changes. Scroll positions, filters, selections, and
-drafts are not restored. Threads with more than 16 MiB of history can't resume
-in the native UI.
+drafts are not restored. Main histories larger than 16 MiB cannot resume in the
+native UI. Paginated child histories load recent Activity first; older content
+remains available on demand rather than delaying the conversation.
 
 Bare `resume`, or `/resume` inside a session, opens a picker of saved sessions
 for the current workspace, newest first. Type to search, Tab to show every
@@ -402,8 +403,12 @@ come from the router's usage accounting, not an additional app-server total.
 - Click an agent to inspect its activity; reply links address that agent.
 - In Activity or Agents, `a` toggles selected-agent filtering. The hint reads
   `a all` while filtered, and `a only` in the shared view.
-- Scrolling pauses following; `r` resumes it. The mouse wheel scrolls without
+- Scrolling pauses following; End resumes it. The mouse wheel scrolls without
   changing keyboard focus.
+- When the Activity title shows `Older history`, focus Activity and press `o`
+  to load an older page for the selected child, or the first child with older
+  history in the shared view. Esc cancels the read; `o` retries a failed read.
+  Intentionally unloaded history is distinct from unavailable evidence.
 
 Redirected sessions keep ordinary Codex input/output and inline agent activity.
 Inside Herdr, Mekugi advertises the invocation through Herdr's agent hint.

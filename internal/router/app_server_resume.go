@@ -113,6 +113,7 @@ func appServerResumeConfig(args []string) map[string]any {
 }
 
 type appServerHistoryTurn struct {
+	olderPage   bool            // An older item page must not repeat status or promote commentary to final.
 	ID          string          `json:"id"`
 	Status      string          `json:"status"`
 	Items       []appServerItem `json:"items"`
@@ -144,7 +145,14 @@ func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placement
 		slots := placeRestored(turn, itemAt, byTurn[index])
 		u.applyRestoredMain(slots[0])
 		for i, item := range turn.Items {
+			before := u.view.lastSeq
 			u.restoreHistoryItem(turn, item)
+			at := cmp.Or(itemAt[item.ID], historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt)))
+			if !at.IsZero() {
+				for j := len(u.view.entries) - 1; j >= 0 && u.view.entries[j].Seq > before; j-- {
+					u.view.entries[j].Observed = at
+				}
+			}
 			u.applyRestoredMain(slots[i+1])
 		}
 		if turn.Status == "failed" {

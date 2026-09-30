@@ -44,6 +44,8 @@ type liveActivityView struct {
 	rosterEnd      int
 	unseen         int
 	status         string
+	historyHint    string // Intentionally unloaded child history, separate from missing evidence.
+	historyOrder   bool   // Stable IDs need not follow presentation order after older-page insertion.
 	roleColors     map[string]string
 	feedOnly       bool
 	conversation   bool                        // Main uses the same feed/state with full, unclipped messages.
@@ -158,7 +160,7 @@ func newLiveActivityView() *liveActivityView {
 // warm while one item streams. Main's threaded layout also depends on earlier
 // assignments and reasoning, so its cross-entry cache is invalidated together.
 func (v *liveActivityView) invalidateEntry(seq uint64) {
-	if v.conversation {
+	if v.conversation || v.historyOrder {
 		v.runs = nil
 		return
 	}
@@ -300,7 +302,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 		v.blocks = slices.Delete(v.blocks, 0, extra)
 		v.runs = nil
 		for seq := range v.passed {
-			if seq < v.entries[0].Seq {
+			if v.historyOrder && !slices.ContainsFunc(v.entries, func(entry activityPaneEntry) bool { return entry.Seq == seq }) || !v.historyOrder && seq < v.entries[0].Seq {
 				delete(v.passed, seq)
 			}
 		}
@@ -1449,7 +1451,7 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 			last = j
 		}
 		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.Theme, -1, false, conversationThread{}, 0, 0, false, v.tailRows()}
-		if key.first <= flash && flash <= key.last {
+		if flash != 0 && slices.ContainsFunc(v.entries[i:j], func(entry activityPaneEntry) bool { return entry.Seq == flash }) {
 			key.flash = flash
 		}
 		if v.snippet.run == key.first {

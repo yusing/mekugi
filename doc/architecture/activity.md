@@ -27,3 +27,35 @@ of caller activity counters. Caller counters remain a per-agent cumulative
 presentation; they are not an outcome-accounting store. Presentation cannot
 acknowledge journals, finalize edits, reconstruct missing provider usage, or revive
 replayed processes.
+
+## CTR-ACTIVITY-002 — Native child history pages
+
+The native UI owns request-local child pagination state, keyed by stable root
+and child IDs. Codex owns visible lineage, including inherited fork items and
+archived descendants. Session switches retire response correlation and cursors;
+fresh resume rediscovers history instead of reviving continuation handles.
+
+Children with `historyMode: "paginated"` use a metadata-only `thread/read`,
+then `thread/turns/list` with `itemsView: "notLoaded"`, descending direction,
+and 100 turns per page, bounded to eight pages. Turn identity, status, error,
+and second-resolution start/completion timestamps come from these metadata
+pages, not item text. Legacy children retain full `thread/read` restoration:
+Codex's item-list API does not support legacy rollout history.
+
+`thread/items/list` is scoped to one child and turn, descending, with a 100-item
+limit. Responses carry item identity and optional millisecond timestamps.
+Older reads use an exclusive `{type: "item", itemId: ...}` cursor with that
+same nonempty `turnId`; opaque `nextCursor` continues pages without an item
+anchor. Item identities deduplicate overlapping pages; repeated cursors and
+out-of-scope items are errors, not end-of-history. A null `nextCursor` ends a turn,
+then the next read selects the preceding turn. Pagination errors are never
+silently replaced by an unbounded read.
+
+Unloaded history, loading, and failed reads have separate presentation states.
+Pending rollout placements stay with their child until their item/turn is
+loaded. Stable Activity entry IDs survive older-page insertion and continue
+to own output and Main links. Existing transcript retention remains bounded.
+While an older page is pending, same-child lifecycle notifications reconcile
+after the page; deltas are not retained, and buffer saturation cancels the
+observational read before applying live events. Cancellation retires only
+the pending read, never a host process or turn.

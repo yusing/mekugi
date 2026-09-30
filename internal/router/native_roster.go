@@ -22,6 +22,9 @@ func (v *liveActivityView) nativeTitle() (string, string) {
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
 		detail = v.painter.Agent(v.selected) + activityui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + activityui.Undim
 	}
+	if v.historyHint != "" {
+		detail = strings.TrimSpace(activityui.Dim + v.historyHint + activityui.Undim + " " + detail)
+	}
 	state := v.status
 	if state == "" {
 		state = scrollLabel(v)
