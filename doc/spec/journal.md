@@ -415,7 +415,10 @@ journal, attached to the next useful tool call rather than standalone commentary
 or a journal-only request. Notes lead with the result or decision, then supporting
 evidence; ongoing narration and unchanged facts are not new notes. Standing
 constraints belong in context once. Parents record integration decisions, not
-copies of child journals. Work completion is not a conversational exception:
+copies of child journals. Coordinator requests for implementation-completion reports
+use the same journal channel, including commit IDs, checks, review outcomes and
+limitations. They do not make that evidence a separate conversational deliverable.
+Work completion is not a conversational exception:
 finish with exactly `Done.` unless the user needs a usable deliverable, usage
 explanation or decision beyond the work report. That Outcome does not repeat
 progress, validation, review status or remaining work. Requested explanations,

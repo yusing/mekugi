@@ -164,6 +164,7 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 				"Read and transport failures throw.",
 				"do not construct its internal transport",
 				"A work-completion reply is not a conversational exception",
+				"Coordinator requests for implementation-completion reports also use the journal",
 				"Parents record integration decisions",
 			} {
 				if count := strings.Count(combined, rule); count != 1 {

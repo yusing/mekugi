@@ -107,8 +107,9 @@ Acceptance:
    tasks and facts, read retained subtrees, and finish naturally with an answer.
    Work turns finish with `Done.` or only the usable deliverable, usage explanation
    or needed decision beyond their separate work report, without another provider
-   request. Requested explanations, review findings and actual questions remain
-   conversational. Guidance directs mutations
+   request. Coordinator implementation-completion reports use that work-report channel,
+   not a second final recap. Requested explanations, review findings and actual
+   questions remain conversational. Guidance directs mutations
    onto useful calls rather than standalone journal calls; Code Mode exposes only the exec-local helper for both read and mutations.
 4. Ordinary, fork, side-thread, subagent, model-switch, compaction, and resume consumers derive
    guidance from their current tool catalog and authenticated registry rather than invisible ancestry
