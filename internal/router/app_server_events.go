@@ -352,7 +352,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				u.applyActivity(dropped, nil)
 			}
 		}
-		if text, wait, handled := appServerProgress(item, m.Method); handled {
+		if text, wait, handled := u.progress(item, m.Method, p.ThreadID, p.TurnID); handled {
 			if text != "" {
 				native.wait = wait
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "progress", Text: text, Observed: now, native: native})

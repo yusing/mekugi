@@ -174,7 +174,7 @@ func (d *journalResetDriver) continuePlan(compacted bool) error {
 			return errors.New("next slice is no longer pending")
 		}
 		if compacted && intent.Phase != "consumed" {
-			return errors.New("compaction did not consume the journal reset intent")
+			return errors.New("context reset did not consume the journal reset intent")
 		}
 		intent.Phase = "starting"
 		if compacted {
@@ -183,6 +183,7 @@ func (d *journalResetDriver) continuePlan(compacted bool) error {
 				return err
 			}
 			j.Events[len(j.Events)-1].Op = "reset"
+			j.Events[len(j.Events)-1].ResetTurn = d.compactTurn
 		}
 		return nil
 	}); err != nil {
@@ -265,7 +266,7 @@ func (d *journalResetDriver) message(m appserver.Message) (bool, error) {
 				return false, nil // Late notification from the completed slice.
 			}
 			if d.compactTurn != "" && d.compactTurn != p.Turn.ID {
-				return false, d.fail("Another turn started during slice compaction; continuation was not sent")
+				return false, d.fail("Another turn started during context reset; continuation was not sent")
 			}
 			d.compactTurn = p.Turn.ID
 		} else if d.phase == "countdown" {
@@ -278,7 +279,7 @@ func (d *journalResetDriver) message(m appserver.Message) (bool, error) {
 		}
 		if m.Method == "turn/completed" && p.Turn.ID == d.compactTurn {
 			if p.Turn.Status != "completed" || !d.compactDone {
-				return false, d.fail("Slice compaction did not complete; continuation was not sent")
+				return false, d.fail("Context reset did not complete; continuation was not sent")
 			}
 			d.compactEnded = true
 		}
@@ -298,5 +299,11 @@ func (d *journalResetDriver) label(now time.Time) string {
 		}
 		return fmt.Sprintf("%s in %ds · starting %s %s · Esc cancels", verb, max(0, int(d.deadline.Sub(now).Seconds()+1)), d.intent.Path, d.intent.Title)
 	}
-	return "Journal slice · " + d.phase
+	switch d.phase {
+	case "compacting":
+		return "Journal slice · Resetting context"
+	case "starting":
+		return "Journal slice · Continuing plan"
+	}
+	return ""
 }

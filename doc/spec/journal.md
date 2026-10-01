@@ -200,6 +200,9 @@ The [headless frontend](router.md#headless-app-server-frontend) uses the same po
 with no countdown delay and emits reset events instead of rendering a strip.
 
 With `slice` or `auto`, the frontend asks Codex to compact before continuing.
+The native UI describes that journal-driven operation as a context reset,
+including its progress, completion, and restored event. Ordinary provider
+compactions retain their compaction wording even when reset mode is enabled.
 Only a router-answered, successfully completed compaction permits the automatic
 continuation. Provider fallback leaves the plan available for manual continuation.
 With `off`, the same countdown continues the plan without resetting context.

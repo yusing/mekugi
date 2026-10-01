@@ -48,3 +48,47 @@ func (u *appServerUI) journalResetStrip(width int) string {
 	}
 	return ansi.Truncate(livediff.Safe(u.reset.label(time.Now()), false), width, "…")
 }
+
+// Match the reset's own turn, not the configured mode: ordinary provider
+// compactions can still occur in a session that uses journal resets.
+func (u *appServerUI) journalResetTurn(thread, turn string) bool {
+	if turn == "" || thread != u.thread {
+		return false
+	}
+	if u.reset != nil && u.reset.thread == thread && u.reset.compactTurn == turn {
+		return true
+	}
+	return u.journalResetEvent(thread, turn)
+}
+
+func (u *appServerUI) journalResetCompleted(thread, turn string) bool {
+	if u.journalResetEvent(thread, turn) {
+		return true
+	}
+	d := u.reset
+	if turn == "" || thread != u.thread || d == nil || d.thread != thread || d.compactTurn != turn || d.intent == nil {
+		return false
+	}
+	// Router completion persists consumption before host item/completed, but
+	// does not publish a journal mutation. Read that evidence, not dispatch intent.
+	intent, err := d.proxy.replayStore.resetIntent(d.ctx, d.workspace, thread)
+	return err == nil && intent != nil && intent.ID == d.intent.ID && intent.Phase == "consumed"
+}
+
+func (u *appServerUI) journalResetEvent(thread, turn string) bool {
+	if turn == "" || thread != u.thread {
+		return false
+	}
+	if u.journal != nil {
+		u.journal.mu.Lock()
+		defer u.journal.mu.Unlock()
+		if u.journal.tree != nil {
+			for _, event := range u.journal.tree.Events {
+				if event.Op == "reset" && event.ResetTurn == turn {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}

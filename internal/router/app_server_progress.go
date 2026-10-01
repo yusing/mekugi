@@ -40,6 +40,14 @@ func appServerProgress(item appServerItem, method string) (text string, wait *ac
 	return "", nil, false
 }
 
+func (u *appServerUI) progress(item appServerItem, method, thread, turn string) (string, *activityui.Block, bool) {
+	text, wait, handled := appServerProgress(item, method)
+	if item.Type == "contextCompaction" && text != "" && u.journalResetCompleted(thread, turn) {
+		text = "Context reset from journal"
+	}
+	return text, wait, handled
+}
+
 func appServerWaitProgress(item appServerItem, method string) *activityui.Block {
 	if item.Type != "collabAgentToolCall" || item.Tool != "wait" {
 		return nil

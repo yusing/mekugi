@@ -313,6 +313,13 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 	}
 	if _, _, progress := appServerProgress(item, method); progress {
 		method = appServerHistoryProgressPhase(item, turn.Status)
+		if text, wait, _ := u.progress(item, method, u.thread, turn.ID); text != "" {
+			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+				Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),
+				native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, wait: wait},
+			}}})
+		}
+		return
 	}
 	switch item.Type {
 	case "imageView":

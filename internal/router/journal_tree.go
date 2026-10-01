@@ -38,6 +38,7 @@ type journalNode struct {
 }
 
 type journalEvent struct {
+	ResetTurn      string      `json:"reset_turn,omitempty"`
 	RootRetraction bool        `json:"root_retraction,omitzero"`
 	Legacy         bool        `json:"legacy,omitzero"`
 	Seq            uint64      `json:"seq"`
