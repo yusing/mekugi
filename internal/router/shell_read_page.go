@@ -10,7 +10,7 @@ import (
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
-func selectReadPage(ctx context.Context, manifest toolWorkerManifest, runtimeRoot, text string, maxTokens int) (string, error) {
+func selectReadPage(ctx context.Context, text string, maxTokens int) (string, error) {
 	if len(text) <= maxTokens {
 		return text, nil
 	}
@@ -18,7 +18,7 @@ func selectReadPage(ctx context.Context, manifest toolWorkerManifest, runtimeRoo
 	for end < len(text) && !utf8.RuneStart(text[end]) {
 		end--
 	}
-	formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtimeRoot,
+	formatted, err := toolplugin.FormatOutput(ctx,
 		[]string{strconv.Itoa(maxTokens), "head", text[:end], ""})
 	if err != nil {
 		return "", err

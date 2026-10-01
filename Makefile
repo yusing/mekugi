@@ -15,7 +15,6 @@ uninstall:
 	$(GO) clean -i ./cmd/mekugi ./cmd/mekugi-exec
 
 preview-assets:
-	bun install --cwd plugins --frozen-lockfile
 	go generate ./internal/router/toolplugin
 
 # Interactive native Main fixtures. No Codex process or model requests.

@@ -159,7 +159,7 @@ describe("plugin declaration validation", () => {
         .replace('parse(input) { return input; },\n    argv(input) { return [input]; },\n    execute() { return {stdout: "", exitCode: 0}; }', 'nativeExecutor: "mread"'),
     );
     expect(response.plugins).toEqual([]);
-    expect(response.errors.join("\n")).toContain("native executor is not a bundled tool");
+    expect(response.errors.join("\n")).toContain("native executor is reserved for compiled built-ins");
   });
 
   test("reports independent declaration errors together", async () => {

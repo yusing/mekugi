@@ -13,9 +13,10 @@ format, not runtime-transpiled plugin input. Passthrough mode loads none.
 Each declaration uses `mekugi-tool-plugin/v1`, a stable plugin ID, and one or
 more globally named tools. A configured tool provides an exact Responses custom-tool
 specification, bounded string parser, `argv` conversion, and executor-side
-`execute` implementation. Bundled `mread`, `mrun`, and `mchanges` are plugin-declared tools with
-plugin-owned descriptions and pinned native host executors. Only the bundled declaration may
-name those executors; configured plugins cannot claim them. The supported specification is unconstrained text
+`execute` implementation. Bundled `mcat`, `inspect_file`, `msymbol`, `mread`, `mrun`, and `mchanges` are compiled native
+frontends with registry-owned descriptions and pinned executors. They accept shell argv,
+not custom-tool input, and carry no regex or Lark grammar. Configured plugins cannot
+claim native executors. The supported specification is unconstrained text
 or a Lark or Rust-regex grammar. Standard JSON-schema function declarations
 and arbitrary undocumented fields are not plugin declarations. Tool names
 must not collide with another declaration, a Mekugi built-in, or a shell
@@ -28,6 +29,10 @@ per-declaration syntax completeness, and syntax-error offsets using the host Go
 grammar. It parses supplied text only; it does not resolve imports or read files.
 It grants no filesystem, workspace, process, network, credential, or router
 transport authority. Unknown `mekugi:` modules reject during startup.
+
+Built-in frontends do not require Node.js or Bun. Configured JavaScript plugins require
+Node.js 24 or newer; regex validation requires `rg` only when a configured declaration
+uses a regex grammar.
 
 Before opening the listener or exposing any frontend, Mekugi snapshots and
 validates the complete registry. Independent declaration, grammar, identity,
@@ -57,9 +62,9 @@ environment, sandbox, terminal, signals, and process lifecycle. The worker
 receives argv unchanged after frontend dispatch and keeps the command's stdin
 separate from its JavaScript host control stream. Each configured execution
 uses an isolated host. The tool returns stdout, stderr, and exit status once;
-Mekugi does not rerun an effect to inspect or replay it. Bundled plugin tools
-`mread`, `mchanges`, and `mrun` share the same authenticated snapshot and their existing
-host stores or process backend. Generated `mcat`, `msymbol`, and `inspect_file` use it too.
+Mekugi does not rerun an effect to inspect or replay it. All bundled frontends share the same authenticated snapshot. Reader execution,
+source inspection, semantic-query orchestration, tokenization, and managed-output
+formatting are native; semantic lookups still start their language-specific resolvers.
 
 An executor may return bounded `omittedOutput` for managed `mread` recovery.
 The worker validates and persists this output before exposing a continuation

@@ -12,12 +12,16 @@ The snapshot provides one session-private PATH directory. Codex starts each
 frontend through its stock executor and retains process, sandbox, permission,
 and continuation authority. Worker dispatch owns only authenticated argv,
 stdin separation, bounded output, and optional managed-output retention.
-The bundled plugin declaration owns the specifications and descriptions of
-`mread`, `mchanges`, and `mrun`. Their pinned native host executors delegate to
-existing stores or run one foreground child within Codex's frontend process.
+The compiled built-in registry owns descriptions and native dispatch for `mcat`,
+`inspect_file`, `msymbol`, `mread`, `mchanges`, and `mrun`. Their executors run within
+Codex's frontend process, reuse the native reader/parser/tokenizer owners, and delegate
+to existing stores or invocation-owned resolver/command processes. Shell argv is
+validated by the native implementation; built-ins have no custom-tool grammar.
 Configured plugin declarations cannot claim a native executor. Reader
 implementations and AX observation are not duplicated in the registry.
 
+Native-only snapshots contain no JavaScript or WASM runtime assets and need no Node.js
+lookup. Configured extensions add the authenticated JavaScript host and shared core.
 `mekugi:core/v1` owns deterministic portable helpers, not file access or
 execution. Configured JavaScript hosts are isolated per call. The registry
 never fabricates Codex carrier calls or replay mappings for stock execution.

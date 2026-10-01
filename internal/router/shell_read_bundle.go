@@ -165,9 +165,7 @@ func parseReadBundleRange(span string) (uint64, uint64, error) {
 func executeMCat(
 	ctx context.Context,
 	manifest toolWorkerManifest,
-	runtime string,
 	args []string,
-	mcat toolContribution,
 ) (execution toolplugin.ExecutionOutput, err error) {
 	finish := beginFrontendRead(manifest, "mcat")
 	defer func() {
@@ -187,17 +185,7 @@ func executeMCat(
 		}, nil
 	}
 	if len(specs) == 1 {
-		execution, err := toolplugin.Execute(
-			ctx,
-			manifest.NodeExecutable,
-			runtime,
-			mcat.Module,
-			mcat.ModuleIndex,
-			args,
-			nil,
-			"",
-			nil,
-		)
+		execution, err := toolplugin.ExecuteBuiltin(ctx, "mcat", args)
 		if err == nil && execution.OmittedOutput != nil {
 			start := readBundleStart(specs[0])
 			shown, omitted := bundleRowCount(execution.Stdout), bundleRowCount(execution.OmittedOutput.Stdout)
@@ -237,17 +225,15 @@ func executeMCat(
 			break
 		}
 	}
-	return executeMCatBundle(ctx, manifest, runtime, specs, budget, numbered, mcat)
+	return executeMCatBundle(ctx, manifest, specs, budget, numbered)
 }
 
 func executeMCatBundle(
 	ctx context.Context,
 	manifest toolWorkerManifest,
-	runtime string,
 	specs []readBundleSpec,
 	budget int,
 	numbered bool,
-	mcat toolContribution,
 ) (toolplugin.ExecutionOutput, error) {
 	fail := func(message string, class string) (toolplugin.ExecutionOutput, error) {
 		return toolplugin.ExecutionOutput{
@@ -275,7 +261,7 @@ func executeMCatBundle(
 	executions := make([]toolplugin.ExecutionOutput, len(specs))
 	unused, pending := budget-reserve-share*len(specs), 0
 	for i, spec := range specs {
-		execution, err := readMCatBundleFile(ctx, manifest, runtime, spec, share, numbered, mcat)
+		execution, err := readMCatBundleFile(ctx, spec, share, numbered)
 		if err != nil {
 			return toolplugin.ExecutionOutput{}, err
 		}
@@ -295,7 +281,7 @@ func executeMCatBundle(
 			if execution.OmittedOutput == nil {
 				continue
 			}
-			execution, err := readMCatBundleFile(ctx, manifest, runtime, specs[i], share+unused/pending, numbered, mcat)
+			execution, err := readMCatBundleFile(ctx, specs[i], share+unused/pending, numbered)
 			if err != nil {
 				return toolplugin.ExecutionOutput{}, err
 			}
@@ -489,12 +475,9 @@ func readBundleStart(spec readBundleSpec) uint64 {
 
 func readMCatBundleFile(
 	ctx context.Context,
-	manifest toolWorkerManifest,
-	runtime string,
 	spec readBundleSpec,
 	tokens int,
 	numbered bool,
-	mcat toolContribution,
 ) (toolplugin.ExecutionOutput, error) {
 	args := []string{"--max-tokens", strconv.Itoa(tokens), "--", spec.path}
 	if numbered {
@@ -503,15 +486,5 @@ func readMCatBundleFile(
 	if spec.span != "" {
 		args = append(args, spec.span)
 	}
-	return toolplugin.Execute(
-		ctx,
-		manifest.NodeExecutable,
-		runtime,
-		mcat.Module,
-		mcat.ModuleIndex,
-		args,
-		nil,
-		"",
-		nil,
-	)
+	return toolplugin.ExecuteBuiltin(ctx, "mcat", args)
 }

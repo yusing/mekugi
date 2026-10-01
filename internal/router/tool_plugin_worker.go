@@ -126,7 +126,7 @@ func runAuthenticatedToolWorker(
 	if err != nil {
 		return fail(err)
 	}
-	if manifest.Version != 1 || manifest.RuntimeRoot != "runtime" || manifest.NodeExecutable == "" {
+	if manifest.Version != 1 || manifest.RuntimeRoot != "runtime" {
 		return fail(errors.New("tool worker manifest is inconsistent"))
 	}
 	if manifest.RegistryID != expectedRegistryID {
@@ -154,7 +154,7 @@ func runAuthenticatedToolWorker(
 		return fail(fmt.Errorf("tool %q is unavailable in worker manifest", name))
 	}
 	if !contribution.Builtin {
-		if owned, _ := ctx.Value(frontendProcessOwnerKey{}).(bool); owned && contribution.NativeExecutor == "" {
+		if owned, _ := ctx.Value(frontendProcessOwnerKey{}).(bool); owned && (contribution.NativeExecutor == "" || contribution.NativeExecutor == "msymbol") {
 			ctx, err = toolplugin.EnableFrontendOrphanCleanup(ctx)
 			if err != nil {
 				return fail(fmt.Errorf("prepare frontend process cleanup: %w", err))
@@ -197,19 +197,20 @@ func runAuthenticatedToolWorker(
 		}
 	} else if contribution.PluginID == builtinToolsPluginID && contribution.NativeExecutor != "" {
 		switch contribution.NativeExecutor {
+		case "mcat":
+			execution, err = executeMCat(ctx, manifest, args)
+		case "msymbol", "inspect_file":
+			execution, err = executeFrontendReader(ctx, manifest, args, *contribution)
 		case "mread":
-			execution = executeMRead(ctx, manifest, runtimeRoot, args)
+			execution = executeMRead(ctx, manifest, args)
 		case "mchanges":
-			execution = executeMChanges(ctx, manifest, runtimeRoot, args)
+			execution = executeMChanges(ctx, manifest, args)
 		case "mrun":
-			execution, err = executeMRun(ctx, manifest, runtimeRoot, args, stdin)
+			execution, err = executeMRun(ctx, args, stdin)
 		default:
 			return fail(fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
 		}
-	} else if contribution.PluginID == builtinToolsPluginID && contribution.Name == "mcat" {
-		execution, err = executeMCat(ctx, manifest, runtimeRoot, args, *contribution)
-	} else if contribution.PluginID == builtinToolsPluginID && (contribution.Name == "msymbol" || contribution.Name == "inspect_file") {
-		execution, err = executeFrontendReader(ctx, manifest, runtimeRoot, args, *contribution)
+
 	} else {
 		execution, err = toolplugin.Execute(
 			ctx,

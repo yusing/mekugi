@@ -73,7 +73,6 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 func executeMRead(
 	ctx context.Context,
 	manifest toolWorkerManifest,
-	runtimeRoot string,
 	arguments []string,
 ) toolplugin.ExecutionOutput {
 	fail := func(err error) toolplugin.ExecutionOutput {
@@ -148,7 +147,7 @@ func executeMRead(
 			if err != nil {
 				return err
 			}
-			formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtimeRoot,
+			formatted, err := toolplugin.FormatOutput(ctx,
 				[]string{strconv.Itoa(remaining), "read", string(data), ""})
 			if err != nil {
 				return err

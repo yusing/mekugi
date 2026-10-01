@@ -173,7 +173,7 @@ No `--batch` flag or extra basename exists. Multi-file reads support only
 divides the remaining budget equally, then redistributes unused shares from complete files
 to incomplete reads in one reread pass. It verifies the complete rendered result against the
 budget, retaining any extra rows removed to fit framing. Insufficient manifest allowance
-rejects before reading. The generated `mcat` implementation remains the sole owner
+rejects before reading. The native `mcat` implementation remains the sole owner
 of source parsing, UTF-8 validation, logical rows, selection, and token admission.
 
 A manifest precedes the bodies and has a row for each failed, incomplete,

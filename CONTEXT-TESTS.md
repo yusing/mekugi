@@ -33,7 +33,8 @@ that cross its boundary. A focused pass is not evidence for unselected tests.
 | Shared Go tokenizer | `./internal/tokenizer`, `./capturer`, `./internal/router/toolplugin` |
 | Capture metrics and AX evidence | `./capturer` |
 | Portable core or `mekugi:core/v1` adapter | `./internal/router/toolplugin`, then `./...` and `bun test ./internal/router/toolplugin/tests/core.test.ts` |
-| TypeScript plugin source | `go generate ./internal/router/toolplugin`, then `bun test ./internal/router/toolplugin/tests` |
+| Native frontends and output formatting | `./internal/router/toolplugin`, then `./internal/router` |
+| Configured JavaScript plugin host | `./internal/router/toolplugin`, then `bun test ./internal/router/toolplugin/tests` |
 | Router process entry point | `./cmd/mekugi` |
 | Configured frontend host acceptance | `-tags journal_e2e ./internal/router -run '^TestConfiguredToolFrontendNativeCodexE2E$'` (installed Codex, local mock provider) |
 | Native mrun continuation acceptance | `-tags journal_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
@@ -41,10 +42,10 @@ that cross its boundary. A focused pass is not evidence for unselected tests.
 | Native post-compaction recovery | `-tags journal_e2e ./internal/router -run '^TestPostCompactNativeCodexE2E$'` (installed Codex, local mock provider) |
 | Cross-package or broad contract | `./...` |
 
-Generation requires Bun and dependencies declared in `plugins/package.json`. If
-missing, use `bun install --cwd plugins --frozen-lockfile`. Generation rebuilds
-the embedded WASM core and JavaScript bundle through directives in
-`internal/router/toolplugin/runtime.go`; do not hand-edit generated assets.
+Generation uses Go to rebuild the embedded WASM core for configured JavaScript plugins
+through the directive in `internal/router/toolplugin/runtime.go`. Built-in frontends
+and output formatting are compiled Go and require no generated JavaScript assets or
+npm dependencies. Bun is needed only for the remaining plugin-host/shared-core tests.
 Use a fresh temporary Bun transpiler cache when test discovery appears stale.
 
 ## Terminal UI snapshots

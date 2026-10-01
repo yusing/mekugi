@@ -18,7 +18,6 @@ const codexThreadIDEnvironment = "CODEX_THREAD_ID"
 func executeFrontendReader(
 	ctx context.Context,
 	manifest toolWorkerManifest,
-	runtimeRoot string,
 	args []string,
 	contribution toolContribution,
 ) (execution toolplugin.ExecutionOutput, err error) {
@@ -33,17 +32,7 @@ func executeFrontendReader(
 		finish(&execution, err, err == nil && execution.ExitCode == 0 && ctx.Err() == nil, class)
 	}()
 
-	return toolplugin.Execute(
-		ctx,
-		manifest.NodeExecutable,
-		runtimeRoot,
-		contribution.Module,
-		contribution.ModuleIndex,
-		args,
-		nil,
-		"",
-		nil,
-	)
+	return toolplugin.ExecuteBuiltin(ctx, contribution.Name, args)
 }
 
 func frontendExecutionFailure(execution toolplugin.ExecutionOutput, err error) string {

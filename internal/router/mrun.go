@@ -255,8 +255,6 @@ func trimMRunBoundary(value string, tail bool) string {
 
 func executeMRun(
 	ctx context.Context,
-	manifest toolWorkerManifest,
-	runtimeRoot string,
 	arguments []string,
 	stdin *os.File,
 ) (toolplugin.ExecutionOutput, error) {
@@ -304,7 +302,7 @@ func executeMRun(
 	if options.maxTokens > 0 && (len(outText)+len(errText) > options.maxTokens || outText != "" && len(errText) > options.maxTokens/2) {
 		// A token always contains at least one source byte. Only invoke the exact
 		// tokenizer when the captured byte count cannot prove the output fits.
-		formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtimeRoot,
+		formatted, err := toolplugin.FormatOutput(ctx,
 			[]string{strconv.Itoa(options.maxTokens), mode, outText, errText})
 		if err != nil {
 			return toolplugin.ExecutionOutput{}, fmt.Errorf("select output: %w", err)
@@ -338,7 +336,7 @@ func executeMRun(
 		appendNotice()
 		return execution, nil
 	}
-	formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, runtimeRoot,
+	formatted, err := toolplugin.FormatOutput(ctx,
 		[]string{strconv.Itoa(mrunDeliveryTokens), "rows", selectedOut, selectedErr})
 	if err != nil {
 		return toolplugin.ExecutionOutput{}, fmt.Errorf("select retained output: %w", err)

@@ -62,7 +62,8 @@ Requirements:
 
 - **Go 1.27+**, with CGO enabled and a C toolchain.
 - **Codex CLI**, signed in with `codex login` using ChatGPT authentication.
-- **Node.js 24+** as `node` and **ripgrep** as `rg` on the router's `PATH`.
+- For configured JavaScript plugins only: **Node.js 24+** as `node`. Plugins declaring regex grammars also require **ripgrep** as `rg` on the router's `PATH`.
+- Built-in frontends need neither Node.js nor Bun; semantic lookup requires the language servers listed under [agent-facing tools](#agent-facing).
 - Any interpreter your agent picks, such as `python3`, on the executor's `PATH`.
 
 ```sh
@@ -77,8 +78,8 @@ Interactive launches currently require explicit `--yolo` (no approvals or sandbo
 With `mekugi-exec` installed beside `mekugi`, command lists show separate output
 and exit status for each command. Without it, they show as one command.
 
-From a checkout with **Bun** and **Make**, run `make install`. It regenerates the
-embedded plugins and installs `mekugi` and `mekugi-exec`. `make uninstall`
+From a checkout with **Make**, run `make install`. It regenerates the
+optional plugin shared core and installs `mekugi` and `mekugi-exec`. `make uninstall`
 removes only those binaries. Running sessions keep their worker executable, so
 start a new session to pick up an update.
 
@@ -658,7 +659,8 @@ rerun the check. Omitting `SNAPSHOT` updates all matching cases. See
 [terminal UI snapshot testing](CONTEXT-TESTS.md#terminal-ui-snapshots) for fixture
 locations and coverage limits.
 
-Bun is required to regenerate and test plugin assets:
+Built-in frontends are native Go. Go regenerates the optional plugin shared core;
+Bun is needed only to run the JavaScript plugin-host and shared-core tests:
 
 ```sh
 go generate ./internal/router/toolplugin

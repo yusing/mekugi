@@ -21,7 +21,7 @@ func TestToolRegistryExposesOnlyExecutableFrontends(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("frontends = %v, want %v", got, want)
 	}
-	for _, name := range []string{"mread", "mrun", "mchanges"} {
+	for _, name := range []string{"mcat", "inspect_file", "msymbol", "mread", "mrun", "mchanges"} {
 		found := false
 		for _, contribution := range registry.ordered {
 			if contribution.Name == name {

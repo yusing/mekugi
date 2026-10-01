@@ -48,10 +48,10 @@ retains the rest for `mread`. Single-file JSON returns
 Omitted complete entries are available as JSON arrays through the shared `mread` interface,
 without repeating the prefix or reopening the source. Multi-file JSON retains
 omitted JSONL documents as an exact byte stream; a continuation may split a JSONL
-document. Go uses the host toolchain's `go/parser` grammar through the portable
-shared core, including the repository's supported Go syntax. TypeScript uses
-Babel's TypeScript grammar, with local Lezer recovery when malformed source
-cannot be recovered by Babel. Other code uses Lezer. Parser recovery or YAML
+document. Go uses the host toolchain's native `go/parser` grammar, including the repository's supported Go syntax. JavaScript, TypeScript, Python, and JSON use native
+Tree-sitter grammars with syntax recovery. JSON syntax is validated independently
+of its recovery grammar, including exponent signs and exactly one root value;
+comments and malformed number/string literals mark parsing incomplete. Parser recovery or YAML
 frontmatter diagnostics set `parse_complete: false` independently of output truncation. There is
 no input-size or entry-count limit. If an empty-outline success envelope cannot fit, the command
 fails with `output_limit`.
@@ -85,6 +85,6 @@ Acceptance:
 5. Absolute, parent-relative, and symlink paths outside the current directory work
    when host permissions allow; non-regular files still fail.
 6. Compact, JSON, and multi-path output have exact-output coverage. Compact output
-   for `plugins/msymbol.ts` uses at least 70% fewer tokens than JSON.
-7. Tracked Go and plugin TypeScript sources have complete declaration spans;
+   for a representative declaration-rich source fixture uses at least 70% fewer tokens than JSON.
+7. Tracked Go sources and TypeScript fixtures have complete declaration spans;
    an unrelated syntax error does not prevent expansion of an error-free declaration.

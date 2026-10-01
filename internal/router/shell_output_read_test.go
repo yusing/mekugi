@@ -66,7 +66,7 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				formatted, err := toolplugin.FormatOutput(ctx, manifest.NodeExecutable, filepath.Join(registry.SnapshotDir, manifest.RuntimeRoot),
+				formatted, err := toolplugin.FormatOutput(ctx,
 					[]string{strconv.Itoa(pageBudget), "read", string(data), ""})
 				if err != nil || formatted.ExitCode != 0 {
 					t.Fatalf("page selection: %#v, %v", formatted, err)
@@ -527,7 +527,7 @@ func TestMReadKeepsValidTargetsAroundMissingHandle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := executeMRead(t.Context(), manifest, registry.RuntimeRoot, []string{first, "amber999999", last})
+	result := executeMRead(t.Context(), manifest, []string{first, "amber999999", last})
 	if result.ExitCode != 1 || !strings.Contains(result.Stdout, "first-success") || !strings.Contains(result.Stdout, "last-success") || !strings.Contains(result.Stderr, "amber999999") {
 		t.Fatalf("mixed read: %+v", result)
 	}

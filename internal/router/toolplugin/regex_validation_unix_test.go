@@ -27,7 +27,12 @@ func TestLoadResolvesRegexValidatorBeforeHostIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
-	snapshot, err := Load(t.Context(), t.TempDir(), filepath.Join(t.TempDir(), "runtime"))
+	plugins := t.TempDir()
+	declaration := `export default {apiVersion:"mekugi-tool-plugin/v1",id:"regex.fixture",tools:[{specification:{type:"custom",name:"regex_fixture",description:"fixture",format:{type:"grammar",syntax:"regex",definition:"[a-z]+"}},parse(input){return input},argv(input){return [input]},execute(){return {exitCode:0}}}]};`
+	if err := os.WriteFile(filepath.Join(plugins, "regex.mjs"), []byte(declaration), 0600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := Load(t.Context(), plugins, filepath.Join(t.TempDir(), "runtime"))
 	if err != nil {
 		t.Fatal(err)
 	}

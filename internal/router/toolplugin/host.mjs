@@ -462,20 +462,10 @@ function validateTool(tool, modulePath, index, errors) {
   const label = `${modulePath}: tool ${index + 1}`;
   if (tool !== null && typeof tool === "object" && !Array.isArray(tool)
       && Object.hasOwn(tool, "nativeExecutor")) {
-    if (!exactKeys(tool, ["specification", "nativeExecutor"])) {
-      errors.push(`${label}: native declaration contains unsupported or missing fields`);
-      return null;
-    }
-    const specification = validateSpecification(tool.specification, label, errors);
-    if (modulePath !== "builtin/tools.js" || !["mread", "mrun", "mchanges"].includes(tool.nativeExecutor)
-        || specification?.name !== tool.nativeExecutor) {
-      errors.push(`${label}: native executor is not a bundled tool`);
-    }
-    if (specification === null || errors.some((message) => message.startsWith(`${label}:`))) {
-      return null;
-    }
-    return {specification, nativeExecutor: tool.nativeExecutor};
+    errors.push(`${label}: native executor is reserved for compiled built-ins`);
+    return null;
   }
+
   if (tool === null || typeof tool !== "object" || Array.isArray(tool)
       || !exactKeys(tool, ["specification", "parse", "argv", "execute"])) {
     errors.push(`${label}: declaration contains unsupported or missing fields`);
@@ -698,11 +688,6 @@ async function main() {
         }
       }
       response = {plugins, errors};
-      break;
-    }
-    case "format-output": {
-      const {formatMRunOutput} = await import(pathToFileURL(path.join(snapshotRoot, "builtin/mrun.js")).href);
-      response = formatMRunOutput(validateArguments(request.arguments));
       break;
     }
     case "execute":

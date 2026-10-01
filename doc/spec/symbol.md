@@ -11,7 +11,7 @@ msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH [LINE] SYMBOL [N]
 
 Stock `tools.exec_command` launches the frontend under Codex's cwd, environment,
 sandbox, signals, and process lifecycle. The frontend validates the pinned registry,
-then delegates the queries to the generated symbol implementation. It is not a
+then runs the native symbol implementation. It is not a
 model-visible custom tool or a private shell command. Output uses the shared
 [reader token ceiling and read continuation](read.md). Reader options and
 `--workspace ROOT` may surround the query operands.
@@ -108,8 +108,8 @@ Token admission never emits a partial result row.
 
 The authenticated frontend owns one AX read observation without retaining command,
 path, source, or result content. Msymbol remains excluded from custom-tool routing
-. Generated `def` activity is labeled `Read`;
-generated `refs` activity is labeled `Search`.
+. `def` activity is labeled `Read`;
+`refs` activity is labeled `Search`.
 
 Acceptance:
 

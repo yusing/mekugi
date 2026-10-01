@@ -643,7 +643,7 @@ func changePathMatches(options changeReadOptions, recorded string) bool {
 	return false
 }
 
-func executeMChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRoot string, arguments []string) toolplugin.ExecutionOutput {
+func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments []string) toolplugin.ExecutionOutput {
 	fail := func(err error) toolplugin.ExecutionOutput {
 		return toolplugin.ExecutionOutput{Stderr: fmt.Sprintf("mchanges: %v\n", err), ExitCode: 1}
 	}
@@ -675,7 +675,7 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRo
 		whole := func(err error) toolplugin.ExecutionOutput {
 			return toolplugin.ExecutionOutput{Stdout: text, Stderr: "mchanges: report not paged: " + err.Error() + "\n", ExitCode: status}
 		}
-		selected, err := selectReadPage(ctx, manifest, runtimeRoot, text, options.maxTokens)
+		selected, err := selectReadPage(ctx, text, options.maxTokens)
 		if err != nil {
 			return whole(err)
 		}
@@ -697,7 +697,7 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, runtimeRo
 		}
 		diagnostics = fmt.Sprintf("mchanges: %v\n", err)
 	}
-	selected, err := selectReadPage(ctx, manifest, runtimeRoot, text, options.maxTokens)
+	selected, err := selectReadPage(ctx, text, options.maxTokens)
 	if err != nil {
 		return fail(err)
 	}
