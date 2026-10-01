@@ -165,11 +165,15 @@ func copyQuoteSource(quote *ast.Blockquote, source []byte, span [2]int) string {
 				span[1] = max(span[1], n.Lines().At(i).Stop)
 			}
 		}
-		switch n.(type) {
+		switch n := n.(type) {
 		case *ast.FencedCodeBlock, *ast.CodeBlock:
 			return ast.WalkSkipChildren, nil
-		case *ast.Text, *ast.String:
-			if strings.TrimSpace(string(n.Text(source))) != "" {
+		case *ast.Text:
+			if strings.TrimSpace(string(n.Value(source))) != "" {
+				prose = true
+			}
+		case *ast.String:
+			if strings.TrimSpace(string(n.Value)) != "" {
 				prose = true
 			}
 		}

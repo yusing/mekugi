@@ -199,7 +199,7 @@ func TestMarkdownSourceCopyInlineBoundaries(t *testing.T) {
 			var content []string
 			ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 				if entering && n.Kind() == tc.kind {
-					content = append(content, string(n.Text(source)))
+					content = append(content, parsedInlineText(n, source))
 				}
 				return ast.WalkContinue, nil
 			})
@@ -248,15 +248,31 @@ func TestMarkdownSourceCopyDistinctInlineSpans(t *testing.T) {
 	got := []byte(selectedMarkdown(t, "`a` `` `b` ``", 80))
 	doc := goldmark.DefaultParser().Parse(text.NewReader(got))
 	n := doc.FirstChild().FirstChild()
-	if n == nil || n.Kind() != ast.KindCodeSpan || string(n.Text(got)) != "a" {
+	if n == nil || n.Kind() != ast.KindCodeSpan || parsedInlineText(n, got) != "a" {
 		t.Fatal("first code span changed")
 	}
 	n = n.NextSibling()
-	if n == nil || n.Kind() != ast.KindText || string(n.Text(got)) != " " {
+	if n == nil || n.Kind() != ast.KindText || parsedInlineText(n, got) != " " {
 		t.Fatal("intervening plain-text space changed")
 	}
 	n = n.NextSibling()
-	if n == nil || n.Kind() != ast.KindCodeSpan || string(n.Text(got)) != "`b`" || n.NextSibling() != nil {
+	if n == nil || n.Kind() != ast.KindCodeSpan || parsedInlineText(n, got) != "`b`" || n.NextSibling() != nil {
 		t.Fatal("second code span changed or merged")
 	}
+}
+
+func parsedInlineText(node ast.Node, source []byte) string {
+	var out strings.Builder
+	_ = ast.Walk(node, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if entering {
+			switch n := n.(type) {
+			case *ast.Text:
+				out.Write(n.Value(source))
+			case *ast.String:
+				out.Write(n.Value)
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return out.String()
 }
