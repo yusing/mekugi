@@ -513,7 +513,15 @@ inspect_file source.ts
 mrun --tail -n 20 go test ./internal/router
 ```
 
-`mchanges` counts come from recorded changes, not a live Git diff. Like
+`mchanges` is the recorded view of agent changes, including ordinary Git-ignored
+files such as `FIXME.md`, not a live Git diff. Dependency trees are summarized as
+one directory status, such as `M node_modules/`, without descendant listings or
+content. Manifest and lockfile changes remain reviewable. Directory summaries
+cannot be reverted or reapplied because their contents are not retained.
+Tests, generators, and other commands without known targets also record changes
+observed while they ran. These are labeled `observed during command window`,
+since another writer may have made them; unavailable evidence is reported rather
+than treated as no changes. Like
 `git revert`, `mchanges revert` merges any later edits and marks overlaps with
 conflict markers. The revert is recorded as a new change, so it can be undone
 too. See the [change record](doc/spec/changes.md), [reader](doc/spec/read.md),

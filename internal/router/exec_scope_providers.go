@@ -28,7 +28,9 @@ type execProviderResult struct {
 	unhandled bool
 	scope     []execScopeEntry
 	open      bool
-	reason    string
+	// opaque preserves named scope while admitting additional unknown effects.
+	opaque bool
+	reason string
 }
 
 type execScopeProvider func(execProviderInput) execProviderResult
@@ -108,6 +110,9 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 	w.plan.Programs = append(w.plan.Programs, result.programs...)
 	w.plan.label(w.program.Label)
 	w.plan.raise(execScoped, result.reason)
+	if result.opaque {
+		w.opaque(result.reason)
+	}
 	if !slices.Contains(w.plan.Programs, w.program) {
 		w.plan.Programs = append(w.plan.Programs, w.program)
 	}

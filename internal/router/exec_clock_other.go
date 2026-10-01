@@ -2,7 +2,10 @@
 
 package router
 
-import "time"
+import (
+	"os"
+	"time"
+)
 
 // Without a file change clock, sweeps are unavailable and records say so.
 func execFileTimes(string) (change, birth time.Time, hasBirth, ok bool) {
@@ -10,3 +13,5 @@ func execFileTimes(string) (change, birth time.Time, hasBirth, ok bool) {
 }
 
 func execRemoteFilesystem(string) bool { return true }
+
+func execInfoChangeTime(os.FileInfo) (time.Time, bool) { return time.Time{}, false }

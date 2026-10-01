@@ -312,6 +312,9 @@ func (l *liveDiffChanges) Render(focused bool, filtering bool, callerFilter stri
 			}
 			if len(node.Files) == 1 && l.Inline {
 				file := node.Files[0]
+				if file.status.Directory {
+					stats = ""
+				}
 				stats = " " + FileLabel(file.status, l.path(file.File), l.workspace, theme) + stats
 			} else {
 				stats = fmt.Sprintf(" "+livediff.Subtle+"%df"+livediff.SubtleReset, len(node.Files)) + stats
@@ -328,6 +331,9 @@ func (l *liveDiffChanges) Render(focused bool, filtering bool, callerFilter stri
 			stats = CountStats(livediff.Counts{Added: file.added, Removed: file.removed}, theme)
 			if file.unknown {
 				stats = CountStats(livediff.Counts{Added: -1, Removed: -1}, theme)
+			}
+			if file.status.Directory {
+				stats = ""
 			}
 		}
 		prefix := graph.String()

@@ -118,3 +118,11 @@ func TestUISnapshotDiffPreview(t *testing.T) {
 		})
 	}
 }
+
+func TestUISnapshotDependencyDirectoryNavigation(t *testing.T) {
+	file := livediff.File{Path: "/workspace/node_modules", Chunks: []livediff.Chunk{{Review: mekugi.ReviewFile{BeforePath: "/workspace/node_modules", AfterPath: "/workspace/node_modules", Directory: true, Incomplete: "directory contents intentionally not captured"}}}}
+	files := []livediff.File{file}
+	nav := Navigation{Flat: true, Focused: true}
+	nav.Rebuild(files, "/workspace")
+	assertRowsSnapshot(t, "dependency-directory-navigation", nav.Render(files, []livediff.Counts{file.NetCounts()}, 0, 50, 5, livediff.DarkTheme))
+}

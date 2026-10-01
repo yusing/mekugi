@@ -21,18 +21,22 @@ import (
 // outcomes, identity and ordering remain call-local. Hashes identify the exact
 // uncompressed JSON, not a compressed spelling or a live workspace file.
 type replaySnapshots struct {
-	ExecFiles     string   `json:",omitempty"`
-	BaselineFiles string   `json:",omitempty"`
-	NativeFiles   []string `json:",omitempty"`
-	ReviewFiles   string   `json:",omitempty"`
-	Contents      []string `json:",omitempty"`
+	ExecFiles     string `json:",omitempty"`
+	BaselineFiles string `json:",omitempty"`
+	// Inventory files of the command observation or, for a cell whose
+	// observation has none, of the resolved baseline.
+	ExecInventoryFiles     string   `json:",omitempty"`
+	BaselineInventoryFiles string   `json:",omitempty"`
+	NativeFiles            []string `json:",omitempty"`
+	ReviewFiles            string   `json:",omitempty"`
+	Contents               []string `json:",omitempty"`
 }
 
 func (refs *replaySnapshots) names() []string {
 	if refs == nil {
 		return nil
 	}
-	names := []string{refs.ExecFiles, refs.BaselineFiles, refs.ReviewFiles}
+	names := []string{refs.ExecFiles, refs.BaselineFiles, refs.ExecInventoryFiles, refs.BaselineInventoryFiles, refs.ReviewFiles}
 	names = append(names, refs.NativeFiles...)
 	names = append(names, refs.Contents...)
 	return slices.DeleteFunc(names, func(name string) bool { return name == "" })
@@ -188,6 +192,17 @@ func (s *mekugiReplayStore) compactSnapshots(r *replayRecord) ([]managedFile, er
 		observation.Files = nil
 		h.ExecObservation = &observation
 	}
+	if h.ExecObservation != nil && h.ExecObservation.Inventory != nil && len(h.ExecObservation.Inventory.Files) > 0 {
+		inventory := *h.ExecObservation.Inventory
+		refs.ExecInventoryFiles, err = batch.putFiles(snapshotFiles{Exec: slices.Clone(inventory.Files)}, refs)
+		if err != nil {
+			return nil, err
+		}
+		inventory.Files = nil
+		observation := *h.ExecObservation
+		observation.Inventory = &inventory
+		h.ExecObservation = &observation
+	}
 	if h.ResolvedBaseline != nil && len(h.ResolvedBaseline.Files) > 0 {
 		refs.BaselineFiles, err = batch.putFiles(snapshotFiles{Exec: slices.Clone(h.ResolvedBaseline.Files)}, refs)
 		if err != nil {
@@ -195,6 +210,17 @@ func (s *mekugiReplayStore) compactSnapshots(r *replayRecord) ([]managedFile, er
 		}
 		baseline := *h.ResolvedBaseline
 		baseline.Files = nil
+		h.ResolvedBaseline = &baseline
+	}
+	if h.ResolvedBaseline != nil && h.ResolvedBaseline.Inventory != nil && len(h.ResolvedBaseline.Inventory.Files) > 0 {
+		inventory := *h.ResolvedBaseline.Inventory
+		refs.BaselineInventoryFiles, err = batch.putFiles(snapshotFiles{Exec: slices.Clone(inventory.Files)}, refs)
+		if err != nil {
+			return nil, err
+		}
+		inventory.Files = nil
+		baseline := *h.ResolvedBaseline
+		baseline.Inventory = &inventory
 		h.ResolvedBaseline = &baseline
 	}
 	h.NativePatches = slices.Clone(h.NativePatches)
@@ -314,6 +340,36 @@ func (s *mekugiReplayStore) restoreSnapshots(r *replayRecord) error {
 			return errors.New("invalid baseline snapshot kind")
 		}
 		h.ResolvedBaseline.Files = files.Exec
+	}
+	restoreInventory := func(name string, inventory *execInventory, kind string) error {
+		if name == "" {
+			return nil
+		}
+		if inventory == nil || len(inventory.Files) > 0 {
+			return fmt.Errorf("conflicting %s inventory snapshot evidence", kind)
+		}
+		files, err := load(name)
+		if err != nil {
+			return err
+		}
+		if len(files.Native) > 0 || len(files.Review) > 0 {
+			return fmt.Errorf("invalid %s inventory snapshot kind", kind)
+		}
+		inventory.Files = files.Exec
+		return nil
+	}
+	var observed, resolved *execInventory
+	if h.ExecObservation != nil {
+		observed = h.ExecObservation.Inventory
+	}
+	if h.ResolvedBaseline != nil {
+		resolved = h.ResolvedBaseline.Inventory
+	}
+	if err := restoreInventory(refs.ExecInventoryFiles, observed, "exec"); err != nil {
+		return err
+	}
+	if err := restoreInventory(refs.BaselineInventoryFiles, resolved, "baseline"); err != nil {
+		return err
 	}
 	if len(refs.NativeFiles) > 0 {
 		if len(refs.NativeFiles) != len(h.NativePatches) {

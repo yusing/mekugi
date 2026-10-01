@@ -341,7 +341,7 @@ func TestRTKProxyGofmtCaptureScopesManagedGoFiles(t *testing.T) {
 	}
 }
 
-func TestPythonInterpreterComputedTargetDoesNotClaimWorkspaceWrite(t *testing.T) {
+func TestPythonInterpreterComputedTargetIsWindowEvidence(t *testing.T) {
 	workspace := t.TempDir()
 	pythonName, _ := interpreterForTest("python3", "python")
 	command := pythonName + " -c 'import os; from pathlib import Path; target = os.environ.get(" +
@@ -349,9 +349,9 @@ func TestPythonInterpreterComputedTargetDoesNotClaimWorkspaceWrite(t *testing.T)
 	observation := captureInterpreterTestObservationAnyClass(t, workspace, command)
 	writeTestFile(t, filepath.Join(workspace, "computed-result.txt"), "computed content\n")
 
-	reviews, _, _, _ := reconcileExecObservation(*observation, execReconcileEnv{})
-	if len(reviews) != 0 {
-		t.Fatalf("computed target claimed an undeclared write: %+v", reviews)
+	reviews, complete, _, _ := reconcileExecObservation(*observation, execReconcileEnv{})
+	if complete || len(reviews) != 1 || reviews[0].OriginNote != execInventoryNote || !strings.Contains(reviews[0].Diff, "+computed content") {
+		t.Fatalf("computed target is not unattributed window evidence: %+v complete=%v", reviews, complete)
 	}
 }
 

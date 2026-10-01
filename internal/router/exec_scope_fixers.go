@@ -26,6 +26,7 @@ func execFixerScope(input execProviderInput) execProviderResult {
 	}
 	label := input.identity
 	var extensions, manifests []string
+	installsDependencies := false
 	root := input.cwd
 	switch input.identity {
 	case "gofmt", "goimports":
@@ -79,7 +80,8 @@ func execFixerScope(input execProviderInput) execProviderResult {
 			label += " tidy"
 		}
 	case "npm", "pnpm", "yarn", "bun":
-		if first != "" && !slices.Contains([]string{"install", "i", "add", "remove", "rm", "update", "upgrade", "uninstall"}, first) {
+		installsDependencies = true
+		if first != "" && !slices.Contains([]string{"install", "ci", "i", "add", "remove", "rm", "update", "upgrade", "uninstall"}, first) {
 			return execProviderResult{unhandled: true}
 		}
 		root = execNearestManifest(root, "package.json")
@@ -169,7 +171,10 @@ func execFixerScope(input execProviderInput) execProviderResult {
 	}
 	entry := execProviderFiles(paths, false)
 	entry.Origin = strings.TrimSpace(label)
-	result := execProviderResult{scope: []execScopeEntry{entry}, open: truncated}
+	result := execProviderResult{scope: []execScopeEntry{entry}, open: truncated, opaque: installsDependencies}
+	if installsDependencies {
+		result.reason = "dependency installation may run lifecycle scripts"
+	}
 	if truncated {
 		result.reason = "formatter scope exceeds its enumeration budget"
 	}

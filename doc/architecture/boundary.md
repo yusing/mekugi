@@ -11,11 +11,17 @@ confinement policy. Observation cannot authorize a host effect.
 The replay store retains completed stock-call identity, bounded patch and
 command-scope baselines, confirmed workspace outcomes, change IDs, and managed
 omitted output. Command observation captures its derived scope and the link targets
-that scope writes through. Dynamic Code Mode edits may additionally retain a
-bounded pre-cell workspace inventory. Resolved native host inputs select its
-baselines; the inventory never supplies a workspace-wide diff or authorship from
-timestamps. Missing inventory or host evidence remains incomplete. Non-declared
-commands compare only their named scopes. The in-memory window registry is not
+that scope writes through. A call with unknown write scope also retains one
+inventory of the selected metadata directory, separate from that scope: strong file-change
+stamps, byte-verified Git blob IDs, and bounded file content,
+including ordinary ignored files and non-Git workspaces. VCS metadata is excluded;
+dependency trees retain aggregate metadata only. Directory summaries carry no
+content or descendant listing and are non-replayable. Inventory endpoint reads
+pin directory ancestors without following symlinks. Its comparison is window
+evidence, never authorship, and skips explicit, same-cell patch, and overlapping-writer paths. Dynamic Code Mode
+resolves native host inputs against the same inventory; fully scoped,
+remote-only, and reader-only cells do not compare it. Missing inventory or host
+evidence remains incomplete. The in-memory window registry is not
 durable authorization or process state. Replay validates retained identity
 without rerunning an edit or command.
 Last-seen content and running preview state are bounded, process-local auxiliary

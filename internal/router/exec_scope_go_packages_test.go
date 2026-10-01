@@ -3,12 +3,15 @@ package router
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestGoTestAndGenerateDoNotBaselineWorkspace(t *testing.T) {
+// Tests and generators have no derived write scope: their effects are window
+// evidence from the workspace inventory, never an explicit claim.
+func TestGoTestAndGenerateObserveWorkspaceWindow(t *testing.T) {
 	for _, command := range []string{"go test ./pkg", "go generate ./pkg", "python script.py"} {
 		t.Run(command, func(t *testing.T) {
 			workspace := t.TempDir()
@@ -18,7 +21,7 @@ func TestGoTestAndGenerateDoNotBaselineWorkspace(t *testing.T) {
 			writeTestFile(t, packageFile, "package pkg\n")
 			writeTestFile(t, artifact, "before\n")
 			observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
-			if !observed || observation == nil {
+			if !observed || observation == nil || observation.Inventory == nil {
 				t.Fatalf("%q observation = %+v observed=%v", command, observation, observed)
 			}
 			if len(observation.Files) != 0 {
@@ -27,9 +30,15 @@ func TestGoTestAndGenerateDoNotBaselineWorkspace(t *testing.T) {
 			writeTestFile(t, packageFile, "package pkg\n// hook\n")
 			writeTestFile(t, artifact, "after\n")
 			writeTestFile(t, external, "external edit\n")
-			reviews, _, _, _ := reconcileExecObservation(*observation, execReconcileEnv{})
-			if len(reviews) != 0 {
-				t.Fatalf("%q attributed undeclared writes: %+v", command, reviews)
+			reviews, complete, coverage, _ := reconcileExecObservation(*observation, execReconcileEnv{})
+			if got := reviewSummary(workspace, reviews); complete || coverage != execCoveragePartial ||
+				!slices.Equal(got, []string{"Create hook-like.txt", "Edit pkg/generated.bin", "Edit pkg/source.go"}) {
+				t.Fatalf("%q window evidence = %v complete=%v coverage=%s", command, got, complete, coverage)
+			}
+			for _, review := range reviews {
+				if review.OriginNote != execInventoryNote || review.Origin != "" {
+					t.Fatalf("%q claimed authorship of a window observation: %+v", command, review)
+				}
 			}
 		})
 	}

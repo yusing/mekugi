@@ -66,6 +66,9 @@ type reviewEdit struct {
 // Highlights follow source regions through composition, not rendered line numbers.
 // Hidden captures cannot introduce highlights; a full revert removes them.
 func (c *ReviewComposition) ApplyWithHighlight(file ReviewFile, hidden, highlighted bool) error {
+	if file.Directory {
+		return fmt.Errorf("directory contents are not retained")
+	}
 	if file.Incomplete != "" {
 		return fmt.Errorf("incomplete history: %s", file.Incomplete)
 	}

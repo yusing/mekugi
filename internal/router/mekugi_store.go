@@ -55,6 +55,7 @@ func durableHistory(h mekugiHistory) mekugiHistory {
 		for i := range baseline.Files {
 			baseline.Files[i].watchStamp = ""
 		}
+		baseline.Inventory = baseline.Inventory.durable()
 		h.ResolvedBaseline = &baseline
 	}
 	if h.ExecObservation != nil {
@@ -72,6 +73,7 @@ func durableHistory(h mekugiHistory) mekugiHistory {
 				observation.Listings[i].Entries = nil // Omitted empty maps read back as nil.
 			}
 		}
+		observation.Inventory = observation.Inventory.durable()
 		h.ExecObservation = &observation
 	}
 	return h

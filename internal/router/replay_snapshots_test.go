@@ -363,7 +363,7 @@ func TestReplaySnapshotsQuantitativeStorageRegression(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	var baseline *resolvedStockBaseline
+	var observation *execObservation
 	manifests, contents := make(map[string]bool), make(map[string]bool)
 	for i := range 48 {
 		if i < 44 && i%2 == 0 {
@@ -371,13 +371,13 @@ func TestReplaySnapshotsQuantitativeStorageRegression(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(workspace, "file-0.txt"), content, 0600); err != nil {
 				t.Fatal(err)
 			}
-			baseline = captureResolvedBaseline(workspace, "bash")
-			if len(baseline.Files) != 5 || len(baseline.Omitted) != 0 {
-				t.Fatalf("workload capture incomplete: files=%d omitted=%v", len(baseline.Files), baseline.Omitted)
+			observation = observeTestCommand(t, workspace, "printf a > file-0.txt; printf a > file-1.txt; printf a > file-2.txt; printf a > file-3.txt")
+			if len(observation.Files) != 4 || len(observation.Omitted) != 0 {
+				t.Fatalf("workload capture incomplete: files=%d omitted=%v", len(observation.Files), observation.Omitted)
 			}
 		}
 		call := fmt.Sprintf("call-%02d", i)
-		h := mekugiHistory{ToolName: "exec", Script: call, ResolvedBaseline: baseline}
+		h := mekugiHistory{ToolName: "exec", Script: call, ExecObservation: observation}
 		data, err := marshalProtocolJSON(replayRecord{Version: 1, Workspace: "/w", CallID: call, History: h})
 		if err != nil {
 			t.Fatal(err)
@@ -394,13 +394,13 @@ func TestReplaySnapshotsQuantitativeStorageRegression(t *testing.T) {
 		if err := json.Unmarshal(stored, &envelope); err != nil || envelope.Snapshots == nil {
 			t.Fatalf("missing compact envelope: %v", err)
 		}
-		manifests[envelope.Snapshots.BaselineFiles] = true
+		manifests[envelope.Snapshots.ExecFiles] = true
 		for _, name := range envelope.Snapshots.Contents {
 			contents[name] = true
 		}
 		got, found, err := store.lookup(t.Context(), "/w", call)
-		if err != nil || !found || !reflect.DeepEqual(got.ResolvedBaseline, durableHistory(h).ResolvedBaseline) {
-			t.Fatalf("persisted inventory differs for %s: %v %v", call, found, err)
+		if err != nil || !found || !reflect.DeepEqual(got.ExecObservation, durableHistory(h).ExecObservation) {
+			t.Fatalf("persisted capture differs for %s: %v %v", call, found, err)
 		}
 	}
 	measure := func(dir string) int64 {

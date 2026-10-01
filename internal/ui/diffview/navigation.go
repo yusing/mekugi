@@ -258,7 +258,7 @@ func (n *Navigation) Render(files []livediff.File, counts []livediff.Counts, sel
 			if len(regions) > 0 {
 				label = indent + FileLabel(StatusOf(regions...), entry.Label, n.workspace, theme)
 			}
-			if entry.File < len(counts) {
+			if entry.File < len(counts) && !StatusOf(regions...).Directory {
 				stats = CountStats(counts[entry.File], theme)
 			}
 			if entry.File < len(n.Dots) {
@@ -311,6 +311,7 @@ type Status struct {
 	// Edited reports captured content changes, not missing evidence.
 	Edited, Conflict bool
 	Incomplete       bool
+	Directory        bool
 }
 
 // StatusOf classifies a file's diff regions, in capture order.
@@ -329,9 +330,10 @@ func StatusOf(regions ...mekugi.ReviewFile) Status {
 // first capture's.
 func (s *Status) Add(region mekugi.ReviewFile) {
 	s.After = region.AfterPath
-	s.Incomplete = s.Incomplete || region.Incomplete != ""
+	s.Directory = region.Directory
+	s.Incomplete = s.Incomplete || region.Incomplete != "" && !region.Directory
 	added, removed := region.LineCounts()
-	s.Edited = s.Edited || added > 0 || removed > 0
+	s.Edited = s.Edited || added > 0 || removed > 0 || region.Directory
 	if region.Binary {
 		if _, sides, found := strings.Cut(region.Diff, " differ ("); found {
 			before, after, _ := strings.Cut(strings.TrimSuffix(strings.TrimSpace(sides), ")"), " -> ")
@@ -376,6 +378,9 @@ func (s Status) code(theme livediff.Theme) (string, string) {
 // also names its source. Every file row (tree, flat list, Changes tab,
 // streaming title) uses this format.
 func FileLabel(status Status, label, workspace string, theme livediff.Theme) string {
+	if status.Directory {
+		label = strings.TrimSuffix(label, "/") + "/"
+	}
 	code, color := status.code(theme)
 	label = livediff.Safe(label, false)
 	if status.Before != "" && status.After != "" && status.Before != status.After {

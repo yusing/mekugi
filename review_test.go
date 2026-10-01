@@ -85,3 +85,19 @@ func TestIncompleteReview(t *testing.T) {
 		t.Fatalf("incomplete capture composed: %v", err)
 	}
 }
+
+func TestDirectoryReviewCannotInventContent(t *testing.T) {
+	file := ReviewFile{BeforePath: "node_modules", AfterPath: "node_modules", Directory: true}
+	if added, removed := file.LineCounts(); added != -1 || removed != -1 {
+		t.Fatal("directory metadata supplied line counts")
+	}
+	for _, reverse := range []bool{false, true} {
+		if _, err := file.Merge("", reverse, "test"); err == nil {
+			t.Fatal("directory metadata became a replayable empty file")
+		}
+	}
+	var composition ReviewComposition
+	if err := composition.ApplyWithHighlight(file, false, false); err == nil {
+		t.Fatal("directory metadata became composable content")
+	}
+}

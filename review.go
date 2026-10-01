@@ -16,6 +16,9 @@ type ReviewFile struct {
 	Diff       string
 	// Incomplete describes unavailable content; it is not an empty-file diff.
 	Incomplete string `json:",omitzero"`
+	// Directory is a metadata-only directory change. Its contents and descendant
+	// paths are not retained and cannot be composed, reverted or reapplied.
+	Directory bool `json:",omitzero"`
 	// Binary marks intact non-text content, reviewed by size and hash only.
 	Binary bool `json:",omitzero"`
 	// Link marks a symbolic link on either side; its rows are link targets,
@@ -84,7 +87,7 @@ func (file ReviewFile) UnifiedDiff() string {
 // File headers, context, and missing-final-newline markers are not source changes.
 // Incomplete captures return -1 for both counts.
 func (file ReviewFile) LineCounts() (added, removed int) {
-	if file.Incomplete != "" {
+	if file.Incomplete != "" || file.Directory {
 		return -1, -1 // Unknown, not zero changed rows.
 	}
 	inHunk := false

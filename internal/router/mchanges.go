@@ -320,6 +320,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		managed        bool
 		composition    mekugi.ReviewComposition
 		uncomposable   bool
+		directory      bool
 	}
 	displayPath := func(path string) string {
 		if strings.IndexFunc(path, unicode.IsControl) >= 0 || strings.ContainsAny(path, "\"\\") || strings.Contains(path, " => ") {
@@ -448,6 +449,9 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 						return "", errors.New("change summary exceeds 64 MiB; narrow the range or paths after --")
 					}
 					summary = append(summary, changeCapture{order: record.CaptureOrder, files: []mekugi.ReviewFile{file}})
+				} else if file.Directory {
+					path := cmp.Or(file.AfterPath, file.BeforePath)
+					fmt.Fprintf(&output, "%s %s/\n", diffview.StatusOf(file).ShortCode(), displayPath(pathdisplay.ForWorkspace(options.workspace, path)))
 				} else if file.Origin != "" && options.view != "history" && len(options.paths) == 0 {
 					managedRows++
 					if managedRows <= 20 {
@@ -489,6 +493,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			after = before
 		}
 		stats[key(after)] = entry
+		entry.directory = entry.directory || file.Directory
 		entry.status.Add(file)
 		entry.managed = entry.managed && file.Origin != ""
 		if file.Incomplete != "" && !slices.Contains(entry.reasons, file.Incomplete) {
@@ -507,6 +512,14 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		}
 	}
 	for _, entry := range entries {
+		if entry.directory {
+			if entry.status.Before == "" && entry.status.After == "" {
+				continue
+			}
+			path := cmp.Or(entry.status.After, entry.status.Before)
+			fmt.Fprintf(&output, "%s %s/\n", entry.status.ShortCode(), displayPath(pathdisplay.ForWorkspace(options.workspace, path)))
+			continue
+		}
 		if !entry.uncomposable && entry.status.Before == "" && entry.status.After == "" {
 			continue // A creation followed by deletion leaves no file in the diff pane.
 		}

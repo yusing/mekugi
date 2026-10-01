@@ -82,6 +82,12 @@ The linked contracts own interface details, exceptions, and acceptance cases.
   from a real Codex request. Codex authorizes filesystem effects. See
   [boundary](doc/architecture/boundary.md) and
   [dated host observations](doc/codex-router-e2e.md).
+- **Authoritative change record:** `mchanges` is the source of truth for what agents
+  changed, for both users and agent handoffs. Capture ordinary ignored files such
+  as `FIXME.md`; Git ignore status is not an observation boundary. Dependency
+  installation trees appear as one directory status, not descendant listings or
+  content diffs. Keep uncertain window observations distinct from attributed edits
+  and missing evidence distinct from no changes. See [changes](doc/spec/changes.md).
 - **Truthful edit evidence:** Stock `apply_patch` input and result pass through
   unchanged. A streaming preview is provisional. Confirm the actual result
   and workspace outcome before persisting a completed change; failed and

@@ -28,6 +28,9 @@ type ReviewMerge struct {
 // requested side both changed. A hunk without locatable context is rejected
 // instead of guessed. Captures hold only hunk context, so no file is read.
 func (file ReviewFile) Merge(current string, reverse bool, label string) (ReviewMerge, error) {
+	if file.Directory {
+		return ReviewMerge{}, errors.New("directory contents are not retained")
+	}
 	if file.Incomplete != "" {
 		return ReviewMerge{}, fmt.Errorf("incomplete history: %s", file.Incomplete)
 	}

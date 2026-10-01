@@ -101,6 +101,15 @@ func mchangesListOutputRow(line string) (activityui.ChangeRow, bool) {
 // mchangesSummaryRow reads one `--summary` row: a file with its status and
 // counts, the compact tool-managed rows, or an ID's status.
 func mchangesSummaryRow(line string) (activityui.ChangeRow, bool) {
+	if status, path, ok := strings.Cut(line, " "); ok && len(status) == 1 && strings.HasSuffix(path, "/") {
+		if verb, found := mchangesSummaryVerbs[status]; found {
+			label, rest, valid := mchangesSummaryPath(strings.TrimSuffix(path, "/"))
+			if valid && rest == "" {
+				return activityui.ChangeRow{Verb: verb, Label: label + "/"}, true
+			}
+		}
+	}
+
 	if match := mchangesManagedRow.FindStringSubmatch(line); match != nil {
 		row := activityui.ChangeRow{Verb: "Edited", Label: mchangesManagedFiles, Note: match[3]}
 		row.Added, _ = strconv.Atoi(match[1])

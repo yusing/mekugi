@@ -575,7 +575,7 @@ func appendToolOutputWarning(raw json.RawMessage, warning string) (json.RawMessa
 }
 
 func (t *mekugiResponseTransform) recordLocal(callID string, history *mekugiHistory) {
-	boundResolvedStockBaseline(history, t.directory, callID)
+	boundStockInventory(history, t.directory, callID)
 	t.featureTrace.toolCall(callID, history.ToolName)
 	t.localSequence++
 	history.sequence = t.localSequence

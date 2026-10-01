@@ -77,6 +77,10 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 			path = file.BeforePath
 		}
 		path = pathdisplay.ForWorkspace(workspace, path)
+		if file.Directory {
+			summaries = append(summaries, action+" "+commentaryCode(path+"/"))
+			continue
+		}
 		if file.Incomplete != "" {
 			reasons[file.Incomplete]++
 			managedGaps = managedGaps || file.Origin != ""

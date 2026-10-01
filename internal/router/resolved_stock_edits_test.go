@@ -197,13 +197,20 @@ func TestResolvedRemoteCommandsCannotAcquireLocalEvidence(t *testing.T) {
 
 func TestResolvedStockInventoryCannotOverflowSupportedCarrier(t *testing.T) {
 	content := strings.Repeat("x", maxNativePatchFileBytes)
-	history := mekugiHistory{ResolvedBaseline: &resolvedStockBaseline{Root: "/workspace", Files: []execFileSnapshot{{Path: "/workspace/file", Content: content}}}}
+	inventory := &execInventory{Root: "/workspace", Entries: map[string]string{"file": "1:1"}, Files: []execFileSnapshot{{Path: "/workspace/file", Content: content}}}
+	history := mekugiHistory{ResolvedBaseline: &resolvedStockBaseline{Root: "/workspace", Inventory: inventory}}
 	for i := range 3 {
 		history.NativePatches = append(history.NativePatches, nativePatchObservation{Files: []nativePatchFileSnapshot{{BeforePath: fmt.Sprint(i), Before: content}}})
 	}
-	boundResolvedStockBaseline(&history, "/workspace", "cell")
-	if len(history.ResolvedBaseline.Files) != 0 || len(history.ResolvedBaseline.Omitted) != 1 || len(mustMarshalJSON(replayRecord{History: history})) > maxReplayRecordBytes {
-		t.Fatal("inventory overflow would block an otherwise supported stock carrier")
+	boundStockInventory(&history, "/workspace", "cell")
+	bounded := history.ResolvedBaseline.Inventory
+	if len(inventory.Files) != 1 || len(bounded.Files) != 0 || bounded.Entries["file"] == "" {
+		t.Fatalf("inventory content was not dropped on a copy: original=%d bounded=%+v", len(inventory.Files), bounded)
+	}
+	// The result record may carry the one inventory for both consumers.
+	history.ExecObservation = &execObservation{Inventory: bounded}
+	if size := len(mustMarshalJSON(replayRecord{Version: 1, Workspace: "/workspace", CallID: "cell", History: history})); size > maxReplayRecordBytes {
+		t.Fatalf("record is %d bytes, over the %d byte bound", size, maxReplayRecordBytes)
 	}
 }
 

@@ -1,5 +1,9 @@
 # Applied changes and live view
 
+`mchanges` is the authoritative retained account of agent changes for users and
+agent handoffs. It reports confirmed evidence and its limits, not the live Git
+working tree or a claim that unobserved effects did not occur.
+
 ## REQ-CHANGES-001 — Durable review of stock edits and command effects
 
 Mekugi observes stock Codex `apply_patch` calls. Codex executes each call once;
@@ -30,13 +34,21 @@ remain readable; new storage does not change retention age or pressure policy.
 
 Patches inside one Code Mode cell share a pre-cell/post-cell observation
 window. Literal arguments name their baselines before execution. For dynamic
-patch or command arguments, a bounded pre-cell inventory of the selected workspace
-retains candidate baselines without evaluating JavaScript. Resolved native host
-inputs select the paths that may consume that inventory; unrelated changes are
-never compared or attributed. The inventory excludes VCS metadata and dependency
-trees and shares the command capture's byte, encoded-size, enumeration and time
-bounds. A complete inventory proves initial absence; an omitted, outside-root,
-or symlink-directory path has incomplete evidence, never a post-edit baseline.
+patch or command arguments, the cell's workspace inventory (see
+[command effects](#command-effects)) supplies candidate baselines without
+evaluating JavaScript. A cell captures one inventory, shared by its command
+observation and its resolved baselines. Resolved native host inputs select the
+paths that may consume it; unrelated changes are never compared or attributed.
+A path's before-content is captured bytes, a Git blob verified against those
+bytes before execution, or current bytes whose strong change stamp is unchanged
+through the read. Git cleanliness and matching sizes do not establish byte
+identity. A changed path without a verified baseline is incomplete. Ordinary
+ignored files and non-Git workspaces retain the same bounded content coverage.
+A complete inventory proves initial absence; an omitted, pruned, outside-root, or symlink-directory path has incomplete evidence,
+never a post-edit baseline. Fully scoped, remote-only, and reader-only cells do
+not compare the inventory after resolution. A cell whose record would exceed
+the store bound keeps its inventory's stamps and blob IDs but drops captured content, largest
+first, so the inventory never blocks an otherwise supported cell.
 Resolved shell commands support literal, filesystem-independent file scopes;
 late globs, directory destinations and provider-dependent scopes remain incomplete.
 Each scoped path's resulting difference is recorded once, at its first
@@ -100,11 +112,40 @@ target, and a dangling link is omitted. Capture never follows a final symlink
 or blocks on a special file. Content that is not UTF-8 or contains NUL is kept
 as size and hash, and a symlink as its target.
 
-After the terminal host result, Mekugi compares only captured write paths and
-explicitly listed destinations. It does not sweep the workspace or infer authorship
-from timestamps. Unknown dynamic writers, tests, and generators without derived
-output paths do not acquire unrelated filesystem changes. Capture timeout retains
-a diagnostic, not a fabricated workspace-wide change.
+After the terminal host result, Mekugi compares captured write paths and
+explicitly listed destinations. A command with a derived write scope compares
+only that scope. A command whose write scope is unknown, such as a test,
+generator, build recipe, or dynamic Code Mode command, also compares a workspace
+inventory taken within the same pre-call hold. The inventory is rooted at the
+selected metadata workspace, never the command directory. It excludes VCS
+metadata but includes ordinary ignored files, including `FIXME.md`, regardless
+of the VCS ignore configuration. Symlinked directories are not followed during
+capture or reconciliation; replacing an ancestor with a symlink cannot expose
+its target as a workspace edit.
+
+Dependency trees, virtual environments and recognized cache trees are represented
+by one directory status, such as `M node_modules/`. Their descendants and content
+are never retained or exposed by detailed reads. Bounded metadata fingerprints
+can establish creation, deletion or modification, including changes below an
+unchanged directory root. A no-op produces no change; insufficient metadata
+produces a directory-level gap, not a fabricated modification. These summaries
+are not content diffs and cannot be composed, reverted or reapplied. Package
+installation commands retain manifest/lockfile evidence and also observe their
+other workspace effects, including lifecycle scripts.
+
+Enumeration, raw byte verification and metadata fingerprints share the pre-call
+hold. At most 256 candidate files are read within the remaining content budget;
+explicit scope takes priority. Byte-identical Git content can be retained by
+object ID, but filters or stale index metadata cannot substitute different bytes.
+Non-Git and ignored files retain bounded before-content as well. Before-content
+reconstruction and endpoint reads have independent budgets. Unsupported clocks,
+cut listings and exhausted bounds leave named gaps rather than proving no changes
+or reporting unlisted pre-existing files as creations. Retained baselines survive
+a router restart; missing Git objects remain incomplete evidence.
+
+Inventory reviews are labeled `observed during command window`: another writer
+may have made the change, so the evidence never claims authorship and the record's
+coverage stays partial. Explicit scope preserves its attribution.
 
 The record keeps command labels, actual host exit codes when available, and capture
 diagnostics for `--history`. A nonzero exit is a command failure, not a failed
@@ -138,13 +179,16 @@ Mekugi does not rerun or instrument the user's process to obtain it.
 
 Sibling calls emitted in one response and completed in one request share
 one record. Overlapping writer windows retain call references or change IDs for
-diagnostics; same-cell patch paths belong to their patch records. No record is
+diagnostics; same-cell patch paths belong to their patch records. A workspace
+inventory skips those paths, explicitly compared paths, and scopes claimed by
+overlapping writers; the earliest sibling inventory covers a shared record. No record is
 finalized without a terminal result. The overlap registry is process-local;
 restart preserves captured scope but does not revive running windows.
 
-Capture is read-only and installs no hooks or configuration. Changes outside the
-agent's derived write scope are excluded, including automatic hook edits to other
-files. If a hook or external writer changes the same scoped file before the host
+Capture is read-only and installs no hooks or configuration. For a command with
+a derived write scope, changes outside it are excluded, including automatic hook
+edits to other files. A workspace inventory can include such edits, labeled as
+window observations. If a hook or external writer changes the same scoped file before the host
 returns, before/after evidence cannot separate that writer's content from the
 agent's edit. The recorder must not claim otherwise.
 
@@ -169,7 +213,8 @@ with a depth bound. Unresolved targets, dynamic evaluation/loading, and unknown
 working-directory changes leave the scope open. Node and Deno write permissions
 provide bounded scope hints; subprocess/native-code permissions reopen them.
 Deno named permission sets are read from bounded local configuration, never by
-launching Deno. Only the derived scope is compared after execution.
+launching Deno. The derived scope is compared after execution; an open scope
+adds the workspace inventory.
 
 Literal `find` tests feeding a supported writer through `-exec` or `xargs` derive
 scopes without executing the writer. Known read-only `rg -l`, `grep -rl`, `fd`,
@@ -212,7 +257,8 @@ name every noted tool; `mchanges` keeps it.
 
 Explicit `go fix` package operands scope existing Go source files, within the
 shared byte, enumeration, and capture-time limits. Tests and generators do
-not imply ownership of their package directories. Import paths are not resolved
+not imply ownership of their package directories; their effects are workspace
+inventory observations. Import paths are not resolved
 by executing Go. An existing formatter/fixer path enumerated but not baselined
 after a capture bound is checked against a filesystem-clock marker after the call.
 An unchanged path creates no review. A changed or deleted path has unknown
@@ -265,7 +311,10 @@ Successful output stays on stdout. `apply` and `revert` retain dependency checks
 and do not skip failed dependencies. It is not a net workspace diff;
 binary or incomplete files have unknown counts. Incomplete path rows append quoted retained
 reasons after the path column. Missing evidence cannot establish a modification, even when
-the record contains both path names. A sequence containing an incomplete capture stays `?`.
+the record contains both path names. A sequence containing an incomplete file
+capture stays `?`. Metadata-only dependency directory changes instead have a bare `A`, `M` or `D` path row with a
+trailing slash, no line counts, and no descendant expansion, including in history.
+A directory whose metadata could not establish a change remains a `?` gap.
 Native edit receipts group incomplete paths separately from confirmed edits, show bounded
 reason counts, and link to `mchanges --summary` for direct per-path details or
 `mchanges --history` when managed omissions require expanded records. Compact managed

@@ -342,6 +342,8 @@ func (m *changeMutation) merge(capture changeCapture, review mekugi.ReviewFile) 
 	primary := m.file(cmp.Or(dst, src))
 	reason := review.Incomplete
 	switch {
+	case review.Directory:
+		reason = "directory contents are not retained"
 	case review.Binary:
 		reason = "binary content is not retained"
 	case review.Link || capture.links[src] || capture.links[dst] || capture.exec && legacyLinkReview(review):

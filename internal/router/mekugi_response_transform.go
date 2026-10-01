@@ -614,15 +614,23 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		patches := nativePatchesInCall(name, originalInput, t.directory)
 		t.primePreviewSources(item.ID, patches)
 		execs, dynamic := stockLiteralExecCommands(originalInput, t.directory, t.sessionShell)
+		// A cell has one inventory. A non-literal command makes the cell opaque,
+		// so its observation captures the inventory the baseline then reads.
+		// Literal commands alone may leave the cell without one.
+		var resolvedBaseline *resolvedStockBaseline
 		var baselineReady chan *resolvedStockBaseline
-		if dynamic || stockDynamicPatchInputs(originalInput, len(patches)) {
+		if dynamic {
+			resolvedBaseline = newResolvedBaseline(t.directory, t.sessionShell)
+		} else if stockDynamicPatchInputs(originalInput, len(patches)) {
 			baselineReady = make(chan *resolvedStockBaseline, 1)
 			go func() { baselineReady <- captureResolvedBaseline(t.directory, t.sessionShell) }()
 		}
 		observation, observed := captureExecObservation(execs, dynamic, true, t.execCaptureEnvironment(patches))
-		var resolvedBaseline *resolvedStockBaseline
 		if baselineReady != nil {
 			resolvedBaseline = <-baselineReady
+			if observation != nil && observation.Inventory != nil {
+				resolvedBaseline.Inventory = nil
+			}
 		}
 		t.openExecWindow(callID, observation, patches)
 		if !changed && len(patches) == 0 && !observed && resolvedBaseline == nil {

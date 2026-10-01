@@ -2,7 +2,7 @@ package router
 
 import (
 	"cmp"
-	"io/fs"
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,29 +12,65 @@ import (
 	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
-// This inventory is a bounded pre-cell baseline, not a workspace diff or an
-// ownership sweep. Only paths named by resolved native calls may consume it.
-// In particular, another agent's writes to unrelated files are never compared.
+// This is a bounded pre-cell baseline, not a workspace diff or an ownership
+// sweep. Only paths named by resolved native calls may consume it. In
+// particular, another agent's writes to unrelated files are never compared.
+// Its inventory is the cell's only one: when the cell's command observation
+// holds an inventory, the baseline has none of its own and reads that one.
+// Older records list every file in Files instead.
 type resolvedStockBaseline struct {
-	Root    string
-	Shell   string
-	Files   []execFileSnapshot
-	Omitted []execOmission
+	Root      string
+	Shell     string
+	Files     []execFileSnapshot `json:",omitempty"`
+	Omitted   []execOmission     `json:",omitempty"`
+	Inventory *execInventory     `json:",omitempty"`
 }
 
-func boundResolvedStockBaseline(history *mekugiHistory, workspace, callID string) {
-	baseline := history.ResolvedBaseline
-	if baseline == nil {
+// boundStockInventory keeps a Code Mode cell's record within the store bound,
+// so its inventory never blocks an otherwise supported carrier. The result
+// record may hold the cell's one inventory twice, for the resolved baseline
+// and the command observation, so the bound counts it twice. Content is
+// dropped largest first; dropped files keep their stamps and blob ids.
+func boundStockInventory(history *mekugiHistory, workspace, callID string) {
+	if history.ResolvedBaseline == nil {
 		return
 	}
-	record := replayRecord{Version: 1, Workspace: workspace, CallID: callID, History: *history}
-	if len(mustMarshalJSON(record)) <= maxReplayRecordBytes {
+	baseline := *history.ResolvedBaseline
+	var observation *execObservation
+	inventory := baseline.Inventory
+	if inventory == nil && history.ExecObservation != nil {
+		copy := *history.ExecObservation
+		observation, inventory = &copy, copy.Inventory
+	}
+	if inventory == nil {
 		return
 	}
-	// The inventory must not push a supported stock carrier over the store's
-	// bound and block host execution. Preserve its named omission instead.
-	history.ResolvedBaseline = &resolvedStockBaseline{Root: baseline.Root, Shell: baseline.Shell,
-		Omitted: []execOmission{{Path: baseline.Root, Reason: "combined stock observation exceeds the record bound"}}}
+	bounded := *inventory
+	measured := *history
+	measured.ResolvedBaseline = &baseline
+	baseline.Inventory = &bounded
+	if observation != nil {
+		observation.Inventory = &bounded
+		measured.ExecObservation = observation
+	} else {
+		var copy execObservation
+		if measured.ExecObservation != nil {
+			copy = *measured.ExecObservation
+		}
+		copy.Inventory = &bounded
+		measured.ExecObservation = &copy
+	}
+	record := replayRecord{Version: 1, Workspace: workspace, CallID: callID, History: durableHistory(measured)}
+	excess := len(mustMarshalJSON(record)) - maxReplayRecordBytes
+	if excess <= 0 {
+		return
+	}
+	boundExecInventory(&bounded, len(mustMarshalJSON(&bounded))-(excess+1)/2)
+	if observation != nil {
+		history.ExecObservation = observation
+	} else {
+		history.ResolvedBaseline = &baseline
+	}
 }
 
 func stockDynamicPatchInputs(source string, literalCount int) bool {
@@ -65,67 +101,67 @@ func stockDynamicPatchInputs(source string, literalCount int) bool {
 	return count > literalCount
 }
 
-func captureResolvedBaseline(workspace, shell string) *resolvedStockBaseline {
+// newResolvedBaseline is a baseline without an inventory of its own, for a
+// cell whose command observation captures one.
+func newResolvedBaseline(workspace, shell string) *resolvedStockBaseline {
 	baseline := &resolvedStockBaseline{Root: workspace, Shell: shell}
+	if !filepath.IsAbs(workspace) {
+		baseline.Omitted = []execOmission{{Path: workspace, Reason: "resolved edit baseline requires a selected workspace"}}
+	}
+	return baseline
+}
+
+func captureResolvedBaseline(workspace, shell string) *resolvedStockBaseline {
+	baseline := newResolvedBaseline(workspace, shell)
+	if baseline.Omitted != nil {
+		return baseline
+	}
 	gap := func(reason string) *resolvedStockBaseline {
 		baseline.Omitted = []execOmission{{Path: workspace, Reason: reason}}
 		return baseline
 	}
-	if !filepath.IsAbs(workspace) {
-		return gap("resolved edit baseline requires a selected workspace")
-	}
 	deadline := time.Now().Add(execCaptureHold)
 	timer := time.NewTimer(time.Until(deadline))
 	defer timer.Stop()
-	done := make(chan *resolvedStockBaseline, 1)
+	done := make(chan *execInventory, 1)
 	select {
 	case execCaptureSlots <- struct{}{}:
 		go func() {
 			defer func() { <-execCaptureSlots }()
-			capture := newExecCapture(deadline)
-			visited := 0
-			_ = filepath.WalkDir(workspace, func(path string, entry fs.DirEntry, err error) error {
-				if err != nil {
-					capture.omit(path, err.Error())
-					return nil
-				}
-				visited++
-				if time.Now().After(deadline) || visited > maxExecListingEntries {
-					capture.omit(workspace, "resolved edit baseline enumeration reached its bound")
-					return filepath.SkipAll
-				}
-				if entry.IsDir() && path != workspace && (slices.Contains([]string{".git", ".hg", ".svn", ".jj"}, entry.Name()) || execBuiltinPruned(path, entry.Name())) {
-					capture.omit(path, "resolved edit baseline excludes metadata and dependency trees")
-					return filepath.SkipDir
-				}
-				// Keep enumerating after the byte bound: a complete inventory can
-				// still prove absence of a new path, but not an unread file's content.
-				capture.add(path)
-				return nil
-			})
-			bounded := &execObservation{Files: capture.files, Omitted: capture.omitted}
-			boundExecObservation(bounded)
-			done <- &resolvedStockBaseline{Root: workspace, Shell: shell, Files: bounded.Files, Omitted: bounded.Omitted}
+			budget := maxExecContentBytes
+			inventory := captureExecInventory(workspace, deadline.Add(-execInventoryMargin), &budget)
+			boundExecInventory(inventory, maxExecObservationBytes)
+			done <- inventory
 		}()
 	case <-timer.C:
 		return gap("resolved edit baseline capture deadline")
 	}
 	select {
-	case result := <-done:
+	case inventory := <-done:
 		if time.Now().Before(deadline) {
-			return result
+			baseline.Inventory = inventory
+			return baseline
 		}
 	case <-timer.C:
 	}
 	return gap("resolved edit baseline capture deadline")
 }
 
+// file is the pre-cell state of one resolved path: captured content, then a
+// byte-verified Git blob, then current bytes with an unchanged strong stamp.
+// A changed file without either is a gap, and a path the complete
+// enumeration did not list was absent.
 func (b *resolvedStockBaseline) file(path string) execFileSnapshot {
 	path = filepath.Clean(path)
 	if b == nil {
 		return execFileSnapshot{Path: path, Error: "resolved path has no pre-cell baseline"}
 	}
-	for _, file := range b.Files {
+	inventory := b.Inventory
+	files := b.Files
+	if inventory != nil {
+		files = inventory.Files
+	}
+	for _, file := range files {
 		if file.Path == path {
 			return file
 		}
@@ -133,7 +169,18 @@ func (b *resolvedStockBaseline) file(path string) execFileSnapshot {
 			return execFileSnapshot{Path: path, Error: "resolved edit baseline does not follow symlink directories"}
 		}
 	}
-	for _, omission := range b.Omitted {
+	omitted := b.Omitted
+	if inventory != nil {
+		omitted = append(slices.Clone(omitted), inventory.Omitted...)
+		if relative, err := filepath.Rel(inventory.Root, path); err == nil && execPathWithin(path, inventory.Root) {
+			if snapshot, ok := b.inventoryFile(inventory, path, relative); ok {
+				return snapshot
+			}
+		}
+	} else if len(b.Files) == 0 && len(b.Omitted) == 0 {
+		return execFileSnapshot{Path: path, Error: "resolved path has no pre-cell baseline"}
+	}
+	for _, omission := range omitted {
 		if execPathWithin(path, omission.Path) {
 			return execFileSnapshot{Path: path, Error: omission.Reason}
 		}
@@ -144,12 +191,53 @@ func (b *resolvedStockBaseline) file(path string) execFileSnapshot {
 	return execFileSnapshot{Path: path} // Complete enumeration proves absence.
 }
 
+func (b *resolvedStockBaseline) inventoryFile(inventory *execInventory, path, relative string) (execFileSnapshot, bool) {
+	stamp, listed := inventory.Entries[relative]
+	if !listed {
+		for parent := filepath.Dir(relative); parent != "."; parent = filepath.Dir(parent) {
+			if _, link := inventory.Entries[parent]; link {
+				return execFileSnapshot{Path: path, Error: "resolved edit baseline does not follow symlink directories"}, true
+			}
+		}
+		if inventory.prunedWithin(relative) {
+			return execFileSnapshot{Path: path, Error: "resolved edit baseline excludes metadata and dependency trees"}, true
+		}
+		return execFileSnapshot{}, false
+	}
+	if inventory.Version == 1 && inventory.Blobs[relative] != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), execInventoryQueryTimeout)
+		defer cancel()
+		budget := maxExecContentBytes
+		if snapshot, ok := inventory.blobs(ctx, []string{relative}, &budget)[relative]; ok {
+			return snapshot, true
+		}
+	}
+	if inventory.Version == 1 && stamp != "" {
+		current, unchanged := snapshotInventoryBaseline(inventory.Root, relative, stamp)
+		if unchanged {
+			return current, true
+		}
+	}
+	return execFileSnapshot{Path: path, Error: "before content not captured"}, true
+}
+
 // Resolved inputs come from host tracing, never from evaluating JavaScript.
 // They share the original cell window, not an invented per-nested-call window.
 func resolveStockEdits(history *mekugiHistory, workspace string) {
 	b := history.ResolvedBaseline
 	if b == nil && (history.nativeCell == nil || !history.nativeCell.ended) {
 		return
+	}
+	var inventory *execInventory
+	if history.ExecObservation != nil {
+		inventory = history.ExecObservation.Inventory
+	}
+	if b != nil && b.Inventory != nil {
+		inventory = b.Inventory
+	} else if b != nil && inventory != nil {
+		copy := *b
+		copy.Inventory = inventory
+		b = &copy
 	}
 	// The pre-cell carrier is immutable replay evidence. Resolve on a copy;
 	// completed derived records retain the actual inputs and comparisons.
@@ -171,6 +259,7 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 	if history.nativeCell == nil || !history.nativeCell.ended {
 		history.ExecObservation.Class = execOpaque.String()
 		history.ExecObservation.Reason = "resolved nested host inputs unavailable"
+		history.ExecObservation.Inventory = inventory
 		return
 	}
 	patches := slices.Clone(history.NativePatches)
@@ -188,6 +277,9 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 	}
 	literalCommands := slices.Clone(commands)
 	literalClasses := slices.Clone(history.ExecObservation.CommandClasses)
+	// Only a local call with unknown write scope compares the inventory.
+	// Fully scoped, remote-only, and reader-only cells keep their named scope.
+	inventoryNeeded := false
 	for _, tool := range history.nativeCell.tools {
 		switch tool.Tool {
 		case applyPatchToolName:
@@ -257,6 +349,7 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 				}
 			}
 			if index := slices.Index(commands, command); index >= 0 {
+				inventoryNeeded = inventoryNeeded || literalClasses[slices.Index(literalCommands, command)] == execOpaque.String()
 				commands = slices.Delete(commands, index, index+1)
 				continue
 			}
@@ -266,11 +359,13 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 			if index := slices.Index(literalCommands, command); index >= 0 {
 				history.ExecObservation.Commands = append(history.ExecObservation.Commands, command)
 				class := literalClasses[index]
+				inventoryNeeded = inventoryNeeded || class == execOpaque.String()
 				history.ExecObservation.CommandClasses = append(history.ExecObservation.CommandClasses, class)
 				history.ExecObservation.RepeatedPaths = history.ExecObservation.RepeatedPaths || class != execNeutral.String()
 				continue
 			}
 			if b == nil {
+				inventoryNeeded = true
 				history.ExecObservation.Commands = append(history.ExecObservation.Commands, command)
 				history.ExecObservation.CommandClasses = append(history.ExecObservation.CommandClasses, execOpaque.String())
 				history.ExecObservation.Class = execOpaque.String()
@@ -309,15 +404,18 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 				}
 			}
 			if plan.Class > execDeclared {
+				inventoryNeeded = true
 				observation.Class = execOpaque.String()
 				observation.Reason = "resolved command has unsupported or state-dependent write scope"
 			}
 		case "write_stdin":
 			if !tool.stdinPoll {
+				inventoryNeeded = inventoryNeeded || execLocalEnvironment(tool.environmentID)
 				history.ExecObservation.Class = execOpaque.String()
 				history.ExecObservation.Reason = "non-polling stdin has unsupported write scope"
 			}
 		default:
+			inventoryNeeded = inventoryNeeded || execLocalEnvironment(tool.environmentID)
 			history.ExecObservation.Class = execOpaque.String()
 			history.ExecObservation.Reason = "resolved tool has unsupported write scope"
 		}
@@ -325,6 +423,10 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 	// Patch paths are compared once by their patch records, even when the
 	// dynamically resolved command also names them.
 	if history.ExecObservation != nil {
+		history.ExecObservation.Inventory = nil
+		if inventoryNeeded {
+			history.ExecObservation.Inventory = inventory
+		}
 		for _, patch := range history.NativePatches {
 			for _, file := range patch.Files {
 				history.ExecObservation.Excluded = append(history.ExecObservation.Excluded, file.BeforePath, file.AfterPath)
