@@ -99,12 +99,8 @@ func execDirectoryReview(path string, before, after execDirectoryStamp) (mekugi.
 	changed := !before.Exists && before.Complete && after.Exists || before.Exists && !after.Exists && after.Complete || before.Exists && after.Exists &&
 		(before.Stamp != "" && after.Stamp != "" && before.Stamp != after.Stamp || before.Complete && after.Complete && before.Digest != after.Digest)
 	if !changed {
-		if before.Complete && after.Complete {
-			return mekugi.ReviewFile{}, false
-		}
-		file := mekugi.RenderIncompleteReviewFile(path, path, "dependency directory metadata capture incomplete")
-		file.OriginNote = execInventoryNote
-		return file, true
+		// A scan limit is coverage information, not evidence of a changed path.
+		return mekugi.ReviewFile{}, false
 	}
 	a, b := path, path
 	if !before.Exists {
@@ -115,4 +111,17 @@ func execDirectoryReview(path string, before, after execDirectoryStamp) (mekugi.
 	}
 	file := mekugi.ReviewFile{BeforePath: a, AfterPath: b, Directory: true, Incomplete: "directory contents intentionally not captured", OriginNote: execInventoryNote}
 	return file, true
+}
+
+// Older captures stored these observation gaps as changed files. Keep the
+// immutable records readable in --history, but do not project them as edits.
+func dependencyObservationGap(file mekugi.ReviewFile) bool {
+	if file.Directory || file.Origin != "" || file.OriginNote != execInventoryNote || file.BeforePath == "" || file.BeforePath != file.AfterPath {
+		return false
+	}
+	switch file.Incomplete {
+	case "dependency directory metadata capture incomplete", "dependency directory has no pre-call metadata":
+		return file.Diff == mekugi.RenderIncompleteReviewFile(file.BeforePath, file.AfterPath, file.Incomplete).Diff
+	}
+	return false
 }

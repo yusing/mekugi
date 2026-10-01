@@ -367,8 +367,9 @@ func execStampSize(stamp string) (int64, bool) {
 // files or git blobs. Files missing from the inventory are creations unless
 // the inventory omitted their directory: its named gap stands for them. Skipped
 // paths belong to explicit scope, same-cell patches, or overlapping writers.
-func reconcileExecInventory(inventory *execInventory, skip func(string) bool, compare func(execFileSnapshot, execFileSnapshot), budget *int) []mekugi.ReviewFile {
+func reconcileExecInventory(inventory *execInventory, skip func(string) bool, compare func(execFileSnapshot, execFileSnapshot), budget *int) ([]mekugi.ReviewFile, []string) {
 	var gaps []mekugi.ReviewFile
+	var unobservedDirectories []string
 	gap := func(beforePath, afterPath, reason string) {
 		review := mekugi.RenderIncompleteReviewFile(beforePath, afterPath, reason)
 		review.OriginNote = execInventoryNote
@@ -441,7 +442,7 @@ func reconcileExecInventory(inventory *execInventory, skip func(string) bool, co
 		before, listed := inventory.Directories[relative]
 		if !listed {
 			if inventory.prunedWithin(relative) || filepath.Base(relative) != "node_modules" && filepath.Base(relative) != "__pycache__" {
-				gap(path, path, "dependency directory has no pre-call metadata")
+				unobservedDirectories = append(unobservedDirectories, relative)
 				continue
 			}
 			before.Complete = true
@@ -450,6 +451,9 @@ func reconcileExecInventory(inventory *execInventory, skip func(string) bool, co
 			continue
 		}
 		current := captureExecDirectory(inventory.Root, relative, walk.deadline)
+		if !before.Complete || !current.Complete {
+			unobservedDirectories = append(unobservedDirectories, relative)
+		}
 		if review, ok := execDirectoryReview(path, before, current); ok {
 			gaps = append(gaps, review)
 		}
@@ -459,7 +463,7 @@ func reconcileExecInventory(inventory *execInventory, skip func(string) bool, co
 			gap(omission.Path, omission.Path, omission.Reason)
 		}
 	}
-	return gaps
+	return gaps, unobservedDirectories
 }
 
 // execGitState lists the index blob ids of tracked regular files below root,

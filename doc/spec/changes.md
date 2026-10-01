@@ -127,8 +127,14 @@ Dependency trees, virtual environments and recognized cache trees are represente
 by one directory status, such as `M node_modules/`. Their descendants and content
 are never retained or exposed by detailed reads. Bounded metadata fingerprints
 can establish creation, deletion or modification, including changes below an
-unchanged directory root. A no-op produces no change; insufficient metadata
-produces a directory-level gap, not a fabricated modification. These summaries
+unchanged directory root. Only positive metadata evidence produces a directory
+change. Scan limits remain command-level coverage diagnostics in `--history`,
+not changed-file entries or repeated saved Diff rows; absence of a directory
+row does not prove that unobserved descendants are unchanged. Retained legacy
+dependency-observation gaps remain readable in `--history`, but are excluded
+from edit receipts, default and summary reads, and saved Diff. Saved Diff collapses
+repeated confirmed directory captures into one status per contiguous directory
+sequence, retaining the captures and their provenance. These summaries
 are not content diffs and cannot be composed, reverted or reapplied. Package
 installation commands retain manifest/lockfile evidence and also observe their
 other workspace effects, including lifecycle scripts.

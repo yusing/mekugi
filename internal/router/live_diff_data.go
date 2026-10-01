@@ -70,6 +70,9 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 		origin := livediff.Origin{Change: event.ID, Caller: history.Caller, Source: cmp.Or(history.Source, history.ToolName)}
 		var managed []string
 		for n, file := range history.ReviewFiles {
+			if dependencyObservationGap(file) {
+				continue
+			}
 			if file.Origin != "" {
 				managed = append(managed, managedReviewRow(file))
 				continue

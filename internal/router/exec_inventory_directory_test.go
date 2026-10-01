@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -138,7 +139,50 @@ func TestExecInventoryDirectoryBoundDoesNotInventChanges(t *testing.T) {
 		t.Fatal("expired metadata capture reported complete")
 	}
 	review, found := execDirectoryReview(filepath.Join(w, "node_modules"), before, after)
-	if !found || review.Directory || review.Incomplete == "" {
-		t.Fatalf("bound became a modification or no-op: %+v", review)
+	if found {
+		t.Fatalf("scan bound became a changed-file entry: %+v", review)
+	}
+}
+
+func TestExecInventoryLargeDependencyTreeDoesNotInventEdits(t *testing.T) {
+	w := t.TempDir()
+	for i := range maxExecListingEntries + 1 {
+		writeTestFile(t, filepath.Join(w, "node_modules", fmt.Sprintf("file-%05d", i)), "dependency")
+	}
+	writeTestFile(t, filepath.Join(w, ".gitignore"), "FIXME.md\nnode_modules/\n")
+	writeTestFile(t, filepath.Join(w, "FIXME.md"), "before\n")
+	for _, command := range []string{"npm install", "make test", "python -c 'print(1)'"} {
+		t.Run(command, func(t *testing.T) {
+			observation := observeInventoryCommand(t, w, w, command, nil)
+			if observation.Inventory.Directories["node_modules"].Complete {
+				t.Fatal("oversize tree unexpectedly complete")
+			}
+			reviews, complete, coverage, diagnostic := reconcileExecObservation(*observation, execReconcileEnv{})
+			if len(reviews) != 0 || complete || coverage != execCoveragePartial || !strings.Contains(diagnostic, "node_modules") {
+				t.Fatalf("unchanged oversize tree: reviews=%+v complete=%v coverage=%s diagnostic=%q", reviews, complete, coverage, diagnostic)
+			}
+		})
+	}
+	observation := observeInventoryCommand(t, w, w, "npm install", nil)
+	writeTestFile(t, filepath.Join(w, "FIXME.md"), "after\n")
+	writeTestFile(t, filepath.Join(w, "node_modules", "new-package", "index.js"), "new dependency")
+	reviews := inventoryReviews(t, observation, nil)
+	if len(reviews) != 2 || !inventoryReview(t, w, reviews, "node_modules").Directory || inventoryReview(t, w, reviews, "FIXME.md").Incomplete != "" {
+		t.Fatalf("positive directory/ignored edit evidence lost: %+v", reviews)
+	}
+}
+
+func TestDependencyObservationGapRequiresExactProvenance(t *testing.T) {
+	file := mekugi.RenderIncompleteReviewFile("node_modules", "node_modules", "dependency directory metadata capture incomplete")
+	if dependencyObservationGap(file) {
+		t.Fatal("unattributed gap suppressed")
+	}
+	file.OriginNote = execInventoryNote
+	if !dependencyObservationGap(file) {
+		t.Fatal("legacy dependency observation not recognized")
+	}
+	file.Diff += "@@ -1 +1 @@\n-old\n+new\n"
+	if dependencyObservationGap(file) {
+		t.Fatal("content evidence suppressed")
 	}
 }

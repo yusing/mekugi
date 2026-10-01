@@ -144,7 +144,7 @@ type execOutcome struct {
 	// exactly.
 	Scope       []string `json:",omitempty"`
 	ScopeReason string   `json:",omitempty"`
-	// Unswept retains diagnostics from older workspace-sweep records.
+	// Unswept retains command-level coverage diagnostics, not changed files.
 	Unswept string `json:",omitempty"`
 	// Overlaps are calls whose windows overlapped this one on the same root.
 	Overlaps []string `json:",omitempty"`
@@ -1089,7 +1089,11 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 			return compared || slices.Contains(observation.Excluded, path) ||
 				slices.ContainsFunc(env.excluded, func(root string) bool { return execPathWithin(path, root) })
 		}
-		reviews = append(reviews, reconcileExecInventory(observation.Inventory, skip, func(before, current execFileSnapshot) { compareAs(before, &current, true) }, &budget)...)
+		inventoryReviews, directories := reconcileExecInventory(observation.Inventory, skip, func(before, current execFileSnapshot) { compareAs(before, &current, true) }, &budget)
+		reviews = append(reviews, inventoryReviews...)
+		if len(directories) != 0 {
+			unswept = fmt.Sprintf("dependency metadata incomplete for %q; unobserved descendants are not confirmed changes", directories)
+		}
 	}
 	// A deletion and an addition with identical content form one move. Empty
 	// files carry no evidence of which deletion an addition came from. Window

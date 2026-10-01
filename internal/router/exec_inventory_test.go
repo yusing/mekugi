@@ -409,7 +409,7 @@ func TestExecInventoryNativeYieldCompletesAfterRestart(t *testing.T) {
 func TestExecInventoryCutListingInventsNoCreations(t *testing.T) {
 	collect := func(inventory *execInventory) []string {
 		var created []string
-		gaps := reconcileExecInventory(inventory, func(string) bool { return false }, func(before, after execFileSnapshot) {
+		gaps, _ := reconcileExecInventory(inventory, func(string) bool { return false }, func(before, after execFileSnapshot) {
 			created = append(created, before.Path)
 		}, new(maxExecContentBytes))
 		if len(gaps) != 1 || gaps[0].BeforePath != inventory.Root || gaps[0].OriginNote != execInventoryNote {

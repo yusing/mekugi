@@ -71,6 +71,9 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 	managedGaps := false
 	budget := maxEditReceiptDiffBytes
 	for _, file := range history.ReviewFiles {
+		if dependencyObservationGap(file) {
+			continue
+		}
 		action := file.Action().Title()
 		path := file.AfterPath
 		if path == "" {

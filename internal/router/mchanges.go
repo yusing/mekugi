@@ -402,7 +402,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 					fmt.Fprintf(&output, "%s incomplete captured scope; use --history for diagnostics\n", id)
 				}
 			}
-			if len(history.ReviewFiles) != 0 {
+			if slices.ContainsFunc(history.ReviewFiles, func(file mekugi.ReviewFile) bool { return !dependencyObservationGap(file) }) {
 				status = "applied"
 			}
 			if options.view == "history" && len(change.Calls) == 1 {
@@ -439,6 +439,9 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			}
 			managedRows := 0
 			for _, file := range history.ReviewFiles {
+				if options.view != "history" && dependencyObservationGap(file) {
+					continue
+				}
 				if len(options.paths) > 0 && !changePathMatches(options, file.BeforePath) && !changePathMatches(options, file.AfterPath) {
 					continue
 				}

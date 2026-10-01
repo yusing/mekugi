@@ -186,6 +186,7 @@ func (v *View) RefreshVisible() {
 			return cmp.Compare(a.CaptureOrder, b.CaptureOrder)
 		})
 		baseline := make(map[string]bool)
+		directoryChunk := -1
 		for _, chunk := range chunks {
 			visible.incomplete = visible.incomplete || chunk.Review.Incomplete != "" || chunk.Review.Binary
 			baselineChunk := !v.Shows(chunk)
@@ -200,6 +201,23 @@ func (v *View) RefreshVisible() {
 				visible.Origins = append(visible.Origins, chunk.Origin)
 			}
 			visible.Highlighted = visible.Highlighted || chunk.Highlighted && !baselineChunk
+			if chunk.Review.Directory && failure == nil {
+				for _, region := range composition.FilesWithHighlights() {
+					visible.Chunks = append(visible.Chunks, Chunk{Review: region.ReviewFile, Highlighted: region.Highlighted})
+				}
+				composition = mekugi.ReviewComposition{}
+				if !baselineChunk {
+					if directoryChunk < 0 {
+						directoryChunk = len(visible.Chunks)
+						visible.Chunks = append(visible.Chunks, Chunk{Review: chunk.Review, Status: "directory"})
+					}
+					summary := &visible.Chunks[directoryChunk]
+					summary.Review.AfterPath = chunk.Review.AfterPath
+					summary.Highlighted = summary.Highlighted || chunk.Highlighted
+				}
+				continue
+			}
+			directoryChunk = -1
 			if chunk.Review.Incomplete != "" && failure == nil {
 				// Unknown bytes end this composition epoch. Keep known captures
 				// on either side separate rather than hiding all later edits.
@@ -247,6 +265,9 @@ func (v *View) RefreshVisible() {
 				})
 			}
 		}
+		visible.Chunks = slices.DeleteFunc(visible.Chunks, func(chunk Chunk) bool {
+			return chunk.Review.Directory && chunk.Review.BeforePath == "" && chunk.Review.AfterPath == ""
+		})
 		v.Visible[file.Key()] = visible
 	}
 }

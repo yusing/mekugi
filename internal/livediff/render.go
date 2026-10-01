@@ -309,11 +309,22 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 			source = LineSource{Change: cmp.Or(chunk.Change, originChanges(file.Origins)), Path: file.Path, Content: gutterWidth}
 			if chunk.Status != "" {
 				label := chunk.Status
-				if origin := r.originLabel(Origin{Caller: chunk.Caller, Source: chunk.Source}); origin != "" && chunk.Change != "" {
-					label += " · " + origin
-				}
-				if action := fileAction(review, workspace); action != "" {
-					label += " · " + action
+				if review.Directory {
+					status := "M"
+					if review.BeforePath == "" {
+						status = "A"
+					}
+					if review.AfterPath == "" {
+						status = "D"
+					}
+					label = status + " " + pathdisplay.ForWorkspace(workspace, cmp.Or(review.AfterPath, review.BeforePath)) + "/"
+				} else {
+					if origin := r.originLabel(Origin{Caller: chunk.Caller, Source: chunk.Source}); origin != "" && chunk.Change != "" {
+						label += " · " + origin
+					}
+					if action := fileAction(review, workspace); action != "" {
+						label += " · " + action
+					}
 				}
 				continuation := false
 				for line := range strings.SplitSeq(ansi.Wrap(Safe(label, false), max(1, width-3), ""), "\n") {
