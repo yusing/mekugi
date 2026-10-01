@@ -203,6 +203,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 	}
 	childLiveUpdate := false
 	rootFlushes := 0
+	rootFinals := 0
 	lastMessage := ""
 	var messages []string
 	for line := range strings.SplitSeq(stdout.String(), "\n") {
@@ -232,6 +233,12 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 		if strings.HasPrefix(text, "Journal flush `/root`") {
 			rootFlushes++
 		}
+		if text == "Native root completion after child review." {
+			rootFinals++
+			if rootFlushes != 1 {
+				t.Fatalf("ordinary final must follow one journal flush; flushes=%d messages=%q", rootFlushes, messages)
+			}
+		}
 		childLiveUpdate = childLiveUpdate || (strings.HasPrefix(text, "Journal\n") || strings.HasPrefix(text, "Journal update `/root/journal_child`")) && strings.Contains(text, "Native child live milestone")
 		if strings.Contains(text, " -> ") && (strings.Contains(text, "Completed.") || strings.Contains(text, "Journal update") || strings.HasPrefix(text, "Journal\n")) {
 			t.Fatalf("duplicate completion or journal recipient commentary: %s", text)
@@ -240,8 +247,8 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 			t.Fatalf("main repeated the native child result: %s", text)
 		}
 	}
-	if rootFlushes != 1 || !strings.HasPrefix(lastMessage, "Journal flush `/root`") {
-		t.Fatalf("native consumer must receive one journal flush as its last message; flushes=%d last=%s", rootFlushes, lastMessage)
+	if rootFlushes != 1 || rootFinals != 1 || lastMessage != "Native root completion after child review." {
+		t.Fatalf("native consumer must receive one journal flush before one ordinary final, with nothing after it; flushes=%d finals=%d last=%s", rootFlushes, rootFinals, lastMessage)
 	}
 	if provider.childRequests != 2 {
 		t.Fatalf("child provider requests = %d, want live update then a natural final answer without another request", provider.childRequests)
