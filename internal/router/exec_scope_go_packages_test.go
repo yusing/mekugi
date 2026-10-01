@@ -3,7 +3,6 @@ package router
 import (
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -11,58 +10,6 @@ import (
 
 // Tests and generators have no derived write scope: their effects are window
 // evidence from the workspace inventory, never an explicit claim.
-func TestGoTestAndGenerateObserveWorkspaceWindow(t *testing.T) {
-	for _, command := range []string{"go test ./pkg", "go generate ./pkg", "python script.py"} {
-		t.Run(command, func(t *testing.T) {
-			workspace := t.TempDir()
-			packageFile := filepath.Join(workspace, "pkg", "source.go")
-			artifact := filepath.Join(workspace, "pkg", "generated.bin")
-			external := filepath.Join(workspace, "hook-like.txt")
-			writeTestFile(t, packageFile, "package pkg\n")
-			writeTestFile(t, artifact, "before\n")
-			observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
-			if !observed || observation == nil || observation.Inventory == nil {
-				t.Fatalf("%q observation = %+v observed=%v", command, observation, observed)
-			}
-			if len(observation.Files) != 0 {
-				t.Fatalf("%q baselined undeclared package contents: %+v", command, observation.Files)
-			}
-			writeTestFile(t, packageFile, "package pkg\n// hook\n")
-			writeTestFile(t, artifact, "after\n")
-			writeTestFile(t, external, "external edit\n")
-			reviews, complete, coverage, _ := reconcileExecObservation(*observation, execReconcileEnv{})
-			if got := reviewSummary(workspace, reviews); complete || coverage != execCoveragePartial ||
-				!slices.Equal(got, []string{"Create hook-like.txt", "Edit pkg/generated.bin", "Edit pkg/source.go"}) {
-				t.Fatalf("%q window evidence = %v complete=%v coverage=%s", command, got, complete, coverage)
-			}
-			for _, review := range reviews {
-				if review.OriginNote != execInventoryNote || review.Origin != "" {
-					t.Fatalf("%q claimed authorship of a window observation: %+v", command, review)
-				}
-			}
-		})
-	}
-}
-
-func TestGoFixPackageScopeCapturesOnlyGoSources(t *testing.T) {
-	workspace := t.TempDir()
-	goFile := filepath.Join(workspace, "pkg", "source.go")
-	textFile := filepath.Join(workspace, "pkg", "notes.txt")
-	external := filepath.Join(workspace, "hook-like.txt")
-	writeTestFile(t, goFile, "package pkg\n")
-	writeTestFile(t, textFile, "notes\n")
-	observation, observed := captureExecObservation([]execCommandInput{{Command: "go fix ./pkg", Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
-	if !observed || observation == nil || len(observation.Files) != 1 || observation.Files[0].Path != goFile || observation.Files[0].Origin != "go fix" {
-		t.Fatalf("go fix explicit package source baseline: %+v observed=%v", observation, observed)
-	}
-	writeTestFile(t, goFile, "package pkg\n// fixed\n")
-	writeTestFile(t, textFile, "changed\n")
-	writeTestFile(t, external, "hook-like\n")
-	reviews, complete, coverage, unswept := reconcileExecObservation(*observation, execReconcileEnv{})
-	if !complete || coverage != execCoverageExact || unswept != "" || len(reviews) != 1 || reviews[0].Origin != "go fix" || !strings.Contains(reviews[0].Diff, "+// fixed") {
-		t.Fatalf("go fix review: %+v complete=%v coverage=%s unswept=%q", reviews, complete, coverage, unswept)
-	}
-}
 
 func TestFormatterDeferredHintsStayInsideExplicitScope(t *testing.T) {
 	workspace := t.TempDir()

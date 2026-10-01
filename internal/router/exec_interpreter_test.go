@@ -195,7 +195,7 @@ s = p.read_text(); s = s.replace('old', 'new'); p.write_text(s)
 	writeTestFile(t, filepath.Join(workspace, "edit.py"), script)
 	pythonName, pythonBinary := interpreterForTest("python3", "python")
 	observation := captureInterpreterTestObservation(t, workspace, pythonName+" edit.py")
-	wantBaselines := map[string]bool{"a": true, "b": true, "c": true, "edit.py": true}
+	wantBaselines := map[string]bool{"a": true, "b": true, "c": true}
 	for _, baseline := range observation.Files {
 		relative, err := filepath.Rel(workspace, baseline.Path)
 		if err != nil {
@@ -234,7 +234,7 @@ p = 'sliced.txt'; s = open(p).read(); a = s.index('old'); b = a + 3; s = s[:a] +
 	writeTestFile(t, filepath.Join(workspace, "edit.py"), script)
 	pythonName, pythonBinary := interpreterForTest("python3", "python")
 	observation := captureInterpreterTestObservation(t, workspace, pythonName+" edit.py")
-	assertInterpreterBaselinePaths(t, workspace, observation, []string{"assigned.txt", "chained.txt", "sliced.txt", "edit.py"})
+	assertInterpreterBaselinePaths(t, workspace, observation, []string{"assigned.txt", "chained.txt", "sliced.txt"})
 
 	runOrSimulateInterpreter(t, pythonBinary, workspace, "edit.py", func() {
 		writeTestFile(t, filepath.Join(workspace, "assigned.txt"), "new content\n")
@@ -262,7 +262,7 @@ Path('replace-source.txt').replace('replace-target.txt')
 	pythonName, _ := interpreterForTest("python3", "python")
 	observation := captureInterpreterTestObservation(t, workspace, pythonName+" edit.py")
 	assertInterpreterBaselinePaths(t, workspace, observation, []string{
-		"rename-source.txt", "rename-target.txt", "replace-source.txt", "replace-target.txt", "edit.py",
+		"rename-source.txt", "rename-target.txt", "replace-source.txt", "replace-target.txt",
 	})
 }
 
@@ -319,39 +319,6 @@ Path("target.txt").write_text("after\n")
 	if !complete || coverage != execCoverageExact || len(reviews) != 1 || reviews[0].AfterPath != target || reviews[0].Origin != "" ||
 		!strings.Contains(reviews[0].Diff, "-before\n+after\n") {
 		t.Fatalf("RTK proxy direct review = %+v complete=%v coverage=%q", reviews, complete, coverage)
-	}
-}
-
-func TestRTKProxyGofmtCaptureScopesManagedGoFiles(t *testing.T) {
-	workspace := t.TempDir()
-	goFile := filepath.Join(workspace, "main.go")
-	writeTestFile(t, goFile, "package sample\nfunc main(){println(\"before\")}\n")
-	writeTestFile(t, filepath.Join(workspace, "notes.txt"), "not go\n")
-	observation, observed := captureExecObservation([]execCommandInput{{Command: "rtk proxy gofmt -w .", Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
-	if !observed || observation == nil || observation.Class != execScoped.String() {
-		t.Fatalf("RTK gofmt capture = %+v observed=%v", observation, observed)
-	}
-	if len(observation.Files) != 1 || observation.Files[0].Path != goFile || observation.Files[0].Origin != "gofmt" {
-		t.Fatalf("gofmt baseline scope = %+v; want only managed .go baseline", observation.Files)
-	}
-	writeTestFile(t, goFile, "package sample\n\nfunc main() { println(\"after\") }\n")
-	reviews, complete, _, _ := reconcileExecObservation(*observation, execReconcileEnv{})
-	if !complete || len(reviews) != 1 || reviews[0].AfterPath != goFile || reviews[0].Origin != "gofmt" {
-		t.Fatalf("gofmt managed reviews = %+v complete=%v", reviews, complete)
-	}
-}
-
-func TestPythonInterpreterComputedTargetIsWindowEvidence(t *testing.T) {
-	workspace := t.TempDir()
-	pythonName, _ := interpreterForTest("python3", "python")
-	command := pythonName + " -c 'import os; from pathlib import Path; target = os.environ.get(" +
-		"\"MEKUGI_INTERPRETER_TEST_TARGET\"); Path(target).write_text(\"computed content\\n\")'"
-	observation := captureInterpreterTestObservationAnyClass(t, workspace, command)
-	writeTestFile(t, filepath.Join(workspace, "computed-result.txt"), "computed content\n")
-
-	reviews, complete, _, _ := reconcileExecObservation(*observation, execReconcileEnv{})
-	if complete || len(reviews) != 1 || reviews[0].OriginNote != execInventoryNote || !strings.Contains(reviews[0].Diff, "+computed content") {
-		t.Fatalf("computed target is not unattributed window evidence: %+v complete=%v", reviews, complete)
 	}
 }
 

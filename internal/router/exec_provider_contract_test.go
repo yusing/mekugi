@@ -20,7 +20,7 @@ func TestExecGitScopeRejectsRevisionOptionInjection(t *testing.T) {
 	}
 }
 
-func TestExecProviderAliasesRecursionAndPermissions(t *testing.T) {
+func TestExecProviderAliasesRecursionAndPreviewPermissions(t *testing.T) {
 	for _, test := range []struct{ name, command, target string }{
 		{"python alias", `python3 -c 'from pathlib import Path as P; p = P("a"); p.write_text("new")'`, "a"},
 		{"python subprocess", `python3 -c 'import subprocess; subprocess.run(["sh", "-c", "printf new > a"])'`, "a"},
@@ -33,7 +33,7 @@ func TestExecProviderAliasesRecursionAndPermissions(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, filepath.Join(root, test.target), "before\n")
 			writeTestFile(t, filepath.Join(root, "edit.ts"), "unknown();\n")
-			observation, ok := captureExecObservation([]execCommandInput{{Command: test.command, Workdir: root, Shell: "bash"}}, false, false, execCaptureEnv{directory: root})
+			observation, ok := captureExecObservation([]execCommandInput{{Command: test.command, Workdir: root, Shell: "bash"}}, false, false, execCaptureEnv{directory: root, previewOnly: strings.HasSuffix(test.name, "permission")})
 			if !ok || observation.Class != execScoped.String() {
 				t.Fatalf("scope: %+v", observation)
 			}

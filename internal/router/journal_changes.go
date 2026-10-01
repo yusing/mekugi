@@ -72,8 +72,17 @@ func (s *mekugiReplayStore) renderChildJournalChanges(ctx context.Context, index
 			change := index.Changes[id]
 			retired = retired || change.RetiredCalls != 0
 			owned := 0
+			authored := make(map[string]bool)
 			for _, call := range change.Calls {
-				if cmp.Or(call.Thread, stream.Thread) == thread {
+				if cmp.Or(call.Thread, stream.Thread) != thread {
+					continue
+				}
+				record, found, readErr := s.read(index.Workspace, call.ID, false)
+				if readErr != nil || !found || record.History.ChangeID != id || record.History.CorrelationID != change.Correlation {
+					return journalChangesUnavailable + "retained change evidence unavailable.\n", index.Sequence
+				}
+				if len(authoredChangeHistory(record.History).ReviewFiles) != 0 {
+					authored[call.ID] = true
 					owned++
 				}
 			}
@@ -82,7 +91,7 @@ func (s *mekugiReplayStore) renderChildJournalChanges(ctx context.Context, index
 				totalChanges++
 			}
 			calls := slices.DeleteFunc(slices.Clone(change.Calls), func(call trackedCall) bool {
-				return cmp.Or(call.Thread, stream.Thread) != thread || delivered && call.Sequence <= since
+				return !authored[call.ID] || delivered && call.Sequence <= since
 			})
 			if len(calls) == 0 && !(!delivered && stream.Thread == thread && len(change.Calls) == 0) {
 				continue

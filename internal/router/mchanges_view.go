@@ -13,7 +13,7 @@ import (
 func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
 	type row struct {
 		first, last, status, coverage string
-		added, removed, managed       int
+		added, removed                int
 		unknown                       bool
 	}
 	var output strings.Builder
@@ -32,14 +32,11 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 		} else if strings.Contains(previous.status, "history:partial") {
 			output.WriteString(" history:partial")
 		}
-		if previous.status != "pending" && previous.status != "retired" && (previous.added != 0 || previous.removed != 0 || previous.managed == 0) {
+		if previous.status != "pending" && previous.status != "retired" {
 			fmt.Fprintf(&output, " +%d -%d", previous.added, previous.removed)
 		}
 		if previous.unknown {
 			output.WriteString(" ?")
-		}
-		if previous.managed != 0 {
-			fmt.Fprintf(&output, " managed:%d", previous.managed)
 		}
 		output.WriteByte('\n')
 	}
@@ -64,7 +61,7 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 				if !found || record.History.ChangeID != id || record.History.CorrelationID != change.Correlation {
 					return "", fmt.Errorf("change %s has a missing or inconsistent attempt", id)
 				}
-				history := record.History
+				history := authoredChangeHistory(record.History)
 				hasFiles = hasFiles || len(history.ReviewFiles) != 0
 				if history.ExecOutcome != nil {
 					next.coverage = history.ExecOutcome.Coverage
@@ -72,10 +69,6 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 				}
 				for _, file := range history.ReviewFiles {
 					next.unknown = next.unknown || file.Incomplete != ""
-					if file.Origin != "" {
-						next.managed++
-						continue
-					}
 					added, removed := file.LineCounts()
 					if added < 0 || file.Binary || file.Incomplete != "" {
 						next.unknown = true
@@ -106,7 +99,7 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 			consecutive = stream == previousStream && number == previousNumber+1
 		}
 		if consecutive && previous.status == next.status && previous.coverage == next.coverage &&
-			!previous.unknown && !next.unknown && previous.managed == 0 && next.managed == 0 &&
+			!previous.unknown && !next.unknown &&
 			next.coverage != execCoveragePartial && next.coverage != execCoverageUnswept {
 			previous.last = id
 			previous.added += next.added

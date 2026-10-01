@@ -122,6 +122,10 @@ func (p *execPlan) add(entry execScopeEntry) {
 }
 
 func classifyExecShellWithin(command, workdir, shell string, deadline time.Time, depth int, changes execChangeResolver) execPlan {
+	return classifyExecShellSource(command, workdir, shell, deadline, depth, changes, false)
+}
+
+func classifyExecShellSource(command, workdir, shell string, deadline time.Time, depth int, changes execChangeResolver, authoredOnly bool) execPlan {
 	plan := execPlan{}
 	switch shellsyntax.InterpreterIdentity(shell) {
 	case "bash", "sh":
@@ -155,7 +159,7 @@ func classifyExecShellWithin(command, workdir, shell string, deadline time.Time,
 		plan.raise(execOpaque, "command substitution")
 		return plan
 	}
-	walker := execShellWalker{cwd: filepath.Clean(workdir), plan: &plan, deadline: deadline, depth: depth, changes: changes}
+	walker := execShellWalker{authoredOnly: authoredOnly, cwd: filepath.Clean(workdir), plan: &plan, deadline: deadline, depth: depth, changes: changes}
 	walker.stmts(program.Stmts)
 	return plan
 }
@@ -164,11 +168,14 @@ func classifyExecShellWithin(command, workdir, shell string, deadline time.Time,
 // to be in. cwd is empty once a cd may or may not have taken effect; relative
 // operands are then opaque.
 type execShellWalker struct {
-	depth    int
-	deadline time.Time
-	stdin    string
-	cwd      string
-	plan     *execPlan
+	authoredOnly bool
+	// A pipe from an unsupported process is output, not authored text.
+	generatedInput bool
+	depth          int
+	deadline       time.Time
+	stdin          string
+	cwd            string
+	plan           *execPlan
 	// moves counts cd commands walked, so a list can tell that the directory
 	// may have changed even when it returns to the same path.
 	moves int
@@ -263,7 +270,9 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 	}
 	writes := len(w.plan.Scope)
 	for _, redirect := range stmt.Redirs {
-		w.redirect(redirect)
+		if !w.authoredOnly || authoredShellRedirection(stmt, w.generatedInput && w.stdin == "") {
+			w.redirect(redirect)
+		}
 	}
 	if len(w.plan.Scope) != writes {
 		label := "shell"
@@ -287,7 +296,11 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 			}
 			// Pipeline sides run in subshells, so a cd there does not leak.
 			w.subshell(func(inner *execShellWalker) { inner.stmt(command.X) })
-			w.subshell(func(inner *execShellWalker) { inner.stmt(command.Y) })
+			generated := !authoredPipeOutput(command.X, w.generatedInput)
+			w.subshell(func(inner *execShellWalker) {
+				inner.generatedInput = generated
+				inner.stmt(command.Y)
+			})
 		case syntax.AndStmt:
 			// The right side runs only after the left side succeeded,
 			// including any cd in it.
@@ -353,7 +366,7 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 	case *syntax.FuncDecl:
 		// A function body runs wherever it is called, so it is walked
 		// without a directory; its calls are undeclared.
-		body := execShellWalker{plan: w.plan}
+		body := execShellWalker{authoredOnly: w.authoredOnly, plan: w.plan}
 		body.stmt(command.Body)
 		w.functions = append(w.functions, command.Name.Value)
 	case *syntax.TimeClause:
@@ -378,6 +391,63 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 	}
 }
 
+// Literal text and file-copy redirections express source edits. Arbitrary
+// process stdout/stderr does not become authorship merely by naming a file.
+func authoredShellRedirection(stmt *syntax.Stmt, generatedInput bool) bool {
+	call, ok := stmt.Cmd.(*syntax.CallExpr)
+	if !ok || len(call.Args) == 0 {
+		return false
+	}
+	name, ok := shellCatLiteral(call.Args[0])
+	if !ok {
+		return false
+	}
+	switch name {
+	case "printf", "echo":
+		return true
+	case "cat", "tee":
+		return !generatedInput
+	}
+	return false
+}
+
+// A known edit inside a pipeline remains a source edit, but arbitrary process
+// output does not acquire authorship at a downstream cat/tee destination.
+func authoredPipeOutput(stmt *syntax.Stmt, generatedInput bool) bool {
+	switch command := stmt.Cmd.(type) {
+	case *syntax.CallExpr:
+		if len(command.Args) == 0 {
+			return false
+		}
+		name, literal := shellCatLiteral(command.Args[0])
+		if !literal {
+			return false
+		}
+		switch name {
+		case "printf", "echo":
+			_, literal := literalArgs(command.Args[1:])
+			return literal
+		case "cat":
+			for _, redirect := range stmt.Redirs {
+				if _, literal := liveDiffShellHeredoc(redirect, false); literal {
+					return true
+				}
+			}
+			if values, literal := literalArgs(command.Args[1:]); literal && len(values) != 0 && !slices.Contains(values, "-") {
+				return true
+			}
+			return !generatedInput
+		case "tee":
+			return !generatedInput
+		}
+	case *syntax.BinaryCmd:
+		if command.Op == syntax.Pipe || command.Op == syntax.PipeAll {
+			return authoredPipeOutput(command.Y, !authoredPipeOutput(command.X, generatedInput))
+		}
+	}
+	return false
+}
+
 func execArithmStatic(expression syntax.ArithmExpr) bool {
 	static := true
 	syntax.Walk(expression, func(node syntax.Node) bool {
@@ -396,7 +466,7 @@ func execResolutionVariable(assign *syntax.Assign) bool {
 }
 
 func (w *execShellWalker) subshell(walk func(*execShellWalker)) {
-	inner := execShellWalker{cwd: w.cwd, plan: w.plan, functions: w.functions, deadline: w.deadline, depth: w.depth, changes: w.changes}
+	inner := execShellWalker{authoredOnly: w.authoredOnly, generatedInput: w.generatedInput, cwd: w.cwd, plan: w.plan, functions: w.functions, deadline: w.deadline, depth: w.depth, changes: w.changes}
 	walk(&inner)
 }
 
@@ -669,7 +739,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 				option, _ := shellCatLiteral(args[1])
 				source, literal := shellCatLiteral(args[2])
 				if literal && (option == "-c" || option == "--command") {
-					plan := classifyExecShellWithin(source, w.cwd, "sh", w.deadline, w.depth+1, w.changes)
+					plan := classifyExecShellSource(source, w.cwd, "sh", w.deadline, w.depth+1, w.changes, w.authoredOnly)
 					w.plan.Scope = append(w.plan.Scope, plan.Scope...)
 					w.plan.Programs = append(w.plan.Programs, plan.Programs...)
 					for _, label := range plan.Labels {
@@ -855,6 +925,9 @@ func (w *execShellWalker) command(identity, name string, args []*syntax.Word) {
 	case "rm":
 		w.remove(args)
 	case "touch", "truncate", "tee", "unlink", "shred":
+		if w.authoredOnly && identity == "tee" && w.generatedInput && w.stdin == "" {
+			return
+		}
 		w.fileOperands(identity, args)
 	case "sed":
 		w.sed(args)

@@ -71,26 +71,14 @@ func TestAppServerPendingPatchIsNotEdited(t *testing.T) {
 	}
 }
 
-func TestManagedFilesJoinEditedGroupInMain(t *testing.T) {
-	workspace := t.TempDir()
+func TestManagedFilesDoNotBecomeEditsInMain(t *testing.T) {
 	files := make([]mekugi.ReviewFile, 4)
 	for i := range files {
 		files[i] = mekugi.RenderReviewFile("", fmt.Sprintf("gen-%d.txt", i), "", "x\n")
 		files[i].Origin = "generator"
 	}
-	receipt := editReceiptText(workspace, mekugiHistory{ReviewFiles: files, ExecOutcome: &execOutcome{Labels: []string{"git"}}})
-	if want := "+ 4 tool-managed files (`gen-0.txt`, `gen-1.txt`, `gen-2.txt`, …) · git"; receipt != want {
-		t.Fatalf("receipt = %q, want %q", receipt, want)
-	}
-	v := newLiveActivityView()
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
-		{Seq: 1, Agent: "Main", Kind: "tool", CallID: "pick", Text: receipt},
-		{Seq: 2, Agent: "Main", Kind: "tool", CallID: "skill", Text: "Skill `run use-modern-go/scripts/run-tool.sh list`"},
-	}})
-	got := ansi.Strip(strings.Join(v.renderConversation(100).lines, "\n"))
-	want := "├ Edited 4 tool-managed files (gen-0.txt, gen-1.txt, gen-2.txt, …) via git\n└ Skill  run use-modern-go/scripts/run-tool.sh list"
-	if !strings.Contains(got, want) {
-		t.Fatalf("Main = %q, want %q", got, want)
+	if event := capturedEditActivity(t.TempDir(), mekugiHistory{ReviewFiles: files, ExecOutcome: &execOutcome{Labels: []string{"git"}}}); event != nil {
+		t.Fatalf("generated effects created an Activity edit: %+v", event)
 	}
 }
 

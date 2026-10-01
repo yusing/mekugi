@@ -614,26 +614,11 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		patches := nativePatchesInCall(name, originalInput, t.directory)
 		t.primePreviewSources(item.ID, patches)
 		execs, dynamic := stockLiteralExecCommands(originalInput, t.directory, t.sessionShell)
-		// A cell has one inventory. A non-literal command makes the cell opaque,
-		// so its observation captures the inventory the baseline then reads.
-		// Literal commands alone may leave the cell without one.
-		var resolvedBaseline *resolvedStockBaseline
-		var baselineReady chan *resolvedStockBaseline
-		if dynamic {
-			resolvedBaseline = newResolvedBaseline(t.directory, t.sessionShell)
-		} else if stockDynamicPatchInputs(originalInput, len(patches)) {
-			baselineReady = make(chan *resolvedStockBaseline, 1)
-			go func() { baselineReady <- captureResolvedBaseline(t.directory, t.sessionShell) }()
-		}
-		observation, observed := captureExecObservation(execs, dynamic, true, t.execCaptureEnvironment(patches))
-		if baselineReady != nil {
-			resolvedBaseline = <-baselineReady
-			if observation != nil && observation.Inventory != nil {
-				resolvedBaseline.Inventory = nil
-			}
-		}
-		t.openExecWindow(callID, observation, patches)
-		if !changed && len(patches) == 0 && !observed && resolvedBaseline == nil {
+		// Source-resolved edit operands acquire baselines; a cell that may write
+		// elsewhere, including a dynamic one, is bounded by a workspace snapshot.
+		observation, observed := t.snapshotExecObservation(captureExecObservation(execs, dynamic, true, t.execCaptureEnvironment(patches)))
+		previewOpened := t.openStockExecWindow(callID, observation, patches, execs, dynamic, true)
+		if !changed && len(patches) == 0 && !observed && !previewOpened {
 			return false, nil
 		}
 		if observation == nil && len(execs) != 0 {
@@ -647,12 +632,11 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 			ToolName: name,
 			Script:   originalInput, CarrierKind: codeModeCarrierCustom,
 			CarrierName: name, CarrierPayload: input, UpstreamItem: item.cloneFields(),
-			ReplayCarrier:    !changed,
-			NativePatches:    patches,
-			ResolvedBaseline: resolvedBaseline,
-			ExecObservation:  observation,
-			ExecutingThread:  t.shellThreadID,
-			Caller:           t.operationCaller(),
+			ReplayCarrier:   !changed,
+			NativePatches:   patches,
+			ExecObservation: observation,
+			ExecutingThread: t.shellThreadID,
+			Caller:          t.operationCaller(),
 		}
 		if !changed {
 			history.CommentaryMessageIDs = []string{commentaryMessageID(callID)}
@@ -721,11 +705,14 @@ func (t *mekugiResponseTransform) observeStockExecCommand(item *responsesItem) e
 	if !ok {
 		return nil
 	}
-	observation, observed := captureExecObservation([]execCommandInput{command}, false, false, t.execCaptureEnvironment(nil))
-	if !observed {
+	observation, observed := t.snapshotExecObservation(captureExecObservation([]execCommandInput{command}, false, false, t.execCaptureEnvironment(nil)))
+	previewOpened := t.openStockExecWindow(callID, observation, nil, []execCommandInput{command}, false, false)
+	if !observed && !previewOpened {
 		return nil
 	}
-	t.openExecWindow(callID, observation, nil)
+	if observation == nil {
+		observation = &execObservation{Commands: []execCommandInput{command}, Class: execNeutral.String()}
+	}
 	if exists {
 		// Journal commentary already retained this call with its stripped
 		// arguments; the observation joins that record.
@@ -744,10 +731,26 @@ func (t *mekugiResponseTransform) observeStockExecCommand(item *responsesItem) e
 	return nil
 }
 
+// snapshotExecObservation checkpoints the workspace before a call that may
+// write outside its source-named scope. Neutral readers take no checkpoint;
+// without one, an unscoped call stays unobserved as before.
+func (t *mekugiResponseTransform) snapshotExecObservation(observation *execObservation, observed bool) (*execObservation, bool) {
+	if observation != nil && observation.Class != execNeutral.String() && t.proxy != nil && t.proxy.replayStore != nil {
+		if tree := t.proxy.replayStore.snapshots.checkpoint(t.ctx, t.directory); tree != "" {
+			observation.Tree = tree
+			observation.Roots = execAddRoot(observation.Roots, t.directory)
+			return observation, true
+		}
+	}
+	if !observed {
+		return nil, false
+	}
+	return observation, true
+}
+
 func (t *mekugiResponseTransform) execCaptureEnvironment(patches []nativePatchObservation) execCaptureEnv {
 	env := execCaptureEnv{directory: t.directory}
 	if t.proxy != nil && t.proxy.replayStore != nil {
-		env.clock = t.proxy.replayStore.directory
 		env.changes = storeChangeResolver(t.ctx, t.proxy.replayStore)
 	}
 	for _, patch := range patches {
@@ -783,6 +786,24 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *exe
 	if observation != nil && t.proxy.autoLiveDiff != nil && t.proxy.autoLiveDiff.enabled.Load() {
 		t.proxy.execWindows.preview(callID, *observation, t.proxy.autoLiveDiff.events, t.directory, t.threadID, t.operationCaller())
 	}
+}
+
+// Display baselines are process-local. They preserve running LiveDiff without
+// turning formatter/managed effects into persisted authored changes.
+func (t *mekugiResponseTransform) openStockExecWindow(callID string, authored *execObservation, patches []nativePatchObservation, commands []execCommandInput, dynamic, codeMode bool) bool {
+	display := authored
+	if (authored == nil || authored.Class == execOpaque.String()) && t.proxy != nil && t.proxy.autoLiveDiff != nil && t.proxy.autoLiveDiff.enabled.Load() {
+		env := t.execCaptureEnvironment(patches)
+		env.previewOnly = true
+		if preview, ok := captureExecObservation(commands, dynamic, codeMode, env); ok {
+			display = preview
+		}
+	}
+	t.openExecWindow(callID, display, patches)
+	if authored != nil && display != nil {
+		authored.Group = display.Group
+	}
+	return display != nil
 }
 
 func replaceRawField(payload []byte, name string, value json.RawMessage) ([]byte, error) {

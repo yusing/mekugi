@@ -43,7 +43,7 @@ func TestResponseTranslationRetriesPersistenceAfterBackgroundCleanup(t *testing.
 				}
 				running, _ := retentionTestSession(t, store, "running", 0)
 				retentionTestPut(t, store, running, workspace, "running-call")
-				const arguments = `{"cmd":"printf evidence"}`
+				const arguments = `{"cmd":"printf evidence > authored.txt","shell":"bash"}`
 				item := map[string]any{"type": "function_call", "id": "item", "call_id": "new-call",
 					"name": nativeExecCommandToolName, "arguments": arguments, "status": "completed"}
 				response := map[string]any{"id": "response", "status": "completed", "output": []any{item}}

@@ -291,7 +291,7 @@ func TestJournalChildCompletionChangesEmptyUnavailableAndRestart(t *testing.T) {
 	})
 }
 
-func TestJournalChildCompletionCaptureGapsStayReadable(t *testing.T) {
+func TestJournalChildCompletionDoesNotAdvertiseScopeOnlyDiagnostics(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -313,7 +313,7 @@ func TestJournalChildCompletionCaptureGapsStayReadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := finishChildJournalForChanges(t, child)
-	if !strings.Contains(result, id+" incomplete captured scope") || strings.Contains(result, "Aggregated numstat") || strings.Contains(result, "No recorded file changes.") {
+	if !strings.Contains(result, "No recorded changes.") || strings.Contains(result, id) || strings.Contains(result, "incomplete captured scope") {
 		t.Fatalf("capture-only completion implied file statistics or exact no-op:\n%s", result)
 	}
 	history, err := store.readChanges(child.ctx, changeReadOptions{workspace: child.directory, ids: []string{id}, view: "history"})

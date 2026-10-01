@@ -110,36 +110,6 @@ func RenderReviewFile(beforePath, afterPath, before, after string) ReviewFile {
 	return renderReviewFile(ReviewFile{BeforePath: beforePath, AfterPath: afterPath}, reviewLines(before), reviewLines(after), 0, 0)
 }
 
-// RenderStreamingReviewFile keeps a provisional rewrite in one source-ordered
-// replacement region. Matching equal lines inside an arriving replacement would
-// move them between context and additions on successive frames. Durable review
-// evidence continues to use RenderReviewFile's minimal hunks.
-func RenderStreamingReviewFile(beforePath, afterPath, before, after string) ReviewFile {
-	a, b := reviewLines(before), reviewLines(after)
-	start, endA, endB := 0, len(a), len(b)
-	for start < endA && start < endB && a[start] == b[start] {
-		start++
-	}
-	for endA > start && endB > start && a[endA-1] == b[endB-1] {
-		endA--
-		endB--
-	}
-	var groups [][]difflib.OpCode
-	if start != endA || start != endB {
-		group := []difflib.OpCode{}
-		if start > 0 {
-			group = append(group, difflib.OpCode{Tag: 'e', I1: max(0, start-3), I2: start, J1: max(0, start-3), J2: start})
-		}
-		group = append(group, difflib.OpCode{Tag: 'r', I1: start, I2: endA, J1: start, J2: endB})
-		if endA < len(a) {
-			tail := min(3, len(a)-endA)
-			group = append(group, difflib.OpCode{Tag: 'e', I1: endA, I2: endA + tail, J1: endB, J2: endB + tail})
-		}
-		groups = append(groups, group)
-	}
-	return renderReviewGroups(ReviewFile{BeforePath: beforePath, AfterPath: afterPath}, a, b, 0, 0, groups)
-}
-
 // RenderBinaryReviewFile reviews intact non-text content without source rows,
 // in the spirit of git's "Binary files differ".
 func RenderBinaryReviewFile(beforePath, afterPath string, beforeSize, afterSize int64, beforeHash, afterHash string) ReviewFile {

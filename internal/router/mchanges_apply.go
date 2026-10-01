@@ -75,6 +75,7 @@ func (s *mekugiReplayStore) loadChangeCaptures(ctx context.Context, workspace st
 		if !found || record.History.ChangeID != id || record.History.CorrelationID != index.Changes[id].Correlation {
 			return replayRecord{}, fmt.Errorf("change %s has a missing or inconsistent attempt", id)
 		}
+		record.History = authoredChangeHistory(record.History)
 		return record, nil
 	}
 	var captures []changeCapture

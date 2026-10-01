@@ -84,6 +84,7 @@ func attachTestReplayStore(t *testing.T, proxy *mekugiProxy) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(store.snapshots.close)
 	proxy.replayStore = store
 }
 

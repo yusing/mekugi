@@ -317,7 +317,6 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		incomplete     bool
 		reasons        []string
 		status         diffview.Status
-		managed        bool
 		composition    mekugi.ReviewComposition
 		uncomposable   bool
 		directory      bool
@@ -330,8 +329,6 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 	}
 	stats := make(map[string]*counts)
 	var entries []*counts
-	managedKnown, managedUnknown, managedAdded, managedRemoved := 0, 0, 0, 0
-	managedReasons := make(map[string]int)
 	matched := false
 	var summary []changeCapture
 	summaryBytes := 0
@@ -351,6 +348,22 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			fmt.Fprintf(&output, "%s %s\n", id, state)
 			continue
 		}
+		records := make([]replayRecord, len(change.Calls))
+		excludedOnly := len(change.Calls) != 0
+		for i, call := range change.Calls {
+			record, found, err := s.read(options.workspace, call.ID, false)
+			if err != nil {
+				return "", err
+			}
+			if !found || record.History.ChangeID != id || record.History.CorrelationID != change.Correlation {
+				return "", fmt.Errorf("change %s has a missing or inconsistent attempt", id)
+			}
+			records[i] = record
+			excludedOnly = excludedOnly && len(record.History.ReviewFiles) != 0 && !slices.ContainsFunc(record.History.ReviewFiles, authoredReview)
+		}
+		if options.view != "history" && change.RetiredCalls == 0 && excludedOnly {
+			continue
+		}
 		if options.view == "summary" && change.RetiredCalls != 0 {
 			fmt.Fprintf(&output, "%s retired (partial history)\n", id)
 		}
@@ -366,15 +379,11 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		if len(change.Calls) == 0 {
 			fmt.Fprintf(&output, "%s pending (no completed result)\n", id)
 		}
-		for position, call := range change.Calls {
-			record, found, err := s.read(options.workspace, call.ID, false)
-			if err != nil {
-				return "", err
-			}
-			if !found || record.History.ChangeID != id || record.History.CorrelationID != change.Correlation {
-				return "", fmt.Errorf("change %s has a missing or inconsistent attempt", id)
-			}
+		for position, record := range records {
 			history := record.History
+			if options.view != "history" {
+				history = authoredChangeHistory(history)
+			}
 			if options.view == "history" && history.ExecOutcome != nil && len(history.ExecOutcome.Overlaps) != 0 {
 				var alongside []string
 				for _, ref := range history.ExecOutcome.Overlaps {
@@ -402,7 +411,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 					fmt.Fprintf(&output, "%s incomplete captured scope; use --history for diagnostics\n", id)
 				}
 			}
-			if slices.ContainsFunc(history.ReviewFiles, func(file mekugi.ReviewFile) bool { return !dependencyObservationGap(file) }) {
+			if slices.ContainsFunc(history.ReviewFiles, authoredReview) {
 				status = "applied"
 			}
 			if options.view == "history" && len(change.Calls) == 1 {
@@ -437,9 +446,8 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 					output.WriteByte('\n')
 				}
 			}
-			managedRows := 0
 			for _, file := range history.ReviewFiles {
-				if options.view != "history" && dependencyObservationGap(file) {
+				if options.view != "history" && !authoredReview(file) {
 					continue
 				}
 				if len(options.paths) > 0 && !changePathMatches(options, file.BeforePath) && !changePathMatches(options, file.AfterPath) {
@@ -455,20 +463,12 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				} else if file.Directory {
 					path := cmp.Or(file.AfterPath, file.BeforePath)
 					fmt.Fprintf(&output, "%s %s/\n", diffview.StatusOf(file).ShortCode(), displayPath(pathdisplay.ForWorkspace(options.workspace, path)))
-				} else if file.Origin != "" && options.view != "history" && len(options.paths) == 0 {
-					managedRows++
-					if managedRows <= 20 {
-						fmt.Fprintln(&output, managedReviewRow(file))
-					}
 				} else {
 					if file.OriginNote != "" {
 						fmt.Fprintln(&output, file.OriginNote)
 					}
 					output.WriteString(file.UnifiedDiff())
 				}
-			}
-			if managedRows > 20 {
-				fmt.Fprintf(&output, "+%d more tool-managed files\n", managedRows-20)
 			}
 			if output.Len() > maxChangeReadBytes {
 				return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")
@@ -488,7 +488,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		}
 		entry := stats[key(before)]
 		if entry == nil {
-			entry = &counts{status: diffview.Status{Before: file.BeforePath}, managed: file.Origin != ""}
+			entry = &counts{status: diffview.Status{Before: file.BeforePath}}
 			entries = append(entries, entry)
 		}
 		delete(stats, key(before))
@@ -498,7 +498,6 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		stats[key(after)] = entry
 		entry.directory = entry.directory || file.Directory
 		entry.status.Add(file)
-		entry.managed = entry.managed && file.Origin != ""
 		if file.Incomplete != "" && !slices.Contains(entry.reasons, file.Incomplete) {
 			entry.reasons = append(entry.reasons, file.Incomplete)
 		}
@@ -547,20 +546,6 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		if !entry.incomplete && entry.added == 0 && entry.removed == 0 && entry.status.Before == entry.status.After {
 			continue
 		}
-		if entry.managed && len(options.paths) == 0 {
-			if len(entry.reasons) != 0 {
-				for _, reason := range entry.reasons {
-					managedReasons[reason]++
-				}
-			} else if entry.incomplete {
-				managedUnknown++
-			} else {
-				managedKnown++
-				managedAdded += entry.added
-				managedRemoved += entry.removed
-			}
-			continue
-		}
 		path := entry.status.After
 		if path == "" {
 			path = entry.status.Before
@@ -568,9 +553,6 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		path = displayPath(pathdisplay.ForWorkspace(options.workspace, path))
 		if entry.status.Before != "" && entry.status.After != "" && entry.status.Before != entry.status.After {
 			path = displayPath(pathdisplay.ForWorkspace(options.workspace, entry.status.Before)) + " => " + path
-		}
-		if entry.managed {
-			path = "tool-managed\t" + path
 		}
 		if entry.incomplete {
 			fmt.Fprintf(&output, "%s\t-\t-\t%s", entry.status.ShortCode(), path)
@@ -585,16 +567,6 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")
 		}
 	}
-	if managedKnown != 0 || managedUnknown != 0 {
-		fmt.Fprintf(&output, "M +%d -%d", managedAdded, managedRemoved)
-		if managedUnknown != 0 {
-			fmt.Fprintf(&output, "; %d counts unavailable", managedUnknown)
-		}
-		output.WriteByte('\n')
-	}
-	if len(managedReasons) != 0 {
-		fmt.Fprintf(&output, "? tool-managed: %s; use --history for paths and full reasons\n", captureGapSummary(managedReasons))
-	}
 	if len(options.paths) > 0 && !matched {
 		output.WriteString("no files match paths after --:")
 		for _, path := range options.paths {
@@ -603,24 +575,6 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		output.WriteByte('\n')
 	}
 	return output.String(), nil
-}
-
-func managedReviewRow(file mekugi.ReviewFile) string {
-	path := file.AfterPath
-	if path == "" {
-		path = file.BeforePath
-	}
-	if file.Incomplete != "" {
-		return fmt.Sprintf("Capture %q evidence unavailable: %q · %s", path, file.Incomplete, file.Origin)
-	}
-	added, removed := file.LineCounts()
-	counts := "counts unavailable"
-	if file.Binary {
-		counts = "binary (size/hash evidence)"
-	} else if added >= 0 {
-		counts = fmt.Sprintf("+%d -%d", added, removed)
-	}
-	return fmt.Sprintf("%s %q %s · %s", file.Action().Title(), path, counts, file.Origin)
 }
 
 // Match lexical workspace-relative and absolute spellings without consulting

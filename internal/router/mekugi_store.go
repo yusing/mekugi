@@ -31,6 +31,7 @@ type mekugiReplayStore struct {
 	storageNotice      func(session, thread, phase, message string)
 	liveDiff           func([]liveDiffChange)
 	maxCommentaryBytes int64
+	snapshots          *workspaceSnapshots
 }
 type replayRecord struct {
 	Version      int
@@ -139,7 +140,7 @@ func openMekugiReplayStoreContext(ctx context.Context, directory string) (*mekug
 			break
 		}
 	}
-	s := &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20}
+	s := &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, snapshots: newWorkspaceSnapshots(directory)}
 	if err := s.locked(ctx, func() error { return nil }); err != nil {
 		return nil, err
 	}
@@ -378,20 +379,12 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 	if len(data) > maxReplayRecordBytes {
 		return storageCapacityError("replay record", int64(len(data)), maxReplayRecordBytes, "Split the tool call or reduce its retained output before retrying.")
 	}
-	blobs, err := s.compactSnapshots(&r)
-	if err != nil {
-		return err
-	}
-	data, err = marshalProtocolJSON(r)
-	if err != nil {
-		return err
-	}
 	name := replayRecordName(r.Workspace, r.CallID, r.Commentary)
 	prefix := "call-"
 	if r.Commentary {
 		prefix = "commentary-"
 	}
-	return s.writeManagedFiles(managedFile{name: name, pattern: prefix + "pending-", data: data}, r.Snapshots.names(), blobs)
+	return s.writeManagedFiles(managedFile{name: name, pattern: prefix + "pending-", data: data}, nil, nil)
 }
 
 // writeFile publishes an already-validated record. Callers retain their lock,

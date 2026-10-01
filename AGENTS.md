@@ -82,12 +82,16 @@ The linked contracts own interface details, exceptions, and acceptance cases.
   from a real Codex request. Codex authorizes filesystem effects. See
   [boundary](doc/architecture/boundary.md) and
   [dated host observations](doc/codex-router-e2e.md).
-- **Authoritative change record:** `mchanges` is the source of truth for what agents
-  changed, for both users and agent handoffs. Capture ordinary ignored files such
-  as `FIXME.md`; Git ignore status is not an observation boundary. Dependency
-  installation trees appear as one directory status, not descendant listings or
-  content diffs. Keep uncertain window observations distinct from attributed edits
-  and missing evidence distinct from no changes. See [changes](doc/spec/changes.md).
+- **Authoritative change record:** `mchanges` owns retained agent-authored edit
+  evidence for users and handoffs. Known edit sources record ignored targets such
+  as `FIXME.md`, without filename or directory admission rules. Writer commands
+  are bounded by private workspace snapshots; repository ignore rules, or
+  per-directory bounds outside Git, keep ignored output and installation trees
+  out of the record. Read-only readers take no snapshot. Scope-only diagnostics
+  do not become authored changes or statistics. Preserve ordinary editing
+  workflows and LiveDiff; never require `apply_patch` for coverage. Unresolved
+  inputs are outside recorded coverage, not confirmed no-ops.
+  See [changes](doc/spec/changes.md).
 - **Truthful edit evidence:** Stock `apply_patch` input and result pass through
   unchanged. A streaming preview is provisional. Confirm the actual result
   and workspace outcome before persisting a completed change; failed and

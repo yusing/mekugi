@@ -14,7 +14,18 @@ func execGoFormatterWrites(identity string, args []string) bool {
 	return (identity == "gofmt" || identity == "goimports") && slices.Contains(args, "-w")
 }
 
+func execFormatterIdentity(identity string) bool {
+	switch identity {
+	case "gofmt", "goimports", "prettier", "eslint", "ruff", "black", "rustfmt":
+		return true
+	}
+	return false
+}
+
 func execFixerScope(input execProviderInput) execProviderResult {
+	if input.authoredOnly && !execFormatterIdentity(input.identity) {
+		return execProviderResult{unhandled: true}
+	}
 	if !filepath.IsAbs(input.cwd) {
 		return execProviderResult{open: true, reason: "fixer working directory unavailable"}
 	}
@@ -131,6 +142,19 @@ func execFixerScope(input execProviderInput) execProviderResult {
 				continue
 			}
 			operands = append(operands, execProviderPath(root, arg))
+		}
+		if input.authoredOnly {
+			// Named formatter targets are source edits. A default directory,
+			// permission root, or recursive formatter scan is not authored scope.
+			for _, path := range operands {
+				if info, err := os.Stat(path); err == nil && !info.IsDir() {
+					paths = append(paths, path)
+				}
+			}
+			if len(paths) == 0 {
+				return execProviderResult{unhandled: true}
+			}
+			return execProviderResult{scope: []execScopeEntry{execProviderFiles(paths, false)}}
 		}
 		if len(operands) == 0 {
 			operands = []string{root}

@@ -22,6 +22,10 @@ func execJavaScriptScope(input execProviderInput) execProviderResult {
 		language = execTypeScriptLanguage
 	}
 	result := inspectExecSource(input, source, script, language, false)
+	if input.authoredOnly {
+		// Runtime permissions bound possible effects, not authored edit targets.
+		return result
+	}
 	var roots []string
 	bounded, escape := false, false
 	for _, flag := range input.args {

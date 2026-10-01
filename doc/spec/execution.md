@@ -70,7 +70,7 @@ Command observation under [REQ-CHANGES-001](changes.md) reads the completed
 `exec_command` arguments or literal Code Mode command text. The forwarded call
 stays byte-identical, and its pre-call capture is time-bounded so that an
 unreadable scope becomes incomplete evidence rather than delaying Codex.
-Post-result change sweeps are bounded auxiliary observation, not execution hooks.
+Post-result comparisons read only known edit operands, never a workspace sweep.
 They do not wrap commands, inject environments, or alter yielded-session handling.
 Agent-visible change notices are appended only after the observed evidence is
 durable; they do not replace original stock output.

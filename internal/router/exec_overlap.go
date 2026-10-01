@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -28,6 +29,9 @@ type execWindow struct {
 	session       string
 	background    bool
 	previewCancel context.CancelFunc
+	// claims are snapshot states that overlapping calls already recorded.
+	// This window's snapshot comparison starts from them.
+	claims workspaceSnapshotClaims
 }
 
 type execWindowRegistry struct {
@@ -116,6 +120,10 @@ type execWindowView struct {
 	overlaps   []string
 	excluded   []string
 	background []string
+	// claims merge the windows' own claims; snapshot reports whether every
+	// window is known and not background.
+	claims   workspaceSnapshotClaims
+	snapshot bool
 }
 
 func execRootsMeet(a, b []string) bool {
@@ -155,8 +163,12 @@ func (r *execWindowRegistry) close(refs ...string) execWindowView {
 				}
 			}
 			selves = append(selves, window)
+			view.claims = view.claims.merge(window.claims)
 		}
 	}
+	// A background window, or one lost to a restart or eviction, may span
+	// unrelated work, so it takes no snapshot comparison.
+	view.snapshot = len(selves) == len(refs) && !slices.ContainsFunc(selves, func(window *execWindow) bool { return window.background })
 	for _, other := range r.windows {
 		if slices.Contains(refs, other.ref) {
 			continue
@@ -181,6 +193,42 @@ func (r *execWindowRegistry) close(refs ...string) execWindowView {
 		}
 	}
 	return view
+}
+
+// claim hands recorded snapshot states to the still-open windows that
+// overlapped refs, so their later comparisons do not record the same effect.
+func (r *execWindowRegistry) claim(refs []string, states workspaceSnapshotClaims) {
+	if r == nil || len(states) == 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var roots []string
+	for _, ref := range refs {
+		if window := r.find(ref); window != nil {
+			roots = append(roots, window.roots...)
+		}
+	}
+	for _, other := range r.windows {
+		if slices.Contains(refs, other.ref) || !other.closed.IsZero() || !execRootsMeet(other.roots, roots) {
+			continue
+		}
+		other.claims = other.claims.merge(states)
+	}
+}
+
+// merge adds claims to c, allocating it when needed.
+func (c workspaceSnapshotClaims) merge(claims workspaceSnapshotClaims) workspaceSnapshotClaims {
+	for domain, states := range claims {
+		if c == nil {
+			c = make(workspaceSnapshotClaims)
+		}
+		if c[domain] == nil {
+			c[domain] = make(map[string]workspaceSnapshotEntry, len(states))
+		}
+		maps.Copy(c[domain], states)
+	}
+	return c
 }
 
 func execBackgroundLabel(session string) string {

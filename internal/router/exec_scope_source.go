@@ -51,10 +51,10 @@ func inspectExecSource(input execProviderInput, source, script string, language 
 	scan.walk(tree.RootNode())
 	// The command names its script. Retaining that bounded baseline also
 	// distinguishes an unchanged source at the filesystem clock boundary.
-	if script != "" {
+	if script != "" && !input.authoredOnly {
 		scan.result.scope = append(scan.result.scope, execProviderFiles([]string{script}, false))
 	}
-	if scan.writes && scan.result.open {
+	if scan.writes && scan.result.open && !input.authoredOnly {
 		for _, root := range scan.iterations {
 			scan.result.scope = append(scan.result.scope, execProviderFiles([]string{root}, true))
 		}
@@ -581,7 +581,7 @@ func (s *execSourceScope) subprocess(args []*sitter.Node) {
 		s.result.open = true
 		return
 	}
-	plan := classifyExecShellWithin(command, s.input.cwd, "bash", s.input.deadline, s.input.depth+1, s.input.changes)
+	plan := classifyExecShellSource(command, s.input.cwd, "bash", s.input.deadline, s.input.depth+1, s.input.changes, s.input.authoredOnly)
 	s.result.scope = append(s.result.scope, plan.Scope...)
 	s.result.programs = append(s.result.programs, plan.Programs...)
 	s.result.open = s.result.open || plan.Class == execOpaque || plan.Reason != ""

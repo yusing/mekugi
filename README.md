@@ -411,6 +411,15 @@ See [activity display](doc/spec/activity_display.md).
 
 ## Recoverable output and change review
 
+Saved diffs and `mchanges` record recognized source edits, including edits to
+ignored files, and the file changes of any other command that may write, such as
+a Python script, found by comparing workspace snapshots taken before and after
+it. Agents do not need `apply_patch` to have their edits recorded. Inside a Git
+repository, ignored paths such as an ignored `node_modules/` stay out of the
+record unless an edit names them; outside Git, bulk new files in one directory
+are left out. Changes made by you while a command runs are attributed to that
+command. LiveDiff previews remain provisional.
+
 ### Wrapped-session helpers
 
 Session helpers let the agent read less output and recover what it omitted,

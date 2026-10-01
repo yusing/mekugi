@@ -40,6 +40,7 @@ func newMChangesSliceFixture(t *testing.T, thread string) *mchangesSliceFixture 
 	}
 	t.Cleanup(release)
 	workspace := t.TempDir()
+	t.Cleanup(store.snapshots.close)
 	return &mchangesSliceFixture{
 		registry:   registry,
 		store:      store,

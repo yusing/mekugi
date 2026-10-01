@@ -462,7 +462,14 @@ func (w *liveDiffPreviewWorker) projectShell(program, directory string, final bo
 	recognized := false
 	seenPaths := make(map[string]struct{})
 	tainted := false
+	// A preview assumes each step of an `a && b` chain succeeds, as it does
+	// for separate statements.
+	statements = liveDiffShellSequence(statements)
 	for index, stmt := range statements {
+		if next, ok := liveDiffShellCd(stmt, directory); ok {
+			directory = next
+			continue
+		}
 		statementPartial := partialLine && index == len(statements)-1
 		projected, ok, err := liveDiffShellWriteStatement(ctx, stmt, directory, statementPartial, final)
 		if !ok {

@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -44,7 +43,7 @@ func snapshotTestHistory() mekugiHistory {
 
 func snapshotTestPut(t *testing.T, store *mekugiReplayStore, ctx context.Context, call string, h mekugiHistory) {
 	t.Helper()
-	if err := store.put(ctx, "/w", map[string]mekugiHistory{call: h}); err != nil {
+	if err := putLegacySnapshotFixture(store, ctx, call, h); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -150,7 +149,7 @@ func TestReplaySnapshotsRejectUnavailableAndCorruptEvidence(t *testing.T) {
 	}
 }
 
-func TestReplaySnapshotsStorageFailureDoesNotPublishCall(t *testing.T) {
+func TestInlineEditStorageFailureDoesNotPublishCall(t *testing.T) {
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -164,9 +163,8 @@ func TestReplaySnapshotsStorageFailureDoesNotPublishCall(t *testing.T) {
 	}
 }
 
-// A record's blobs share one admission: pressure rejects the whole record
-// before any blob is written, instead of leaving earlier blobs behind.
-func TestReplaySnapshotsAdmitRecordBlobsTogether(t *testing.T) {
+// Inline evidence and its envelope are admitted atomically, without snapshot files.
+func TestInlineEditEvidenceAdmissionIsAtomic(t *testing.T) {
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -189,9 +187,11 @@ func TestReplaySnapshotsAdmitRecordBlobsTogether(t *testing.T) {
 		t.Fatalf("rejected record left blobs behind: %v", blobs)
 	}
 	store.maxBytes = 0
-	snapshotTestPut(t, store, t.Context(), "call", mekugiHistory{ToolName: "exec", ExecObservation: &execObservation{Files: files}})
-	if blobs := snapshotTestBlobs(t, store); len(blobs) != 5 {
-		t.Fatalf("blobs = %v, want four texts and one manifest", blobs)
+	if err := store.put(t.Context(), "/w", map[string]mekugiHistory{"call": {ToolName: "exec", ExecObservation: &execObservation{Files: files}}}); err != nil {
+		t.Fatal(err)
+	}
+	if blobs := snapshotTestBlobs(t, store); len(blobs) != 0 {
+		t.Fatalf("inline record produced snapshot blobs: %v", blobs)
 	}
 	got, found, err := store.lookup(t.Context(), "/w", "call")
 	if err != nil || !found || !reflect.DeepEqual(got.ExecObservation.Files, files) {
@@ -289,30 +289,6 @@ func TestReplaySnapshotsRetainedChangeOutputAfterRestart(t *testing.T) {
 	}
 }
 
-func TestReplaySnapshotsConcurrentStoresShareObjects(t *testing.T) {
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var wg sync.WaitGroup
-	for i := range 8 {
-		wg.Go(func() {
-			other, err := openMekugiReplayStore(store.directory)
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			if err := other.put(t.Context(), "/w", map[string]mekugiHistory{fmt.Sprint(i): snapshotTestHistory()}); err != nil {
-				t.Error(err)
-			}
-		})
-	}
-	wg.Wait()
-	if blobs := snapshotTestBlobs(t, store); len(blobs) != 3 {
-		t.Fatalf("concurrent calls duplicated snapshots: %v", blobs)
-	}
-}
-
 func TestReplaySnapshotsPressureProtectsUnpublishedDependencies(t *testing.T) {
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -341,88 +317,6 @@ func TestReplaySnapshotsPressureProtectsUnpublishedDependencies(t *testing.T) {
 	got, found, err := store.lookup(t.Context(), "/w", "call")
 	if err != nil || !found || string(got.UpstreamItem["status"]) != `"in_progress"` {
 		t.Fatalf("failed update damaged retained facts: found=%v err=%v", found, err)
-	}
-}
-
-// Quantify actual persisted files from real bounded workspace captures. The
-// fixture models repeated baselines but deliberately uses high-entropy UTF-8,
-// so the regression cannot pass through highly compressible prose alone.
-func TestReplaySnapshotsQuantitativeStorageRegression(t *testing.T) {
-	workspace, legacyDir := t.TempDir(), t.TempDir()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	rng := rand.New(rand.NewPCG(1, 2))
-	content := make([]byte, 128<<10)
-	for i := range content {
-		content[i] = byte(33 + rng.IntN(90))
-	}
-	for i := range 4 {
-		if err := os.WriteFile(filepath.Join(workspace, fmt.Sprintf("file-%d.txt", i)), content, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	var observation *execObservation
-	manifests, contents := make(map[string]bool), make(map[string]bool)
-	for i := range 48 {
-		if i < 44 && i%2 == 0 {
-			content[0] = byte('A' + i/2)
-			if err := os.WriteFile(filepath.Join(workspace, "file-0.txt"), content, 0600); err != nil {
-				t.Fatal(err)
-			}
-			observation = observeTestCommand(t, workspace, "printf a > file-0.txt; printf a > file-1.txt; printf a > file-2.txt; printf a > file-3.txt")
-			if len(observation.Files) != 4 || len(observation.Omitted) != 0 {
-				t.Fatalf("workload capture incomplete: files=%d omitted=%v", len(observation.Files), observation.Omitted)
-			}
-		}
-		call := fmt.Sprintf("call-%02d", i)
-		h := mekugiHistory{ToolName: "exec", Script: call, ExecObservation: observation}
-		data, err := marshalProtocolJSON(replayRecord{Version: 1, Workspace: "/w", CallID: call, History: h})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(legacyDir, call+".json"), data, 0600); err != nil {
-			t.Fatal(err)
-		}
-		snapshotTestPut(t, store, t.Context(), call, h)
-		stored, err := os.ReadFile(filepath.Join(store.directory, replayRecordName("/w", call, false)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		var envelope replayRecord
-		if err := json.Unmarshal(stored, &envelope); err != nil || envelope.Snapshots == nil {
-			t.Fatalf("missing compact envelope: %v", err)
-		}
-		manifests[envelope.Snapshots.ExecFiles] = true
-		for _, name := range envelope.Snapshots.Contents {
-			contents[name] = true
-		}
-		got, found, err := store.lookup(t.Context(), "/w", call)
-		if err != nil || !found || !reflect.DeepEqual(got.ExecObservation, durableHistory(h).ExecObservation) {
-			t.Fatalf("persisted capture differs for %s: %v %v", call, found, err)
-		}
-	}
-	measure := func(dir string) int64 {
-		var total int64
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, entry := range entries {
-			info, err := entry.Info()
-			if err != nil {
-				t.Fatal(err)
-			}
-			total += info.Size()
-		}
-		return total
-	}
-	legacy, compact := measure(legacyDir), measure(store.directory)
-	blobs := len(snapshotTestBlobs(t, store))
-	t.Logf("persisted bytes: inline=%d compact=%d reduction=%.2f%%; calls=48 manifests=%d content objects=%d", legacy, compact, 100*(1-float64(compact)/float64(legacy)), len(manifests), len(contents))
-	if len(manifests) != 22 || len(contents) != 23 || blobs != 45 || compact*100 >= legacy*20 {
-		t.Fatalf("storage regression: inline=%d compact=%d manifests=%d contents=%d blobs=%d", legacy, compact, len(manifests), len(contents), blobs)
 	}
 }
 

@@ -32,7 +32,7 @@ func TestEditReceiptGroupsCaptureGapsWithoutClaimingEdits(t *testing.T) {
 				}
 			}
 			if len(blocks) != wantBlocks || blocks[len(blocks)-1].Verb != "Capture" ||
-				!strings.Contains(text, "incomplete evidence for 100 paths (not confirmed edits): 100 × \"capture limit\"") || !strings.Contains(text, "mchanges amber1 --history") ||
+				!strings.Contains(text, "incomplete evidence for 50 paths (not confirmed edits): 50 × \"capture limit\"") || !strings.Contains(text, "mchanges amber1 --summary") ||
 				strings.Contains(text, "unknown-") || strings.Contains(text, "tool-managed files") {
 				t.Fatalf("capture gaps became edit claims or flooded the receipt: %q", text)
 			}

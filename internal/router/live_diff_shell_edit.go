@@ -51,6 +51,47 @@ func liveDiffShellStatements(input, directory string) ([]*syntax.Stmt, string, b
 	return program.Stmts, directory, partial, true
 }
 
+// liveDiffShellSequence flattens `a && b` chains into their steps.
+func liveDiffShellSequence(statements []*syntax.Stmt) []*syntax.Stmt {
+	var sequence []*syntax.Stmt
+	var add func(*syntax.Stmt)
+	add = func(stmt *syntax.Stmt) {
+		binary, ok := stmt.Cmd.(*syntax.BinaryCmd)
+		if ok && binary.Op == syntax.AndStmt && !stmt.Background && !stmt.Coprocess && !stmt.Disown && !stmt.Negated && len(stmt.Redirs) == 0 {
+			add(binary.X)
+			add(binary.Y)
+			return
+		}
+		sequence = append(sequence, stmt)
+	}
+	for _, stmt := range statements {
+		add(stmt)
+	}
+	return sequence
+}
+
+// liveDiffShellCd returns the directory a literal `cd` selects for later
+// steps. Home-relative, previous-directory, and computed targets do not match.
+func liveDiffShellCd(stmt *syntax.Stmt, directory string) (string, bool) {
+	call, ok := stmt.Cmd.(*syntax.CallExpr)
+	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated ||
+		len(stmt.Redirs) != 0 || len(call.Assigns) != 0 || len(call.Args) != 2 {
+		return "", false
+	}
+	name, literal := shellCatLiteral(call.Args[0])
+	target, targetLiteral := shellCatLiteral(call.Args[1])
+	if !literal || name != "cd" || !targetLiteral || target == "" || target == "-" || strings.HasPrefix(target, "~") {
+		return "", false
+	}
+	if !filepath.IsAbs(target) {
+		if !filepath.IsAbs(directory) {
+			return "", false
+		}
+		target = filepath.Join(directory, target)
+	}
+	return filepath.Clean(target), true
+}
+
 var streamingHeredocOpener = regexp.MustCompile(`<<(-?)[ \t]*(?:'([A-Za-z_][A-Za-z0-9_]*)'|"([A-Za-z_][A-Za-z0-9_]*)"|([A-Za-z_][A-Za-z0-9_]*))`)
 
 func completeStreamingHeredoc(input string) (string, bool) {
@@ -174,8 +215,23 @@ func shellFilePath(directory, path string) string {
 
 func liveDiffShellPreviewNeutral(stmt *syntax.Stmt) bool {
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
-	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated ||
-		len(stmt.Redirs) != 0 || len(call.Assigns) != 0 || len(call.Args) == 0 {
+	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated || len(stmt.Redirs) != 0 {
+		return false
+	}
+	if len(call.Args) == 0 {
+		// Literal shell variables change no file; a later use of one is not
+		// a literal operand and is not predicted.
+		for _, assign := range call.Assigns {
+			if assign.Append || assign.Array != nil || assign.Index != nil {
+				return false
+			}
+			if _, literal := shellCatLiteral(assign.Value); assign.Value != nil && !literal {
+				return false
+			}
+		}
+		return len(call.Assigns) != 0
+	}
+	if len(call.Assigns) != 0 {
 		return false
 	}
 	name, literal := shellCatLiteral(call.Args[0])
@@ -183,7 +239,7 @@ func liveDiffShellPreviewNeutral(stmt *syntax.Stmt) bool {
 		return false
 	}
 	switch name {
-	case "mkdir", "mread", "mcat", "msymbol", "inspect_file", "mchanges":
+	case "mkdir", "mread", "mcat", "msymbol", "inspect_file", "mchanges", "set", "echo", "true":
 	default:
 		return false
 	}

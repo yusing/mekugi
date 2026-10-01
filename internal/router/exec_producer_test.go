@@ -21,7 +21,7 @@ func execProducerCapture(t *testing.T, root, command string) *execObservation {
 	t.Helper()
 	observation, ok := captureExecObservation(
 		[]execCommandInput{{Command: command, Workdir: root, Shell: "bash"}},
-		false, false, execCaptureEnv{directory: root, clock: t.TempDir()},
+		false, false, execCaptureEnv{directory: root},
 	)
 	if !ok {
 		t.Fatalf("%q was not observed", command)
@@ -155,9 +155,9 @@ func TestExecRGPreProducerIsOpaqueWithoutExecutingHook(t *testing.T) {
 	if plan.Class != execOpaque {
 		t.Fatalf("hostile producer class = %v (%s), want opaque", plan.Class, plan.Reason)
 	}
-	observation := execProducerCapture(t, root, command)
-	if observation.Class != execOpaque.String() {
-		t.Fatalf("hostile producer capture class = %q (%s), want opaque", observation.Class, observation.Reason)
+	observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: root, Shell: "bash"}}, false, false, execCaptureEnv{directory: root})
+	if observed || observation != nil && len(observation.Files) != 0 {
+		t.Fatal("unsupported producer acquired change evidence")
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatalf("hostile --pre hook ran during classification/capture (stat err %v)", err)

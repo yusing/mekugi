@@ -15,7 +15,7 @@ func execFixerTestCapture(t *testing.T, root, workdir, command string) *execObse
 	t.Helper()
 	observation, ok := captureExecObservation(
 		[]execCommandInput{{Command: command, Workdir: workdir, Shell: "bash"}},
-		false, false, execCaptureEnv{directory: root, clock: t.TempDir()},
+		false, false, execCaptureEnv{previewOnly: true, directory: root},
 	)
 	if !ok {
 		t.Fatalf("%q was not observed", command)

@@ -14,13 +14,14 @@ const execProviderBudget = 200 * time.Millisecond
 const maxExecProgramBytes = 1 << 20
 
 type execProviderInput struct {
-	depth    int
-	identity string
-	args     []string
-	cwd      string
-	stdin    string
-	deadline time.Time
-	changes  execChangeResolver
+	authoredOnly bool
+	depth        int
+	identity     string
+	args         []string
+	cwd          string
+	stdin        string
+	deadline     time.Time
+	changes      execChangeResolver
 }
 
 type execProviderResult struct {
@@ -59,7 +60,7 @@ func init() {
 func execInlineShellScope(input execProviderInput) execProviderResult {
 	for i, arg := range input.args {
 		if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.Contains(arg, "c") && i+1 < len(input.args) {
-			plan := classifyExecShellWithin(input.args[i+1], input.cwd, input.identity, input.deadline, input.depth+1, input.changes)
+			plan := classifyExecShellSource(input.args[i+1], input.cwd, input.identity, input.deadline, input.depth+1, input.changes, input.authoredOnly)
 			return execProviderResult{scope: plan.Scope, open: plan.Class == execOpaque, reason: plan.Reason, programs: plan.Programs}
 		}
 	}
@@ -72,7 +73,16 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 		key = "python"
 	}
 	provider := execScopeProviders[key]
-	if provider == nil {
+	if w.authoredOnly && execFormatterIdentity(key) {
+		w.program.Direct = true
+		for _, arg := range args {
+			if _, literal := shellCatLiteral(arg); !literal {
+				w.opaque("formatter operands are not individual literal targets")
+				return true
+			}
+		}
+	}
+	if provider == nil || w.authoredOnly && !w.program.Direct && key != "git" && key != "svn" && key != "hg" && key != "jj" {
 		return false
 	}
 	if w.depth >= 3 {
@@ -94,7 +104,7 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 		w.opaque("scope provider deadline")
 		return true
 	}
-	result := provider(execProviderInput{identity: identity, args: values, cwd: w.cwd, stdin: w.stdin, deadline: w.deadline, depth: w.depth, changes: w.changes})
+	result := provider(execProviderInput{authoredOnly: w.authoredOnly, identity: identity, args: values, cwd: w.cwd, stdin: w.stdin, deadline: w.deadline, depth: w.depth, changes: w.changes})
 	if result.unhandled {
 		return false
 	}

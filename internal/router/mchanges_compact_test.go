@@ -33,11 +33,11 @@ func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
 		t.Fatal(err)
 	}
 	list, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, view: "list"})
-	if err != nil || list != id+" +1 -1 ? managed:2\n" {
+	if err != nil || list != id+" +1 -1\n" {
 		t.Fatalf("compact list: %q %v", list, err)
 	}
 	summary, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, view: "summary"})
-	if err != nil || summary != id+" incomplete captured scope; use --history for diagnostics\nM\t1\t1\tdirect.go\nM +1 -0\n? tool-managed: incomplete evidence for 1 path (not confirmed edits): 1 × \"capture deadline\"; use --history for paths and full reasons\n" {
+	if err != nil || summary != "M\t1\t1\tdirect.go\n" {
 		t.Fatalf("compact summary: %q %v", summary, err)
 	}
 	details, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, view: "history"})
@@ -49,7 +49,7 @@ func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
 		t.Fatalf("managed content leaked into default diff: %q %v", review, err)
 	}
 	named, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, view: "summary", paths: []string{"formatted.go"}})
-	if err != nil || named != id+" incomplete captured scope; use --history for diagnostics\nA\t1\t0\ttool-managed\tformatted.go\n" {
+	if err != nil || !strings.Contains(named, "no files match paths after --") || strings.Contains(named, "incomplete") {
 		t.Fatalf("explicit managed path unavailable: %q %v", named, err)
 	}
 }

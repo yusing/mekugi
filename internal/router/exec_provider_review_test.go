@@ -46,9 +46,9 @@ func TestExecRGHostnameCommandIsNeverRunDuringScoping(t *testing.T) {
 	writeTestFile(t, filepath.Join(root, "FILE"), "program FILE\n")
 	command := rg + " --hostname-bin=marker program --hyperlink-format='file://{host}{path}' --color=always -l PAT FILE | " +
 		xargs + " " + sed + " -i 's/program/replaced/g'"
-	observation := execProducerCapture(t, root, command)
-	if observation.Class != execOpaque.String() {
-		t.Fatalf("hostname executable producer classified as %q (%s), want opaque", observation.Class, observation.Reason)
+	observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: root, Shell: "bash"}}, false, false, execCaptureEnv{directory: root})
+	if observed || observation != nil && len(observation.Files) != 0 {
+		t.Fatal("unsupported producer acquired change evidence")
 	}
 	assertExecProviderReviewMarkerDidNotRun(t, marker)
 }
@@ -67,9 +67,9 @@ func TestExecFDExecBundleIsNeverRunDuringScoping(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "src", "PAT.txt"), "old bytes\n")
 	command := fd + " PAT src -Hx marker program | " + xargs + " " + sed + " -i 's/old/new/g'"
-	observation := execProducerCapture(t, root, command)
-	if observation.Class != execOpaque.String() {
-		t.Fatalf("fd bundled exec producer classified as %q (%s), want opaque", observation.Class, observation.Reason)
+	observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: root, Shell: "bash"}}, false, false, execCaptureEnv{directory: root})
+	if observed || observation != nil && len(observation.Files) != 0 {
+		t.Fatal("unsupported producer acquired change evidence")
 	}
 	assertExecProviderReviewMarkerDidNotRun(t, marker)
 	if data, err := os.ReadFile(filepath.Join(root, "src", "PAT.txt")); err != nil || string(data) != "old bytes\n" {

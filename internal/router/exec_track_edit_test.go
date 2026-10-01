@@ -36,7 +36,7 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			// The following command cannot exit until the test has inspected a
 			// real terminal frame and the preview's completed filesystem view.
 			script := edit + "\nprintf 'test running\\n'; read -r answer"
-			observation, ok := captureExecObservation([]execCommandInput{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
+			observation, ok := captureExecObservation([]execCommandInput{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
 			if !ok || observation == nil || len(observation.Files) == 0 {
 				t.Fatal("missing edit capture")
 			}
@@ -277,7 +277,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	second := "sed -i 's/middle/after/' source.go; go test ./..."
 	source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q}); await tools.exec_command({cmd:%q,workdir:%q});", first, workspace, second, workspace)
 	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
-	observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
+	observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{previewOnly: true, directory: workspace})
 	if !ok || observation == nil || len(commands) != 2 || len(execPreviewExpected(t.Context(), *observation)) != 0 {
 		t.Fatal("fixture must capture two unprojectable edits in one Code Mode cell")
 	}
@@ -353,7 +353,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			// there is no shell segment report. The sibling test stays pending.
 			source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q}); await tools.exec_command({cmd:'go test ./...',workdir:%q});", script, workspace, workspace)
 			commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
-			observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
+			observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{previewOnly: true, directory: workspace})
 			if !ok || observation == nil || len(commands) != 2 {
 				t.Fatal("missing grouped edit observation")
 			}
@@ -421,7 +421,7 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 			workspace := t.TempDir()
 			path := filepath.Join(workspace, "source.go")
 			writeTestFile(t, path, "before\n")
-			observation, ok := captureExecObservation([]execCommandInput{{Command: script, Shell: "bash", Workdir: workspace}}, false, false, execCaptureEnv{directory: workspace})
+			observation, ok := captureExecObservation([]execCommandInput{{Command: script, Shell: "bash", Workdir: workspace}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
 			if !ok || observation == nil {
 				t.Fatal("missing capture")
 			}
@@ -507,7 +507,7 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 			t.Fatal(err)
 		}
 		writeTestFile(t, filepath.Join(directory, "source.go"), "before\n")
-		observation, ok := captureExecObservation([]execCommandInput{{Command: script, Shell: "bash", Workdir: directory}}, false, false, execCaptureEnv{directory: workspace})
+		observation, ok := captureExecObservation([]execCommandInput{{Command: script, Shell: "bash", Workdir: directory}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
 		if !ok || observation == nil {
 			t.Fatal("missing capture")
 		}

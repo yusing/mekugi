@@ -50,7 +50,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 			}
 			for _, mode := range []string{"", "summary", "history"} {
 				out, err := reader.readChanges(t.Context(), changeReadOptions{workspace: "/w", ids: ids, view: mode})
-				if err != nil || strings.Contains(out, "node_modules") != (mode == "history") || !strings.Contains(out, "incomplete") {
+				if err != nil || strings.Contains(out, "node_modules") != (mode == "history") || strings.Contains(out, "incomplete") != (mode == "history") {
 					t.Fatalf("%s lost coverage or exposed observation as edit: %q, %v", mode, out, err)
 				}
 			}

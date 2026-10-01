@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
@@ -59,7 +58,7 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 		if !found || record.History.ChangeID != event.ID || record.History.CorrelationID != event.Change.Correlation {
 			return fmt.Errorf("change %s has a missing or inconsistent attempt", event.ID)
 		}
-		history := record.History
+		history := authoredChangeHistory(record.History)
 		attempt := liveDiffAttempt{thread: cmp.Or(history.ExecutingThread, event.Thread), change: event.ID, correlation: event.Change.Correlation, stream: event.Stream}
 		if history.ExecOutcome != nil && history.ExecutingThread != "" {
 			attempt.receipt = capturedEditActivity(event.Workspace, history)
@@ -68,15 +67,7 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			}
 		}
 		origin := livediff.Origin{Change: event.ID, Caller: history.Caller, Source: cmp.Or(history.Source, history.ToolName)}
-		var managed []string
 		for n, file := range history.ReviewFiles {
-			if dependencyObservationGap(file) {
-				continue
-			}
-			if file.Origin != "" {
-				managed = append(managed, managedReviewRow(file))
-				continue
-			}
 			canonical := func(path string) string {
 				if path == "" {
 					return ""
@@ -95,19 +86,6 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 				Key: key + "/" + strconv.Itoa(n), Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
 				Workspace: event.Workspace, CaptureOrder: record.CaptureOrder,
 				Review: file, Origin: origin,
-			})
-		}
-		if len(managed) != 0 {
-			label := fmt.Sprintf("%s: %d tool-managed files", event.ID, len(managed))
-			reason := strings.Join(managed, "\n")
-			d.bytes += len(reason) + len(label)*2 + len(key)
-			if d.bytes > maxChangeReadBytes {
-				return errors.New("live diff exceeds 64 MiB; use mchanges with a narrower range")
-			}
-			attempt.chunks = append(attempt.chunks, livediff.Chunk{
-				Key: key + "/managed", Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
-				Workspace: event.Workspace, CaptureOrder: record.CaptureOrder,
-				Review: mekugi.ReviewFile{BeforePath: label, AfterPath: label, Origin: "tool-managed", Incomplete: reason}, Origin: origin,
 			})
 		}
 		d.attempts[key] = attempt

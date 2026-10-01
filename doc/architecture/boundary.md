@@ -8,22 +8,20 @@ from the request. Relative observation paths require that directory; the
 router never substitutes its own cwd or imposes an unrelated root-library
 confinement policy. Observation cannot authorize a host effect.
 
-The replay store retains completed stock-call identity, bounded patch and
-command-scope baselines, confirmed workspace outcomes, change IDs, and managed
-omitted output. Command observation captures its derived scope and the link targets
-that scope writes through. A call with unknown write scope also retains one
-inventory of the selected metadata directory, separate from that scope: strong file-change
-stamps, byte-verified Git blob IDs, and bounded file content,
-including ordinary ignored files and non-Git workspaces. VCS metadata is excluded;
-dependency trees retain aggregate metadata only. Directory summaries carry no
-content or descendant listing and are non-replayable. Inventory endpoint reads
-pin directory ancestors without following symlinks. Its comparison is window
-evidence, never authorship, and skips explicit, same-cell patch, and overlapping-writer paths. Dynamic Code Mode
-resolves native host inputs against the same inventory; fully scoped,
-remote-only, and reader-only cells do not compare it. Missing inventory or host
-evidence remains incomplete. The in-memory window registry is not
-durable authorization or process state. Replay validates retained identity
-without rerunning an edit or command.
+The replay store retains completed stock-call identity, bounded known-edit
+baselines, endpoint differences, change IDs, host results, and managed omitted
+output. Recording uses source-resolved edit operands and their link targets,
+plus differences between private workspace snapshots taken around writer
+commands. Ignore rules decide only which unnamed paths a snapshot covers; they
+never exclude a source-named target. Snapshots are a private Git directory and
+index per workspace under the replay store, serialized across router processes
+by a file lock. They read the user's repository objects, index, and ignore
+files but never write its state or run its hooks, filters, or configuration.
+Durable call observations keep only a snapshot tree name; the snapshot itself
+is comparison state, not record evidence, and its size and idle lifetime are
+bounded by the snapshot owner rather than record retention. The in-memory window
+registry is not durable authorization or process state. Replay validates
+retained identity without rerunning an edit or command.
 Last-seen content and running preview state are bounded, process-local auxiliary
 state. Last-seen lookups are isolated by durable record namespace; previews use
 the captured scope and the broker's viewer lifetime, not the request lifetime.
@@ -33,22 +31,12 @@ ancestry from one request view without deleting records needed by other
 branches. Expired output references and Codex process handles are not revived.
 
 Session retention keeps shared durable dependencies and protects running work.
-Version-2 call envelopes reference immutable filesystem-evidence collections by
-SHA-256 of their deterministic, uncompressed JSON. The shared objects use gzip
-and exact `snapshot-<64 lowercase hex>.json.gz` names in the replay store.
-Patch baselines, command file snapshots, workspace recovery inventories and
-completed review files share identical collections across calls.
-Large text content is interned separately from collection metadata, so unchanged
-file contents remain shared when another file or path in an inventory changes.
-Manifests use explicit text-slot references; envelopes enumerate their complete
-object dependencies for retention without decompressing content during cleanup.
-Call identity, host outcomes and ordering remain in their own envelopes. Readers
-validate hashes and bounded expansion before restoring evidence; version-1
-inline records remain readable without bulk migration. An envelope and its
-missing objects are retained in one catalog update and admitted as one write;
-the objects and one directory sync precede the envelope. Ownership adoption includes their
-dependencies, and cleanup protects shared and in-flight objects and removes
-envelopes before their last-owned snapshots.
+New call envelopes retain file evidence inline and create no shared
+filesystem snapshots; workspace snapshots are not retention dependencies.
+Readers still validate historical version-2 snapshot references, hashes, and
+bounded expansion. Historical object dependencies remain
+protected across branches until their last owner expires. Cleanup removes an
+old envelope before its last-owned objects; no migration deletes retained evidence.
 Cleanup operates only on exact managed record names under the store lock; it
 never traverses user workspaces or Codex transcripts. The age and
 storage-pressure policy belongs to [REQ-ROUTER-001](../spec/router.md).

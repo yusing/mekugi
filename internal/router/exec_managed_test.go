@@ -12,126 +12,30 @@ import (
 	"github.com/yusing/mekugi"
 )
 
-func TestManagedReviewRowDistinguishesBinaryFromMissingEvidence(t *testing.T) {
-	for _, test := range []struct {
-		file mekugi.ReviewFile
-		want string
-	}{
-		{mekugi.RenderBinaryReviewFile("asset", "asset", 2, 3, "before", "after"), `Edit "asset" binary (size/hash evidence) · go generate`},
-		{mekugi.RenderIncompleteReviewFile("asset", "asset", "baseline unavailable"), `Capture "asset" evidence unavailable: "baseline unavailable" · go generate`},
-	} {
-		test.file.Origin = "go generate"
-		if got := managedReviewRow(test.file); got != test.want {
-			t.Errorf("managed review row = %q, want %q", got, test.want)
-		}
-	}
-}
-
 func TestManagedExecMChangesSurface(t *testing.T) {
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
+	f := newMChangesSliceFixture(t, "managed-history")
+	managed := mekugi.RenderReviewFile("", "managed.txt", "", "generated body\n")
+	managed.Origin = "generator"
+	id := saveManagedExecChange(t, f.store, f.ctx, f.workspace, f.thread, "managed", []mekugi.ReviewFile{managed})
+	direct := mekugi.RenderReviewFile("", "direct.txt", "", "authored body\n")
+	mixed := saveManagedExecChange(t, f.store, f.ctx, f.workspace, f.thread, "mixed", []mekugi.ReviewFile{managed, direct})
+	list, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{id, mixed}, view: "list"})
+	if err != nil || list != mixed+" +1 -0\n" {
+		t.Fatalf("authored list: %q, %v", list, err)
 	}
-	const thread = "reviewer-thread"
-	ctx, release, err := store.beginSession(t.Context(), thread, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer release()
-	workspace := t.TempDir()
-	managedFiles := make([]mekugi.ReviewFile, 21)
-	for i := range managedFiles {
-		path := fmt.Sprintf("managed-%02d.txt", i+1)
-		file := mekugi.RenderReviewFile("", path, "", "BODY SHOULD NOT LEAK\n")
-		file.Origin = "formatter"
-		managedFiles[i] = file
-	}
-	managedID := saveManagedExecChange(t, store, ctx, workspace, thread, "managed", managedFiles)
-	mixedFiles := []mekugi.ReviewFile{
-		func() mekugi.ReviewFile {
-			file := mekugi.RenderReviewFile("", "managed-summary.txt", "", "managed\n")
-			file.Origin = "generator"
-			return file
-		}(),
-		mekugi.RenderReviewFile("", "direct-summary.txt", "", "direct\n"),
-	}
-	mixedID := saveManagedExecChange(t, store, ctx, workspace, thread, "mixed", mixedFiles)
-	stdout, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, view: "list"})
-	wantList := managedID + " managed:21\n" + mixedID + " +1 -0 managed:1\n"
-
-	if err != nil || stdout != wantList {
-		t.Fatalf("managed list = %q, %v; want %q", stdout, err, wantList)
-	}
-
-	header := managedID + " applied\nexec formatter · command completed · generator, exact coverage\n"
-	var rows, diffs strings.Builder
-	for i := range 21 {
-		if i < 20 {
-			fmt.Fprintf(&rows, "Create \"managed-%02d.txt\" +1 -0 · formatter\n", i+1)
-		}
-		fmt.Fprintf(&diffs, "--- /dev/null\n+++ \"managed-%02d.txt\"\n@@ -0,0 +1,1 @@\n+BODY SHOULD NOT LEAK\n", i+1)
-	}
-	lastDiff := "--- /dev/null\n+++ \"managed-21.txt\"\n@@ -0,0 +1,1 @@\n+BODY SHOULD NOT LEAK\n"
-	for _, read := range []struct {
-		name    string
-		options changeReadOptions
-		want    string
-	}{
-		{"default managed read", changeReadOptions{ids: []string{managedID}},
-			managedID + "\n" + rows.String() + "+1 more tool-managed files\n"},
-		{"explicit managed path", changeReadOptions{ids: []string{managedID}, paths: []string{"managed-21.txt"}},
-			managedID + "\n" + lastDiff},
-		{"managed history", changeReadOptions{ids: []string{managedID}, view: "history"},
-			header + "exec_command input:\npython generate.py\n" + diffs.String()},
-		{"managed summary labels", changeReadOptions{ids: []string{mixedID}, view: "summary"},
-			"A\t1\t0\tdirect-summary.txt\nM +1 -0\n"},
-	} {
-		read.options.workspace = workspace
-		if stdout, err := store.readChanges(ctx, read.options); err != nil || stdout != read.want {
-			t.Fatalf("%s = %q, %v; want %q", read.name, stdout, err, read.want)
+	for _, mode := range []string{"", "summary", "net"} {
+		text, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{id, mixed}, view: mode})
+		if err != nil || strings.Contains(text, "generated") || strings.Contains(text, "managed") || !strings.Contains(text, "direct.txt") {
+			t.Fatalf("managed noise in %s: %q, %v", mode, text, err)
 		}
 	}
-
-	index, err := store.scoped(ctx).readChangeIndex(workspace)
-	if err != nil {
-		t.Fatal(err)
+	text, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{id}, view: "history"})
+	if err != nil || !strings.Contains(text, "generated body") {
+		t.Fatalf("diagnostic history lost: %q, %v", text, err)
 	}
-	streamName, _, err := parseChangeID(managedID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stream := -1
-	for i := range index.Streams {
-		if index.streamName(i) == streamName {
-			stream = i
-			break
-		}
-	}
-	if stream < 0 {
-		t.Fatalf("stream for %s was not retained", managedID)
-	}
-	data := newLiveDiffData()
-	event := liveDiffChange{
-		Workspace: workspace, Namespace: index.Namespace, Thread: thread, Stream: stream,
-		ID: managedID, Change: index.Changes[managedID],
-	}
-	if err := data.apply(ctx, store, event); err != nil {
-		t.Fatal(err)
-	}
-	files := data.files()
-	if len(files) != 1 || len(files[0].Chunks) != 1 {
-		t.Fatalf("saved DIFF groups managed effects into %d cards and %d chunks", len(files), func() int {
-			if len(files) == 0 {
-				return 0
-			}
-			return len(files[0].Chunks)
-		}())
-	}
-	chunk := files[0].Chunks[0]
-	if chunk.Review.Origin != "tool-managed" || !strings.Contains(chunk.Review.AfterPath, managedID+": 21 tool-managed files") ||
-		strings.Count(chunk.Review.Incomplete, "Create \"") != 21 || !strings.Contains(chunk.Review.Incomplete, "managed-21.txt") ||
-		strings.Contains(chunk.Review.Incomplete, "BODY SHOULD NOT LEAK") {
-		t.Fatalf("saved DIFF managed card = %+v", chunk.Review)
+	data, err := f.store.liveDiffSnapshot(f.ctx, liveDiffScope{Workspaces: map[string]map[string]bool{f.workspace: {f.thread: true}}})
+	if err != nil || len(data.files()) != 1 || !strings.HasSuffix(data.files()[0].Path, "direct.txt") {
+		t.Fatalf("managed saved Diff: %+v, %v", data.files(), err)
 	}
 }
 
@@ -167,7 +71,7 @@ func TestManagedExecReceiptGroupsFiles(t *testing.T) {
 		files[i].Origin = "generator"
 	}
 	got := editReceiptText(workspace, mekugiHistory{ReviewFiles: files})
-	want := "+ 5 tool-managed files (`generated-01.txt`, `generated-02.txt`, `generated-03.txt`, …)"
+	want := ""
 	if got != want {
 		t.Fatalf("grouped receipt = %q, want %q", got, want)
 	}

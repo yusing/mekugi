@@ -55,7 +55,7 @@ func TestLiveDiffPythonSourceStreamsAfterSetup(t *testing.T) {
 }
 
 func TestLiveDiffPythonBufferRejectsUnsupportedMutations(t *testing.T) {
-	for _, mutation := range []string{"s += '!'", "s, other = 'wrong', 'value'", "del s", "(s := 'wrong')"} {
+	for _, mutation := range []string{"s *= 2", "s, other = 'wrong', 'value'", "del s", "(s := 'wrong')"} {
 		t.Run(mutation, func(t *testing.T) {
 			directory := t.TempDir()
 			writeTestFile(t, filepath.Join(directory, "target.txt"), "old\n")

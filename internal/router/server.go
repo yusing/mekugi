@@ -226,6 +226,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		if err != nil {
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
+		defer replayStore.snapshots.close()
 		mekugiCalls = newMekugiProxy(registry, titles)
 		mekugiCalls.journalCompaction = *flags.journalCompaction
 		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")

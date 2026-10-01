@@ -69,8 +69,8 @@ func TestLiveDiffCodeModeStreamsInterpreterWrite(t *testing.T) {
 
 func TestLiveDiffNativeExecPythonStreamsTargetDiff(t *testing.T) {
 	t.Parallel()
-	for _, openRead := range []bool{false, true} {
-		t.Run(fmt.Sprint("openRead=", openRead), func(t *testing.T) {
+	for _, tc := range []struct{ openRead, computed bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
+		t.Run(fmt.Sprintf("openRead=%v/computed=%v", tc.openRead, tc.computed), func(t *testing.T) {
 			workspace := t.TempDir()
 			target := filepath.Join(workspace, "target.txt")
 			if err := os.WriteFile(target, []byte("old old\n"), 0o600); err != nil {
@@ -89,9 +89,12 @@ func TestLiveDiffNativeExecPythonStreamsTargetDiff(t *testing.T) {
 			t.Cleanup(worker.stop)
 			command := "python3 - <<'PY'\nfrom pathlib import Path\np = Path('target.txt')\ns = p.read_text()\ns = s.replace('old', 'new', 1)\np.write_text(s)\nPY\n"
 			write := "p.write_text"
-			if openRead {
+			if tc.openRead {
 				command = "python3 - <<'PY'\np = 'target.txt'\ns = open(p).read()\ns = s.replace('old', 'new', 1)\nopen(p, 'w').write(s)\nPY\n"
 				write = "open(p, 'w').write"
+			}
+			if tc.computed {
+				command = strings.Replace(command, "s.replace('old', 'new', 1)", "s.replace('o' + 'ld', ' NEW '.strip().lower(), len('é'))", 1)
 			}
 			encoded, err := json.Marshal(map[string]string{"cmd": command, "workdir": workspace})
 			if err != nil {

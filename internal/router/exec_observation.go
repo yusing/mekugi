@@ -129,6 +129,9 @@ type execObservation struct {
 	// Inventory is the selected workspace before an opaque call. It is
 	// window evidence, separate from the explicit scope above.
 	Inventory *execInventory `json:",omitempty"`
+	// Tree is the private workspace snapshot taken before a writer call. Its
+	// comparison covers effects outside the source-named scope.
+	Tree string `json:",omitempty"`
 }
 
 // execOutcome is the finalized status of an observed exec record.
@@ -277,33 +280,24 @@ func requestSessionShell(raw json.RawMessage) string {
 
 // execCaptureEnv is the router state a capture consults.
 type execCaptureEnv struct {
-	// directory is the selected workspace; commands inside it sweep it whole.
+	// previewOnly keeps source-derived display baselines out of durable edits.
+	previewOnly bool
+	// directory is the selected workspace for resolving explicit edit operands.
 	directory string
-	// clock is a directory where the window-start marker is written.
-	clock string
 	// excluded paths belong to patch records of the same call.
 	excluded []string
 	// changes scopes mchanges revert and apply by their recorded paths.
 	changes execChangeResolver
-	// deadline ends the pre-call hold; a later capture is discarded.
-	deadline time.Time
-}
-
-// execInventoryMargin leaves a capture time to return before its hold ends.
-const execInventoryMargin = 50 * time.Millisecond
-
-func (env execCaptureEnv) inventoryDeadline(started time.Time) time.Time {
-	return cmp.Or(env.deadline, started.Add(execCaptureHold)).Add(-execInventoryMargin)
 }
 
 // captureExecObservation classifies commands and captures their scope before
-// the host runs them. Neutral commands are not observed.
+// the host runs them. An unobserved call keeps its classification, unless it
+// is neutral, so a writer without a derived scope can still be snapshotted.
 func captureExecObservation(commands []execCommandInput, dynamic, codeMode bool, env execCaptureEnv) (*execObservation, bool) {
 	if len(commands) == 0 && !dynamic {
 		return nil, false
 	}
 	deadline := time.Now().Add(execCaptureHold)
-	env.deadline = deadline
 	type result struct {
 		observation *execObservation
 		observed    bool
@@ -349,7 +343,7 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 	class := execNeutral
 	var scope []execScopeEntry
 	for _, command := range commands {
-		plan := classifyExecShellWithin(command.Command, command.Workdir, command.Shell, started.Add(execProviderBudget), 0, env.changes)
+		plan := classifyExecShellSource(command.Command, command.Workdir, command.Shell, started.Add(execProviderBudget), 0, env.changes, !env.previewOnly)
 		observation.CommandClasses = append(observation.CommandClasses, plan.Class.String())
 		if plan.Class > class {
 			class = plan.Class
@@ -381,16 +375,14 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 			observation.Roots = execAddRoot(observation.Roots, filepath.Clean(env.directory))
 		}
 	}
-	if class == execNeutral {
-		return nil, false
-	}
 	observation.Class = class.String()
-	if class != execDeclared {
-		// The window starts before any capture read, so a write that races
-		// the capture is still inside it.
-		observation.WindowStart = execWindowStart(cmp.Or(env.clock, os.TempDir()))
-	}
 	observation.Excluded = env.excluded
+	if len(scope) == 0 {
+		if class == execNeutral {
+			return nil, false
+		}
+		return observation, false
+	}
 	seenWrites := make(map[string]bool)
 	for _, entry := range scope {
 		for _, operand := range entry.Operands {
@@ -404,19 +396,15 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 	capture.scopeRoots = observation.Roots
 	for _, managed := range []bool{false, true} {
 		for _, entry := range scope {
-			if (entry.Origin != "") == managed {
+			if (entry.Origin != "") == managed && (env.previewOnly || entry.Origin == "") {
 				capture.entry(entry)
 			}
 		}
 	}
 	observation.Files, observation.Omitted, observation.Listings = capture.files, capture.omitted, capture.listings
 	boundExecObservation(observation)
-	if class == execOpaque && filepath.IsAbs(env.directory) {
-		// Explicit scope keeps priority: the inventory reads content only
-		// with the budget and time it left, and fits the remaining record share.
-		inventoryLimit := maxExecObservationBytes - len(mustMarshalJSON(observation))
-		observation.Inventory = captureExecInventory(filepath.Clean(env.directory), env.inventoryDeadline(started), &capture.budget)
-		boundExecInventory(observation.Inventory, inventoryLimit)
+	if len(observation.Files) == 0 && len(observation.Omitted) == 0 && len(observation.Listings) == 0 {
+		return observation, false
 	}
 	return observation, true
 }
@@ -944,27 +932,52 @@ func renderExecReview(beforePath, afterPath string, before, after execFileSnapsh
 	return review
 }
 
-// execReconcileEnv identifies paths claimed by overlapping calls.
+// execReconcileEnv identifies paths claimed by overlapping calls, and the
+// workspace snapshot changes outside the captured scope.
 type execReconcileEnv struct {
 	excluded []string
+	snapshot []execSnapshotChange
 }
 
 // reconcileExecObservation compares only the command's captured write scope.
 // Changes elsewhere cannot be attributed to this call.
 
 func reconcileExecObservation(observation execObservation, env execReconcileEnv) (reviews []mekugi.ReviewFile, complete bool, coverage, unswept string) {
-	type change struct {
-		before, after execFileSnapshot
-		// window marks inventory evidence, which is not attributed.
-		window bool
-	}
-	var changes []change
+	var changes []execSnapshotChange
 	complete = true
 	coverage = execCoverageExact
 	budget := maxExecContentBytes
 	after := make(map[string]execFileSnapshot, len(observation.Files))
 	metadata := make(map[string]execFileSnapshot, len(observation.Files))
-	compareAs := func(before execFileSnapshot, endpoint *execFileSnapshot, window bool) {
+	// record keeps one path's before/after evidence as a change, or as an
+	// incomplete review when either side could not be read.
+	record := func(before, current execFileSnapshot) {
+		if before.Error != "" || current.Error != "" {
+			beforePath, afterPath := before.Path, before.Path
+			if !execFilePresent(before) && before.Error == "" {
+				beforePath = ""
+			}
+			if !execFilePresent(current) && current.Error == "" {
+				afterPath = ""
+			}
+			reason := strings.Trim(strings.Join([]string{before.Error, current.Error}, "; "), "; ")
+			reviews = append(reviews, mekugi.RenderIncompleteReviewFile(beforePath, afterPath, reason))
+			complete = false
+			return
+		}
+		if before.Kind == execFileOther || current.Kind == execFileOther {
+			if before.Kind != current.Kind {
+				reviews = append(reviews, mekugi.RenderIncompleteReviewFile(before.Path, before.Path, "not a regular file"))
+				complete = false
+			}
+			return
+		}
+		if !execFilePresent(before) && !execFilePresent(current) || sameExecContent(before, current) {
+			return
+		}
+		changes = append(changes, execSnapshotChange{before: before, after: current})
+	}
+	compare := func(before execFileSnapshot) {
 		if _, seen := after[before.Path]; seen || slices.Contains(observation.Excluded, before.Path) {
 			return
 		}
@@ -977,53 +990,16 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 				return
 			}
 		}
-		var current execFileSnapshot
-		if endpoint != nil {
-			current = *endpoint
-		} else {
-			current = snapshotExecFile(before.Path, &budget)
-		}
+		current := snapshotExecFile(before.Path, &budget)
 		after[before.Path] = current
-		if before.Error != "" || current.Error != "" {
-			beforePath, afterPath := before.Path, before.Path
-			if !execFilePresent(before) && before.Error == "" {
-				beforePath = ""
-			}
-			if !execFilePresent(current) && current.Error == "" {
-				afterPath = ""
-			}
-			reason := strings.Trim(strings.Join([]string{before.Error, current.Error}, "; "), "; ")
-			review := mekugi.RenderIncompleteReviewFile(beforePath, afterPath, reason)
-			if window {
-				review.OriginNote = execInventoryNote
-			}
-			reviews = append(reviews, review)
-			complete = false
-			return
-		}
-		if before.Kind == execFileOther || current.Kind == execFileOther {
-			if before.Kind != current.Kind {
-				review := mekugi.RenderIncompleteReviewFile(before.Path, before.Path, "not a regular file")
-				if window {
-					review.OriginNote = execInventoryNote
-				}
-				reviews = append(reviews, review)
-				complete = false
-			}
-			return
-		}
-		if !execFilePresent(before) && !execFilePresent(current) || sameExecContent(before, current) {
-			return
-		}
-		changes = append(changes, change{before: before, after: current, window: window})
+		record(before, current)
 	}
-	compare := func(before execFileSnapshot) { compareAs(before, nil, false) }
 	for _, before := range observation.Files {
 		compare(before)
 	}
 	omitted := func(path string) bool {
 		for _, omission := range observation.Omitted {
-			if path == omission.Path || strings.HasPrefix(path, omission.Path+string(filepath.Separator)) {
+			if execPathWithin(path, omission.Path) {
 				return true
 			}
 		}
@@ -1083,35 +1059,44 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 			}
 		}
 	}
-	if observation.Inventory != nil {
-		skip := func(path string) bool {
-			_, compared := after[path]
-			return compared || slices.Contains(observation.Excluded, path) ||
-				slices.ContainsFunc(env.excluded, func(root string) bool { return execPathWithin(path, root) })
+	// The workspace snapshot covers effects outside the named scope. Paths
+	// that scope, a same-call patch, or an overlapping call claims stay theirs.
+	claimed := func(path string) bool {
+		if _, captured := after[path]; captured || omitted(path) {
+			return true
 		}
-		inventoryReviews, directories := reconcileExecInventory(observation.Inventory, skip, func(before, current execFileSnapshot) { compareAs(before, &current, true) }, &budget)
-		reviews = append(reviews, inventoryReviews...)
-		if len(directories) != 0 {
-			unswept = fmt.Sprintf("dependency metadata incomplete for %q; unobserved descendants are not confirmed changes", directories)
+		for _, roots := range [][]string{observation.Excluded, env.excluded} {
+			for _, root := range roots {
+				if execPathWithin(path, root) {
+					return true
+				}
+			}
+		}
+		for _, listing := range observation.Listings {
+			if execPathWithin(path, listing.Root) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, snapshot := range env.snapshot {
+		if !claimed(snapshot.before.Path) {
+			record(snapshot.before, snapshot.after)
 		}
 	}
 	// A deletion and an addition with identical content form one move. Empty
-	// files carry no evidence of which deletion an addition came from. Window
-	// evidence pairs only with window evidence, keeping its qualification.
+	// files carry no evidence of which deletion an addition came from.
 	paired := make(map[int]bool)
 	for index, deleted := range changes {
 		if !execFilePresent(deleted.before) || execFilePresent(deleted.after) || deleted.before.Kind == execFileText && deleted.before.Content == "" {
 			continue
 		}
 		for other, added := range changes {
-			if paired[other] || added.window != deleted.window || execFilePresent(added.before) || !execFilePresent(added.after) || !sameExecContent(deleted.before, added.after) {
+			if paired[other] || execFilePresent(added.before) || !execFilePresent(added.after) || !sameExecContent(deleted.before, added.after) {
 				continue
 			}
 			paired[index], paired[other] = true, true
 			review := renderExecReview(deleted.before.Path, added.after.Path, deleted.before, added.after)
-			if deleted.window {
-				review.OriginNote = execInventoryNote
-			}
 			reviews = append(reviews, review)
 			break
 		}
@@ -1128,9 +1113,6 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 			afterPath = ""
 		}
 		review := renderExecReview(beforePath, afterPath, changed.before, changed.after)
-		if changed.window {
-			review.OriginNote = execInventoryNote
-		}
 		if beforePath == "" && changed.before.CopyOf != "" {
 			// A created copy names its source when the content matches.
 			source, captured := after[changed.before.CopyOf]
@@ -1212,7 +1194,7 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 	if (!complete || deferredChanged) && coverage == execCoverageExact {
 		coverage = execCoveragePartial
 	}
-	if observation.Class == execOpaque.String() || observation.Reason == "capture deadline" || observation.Inventory != nil {
+	if observation.Reason == "capture deadline" {
 		complete, coverage = false, execCoveragePartial
 	}
 	if observation.RepeatedPaths && len(reviews) == 0 {
@@ -1360,7 +1342,6 @@ func mergeExecObservations(members []execCompletion) execObservation {
 	merged.Omitted = slices.Clone(merged.Omitted)
 	merged.Listings = slices.Clone(merged.Listings)
 	merged.Excluded = slices.Clone(merged.Excluded)
-	inventoryStart := merged.WindowStart
 	for _, member := range members[1:] {
 		other := member.history.ExecObservation
 		merged.CodeMode = merged.CodeMode || other.CodeMode
@@ -1387,12 +1368,17 @@ func mergeExecObservations(members []execCompletion) execObservation {
 		merged.Omitted = append(merged.Omitted, other.Omitted...)
 		merged.Listings = append(merged.Listings, other.Listings...)
 		merged.Excluded = append(merged.Excluded, other.Excluded...)
-		// The earliest inventory spans every sibling's window.
-		if other.Inventory != nil && (merged.Inventory == nil || other.WindowStart.Before(inventoryStart)) {
-			merged.Inventory, inventoryStart = other.Inventory, other.WindowStart
-		}
 		if other.WindowStart.IsZero() || !merged.WindowStart.IsZero() && other.WindowStart.Before(merged.WindowStart) {
 			merged.WindowStart = other.WindowStart
+		}
+	}
+	// Siblings may start running before later ones are emitted, so the
+	// earliest checkpoint bounds all of their effects.
+	earliest := uint64(0)
+	merged.Tree = ""
+	for _, member := range members {
+		if tree := member.history.ExecObservation.Tree; tree != "" && (merged.Tree == "" || member.history.sequence < earliest) {
+			merged.Tree, earliest = tree, member.history.sequence
 		}
 	}
 	return merged
@@ -1467,15 +1453,38 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	for _, member := range members {
 		refs = append(refs, member.callID)
 	}
+	if observation.Tree != "" && p.replayStore != nil {
+		// Closing, comparing, and claiming are one step per workspace, so
+		// concurrent finalizations cannot both record one effect.
+		defer p.replayStore.snapshots.serialize(workspace)()
+	}
 	view := p.execWindows.close(refs...)
 	background := slices.Compact(slices.Sorted(slices.Values(view.background)))
-	reviews, complete, coverage, unswept := reconcileExecObservation(observation, execReconcileEnv{excluded: view.excluded})
+	env := execReconcileEnv{excluded: view.excluded}
+	snapshotErr := ""
+	if observation.Tree != "" && view.snapshot && p.replayStore != nil {
+		var claims workspaceSnapshotClaims
+		var err error
+		env.snapshot, claims, err = p.replayStore.snapshots.since(ctx, workspace, observation.Tree, view.claims)
+		if err != nil {
+			snapshotErr = err.Error()
+		}
+		p.execWindows.claim(refs, claims)
+	}
+	reviews, complete, coverage, unswept := reconcileExecObservation(observation, env)
+	if snapshotErr != "" && coverage == execCoverageExact {
+		// Effects outside the named scope went unobserved.
+		coverage = execCoveragePartial
+	}
 	outcome := &execOutcome{
 		Class: observation.Class, Labels: observation.Labels, Coverage: coverage, Unswept: unswept,
 		ScopeReason: observation.Reason,
 		CodeMode:    observation.CodeMode, Overlaps: view.overlaps, Background: background,
 	}
 	outcome.Scope = observation.scopePaths()
+	if snapshotErr != "" {
+		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; workspace snapshot unavailable: "+snapshotErr, "; ")
+	}
 	if observation.RepeatedPaths {
 		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; intermediate writes unobserved (call-window comparison only)", "; ")
 	}
@@ -1540,7 +1549,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		ReplayCarrier:   true,
 		UpstreamItem:    execDerivedUpstreamItem(derivedCallID, arguments),
 	}
-	if len(reviews) != 0 || coverage != execCoverageExact {
+	if len(reviews) != 0 {
 		changeID, err := p.replayStore.reserveChange(ctx, workspace, thread, correlation)
 		if err != nil {
 			return err

@@ -66,12 +66,10 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 func editReceiptText(workspace string, history mekugiHistory) string {
 	exec := history.ExecOutcome
 	var summaries []string
-	var managed []string
 	reasons := make(map[string]int)
-	managedGaps := false
 	budget := maxEditReceiptDiffBytes
 	for _, file := range history.ReviewFiles {
-		if dependencyObservationGap(file) {
+		if !authoredReview(file) {
 			continue
 		}
 		action := file.Action().Title()
@@ -86,11 +84,6 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 		}
 		if file.Incomplete != "" {
 			reasons[file.Incomplete]++
-			managedGaps = managedGaps || file.Origin != ""
-			continue
-		}
-		if file.Origin != "" {
-			managed = append(managed, commentaryCode(path))
 			continue
 		}
 		summary := action + " " + commentaryCode(path)
@@ -118,35 +111,19 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 		}
 		summaries = append(summaries, summary)
 	}
-	if len(managed) != 0 {
-		names := managed[:min(3, len(managed))]
-		label := strings.Join(names, ", ")
-		if len(managed) > len(names) {
-			label += ", …"
-		}
-		summary := fmt.Sprintf("+ %d tool-managed files (%s)", len(managed), label)
-		if exec != nil && len(exec.Labels) != 0 {
-			summary += " · " + strings.Join(exec.Labels, ", ")
-		}
-		summaries = append(summaries, summary)
-	}
 	if len(reasons) != 0 {
 		// Capture omissions are evidence gaps, not confirmed edits. Keep the
 		// full path/reason records in mchanges without flooding Activity.
 		summary := "Capture · " + captureGapSummary(reasons)
 		if history.ChangeID != "" {
-			view := "--summary"
-			if managedGaps {
-				view = "--history"
-			}
-			summary += " · " + commentaryCode("mchanges "+history.ChangeID+" "+view)
+			summary += " · " + commentaryCode("mchanges "+history.ChangeID+" --summary")
 		}
 		summaries = append(summaries, summary)
 	}
 	return strings.Join(summaries, "\n\n")
 }
 
-// Keep Activity and compact managed summaries useful without flooding them with
+// Keep Activity summaries useful without flooding them with
 // per-path errors. Full reasons remain on the retained per-path review records.
 func captureGapSummary(reasons map[string]int) string {
 	keys := make([]string, 0, len(reasons))
@@ -251,6 +228,10 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 			if err != nil {
 				return "", err
 			}
+		}
+		record = authoredChangeHistory(record)
+		if len(record.ReviewFiles) == 0 {
+			continue
 		}
 		id := record.ChangeID
 		if !found || id == "" || seen[id] {
