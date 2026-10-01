@@ -21,6 +21,7 @@ const restoredRolloutLimit = 64 << 20
 // projects them the same way instead of replaying any effect.
 type restoredRollout struct {
 	itemAt map[string]time.Time // host item completion times, by item ID
+	turnAt map[string]journalReplayTurn
 	events []restoredRolloutEvent
 }
 
@@ -37,7 +38,7 @@ type restoredRolloutEvent struct {
 // readRestoredRollout projects one thread's retained rollout. agent is the
 // thread's canonical path, which addressed messages must name exactly.
 func readRestoredRollout(info appServerThreadInfo, agent string) restoredRollout {
-	r := restoredRollout{itemAt: make(map[string]time.Time)}
+	r := restoredRollout{itemAt: make(map[string]time.Time), turnAt: make(map[string]journalReplayTurn)}
 	f, stat, ok := openThreadRollout(info)
 	if !ok {
 		return r
@@ -102,6 +103,13 @@ func readRestoredRollout(info appServerThreadInfo, agent string) restoredRollout
 		switch record.Type + "/" + p.Type {
 		case "event_msg/task_started", "event_msg/turn_started":
 			turn, anchor = p.TurnID, ""
+			window := r.turnAt[p.TurnID]
+			window.id, window.start = p.TurnID, record.Timestamp
+			r.turnAt[p.TurnID] = window
+		case "event_msg/task_complete", "event_msg/turn_complete", "event_msg/turn_aborted":
+			window := r.turnAt[p.TurnID]
+			window.end = record.Timestamp
+			r.turnAt[p.TurnID] = window
 		case "event_msg/item_completed":
 			if p.Item.ID == "" {
 				continue

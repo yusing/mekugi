@@ -836,7 +836,7 @@ func (v *liveActivityView) applyTreeJournal(thread string, p nativeJournalPublic
 	if p.card != nil {
 		kind = "journal_card"
 	}
-	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: kind, Text: text, Observed: time.Now(), journalCard: p.card, journalEvent: p.event,
+	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: kind, Text: text, Observed: v.now(), journalCard: p.card, journalEvent: p.event,
 		native: &liveActivityNativeItem{thread: thread, turn: "journal-v2", item: p.item.ID, phase: kind}}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 }

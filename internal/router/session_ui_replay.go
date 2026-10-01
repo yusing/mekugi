@@ -30,6 +30,7 @@ type uiReplayPlayback struct {
 	position, from, until time.Duration
 	speed                 float64
 	paused                bool
+	prefix                bool
 	next                  int
 	frames                []time.Duration
 	writeTime             time.Duration
@@ -47,7 +48,9 @@ func newUIReplayPlayback(ctx context.Context, source *sessionUIReplay, speed flo
 }
 
 func (p *uiReplayPlayback) reset() {
+	var previous *terminalUI
 	if p.ui != nil {
+		previous = p.ui.shell
 		p.close()
 	}
 	p.at, p.next = p.source.Start, 0
@@ -64,6 +67,10 @@ func (p *uiReplayPlayback) reset() {
 	}
 	u.ensureShell()
 	u.shell.journalOpen = false
+	if previous != nil {
+		u.shell.focus, u.shell.side = previous.focus, previous.side
+		u.shell.journalOpen, u.shell.diffOpen, u.shell.activityOpen = previous.journalOpen, previous.diffOpen, previous.activityOpen
+	}
 	p.ui = u
 }
 
@@ -90,6 +97,30 @@ func (p *uiReplayPlayback) advance(position time.Duration) error {
 		p.at = e.At
 		p.next++
 		switch e.Method {
+		case "replay/journal":
+			update := e.Journal
+			sink := p.ui.journal
+			if update.workspace == "" {
+				sink = p.ui.unscopedJournal
+			}
+			if sink == nil {
+				sink = &nativeJournalSink{workspace: update.workspace, thread: p.source.Thread, tree: &threadJournal{Version: 2, TreeAuthored: true, Author: "/root"}}
+				if update.workspace == "" {
+					p.ui.unscopedJournal = sink
+				} else {
+					p.ui.journal = sink
+				}
+			}
+			if event := update.publication.event; event != nil {
+				applyJournalReplayEvent(sink.tree, *event)
+			}
+			if update.tree != nil {
+				copy := update.tree.clone()
+				sink.tree = &copy
+			} else {
+				p.ui.applyJournalPublication(sink, update.publication)
+			}
+			p.ui.session.seq = max(p.ui.session.seq, p.ui.view.lastSeq)
 		case "replay/providerStarted":
 			p.ui.applyActivity(p.ui.session.beginThinking(e.Params.ThreadID, e.At), nil)
 		case "replay/providerCompleted", "replay/transportBoundary":
@@ -183,7 +214,7 @@ func (p *uiReplayPlayback) bar(width int) string {
 		speed += ".0"
 	}
 	label := fmt.Sprintf(" %s Replay · simulated · %sx · %s/%s", state, speed, replayTime(p.position), replayTime(p.until))
-	hint := "  Space pause · +/- speed · [/] seek · r restart · q quit"
+	hint := "  ^B 1-5 · Space pause · +/- speed · [/] seek · r restart · q quit"
 	remaining := width - ansi.StringWidth(label) - ansi.StringWidth(hint) - 3
 	if remaining >= 6 {
 		filled := 0
@@ -206,9 +237,19 @@ func replayTime(d time.Duration) string {
 // key is deliberately not routed to the live composer. Playback controls can
 // never execute recorded commands, answer questions, or launch external tools.
 func (p *uiReplayPlayback) key(key byte) (bool, error) {
-	switch key {
-	case 'q', 3, 27:
+	if key == 'q' || key == 3 || key == 27 {
 		return true, nil
+	}
+	if p.prefix {
+		p.prefix = false
+		if key >= '1' && key <= '5' {
+			p.ui.shell.selectNativePane(int(key - '1'))
+		}
+		return false, nil
+	}
+	switch key {
+	case 2:
+		p.prefix = true
 	case ' ':
 		p.paused = !p.paused
 	case '+', '=':
@@ -323,12 +364,15 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 	if *from >= *until || *until > duration {
 		return fail(errors.New("require 0 <= from < until <= session duration"))
 	}
-	fmt.Fprintf(stderr, "Replay: %s · %d items · %d events · %d provider calls · %s · %.1fx\nStreaming is simulated (seed %d); no recorded input, resize, journal or live-diff stream.\n", source.Thread, source.Items, len(source.Events), source.Providers, duration.Round(time.Millisecond), *speed, *seed)
+	fmt.Fprintf(stderr, "Replay: %s · %d items · %d events · %d provider calls · %s · %.1fx\nStreaming is simulated (seed %d); no recorded input, resize or live-diff stream. Journal presentation uses retained revisions and host turn boundaries.\n", source.Thread, source.Items, len(source.Events), source.Providers, duration.Round(time.Millisecond), *speed, *seed)
 	if len(source.Missing) > 0 || len(source.Unsupported) > 0 {
 		fmt.Fprintf(stderr, "Coverage: %d missing child rollouts; unsupported item kinds: %v\n", len(source.Missing), source.Unsupported)
 	}
 	if source.JournalUnverified > 0 {
 		fmt.Fprintf(stderr, "Coverage: %d journal transport candidates lack verified retained provenance; kept visible.\n", source.JournalUnverified)
+	}
+	for _, failure := range source.JournalUnavailable {
+		fmt.Fprintf(stderr, "Coverage: journal history unavailable (%s); recorded host activity is preserved.\n", failure)
 	}
 	p := newUIReplayPlayback(ctx, source, *speed)
 	defer p.close()

@@ -694,13 +694,18 @@ text is released in seeded, irregular chunks within its recorded interval. The
 default `--seed 1` makes comparisons repeatable. Missing children and unsupported
 item kinds are reported. Retained journal messages remain visible; internal
 journal transport commands are hidden only when local retained provenance
-identifies them. Unverified candidates stay visible and are reported. Original
-keystrokes, window sizes, journal cards, and live diff previews are not
-reconstructed; file-change activity is retained.
+identifies them. Unverified candidates stay visible and are reported. Locally
+retained journal revisions restore the Journal pane and transcript, with completion
+cards reconstructed at recorded successful turn boundaries for acknowledged reports.
+Missing journal records or turn timing cannot restore those cards. Original
+keystrokes, window sizes, and live diff previews are not reconstructed; file-change
+activity is retained.
+Unreadable journal records are reported without blocking recorded host activity.
 
 The playback bar shows position, speed, and simulated-streaming status. **Space**
 pauses, **+/-** steps through speed presets from 0.1x to 100x, **[/]** seeks ten
-seconds, **r** restarts, **j/k** or the mouse wheel scrolls Main, and **q** quits.
+seconds, **r** restarts, **Ctrl-B 1–5** selects Main, Diff, Activity, Agents, or
+Journal, **j/k** or the mouse wheel scrolls Main, and **q** quits.
 Speed presets include 1x in both directions, even after reaching either limit;
 a custom `--speed` moves to the next preset in the selected direction. Playback
 stops on its final frame until you quit.

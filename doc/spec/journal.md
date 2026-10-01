@@ -328,6 +328,13 @@ still fail translation under the atomic field contract.
 Failed, incomplete, or interrupted responses never flush. Completion is response-local:
 replay, resume, and forks do not finish a new turn.
 
+Native resume and offline session replay restore retained journal revisions independently
+of live delivery cursors. Historical completion cards require an acknowledged report
+window and a recorded successful host turn with usable timing; interrupted, failed,
+or unfinished turns never gain a completion card. Cards use the revisions and task
+states at that boundary, not the latest tree. Restoration is presentation-only:
+it does not acknowledge revisions, flush a new turn, or replay effects.
+
 For v2-authored journals without a native frontend, successful Main completion
 emits a separate Markdown work report only for non-answer events after `flushSeq`
 that have not already been acknowledged, or mounted-journal diagnostics. It uses

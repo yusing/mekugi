@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
@@ -200,6 +201,114 @@ func TestSessionUIReplayControlsAccountForElapsedTime(t *testing.T) {
 	}
 }
 
+func TestSessionUIReplayPaneControlsAndBackwardSeek(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		digit                 byte
+		journal, diff, active bool
+	}{
+		{"Main", '1', false, false, true},
+		{"Diff", '2', false, true, true},
+		{"Activity", '3', false, false, true},
+		{"Agents", '4', false, false, true},
+		{"Journal", '5', true, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := replayPlaybackTestNew(t)
+			if err := p.seek(12 * time.Second); err != nil {
+				t.Fatal(err)
+			}
+			var input uiReplayInput
+			t.Cleanup(input.close)
+			for _, key := range []byte{2, tc.digit} {
+				if quit, err := p.control(input.consume(key), 10*time.Millisecond); err != nil || quit {
+					t.Fatalf("pane input %q: quit=%v error=%v", key, quit, err)
+				}
+			}
+			assertPane := func() {
+				t.Helper()
+				shell := p.ui.shell
+				if shell.focus != int(tc.digit-'1') || !shell.side || shell.journalOpen != tc.journal || shell.diffOpen != tc.diff || shell.activityOpen != tc.active {
+					t.Fatalf("pane=%s: focus=%d side=%v journal=%v diff=%v activity=%v", tc.name, shell.focus, shell.side, shell.journalOpen, shell.diffOpen, shell.activityOpen)
+				}
+			}
+			assertPane()
+			if p.position != 12020*time.Millisecond || p.speed != 1 || p.paused || p.prefix {
+				t.Fatalf("switch lost elapsed time or changed controls: position=%v speed=%v paused=%v prefix=%v", p.position, p.speed, p.paused, p.prefix)
+			}
+			p.paused = true
+			previous := p.ui
+			if quit, err := p.key('['); err != nil || quit {
+				t.Fatalf("backward seek: quit=%v error=%v", quit, err)
+			}
+			if p.ui == previous || p.position != 2020*time.Millisecond || !p.paused {
+				t.Fatal("backward seek did not rebuild at the paused earlier position")
+			}
+			assertPane()
+		})
+	}
+}
+
+func TestSessionUIReplayPanePrefixConsumesInvalidControls(t *testing.T) {
+	for _, invalid := range []byte{'0', '6', '+', '=', '-', ' ', '[', ']', 'r', 'j', 'k', 2, terminalui.PaneWheelUp, terminalui.PaneWheelDown} {
+		t.Run(fmt.Sprintf("byte-%d", invalid), func(t *testing.T) {
+			p := replayPlaybackTestNew(t)
+			if err := p.seek(12 * time.Second); err != nil {
+				t.Fatal(err)
+			}
+			p.paused = true
+			position, at, next, offset := p.position, p.at, p.next, p.ui.view.offset
+			for _, key := range []byte{2, invalid} {
+				if quit, err := p.key(key); err != nil || quit {
+					t.Fatalf("key %q: quit=%v error=%v", key, quit, err)
+				}
+			}
+			if p.prefix || p.ui.shell.focus != 0 || p.speed != 1 || !p.paused || p.position != position || !p.at.Equal(at) || p.next != next || p.ui.view.offset != offset {
+				t.Fatal("invalid pane suffix changed playback or kept the prefix armed")
+			}
+			if quit, err := p.key('+'); err != nil || quit || p.speed != 2 {
+				t.Fatalf("ordinary control after invalid suffix: speed=%v quit=%v error=%v", p.speed, quit, err)
+			}
+		})
+	}
+}
+
+func TestSessionUIReplayBarePaneDigitsAreInert(t *testing.T) {
+	p := replayPlaybackTestNew(t)
+	p.paused = true
+	for _, key := range []byte{2, '5'} {
+		if quit, err := p.key(key); err != nil || quit {
+			t.Fatalf("select Journal: quit=%v error=%v", quit, err)
+		}
+	}
+	for digit := byte('1'); digit <= '5'; digit++ {
+		if quit, err := p.control(digit, time.Second); err != nil || quit {
+			t.Fatalf("bare digit %q: quit=%v error=%v", digit, quit, err)
+		}
+		if p.ui.shell.focus != 4 || !p.ui.shell.journalOpen || p.position != 0 || p.speed != 1 || !p.paused || p.prefix {
+			t.Fatalf("bare digit %q changed the selected pane or playback", digit)
+		}
+	}
+}
+
+func TestSessionUIReplayQuitOverridesPanePrefix(t *testing.T) {
+	for _, key := range []byte{'q', 3, 27} {
+		for _, prefix := range []bool{false, true} {
+			t.Run(fmt.Sprintf("byte-%d/prefix-%v", key, prefix), func(t *testing.T) {
+				p := replayPlaybackTestNew(t)
+				if prefix {
+					if quit, err := p.key(2); err != nil || quit {
+						t.Fatalf("prefix: quit=%v error=%v", quit, err)
+					}
+				}
+				if quit, err := p.key(key); err != nil || !quit {
+					t.Fatalf("quit %q with prefix=%v: quit=%v error=%v", key, prefix, quit, err)
+				}
+			})
+		}
+	}
+}
+
 func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 	for _, quitKey := range []struct{ name, key string }{{"q", "q"}, {"ctrl-c", "\x03"}, {"escape", "\x1b"}} {
 		t.Run(quitKey.name, func(t *testing.T) {
@@ -282,7 +391,7 @@ func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 			screen := vt.NewEmulator(120, 28)
 			defer screen.Close()
 			var raw strings.Builder
-			await := func(label string) {
+			awaitFrame := func(label string, matches func() bool) {
 				t.Helper()
 				deadline := time.NewTimer(3 * time.Second)
 				defer deadline.Stop()
@@ -293,7 +402,7 @@ func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 						if _, err := screen.Write(chunk); err != nil {
 							t.Fatal(err)
 						}
-						if strings.Contains(screen.String(), label) {
+						if matches() {
 							return
 						}
 					case code := <-done:
@@ -304,6 +413,10 @@ func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 						t.Fatalf("missing rendered %q:\n%s", label, screen.String())
 					}
 				}
+			}
+			await := func(label string) {
+				t.Helper()
+				awaitFrame(label, func() bool { return strings.Contains(screen.String(), label) })
 			}
 			write := func(input string) {
 				t.Helper()
@@ -336,6 +449,23 @@ func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 			if !strings.Contains(screen.String(), "Replay terminal row 36.") {
 				t.Fatalf("PTY rendered controls but lost transcript:\n%s", screen.String())
 			}
+			write("\x025")
+			await("No journal entries.")
+			journalTitle := screen.CellAt(62, 0)
+			if journalTitle == nil || journalTitle.Content != "5" || journalTitle.Style.Attrs&uv.AttrBold == 0 {
+				t.Fatal("rendered Journal did not receive focus")
+			}
+			// Main keeps the selected auxiliary pane visible. Its focused
+			// title proves the switch back rather than merely seeing its text.
+			write("\x021+")
+			awaitFrame("focused Main at 0.25x", func() bool {
+				mainTitle := screen.CellAt(2, 0)
+				return mainTitle != nil && mainTitle.Content == "1" && mainTitle.Style.Attrs&uv.AttrBold != 0 && strings.Contains(screen.String(), "0.25x")
+			})
+			if !strings.Contains(screen.String(), "No journal entries.") || !strings.Contains(screen.String(), "Replay terminal row 36.") {
+				t.Fatalf("switching back to Main lost the visible Journal or transcript:\n%s", screen.String())
+			}
+			write("\x02") // Cancellation must also override a pending pane prefix.
 			write(quitKey.key)
 			select {
 			case code := <-done:

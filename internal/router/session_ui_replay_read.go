@@ -22,20 +22,22 @@ import (
 // Replay uses retained semantic items, never shell execution or provider calls.
 // Missing token/chunk arrival times are simulated between the recorded bounds.
 type sessionUIReplay struct {
-	Thread, Cwd       string
-	Start, End        time.Time
-	Events            []uiReplayEvent
-	Threads           map[string]string
-	Missing           []string
-	Unsupported       map[string]int
-	Items, Providers  int
-	JournalUnverified int
+	Thread, Cwd        string
+	Start, End         time.Time
+	Events             []uiReplayEvent
+	Threads            map[string]string
+	Missing            []string
+	Unsupported        map[string]int
+	Items, Providers   int
+	JournalUnverified  int
+	JournalUnavailable []string
 }
 
 type uiReplayEvent struct {
-	At     time.Time
-	Method string
-	Params appServerEvent
+	At      time.Time
+	Method  string
+	Params  appServerEvent
+	Journal *journalReplayPublication
 }
 
 type uiReplayRecord struct {
@@ -258,6 +260,57 @@ func readSessionUIReplay(ctx context.Context, path, debugDir string, seed uint64
 	if debugDir != "" {
 		if err := r.readProviders(ctx, filepath.Join(debugDir, "capture.jsonl"), loaded); err != nil {
 			return nil, err
+		}
+	}
+	var journalTurns []journalReplayTurn
+	var journalEnd time.Time
+	for _, event := range r.Events {
+		if event.At.After(journalEnd) {
+			journalEnd = event.At
+		}
+	}
+	for _, event := range r.Events {
+		if event.Params.ThreadID != r.Thread {
+			continue
+		}
+		if event.Method == "turn/started" {
+			journalTurns = append(journalTurns, journalReplayTurn{id: event.Params.Turn.ID, start: event.At, end: journalEnd})
+		} else if event.Method == "turn/completed" {
+			if index := slices.IndexFunc(journalTurns, func(turn journalReplayTurn) bool { return turn.id == event.Params.Turn.ID }); index >= 0 {
+				journalTurns[index].end, journalTurns[index].status = event.At, event.Params.Turn.Status
+			}
+		} else if event.Method == "item/completed" {
+			if index := slices.IndexFunc(journalTurns, func(turn journalReplayTurn) bool { return turn.id == event.Params.TurnID }); index >= 0 {
+				journalTurns[index].items = append(journalTurns[index].items, event.Params.Item)
+			}
+		}
+	}
+	if len(journalTurns) == 0 {
+		start := journalEnd
+		for _, event := range r.Events {
+			if event.At.Before(start) {
+				start = event.At
+			}
+		}
+		journalTurns = append(journalTurns, journalReplayTurn{start: start, end: journalEnd})
+	}
+	for _, workspace := range slices.Compact([]string{r.Cwd, ""}) {
+		j, exists, err := readThreadJournal(store, workspace, r.Thread)
+		if err != nil {
+			namespace := "workspace"
+			if workspace == "" {
+				namespace = "unscoped"
+			}
+			r.JournalUnavailable = append(r.JournalUnavailable, namespace+": "+err.Error())
+			continue
+		}
+		if exists {
+			for _, update := range journalReplayTimeline(j, journalReplayInlineTurns(store, workspace, journalTurns)) {
+				r.Events = append(r.Events, uiReplayEvent{At: update.at, Method: "replay/journal", Journal: &update})
+				if len(r.Events) > 500000 {
+					return nil, errors.New("replay exceeds 500000 events")
+				}
+			}
 		}
 	}
 	slices.SortStableFunc(r.Events, func(a, b uiReplayEvent) int { return a.At.Compare(b.At) })

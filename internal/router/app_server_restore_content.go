@@ -32,12 +32,13 @@ type appServerActivityRestore struct {
 	// Rollout evidence the host's history omits: item completion times by
 	// thread ID, Activity placements by agent path, and Main placements,
 	// which wait for every child so Main can follow them in time order.
-	itemAt   map[string]map[string]time.Time
-	pane     map[string][]*restoredPlacement
-	main     []*restoredPlacement
-	notices  []restoredHistoryNotice
-	rendered bool
-	paging   bool // Bind cumulative answers only after a page has its chronological position.
+	itemAt       map[string]map[string]time.Time
+	journalTurns map[string]journalReplayTurn
+	pane         map[string][]*restoredPlacement
+	main         []*restoredPlacement
+	notices      []restoredHistoryNotice
+	rendered     bool
+	paging       bool // Bind cumulative answers only after a page has its chronological position.
 }
 
 func (u *appServerUI) restorePaneContent(root appServerThreadInfo) error {
@@ -203,6 +204,9 @@ func (u *appServerUI) readRestoredRollouts() {
 		agent := u.session.path(info.ID)
 		rollout := readRestoredRollout(info, agent)
 		r.itemAt[info.ID] = rollout.itemAt
+		if info.ID == r.root.ID {
+			r.journalTurns = rollout.turnAt
+		}
 		for _, event := range rollout.events {
 			if event.repeated {
 				activity.markRestored(info.ID, event.entry)

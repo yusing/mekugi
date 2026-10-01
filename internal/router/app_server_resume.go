@@ -212,6 +212,7 @@ type appServerHistoryTurn struct {
 // also places restored evidence the host's history omits among Main's items: at its rollout anchor, or by time for evidence from
 // another thread. itemAt holds the root's retained item completion times.
 func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placements []*restoredPlacement, itemAt map[string]time.Time) {
+	placements = append(placements, u.restoredJournalPlacements(turns, itemAt)...)
 	byTurn := make(map[int][]*restoredPlacement)
 	for _, p := range placements {
 		index := restoredTurnFor(turns, itemAt, p.at)
