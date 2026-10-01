@@ -76,7 +76,10 @@ func TestProviderEvidenceRetainsAttemptHeadersWithoutSecrets(t *testing.T) {
 		header.Set("openai-model", "header-model")
 		header.Set("Authorization", "private credential")
 		header.Set("x-codex-turn-state", "private route")
-		payload := []byte(`{"status":"completed","model":"response-model","output":[],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},"output_tokens":1}}`)
+		payload := []byte(`{"status":"completed","model":"response-model","service_tier":"default","output":[],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},"output_tokens":1}}`)
+		if calls == 2 {
+			payload = bytes.Replace(payload, []byte(`"service_tier":"default"`), []byte(`"service_tier":"flex"`), 1)
+		}
 		if calls == 1 {
 			var compressed bytes.Buffer
 			gz := gzip.NewWriter(&compressed)
@@ -109,11 +112,11 @@ func TestProviderEvidenceRetainsAttemptHeadersWithoutSecrets(t *testing.T) {
 		}
 		io.WriteString(w, `{"status":"completed","output":[]}`)
 	}))
-	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"requested-model","input":[]}`)))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"requested-model","service_tier":"priority","input":[]}`)))
 	snapshot := r.snapshot()
 	for i, a := range snapshot.Exchanges[0].ProviderAttempts {
 		e := a.ProviderResponse
-		if e.RequestID != []string{"req-first", "req-second"}[i] || e.Model != "response-model" || e.HeaderModel != "header-model" || e.CachedTokensState != "present" || e.CachedTokens == nil || *e.CachedTokens != 0 {
+		if e.RequestID != []string{"req-first", "req-second"}[i] || e.Model != "response-model" || e.ServiceTier != []string{"default", "flex"}[i] || e.HeaderModel != "header-model" || e.CachedTokensState != "present" || e.CachedTokens == nil || *e.CachedTokens != 0 {
 			t.Fatalf("attempt evidence %+v", e)
 		}
 		if a.Model != "requested-model" {
@@ -139,7 +142,7 @@ func TestProviderEvidenceRetainsAttemptHeadersWithoutSecrets(t *testing.T) {
 		}
 		records = append(records, record)
 	}
-	if len(records) != 3 || records[0].ProviderResponse.RequestID != "req-first" || records[1].ProviderResponse.RequestID != "req-second" || records[2].ProviderResponse != nil {
+	if len(records) != 3 || records[0].ProviderResponse.RequestID != "req-first" || records[1].ProviderResponse.RequestID != "req-second" || records[0].ProviderResponse.ServiceTier != "default" || records[1].ProviderResponse.ServiceTier != "flex" || records[2].ProviderResponse != nil {
 		t.Fatal("durable attempt metadata incorrect")
 	}
 	for _, value := range []string{"unsafe\ntext", "text with spaces", strings.Repeat("x", 257), "<script>"} {

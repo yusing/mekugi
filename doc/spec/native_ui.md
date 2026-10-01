@@ -546,8 +546,9 @@ partial, legacy and missing attempt coverage, measured cache rate and capture
 health. Transport groups wire and semantic output measurements, including all
 four control-message directions, plus provider/delivered tool aggregates.
 Exchanges shows one retained exchange with its provider attempts, explicit
-telemetry, duration, HTTP status and capture-error codes, cache-prefix diagnostics,
-compaction/journal observations and tool calls. `[` and `]` navigate older/newer
+telemetry including the provider-returned service tier, duration, HTTP status and
+capture-error codes, cache-prefix diagnostics, compaction/journal observations
+and tool calls. `[` and `]` navigate older/newer
 retained exchanges; newest follows new observations, while an older selection stays on its sequence until retention
 reclaims it. Each view distinguishes absent usage from explicit zero evidence
 and identifies local token estimates separately from provider usage.

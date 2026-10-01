@@ -7,6 +7,7 @@
     │  Model output   0 bytes · 0 estimated tokens                                   │
     │  Final text     0 bytes · 0 estimated tokens                                   │
     │  Usage          unavailable                                                    │
+    │  Service tier   unavailable                                                    │
     │  Telemetry      unavailable                                                    │
     │                                                                                │
     │  Provider attempt 2  ────────────────────────────────────────────────────────  │
@@ -20,6 +21,5 @@
     │  Model output   0 bytes · 0 estimated tokens                                   │
     │  Final text     0 bytes · 0 estimated tokens                                   │
     │  Input          120                                                            │
-    │  Cached input   0                                                              │
     │                                                                                │
-    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  28–48 / 65 ─────────────╯
+    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  28–48 / 67 ─────────────╯

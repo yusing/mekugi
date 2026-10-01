@@ -1,60 +1,60 @@
     ╭ Session · Exchanges ──────────────────────────────────────────────── Esc close ╮
     │                                                                                │
     │  Exchange  ──────────────────────────────────────────────────────────────────  │
-    │  Retained          2 / 2 · [ older / ] newer                                   │
-    │  Sequence          9                                                           │
-    │  Thread            side                                                        │
-    │  Model             gpt-6-sol                                                   │
-    │  Status            completed                                                   │
-    │  Duration          2500 ms                                                     │
-    │  HTTP status       200                                                         │
-    │  Complete          true                                                        │
-    │  Client request    0 bytes · 0 estimated tokens                                │
-    │  Client stream     0 bytes · 0 estimated tokens                                │
-    │  Model output      0 bytes · 0 estimated tokens                                │
-    │  Final text        0 bytes · 0 estimated tokens                                │
-    │  Input             120                                                         │
-    │  Cached input      0                                                           │
-    │  Uncached input    120                                                         │
-    │  Output            12                                                          │
-    │  Reasoning         4                                                           │
+    │  Retained        2 / 2 · [ older / ] newer                                     │
+    │  Sequence        9                                                             │
+    │  Thread          side                                                          │
+    │  Model           gpt-6-sol                                                     │
+    │  Status          completed                                                     │
+    │  Duration        2500 ms                                                       │
+    │  HTTP status     200                                                           │
+    │  Complete        true                                                          │
+    │  Client request  0 bytes · 0 estimated tokens                                  │
+    │  Client stream   0 bytes · 0 estimated tokens                                  │
+    │  Model output    0 bytes · 0 estimated tokens                                  │
+    │  Final text      0 bytes · 0 estimated tokens                                  │
+    │  Input           120                                                           │
+    │  Cached input    0                                                             │
+    │  Uncached input  120                                                           │
+    │  Output          12                                                            │
+    │  Reasoning       4                                                             │
     │                                                                                │
     │  Cache diagnostics  ─────────────────────────────────────────────────────────  │
     │  Prefix comparisons unavailable on first or partial observations.              │
     │                                                                                │
     │  Provider attempt 1  ────────────────────────────────────────────────────────  │
-    │  Transport         HTTP                                                        │
-    │  Status            http_error                                                  │
-    │  Duration          200 ms                                                      │
-    │  HTTP status       429                                                         │
-    │  Complete          true                                                        │
-    │  Capture error     missing_projected_request                                   │
-    │  Request           0 bytes · 0 estimated tokens                                │
-    │  Stream            0 bytes · 0 estimated tokens                                │
-    │  Model output      0 bytes · 0 estimated tokens                                │
-    │  Final text        0 bytes · 0 estimated tokens                                │
-    │  Usage             unavailable                                                 │
-    │  Telemetry         unavailable                                                 │
+    │  Transport       HTTP                                                          │
+    │  Status          http_error                                                    │
+    │  Duration        200 ms                                                        │
+    │  HTTP status     429                                                           │
+    │  Complete        true                                                          │
+    │  Capture error   missing_projected_request                                     │
+    │  Request         0 bytes · 0 estimated tokens                                  │
+    │  Stream          0 bytes · 0 estimated tokens                                  │
+    │  Model output    0 bytes · 0 estimated tokens                                  │
+    │  Final text      0 bytes · 0 estimated tokens                                  │
+    │  Usage           unavailable                                                   │
+    │  Service tier    unavailable                                                   │
+    │  Telemetry       unavailable                                                   │
     │                                                                                │
     │  Provider attempt 2  ────────────────────────────────────────────────────────  │
-    │  Transport         WebSocket                                                   │
-    │  Status            completed                                                   │
-    │  Duration          1800 ms                                                     │
-    │  HTTP status       101                                                         │
-    │  Complete          true                                                        │
-    │  Request           0 bytes · 0 estimated tokens                                │
-    │  Stream            0 bytes · 0 estimated tokens                                │
-    │  Model output      0 bytes · 0 estimated tokens                                │
-    │  Final text        0 bytes · 0 estimated tokens                                │
-    │  Input             120                                                         │
-    │  Cached input      0                                                           │
-    │  Uncached input    120                                                         │
-    │  Output            12                                                          │
-    │  Reasoning         0                                                           │
-    │  Usage evidence    complete                                                    │
-    │  Response model    gpt-6-sol                                                   │
-    │  Header model      unavailable                                                 │
-    │  Request ID        req-2                                                       │
-    │  Cached telemetry  present                                                     │
+    │  Transport       WebSocket                                                     │
+    │  Status          completed                                                     │
+    │  Duration        1800 ms                                                       │
+    │  HTTP status     101                                                           │
+    │  Complete        true                                                          │
+    │  Request         0 bytes · 0 estimated tokens                                  │
+    │  Stream          0 bytes · 0 estimated tokens                                  │
+    │  Model output    0 bytes · 0 estimated tokens                                  │
+    │  Final text      0 bytes · 0 estimated tokens                                  │
+    │  Input           120                                                           │
+    │  Cached input    0                                                             │
+    │  Uncached input  120                                                           │
+    │  Output          12                                                            │
+    │  Reasoning       0                                                             │
+    │  Usage evidence  complete                                                      │
+    │  Service tier    priority                                                      │
+    │  Response model  gpt-6-sol                                                     │
+    │  Header model    unavailable                                                   │
     │                                                                                │
-    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  1–56 / 65 ──────────────╯
+    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  1–56 / 67 ──────────────╯

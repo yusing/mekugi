@@ -41,7 +41,7 @@ func sessionMetricsFixture(t *testing.T) capturer.MetricsSnapshot {
         {"attempt":1,"transport":"http","status":"http_error","status_code":429,"duration_ms":200,"response_complete":true,"capture_error":"missing_projected_request"},
         {"attempt":2,"transport":"websocket","status":"completed","response_complete":true,"duration_ms":1800,"status_code":101,
          "usage":{"input_tokens":120,"cached_input_tokens":0,"uncached_input_tokens":120,"output_tokens":12,"complete_attempts":1},
-         "provider_response":{"model":"gpt-6-sol","request_id":"req-2","cached_tokens_state":"present","cached_tokens":0},
+         "provider_response":{"model":"gpt-6-sol","service_tier":"priority","request_id":"req-2","cached_tokens_state":"present","cached_tokens":0},
          "tools":[{"name":"exec_command","call_id":"call-1","input_bytes":12,"input_tokens":3,"item_bytes":30,"item_tokens":7}]}],
       "delivered_tools":[{"name":"exec_command","call_id":"call-1","input_bytes":18,"input_tokens":4,"item_bytes":40,"item_tokens":9}]}]}`), &snapshot, json.RejectUnknownMembers(true))
 	if err != nil {
@@ -189,6 +189,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 		{name: "transport", tab: 1, width: 90, height: 55},
 		{name: "exchanges", tab: 2, width: 90, height: 60},
 		{name: "exchanges-scrolled", tab: 2, width: 90, height: 25, top: 27},
+		{name: "provider-tier", tab: 2, width: 90, height: 25, top: 48},
 		{name: "narrow", tab: 1, width: 30, height: 18},
 		{name: "empty", tab: 2, width: 80, height: 14, empty: true},
 		{name: "missing", width: 80, height: 14, missing: true},

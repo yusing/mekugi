@@ -160,6 +160,7 @@ func observeResponseJSON(payload []byte, record *captureRecord, codec tokenizer.
 				record.ResponseStatus = event.Type.Status()
 				record.observeProviderEvidence(event.Response)
 			} else if record.ProviderResponse != nil {
+				record.ProviderResponse.ServiceTier = ""
 				record.ProviderResponse.CachedTokensState = "unavailable"
 				record.ProviderResponse.CachedTokens = nil
 			}

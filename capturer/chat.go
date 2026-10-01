@@ -26,14 +26,16 @@ type chatCaptureCall struct {
 func observeChatResponse(payload []byte, contentType string, record *captureRecord, codec tokenizer.Codec) []byte {
 	var content strings.Builder
 	calls := map[int]*chatCaptureCall{}
-	finished, done := false, false
+	finished, done, malformed := false, false, false
+	serviceTier := ""
 	consume := func(data []byte) {
 		if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
 			done = true
 			return
 		}
 		var chunk struct {
-			Choices []struct {
+			ServiceTier json.RawMessage `json:"service_tier"`
+			Choices     []struct {
 				Delta struct {
 					Content   string `json:"content"`
 					ToolCalls []struct {
@@ -49,8 +51,12 @@ func observeChatResponse(payload []byte, contentType string, record *captureReco
 			} `json:"choices"`
 		}
 		if json.Unmarshal(data, &chunk) != nil {
+			malformed = true
 			record.CaptureError = "invalid chat completion JSON"
 			return
+		}
+		if len(chunk.ServiceTier) != 0 {
+			serviceTier = providerServiceTier(chunk.ServiceTier)
 		}
 		for _, choice := range chunk.Choices {
 			content.WriteString(choice.Delta.Content)
@@ -88,6 +94,9 @@ func observeChatResponse(payload []byte, contentType string, record *captureReco
 	if !finished || !done {
 		record.ResponseStatus = ""
 		return nil
+	}
+	if record.Boundary == "provider" && record.ProviderResponse != nil && !malformed {
+		record.ProviderResponse.ServiceTier = serviceTier
 	}
 	ordered := []chatCaptureCall{}
 	for _, index := range slices.Sorted(maps.Keys(calls)) {

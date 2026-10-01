@@ -232,7 +232,8 @@ reinterpreted as observed absence. Each retry retains its own observed header fi
 
 Each provider attempt MUST retain `provider_response` separately from requested-model identity
 and normalized usage. It contains only the provider's `x-request-id`, `openai-model` header,
-latest explicitly supplied response-envelope `model`, and terminal cached-token evidence.
+latest explicitly supplied response-envelope `model`, returned `service_tier`, and
+terminal cached-token evidence.
 The same allowlisted header identifiers are observed in `codex.response.metadata`
 events. Current per-response metadata replaces corresponding handshake evidence,
 including on reused connections. Metadata observation remains terminal-neutral
@@ -243,6 +244,15 @@ request model. Header and body model values remain separate provider claims, not
 the backend identity. Arbitrary headers, credentials, routing tokens, and response content
 MUST NOT be retained. Provider request IDs MAY appear in local session details for support
 correlation, but MUST NOT appear in public summaries.
+
+`service_tier` is the provider-returned active tier, never the requested tier or a
+local Fast setting. Responses observations take it only from a valid terminal
+envelope, including JSON, SSE and WebSocket responses. Chat observations take the
+last explicitly returned value only after a complete response; a truncated or
+malformed stream supplies no tier evidence. Values use the bounded identifier
+rules above. Missing, null, invalid or older evidence is omitted in sanitized
+records and displayed as unavailable in the session attempt detail, not default.
+Each retry keeps its own returned tier; no tier is inferred for other attempts.
 
 `cached_tokens_state` MUST distinguish `present`, `missing`, `null`, `invalid`, and
 `unavailable`. Missing or null at any level of `usage.input_tokens_details.cached_tokens`

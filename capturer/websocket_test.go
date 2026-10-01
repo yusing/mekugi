@@ -15,7 +15,7 @@ func TestWebSocketCaptureUsesActualMessageBytes(t *testing.T) {
 	recorder := diagnosticRecorder(t)
 	request := []byte(`{"type":"response.create","model":"model","input":[]}`)
 	first := []byte("{\n\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg\",\"content\":[{\"type\":\"output_text\",\"text\":\"private response text\"}]}}")
-	terminal := []byte(`{"type":"response.completed","response":{"model":"actual-model","output":[],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":2},"output_tokens":3}}}`)
+	terminal := []byte(`{"type":"response.completed","response":{"model":"actual-model","service_tier":"flex","output":[],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":2},"output_tokens":3}}}`)
 	handler := recorder.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ObserveProjectedRequest(r.Context(), []byte(`{"model":"model","input":[]}`))
 		headers := http.Header{}
@@ -44,7 +44,7 @@ func TestWebSocketCaptureUsesActualMessageBytes(t *testing.T) {
 	if attempt.Response.Tokens != firstMetric.Tokens+terminalMetric.Tokens || attempt.FinalOutput.Bytes == 0 {
 		t.Fatal("JSON event token/output accounting differs")
 	}
-	if attempt.Usage == nil || attempt.Usage.CachedInputTokens != 2 || attempt.ProviderResponse.RequestID != "request-first" || attempt.ProviderResponse.CachedTokens == nil || *attempt.ProviderResponse.CachedTokens != 2 {
+	if attempt.Usage == nil || attempt.Usage.CachedInputTokens != 2 || attempt.ProviderResponse.RequestID != "request-first" || attempt.ProviderResponse.ServiceTier != "flex" || attempt.ProviderResponse.CachedTokens == nil || *attempt.ProviderResponse.CachedTokens != 2 {
 		t.Fatalf("usage/evidence lost: %+v", attempt)
 	}
 	if snapshot.Capture.CaptureErrors != 0 || snapshot.Capture.Incomplete != 0 {

@@ -309,6 +309,7 @@ func (u *appServerUI) renderSessionMetrics() {
 				}
 			}
 			if evidence := a.ProviderResponse; evidence != nil {
+				add(group, "Service tier", cmp.Or(evidence.ServiceTier, "unavailable"))
 				add(group, "Response model", cmp.Or(evidence.Model, "unavailable"))
 				add(group, "Header model", cmp.Or(evidence.HeaderModel, "unavailable"))
 				add(group, "Request ID", cmp.Or(evidence.RequestID, "unavailable"))
@@ -317,6 +318,7 @@ func (u *appServerUI) renderSessionMetrics() {
 					optional(group, "Explicit cached", evidence.CachedTokens)
 				}
 			} else {
+				add(group, "Service tier", "unavailable")
 				add(group, "Telemetry", "unavailable")
 			}
 			for _, tool := range a.Tools {

@@ -2,7 +2,8 @@ package capturer
 
 import (
 	"bytes"
-	"encoding/json"
+	jsonv1 "encoding/json"
+	json "encoding/json/v2"
 	"net/http"
 )
 
@@ -13,6 +14,7 @@ type providerResponseEvidence struct {
 	RequestID         string  `json:"request_id,omitempty"`
 	HeaderModel       string  `json:"header_model,omitempty"`
 	Model             string  `json:"model,omitempty"`
+	ServiceTier       string  `json:"service_tier,omitempty"`
 	CachedTokensState string  `json:"cached_tokens_state"`
 	CachedTokens      *uint64 `json:"cached_tokens,omitempty"`
 }
@@ -38,18 +40,30 @@ func providerHeaderEvidence(header http.Header) providerResponseEvidence {
 	}
 }
 
+func providerServiceTier(raw []byte) string {
+	var tier string
+	if json.Unmarshal(raw, &tier) != nil {
+		return ""
+	}
+	return safeProviderIdentifier(tier)
+}
+
 func (record *captureRecord) observeProviderEvidence(payload []byte) {
 	if record.Boundary != "provider" || record.ProviderResponse == nil {
 		return
 	}
 	evidence := record.ProviderResponse
 	evidence.CachedTokens = nil
-	raw := json.RawMessage(payload)
+	evidence.ServiceTier = ""
+	raw := jsonv1.RawMessage(payload)
 	for _, key := range []string{"usage", "input_tokens_details", "cached_tokens"} {
-		var object map[string]json.RawMessage
-		if json.Unmarshal(raw, &object) != nil || object == nil {
+		var object map[string]jsonv1.RawMessage
+		if jsonv1.Unmarshal(raw, &object) != nil || object == nil {
 			evidence.CachedTokensState = "invalid"
 			return
+		}
+		if key == "usage" {
+			evidence.ServiceTier = providerServiceTier(object["service_tier"])
 		}
 		var present bool
 		raw, present = object[key]
@@ -63,7 +77,7 @@ func (record *captureRecord) observeProviderEvidence(payload []byte) {
 		}
 	}
 	var count uint64
-	if json.Unmarshal(raw, &count) != nil {
+	if jsonv1.Unmarshal(raw, &count) != nil {
 		evidence.CachedTokensState = "invalid"
 		return
 	}
