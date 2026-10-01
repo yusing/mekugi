@@ -583,35 +583,3 @@ func TestNativeJournalStripPinsCurrentWork(t *testing.T) {
 		t.Fatalf("an active turn lost its last change: %q", strip)
 	}
 }
-
-func TestNativeJournalPinReplacesOlderReplyPin(t *testing.T) {
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"t"}}}`)
-	send := func(id, text string) {
-		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": id, "type": "agentMessage", "text": text}})
-	}
-	send("reply", "Older Main response")
-	for i := range 20 {
-		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": fmt.Sprint(i), "type": "commandExecution", "command": fmt.Sprint("echo activity-", i)}})
-	}
-	later := time.Now().Add(time.Second)
-	journal := threadJournal{Version: 2, TreeAuthored: true, Items: []journalItem{{Path: "/1", Kind: "task", Title: "Renderer", State: "working", Updated: 1, UpdatedAt: later.Format(time.RFC3339Nano)}},
-		Events: []journalEvent{nativeJournalEvent(1, later, "set", "/1", "task", "Renderer", "working", "")}}
-	u.journal = &nativeJournalSink{tree: &journal}
-	frame, _ := u.mainFrame(80, 24, 0)
-	text := ansi.Strip(strings.Join(frame, "\n"))
-	if u.view.feedTop != 1 || strings.Contains(text, "Older Main response") || !strings.Contains(text, "◐ /1 Renderer") {
-		t.Fatalf("newer journal state did not replace the pinned reply:\n%s", text)
-	}
-	time.Sleep(10 * time.Millisecond)
-	journal.Events[0].At = time.Now().Add(-time.Hour).Format(time.RFC3339Nano)
-	journal.Items[0].UpdatedAt = journal.Events[0].At
-	send("newer", "Newer Main response")
-	for i := range 20 {
-		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": fmt.Sprint("more-", i), "type": "commandExecution", "command": fmt.Sprint("echo more-", i)}})
-	}
-	frame, _ = u.mainFrame(80, 24, 0)
-	if u.view.feedTop <= 1 || !strings.Contains(ansi.Strip(frame[1]), "Newer Main response") {
-		t.Fatalf("a newer reply did not win the pin back:\n%s", strings.Join(frame, "\n"))
-	}
-}

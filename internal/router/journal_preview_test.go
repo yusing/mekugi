@@ -158,13 +158,13 @@ func TestJournalPinUsesSelectedTaskTimestamp(t *testing.T) {
 	}}
 	u.journal = &nativeJournalSink{tree: &j}
 	pin, ok := u.journalPin()
-	if !ok || pin.node.Path != "/1" || !pin.at.Equal(at) {
+	if !ok || pin.node.Path != "/1" || pin.node.Updated.At != working.UpdatedAt {
 		t.Fatalf("pin borrowed a newer unrelated event timestamp: %+v, %v", pin, ok)
 	}
 	u.turn = "active"
 	j.Items[0].State, j.Items[1].State = "done", "dropped"
 	pin, ok = u.journalPin()
-	if !ok || pin.node.Path != "/4" || pin.done != 2 || !pin.at.Equal(at.Add(time.Hour)) {
+	if !ok || pin.node.Path != "/4" || pin.done != 2 || pin.node.Updated.At != pending.UpdatedAt {
 		t.Fatalf("active all-finished tree lost latest finished task: %+v, %v", pin, ok)
 	}
 	j.Items = nil

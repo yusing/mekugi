@@ -1,0 +1,16 @@
+● main                                                                 12:00:00
+┃ Main reply stays in the transcript.
+
+├ Ran echo activity-01
+├ Ran echo activity-02
+├ Ran echo activity-03
+├ Ran echo activity-04
+├ Ran echo activity-05
+├ Ran echo activity-06
+├ Ran echo activity-07
+├ Ran echo activity-08
+                            ↓ Back to bottom · esc
+
+╭─ ◐ Working ──────────────────────────────────────────────────────────────────╮
+│ ❯                                                                            │
+╰──────────────────────────────────────────────────────── snapshot-model • 0% ─╯

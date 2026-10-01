@@ -228,10 +228,6 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 				v.offset -= len(shown.lines) - len(run.lines)
 			}
 		}
-		if entry := &v.entries[it.first]; entry.Agent == "Main" && entry.Kind == "text" && entry.journal == nil && strings.TrimSpace(entry.Text) != "" {
-			feed.mainReply = entry
-			feed.mainReplyStart, feed.mainReplyEnd = head, head+len(run.lines)
-		}
 		for seq, row := range run.entryRows {
 			v.questionRows[seq] = head + row
 		}
@@ -542,40 +538,6 @@ func mainHeading(p *activityui.Painter, entry activityPaneEntry, width int) stri
 
 func mainGutter(p *activityui.Painter) string {
 	return p.Theme.Accent() + "┃" + activityui.Reset + " "
-}
-
-// latestMainReply is Main's newest visible reply, the one a pin may copy.
-func (v *liveActivityView) latestMainReply() *activityPaneEntry {
-	for i := len(v.entries) - 1; i >= 0; i-- {
-		if entry := &v.entries[i]; v.visible(*entry) && entry.Agent == "Main" && entry.Kind == "text" && entry.journal == nil && strings.TrimSpace(entry.Text) != "" {
-			return entry
-		}
-	}
-	return nil
-}
-
-// pinnedMainReply is a bounded copy, not a moved transcript item. The original
-// remains scrollable in full, with its question link and chronological context.
-func (v *liveActivityView) pinnedMainReply(width, height, rows int, feed liveActivityFeed) []string {
-	budget := min(8, height/3)
-	offset, _ := v.viewportPosition(feed, rows)
-	if budget < 3 || feed.mainReply == nil || feed.mainReplyStart < offset+rows && feed.mainReplyEnd > offset {
-		return nil
-	}
-	entry := *feed.mainReply
-	v.painter.CopyScope = entry.Seq
-	p := &v.painter
-	body := p.Markdown(entry.Text, max(1, width-2))
-	limit := budget - 2 // Heading and separator leave room for scrolling activity.
-	if len(body) > limit {
-		body = body[:limit]
-		body[limit-1] = ansi.Truncate(body[limit-1], max(0, width-3), "") + "…"
-	}
-	lines := []string{conversationHeading(p.Theme.Accent()+"●"+activityui.Reset, "main", "pinned", entry, width)}
-	for _, line := range body {
-		lines = append(lines, mainGutter(p)+line)
-	}
-	return append(lines, activityui.Dim+strings.Repeat("─", width)+activityui.Reset)
 }
 
 // milestoneItem labels journal milestones as such, under the accent gutter,

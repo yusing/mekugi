@@ -169,13 +169,14 @@ func TestUISnapshotBTWCopyDock(t *testing.T) {
 	uisnapshot.Assert(t, "testdata/snapshots/btw-copy-dock.txt", strings.Join(u.btwRows(60, 12), "\n")+"\n")
 }
 
-func TestTerminalSourcePinnedReply(t *testing.T) {
+func TestTerminalSourceScrolledMainReply(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
-	// Keep a long trailing tool run below the reply so it becomes a pinned copy.
+	// Scroll back to the original reply above a long trailing tool run.
 	u.turn = "running"
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "**pinned reply**", Observed: time.Now()}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Run: go test\n" + strings.Repeat("output\n", 100), Observed: time.Now()}}})
+	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "**original reply**", Observed: time.Now()}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Run: go test\n" + strings.Repeat("output\n", 100), Observed: time.Now()}}})
+	u.view.following, u.view.offset = false, 0
 	screen := vt.NewEmulator(80, 30)
 	defer screen.Close()
 	if err := u.paint(screen, 80, 30); err != nil {
@@ -184,7 +185,7 @@ func TestTerminalSourcePinnedReply(t *testing.T) {
 	x, y := -1, -1
 	for row, spans := range u.shell.paintedCopy {
 		for _, s := range spans {
-			if s.Text == "pinned reply" {
+			if s.Text == "original reply" {
 				x, y = s.Column, row
 				break
 			}
@@ -194,11 +195,11 @@ func TestTerminalSourcePinnedReply(t *testing.T) {
 		}
 	}
 	if y < 0 {
-		t.Fatalf("no pinned source: %s", screen.String())
+		t.Fatalf("no original reply source: %s", screen.String())
 	}
-	selectionTestDrag(t, u.shell, u.shell.layout.codex.x, y-1, x+11, y)
-	if got := u.shell.selection.text(); got != "**pinned reply**" {
-		t.Fatalf("pinned copy=%q", got)
+	selectionTestDrag(t, u.shell, u.shell.layout.codex.x, y-1, x+13, y)
+	if got := u.shell.selection.text(); got != "**original reply**" {
+		t.Fatalf("original reply copy=%q", got)
 	}
 }
 

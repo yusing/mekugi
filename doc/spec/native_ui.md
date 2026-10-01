@@ -841,15 +841,9 @@ omits the link, since that assignment is directly above; an answer to an earlier
 assignment in the same thread keeps it. Main's ordinary replies link to the user input
 in their own turn. Only the first reply to an input quotes it; a later reply to the
 same input quotes it again only when another message sits between them. Main's own
-tools, reasoning and progress do not separate replies. While Main is working, its latest ordinary reply is pinned
-at the top of Main only when the original is entirely outside the unpinned
-transcript viewport. Any visible part of the original suppresses the pin, avoiding
-duplicate messages on screen. The copy
-is bounded to leave activity visible; the full reply and its links remain in the
-transcript. Very short panes omit the copy. A newer reply replaces it, and ending
-the Main turn (completion, interruption, or failure) removes the pin. Main has one
-pin: a journal state change pinned above the composer that is newer than the
-latest reply replaces the reply pin until a newer reply arrives.
+tools, reasoning and progress do not separate replies. Main's replies remain in
+the scrollable transcript without a pinned copy. The journal's current task strip
+above the composer is independent of reply timing.
 Replies following a committed question answer quote `re: your answer` and link
 to its Asked record, not the earlier task prompt. The answer envelope never
 creates a duplicate user-message band, including after resume.

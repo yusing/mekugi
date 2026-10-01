@@ -635,7 +635,6 @@ func (u *terminalUI) openJournalDetail(node journalNode) {
 // newest task change, shown with the task's current state.
 type journalPin struct {
 	node        journalNode
-	at          time.Time
 	done, total int
 }
 
@@ -682,7 +681,6 @@ func (u *appServerUI) journalPin() (journalPin, bool) {
 		return journalPin{}, false
 	}
 	pin.node = current.node()
-	pin.at, _ = time.Parse(time.RFC3339Nano, pin.node.Updated.At)
 	return pin, true
 }
 
@@ -710,17 +708,6 @@ func (u *appServerUI) journalPlanStrip(width int) string {
 		}
 	}
 	return ansi.Truncate(left, width, "…")
-}
-
-// journalNewerThanReply reports a pinned journal state newer than Main's
-// latest reply. It then replaces the pinned reply; a newer reply wins back.
-func (u *appServerUI) journalNewerThanReply() bool {
-	pin, ok := u.journalPin()
-	if !ok || pin.at.IsZero() {
-		return false
-	}
-	reply := u.view.latestMainReply()
-	return reply == nil || pin.at.After(reply.Observed)
 }
 
 var journalGlyphs = map[string]string{"pending": "○", "working": "◐", "done": "●", "blocked": "⚠", "dropped": "⊘"}

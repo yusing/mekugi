@@ -54,8 +54,6 @@ func assertViewportSyntaxEager(t *testing.T, lazy, eager *liveActivityView, widt
 		!reflect.DeepEqual(got.snippets, want.snippets) ||
 		!reflect.DeepEqual(got.questions, want.questions) ||
 		!reflect.DeepEqual(got.sent, want.sent) ||
-		!reflect.DeepEqual(got.mainReply, want.mainReply) ||
-		got.mainReplyStart != want.mainReplyStart || got.mainReplyEnd != want.mainReplyEnd ||
 		!reflect.DeepEqual(lazy.questionRows, eager.questionRows) {
 		t.Fatalf("deferred feed changed geometry or navigation:\ngot: %#v\nwant: %#v", got, want)
 	}

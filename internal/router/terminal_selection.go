@@ -35,7 +35,7 @@ type terminalSelection struct {
 // selectionSpan is the text a row offers for selection within [left, right).
 // Leading frames and gutters, each with the space after it, and trailing
 // frames and padding are decoration. Indentation inside the text is kept, so
-// Main, Activity, the pinned reply and the composer select alike.
+// Main, Activity and the composer select alike.
 func selectionSpan(row string, left, right int) (int, int) {
 	start, end := left, left
 	leading, decorated := true, false
@@ -257,15 +257,6 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 		if btw.contains(x, y) {
 			rect, mention, questions, snippets = btw, "side answer", nil, nil
 		}
-	}
-	if view == u.main.view && mention == "message" && view.conversation && view.pinMainReply && view.feedTop > 1 {
-		// Include the pinned copy in native text selection, without inventing
-		// transcript links for its rows. Feed pointer geometry stays unchanged.
-		pinned := view.feedTop - 1
-		rect.y -= pinned
-		rect.h += pinned
-		questions = append(make([]uint64, pinned), questions...)
-		snippets = append(make([]liveActivitySnippet, pinned), snippets...)
 	}
 	if view == u.main.view && !rect.contains(x, y) {
 		composer := u.main.composerRect
