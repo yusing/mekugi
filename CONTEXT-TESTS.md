@@ -6,6 +6,22 @@ Inside an active Mekugi shell, run tests with invocation-local `env -u BASH_ENV`
 The session's Bash startup hook can otherwise prepend live frontends ahead of a test's
 isolated frontend PATH, sending fixture reads to the wrong retained-output store.
 
+`make test` applies that isolation and clears snapshot-update mode. Select packages
+and tests while iterating, for example:
+
+```sh
+make test TEST_PACKAGES=./internal/router TEST_RUN='^TestShellRunnerMRun'
+make test TEST_PACKAGES='./internal/appserver ./internal/router' TEST_RUN=AppServer
+```
+
+The default is `./...`. Unchanged successful tests can use Go's test cache; use
+`TEST_FLAGS='-count=1'` for a fresh run, `TEST_FLAGS='-count=3 -shuffle=on'` for
+repeat/isolation checks, or `TEST_FLAGS=-race` when checking concurrency. The recipe
+does not regenerate assets or install binaries. Prepare missing assets once with
+`make preview-assets`, and regenerate when their sources change as described below.
+Choose the narrowest affected owner from the table, then broaden only for effects
+that cross its boundary. A focused pass is not evidence for unselected tests.
+
 | Changed owner | Focused check |
 | --- | --- |
 | Root review rendering | `.` |
@@ -35,6 +51,9 @@ Use a fresh temporary Bun transpiler cache when test discovery appears stale.
 
 `make test-ui-snapshots` runs offline rendered-output regression tests without Codex
 or model requests. Select a case with `SNAPSHOT='^TestUISnapshotJournalReply$'`.
+Set `SNAPSHOT_PACKAGES=./internal/router` (or another owning package) to avoid
+compiling and testing unrelated UI packages; the check still includes the snapshot
+harness tests. The same package selection applies to `update-ui-snapshots`.
 The supplied journal preview lives in
 `internal/router/testdata/snapshots/journal-ui-preview.txt`. Router fixtures also cover
 journal panes, cards, details, skills and file pickers, Main's composer, resume
