@@ -118,6 +118,10 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 	if err != nil {
 		release()
 		if !errors.Is(err, errJournalUnchanged) {
+			a.debug.event(map[string]any{
+				"event": "journal_compaction_fallback", "error": err.Error(),
+				"request_id": a.debugID, "session_id": a.sessionID, "thread_id": a.threadID,
+			})
 			p.notice(a.sessionID, a.threadID, "journal_compaction_fallback", "Journal compaction unavailable; using the provider summary.")
 		}
 		return false
