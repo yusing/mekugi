@@ -1,0 +1,16 @@
+Mekugi dev • codex
+
+
+
+
+
+
+• Steering after the next tool call · ctrl+c interrupts and restores input
+  ↳ Diagnose the broken pipe issue.
+    Add replay key tests.
+    Preserve pending attachments.
+    …
+
+╭─ ◐ Sending… 0s ──────────────────────────────────────────────────────────────╮
+│ ❯                                                                            │
+╰───────────────────────────────────────────────────────────────────────── 0% ─╯

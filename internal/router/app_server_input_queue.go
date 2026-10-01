@@ -117,18 +117,12 @@ func (u *appServerUI) restoreDrafts(parts ...composerDraft) {
 	u.loadDraft(joinDrafts(append(slices.Clone(parts), u.draftSnapshot())...))
 }
 
-// editQueued returns the latest queued, else unsent, entry to the composer.
+// editQueued returns all locally waiting input to the composer as one stack.
+// Already-sent steers remain host-owned until committed or interrupted.
 func (u *appServerUI) editQueued() {
-	stack := &u.queued
-	if len(*stack) == 0 {
-		stack = &u.unsent
-	}
-	if len(*stack) == 0 {
-		return
-	}
-	last := (*stack)[len(*stack)-1]
-	*stack = (*stack)[:len(*stack)-1]
-	u.restoreDrafts(last)
+	parts := slices.Concat(u.unsent, u.queued)
+	u.unsent, u.queued = nil, nil
+	u.restoreDrafts(parts...)
 }
 
 // flushInput sends stacked input once nothing blocks it: unsent steers into
@@ -382,7 +376,7 @@ func (u *appServerUI) settleSteers(interrupted bool) {
 }
 
 // pendingInputPreview lists waiting input above the composer, like Codex's
-// pending input preview: at most three rows per entry.
+// pending input preview: at most three rows per stack.
 // Source: codex-rs/tui/src/bottom_pane/pending_input_preview.rs@86be5320.
 func (u *appServerUI) pendingInputPreview(width int) []string {
 	var lines []string
@@ -391,22 +385,24 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 			return
 		}
 		lines = append(lines, ansi.Truncate(activityui.Dim+"• "+activityui.Undim+header, width, "…")+activityui.Reset)
+		var texts []string
 		for _, part := range parts {
 			text := part.text
 			if replies := questionReplies(text); len(replies) > 0 {
 				text = fmt.Sprintf("Answering %d question(s)", len(replies))
 			}
-			rows := strings.Split(livediff.Safe(text, false), "\n")
-			for i, row := range rows[:min(3, len(rows))] {
-				prefix := "    "
-				if i == 0 {
-					prefix = "  ↳ "
-				}
-				lines = append(lines, ansi.Truncate(activityui.Dim+prefix+row, width, "…")+activityui.Reset)
+			texts = append(texts, text)
+		}
+		rows := strings.Split(livediff.Safe(strings.Join(texts, "\n"), false), "\n")
+		for i, row := range rows[:min(3, len(rows))] {
+			prefix := "    "
+			if i == 0 {
+				prefix = "  ↳ "
 			}
-			if len(rows) > 3 {
-				lines = append(lines, activityui.Dim+ansi.Truncate("    …", width, "")+activityui.Reset)
-			}
+			lines = append(lines, ansi.Truncate(activityui.Dim+prefix+row, width, "…")+activityui.Reset)
+		}
+		if len(rows) > 3 {
+			lines = append(lines, activityui.Dim+ansi.Truncate("    …", width, "")+activityui.Reset)
 		}
 	}
 	steers := u.steerParts(u.steers)

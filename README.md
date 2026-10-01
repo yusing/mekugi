@@ -300,8 +300,10 @@ Mekugi differs in these ways:
   Synchronous answers send their images in a companion message after the
   question is resolved; asynchronous answers send them with the reply.
 - **Waiting messages combine.** Steers typed while an earlier one is still
-  sending, and queued messages, are sent together as one message, one entry per
-  line. Alt+Up or Shift+Left brings back the last queued message.
+  sending, and queued messages, each appear as one stack and send as one message,
+  one entry per line. Alt+Up or Shift+Left returns all locally waiting input to
+  the composer. Already-sent steers remain pending until Codex commits them or
+  the turn ends; interrupt to restore input that has not committed.
 - **Session controls.** `/compact` compacts context, waiting for the current turn
   when busy. After successful queued compaction, waiting input runs next; without
   waiting input, Mekugi sends a visible continuation message to resume the task.

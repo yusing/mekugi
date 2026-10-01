@@ -98,10 +98,6 @@ func TestAppServerSteersStackUntilSendable(t *testing.T) {
 	if stacked.Params.ExpectedTurnID != "t" || stacked.Params.ClientUserMessageID == first.Params.ClientUserMessageID {
 		t.Fatalf("stacked steer identity: %+v", stacked.Params)
 	}
-	preview := ansi.Strip(strings.Join(u.pendingInputPreview(80), "\n"))
-	if !strings.Contains(preview, "Steering after the next tool call") || !strings.Contains(preview, "↳ first") || !strings.Contains(preview, "↳ second") {
-		t.Fatalf("pending steers not previewed: %q", preview)
-	}
 	// The committed message leaves the preview for the transcript, matched
 	// by its client ID even before the steer's acknowledgement.
 	appServerTestUserMessage(t, u, "user-1", first.Params.ClientUserMessageID, "first")
@@ -125,15 +121,6 @@ func TestAppServerQueuedInputStacksIntoNextTurn(t *testing.T) {
 	appServerTestKeys(t, u, "one\ttwo\t")
 	if requests := appServerTurnRequests(t, w); len(requests) != 0 || len(u.queued) != 2 || u.draft != "" {
 		t.Fatalf("queued input sent early: %+v", requests)
-	}
-	frame, _ := u.mainFrame(80, 20, 0)
-	if len(frame) != 20 {
-		t.Fatalf("frame height = %d", len(frame))
-	}
-	// A blank row separates the preview from the composer's top border.
-	above := ansi.Strip(strings.Join(frame[len(frame)-7:len(frame)-4], "\n"))
-	if frame[len(frame)-4] != "" || above != "• Queued for the next turn · alt+↑ edits\n  ↳ one\n  ↳ two" || !strings.HasPrefix(frame[len(frame)-3], "\x1b[38;2;52;48;72m╭") {
-		t.Fatalf("queued input not previewed above composer: %q", above)
 	}
 	appServerTestTurnEnd(t, u, "t", "completed")
 	start := appServerOneRequest(t, w, "turn/start", "one\ntwo")
@@ -249,17 +236,21 @@ func TestAppServerPlainInterruptRestoresQueuedInput(t *testing.T) {
 	}
 }
 
-func TestAppServerEditLastQueuedInput(t *testing.T) {
+func TestAppServerEditQueuedStack(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestTurn(t, u, "t")
 	appServerTestKeys(t, u, "one\ttwo\tdraft")
 	appServerTestKeys(t, u, "\x1b[1;3A")
-	if u.draft != "two\ndraft" || len(u.queued) != 1 || u.queued[0].text != "one" {
+	if u.draft != "one\ntwo\ndraft" || len(u.queued) != 0 {
 		t.Fatalf("alt+up edited %q, queued %+v", u.draft, u.queued)
 	}
 	appServerTestKeys(t, u, "\x1b[1;2D")
 	if u.draft != "one\ntwo\ndraft" || len(u.queued) != 0 || w.Len() != 0 {
 		t.Fatalf("shift+left edited %q", u.draft)
+	}
+	appServerTestTurnEnd(t, u, "t", "completed")
+	if len(appServerTurnRequests(t, w)) != 0 {
+		t.Fatal("dequeued input was sent after the turn ended")
 	}
 }
 
@@ -411,5 +402,41 @@ func TestAppServerInterruptLocallyStackedInputDoesNotQuit(t *testing.T) {
 	quit, err := u.key(3)
 	if quit || err != nil || u.draft != "not sent" || len(u.unsent) != 0 || w.Len() != 0 {
 		t.Fatalf("quit=%v err=%v draft=%q requests=%s", quit, err, u.draft, w.String())
+	}
+}
+
+func TestAppServerEditAllWaitingInput(t *testing.T) {
+	for _, key := range []string{"\x1b[1;3A", "\x1b[1;2D"} {
+		t.Run(fmt.Sprintf("%q", key), func(t *testing.T) {
+			u, w := newAppServerTestUI()
+			appServerTestTurn(t, u, "t")
+			appServerTestKeys(t, u, "host owned\r")
+			sent := appServerOneRequest(t, w, "turn/steer", "host owned")
+			appServerTestKeys(t, u, "first\rsecond\rqueued\tdraft\x1b[D"+key)
+			if u.draft != "first\nsecond\nqueued\ndraft" || u.cursorBack != 1 || len(u.unsent)+len(u.queued) != 0 || u.submission.text != "host owned" {
+				t.Fatalf("dequeue: draft=%q cursorBack=%d submission=%q", u.draft, u.cursorBack, u.submission.text)
+			}
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, sent.ID))
+			if len(appServerTurnRequests(t, w)) != 0 {
+				t.Fatal("dequeued steers sent when the earlier submission resolved")
+			}
+			appServerTestKeys(t, u, "\t")
+			appServerTestUserMessage(t, u, "host", sent.Params.ClientUserMessageID, "host owned")
+			appServerTestTurnEnd(t, u, "t", "completed")
+			appServerOneRequest(t, w, "turn/start", "first\nsecond\nqueued\ndraft")
+		})
+	}
+}
+
+func TestAppServerEditQueuedStackPreservesImages(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	appServerTestTurn(t, u, "t")
+	for _, path := range []string{"first.png", "second.png"} {
+		u.insertImage(path)
+		appServerTestKeys(t, u, "\t")
+	}
+	appServerTestKeys(t, u, "\x1b[1;3A")
+	if u.draft != "[Image 1]\n[Image 2]" || len(u.images) != 2 || u.images[0].path != "first.png" || u.images[1].path != "second.png" {
+		t.Fatalf("images not restored together: %q %+v", u.draft, u.images)
 	}
 }

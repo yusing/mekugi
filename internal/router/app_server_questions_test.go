@@ -368,3 +368,52 @@ func TestNativeSingleQuestionOmitsNavigationHints(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeQuestionAnswerWordNavigation(t *testing.T) {
+	for _, mapping := range []struct{ name, left, right string }{
+		{"alt", "\x1b[1;3D", "\x1b[1;3C"},
+		{"ctrl", "\x1b[1;5D", "\x1b[1;5C"},
+		{"option", "\x1bb", "\x1bf"},
+	} {
+		for _, mode := range []string{"async", "sync", "note"} {
+			t.Run(mapping.name+"/"+mode, func(t *testing.T) {
+				u, w := newAppServerTestUI()
+				if mode == "async" {
+					questionTestAsync(t, u, "words", "First?", "Second?")
+				} else {
+					questionTestSync(t, u, "words", false)
+				}
+				questionTestPaint(t, u, 80)
+				shell := &terminalUI{main: u}
+				send := func(keys string) {
+					t.Helper()
+					for _, key := range []byte(keys) {
+						if err := shell.key(key); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				if mode == "note" {
+					send("\t")
+				}
+				send("one two three" + mapping.left + mapping.left + "X" + mapping.right + "Y")
+				if u.draft != "one XtwoY three" || u.questions.index != 0 || w.Len() != 0 {
+					t.Fatalf("draft=%q question=%d requests=%s", u.draft, u.questions.index, w.String())
+				}
+				if mode == "note" && !u.currentQuestion().note {
+					t.Fatal("word movement left the option note")
+				}
+				if mode == "async" {
+					send("\x1b[C")
+					if u.questions.index != 1 || u.draft != "" {
+						t.Fatal("plain right did not navigate to the second question")
+					}
+					send("\x1b[D")
+					if u.questions.index != 0 || u.draft != "one XtwoY three" {
+						t.Fatal("plain left did not restore the first answer")
+					}
+				}
+			})
+		}
+	}
+}

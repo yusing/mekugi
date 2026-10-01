@@ -738,10 +738,14 @@ or an interrupt is pending; and every queued entry. Each stack is sent as one
 message whose entries are separated by newlines, keeping each entry's
 attachments and tokens. Unsent steers go before queued input, and queued input
 starts only after the running turn ends. Waiting and uncommitted steers, then
-queued entries, are listed above the composer (at most three rows per entry and
+queued input, appear as one preview per stack above the composer (one arrow,
+at most three text rows per stack and
 half of Main) until Codex's completed user message commits them by
-`clientUserMessageId`, or by text when the server does not echo one. Alt+Up or Shift+Left moves the last queued
-entry, or else the last stacked steer, back into the composer ahead of the draft.
+`clientUserMessageId`, or by text when the server does not echo one. Alt+Up or
+Shift+Left removes all locally unsent steers and queued input together, returning
+them ahead of the current draft in send order and preserving its caret. Already-sent
+steers stay host-owned until committed or interrupted, rather than being duplicated
+in the editor.
 Consecutive user items in one turn appear as one prompt in the transcript,
 with each item's own navigation target retained.
 Stacked image files stay owned until sent.
@@ -1053,7 +1057,9 @@ For a single question, omit the Enter-next and left/right question-navigation hi
 Up/Down and Ctrl-P/Ctrl-N wrap option selection. Digits choose options; other
 printable input selects Other and edits the answer. Tab on a sync option edits a
 note; async answers have no separate note. Enter records an answer and advances;
-on the last question it submits the call. Left/Right navigate questions freely.
+on the last question it submits the call. Plain Left/Right navigate questions freely.
+Ctrl+Left/Right, Alt/Option+Left/Right, and Option's Meta-b/f encodings use the
+normal composer's word boundaries to move within the answer without changing questions.
 Ctrl-] skips. A submission with gaps requires the inline confirmation
 `Submit with N unanswered? · enter submit · esc back`. Escape closes a note,
 then hides the dock while retaining drafts; with it hidden, Escape retains its

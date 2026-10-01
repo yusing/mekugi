@@ -159,3 +159,27 @@ func TestUISnapshotNativeFilePicker(t *testing.T) {
 		})
 	}
 }
+
+func TestUISnapshotNativeWaitingInputStacks(t *testing.T) {
+	for _, mode := range []string{"queued", "steering"} {
+		for _, width := range []int{36, 80} {
+			t.Run(fmt.Sprintf("%s/%d", mode, width), func(t *testing.T) {
+				u, w := newAppServerTestUI()
+				u.view.painter.Theme = livediff.DarkTheme
+				u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
+				appServerTestTurn(t, u, "t")
+				u.turnStarted = u.now()
+				if mode == "queued" {
+					appServerTestKeys(t, u, "Diagnose the broken pipe issue.\tAdd replay key tests.\tPreserve pending attachments.\tCover dequeue and retry.\t")
+				} else {
+					appServerTestKeys(t, u, "Diagnose the broken pipe issue.\r")
+					first := appServerOneRequest(t, w, "turn/steer", "Diagnose the broken pipe issue.")
+					appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"t"}}`, first.ID))
+					appServerTestKeys(t, u, "Add replay key tests.\rPreserve pending attachments.\rCover dequeue and retry.\r")
+				}
+				rows, _ := u.mainFrame(width, 16, 0)
+				assertNativeUISnapshot(t, fmt.Sprintf("native-waiting-%s-%d", mode, width), rows)
+			})
+		}
+	}
+}

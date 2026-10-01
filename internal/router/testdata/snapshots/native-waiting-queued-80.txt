@@ -1,0 +1,16 @@
+Mekugi dev • codex
+
+
+
+
+
+
+• Queued for the next turn · alt+↑ edits
+  ↳ Diagnose the broken pipe issue.
+    Add replay key tests.
+    Preserve pending attachments.
+    …
+
+╭─ ◐ Working 0s ───────────────────────────────────────────────────────────────╮
+│ ❯                                                                            │
+╰───────────────────────────────────────────────────────────────────────── 0% ─╯
