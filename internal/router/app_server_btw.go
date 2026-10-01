@@ -33,6 +33,33 @@ type btwRequest struct {
 	method string
 }
 
+const btwCompactionRequired = "Side question requires compaction. Compact Main, then close this panel and retry /btw."
+
+func (p *mekugiProxy) setBTWThread(thread string, active bool) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !active {
+		delete(p.btwThreads, thread)
+		return
+	}
+	if p.btwThreads == nil {
+		p.btwThreads = make(map[string]bool)
+	}
+	p.btwThreads[thread] = true
+}
+
+func (p *mekugiProxy) isBTWThread(thread string) bool {
+	if p == nil {
+		return false
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.btwThreads[thread]
+}
+
 func (u *appServerUI) submitBTW() error {
 	text := strings.TrimSpace(u.draft)
 	question := strings.TrimSpace(strings.TrimPrefix(text, "/btw"))
@@ -46,6 +73,10 @@ func (u *appServerUI) submitBTW() error {
 	}
 	if u.btw != nil && (u.btw.busy || u.btw.starting) {
 		u.setNotice("Side answer still running · wait for it or Esc to close", false)
+		return nil
+	}
+	if u.btw != nil && u.btw.status == btwCompactionRequired {
+		u.setNotice(btwCompactionRequired, true)
 		return nil
 	}
 	if u.btw == nil {
@@ -79,7 +110,7 @@ func (u *appServerUI) btwRequest(b *appServerBTW, method string, params any) err
 
 func (u *appServerUI) flushBTW() error {
 	b := u.btw
-	if b == nil || b.pending.text == "" || b.starting || u.clearing {
+	if b == nil || b.pending.text == "" || b.starting || b.turn != "" || u.clearing {
 		return nil
 	}
 	parts := []composerDraft{b.pending}
@@ -192,6 +223,8 @@ func (u *appServerUI) btwMessage(m appserver.Message) (bool, error) {
 		if r.method == "thread/unsubscribe" {
 			if m.Error != nil {
 				u.setNotice("Could not unload side conversation: "+m.Error.Message, true)
+			} else {
+				u.proxy.setBTWThread(b.thread, false)
 			}
 			return true, nil
 		}
@@ -222,6 +255,9 @@ func (u *appServerUI) btwMessage(m appserver.Message) (bool, error) {
 				return true, nil
 			}
 			b.thread = result.Thread.ID
+			// Register before turn/start, so even pre-sampling compaction is
+			// rejected before the provider or journal summary can run.
+			u.proxy.setBTWThread(b.thread, true)
 			if u.btwThreads == nil {
 				u.btwThreads = make(map[string]*appServerBTW)
 			}
@@ -233,7 +269,6 @@ func (u *appServerUI) btwMessage(m appserver.Message) (bool, error) {
 			if b.busy {
 				b.turn = result.Turn.ID
 			}
-			b.pending = composerDraft{}
 		}
 		if b.closed {
 			return true, u.releaseBTW(b)
@@ -262,6 +297,7 @@ func (u *appServerUI) btwMessage(m appserver.Message) (bool, error) {
 	}
 	u.dirty = true
 	if m.Method == "thread/closed" {
+		u.proxy.setBTWThread(thread, false)
 		delete(u.btwThreads, thread)
 		if !b.closed {
 			b.thread, b.turn, b.busy, b.starting = "", "", false, false
@@ -281,12 +317,21 @@ func (u *appServerUI) btwMessage(m appserver.Message) (bool, error) {
 			return true, nil
 		}
 		b.turn, b.busy = "", false
+		if b.status == btwCompactionRequired || p.Turn.Error != nil && strings.Contains(p.Turn.Error.Message, btwCompactionRequired) {
+			u.failBTW(b, btwCompactionRequired)
+			return true, nil
+		}
+		b.pending = composerDraft{}
 		b.status, b.alert = p.Turn.Status, p.Turn.Status == "failed"
 		if p.Turn.Error != nil {
 			b.status = p.Turn.Error.Message
 		}
 	case "error":
 		if p.Error != nil {
+			if strings.Contains(p.Error.Message, btwCompactionRequired) {
+				u.failBTW(b, btwCompactionRequired)
+				return true, nil
+			}
 			b.status, b.alert = p.Error.Message, true
 		}
 	case "item/agentMessage/delta", "item/completed":
@@ -394,6 +439,9 @@ func (u *appServerUI) btwRows(width, height int) []string {
 		rows = append(rows, ansi.Truncate(color+"│ "+activityui.Reset+row, width, ""))
 	}
 	hint := "╰─ /btw follow-up · Esc close"
+	if b.status == btwCompactionRequired {
+		hint = "╰─ Esc close · /compact Main, then retry /btw"
+	}
 	if len(answer) > b.rows {
 		hint += " · PgUp/PgDn scroll"
 	}

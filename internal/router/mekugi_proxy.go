@@ -129,6 +129,7 @@ type mekugiProxy struct {
 	nativeTrace        *nativeToolTrace
 
 	mu              sync.RWMutex
+	btwThreads      map[string]bool // Live ephemeral UI threads; never inherited or replayed.
 	replayStore     *mekugiReplayStore
 	sessions        map[string]*mekugiHistorySession
 	noticeSink      func(string, string, string, string)

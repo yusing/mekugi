@@ -487,6 +487,12 @@ composer input continues to target Main. `/btw QUESTION` after completion follow
 up in the same side conversation and replaces the dock's displayed exchange.
 While the side answer is running, another `/btw` remains an unsent draft with a
 notice. Bare `/btw` explains the required question rather than submitting input.
+When Codex requires compaction for a side turn, the request is rejected before
+either a provider summary or journal summary runs. Its pending question and
+attachments return ahead of any newer composer draft. Main remains untouched.
+The user can compact Main, close the side panel, and retry on a new snapshot;
+the rejected side conversation cannot accept a follow-up. Admission uses Codex's
+actual compaction decision, not an estimate from the displayed context meter.
 
 Codex owns the ephemeral snapshot through `thread/fork` with `excludeTurns`.
 A main submission awaiting acknowledgement settles before the fork request;

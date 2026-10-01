@@ -187,6 +187,9 @@ func (a *requestAttempt) prepare() error {
 		if err := validateMekugiCompactionRequest(&a.request, a.metadata); err != nil {
 			return err
 		}
+		if a.executor.mekugiCalls.isBTWThread(a.threadID) {
+			return &requestCompatibilityError{code: "btw_compaction_required", message: btwCompactionRequired}
+		}
 	}
 	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.history != nil {
 		if exchange.automatic {

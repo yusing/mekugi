@@ -1,0 +1,3 @@
+╭─ /btw · Side question requires compaction. Compact Main, …
+│ Why did this fail?
+╰─ Esc close · /compact Main, then retry /btw

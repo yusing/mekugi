@@ -345,6 +345,8 @@ reference it, just as in Main. Repeat
 selection or close the panel;
 Main keeps working and your draft stays. Closing discards the side
 conversation, and it can't be resumed.
+If the side question needs compaction, it is rejected and restored to the composer.
+Compact Main, close the side panel, and retry to take a fresh snapshot.
 
 ### Resume
 
