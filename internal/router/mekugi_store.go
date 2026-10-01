@@ -376,7 +376,8 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 	if len(data) > maxReplayRecordBytes {
 		return storageCapacityError("replay record", int64(len(data)), maxReplayRecordBytes, "Split the tool call or reduce its retained output before retrying.")
 	}
-	if err := s.compactSnapshots(&r); err != nil {
+	blobs, err := s.compactSnapshots(&r)
+	if err != nil {
 		return err
 	}
 	data, err = marshalProtocolJSON(r)
@@ -388,7 +389,7 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 	if r.Commentary {
 		prefix = "commentary-"
 	}
-	return s.writeManagedFile(name, prefix+"pending-", data)
+	return s.writeManagedFiles(managedFile{name: name, pattern: prefix + "pending-", data: data}, r.Snapshots.names(), blobs)
 }
 
 // writeFile publishes an already-validated record. Callers retain their lock,

@@ -38,8 +38,9 @@ Manifests use explicit text-slot references; envelopes enumerate their complete
 object dependencies for retention without decompressing content during cleanup.
 Call identity, host outcomes and ordering remain in their own envelopes. Readers
 validate hashes and bounded expansion before restoring evidence; version-1
-inline records remain readable without bulk migration. Snapshot objects are
-synced before publishing dependent envelopes. Ownership adoption includes their
+inline records remain readable without bulk migration. An envelope and its
+missing objects are retained in one catalog update and admitted as one write;
+the objects and one directory sync precede the envelope. Ownership adoption includes their
 dependencies, and cleanup protects shared and in-flight objects and removes
 envelopes before their last-owned snapshots.
 Cleanup operates only on exact managed record names under the store lock; it

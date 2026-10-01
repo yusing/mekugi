@@ -164,6 +164,41 @@ func TestReplaySnapshotsStorageFailureDoesNotPublishCall(t *testing.T) {
 	}
 }
 
+// A record's blobs share one admission: pressure rejects the whole record
+// before any blob is written, instead of leaving earlier blobs behind.
+func TestReplaySnapshotsAdmitRecordBlobsTogether(t *testing.T) {
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	random := rand.New(rand.NewPCG(1, 2))
+	var files []execFileSnapshot
+	for i := range 4 {
+		content := make([]byte, 4096)
+		for j := range content {
+			content[j] = byte('a' + random.IntN(26))
+		}
+		files = append(files, execFileSnapshot{Path: fmt.Sprintf("/w/%d", i), Kind: execFileText, Content: string(content), Size: int64(len(content))})
+	}
+	store.maxBytes = 10 << 10
+	err = store.put(t.Context(), "/w", map[string]mekugiHistory{"call": {ToolName: "exec", ExecObservation: &execObservation{Files: files}}})
+	if err == nil {
+		t.Fatal("accepted a record whose blobs exceed the quota")
+	}
+	if blobs := snapshotTestBlobs(t, store); len(blobs) != 0 {
+		t.Fatalf("rejected record left blobs behind: %v", blobs)
+	}
+	store.maxBytes = 0
+	snapshotTestPut(t, store, t.Context(), "call", mekugiHistory{ToolName: "exec", ExecObservation: &execObservation{Files: files}})
+	if blobs := snapshotTestBlobs(t, store); len(blobs) != 5 {
+		t.Fatalf("blobs = %v, want four texts and one manifest", blobs)
+	}
+	got, found, err := store.lookup(t.Context(), "/w", "call")
+	if err != nil || !found || !reflect.DeepEqual(got.ExecObservation.Files, files) {
+		t.Fatalf("round trip found=%v err=%v", found, err)
+	}
+}
+
 func TestReplaySnapshotsForkDependenciesSurviveCleanup(t *testing.T) {
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {

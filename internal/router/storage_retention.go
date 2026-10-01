@@ -825,14 +825,51 @@ func (s *mekugiReplayStore) maintainStorage(replacement string, size int64) erro
 	}
 }
 
+type managedFile struct {
+	name    string
+	pattern string
+	data    []byte
+}
+
 func (s *mekugiReplayStore) writeManagedFile(name, pattern string, data []byte) error {
-	if err := s.retainFiles(name); err != nil {
+	return s.writeManagedFiles(managedFile{name: name, pattern: pattern, data: data}, nil, nil)
+}
+
+// Called under store.lock. The record and every dependency it references are
+// retained in one catalog update and admitted together before any write. The
+// missing dependencies and any existing ones whose earlier publication may not
+// have been synced are durable before the record is published.
+func (s *mekugiReplayStore) writeManagedFiles(record managedFile, dependencies []string, missing []managedFile) error {
+	if err := s.retainFiles(append([]string{record.name}, dependencies...)...); err != nil {
 		return storageIOError(err)
 	}
-	if err := s.maintainStorage(name, int64(len(data))); err != nil {
+	size := int64(len(record.data))
+	for _, file := range missing {
+		size += int64(len(file.data))
+	}
+	if err := s.maintainStorage(record.name, size); err != nil {
 		return err
 	}
-	return storageIOError(s.writeFile(name, pattern, data))
+	if len(dependencies) > 0 {
+		if err := s.writeDependencies(missing); err != nil {
+			return storageIOError(err)
+		}
+	}
+	return storageIOError(s.writeFile(record.name, record.pattern, record.data))
+}
+
+func (s *mekugiReplayStore) writeDependencies(files []managedFile) error {
+	if len(files) > 0 {
+		if err := s.advanceStorageRevision(); err != nil {
+			return err
+		}
+	}
+	for _, file := range files {
+		if err := writeAtomicFile(filepath.Join(s.directory, file.name), file.pattern, file.data, true); err != nil {
+			return err
+		}
+	}
+	return syncReplayDirectory(s.directory)
 }
 
 // Readers acquire this lease before store.lock; cleanup only tries it without

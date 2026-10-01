@@ -62,12 +62,12 @@ func (files *snapshotFiles) textSlots() []*string {
 	return slots
 }
 
-func (s *mekugiReplayStore) putSnapshotFiles(files snapshotFiles, refs *replaySnapshots) (string, error) {
+func (b *snapshotBatch) putFiles(files snapshotFiles, refs *replaySnapshots) (string, error) {
 	for i, slot := range files.textSlots() {
 		if len(*slot) < 1024 {
 			continue
 		}
-		name, err := s.putSnapshot(*slot)
+		name, err := b.put(*slot)
 		if err != nil {
 			return "", err
 		}
@@ -78,7 +78,7 @@ func (s *mekugiReplayStore) putSnapshotFiles(files snapshotFiles, refs *replaySn
 		refs.Contents = append(refs.Contents, name)
 		*slot = ""
 	}
-	return s.putSnapshot(&files)
+	return b.put(&files)
 }
 
 func snapshotName(data []byte) string {
@@ -129,9 +129,18 @@ func (s *mekugiReplayStore) snapshotData(name string) ([]byte, bool, error) {
 	return data, true, nil
 }
 
-// Called under store.lock. Each blob is synced before any envelope references
-// it. Existing blobs are validated, including on retries after a failed sync.
-func (s *mekugiReplayStore) putSnapshot(value any) (string, error) {
+// A record's snapshot blobs are encoded together and published by the record
+// write: one ownership update and admission, then every missing blob, then one
+// directory sync before the envelope that references them.
+type snapshotBatch struct {
+	store   *mekugiReplayStore
+	missing []managedFile
+	seen    map[string]bool
+}
+
+// Called under store.lock. Existing blobs are validated, including on retries
+// after a failed sync; the record write syncs the directory before relying on them.
+func (b *snapshotBatch) put(value any) (string, error) {
 	data, err := json.Marshal(value, json.Deterministic(true), json.FormatNilSliceAsNull(true))
 	if err != nil {
 		return "", err
@@ -140,15 +149,16 @@ func (s *mekugiReplayStore) putSnapshot(value any) (string, error) {
 		return "", errors.New("snapshot exceeds size limit")
 	}
 	name := snapshotName(data)
-	_, exists, err := s.snapshotData(name)
-	if err != nil {
-		return "", err
+	if b.seen[name] {
+		return name, nil
 	}
-	if exists {
-		if err := s.retainFiles(name); err != nil {
-			return "", err
-		}
-		return name, syncReplayDirectory(s.directory)
+	if b.seen == nil {
+		b.seen = make(map[string]bool)
+	}
+	b.seen[name] = true
+	_, exists, err := b.store.snapshotData(name)
+	if err != nil || exists {
+		return name, err
 	}
 	var compressed bytes.Buffer
 	z := gzip.NewWriter(&compressed)
@@ -158,29 +168,30 @@ func (s *mekugiReplayStore) putSnapshot(value any) (string, error) {
 	if err := z.Close(); err != nil {
 		return "", err
 	}
-	if err := s.writeManagedFile(name, "snapshot-pending-", compressed.Bytes()); err != nil {
-		return "", err
-	}
+	b.missing = append(b.missing, managedFile{name: name, pattern: "snapshot-pending-", data: compressed.Bytes()})
 	return name, nil
 }
 
-func (s *mekugiReplayStore) compactSnapshots(r *replayRecord) error {
+// compactSnapshots moves filesystem evidence into snapshot blobs and returns
+// the blobs that still need publication.
+func (s *mekugiReplayStore) compactSnapshots(r *replayRecord) ([]managedFile, error) {
 	refs := new(replaySnapshots)
+	batch := &snapshotBatch{store: s}
 	var err error
 	h := &r.History
 	if h.ExecObservation != nil && len(h.ExecObservation.Files) > 0 {
-		refs.ExecFiles, err = s.putSnapshotFiles(snapshotFiles{Exec: slices.Clone(h.ExecObservation.Files)}, refs)
+		refs.ExecFiles, err = batch.putFiles(snapshotFiles{Exec: slices.Clone(h.ExecObservation.Files)}, refs)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		observation := *h.ExecObservation
 		observation.Files = nil
 		h.ExecObservation = &observation
 	}
 	if h.ResolvedBaseline != nil && len(h.ResolvedBaseline.Files) > 0 {
-		refs.BaselineFiles, err = s.putSnapshotFiles(snapshotFiles{Exec: slices.Clone(h.ResolvedBaseline.Files)}, refs)
+		refs.BaselineFiles, err = batch.putFiles(snapshotFiles{Exec: slices.Clone(h.ResolvedBaseline.Files)}, refs)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		baseline := *h.ResolvedBaseline
 		baseline.Files = nil
@@ -194,16 +205,16 @@ func (s *mekugiReplayStore) compactSnapshots(r *replayRecord) error {
 		if refs.NativeFiles == nil {
 			refs.NativeFiles = make([]string, len(h.NativePatches))
 		}
-		refs.NativeFiles[i], err = s.putSnapshotFiles(snapshotFiles{Native: slices.Clone(h.NativePatches[i].Files)}, refs)
+		refs.NativeFiles[i], err = batch.putFiles(snapshotFiles{Native: slices.Clone(h.NativePatches[i].Files)}, refs)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		h.NativePatches[i].Files = nil
 	}
 	if len(h.ReviewFiles) > 0 {
-		refs.ReviewFiles, err = s.putSnapshotFiles(snapshotFiles{Review: slices.Clone(h.ReviewFiles)}, refs)
+		refs.ReviewFiles, err = batch.putFiles(snapshotFiles{Review: slices.Clone(h.ReviewFiles)}, refs)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		h.ReviewFiles = nil
 	}
@@ -212,7 +223,7 @@ func (s *mekugiReplayStore) compactSnapshots(r *replayRecord) error {
 		refs.Contents = slices.Compact(refs.Contents)
 		r.Version, r.Snapshots = 2, refs
 	}
-	return nil
+	return batch.missing, nil
 }
 
 func (s *mekugiReplayStore) restoreSnapshots(r *replayRecord) error {
