@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 type codeModeCommentaryCall struct {
@@ -64,6 +65,8 @@ func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) 
 	} else {
 		t.featureTrace.record("journal", "code_mode", "lowering", outcome, callID, "")
 	}
+	_, suffix, _ := strings.Cut(token, ".")
+	helperName := "__mekugiJournal_" + strings.ReplaceAll(suffix, "-", "_")
 	replacements := make([]string, len(calls))
 	for index := len(calls) - 1; index >= 0; index-- {
 		call := calls[index]
@@ -83,16 +86,32 @@ func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) 
 			replacements[index] = `(await (async mutation => { throw new Error(` + strconv.Quote(journalPublisherUnavailable) + `); })(` + argument + `))`
 			continue
 		}
-		// A rejected mutation applied nothing. The helper reports it through
-		// text() and returns no paths, so the program's remaining work still runs.
-		command := workerCommand("mjournal", []string{
-			commentaryOnceArgument,
-			t.proxy.commentaryEndpoint,
-			token,
-		})
-		commandExpression := strconv.Quote(command+" '") +
-			" + encodeURIComponent(JSON.stringify(mutation)).replaceAll(\"'\", \"%27\") + \"'\""
-		replacements[index] = `(await (async mutation => {
+		replacements[index] = `(await ` + helperName + `(` + argument + `))`
+	}
+
+	result := input
+	for index, call := range slices.Backward(calls) {
+		if parents[index] != -1 {
+			continue
+		}
+
+		result = result[:call.start] + replacements[index] + result[call.end:]
+	}
+	if token == "" {
+		return result, true, nil
+	}
+	// A rejected mutation applied nothing. The helper reports it through
+	// text() and returns no paths, so the program's remaining work still runs.
+	command := workerCommand("mjournal", []string{
+		commentaryOnceArgument,
+		t.proxy.commentaryEndpoint,
+		token,
+	})
+	commandExpression := strconv.Quote(command+" '") +
+		" + encodeURIComponent(JSON.stringify(mutation)).replaceAll(\"'\", \"%27\") + \"'\""
+	helper := "\nasync function " + helperName + `(mutation) {
+const operation = !Array.isArray(mutation) && (mutation.op === "read" || mutation.op === "list") ? mutation.op : "mutation";
+try {
 const command = ` + commandExpression + `;
 const items = [];
 let continuation = "";
@@ -103,14 +122,14 @@ while (execution.session_id != null) {
   execution = await tools.write_stdin({session_id: execution.session_id, chars: "", yield_time_ms: 10000});
   output += execution.output || "";
 }
-if (execution.exit_code !== 0) throw new Error("journal publication failed" + (output.trim() ? ": " + output.trim().slice(0, 16384) : ""));
+if (execution.exit_code !== 0) throw new Error("transport exited " + execution.exit_code + (output.trim() ? ": " + output.trim().slice(0, 16384) : ""));
 const publication = JSON.parse(output);
 if (publication.ok === false && typeof publication.error === "string") {
   if (typeof globalThis.text !== "function") throw new Error(publication.error);
   globalThis.text(publication.error);
   return Array.isArray(mutation) || mutation.op === "plan" ? [] : null;
 }
-if (publication.ok !== true || !Array.isArray(publication.items)) throw new Error("invalid journal publication result");
+if (publication.ok !== true || !Array.isArray(publication.items)) throw new Error("invalid journal result");
 if (!Array.isArray(mutation) && (mutation.op === "list" || mutation.op === "read")) {
   items.push(...publication.items);
   if (publication.next == null) {
@@ -123,28 +142,22 @@ if (!Array.isArray(mutation) && (mutation.op === "list" || mutation.op === "read
     }
     return roots;
   }
-  if (!Number.isInteger(publication.next) || publication.next !== items.length || !/^[a-f0-9]{64}$/.test(publication.revision)) throw new Error("invalid journal list continuation");
+  if (!Number.isInteger(publication.next) || publication.next !== items.length || !/^[a-f0-9]{64}$/.test(publication.revision)) throw new Error("invalid journal read continuation");
   continuation = " " + publication.next + " " + publication.revision;
   continue;
 }
 if (publication.items.some(id => typeof id !== "string")) {
-  throw new Error("invalid journal publication result");
+  throw new Error("invalid journal result");
 }
 if ((Array.isArray(mutation) ? mutation.some(op => op.op === "plan") : mutation.op === "plan") && typeof globalThis.text === "function") {
   globalThis.text("journal paths: " + JSON.stringify(publication.items));
 }
 return Array.isArray(mutation) || mutation.op === "plan" ? publication.items : publication.items[0];
 }
-})(` + argument + `))`
-	}
-
-	result := input
-	for index, call := range slices.Backward(calls) {
-		if parents[index] != -1 {
-			continue
-		}
-
-		result = result[:call.start] + replacements[index] + result[call.end:]
-	}
-	return result, true, nil
+} catch (error) {
+  throw new Error("journal " + operation + " failed: " + (error instanceof Error ? error.message : String(error)));
+}
+}
+`
+	return result + helper, true, nil
 }

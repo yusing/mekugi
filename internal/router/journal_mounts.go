@@ -37,8 +37,11 @@ func journalReadTarget(journals map[string]threadJournal, recordErrors map[strin
 	if agent != "" && !strings.HasPrefix(agent, "/") {
 		agent = "/root/" + agent
 	}
+	if err := recordErrors[caller]; err != nil {
+		return "", fmt.Errorf("journal agent %q cannot be resolved: caller record unavailable: %w", agent, err)
+	}
 	if len(journalAncestry(journals, caller)) == 0 {
-		return "", errors.New("journal ancestry is unavailable")
+		return "", fmt.Errorf("journal agent %q cannot be resolved: caller ancestry is unavailable; omit agent to read your own journal with view own or tasks", agent)
 	}
 	target := ""
 	for thread, j := range journals {
@@ -46,12 +49,12 @@ func journalReadTarget(journals map[string]threadJournal, recordErrors map[strin
 			continue
 		}
 		if target != "" {
-			return "", errors.New("journal agent path is ambiguous")
+			return "", fmt.Errorf("journal agent %q is ambiguous in durable ancestry; use an unambiguous agent path or omit agent with view own or tasks", agent)
 		}
 		target = thread
 	}
 	if target == "" {
-		return "", errors.New("journal agent is not a proven ancestor or descendant")
+		return "", fmt.Errorf("journal agent %q is unavailable: no proven ancestor or descendant matches; verify its canonical /root/... path (or omit /root/), not a leaf name for a nested agent; omit agent with view own or tasks to read your own journal", agent)
 	}
 	for _, thread := range append(journalAncestry(journals, caller), journalAncestry(journals, target)...) {
 		if err := recordErrors[thread]; err != nil {

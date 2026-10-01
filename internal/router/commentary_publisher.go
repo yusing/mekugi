@@ -246,11 +246,11 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 			return
 		}
 		if publication.Complete || publication.ReceiptID != "" || len(raw) != 0 {
-			http.Error(writer, "journal list accepts only agent", http.StatusBadRequest)
+			http.Error(writer, "journal "+publication.Op+" accepts only "+journalReadFields(publication.Op), http.StatusBadRequest)
 			return
 		}
 		if publication.Page == nil && publication.Revision != "" || publication.Page != nil && (*publication.Page < 0 || *publication.Page > maxJournalItems || *publication.Page > 0 && publication.Revision == "") {
-			http.Error(writer, "invalid journal list continuation", http.StatusBadRequest)
+			http.Error(writer, "invalid journal "+publication.Op+" continuation", http.StatusBadRequest)
 			return
 		}
 		if b.journalLister == nil {
@@ -295,7 +295,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 			items, err = b.journalLister(request.Context(), session, thread, publication.Agent)
 		}
 		if err != nil {
-			http.Error(writer, "journal list rejected: "+err.Error(), http.StatusBadRequest)
+			http.Error(writer, "journal "+publication.Op+" rejected: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 		listed := []journalListItem{}
@@ -343,7 +343,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 			}
 			revision := fmt.Sprintf("%x", sha256.Sum256(encoded))
 			if publication.Revision != "" && publication.Revision != revision {
-				http.Error(writer, "journal changed during list; retry the read", http.StatusConflict)
+				http.Error(writer, "journal changed during "+publication.Op+"; retry the read", http.StatusConflict)
 				return
 			}
 			length := len(listed)
@@ -438,6 +438,13 @@ type httpCommentarySink struct {
 	client   *http.Client
 }
 
+func journalReadFields(op string) string {
+	if op == "read" {
+		return "op, p, agent, depth, and view"
+	}
+	return "op and agent"
+}
+
 func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []string) (bool, error) {
 	if len(arguments) != 4 && len(arguments) != 6 || arguments[0] != commentaryOnceArgument {
 		return false, nil
@@ -448,28 +455,31 @@ func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []st
 	}
 	sink := &httpCommentarySink{endpoint: arguments[1], token: arguments[2], client: commentaryHTTPClient}
 	publication := map[string]any{"journal": jsonv1.RawMessage(text), "id": rand.Text()}
-	var operation struct {
-		Op    string `json:"op"`
-		Agent string `json:"agent"`
-		P     string `json:"p"`
-		Depth *int   `json:"depth"`
-		View  string `json:"view"`
+	var selector struct {
+		Op string `json:"op"`
 	}
-	if json.Unmarshal([]byte(text), &operation) == nil && (operation.Op == "list" || operation.Op == "read") {
+	if json.Unmarshal([]byte(text), &selector) == nil && (selector.Op == "list" || selector.Op == "read") {
+		var operation struct {
+			Op    string `json:"op"`
+			Agent string `json:"agent"`
+			P     string `json:"p"`
+			Depth *int   `json:"depth"`
+			View  string `json:"view"`
+		}
 		if err := json.Unmarshal([]byte(text), &operation, json.RejectUnknownMembers(true)); err != nil {
-			return true, fmt.Errorf("journal list accepts only op and agent: %w", err)
+			return true, fmt.Errorf("journal %s accepts only %s: %w", selector.Op, journalReadFields(selector.Op), err)
 		}
 		page, revision := 0, ""
 		if len(arguments) == 6 {
 			page, err = strconv.Atoi(arguments[4])
 			if err != nil || page <= 0 || arguments[5] == "" {
-				return true, fmt.Errorf("invalid journal list continuation")
+				return true, fmt.Errorf("invalid journal %s continuation", operation.Op)
 			}
 			revision = arguments[5]
 		}
 		publication = map[string]any{"op": operation.Op, "agent": operation.Agent, "p": operation.P, "depth": operation.Depth, "view": operation.View, "page": page, "revision": revision}
 	} else if len(arguments) != 4 {
-		return true, fmt.Errorf("journal continuation requires list")
+		return true, fmt.Errorf("journal continuation requires read or list")
 	}
 	result, err := sink.send(ctx, publication)
 	if err != nil {
@@ -510,14 +520,14 @@ func (s *httpCommentarySink) send(ctx context.Context, publication map[string]an
 		return nil, err
 	}
 	if len(result) > maxJournalPublicationResponseBytes {
-		return nil, fmt.Errorf("journal publisher result exceeds the %d-byte response limit; shorten journal items before retrying", maxJournalPublicationResponseBytes)
+		return nil, fmt.Errorf("journal response exceeds the %d-byte response limit; shorten journal items before retrying", maxJournalPublicationResponseBytes)
 	}
 	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusNoContent {
 		detail := strings.TrimSpace(string(result))
 		if len(detail) > maxCommentaryPublicationBytes {
 			detail = detail[:maxCommentaryPublicationBytes] + " (error detail truncated)"
 		}
-		return nil, fmt.Errorf("journal publisher returned HTTP %d: %s", response.StatusCode, detail)
+		return nil, fmt.Errorf("journal request returned HTTP %d: %s", response.StatusCode, detail)
 	}
 	return result, nil
 }

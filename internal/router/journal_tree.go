@@ -486,7 +486,7 @@ func journalTree(items []journalItem, path string, depth *int) ([]journalNode, e
 			return []journalNode{node}, nil
 		}
 	}
-	return nil, fmt.Errorf("journal path not found: %s", path)
+	return nil, fmt.Errorf("journal path not found: %s; omit p to recover paths in the selected agent and view", path)
 }
 
 func validateTreeMutation(m journalMutation) error {
