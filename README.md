@@ -120,7 +120,8 @@ Each invocation:
 - starts a private router on a random loopback port and stops it when Codex
   exits. Independent sessions can run side by side. The native UI sends turn
   interrupts to Codex; noninteractive commands keep their exit status. During startup, Ctrl-C cancels without
-  launching Codex.
+  launching Codex. After native UI exit, the summary shows commands to resume with the original
+  launch options or replay offline, including the debug directory when available.
 - uses the fixed ChatGPT upstream. Standalone serving, fixed ports, custom
   provider endpoints, and `--oss` are not supported.
 - forces `include_collaboration_mode_instructions=false`, and routes the

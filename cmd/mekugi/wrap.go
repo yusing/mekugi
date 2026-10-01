@@ -45,6 +45,7 @@ func runWrap(routerArgs, args []string) int {
 }
 
 func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr error) {
+	suppliedArgs := slices.Clone(args)
 	args = expandReasoningShortcuts(args)
 	headless := len(args) > 0 && args[0] == "headless"
 	if headless {
@@ -55,6 +56,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	}
 	appUI := !headless && interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 	var resumeThread string
+	var resumeArgv []string
 	if appUI || headless {
 		var err error
 		args, resumeThread, err = appServerArgs(args)
@@ -63,6 +65,9 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		}
 		if headless && resumeThread != "" {
 			return 2, errors.New("headless runs a new thread; resume is not supported")
+		}
+		if appUI {
+			resumeArgv = appServerResumeArgv(os.Args[0], routerArgs, suppliedArgs)
 		}
 	}
 	executable, err := exec.LookPath("codex")
@@ -173,9 +178,9 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			}
 		} else if appUI {
 			if session.StartAppUI != nil {
-				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread)
+				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv)
 			} else {
-				waitCodex, err = router.StartAppServerUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread)
+				waitCodex, err = router.StartAppServerUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv)
 			}
 		} else {
 			err = cmd.Start()

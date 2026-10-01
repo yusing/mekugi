@@ -143,6 +143,8 @@ sanitized capture, final metrics, an instruction dump, runtime read journal, and
 Debug implies AX instrumentation: the wrapper supplies the journal path to the executor
 and the authenticated worker manifest retains it across child environment changes.
 Explicit capture and `MEKUGI_AX_OUTPUT` destinations retain precedence.
+The debug bundle's `capture.jsonl` resolves to the selected capture destination
+when overridden, so the same bundle remains usable for offline replay.
 The wrapper prints all six absolute artifact paths to
 stderr only on exit, after the child and router have stopped; it never prints debug paths
 over the active Codex UI. Startup failures after debug initialization also report the paths.

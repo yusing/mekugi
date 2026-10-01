@@ -3,6 +3,7 @@ package router
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -26,12 +27,25 @@ func (u *appServerUI) writeExitSummary(w io.Writer, color bool) error {
 		}
 		text.WriteByte('\n')
 	}
-	if u.thread != "" {
-		command := "mekugi codex --yolo resume " + livediff.Safe(u.thread, false)
+	commandLine := func(argv []string) string {
+		command := livediff.Safe(workerCommand(argv[0], argv[1:]), false)
 		if color {
 			command = "\x1b[36m" + command + "\x1b[39m"
 		}
+		return command
+	}
+	if u.thread != "" {
+		argv := slices.Clone(u.resumeArgv)
+		if len(argv) == 0 {
+			argv = []string{"mekugi", "codex", "--yolo"}
+		}
+		command := commandLine(append(argv, "resume", u.thread))
 		fmt.Fprintf(&text, "To continue this session, run:\n  %s\n", command)
+		replay := []string{argv[0], "replay-session", "--session", u.thread}
+		if u.replayDebugDirectory != "" {
+			replay = append(replay, "--debug-dir", u.replayDebugDirectory)
+		}
+		fmt.Fprintf(&text, "To replay this session offline, run:\n  %s\n", commandLine(replay))
 	}
 	if text.Len() == 0 {
 		return nil

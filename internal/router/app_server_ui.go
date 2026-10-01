@@ -109,6 +109,8 @@ type appServerUI struct {
 	mainContentPainted        bool
 	thread, turn, status      string
 	exitUsage                 appServerTokenUsage
+	resumeArgv                []string
+	replayDebugDirectory      string
 	compacting                *[2]string // Main turn and compaction item.
 	polling                   *[2]string // Main turn and polled process.
 	alert                     bool       // The status reports a failure or blocked request.
@@ -176,12 +178,12 @@ type appServerUI struct {
 // StartAppServerUI starts the native terminal frontend without router observers.
 // Codex app-server owns execution; the launcher
 // still owns routing, environment, invocation-local configuration and cancellation.
-func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string) (func() error, error) {
+func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
-	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint, nil, nil)
+	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint, nil, nil, resumeArgv, "")
 }
 
-func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers map[string]string, capture *capturer.Recorder) (func() error, error) {
+func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers map[string]string, capture *capturer.Recorder, resumeArgv []string, debugDirectory string) (func() error, error) {
 	var resumeCwd string
 	if resumeThread == "--last" || resumeThread == resumePickerStartup {
 		var err error
@@ -204,6 +206,8 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 			u.skillEnvironment = cmd.Environ()
 		}
 	}
+	u.resumeArgv = slices.Clone(resumeArgv)
+	u.replayDebugDirectory = debugDirectory
 	u.sessionCapture = capture
 	u.resumeConfig = appServerResumeConfig(cmd.Args)
 	u.notifications = &nativeNotifications{out: stdout, focused: true}

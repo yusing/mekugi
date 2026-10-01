@@ -41,7 +41,7 @@ func TestAppServerNotificationsNativeCodexE2E(t *testing.T) {
 	if err := pty.Setsize(outer, &pty.Winsize{Cols: 100, Rows: 30}); err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(ctx, cmd, inner, inner, nil, nil, "", true, nil, nil)
+	wait, err := startAppServerUI(ctx, cmd, inner, inner, nil, nil, "", true, nil, nil, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}

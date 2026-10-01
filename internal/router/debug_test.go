@@ -50,6 +50,44 @@ func TestDebugSessionArtifacts(t *testing.T) {
 	}
 }
 
+func TestDebugCustomCaptureBundleSupportsReplay(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	custom := filepath.Join(t.TempDir(), "custom capture.jsonl")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var paths []string
+	if err := RunSession(ctx, []string{"--debug", "--mode", "passthrough", "--capture-output", custom}, nil,
+		func(Session) { cancel() }, func(artifacts []string) { paths = artifacts }); err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 6 || paths[1] != custom {
+		t.Fatalf("selected capture destination changed: %q", paths)
+	}
+	debugDir := filepath.Dir(paths[0])
+	bundle, err := os.Stat(filepath.Join(debugDir, "capture.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := os.Stat(custom)
+	if err != nil || !os.SameFile(bundle, selected) {
+		t.Fatalf("debug capture does not resolve to the selected file: %v", err)
+	}
+	// Representative retained provider evidence in the real producer's chosen
+	// capture destination must reach the existing replay consumer.
+	replayTestWrite(t, filepath.Dir(custom), filepath.Base(custom), map[string]any{
+		"boundary": "provider", "thread_id": "root", "captured_at": time.UnixMilli(replayTestEpoch + 50), "duration_ms": 20,
+	})
+	rollout := replayTestWrite(t, t.TempDir(), "rollout-root.jsonl", replayTestMeta("root"),
+		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
+		replayTestItem("root", "turn", replayTestEpoch+1, replayTestEpoch+2, map[string]any{
+			"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"text": "Replay complete."}},
+		}))
+	replay, err := readSessionUIReplay(t.Context(), rollout, debugDir, 1)
+	if err != nil || replay == nil || replay.Providers != 1 {
+		t.Fatalf("custom capture replay: %v, error=%v", replay, err)
+	}
+}
+
 func TestDebugInstructionSelectionAndWriteFailure(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	flags := newRouterFlags(io.Discard)

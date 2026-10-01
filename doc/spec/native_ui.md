@@ -39,14 +39,19 @@ and frontend environment keep their owners; redirected and noninteractive
 commands keep their original path. The client speaks newline-delimited stdio RPC.
 
 After restoring the terminal on exit, the native client preserves existing draft,
-diagnostic, and wrapper notices and prints a Codex-style token summary and
-`mekugi codex --yolo resume THREAD_ID` hint for the established session, highlighted
-in cyan on color-capable terminals (respecting `NO_COLOR`). The summary uses the
+diagnostic, and wrapper notices and prints a Codex-style token summary and a
+shell-quoted continuation command for the established session. It preserves the
+original executable, router flags, and Codex options before invocation-only
+rewrites, replacing any prior resume selector with `resume THREAD_ID`. Commands
+are highlighted in cyan on color-capable terminals (respecting `NO_COLOR`). An
+established session also offers `mekugi replay-session --session THREAD_ID` for
+offline playback, using the original executable and including `--debug-dir` with
+the router-owned directory when debugging is enabled. The summary uses the
 main thread's latest cumulative app-server usage, including restored usage on
 resume, not child-thread or router cost totals. Displayed input and total exclude
 cached input; cached and reasoning counts appear separately when nonzero.
 Zero or unavailable usage omits the token line; no established thread omits the
-resume hint. Noninteractive commands retain Codex's own exit output.
+resume and replay hints. Noninteractive commands retain Codex's own exit output.
 An unexpected app-server exit retains its diagnostic alongside the child's exit
 status; the normal session summary must not make a disconnect look like a clean quit.
 Temporary event bursts or paused presentation do not drop RPC messages or

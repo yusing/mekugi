@@ -6,6 +6,34 @@ import (
 	"testing"
 )
 
+func TestAppServerResumeArgv(t *testing.T) {
+	for _, args := range [][]string{
+		{"--yolo", "--enable", "instant_interrupt", "--high"},
+		{"--yolo", "resume", "--last", "--enable", "instant_interrupt", "--high"},
+		{"resume", "old-thread", "--yolo", "--enable", "instant_interrupt", "--high"},
+		{"--yolo", "resume", "--enable", "instant_interrupt", "--high"},
+	} {
+		if _, _, err := appServerArgs(expandReasoningShortcuts(args)); err != nil {
+			t.Fatal(err)
+		}
+		routerArgs := []string{"--debug", "--journal-compaction=auto"}
+		got := appServerResumeArgv("/opt/my tools/mekugi", routerArgs, args)
+		want := []string{"/opt/my tools/mekugi", "--debug", "--journal-compaction=auto", "codex", "--yolo", "--enable", "instant_interrupt", "--high"}
+		if !slices.Equal(got, want) {
+			t.Fatalf("resume argv for %q = %q, want %q", args, got, want)
+		}
+		if _, thread, err := appServerArgs(expandReasoningShortcuts(append(got[4:], "resume", "actual-thread"))); err != nil || thread != "actual-thread" {
+			t.Fatalf("continuation is not accepted: %q, %v", thread, err)
+		}
+	}
+	args := []string{"--yolo", "-m", "resume", "--config", "key='--last'", "--enable=instant_interrupt", "resume", "--last"}
+	got := appServerResumeArgv("mekugi", nil, args)
+	want := append([]string{"mekugi", "codex"}, args[:6]...)
+	if !slices.Equal(got, want) {
+		t.Fatalf("option values changed: %q, want %q", got, want)
+	}
+}
+
 func TestAppServerArgs(t *testing.T) {
 	for _, yolo := range []string{"--yolo", "--dangerously-bypass-approvals-and-sandbox"} {
 		got, _, err := appServerArgs([]string{yolo, "-c", "features.test=true", "--config=foo=42", "--model", "model-name"})

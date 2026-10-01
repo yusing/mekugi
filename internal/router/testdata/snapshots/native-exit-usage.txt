@@ -1,0 +1,5 @@
+Token usage: total=16,350 input=15,320 (+ 9,984 cached) output=1,030 (reasoning 852)
+To continue this session, run:
+  mekugi codex --yolo resume main
+To replay this session offline, run:
+  mekugi replay-session --session main

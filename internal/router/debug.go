@@ -60,6 +60,13 @@ func openDebugOutput(flags routerFlags) (*debugOutput, error) {
 	if err := validateAXOutputAliases(readLog, capture, metrics); err != nil {
 		return nil, err
 	}
+	// Replay consumes the standard bundle path even when capture output was
+	// explicitly selected elsewhere. Keep one capture writer and one record.
+	if bundleCapture := filepath.Join(directory, "capture.jsonl"); capture != bundleCapture {
+		if err := os.Symlink(capture, bundleCapture); err != nil {
+			return nil, fmt.Errorf("link debug capture: %w", err)
+		}
+	}
 	d := &debugOutput{
 		paths: []string{filepath.Join(directory, "router.jsonl"), capture, metrics,
 			filepath.Join(directory, "instructions.jsonl"), readLog, filepath.Join(directory, "ax.json")},

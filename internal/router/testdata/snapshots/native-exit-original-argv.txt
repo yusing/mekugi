@@ -1,0 +1,4 @@
+To continue this session, run:
+  '/opt/my tools/mekugi' --debug '--journal-compaction=auto' codex --yolo --enable instant_interrupt --high -c "model='custom'" resume saved
+To replay this session offline, run:
+  '/opt/my tools/mekugi' replay-session --session saved --debug-dir '/tmp/debug directory'

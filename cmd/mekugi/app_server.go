@@ -6,6 +6,26 @@ import (
 	"strings"
 )
 
+// Preserve supplied options after native validation, without the old resume
+// command or selector. The exit renderer appends the actual current thread.
+func appServerResumeArgv(executable string, routerArgs, args []string) []string {
+	argv := append([]string{executable}, routerArgs...)
+	argv = append(argv, "codex")
+	for i := 0; i < len(args); i++ {
+		switch arg := args[i]; arg {
+		case "resume", "--last":
+		case "-c", "--config", "-m", "--model", "--enable", "--disable":
+			argv = append(argv, arg, args[i+1])
+			i++
+		default:
+			if strings.HasPrefix(arg, "-") {
+				argv = append(argv, arg)
+			}
+		}
+	}
+	return argv
+}
+
 // The native client deliberately rejects unmapped TUI flags. Passing them
 // through to a different subcommand would silently change their meaning.
 func appServerArgs(args []string) ([]string, string, error) {
