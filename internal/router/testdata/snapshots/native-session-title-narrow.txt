@@ -1,0 +1,16 @@
+┌ 1 Main ─ Review the native sess… ┐
+│Mekugi dev • codex                │
+│                                  │
+│                                  │
+│                                  │
+│                                  │
+│                                  │
+│                                  │
+│                                  │
+│                                  │
+│                                  │
+│╭─ Ready ────────────────────────╮│
+││ ❯                              ││
+│╰────────── snapshot-model • 0% ─╯│
+└──────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 J

@@ -269,7 +269,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			draw(left, body)
 		} else {
 			l.codex = terminalRect{left.x + 1, left.y + 1, iw, ih}
-			draw(left, nativeBox(left.w, left.h, nativeTitle(1, "Main", u.main.questionBadge(), u.focus == 0), scrollLabel(u.main.view), u.focus == 0, body, rules))
+			draw(left, nativeBox(left.w, left.h, nativeTitle(1, "Main", u.main.questionBadge(), u.focus == 0), u.main.mainHeaderRight(left.w, u.focus == 0), u.focus == 0, body, rules))
 		}
 	}
 	if !framed && right.w > 0 && right.h > 0 && u.journalOpen {

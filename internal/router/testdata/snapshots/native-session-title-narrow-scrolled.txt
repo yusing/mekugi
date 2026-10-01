@@ -1,0 +1,16 @@
+┌ 1 Main ─ ▼ 81 · 2 new · Review … ┐
+│● main                   12:00:00 │
+│┃ Earlier message 01              │
+│                                  │
+│● main                   12:00:00 │
+│┃ Earlier message 02              │
+│                                  │
+│● main                   12:00:00 │
+│┃ Earlier message 03              │
+│     ↓ Back to bottom · esc       │
+│                                  │
+│╭─ Ready ────────────────────────╮│
+││ ❯                              ││
+│╰────────── snapshot-model • 0% ─╯│
+└──────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 J

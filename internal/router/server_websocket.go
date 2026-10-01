@@ -548,7 +548,7 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 	defer cancel()
 	exchange.ctx = executionCtx
 	output := &webSocketOutput{exchange: exchange}
-	executor := requestExecutor{provider: exchange, output: output, issues: s.issues, mekugiCalls: s.proxy, serviceTiers: s.provider.serviceTiers}
+	executor := requestExecutor{provider: exchange, output: output, issues: s.issues, mekugiCalls: s.proxy, serviceTiers: s.provider.serviceTiers, titleGenerator: s.provider.titleGenerator}
 	err = executor.execute(startCtx, executionCtx, parsed, headers, routingSessionID(headers, parsed))
 	if err != nil && executionCtx.Err() == nil && !s.errorDelivered {
 		if payload, writeErr := s.writeError(executionCtx, err); writeErr == nil {

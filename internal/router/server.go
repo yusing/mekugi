@@ -200,6 +200,9 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		}
 	}
 	titles := newSessionTitleCache()
+	titleCtx, cancelTitles := context.WithCancel(ctx)
+	defer cancelTitles()
+	provider.titleGenerator = newSessionTitleGenerator(titleCtx, provider, titles)
 	if issues != nil {
 		issues.persistFailures = true
 	}
@@ -228,6 +231,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		}
 		defer replayStore.snapshots.close()
 		mekugiCalls = newMekugiProxy(registry, titles)
+		provider.titleGenerator.usage = mekugiCalls.usage
 		mekugiCalls.journalCompaction = *flags.journalCompaction
 		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
 		if traceErr == nil {
@@ -338,7 +342,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.paths[0])
 			}
-			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory)
+			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory
@@ -489,8 +493,10 @@ func responsesHandler(
 	mekugiCalls *mekugiProxy,
 ) http.HandlerFunc {
 	var serviceTiers map[string]string
+	var titleGenerator *sessionTitleGenerator
 	if client, ok := provider.(*providerClient); ok {
 		serviceTiers = client.serviceTiers
+		titleGenerator = client.titleGenerator
 	}
 	return func(writer http.ResponseWriter, request *http.Request) {
 		trackedWriter := &trackedResponseWriter{ResponseWriter: writer}
@@ -511,7 +517,7 @@ func responsesHandler(
 		startCtx, executionCtx, cancelRequest := requestContexts(request.Context(), lifecycle, responseStartTimeout)
 		defer cancelRequest()
 		sessionID := routingSessionID(request.Header, parsedRequest)
-		executor := requestExecutor{provider: provider, output: trackedWriter, issues: issues, mekugiCalls: mekugiCalls, serviceTiers: serviceTiers}
+		executor := requestExecutor{provider: provider, output: trackedWriter, issues: issues, mekugiCalls: mekugiCalls, serviceTiers: serviceTiers, titleGenerator: titleGenerator}
 		if err := executor.execute(startCtx, executionCtx, parsedRequest, request.Header, sessionID); err != nil {
 			writeRequestError(trackedWriter, err)
 		}

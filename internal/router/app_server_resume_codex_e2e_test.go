@@ -252,7 +252,7 @@ func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Conte
 	if len(capture) > 0 {
 		recorder = capture[0]
 	}
-	wait, err := startAppServerUI(ctx, newCommand(ctx), inner, inner, proxy, nil, resumeThread, true, nil, recorder, nil, "")
+	wait, err := startAppServerUI(ctx, newCommand(ctx), inner, inner, proxy, nil, resumeThread, true, nil, recorder, nil, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

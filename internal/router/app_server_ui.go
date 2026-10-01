@@ -71,6 +71,10 @@ type appServerUI struct {
 	replay                    *uiReplayPlayback // Offline transport controls; nil for live sessions.
 	clock                     func() time.Time  // Optional presentation clock for offline replay.
 	backendVersion            string
+	title                     string // Host-confirmed thread name, independent of naming work.
+	titleGenerator            *sessionTitleGenerator
+	titleUpdates              <-chan sessionTitleUpdate
+	titleRequests             map[string]sessionTitleUpdate
 	reset                     *journalResetDriver
 	btw                       *appServerBTW
 	btwRequests               map[string]btwRequest
@@ -156,10 +160,10 @@ type appServerUI struct {
 // still owns routing, environment, invocation-local configuration and cancellation.
 func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
-	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint, nil, nil, resumeArgv, "")
+	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint, nil, nil, resumeArgv, "", nil)
 }
 
-func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers map[string]string, capture *capturer.Recorder, resumeArgv []string, debugDirectory string) (func() error, error) {
+func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers map[string]string, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionTitleGenerator) (func() error, error) {
 	var resumeCwd string
 	if resumeThread == "--last" || resumeThread == resumePickerStartup {
 		var err error
@@ -176,6 +180,10 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		return nil, err
 	}
 	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers}
+	if generator != nil {
+		u.titleGenerator = generator
+		u.titleUpdates = generator.updates
+	}
 	if proxy != nil {
 		u.execTrack = proxy.execTrack
 		if proxy.skillsManager {
@@ -277,6 +285,8 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 					case err := <-u.commandSegmentWrites:
 						u.commandSegmentRetained(err)
+					case update := <-u.titleUpdates:
+						u.persistSessionTitle(update)
 					case message, ok := <-c.Messages:
 						if !ok {
 							exited = true
@@ -445,6 +455,9 @@ func (u *appServerUI) requestAs(method, label string, params any) (string, error
 }
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
+	if u.sessionTitleMessage(m) {
+		return nil
+	}
 	defer u.refreshPicker()
 	u.ensureJournalReset()
 	if u.reset != nil {
@@ -637,6 +650,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				return err
 			}
 			u.thread, u.status = result.Thread.ID, "Ready"
+			u.title = result.Thread.Name
+			u.titleGenerator.register(result.Thread)
 			u.model, u.reasoningEffort, u.serviceTier = result.Model, result.ReasoningEffort, result.ServiceTier
 			if method == "thread/resume" {
 				u.settings.restoreEffort = u.takeDefaultEffort()

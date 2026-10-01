@@ -272,6 +272,24 @@ metadata remains authoritative. Agent names retain their identity colors. Every 
 its tab number, focus and scroll state, and the status bar shows the tabs with
 contextual key hints. Ctrl-B + number focuses a pane.
 
+Main's top-right title-bar label reads the host's thread name, including names
+restored on resume and inherited by forks. An unnamed thread has no placeholder;
+long names truncate to the available width and terminal controls are not rendered.
+Scroll position and unread counts remain alongside the name when space permits.
+
+Automatic naming and title presentation are separate operations. For a new empty
+Main thread without a saved name, the first successful completed upstream request
+starts one asynchronous naming request using `gpt-6-luna` with `medium` reasoning.
+Only the first user request text is used, not instructions, tools, or later history.
+Prewarm, compaction, unsuccessful responses, children, and side questions do not
+start naming. Naming uses separate request identity and does not block or change
+the original response. Its tokens are included in router usage totals.
+The result is saved through `thread/name/set`; Main changes only after host
+confirmation or a `thread/name/updated` event. A host rename received while naming
+is pending takes precedence. Generation or save failures leave conversation work
+unaffected and show nonfatal composer feedback. Existing nonempty threads without
+a title are not automatically renamed on resume.
+
 A blank row immediately above the composer separates it from the latest message
 or auxiliary content, including the journal plan strip, when height permits.
 
@@ -820,7 +838,7 @@ actionable errors remain until editing. Only
 `/quit` is a command, and only while idle;
 unknown commands are reported, never sent as prompts. The
 composer border carries turn state, the model, and Main's context usage; Main's title bar carries the
-scroll position and unseen-message count. History
+session title, scroll position and unseen-message count. History
 beyond the retained window is not hydrated. Unexpected server requests stay
 visibly pending, never auto-approved.
 

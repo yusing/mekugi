@@ -42,6 +42,16 @@ func (c *sessionTitleCache) title(sessionID string) string {
 	return entry()
 }
 
+// Host-confirmed renames replace even an earlier cached missing title.
+func (c *sessionTitleCache) set(sessionID, title string) {
+	if c == nil || sessionID == "" {
+		return
+	}
+	c.mu.Lock()
+	c.entries[sessionID] = func() string { return title }
+	c.mu.Unlock()
+}
+
 func codexSessionIndexPath() string {
 	codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
 	if codexHome == "" {

@@ -77,6 +77,7 @@ type appServerCommandAction struct {
 }
 
 type appServerThreadInfo struct {
+	Name           string                 `json:"name"`
 	ID             string                 `json:"id"`
 	ParentThreadID string                 `json:"parentThreadId"`
 	AgentNickname  string                 `json:"agentNickname"`

@@ -1,0 +1,16 @@
+┌ 1 Main ─ Review… ┐
+│● main   12:00:00 │
+│┃ Earlier message │
+│┃ 01              │
+│                  │
+│● main   12:00:00 │
+│┃ Earlier message │
+│┃ 02              │
+│                  │
+│↓ Back to bottom  │
+│                  │
+│╭─ Ready ────────╮│
+││ ❯              ││
+│╰── snaps… • 0% ─╯│
+└──────────────────┘
+ 1 Main  [ 2 Diff │

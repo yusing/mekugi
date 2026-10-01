@@ -19,11 +19,12 @@ import (
 // requestExecutor owns the stable services used by every attempt in a request,
 // including router-generated journal continuations.
 type requestExecutor struct {
-	serviceTiers map[string]string
-	provider     responseProvider
-	output       io.Writer
-	issues       *CriticalErrors
-	mekugiCalls  *mekugiProxy
+	titleGenerator *sessionTitleGenerator
+	serviceTiers   map[string]string
+	provider       responseProvider
+	output         io.Writer
+	issues         *CriticalErrors
+	mekugiCalls    *mekugiProxy
 }
 
 type requestContinuation struct {
@@ -181,6 +182,9 @@ func (a *requestAttempt) prepare() error {
 		capturer.ObserveRequestKind(a.startCtx, string(a.metadata.RequestKind))
 	}
 	a.threadID = codexThreadID(a.headers)
+	if a.metadataValid && a.metadata.RequestKind == responses.Turn && a.executor.titleGenerator.needsPrompt(a.threadID) {
+		a.executor.titleGenerator.observe(a.threadID, journalQuestionFromInput(a.request.fields["input"], "/root"), a.headers, false)
+	}
 	a.finalization.threadID = a.threadID
 	a.finalization.turnID = a.metadata.TurnID
 	if a.executor.mekugiCalls != nil && a.metadataValid && a.metadata.RequestKind == responses.Compaction {
@@ -473,6 +477,7 @@ func (a *requestAttempt) deliver() (*requestContinuation, error) {
 		stagedBody = staged.Bytes()
 	}
 	if !a.streamResponse && a.mekugiTransform != nil && a.mekugiTransform.journalContinue {
+		a.observeTitleSuccess()
 		return a.continueJournal()
 	}
 	if !a.streamResponse &&
@@ -520,6 +525,7 @@ func (a *requestAttempt) deliver() (*requestContinuation, error) {
 			return nil, fmt.Errorf("execute request: %w", err)
 		}
 	}
+	a.observeTitleSuccess()
 	if a.streamResponse && a.mekugiTransform != nil && a.mekugiTransform.journalContinue {
 		return a.continueJournal()
 	}
@@ -546,6 +552,14 @@ func (a *requestAttempt) deliver() (*requestContinuation, error) {
 		a.finalization.failurePhase = requestFailureTerminalValidation
 	}
 	return nil, nil
+}
+
+func (a *requestAttempt) observeTitleSuccess() {
+	if a.metadataValid && a.metadata.RequestKind == responses.Turn && !a.prewarm &&
+		a.response.StatusCode >= 200 && a.response.StatusCode < 300 &&
+		a.finalization.upstreamTerminalState == responseTerminalCompleted {
+		a.executor.titleGenerator.observe(a.threadID, "", a.headers, true)
+	}
 }
 
 func (a *requestAttempt) continueJournal() (*requestContinuation, error) {
