@@ -111,7 +111,13 @@ Operations count top-level accepted mutations, not the events or tasks expanded
 by a plan; receipt replay and rejected batches do not increment them. Public
 reads count successful executions; presentation and recovery reads do not count.
 Standalone requests are completed model responses containing journal calls but
-no other tool work, once per response, not once per call. Final-answer bytes are
+no other tool work, once per response, not once per call. This counter does not
+count standalone progress prose or establish compliance with journal guidance.
+Internal journal transport invocations within a useful exec are not additional
+provider requests. Evaluate prose bypass and final/journal overlap from retained
+session evidence, distinguishing legitimate answers from work recaps; provider
+usage, not transport counts or local description bytes, owns consumption claims.
+Final-answer bytes are
 decoded UTF-8 bytes before journal rendering, including `Done.` and answers too
 large to capture. Empty Outcome follows the journal rule. These are observed
 response measurements, not acknowledgements of downstream delivery or savings.

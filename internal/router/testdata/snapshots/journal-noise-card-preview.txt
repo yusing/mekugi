@@ -1,0 +1,12 @@
+╭─ ✓ journal · 1 open ──────────────────────────────────────── 22:31 ╮
+│ This turn                                                          │
+│ ⚠ /1 Check build prerequisites and recovery · Required build       │
+│   prerequisites missing: autoconf automake pkg-config protoc…      │
+│ ◆ Evidence 3: Evidence 3 established. Detailed evidence with       │
+│   retained context. Detailed evidence with retained context.…      │
+│ ◆ Evidence 4: Evidence 4 established. Detailed evidence with       │
+│   retained context. Detailed evidence with retained context.…      │
+│ ◆ Evidence 5: Evidence 5 established. Detailed evidence with       │
+│   retained context. Detailed evidence with retained context.…      │
+│ ◆ 2 earlier notes · click to open                                  │
+╰────────────────────────────────────────────────────────────────────╯

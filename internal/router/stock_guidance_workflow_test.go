@@ -157,13 +157,13 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 			// Count across the actual combined request, not each surface in isolation.
 			combined := string(mustMarshalJSON(request.fields))
 			for _, rule := range []string{
-				"The durable journal holds the plan",
+				"The durable journal is the user-facing record of work",
 				"Code Mode API:",
 				"Task states are pending, working, done, blocked, dropped.",
 				"Paths use stable sibling ordinals",
 				"Read and transport failures throw.",
 				"do not construct its internal transport",
-				"finish naturally with an answer",
+				"A work-completion reply is not a conversational exception",
 				"Parents record integration decisions",
 			} {
 				if count := strings.Count(combined, rule); count != 1 {

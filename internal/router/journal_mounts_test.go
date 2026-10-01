@@ -419,7 +419,7 @@ func TestJournalMountFailureDoesNotSuppressTerminalOutcome(t *testing.T) {
 	}
 }
 
-func TestJournalMountRenderedCardLimitPreservesOutcome(t *testing.T) {
+func TestJournalLargeMountedTasksDoNotInflateMainCard(t *testing.T) {
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	defer transform.Close()
 	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, transform.shellThreadID, "", []journalMutation{{Op: "log", Text: new("Own fact")}}); err != nil {
@@ -449,7 +449,7 @@ func TestJournalMountRenderedCardLimitPreservesOutcome(t *testing.T) {
 	transform.Delivered(wire)
 	transform.ReleaseDelivery()
 	card := regressionCardText(t, wire)
-	if strings.Contains(card, "Outcome survives a large mounted card.") || !strings.Contains(string(wire), "Outcome survives a large mounted card.") || !strings.Contains(card, "combined card exceeds terminal capacity") {
-		t.Fatalf("missing rendered-size fallback: %q", card)
+	if strings.Contains(card, "Outcome survives a large mounted card.") || !strings.Contains(string(wire), "Outcome survives a large mounted card.") || !strings.Contains(card, "Own fact") || strings.Contains(card, "Mounted journals unavailable") || strings.Contains(card, "**Remaining**") {
+		t.Fatalf("mounted task detail inflated Main's owned work report or lost the outcome: %q", card)
 	}
 }

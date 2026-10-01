@@ -1,0 +1,24 @@
+100 columns
+   ✓ Outcome  Pruning ownership and locks
+30 columns
+   ✓ Outcome  Pruning ownersh…
+100 columns
+   ✓ Outcome  Validation passed with go test.
+30 columns
+   ✓ Outcome  Validation pass…
+100 columns
+   ✓ Outcome  Read report and My Report.
+30 columns
+   ✓ Outcome  Read report and…
+100 columns
+   ✓ Outcome  Findings
+30 columns
+   ✓ Outcome  Findings
+100 columns
+   ✓ Outcome  Plain text answer.
+30 columns
+   ✓ Outcome  Plain text answ…
+100 columns
+   ✓ Outcome
+30 columns
+   ✓ Outcome

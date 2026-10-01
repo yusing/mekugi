@@ -29,11 +29,13 @@ app-server requests without workspace metadata. Only notes from the presented na
 are suppressed in Main or acknowledged via the pane. Router stamps display in local time
 at the row's right edge when the pane is wide enough.
 Only tasks show state; blocked tasks retain their reason and dropped tasks are dimmed.
-A plan strip above the composer pins the newest task change (added, started,
-updated, reopened, done, blocked or dropped) with the task's current state, then
-right-aligned progress and the pane key, which yield to the title when narrow. A
-journal without an event log pins its current task. It remains while any task is
-open, and during a Main turn after the last task finishes.
+A plan strip above the composer shows current owned work: working tasks precede
+blocked tasks, then pending tasks. Within a state, the most recently updated task
+wins. Adding pending work cannot displace working work. The strip uses the same
+current state as the pane, with a short blocker preview, right-aligned owned-task
+progress and the pane key, which yield to the title when narrow. It remains while
+any owned task is open; during a Main turn after the last task finishes it shows
+the most recently updated finished task. An idle all-finished journal has no strip.
 
 Child journals mount read-only under the parent's linked task, or under an Agents
 group when unlinked. Enter on a mount opens that child's Activity; an agent absent
@@ -50,10 +52,17 @@ row above. A row with a body opens it on click. Notes are rows only while the
 Journal pane is hidden; blocked task rows remain visible. Successful terminal delivery
 publishes a separate work-report card only when non-answer events remain unacknowledged
 or mounted-journal diagnostics need to be shown. Captured answers and unchanged open
-tasks alone do not produce a card. The card has This turn and Remaining, one node
-per row, and done and open counts in its title. It counts its notes; a
-click opens the card in the shared dialog with the same rows, each note written out
-in full, and the time and counts on the detail row. Cards have response-specific
+tasks alone do not produce a card. This turn shows the final change per owned path,
+omitting add/remove transients and descendants of removed subtrees. Remaining adds
+only unchanged open owned tasks; changed open tasks appear once, but still count
+toward the title's open total. Captured answers are excluded. Collapsed node rows
+use at most two visual rows, with short blocker explanations. The newest three
+changed notes show result-first previews, in chronological order, with an
+older-note disclosure when needed. Changed context remains visible independently.
+A click opens the shared dialog with full reasons and bodies, including older notes;
+copied reports also retain that detail. Time and counts appear on the detail row.
+Current-node evidence remains available through reads; the router retains the
+append-only event history separately. Cards have response-specific
 identity. Substantive answers and their reply context use the ordinary conversation
 renderer, independently of the card. The Journal pane restores its
 current tree from durable storage independently of provider requests.
@@ -315,9 +324,12 @@ replay, resume, and forks do not finish a new turn.
 
 For v2-authored journals without a native frontend, successful Main completion
 emits a separate Markdown work report only for non-answer events after `flushSeq`
-that have not already been acknowledged, or mounted-journal diagnostics. This turn
-contains those events; Remaining contains open tasks. Neither captured answers nor
-unchanged open tasks alone trigger a report. Answers and their questions remain
+that have not already been acknowledged, or mounted-journal diagnostics. It uses
+the same per-path final changes, transient exclusions, short reasons and newest-three
+note preview selection as native cards. Remaining adds unchanged open owned tasks,
+without repeating changed open tasks. Full evidence remains available through journal
+reads. Neither captured answers nor unchanged open tasks alone trigger a report.
+Answers and their questions remain
 stored but are not echoed in the report. A blank final or a case-insensitive `done`
 with an optional period is an empty Outcome: no answer node is created for a tree
 journal, and the exact raw provider item is hidden only when a meaningful report
@@ -326,7 +338,7 @@ still required. Retained v1 authoring without a turn card keeps such a final as 
 
 Live v2 fallback uses the `Journal` heading without an author-path label and renders
 events after `liveSeq`, clipping a row that no single update
-can hold; the turn card keeps it whole. Successful downstream delivery advances
+can hold; journal reads retain it whole. Successful downstream delivery advances
 the corresponding cursor; failure preserves its window. Main reports precede the
 ordinary final in inline delivery so no commentary follows that final. Failed,
 incomplete and interrupted responses never terminal-flush.
@@ -392,14 +404,17 @@ stock tool catalog and prompt.
 
 ### Runtime authoring
 
-Plans are pending tasks. Task transitions and established facts are recorded as they
-happen, attached to the next useful tool call rather than a standalone request.
-Constraints belong in context nodes. Ongoing narration is not a note. Questions and
-direct replies remain conversational. Parents record integration decisions, not copies
-of child journals. A turn that records work ends with a concise Outcome, or exactly
-`Done.` when there is nothing beyond its work report. It does not repeat progress,
-validation, or remaining work. Ordinary questions and direct replies have no
-journal-specific length or format.
+Tasks express intentions. Work updates and newly established facts go into the
+journal, attached to the next useful tool call rather than standalone commentary
+or a journal-only request. Notes lead with the result or decision, then supporting
+evidence; ongoing narration and unchanged facts are not new notes. Standing
+constraints belong in context once. Parents record integration decisions, not
+copies of child journals. Work completion is not a conversational exception:
+finish with exactly `Done.` unless the user needs a usable deliverable, usage
+explanation or decision beyond the work report. That Outcome does not repeat
+progress, validation, review status or remaining work. Requested explanations,
+review findings, answers to user questions and necessary questions remain substantive
+conversation, without a journal-specific length or format.
 
 Code Mode lowers the helper to authenticated `mjournal` through stock `exec_command`;
 it neither runs the surrounding program nor owns the host lifecycle. Read transport

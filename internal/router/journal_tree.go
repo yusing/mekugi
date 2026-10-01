@@ -126,7 +126,7 @@ func (j *threadJournal) logTarget(p string) (string, error) {
 	if p != "" {
 		i := j.treeIndex(p)
 		if i < 0 {
-			return "", fmt.Errorf("journal path not found: %s", p)
+			return "", journalMutationPathError(p)
 		}
 		if j.Items[i].Kind != "task" {
 			return journalParent(p), nil // Only tasks have children.
@@ -154,6 +154,20 @@ func (j *threadJournal) logTarget(p string) (string, error) {
 		}
 	}
 	return common, nil
+}
+
+func journalMutationPathError(p string) error {
+	if strings.Contains(p, "/@") {
+		return fmt.Errorf("journal path %s is a read-only mounted view; record a note or update your owned task", p)
+	}
+	if !strings.HasPrefix(p, "/") {
+		return fmt.Errorf("journal path not found: %s; use the returned path starting with /, not a plan position; recover task paths with read view tasks", p)
+	}
+	return fmt.Errorf("journal path not found: %s; recover task paths with read view tasks, or note paths with read view own", p)
+}
+
+func journalReadOnlyError(item journalItem) error {
+	return fmt.Errorf("%s: router-owned journal node is read-only (%s %.80q); record a note or update your owned task", item.Path, item.Kind, item.Title)
 }
 
 func validJournalState(state string) bool {
@@ -265,11 +279,11 @@ func (j *threadJournal) applyTree(m journalMutation) ([]string, error) {
 	case "set":
 		index := j.treeIndex(m.P)
 		if index < 0 {
-			return nil, fmt.Errorf("journal path not found: %s", m.P)
+			return nil, journalMutationPathError(m.P)
 		}
 		item := &j.Items[index]
 		if item.Kind == "answer" {
-			return nil, errors.New("router-owned journal node is read-only")
+			return nil, journalReadOnlyError(*item)
 		}
 		if err := j.bindAgent(item, m.Agent); err != nil {
 			return nil, err
@@ -300,12 +314,15 @@ func (j *threadJournal) applyTree(m journalMutation) ([]string, error) {
 	case "remove":
 		index := j.treeIndex(m.P)
 		if index < 0 {
-			return nil, fmt.Errorf("journal path not found: %s", m.P)
+			return nil, journalMutationPathError(m.P)
 		}
-		if j.Items[index].Kind == "answer" || slices.ContainsFunc(j.Items, func(item journalItem) bool {
+		if j.Items[index].Kind == "answer" {
+			return nil, journalReadOnlyError(j.Items[index])
+		}
+		if slices.ContainsFunc(j.Items, func(item journalItem) bool {
 			return item.Agent != "" && (item.Path == m.P || strings.HasPrefix(item.Path, m.P+"/"))
 		}) {
-			return nil, errors.New("router-owned journal node is read-only")
+			return nil, fmt.Errorf("%s: journal subtree contains an immutable agent binding; update the owned task instead of removing it", m.P)
 		}
 		if err := j.treeEvent("remove", index, false); err != nil {
 			return nil, err
@@ -408,7 +425,11 @@ func (j *threadJournal) validateTree() error {
 		}
 		if item.Kind != "task" {
 			if item.State != "" || item.Reason != "" {
-				return fmt.Errorf("%s: only tasks have state or reason", item.Path)
+				direction := "create kind task for work with a state, or edit this node's title/body"
+				if parent := journalParent(item.Path); parent != "" {
+					direction = "set the containing task " + parent + " instead, or edit this node's title/body"
+				}
+				return fmt.Errorf("%s: only tasks have state or reason (%s %.80q); %s", item.Path, item.Kind, item.Title, direction)
 			}
 			continue
 		}

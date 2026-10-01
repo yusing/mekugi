@@ -167,12 +167,7 @@ func (t *mekugiResponseTransform) prepareOwnJournalDelivery(terminal bool) ([]ma
 			if readErr != nil {
 				journal.mountUnavailable = fmt.Sprintf("%.256s", readErr.Error())
 			} else {
-				ownItems := journal.Items
 				journal.Items = items
-				if len(journalTurnCard(journal, journal.FlushSeq, false)) > maxJournalFlushBytes {
-					journal.Items = ownItems
-					journal.mountUnavailable = "combined card exceeds terminal capacity; read child journals separately"
-				}
 			}
 		}
 		return nil

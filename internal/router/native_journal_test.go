@@ -550,12 +550,12 @@ func TestNativeJournalTranscriptGroupsAdjacentChanges(t *testing.T) {
 	}
 }
 
-func TestNativeJournalStripPinsNewestChange(t *testing.T) {
+func TestNativeJournalStripPinsCurrentWork(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	now := time.Now()
 	journal := threadJournal{Version: 2, TreeAuthored: true, Items: []journalItem{
-		{Path: "/1", Kind: "task", Title: "Parser", State: "done"},
-		{Path: "/2", Kind: "task", Title: "Renderer", State: "working", Started: &journalStamp{At: now.Add(-time.Minute).Format(time.RFC3339Nano)}},
+		{Path: "/1", Kind: "task", Title: "Parser", State: "done", Updated: 1},
+		{Path: "/2", Kind: "task", Title: "Renderer", State: "working", Updated: 2, Started: &journalStamp{At: now.Add(-time.Minute).Format(time.RFC3339Nano)}},
 		{Path: "/3", Kind: "task", Title: "Docs", State: "pending"},
 	}, Events: []journalEvent{
 		nativeJournalEvent(1, now, "set", "/1", "task", "Parser", "done", ""),
@@ -564,13 +564,13 @@ func TestNativeJournalStripPinsNewestChange(t *testing.T) {
 	}}
 	u.journal = &nativeJournalSink{tree: &journal}
 	strip := ansi.Strip(u.journalPlanStrip(80))
-	if !strings.HasPrefix(strip, "◐ /2 Renderer · started · 1m") || !strings.HasSuffix(strip, "1/3 done · Ctrl-B 5 journal") {
-		t.Fatalf("strip did not pin the newest task change: %q", strip)
+	if !strings.HasPrefix(strip, "◐ /2 Renderer · 1m") || !strings.HasSuffix(strip, "1/3 done · Ctrl-B 5 journal") {
+		t.Fatalf("strip did not pin current work: %q", strip)
 	}
 	journal.Events = append(journal.Events, nativeJournalEvent(4, now, "add", "/4", "task", "Review", "pending", ""))
-	journal.Items = append(journal.Items, journalItem{Path: "/4", Kind: "task", Title: "Review", State: "pending"})
-	if strip := ansi.Strip(u.journalPlanStrip(80)); !strings.HasPrefix(strip, "○ /4 Review · added") {
-		t.Fatalf("a created task did not take the pin: %q", strip)
+	journal.Items = append(journal.Items, journalItem{Path: "/4", Kind: "task", Title: "Review", State: "pending", Updated: 4})
+	if strip := ansi.Strip(u.journalPlanStrip(80)); !strings.HasPrefix(strip, "◐ /2 Renderer") {
+		t.Fatalf("a created pending task displaced current work: %q", strip)
 	}
 	for i := range journal.Items {
 		journal.Items[i].State = "done"
@@ -595,16 +595,17 @@ func TestNativeJournalPinReplacesOlderReplyPin(t *testing.T) {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": fmt.Sprint(i), "type": "commandExecution", "command": fmt.Sprint("echo activity-", i)}})
 	}
 	later := time.Now().Add(time.Second)
-	journal := threadJournal{Version: 2, TreeAuthored: true, Items: []journalItem{{Path: "/1", Kind: "task", Title: "Renderer", State: "working"}},
+	journal := threadJournal{Version: 2, TreeAuthored: true, Items: []journalItem{{Path: "/1", Kind: "task", Title: "Renderer", State: "working", Updated: 1, UpdatedAt: later.Format(time.RFC3339Nano)}},
 		Events: []journalEvent{nativeJournalEvent(1, later, "set", "/1", "task", "Renderer", "working", "")}}
 	u.journal = &nativeJournalSink{tree: &journal}
 	frame, _ := u.mainFrame(80, 24, 0)
 	text := ansi.Strip(strings.Join(frame, "\n"))
-	if u.view.feedTop != 1 || strings.Contains(text, "Older Main response") || !strings.Contains(text, "◐ /1 Renderer · started") {
+	if u.view.feedTop != 1 || strings.Contains(text, "Older Main response") || !strings.Contains(text, "◐ /1 Renderer") {
 		t.Fatalf("newer journal state did not replace the pinned reply:\n%s", text)
 	}
 	time.Sleep(10 * time.Millisecond)
 	journal.Events[0].At = time.Now().Add(-time.Hour).Format(time.RFC3339Nano)
+	journal.Items[0].UpdatedAt = journal.Events[0].At
 	send("newer", "Newer Main response")
 	for i := range 20 {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": fmt.Sprint("more-", i), "type": "commandExecution", "command": fmt.Sprint("echo more-", i)}})

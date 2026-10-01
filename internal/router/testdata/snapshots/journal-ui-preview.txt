@@ -24,7 +24,7 @@ REPLY WITH JOURNAL ROWS, 100 COLUMNS
 │ This turn                                                                                        │
 │ ● /1 Integrate reply context and slice navigation                                                │
 │ ● /2 Expand entries and fit older subtrees                                                       │
-│ ◆ 1 note · click to open                                                                         │
+│ ◆ Layout validated                                                                               │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 
 ● main                                                                                      08:16:39
@@ -38,7 +38,7 @@ SAME REPLY, 60 COLUMNS
 │ This turn                                                │
 │ ● /1 Integrate reply context and slice navigation        │
 │ ● /2 Expand entries and fit older subtrees               │
-│ ◆ 1 note · click to open                                 │
+│ ◆ Layout validated                                       │
 ╰──────────────────────────────────────────────────────────╯
 
 ● main                                              08:16:39
@@ -53,6 +53,6 @@ EMPTY OUTCOME WITH WORK REPORT, 60 COLUMNS
 │ This turn                                                │
 │ ● /1 Integrate reply context and slice navigation        │
 │ ● /2 Expand entries and fit older subtrees               │
-│ ◆ 1 note · click to open                                 │
+│ ◆ Layout validated                                       │
 ╰──────────────────────────────────────────────────────────╯
 

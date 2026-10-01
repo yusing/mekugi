@@ -48,7 +48,10 @@ Code Mode `exec` or native `exec_command` in one marked Journal section. No dedi
 structured tools receive the optional atomic `journal` mutation field.
 The shared description owns planning, task states, established facts and constraints,
 the complete Code Mode helper API (including read, required fields, stable paths and
-failures), batching, and Outcome-only natural completion. It identifies `journal(...)` as a router-provided source helper outside `tools`
+failures), batching, and Outcome-only natural completion. Work updates belong in
+the journal; requested answers and necessary questions remain conversational.
+Work completion is not an exception allowing a second validation or progress recap.
+It identifies `journal(...)` as a router-provided source helper outside `tools`
 and `ALL_TOOLS`, and the generated `mjournal` invocation as internal transport rather than an
 agent-authored command. Projection preserves the caller's stock execution contracts. A
 previously marked section is refreshed in place. Duplicate, incomplete, or reversed markers
@@ -102,8 +105,10 @@ Acceptance:
    sibling tools, and stock execution contracts remain unchanged.
 3. The execution-tool journal section and optional mutation field expose enough guidance to record concise
    tasks and facts, read retained subtrees, and finish naturally with an answer.
-   Work turns use a concise Outcome alongside a separate work report without another
-   provider request; ordinary replies stay conversational. Guidance directs mutations
+   Work turns finish with `Done.` or only the usable deliverable, usage explanation
+   or needed decision beyond their separate work report, without another provider
+   request. Requested explanations, review findings and actual questions remain
+   conversational. Guidance directs mutations
    onto useful calls rather than standalone journal calls; Code Mode exposes only the exec-local helper for both read and mutations.
 4. Ordinary, fork, side-thread, subagent, model-switch, compaction, and resume consumers derive
    guidance from their current tool catalog and authenticated registry rather than invisible ancestry

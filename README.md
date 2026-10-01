@@ -406,10 +406,14 @@ Delegated journals appear under their owning task, or in an Agents group. Press
 `Enter` on, or click, a mounted agent to open its Activity. Lifecycle labels reflect observed
 host state; a provider answer alone does not mark an agent complete.
 
-The plan strip stays above the composer while work remains. Main shows task
+The plan strip stays above the composer while work remains, preferring working
+tasks over blocked or pending tasks, then the newest update within that state.
+Main shows task
 transitions, plus notes while Journal is hidden. Answers stay in the conversation.
 When there are new work updates, a separate journal card shows the new work and
-remaining tasks; select its expansion target to see the notes. An unchanged plan
+unchanged remaining tasks without repeating changed tasks. It previews the newest
+three notes and short blocker reasons; open the card for complete evidence and
+older notes. An unchanged plan
 does not add a card to an ordinary reply.
 
 With Codex `exec --json`, child journal milestones appear in Main's next response,

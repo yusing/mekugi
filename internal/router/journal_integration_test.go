@@ -580,7 +580,7 @@ func TestJournalLiveSnapshotCacheRefreshesOnMutationAndTerminal(t *testing.T) {
 
 func TestJournalSharedGuidance(t *testing.T) {
 	description := codeModeJournalGuidance
-	for _, required := range []string{"durable journal", "await journal", "finish naturally with an answer", "separate journal report", "Ordinary questions and direct replies stay conversational", `view?:"combined"|"own"|"tasks"`, `{op:"read", view:"tasks", depth:0}`} {
+	for _, required := range []string{"durable journal", "await journal", "finish naturally", "journal delivers progress", "Deliver work updates through the journal, not standalone commentary", "A work-completion reply is not a conversational exception", "Requested explanations, review findings and answers to user questions", `view?:"combined"|"own"|"tasks"`, `{op:"read", view:"tasks", depth:0}`} {
 		if !strings.Contains(description, required) {
 			t.Fatalf("journal description lacks %q: %q", required, description)
 		}

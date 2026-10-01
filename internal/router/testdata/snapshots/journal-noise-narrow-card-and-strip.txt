@@ -1,0 +1,16 @@
+40 columns
+⚠ /1 Check build prerequisite…  0/1 done
+17 columns
+⚠ /1 Check build…
+╭─ ✓ journal · 1 open ────────── 22:31 ╮
+│ This turn                            │
+│ ⚠ /1 Check build prerequisites and   │
+│   recovery · Required build…         │
+│ ◆ Evidence 3: Evidence 3             │
+│   established. Detailed evidence…    │
+│ ◆ Evidence 4: Evidence 4             │
+│   established. Detailed evidence…    │
+│ ◆ Evidence 5: Evidence 5             │
+│   established. Detailed evidence…    │
+│ ◆ 2 earlier notes · click to open    │
+╰──────────────────────────────────────╯
