@@ -379,7 +379,7 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 		if node.Agent != "" && strings.HasPrefix(key, "@") {
 			text = journalStateGlyph(node.State) + " " + journalAgentName(node.Agent, theme)
 		} else {
-			text = journalStateGlyph(node.State) + " " + dim(safe(node.Path)) + " " + safe(node.Title)
+			text = journalStateGlyph(node.State) + " " + dim(safe(journalDisplayPath(node))) + " " + safe(node.Title)
 			if node.Agent != "" {
 				text += dim(" ⎇ ") + journalAgentName(node.Agent, theme)
 			}
@@ -401,7 +401,7 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 		case journalViewGroup(node):
 			text = dim("⎇ ") + "\x1b[1m" + safe(node.Title) + "\x1b[22m"
 		default:
-			text = theme.Accent() + "◆" + activityui.Reset + " " + dim(safe(node.Path)) + " " + safe(node.Title)
+			text = theme.Accent() + "◆" + activityui.Reset + " " + dim(safe(journalDisplayPath(node))) + " " + safe(node.Title)
 		}
 	case "answer":
 		first := journalPreview(node.Body)
@@ -438,6 +438,31 @@ func journalAgentName(agent string, theme livediff.Theme) string {
 		color = "\x1b[1m" + theme.Accent()
 	}
 	return color + livediff.Safe(activityui.AgentDisplayName(agent), false) + activityui.Reset
+}
+
+// Reserved mount keys are durable addresses, not user-facing names. Keep the
+// owning agent and its local ordinal without changing selection or copy targets.
+func journalDisplayPath(node journalNode) string {
+	_, mounted, ok := strings.CutLast(node.Path, "/@")
+	if !ok {
+		return node.Path
+	}
+	key, local, descendant := strings.Cut(mounted, "/")
+	if key == "agents" {
+		return "Agents"
+	}
+	if key == "mount-error" {
+		return node.Title
+	}
+	agent := node.Author
+	if !descendant {
+		agent = node.Agent
+	}
+	label := activityui.AgentDisplayName(agent)
+	if descendant {
+		return strings.TrimSpace(label + " /" + local)
+	}
+	return label
 }
 
 func journalDescendants(node journalNode) int {
@@ -619,8 +644,13 @@ func (u *terminalUI) openJournalDetail(node journalNode) {
 		if current.Path == node.Path {
 			target = len(segments)
 		}
-		segments = append(segments, activityui.Block{Kind: "text", Verb: "Journal", Label: current.Path,
-			Body: livediff.Safe(journalEventText(journalEvent{Fields: current}), false)})
+		label := journalDisplayPath(current)
+		if _, key, _ := strings.CutLast(current.Path, "/"); current.Agent != "" && strings.HasPrefix(key, "@") {
+			current.Title = "" // The heading and display path already name this mount.
+		}
+		current.Path = label // Presentation copy only; navigation uses the original above.
+		segments = append(segments, activityui.Block{Kind: "text", Verb: "Journal", Label: livediff.Safe(label, false),
+			Body: livediff.Safe(strings.TrimSpace(journalEventText(journalEvent{Fields: current})), false)})
 		for _, child := range current.Children {
 			walk(child)
 		}
@@ -757,9 +787,10 @@ func journalNodeRow(theme livediff.Theme, node journalNode, verb string) string 
 func journalNodeParts(theme livediff.Theme, node journalNode, verb string) (lead, text string) {
 	safe := func(text string) string { return livediff.Safe(strings.Join(strings.Fields(text), " "), false) }
 	title := safe(node.Title)
+	path := safe(journalDisplayPath(node))
 	switch {
 	case verb == "removed":
-		return activityui.Dim + "⊖ " + activityui.Undim, activityui.Dim + node.Path + " " + title + " · removed" + activityui.Undim
+		return activityui.Dim + "⊖ " + activityui.Undim, activityui.Dim + path + " " + title + " · removed" + activityui.Undim
 	case node.Kind == "note":
 		if title == "Note" && node.Body != "" {
 			first, _, _ := strings.Cut(node.Body, "\n")
@@ -767,7 +798,7 @@ func journalNodeParts(theme livediff.Theme, node journalNode, verb string) (lead
 		}
 		return theme.Accent() + "◆" + activityui.Reset + " ", title
 	case node.Kind != "task":
-		return activityui.Dim + "◇ " + activityui.Undim, activityui.Dim + node.Path + activityui.Undim + " " + title
+		return activityui.Dim + "◇ " + activityui.Undim, activityui.Dim + path + activityui.Undim + " " + title
 	}
 	color := journalStateColor(theme, node.State)
 	var details []string
@@ -783,7 +814,7 @@ func journalNodeParts(theme livediff.Theme, node journalNode, verb string) (lead
 	if node.State == "dropped" {
 		title = activityui.Dim + title + activityui.Undim
 	}
-	text = activityui.Dim + node.Path + activityui.Undim + " " + title
+	text = activityui.Dim + path + activityui.Undim + " " + title
 	if len(details) > 0 {
 		style := activityui.Dim
 		if node.State == "blocked" {

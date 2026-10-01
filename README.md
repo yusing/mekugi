@@ -403,6 +403,8 @@ offers `n` to switch between it and the workspace journal. Notes
 from the other journal still appear in Main.
 `Esc` returns to Main. Blocked tasks show their reason; notes have no state label.
 Delegated journals appear under their owning task, or in an Agents group. Press
+`c` to copy their full journal address; rows and details show readable agent names
+and local paths instead of internal mount IDs. Press
 `Enter` on, or click, a mounted agent to open its Activity. Lifecycle labels reflect observed
 host state; a provider answer alone does not mark an agent complete.
 

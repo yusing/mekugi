@@ -38,7 +38,9 @@ any owned task is open; during a Main turn after the last task finishes it shows
 the most recently updated finished task. An idle all-finished journal has no strip.
 
 Child journals mount read-only under the parent's linked task, or under an Agents
-group when unlinked. Enter on a mount opens that child's Activity; an agent absent
+group when unlinked. Pane rows and detail headings use the agent's display name and
+local ordinal path instead of opaque mounted addresses. Copy, selection, disclosure,
+and reads retain the full durable address. Enter on a mount opens that child's Activity; an agent absent
 from the roster, including an unresolved mount, yields a notice. The parent task
 remains parent-owned; the mounted root observes the host lifecycle. Unknown lifecycle
 has no state label. Child changes refresh mounted views without copying notes into
