@@ -11,6 +11,7 @@ import (
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
 
 // The native shell owns terminal presentation; Codex app-server owns execution.
@@ -35,8 +36,7 @@ type terminalUI struct {
 	diffOpen                                       bool
 	diffUnseen                                     bool // Saved changes arrived while Activity held the right column.
 	liveDock                                       diffview.PreviewPane
-	liveHidden                                     bool      // Presentation only, local to this frontend session.
-	dockShown                                      time.Time // When the shared dock's newest card appeared.
+	liveHidden                                     bool // Presentation only, local to this frontend session.
 	prefix                                         bool
 	sequenceAt                                     time.Time
 	sequence, agentEscape                          string
@@ -208,6 +208,8 @@ func (u *terminalUI) key(key byte) error {
 			}
 		case 'e':
 			u.nextLive()
+		case 'r':
+			u.liveDock.ScrollBatch("/root", 'r')
 		default:
 			u.resize(string(key))
 		}
@@ -225,6 +227,14 @@ func (u *terminalUI) key(key byte) error {
 
 func (u *terminalUI) resize(key string) {
 	if key == "\x1b[5~" || key == "\x1b[6~" {
+		if u.layout.live.h > 0 {
+			action := byte('b')
+			if key == "\x1b[6~" {
+				action = ' '
+			}
+			u.liveDock.ScrollBatch("/root", action)
+			return
+		}
 		if key == "\x1b[5~" {
 			u.main.view.scrollKey('b')
 		} else {
@@ -559,14 +569,17 @@ func (u *terminalUI) mouse(s string) error {
 		}
 	}
 	if u.layout.live.contains(x, y) {
-		if button&^28 == 0 && !release {
-			u.autoActivity = false
-			u.focus = 2
-			if u.diffOpen {
-				u.focus = 1
+		if !release {
+			switch button &^ 28 {
+			case 0:
+				u.focus = 0
+			case 64:
+				u.liveDock.ScrollBatch("/root", terminalui.PaneWheelUp)
+			case 65:
+				u.liveDock.ScrollBatch("/root", terminalui.PaneWheelDown)
 			}
 		}
-		return nil // Live cards are not the Activity feed or saved diff beneath them.
+		return nil
 	}
 	pane := -1
 	var r terminalRect

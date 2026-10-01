@@ -1,0 +1,48 @@
+┌ 1 Main ────────────────────────────────────────────────────────────┐┌ 3 Activity ──────────────────────────────────────────────── FOLLOW ┐
+│LIVE · 3 files · 2–3/3 · ^B e next                                  ││LIVE · 1 file                                                       │
+│  main · ◐ A two.txt +40 -0                                         ││  editor · ◐ A child.txt +40 -0                                     │
+│  24│+two_line_24                                                   ││  33│+child_line_33                                                 │
+│  25│+two_line_25                                                   ││  34│+child_line_34                                                 │
+│  26│+two_line_26                                                   ││  35│+child_line_35                                                 │
+│  27│+two_line_27                                                   ││  36│+child_line_36                                                 │
+│  28│+two_line_28                                                   ││  37│+child_line_37                                                 │
+│  29│+two_line_29                                                   ││  38│+child_line_38                                                 │
+│  30│+two_line_30                                                   ││  39│+child_line_39                                                 │
+│  31│+two_line_31                                                   ││▎ 40│+child_line_40                                                 │
+│  32│+two_line_32                                                   ││                                                                    │
+│  33│+two_line_33                                                   ││reviewer                                                   12:00:00 │
+│  34│+two_line_34                                                   │││ OTHER_ACTIVITY remains readable                                   │
+│  35│+two_line_35                                                   ││                                                                    │
+│  36│+two_line_36                                                   ││                                                                    │
+│  37│+two_line_37                                                   ││                                                                    │
+│  38│+two_line_38                                                   ││                                                                    │
+│  39│+two_line_39                                                   ││                                                                    │
+│▎ 40│+two_line_40                                                   ││                                                                    │
+│  main · ◐ A three.txt +40 -0                                       ││                                                                    │
+│  24│+three_line_24                                                 ││                                                                    │
+│  25│+three_line_25                                                 ││                                                                    │
+│  26│+three_line_26                                                 ││                                                                    │
+│  27│+three_line_27                                                 ││                                                                    │
+│  28│+three_line_28                                                 ││                                                                    │
+│  29│+three_line_29                                                 ││                                                                    │
+│  30│+three_line_30                                                 ││                                                                    │
+│  31│+three_line_31                                                 ││                                                                    │
+│  32│+three_line_32                                                 ││                                                                    │
+│  33│+three_line_33                                                 ││                                                                    │
+│  34│+three_line_34                                                 ││                                                                    │
+│  35│+three_line_35                                                 ││                                                                    │
+│  36│+three_line_36                                                 ││                                                                    │
+│  37│+three_line_37                                                 ││                                                                    │
+│  38│+three_line_38                                                 ││                                                                    │
+│  39│+three_line_39                                                 ││                                                                    │
+│▎ 40│+three_line_40                                                 ││                                                                    │
+│                                                                    ││                                                                    │
+│╭─ Ready ──────────────────────────────────────────────────────────╮││                                                                    │
+││ ❯                                                                │││                                                                    │
+│╰───────────────────────────────────── snapshot-model (high) • 0% ─╯││                                                                    │
+└────────────────────────────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────┘
+─ 4 Agents · 2 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ● editor  idle                                                                                                                          0%
+ ● reviewer  idle                                                                                                                        0%
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B e next live · ^B 1-5 panes

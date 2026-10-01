@@ -121,8 +121,7 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				t.Fatalf("completion lost copied content: %+v", completed.Files)
 			}
 			awaitMain(t, u, "Running")
-			u.shell.dockShown = time.Now().Add(-nativeDockMinimum - time.Second)
-			u.shell.animating(time.Now().Add(time.Second))
+			u.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
 			if len(u.shell.liveDock.Order) != 0 || u.status != "Working" || !registry.find("edit").closed.IsZero() {
 				t.Fatal("edit completion retained the dock or completed the host lifecycle")
 			}

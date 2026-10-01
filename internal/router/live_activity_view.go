@@ -3,6 +3,7 @@ package router
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"strconv"
@@ -47,6 +48,7 @@ type liveActivityView struct {
 	historyHint    string // Intentionally unloaded child history, separate from missing evidence.
 	historyOrder   bool   // Stable IDs need not follow presentation order after older-page insertion.
 	roleColors     map[string]string
+	livePreviews   map[string][]string // Temporary caller-local transcript replacements.
 	feedOnly       bool
 	conversation   bool                        // Main uses the same feed/state with full, unclipped messages.
 	childrenOnly   bool                        // Native Main already owns root activity; keep it out of the auxiliary feed.
@@ -1437,12 +1439,36 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 	var feed liveActivityFeed
 	v.questionRows = make(map[uint64]int)
 	used := make(map[liveActivityRunKey]liveActivityRun)
+	lastPreview := make(map[string]int)
+	for i, entry := range v.entries {
+		if v.visible(entry) && len(v.livePreviews[entry.Agent]) > 0 {
+			lastPreview[entry.Agent] = i
+		}
+	}
+	appendPreview := func(agent string) {
+		if len(feed.lines) > 0 {
+			feed.separator()
+		}
+		head := len(feed.lines)
+		lines := v.livePreviews[agent]
+		for range lines {
+			feed.heads = append(feed.heads, head)
+		}
+		feed.appendRows(liveActivityRun{lines: lines, snippets: make([]liveActivitySnippet, len(lines)), questions: make([]uint64, len(lines))})
+	}
 	for i := 0; i < len(v.entries); {
 		if !v.visible(v.entries[i]) {
 			i++
 			continue
 		}
 		agent := v.entries[i].Agent
+		if last, ok := lastPreview[agent]; ok {
+			if i == last {
+				appendPreview(agent)
+			}
+			i++
+			continue
+		}
 		last, j := i, i
 		for ; j < len(v.entries); j++ {
 			if !v.visible(v.entries[j]) {
@@ -1506,6 +1532,12 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 		}
 		feed.appendRows(run)
 		i = j
+	}
+	// A preview can arrive before the caller's first transcript entry.
+	for _, agent := range slices.Sorted(maps.Keys(v.livePreviews)) {
+		if _, ok := lastPreview[agent]; !ok {
+			appendPreview(agent)
+		}
 	}
 	v.runs = used
 	return feed

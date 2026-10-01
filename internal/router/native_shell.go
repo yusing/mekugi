@@ -1,10 +1,10 @@
 package router
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -14,13 +14,9 @@ import (
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
-// With active subagents, live edits dock in their owning panes. Otherwise
-// Live occupies the right column, above the switchable Activity or Diff view.
+// Live edits temporarily replace their caller's transcript, never another pane.
 const (
-	nativeDockShare   = 0.3
-	nativeDockMin     = 5
-	nativeDockMax     = 14
-	nativeDockMinimum = 1500 * time.Millisecond // A new card shows at least this long, so small edits do not flash.
+	nativeDockMinimum = 1500 * time.Millisecond // Quiet interval before a completed caller batch closes.
 	nativeRosterRows  = 4                       // Unfocused roster rows.
 	nativeRosterShare = 0.4                     // Focused roster share of the screen.
 	nativeFramedRows  = 8                       // Below this, panes drop their frames.
@@ -46,6 +42,7 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 // preview updates the shared dock by call ID, including caller-less completion markers.
 func (u *terminalUI) preview(preview diffview.Preview) {
 	dock := &u.liveDock
+	dock.Retain = true
 	if preview.Caller == "" && preview.Workspace != "" {
 		preview.Caller = "/root"
 	}
@@ -54,11 +51,7 @@ func (u *terminalUI) preview(preview diffview.Preview) {
 	if preview.Complete && (preview.Tool == nativeExecCommandToolName || preview.Tool == "exec") && dock.Views[preview.ID] == nil {
 		return
 	}
-	added := dock.Views[preview.ID] == nil
 	dock.Update(preview)
-	if added && dock.Views[preview.ID] != nil {
-		u.dockShown = time.Now()
-	}
 }
 
 // applyNativeDiff sends saved changes to the diff pane and live edit cards to
@@ -91,76 +84,27 @@ func (u *terminalUI) applyNativeDiff(ctx context.Context, event liveDiffEvent) {
 	}
 }
 
-// animating reports whether a dock needs another frame: a call is still
-// arriving, a row is fading in, or a finished dock is due to close. A settled
-// dock closes as soon as its newest card has shown for the minimum time.
+// animating keeps frames coming until each caller's completed burst expires.
 func (u *terminalUI) animating(now time.Time) bool {
-	dock := &u.liveDock
-	if len(dock.Order) == 0 {
-		return false
-	}
-	if dock.Live() > 0 || dock.Animating(now) {
-		return true
-	}
-	if now.Sub(u.dockShown) >= nativeDockMinimum {
-		*dock = diffview.PreviewPane{}
-		return true
-	}
-	return false
+	changed := u.liveDock.ExpireBatches(now, nativeDockMinimum)
+	return changed || len(u.liveDock.Order) > 0
 }
 
-// nextLive cycles the shared dock regardless of pane focus.
+// nextLive cycles files in the focused caller's retained batch.
 func (u *terminalUI) nextLive() {
-	u.liveDock.Next()
-}
-
-func nativeDockRows(dock *diffview.PreviewPane, height int) int {
-	if len(dock.Order) == 0 || height < nativeDockMin+4 {
-		return 0
+	caller := "/root"
+	if u.focus != 0 {
+		caller = u.agents.selected
+		if caller == "" || caller == "/root" {
+			for _, name := range u.liveDock.Callers() {
+				if name != "/root" {
+					caller = name
+					break
+				}
+			}
+		}
 	}
-	rows := int(float64(height)*nativeDockShare + .5)
-	return min(max(rows, nativeDockMin), nativeDockMax, height-4)
-}
-
-// renderDock is the dock's separator row and its cards.
-func (u *terminalUI) renderDock(ctx context.Context, dock *diffview.PreviewPane, width, rows int, focused bool) ([]string, error) {
-	theme := u.diff.theme
-	dock.Motion.Enabled = true
-	dock.Motion.Canvas = theme.Canvas()
-	if u.diff.backgrounded {
-		dock.Motion.Canvas.Background = u.diff.background
-	}
-	workspace := u.diff.workspace
-	if u.main != nil {
-		workspace = cmp.Or(workspace, u.main.session.cwd)
-	}
-	cards, err := dock.Render(ctx, workspace, theme, width-2, rows-1)
-	if err != nil {
-		return nil, err
-	}
-	var names []string
-	for _, caller := range dock.Callers() {
-		names = append(names, u.agents.painter.Agent(caller))
-	}
-	left := "LIVE · " + strings.Join(names, activityui.Dim+", "+activityui.Undim)
-	if len(names) > 2 {
-		left = fmt.Sprintf("LIVE · %d agents", len(names))
-	}
-	right := ""
-	if len(dock.Order) > 1 && dock.Accordion {
-		right = activityui.Dim + "^B e next" + activityui.Undim
-	}
-	return append([]string{nativeRule("╞", "╡", "═", left, right, width, nativeBorder(focused))}, cards...), nil
-}
-
-// renderIdleLive places the shared dock inside the right pane's frame.
-func (u *terminalUI) renderIdleLive(ctx context.Context, width, height int, focused bool) ([]string, error) {
-	card, err := u.renderDock(ctx, &u.liveDock, width, height, focused)
-	if err != nil {
-		return nil, err
-	}
-	card[0] = ansi.Cut(card[0], 1, width-1)
-	return append(card[:min(len(card), height)], make([]string, max(0, height-len(card)))...), nil
+	u.liveDock.NextBatch(caller)
 }
 
 func nativeBorder(focused bool) string {
@@ -240,21 +184,13 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		u.journalOpen = false
 	}
 	u.agents.feedOnly, u.agents.focused = true, u.focus == 2
-	u.liveDock.Prefer = ""
-	if u.agents.only {
-		u.liveDock.Prefer = u.agents.selected
+	u.liveDock.Motion.Enabled = true
+	u.liveDock.Motion.Canvas = u.diff.theme.Canvas()
+	if u.diff.backgrounded {
+		u.liveDock.Motion.Canvas.Background = u.diff.background
 	}
-	u.liveDock.Compact = true
-	mainEdit := false
-	for _, id := range u.liveDock.Order {
-		view := u.liveDock.Views[id]
-		if view.Current.Caller == "/root" {
-			mainEdit = true
-			if !view.Complete {
-				u.liveDock.Prefer = "/root"
-			}
-		}
-	}
+	mainEdit := !u.liveHidden && slices.Contains(u.liveDock.Callers(), "/root")
+	u.agents.livePreviews = nil
 	if u.diff != nil {
 		u.agents.lineCounts = u.diff.callerCounts
 		u.agents.netCounts = u.diff.netCounts
@@ -290,7 +226,6 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	default:
 		right = terminalRect{0, 0, width, top}
 	}
-	liveRight := !u.liveHidden && !mainEdit && len(u.liveDock.Order) > 0 && right.w >= 4 && right.h >= 3 && framed
 	rows := make([]string, height)
 	draw := func(r terminalRect, lines []string) {
 		for i, line := range lines {
@@ -304,24 +239,29 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		if !framed {
 			iw, ih = left.w, left.h
 		}
-		dockRows := nativeDockRows(&u.liveDock, ih-3)
-		if u.liveHidden || liveRight || (u.main.keybindings || u.main.picker.open) && u.focus == 0 {
-			dockRows = 0
+		dockRows := 0
+		if mainEdit && !u.main.keybindings && !u.main.picker.open {
+			dockRows = ih
 		}
 		body, dockRect := u.main.mainFrame(iw, ih, dockRows)
 		dockAt, dockRows := dockRect.y, dockRect.h
 		rules := map[int]string{}
 		if dockRows > 0 && dockAt+dockRows <= len(body) {
-			dock, err := u.renderDock(ctx, &u.liveDock, left.w, dockRows, u.focus == 0)
+			dock, err := u.liveDock.RenderBatch(ctx, "/root", u.main.session.cwd, u.diff.theme, iw, dockRows, 15)
 			if err != nil {
 				return err
 			}
-			rules[dockAt] = dock[0]
-			for i := 1; i < dockRows; i++ {
+			for i := 0; i < dockRows; i++ {
 				body[dockAt+i] = ""
 				if i < len(dock) {
 					body[dockAt+i] = dock[i]
 				}
+			}
+		}
+		if dockRows > 0 {
+			l.live = terminalRect{left.x + 1, left.y + 1 + dockAt, iw, dockRows}
+			if !framed {
+				l.live = terminalRect{left.x, left.y + dockAt, iw, dockRows}
 			}
 		}
 		if !framed {
@@ -338,17 +278,8 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	}
 	if right.w >= 4 && right.h >= 3 && framed {
 		iw, ih := right.w-2, right.h-2
-		dockRows := 0
-		topDock := liveRight
-		if topDock {
-			dockRows = min(max(1, int(float64(ih)*.35+.5)), max(0, ih-1))
-		}
-		content := ih - dockRows
+		content := ih
 		contentY := right.y + 1
-		if topDock {
-			contentY += dockRows
-			l.live = terminalRect{right.x + 1, right.y + 1, iw, dockRows}
-		}
 		focused := u.focus == 1 || u.focus == 2 || u.focus == 4
 		var body []string
 		var title, label string
@@ -399,6 +330,19 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			// The feed-only renderer clears pane-local hits. Keep the separate
 			// roster's targets, which were laid out before the Activity pane.
 			rosterHits := u.agents.hits
+			if !u.liveHidden {
+				u.agents.livePreviews = make(map[string][]string)
+				for _, caller := range u.liveDock.Callers() {
+					if caller == "/root" || u.agents.only && caller != u.agents.selected {
+						continue
+					}
+					preview, err := u.liveDock.RenderBatch(ctx, caller, u.main.session.cwd, u.diff.theme, iw-1, min(10, max(2, content/2)), min(10, max(2, content/2))-1)
+					if err != nil {
+						return err
+					}
+					u.agents.livePreviews[caller] = preview
+				}
+			}
 			body = u.agents.render(iw, content, now)
 			for row := range body {
 				body[row] = activityui.AttachCopy(body[row], u.agents.copyRows[row])
@@ -412,16 +356,6 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		}
 		body = append(body[:min(len(body), content)], make([]string, max(0, content-len(body)))...)
 		rules := map[int]string{}
-		if content == 0 {
-			title = nativeTitle(3, "Live", "", focused)
-		}
-		if dockRows > 0 && topDock {
-			dock, err := u.renderIdleLive(ctx, right.w, dockRows, focused)
-			if err != nil {
-				return err
-			}
-			body = append(dock, body...)
-		}
 		draw(right, nativeBox(right.w, right.h, title, label, focused, body, rules))
 	}
 	if len(roster) > 0 {

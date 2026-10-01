@@ -13,37 +13,21 @@ import (
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
 
-func TestTerminalUIDockKeepsMinimumDisplayTime(t *testing.T) {
-	u := &terminalUI{}
+func TestTerminalUIBatchKeepsSettlingTime(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.ensureShell()
+	defer u.shell.diffScreen.Close()
+	p := diffview.Preview{ID: "edit", Caller: "/root", Workspace: t.TempDir(), Status: diffview.PreviewEdit, Input: "source"}
+	u.shell.preview(p)
+	p.Complete = true
+	u.shell.preview(p)
 	now := time.Now()
-	u.liveDock = diffview.PreviewPane{
-		Order: []string{"edit"}, Motion: diffview.PreviewMotion{Enabled: true},
-		Views: map[string]*diffview.PreviewView{"edit": {Complete: true, Fading: now.Add(time.Second)}},
+	if !u.shell.animating(now) || len(u.shell.liveDock.Order) != 1 {
+		t.Fatal("completed batch did not wait for another edit")
 	}
-	u.dockShown = now
-	if !u.animating(now) || len(u.liveDock.Order) == 0 {
-		t.Fatal("animated completed preview disappeared")
-	}
-	// A quick edit that settles early stays for the minimum time.
-	u.animating(now.Add(time.Second))
-	if len(u.liveDock.Order) == 0 {
-		t.Fatal("quick edit closed before its minimum display time")
-	}
-	u.animating(now.Add(nativeDockMinimum))
-	if len(u.liveDock.Order) != 0 {
-		t.Fatal("finished preview did not close at its minimum display time")
-	}
-	// A long edit closes as soon as its animation settles, without lingering.
-	u.liveDock = diffview.PreviewPane{
-		Order: []string{"edit"}, Motion: diffview.PreviewMotion{Enabled: true},
-		Views: map[string]*diffview.PreviewView{"edit": {Complete: true, Fading: now.Add(5 * time.Second)}},
-	}
-	if !u.animating(now.Add(4*time.Second)) || len(u.liveDock.Order) == 0 {
-		t.Fatal("animating preview closed")
-	}
-	u.animating(now.Add(5 * time.Second))
-	if len(u.liveDock.Order) != 0 {
-		t.Fatal("settled long edit lingered past its minimum display time")
+	u.shell.animating(now.Add(nativeDockMinimum + time.Millisecond))
+	if len(u.shell.liveDock.Order) != 0 {
+		t.Fatal("settled batch did not close")
 	}
 }
 
@@ -243,16 +227,16 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					now := time.Now()
 					u.shell.animating(now.Add(nativeDockMinimum - time.Millisecond))
 					paint()
-					if !strings.Contains(screen.String(), "LIVE ·") {
-						t.Fatal("Live disappeared before its minimum display time")
+					if len(u.shell.liveDock.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root" || !saved) {
+						t.Fatal("retained Live batch did not respect the owning pane")
 					}
 					u.shell.animating(now.Add(nativeDockMinimum))
 					assertCollapsed()
 					preview.Complete = false
 					u.shell.preview(preview)
 					paint()
-					if !strings.Contains(screen.String(), "LIVE ·") {
-						t.Fatal("new preview did not reopen Live")
+					if len(u.shell.liveDock.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root" || !saved) {
+						t.Fatal("new batch did not respect the owning pane")
 					}
 				})
 			}
@@ -299,15 +283,24 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			assertFollow(paint(120, 40))
 			workspace := t.TempDir()
 			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, diffview.Preview{ID: "edit", Workspace: workspace, Caller: caller, Tool: applyPatchToolName, Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: follow.txt\n+live content\n*** End Patch"}))
-			assertFollow(paint(120, 40))
+			assertLiveFollow := func(frame string) {
+				t.Helper()
+				body := strings.Join(strings.Split(frame, "\n")[:u.shell.layout.roster.y], "\n")
+				if !view.following || strings.Contains(body, "LATEST_TRANSCRIPT") {
+					t.Fatalf("live replacement lost follow or retained transcript:\n%s", frame)
+				}
+			}
+			assertLiveFollow(paint(120, 40))
 			u.agents.agents[0].Responding = false
-			assertFollow(paint(120, 40))
+			assertLiveFollow(paint(120, 40))
 			u.shell.diffOpen = true
 			paint(120, 40)
 			if !view.following {
 				t.Fatal("opening Diff paused transcript")
 			}
 			u.shell.diffOpen = false
+			assertLiveFollow(paint(140, 32))
+			u.shell.preview(diffview.Preview{ID: "edit", Workspace: workspace})
 			assertFollow(paint(140, 32))
 			view.scrollKey(terminalui.PaneWheelDown)
 			assertFollow(paint(140, 32))

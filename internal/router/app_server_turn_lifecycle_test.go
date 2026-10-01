@@ -3,7 +3,6 @@ package router
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
@@ -105,7 +104,6 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 			t.Fatal("resubscription revived stale preview")
 		}
 	}
-	u.shell.dockShown = time.Now().Add(-nativeDockMinimum - time.Second)
 	if u.shell.liveDock.Views[child.ID] == nil {
 		t.Fatal("child preview was retired with main")
 	}

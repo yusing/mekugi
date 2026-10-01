@@ -319,9 +319,14 @@ Mekugi differs in these ways:
   Longer summaries roll through like command output and remain readable until
   later activity settles. Titled sections collapse to their own titles; untitled
   reasoning uses `Thought`. Click a section to read its full text in a dialog.
-- **Live pane.** `/live` toggles it on or off; `/live on` or `/live off`
-  applies directly for the current session. Hiding it frees its space without
-  stopping activity or edit capture. New launches, including resume, show it again.
+- **Live diffs.** Edits temporarily replace Main's transcript or the editing
+  agent's Activity transcript, leaving other agents visible. Main fits as many
+  files as possible with at least 15 rows each; overflow follows the newest file.
+  Ctrl-B e cycles and pins files; Ctrl-B r resumes Main's live following. Completed
+  edits stay together until the batch settles, then the transcript returns.
+  `/live` toggles the view; `/live on` or `/live off` applies directly for the
+  current session without stopping activity or capture. New launches, including
+  resume, show it again.
 - **Setting pickers.** `/model`, `/effort` (also `/reasoning`), and `/tier` open
   a picker: Up/Down and Enter apply a choice, Esc cancels, and neither the
   command nor its choices enter the transcript. A value switches directly, such

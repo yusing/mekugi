@@ -37,9 +37,11 @@ const (
 // diff's selection, scroll, acknowledgements, or follow mode.
 // Updates replace snapshots; only a displayed frame parses and lays out rows.
 type PreviewPane struct {
-	Views  map[string]*PreviewView
-	Order  []string
-	Motion PreviewMotion
+	Views   map[string]*PreviewView
+	Order   []string
+	Motion  PreviewMotion
+	Retain  bool // Native edit batches retain completed calls until the caller settles.
+	batches map[string]*previewBatch
 	// A dock too short for every call keeps one card open and folds the rest
 	// to their headings. prefer names the caller whose card opens first;
 	// pinned holds a card chosen with next() until that call completes.
@@ -100,6 +102,7 @@ func (p *PreviewPane) Update(preview Preview) {
 	if preview.Workspace == "" {
 		if view != nil && !view.Complete {
 			view.Complete = true
+			view.updated = time.Now()
 		}
 		return
 	}
@@ -116,7 +119,7 @@ func (p *PreviewPane) Update(preview Preview) {
 		// An evaluated completion must get a render opportunity before the next
 		// fast call replaces it.
 		replaceable := func(id string) bool {
-			return p.Views[id].Complete && (!p.Views[id].Current.Evaluated || p.Views[id].displayed)
+			return !p.Retain && p.Views[id].Complete && (!p.Views[id].Current.Evaluated || p.Views[id].displayed)
 		}
 		// A new call takes over a finished card's slot, preferring its caller's,
 		// so the other cards keep their positions and heights. Cards resize only
@@ -127,7 +130,7 @@ func (p *PreviewPane) Update(preview Preview) {
 		if slot < 0 {
 			slot = slices.IndexFunc(p.Order, replaceable)
 		}
-		if slot < 0 && len(p.Order) >= 16 {
+		if !p.Retain && slot < 0 && len(p.Order) >= 16 {
 			// Capacity still favors new calls over old completions.
 			slot = slices.IndexFunc(p.Order, func(id string) bool { return p.Views[id].Complete })
 			if slot < 0 {
@@ -147,6 +150,9 @@ func (p *PreviewPane) Update(preview Preview) {
 		p.Views[preview.ID] = view
 	}
 	view.Current, view.Complete, view.updated = preview, preview.Complete, time.Now()
+	if p.Retain {
+		p.batch(preview.Caller)
+	}
 }
 
 // live counts calls whose input is still streaming.

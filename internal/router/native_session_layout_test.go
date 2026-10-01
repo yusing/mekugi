@@ -106,6 +106,12 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			workspace := t.TempDir()
 			preview := diffview.Preview{ID: "edit", Workspace: workspace, Caller: caller, Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: a.txt\n+VISIBLE_EDIT\n*** End Patch"}
 			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, preview))
+			if caller != "/root" {
+				u.shell.journalOpen = false
+				if width < 100 {
+					u.shell.focus = 2
+				}
+			}
 			if !strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("default dock missing")
 			}

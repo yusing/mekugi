@@ -273,20 +273,32 @@ session, defaults to on at launch (including resume), and never stops activity,
 preview updates, or capture. Hidden docks reserve no space. Showing the pane
 again displays any still-current cards, not expired work.
 
-Streaming edits share one Live dock across Main and child agents, keyed by call
-ID so caller-less completion and removal events reach the existing card.
-Main's edits stay above Main's composer and never replace or shrink Activity.
-While Main has a card, concurrent child edits share that dock. A child-only dock
-occupies the top 35% of the right pane, leaving Activity or saved Diff below it.
-When only Main fits on screen, the shared dock sits above its composer.
-A new card shows for at least 1.5 seconds, so a quick, small edit does not flash;
-once the last card's animation settles after that, the dock closes without
-lingering. When no
-cards remain, Activity or Diff reclaims the space. Shell or Code Mode projections
-first received at completion do not open a transient dock; captured effects
-remain in their receipt and saved diff. Concurrent edits use one accordion.
-Main's live card wins automatic selection over the roster-selected child; Ctrl-B e
-can explicitly cycle and pin another card until it completes. Pending exec scope
+Streaming edits temporarily replace their owner's transcript. Main uses its
+whole transcript area above the composer; it never hides Activity or a saved
+Diff. Activity substitutes a compact, single-file live view at the editing
+agent's latest entry, hiding that agent's other transcript rows while retaining
+other agents' activity. If only one pane fits, its own edits appear there;
+child edits do not take over Main. Saved Diff and Journal are not overlaid.
+
+Main splits the available height among as many file views as fit with at least
+15 rows per file, including its heading, plus one shared Live heading. A short
+terminal shows a file-count summary rather than an undersized diff. At capacity,
+a new file slides the visible window forward, keeping the newest file visible
+without shrinking existing splits. Overflow files remain in the batch. Ctrl-B e
+cycles and pins a file window for the focused caller (Main, or Activity's selected
+caller); subsequent arrivals do not steal that selection. Main's mouse wheel and
+Ctrl-B PgUp/PgDn scroll live source independently of the transcript and saved
+Diff. Ctrl-B r resumes Main's source following and newest-file window.
+
+An edit batch is a caller-local burst: completed calls and earlier file
+projections remain while another edit is streaming or until 1.5 seconds after
+the caller's last update. All of that caller's views then close together and
+its transcript returns. Other callers settle independently. Turn termination
+and explicit withdrawal remove only the affected previews; transient batches
+are not reconstructed by history replay. Shell or Code Mode projections first
+received at completion do not open a transient view; captured effects remain in
+their receipt and saved diff.
+Pending exec scope
 uses “may write”; once file differences are observed it uses “observed changes”,
 without claiming exclusive attribution or successful command completion.
 A recognized literal edit finishes its live card once the observed files match

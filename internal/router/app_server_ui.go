@@ -1175,7 +1175,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 // the session state; the bottom border the model. dock rows are left blank
 // between the two, in the returned rectangle, for the live edit dock.
 func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, dockRect terminalRect) {
-	if len(u.view.entries) == 0 && u.draft == "" && height > 10 && u.statusPanel == nil && u.resumePicker == nil && !u.pickerVisible() {
+	if dock == 0 && len(u.view.entries) == 0 && u.draft == "" && height > 10 && u.statusPanel == nil && u.resumePicker == nil && !u.pickerVisible() {
 		height--
 		defer func() {
 			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
@@ -1253,8 +1253,6 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		pending = pending[:min(len(pending), room/2)]
 		room -= len(pending)
 	}
-	dock = min(dock, max(0, room-1))
-	room -= dock
 	// Reserve a blank row immediately above the composer, including below
 	// any journal strip, pending input, or live dock.
 	gap := 0
@@ -1262,6 +1260,8 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		gap = 1
 		room--
 	}
+	dock = min(dock, room)
+	room -= dock
 	u.mainContentPainted = room > 1
 	u.view.conversation, u.view.feedOnly, u.view.status = true, true, livediff.Safe(u.status, false)
 	var frame []string

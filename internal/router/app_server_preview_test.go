@@ -176,7 +176,8 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		return frame
 	}
 	p.until("main streams its patch")
-	render("main dock", "LIVE · main", "M internal/broker/broker.go", "1 Main", "3 Activity", "4 Agents", "├ Read   internal/broker/broker.go")
+	render("main replacement", "LIVE ·", "M internal/broker/broker.go", "1 Main", "3 Activity", "4 Agents")
+	p.ui.shell.liveHidden = true // Subsequent assertions inspect transcripts, not their temporary replacements.
 	// Grok reasoning streams through the router's translation into Activity.
 	p.until("children start")
 	for range 12 {
@@ -197,7 +198,8 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Fatal("collapsed reasoning lost its complete dialog body")
 	}
 	p.until("three agents edit at once")
-	frame := render("agent dock accordion", "LIVE · 3 agents", "^B e next", "▸", "reviewer → main", "2 Diff ●")
+	p.ui.shell.liveHidden = false
+	frame := render("caller-local live previews", "LIVE ·", "3 Activity", "2 Diff ●")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
 		t.Fatal("the saved diff replaced Activity without being opened")
 	}
@@ -206,6 +208,8 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		finishPacing(p.ui.agents)
 		return ansi.Strip(strings.Join(p.ui.agents.renderFeed(120, 80).lines, "\n"))
 	}
+	p.ui.shell.liveHidden = true
+	p.ui.agents.livePreviews = nil
 	p.until("tester reruns")
 	if got := agents(); !strings.Contains(got, "exit 1") || !strings.Contains(got, "┆ --- FAIL: TestUnsubscribeRace (0.37s)") {
 		t.Fatalf("failed test run lacks its failure tail:\n%s", got)
@@ -375,6 +379,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 	}
 	p.until("done")
 	p.serve()
+	p.ui.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
 	if p.ui.turn != "" || p.ui.compactRequest || !strings.Contains(render(), "Context compacted") {
 		t.Fatal("queued compaction did not complete visibly")
 	}
@@ -1295,6 +1300,11 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			defer p.close()
 			p.until("agents apply")
 			u := p.ui
+			// Captured-edit links return with the transcript after the live batch settles.
+			u.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
+			if len(u.shell.liveDock.Order) != 0 {
+				t.Fatal("completed live batch did not restore the transcript")
+			}
 			view, item := u.view, "patch-main"
 			if activity {
 				view, item = u.agents, "patch-tester"

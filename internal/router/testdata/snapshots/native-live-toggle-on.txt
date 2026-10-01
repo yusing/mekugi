@@ -1,21 +1,21 @@
 ┌ 1 Main ────────────────────────────────────────┐┌ 5 Journal ─────────── space expand · d details ┐
-│Mekugi dev • codex                              ││ No journal entries.                            │
-│                                                ││                                                │
-│                                                ││                                                │
-│                                                ││                                                │
-│                                                ││                                                │
-│                                                ││                                                │
-│                                                ││                                                │
-│                                                ││                                                │
-│                                                ││                                                │
-│                                                ││                                                │
-│                                                ││                                                │
-│                                                ││                                                │
-│                                                ││                                                │
-│                                                ││                                                │
-╞ LIVE · main ═══════════════════════════════════╡│                                                │
+│LIVE · 1 file                                   ││ No journal entries.                            │
 │  main · ◐ A live.txt +1 -0                     ││                                                │
 │▎ 1│+Live edit still in progress                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
 │                                                ││                                                │
 │                                                ││                                                │
 │                                                ││                                                │

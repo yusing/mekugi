@@ -209,8 +209,7 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 	if !strings.Contains(screen.String(), "LIVE ·") {
 		t.Fatal("completed edit was not rendered during its minimum display time")
 	}
-	u.shell.dockShown = time.Now().Add(-nativeDockMinimum - time.Millisecond)
-	u.shell.animating(time.Now())
+	u.shell.animating(time.Now().Add(nativeDockMinimum + time.Millisecond))
 	if len(u.shell.liveDock.Order) != 0 || u.status != "Working" {
 		t.Fatal("completed dock did not clear independently of process Working status")
 	}

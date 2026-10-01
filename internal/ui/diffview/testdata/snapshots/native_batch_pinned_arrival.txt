@@ -1,0 +1,31 @@
+LIVE · 4 files · 1–2/4 · ^B e next · pinned
+  main · ◐ M src/a.go +1 -1
+  1│ package main
+  2│ 
+  3│-const value = 1                                                   
+▎ 3│+const value = 2                                                   
+
+
+
+
+
+
+
+
+
+
+  main · ◐ M src/b.go +1 -1
+  1│ package main
+  2│ 
+  3│-const value = 1                                                   
+▎ 3│+const value = 2                                                   
+
+
+
+
+
+
+
+
+
+
