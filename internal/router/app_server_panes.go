@@ -196,7 +196,7 @@ func (p *nativePanePersistence) save(u *terminalUI, now time.Time, flush bool) e
 // Only authoritative start/resume results and settings notifications reach here.
 // Flush applied settings immediately; dragging still uses the existing debounce.
 func (u *appServerUI) retainAppliedSettings() {
-	if u.panes == nil || u.panes.path == "" || u.model == "" || u.resumeClearEffort {
+	if u.panes == nil || u.panes.path == "" || u.model == "" || u.settings.restoreEffort {
 		return
 	}
 	if u.panes.workspace != u.session.cwd || u.panes.thread != u.thread {

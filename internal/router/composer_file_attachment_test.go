@@ -259,7 +259,7 @@ func TestComposerFileAttachmentOversizedInputRestoresDraft(t *testing.T) {
 	if err := u.send([]composerDraft{d}, false); err != nil {
 		t.Fatal(err)
 	}
-	if w.Len() != 0 || u.draft != d.text || !u.noticeAlert || u.starting {
+	if w.Len() != 0 || u.draft != d.text || !u.noticeAlert || u.starting() {
 		t.Fatal("oversized input was sent or draft lost")
 	}
 }

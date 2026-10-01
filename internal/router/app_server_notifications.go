@@ -80,7 +80,7 @@ func (u *appServerUI) writeTerminalTitle(now time.Time) {
 	parts := []string{"Mekugi"}
 	if u.questionCount() > 0 || len(n.blocked) > 0 {
 		parts = append(parts, "[ ! ] Action Required")
-	} else if u.turn != "" || u.starting {
+	} else if u.turn != "" || u.starting() {
 		frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 		parts = append(parts, string(frames[(now.UnixMilli()/100)%int64(len(frames))]))
 	}

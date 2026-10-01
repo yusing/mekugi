@@ -395,7 +395,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 	p.until("done")
 	p.serve()
 	p.ui.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
-	if p.ui.turn != "" || p.ui.compactRequest || !strings.Contains(render(), "Context compacted") {
+	if p.ui.turn != "" || p.ui.compaction.ackPending || !strings.Contains(render(), "Context compacted") {
 		t.Fatal("queued compaction did not complete visibly")
 	}
 	keys("/clear\r")

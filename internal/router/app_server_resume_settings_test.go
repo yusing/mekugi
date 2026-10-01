@@ -97,8 +97,8 @@ func TestUISnapshotNativeResumeSwitchSettingsUnavailable(t *testing.T) {
 	resume := resumeTestPrepared(t, u, w)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"default-model","thread":{"id":"saved","cwd":"/work","turns":[]}}}`, resume.ID))
 	resumeTestSettle(t, u, w)
-	if u.thread != "saved" || u.clearing || !strings.Contains(u.notice, "Saved model settings unavailable") {
-		t.Fatalf("completed resume lost fallback notice: thread=%q clearing=%v notice=%q", u.thread, u.clearing, u.notice)
+	if u.thread != "saved" || u.replacement.pending() || !strings.Contains(u.notice, "Saved model settings unavailable") {
+		t.Fatalf("completed resume lost fallback notice: thread=%q clearing=%v notice=%q", u.thread, u.replacement.pending(), u.notice)
 	}
 	rows, _ := u.mainFrame(100, 12, 0)
 	assertNativeUISnapshot(t, "native-resume-switch-settings-unavailable", rows)
@@ -205,12 +205,12 @@ func TestAppServerResumeClearsSavedReasoningDefault(t *testing.T) {
 				}
 			}
 			if effort == "" {
-				if update != nil || u.settingsPending {
+				if update != nil || u.settings.pending() {
 					t.Fatal("unchanged null reasoning waited for a suppressed event")
 				}
 				return
 			}
-			if update == nil || !u.settingsPending {
+			if update == nil || !u.settings.pending() {
 				t.Fatal("did not clear saved default through Codex")
 			}
 			wantMode := map[string]any{"mode": "plan", "settings": map[string]any{"model": "saved", "reasoning_effort": nil, "developer_instructions": "host instructions"}}
@@ -228,11 +228,11 @@ func TestAppServerResumeClearsSavedReasoningDefault(t *testing.T) {
 				t.Fatal("submitted before reasoning restored")
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, update.ID))
-			if !u.settingsPending {
+			if !u.settings.pending() {
 				t.Fatal("acknowledgement claimed settings applied")
 			}
 			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "saved", "threadSettings": map[string]any{"model": "saved", "effort": nil, "serviceTier": nil}})
-			if u.settingsPending || u.reasoningEffort != "" {
+			if u.settings.pending() || u.reasoningEffort != "" {
 				t.Fatal("saved default did not apply")
 			}
 		})
@@ -244,7 +244,7 @@ func TestAppServerResumeSettingsPreflightFailure(t *testing.T) {
 		for _, switching := range []bool{false, true} {
 			u, w := newAppServerTestUI()
 			if switching {
-				u.switching, u.clearing = "saved", true
+				u.replacement.resume("saved")
 			} else {
 				u.thread, u.resumeThread = "", "saved"
 			}
@@ -257,7 +257,7 @@ func TestAppServerResumeSettingsPreflightFailure(t *testing.T) {
 				t.Fatal(err)
 			}
 			err := u.message(m)
-			if (!switching && err == nil) || (switching && (err != nil || u.thread != "main" || u.clearing)) || w.Len() != 0 {
+			if (!switching && err == nil) || (switching && (err != nil || u.thread != "main" || u.replacement.pending())) || w.Len() != 0 {
 				t.Fatalf("preflight failure: switching=%v err=%v thread=%q wire=%s", switching, err, u.thread, w.Bytes())
 			}
 		}
@@ -269,7 +269,7 @@ func TestAppServerResumeSwitchReasoningIsolation(t *testing.T) {
 		for _, sourceGate := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/sourceGate=%v", result, sourceGate), func(t *testing.T) {
 				u, w := newResumeSessionTestUI(t)
-				u.resumeClearEffort = sourceGate
+				u.settings.restoreEffort = sourceGate
 				info := resumeSettingsRollout(t, `{"type":"turn_context","payload":{"model":"saved","effort":null}}`, "")
 				appServerTestKeys(t, u, "/resume saved\r")
 				read := resumeTestOne(t, w, "thread/read")
@@ -285,13 +285,13 @@ func TestAppServerResumeSwitchReasoningIsolation(t *testing.T) {
 					for _, request := range resumeTestRequests(t, w) {
 						correction = correction || request.Method == "thread/settings/update"
 					}
-					if u.thread != "saved" || !u.resumeClearEffort || !u.settingsPending || !correction {
+					if u.thread != "saved" || !u.settings.restoreEffort || !u.settings.pending() || !correction {
 						t.Fatal("source notification released target default restoration")
 					}
 					return
 				}
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"cannot resume"}}`, resume.ID))
-				if u.thread != "main" || u.resumeClearEffort != sourceGate || u.resumePendingEffort {
+				if u.thread != "main" || u.settings.restoreEffort != sourceGate || u.resumePendingEffort {
 					t.Fatal("target restoration state leaked into source session")
 				}
 				appServerTestKeys(t, u, "continue original\r")

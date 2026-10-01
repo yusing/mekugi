@@ -74,7 +74,7 @@ func (u *appServerUI) resumeCommand(text string) error {
 		u.setNotice("Use /resume or /resume THREAD_ID", true)
 		return nil
 	}
-	if u.thread == "" || u.restoring != nil || u.clearing {
+	if u.thread == "" || u.restoring != nil || u.replacement.pending() {
 		u.setNotice("Wait for the session to be ready", false)
 		return nil
 	}
@@ -205,9 +205,9 @@ func (u *appServerUI) resumeSession(id string) error {
 		u.setNotice("Already viewing this session", false)
 		return nil
 	}
-	u.clearing, u.switching = true, id
+	u.replacement.resume(id)
 	if err := u.requestResume(id); err != nil {
-		u.clearing, u.switching = false, ""
+		u.replacement.finish()
 		return err
 	}
 	return nil
@@ -217,7 +217,7 @@ func (u *appServerUI) resumeSession(id string) error {
 // Input typed for the new session returns to the composer rather than
 // reaching the old thread.
 func (u *appServerUI) resumeSessionFailed(message string) error {
-	u.clearing, u.switching = false, ""
+	u.replacement.finish()
 	u.resumePendingEffort = false
 	u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 	u.unsent, u.queued = nil, nil

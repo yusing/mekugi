@@ -147,12 +147,12 @@ func TestQuestionQueuedBatchDropsExternallyResolvedReplies(t *testing.T) {
 			u, input := newAppServerTestUI()
 			u.turn = "turn"
 			questionTestAsync(t, u, "queued", "Who receives it?", "Who approves it?")
-			u.starting = true // Another pending turn/start prevents flushing.
+			u.awaitingTurn = true // Another pending turn/start prevents flushing.
 			u.openQuestions()
 			questionTestPaint(t, u, 70)
 			appServerTestKeys(t, u, "1\r1\r")
 			questionTestSync(t, u, "blocking", false)
-			u.starting = false
+			u.awaitingTurn = false
 			if strings.Contains(input.String(), "turn/steer") {
 				t.Fatal("question batch escaped while sync request blocked turn")
 			}
@@ -211,13 +211,13 @@ func TestQuestionAnswerOnlyAppearsUnderAsked(t *testing.T) {
 func TestQuestionNewPromptSupersedesUnsentAnswer(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.turn = "turn"
-	u.starting = true
+	u.awaitingTurn = true
 	questionTestAsync(t, u, "pending-start", "Who receives it?")
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "3Local draft\r")
 	lifecycleUserMessage(t, u, "ordinary-new-turn", "new-prompt", "Do something else")
-	u.starting = false
+	u.awaitingTurn = false
 	if err := u.flushInput(); err != nil {
 		t.Fatal(err)
 	}

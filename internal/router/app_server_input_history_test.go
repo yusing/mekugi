@@ -10,10 +10,10 @@ func TestAppServerInputHistoryAcknowledgedAndDraftRestored(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	appServerTestKeys(t, u, "first\r")
 	appServerTestMessage(t, u, `{"id":1,"result":{}}`)
-	u.starting = false
+	u.awaitingTurn = false
 	appServerTestKeys(t, u, "second\r")
 	appServerTestMessage(t, u, `{"id":2,"result":{}}`)
-	u.starting = false
+	u.awaitingTurn = false
 	appServerTestKeys(t, u, "draft\x1b[D\x1b[A")
 	if u.draft != "second" {
 		t.Fatalf("newest = %q", u.draft)

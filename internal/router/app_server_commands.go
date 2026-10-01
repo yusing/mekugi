@@ -36,14 +36,14 @@ var nativeCommands = []composerChoice{
 // Unlike stock's busy rejection, compact waits locally: the RPC replaces an
 // active host task, so it must never be sent as a turn/steer text payload.
 func (u *appServerUI) sessionCommand(command string) error {
-	if u.thread == "" || u.restoring != nil || u.clearing {
+	if u.thread == "" || u.restoring != nil || u.replacement.pending() {
 		u.setNotice("Wait for the session to be ready", false)
 		return nil
 	}
 	if command == "/compact" {
 		u.unsent = append(u.unsent, u.takeDraft())
 		u.unsent[len(u.unsent)-1].text = "/compact"
-		u.unsent[len(u.unsent)-1].continueTask = u.turn != "" || u.starting
+		u.unsent[len(u.unsent)-1].continueTask = u.turn != "" || u.starting()
 		return u.flushInput()
 	}
 	if u.sessionBusy() {
@@ -51,7 +51,7 @@ func (u *appServerUI) sessionCommand(command string) error {
 		return nil
 	}
 	u.takeDraft()
-	u.clearing = true
+	u.replacement.clear()
 	u.status = "Starting new session…"
 	params := map[string]any{"sessionStartSource": "clear", "approvalPolicy": "never", "sandbox": "danger-full-access"}
 	if u.session.cwd != "" {
@@ -70,7 +70,7 @@ func (u *appServerUI) sessionCommand(command string) error {
 		params["serviceTier"] = u.serviceTier
 	}
 	if err := u.request("thread/start", params); err != nil {
-		u.clearing = false
+		u.replacement.finish()
 		return err
 	}
 	return nil
@@ -78,20 +78,20 @@ func (u *appServerUI) sessionCommand(command string) error {
 
 // sessionBusy reports work that leaving the current thread would strand.
 func (u *appServerUI) sessionBusy() bool {
-	return u.turn != "" || u.starting || u.compactRequest || u.submission.text != "" || u.settingsPending || u.shellPending.text != "" || len(u.unsent)+len(u.queued) > 0 || u.reset.active()
+	return u.busy() || u.reset.active()
 }
 
 // A queued compact is a local action, not Main's running turn. Return waiting
 // input for retry without interrupting that turn or an in-flight submission.
 func (u *appServerUI) cancelQueuedCompact() bool {
-	if u.manualCompact || u.compactRequest {
+	if u.compaction.running() || u.compaction.ackPending {
 		return false
 	}
 	isCompact := func(d composerDraft) bool { return d.text == "/compact" }
 	if !slices.ContainsFunc(u.unsent, isCompact) && !slices.ContainsFunc(u.queued, isCompact) {
 		return false
 	}
-	u.continueAfterCompact = false
+	u.compaction.cancelContinuation()
 	u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 	u.unsent, u.queued = nil, nil
 	u.setNotice("Queued compaction cancelled · input restored · Main continues", false)
@@ -133,12 +133,10 @@ func (u *appServerUI) clearSessionPresentation() error {
 		return err
 	}
 	u.picker = composerPicker{}
-	u.resumeThread, u.resumeCwd = "", ""           // A switch keeps its buffered events for restoration.
-	u.turn, u.compacting, u.polling = "", nil, nil // The left session stayed live until now.
-	u.pendingStart = composerSubmission{}
+	u.compacting, u.polling = nil, nil
 	u.turnStarted = time.Time{}
 	u.exitUsage = appServerTokenUsage{}
-	u.alert, u.clearing = false, false
+	u.alert = false
 	u.setNotice("", false)
 	u.session.outputs = activityui.Retention{}
 	painter := u.view.painter

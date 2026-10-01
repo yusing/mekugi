@@ -37,6 +37,14 @@ terminal write succeeds. Preview workers and brokers remain with router observat
 not the view package. The launcher still owns invocation configuration and cancellation
 before handoff; the native client never executes model-requested tools.
 
+Live host operations have one lifecycle owner, separate from presentation status,
+elapsed time, and activity items. Input admission derives from pending submission,
+compaction, interruption, shell, replacement, and settings records, not displayed
+labels. Each record distinguishes RPC acknowledgement from the host observations
+that settle it. Confirmed session replacement retires the source operations as a
+unit while retaining queued composer input and the target's resume intent;
+rejected replacement leaves the source lifecycle intact.
+
 The existing native pane-preference owner also retains a complete applied-settings
 snapshot and its observation time. Host start/resume results and matching
 `thread/settings/updated` notifications are authoritative; enqueue acknowledgements

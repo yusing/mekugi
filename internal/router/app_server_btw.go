@@ -67,7 +67,7 @@ func (u *appServerUI) submitBTW() error {
 		u.setNotice("Use /btw QUESTION · repeat /btw for a follow-up · Esc closes", false)
 		return nil
 	}
-	if u.thread == "" || u.restoring != nil || u.clearing {
+	if u.thread == "" || u.restoring != nil || u.replacement.pending() {
 		u.setNotice("Wait for the conversation to load before asking a side question", false)
 		return nil
 	}
@@ -110,7 +110,7 @@ func (u *appServerUI) btwRequest(b *appServerBTW, method string, params any) err
 
 func (u *appServerUI) flushBTW() error {
 	b := u.btw
-	if b == nil || b.pending.text == "" || b.starting || b.turn != "" || u.clearing {
+	if b == nil || b.pending.text == "" || b.starting || b.turn != "" || u.replacement.pending() {
 		return nil
 	}
 	parts := []composerDraft{b.pending}
@@ -123,7 +123,7 @@ func (u *appServerUI) flushBTW() error {
 	if b.thread == "" {
 		// A just-submitted main message must reach Codex before its snapshot.
 		// An already-running turn is deliberately not interrupted or awaited.
-		if u.starting || u.submission.text != "" || u.settingsPending {
+		if u.starting() || u.submission.text != "" || u.settings.pending() {
 			return nil
 		}
 		b.starting, b.status = true, "Branching…"

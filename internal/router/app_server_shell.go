@@ -22,7 +22,7 @@ func (u *appServerUI) submitShell() error {
 	if u.thread == "" || u.restoring != nil {
 		return nil
 	}
-	if u.clearing || u.shellPending.text != "" || u.shellOrigin != nil || u.starting || u.submission.text != "" || u.interrupting != "" {
+	if !u.acceptsShell() {
 		u.setNotice("Waiting for the pending request · press Enter again when ready", false)
 		return nil
 	}
@@ -33,24 +33,15 @@ func (u *appServerUI) submitShell() error {
 	if err := u.request("thread/shellCommand", map[string]any{"threadId": u.thread, "command": command}); err != nil {
 		return err // Keep the draft when transport submission fails.
 	}
-	u.shellPending = u.takeDraft()
-	u.shellOrigin = new(u.turn)
-	if u.turn == "" {
-		u.shellStandalone, u.starting = true, true
-	}
+	u.shellCommand.begin(u.takeDraft(), u.turn)
 	u.setNotice("Shell command submitted", false)
 	u.view.follow()
 	return nil
 }
 
 func (u *appServerUI) shellResponse(failure *appserver.Error) {
-	draft := u.shellPending
-	u.shellPending = composerDraft{}
+	draft := u.shellCommand.acknowledge(failure != nil, u.turn)
 	if failure != nil {
-		u.shellOrigin = nil
-		if u.shellStandalone && u.turn == "" {
-			u.shellStandalone, u.starting = false, false
-		}
 		hint := ""
 		if u.draft == "" {
 			u.loadDraft(draft)
@@ -69,6 +60,6 @@ func (u *appServerUI) observeShellItem(thread string, item appServerItem) {
 	// Called only for starts: an older auxiliary command can complete while a
 	// newer shell request is still awaiting its execution identity.
 	if thread == u.thread && item.Type == "commandExecution" && item.Source == "userShell" {
-		u.shellOrigin = nil
+		u.shellCommand.identified()
 	}
 }

@@ -245,7 +245,7 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[{"id":"main","preview":"old transcript"},{"id":"saved","preview":"Saved question"}],"nextCursor":null}}`, list.ID))
 	resumeTestKeys(t, u, "\x1b[B", "\r")
 	resume := resumeTestPrepared(t, u, w)
-	if resume.Params.ThreadID != "saved" || !u.clearing || u.thread != "main" || len(u.view.entries) != 1 {
+	if resume.Params.ThreadID != "saved" || !u.replacement.pending() || u.thread != "main" || len(u.view.entries) != 1 {
 		t.Fatalf("switch request/state: %+v thread=%q entries=%+v", resume.Params, u.thread, u.view.entries)
 	}
 	// The current session stays live until Codex confirms the switch.
@@ -259,7 +259,7 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 	if len(methods) == 0 || methods[0] != "thread/unsubscribe" || !slices.Contains(methods, "model/list") {
 		t.Fatalf("switch follow-up requests: %v", methods)
 	}
-	if u.thread != "saved" || u.clearing || u.switching != "" || u.status != "Ready" || len(u.view.entries) != 2 || u.view.entries[0].Text != "Saved question" {
+	if u.thread != "saved" || u.replacement.pending() || u.replacement.target != "" || u.status != "Ready" || len(u.view.entries) != 2 || u.view.entries[0].Text != "Saved question" {
 		t.Fatalf("switched state: thread=%q status=%q entries=%+v", u.thread, u.status, u.view.entries)
 	}
 	if frame := resumeTestFrame(t, u, 120, 20); strings.Contains(frame, "old transcript") || strings.Contains(frame, "late old") {
@@ -300,7 +300,7 @@ func TestAppServerResumeSwitchFailureKeepsSession(t *testing.T) {
 		t.Fatal("input escaped to the old thread while switching")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"no rollout"}}`, resume.ID))
-	if u.thread != "main" || u.clearing || u.switching != "" || !strings.Contains(u.notice, "no rollout") || u.draft != "held" || len(u.view.entries) != 2 || u.view.entries[1].Text != "arrived while switching" {
+	if u.thread != "main" || u.replacement.pending() || u.replacement.target != "" || !strings.Contains(u.notice, "no rollout") || u.draft != "held" || len(u.view.entries) != 2 || u.view.entries[1].Text != "arrived while switching" {
 		t.Fatalf("failed switch lost state: thread=%q notice=%q entries=%+v", u.thread, u.notice, u.view.entries)
 	}
 	appServerTestKeys(t, u, "\r")

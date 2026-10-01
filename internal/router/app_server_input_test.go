@@ -51,7 +51,7 @@ func TestNativeUIInputDrainPreservesStandaloneEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 	appServerOneRequest(t, wire, "turn/interrupt", "")
-	if u.draft != "keep me" || u.interrupting != "active" {
+	if u.draft != "keep me" || u.interruption.target != "active" {
 		t.Fatal("standalone Escape did not preserve interrupt behavior")
 	}
 }

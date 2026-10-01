@@ -18,7 +18,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			case "running":
 				u.turn = "active"
 			case "starting":
-				u.starting = true
+				u.awaitingTurn = true
 			case "queued":
 				u.queued = []composerDraft{{text: "next"}}
 			}
@@ -33,7 +33,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			if err := u.shell.send("\x1b"); err != nil {
 				t.Fatal(err)
 			}
-			if wire.Len() != 0 || u.interruptBeforeStart || u.interrupting != "" || !strings.Contains(u.notice, "/unlock") {
+			if wire.Len() != 0 || u.interruption.beforeStart || u.interruption.target != "" || !strings.Contains(u.notice, "/unlock") {
 				t.Fatalf("locked cancellation reached host: %s %+v", wire.Bytes(), u)
 			}
 			if state == "queued" && len(u.queued) != 1 {
@@ -47,7 +47,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			if err != nil || u.interruptLocked {
 				t.Fatal("unlock did not restore keyboard handling")
 			}
-			if state == "running" && !strings.Contains(wire.String(), "turn/interrupt") || state == "starting" && !u.interruptBeforeStart || state == "idle" && !quit || state == "queued" && (len(u.queued) != 0 || u.draft != "next") {
+			if state == "running" && !strings.Contains(wire.String(), "turn/interrupt") || state == "starting" && !u.interruption.beforeStart || state == "idle" && !quit || state == "queued" && (len(u.queued) != 0 || u.draft != "next") {
 				t.Fatalf("unlocked handling did not resume: quit=%v draft=%q wire=%s", quit, u.draft, wire.String())
 			}
 		})

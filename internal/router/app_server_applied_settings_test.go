@@ -150,7 +150,7 @@ func TestAppServerAppliedSettingsPendingFailedAndForeignDoNotPersist(t *testing.
 			if err != nil || string(before) != string(after) {
 				t.Fatalf("non-authoritative event changed retained settings: %s %v", message, err)
 			}
-			if name == "failed" && u.settingsPending {
+			if name == "failed" && u.settings.pending() {
 				t.Fatal("rejected request was not settled")
 			}
 		})
@@ -160,7 +160,7 @@ func TestAppServerAppliedSettingsPendingFailedAndForeignDoNotPersist(t *testing.
 func TestAppServerAppliedSettingsStartResultPersists(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u, _ := appliedSettingsTestUI(t, "/workspace", "old")
-	u.resumeClearEffort = true // A new thread must not inherit a failed resume gate.
+	u.settings.restoreEffort = true // A new thread must not inherit a failed resume gate.
 	u.requests["1"] = "thread/start"
 	appServerTestMessage(t, u, `{"id":1,"result":{"model":"started","reasoningEffort":null,"serviceTier":null,"thread":{"id":"new","cwd":"/workspace"}}}`)
 	state, err := new(nativePanePersistence).read("/workspace", "new")
@@ -190,7 +190,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				}
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{"model":"saved-model","reasoningEffort":"high","serviceTier":null,"collaborationMode":{"mode":"default","settings":{"model":"saved-model","reasoning_effort":"high","developer_instructions":null}},"thread":{"id":"saved","cwd":"/workspace"}}}`, resumeID))
-			if !u.settingsPending {
+			if !u.settings.pending() {
 				t.Fatal("did not wait for default restoration")
 			}
 			after, err := u.panes.read("/workspace", "saved")
@@ -212,13 +212,13 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 			}
 			if effort == "" {
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, correctionID))
-				if !u.resumeClearEffort || w.Len() != 0 {
+				if !u.settings.restoreEffort || w.Len() != 0 {
 					t.Fatal("enqueue acknowledgement claimed restoration success")
 				}
 				appliedSettingsTestNotify(t, u, "saved-model", "", "")
 			} else {
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, correctionID))
-				if u.draft != "held" || !u.resumeClearEffort || u.settingsPending || w.Len() != 0 {
+				if u.draft != "held" || !u.settings.restoreEffort || u.settings.pending() || w.Len() != 0 {
 					t.Fatal("rejected restoration ran input or lost its recovery draft")
 				}
 				if err := u.flushInput(); err != nil || w.Len() != 0 {
@@ -249,7 +249,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 			}
 			appServerOneRequest(t, w, "turn/start", "held")
 			state, err := new(nativePanePersistence).read("/workspace", "saved")
-			if err != nil || state.Settings.Model != "saved-model" || state.Settings.Effort != effort || state.Settings.Tier != "" || !state.ResumeObserved.IsZero() || state.ResumeEvidence.Model != "" || u.settingsPending || u.resumeClearEffort {
+			if err != nil || state.Settings.Model != "saved-model" || state.Settings.Effort != effort || state.Settings.Tier != "" || !state.ResumeObserved.IsZero() || state.ResumeEvidence.Model != "" || u.settings.pending() || u.settings.restoreEffort {
 				t.Fatalf("confirmed defaults not retained: %+v %v", state, err)
 			}
 		})
@@ -382,7 +382,8 @@ func TestUISnapshotNativeResumeReasoningRejected(t *testing.T) {
 	u.view.painter.Theme = livediff.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.status, u.model, u.reasoningEffort = "Ready", "saved-model", "high"
-	u.resumeClearEffort, u.settingsPending = true, true
+	u.settings.restoreEffort = true
+	u.settings.beginLive()
 	u.requests["1"] = "thread/settings/update"
 	appServerTestKeys(t, u, "held input\r")
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"host rejected update"}}`)

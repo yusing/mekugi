@@ -124,7 +124,7 @@ func TestAppServerQueuedInputStacksIntoNextTurn(t *testing.T) {
 	}
 	appServerTestTurnEnd(t, u, "t", "completed")
 	start := appServerOneRequest(t, w, "turn/start", "one\ntwo")
-	if len(u.queued) != 0 || !u.starting || len(u.view.entries) != 1 || u.view.entries[0].Text != "one\ntwo" {
+	if len(u.queued) != 0 || !u.starting() || len(u.view.entries) != 1 || u.view.entries[0].Text != "one\ntwo" {
 		t.Fatalf("queued turn not started and echoed: %+v", u.view.entries)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t2"}}}`, start.ID))
@@ -378,8 +378,8 @@ func TestAppServerInterruptBeforeFirstCommitRestoresCleanComposer(t *testing.T) 
 			if !responseFirst {
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t"}}}`, start.ID))
 			}
-			if u.draft != "first prompt" || len(u.view.entries) != 0 || u.status != "Ready" || u.starting || u.turn != "" {
-				t.Fatalf("not clean: draft=%q entries=%+v status=%q starting=%v turn=%q", u.draft, u.view.entries, u.status, u.starting, u.turn)
+			if u.draft != "first prompt" || len(u.view.entries) != 0 || u.status != "Ready" || u.starting() || u.turn != "" {
+				t.Fatalf("not clean: draft=%q entries=%+v status=%q starting=%v turn=%q", u.draft, u.view.entries, u.status, u.starting(), u.turn)
 			}
 			if len(appServerTurnRequests(t, w)) != 0 {
 				t.Fatal("automatically resent restored input")
@@ -397,7 +397,7 @@ func TestAppServerInterruptBeforeFirstCommitRestoresCleanComposer(t *testing.T) 
 
 func TestAppServerInterruptLocallyStackedInputDoesNotQuit(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.settingsPending = true
+	u.settings.beginLive()
 	appServerTestKeys(t, u, "not sent\r")
 	quit, err := u.key(3)
 	if quit || err != nil || u.draft != "not sent" || len(u.unsent) != 0 || w.Len() != 0 {

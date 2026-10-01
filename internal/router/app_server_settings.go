@@ -46,11 +46,11 @@ func (u *appServerUI) effortChoices() []string {
 // intent, never synthetic Responses items or writes to the user's config file.
 // Source: codex-rs/app-server-protocol/src/protocol/v2/{thread,turn}.rs
 func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
-	if u.thread == "" || u.restoring != nil || u.starting || u.clearing {
+	if u.thread == "" || u.restoring != nil || u.starting() || u.replacement.pending() {
 		u.setNotice("Wait for the thread or turn to finish starting", true)
 		return false, nil
 	}
-	if u.settingsPending {
+	if u.settings.pending() {
 		u.setNotice("Settings update pending", false)
 		return false, nil
 	}
@@ -77,8 +77,8 @@ func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
 	// needs no thread update, but can still repair a previously rejected live one.
 	if unchanged {
 		if u.turn == "" {
-			if _, explicit := change["effort"]; explicit && u.resumeClearEffort {
-				u.resumeClearEffort = false
+			if _, explicit := change["effort"]; explicit && u.settings.restoreEffort {
+				u.settings.restoredEffort()
 				u.retainAppliedSettings()
 			}
 			u.setNotice("Settings unchanged", false)
@@ -88,14 +88,14 @@ func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
 		if err := u.request("turn/settings/update", params); err != nil {
 			return false, err
 		}
-		u.settingsPending = true
+		u.settings.beginLive()
 		u.setNotice("Updating active turn…", false)
 		return true, nil
 	}
 	if err := u.request("thread/settings/update", params); err != nil {
 		return false, err
 	}
-	u.settingsPending, u.settingsChange, u.settingsTurn = true, change, u.turn
+	u.settings.begin(change, u.turn)
 	u.setNotice("Updating settings…", false)
 	return true, nil
 }
@@ -139,7 +139,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 	if command != "/model" && command != "/reasoning" && command != "/effort" && command != "/tier" && command != "/live" {
 		return false, nil
 	}
-	if u.clearing {
+	if u.replacement.pending() {
 		u.setNotice("Wait for the new session · draft kept", false)
 		return true, nil
 	}
@@ -188,7 +188,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 		u.setNotice("Use "+command+" or "+command+" VALUE", true)
 		return true, nil
 	}
-	if u.settingsPending {
+	if u.settings.pending() {
 		u.setNotice("Settings update pending", false)
 		return true, nil
 	}
@@ -253,8 +253,8 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	}
 	if method == "thread/settings/update" || method == "turn/settings/update" {
 		if m.Error != nil {
-			u.settingsPending, u.settingsChange = false, nil
-			if u.resumeClearEffort {
+			u.settings.finish()
+			if u.settings.restoreEffort {
 				u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 				u.unsent, u.queued = nil, nil
 				u.setNotice("Could not restore default reasoning: "+m.Error.Message+" · choose /effort VALUE or restart resume", true)
@@ -271,7 +271,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 			if err := json.Unmarshal(m.Result, &result); err != nil {
 				return true, err
 			}
-			u.settingsPending = false
+			u.settings.finish()
 			switch result.Status {
 			case "applied":
 				u.setNotice("Settings saved · live update published for subsequent steps", false)
@@ -319,25 +319,25 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		u.session.cwd = event.Settings.Cwd
 	}
 	u.model, u.reasoningEffort, u.serviceTier = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
-	if _, explicit := u.settingsChange["effort"]; explicit || u.reasoningEffort == "" {
-		u.resumeClearEffort = false
+	if _, explicit := u.settings.change["effort"]; explicit || u.reasoningEffort == "" {
+		u.settings.restoredEffort()
 	}
 	u.retainAppliedSettings()
-	if !u.settingsPending || u.settingsChange == nil {
+	if !u.settings.pending() || u.settings.change == nil {
 		return true, nil
 	}
-	change := u.settingsChange
-	u.settingsChange = nil
-	if u.settingsTurn != "" && u.settingsTurn == u.turn {
-		change["threadId"], change["turnId"] = u.thread, u.settingsTurn
+	change := u.settings.takeChange()
+	if u.settings.turn != "" && u.settings.turn == u.turn {
+		change["threadId"], change["turnId"] = u.thread, u.settings.turn
 		if err := u.request("turn/settings/update", change); err != nil {
 			return true, err
 		}
+		u.settings.beginLive()
 		u.setNotice("Settings saved · updating active turn…", false)
 	} else {
-		u.settingsPending = false
+		u.settings.finish()
 		u.setNotice("Settings saved for next turn", false)
-		if u.resumeClearEffort {
+		if u.settings.restoreEffort {
 			u.setNotice("Default reasoning still needs restoration · choose /effort VALUE or restart resume", true)
 		}
 	}

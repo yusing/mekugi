@@ -24,7 +24,7 @@ func (u *appServerUI) requestResume(thread string) error {
 
 func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	fail := func(message string) error {
-		if u.switching != "" {
+		if u.replacement.target != "" {
 			return u.resumeSessionFailed(message)
 		}
 		return fmt.Errorf("read resume settings: %s", message)
@@ -38,7 +38,7 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	if err := json.Unmarshal(m.Result, &result); err != nil {
 		return fail(err.Error())
 	}
-	thread := cmp.Or(u.switching, u.resumeThread)
+	thread := cmp.Or(u.replacement.target, u.resumeThread)
 	if result.Thread.ID != thread {
 		return fail("thread/read returned a different thread identity")
 	}
@@ -131,15 +131,14 @@ func (u *appServerUI) holdResumeEvent(m appserver.Message, resuming bool) (hold,
 	if !resuming && (thread == "" || u.session.paths[thread] != "" || u.session.paths[p.Thread.ParentThreadID] != "") {
 		return false, false
 	}
-	root := cmp.Or(u.switching, u.resumeThread)
+	root := cmp.Or(u.replacement.target, u.resumeThread)
 	delta := strings.HasSuffix(m.Method, "/delta") || strings.HasSuffix(m.Method, "Delta")
 	return true, !delta || thread == "" || thread == root
 }
 
 // replayResumePending delivers events buffered while a thread was pending.
 func (u *appServerUI) replayResumePending() error {
-	pending := u.resumePending
-	u.resumePending = nil
+	pending := u.takeEvents()
 	for _, event := range pending {
 		if err := u.message(event); err != nil {
 			return err

@@ -140,14 +140,10 @@ func (u *appServerUI) flushInput() error {
 	}
 	u.unsent = pendingQuestionReplies(u.unsent)
 	u.queued = pendingQuestionReplies(u.queued)
-	if u.shellOrigin != nil && u.turn != *u.shellOrigin {
-		return nil // Main ended before Codex identified the shell's turn.
-	}
-	if u.waitingQuestion() || u.thread == "" || u.restoring != nil || u.submission.text != "" || u.clearing || u.compactRequest || u.manualCompact || u.starting || u.settingsPending || u.resumeClearEffort || u.shellPending.text != "" || u.shellStandalone {
+	if u.waitingQuestion() || u.restoring != nil || !u.acceptsInput() {
 		return nil
 	}
-	if u.continueAfterCompact && u.turn == "" {
-		u.continueAfterCompact = false
+	if u.turn == "" && u.compaction.takeContinuation() {
 		if len(u.unsent)+len(u.queued) == 0 {
 			u.unsent = append(u.unsent, composerDraft{text: "Continue the task from where you left off before compaction."})
 		}
@@ -156,8 +152,6 @@ func (u *appServerUI) flushInput() error {
 	fromUnsent := len(u.unsent) > 0
 	steer := u.turn != ""
 	switch {
-	case steer && u.turn == u.interrupting:
-		return nil // The interrupted turn cannot take it; the next turn will.
 	case len(u.unsent) > 0:
 		if steer && u.unsent[0].text == "/compact" {
 			return nil
@@ -182,8 +176,8 @@ func (u *appServerUI) flushInput() error {
 
 func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	if len(parts) == 1 && parts[0].text == "/compact" {
-		u.continueAfterCompact = parts[0].continueTask
-		u.compactRequest, u.manualCompact, u.starting, u.status = true, true, true, "Compacting context…"
+		u.compaction.begin(parts[0].continueTask)
+		u.status = "Compacting context…"
 		return u.request("thread/compact/start", map[string]any{"threadId": u.thread})
 	}
 	for i := range parts {
@@ -209,7 +203,6 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		method, s.turn = "turn/steer", u.turn
 		params["expectedTurnId"] = u.turn
 	} else {
-		u.starting = true
 		if len(questionReplies(s.text)) == 0 {
 			s.seq = u.view.lastSeq + 1
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: s.seq, Agent: "You", Kind: "text", Text: s.text, Observed: time.Now(),
@@ -222,10 +215,8 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	for _, path := range s.answerImages {
 		delete(u.ownedImages, path)
 	}
-	u.submission, u.status, u.alert = s, "Sending…", false
-	if !steer {
-		u.pendingStart = s
-	}
+	u.appServerInputOperation.submit(s)
+	u.status, u.alert = "Sending…", false
 	if s.attachmentNotice != "" {
 		notice := s.attachmentNotice
 		if strings.HasPrefix(u.notice, "Skill attachment unavailable:") || strings.HasPrefix(u.notice, "Skill catalog incomplete:") {
@@ -234,7 +225,7 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		u.setNotice(notice, true)
 	}
 	if err := u.request(method, params); err != nil {
-		u.submission = composerSubmission{}
+		u.appServerInputOperation.acknowledge()
 		u.withdraw(s)
 		return err
 	}
@@ -253,8 +244,8 @@ func (u *appServerUI) withdraw(s composerSubmission) {
 		u.restoreDrafts(s.parts...)
 		return
 	}
-	u.starting, u.interruptBeforeStart = false, false
-	u.pendingStart = composerSubmission{}
+	u.appServerInputOperation.withdrawStart()
+	u.interruption.cancelDeferred()
 	u.view.removePendingInput(s.seq)
 	if s.interrupted && len(u.view.entries) == 0 {
 		u.status, u.turnStarted = "Ready", time.Time{}
@@ -264,8 +255,7 @@ func (u *appServerUI) withdraw(s composerSubmission) {
 }
 
 func (u *appServerUI) submissionResponse(method string, failure *appserver.Error) {
-	s := u.submission
-	u.submission = composerSubmission{}
+	s := u.appServerInputOperation.acknowledge()
 	if failure == nil {
 		for i, part := range s.parts {
 			if !part.inHistory {
@@ -304,13 +294,13 @@ func (u *appServerUI) submissionResponse(method string, failure *appserver.Error
 	if u.status == "Sending…" && !u.alert {
 		if u.turn != "" {
 			u.status = "Working"
-		} else if u.starting {
+		} else if u.starting() {
 			u.status = "Starting turn…"
 		}
 	}
 	switch {
 	case s.turn == "" || s.committed:
-		// turn/started may precede or follow a start's response. u.starting
+		// turn/started may precede or follow a start's response. u.starting()
 		// prevents another start during that race.
 	case s.turn == u.turn:
 		u.steers = append(u.steers, s)
@@ -322,7 +312,7 @@ func (u *appServerUI) submissionResponse(method string, failure *appserver.Error
 
 // commitSteer matches Codex's committed user message to a pending steer by
 // client ID, or by text from servers that do not echo one.
-func (u *appServerUI) commitSteer(item appServerItem) {
+func (u *appServerInputOperation) commitSteer(item appServerItem) {
 	text, _, _ := appServerUserText(item.Content)
 	matches := func(s composerSubmission) bool {
 		if item.ClientID != "" {
@@ -345,7 +335,6 @@ func (u *appServerUI) commitSteer(item appServerItem) {
 // settleInput resolves uncommitted steers when Main's turn ends, after any
 // steer still being sent to that turn resolves.
 func (u *appServerUI) settleInput(turn string, interrupted bool) {
-	u.interrupting, u.interruptBeforeStart = "", false
 	if interrupted && u.pendingStart.id != "" {
 		if u.submission.id == u.pendingStart.id {
 			u.submission.ended, u.submission.interrupted = true, true
@@ -411,16 +400,16 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 	}
 	header := "Steering after the next tool call · ctrl+c interrupts and restores input"
 	switch {
-	case u.shellStandalone:
+	case u.shellCommand.standalone():
 		header = "Waiting for shell command to finish"
-	case u.interrupting != "":
+	case u.interruption.target != "":
 		header = "Restoring input once interrupted"
-	case u.manualCompact:
+	case u.compaction.running():
 		header = "Waiting for context compaction"
 	case len(u.unsent) > 0 && u.unsent[0].text == "/compact":
 		header = "Compaction queued after this turn · ctrl+c cancels; Main continues"
-	case u.turn != "" || u.starting:
-	case u.settingsPending || u.resumeClearEffort:
+	case u.turn != "" || u.starting():
+	case u.settings.pending() || u.settings.restoreEffort:
 		header = "Sending when settings apply"
 	default:
 		header = "Waiting to send"

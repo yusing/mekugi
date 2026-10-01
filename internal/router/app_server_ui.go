@@ -67,6 +67,7 @@ type appServerItem struct {
 }
 
 type appServerUI struct {
+	appServerLifecycle
 	replay                    *uiReplayPlayback // Offline transport controls; nil for live sessions.
 	clock                     func() time.Time  // Optional presentation clock for offline replay.
 	backendVersion            string
@@ -79,7 +80,6 @@ type appServerUI struct {
 	statusPanel               *appServerStatusReport
 	sessionCapture            *capturer.Recorder
 	resumePicker              *appServerResumePicker
-	switching                 string // Saved thread a clearing request resumes.
 	statusConfig              appServerStatusConfig
 	statusReports             map[string]*appServerStatusReport
 	picker                    composerPicker
@@ -107,7 +107,7 @@ type appServerUI struct {
 	interruptLocked           bool
 	activeChildren            map[string]bool // Live host lifecycles only, never replayed processes.
 	mainContentPainted        bool
-	thread, turn, status      string
+	status                    string
 	exitUsage                 appServerTokenUsage
 	resumeArgv                []string
 	replayDebugDirectory      string
@@ -125,24 +125,8 @@ type appServerUI struct {
 	modelsLoading             bool
 	reasoningKey              *bool
 	settingsChoices           string
-	settingsPending           bool
-	settingsChange            map[string]any
-	settingsTurn              string
 	requests                  map[string]string
 	draft                     string
-	shellPending              composerDraft        // Awaiting thread/shellCommand acknowledgement, not completion.
-	shellStandalone           bool                 // User shell turn; ordinary input waits until it completes.
-	shellOrigin               *string              // Submitted turn, until Codex identifies the shell execution.
-	submission                composerSubmission   // The unresolved turn/start or turn/steer request.
-	steers                    []composerSubmission // Accepted steers the turn has not yet committed.
-	unsent, queued            []composerDraft      // Stacked steers and next-turn input.
-	interrupting              string               // The interrupted turn.
-	pendingStart              composerSubmission   // Start awaiting a committed user message.
-	interruptBeforeStart      bool
-	compactRequest            bool // Compact RPC acknowledgement still pending.
-	clearing                  bool // Fresh-thread request; keep old presentation until success.
-	manualCompact             bool // Compact turn has not completed yet.
-	continueAfterCompact      bool // A busy-queued compact owes task continuation.
 	retiredThreads            map[string]string
 	composerRect              terminalRect // Visible draft text, relative to Main.
 	cursorBack, composerWidth int
@@ -159,20 +143,12 @@ type appServerUI struct {
 	pasted                    []byte // Bracketed paste text, inserted when the paste ends.
 	dirty                     bool
 	keybindings               bool
-	resumeThread              string
-	resumeCwd                 string
-	resumeConfig              map[string]any
-	resumeClearEffort         bool
-	resumePendingEffort       bool // Target intent stays separate while the source thread is live.
-	resumeEvidence            nativeResumeEvidence
 	resumeNotice              string // Settings fallback survives the old session's presentation reset.
-	resumePending             []appserver.Message
 	panes                     *nativePanePersistence
 	waitRelease               func()
 	restoring                 *appServerActivityRestore
 	childHistory              map[string]*appServerChildHistory
 	historyLoading            *appServerChildHistory
-	starting                  bool
 }
 
 // StartAppServerUI starts the native terminal frontend without router observers.
@@ -433,8 +409,8 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		if unknown := joinDrafts(u.steerParts(unknown)...); unknown.text != "" {
 			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+livediff.Safe(unknown.text, false))
 		}
-		if u.shellPending.text != "" {
-			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+livediff.Safe(u.shellPending.text, false))
+		if u.shellCommand.pending.text != "" {
+			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+livediff.Safe(u.shellCommand.pending.text, false))
 		}
 		if err != nil {
 			c.Diagnostics.Lock()
@@ -511,7 +487,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		return err
 	}
 	resuming := u.resumeThread != "" && u.resumeThread != resumePickerStartup && (u.thread == "" || u.restoring != nil)
-	if (resuming || u.switching != "") && m.Method != "" {
+	if (resuming || u.replacement.target != "") && m.Method != "" {
 		if hold, keep := u.holdResumeEvent(m, resuming); hold {
 			if !keep {
 				return nil
@@ -569,10 +545,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return nil
 		}
 		if method == "thread/compact/start" {
-			u.compactRequest = false
+			u.compactResponse(m.Error != nil)
 			if m.Error != nil {
-				u.continueAfterCompact = false
-				u.starting, u.interruptBeforeStart, u.manualCompact = false, false, false
 				u.restoreDrafts(append([]composerDraft{{text: "/compact"}}, slices.Concat(u.unsent, u.queued)...)...)
 				u.unsent, u.queued = nil, nil
 				u.setNotice("Compaction failed: "+m.Error.Message, true)
@@ -580,15 +554,15 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			return nil
 		}
-		if method == "thread/start" && u.clearing && m.Error != nil {
-			u.clearing = false
+		if method == "thread/start" && u.replacement.pending() && m.Error != nil {
+			u.replacement.finish()
 			u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 			u.unsent, u.queued = nil, nil
 			u.status = "Ready"
 			u.setNotice("Could not clear session: "+m.Error.Message, true)
 			return nil
 		}
-		if method == "thread/resume" && u.switching != "" && m.Error != nil {
+		if method == "thread/resume" && u.replacement.target != "" && m.Error != nil {
 			return u.resumeSessionFailed(m.Error.Message)
 		}
 		if m.Error != nil {
@@ -597,7 +571,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				return errors.New(u.status)
 			}
 			if method == "turn/interrupt" {
-				u.interrupting, u.interruptBeforeStart = "", false
+				u.interruption.finish()
 			}
 			return nil
 		}
@@ -640,17 +614,18 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if result.Thread.ID == "" {
 				return fmt.Errorf("%s returned no thread identity", method)
 			}
-			if method == "thread/resume" && result.Thread.ID != cmp.Or(u.switching, u.resumeThread) {
+			if method == "thread/resume" && result.Thread.ID != cmp.Or(u.replacement.target, u.resumeThread) {
 				return errors.New("thread/resume returned a different thread identity")
 			}
-			if u.clearing {
+			if u.replacement.pending() {
 				if err := u.clearSessionPresentation(); err != nil {
 					return err
 				}
+				u.leaveThread()
 				u.releaseRetired(result.Thread.ID)
 				if method == "thread/resume" {
 					// Restoration below replays events buffered during the switch.
-					u.resumeThread, u.switching = result.Thread.ID, ""
+					u.resumeThread = result.Thread.ID
 					u.resetDiffScope()
 				} else {
 					// Seed the Diff's lineage; after a switch, requests alone cannot.
@@ -664,10 +639,10 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.thread, u.status = result.Thread.ID, "Ready"
 			u.model, u.reasoningEffort, u.serviceTier = result.Model, result.ReasoningEffort, result.ServiceTier
 			if method == "thread/resume" {
-				u.resumeClearEffort, u.resumePendingEffort = u.resumePendingEffort, false
+				u.settings.restoreEffort = u.takeDefaultEffort()
 			}
 			if method == "thread/start" {
-				u.resumeClearEffort = false
+				u.settings.restoredEffort()
 			}
 			u.models, u.modelsLoading = nil, true // A cleared or switched session lists them again.
 			if err := u.request("model/list", map[string]any{"includeHidden": true}); err != nil {
@@ -723,7 +698,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				u.paneError(u.panes.open(u.shell, result.Thread.Cwd, u.thread, method == "thread/resume"))
 			}
 			if method == "thread/resume" {
-				if u.resumeClearEffort {
+				if u.settings.restoreEffort {
 					// effort:null means no change in the host RPC. Its complete
 					// collaboration-mode snapshot can express a nullable effort,
 					// without replacing the host's mode or developer instructions.
@@ -732,7 +707,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 						if u.reasoningEffort != "" {
 							return errors.New("Codex did not return the settings needed to restore default reasoning")
 						}
-						u.resumeClearEffort = false
+						u.settings.restoredEffort()
 					} else if settings["reasoning_effort"] != nil {
 						// Codex checkpoints resume defaults before this response.
 						// Do not let that transient effort replace saved null intent
@@ -747,7 +722,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 							return err
 						}
 					} else {
-						u.resumeClearEffort = false
+						u.settings.restoredEffort()
 						u.reasoningEffort = ""
 					}
 				}
@@ -799,11 +774,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	switch m.Method {
 	case "turn/started":
 		if p.ThreadID == u.thread {
-			if u.shellOrigin != nil && p.Turn.ID != *u.shellOrigin {
-				u.shellStandalone, u.shellOrigin = true, nil
-			}
-			u.turn, u.status, u.starting, u.alert, u.turnStarted = p.Turn.ID, "Working", false, false, u.now()
-			if u.interruptBeforeStart {
+			u.started(p.Turn.ID)
+			u.status, u.alert, u.turnStarted = "Working", false, u.now()
+			if u.interruption.beforeStart {
 				return u.interruptTurn()
 			}
 		}
@@ -816,12 +789,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 		}
 		if p.ThreadID == u.thread && p.Turn.ID == u.turn {
-			if u.manualCompact && p.Turn.Status != "completed" {
-				u.continueAfterCompact = false
-			}
-			u.shellStandalone, u.manualCompact = false, false
+			u.completed(p.Turn.Status == "completed")
 			u.endSyncQuestions(p.Turn.ID)
-			u.turn, u.starting = "", false
 			u.status, u.alert = strings.ToUpper(p.Turn.Status[:min(1, len(p.Turn.Status))])+p.Turn.Status[min(1, len(p.Turn.Status)):], p.Turn.Status == "failed"
 			if p.Turn.Status == "completed" && !u.turnStarted.IsZero() {
 				u.status += " in " + liveActivityAge(u.now().Sub(u.turnStarted))
@@ -996,7 +965,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.draft != "" {
 			u.deleteDraftRange(0, len(u.draft))
 			u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again quits", false)
-			if u.turn != "" || u.starting || u.submission.text != "" {
+			if u.turn != "" || u.starting() || u.submission.text != "" {
 				u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
 			}
 			if u.interruptLocked {
@@ -1007,7 +976,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.cancelQueuedCompact() {
 			return false, nil
 		}
-		if u.turn != "" || u.starting || u.submission.text != "" || u.compactRequest || u.manualCompact || u.continueAfterCompact || len(u.unsent)+len(u.queued) > 0 {
+		if u.turn != "" || u.starting() || u.submission.text != "" || u.compaction.ackPending || u.compaction.running() || u.compaction.continueTask || len(u.unsent)+len(u.queued) > 0 {
 			return false, u.keyboardInterrupt()
 		}
 		if u.interruptLocked {
@@ -1053,7 +1022,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		if text == "/quit" {
-			if u.turn == "" && !u.starting && u.submission.text == "" {
+			if u.turn == "" && !u.starting() && u.submission.text == "" {
 				u.draft = ""
 				return true, nil
 			}
@@ -1083,7 +1052,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	case '\t':
 		// Tab queues busy input for the next turn; otherwise it sends like Enter.
 		text := strings.TrimSpace(u.draft)
-		if u.shellMode() || text == "" || strings.HasPrefix(text, "/") || u.turn == "" && !u.starting && u.submission.text == "" {
+		if u.shellMode() || text == "" || strings.HasPrefix(text, "/") || u.turn == "" && !u.starting() && u.submission.text == "" {
 			return u.key('\r')
 		}
 		u.queued = append(u.queued, u.takeDraft())
@@ -1447,7 +1416,7 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 }
 
 func (u *appServerUI) sessionAnimating() bool {
-	return u.btw != nil && (u.btw.busy || u.btw.starting) || !u.alert && (u.turn != "" || u.starting || u.submission.text != "" || u.restoring != nil || u.thread == "")
+	return u.btw != nil && (u.btw.busy || u.btw.starting) || !u.alert && (u.turn != "" || u.starting() || u.submission.text != "" || u.restoring != nil || u.thread == "")
 }
 
 func (u *appServerUI) sessionLabel(now time.Time) string {
@@ -1460,7 +1429,7 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 	case u.turn != "":
 		label := "\x1b[39m◐ " + activityui.StatusPulse(status, now, u.view.painter.Colors) + activityui.Reset
 		if status == "Working" {
-			if u.shellStandalone {
+			if u.shellCommand.standalone() {
 				status = "Running shell"
 			} else if u.compacting != nil {
 				status = "Compacting context"
@@ -1476,7 +1445,7 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 			label += activityui.Dim + " " + liveActivityAge(now.Sub(u.turnStarted)) + activityui.Undim
 		}
 		return label
-	case u.starting || u.submission.text != "" || u.restoring != nil || u.thread == "":
+	case u.starting() || u.submission.text != "" || u.restoring != nil || u.thread == "":
 		return activityui.StatusPulse(status, now, u.view.painter.Colors) + activityui.Reset
 	}
 	// Idle states use default text; the border color would otherwise carry over.
@@ -1566,16 +1535,16 @@ func (u *appServerUI) applyObservedActivity() {
 
 // interruptTurn preserves the composer while interrupting the active turn.
 func (u *appServerUI) interruptTurn() error {
-	if u.manualCompact || u.compactRequest || u.continueAfterCompact {
+	if u.compaction.running() || u.compaction.ackPending || u.compaction.continueTask {
 		// Restore waiting input when cancellation is admitted, even if Codex
 		// completes compaction successfully before acknowledging the interrupt.
 		u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 		u.unsent, u.queued = nil, nil
 	}
-	u.continueAfterCompact = false
+	u.compaction.cancelContinuation()
 	if u.turn == "" {
-		if u.starting || u.submission.text != "" {
-			u.interruptBeforeStart = true
+		if u.starting() || u.submission.text != "" {
+			u.interruption.deferUntilStart()
 			u.status = "Interrupting…"
 			return nil
 		}
@@ -1583,11 +1552,10 @@ func (u *appServerUI) interruptTurn() error {
 		u.unsent, u.queued = nil, nil
 		return nil
 	}
-	if u.interrupting == u.turn {
+	if !u.interruption.begin(u.turn) {
 		return nil
 	}
 	u.endSyncQuestions(u.turn)
-	u.interrupting = u.turn
 	u.status = "Interrupting…"
 	return u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
 }

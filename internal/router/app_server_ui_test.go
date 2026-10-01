@@ -89,7 +89,7 @@ func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
 		t.Fatalf("active Ctrl-C quit=%v err=%v sent=%q", quit, err, w.String())
 	}
 	u, w = newAppServerTestUI()
-	u.starting = true
+	u.awaitingTurn = true
 	if quit, err := u.key(3); quit || err != nil || w.Len() != 0 {
 		t.Fatalf("starting Ctrl-C quit=%v err=%v", quit, err)
 	}
@@ -182,7 +182,7 @@ func TestAppServerUIImmediateInputEcho(t *testing.T) {
 		}
 		if rejected {
 			appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"rejected"}}`)
-			if len(u.view.entries) != 0 || u.draft != "你好 first message" || u.starting {
+			if len(u.view.entries) != 0 || u.draft != "你好 first message" || u.starting() {
 				t.Fatal("rejection retained a false user message or lost the draft")
 			}
 			continue
@@ -218,7 +218,7 @@ func TestAppServerUIStartAndRejectedSteer(t *testing.T) {
 		t.Fatalf("wrong start: %+v", start)
 	}
 	appServerTestMessage(t, u, `{"id":1,"result":{"turn":{"id":"turn-1"}}}`)
-	if !u.starting || u.draft != "" {
+	if !u.starting() || u.draft != "" {
 		t.Fatal("response must clear accepted draft but retain start guard until notification")
 	}
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"turn-1"}}}`)
@@ -358,7 +358,7 @@ func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
 		}
 		if active {
 			appServerOneRequest(t, w, "turn/interrupt", "")
-			if u.interrupting != "turn" {
+			if u.interruption.target != "turn" {
 				t.Fatal("turn not interrupting")
 			}
 		} else if w.Len() != 0 {
