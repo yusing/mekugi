@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -64,9 +63,13 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			cmd.Dir, cmd.Env = workspace, shell.env
 			if strings.HasPrefix(edit, "gofmt") {
 				cmd.Args[1] = "-c" // The isolated HOME has no mise configuration.
+				goRoot, err := exec.CommandContext(ctx, "go", "env", "GOROOT").Output()
+				if err != nil || strings.TrimSpace(string(goRoot)) == "" {
+					t.Fatalf("resolve Go toolchain root: %v (%q)", err, goRoot)
+				}
 				for i, value := range cmd.Env {
 					if strings.HasPrefix(value, "PATH=") {
-						cmd.Env[i] = "PATH=" + filepath.Join(runtime.GOROOT(), "bin") + string(os.PathListSeparator) + strings.TrimPrefix(value, "PATH=")
+						cmd.Env[i] = "PATH=" + filepath.Join(strings.TrimSpace(string(goRoot)), "bin") + string(os.PathListSeparator) + strings.TrimPrefix(value, "PATH=")
 					}
 				}
 			}
