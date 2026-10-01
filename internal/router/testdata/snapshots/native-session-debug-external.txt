@@ -1,0 +1,18 @@
+    ╭ Session · Overview ───────────────────────────────────────────────── Esc close ╮
+    │                                                                                │
+    │  Debug  ─────────────────────────────────────────────────────────────────────  │
+    │  Directory  /tmp/mekugi debug/run-42                                           │
+    │                                                                                │
+    │  Requests  ──────────────────────────────────────────────────────────────────  │
+    │  Scope      All threads in this launch · mekugi                                │
+    │  Logical    2                                                                  │
+    │  Attempts   3                                                                  │
+    │  Retries    1                                                                  │
+    │  Completed  2                                                                  │
+    │  Failed     0                                                                  │
+    │                                                                                │
+    │  Usage  ─────────────────────────────────────────────────────────────────────  │
+    │  Provider-reported consumption, not local estimates. Missing normalized        │
+    │  telemetry may default to zero; inspect Exchanges for explicit evidence.       │
+    │                                                                                │
+    ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close  1–14 / 42 ──────────────────────╯

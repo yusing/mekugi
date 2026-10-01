@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/internal/pathdisplay"
 )
 
 // This panel owns only navigation. Accounting and retained detail belong to the
@@ -129,6 +130,10 @@ func (u *appServerUI) renderSessionMetrics() {
 		}
 	}
 	s := m.snapshot
+	if m.tab == 0 && u.replayDebugDirectory != "" {
+		add("Debug", "Directory", pathdisplay.ForWorkspace(u.session.cwd, u.replayDebugDirectory))
+		p.fields[len(p.fields)-1].path = true
+	}
 	if s.Schema == "" {
 		add("Capture", "", "Metrics are unavailable for this frontend. Live launch metrics are not restored from saved sessions.")
 		u.dirty = true

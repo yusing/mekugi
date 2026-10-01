@@ -36,6 +36,7 @@ type statusField struct {
 	group, label, value, detail string
 	remaining                   *float64
 	alert                       bool
+	path                        bool
 }
 
 func statusNotice(value string) []statusField {

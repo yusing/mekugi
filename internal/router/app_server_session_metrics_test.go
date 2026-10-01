@@ -183,6 +183,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 		name                    string
 		tab, width, height, top int
 		empty, missing          bool
+		debug                   string
 	}{
 		{name: "overview", width: 90, height: 55},
 		{name: "transport", tab: 1, width: 90, height: 55},
@@ -191,10 +192,16 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 		{name: "narrow", tab: 1, width: 30, height: 18},
 		{name: "empty", tab: 2, width: 80, height: 14, empty: true},
 		{name: "missing", width: 80, height: 14, missing: true},
+		{name: "debug", width: 90, height: 18, debug: "/workspace/.mekugi/debug/run-42"},
+		{name: "debug-external", width: 90, height: 18, debug: "/tmp/mekugi debug/run-42"},
+		{name: "debug-narrow", width: 30, height: 18, debug: "/tmp/mekugi debug/run-42"},
+		{name: "debug-missing", width: 80, height: 14, missing: true, debug: "/tmp/mekugi-debug/run-42"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.painter.Theme = livediff.DarkTheme
+			u.session.cwd = "/workspace"
+			u.replayDebugDirectory = tc.debug
 			u.showSessionMetrics()
 			m := u.statusPanel.metrics
 			m.tab = tc.tab

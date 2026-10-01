@@ -560,6 +560,13 @@ An unavailable capturer and an empty exchange history have explicit empty
 states. The metrics JSON endpoint remains available; no HTML dashboard or
 startup dashboard announcement remains.
 
+When launched with `--debug`, Overview also shows the actual debug artifact
+directory supplied by the launcher, with shared workspace-relative formatting
+and path styling. Paths outside the workspace remain absolute. This directory
+is invocation-local, not recovered from session history or exported in sanitized
+metrics; without `--debug`, the directory row is absent. Debug discovery remains
+available even when the capturer snapshot is unavailable.
+
 ### Session status
 
 `/status` opens a temporary, bordered session panel with fixed close/scroll

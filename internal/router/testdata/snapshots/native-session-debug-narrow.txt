@@ -1,0 +1,18 @@
+╭ Session · Overview ────────╮
+│                            │
+│  Debug  ─────────────────  │
+│  Directory                 │
+│  /tmp/mekugi debug/run-42  │
+│                            │
+│  Requests  ──────────────  │
+│  Scope                     │
+│  All threads in this       │
+│  launch · mekugi           │
+│  Logical                   │
+│  2                         │
+│  Attempts                  │
+│  3                         │
+│  Retries                   │
+│  1                         │
+│                            │
+╰─ ←→ views  ↑↓ scroll  Esc ─╯
