@@ -166,6 +166,9 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 				"A work-completion reply is not a conversational exception",
 				"Coordinator requests for implementation-completion reports also use the journal",
 				"Parents record integration decisions",
+				"Use task state changes for milestones",
+				"Three cases passed; restart coverage remains",
+				"Now checking restart",
 			} {
 				if count := strings.Count(combined, rule); count != 1 {
 					t.Errorf("journal rule %q appears %d times; want one owner", rule, count)

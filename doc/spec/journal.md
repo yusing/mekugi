@@ -427,9 +427,11 @@ stock tool catalog and prompt.
 Tasks express intentions. Work updates and newly established facts go into the
 journal, attached to the next useful tool call rather than standalone commentary
 or a journal-only request. Notes lead with the result or decision, then supporting
-evidence; ongoing narration and unchanged facts are not new notes. Standing
-constraints belong in context once. Parents record integration decisions, not
-copies of child journals. Coordinator requests for implementation-completion reports
+evidence. Task state changes convey milestones such as investigation finished or
+validation started; notes record new findings, decisions, measured progress and
+blockers. Announcing the next action or repeating a task state or unchanged fact
+is not a new note. Standing constraints belong in context once. Parents record
+integration decisions, not copies of child journals. Coordinator requests for implementation-completion reports
 use the same journal channel, including commit IDs, checks, review outcomes and
 limitations. They do not make that evidence a separate conversational deliverable.
 Work completion is not a conversational exception:
@@ -440,15 +442,21 @@ review findings, answers to user questions and necessary questions remain substa
 conversation, without a journal-specific length or format.
 
 Code Mode lowers the helper to authenticated `mjournal` through stock `exec_command`;
-it neither runs the surrounding program nor owns the host lifecycle. Read transport
+one cell-local helper serves all calls, including nested and concurrent calls,
+without repeating its transport implementation at each call site. It neither runs
+the surrounding program nor owns the host lifecycle. Read transport
 uses bounded flat pages, authorizing each page against the full snapshot revision,
 then assembles the tree inside the helper. A concurrent revision fails rather than
 mixing snapshots. Pagination fields are internal, not model-facing. A rejected
 mutation applies nothing and is a result, not a transport failure: the helper
 prints the rejection through `text` and returns null, or an empty array for plans
 and batches, so the program's remaining work still runs. Read, transport and
-publisher-unavailable failures throw; credentials and authored source stay out of
-sanitized metrics, which count Code Mode rejections separately from acceptances.
+publisher-unavailable failures throw. Read and transport errors name the operation
+and retain the underlying diagnostic; unresolved agents name the normalized
+selector and explain canonical addressing and local-read recovery. Missing read
+paths explain how to recover paths in the same agent and view. Credentials and
+authored source stay out of sanitized metrics, which count Code Mode rejections
+separately from acceptances.
 
 ### Delivery failures
 
