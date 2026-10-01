@@ -210,7 +210,19 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	}
 	p.ui.shell.liveHidden = true
 	p.ui.agents.livePreviews = nil
+	p.until("tester applies")
+	// Hold the real rerun process at its first output boundary until the live
+	// frame has been inspected. A zero-delay script can otherwise finish before
+	// the renderer sees its running state, depending on output chunking.
+	gate, release, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Close()
+	defer release.Close()
+	p.commandGate = gate
 	p.until("tester reruns")
+	p.commandGate = nil
 	if got := agents(); !strings.Contains(got, "exit 1") || !strings.Contains(got, "┆ --- FAIL: TestUnsubscribeRace (0.37s)") {
 		t.Fatalf("failed test run lacks its failure tail:\n%s", got)
 	}
@@ -219,6 +231,9 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	}
 	if got := agents(); p.live == nil || !regexp.MustCompile(`Running +│ for test in`).MatchString(got) {
 		t.Fatalf("streamed test run lacks its live state:\n%s", got)
+	}
+	if err := release.Close(); err != nil {
+		t.Fatal(err)
 	}
 	for p.live != nil {
 		p.pump(time.Second)
@@ -417,6 +432,7 @@ type nativePreview struct {
 	assignments map[string]string
 	models      map[string]string     // Provider model by thread, when not the default.
 	delay       string                // Seconds each preview command sleeps between outputs.
+	commandGate *os.File              // Optional input gate instead of timed output pacing.
 	live        *nativePreviewProcess // The running command; the script waits for it.
 }
 
@@ -432,6 +448,26 @@ type nativePreviewProcess struct {
 type nativePreviewOutput struct {
 	chunk string
 	exit  *int // Set on the final event, after all output.
+}
+
+func TestNativePreviewCleansBlockedCommand(t *testing.T) {
+	gate, release, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Close()
+	defer release.Close()
+	t.Run("owner exits before releasing command", func(t *testing.T) {
+		p := newNativePreview(t)
+		defer p.close()
+		p.commandGate = gate
+		p.run("main", "blocked", "printf ready; sleep $DELAY")
+		if !p.pump(time.Second) || p.live == nil || p.live.output != "ready" {
+			t.Fatal("command did not reach its output gate")
+		}
+		// The writer stays open until this subtest's cleanup has canceled and
+		// joined the process. Cleanup must not depend on pumping another event.
+	})
 }
 
 func newNativePreview(t *testing.T) *nativePreview {
@@ -628,9 +664,15 @@ func (p *nativePreview) startCommand(thread, id, command string, actions []map[s
 // run starts script as a real shell process. Its output and exit reach the UI
 // through app-server notifications, as a model's command would.
 func (p *nativePreview) run(thread, id, script string) {
+	if p.commandGate != nil {
+		script = strings.ReplaceAll(script, "sleep $DELAY", "read -r resume")
+	}
 	script = strings.ReplaceAll(script, "$DELAY", p.delay)
 	cmd := exec.CommandContext(p.t.Context(), "sh", "-c", script)
 	cmd.Dir = p.workspace
+	if p.commandGate != nil {
+		cmd.Stdin = p.commandGate
+	}
 	read, write, err := os.Pipe()
 	if err != nil {
 		p.t.Fatal(err)
@@ -641,12 +683,23 @@ func (p *nativePreview) run(thread, id, script string) {
 	}
 	write.Close()
 	live := &nativePreviewProcess{thread: thread, item: p.startCommand(thread, id, script, nil), events: make(chan nativePreviewOutput, 16)}
+	done := make(chan struct{})
+	p.t.Cleanup(func() { read.Close(); <-done })
 	go func() {
+		defer close(done)
+		send := func(event nativePreviewOutput) bool {
+			select {
+			case live.events <- event:
+				return true
+			case <-p.t.Context().Done():
+				return false
+			}
+		}
 		buffer := make([]byte, 4096)
 		for {
 			n, err := read.Read(buffer)
-			if n > 0 {
-				live.events <- nativePreviewOutput{chunk: string(buffer[:n])}
+			if n > 0 && !send(nativePreviewOutput{chunk: string(buffer[:n])}) {
+				break
 			}
 			if err != nil {
 				break
@@ -654,7 +707,7 @@ func (p *nativePreview) run(thread, id, script string) {
 		}
 		read.Close()
 		_ = cmd.Wait()
-		live.events <- nativePreviewOutput{exit: new(cmd.ProcessState.ExitCode())}
+		send(nativePreviewOutput{exit: new(cmd.ProcessState.ExitCode())})
 	}()
 	p.live = live
 }
