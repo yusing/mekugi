@@ -3,6 +3,7 @@ package router
 import (
 	"cmp"
 	"context"
+	jsonv1 "encoding/json"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -47,7 +48,8 @@ func (s *mekugiReplayStore) journalFailures(workspace, thread string, since uint
 			return nil, err
 		}
 		var record replayRecord
-		if err := json.Unmarshal(data, &record); err != nil {
+		// Match the durable writer's numeric-array command output hashes.
+		if err := json.Unmarshal(data, &record, jsonv1.FormatByteArrayAsArray(true)); err != nil {
 			return nil, err
 		}
 		if record.Workspace != workspace || record.History.ExecutingThread != thread {

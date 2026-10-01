@@ -3,14 +3,21 @@ package router
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	json "encoding/json/v2"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestJournalCompactionFallbackDebug(t *testing.T) {
-	for _, mode := range []string{"auto", "slice"} {
+	for _, mode := range []string{"auto", "slice", "lease-error"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("TMPDIR", t.TempDir())
 			flags := newRouterFlags(io.Discard)
@@ -26,7 +33,17 @@ func TestJournalCompactionFallbackDebug(t *testing.T) {
 			})
 			transform, proxy, _, workspace := newDurableTreeTransform(t)
 			thread := transform.shellThreadID
-			proxy.journalCompaction = mode
+			proxy.journalCompaction = "auto"
+			if mode == "slice" {
+				proxy.journalCompaction = mode
+			}
+			if mode == "lease-error" {
+				thread = "lease-error-thread"
+				lease := strings.TrimSuffix(storageSessionName(thread), ".json") + ".lock"
+				if err := os.Mkdir(filepath.Join(proxy.replayStore.directory, lease), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if mode == "auto" {
 				if err := proxy.journals.transaction(transform.ctx, proxy.replayStore, workspace, thread, func(j *threadJournal, _ bool) error {
 					j.IdentityConflicted = true
@@ -87,13 +104,34 @@ func TestJournalCompactionFallbackDebug(t *testing.T) {
 				t.Fatalf("want one fallback event, got %v", fallbacks)
 			}
 			event := fallbacks[0]
-			if event["error"] != "journal summary identity is unavailable or conflicted" || requestID == "" || event["request_id"] != requestID || event["session_id"] != "compact-debug" || event["thread_id"] != thread {
+			cause := "journal summary identity is unavailable or conflicted"
+			if mode == "lease-error" {
+				cause = "session storage lease is not a regular file"
+			}
+			if event["error"] != cause || requestID == "" || event["request_id"] != requestID || event["session_id"] != "compact-debug" || event["thread_id"] != thread {
 				t.Fatalf("fallback diagnostic lost error or request identity: %v; request=%q", event, requestID)
 			}
-			wantNotice := [4]string{"compact-debug", thread, "journal_compaction_fallback", "Journal compaction unavailable; using the provider summary."}
+			wantNotice := [4]string{"compact-debug", thread, fmt.Sprintf("journal_compaction_fallback:%x", sha256.Sum256([]byte(cause))), "Journal compaction unavailable; using the provider summary. Error: " + cause}
 			if len(notices) != 1 || notices[0] != wantNotice {
 				t.Fatalf("fixed fallback notice changed: %v", notices)
 			}
 		})
 	}
+}
+
+func TestUISnapshotJournalCompactionFallback(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.issues = NewCriticalErrors()
+	u.view.painter.Theme = livediff.DarkTheme
+	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
+	u.thread, u.view.conversation = "main", true
+	proxy := &mekugiProxy{noticeSink: u.issues.addThreadNotice}
+	attempt := requestAttempt{executor: requestExecutor{mekugiCalls: proxy}, threadID: "main"}
+	attempt.journalCompactionFallback(fmt.Errorf("session storage lease is not a regular file"))
+	delivery := u.applyCriticalNotices()
+	if delivery == nil {
+		t.Fatal("fallback cause did not reach the native transcript")
+	}
+	assertNativeUISnapshot(t, "journal-compaction-fallback", u.view.renderFeed(80, 24).lines)
+	delivery.finish(true)
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	jsonv1 "encoding/json"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -56,6 +57,7 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 	}
 	ctx, release, err := p.replayStore.beginSession(a.startCtx, a.threadID, a.sessionID)
 	if err != nil {
+		a.journalCompactionFallback(err)
 		return false
 	}
 	store := p.replayStore.scoped(ctx)
@@ -118,11 +120,7 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 	if err != nil {
 		release()
 		if !errors.Is(err, errJournalUnchanged) {
-			a.debug.event(map[string]any{
-				"event": "journal_compaction_fallback", "error": err.Error(),
-				"request_id": a.debugID, "session_id": a.sessionID, "thread_id": a.threadID,
-			})
-			p.notice(a.sessionID, a.threadID, "journal_compaction_fallback", "Journal compaction unavailable; using the provider summary.")
+			a.journalCompactionFallback(err)
 		}
 		return false
 	}
@@ -135,6 +133,17 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 	a.finalization.upstreamStatusCode = http.StatusOK
 	capturer.ObserveCompaction(a.startCtx, "router", len(summary.Text), summary.Changes, summary.Failures)
 	return true
+}
+
+func (a *requestAttempt) journalCompactionFallback(err error) {
+	a.debug.event(map[string]any{
+		"event": "journal_compaction_fallback", "error": err.Error(),
+		"request_id": a.debugID, "session_id": a.sessionID, "thread_id": a.threadID,
+	})
+	// Keep distinct causes visible while the native queue deduplicates retries.
+	category := fmt.Sprintf("journal_compaction_fallback:%x", sha256.Sum256([]byte(err.Error())))
+	a.executor.mekugiCalls.notice(a.sessionID, a.threadID, category,
+		"Journal compaction unavailable; using the provider summary. Error: "+err.Error())
 }
 
 // Native local compaction omits workspaces from its metadata. In that case only
@@ -169,7 +178,8 @@ func (s *mekugiReplayStore) compactionWorkspace(thread string) (string, error) {
 			}
 		} else {
 			var record replayRecord
-			if json.Unmarshal(data, &record) != nil || (record.Version != 1 && record.Version != 2) || replayRecordName(record.Workspace, record.CallID, record.Commentary) != name {
+			// Replay records retain v1 numeric byte arrays (command output hashes).
+			if json.Unmarshal(data, &record, jsonv1.FormatByteArrayAsArray(true)) != nil || (record.Version != 1 && record.Version != 2) || replayRecordName(record.Workspace, record.CallID, record.Commentary) != name {
 				return "", errors.New("invalid retained workspace evidence")
 			}
 			if record.History.ExecutingThread == thread {

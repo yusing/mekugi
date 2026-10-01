@@ -253,7 +253,7 @@ instruction records use that capture ID as their `request_id`; without capture t
 a local random ID. `tool_observation` maps this request identity to safe logical `call_id`
 and tool name at local observation, not execution. AX and observed patch evidence
 join through call identity; no correlation header is added to either transport boundary.
-`journal_compaction_fallback` records the underlying local summary error with
+`journal_compaction_fallback` records the underlying local compaction error, including storage-lease failures, with
 request, session and thread IDs when journal compaction falls back to the provider.
 Intentional slice-mode bypasses do not emit this error event.
 Cancellation evidence is independent of replay diagnostic references. Allowlisted causes

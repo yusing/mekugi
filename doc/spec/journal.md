@@ -170,6 +170,8 @@ without journal/tool projection. Existing model aliases and service-tier policy
 still apply. Invalid compaction protocol requests retain the existing validation
 errors. A summary is never empty. A downstream delivery failure is reported, not
 retried as a second provider request.
+Fallback notices include the local failure cause, including storage-lease failures;
+distinct causes remain separately visible. Intentional slice-mode bypasses are silent.
 
 Native local compaction may omit workspace metadata. Only a unique workspace
 already selected in that requesting thread's durable journal/execution records
