@@ -65,6 +65,10 @@ Per-command `Run` excerpts omit statement-terminating semicolons; quoted
 semicolons and other executable syntax remain visible.
 Literal `printf` and `echo` section headings alongside other operations are
 omitted as display decoration, including colon-ended labels and bordered headings.
+Bare `printf` titles framed by leading and trailing newlines also qualify when
+they are capitalized, multi-word text containing only letters, spaces, hyphens,
+and slashes, without format arguments. Unframed text, other values, and data-bearing
+formats remain visible.
 Live and successful tracked heading segments are omitted too; failed ones remain
 visible. Standalone, redirected, escaped, or dynamic headings remain `Run` operations.
 Literal `mread` recovery calls omit activity entries rather than appearing as `Run`.

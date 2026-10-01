@@ -1,0 +1,18 @@
+AGENTS  1 agents · 0 responding                                                              FOLLOW
+ ✓ probe  Run printf '%s\n' 'count=42' · +3 more                                                   
+───────────────────────────────────────────────────────────────────────────────────────────────────
+● probe ────────────────────────────────────────────────────────────────────────────────── 12:00:00
+▎ List .codex/sessions/2026/09/30
+▎ Ran  printf 'Alice Smith\n'
+▎ Ran  printf 'Evidence-location metadata\n'
+▎ Ran  printf '%s\n' 'count=42'
+
+
+
+
+
+
+
+
+
+ALL · click agent · n/p agent · a only · j/k scroll · End bottom

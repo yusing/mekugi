@@ -3,6 +3,7 @@ package router
 import (
 	"cmp"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -216,6 +217,8 @@ func toolActivityStatementDisplayEnd(script string, statement *syntax.Stmt) int 
 
 // Literal section headings alongside other operations are decoration.
 // Keep dynamic output, redirections, and headings-only scripts visible.
+var activityPlainHeading = regexp.MustCompile(`^[A-Z][A-Za-z/-]*( [A-Za-z][A-Za-z/-]*)+$`)
+
 func toolActivityReadSeparator(statement *syntax.Stmt) bool {
 	argv, ok := toolActivityLiteralCall(statement)
 	if !ok || len(argv) < 2 {
@@ -235,6 +238,9 @@ func toolActivityReadSeparator(statement *syntax.Stmt) bool {
 	case len(argv) != 2 || strings.Contains(heading, "%"):
 		return false
 	}
+	// A bare title must be a blank-line-framed, multi-word literal printf,
+	// not a format with data arguments or an arbitrary output value.
+	plainTitle := argv[0] == "printf" && len(argv) == 2 && strings.HasPrefix(heading, `\n`) && strings.HasSuffix(heading, `\n`)
 	heading = strings.TrimSpace(strings.ReplaceAll(heading, `\n`, "\n"))
 	if strings.ContainsAny(heading, "\r\n\\") {
 		return false
@@ -243,6 +249,9 @@ func toolActivityReadSeparator(statement *syntax.Stmt) bool {
 		if strings.HasPrefix(heading, border) && strings.HasSuffix(heading, border) {
 			return true
 		}
+	}
+	if plainTitle && activityPlainHeading.MatchString(heading) {
+		return true
 	}
 	return strings.HasSuffix(heading, ":") && strings.TrimSpace(strings.TrimSuffix(heading, ":")) != ""
 }
