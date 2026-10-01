@@ -641,11 +641,14 @@ objects, which can be inspected with `--object NAME --field all`.
 `--replay-dir DIR` selects a different store. Missing or corrupt evidence produces
 a precise error, not an empty successful snapshot.
 
-Mekugi deletes session data after **14 days without activity**. When storage is
+Mekugi retains up to **4 GiB** of managed session data and deletes it after
+**14 days without activity**. When storage is
 full, it removes the least recently active inactive sessions first, and never
 touches running work. **Your Codex chats and workspace files are never deleted.**
 Cleanup runs in the background without holding up a complete session-start sweep.
-At the storage limit, retention may report that cleanup was requested; retry
+At the storage limit, response translation waits up to 30 seconds for background
+cleanup and retries saving the same evidence, not the request or host operation.
+If space remains unavailable, retention reports that cleanup was requested; retry
 retaining the evidence after space is freed, not the completed host operation.
 Cleanup can break old recovery and review references. To reset, stop all Mekugi
 wrappers and move the directory aside.

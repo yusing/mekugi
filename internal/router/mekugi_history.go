@@ -586,7 +586,7 @@ func (t *mekugiResponseTransform) commitHistory() error {
 	if t.historyCommitted {
 		return nil
 	}
-	if err := t.proxy.replayStore.put(t.ctx, t.directory, t.local); err != nil {
+	if err := t.proxy.replayStore.putAfterMaintenance(t.ctx, t.directory, t.local); err != nil {
 		return criticalDiagnostic(err, "replay_history_commit", "Mekugi could not persist completed response history", true)
 	}
 	if err := t.proxy.rememberBatch(t.historySessionID, t.local); err != nil && t.proxy.replayStore == nil {
@@ -604,7 +604,7 @@ func (t *mekugiResponseTransform) commitLocalCall(callID string) error {
 	if !exists {
 		return nil
 	}
-	if err := t.proxy.replayStore.put(t.ctx, t.directory, map[string]mekugiHistory{callID: history}); err != nil {
+	if err := t.proxy.replayStore.putAfterMaintenance(t.ctx, t.directory, map[string]mekugiHistory{callID: history}); err != nil {
 		return criticalDiagnostic(err, "replay_call_commit", "Mekugi could not persist a completed tool call", true)
 	}
 	if err := t.proxy.rememberBatch(t.historySessionID, map[string]mekugiHistory{callID: history}); err != nil && t.proxy.replayStore == nil {

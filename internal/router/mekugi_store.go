@@ -137,7 +137,7 @@ func openMekugiReplayStoreContext(ctx context.Context, directory string) (*mekug
 			break
 		}
 	}
-	s := &mekugiReplayStore{directory: directory, maxBytes: 1 << 30, maxCommentaryBytes: 16 << 20}
+	s := &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20}
 	if err := s.locked(ctx, func() error { return nil }); err != nil {
 		return nil, err
 	}

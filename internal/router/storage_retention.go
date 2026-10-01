@@ -18,7 +18,7 @@ import (
 )
 
 const sessionRetention = 14 * 24 * time.Hour
-const defaultReplayStorageBytes int64 = 1 << 30
+const defaultReplayStorageBytes int64 = 4 << 30
 
 type storageTurnKey struct{}
 
@@ -441,6 +441,80 @@ func storageCapacityError(resource string, required, limit int64, action string)
 	return criticalDiagnostic(errors.New(message), "storage_capacity", message, false)
 }
 
+// Only pressure queued for background maintenance is eligible for a persistence
+// retry. Record-size limits and storage I/O errors cannot be cured by waiting.
+type storagePressureError struct {
+	error
+	name string
+	used int64
+}
+
+func (e *storagePressureError) Unwrap() error { return e.error }
+
+// Keep completed response facts in memory while the existing maintenance worker
+// frees space. Every attempt revalidates and publishes under store.lock; neither
+// that lock nor a host operation is held or repeated while waiting.
+func (s *mekugiReplayStore) putAfterMaintenance(ctx context.Context, workspace string, histories map[string]mekugiHistory) error {
+	err := s.put(ctx, workspace, histories)
+	pressure, ok := errors.AsType[*storagePressureError](err)
+	if !ok {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	for {
+		if waitErr := s.waitForStorageMaintenance(ctx); waitErr != nil {
+			return errors.Join(err, waitErr)
+		}
+		var used int64
+		if checkErr := s.locked(ctx, func() error {
+			files, err := s.storageFileSizes()
+			if err == nil {
+				used, _ = s.storageNeeds(files, pressure.name, files[pressure.name])
+			}
+			return err
+		}); checkErr != nil {
+			return errors.Join(err, checkErr)
+		}
+		// Measure reclamation before retrying: a batch may publish earlier
+		// histories before reaching pressure again. Those successful writes
+		// must not be mistaken for maintenance making no progress.
+		if used >= pressure.used {
+			return err
+		}
+		err = s.put(ctx, workspace, histories)
+		next, ok := errors.AsType[*storagePressureError](err)
+		if !ok {
+			return err
+		}
+		pressure = next
+	}
+}
+
+func (s *mekugiReplayStore) waitForStorageMaintenance(ctx context.Context) error {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var pending *storagePressureRequest
+		err := s.locked(ctx, func() error {
+			var err error
+			pending, err = s.readStoragePressure()
+			return err
+		})
+		if err != nil {
+			return err
+		}
+		if pending == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
 func storageIOError(err error) error {
 	if err == nil {
 		return nil
@@ -743,8 +817,12 @@ func (s *mekugiReplayStore) maintainStorage(replacement string, size int64) erro
 	if err := s.requestStoragePrune(request); err != nil {
 		return storageIOError(err)
 	}
-	return storageCapacityError("retained session storage", required, limit,
-		"Background cleanup was requested. Retry retaining this evidence after maintenance frees space; do not rerun the host operation. Running sessions and shared history were preserved.")
+	used, _ := s.storageNeeds(files, replacement, files[replacement])
+	return &storagePressureError{
+		error: storageCapacityError("retained session storage", required, limit,
+			"Background cleanup was requested. Retry retaining this evidence after maintenance frees space; do not rerun the host operation. Running sessions and shared history were preserved."),
+		name: replacement, used: used,
+	}
 }
 
 func (s *mekugiReplayStore) writeManagedFile(name, pattern string, data []byte) error {

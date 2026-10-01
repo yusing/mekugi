@@ -76,7 +76,7 @@ It lives at `$XDG_STATE_HOME/mekugi/replay`, or `~/.local/state/mekugi/replay` w
 unset, and survives wrapper shutdown. A relative `XDG_STATE_HOME` is invalid. Passthrough mode
 opens this store only when retaining a failure; it does not retain tool replay state.
 Mekugi-mode initialization failure prevents Codex launch. The store admits at most
-1 GiB of managed data, including session ownership catalogs, journals, read outputs, and change
+4 GiB of managed data, including session ownership catalogs, journals, read outputs, and change
 indexes, with 32 MiB per encoded record. Exact commentary provenance has an independent
 16 MiB budget; failure to retain it suppresses new commentary with a diagnostic instead of
 consuming the managed-data allowance.
@@ -85,9 +85,12 @@ Automatic retention removes Mekugi-owned data after 14 days without activity and
 least recently active inactive sessions when a byte budget would be exceeded. Requests check
 space before exposing retained facts; the router attempts an age sweep on startup and then
 hourly in the background, outside request preparation. Foreground publication never prunes:
-insufficient space queues a coalesced background pressure request and reports a capacity
-diagnostic without exposing unfinished evidence. Retrying persistence must not rerun the host
-operation. Background work notices pressure promptly without waiting for the next age sweep.
+insufficient space queues a coalesced background pressure request without exposing unfinished
+evidence. Response translation keeps completed facts in memory and waits up to 30 seconds for
+background maintenance, then retries persistence only. It reports a capacity diagnostic if
+maintenance cannot free enough space, stops making progress, or does not complete within that
+wait. Cancellation interrupts the wait. Retrying persistence must not rerun the host operation
+or upstream request. Background work notices pressure promptly without waiting for the next age sweep.
 An age-sweep failure does not fail an
 unrelated request and is reported as a router-wide notice.
 The policy never deletes Codex transcripts, workspace files, exported metrics, or explicit debug
