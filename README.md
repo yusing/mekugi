@@ -508,6 +508,9 @@ Every section is optional. Settings are read at startup and never rewritten.
   `priority`), `priority`, and `flex`. The provider must support the tier you
   choose. The native composer and `/status` show the effective tier, including
   this override, rather than only Codex's requested tier.
+  `/tier` still changes Codex's requested tier and discloses any overriding
+  Mekugi setting. `/session` reports the provider-returned tier, which can differ
+  from the requested tier.
 - **API keys:** `OPENCODE_API_KEY` overrides both file keys. The per-service
   variables override their own service. Setting one to an empty string turns
   that service off.

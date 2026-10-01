@@ -1,0 +1,7 @@
+  Choose tier
+  default
+› priority  Current                 
+  flex
+
+
+  ↑/↓ navigate · enter apply · esc c

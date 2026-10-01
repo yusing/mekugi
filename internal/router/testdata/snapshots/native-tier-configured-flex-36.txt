@@ -1,0 +1,7 @@
+  Mekugi override: flex · choose Cod
+› default   Current in Codex        
+  priority
+  flex
+
+  Choices change Codex's tier only
+  ↑/↓ navigate · enter apply · esc c

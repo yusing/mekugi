@@ -126,6 +126,103 @@ func TestServiceTierConfig(t *testing.T) {
 	}
 }
 
+func newServiceTierPickerTestUI(t *testing.T, model, tier string, overrides map[string]string) (*appServerUI, *appServerTestInput) {
+	t.Helper()
+	u, input := newAppServerTestUI()
+	u.ctx = t.Context()
+	u.model, u.serviceTier, u.serviceTiers = model, tier, overrides
+	u.view.painter.Theme = livediff.DarkTheme
+	if err := json.Unmarshal([]byte(`[{"model":"gpt-6.1-sol","serviceTiers":[{"id":"priority"},{"id":"flex"}]},{"model":"gpt-5.6-terra","serviceTiers":[{"id":"priority"},{"id":"flex"}]},{"model":"unconfigured","serviceTiers":[{"id":"priority"},{"id":"flex"}]}]`), &u.models); err != nil {
+		t.Fatal(err)
+	}
+	return u, input
+}
+
+func TestUISnapshotNativeTierPicker(t *testing.T) {
+	for _, tc := range []struct {
+		name, model, hostTier string
+		overrides             map[string]string
+		selected              int
+	}{
+		{"configured", "gpt-6.1-sol", "", map[string]string{"gpt-6.1-sol": "fast"}, 0},
+		{"unconfigured", "unconfigured", "priority", nil, 1},
+		{"legacy-terra", "gpt-5.6-terra", "flex", map[string]string{"gpt-6-sol": "fast"}, 2},
+		{"configured-flex", "gpt-6.1-sol", "default", map[string]string{"gpt-6.1-sol": "flex"}, 0},
+	} {
+		for _, width := range []int{36, 100} {
+			t.Run(fmt.Sprintf("%s/%d", tc.name, width), func(t *testing.T) {
+				u, input := newServiceTierPickerTestUI(t, tc.model, tc.hostTier, tc.overrides)
+				appServerTestKeys(t, u, "/tier\r")
+				if !u.picker.open || u.settingsChoices != "/tier" || u.picker.selected != tc.selected {
+					t.Fatalf("picker did not preserve host tier selection: %+v", u.picker)
+				}
+				if input.Len() != 0 || u.serviceTier != tc.hostTier || u.model != tc.model {
+					t.Fatal("opening picker changed host settings")
+				}
+				assertNativeUISnapshot(t, fmt.Sprintf("native-tier-%s-%d", tc.name, width), u.renderPicker(width, 7))
+			})
+		}
+	}
+}
+
+func TestUISnapshotNativeTierPickerModelSwitch(t *testing.T) {
+	u, _ := newServiceTierPickerTestUI(t, "gpt-6.1-sol", "default", map[string]string{"gpt-6.1-sol": "fast"})
+	appServerTestKeys(t, u, "/tier\r")
+	appServerTestKeys(t, u, "\x1b")
+	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": "unconfigured", "effort": "high", "serviceTier": "priority"}})
+	appServerTestKeys(t, u, "/tier\r")
+	if u.picker.problem != "" || u.picker.selected != 1 || u.serviceTier != "priority" || u.model != "unconfigured" {
+		t.Fatalf("model switch retained override or lost host settings: picker=%+v model=%s tier=%s", u.picker, u.model, u.serviceTier)
+	}
+	assertNativeUISnapshot(t, "native-tier-model-switch-100", u.renderPicker(100, 7))
+}
+
+func TestUISnapshotNativeTierPickerCatalogStates(t *testing.T) {
+	for _, state := range []string{"loading", "failed"} {
+		for _, width := range []int{36, 100} {
+			t.Run(fmt.Sprintf("%s/%d", state, width), func(t *testing.T) {
+				u, _ := newServiceTierPickerTestUI(t, "gpt-6.1-sol", "default", map[string]string{"gpt-6.1-sol": "fast"})
+				u.modelsLoading = true
+				u.requests["99"] = "model/list"
+				appServerTestKeys(t, u, "/tier\r")
+				if state == "failed" {
+					appServerTestMessage(t, u, `{"id":99,"error":{"code":-1,"message":"catalog unavailable"}}`)
+					if u.modelsLoading || u.picker.loading || u.picker.problem == "" {
+						t.Fatal("catalog failure did not end loading and preserve its error")
+					}
+				} else if !u.picker.loading {
+					t.Fatal("picker did not expose catalog loading state")
+				}
+				assertNativeUISnapshot(t, fmt.Sprintf("native-tier-%s-%d", state, width), u.renderPicker(width, 7))
+			})
+		}
+	}
+}
+
+func TestServiceTierPickerSelectionUpdatesHostOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name, initial, keys string
+		want                any
+		applied             string
+	}{
+		{"flex", "", "\x1b[B\x1b[B\r", "flex", "flex"},
+		{"default", "flex", "\x1b[H\r", nil, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u, input := newServiceTierPickerTestUI(t, "gpt-6.1-sol", tc.initial, map[string]string{"gpt-6.1-sol": "fast"})
+			appServerTestKeys(t, u, "/tier\r"+tc.keys)
+			assertAppServerSettingsRequest(t, input, "thread/settings/update", map[string]any{"threadId": "main", "serviceTier": tc.want})
+			if u.picker.open || !u.settings.pending() || u.serviceTier != tc.initial || u.serviceTiers["gpt-6.1-sol"] != "fast" {
+				t.Fatal("selection replaced host settings before confirmation or mutated override")
+			}
+			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": "gpt-6.1-sol", "effort": "high", "serviceTier": tc.want}})
+			if u.serviceTier != tc.applied || effectiveServiceTier(u.model, u.serviceTier, u.serviceTiers) != "priority" || u.serviceTiers["gpt-6.1-sol"] != "fast" {
+				t.Fatal("host confirmation changed effective override")
+			}
+		})
+	}
+}
+
 func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 	for _, transport := range []string{"http", "sse", "websocket"} {
 		t.Run(transport, func(t *testing.T) {

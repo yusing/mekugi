@@ -369,6 +369,9 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 		choice := composerChoice{name: value}
 		if value == current {
 			choice.description = "Current"
+			if command == "/tier" && effectiveServiceTier(u.model, "", u.serviceTiers) != "" {
+				choice.description = "Current in Codex"
+			}
 			p.selected = len(p.choices)
 		}
 		p.choices = append(p.choices, choice)

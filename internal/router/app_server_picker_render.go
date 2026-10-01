@@ -69,6 +69,10 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 		}
 	}
 	bold, dim, reset := "\x1b[1m", activityui.Dim, activityui.Reset
+	var tierOverride string
+	if p.modal == "settings" && u.settingsChoices == "/tier" {
+		tierOverride = effectiveServiceTier(u.model, "", u.serviceTiers)
+	}
 	if p.modal == "menu" {
 		p.top = 0
 		if height < 5 {
@@ -139,7 +143,11 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 	}
 	if height > 1 {
 		if p.modal == "settings" {
-			put(0, "  "+bold+"Choose "+strings.TrimPrefix(u.settingsChoices, "/")+reset)
+			title := "Choose " + strings.TrimPrefix(u.settingsChoices, "/")
+			if tierOverride != "" {
+				title = "Mekugi override: " + tierOverride + " · choose Codex tier"
+			}
+			put(0, "  "+bold+title+reset)
 			footer = "  ↑/↓ navigate · enter apply · esc cancel"
 		}
 		if p.modal == "copy" {
@@ -232,6 +240,9 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 	}
 	if p.toggleID != "" {
 		put(height-2, "  "+dim+"Saving…"+reset)
+	}
+	if tierOverride != "" && p.problem == "" && !p.loading && height >= 3 {
+		put(height-2, "  "+dim+"Choices change Codex's tier only"+reset)
 	}
 	if p.modal == "manage" {
 		// Stock management paints the full panel surface, including its blank rows.
