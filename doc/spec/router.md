@@ -217,9 +217,11 @@ fields never contain close reasons, response text, credentials, or arbitrary hea
 the separate raw error string may contain them. These facts classify the observable
 end; an unreported provider-internal cause is not inferred.
 
-A recognized downstream WebSocket disconnect is cancellation even when the write
-fails before the reader cancels the session context. It does not queue a critical
-restart notice or replay the interrupted request. Other write failures remain failures.
+A recognized downstream HTTP or WebSocket disconnect is cancellation even when a
+write or flush fails before the reader cancels the session context. HTTP and
+WebSocket share transport-cause classification, preserving the original error
+and any partial-write count. A disconnect does not queue a critical restart notice
+or replay the interrupted request. Other write failures remain failures.
 An EOF wrapped by downstream cancellation remains cancellation during body sniffing and
 stream completion; unfinished tool input must not replace that cause with a translation failure.
 Stream diagnostics retain a sanitized write-termination category and, when available,

@@ -544,14 +544,15 @@ func (w *trackedResponseWriter) Write(body []byte) (int, error) {
 	if !w.committed {
 		w.WriteHeader(http.StatusOK)
 	}
-	return w.ResponseWriter.Write(body)
+	n, err := w.ResponseWriter.Write(body)
+	return n, downstreamDisconnectError(err)
 }
 
 func (w *trackedResponseWriter) FlushError() error {
 	if !w.committed {
 		w.WriteHeader(http.StatusOK)
 	}
-	return http.NewResponseController(w.ResponseWriter).Flush()
+	return downstreamDisconnectError(http.NewResponseController(w.ResponseWriter).Flush())
 }
 
 func (w *trackedResponseWriter) Unwrap() http.ResponseWriter {

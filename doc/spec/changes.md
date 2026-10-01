@@ -86,8 +86,9 @@ Reader option checks recognize lexical brace-expanded paths without executing
 the shell. The `[` test builtin and quoted scalar `find` paths containing a
 literal slash remain read-only; dynamic action operands, command substitutions,
 writer options and output redirects retain their effect classification.
-`skills-mgr info` is read-only. Other manager commands may repair workspace
-placeholders or run scripts and do not imply an exact no-op.
+`skills-mgr info` and `skills-mgr get` are read-only. Other manager commands may
+repair workspace placeholders or run arbitrary scripts; `run` is not a reader
+merely because its script prints information.
 
 For a declared command, Mekugi captures the derived paths before the call is
 forwarded, within bounds on file size, total and encoded size, enumeration, and

@@ -17,7 +17,7 @@ import (
 )
 
 func TestDownstreamEOFDuringResponseSniffing(t *testing.T) {
-	disconnected := downstreamWebSocketError(io.EOF)
+	disconnected := downstreamDisconnectError(io.EOF)
 	response := &http.Response{
 		Header: make(http.Header),
 		Body:   io.NopCloser(finalAnswerErrorReader{disconnected}),
@@ -50,7 +50,7 @@ func TestDownstreamDisconnectFinalization(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			for _, started := range []bool{false, true} {
 				// The reader has not canceled the context yet.
-				err := fmt.Errorf("%w: %w", errResponseWrite, downstreamWebSocketError(fmt.Errorf("private address: %w", test.err)))
+				err := fmt.Errorf("%w: %w", errResponseWrite, downstreamDisconnectError(fmt.Errorf("private address: %w", test.err)))
 				if !errors.Is(err, test.err) {
 					t.Fatal("lost original cause")
 				}
@@ -80,6 +80,107 @@ func TestDownstreamDisconnectFinalization(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+type disconnectHTTPResponseWriter struct {
+	header  http.Header
+	err     error
+	wrote   bool
+	flushed bool
+}
+
+func (w *disconnectHTTPResponseWriter) Header() http.Header { return w.header }
+func (w *disconnectHTTPResponseWriter) WriteHeader(int)     {}
+func (w *disconnectHTTPResponseWriter) Write([]byte) (int, error) {
+	w.wrote = true
+	return 2, w.err
+}
+func (w *disconnectHTTPResponseWriter) FlushError() error {
+	w.flushed = true
+	return w.err
+}
+
+func TestHTTPDownstreamDisconnectFinalization(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		err          error
+		disconnected bool
+	}{
+		{"eof", io.EOF, true},
+		{"unexpected_eof", io.ErrUnexpectedEOF, true},
+		{"closed", net.ErrClosed, true},
+		{"pipe", syscall.EPIPE, true},
+		{"reset", syscall.ECONNRESET, true},
+		{"deadline", context.DeadlineExceeded, false},
+		{"unknown", errors.New("private writer failure"), false},
+	} {
+		for _, wrapped := range []bool{false, true} {
+			for _, operation := range []string{"write", "flush"} {
+				t.Run(fmt.Sprintf("%s/wrapped=%v/%s", test.name, wrapped, operation), func(t *testing.T) {
+					original := test.err
+					if wrapped {
+						original = &net.OpError{Op: operation, Net: "tcp", Err: test.err}
+					}
+					underlying := &disconnectHTTPResponseWriter{header: make(http.Header), err: original}
+					writer := &trackedResponseWriter{ResponseWriter: underlying}
+					var err error
+					if operation == "write" {
+						var n int
+						n, err = writer.Write([]byte("body"))
+						if n != 2 || !underlying.wrote || underlying.flushed {
+							t.Fatalf("write result=%d, called write=%v flush=%v", n, underlying.wrote, underlying.flushed)
+						}
+					} else {
+						err = writer.FlushError()
+						if !underlying.flushed || underlying.wrote {
+							t.Fatalf("called write=%v flush=%v", underlying.wrote, underlying.flushed)
+						}
+					}
+					if !errors.Is(err, original) || !errors.Is(err, test.err) {
+						t.Fatalf("lost original error: %v", err)
+					}
+					if errors.Is(err, errDownstreamDisconnected) != test.disconnected {
+						t.Fatalf("disconnect classification=%v, want %v: %v", errors.Is(err, errDownstreamDisconnected), test.disconnected, err)
+					}
+					if !requestResponseStarted(writer) || writer.statusCode != http.StatusOK {
+						t.Fatalf("write/flush did not commit response: %+v", writer)
+					}
+					requestErr := fmt.Errorf("%w: %w", errResponseWrite, err)
+					// The actual failed operation commits HTTP output. Also check
+					// finalization when this error reaches an uncommitted output.
+					for _, output := range []*trackedResponseWriter{{ResponseWriter: httptest.NewRecorder()}, writer} {
+						f := &requestFinalization{}
+						f.classifyCopyError(requestErr)
+						issues := NewCriticalErrors()
+						if err := f.finish(t.Context(), requestErr, output, issues); err != nil {
+							t.Fatal(err)
+						}
+						if t.Context().Err() != nil {
+							t.Fatal("finalization relied on a canceled context")
+						}
+						want := requestOutcomeFailed
+						if test.disconnected {
+							want = requestOutcomeCanceledBeforeResponse
+							if output.committed {
+								want = requestOutcomeCanceledAfterResponse
+							}
+						} else if errors.Is(test.err, context.DeadlineExceeded) {
+							want = requestOutcomeTimedOut
+						}
+						if f.observation.outcome != want || f.failurePhase != requestFailureWriteResponse {
+							t.Fatalf("committed=%v: outcome=%v want %v, phase=%v", output.committed, f.observation.outcome, want, f.failurePhase)
+						}
+						if (len(issues.Pending()) == 0) != test.disconnected {
+							t.Fatalf("unexpected notices: %v", issues.Pending())
+						}
+						if test.disconnected && requestCancellationCause(t.Context(), requestErr) != "downstream_disconnected" {
+							t.Fatal("missing disconnect evidence")
+						}
+					}
+				})
+			}
+		}
 	}
 }
 
@@ -145,7 +246,7 @@ func TestWebSocketOutputDisconnectBeforeReaderCancellation(t *testing.T) {
 func TestDownstreamWriteDiagnostics(t *testing.T) {
 	original := websocket.CloseError{Code: websocket.StatusGoingAway, Reason: "private reason"}
 	d := &streamDiagnostics{ReadOrigin: "upstream", ReadTermination: "upstream_eof"}
-	d.copyStopped(errors.Join(errResponseWrite, downstreamWebSocketError(original)))
+	d.copyStopped(errors.Join(errResponseWrite, downstreamDisconnectError(original)))
 	if d.WriteTermination != "downstream_websocket_close_1001" || d.WriteWebSocketCloseCode != 1001 {
 		t.Fatalf("missing write cause: %+v", d)
 	}
@@ -165,7 +266,7 @@ func TestDownstreamDisconnectDuringAnswerDrain(t *testing.T) {
 			if primary != nil {
 				reader = io.MultiReader(reader, finalAnswerErrorReader{primary})
 			}
-			disconnected := downstreamWebSocketError(websocket.CloseError{Code: websocket.StatusGoingAway, Reason: "private"})
+			disconnected := downstreamDisconnectError(websocket.CloseError{Code: websocket.StatusGoingAway, Reason: "private"})
 			diagnostics := &streamDiagnostics{}
 			_, err := copySSETransformed(serverErrorWriter{err: disconnected}, reader, transform, &responseHooks{streamDiagnostics: diagnostics})
 			f := &requestFinalization{}

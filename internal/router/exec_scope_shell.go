@@ -972,9 +972,8 @@ func execNeutralCommand(identity string, args []*syntax.Word) bool {
 	}
 	switch identity {
 	case "skills-mgr":
-		// Other subcommands can start a refresh runner that repairs project
-		// placeholders; run also executes an arbitrary skill script.
-		return slices.Equal(values, []string{"info"})
+		// get reads skill content; run executes an arbitrary skill script.
+		return slices.Equal(values, []string{"info"}) || len(values) >= 2 && values[0] == "get"
 	case "go":
 		if len(values) == 0 {
 			return false

@@ -15,6 +15,7 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 	}{
 		{"net_and_rg", "mchanges ash1..ash3 --net; rg -n 'image' file.txt", 1, 1},
 		{"mcat_and_summary_loop", "mcat file.txt 1:20; mchanges ash1..ash3 --summary", 0, 2},
+		{"skills_get", "skills-mgr get golang-best-practices", 0, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)

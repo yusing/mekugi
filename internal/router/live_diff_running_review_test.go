@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
@@ -15,6 +16,12 @@ func TestExecRunningPreviewReportsOversizedFile(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "large")
 	writeTestFile(t, path, strings.Repeat("old\n", 400000))
+	// Same-size writes can share a filesystem timestamp on fast runs. Make
+	// the changed metadata explicit; this test covers the content-size bound.
+	baselineTime := time.Unix(1, 0)
+	if err := os.Chtimes(path, baselineTime, baselineTime); err != nil {
+		t.Fatal(err)
+	}
 	before := snapshotExecFile(path, nil)
 	writeTestFile(t, path, strings.Repeat("new\n", 400000))
 	ctx, cancel := context.WithCancel(t.Context())

@@ -282,7 +282,7 @@ func TestExecObservationBoundsFileBytes(t *testing.T) {
 }
 
 func TestExecObservationSkipsNeutralCommands(t *testing.T) {
-	for _, command := range []string{"ls", "git status", `rg -n pattern internal/{router,ui}`, `find "$HOME/.codex/sessions" -type f -print`, `[ -d "$directory" ] && echo directory`, "skills-mgr info"} {
+	for _, command := range []string{"ls", "git status", `rg -n pattern internal/{router,ui}`, `find "$HOME/.codex/sessions" -type f -print`, `[ -d "$directory" ] && echo directory`, "skills-mgr info", "skills-mgr get golang-best-practices"} {
 		for _, codeMode := range []bool{false, true} {
 			if _, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: t.TempDir(), Shell: "bash"}}, false, codeMode, execCaptureEnv{}); observed {
 				t.Errorf("%q was observed without a declared scope", command)
@@ -543,6 +543,7 @@ func TestReadCommandFormsAllocateNoChanges(t *testing.T) {
 		`[ -d "$directory" ] && echo directory`,
 		`find "$HOME/.codex/sessions" -type f -print`,
 		`skills-mgr info`,
+		`skills-mgr get golang-best-practices`,
 	} {
 		for _, codeMode := range []bool{false, true} {
 			mode := "native"

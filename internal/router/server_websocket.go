@@ -149,7 +149,7 @@ func webSocketMessageReadError(ctx context.Context, message webSocketMessage) er
 // session. Classify it by its transport cause, not goroutine scheduling.
 var errDownstreamDisconnected = errors.New("downstream disconnected")
 
-func downstreamWebSocketError(err error) error {
+func downstreamDisconnectError(err error) error {
 	code := websocket.CloseStatus(err)
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.EPIPE) ||
@@ -168,7 +168,7 @@ func readResponsesWebSocket(ctx context.Context, conn *websocket.Conn, disconnec
 		for {
 			kind, body, err := conn.Read(ctx)
 			if err != nil && disconnected != nil {
-				err = downstreamWebSocketError(err)
+				err = downstreamDisconnectError(err)
 				disconnected()
 			}
 			readFailed := err != nil
@@ -873,7 +873,7 @@ func (w *webSocketOutput) message(payload []byte) error {
 		s.lastID = event.Response.ID
 	}
 	if err := s.downstream.Write(e.ctx, websocket.MessageText, payload); err != nil {
-		return downstreamWebSocketError(err)
+		return downstreamDisconnectError(err)
 	}
 	w.committed = true
 	if isWebSocketSteering(payload) {

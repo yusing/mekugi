@@ -197,6 +197,8 @@ func TestClassifyReadCommandFormsWithoutFalseWriters(t *testing.T) {
 		`find "$HOME/.codex/sessions" -type f -name '*rollout*' -print 2>/dev/null | head -20`,
 		`find "${XDG_STATE_HOME:-$HOME/.local/state}/mekugi" -type f -print`,
 		`skills-mgr info`,
+		`skills-mgr get golang-best-practices`,
+		`skills-mgr get golang-best-practices/references/go.md 1:20`,
 	} {
 		if plan := classifyExecShell(command, "/work", "bash"); plan.Class != execNeutral {
 			t.Errorf("read command %q classified as %s: %s", command, plan.Class, plan.Reason)
@@ -211,7 +213,6 @@ func TestClassifyReadCommandFormsWithoutFalseWriters(t *testing.T) {
 		`find "${paths[@]}/folder" -print`,
 		`find "$HOME/$(touch changed)" -print`,
 		`find "$HOME/.codex" -{print,delete}`,
-		`skills-mgr get golang-best-practices`,
 		`skills-mgr list`,
 		`skills-mgr run use-modern-go/scripts/run-tool.sh list --go-version 1.27`,
 		`skills-mgr adopt`,
