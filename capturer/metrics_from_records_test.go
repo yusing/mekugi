@@ -1,13 +1,11 @@
 package capturer
 
 import (
-	"cmp"
 	"errors"
-	"slices"
 )
 
 func metricsFromRecords(mode string, records []captureRecord) (MetricsSnapshot, error) {
-	recorder := &Recorder{metrics: newMetricsSnapshot(mode), previousInput: make(map[string]uint64), cacheQueues: make(map[string][]*requestState)}
+	recorder := &Recorder{metrics: newMetricsSnapshot(mode)}
 	fronts := make(map[string]captureRecord)
 	providers := make(map[string][]captureRecord)
 	var order []string
@@ -39,24 +37,13 @@ func metricsFromRecords(mode string, records []captureRecord) (MetricsSnapshot, 
 			return MetricsSnapshot{}, errors.New("unknown capture boundary")
 		}
 	}
-	arrival := slices.Clone(order)
-	slices.SortFunc(arrival, func(a, b string) int { return cmp.Compare(fronts[a].RequestSequence, fronts[b].RequestSequence) })
-	states := make(map[string]*requestState)
-	for _, id := range arrival {
-		front := fronts[id]
-		state := &requestState{threadID: front.ThreadID}
-		states[id] = state
-		if front.ThreadID != "" {
-			recorder.cacheQueues[front.ThreadID] = append(recorder.cacheQueues[front.ThreadID], state)
-		}
-	}
 	for _, id := range order {
 		for _, provider := range providers[id] {
 			if provider.RequestSequence != fronts[id].RequestSequence {
 				return MetricsSnapshot{}, errors.New("provider capture sequence mismatch")
 			}
 		}
-		recorder.addExchange(fronts[id], states[id], providers[id])
+		recorder.addExchange(fronts[id], providers[id])
 		delete(providers, id)
 	}
 	if len(providers) != 0 {

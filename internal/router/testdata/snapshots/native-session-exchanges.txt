@@ -7,6 +7,8 @@
     │  Model             gpt-6-sol                                                   │
     │  Status            completed                                                   │
     │  Duration          2500 ms                                                     │
+    │  HTTP status       200                                                         │
+    │  Complete          true                                                        │
     │  Client request    0 bytes · 0 estimated tokens                                │
     │  Client stream     0 bytes · 0 estimated tokens                                │
     │  Model output      0 bytes · 0 estimated tokens                                │
@@ -22,8 +24,11 @@
     │                                                                                │
     │  Provider attempt 1  ────────────────────────────────────────────────────────  │
     │  Transport         HTTP                                                        │
-    │  Status            failed                                                      │
-    │  Complete          false                                                       │
+    │  Status            http_error                                                  │
+    │  Duration          200 ms                                                      │
+    │  HTTP status       429                                                         │
+    │  Complete          true                                                        │
+    │  Capture error     missing_projected_request                                   │
     │  Request           0 bytes · 0 estimated tokens                                │
     │  Stream            0 bytes · 0 estimated tokens                                │
     │  Model output      0 bytes · 0 estimated tokens                                │
@@ -34,6 +39,8 @@
     │  Provider attempt 2  ────────────────────────────────────────────────────────  │
     │  Transport         WebSocket                                                   │
     │  Status            completed                                                   │
+    │  Duration          1800 ms                                                     │
+    │  HTTP status       101                                                         │
     │  Complete          true                                                        │
     │  Request           0 bytes · 0 estimated tokens                                │
     │  Stream            0 bytes · 0 estimated tokens                                │
@@ -44,17 +51,10 @@
     │  Uncached input    120                                                         │
     │  Output            12                                                          │
     │  Reasoning         0                                                           │
+    │  Usage evidence    complete                                                    │
     │  Response model    gpt-6-sol                                                   │
     │  Header model      unavailable                                                 │
     │  Request ID        req-2                                                       │
     │  Cached telemetry  present                                                     │
-    │  Explicit cached   0                                                           │
-    │  Tool              exec_command · call-1                                       │
-    │  Tool input        12 bytes · 3 estimated tokens                               │
-    │  Tool item         30 bytes · 7 estimated tokens                               │
     │                                                                                │
-    │  Delivered tools  ───────────────────────────────────────────────────────────  │
-    │  Tool              exec_command · call-1                                       │
-    │  Input             18 bytes · 4 estimated tokens                               │
-    │                                                                                │
-    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  1–56 / 57 ──────────────╯
+    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  1–56 / 65 ──────────────╯

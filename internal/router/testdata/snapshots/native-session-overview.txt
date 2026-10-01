@@ -4,13 +4,13 @@
 
 
 
-
     ╭ Session · Overview ───────────────────────────────────────────────── Esc close ╮
     │                                                                                │
     │  Requests  ──────────────────────────────────────────────────────────────────  │
     │  Scope             All threads in this launch · mekugi                         │
     │  Logical           2                                                           │
     │  Attempts          3                                                           │
+    │  Retries           1                                                           │
     │  Completed         2                                                           │
     │  Failed            0                                                           │
     │                                                                                │
@@ -22,18 +22,19 @@
     │  Uncached input    120                                                         │
     │  Output            12                                                          │
     │  Reasoning         4                                                           │
-    │  Attempts          2                                                           │
+    │                                                                                │
+    │  Usage evidence  ────────────────────────────────────────────────────────────  │
+    │  Attempt coverage: complete categories, partial telemetry, legacy              │
+    │  completeness unknown, or no usage observed.                                   │
+    │  Complete          1                                                           │
+    │  Partial           1                                                           │
+    │  Legacy            0                                                           │
+    │  Missing           1                                                           │
     │                                                                                │
     │  Cache  ─────────────────────────────────────────────────────────────────────  │
     │  Provider rate     0.0%                                                        │
-    │  Prefix rate       unavailable                                                 │
-    │  Cold / new        0                                                           │
-    │  Eligible          0                                                           │
-    │  Prefix cached     0                                                           │
-    │  Prefix misses     0                                                           │
-    │  Basis             previous_input_length_estimate                              │
-    │  Eligible prefix is a previous-input estimate, not model-token prefix or       │
-    │  cache residency. Prefix equality does not guarantee reuse.                    │
+    │  Cached / input from observed usage. Partial or missing telemetry is not       │
+    │  evidence of zero consumption or cache misses.                                 │
     │                                                                                │
     │  Capture  ───────────────────────────────────────────────────────────────────  │
     │  Records           5                                                           │
@@ -46,7 +47,6 @@
     │  Dropped detail    7                                                           │
     │                                                                                │
     ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close ─────────────────────────────────╯
-
 
 
 

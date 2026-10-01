@@ -541,13 +541,14 @@ Shift-Tab cycle Overview, Transport and Exchanges. Up/Down, mouse wheel and
 PgUp/PgDn scroll the selected view. Escape, Enter, q or Ctrl-C closes without
 interrupting a turn; Escape first clears a text selection.
 
-Overview groups request counts, provider usage, cache attribution and capture
+Overview groups settled request counts and retries, provider usage with complete,
+partial, legacy and missing attempt coverage, measured cache rate and capture
 health. Transport groups wire and semantic output measurements, including all
 four control-message directions, plus provider/delivered tool aggregates.
 Exchanges shows one retained exchange with its provider attempts, explicit
-telemetry, cache-prefix diagnostics, compaction/journal observations and tool
-calls. `[` and `]` navigate older/newer retained exchanges; newest follows new
-observations, while an older selection stays on its sequence until retention
+telemetry, duration, HTTP status and capture-error codes, cache-prefix diagnostics,
+compaction/journal observations and tool calls. `[` and `]` navigate older/newer
+retained exchanges; newest follows new observations, while an older selection stays on its sequence until retention
 reclaims it. Each view distinguishes absent usage from explicit zero evidence
 and identifies local token estimates separately from provider usage.
 

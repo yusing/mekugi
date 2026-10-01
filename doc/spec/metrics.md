@@ -61,22 +61,37 @@ If the projected-request observation is missing, the provider record MUST have
 a capture error and no `projected_request`, rather than substituting the
 provider wire request.
 
-`GET /api/metrics` MUST return `mekugi.capture.metrics.v6`. Provider and transport
+`GET /api/metrics` MUST return `mekugi.capture.metrics.v7`. Provider and transport
 calculations belong to the capturer, not the router, engine, plugin, comparison
 report or session dialog. Journal operation evidence comes from its durable owner.
 
-Exchange details retain wall-clock duration in milliseconds, including local
-compaction, without treating local token estimates as provider usage or savings.
+Exchange and provider-attempt details retain wall-clock duration in milliseconds,
+HTTP status, response completeness and bounded capture-error codes. Exchange duration
+includes local compaction. Local token estimates are not provider usage or savings.
+
+Usage totals retain normalized provider observations, with attempt coverage partitioned
+into `complete_attempts` (`evidence_complete: true`), `incomplete_attempts` (false),
+`unknown_attempts` (legacy evidence without that field), and `missing_attempts`
+(no usage observation). `provider_attempts` in usage counts only usage-bearing attempts;
+its three completeness categories plus missing attempts reconcile request attempt totals.
+Zero-token usage with complete evidence remains a complete observation, not missing.
+Exchange usage stays absent when no attempt supplies usage; a mixed exchange retains
+its missing-attempt count. Router-local compaction still has explicit zero usage.
+Completeness describes token-category telemetry, independently of capture health.
+Coverage counters remain cumulative when exchange details are evicted and reset with
+the recorder, never reconstructed from a previous launch.
+
+Metrics v7 removes v6's previous-input-length cache attribution. It does not
+reinterpret schema-7 records or remove their request fingerprints.
+Representation diagnostics remain distinct from measured cache usage; no inferred
+cache eligibility or misses are recorded or reported.
 
 The snapshot MUST expose:
 
-1. logical request and provider-attempt counts, including completed and failed logical requests;
+1. logical request and provider-attempt counts, including completed and failed logical requests and retries (observed attempts beyond the first per logical request);
 2. provider input, cached input, uncached input, output, reasoning, and usage-bearing attempt counts;
-3. the overall provider cache rate from authoritative cached and total provider input, plus estimated cache attribution that separates cold/new uncached input from estimated misses within the immediately
-   preceding logical request's final provider attempt for the same nonempty thread; retries within
-   one request MUST NOT become cache predecessors, requests without a thread are cold, concurrent
-   completions MUST retain request-arrival order, and a final attempt without usage MUST break the
-   predecessor chain rather than reuse older evidence;
+3. the overall provider cache rate from observed cached and total provider input;
+   no cold/new, eligible-prefix or cache-miss estimates based on previous input length;
 4. client-request, provider-attempt-request, complete provider-response-stream, and complete
    client-response-stream payload totals, plus terminal provider and client `output` arrays measured once;
    router-authored journal output MUST be excluded from model-origin output accounting by its reserved
@@ -122,11 +137,6 @@ decoded UTF-8 bytes before journal rendering, including `Done.` and answers too
 large to capture. Empty Outcome follows the journal rule. These are observed
 response measurements, not acknowledgements of downstream delivery or savings.
 
-Cache attribution is a previous-input-length estimate, not a measurement of matching
-provider-token prefixes or cache eligibility. `cache.attribution_basis` is
-`previous_input_length_estimate`; session dialogs label those fields as estimates.
-The provider cache rate remains the measured cached-input/total-input ratio.
-
 Provider usage is authoritative for model consumption. Local token estimates MUST count decoded
 JSON object keys and scalar values independently, excluding JSON punctuation, field ordering,
 whitespace, and string-escape spelling. Equivalent numeric spellings MUST normalize without losing
@@ -158,7 +168,7 @@ Acceptance:
    the discarded detail.
 7. A response larger than the observation bound preserves delivery while failing capture health.
 
-Schema-7 records and metrics v6 identify this content-token and output-accounting contract. Older records cannot be
+Schema-7 records and metrics v7 identify this content-token and output-accounting contract. Older records cannot be
 reinterpreted as corrected measurements because they do not retain the raw output items.
 
 JSON whitespace, key order, and equivalent string escaping MUST leave all content estimates unchanged while observed bytes may differ. Literal model-visible escape sequences MUST retain their token cost.
@@ -172,7 +182,7 @@ provider usage measures actual model-consumption changes.
 
 ### Privacy-safe cache diagnostics
 
-Schema-7 records and metrics v6 MAY additionally contain `cache_fingerprint` for observed
+Schema-7 records and metrics v7 MAY additionally contain `cache_fingerprint` for observed
 request representations, `projected_fingerprint` for the actual post-replay request,
 and `client_fingerprint` in exchanges. New captures MUST produce these for valid requests.
 The capturer MUST HMAC decoded JSON components and ordered input items with a fresh random
@@ -242,7 +252,7 @@ Only terminal response usage supplies this evidence; nonterminal usage MUST NOT 
 An incomplete, malformed, or unobserved terminal response yields unavailable evidence.
 JSON, SSE, and supported compressed payloads MUST follow the same rules.
 
-This evidence is part of schema-7/metrics-v6 and does not change existing normalized
+This evidence is part of schema-7/metrics-v7 and does not change existing normalized
 usage counters. Missing older evidence is unavailable, never explicit zero. Reports and
 the session dialog MUST warn that normalized aggregate counters may default missing telemetry to zero
 and MUST show per-attempt field state and explicit counts separately. All retries retain their

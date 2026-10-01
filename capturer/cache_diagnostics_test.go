@@ -223,10 +223,3 @@ func TestCacheFingerprintIncrementalHistoryIsNotAChangedPrefix(t *testing.T) {
 		t.Fatalf("continuation identity leaked: %s, %v", encoded, err)
 	}
 }
-
-func TestCacheAttributionLabelsItsEstimate(t *testing.T) {
-	snapshot := newMetricsSnapshot("mekugi")
-	if snapshot.Cache.AttributionBasis != "previous_input_length_estimate" {
-		t.Fatal("cache attribution is not explicitly labeled as an estimate")
-	}
-}

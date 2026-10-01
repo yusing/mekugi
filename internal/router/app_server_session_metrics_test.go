@@ -19,10 +19,10 @@ func sessionMetricsFixture(t *testing.T) capturer.MetricsSnapshot {
 	t.Helper()
 	var snapshot capturer.MetricsSnapshot
 	err := json.Unmarshal([]byte(`{
-  "schema":"mekugi.capture.metrics.v6","mode":"mekugi",
-  "requests":{"logical":2,"provider_attempts":3,"completed":2,"failed":0},
-  "usage":{"input_tokens":120,"cached_input_tokens":0,"uncached_input_tokens":120,"output_tokens":12,"reasoning_tokens":4,"provider_attempts":2},
-  "cache":{"provider_cache_rate":0,"attribution_basis":"previous_input_length_estimate"},
+  "schema":"mekugi.capture.metrics.v7","mode":"mekugi",
+  "requests":{"logical":2,"provider_attempts":3,"retries":1,"completed":2,"failed":0},
+  "usage":{"input_tokens":120,"cached_input_tokens":0,"uncached_input_tokens":120,"output_tokens":12,"reasoning_tokens":4,"provider_attempts":2,"complete_attempts":1,"incomplete_attempts":1,"missing_attempts":1},
+  "cache":{"provider_cache_rate":0},
   "capture":{"records":5,"dropped_exchange_details":7},
   "transport":{
     "client_requests":{"bytes":100,"tokens":10},"provider_attempt_requests":{"bytes":250,"tokens":25},
@@ -33,14 +33,14 @@ func sessionMetricsFixture(t *testing.T) capturer.MetricsSnapshot {
   "provider_tools":{"exec_command":{"calls":2,"input_bytes":12,"input_tokens":3,"item_bytes":30,"item_tokens":7}},
   "delivered_tools":{"exec_command":{"calls":1,"input_bytes":18,"input_tokens":4,"item_bytes":40,"item_tokens":9}},
   "exchanges":[
-    {"sequence":8,"thread_id":"main","model":"gpt-6-sol","status":"completed","duration_ms":1200,
+    {"sequence":8,"thread_id":"main","model":"gpt-6-sol","status":"completed","duration_ms":1200,"status_code":200,"response_complete":true,
       "provider_attempts":[{"attempt":1,"transport":"http","status":"failed","provider_response":{"cached_tokens_state":"missing"}}]},
-    {"sequence":9,"thread_id":"side","model":"gpt-6-sol","status":"completed","duration_ms":2500,
+    {"sequence":9,"thread_id":"side","model":"gpt-6-sol","status":"completed","duration_ms":2500,"status_code":200,"response_complete":true,
       "usage":{"input_tokens":120,"cached_input_tokens":0,"uncached_input_tokens":120,"output_tokens":12,"reasoning_tokens":4},
       "provider_attempts":[
-        {"attempt":1,"transport":"http","status":"failed"},
-        {"attempt":2,"transport":"websocket","status":"completed","response_complete":true,
-         "usage":{"input_tokens":120,"cached_input_tokens":0,"uncached_input_tokens":120,"output_tokens":12},
+        {"attempt":1,"transport":"http","status":"http_error","status_code":429,"duration_ms":200,"response_complete":true,"capture_error":"missing_projected_request"},
+        {"attempt":2,"transport":"websocket","status":"completed","response_complete":true,"duration_ms":1800,"status_code":101,
+         "usage":{"input_tokens":120,"cached_input_tokens":0,"uncached_input_tokens":120,"output_tokens":12,"complete_attempts":1},
          "provider_response":{"model":"gpt-6-sol","request_id":"req-2","cached_tokens_state":"present","cached_tokens":0},
          "tools":[{"name":"exec_command","call_id":"call-1","input_bytes":12,"input_tokens":3,"item_bytes":30,"item_tokens":7}]}],
       "delivered_tools":[{"name":"exec_command","call_id":"call-1","input_bytes":18,"input_tokens":4,"item_bytes":40,"item_tokens":9}]}]}`), &snapshot, json.RejectUnknownMembers(true))
@@ -74,7 +74,6 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 	u.renderSessionMetrics()
 	sessionMetricField(t, u, "Requests", "Attempts", "3")
 	sessionMetricField(t, u, "Cache", "Provider rate", "0.0%")
-	sessionMetricField(t, u, "Cache", "Prefix rate", "unavailable")
 	u.statusPanelFrame(80, 12)
 	u.statusPanelKey("\x1b[B")
 	if u.statusPanel.top == 0 {

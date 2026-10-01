@@ -95,7 +95,7 @@ func TestRunSessionServesMetricsWithoutLogging(t *testing.T) {
 		} else {
 			body, readErr := io.ReadAll(response.Body)
 			response.Body.Close()
-			if readErr != nil || !bytes.Contains(body, []byte(`"schema":"mekugi.capture.metrics.v6"`)) {
+			if readErr != nil || !bytes.Contains(body, []byte(`"schema":"mekugi.capture.metrics.v7"`)) {
 				t.Errorf("metrics = %s, %v", body, readErr)
 			}
 		}

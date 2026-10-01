@@ -139,27 +139,22 @@ func (u *appServerUI) renderSessionMetrics() {
 		add("Requests", "Scope", "All threads in this launch · "+s.Mode)
 		add("Requests", "Logical", s.Requests.Logical)
 		add("Requests", "Attempts", s.Requests.ProviderAttempts)
+		add("Requests", "Retries", s.Requests.Retries)
 		add("Requests", "Completed", s.Requests.Completed)
 		add("Requests", "Failed", s.Requests.Failed)
 		add("Usage", "", "Provider-reported consumption, not local estimates. Missing normalized telemetry may default to zero; inspect Exchanges for explicit evidence.")
 		usage("Usage", s.Usage.InputTokens, s.Usage.CachedInputTokens, s.Usage.UncachedInputTokens, s.Usage.OutputTokens, s.Usage.ReasoningTokens)
-		add("Usage", "Attempts", s.Usage.ProviderAttempts)
-		for _, rate := range []struct {
-			label string
-			value *float64
-		}{{"Provider rate", s.Cache.ProviderCacheRate}, {"Prefix rate", s.Cache.EligiblePrefixCacheRate}} {
-			if rate.value == nil {
-				add("Cache", rate.label, "unavailable")
-			} else {
-				add("Cache", rate.label, fmt.Sprintf("%.1f%%", *rate.value*100))
-			}
+		add("Usage evidence", "", "Attempt coverage: complete categories, partial telemetry, legacy completeness unknown, or no usage observed.")
+		add("Usage evidence", "Complete", s.Usage.CompleteAttempts)
+		add("Usage evidence", "Partial", s.Usage.IncompleteAttempts)
+		add("Usage evidence", "Legacy", s.Usage.UnknownAttempts)
+		add("Usage evidence", "Missing", s.Usage.MissingAttempts)
+		if s.Cache.ProviderCacheRate == nil {
+			add("Cache", "Provider rate", "unavailable")
+		} else {
+			add("Cache", "Provider rate", fmt.Sprintf("%.1f%%", *s.Cache.ProviderCacheRate*100))
 		}
-		add("Cache", "Cold / new", s.Cache.ColdOrNewUncachedInputTokens)
-		add("Cache", "Eligible", s.Cache.EligiblePrefixTokens)
-		add("Cache", "Prefix cached", s.Cache.EligiblePrefixCachedTokens)
-		add("Cache", "Prefix misses", s.Cache.EligiblePrefixMissTokens)
-		add("Cache", "Basis", s.Cache.AttributionBasis)
-		add("Cache", "", "Eligible prefix is a previous-input estimate, not model-token prefix or cache residency. Prefix equality does not guarantee reuse.")
+		add("Cache", "", "Cached / input from observed usage. Partial or missing telemetry is not evidence of zero consumption or cache misses.")
 		for _, row := range []struct {
 			label string
 			value uint64
@@ -219,6 +214,11 @@ func (u *appServerUI) renderSessionMetrics() {
 			add("Exchange", "Kind", e.RequestKind)
 		}
 		add("Exchange", "Duration", fmt.Sprintf("%d ms", e.DurationMillis))
+		if e.StatusCode != 0 {
+			add("Exchange", "HTTP status", e.StatusCode)
+		}
+		add("Exchange", "Complete", e.ResponseComplete)
+		add("Exchange", "Capture error", e.CaptureError)
 		payload("Exchange", "Client request", e.ClientRequest.Bytes, e.ClientRequest.Tokens)
 		payload("Exchange", "Client stream", e.ClientResponse.Bytes, e.ClientResponse.Tokens)
 		payload("Exchange", "Model output", e.ClientFinalOutput.Bytes, e.ClientFinalOutput.Tokens)
@@ -277,7 +277,12 @@ func (u *appServerUI) renderSessionMetrics() {
 			if a.Status != "" {
 				add(group, "Status", a.Status)
 			}
+			add(group, "Duration", fmt.Sprintf("%d ms", a.DurationMillis))
+			if a.StatusCode != 0 {
+				add(group, "HTTP status", a.StatusCode)
+			}
 			add(group, "Complete", a.ResponseComplete)
+			add(group, "Capture error", a.CaptureError)
 			payload(group, "Request", a.Request.Bytes, a.Request.Tokens)
 			if a.ProjectedRequest != nil {
 				payload(group, "Post replay", a.ProjectedRequest.Bytes, a.ProjectedRequest.Tokens)
@@ -289,6 +294,14 @@ func (u *appServerUI) renderSessionMetrics() {
 				add(group, "Usage", "unavailable")
 			} else {
 				usage(group, a.Usage.InputTokens, a.Usage.CachedInputTokens, a.Usage.UncachedInputTokens, a.Usage.OutputTokens, a.Usage.ReasoningTokens)
+				switch {
+				case a.Usage.CompleteAttempts != 0:
+					add(group, "Usage evidence", "complete")
+				case a.Usage.IncompleteAttempts != 0:
+					add(group, "Usage evidence", "partial")
+				default:
+					add(group, "Usage evidence", "legacy completeness unknown")
+				}
 			}
 			if evidence := a.ProviderResponse; evidence != nil {
 				add(group, "Response model", cmp.Or(evidence.Model, "unavailable"))

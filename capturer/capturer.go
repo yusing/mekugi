@@ -116,8 +116,6 @@ type Recorder struct {
 	mode                string
 	requestSequence     uint64
 	metrics             MetricsSnapshot
-	previousInput       map[string]uint64
-	cacheQueues         map[string][]*requestState
 }
 
 type requestState struct {
@@ -141,8 +139,6 @@ type requestState struct {
 	subagent              string
 	providers             []captureRecord
 	providerUsage         map[uint64]ProviderUsage
-	cacheReady            bool
-	cacheUsage            *usageMetrics
 }
 
 type requestRouting struct {
@@ -224,8 +220,6 @@ func New(config Config) (*Recorder, error) {
 		fingerprintKey: fingerprintKey, file: file, codec: codec, mode: config.Mode,
 		lastRequestSequence: make(map[string]uint64),
 		metrics:             newMetricsSnapshot(config.Mode),
-		previousInput:       make(map[string]uint64),
-		cacheQueues:         make(map[string][]*requestState),
 	}, nil
 }
 
@@ -348,7 +342,6 @@ func (r *Recorder) beginRequest(header http.Header) (*requestState, error) {
 		}
 		state.predecessorSequence = r.lastRequestSequence[state.threadID]
 		r.lastRequestSequence[state.threadID] = state.sequence
-		r.cacheQueues[state.threadID] = append(r.cacheQueues[state.threadID], state)
 	}
 	r.mu.Unlock()
 	return state, nil
@@ -566,7 +559,7 @@ func (r *Recorder) write(record captureRecord, state *requestState) {
 		r.metrics.Capture.Incomplete++
 	}
 	if record.Boundary == "codex" {
-		r.addExchange(record, state, state.providerRecords())
+		r.addExchange(record, state.providerRecords())
 	} else {
 		addWebSocketControl(&r.metrics.Transport, record)
 	}

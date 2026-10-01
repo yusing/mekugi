@@ -10,6 +10,10 @@ import (
 )
 
 type usageMetrics struct {
+	CompleteAttempts    uint64 `json:"complete_attempts"`
+	IncompleteAttempts  uint64 `json:"incomplete_attempts"`
+	UnknownAttempts     uint64 `json:"unknown_attempts"`
+	MissingAttempts     uint64 `json:"missing_attempts"`
 	InputTokens         uint64 `json:"input_tokens"`
 	CachedInputTokens   uint64 `json:"cached_input_tokens"`
 	UncachedInputTokens uint64 `json:"uncached_input_tokens"`
@@ -19,6 +23,7 @@ type usageMetrics struct {
 }
 
 type requestTotals struct {
+	Retries          uint64 `json:"retries"`
 	Logical          uint64 `json:"logical"`
 	ProviderAttempts uint64 `json:"provider_attempts"`
 	Completed        uint64 `json:"completed"`
@@ -26,13 +31,7 @@ type requestTotals struct {
 }
 
 type cacheMetrics struct {
-	AttributionBasis             string   `json:"attribution_basis"`
-	ColdOrNewUncachedInputTokens uint64   `json:"cold_or_new_uncached_input_tokens"`
-	ProviderCacheRate            *float64 `json:"provider_cache_rate"`
-	EligiblePrefixTokens         uint64   `json:"eligible_prefix_tokens"`
-	EligiblePrefixCachedTokens   uint64   `json:"eligible_prefix_cached_tokens"`
-	EligiblePrefixMissTokens     uint64   `json:"eligible_prefix_miss_tokens"`
-	EligiblePrefixCacheRate      *float64 `json:"eligible_prefix_cache_rate"`
+	ProviderCacheRate *float64 `json:"provider_cache_rate"`
 }
 
 type payloadTotals struct {
@@ -92,6 +91,9 @@ type captureHealth struct {
 }
 
 type providerAttemptMetrics struct {
+	DurationMillis       uint64                    `json:"duration_ms"`
+	StatusCode           int                       `json:"status_code"`
+	CaptureError         string                    `json:"capture_error,omitempty"`
 	Transport            string                    `json:"transport,omitempty"`
 	ProviderResponse     *providerResponseEvidence `json:"provider_response,omitempty"`
 	Attempt              uint64                    `json:"attempt"`
@@ -110,6 +112,9 @@ type providerAttemptMetrics struct {
 }
 
 type exchangeMetrics struct {
+	StatusCode       int    `json:"status_code"`
+	ResponseComplete bool   `json:"response_complete"`
+	CaptureError     string `json:"capture_error,omitempty"`
 	CompactionMetrics
 	Journal             *JournalMetrics          `json:"journal,omitempty"`
 	DurationMillis      uint64                   `json:"duration_ms"`
@@ -173,15 +178,14 @@ func (r *Recorder) snapshot() MetricsSnapshot {
 
 func newMetricsSnapshot(mode string) MetricsSnapshot {
 	return MetricsSnapshot{
-		Schema:         "mekugi.capture.metrics.v6",
+		Schema:         "mekugi.capture.metrics.v7",
 		Mode:           mode,
-		Cache:          cacheMetrics{AttributionBasis: "previous_input_length_estimate"},
 		ProviderTools:  map[string]toolAggregate{},
 		DeliveredTools: map[string]toolAggregate{},
 	}
 }
 
-func (r *Recorder) addExchange(front captureRecord, state *requestState, providers []captureRecord) {
+func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 	slices.SortFunc(providers, func(first, second captureRecord) int {
 		return cmp.Compare(first.ProviderAttempt, second.ProviderAttempt)
 	})
@@ -195,6 +199,7 @@ func (r *Recorder) addExchange(front captureRecord, state *requestState, provide
 	}
 
 	exchange := exchangeMetrics{
+		StatusCode: front.StatusCode, ResponseComplete: front.ResponseComplete, CaptureError: front.CaptureError,
 		Journal:           front.Journal.Clone(),
 		CompactionMetrics: front.CompactionMetrics,
 		DurationMillis:    front.DurationMillis,
@@ -208,6 +213,7 @@ func (r *Recorder) addExchange(front captureRecord, state *requestState, provide
 	var exchangeUsage usageMetrics
 	r.metrics.Requests.Logical++
 	r.metrics.Requests.ProviderAttempts += uint64(len(providers))
+	r.metrics.Requests.Retries += uint64(max(0, len(providers)-1))
 	addPayload(&r.metrics.Transport.ClientRequests, front.Request)
 	addPayload(&r.metrics.Transport.ClientResponses, front.Response)
 	addPayload(&r.metrics.Semantic.ClientOutputs, front.FinalOutput)
@@ -223,6 +229,7 @@ func (r *Recorder) addExchange(front captureRecord, state *requestState, provide
 		addPayload(&r.metrics.Semantic.ProviderAttemptOutputs, provider.FinalOutput)
 		addTools(r.metrics.ProviderTools, provider.ToolCalls)
 		attempt := providerAttemptMetrics{
+			DurationMillis: provider.DurationMillis, StatusCode: provider.StatusCode, CaptureError: provider.CaptureError,
 			Transport:        provider.Transport,
 			ProviderResponse: provider.ProviderResponse,
 			Attempt:          provider.ProviderAttempt, Model: provider.RequestModel, Status: provider.ResponseStatus,
@@ -240,6 +247,9 @@ func (r *Recorder) addExchange(front captureRecord, state *requestState, provide
 			attempt.Usage = &usage
 			addUsage(&exchangeUsage, usage)
 			addUsage(&r.metrics.Usage, usage)
+		} else {
+			exchangeUsage.MissingAttempts++
+			r.metrics.Usage.MissingAttempts++
 		}
 		exchange.ProviderAttempts = append(exchange.ProviderAttempts, attempt)
 	}
@@ -248,16 +258,6 @@ func (r *Recorder) addExchange(front captureRecord, state *requestState, provide
 	}
 	if front.CompactionAnswer == "router" && len(providers) == 0 {
 		exchange.Usage = &usageMetrics{} // Observed no provider invocation, not inferred missing usage.
-	}
-	if len(providers) != 0 {
-		final := providers[len(providers)-1]
-		r.recordCacheObservation(state, final.Usage)
-	} else {
-		r.recordCacheObservation(state, nil)
-	}
-	if r.metrics.Cache.EligiblePrefixTokens != 0 {
-		rate := float64(r.metrics.Cache.EligiblePrefixCachedTokens) / float64(r.metrics.Cache.EligiblePrefixTokens)
-		r.metrics.Cache.EligiblePrefixCacheRate = &rate
 	}
 	if r.metrics.Usage.InputTokens != 0 {
 		rate := float64(r.metrics.Usage.CachedInputTokens) / float64(r.metrics.Usage.InputTokens)
@@ -272,44 +272,10 @@ func (r *Recorder) addExchange(front captureRecord, state *requestState, provide
 	}
 }
 
-// recordCacheObservation records cache metrics for a request with provider usage observation.
-func (r *Recorder) recordCacheObservation(state *requestState, observed *ProviderUsage) {
-	if state.threadID == "" {
-		if observed != nil {
-			addCache(&r.metrics.Cache, r.previousInput, "", usageOf(*observed))
-		}
-		return
-	}
-	state.cacheReady = true
-	if observed != nil {
-		usage := usageOf(*observed)
-		state.cacheUsage = &usage
-	}
-	queue := r.cacheQueues[state.threadID]
-	for len(queue) != 0 && queue[0].cacheReady {
-		current := queue[0]
-		queue = queue[1:]
-		if current.cacheUsage == nil {
-			delete(r.previousInput, state.threadID)
-		} else {
-			addCache(&r.metrics.Cache, r.previousInput, state.threadID, *current.cacheUsage)
-		}
-	}
-	if len(queue) == 0 {
-		delete(r.cacheQueues, state.threadID)
-	} else {
-		r.cacheQueues[state.threadID] = queue
-	}
-}
-
 func cloneMetricsSnapshot(source MetricsSnapshot) MetricsSnapshot {
 	clone := source
 	clone.ProviderTools = maps.Clone(source.ProviderTools)
 	clone.DeliveredTools = maps.Clone(source.DeliveredTools)
-	if source.Cache.EligiblePrefixCacheRate != nil {
-		rate := *source.Cache.EligiblePrefixCacheRate
-		clone.Cache.EligiblePrefixCacheRate = &rate
-	}
 	if source.Cache.ProviderCacheRate != nil {
 		rate := *source.Cache.ProviderCacheRate
 		clone.Cache.ProviderCacheRate = &rate
@@ -355,12 +321,21 @@ func cloneMetricsSnapshot(source MetricsSnapshot) MetricsSnapshot {
 // usageOf converts a ProviderUsage observation to internal usageMetrics.
 func usageOf(usage ProviderUsage) usageMetrics {
 	cached := min(usage.InputTokens, usage.CachedTokens)
-	return usageMetrics{
+	result := usageMetrics{
 		InputTokens: usage.InputTokens, CachedInputTokens: cached,
 		UncachedInputTokens: usage.InputTokens - cached,
 		OutputTokens:        usage.OutputTokens, ReasoningTokens: usage.ReasoningTokens,
 		ProviderAttempts: 1,
 	}
+	switch {
+	case usage.EvidenceComplete == nil:
+		result.UnknownAttempts = 1
+	case !*usage.EvidenceComplete:
+		result.IncompleteAttempts = 1
+	default:
+		result.CompleteAttempts = 1
+	}
+	return result
 }
 
 func addUsage(total *usageMetrics, usage usageMetrics) {
@@ -370,24 +345,10 @@ func addUsage(total *usageMetrics, usage usageMetrics) {
 	total.OutputTokens += usage.OutputTokens
 	total.ReasoningTokens += usage.ReasoningTokens
 	total.ProviderAttempts += usage.ProviderAttempts
-}
-
-func addCache(total *cacheMetrics, previous map[string]uint64, thread string, usage usageMetrics) {
-	if thread == "" {
-		total.ColdOrNewUncachedInputTokens += usage.UncachedInputTokens
-		return
-	}
-	eligible := uint64(0)
-	if prior, ok := previous[thread]; ok {
-		eligible = min(prior, usage.InputTokens)
-	}
-	eligibleCached := min(eligible, usage.CachedInputTokens)
-	eligibleMiss := eligible - eligibleCached
-	total.EligiblePrefixTokens += eligible
-	total.EligiblePrefixCachedTokens += eligibleCached
-	total.EligiblePrefixMissTokens += eligibleMiss
-	total.ColdOrNewUncachedInputTokens += usage.UncachedInputTokens - eligibleMiss
-	previous[thread] = usage.InputTokens
+	total.CompleteAttempts += usage.CompleteAttempts
+	total.IncompleteAttempts += usage.IncompleteAttempts
+	total.UnknownAttempts += usage.UnknownAttempts
+	total.MissingAttempts += usage.MissingAttempts
 }
 
 func addPayload(total *payloadTotals, payload payloadMetrics) {

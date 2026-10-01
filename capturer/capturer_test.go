@@ -338,9 +338,6 @@ func TestSnapshotAccountsCacheAndMissingEvidence(t *testing.T) {
 		if state == nil {
 			state = &requestState{captureID: record.CaptureID, sequence: record.RequestSequence, threadID: record.ThreadID}
 			states[record.CaptureID] = state
-			if state.threadID != "" {
-				recorder.cacheQueues[state.threadID] = append(recorder.cacheQueues[state.threadID], state)
-			}
 		}
 		if record.Boundary == "provider" {
 			state.addProvider(record)
@@ -351,9 +348,6 @@ func TestSnapshotAccountsCacheAndMissingEvidence(t *testing.T) {
 	snapshot := recorder.snapshot()
 	if snapshot.Usage.InputTokens != 220 || snapshot.Usage.CachedInputTokens != 100 ||
 		snapshot.Cache.ProviderCacheRate == nil || *snapshot.Cache.ProviderCacheRate != float64(100)/220 ||
-		snapshot.Cache.ColdOrNewUncachedInputTokens != 100 || snapshot.Cache.EligiblePrefixTokens != 100 ||
-		snapshot.Cache.EligiblePrefixCachedTokens != 80 || snapshot.Cache.EligiblePrefixMissTokens != 20 ||
-		snapshot.Cache.EligiblePrefixCacheRate == nil || *snapshot.Cache.EligiblePrefixCacheRate != 0.8 ||
 		snapshot.Capture.MissingProvider != 1 {
 		t.Fatalf("snapshot = %#v", snapshot)
 	}
@@ -488,7 +482,8 @@ func TestSnapshotBoundsExchangeDetailWithoutLosingTotals(t *testing.T) {
 	}
 
 	snapshot := recorder.snapshot()
-	if snapshot.Requests.Logical != maxRetainedExchangeDetails+1 || snapshot.Usage.InputTokens != maxRetainedExchangeDetails+1 {
+	if snapshot.Requests.Logical != maxRetainedExchangeDetails+1 || snapshot.Usage.InputTokens != maxRetainedExchangeDetails+1 ||
+		snapshot.Usage.UnknownAttempts != maxRetainedExchangeDetails+1 {
 		t.Fatalf("cumulative metrics = requests %d, input %d", snapshot.Requests.Logical, snapshot.Usage.InputTokens)
 	}
 	if len(snapshot.Exchanges) != maxRetainedExchangeDetails || snapshot.Exchanges[0].Sequence != 2 {
@@ -698,95 +693,6 @@ func TestDurableCaptureDiscardsArbitraryTextCarrierContent(t *testing.T) {
 	snapshot := recorder.snapshot()
 	if snapshot.Capture.CaptureErrors != 0 {
 		t.Fatalf("capture errors = %d", snapshot.Capture.CaptureErrors)
-	}
-}
-
-func TestCacheAttributionUsesFinalAttemptOfPrecedingLogicalRequest(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeExchange := func(sequence uint64, thread string, usages ...ProviderUsage) {
-		state := &requestState{captureID: fmt.Sprintf("cache-%d", sequence), sequence: sequence, threadID: thread}
-		if thread != "" {
-			recorder.cacheQueues[thread] = append(recorder.cacheQueues[thread], state)
-		}
-		for index, value := range usages {
-			provider := captureRecord{
-				Boundary: "provider", CaptureID: state.captureID, RequestSequence: sequence,
-				ProviderAttempt: uint64(index + 1), ThreadID: thread, StatusCode: http.StatusOK,
-				ResponseStatus: "completed", ResponseComplete: true, Usage: &value,
-			}
-			state.addProvider(provider)
-			recorder.write(provider, state)
-		}
-		recorder.write(captureRecord{
-			Boundary: "codex", CaptureID: state.captureID, RequestSequence: sequence, ThreadID: thread,
-			StatusCode: http.StatusOK, ResponseStatus: "completed", ResponseComplete: true,
-		}, state)
-	}
-	writeExchange(1, "thread", ProviderUsage{InputTokens: 100}, ProviderUsage{InputTokens: 120})
-	writeExchange(2, "thread", ProviderUsage{InputTokens: 150, CachedTokens: 100})
-	writeExchange(3, "", ProviderUsage{InputTokens: 80})
-	writeExchange(4, "", ProviderUsage{InputTokens: 90, CachedTokens: 80})
-	writeExchange(5, "thread", ProviderUsage{InputTokens: 200, CachedTokens: 150})
-	state := &requestState{captureID: "cache-6", sequence: 6, threadID: "thread"}
-	recorder.cacheQueues["thread"] = append(recorder.cacheQueues["thread"], state)
-	provider := captureRecord{
-		Boundary: "provider", CaptureID: state.captureID, RequestSequence: state.sequence,
-		ProviderAttempt: 1, ThreadID: state.threadID, StatusCode: http.StatusTooManyRequests,
-		ResponseStatus: "http_error", ResponseComplete: true,
-	}
-	state.addProvider(provider)
-	recorder.write(provider, state)
-	recorder.write(captureRecord{
-		Boundary: "codex", CaptureID: state.captureID, RequestSequence: state.sequence, ThreadID: state.threadID,
-		StatusCode: http.StatusTooManyRequests, ResponseStatus: "http_error", ResponseComplete: true,
-	}, state)
-	writeExchange(7, "thread", ProviderUsage{InputTokens: 220, CachedTokens: 200})
-
-	cache := recorder.snapshot().Cache
-	if cache.EligiblePrefixTokens != 270 || cache.EligiblePrefixCachedTokens != 250 ||
-		cache.EligiblePrefixMissTokens != 20 || cache.ColdOrNewUncachedInputTokens != 310 {
-		t.Fatalf("cache metrics = %#v", cache)
-	}
-}
-
-func TestCacheAttributionFollowsRequestSequenceWhenResponsesFinishOutOfOrder(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	states := make([]*requestState, 3)
-	header := make(http.Header)
-	header.Set("thread-id", "thread")
-	for index := range states {
-		states[index], err = recorder.beginRequest(header)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	finish := func(state *requestState, usage ProviderUsage) {
-		provider := captureRecord{
-			Boundary: "provider", CaptureID: state.captureID, RequestSequence: state.sequence,
-			ProviderAttempt: 1, ThreadID: state.threadID, StatusCode: http.StatusOK,
-			ResponseStatus: "completed", ResponseComplete: true, Usage: &usage,
-		}
-		state.addProvider(provider)
-		recorder.write(provider, state)
-		recorder.write(captureRecord{
-			Boundary: "codex", CaptureID: state.captureID, RequestSequence: state.sequence, ThreadID: state.threadID,
-			StatusCode: http.StatusOK, ResponseStatus: "completed", ResponseComplete: true,
-		}, state)
-	}
-	finish(states[1], ProviderUsage{InputTokens: 120, CachedTokens: 80})
-	finish(states[0], ProviderUsage{InputTokens: 100})
-	finish(states[2], ProviderUsage{InputTokens: 130, CachedTokens: 110})
-
-	cache := recorder.snapshot().Cache
-	if cache.EligiblePrefixTokens != 220 || cache.EligiblePrefixCachedTokens != 190 ||
-		cache.EligiblePrefixMissTokens != 30 || cache.ColdOrNewUncachedInputTokens != 130 {
-		t.Fatalf("cache metrics = %#v", cache)
 	}
 }
 

@@ -100,7 +100,7 @@ func TestCompactionMetricsExport(t *testing.T) {
 				if len(exchange.ProviderAttempts) != 1 || snapshot.Requests.ProviderAttempts != 1 {
 					t.Fatalf("provider attempts = %+v", exchange.ProviderAttempts)
 				}
-				want := usageMetrics{InputTokens: 100, CachedInputTokens: 20, UncachedInputTokens: 80, OutputTokens: 7, ReasoningTokens: 2, ProviderAttempts: 1}
+				want := usageMetrics{InputTokens: 100, CachedInputTokens: 20, UncachedInputTokens: 80, OutputTokens: 7, ReasoningTokens: 2, ProviderAttempts: 1, UnknownAttempts: 1}
 				if exchange.Usage == nil || *exchange.Usage != want || snapshot.Usage != want {
 					t.Fatalf("provider usage lost: exchange=%+v total=%+v", exchange.Usage, snapshot.Usage)
 				}

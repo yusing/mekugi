@@ -16,8 +16,8 @@ func TestSnapshotDetachedAndMatchesWriteMetrics(t *testing.T) {
 	// Seed every mutable exported detail through its serialized boundary. This
 	// isolates copy ownership from provider parsing and request accounting tests.
 	err = json.Unmarshal([]byte(`{
-  "schema":"mekugi.capture.metrics.v6","mode":"mekugi",
-  "cache":{"provider_cache_rate":0.25,"eligible_prefix_cache_rate":0.5},
+  "schema":"mekugi.capture.metrics.v7","mode":"mekugi",
+  "cache":{"provider_cache_rate":0.25},
   "provider_tools":{"exec_command":{"calls":2}},
   "delivered_tools":{"exec_command":{"calls":1}},
   "exchanges":[{"sequence":1,"thread_id":"thread","usage":{"input_tokens":12},
@@ -63,7 +63,6 @@ func TestSnapshotDetachedAndMatchesWriteMetrics(t *testing.T) {
 		{"provider-tools-map", func(s *MetricsSnapshot) { delete(s.ProviderTools, "exec_command") }},
 		{"delivered-tools-map", func(s *MetricsSnapshot) { delete(s.DeliveredTools, "exec_command") }},
 		{"provider-cache-rate", func(s *MetricsSnapshot) { *s.Cache.ProviderCacheRate = 99 }},
-		{"eligible-cache-rate", func(s *MetricsSnapshot) { *s.Cache.EligiblePrefixCacheRate = 99 }},
 		{"exchange-slice", func(s *MetricsSnapshot) { s.Exchanges[0].ThreadID = "mutated" }},
 		{"exchange-usage", func(s *MetricsSnapshot) { s.Exchanges[0].Usage.InputTokens = 99 }},
 		{"compaction-summary", func(s *MetricsSnapshot) { *s.Exchanges[0].CompactionSummaryBytes = 99 }},
@@ -90,5 +89,47 @@ func TestSnapshotDetachedAndMatchesWriteMetrics(t *testing.T) {
 			}
 			checkExport()
 		})
+	}
+}
+
+func TestSnapshotUsageCoverageAndAttemptDetails(t *testing.T) {
+	r, err := New(Config{Mode: "mekugi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { r.Close() })
+	// Retries contribute usage independently. Missing usage is not a zero-token
+	// observation; explicit zero with complete evidence is still observed usage.
+	providers := []captureRecord{
+		{ProviderAttempt: 1, DurationMillis: 35, StatusCode: 429, ResponseStatus: "http_error", ResponseComplete: true, CaptureError: "missing_projected_request"},
+		{ProviderAttempt: 2, Usage: &ProviderUsage{EvidenceComplete: new(false), InputTokens: 100}},
+		{ProviderAttempt: 3, Usage: &ProviderUsage{InputTokens: 50, CachedTokens: 20}},
+		{ProviderAttempt: 4, Usage: &ProviderUsage{EvidenceComplete: new(true)}},
+	}
+	r.addExchange(captureRecord{RequestSequence: 1, ThreadID: "main", StatusCode: 200, ResponseStatus: "completed", ResponseComplete: true}, providers)
+	r.addExchange(captureRecord{RequestSequence: 2, ThreadID: "side", StatusCode: 502, CaptureError: "response_read", ResponseStatus: "http_error"}, []captureRecord{{ProviderAttempt: 1}})
+	s := r.Snapshot()
+	want := usageMetrics{InputTokens: 150, CachedInputTokens: 20, UncachedInputTokens: 130, ProviderAttempts: 3, CompleteAttempts: 1, IncompleteAttempts: 1, UnknownAttempts: 1, MissingAttempts: 2}
+	if s.Usage != want || s.Requests.Retries != 3 || s.Requests.ProviderAttempts != 5 || s.Requests.Failed != 1 {
+		t.Fatalf("coverage = %+v; requests = %+v", s.Usage, s.Requests)
+	}
+	e := s.Exchanges[0]
+	if e.Usage == nil || e.Usage.MissingAttempts != 1 || !e.ResponseComplete || e.StatusCode != 200 {
+		t.Fatalf("exchange coverage = %+v", e)
+	}
+	a := e.ProviderAttempts[0]
+	if a.DurationMillis != 35 || a.StatusCode != 429 || a.CaptureError != "missing_projected_request" || a.Usage != nil {
+		t.Fatalf("attempt detail = %+v", a)
+	}
+	if s.Exchanges[1].Usage != nil || s.Exchanges[1].CaptureError != "response_read" || s.Exchanges[1].ResponseComplete {
+		t.Fatalf("missing usage or incomplete capture became complete: %+v", s.Exchanges[1])
+	}
+	other, err := New(Config{Mode: "mekugi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { other.Close() })
+	if got := other.Snapshot(); got.Usage != (usageMetrics{}) || got.Requests != (requestTotals{}) {
+		t.Fatalf("launch metrics leaked: %+v", got)
 	}
 }
