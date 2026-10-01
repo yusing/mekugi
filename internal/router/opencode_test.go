@@ -196,14 +196,14 @@ func TestOpenCodeRoutesAndCredentials(t *testing.T) {
 	}
 }
 
-func TestOpenCodeRebrandsLowercaseGrokError(t *testing.T) {
+func TestOpenCodeRequestDiagnosticIdentity(t *testing.T) {
 	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
 	request := mustTestJSON(t, map[string]any{
 		"model":                service.prefix + ":" + openCodeTestModel(service),
 		"previous_response_id": "old",
 		"input":                []any{},
 	})
-	_, err := translateChatRequest(request, &service)
+	_, err := translateProviderRequest(request, &service)
 	if err == nil || !strings.Contains(err.Error(), "OpenCode requires explicit conversation history") ||
 		strings.Contains(err.Error(), "grok requires") {
 		t.Fatalf("OpenCode error lost provider identity: %v", err)
@@ -212,7 +212,7 @@ func TestOpenCodeRebrandsLowercaseGrokError(t *testing.T) {
 
 func TestOpenCodeReasoningToolReplay(t *testing.T) {
 	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
-	tr, err := translateChatRequest(openCodeTestRequest(t, service, false), &service)
+	tr, err := translateProviderRequest(openCodeTestRequest(t, service, false), &service)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestOpenCodeReasoningToolReplay(t *testing.T) {
 		map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{"reasoning_content": "Think "}}}},
 		map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"reasoning_content": "first", "tool_calls": []any{map[string]any{"index": 0, "id": "call1", "function": map[string]string{"name": "exec", "arguments": `{"input":"exact\nprogram"}`}}}}, "finish_reason": "tool_calls"}}},
 	)
-	result, err := tr.readGrokStream(strings.NewReader(stream), func(map[string]any) error { return nil })
+	result, err := tr.readProviderStream(strings.NewReader(stream), func(map[string]any) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestOpenCodeReasoningToolReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	replay, err := translateChatRequest(body, &service)
+	replay, err := translateProviderRequest(body, &service)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,14 +255,14 @@ func TestOpenCodeRejectsUnsupportedHistoryAndModels(t *testing.T) {
 		`[{"type":"reasoning","encrypted_content":"private"}]`,
 		`[{"type":"agent_message","content":[{"type":"encrypted_content","encrypted_content":"private"}]}]`,
 	} {
-		_, err := translateChatRequest([]byte(`{"model":"`+service.prefix+`:`+openCodeTestModel(service)+`","input":`+input+`}`), &service)
+		_, err := translateProviderRequest([]byte(`{"model":"`+service.prefix+`:`+openCodeTestModel(service)+`","input":`+input+`}`), &service)
 		diagnostic, ok := errors.AsType[*requestCompatibilityError](err)
 		if !ok || diagnostic.code != "opencode_encrypted_history" || strings.Contains(err.Error(), "private") {
 			t.Fatalf("wrong local compatibility error: %v", err)
 		}
 	}
 	for _, model := range []string{"opencode-go:unsupported", "opencode-zen:unsupported", grokModel} {
-		if _, err := translateChatRequest([]byte(`{"model":"`+model+`","input":[]}`), &service); err == nil {
+		if _, err := translateProviderRequest([]byte(`{"model":"`+model+`","input":[]}`), &service); err == nil {
 			t.Fatalf("accepted unsupported model %q", model)
 		}
 	}
@@ -343,7 +343,7 @@ func TestOpenCodeInheritedReasoningEffort(t *testing.T) {
 		}
 		request["model"] = service.prefix + ":" + model
 		request["reasoning"] = map[string]string{"effort": effort}
-		tr, err := translateChatRequest(mustTestJSON(t, request), &service)
+		tr, err := translateProviderRequest(mustTestJSON(t, request), &service)
 		if err != nil {
 			t.Fatalf("inherited effort requires manual clearing: %v", err)
 		}
@@ -358,13 +358,13 @@ func TestOpenCodeMixedReasoningMultiTurnReplay(t *testing.T) {
 	var history []any
 	for _, answer := range []string{"first answer", "second answer"} {
 		history = append(history, map[string]string{"role": "user", "content": "Question"})
-		tr, err := translateChatRequest(mustTestJSON(t, map[string]any{
+		tr, err := translateProviderRequest(mustTestJSON(t, map[string]any{
 			"model": service.prefix + ":" + openCodeTestModel(service), "input": history,
 		}), &service)
 		if err != nil {
 			t.Fatal(err)
 		}
-		result, err := tr.readGrokStream(strings.NewReader(grokTestSSE(
+		result, err := tr.readProviderStream(strings.NewReader(grokTestSSE(
 			map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{
 				"reasoning_content": "reasoning for " + answer, "content": answer,
 			}, "finish_reason": "stop"}}},
@@ -377,7 +377,7 @@ func TestOpenCodeMixedReasoningMultiTurnReplay(t *testing.T) {
 	// JSON persistence and a fresh translation must associate reasoning with
 	// each original assistant, not just the latest tool-calling turn.
 	saved := mustTestJSON(t, map[string]any{"model": service.prefix + ":" + openCodeTestModel(service), "input": history})
-	tr, err := translateChatRequest(saved, &service)
+	tr, err := translateProviderRequest(saved, &service)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +439,7 @@ func TestEveryEmbeddedGoModelHasAnEndpoint(t *testing.T) {
 	}
 	for _, item := range list.Data {
 		t.Run(item.ID, func(t *testing.T) {
-			tr, err := translateChatRequest(mustTestJSON(t, map[string]any{
+			tr, err := translateProviderRequest(mustTestJSON(t, map[string]any{
 				"model": "opencode-go:" + item.ID, "input": []any{map[string]string{"role": "user", "content": "task"}},
 				"tools": []any{map[string]string{"type": "custom", "name": "exec"}},
 			}), &service)
@@ -452,21 +452,21 @@ func TestEveryEmbeddedGoModelHasAnEndpoint(t *testing.T) {
 			if err != nil || tr.body["model"] != item.ID {
 				t.Fatalf("Go model unavailable: %v", err)
 			}
-			switch tr.format {
-			case "chat":
+			switch tr.endpoint.(type) {
+			case chatEndpoint:
 				if tr.body["messages"] == nil {
 					t.Fatal("Chat endpoint body missing messages")
 				}
-			case "anthropic":
+			case messagesEndpoint:
 				if tr.body["max_tokens"] == nil {
 					t.Fatal("Anthropic endpoint body missing max_tokens")
 				}
-			case "responses":
+			case responsesEndpoint:
 				if tr.body["input"] == nil {
 					t.Fatal("Responses endpoint body missing input")
 				}
 			default:
-				t.Fatalf("unsupported endpoint format %q", tr.format)
+				t.Fatalf("unsupported endpoint adapter %T", tr.endpoint)
 			}
 		})
 	}

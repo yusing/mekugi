@@ -56,7 +56,7 @@ func TestGrokTranslationPreservesToolsHistoryAndImages(t *testing.T) {
 		map[string]any{"type": "custom_tool_call_output", "call_id": "c1", "output": []any{map[string]string{"type": "input_text", "text": "image"}, map[string]string{"type": "input_image", "image_url": "data:image/png;base64,AA=="}}},
 		map[string]any{"type": "function_call_output", "call_id": "c2", "output": "result"},
 	}
-	tr, err := translateChatRequest(mustTestJSON(t, request), nil)
+	tr, err := translateProviderRequest(mustTestJSON(t, request), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,28 +72,28 @@ func TestGrokTranslationPreservesToolsHistoryAndImages(t *testing.T) {
 	}
 	for _, kind := range []string{"encrypted_content", "input_file"} {
 		request["input"] = []any{map[string]any{"type": "agent_message", "content": []any{map[string]string{"type": kind, "encrypted_content": "opaque"}}}}
-		if _, err := translateChatRequest(mustTestJSON(t, request), nil); err == nil {
+		if _, err := translateProviderRequest(mustTestJSON(t, request), nil); err == nil {
 			t.Fatalf("accepted %s", kind)
 		}
 	}
 	request["input"] = []any{map[string]string{"type": "reasoning", "encrypted_content": "opaque"}}
-	if _, err := translateChatRequest(mustTestJSON(t, request), nil); err == nil {
+	if _, err := translateProviderRequest(mustTestJSON(t, request), nil); err == nil {
 		t.Fatal("accepted encrypted reasoning")
 	}
 }
 
 func TestGrokStreamingCustomCallsAndUsage(t *testing.T) {
-	tr, err := translateChatRequest(grokTestRequest(t, true), nil)
+	tr, err := translateProviderRequest(grokTestRequest(t, true), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire := grokToolName("", "exec")
+	wire := providerToolName("", "exec")
 	call := func(args string) any {
 		return map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "c1", "function": map[string]string{"name": wire, "arguments": args}}}}}}}
 	}
 	stream := grokTestSSE(call(`{"input":"text(1)"}`), map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": "tool_calls"}}})
 	var events []map[string]any
-	result, err := tr.readGrokStream(strings.NewReader(stream), func(e map[string]any) error { events = append(events, e); return nil })
+	result, err := tr.readProviderStream(strings.NewReader(stream), func(e map[string]any) error { events = append(events, e); return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestGrokStreamingCustomCallsAndUsage(t *testing.T) {
 	}
 	for _, bad := range []string{strings.TrimSuffix(stream, "data: [DONE]\n\n"), grokTestSSE(call(`{"bad":1}`), map[string]any{"choices": []any{map[string]any{"index": 0, "finish_reason": "tool_calls"}}})} {
 		var executed bool
-		_, err := tr.readGrokStream(strings.NewReader(bad), func(e map[string]any) error {
+		_, err := tr.readProviderStream(strings.NewReader(bad), func(e map[string]any) error {
 			if e["type"] == "response.output_item.done" {
 				executed = true
 			}
@@ -117,7 +117,7 @@ func TestGrokStreamingCustomCallsAndUsage(t *testing.T) {
 			t.Fatalf("bad stream exposed tool: err=%v executed=%v", err, executed)
 		}
 	}
-	result, err = tr.readGrokStream(strings.NewReader(grokTextStream()), func(map[string]any) error { return nil })
+	result, err = tr.readProviderStream(strings.NewReader(grokTextStream()), func(map[string]any) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestGrokToolStreamThroughMekugi(t *testing.T) {
 					functionToolKey("", name): {qualifiedName: name},
 				}
 			}
-			tr := &grokTranslation{tools: map[string]grokTool{
+			tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}, tools: map[string]providerTool{
 				"tool": {kind: kind, name: name},
 			}}
 			stream := grokTestSSE(map[string]any{"choices": []any{map[string]any{
@@ -153,7 +153,7 @@ func TestGrokToolStreamThroughMekugi(t *testing.T) {
 				}}}, "finish_reason": "tool_calls",
 			}}})
 			var completed int
-			_, err := tr.readGrokStream(strings.NewReader(stream), func(event map[string]any) error {
+			_, err := tr.readProviderStream(strings.NewReader(stream), func(event map[string]any) error {
 				visible, err := transform.TransformSSE(mustTestJSON(t, event))
 				if err != nil {
 					return fmt.Errorf("%s: %w", event["type"], err)
@@ -180,7 +180,7 @@ func TestGrokToolStreamThroughMekugi(t *testing.T) {
 }
 
 func TestGrokParallelToolLifecycle(t *testing.T) {
-	tr := &grokTranslation{tools: map[string]grokTool{
+	tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}, tools: map[string]providerTool{
 		"custom":   {kind: "custom", name: "exec"},
 		"function": {kind: "function", namespace: "functions", name: "lookup"},
 	}}
@@ -200,7 +200,7 @@ func TestGrokParallelToolLifecycle(t *testing.T) {
 				}, "finish_reason": "tool_calls",
 			}}})
 			var events []map[string]any
-			result, err := tr.readGrokStream(strings.NewReader(stream), func(event map[string]any) error {
+			result, err := tr.readProviderStream(strings.NewReader(stream), func(event map[string]any) error {
 				if item, ok := event["item"].(map[string]any); ok && item["type"] == "message" {
 					return nil
 				}
@@ -263,12 +263,12 @@ func TestGrokReasoningUsage(t *testing.T) {
 		`"reasoning_tokens":94`,
 		`"reasoning_tokens":94,"completion_tokens_details":{"reasoning_tokens":94}`,
 	} {
-		tr, err := translateChatRequest(grokTestRequest(t, true), nil)
+		tr, err := translateProviderRequest(grokTestRequest(t, true), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		stream := `data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":32,"completion_tokens":9,"total_tokens":135,` + fields + "}}\n\ndata: [DONE]\n\n"
-		result, err := tr.readGrokStream(strings.NewReader(stream), func(map[string]any) error { return nil })
+		result, err := tr.readProviderStream(strings.NewReader(stream), func(map[string]any) error { return nil })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -476,7 +476,7 @@ func TestGrokDisabledAndUnknownModelFailBeforeProvider(t *testing.T) {
 		t.Fatalf("disabled route=%v", err)
 	}
 	body := bytes.Replace(grokTestRequest(t, true), []byte(grokModel), []byte("grok:unknown"), 1)
-	if _, err := translateChatRequest(body, nil); err == nil {
+	if _, err := translateProviderRequest(body, nil); err == nil {
 		t.Fatal("accepted unknown model")
 	}
 }
@@ -552,13 +552,13 @@ func grokTestHTTPClient(t *testing.T, server *httptest.Server) *http.Client {
 }
 
 func TestGrokNullCustomInputIsNotExecutable(t *testing.T) {
-	tr, err := translateChatRequest(grokTestRequest(t, true), nil)
+	tr, err := translateProviderRequest(grokTestRequest(t, true), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	stream := grokTestSSE(map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "c", "function": map[string]string{"name": "exec", "arguments": `{"input":null}`}}}}, "finish_reason": "tool_calls"}}})
 	executable := false
-	_, err = tr.readGrokStream(strings.NewReader(stream), func(event map[string]any) error {
+	_, err = tr.readProviderStream(strings.NewReader(stream), func(event map[string]any) error {
 		if event["type"] == "response.output_item.done" {
 			executable = true
 		}
@@ -579,24 +579,24 @@ func TestGrokRejectsNonStringHistory(t *testing.T) {
 			{"type": "custom_tool_call", "call_id": "c1", "name": "exec", "input": value},
 		} {
 			body := mustTestJSON(t, map[string]any{"model": grokModel, "input": []any{item}})
-			if _, err := translateChatRequest(body, nil); err == nil {
+			if _, err := translateProviderRequest(body, nil); err == nil {
 				t.Fatalf("accepted %s", body)
 			}
 		}
 	}
 	for _, value := range []any{"", []any{}} {
-		if _, err := grokContent(mustTestJSON(t, value)); err != nil {
+		if _, err := providerContent(mustTestJSON(t, value), grokTranslationPolicy().diagnostics); err != nil {
 			t.Fatalf("rejected empty content: %v", err)
 		}
 	}
 }
 
 func TestGrokStreamCRLF(t *testing.T) {
-	tr, err := translateChatRequest(grokTestRequest(t, true), nil)
+	tr, err := translateProviderRequest(grokTestRequest(t, true), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := tr.readGrokStream(strings.NewReader(strings.ReplaceAll(grokTextStream(), "\n", "\r\n")), func(map[string]any) error { return nil })
+	result, err := tr.readProviderStream(strings.NewReader(strings.ReplaceAll(grokTextStream(), "\n", "\r\n")), func(map[string]any) error { return nil })
 	if err != nil || result["status"] != "completed" {
 		t.Fatalf("result=%v err=%v", result, err)
 	}
@@ -662,7 +662,7 @@ func TestGrokOutputBudgetRejectedBeforeInference(t *testing.T) {
 		t.Fatalf("expected explicit budget rejection, got %v", err)
 	}
 	request["max_output_tokens"] = nil
-	tr, err := translateChatRequest(mustTestJSON(t, request), nil)
+	tr, err := translateProviderRequest(mustTestJSON(t, request), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -685,7 +685,7 @@ func TestGrokCodeModeExecNamesPrintedResults(t *testing.T) {
 	var request map[string]any
 	_ = json.Unmarshal(grokTestRequest(t, true), &request)
 	request["tools"] = append(request["tools"].([]any), map[string]any{"type": "custom", "name": "other", "description": "Other input"})
-	tr, err := translateChatRequest(mustTestJSON(t, request), nil)
+	tr, err := translateProviderRequest(mustTestJSON(t, request), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

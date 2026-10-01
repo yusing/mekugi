@@ -15,7 +15,7 @@ func TestGrokEmptyContentWire(t *testing.T) {
 			map[string]any{"type": "function_call_output", "call_id": "call", "output": []any{}},
 		},
 	})
-	tr, err := translateChatRequest(body, nil)
+	tr, err := translateProviderRequest(body, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,8 +51,8 @@ func TestGrokStreamSealsTerminalChoice(t *testing.T) {
 		"duplicate terminal": {choice(nil, "stop"), choice(nil, "stop")},
 	} {
 		t.Run(name, func(t *testing.T) {
-			tr := &grokTranslation{tools: map[string]grokTool{"run": {name: "run", kind: "function"}}}
-			_, err := tr.readGrokStream(strings.NewReader(grokTestSSE(chunks...)), func(event map[string]any) error {
+			tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}, tools: map[string]providerTool{"run": {name: "run", kind: "function"}}}
+			_, err := tr.readProviderStream(strings.NewReader(grokTestSSE(chunks...)), func(event map[string]any) error {
 				if event["type"] == "response.function_call_arguments.done" {
 					t.Error("exposed executable call after invalid terminal")
 				}
@@ -63,15 +63,15 @@ func TestGrokStreamSealsTerminalChoice(t *testing.T) {
 			}
 		})
 	}
-	tr := &grokTranslation{}
-	result, err := tr.readGrokStream(strings.NewReader(grokTextStream()), func(map[string]any) error { return nil })
+	tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}}
+	result, err := tr.readProviderStream(strings.NewReader(grokTextStream()), func(map[string]any) error { return nil })
 	if err != nil || result["usage"] == nil || result["status"] != "completed" {
 		t.Fatalf("usage trailer rejected: %v, %v", result, err)
 	}
 }
 
 func TestGrokInterleavedArgumentFragments(t *testing.T) {
-	tr := &grokTranslation{tools: map[string]grokTool{"run": {name: "run", kind: "function"}}}
+	tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}, tools: map[string]providerTool{"run": {name: "run", kind: "function"}}}
 	arguments := []string{`{"first":"αβγ"}`, `{"second":[1,2,3]}`}
 	var chunks []any
 	for offset := range max(len([]rune(arguments[0])), len([]rune(arguments[1]))) {
@@ -90,7 +90,7 @@ func TestGrokInterleavedArgumentFragments(t *testing.T) {
 		}
 	}
 	chunks = append(chunks, map[string]any{"choices": []any{map[string]any{"index": 0, "finish_reason": "tool_calls"}}})
-	result, err := tr.readGrokStream(strings.NewReader(grokTestSSE(chunks...)), func(map[string]any) error { return nil })
+	result, err := tr.readProviderStream(strings.NewReader(grokTestSSE(chunks...)), func(map[string]any) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,11 +117,11 @@ func BenchmarkGrokFragmentedArguments(b *testing.B) {
 			}
 			chunks = append(chunks, map[string]any{"choices": []any{map[string]any{"index": 0, "finish_reason": "tool_calls"}}})
 			wire := grokTestSSE(chunks...)
-			tr := &grokTranslation{tools: map[string]grokTool{"run": {name: "run", kind: "function"}}}
+			tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}, tools: map[string]providerTool{"run": {name: "run", kind: "function"}}}
 			b.ReportAllocs()
 			b.SetBytes(int64(size))
 			for b.Loop() {
-				result, err := tr.readGrokStream(strings.NewReader(wire), func(map[string]any) error { return nil })
+				result, err := tr.readProviderStream(strings.NewReader(wire), func(map[string]any) error { return nil })
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -146,8 +146,8 @@ func TestGrokFinishEvidence(t *testing.T) {
 				"index": 0, "delta": map[string]any{"content": "answer"}, "finish_reason": test.reason,
 			}}})
 			var events []map[string]any
-			tr := &grokTranslation{}
-			result, err := tr.readGrokStream(strings.NewReader(wire), func(event map[string]any) error {
+			tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}}
+			result, err := tr.readProviderStream(strings.NewReader(wire), func(event map[string]any) error {
 				events = append(events, event)
 				return nil
 			})

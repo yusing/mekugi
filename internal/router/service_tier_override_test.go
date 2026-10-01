@@ -261,7 +261,7 @@ func TestSubagentStartServiceTier(t *testing.T) {
 func TestServiceTierSurvivesProviderTranslation(t *testing.T) {
 	for _, service := range []openCodeService{{}, {prefix: "opencode-go"}, {prefix: "opencode-zen"}} {
 		if service.prefix == "" {
-			tr, err := translateChatRequest([]byte(`{"model":"grok:grok-4.6","service_tier":"fast","input":[]}`), nil)
+			tr, err := translateProviderRequest([]byte(`{"model":"grok:grok-4.6","service_tier":"fast","input":[]}`), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -279,7 +279,7 @@ func TestServiceTierSurvivesProviderTranslation(t *testing.T) {
 			formats[format] = true
 			t.Run(service.prefix+"/"+format, func(t *testing.T) {
 				body := mustTestJSON(t, map[string]any{"model": service.prefix + ":" + model.id, "service_tier": "fast", "input": []any{}})
-				tr, err := translateChatRequest(body, &service)
+				tr, err := translateProviderRequest(body, &service)
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -136,7 +136,7 @@ func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
 				}
 				history = append(history, map[string]string{"type": "custom_tool_call_output", "call_id": "call1", "output": "done"})
 				request["input"] = history
-				tr, err := translateChatRequest(mustTestJSON(t, request), &service)
+				tr, err := translateProviderRequest(mustTestJSON(t, request), &service)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -146,7 +146,7 @@ func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
 					t.Fatalf("opaque reasoning/tool replay lost: %s", wire)
 				}
 				request["model"] = service.prefix + ":glm-5.3"
-				if _, err := translateChatRequest(mustTestJSON(t, request), &service); err == nil {
+				if _, err := translateProviderRequest(mustTestJSON(t, request), &service); err == nil {
 					t.Fatal("foreign-format encrypted history accepted by Chat route")
 				}
 			}
@@ -165,7 +165,7 @@ func TestOpenCodeEndpointStreamsRejectPartialTools(t *testing.T) {
 			if index < 0 {
 				t.Fatal("fixture terminal not found")
 			}
-			tr, err := translateChatRequest(mustTestJSON(t, map[string]any{
+			tr, err := translateProviderRequest(mustTestJSON(t, map[string]any{
 				"model": service.prefix + ":" + test.model, "input": []any{},
 				"tools": []any{map[string]string{"type": "custom", "name": "exec"}},
 			}), &service)
@@ -202,7 +202,7 @@ func TestOpenCodeResponsesRefusal(t *testing.T) {
 			fixture = openCodeEvents(map[string]any{"type": "response.refusal.delta", "output_index": 0, "delta": "Cannot fulfill that request."})
 		}
 		fixture += openCodeEvents(map[string]any{"type": "response.completed", "response": map[string]any{"output": []any{item}}})
-		tr, err := translateChatRequest([]byte(`{"model":"opencode-go:grok-4.6","input":[]}`), &service)
+		tr, err := translateProviderRequest([]byte(`{"model":"opencode-go:grok-4.6","input":[]}`), &service)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -229,7 +229,7 @@ func TestOpenCodeResponsesRefusal(t *testing.T) {
 		if !foundDone {
 			t.Fatal("missing native refusal lifecycle")
 		}
-		replay, err := translateChatRequest(mustTestJSON(t, map[string]any{"model": "opencode-go:grok-4.6", "input": output}), &service)
+		replay, err := translateProviderRequest(mustTestJSON(t, map[string]any{"model": "opencode-go:grok-4.6", "input": output}), &service)
 		if err != nil || !bytes.Contains(mustMarshalJSON(replay.body), []byte(`"type":"refusal"`)) {
 			t.Fatalf("refusal replay lost: %v", err)
 		}
@@ -252,7 +252,7 @@ func TestOpenCodeMessagesCombinesReasoningAndStructuredOutput(t *testing.T) {
 			"opencode-go": {"test": {Format: "anthropic", Efforts: []string{"high"}}},
 		},
 	}}
-	tr, err := translateChatRequest([]byte(`{
+	tr, err := translateProviderRequest([]byte(`{
 		"model":"opencode-go:test","input":[],
 		"reasoning":{"effort":"high"},
 		"text":{"format":{"type":"json_schema","name":"answer","schema":{"type":"object"}}}
@@ -307,7 +307,7 @@ func TestOpenCodeEndpointSettingsAndParallelHistory(t *testing.T) {
 			if format != "chat" {
 				request["max_output_tokens"] = 1234
 			}
-			tr, err := translateChatRequest(mustTestJSON(t, request), &service)
+			tr, err := translateProviderRequest(mustTestJSON(t, request), &service)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -316,7 +316,7 @@ func TestOpenCodeEndpointSettingsAndParallelHistory(t *testing.T) {
 			if err := json.Unmarshal(wire, &body); err != nil {
 				t.Fatal(err)
 			}
-			alias := grokToolName("ns", "run")
+			alias := providerToolName("ns", "run")
 			var expectedChoice any
 			switch format {
 			case "chat":
@@ -382,7 +382,7 @@ func TestOpenCodeEndpointTextStreamsBeforeCompletion(t *testing.T) {
 			upstream, producer := io.Pipe()
 			defer upstream.Close()
 			defer producer.Close()
-			tr := &grokTranslation{format: format, openCode: &openCodeService{prefix: "opencode-go"}, body: map[string]any{"model": "test"}}
+			tr := testOpenCodeTranslation(&openCodeService{prefix: "opencode-go"}, "test", format, nil)
 			text := make(chan struct{}, 1)
 			result := make(chan error, 1)
 			go func() {
@@ -448,7 +448,7 @@ func TestOpenCodeEndpointWriteFailureStopsConsumption(t *testing.T) {
 			upstream, producer := io.Pipe()
 			defer upstream.Close()
 			defer producer.Close()
-			tr := &grokTranslation{format: format, openCode: &openCodeService{prefix: "opencode-go"}, body: map[string]any{"model": "test"}}
+			tr := testOpenCodeTranslation(&openCodeService{prefix: "opencode-go"}, "test", format, nil)
 			failure := errors.New("downstream closed")
 			writes := 0
 			_, err := tr.readProviderStream(upstream, func(map[string]any) error {
@@ -469,7 +469,7 @@ func TestOpenCodeUsagePreservesSignedBounds(t *testing.T) {
 	for index := range 5 {
 		counts := []uint64{1, 2, 3, 4, 5}
 		counts[index] = uint64(1) << 63
-		if _, err := openCodeUsage(counts[0], counts[1], counts[2], counts[3], counts[4]); err == nil {
+		if _, err := endpointUsage(openCodeTranslationPolicy(nil, "", "chat").diagnostics, counts[0], counts[1], counts[2], counts[3], counts[4]); err == nil {
 			t.Fatalf("overflow accepted at count %d", index)
 		}
 	}

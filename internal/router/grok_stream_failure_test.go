@@ -24,9 +24,9 @@ func TestGrokStreamFailureTerminal(t *testing.T) {
 		), "grok_stream_data_after_terminal"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			tr := &grokTranslation{}
+			tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}}
 			var events []map[string]any
-			result, err := tr.readGrokStream(strings.NewReader(test.stream), func(event map[string]any) error {
+			result, err := tr.readProviderStream(strings.NewReader(test.stream), func(event map[string]any) error {
 				events = append(events, event)
 				return nil
 			})
@@ -72,11 +72,11 @@ func TestGrokStreamFailureTerminal(t *testing.T) {
 }
 
 func TestGrokStreamWriteFailureDoesNotRetry(t *testing.T) {
-	tr := &grokTranslation{}
+	tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}}
 	for _, failAt := range []int{1, 2, 4} {
 		writes := 0
 		failure := staticCriticalDiagnostic("test_write", "consumer write failed")
-		_, err := tr.readGrokStream(strings.NewReader(grokTextStream()), func(map[string]any) error {
+		_, err := tr.readProviderStream(strings.NewReader(grokTextStream()), func(map[string]any) error {
 			writes++
 			if writes >= failAt {
 				return failure
@@ -122,7 +122,7 @@ func TestGrokStreamReadFailurePreservesCause(t *testing.T) {
 	cause := io.ErrUnexpectedEOF
 	reader := io.MultiReader(strings.NewReader("data: {\"choices\":[]}\n\n"), grokFailureReader{cause})
 	var last map[string]any
-	_, err := (&grokTranslation{}).readGrokStream(reader, func(event map[string]any) error {
+	_, err := (&providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}}).readProviderStream(reader, func(event map[string]any) error {
 		last = event
 		return nil
 	})

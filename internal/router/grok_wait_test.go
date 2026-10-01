@@ -35,7 +35,7 @@ func TestGrokWaitWireAlias(t *testing.T) {
 			}
 			// A new translation has no process-local alias state, as on resume.
 			for range 2 {
-				tr, err := translateChatRequest(mustTestJSON(t, request), nil)
+				tr, err := translateProviderRequest(mustTestJSON(t, request), nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -72,7 +72,7 @@ func TestGrokWaitWireAlias(t *testing.T) {
 					}}}, "finish_reason": "tool_calls",
 				}}})
 				done := 0
-				result, err := tr.readGrokStream(strings.NewReader(stream), func(event map[string]any) error {
+				result, err := tr.readProviderStream(strings.NewReader(stream), func(event map[string]any) error {
 					if event["type"] == "response.function_call_arguments.done" {
 						done++
 						if event["name"] != "wait" || event["arguments"] != arguments || event["call_id"] != "next-call" {
@@ -111,7 +111,7 @@ func TestGrokWaitIntegerParameters(t *testing.T) {
 			} else {
 				request["tools"] = []any{definition}
 			}
-			tr, err := translateChatRequest(mustTestJSON(t, request), nil)
+			tr, err := translateProviderRequest(mustTestJSON(t, request), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -149,7 +149,7 @@ func TestGrokWaitIntegerParameters(t *testing.T) {
 		json.RawMessage(`{"type":"object","properties":{"cell_id":{"type":"number"},"yield_time_ms":{"type":"number"}}}`),
 		json.RawMessage(`{"type":"object","properties":{"cell_id":{"type":"string"},"yield_time_ms":{"type":"integer"}}}`),
 	} {
-		if got := grokFunctionParameters("", "wait", parameters); string(got) != string(parameters) {
+		if got := providerFunctionParameters("", "wait", parameters); string(got) != string(parameters) {
 			t.Fatalf("nonmatching/already-correct schema changed: %s", got)
 		}
 	}

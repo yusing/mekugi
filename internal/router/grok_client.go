@@ -32,7 +32,7 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 		pinned := service.pin()
 		service = &pinned
 	}
-	tr, err := translateChatRequest(body, service)
+	tr, err := translateProviderRequest(body, service)
 	if err != nil {
 		return nil, err
 	}
@@ -46,13 +46,13 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 		if session := openCodeSessionID(g.openCode.prefix, headers.Get(threadIDHeader)); session != "" {
 			credentials.headers.Set("x-opencode-session", session)
 		}
-		switch tr.format {
-		case "anthropic":
+		switch tr.endpoint.(type) {
+		case messagesEndpoint:
 			credentials.endpoint = strings.TrimSuffix(g.openCode.endpoint, "/chat/completions") + "/messages"
 			credentials.headers.Del("Authorization")
 			credentials.headers.Set("x-api-key", g.openCode.apiKey)
 			credentials.headers.Set("anthropic-version", "2023-06-01")
-		case "responses":
+		case responsesEndpoint:
 			credentials.endpoint = strings.TrimSuffix(g.openCode.endpoint, "/chat/completions") + "/responses"
 		}
 	} else {

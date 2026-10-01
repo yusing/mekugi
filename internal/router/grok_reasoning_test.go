@@ -12,16 +12,16 @@ import (
 // Provider reasoning must reach Codex as it streams: an active summary item
 // that closes before the answer starts, never a trailing item after it.
 func TestProviderReasoningStreamsBeforeText(t *testing.T) {
-	grok, err := translateChatRequest(grokTestRequest(t, true), nil)
+	grok, err := translateProviderRequest(grokTestRequest(t, true), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "go-key"}}).services()[0]
-	anthropic := &grokTranslation{openCode: &service, format: "anthropic", body: map[string]any{"model": "minimax-m3"}, tools: map[string]grokTool{"exec": {name: "exec", kind: "custom"}}}
-	responses := &grokTranslation{openCode: &service, format: "responses", body: map[string]any{"model": "grok-4.6"}, tools: map[string]grokTool{"exec": {name: "exec", kind: "custom"}}}
+	anthropic := testOpenCodeTranslation(&service, "minimax-m3", "anthropic", map[string]providerTool{"exec": {name: "exec", kind: "custom"}})
+	responses := testOpenCodeTranslation(&service, "grok-4.6", "responses", map[string]providerTool{"exec": {name: "exec", kind: "custom"}})
 	for _, test := range []struct {
 		name     string
-		tr       *grokTranslation
+		tr       *providerTranslation
 		upstream string
 		want     string
 		retained bool
@@ -103,12 +103,12 @@ func TestProviderReasoningStreamsBeforeText(t *testing.T) {
 // Text that precedes reasoning keeps its message active; the reasoning
 // completes after it rather than interleaving items.
 func TestProviderReasoningAfterTextIsDeferred(t *testing.T) {
-	tr, err := translateChatRequest(grokTestRequest(t, true), nil)
+	tr, err := translateProviderRequest(grokTestRequest(t, true), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var events []string
-	result, err := tr.readGrokStream(strings.NewReader(grokTestSSE(
+	result, err := tr.readProviderStream(strings.NewReader(grokTestSSE(
 		map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{"content": "answer"}}}},
 		map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{"reasoning_content": "late"}, "finish_reason": "stop"}}},
 	)), func(event map[string]any) error {
@@ -131,7 +131,7 @@ func TestProviderReasoningAfterTextIsDeferred(t *testing.T) {
 // visible block that closes before its retained item keeps no summary.
 func TestProviderReasoningWithoutRetainedItemIsNotReplayed(t *testing.T) {
 	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "go-key"}}).services()[0]
-	tr := &grokTranslation{openCode: &service, format: "responses", body: map[string]any{"model": "grok-4.6"}, tools: map[string]grokTool{}}
+	tr := testOpenCodeTranslation(&service, "grok-4.6", "responses", map[string]providerTool{})
 	result, err := tr.readProviderStream(io.NopCloser(strings.NewReader(openCodeEvents(
 		map[string]any{"type": "response.reasoning_text.delta", "output_index": 0, "delta": "unsigned"},
 		map[string]any{"type": "response.output_text.delta", "output_index": 1, "delta": "done"},
@@ -141,7 +141,7 @@ func TestProviderReasoningWithoutRetainedItemIsNotReplayed(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := append(result["output"].([]any), map[string]string{"role": "user", "content": "next"})
-	if _, err := translateChatRequest(mustTestJSON(t, map[string]any{"model": service.prefix + ":grok-4.6", "input": history}), &service); err != nil {
+	if _, err := translateProviderRequest(mustTestJSON(t, map[string]any{"model": service.prefix + ":grok-4.6", "input": history}), &service); err != nil {
 		t.Fatalf("history with an unsigned visible block does not replay: %v", err)
 	}
 }
@@ -151,11 +151,11 @@ func TestOpenCodeChatReasoningAroundTextReplays(t *testing.T) {
 	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
 	model := service.prefix + ":" + openCodeTestModel(service)
 	history := []any{map[string]string{"role": "user", "content": "Question"}}
-	tr, err := translateChatRequest(mustTestJSON(t, map[string]any{"model": model, "input": history}), &service)
+	tr, err := translateProviderRequest(mustTestJSON(t, map[string]any{"model": model, "input": history}), &service)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := tr.readGrokStream(strings.NewReader(grokTestSSE(
+	result, err := tr.readProviderStream(strings.NewReader(grokTestSSE(
 		map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{"reasoning_content": "before "}}}},
 		map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{"content": "text"}}}},
 		map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{"reasoning_content": "after"}, "finish_reason": "stop"}}},
@@ -164,7 +164,7 @@ func TestOpenCodeChatReasoningAroundTextReplays(t *testing.T) {
 		t.Fatal(err)
 	}
 	history = append(history, result["output"].([]any)...)
-	tr, err = translateChatRequest(mustTestJSON(t, map[string]any{"model": model, "input": history}), &service)
+	tr, err = translateProviderRequest(mustTestJSON(t, map[string]any{"model": model, "input": history}), &service)
 	if err != nil {
 		t.Fatal(err)
 	}

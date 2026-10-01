@@ -116,7 +116,7 @@ func TestOpenCodeOnlineCatalogRefresh(t *testing.T) {
 	if service.format("deepseek-flash") != "chat" {
 		t.Fatal("live legacy alias lost last known format")
 	}
-	if _, err := translateChatRequest([]byte(`{"model":"opencode-go:unknown-format","input":[]}`), &service); err == nil {
+	if _, err := translateProviderRequest([]byte(`{"model":"opencode-go:unknown-format","input":[]}`), &service); err == nil {
 		t.Fatal("unknown protocol silently treated as Chat")
 	}
 	body, err := ProviderModelCatalog([]byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2"}]}`), false, config)
@@ -154,8 +154,8 @@ func TestOpenCodeOnlineCatalogRefresh(t *testing.T) {
 	if service.format("brand-new") != "responses" || pinned.format("brand-new") != "chat" {
 		t.Fatal("format update lost, or changed an in-flight request")
 	}
-	tr, err := translateChatRequest([]byte(`{"model":"opencode-go:brand-new","input":[]}`), &service)
-	if err != nil || tr.format != "responses" || tr.body["input"] == nil {
+	tr, err := translateProviderRequest([]byte(`{"model":"opencode-go:brand-new","input":[]}`), &service)
+	if err != nil || !isResponsesEndpoint(tr.endpoint) || tr.body["input"] == nil {
 		t.Fatalf("changed API not selected: %v", err)
 	}
 	cost = catalog.current().Models["opencode-go"]["brand-new"].Cost.estimate("", counts)
@@ -384,7 +384,7 @@ func TestOpenCodeMetadataReasoningEffort(t *testing.T) {
 				"opencode-go": {"new-model": {Format: format, Efforts: []string{"none", "low", "max"}}},
 			}}}
 			for _, effort := range []string{"", "high", "none", "low", "max"} {
-				tr, err := translateChatRequest(mustTestJSON(t, map[string]any{
+				tr, err := translateProviderRequest(mustTestJSON(t, map[string]any{
 					"model": "opencode-go:new-model", "input": []any{},
 					"reasoning": map[string]string{"effort": effort},
 				}), &service)
