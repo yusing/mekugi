@@ -1,0 +1,6 @@
+╭─ Ready ──────────────────────────╮
+│ ❯ second                         │
+│   third                          │
+│   fourth                         │
+│   fifth                          │
+╰──────────── snapshot-model • 0% ─╯

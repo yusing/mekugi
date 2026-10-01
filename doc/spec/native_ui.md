@@ -5,7 +5,10 @@
 An empty launch view welcomes the user with `Mekugi <version> • codex <version>`.
 The versions identify the running executable and backend. Development builds
 without revision metadata show `dev`; unavailable backend versions are omitted.
-The welcome is presentation only, not conversation history.
+The welcome remains visible while composing the first prompt, including compact
+Main frames with at least six rows. History, live-edit replacement, and open
+modal views and the full multiline composer take precedence. The welcome is
+presentation only, not conversation history.
 
 Operation-row formatting and feed controls are specified by
 [native activity presentation](activity_display.md); shared classification belongs to

@@ -1179,18 +1179,6 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 // the session state; the bottom border the model. dock rows are left blank
 // between the two, in the returned rectangle, for the live edit dock.
 func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, dockRect terminalRect) {
-	if dock == 0 && len(u.view.entries) == 0 && u.draft == "" && height > 10 && u.statusPanel == nil && u.resumePicker == nil && !u.pickerVisible() {
-		height--
-		defer func() {
-			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
-			dockRect.y++
-			u.composerRect.y++
-			if u.btw != nil && u.btw.rect.h > 0 {
-				u.btw.rect.y++
-			}
-			u.view.feedTop++
-		}()
-	}
 	u.autoOpenQuestions()
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalRect{}
@@ -1223,6 +1211,18 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			caret = point
 			break
 		}
+	}
+	if dock == 0 && len(u.view.entries) == 0 && height >= 6 && height > min(6, len(draft))+borderRows && !u.pickerVisible() {
+		height--
+		defer func() {
+			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
+			dockRect.y++
+			u.composerRect.y++
+			if u.btw != nil && u.btw.rect.h > 0 {
+				u.btw.rect.y++
+			}
+			u.view.feedTop++
+		}()
 	}
 	visible := min(6, height-borderRows)
 	firstRow := max(0, caret.Row-visible+1)
