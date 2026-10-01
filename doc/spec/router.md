@@ -145,9 +145,14 @@ and the authenticated worker manifest retains it across child environment change
 Explicit capture and `MEKUGI_AX_OUTPUT` destinations retain precedence.
 The debug bundle's `capture.jsonl` resolves to the selected capture destination
 when overridden, so the same bundle remains usable for offline replay.
-The wrapper prints all six absolute artifact paths to
-stderr only on exit, after the child and router have stopped; it never prints debug paths
-over the active Codex UI. Startup failures after debug initialization also report the paths.
+The wrapper prints one `To diagnose this session, ask an agent to run:`
+heading followed by a single shell-quoted
+`mekugi inspect-session --debug-dir DIR --field diagnostic` command.
+The command selects the bundle once; [session inspection](session.md#debug-bundle-diagnosis)
+owns its diagnostic report and request-level drill-down.
+It writes to stderr only on exit,
+after the child and router have stopped; it never prints debug paths
+over the active Codex UI. Startup failures after debug initialization also report the command.
 The files survive shutdown. Default files use mode 0600 and the directory uses mode 0700.
 
 The instruction JSONL records preserve instruction text and JSON values for the final

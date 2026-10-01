@@ -41,6 +41,7 @@ journal panes, cards, details, skills and file pickers, Main's composer, resume
 sessions, the Agents roster, and responsive Activity layouts. Activity blocks and
 output dialogs live in `internal/ui/activity/testdata/snapshots/`; diff navigation,
 change graphs, and streaming previews live in `internal/ui/diffview/testdata/snapshots/`.
+Launcher debug handoffs live in `cmd/mekugi/testdata/snapshots/`.
 Other owners keep fixtures in their own `testdata/snapshots/` directories. Snapshot assertions replace
 layout/text checks, not independent state, interaction, parser, or color checks.
 

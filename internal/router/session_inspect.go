@@ -94,7 +94,9 @@ type sessionInspectionCall struct {
 func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("inspect-session", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	session := flags.String("session", "", "Codex rollout JSONL file (required)")
+	session := flags.String("session", "", "Codex rollout JSONL file")
+	debugDir := flags.String("debug-dir", "", "inspect one debug bundle instead of a rollout")
+	requestID := flags.String("request-id", "", "select one request in a debug bundle")
 	workspace := flags.String("workspace", "", "override workspace inferred from rollout metadata")
 	replayDir := flags.String("replay-dir", "", "replay directory (default platform state directory)")
 	ax := flags.Bool("ax", false, "include whole-rollout AX measurements, independent of call pagination")
@@ -108,6 +110,7 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 	textBytes := flags.Int("text-bytes", 4096, "maximum UTF-8 bytes per included field (1-65536)")
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: mekugi inspect-session --session PATH [options]")
+		fmt.Fprintln(stderr, "       mekugi inspect-session --debug-dir DIR [--request-id ID] [options]")
 		fmt.Fprintln(stderr, "       mekugi inspect-session [--replay-dir PATH] --failures [REF]")
 		fmt.Fprintln(stderr, "Read local logical calls without running them. Text is omitted unless --field is selected.")
 		flags.PrintDefaults()
@@ -123,6 +126,19 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 		return 1
 	}
 	fields := []string{"script", "report", "diagnostic", "output"}
+	if *debugDir != "" {
+		if flags.NArg() != 0 || *session != "" || *failures || *ax || *readLog != "" || *defects != "" ||
+			*callID != "" || *workspace != "" || *replayDir != "" || *offset < 0 || *limit < 1 || *limit > 500 ||
+			*textBytes < 1 || *textBytes > 65536 || (*field != "" && *field != "all" && *field != "diagnostic") {
+			flags.Usage()
+			return 2
+		}
+		return inspectDebugSession(ctx, *debugDir, *requestID, *field, *offset, *limit, *textBytes, stdout, stderr)
+	}
+	if *requestID != "" {
+		flags.Usage()
+		return 2
+	}
 	if *failures {
 		if flags.NArg() > 1 || *session != "" || *ax || *readLog != "" || *defects != "" || *field != "" || *callID != "" || *workspace != "" ||
 			*offset != 0 || *limit != 50 || *textBytes != 4096 {

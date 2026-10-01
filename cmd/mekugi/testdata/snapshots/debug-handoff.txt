@@ -1,0 +1,2 @@
+To diagnose this session, ask an agent to run:
+  mekugi inspect-session --debug-dir '/tmp/mekugi-debug-session' --field diagnostic

@@ -93,9 +93,12 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	routerDone := make(chan error, 1)
 	var debugPaths []string
 	defer func() {
-		for _, path := range debugPaths {
-			fmt.Fprintf(os.Stderr, "mekugi debug: %s\n", path)
+		if len(debugPaths) == 0 {
+			return
 		}
+		fmt.Fprintln(os.Stderr, "To diagnose this session, ask an agent to run:")
+		directory := filepath.Dir(debugPaths[0])
+		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", shellsyntax.Quote(directory))
 	}()
 	go func() {
 		routerDone <- router.RunSession(ctx, routerArgs, issues, func(session router.Session) {

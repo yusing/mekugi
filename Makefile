@@ -22,8 +22,8 @@ preview-native-ui:
 
 # Offline rendered-output regression checks. Mismatches leave .txt.new candidates.
 test-ui-snapshots:
-	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test ./internal/uisnapshot ./internal/ui/... ./internal/router -run 'TestSnapshot|$(SNAPSHOT)' -count=1
+	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test ./internal/uisnapshot ./internal/ui/... ./internal/router ./cmd/mekugi -run 'TestSnapshot|$(SNAPSHOT)' -count=1
 
 # Replaces baselines for the selected tests; review candidates/diffs first.
 update-ui-snapshots:
-	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(GO) test ./internal/ui/... ./internal/router -run '$(SNAPSHOT)' -count=1
+	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(GO) test ./internal/ui/... ./internal/router ./cmd/mekugi -run '$(SNAPSHOT)' -count=1

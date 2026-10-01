@@ -176,7 +176,7 @@ exit means the run or its shutdown failed. Ordinary `codex exec` is unchanged.
 | `--timeout` | `10m` | Wait for the upstream response to start |
 | `--stream-idle-timeout` | `4m` | Limit gaps between provider messages during an active response, or HTTP response bytes |
 | `--capture-output PATH` | Disabled | Append sanitized JSONL metrics |
-| `--debug` | Disabled | Record diagnostics, capture, metrics, forwarded instruction/tool snapshots, runtime reads, and an AX report; print all artifact paths on exit |
+| `--debug` | Disabled | Record diagnostics, capture, metrics, forwarded instruction/tool snapshots, runtime reads, and an AX report; print a session diagnosis command on exit |
 
 `mekugi --mode passthrough codex --yolo` forwards traffic only. It doesn't need Node.js,
 and capture still works.
@@ -562,7 +562,8 @@ are not billing figures. See the
 [metrics reference](doc/spec/metrics.md).
 
 `mekugi --debug codex` writes a private `mekugi-debug-*` directory in the system
-temporary directory and prints its paths on exit. Its instruction dumps are
+temporary directory and prints a session inspection command on exit under “To diagnose this
+session,” ready to share with an agent. Its instruction dumps are
 **not sanitized**. Debug mode records future requests only. See
 [debug evidence](doc/spec/router.md#feature-usage-debug-evidence).
 
@@ -681,13 +682,17 @@ This reads a Codex rollout without running anything or starting a router:
 
 ```sh
 mekugi inspect-session --session /path/to/rollout.jsonl
+mekugi inspect-session --debug-dir /path/to/debug --field diagnostic
 mekugi inspect-session --failures
 mekugi inspect-sessions --exclude-model '*grok*' --class production
 ```
 
 The default JSON holds tool names, call IDs, outcomes, and sizes, but no
-private text. Values you request with `--field` may include source and command
-output. See [session inspection](doc/spec/session.md) and
+private text. For a reported issue with a debug bundle, use the printed
+`--debug-dir` command to see failure evidence, capture health, metrics, and AX results.
+Use `--request-id ID --field all` to drill into one request's capture and instruction
+evidence. Values you request with `--field` may include private error text, instructions,
+source, and command output. See [session inspection](doc/spec/session.md) and
 [AX evidence](doc/spec/ax.md).
 
 ### Replay a session
