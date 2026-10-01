@@ -232,7 +232,7 @@ func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placement
 			at := cmp.Or(itemAt[item.ID], historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt)))
 			if !at.IsZero() {
 				for j := len(u.view.entries) - 1; j >= 0 && u.view.entries[j].Seq > before; j-- {
-					u.view.entries[j].Observed = at
+					u.view.mutateEntry(j, func(record *liveActivityRecord) { record.Observed = at })
 				}
 			}
 			u.applyRestoredMain(slots[i+1])

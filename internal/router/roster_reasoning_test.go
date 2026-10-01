@@ -35,7 +35,7 @@ func TestAppServerRosterReasoningTitlePreservesTranscript(t *testing.T) {
 			if got, _ := u.agents.current(agent, time.Now()); ansi.Strip(got) != "Checking routing" {
 				t.Fatalf("completion lost reasoning title: %q", ansi.Strip(got))
 			}
-			if page := view.painter.DialogPage(view.blocks[0][0], 80); page.Text != full.String() {
+			if page := view.painter.DialogPage(view.entries[0].blocks[0], 80); page.Text != full.String() {
 				t.Fatalf("completed dialog lost full reasoning: %q", page.Text)
 			}
 			reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "mcat next.go"}})

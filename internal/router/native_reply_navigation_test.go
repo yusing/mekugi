@@ -231,8 +231,10 @@ func TestNativeRepliesShareHeaderQuoteAnswerLayout(t *testing.T) {
 				if kind == "agent excerpt" {
 					entry.activitySeq = 5
 				}
-				v.entries = []activityPaneEntry{question, entry}
-				v.blocks = [][]activityui.Block{nil, {block}}
+				v.entries = []liveActivityRecord{
+					{activityPaneEntry: question, blocks: nil},
+					{activityPaneEntry: entry, blocks: []activityui.Block{block}},
+				}
 				run := v.conversationItem(1, 1, width, conversationThread{})
 				if len(run.lines) < 5 {
 					t.Fatalf("missing reply rows: %q", run.lines)

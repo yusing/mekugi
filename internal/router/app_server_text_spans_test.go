@@ -59,7 +59,7 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	}
 	check := func(v *liveActivityView) {
 		t.Helper()
-		entry := v.entries[0]
+		entry := v.entries[0].activityPaneEntry
 		if !reflect.DeepEqual(entry.native.spans, spans) {
 			t.Fatalf("wrong spans: %+v", entry.native.spans)
 		}

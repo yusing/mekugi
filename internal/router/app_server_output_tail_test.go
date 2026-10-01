@@ -535,20 +535,19 @@ func TestOutputCollapseSharesFrameAcrossLateCompletions(t *testing.T) {
 				if i == 1 {
 					settled = late
 				}
-				v.entries = append(v.entries, activityPaneEntry{Seq: uint64(i + 1), Agent: agent, native: &liveActivityNativeItem{settled: settled}})
-				v.blocks = append(v.blocks, []activityui.Block{{Kind: "op", Verb: "Run", Tail: []string{"one", "two"}}})
+				v.appendEntry(activityPaneEntry{Seq: uint64(i + 1), Agent: agent, native: &liveActivityNativeItem{settled: settled}}, []activityui.Block{{Kind: "op", Verb: "Run", Tail: []string{"one", "two"}}})
 				v.events[agent] = liveActivityEvent{seq: 3, at: start}
 			}
 			if settleActivity(start.Add(activityui.OutputDebounce), v) {
 				t.Fatal("earlier output collapsed in a separate frame")
 			}
-			if v.blocks[0][0].Collapsed || v.blocks[1][0].Collapsed {
+			if v.entries[0].blocks[0].Collapsed || v.entries[1].blocks[0].Collapsed {
 				t.Fatal("partially collapsed batch")
 			}
 			if !settleActivity(late.Add(activityui.OutputDebounce), v) {
 				t.Fatal("batch did not collapse")
 			}
-			if !v.blocks[0][0].Collapsed || !v.blocks[1][0].Collapsed {
+			if !v.entries[0].blocks[0].Collapsed || !v.entries[1].blocks[0].Collapsed {
 				t.Fatal("outputs did not collapse together")
 			}
 		})

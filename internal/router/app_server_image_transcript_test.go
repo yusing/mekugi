@@ -26,7 +26,7 @@ func TestAppServerImageTranscriptHighlight(t *testing.T) {
 					t.Fatalf("unexpected duplicate or synthetic tool activity: %+v", v.entries)
 				}
 				var out conversationLines
-				v.userItemContinued(&out, v.entries[0], width, false)
+				v.userItemContinued(&out, v.entries[0].activityPaneEntry, width, false)
 				screen := vt.NewEmulator(width, len(out.lines))
 				defer screen.Close()
 				if _, err := screen.Write([]byte(strings.Join(out.lines, "\r\n"))); err != nil {

@@ -38,7 +38,7 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	var next []activityPaneEntry
 	for _, entry := range u.view.entries {
 		if entry.Kind == "assignment" {
-			next = append(next, entry)
+			next = append(next, entry.activityPaneEntry)
 		}
 	}
 	if len(next) != 1 || next[0].assignment.text != "Check the edited answer." {
@@ -60,7 +60,7 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 			target = entry.Seq
 		}
 	}
-	if groups := u.view.blocks[len(u.view.blocks)-1][0].Journal.Groups; target == 0 || len(groups) == 0 || groups[len(groups)-1].Target != target {
+	if groups := u.view.entries[len(u.view.entries)-1].blocks[0].Journal.Groups; target == 0 || len(groups) == 0 || groups[len(groups)-1].Target != target {
 		t.Fatalf("answer did not link to its follow-up assignment: %+v", groups)
 	}
 	for _, entry := range u.view.entries {
@@ -89,8 +89,8 @@ func TestNativeActivityCumulativeAnswerTargets(t *testing.T) {
 	completion(2, first)
 	assignment(3, "followup") // Identical wording, distinct actual question.
 	completion(4, first, journalItem{ID: "apple", Question: question, Text: "Follow-up review."})
-	groups := u.view.blocks[len(u.view.blocks)-1][0].Journal.Groups
-	if len(groups) != 1 || groups[0].Target != 3 || u.view.blocks[1][0].Journal.Groups[0].Target != 1 {
+	groups := u.view.entries[len(u.view.entries)-1].blocks[0].Journal.Groups
+	if len(groups) != 1 || groups[0].Target != 3 || u.view.entries[1].blocks[0].Journal.Groups[0].Target != 1 {
 		t.Fatalf("cumulative answers lost their original assignment targets: %+v", groups)
 	}
 	feed := u.view.renderFeed(100, 60)

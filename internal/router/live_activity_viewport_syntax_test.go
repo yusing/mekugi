@@ -30,11 +30,9 @@ func viewportSyntaxView(main bool, lang string) *liveActivityView {
 		}
 		seq := uint64(2*i + 1)
 		body := fmt.Sprintf("Inspect source %d before continuing.", i)
-		v.entries = append(v.entries,
-			activityPaneEntry{Seq: seq, Agent: agent, Kind: "text", Text: body, Observed: now},
-			activityPaneEntry{Seq: seq + 1, Agent: agent, Kind: "tool", Text: "Run source preview", Observed: now})
-		v.blocks = append(v.blocks,
-			[]activityui.Block{{Kind: "text", Body: body}},
+		v.appendEntry(activityPaneEntry{Seq: seq, Agent: agent, Kind: "text", Text: body, Observed: now},
+			[]activityui.Block{{Kind: "text", Body: body}})
+		v.appendEntry(activityPaneEntry{Seq: seq + 1, Agent: agent, Kind: "tool", Text: "Run source preview", Observed: now},
 			[]activityui.Block{{Kind: "op", Verb: "Run", Label: "source preview", Lang: lang, Fenced: true,
 				Code: fmt.Sprintf("package source%d\n\nfunc value%d() int {\n\treturn %d\n}\n", i, i, i)}})
 		v.lastSeq = seq + 1
@@ -84,9 +82,9 @@ func TestLiveActivityViewportSyntaxMatchesEager(t *testing.T) {
 		t.Run(fmt.Sprintf("Main=%t", main), func(t *testing.T) {
 			lazy, eager := viewportSyntaxView(main, "go"), viewportSyntaxView(main, "go")
 			for _, v := range []*liveActivityView{lazy, eager} {
-				v.blocks[9][0].Lang = "diff"
-				v.blocks[9][0].Code = "diff --git a/source.go b/source.go\n--- a/source.go\n+++ b/source.go\n@@ -1,2 +1,2 @@\n package source\n-var value = 1\n+var value = 2\n"
-				v.blocks[11] = append(v.blocks[11], activityui.Block{Kind: "op", Verb: "Ask", Label: "1 question", Questions: []activityui.Question{{Text: "Continue the inspection?", State: "answered", Answer: "Yes"}}})
+				v.entries[9].blocks[0].Lang = "diff"
+				v.entries[9].blocks[0].Code = "diff --git a/source.go b/source.go\n--- a/source.go\n+++ b/source.go\n@@ -1,2 +1,2 @@\n package source\n-var value = 1\n+var value = 2\n"
+				v.entries[11].blocks = append(v.entries[11].blocks, activityui.Block{Kind: "op", Verb: "Ask", Label: "1 question", Questions: []activityui.Question{{Text: "Continue the inspection?", State: "answered", Answer: "Yes"}}})
 			}
 			check := func(name string, width, rows int) {
 				t.Run(name, func(t *testing.T) { assertViewportSyntaxEager(t, lazy, eager, width, rows) })
@@ -114,7 +112,7 @@ func TestLiveActivityViewportSyntaxMatchesEager(t *testing.T) {
 			}
 			check("follow end after resize", 90, 12)
 			for _, v := range []*liveActivityView{lazy, eager} {
-				v.blocks[1][0].Code = "package changed\n\nfunc updated() string { return \"new source\" }\n"
+				v.entries[1].blocks[0].Code = "package changed\n\nfunc updated() string { return \"new source\" }\n"
 				v.invalidateEntry(2)
 			}
 			check("off screen update", 90, 12)
@@ -158,8 +156,8 @@ func TestLiveActivityViewportSyntaxDefersTokenization(t *testing.T) {
 		t.Run(fmt.Sprintf("Main=%t", main), func(t *testing.T) {
 			clear(lexer.sources)
 			v := viewportSyntaxView(main, "viewportfixture")
-			first := strings.ReplaceAll(v.blocks[1][0].Code, "\t", "    ")
-			last := strings.ReplaceAll(v.blocks[len(v.blocks)-1][0].Code, "\t", "    ")
+			first := strings.ReplaceAll(v.entries[1].blocks[0].Code, "\t", "    ")
+			last := strings.ReplaceAll(v.entries[len(v.entries)-1].blocks[0].Code, "\t", "    ")
 			feed := v.renderFeed(70, 9)
 			v.viewport(feed, 9)
 			if lexer.sources[first] != 0 || lexer.sources[last] != 1 {
@@ -194,7 +192,7 @@ func TestLiveActivityViewportSyntaxDefersTokenization(t *testing.T) {
 			v.following = true
 			v.viewport(v.renderFeed(70, 9), 9)
 			changed := "package updated\n\nfunc updated() int { return 42 }\n"
-			v.blocks[1][0].Code = changed
+			v.entries[1].blocks[0].Code = changed
 			v.invalidateEntry(2)
 			v.renderFeed(70, 9)
 			if lexer.sources[changed] != 0 {
@@ -213,17 +211,15 @@ func TestLiveActivityViewportSyntaxDefersTokenization(t *testing.T) {
 // viewport gate is insufficient: only intersecting blocks may be tokenized.
 func groupedViewportSyntaxView(main bool, lang string) *liveActivityView {
 	v := viewportSyntaxView(main, lang)
-	entries := make([]activityPaneEntry, 0, len(v.entries)/2)
-	blocks := make([][]activityui.Block, 0, len(v.blocks)/2)
+	records := make([]liveActivityRecord, 0, len(v.entries)/2)
 	for i := 1; i < len(v.entries); i += 2 {
-		entry := v.entries[i]
+		record := v.entries[i]
 		if !main {
-			entry.Agent = "/root/source"
+			record.Agent = "/root/source"
 		}
-		entries = append(entries, entry)
-		blocks = append(blocks, v.blocks[i])
+		records = append(records, record)
 	}
-	v.entries, v.blocks = entries, blocks
+	v.entries = records
 	return v
 }
 
@@ -234,13 +230,13 @@ func TestLiveActivityViewportSyntaxGroupedBlocks(t *testing.T) {
 			clear(lexer.sources)
 			v := groupedViewportSyntaxView(mode.main, "viewportfixture")
 			v.childrenOnly = mode.children
-			first := strings.ReplaceAll(v.blocks[0][0].Code, "\t", "    ")
-			last := strings.ReplaceAll(v.blocks[len(v.blocks)-1][0].Code, "\t", "    ")
+			first := strings.ReplaceAll(v.entries[0].blocks[0].Code, "\t", "    ")
+			last := strings.ReplaceAll(v.entries[len(v.entries)-1].blocks[0].Code, "\t", "    ")
 			v.viewport(v.renderFeed(70, 9), 9)
 			if len(v.runs) != 1 {
 				t.Fatalf("fixture produced %d runs, want one grouped run", len(v.runs))
 			}
-			if lexer.sources[first] != 0 || lexer.sources[last] != 1 || len(lexer.sources) >= len(v.blocks) {
+			if lexer.sources[first] != 0 || lexer.sources[last] != 1 || len(lexer.sources) >= len(v.entries) {
 				t.Fatalf("cold grouped end tokenizations: first=%d last=%d sources=%d, want deferred early blocks", lexer.sources[first], lexer.sources[last], len(lexer.sources))
 			}
 			coldSources := len(lexer.sources)
@@ -250,7 +246,7 @@ func TestLiveActivityViewportSyntaxGroupedBlocks(t *testing.T) {
 			}
 			v.following, v.offset = false, 0
 			v.viewport(v.renderFeed(70, 9), 9)
-			if lexer.sources[first] != 1 || lexer.sources[last] != 1 || len(lexer.sources) >= len(v.blocks) {
+			if lexer.sources[first] != 1 || lexer.sources[last] != 1 || len(lexer.sources) >= len(v.entries) {
 				t.Fatalf("early grouped scroll tokenizations: first=%d last=%d sources=%d, want only newly visible blocks", lexer.sources[first], lexer.sources[last], len(lexer.sources))
 			}
 			earlySources := len(lexer.sources)
@@ -310,20 +306,18 @@ func TestLiveActivityViewportSyntaxScrollEveryRow(t *testing.T) {
 					// A tool group after agent traffic continues an earlier lead
 					// that already headed a read. Its extra heading shifts every
 					// block's syntax window by one row.
-					prefix := []activityPaneEntry{
+					prefix := []liveActivityRecord{
 						{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "**Preparing regression seed**", Observed: v.now()},
 						{Seq: 2, Agent: "Main", Kind: "tool", Text: "Read `main.go 1:2`", Observed: v.now()},
 						{Seq: 3, Agent: "/root/lookup", Kind: "final", Text: "Evidence collected.", Observed: v.now()},
 					}
-					var blocks [][]activityui.Block
-					for _, entry := range prefix {
-						blocks = append(blocks, parseLiveActivity(entry))
+					for i := range prefix {
+						prefix[i].blocks = parseLiveActivity(prefix[i].activityPaneEntry)
 					}
 					for i := range v.entries {
 						v.entries[i].Seq += 4
 					}
 					v.entries = append(prefix, v.entries...)
-					v.blocks = append(blocks, v.blocks...)
 				}
 				return v
 			}

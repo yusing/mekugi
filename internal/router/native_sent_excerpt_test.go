@@ -76,11 +76,12 @@ func TestSentExcerptKeepsScrolledViewportStill(t *testing.T) {
 	v.conversation, v.feedOnly = true, true
 	start := time.Date(2026, 9, 28, 8, 44, 12, 0, time.Local)
 	task := strings.Repeat("Remove only the fixtures you created. ", 20)
-	v.entries = []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "assignment", Observed: start, activitySeq: 5, assignment: &activityAssignment{to: "/root/fixtures", text: task}}}
-	v.blocks = [][]activityui.Block{{{Kind: "message", From: "/root", To: "/root/fixtures", Body: task}}}
+	v.entries = []liveActivityRecord{
+		{Seq: 1, Agent: "Main", Kind: "assignment", Observed: start, activitySeq: 5, assignment: &activityAssignment{to: "/root/fixtures", text: task}, blocks: []activityui.Block{{Kind: "message", From: "/root", To: "/root/fixtures", Body: task}}},
+	}
 	for i := range 20 {
 		entry := activityPaneEntry{Seq: uint64(i + 2), Agent: "Main", Kind: "text", Text: fmt.Sprint("Note ", i, "."), Observed: start}
-		v.entries, v.blocks = append(v.entries, entry), append(v.blocks, parseLiveActivity(entry))
+		v.appendEntry(entry, parseLiveActivity(entry))
 	}
 	const width, rows = 60, 6
 	feed := v.renderFeed(width, rows)

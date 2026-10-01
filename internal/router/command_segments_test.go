@@ -166,7 +166,7 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 		t.Fatalf("distinct causes collapsed or failed to reach the transcript: %+v", u.view.entries)
 	}
 	for i, cause := range []error{first, second} {
-		entry := u.view.entries[i]
+		entry := u.view.entries[i].activityPaneEntry
 		if entry.Kind != "error" || !strings.Contains(entry.Text, cause.Error()) || !strings.Contains(entry.Text, "item item (turn turn)") {
 			t.Fatalf("transcript omitted complete error or identity: %+v", entry)
 		}
@@ -233,7 +233,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 			var entry activityPaneEntry
 			for _, candidate := range view.entries {
 				if candidate.CallID == item.ID && candidate.native != nil {
-					entry = candidate
+					entry = candidate.activityPaneEntry
 					break
 				}
 			}
@@ -342,7 +342,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 			}
 			u.session.retainOutput(entry.native, item)
 			u.restoreCommandSegments(&entry, item, workspace)
-			u.view.entries = []activityPaneEntry{entry}
+			u.view.entries = []liveActivityRecord{{activityPaneEntry: entry}}
 			pages := u.view.commandOutputPages(1)
 			if len(pages) != 1 || pages[0].Label != "combined output" || pages[0].Output.View().Exit != 1 || strings.Join(pages[0].Output.View().Lines, "\n") != "one" {
 				t.Fatalf("missing evidence fabricated output: %+v", pages)
@@ -364,7 +364,7 @@ func TestCombinedOutputDialogUnwrapsOnlyLiteralShell(t *testing.T) {
 		`/usr/bin/bash -lc 'mcat a.go; mcat b.go' > output`,
 	} {
 		view := newLiveActivityView()
-		view.entries = []activityPaneEntry{{Seq: 1, Text: "Read `a.go`\n\nRead `b.go`", native: &liveActivityNativeItem{command: command}}}
+		view.entries = []liveActivityRecord{{Seq: 1, Text: "Read `a.go`\n\nRead `b.go`", native: &liveActivityNativeItem{command: command}}}
 		pages := view.commandOutputPages(1)
 		if len(pages) != 1 || pages[0].Code != appServerDisplayCommand(command) || view.entries[0].native.command != command {
 			t.Fatalf("combined display changed execution or leaked wrapper: %+v", pages)
@@ -397,7 +397,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	// History starts collapsed; inspect the expanded retained command.
 	var rows []string
 	for _, restored := range u.view.entries {
-		for _, block := range commandSegmentBlocks(restored) {
+		for _, block := range commandSegmentBlocks(restored.activityPaneEntry) {
 			block.Collapsed = false
 			rows = append(rows, u.view.painter.Block(block, 90)...)
 		}

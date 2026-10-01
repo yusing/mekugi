@@ -180,8 +180,8 @@ func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 		Seq: 1, Agent: caller, Kind: "tool", CallID: "call", Text: "Run\n```bash\npython3 edit.py\n```",
 	}}})
-	if len(v.entries) != 1 || v.blocks[0][0].Verb != "Run" {
-		t.Fatalf("pending command = %+v", v.blocks)
+	if len(v.entries) != 1 || v.entries[0].blocks[0].Verb != "Run" {
+		t.Fatalf("pending command = %+v", v.entries)
 	}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 		Seq: 3, Agent: caller, Kind: "exit", CallID: "call", Text: "1",
@@ -189,18 +189,18 @@ func TestLiveActivityConfirmedEditReplacesRun(t *testing.T) {
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 		Seq: 4, Agent: caller, Kind: "tool", CallID: "call", Text: "Edit `edit.py` +1 -1",
 	}}})
-	if len(v.entries) != 1 || v.blocks[0][0].Verb != "Edit" || v.entries[0].Seq != 1 || v.lastSeq != 4 {
-		t.Fatalf("confirmed edit did not replace Run: entries=%+v blocks=%+v", v.entries, v.blocks)
+	if len(v.entries) != 1 || v.entries[0].blocks[0].Verb != "Edit" || v.entries[0].Seq != 1 || v.lastSeq != 4 {
+		t.Fatalf("confirmed edit did not replace Run: records=%+v", v.entries)
 	}
-	if len(v.blocks[0]) != 1 || v.blocks[0][0].ExitCode != 1 ||
-		!strings.Contains(ansi.Strip(strings.Join(v.painter.Block(v.blocks[0][0], 80), "\n")), "exit 1") {
-		t.Fatalf("replacement lost failure: %+v", v.blocks[0])
+	if len(v.entries[0].blocks) != 1 || v.entries[0].blocks[0].ExitCode != 1 ||
+		!strings.Contains(ansi.Strip(strings.Join(v.painter.Block(v.entries[0].blocks[0], 80), "\n")), "exit 1") {
+		t.Fatalf("replacement lost failure: %+v", v.entries[0].blocks)
 	}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 		Seq: 5, Agent: caller, Kind: "tool", CallID: "other", Text: "Edit `other.py` +1 -0",
 	}}})
-	if len(v.entries) != 2 || v.blocks[1][0].Verb != "Edit" {
-		t.Fatalf("unmatched receipt lost: %+v", v.blocks)
+	if len(v.entries) != 2 || v.entries[1].blocks[0].Verb != "Edit" {
+		t.Fatalf("unmatched receipt lost: %+v", v.entries)
 	}
 }
 

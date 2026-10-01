@@ -43,7 +43,7 @@ func TestUISnapshotAppServerReasoningBeforeLaterActivity(t *testing.T) {
 					notify("item/completed", map[string]any{"item": map[string]any{"id": "c", "type": "commandExecution", "command": "echo later", "exitCode": 0, "durationMs": 100}})
 				}
 				rollCommandOutput(u)
-				if len(view.entries) != 2 || view.entries[0].Kind != "reasoning" || view.entries[0].Seq >= view.entries[1].Seq || view.blocks[0][0].Live {
+				if len(view.entries) != 2 || view.entries[0].Kind != "reasoning" || view.entries[0].Seq >= view.entries[1].Seq || view.entries[0].blocks[0].Live {
 					t.Fatalf("summary chronology or completion lost: %+v", view.entries)
 				}
 				snapshot := func(stage string) {
@@ -56,7 +56,7 @@ func TestUISnapshotAppServerReasoningBeforeLaterActivity(t *testing.T) {
 					t.Fatal("summary collapsed before the shared debounce")
 				}
 				at = at.Add(activityui.OutputDebounce)
-				if !settleActivity(at, view) || !view.blocks[0][0].Collapsed {
+				if !settleActivity(at, view) || !view.entries[0].blocks[0].Collapsed {
 					t.Fatal("already-arrived activity did not settle the paced summary")
 				}
 				snapshot("collapsed")

@@ -42,7 +42,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			}
 			u.flushStreamOutput()
 			snapshot("first-frame")
-			if len(view.blocks) != 1 || len(view.blocks[0]) != 1 || view.blocks[0][0].Body == strings.TrimSpace(body) {
+			if len(view.entries) != 1 || len(view.entries[0].blocks) != 1 || view.entries[0].blocks[0].Body == strings.TrimSpace(body) {
 				t.Fatal("burst jumped directly to its full body")
 			}
 			at = at.Add(2 * time.Second)
@@ -54,8 +54,8 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			snapshot("rolling")
 			rollCommandOutput(u)
 			snapshot("done")
-			if len(u.session.summaries) != 0 || len(view.blocks[0]) != 2 || view.blocks[0][0].Live || view.blocks[0][1].Live || view.blocks[0][0].Elapsed != "" || view.blocks[0][1].Elapsed != "2s" {
-				t.Fatalf("section completion or item duration lost: %+v", view.blocks)
+			if len(u.session.summaries) != 0 || len(view.entries[0].blocks) != 2 || view.entries[0].blocks[0].Live || view.entries[0].blocks[1].Live || view.entries[0].blocks[0].Elapsed != "" || view.entries[0].blocks[1].Elapsed != "2s" {
+				t.Fatalf("section completion or item duration lost: %+v", view.entries)
 			}
 			if settleActivity(at.Add(time.Hour), view) {
 				t.Fatal("summary collapsed before a later event")
@@ -94,7 +94,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			}
 			notify("item/reasoning/summaryTextDelta", map[string]any{"itemId": "r", "delta": "Late text."})
 			rollCommandOutput(u)
-			if len(u.session.thinking) != 0 || len(u.session.summaries) != 0 || len(view.blocks[0]) != 2 {
+			if len(u.session.thinking) != 0 || len(u.session.summaries) != 0 || len(view.entries[0].blocks) != 2 {
 				t.Fatal("late delta reopened completed reasoning")
 			}
 		})

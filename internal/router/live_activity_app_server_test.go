@@ -60,12 +60,12 @@ func TestLiveActivityNativeItemsShareStateAndRendering(t *testing.T) {
 	}
 	v.applyAppServerItem("", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "complete"})
 	v.applyAppServerItem("", "root", "root", "turn", "answer", "item/agentMessage/delta", "late", appServerItem{})
-	if len(v.entries) != 1 || v.entries[0].Text != "complete" || v.entries[0].Seq != first || v.blocks[0][0].Body != "complete" {
+	if len(v.entries) != 1 || v.entries[0].Text != "complete" || v.entries[0].Seq != first || v.entries[0].blocks[0].Body != "complete" {
 		t.Fatal("activity identity/update diverged")
 	}
 	v.applyAppServerItem("", "root", "child", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "child"})
 	v.applyAppServerItem("", "root", "root", "turn", "cmd", "item/completed", "", appServerItem{Type: "commandExecution", Command: "printf ok", Status: "completed"})
-	if len(v.entries) != 3 || v.entries[1].Agent != "Thread child" || v.blocks[2][0].Verb != "Run" || v.blocks[2][0].Code != "printf ok" {
+	if len(v.entries) != 3 || v.entries[1].Agent != "Thread child" || v.entries[2].blocks[0].Verb != "Run" || v.entries[2].blocks[0].Code != "printf ok" {
 		t.Fatal("native items did not enter shared activity blocks")
 	}
 	// Main is the same activity viewport, not another row cache or renderer.
@@ -121,7 +121,8 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	// its original target, not jump to the newer identical question.
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.lastSeq + 1, Agent: "You", Kind: "text", Text: question}}})
 	v.applyJournal("root", nativeJournalPublication{item: journalItem{ID: "amber", Text: "Edited answer", Question: question}, terminal: true, batch: 2})
-	for _, blocks := range v.blocks {
+	for _, record := range v.entries {
+		blocks := record.blocks
 		for _, block := range blocks {
 			if block.Journal != nil && block.Journal.Groups[0].Target != 1 {
 				t.Fatal("answer edit changed its original question link")
@@ -315,7 +316,7 @@ func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 	if !strings.Contains(main, assignment) || !strings.Contains(agents, assignment) || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
 		t.Fatalf("native NEW_TASK answer was not threaded under its assignment:\n%s\n%s", main, agents)
 	}
-	if groups := u.view.blocks[1][0].Journal.Groups; len(groups) != 1 || groups[0].Target != u.view.entries[0].Seq {
+	if groups := u.view.entries[1].blocks[0].Journal.Groups; len(groups) != 1 || groups[0].Target != u.view.entries[0].Seq {
 		t.Fatalf("native NEW_TASK assignment was not linked: %+v", groups)
 	}
 }
@@ -405,7 +406,7 @@ func TestAppServerReusesTerminalShellAndJournalRenderer(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.view.applyJournal("root", nativeJournalPublication{item: journalItem{ID: "a", Text: "Milestone", Created: 1, Updated: 1}, terminal: true, batch: 3})
 	u.view.applyJournal("root", nativeJournalPublication{item: journalItem{ID: "b", Text: "Answer", Question: "Question", Created: 2, Updated: 2}, terminal: true, batch: 3})
-	if len(u.view.entries) != 1 || len(u.view.blocks[0]) != 1 || u.view.blocks[0][0].Kind != "final" || len(u.view.blocks[0][0].Journal.Groups) != 2 {
+	if len(u.view.entries) != 1 || len(u.view.entries[0].blocks) != 1 || u.view.entries[0].blocks[0].Kind != "final" || len(u.view.entries[0].blocks[0].Journal.Groups) != 2 {
 		t.Fatal("native batch did not use the existing grouped Activity journal result")
 	}
 	if err := u.paint(&bytes.Buffer{}, 120, 30); err != nil {
@@ -444,7 +445,7 @@ func TestLiveActivityMainJournalContentOnly(t *testing.T) {
 	}
 	var agentBlocks []activityui.Block
 	for _, entry := range v.entries {
-		agentBlocks = append(agentBlocks, parseLiveActivity(entry)...)
+		agentBlocks = append(agentBlocks, parseLiveActivity(entry.activityPaneEntry)...)
 	}
 	var fullRows []string
 	for _, block := range agentBlocks {

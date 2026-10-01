@@ -126,7 +126,7 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 			if len(v.entries) != 1 || v.entries[0].Text != "View `images/a.png`" {
 				t.Fatalf("image activity: %+v", v.entries)
 			}
-			blocks := parseLiveActivity(v.entries[0])
+			blocks := parseLiveActivity(v.entries[0].activityPaneEntry)
 			if len(blocks) != 1 || blocks[0].Verb != "View" || len(blocks[0].Reads) != 1 || blocks[0].Reads[0].Path != "images/a.png" {
 				t.Fatalf("image blocks: %+v", blocks)
 			}
@@ -190,7 +190,7 @@ func TestAppServerCommandWorkdirDisplay(t *testing.T) {
 				if len(u.view.entries) != 1 || u.view.entries[0].Text != tc.text || u.view.entries[0].native.workdir != tc.workdir {
 					t.Fatalf("entries = %+v; want text %q in %q", u.view.entries, tc.text, tc.workdir)
 				}
-				blocks := parseLiveActivity(u.view.entries[0])
+				blocks := parseLiveActivity(u.view.entries[0].activityPaneEntry)
 				if len(blocks) == 0 || blocks[0].Workdir != tc.workdir {
 					t.Fatalf("blocks = %+v; want workdir %q", blocks, tc.workdir)
 				}
@@ -222,7 +222,7 @@ func TestActivityReadsKeepInvocationWorkdirsApart(t *testing.T) {
 	}
 	var blocks []activityui.Block
 	for _, entry := range u.view.entries {
-		blocks = append(blocks, parseLiveActivity(entry)...)
+		blocks = append(blocks, parseLiveActivity(entry.activityPaneEntry)...)
 	}
 	if len(blocks) != 3 || !blocks[0].ShowWorkdir || blocks[1].ShowWorkdir || blocks[1].Workdir != other {
 		t.Fatalf("blocks = %+v", blocks)

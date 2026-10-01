@@ -154,16 +154,16 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 		appServerTestNotify(t, u, method, params)
 	}
 	notify("item/started", map[string]any{"item": item})
-	if len(u.view.blocks) != 1 || len(u.view.blocks[0]) == 0 {
+	if len(u.view.entries) != 1 || len(u.view.entries[0].blocks) == 0 {
 		t.Fatal("start did not create command block")
 	}
-	retained := u.view.blocks[0][len(u.view.blocks[0])-1].Output
+	retained := u.view.entries[0].blocks[len(u.view.entries[0].blocks)-1].Output
 	if retained == nil {
 		t.Fatal("started command has no retained output")
 	}
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "streamed\n"})
 	u.flushStreamOutput()
-	if got := u.view.blocks[0][len(u.view.blocks[0])-1].Output; got != retained {
+	if got := u.view.entries[0].blocks[len(u.view.entries[0].blocks)-1].Output; got != retained {
 		t.Fatal("delta changed retained output identity")
 	}
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, "aggregate\nfinal\n"
@@ -526,7 +526,7 @@ func TestCommandDurationRestoresAndStopsInDialog(t *testing.T) {
 	duration := int64(70000)
 	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "echo ok", DurationMS: &duration, Status: "completed"}
 	v.applyAppServerItem("/w", "main", "main", "turn", "cmd", "item/completed", "", item)
-	b := v.blocks[0][0]
+	b := v.entries[0].blocks[0]
 	if b.Duration != 70*time.Second || b.Running {
 		t.Fatalf("restored timing %+v", b)
 	}
@@ -550,7 +550,7 @@ func TestRunDurationLiveAndCompletedRendering(t *testing.T) {
 		t.Fatal("missing running command")
 	}
 	u.view.entries[index].native.commandStarted = time.Now().Add(-2 * time.Second)
-	u.view.blocks[index] = parseLiveActivity(u.view.entries[index])
+	u.view.entries[index].blocks = parseLiveActivity(u.view.entries[index].activityPaneEntry)
 	u.view.runs = nil
 	feed := u.view.renderFeed(100, 30)
 	if !strings.Contains(ansi.Strip(strings.Join(feed.lines, "\n")), "2s") {

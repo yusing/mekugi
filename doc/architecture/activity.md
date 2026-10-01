@@ -28,6 +28,15 @@ presentation; they are not an outcome-accounting store. Presentation cannot
 acknowledge journals, finalize edits, reconstruct missing provider usage, or revive
 replayed processes.
 
+Each native feed retains one presentation record per source entry, containing
+the entry, its parsed blocks and its cache revision. The feed's record owner
+handles append, replacement, in-place metadata and annotation edits, removal,
+and history reordering together with cache invalidation. Parsed annotations and
+stable entry IDs move with their source;
+consumers do not maintain index-aligned entry and block collections. Main's
+threaded layout invalidates cross-entry dependent runs on record updates, while
+ordinary Activity updates keep unrelated completed runs warm.
+
 ## CTR-ACTIVITY-002 — Native child history pages
 
 The native UI owns request-local child pagination state, keyed by stable root

@@ -103,11 +103,11 @@ func TestAppServerCapturedEditReceipts(t *testing.T) {
 				continue
 			}
 			if !strings.Contains(entry.Text, "Edit `"+tc.path+"` +1 -1 · "+tc.program) ||
-				len(tc.view.blocks[i]) == 0 || tc.view.blocks[i][0].Verb != "Edit" {
-				t.Fatalf("receipt for %s: %+v, blocks %+v", tc.item, entry, tc.view.blocks[i])
+				len(tc.view.entries[i].blocks) == 0 || tc.view.entries[i].blocks[0].Verb != "Edit" {
+				t.Fatalf("receipt for %s: %+v, blocks %+v", tc.item, entry, tc.view.entries[i].blocks)
 			}
 			for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
-				painted := strings.Join((&activityui.Painter{Theme: theme}).Block(tc.view.blocks[i][0], 120), "\n")
+				painted := strings.Join((&activityui.Painter{Theme: theme}).Block(tc.view.entries[i].blocks[0], 120), "\n")
 				// The file row names its outcome and source.
 				heading := "Edited " + tc.path + " +1 -1 via " + tc.program
 				if tc.program == "apply_patch" {
@@ -134,8 +134,8 @@ func assertCapturedCommand(t *testing.T, view *liveActivityView, thread, item, v
 		if entry.native == nil || entry.native.thread != thread || entry.native.item != item || entry.Kind != "tool" {
 			continue
 		}
-		if len(view.blocks[i]) == 0 || view.blocks[i][0].Verb != verb || view.blocks[i][0].ExitCode != exit {
-			t.Fatalf("%s: text %q, blocks %+v, want %s exit %d", item, entry.Text, view.blocks[i], verb, exit)
+		if len(view.entries[i].blocks) == 0 || view.entries[i].blocks[0].Verb != verb || view.entries[i].blocks[0].ExitCode != exit {
+			t.Fatalf("%s: text %q, blocks %+v, want %s exit %d", item, entry.Text, view.entries[i].blocks, verb, exit)
 		}
 		return
 	}
@@ -159,7 +159,7 @@ func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 	}}
 	for range 2 {
 		v.applyCapturedEdits(data)
-		blocks := v.blocks[0]
+		blocks := v.entries[0].blocks
 		if len(blocks) != 4 || blocks[0].Verb != "Edit" || blocks[0].ExitCode != 0 || blocks[1].ExitCode != 0 || blocks[2].ExitCode != 0 || blocks[3].ExitCode != 1 {
 			t.Fatalf("receipt overwrote per-command statuses: %+v", blocks)
 		}
@@ -195,7 +195,7 @@ func TestAppServerGroupedReceiptOmitsBookkeeping(t *testing.T) {
 	}}
 	for range 2 {
 		v.applyCapturedEdits(data)
-		if v.entries[1].Text != "" || len(v.blocks[1]) != 0 || v.visible(v.entries[1]) {
+		if v.entries[1].Text != "" || len(v.entries[1].blocks) != 0 || v.visible(v.entries[1].activityPaneEntry) {
 			t.Fatalf("successful sibling retained a placeholder: %+v", v.entries[1])
 		}
 		assertCapturedCommand(t, v, "main", "tests", "Run", 2)
@@ -307,7 +307,7 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 				check := func(view *liveActivityView) {
 					for range 2 {
 						view.applyCapturedEdits(data)
-						blocks := view.blocks[0]
+						blocks := view.entries[0].blocks
 						if len(blocks) != 2 {
 							t.Fatalf("lost neighbor: %+v", blocks)
 						}

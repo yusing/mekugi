@@ -137,7 +137,7 @@ func TestActivitySingleCommandObservedTimestamps(t *testing.T) {
 		if entry.CallID != "timestamps" || entry.native == nil {
 			continue
 		}
-		blocks := parseLiveActivity(entry)
+		blocks := parseLiveActivity(entry.activityPaneEntry)
 		if len(blocks) != 1 || blocks[0].Started.Before(started) || blocks[0].Ended.Before(blocks[0].Started) || blocks[0].Duration != 123*time.Millisecond {
 			t.Fatalf("observed host timestamps/duration: %+v", blocks)
 		}

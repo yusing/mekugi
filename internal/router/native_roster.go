@@ -447,7 +447,7 @@ func (v *liveActivityView) agentState(agent activityPaneAgent, width int) string
 	var kind string
 	for i, entry := range slices.Backward(source.entries) {
 		if entry.Agent == owner || source == v && entry.Agent == agent.Name {
-			blocks, kind = source.blocks[i], entry.Kind
+			blocks, kind = source.entries[i].blocks, entry.Kind
 			break
 		}
 	}

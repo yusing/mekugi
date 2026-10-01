@@ -33,7 +33,7 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 	if len(u.view.entries) != 3 || u.view.entries[1].Kind != "attachments" {
 		t.Fatalf("missing, duplicated, or reordered receipts: %+v", u.view.entries)
 	}
-	blocks := u.view.blocks[1]
+	blocks := u.view.entries[1].blocks
 	if blocks[0].Path != "attached.txt" {
 		t.Fatalf("attachment path is not workspace-relative: %+v", blocks[0])
 	}
@@ -59,7 +59,7 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 	resumed.agents = newLiveActivityView()
 	resumed.session.start(resumed.thread, cwd)
 	resumed.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}})
-	if len(resumed.view.entries) != 2 || resumed.view.blocks[1][0].Verb != "Attached" || resumed.view.blocks[1][1].Verb != "Attach failed" || resumed.view.blocks[1][0].Path != "attached.txt" || resumed.view.blocks[1][1].Path != "missing.txt" {
+	if len(resumed.view.entries) != 2 || resumed.view.entries[1].blocks[0].Verb != "Attached" || resumed.view.entries[1].blocks[1].Verb != "Attach failed" || resumed.view.entries[1].blocks[0].Path != "attached.txt" || resumed.view.entries[1].blocks[1].Path != "missing.txt" {
 		t.Fatal("resume did not preserve submitted outcomes")
 	}
 }
@@ -85,8 +85,8 @@ func TestLiveActivityAttachmentDisplayPaths(t *testing.T) {
 			}
 			v := newLiveActivityView()
 			v.applyAppServerItem(tt.workspace, "main", tt.thread, "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
-			if len(v.blocks) != 2 || len(v.blocks[1]) != 1 || v.blocks[1][0].Path != tt.want {
-				t.Fatalf("attachment display path: got %+v, want %q", v.blocks, tt.want)
+			if len(v.entries) != 2 || len(v.entries[1].blocks) != 1 || v.entries[1].blocks[0].Path != tt.want {
+				t.Fatalf("attachment display path: got %+v, want %q", v.entries, tt.want)
 			}
 		})
 	}

@@ -247,7 +247,7 @@ func TestQuestionRecordPreservesLiteralNotePrefix(t *testing.T) {
 			appServerTestKeys(t, u, "3"+literal+"\r")
 			lifecycleUserMessage(t, u, "turn", "reply", u.submission.text)
 		}
-		entry := u.view.entries[0]
+		entry := u.view.entries[0].activityPaneEntry
 		if got := entry.native.questions[0].Answer; got != literal {
 			t.Fatalf("sync=%v: displayed %q, want literal %q", sync, got, literal)
 		}
@@ -288,10 +288,10 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 			var reply, ack activityPaneEntry
 			for _, entry := range u.view.entries {
 				if entry.Kind == "question_reply" {
-					reply = entry
+					reply = entry.activityPaneEntry
 				}
 				if entry.native != nil && entry.native.item == "ack" {
-					ack = entry
+					ack = entry.activityPaneEntry
 				}
 			}
 			if reply.Seq == 0 || ack.native == nil || ack.native.question != reply.Seq || reply.Text != "Customers" {
@@ -336,7 +336,8 @@ func TestQuestionReplyJournalUsesAnswerAnchor(t *testing.T) {
 	publication.item.Text = "I will notify the selected audience."
 	u.view.applyJournal("main", publication)
 	assert()
-	for _, blocks := range u.view.blocks {
+	for _, record := range u.view.entries {
+		blocks := record.blocks
 		for _, block := range blocks {
 			if block.Journal != nil {
 				for _, group := range block.Journal.Groups {

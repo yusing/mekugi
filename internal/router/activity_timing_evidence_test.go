@@ -68,7 +68,7 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 		if segments[3].timing != (execsegment.Timing{}) {
 			t.Fatalf("skipped acquired timing: %+v", segments[3].timing)
 		}
-		blocks := commandSegmentBlocks(entry)
+		blocks := commandSegmentBlocks(entry.activityPaneEntry)
 		for _, block := range blocks {
 			if block.Code == "sleep .04" && block.Duration != time.Duration(short) {
 				t.Fatalf("short block duration: %+v", block)

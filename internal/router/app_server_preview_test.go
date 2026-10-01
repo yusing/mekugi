@@ -187,7 +187,8 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	p.until("explorer thought")
 	render("grok thought readable", "• Thought")
 	retained := false
-	for _, blocks := range p.ui.agents.blocks {
+	for _, record := range p.ui.agents.entries {
+		blocks := record.blocks
 		for _, block := range blocks {
 			if block.Kind == "summary" && block.Body == nativePreviewGrokReasoning {
 				retained = p.ui.agents.painter.DialogPage(block, 120).Text == nativePreviewGrokReasoning
@@ -325,7 +326,7 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	keys("also check Unsubscribe\r")
-	if p.ui.submission.text != "" || p.ui.turn == "" || !slices.ContainsFunc(p.ui.view.entries, func(e activityPaneEntry) bool {
+	if p.ui.submission.text != "" || p.ui.turn == "" || !slices.ContainsFunc(p.ui.view.entries, func(e liveActivityRecord) bool {
 		return e.Agent == "You" && e.Text == "also check Unsubscribe"
 	}) {
 		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.submission.text, p.ui.turn)
@@ -352,7 +353,7 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 		}
 	}
 	keys("hello\r")
-	if !strings.HasPrefix(p.ui.status, "Completed in ") || !slices.ContainsFunc(p.ui.view.entries, func(e activityPaneEntry) bool { return strings.Contains(e.Text, "I heard: hello") }) {
+	if !strings.HasPrefix(p.ui.status, "Completed in ") || !slices.ContainsFunc(p.ui.view.entries, func(e liveActivityRecord) bool { return strings.Contains(e.Text, "I heard: hello") }) {
 		t.Fatalf("new turn not answered: %q", p.ui.status)
 	}
 	keys("\x03")

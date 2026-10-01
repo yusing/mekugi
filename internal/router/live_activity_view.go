@@ -30,8 +30,8 @@ const (
 type liveActivityView struct {
 	clock          func() time.Time // Shared with the owning replay UI, nil for live time.
 	agents         []activityPaneAgent
-	entries        []activityPaneEntry
-	blocks         [][]activityui.Block // Parsed entries, aligned with entries.
+	entries        []liveActivityRecord
+	revision       uint64 // Monotonic presentation revision shared by records.
 	lastSeq        uint64
 	selected       string
 	hovered        string
@@ -140,6 +140,7 @@ type liveActivityHit struct {
 
 type liveActivityRunKey struct {
 	first, last uint64
+	revision    uint64
 	width, clip int
 	theme       livediff.Theme
 	hover       int // Hovered snippet block in this run, or -1.
@@ -155,21 +156,6 @@ func newLiveActivityView() *liveActivityView {
 	return &liveActivityView{
 		following: true, status: "CONNECTING",
 		painter: activityui.Painter{CopySource: true, Theme: livediff.EnvironmentTheme(os.Getenv("COLORFGBG"))},
-	}
-}
-
-// invalidateEntry keeps unrelated Activity runs, including off-screen history,
-// warm while one item streams. Main's threaded layout also depends on earlier
-// assignments and reasoning, so its cross-entry cache is invalidated together.
-func (v *liveActivityView) invalidateEntry(seq uint64) {
-	if v.conversation || v.historyOrder {
-		v.runs = nil
-		return
-	}
-	for key := range v.runs {
-		if key.first <= seq && seq <= key.last {
-			delete(v.runs, key)
-		}
 	}
 }
 
@@ -238,8 +224,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 						if replaced || activityui.ReasoningSummaryHeader(previous.Text) == activityui.ReasoningSummaryHeader(entry.Text) {
 							entry.Observed = previous.Observed
 						}
-						v.entries[i], v.blocks[i] = entry, parseLiveActivity(entry)
-						v.invalidateEntry(entry.Seq)
+						v.replaceEntry(i, entry, parseLiveActivity(entry))
 						updated = true
 						break
 					}
@@ -253,8 +238,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			for i, v0 := range slices.Backward(v.entries) {
 				if v0.Agent == entry.Agent && v0.CallID == entry.CallID && entry.CallID != "" {
 					code, _ := strconv.Atoi(entry.Text)
-					v.blocks[i] = commandExitBlocks(v.blocks[i], code, entry.outputTail, entry.outputOmit)
-					v.invalidateEntry(v0.Seq)
+					v.replaceEntry(i, v0.activityPaneEntry, commandExitBlocks(v.entries[i].blocks, code, entry.outputTail, entry.outputOmit))
 					break
 				}
 			}
@@ -266,20 +250,19 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			// A confirmed receipt replaces the provisional Run or requested
 			// Edit row for this call. Only the capturer supplies saved counts.
 			for i := len(v.entries) - 1; i >= 0; i-- {
-				prior := v.entries[i]
+				prior := v.entries[i].activityPaneEntry
 				if prior.Kind != "tool" || prior.Agent != entry.Agent || prior.CallID != entry.CallID ||
-					len(v.blocks[i]) == 0 || (v.blocks[i][0].Verb != "Run" && v.blocks[i][0].Verb != "Edit") {
+					len(v.entries[i].blocks) == 0 || (v.entries[i].blocks[0].Verb != "Run" && v.entries[i].blocks[0].Verb != "Edit") {
 					continue
 				}
 				entry.Seq = prior.Seq
-				blocks[0].ExitCode = v.blocks[i][0].ExitCode
-				for _, annotation := range v.blocks[i][1:] {
+				blocks[0].ExitCode = v.entries[i].blocks[0].ExitCode
+				for _, annotation := range v.entries[i].blocks[1:] {
 					if annotation.Kind == "filter" || annotation.BatchExit {
 						blocks = append(blocks, annotation)
 					}
 				}
-				v.entries[i], v.blocks[i] = entry, blocks
-				v.invalidateEntry(entry.Seq)
+				v.replaceEntry(i, entry, blocks)
 				blocks = nil
 				break
 			}
@@ -287,8 +270,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 				continue
 			}
 		}
-		v.entries = append(v.entries, entry)
-		v.blocks = append(v.blocks, blocks)
+		v.appendEntry(entry, blocks)
 		if v.standalone(entry) {
 			if v.events == nil {
 				v.events = make(map[string]liveActivityEvent)
@@ -300,11 +282,9 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 		}
 	}
 	if extra := len(v.entries) - liveActivityFeedLimit; extra > 0 {
-		v.entries = slices.Delete(v.entries, 0, extra)
-		v.blocks = slices.Delete(v.blocks, 0, extra)
-		v.runs = nil
+		v.removeEntries(0, extra)
 		for seq := range v.passed {
-			if v.historyOrder && !slices.ContainsFunc(v.entries, func(entry activityPaneEntry) bool { return entry.Seq == seq }) || !v.historyOrder && seq < v.entries[0].Seq {
+			if v.historyOrder && !slices.ContainsFunc(v.entries, func(entry liveActivityRecord) bool { return entry.Seq == seq }) || !v.historyOrder && seq < v.entries[0].Seq {
 				delete(v.passed, seq)
 			}
 		}
@@ -318,8 +298,8 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 // operations at once. Restored history and in-place updates show at once.
 func (v *liveActivityView) trackPace(now time.Time) {
 	for i := len(v.entries) - 1; i >= 0 && v.entries[i].Seq > v.pacedSeq; i-- {
-		entry := v.entries[i]
-		if entry.Kind != "tool" || entry.native == nil || !entry.native.live || len(v.blocks[i]) < 2 {
+		entry := v.entries[i].activityPaneEntry
+		if entry.Kind != "tool" || entry.native == nil || !entry.native.live || len(v.entries[i].blocks) < 2 {
 			continue
 		}
 		if v.paced == nil {
@@ -334,16 +314,16 @@ func (v *liveActivityView) trackPace(now time.Time) {
 func (v *liveActivityView) pace(now time.Time) bool {
 	changed := false
 	for seq, pace := range v.paced {
-		i := slices.IndexFunc(v.entries, func(entry activityPaneEntry) bool { return entry.Seq == seq })
+		i := slices.IndexFunc(v.entries, func(entry liveActivityRecord) bool { return entry.Seq == seq })
 		if i >= 0 && now.Before(pace.next) {
 			continue
 		}
 		// A late frame catches up on every step that fell due.
-		for i >= 0 && pace.shown < len(v.blocks[i]) && !now.Before(pace.next) {
+		for i >= 0 && pace.shown < len(v.entries[i].blocks) && !now.Before(pace.next) {
 			pace.shown, pace.next, changed = pace.shown+1, pace.next.Add(liveActivityPaceStep), true
 			v.invalidateEntry(seq)
 		}
-		if i < 0 || pace.shown >= len(v.blocks[i]) {
+		if i < 0 || pace.shown >= len(v.entries[i].blocks) {
 			delete(v.paced, seq)
 		} else {
 			v.paced[seq] = pace
@@ -371,10 +351,10 @@ func (v *liveActivityView) tailRows() int {
 }
 
 func (v *liveActivityView) shownBlocks(i int) []activityui.Block {
-	if pace, ok := v.paced[v.entries[i].Seq]; ok && pace.shown < len(v.blocks[i]) {
-		return v.blocks[i][:pace.shown]
+	if pace, ok := v.paced[v.entries[i].Seq]; ok && pace.shown < len(v.entries[i].blocks) {
+		return v.entries[i].blocks[:pace.shown]
 	}
-	return v.blocks[i]
+	return v.entries[i].blocks
 }
 
 // keepSelection falls back to the first agent when the selection is unknown.
@@ -411,15 +391,14 @@ func (v *liveActivityView) markUnreturned(thread, call string) bool {
 			continue
 		}
 		output, noted := false, false
-		for _, block := range v.blocks[i] {
+		for _, block := range v.entries[i].blocks {
 			output = output || len(block.Tail)+block.TailOmitted > 0
 			noted = noted || block.Kind == "filter" && block.Body == unreturnedOutputNote
 		}
 		if !output || noted {
 			return false
 		}
-		v.blocks[i] = append(v.blocks[i], activityui.Block{Kind: "filter", Body: unreturnedOutputNote})
-		v.invalidateEntry(entry.Seq)
+		v.replaceEntry(i, entry.activityPaneEntry, append(v.entries[i].blocks, activityui.Block{Kind: "filter", Body: unreturnedOutputNote}))
 		return true
 	}
 	return false
@@ -429,9 +408,7 @@ func (v *liveActivityView) markUnreturned(thread, call string) bool {
 func (v *liveActivityView) removeThinking(native *liveActivityNativeItem) {
 	for i, entry := range v.entries {
 		if entry.Kind == "reasoning" && native.sameItem(entry.native) {
-			v.entries = slices.Delete(v.entries, i, i+1)
-			v.blocks = slices.Delete(v.blocks, i, i+1)
-			v.runs = nil
+			v.removeEntries(i, i+1)
 			return
 		}
 	}
@@ -921,7 +898,7 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time, width
 				// Roster status is per agent, even when other agents interleave.
 				var earlier []activityui.Block
 				for j := i - 1; j >= 0; j-- {
-					previous := source.entries[j]
+					previous := source.entries[j].activityPaneEntry
 					if previous.Agent != v0.Agent {
 						continue
 					}
@@ -1429,7 +1406,9 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 	}
 	clip := 5
 	// A cross-pane jump flashes its target from the first frame that shows it.
-	if v.pendingTarget != 0 && slices.ContainsFunc(v.entries, func(entry activityPaneEntry) bool { return entry.Seq == v.pendingTarget && v.visible(entry) }) {
+	if v.pendingTarget != 0 && slices.ContainsFunc(v.entries, func(entry liveActivityRecord) bool {
+		return entry.Seq == v.pendingTarget && v.visible(entry.activityPaneEntry)
+	}) {
 		v.flashQuestion, v.flashUntil = v.pendingTarget, v.now().Add(700*time.Millisecond)
 	}
 	flash := uint64(0)
@@ -1441,7 +1420,7 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 	used := make(map[liveActivityRunKey]liveActivityRun)
 	lastPreview := make(map[string]int)
 	for i, entry := range v.entries {
-		if v.visible(entry) && len(v.livePreviews[entry.Agent]) > 0 {
+		if v.visible(entry.activityPaneEntry) && len(v.livePreviews[entry.Agent]) > 0 {
 			lastPreview[entry.Agent] = i
 		}
 	}
@@ -1457,7 +1436,7 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 		feed.appendRows(liveActivityRun{lines: lines, snippets: make([]liveActivitySnippet, len(lines)), questions: make([]uint64, len(lines))})
 	}
 	for i := 0; i < len(v.entries); {
-		if !v.visible(v.entries[i]) {
+		if !v.visible(v.entries[i].activityPaneEntry) {
 			i++
 			continue
 		}
@@ -1471,7 +1450,7 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 		}
 		last, j := i, i
 		for ; j < len(v.entries); j++ {
-			if !v.visible(v.entries[j]) {
+			if !v.visible(v.entries[j].activityPaneEntry) {
 				continue
 			}
 			if v.entries[j].Agent != agent {
@@ -1479,8 +1458,8 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 			}
 			last = j
 		}
-		key := liveActivityRunKey{v.entries[i].Seq, v.entries[last].Seq, width, clip, v.painter.Theme, -1, false, conversationThread{}, 0, 0, false, v.tailRows()}
-		if flash != 0 && slices.ContainsFunc(v.entries[i:j], func(entry activityPaneEntry) bool { return entry.Seq == flash }) {
+		key := liveActivityRunKey{first: v.entries[i].Seq, last: v.entries[last].Seq, revision: v.runRevision(i, last+1), width: width, clip: clip, theme: v.painter.Theme, hover: -1, tail: v.tailRows()}
+		if flash != 0 && slices.ContainsFunc(v.entries[i:j], func(entry liveActivityRecord) bool { return entry.Seq == flash }) {
 			key.flash = flash
 		}
 		if v.snippet.run == key.first {
@@ -1497,7 +1476,7 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 		render := func() liveActivityRun {
 			var blocks []activityui.Block
 			for k := first; k <= last; k++ {
-				if v.visible(v.entries[k]) {
+				if v.visible(v.entries[k].activityPaneEntry) {
 					for _, block := range v.shownBlocks(k) {
 						block.Source = v.entries[k].Seq
 						block.Flash = block.Source == key.flash
@@ -1783,15 +1762,16 @@ func settleActivity(now time.Time, views ...*liveActivityView) bool {
 			if !output {
 				continue
 			}
-			native := *entry.native
-			native.settled, native.collapsed = time.Time{}, true
-			v.entries[i].native = &native
-			v.invalidateEntry(entry.Seq)
-			for j := range v.blocks[i] {
-				if block := &v.blocks[i][j]; block.Collapsible() {
-					block.Collapsed, changed = true, true
+			v.mutateEntry(i, func(record *liveActivityRecord) {
+				native := *record.native
+				native.settled, native.collapsed = time.Time{}, true
+				record.native = &native
+				for j := range record.blocks {
+					if block := &record.blocks[j]; block.Collapsible() {
+						block.Collapsed, changed = true, true
+					}
 				}
-			}
+			})
 		}
 		anyChanged = changed || anyChanged
 	}

@@ -17,13 +17,9 @@ func threadTestView() *liveActivityView {
 	reply := strings.Repeat("Inspection found no behavioral failure. ", 16)
 	v := newLiveActivityView()
 	v.conversation, v.feedOnly = true, true
-	v.entries = []activityPaneEntry{
-		{Seq: 1, Agent: "Main", Kind: "start", Observed: start, assignment: &activityAssignment{to: "/root/reviewer", text: task}},
-		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Observed: start.Add(58 * time.Second), activitySeq: 9},
-	}
-	v.blocks = [][]activityui.Block{
-		{{Kind: "start", From: "/root", To: "/root/reviewer", Label: "gpt-6-astra", Body: task}},
-		{{Kind: "message", From: "/root/reviewer", To: "/root", Body: reply}},
+	v.entries = []liveActivityRecord{
+		{Seq: 1, Agent: "Main", Kind: "start", Observed: start, assignment: &activityAssignment{to: "/root/reviewer", text: task}, blocks: []activityui.Block{{Kind: "start", From: "/root", To: "/root/reviewer", Label: "gpt-6-astra", Body: task}}},
+		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Observed: start.Add(58 * time.Second), activitySeq: 9, blocks: []activityui.Block{{Kind: "message", From: "/root/reviewer", To: "/root", Body: reply}}},
 	}
 	return v
 }
@@ -78,7 +74,7 @@ func TestConversationThreadsReplyUnderAssignment(t *testing.T) {
 func TestConversationThreadEndsAtOtherTraffic(t *testing.T) {
 	v := threadTestView()
 	// Pending: the assignment is the latest item, so it stays in full.
-	v.entries, v.blocks = v.entries[:1], v.blocks[:1]
+	v.entries = v.entries[:1]
 	pending := threadPlain(v.renderFeed(60, 40))
 	if strings.Contains(strings.Join(pending, "\n"), "lines") || len(pending) < 5 {
 		t.Fatalf("an unanswered assignment was collapsed:\n%s", strings.Join(pending, "\n"))
@@ -87,8 +83,11 @@ func TestConversationThreadEndsAtOtherTraffic(t *testing.T) {
 	// own heading, and the closing connector.
 	v = threadTestView()
 	other := activityPaneEntry{Seq: 3, Agent: "/root/other", Kind: "reply", Observed: v.entries[1].Observed, activitySeq: 8}
-	v.entries = []activityPaneEntry{v.entries[0], other, v.entries[1]}
-	v.blocks = [][]activityui.Block{v.blocks[0], {{Kind: "message", From: "/root/other", To: "/root", Body: "Unrelated."}}, v.blocks[1]}
+	v.entries = []liveActivityRecord{
+		v.entries[0],
+		{activityPaneEntry: other, blocks: []activityui.Block{{Kind: "message", From: "/root/other", To: "/root", Body: "Unrelated."}}},
+		v.entries[1],
+	}
 	text := strings.Join(threadPlain(v.renderFeed(60, 40)), "\n")
 	if strings.Contains(text, "├─") || strings.Contains(text, " lines\n") || !strings.Contains(text, "← reviewer") {
 		t.Fatalf("non-adjacent traffic joined a thread:\n%s", text)
@@ -102,18 +101,17 @@ func TestConversationThreadQuotesEarlierAssignment(t *testing.T) {
 		return activityPaneEntry{Seq: seq, Agent: "Main", Kind: "assignment", Observed: time.Now(), assignment: &activityAssignment{to: "/root/reviewer", text: text}}
 	}
 	answer := &activityui.Journal{Groups: []activityui.AnswerGroup{{Question: "First task.", Target: 1, Answers: []activityui.Answer{{Text: "First answer."}}}}}
-	v.entries = []activityPaneEntry{task(1, "First task."), task(2, "Second task."), {Seq: 3, Agent: "/root/reviewer", Kind: "final", Observed: time.Now(), activitySeq: 7, journal: &journalItem{}}}
-	v.blocks = [][]activityui.Block{
-		{{Kind: "message", From: "/root", To: "/root/reviewer", Body: "First task."}},
-		{{Kind: "message", From: "/root", To: "/root/reviewer", Body: "Second task."}},
-		{{Kind: "final", Journal: answer}},
+	v.entries = []liveActivityRecord{
+		{activityPaneEntry: task(1, "First task."), blocks: []activityui.Block{{Kind: "message", From: "/root", To: "/root/reviewer", Body: "First task."}}},
+		{activityPaneEntry: task(2, "Second task."), blocks: []activityui.Block{{Kind: "message", From: "/root", To: "/root/reviewer", Body: "Second task."}}},
+		{Seq: 3, Agent: "/root/reviewer", Kind: "final", Observed: time.Now(), activitySeq: 7, journal: &journalItem{}, blocks: []activityui.Block{{Kind: "final", Journal: answer}}},
 	}
 	feed := v.renderFeed(60, 40)
 	text := strings.Join(threadPlain(feed), "\n")
 	if !strings.Contains(text, "├─→ follow-up") || !strings.Contains(text, "├─✓ finished") || !strings.Contains(text, "↩ re: assignment") {
 		t.Fatalf("an answer to the earlier task must keep its quote:\n%s", text)
 	}
-	v.blocks[2][0].Journal.Groups[0].Target = 2
+	v.entries[2].blocks[0].Journal.Groups[0].Target = 2
 	v.runs = nil
 	if text := strings.Join(threadPlain(v.renderFeed(60, 40)), "\n"); strings.Contains(text, "↩ re:") {
 		t.Fatalf("an answer to the nearest task repeated it:\n%s", text)
@@ -130,8 +128,11 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 				reasoning.Kind, reasoning.Text = "progress", kind+" · reviewer still reading"
 				reasoning.native = &liveActivityNativeItem{wait: &activityui.Block{Kind: "progress", Body: reasoning.Text}}
 			}
-			v.entries = []activityPaneEntry{v.entries[0], reasoning, v.entries[1]}
-			v.blocks = [][]activityui.Block{v.blocks[0], parseLiveActivity(reasoning), v.blocks[1]}
+			v.entries = []liveActivityRecord{
+				v.entries[0],
+				{activityPaneEntry: reasoning, blocks: parseLiveActivity(reasoning)},
+				v.entries[1],
+			}
 			feed := v.renderFeed(width, 40)
 			plain := threadPlain(feed)
 			text := strings.Join(plain, "\n")
@@ -156,7 +157,7 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 			}
 
 			// Reasoning after the latest item is outside the thread until it continues.
-			v.entries, v.blocks = v.entries[:2], v.blocks[:2]
+			v.entries = v.entries[:2]
 			v.runs = nil
 			pending := strings.Join(threadPlain(v.renderFeed(width, 40)), "\n")
 			if strings.Contains(pending, " lines") || strings.Contains(pending, "│ The reviewer") {
@@ -176,9 +177,8 @@ func TestConversationMainToolsFollowTheirLead(t *testing.T) {
 	render := func(entries ...activityPaneEntry) []string {
 		v := newLiveActivityView()
 		v.conversation, v.feedOnly = true, true
-		v.entries = entries
 		for _, entry := range entries {
-			v.blocks = append(v.blocks, parseLiveActivity(entry))
+			v.appendEntry(entry, parseLiveActivity(entry))
 		}
 		return threadPlain(v.renderFeed(width, 40))
 	}
@@ -226,8 +226,7 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 		for i, body := range []string{"**First**\n\nOld body", "**Second**\n\nSecond body", "Latest body"} {
 			entry := activityPaneEntry{Seq: uint64(i + 1), Agent: agent, Kind: "reasoning", Text: body,
 				native: &liveActivityNativeItem{thread: "thread", turn: "turn", item: body, phase: "item/completed", collapsed: true, thought: 12 * time.Second}}
-			v.entries = append(v.entries, entry)
-			v.blocks = append(v.blocks, parseLiveActivity(entry))
+			v.appendEntry(entry, parseLiveActivity(entry))
 		}
 		feed := v.renderFeed(80, 40)
 		got := strings.Join(threadPlain(feed), "\n")
@@ -258,15 +257,15 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 func TestRosterJoinsConsecutiveReasoning(t *testing.T) {
 	v := newLiveActivityView()
 	v.childrenOnly = true
-	v.entries = []activityPaneEntry{
+	entries := []activityPaneEntry{
 		{Seq: 1, Agent: "/root/worker", Kind: "reasoning", Text: "**Before action**"},
 		{Seq: 2, Agent: "/root/worker", Kind: "tool", Text: "Read `Makefile`"},
 		{Seq: 3, Agent: "/root/worker", Kind: "reasoning", Text: "**First**"},
 		{Seq: 4, Agent: "/root/other", Kind: "tool", Text: "Read `go.mod`"},
 		{Seq: 5, Agent: "/root/worker", Kind: "reasoning", Text: "**Second**"},
 	}
-	for _, entry := range v.entries {
-		v.blocks = append(v.blocks, parseLiveActivity(entry))
+	for _, entry := range entries {
+		v.appendEntry(entry, parseLiveActivity(entry))
 	}
 	for _, live := range []bool{false, true} {
 		summary, _ := v.current(activityPaneAgent{Name: "/root/worker", Responding: live}, time.Now())

@@ -139,7 +139,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	}
 	var main []string
 	for _, entry := range u.view.entries {
-		main = append(main, entry.Agent+"|"+summary(entry))
+		main = append(main, entry.Agent+"|"+summary(entry.activityPaneEntry))
 	}
 	want := []string{
 		"You|text|Review it",
@@ -165,7 +165,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	var pane []string
 	for _, entry := range u.agents.entries {
 		if entry.Agent == "/root/reviewer" {
-			pane = append(pane, summary(entry))
+			pane = append(pane, summary(entry.activityPaneEntry))
 		}
 	}
 	wantPane := []string{

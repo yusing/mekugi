@@ -1013,14 +1013,14 @@ func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, 
 func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last, width int) []activityui.Block {
 	p := &v.painter
 	accent := p.Theme.Accent()
-	head := v.entries[first]
+	head := v.entries[first].activityPaneEntry
 	out.add(0, conversationHeading(accent+"◆"+activityui.Reset, "\x1b[1m"+accent+"journal"+activityui.Reset, "", head, width))
 	gutter := accent + "│" + activityui.Reset + " "
 	body := max(1, width-2)
 	var laid []activityui.Block
 	stamp := head.Observed.Local().Format("15:04")
 	for k := first; k <= last; k++ {
-		entry := v.entries[k]
+		entry := v.entries[k].activityPaneEntry
 		if !v.visible(entry) || entry.Kind != "journal_event" {
 			continue
 		}

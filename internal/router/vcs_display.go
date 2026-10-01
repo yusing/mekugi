@@ -1539,9 +1539,11 @@ func (v *liveActivityView) resolveCommit(key gitCommitKey) bool {
 			!slices.ContainsFunc(entry.native.segments, func(segment commandSegment) bool { return segment.commit == key }) {
 			continue
 		}
-		for j := range v.blocks[i] {
-			v.blocks[i][j].Changes = commitChanges(v.blocks[i][j].Changes, key)
-		}
+		v.mutateEntry(i, func(record *liveActivityRecord) {
+			for j := range record.blocks {
+				record.blocks[j].Changes = commitChanges(record.blocks[j].Changes, key)
+			}
+		})
 		changed = true
 	}
 	if changed {

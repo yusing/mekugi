@@ -52,7 +52,7 @@ func TestUISnapshotJournalReply(t *testing.T) {
 	render("SCREENSHOT REPLY, 100 COLUMNS", 100)
 	v.entries[0].Text = "Is the work still running?"
 	v.entries[1].Text = "Yes. The parser task is still running."
-	v.blocks[1] = parseLiveActivity(v.entries[1])
+	v.entries[1].blocks = parseLiveActivity(v.entries[1].activityPaneEntry)
 	render("STATUS REPLY WITH UNCHANGED OPEN TASKS, 100 COLUMNS", 100)
 	v.entries[0].Text = "Journal UI improvements"
 	card = &nativeJournalCard{Journal: threadJournal{Events: []journalEvent{
@@ -62,11 +62,11 @@ func TestUISnapshotJournalReply(t *testing.T) {
 		{Seq: 4, Op: "add", Path: "/4", Fields: journalNode{Path: "/4", Kind: "answer", Body: "Ordinary replies stay conversational. Work reports appear separately."}},
 	}}}
 	v.entries[1].Text = "Ordinary replies stay conversational. Work reports appear separately."
-	v.blocks[1] = parseLiveActivity(v.entries[1])
+	v.entries[1].blocks = parseLiveActivity(v.entries[1].activityPaneEntry)
 	render("REPLY WITH JOURNAL ROWS, 100 COLUMNS", 100)
 	render("SAME REPLY, 60 COLUMNS", 60)
 	v.entries[1].Text = ""
-	v.blocks[1] = parseLiveActivity(v.entries[1])
+	v.entries[1].blocks = parseLiveActivity(v.entries[1].activityPaneEntry)
 	var empty conversationLines
 	v.journalCardLines(&empty, activityPaneEntry{Seq: 9, Observed: question.Observed, journalCard: card}, 60)
 	snapshot.WriteString("EMPTY OUTCOME WITH WORK REPORT, 60 COLUMNS\n\n" + strings.Join(empty.lines, "\n") + "\n\n")

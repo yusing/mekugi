@@ -44,16 +44,16 @@ func TestAppServerSearchResultCounts(t *testing.T) {
 			}
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-			if len(u.view.blocks) != 1 || len(u.view.blocks[0]) != 1 || u.view.blocks[0][0].Results == nil || *u.view.blocks[0][0].Results != tc.want {
-				t.Fatalf("lost count: %+v", u.view.blocks)
+			if len(u.view.entries) != 1 || len(u.view.entries[0].blocks) != 1 || u.view.entries[0].blocks[0].Results == nil || *u.view.entries[0].blocks[0].Results != tc.want {
+				t.Fatalf("lost count: %+v", u.view.entries)
 			}
-			painted := strings.Join(u.view.painter.Block(u.view.blocks[0][0], 120), "\n")
+			painted := strings.Join(u.view.painter.Block(u.view.entries[0].blocks[0], 120), "\n")
 			if !strings.Contains(painted, activityui.ResultCount(count)) {
 				t.Fatalf("not muted: %q", painted)
 			}
 			restored := newAppServerSessionTestUI(t, t.TempDir())
 			restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
-			if *restored.view.blocks[0][0].Results != tc.want {
+			if *restored.view.entries[0].blocks[0].Results != tc.want {
 				t.Fatal("restored count lost")
 			}
 		})
@@ -76,13 +76,13 @@ func TestAppServerWebSearchResults(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	item := map[string]any{"id": "web", "type": "webSearch", "query": "golang"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	if len(u.view.blocks) != 1 || u.view.blocks[0][0].Results != nil {
+	if len(u.view.entries) != 1 || u.view.entries[0].blocks[0].Results != nil {
 		t.Fatal("started search count")
 	}
 	item["results"] = []any{map[string]any{"title": "one"}, map[string]any{"title": "two"}}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	if len(u.view.entries) != 1 || u.view.blocks[0][0].Results == nil || *u.view.blocks[0][0].Results != 2 {
-		t.Fatalf("completed search: %+v", u.view.blocks)
+	if len(u.view.entries) != 1 || u.view.entries[0].blocks[0].Results == nil || *u.view.entries[0].blocks[0].Results != 2 {
+		t.Fatalf("completed search: %+v", u.view.entries)
 	}
 }
 

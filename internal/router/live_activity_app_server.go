@@ -27,7 +27,7 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 		if previous.journal != nil && previous.native.question != 0 {
 			targets[previous.journal.ID] = previous.native.question
 		}
-		for _, block := range v.blocks[i] {
+		for _, block := range v.entries[i].blocks {
 			if block.Journal != nil {
 				for _, group := range block.Journal.Groups {
 					for _, answer := range group.Answers {
@@ -56,7 +56,7 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 		native: &liveActivityNativeItem{thread: thread, turn: "journal", item: item.ID, phase: "journal"}}
 	if targets[item.ID] == 0 && item.Question != "" {
 		for _, question := range slices.Backward(v.entries) {
-			if (question.native == nil || question.native.thread == thread) && journalQuestionMatches(question, questionSource) {
+			if (question.native == nil || question.native.thread == thread) && journalQuestionMatches(question.activityPaneEntry, questionSource) {
 				targets[item.ID] = question.Seq
 				break
 			}
@@ -73,7 +73,7 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 	// terminal batch stays one ordinary Activity journal-result block. A
 	// retraction removes every occurrence and adds nothing in its place.
 	for i := len(v.entries) - 1; i >= 0; i-- {
-		previous := &v.entries[i]
+		previous := v.entries[i].activityPaneEntry
 		if previous.native == nil || previous.native.thread != thread || !publication.retracted && entry.native.sameItem(previous.native) {
 			continue
 		}
@@ -84,48 +84,48 @@ func (v *liveActivityView) applyJournal(thread string, publication nativeJournal
 			previous.journalItems = slices.DeleteFunc(previous.journalItems, func(other journalItem) bool { return other.ID == item.ID })
 			if len(previous.journalItems) > 0 {
 				previous.journal = &previous.journalItems[0]
-				v.blocks[i] = parseLiveActivity(*previous)
-				v.runs = nil
+				v.replaceEntry(i, previous, parseLiveActivity(previous))
 				continue
 			}
 		} else if previous.journal.ID != item.ID {
 			continue
 		}
-		v.entries = slices.Delete(v.entries, i, i+1)
-		v.blocks = slices.Delete(v.blocks, i, i+1)
-		v.runs = nil
+		v.removeEntries(i, i+1)
 	}
 	// A retraction re-parses surviving batch members, so it also relinks them.
 	if !publication.retracted {
 		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	}
 	for i, current := range v.entries {
-		if current.native == nil || current.native.thread != thread {
+		if current.native == nil || current.native.thread != thread ||
+			!slices.ContainsFunc(current.blocks, func(block activityui.Block) bool { return block.Journal != nil }) {
 			continue
 		}
-		for _, block := range v.blocks[i] {
-			if block.Journal == nil {
-				continue
-			}
-			for j := range block.Journal.Groups {
-				group := &block.Journal.Groups[j]
-				for _, answer := range group.Answers {
-					if target := targets[answer.ID]; target != 0 {
-						group.Target = target
-						break
-					}
-				}
-				if group.Target != 0 || group.Question == "" {
+		v.mutateEntry(i, func(record *liveActivityRecord) {
+			for _, block := range record.blocks {
+				if block.Journal == nil {
 					continue
 				}
-				for _, question := range slices.Backward(v.entries[:i]) {
-					if (question.native == nil || question.native.thread == thread) && journalQuestionMatches(question, group.Question) {
-						group.Target = question.Seq
-						break
+				for j := range block.Journal.Groups {
+					group := &block.Journal.Groups[j]
+					for _, answer := range group.Answers {
+						if target := targets[answer.ID]; target != 0 {
+							group.Target = target
+							break
+						}
+					}
+					if group.Target != 0 || group.Question == "" {
+						continue
+					}
+					for _, question := range slices.Backward(v.entries[:i]) {
+						if (question.native == nil || question.native.thread == thread) && journalQuestionMatches(question.activityPaneEntry, group.Question) {
+							group.Target = question.Seq
+							break
+						}
 					}
 				}
 			}
-		}
+		})
 	}
 }
 
@@ -336,8 +336,7 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 		if previous.native != nil && previous.native.phase == "input/pending" && entry.Agent == "You" && entry.native.thread == previous.native.thread && entry.Text == previous.Text {
 			// Reconcile the local echo with Codex's authoritative user item.
 			entry.Seq, entry.Observed = previous.Seq, previous.Observed
-			v.entries[i], v.blocks[i] = entry, parseLiveActivity(entry)
-			v.invalidateEntry(entry.Seq)
+			v.replaceEntry(i, entry, parseLiveActivity(entry))
 			return true
 		}
 		if !entry.native.sameItem(previous.native) {
@@ -373,13 +372,12 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 		entry.Seq, entry.Observed = previous.Seq, previous.Observed
 		entry.native.question = previous.native.question
 		blocks := parseLiveActivity(entry)
-		for _, annotation := range v.blocks[i] {
+		for _, annotation := range v.entries[i].blocks {
 			if annotation.Kind == "filter" {
 				blocks = append(blocks, annotation)
 			}
 		}
-		v.entries[i], v.blocks[i] = entry, blocks
-		v.invalidateEntry(entry.Seq)
+		v.replaceEntry(i, entry, blocks)
 		return true
 	}
 	return false
@@ -388,9 +386,7 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 func (v *liveActivityView) removePendingInput(seq uint64) {
 	for i, entry := range v.entries {
 		if entry.Seq == seq && entry.native != nil && entry.native.phase == "input/pending" {
-			v.entries = slices.Delete(v.entries, i, i+1)
-			v.blocks = slices.Delete(v.blocks, i, i+1)
-			v.runs = nil
+			v.removeEntries(i, i+1)
 			return
 		}
 	}
@@ -399,18 +395,21 @@ func (v *liveActivityView) removePendingInput(seq uint64) {
 // Child completions contain cumulative journal snapshots. Bind each answer ID
 // once, preserving older answers' assignment targets through later follow-ups.
 func (v *liveActivityView) linkChildAnswers(seq uint64) {
-	index := slices.IndexFunc(v.entries, func(entry activityPaneEntry) bool { return entry.Seq == seq })
+	index := slices.IndexFunc(v.entries, func(entry liveActivityRecord) bool { return entry.Seq == seq })
 	if index < 0 {
 		return
 	}
 	owner := v.entries[index].Agent
 	known := make(map[string]uint64)
-	previousAnswers := make(map[string]*activityui.Answer)
+	previousAnswers := make(map[string]struct {
+		answer *activityui.Answer
+		index  int
+	})
 	for i, entry := range v.entries[:index] {
 		if entry.Agent != owner {
 			continue
 		}
-		for _, block := range v.blocks[i] {
+		for _, block := range v.entries[i].blocks {
 			if block.Journal != nil {
 				for _, group := range block.Journal.Groups {
 					for j, answer := range group.Answers {
@@ -418,7 +417,10 @@ func (v *liveActivityView) linkChildAnswers(seq uint64) {
 							continue // Tree results are deltas without item identity.
 						}
 						known[answer.ID] = group.Target
-						previousAnswers[answer.ID] = &group.Answers[j]
+						previousAnswers[answer.ID] = struct {
+							answer *activityui.Answer
+							index  int
+						}{&group.Answers[j], i}
 					}
 				}
 			}
@@ -428,50 +430,52 @@ func (v *liveActivityView) linkChildAnswers(seq uint64) {
 	normalize := func(text string) string {
 		return strings.Trim(livediff.Safe(indentJournalText(text, ""), false), "\n")
 	}
-	for _, block := range v.blocks[index] {
-		if block.Journal == nil {
-			continue
-		}
-		var groups []activityui.AnswerGroup
-		for _, group := range block.Journal.Groups {
-			var current uint64
-			if group.Question == "" && slices.ContainsFunc(group.Answers, func(answer activityui.Answer) bool { return answer.ID == "" }) {
-				// A tree result answers the latest task sent to its agent.
-				for _, entry := range slices.Backward(v.entries[:index]) {
-					if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil && entry.assignment.to == owner {
-						current = entry.Seq
-						break
+	v.mutateEntry(index, func(record *liveActivityRecord) {
+		for _, block := range record.blocks {
+			if block.Journal == nil {
+				continue
+			}
+			var groups []activityui.AnswerGroup
+			for _, group := range block.Journal.Groups {
+				var current uint64
+				if group.Question == "" && slices.ContainsFunc(group.Answers, func(answer activityui.Answer) bool { return answer.ID == "" }) {
+					// A tree result answers the latest task sent to its agent.
+					for _, entry := range slices.Backward(v.entries[:index]) {
+						if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil && entry.assignment.to == owner {
+							current = entry.Seq
+							break
+						}
+					}
+				} else if group.Question != "" {
+					for _, entry := range slices.Backward(v.entries[:index]) {
+						if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil && entry.assignment.id != "" && entry.assignment.to == owner && normalize(entry.assignment.text) == group.Question {
+							current = entry.Seq
+							break
+						}
 					}
 				}
-			} else if group.Question != "" {
-				for _, entry := range slices.Backward(v.entries[:index]) {
-					if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil && entry.assignment.id != "" && entry.assignment.to == owner && normalize(entry.assignment.text) == group.Question {
-						current = entry.Seq
-						break
+				first := len(groups)
+				for _, answer := range group.Answers {
+					target, seen := known[answer.ID]
+					if answer.ID == "" {
+						target, seen = current, true
+					} else if previous, ok := previousAnswers[answer.ID]; ok {
+						v.mutateEntry(previous.index, func(*liveActivityRecord) { previous.answer.Text = answer.Text })
+						continue // A cumulative snapshot updates, rather than repeats, an earlier answer.
 					}
+					if !seen {
+						target = current
+						known[answer.ID] = target
+					}
+					if len(groups) == first || groups[len(groups)-1].Target != target {
+						groups = append(groups, activityui.AnswerGroup{Question: group.Question, Target: target})
+					}
+					last := &groups[len(groups)-1]
+					last.Answers = append(last.Answers, answer)
 				}
 			}
-			first := len(groups)
-			for _, answer := range group.Answers {
-				target, seen := known[answer.ID]
-				if answer.ID == "" {
-					target, seen = current, true
-				} else if previous := previousAnswers[answer.ID]; previous != nil {
-					previous.Text = answer.Text
-					continue // A cumulative snapshot updates, rather than repeats, an earlier answer.
-				}
-				if !seen {
-					target = current
-					known[answer.ID] = target
-				}
-				if len(groups) == first || groups[len(groups)-1].Target != target {
-					groups = append(groups, activityui.AnswerGroup{Question: group.Question, Target: target})
-				}
-				last := &groups[len(groups)-1]
-				last.Answers = append(last.Answers, answer)
-			}
+			block.Journal.Groups = groups
 		}
-		block.Journal.Groups = groups
-	}
+	})
 	v.runs = nil
 }

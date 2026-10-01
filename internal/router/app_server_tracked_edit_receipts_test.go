@@ -21,7 +21,7 @@ func trackedEditReceiptData(thread string, calls ...string) *liveDiffData {
 
 func assertTrackedReceiptStats(t *testing.T, view *liveActivityView, entry int) {
 	t.Helper()
-	blocks := view.blocks[entry]
+	blocks := view.entries[entry].blocks
 	counts := map[string][2]int{}
 	var frame []string
 	for _, block := range blocks {
@@ -43,7 +43,7 @@ func assertTrackedReceiptStats(t *testing.T, view *liveActivityView, entry int) 
 	if !strings.Contains(ansi.Strip(painted), "+3 -1") || !strings.Contains(ansi.Strip(painted), "+1 -2") || !strings.Contains(painted, activityui.Green+"━") || !strings.Contains(painted, activityui.Red+"━") {
 		t.Fatalf("counts not painted with diff colors: %q", painted)
 	}
-	if reparsed := parseLiveActivity(view.entries[entry]); !reflect.DeepEqual(reparsed, blocks) {
+	if reparsed := parseLiveActivity(view.entries[entry].activityPaneEntry); !reflect.DeepEqual(reparsed, blocks) {
 		t.Fatalf("reparse discarded corrected projection:\n%+v\n%+v", blocks, reparsed)
 	}
 }
@@ -77,7 +77,7 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 				view.applyCapturedEdits(data)
 				assertTrackedReceiptStats(t, view, 0)
 				var outputKept, testKept, failedKept, skippedKept bool
-				for _, block := range view.blocks[0] {
+				for _, block := range view.entries[0].blocks {
 					switch {
 					case block.Verb == "Run" && block.Code == sources[0]:
 						outputKept = block.Output == output && block.ExitCode == 0
@@ -92,7 +92,7 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 					}
 				}
 				if !outputKept || !testKept || !failedKept || !skippedKept {
-					t.Fatalf("receipt lost segment output/state: %+v", view.blocks[0])
+					t.Fatalf("receipt lost segment output/state: %+v", view.entries[0].blocks)
 				}
 			}
 		})
@@ -115,14 +115,14 @@ func TestAppServerTrackedEditReceiptExactAnchor(t *testing.T) {
 	add(3, "main", "unrelated")
 	data := trackedEditReceiptData("main", "anchor", "sibling")
 	view.applyCapturedEdits(data)
-	if len(view.blocks[0]) != 0 {
-		t.Fatalf("grouped sibling duplicated aggregate: %+v", view.blocks[0])
+	if len(view.entries[0].blocks) != 0 {
+		t.Fatalf("grouped sibling duplicated aggregate: %+v", view.entries[0].blocks)
 	}
 	for _, i := range []int{1, 2} {
-		if len(view.blocks[i]) != 1 || view.blocks[i][0].EditOutcome != "completed" {
-			t.Fatalf("receipt changed unrelated thread/item: %+v", view.blocks[i])
+		if len(view.entries[i].blocks) != 1 || view.entries[i].blocks[0].EditOutcome != "completed" {
+			t.Fatalf("receipt changed unrelated thread/item: %+v", view.entries[i].blocks)
 		}
-		if _, _, _, _, ok := activityui.EditStat(view.blocks[i][0].Label); ok {
+		if _, _, _, _, ok := activityui.EditStat(view.entries[i].blocks[0].Label); ok {
 			t.Fatal("unrelated command acquired receipt counts")
 		}
 	}
@@ -130,7 +130,7 @@ func TestAppServerTrackedEditReceiptExactAnchor(t *testing.T) {
 	for range 2 {
 		view.applyCapturedEdits(data)
 		assertTrackedReceiptStats(t, view, 3)
-		if len(view.blocks[0]) != 0 {
+		if len(view.entries[0].blocks) != 0 {
 			t.Fatal("late anchor revived sibling stats")
 		}
 	}
@@ -170,7 +170,7 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 			for range 2 {
 				restored.applyCapturedEdits()
 				assertTrackedReceiptStats(t, view, 0)
-				last := view.blocks[0][len(view.blocks[0])-1]
+				last := view.entries[0].blocks[len(view.entries[0].blocks)-1]
 				if last.Verb != "Run" || last.ExitCode != 2 || last.Output == nil || strings.Join(last.Output.View().Lines, "\n") != "test failed" {
 					t.Fatalf("restored neighbor lost retained failure/output: %+v", last)
 				}
@@ -195,7 +195,7 @@ func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 		data := trackedEditReceiptData("main", "anchor", "sibling")
 		for range 2 {
 			u.view.applyCapturedEdits(data)
-			blocks := u.view.blocks[0]
+			blocks := u.view.entries[0].blocks
 			if len(blocks) != 1 || blocks[0].Verb != "Run" || blocks[0].Output != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
 				t.Fatalf("grouped sibling lost combined host output: %+v", blocks)
 			}

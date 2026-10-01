@@ -196,7 +196,7 @@ func (u *appServerUI) restoredJournalPlacements(turns []appServerHistoryTurn, it
 				continue
 			}
 			view.applyJournal(journalKey(workspace, u.thread), p)
-			entry := view.entries[len(view.entries)-1]
+			entry := view.entries[len(view.entries)-1].activityPaneEntry
 			entry.Observed = update.at
 			placement := &restoredPlacement{entry: entry, at: update.at}
 			if p.card != nil {

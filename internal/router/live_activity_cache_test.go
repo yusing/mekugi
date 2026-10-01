@@ -107,7 +107,10 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 				t.Fatal("in-place update discarded unrelated completed run storage")
 			}
 			assertLiveActivityCacheFresh(t, v)
-			_, after := liveActivityCacheRun(t, v, 3)
+			afterKey, after := liveActivityCacheRun(t, v, 3)
+			if afterKey.revision <= changedKey.revision {
+				t.Fatal("entry update did not advance its presentation cache revision")
+			}
 			if reflect.DeepEqual(before.lines, after.lines) {
 				t.Fatal("entry update did not change rendered output")
 			}

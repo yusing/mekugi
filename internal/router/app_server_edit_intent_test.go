@@ -129,8 +129,8 @@ func TestLiveActivityRequestedEditReplacedByReceipt(t *testing.T) {
 		Seq: 3, Agent: "/root/worker", Kind: "tool", CallID: "edit-call", Text: "Edit `a.go` +1 -1 · cat",
 	}}})
 	if len(view.entries) != 1 || view.entries[0].Seq != 1 || view.entries[0].Text != "Edit `a.go` +1 -1 · cat" ||
-		len(view.blocks) != 1 || len(view.blocks[0]) != 1 || view.blocks[0][0].Verb != "Edit" || view.blocks[0][0].ExitCode != 2 {
-		t.Fatalf("confirmed receipt did not replace requested edit and retain exit: entries %+v, blocks %+v", view.entries, view.blocks)
+		len(view.entries[0].blocks) != 1 || view.entries[0].blocks[0].Verb != "Edit" || view.entries[0].blocks[0].ExitCode != 2 {
+		t.Fatalf("confirmed receipt did not replace requested edit and retain exit: records %+v", view.entries)
 	}
 }
 

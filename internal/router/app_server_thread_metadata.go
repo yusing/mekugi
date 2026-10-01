@@ -54,32 +54,33 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 	}
 	for _, view := range []*liveActivityView{u.view, u.agents} {
 		for i := range view.entries {
-			entry := &view.entries[i]
-			if entry.Agent == old {
-				entry.Agent = name
-			}
-			if entry.assignment != nil {
-				if entry.assignment.from == old {
-					entry.assignment.from = name
+			view.mutateEntry(i, func(entry *liveActivityRecord) {
+				if entry.Agent == old {
+					entry.Agent = name
 				}
-				if entry.assignment.to == old {
-					entry.assignment.to = name
+				if entry.assignment != nil {
+					if entry.assignment.from == old {
+						entry.assignment.from = name
+					}
+					if entry.assignment.to == old {
+						entry.assignment.to = name
+					}
 				}
-			}
-			// Preserve merged exits, filters and answer links while renaming
-			// only the display identities in already-parsed blocks.
-			for j := range view.blocks[i] {
-				block := &view.blocks[i][j]
-				if block.From == old {
-					block.From = name
+				// Preserve merged exits, filters and answer links while renaming
+				// only the display identities in already-parsed blocks.
+				for j := range entry.blocks {
+					block := &entry.blocks[j]
+					if block.From == old {
+						block.From = name
+					}
+					if block.To == old {
+						block.To = name
+					}
+					if block.Owner == old {
+						block.Owner = name
+					}
 				}
-				if block.To == old {
-					block.To = name
-				}
-				if block.Owner == old {
-					block.Owner = name
-				}
-			}
+			})
 		}
 		if view.selected == old {
 			view.selected = name

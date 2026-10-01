@@ -133,12 +133,9 @@ func (u *terminalUI) openEntry(view *liveActivityView, seq uint64) bool {
 		if entry.Seq != seq {
 			continue
 		}
-		blocks := parseLiveActivity(entry)
-		if index < len(view.blocks) {
-			blocks = slices.Clone(view.blocks[index])
-		}
+		blocks := slices.Clone(view.entries[index].blocks)
 		if entry.journalCard != nil {
-			blocks = []activityui.Block{view.journalCardBlock(entry)}
+			blocks = []activityui.Block{view.journalCardBlock(entry.activityPaneEntry)}
 		}
 		for i := range blocks {
 			blocks[i].Source = entry.Seq
@@ -156,7 +153,7 @@ func (u *terminalUI) openAgent(agent string) {
 	var pages []activityui.Block
 	for _, entry := range u.agents.entries {
 		if entry.Agent == agent {
-			blocks := parseLiveActivity(entry)
+			blocks := parseLiveActivity(entry.activityPaneEntry)
 			for i := range blocks {
 				blocks[i].Source = entry.Seq
 			}
@@ -188,17 +185,17 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 				return nil
 			}
 			pages := []activityui.Block{{Source: source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: appServerDisplayCommand(entry.native.command), Lang: "bash", Output: entry.native.output, Tail: entry.outputTail, TailOmitted: entry.outputOmit, Running: entry.native.running, Body: "Per-command output boundaries were not retained for this invocation."}}
-			setCommandTiming(pages, entry)
+			setCommandTiming(pages, entry.activityPaneEntry)
 			return pages
 		}
 		var pages []activityui.Block
-		for _, block := range commandSegmentBlocks(entry) {
+		for _, block := range commandSegmentBlocks(entry.activityPaneEntry) {
 			if block.Segment {
 				block.Source = source
 				pages = append(pages, block)
 			}
 		}
-		setCommandTiming(pages, entry)
+		setCommandTiming(pages, entry.activityPaneEntry)
 		return pages
 	}
 	return nil
@@ -303,18 +300,18 @@ func (d *outputDialog) refreshPages() {
 					}
 					if origin.Verb == "Run" && entry.native != nil {
 						timed := []activityui.Block{origin}
-						setCommandTiming(timed, entry)
+						setCommandTiming(timed, entry.activityPaneEntry)
 						origin = timed[0]
 						origin.Running = entry.native.running
 					} else if origin.Kind != "op" && origin.Kind != "reads" {
 						if entry.journalCard != nil {
-							origin = d.view.journalCardBlock(entry)
-						} else if index < len(d.view.blocks) && (origin.Kind != "summary" && len(d.view.blocks[index]) == 1 || origin.Kind == "summary" && origin.Section < len(d.view.blocks[index])) {
+							origin = d.view.journalCardBlock(entry.activityPaneEntry)
+						} else if origin.Kind != "summary" && len(d.view.entries[index].blocks) == 1 || origin.Kind == "summary" && origin.Section < len(d.view.entries[index].blocks) {
 							section := 0
 							if origin.Kind == "summary" {
 								section = origin.Section
 							}
-							current := d.view.blocks[index][section]
+							current := d.view.entries[index].blocks[section]
 							current.Source = origin.Source
 							if current.Verb == "" {
 								current.Verb = origin.Verb

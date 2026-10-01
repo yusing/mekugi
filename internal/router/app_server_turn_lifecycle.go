@@ -111,7 +111,7 @@ func (u *appServerUI) endTurnWaits(thread, turn string, now time.Time) []activit
 			native.phase, native.wait = "turn/completed", &block
 			entry.native, entry.Text = &native, block.ProgressText()
 			entry.Seq, entry.Observed = u.session.next(), now
-			entries = append(entries, entry)
+			entries = append(entries, entry.activityPaneEntry)
 		}
 	}
 	return entries

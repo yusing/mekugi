@@ -136,13 +136,13 @@ func TestNativeHostEditNavigationRequiresCompletedSuccessfulItem(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	for _, tc := range []struct{ phase, status string }{{"item/started", ""}, {"item/completed", "failed"}, {"item/completed", "declined"}, {"item/completed", "inProgress"}} {
 		item := appServerItem{Type: "fileChange", Status: tc.status, Changes: []appServerFileChange{{Path: "a.go", Diff: "+not_confirmed\n"}}}
-		u.view.entries = []activityPaneEntry{{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item, u.session.cwd, tc.phase)}}}
+		u.view.entries = []liveActivityRecord{{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item, u.session.cwd, tc.phase)}}}
 		if u.shell.openActivityEdit(u.view, 1, "a.go") || u.shell.output != nil {
 			t.Fatalf("%s/%s opened a completed edit", tc.phase, tc.status)
 		}
 	}
 	item := appServerItem{Changes: []appServerFileChange{{Path: "first.go", Diff: "+first\n"}, {Path: "second.go", Diff: "+second\n"}}}
-	u.view.entries = []activityPaneEntry{{Seq: 2, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item, u.session.cwd, "item/completed")}}}
+	u.view.entries = []liveActivityRecord{{Seq: 2, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item, u.session.cwd, "item/completed")}}}
 	if u.shell.openActivityEdit(u.view, 2, "missing.go") || !u.shell.openActivityEdit(u.view, 2, "second.go") || u.shell.output.page != 1 {
 		t.Fatal("host diff did not resolve the exact clicked path")
 	}
@@ -151,7 +151,7 @@ func TestNativeHostEditNavigationRequiresCompletedSuccessfulItem(t *testing.T) {
 func TestUISnapshotNativeCompletedHostEditDialog(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	item := appServerItem{Changes: []appServerFileChange{{Path: "internal/router/batch.go", Diff: "@@ -1 +1 @@\n-before_batch\n+after_batch\n"}}}
-	u.view.entries = []activityPaneEntry{{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item, u.session.cwd, "item/completed")}}}
+	u.view.entries = []liveActivityRecord{{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item, u.session.cwd, "item/completed")}}}
 	if !u.shell.openActivityEdit(u.view, 1, "internal/router/batch.go") {
 		t.Fatal("host edit did not open")
 	}

@@ -205,7 +205,9 @@ func TestTerminalUISelectionKeepsPressedHitTarget(t *testing.T) {
 		u.agents = newLiveActivityView()
 		u.diff = newLiveDiffTerminalController(nil, "", nil)
 		t.Cleanup(u.diff.close)
-		u.main.view.entries = []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "First target"}, {Seq: 2, Agent: "Main", Kind: "text", Text: "Advanced target"}}
+		for _, entry := range []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "First target"}, {Seq: 2, Agent: "Main", Kind: "text", Text: "Advanced target"}} {
+			u.main.view.appendEntry(entry, parseLiveActivity(entry))
+		}
 		old, next := liveActivitySnippet{run: 1}, liveActivitySnippet{run: 2}
 		if question {
 			u.main.view.feedQuestions = []uint64{1}

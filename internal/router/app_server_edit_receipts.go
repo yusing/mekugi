@@ -67,10 +67,10 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 			if !found {
 				continue
 			}
-			entry := v.entries[i]
+			entry := v.entries[i].activityPaneEntry
 			exit := 0
 			var batch *activityui.Block
-			for _, block := range v.blocks[i] {
+			for _, block := range v.entries[i].blocks {
 				if block.BatchExit {
 					batch = new(block)
 					continue
@@ -127,7 +127,7 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 				blocks := parseLiveActivity(entry)
 				// Reparsed tracked blocks already carry each segment's own exit.
 				// A receipt must not spread one failure to successful siblings.
-				if len(v.blocks[i]) > 0 && len(entry.native.segments) == 0 {
+				if len(v.entries[i].blocks) > 0 && len(entry.native.segments) == 0 {
 					for j := range blocks {
 						blocks[j].ExitCode = exit
 					}
@@ -135,8 +135,7 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 				if batch != nil {
 					blocks = append(blocks, *batch)
 				}
-				v.entries[i], v.blocks[i] = entry, blocks
-				v.invalidateEntry(entry.Seq)
+				v.replaceEntry(i, entry, blocks)
 			}
 		}
 	}

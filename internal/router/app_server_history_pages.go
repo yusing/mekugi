@@ -364,7 +364,7 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn appS
 		}
 	}
 	if !u.historyLoading.initial {
-		retained := slices.ContainsFunc(u.agents.entries, func(entry activityPaneEntry) bool { return entry.Seq == h.firstSeq })
+		retained := slices.ContainsFunc(u.agents.entries, func(entry liveActivityRecord) bool { return entry.Seq == h.firstSeq })
 		u.agents.insertHistory(before, func(entry activityPaneEntry) bool {
 			return retained && entry.Seq == h.firstSeq || !retained && entry.native != nil && entry.native.thread == h.info.ID
 		})
@@ -372,14 +372,14 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn appS
 			// A failed initial read may already have placed this retained
 			// assignment/message in Main without its Activity link. The same
 			// source observation keeps its identity through the pending slots.
-			existing := slices.IndexFunc(u.view.entries, func(entry activityPaneEntry) bool {
+			existing := slices.IndexFunc(u.view.entries, func(entry liveActivityRecord) bool {
 				return p.entry.assignment != nil && entry.assignment == p.entry.assignment || p.entry.message != nil && entry.message == p.entry.message
 			})
 			if existing >= 0 {
 				if p.link != nil && mainActivityLinked(p.entry) {
-					u.view.entries[existing].activitySeq = *p.link
-					u.view.blocks[existing] = parseLiveActivity(u.view.entries[existing])
-					u.view.invalidateEntry(u.view.entries[existing].Seq)
+					entry := u.view.entries[existing].activityPaneEntry
+					entry.activitySeq = *p.link
+					u.view.replaceEntry(existing, entry, parseLiveActivity(entry))
 				}
 				continue
 			}
@@ -415,7 +415,7 @@ func (u *appServerUI) hydrateChildHistoryMetadata(h *appServerChildHistory) {
 func (v *liveActivityView) relinkHistoryAnswers(owner string) {
 	for i, entry := range v.entries {
 		if entry.Agent == owner && entry.Kind == "final" {
-			v.blocks[i] = parseLiveActivity(entry)
+			v.replaceEntry(i, entry.activityPaneEntry, parseLiveActivity(entry.activityPaneEntry))
 		}
 	}
 	for _, entry := range v.entries {
@@ -448,7 +448,7 @@ func (v *liveActivityView) insertHistory(before uint64, belongs func(activityPan
 			indices = append(indices, i)
 		}
 	}
-	at := slices.IndexFunc(indices, func(i int) bool { return belongs(v.entries[i]) })
+	at := slices.IndexFunc(indices, func(i int) bool { return belongs(v.entries[i].activityPaneEntry) })
 	if at < 0 {
 		at = len(indices)
 	}
@@ -459,14 +459,11 @@ func (v *liveActivityView) insertHistory(before uint64, belongs func(activityPan
 		}
 	}
 	indices = slices.Insert(indices, at, added...)
-	entries, blocks := slices.Clone(v.entries), slices.Clone(v.blocks)
-	for i, old := range indices {
-		v.entries[i], v.blocks[i] = entries[old], blocks[old]
-	}
-	v.runs, v.historyOrder = nil, true
+	v.reorderEntries(indices)
+	v.historyOrder = true
 	clear(v.events)
 	for _, entry := range v.entries {
-		if v.standalone(entry) {
+		if v.standalone(entry.activityPaneEntry) {
 			if v.events == nil {
 				v.events = make(map[string]liveActivityEvent)
 			}

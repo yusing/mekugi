@@ -502,7 +502,8 @@ func TestAppServerAnchoredHistoryRebindsCumulativeAnswersChronologically(t *test
 			}
 		}
 		counts := make(map[string]int)
-		for _, blocks := range v.blocks {
+		for _, record := range v.entries {
+			blocks := record.blocks
 			for _, block := range blocks {
 				if block.Journal == nil {
 					continue

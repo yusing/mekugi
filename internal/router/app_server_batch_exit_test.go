@@ -33,7 +33,8 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 			if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "Ran   shell batch · exit 1") || !strings.Contains(got, "┆ conflict") {
 				t.Fatalf("missing unique batch result:\n%s", got)
 			}
-			for _, blocks := range view.blocks {
+			for _, record := range view.entries {
+				blocks := record.blocks
 				for _, block := range blocks {
 					if !block.BatchExit && (block.ExitCode != 0 || len(block.Tail) != 0) {
 						t.Fatalf("batch result attributed to an operation: %+v", block)
