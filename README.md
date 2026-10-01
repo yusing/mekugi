@@ -14,64 +14,46 @@ sessions, and patch review. No fork, no config edits, no daemon.
 
 ## Features
 
-- **Stock Codex workflow.** Code Mode JavaScript, `exec_command`, and
-  `apply_patch` behave as usual. Mekugi never re-runs an edit and changes no
-  configuration or instruction files. The native composer lets you
-  [steer a running turn](#composer).
-- **Native terminal UI.** [Main, Diff, Activity, Journal, and Agents](#native-ui) share
-  one terminal without an external pane manager. The composer works like
-  Codex's and adds [`/btw` side questions](#composer) that don't interrupt
-  Main, plus `/model`, `/effort`, and `/tier` pickers.
-- **Task journal.** A live plan strip shows current work and what remains.
-  Open the Journal pane for task states, timestamps and notes. Separate work reports
-  show new results and remaining tasks without another model request; ordinary replies
-  stay in the conversation.
-- **Live subagent activity.** Start notices show model and effort. Progress and
-  message excerpts appear in the main conversation, or live in Mekugi’s
-  [agents pane](#agents-pane), whose roster shows each agent's elapsed time,
-  provider round trips, and cumulative edit activity, with the composed net
-  outcome in its header. Encrypted messages stay private.
-- **Live diffs.** Mekugi’s [live diff pane](#live-diff-pane) streams tool calls
-  and provisional diffs as they arrive, then shows the saved edits. Click an
-  Edit event to jump to its captured file and hunk.
-- **Readable command output.** With `mekugi-exec` installed, each command in a
-  list such as `cd app && make && make test` shows its own output and exit
-  status and elapsed time. Click a command or read to open its retained output
-  in an [output dialog](#output-dialog) with one tab per command, search, and text
-  selection.
-- **File attachments.** [Select files with `@`](#composer) to send text contents
-  directly to the agent, without a separate file-read tool call. **Attached**
-  events confirm included files; **Attach failed** events explain omissions,
-  such as oversized or unreadable files.
-- **Recoverable output and change review.** [Session helpers](#wrapped-session-helpers)
-  continue truncated output without rerunning, and track edits from
-  `apply_patch` and shell commands, with any gaps in coverage labeled. Edits can
-  be reverted and reapplied by ID. Captured edits give the agent their durable
-  change IDs and compact summaries in the completed tool result.
-- **Fewer tokens and round trips.** Bounded and batched reads, semantic symbol
-  lookup, structural outlines, scoped change IDs, and child change handoffs.
-- **Leaner instructions.** Blocks marked with `<!-- mekugi:omit -->` are
-  [stripped](#configuration-and-troubleshooting) before forwarding, without
-  changing caller-owned policy outside those blocks.
-- **Resume, fork, and compaction continuity.** [Replay records](#replay-storage)
-  keep tool history and references across resume, `/fork`, and `/side`. After
-  compaction, a Codex hook restores a bounded journal and change snapshot. The
-  hook is on by default; [opt out](#configuration-and-troubleshooting) with
-  `--post-compact-recovery=false`.
-- **Custom tools.** Add your own [plugins](doc/spec/plugin.md) as JavaScript
-  modules.
-- **Usage and cost.** The native Agents roster shows per-thread usage and cost.
-  The `/session` dialog shows launch-wide request metrics, transport and cache
-  diagnostics. Costs are API estimates, not subscription charges.
-- **Diagnostics.** [Replay session UI](#replay-a-session) with adjustable speed and
-  CPU/heap profiles, [inspect past sessions](#inspect-a-session) offline, record
-  debug evidence, or let agents [report issues](#configuration-and-troubleshooting)
-  to your own command.
-- **Other providers and tiers.** [Grok](#grok-models) and
-  [OpenCode Go or Zen](#opencode-go-and-zen) run alongside OpenAI models.
-  [Service tiers](#mekugi-settings) can be set per model.
+### Agent-facing
 
-These savings don't guarantee better results on every task. For controlled
+- **Fewer tokens and round trips.** [Session helpers](#wrapped-session-helpers)
+  offer bounded and batched reads, semantic symbol lookup, and structural outlines.
+- **Recoverable output and changes.** Continue omitted output without rerunning,
+  and review, revert, or reapply captured edits by ID. Gaps in coverage are labeled.
+- **Leaner instructions.** [Omit marked instruction blocks](#configuration-and-troubleshooting)
+  for the session without changing instruction files or unmarked policy.
+- **Task journal.** Record plans, results, constraints, and blockers as durable
+  work state, rather than repeating status summaries in conversation.
+- **Session continuity.** Retained journal and change evidence survives resume,
+  forks, side threads, and compaction, subject to [storage retention](#replay-storage).
+- **Custom tools.** Extend the agent's capabilities with your own
+  [JavaScript tool plugins](doc/spec/plugin.md).
+
+### User-facing
+
+- **Native terminal UI.** [Main, Diff, Activity, Journal, and Agents](#native-ui)
+  share one terminal without an external pane manager.
+- **Task journal.** Plans, results, and blockers stay visible without extra model
+  requests for status reports. See the [Journal pane](#journal-pane).
+- **Live subagent activity.** See model, effort, progress, and message excerpts
+  in Main or the [Agents pane](#agents-pane), alongside elapsed time and edit activity.
+- **Live diffs.** [Inspect streaming previews and saved edits](#live-diff-pane);
+  click an Edit event to open its captured file and hunk.
+- **Readable command output.** Open [searchable retained output](#output-dialog).
+  With `mekugi-exec`, command lists show each command's output, exit status, and timing.
+- **File and skill attachments.** [Send selected contents directly](#composer)
+  without a separate agent read; unreadable or oversized attachments have explicit notices.
+- **Composer additions.** Mention selected messages or diffs, and ask
+  [`/btw` side questions](#composer) without interrupting Main.
+- **Usage and cost.** See per-thread usage and estimated API costs in Agents,
+  plus launch-wide usage coverage, retries, and diagnostics in [`/session`](#metrics).
+- **Other providers and tiers.** Use [Grok](#grok-models) or
+  [OpenCode Go and Zen](#opencode-go-and-zen), and choose [service tiers](#mekugi-settings).
+- **Diagnostics.** [Inspect past sessions](#inspect-a-session), record debug evidence,
+  or [replay the UI offline](#replay-a-session) with CPU and heap profiling.
+
+Bounded output and leaner instructions aim to reduce tokens and round trips;
+these savings don't guarantee better results on every task. For controlled
 comparisons, use [codex-setup-ab](https://github.com/yusing/codex-setup-ab).
 
 ## Install
@@ -90,12 +72,10 @@ mekugi codex --yolo
 ```
 
 Add `$GOBIN`, or `$(go env GOPATH)/bin` if that is unset, to your `PATH`. Mekugi
-opens its native Main, Diff, Activity, Journal, and Agents UI.
+opens its native terminal workspace.
 Interactive launches currently require explicit `--yolo` (no approvals or sandbox).
-Codex remains the agent runtime and tool executor. With `mekugi-exec` installed
-beside `mekugi`, a command list such as `cd app && make && make test` shows each
-command with its own output and exit status. Without it, the list shows as one
-command.
+With `mekugi-exec` installed beside `mekugi`, command lists show separate output
+and exit status for each command. Without it, they show as one command.
 
 From a checkout with **Bun** and **Make**, run `make install`. It regenerates the
 embedded plugins and installs `mekugi` and `mekugi-exec`. `make uninstall`
@@ -115,44 +95,36 @@ mekugi codex exec "Explain this repository"
 mekugi codex --yolo resume 'CONVERSATION_ID'
 ```
 
-Each invocation:
+### Launch behavior and limits
 
-- starts a private router on a random loopback port and stops it when Codex
-  exits. Independent sessions can run side by side. The native UI sends turn
-  interrupts to Codex; noninteractive commands keep their exit status. During startup, Ctrl-C cancels without
-  launching Codex. After native UI exit, the summary shows commands to resume with the original
-  launch options or replay offline, including the debug directory when available.
-- uses the fixed ChatGPT upstream. Standalone serving, fixed ports, custom
-  provider endpoints, and `--oss` are not supported.
-- forces `include_collaboration_mode_instructions=false`, and routes the
-  legacy `gpt-5.6-terra` to `gpt-6-sol`.
-- explicitly selects standard cybersecurity safeguards for ChatGPT requests,
-  disabling automatic Daybreak selection and overriding client Daybreak choices.
-- skips Codex model prewarm by sending Codex-to-router turns over HTTP. The
-  router still connects to ChatGPT over WebSockets. Codex owns native steering
-  and instant interruption; direct Responses WebSocket controls are not used
-  by the wrapped HTTP client.
-  Your network must allow secure WebSockets. Mekugi falls back to HTTP only when
-  ChatGPT explicitly rejects the upgrade, and never silently replays a request.
-- keeps private [replay records](#replay-storage) on disk, including tool inputs
-  and change evidence, so resumed and forked conversations keep their history.
-- enables Codex's native session tracing in a private temporary directory and
-  removes it at shutdown. The trace includes prompts and responses and has no
-  disk cap. A forced kill can leave it behind.
+Independent sessions can run side by side. Ctrl-C during startup cancels the
+launch. On native UI exit, Mekugi prints commands to resume with the original
+options or replay offline. Noninteractive commands retain Codex's exit status.
 
-These overrides last only for the invocation; no configuration files change.
+- ChatGPT login is required. Standalone serving, fixed ports, custom provider
+  endpoints, and `--oss` are not supported.
+- Your network must allow secure WebSockets for ChatGPT. Mekugi falls back to
+  HTTP only when ChatGPT explicitly rejects the upgrade, and never silently
+  replays a request.
+- Invocation-only overrides disable collaboration-mode instructions, route
+  `gpt-5.6-terra` to `gpt-6-sol`, and select standard cybersecurity safeguards
+  rather than Daybreak. No configuration files change.
+- Private [replay records](#replay-storage) include tool inputs and change
+  evidence. Native Codex tracing also records prompts and responses in a
+  temporary directory with no disk cap; it is removed at shutdown, but a
+  forced kill can leave it behind.
 
 ### Headless slice plans
 
 `mekugi codex headless --yolo` reads one prompt from stdin and runs a new
-app-server thread to completion, including any planned slice continuations:
+session to completion, including any planned slice continuations:
 
 ```sh
 mekugi --journal-compaction=slice codex headless --yolo -m gpt-6-sol < prompt.txt
 ```
 
 Use `off` to continue slices in one context, or `slice` to reset between them.
-The headless client shares the native UI's reset policy with no countdown delay.
+Unlike the native UI, headless slice continuations have no countdown delay.
 It accepts model and `-c` options, not resume or positional prompts. Prompts must
 be nonempty and at most 16 MiB. Like the native UI, it requires explicit `--yolo`.
 It does not answer approval or user-input questions: those end the run with an
@@ -182,7 +154,7 @@ exit means the run or its shutdown failed. Ordinary `codex exec` is unchanged.
 and capture still works.
 
 If a detached multiplexer hides your mosh connection, use
-`mekugi --ansi-faint=off codex` for readable dimmed text. The setting applies only
+`mekugi --ansi-faint=off codex --yolo` for readable dimmed text. The setting applies only
 to that invocation and does not modify terminal configuration.
 
 ### Grok models
@@ -254,11 +226,10 @@ See the [native UI contract](doc/spec/native_ui.md).
 
 ### Composer
 
-The composer works like Codex's: input history and editing keys, `@` file and
-`$` skill pickers, `/skills`, Ctrl+V image paste, Ctrl+G to edit in `$EDITOR`,
-Enter to steer and Tab to queue during a turn, Esc or Ctrl-C to interrupt,
-Shift+Up/Down for reasoning, `/model`, and `/copy`. Type `?` in an empty
-composer for the full shortcut list.
+Use Codex's familiar input editing, file and skill pickers, steering, and
+queuing: Enter steers a running turn; Tab queues input. Type `?` in an empty
+composer for the full shortcut list. The
+Mekugi-specific controls and attachment behavior are described below.
 
 Use `/lock` to prevent Esc or Ctrl-C from interrupting work and to disable
 Ctrl-C exit on an empty draft. `/unlock` restores those shortcuts. Draft clearing,
@@ -267,39 +238,23 @@ exit when idle. A persistent Locked indicator shows the protection, which is
 restored with the session on resume. It does not block explicit commands or
 steering new input.
 
-With Codex 0.159.0, opt in to instant steering with
-`mekugi codex --yolo --enable instant_interrupt` (or
-`-c features.instant_interrupt=true`). New input can then steer during model
-responses and long-running Code Mode calls instead of waiting for them to finish.
-Running Code Mode cells continue in the background; steering does not terminate
-them. This is off by default; `--disable instant_interrupt` opts out. The same
-options work with `resume`.
-
 Mekugi differs in these ways:
 
 - **File contents attach.** `@!` also finds ignored files; neither picker lists
   VCS metadata such as `.git`. Selected text files attach their contents when
   you submit or queue the prompt, and large or unreadable files produce an
-  explicit omission notice instead of truncated content. Bound file references
-  use the same green highlighting in the composer and submitted messages.
+  explicit omission notice instead of truncated content.
 - **Select to mention.** Drag across Main, Activity, or the saved Diff and press
   `r` to add the selection as one short mention, such as `[Selected message]` or
   `[Selected diff hunk @amber1:42-45]`. The selected text is sent with the
-  prompt without filling the composer. Selection copying and mentions preserve
-  Markdown formatting, selected table cells, code whitespace, and hard breaks,
-  without panel decoration.
+  prompt without filling the composer or losing its formatting.
 - **Skill references attach automatically.** Complete enabled `$skill-name`
-  references bind when you finish the word or submit a pasted prompt. Composer
-  and transcript use the same amber highlighting; unknown, disabled, or
-  ambiguous names stay plain text. With `skills-mgr`, managed skills attach
-  their actual instructions automatically, with an `Attached skill` receipt;
+  references are recognized when you finish the word or submit a pasted prompt;
+  unknown, disabled, or ambiguous names stay plain text. With `skills-mgr`, managed
+  skills attach their actual instructions automatically, with an `Attached skill` receipt;
   unreadable or oversized contents produce an explicit omission notice.
-  Without it, contents come from the skill file identified by Codex's metadata. Manage
-  managed skills with `skills-mgr`; `/skills` toggles Codex-discovered skills.
-- **Answer images attach.** Paste an image or its file path into a question
-  answer to get the same `[Image N]` attachment as in the main composer.
-  Synchronous answers send their images in a companion message after the
-  question is resolved; asynchronous answers send them with the reply.
+  Without it, contents come from Codex-discovered skill files. Use `skills-mgr`
+  to manage its skills; `/skills` toggles Codex-discovered skills.
 - **Waiting messages combine.** Steers typed while an earlier one is still
   sending, and queued messages, each appear as one stack and send as one message,
   one entry per line. Alt+Up or Shift+Left returns all locally waiting input to
@@ -315,14 +270,8 @@ Mekugi differs in these ways:
   available while idle and does not delete saved sessions or filesystem changes.
   Interrupt returns unsent input to the composer without automatically resending
   it. Interrupting an uncommitted first message leaves an empty transcript.
-- **Reasoning stays visible.** Main and Activity display short summaries directly,
-  adding `for <duration>` without a preceding period when timing is available.
-  Longer summaries roll through like command output and remain readable until
-  later activity settles. Titled sections collapse to their own titles; untitled
-  reasoning uses `Thought`. Click a section to read its full text in a dialog.
 - **Live diffs.** Edits temporarily replace Main's transcript or the editing
-  agent's Activity transcript, leaving other agents visible. Main fits as many
-  files as possible with at least 15 rows each; overflow follows the newest file.
+  agent's Activity transcript, leaving other agents visible.
   Ctrl-B e cycles and pins files; Ctrl-B r resumes Main's live following. Completed
   edits stay together until the batch settles, then the transcript returns.
   `/live` toggles the view; `/live on` or `/live off` applies directly for the
@@ -357,14 +306,10 @@ pane layout, keyboard focus, the agent roster, Activity history, and the
 session's retained Diff changes. Scroll positions, filters, selections, and
 drafts are not restored. Successfully applied settings survive a fresh launch,
 including priority and default selections made before the first turn. Storage
-failures are reported in Activity. Older sessions can recover settings from the
-last 8 MiB of Codex history, with newer history taking precedence over retained preferences.
-If no saved model settings are available, a notice explains that Codex defaults
-and explicit flags apply instead. Main histories larger than 16 MiB cannot resume
-in the native UI. Paginated child histories load recent Activity first; older
-content remains available on demand rather than delaying the conversation.
-Codex does not save an empty conversation before its first turn; retained
-settings do not make an unsaved conversation resumable.
+failures are reported in Activity. If no saved model settings are available, a
+notice explains that Codex defaults and explicit flags apply instead. Main
+histories larger than 16 MiB cannot resume in the native UI. Older child activity loads on demand.
+Codex does not save an empty conversation before its first turn.
 If Codex rejects restoring default reasoning, waiting input returns to the
 composer and stays blocked until you choose `/effort VALUE` or restart resume.
 
@@ -409,30 +354,15 @@ come first; subtrees start expanded and collapse oldest-first when space runs sh
 Use `j`/`k` or arrows to select,
 `Space` to expand or collapse, `d` to read full details, `Enter` to open a row, and
 `c` to copy the selected path. Click a `▸` marker to expand it, or click a row to open it.
-When requests without workspace metadata keep a separate unscoped journal, the title
-offers `n` to switch between it and the workspace journal. Notes
-from the other journal still appear in Main.
 `Esc` returns to Main. Blocked tasks show their reason; notes have no state label.
 Delegated journals appear under their owning task, or in an Agents group. Press
-`c` to copy their full journal address; rows and details show readable agent names
-and local paths instead of internal mount IDs. Press
-`Enter` on, or click, a mounted agent to open its Activity. Lifecycle labels reflect observed
-host state; a provider answer alone does not mark an agent complete.
+`c` to copy their full journal address. Press `Enter` on, or click, an agent to
+open its Activity.
 
-The plan strip stays above the composer while work remains, preferring working
-tasks over blocked or pending tasks, then the newest update within that state.
-Main shows task
-transitions, plus notes while Journal is hidden. Answers stay in the conversation.
-When there are new work updates, a separate journal card shows the new work and
-unchanged remaining tasks without repeating changed tasks. It previews the newest
-three notes and short blocker reasons; open the card for complete evidence and
-older notes. Completed reports taller than eight body rows collapse to a compact
-disclosure; small cards stay readable, and clicking still opens the full report.
-An unchanged plan does not add a card to an ordinary reply.
-
-With Codex `exec --json`, child journal milestones appear in Main's next response,
-separately from the child's final result. A host tool wait can delay those updates;
-the native Journal and Activity panes remain live while Main waits.
+The plan strip stays above the composer while work remains. Main shows task
+transitions and, while Journal is hidden, notes. Work updates appear in separate
+cards; open a card for full evidence and older notes. Ordinary answers remain
+in the conversation, and an unchanged plan does not add a report card.
 
 ### Agents pane
 
@@ -442,8 +372,8 @@ with their elapsed time, provider round trips, and cumulative edited lines as
 `+N -N`. The roster header's `+N -N` reports the final composed outcome
 across agents, so superseded edits and files created then deleted do not inflate it.
 It uses recorded changes, not a live Git diff; incomplete or inconsistent evidence
-shows `?`. Main's conversation and progress stay in Main. Token and cost figures
-come from the router's usage accounting, not an additional app-server total.
+shows `?`. Main's conversation and progress stay in Main. Usage and estimated
+API costs appear per thread; see [Metrics](#metrics) for launch-wide totals.
 
 - Click an agent to inspect its activity; reply links address that agent.
 - In Activity or Agents, `a` toggles selected-agent filtering. The hint reads
@@ -465,12 +395,10 @@ Click a command, program, read, or long-content excerpt in Main or Activity to
 open its full content in the shared dialog above the panes, without expanding
 the transcript. Read source and unified diffs use syntax colors. When
 `mekugi-exec` recorded a command list, each command gets its own tab with its
-output, exit status, start/end timestamps and measured duration. Decorative
-section headings are omitted. Older history without timing evidence shows no
-per-command duration; an invocation's total is never reused for its commands.
+output, exit status, start/end timestamps and measured duration. Older history
+without timing evidence shows no per-command duration.
 Without retained output boundaries, the dialog labels the output as combined.
 
-- Tab paths shorten from the front, retaining the nearest directories and filename.
 - Left/Right or a click switches tabs. `j`/`k`, `PgUp`/`PgDn`, and `g`/`G`
   scroll; live output follows its tail until you scroll up.
 - `/` searches, and `n`/`N` step through matches.
@@ -480,31 +408,15 @@ Without retained output boundaries, the dialog labels the output as combined.
 
 See [activity display](doc/spec/activity_display.md).
 
-## Editing and execution
-
-Codex owns editing and execution. Mekugi passes stock `apply_patch` and
-`exec_command` arguments and results through unchanged. In Code Mode,
-`Promise.allSettled` runs independent calls in parallel and retains each outcome:
-
-```js
-const results = await Promise.allSettled([
-  tools.exec_command({cmd: "rg -n 'TODO' src"}),
-  tools.exec_command({cmd: "mcat README.md 1:80"}),
-]);
-for (const result of results) {
-  if (result.status === "fulfilled") text(result.value.output);
-  else text(String(result.reason));
-}
-```
-
-Long-running commands continue through Codex's `write_stdin` session IDs.
+## Recoverable output and change review
 
 ### Wrapped-session helpers
 
-These executables are on Codex's `PATH` only inside a wrapped session. The agent
-learns them from its tool guidance, and you can ask it to use them.
+Session helpers let the agent read less output and recover what it omitted,
+or review and undo recorded edits. They are available only inside a wrapped
+session; you can ask the agent to use them.
 
-| Command | Purpose | Extra prerequisite on the executor's `PATH` |
+| Command | Purpose | Requirements |
 | --- | --- | --- |
 | `mread` | Continue bounded retained output by reference | Access to the router's replay directory |
 | `mrun` | Bound a foreground command's output and optionally keep its ending | The wrapped command |
@@ -539,9 +451,11 @@ and [execution contract](doc/spec/execution.md).
 
 ## Metrics
 
-Open `/session` in Main for the current launch's request counts, provider usage,
-cache diagnostics, capture health, transport, tool measurements, and retained
-exchange details. Left/Right or Tab switches Overview, Transport, and Exchanges;
+Open `/session` in Main for the current launch's request and retry counts, provider usage,
+usage-evidence coverage, measured cache rate, capture health, and transport details.
+Exchanges shows timings, errors, and each attempt's provider-returned
+service tier, not the configured tier; missing evidence stays unavailable.
+Left/Right or Tab switches Overview, Transport, and Exchanges;
 Up/Down, mouse wheel, and PgUp/PgDn scroll. In Exchanges, `[` selects older and
 `]` newer observations. `r` refreshes immediately; the open dialog also refreshes
 once per second. Escape closes without interrupting a turn. Metrics include all
@@ -552,19 +466,20 @@ The same sanitized metrics remain available through the local API:
 
 ```sh
 curl -sS "${MEKUGI_BASE_URL%/v1}/api/metrics"
-mekugi --capture-output capture.jsonl codex
+mekugi --capture-output capture.jsonl codex --yolo
 ```
 
 Launch metrics stay in memory unless captured with `--capture-output`;
 captures hold sanitized measurements only, with no prompts, patches, or
 credentials. Provider-reported usage is authoritative; local token estimates
-are not billing figures. See the
-[metrics reference](doc/spec/metrics.md).
+are not billing figures. Costs are API estimates, not subscription charges. See
+the [metrics reference](doc/spec/metrics.md).
 
-`mekugi --debug codex` writes a private `mekugi-debug-*` directory in the system
-temporary directory and prints a session inspection command on exit under “To diagnose this
-session,” ready to share with an agent. Its instruction dumps are
-**not sanitized**. Debug mode records future requests only. See
+`mekugi --debug codex --yolo` writes a private `mekugi-debug-*` directory in the
+system temporary directory. `/session` shows its path in Overview; on exit,
+“To diagnose this session” prints an inspection command ready to share with an
+agent. Debug bundles include private session content and are **not sanitized**.
+Debug mode records future requests only. See
 [debug evidence](doc/spec/router.md#feature-usage-debug-evidence).
 
 ## Mekugi settings
@@ -598,32 +513,28 @@ Every section is optional. Settings are read at startup and never rewritten.
 
 ## Configuration and troubleshooting
 
-- **Post-compaction recovery:** Mekugi registers a Codex `SessionStart` hook that
-  matches `compact` and pre-trusts only that hook for the session. It never
-  bypasses trust for other hooks. After each compaction, the hook restores a
-  bounded snapshot of the main thread's journal and changes. Subagents and
-  passthrough mode are unaffected. It needs Codex's compact `SessionStart`
-  support (tested with CLI 0.156.1). If a Codex update changes how hooks are
-  hashed, Codex asks you to review the hook under `/hooks` instead. Opt out with
-  `--post-compact-recovery=false`, or disable the hook in `/hooks`. If you pass
-  `hooks` through `-c`, Mekugi leaves them alone and prints a notice. In that
-  case, add a `SessionStart` handler matching `^compact$` that runs
-  `/absolute/path/to/mekugi post-compact`. Hook failures don't stop the task.
-  See [guidance behavior](doc/spec/guide.md).
+- **Post-compaction recovery:** After compaction, Mekugi restores a bounded
+  snapshot of Main's journal and changes. Subagents and passthrough mode are
+  unaffected. This needs Codex's compact `SessionStart` hook support (tested with
+  CLI 0.156.1). Opt out with `--post-compact-recovery=false` or `/hooks`.
+  If Codex asks you to review the hook, use `/hooks`. Custom `-c hooks=...`
+  settings are left alone; to enable recovery with them, add a `SessionStart`
+  handler matching `^compact$` that runs `/absolute/path/to/mekugi post-compact`.
+  Hook failures don't stop the task. See [guidance behavior](doc/spec/guide.md).
 - **Journal compaction (opt-in):** `--journal-compaction=auto` uses retained task,
   constraint, change and failed-command evidence instead of asking the model for a
   summary. It includes subagents and falls back to the provider if evidence cannot
-  be safely recovered. A proven router summary skips duplicate hook injection.
+  be safely recovered.
   The default remains `off` pending comparative evaluation; this is not evidence
   of improved model success or token savings. In the native UI, sliced plans show
   a countdown between successful turns; Esc cancels. `slice` and `auto` reset
   context before continuing, while `off` continues without resetting. An interrupted
   reset may require manual continuation. See [compaction behavior](doc/spec/journal.md#router-answered-compaction).
-- **Instructions:** Wrapped sessions disable Codex's `/goal` feature. Mekugi keeps
-  Codex's base instructions and adds its guidance through tool descriptions. Anything between `<!-- mekugi:omit -->` and
-  `<!-- /mekugi:omit -->` in instructions, including `AGENTS.md`, is removed before
-  forwarding. When `skills-mgr` is on the `PATH`, Mekugi turns off Codex's stock
-  skill catalog for the session. Managed `$skill` selections attach their
+- **Instructions:** Wrapped sessions disable Codex's `/goal` feature. Anything
+  between `<!-- mekugi:omit -->` and `<!-- /mekugi:omit -->` in instruction files
+  is omitted for the session; the files themselves are not changed. When
+  `skills-mgr` is on the `PATH`, Mekugi turns off Codex's stock skill catalog
+  for the session. Managed `$skill` selections attach their
   instructions in the native composer; other Codex-selected skill injections
   remain compact name references. See [guidance behavior](doc/spec/guide.md).
 - **Issue reports:** start with `MEKUGI_DIAGNOSE=1` to give agents a
@@ -648,31 +559,15 @@ Replay records live in `$XDG_STATE_HOME/mekugi/replay`, or
 conversations need no extra flag. Replay doesn't rerun old commands or restore
 processes.
 
-Snapshots share repeated contents and use compressed storage. For read-only
-diagnosis, inspect one retained call without executing it:
-
-```sh
-mekugi inspect-storage --workspace /absolute/workspace --call-id CALL_ID
-mekugi inspect-storage --workspace /absolute/workspace --call-id CALL_ID --field baseline
-```
-
-The default returns sizes, hashes and dependency counts, not private text.
-`--field` selects `all`, `baseline`, `exec`, `patches`, `review`, or `refs`.
-Text is limited to 4 KiB; use `--text-bytes` (up to 64 KiB) and the returned
-`next_offset` with `--offset` to continue. `--field refs` identifies compressed
-objects, which can be inspected with `--object NAME --field all`.
-`--replay-dir DIR` selects a different store. Missing or corrupt evidence produces
-a precise error, not an empty successful snapshot.
+For read-only storage diagnosis, use `mekugi inspect-storage`; see the
+[storage inspection reference](doc/spec/router.md) for selectors and output limits.
 
 Mekugi retains up to **4 GiB** of managed session data and deletes it after
 **14 days without activity**. When storage is
 full, it removes the least recently active inactive sessions first, and never
 touches running work. **Your Codex chats and workspace files are never deleted.**
-Cleanup runs in the background without holding up a complete session-start sweep.
-At the storage limit, response translation waits up to 30 seconds for background
-cleanup and retries saving the same evidence, not the request or host operation.
-If space remains unavailable, retention reports that cleanup was requested; retry
-retaining the evidence after space is freed, not the completed host operation.
+If storage is full, Mekugi reports when evidence cannot be retained. Free space
+and retry retaining the evidence, not the completed command or edit.
 Cleanup can break old recovery and review references. To reset, stop all Mekugi
 wrappers and move the directory aside.
 
@@ -709,63 +604,32 @@ Use the full session ID, not a rollout path. Mekugi finds the session in
 `sessions` or `archived_sessions` under `CODEX_HOME` (default `~/.codex`). Missing
 or duplicate rollouts are reported as errors.
 
-Playback defaults to **1.0x**. It preserves recorded item start/end times and gaps,
-including command duration and retained question/answer arrivals. Referenced child
-rollouts in the same directory are included. Optional debug captures add provider
-request intervals. Streaming is **simulated**, not a screen recording: retained
-text is released in seeded, irregular chunks within its recorded interval. The
-default `--seed 1` makes comparisons repeatable. Missing children and unsupported
-item kinds are reported. Retained journal messages remain visible; internal
-journal transport commands are hidden only when local retained provenance
-identifies them. Unverified candidates stay visible and are reported. Locally
-retained journal revisions restore the Journal pane and transcript, with completion
-cards reconstructed at recorded successful turn boundaries for acknowledged reports.
-Missing journal records or turn timing cannot restore those cards. Original
-keystrokes, window sizes, and live diff previews are not reconstructed; file-change
-activity is retained.
-Unreadable journal records are reported without blocking recorded host activity.
+Playback defaults to **1.0x**. Streaming is simulated from retained text and
+timing, not a screen recording; `--seed 1` makes comparisons repeatable.
+Referenced child rollouts are included when available. Retained journal records
+restore task progress and completion cards when timing is available. Missing
+records are reported. Original keystrokes, window sizes, and live diff previews
+are not reconstructed.
 
 The playback bar shows position, speed, and simulated-streaming status. **Space**
 pauses, **+/-** steps through speed presets from 0.1x to 100x, **[/]** seeks ten
 seconds, **r** restarts, **Ctrl-B 1–5** selects Main, Diff, Activity, Agents, or
 Journal, **j/k** or the mouse wheel scrolls Main, and **q** quits.
-Speed presets include 1x in both directions, even after reaching either limit;
-a custom `--speed` moves to the next preset in the selected direction. Playback
-stops on its final frame until you quit.
+Playback stops on its final frame until you quit.
 Use `--from 5m --until 6m` to review a recorded interval; earlier state is loaded
 first. The current terminal size controls layout.
 
-For profiling without a terminal:
-
-```sh
-mekugi replay-session --session SESSION_ID --headless \
-  --width 160 --height 48 --cpu-profile /tmp/replay-cpu.pprof \
-  --heap-profile /tmp/replay-heap.pprof
-go tool pprof -top /tmp/replay-cpu.pprof
-```
-
-Profile destinations must not already exist. Headless playback still lays out and
-paints the UI, but discards terminal bytes; it cannot measure terminal backpressure.
-Its final JSON reports frame timing percentiles, maximum frame time, and write
-time. Profiles exclude initial input loading and state reconstruction before
-`--from`, but include cold first-frame rendering. Seeking skips intermediate
-paints and flushes completed output, so its initial output visibility and collapse
-timing can differ from continuous playback. Use continuous playback to measure
-steady-state behavior rather than treating a seek-start profile as warmed up.
-Accelerated playback changes event batching per frame: use 1.0x for
-representative wall-time latency, and the same seed, speed, dimensions, and inputs
-for comparisons. Session contents remain local and may appear on screen.
+For profiling, use `--headless --width 160 --height 48` with `--cpu-profile` or
+`--heap-profile` pointing to a new file. Headless playback renders the UI but
+cannot measure terminal backpressure. Compare runs with the same inputs, seed,
+speed, and dimensions; use 1.0x for representative latency. Session contents
+remain local and may appear on screen. See the [replay reference](doc/spec/session_replay.md).
 
 ### Older installations
 
 Finish active sessions before replacing an older installation. Retire any old
 service and provider configuration separately, keeping unrelated settings and
 authentication. Use `mekugi codex` from then on.
-
-## Go library
-
-The root package provides the review-diff rendering helpers behind the router's
-change evidence.
 
 ## Documentation
 
@@ -799,9 +663,14 @@ Bun is required to regenerate and test plugin assets:
 ```sh
 go generate ./internal/router/toolplugin
 bun test ./internal/router/toolplugin/tests
-go test ./...
+make test
 go vet ./...
 ```
+
+While implementing, select the affected Go packages and tests, for example
+`make test TEST_PACKAGES=./internal/router TEST_RUN='^TestShellRunnerMRun'`.
+The default checks all packages and uses Go's test cache; add
+`TEST_FLAGS=-count=1` for an uncached run. See [focused checks](CONTEXT-TESTS.md#focused-checks).
 
 ## License
 
