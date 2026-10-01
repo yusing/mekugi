@@ -42,6 +42,19 @@ that cross its boundary. A focused pass is not evidence for unselected tests.
 | Native post-compaction recovery | `-tags journal_e2e ./internal/router -run '^TestPostCompactNativeCodexE2E$'` (installed Codex, local mock provider) |
 | Cross-package or broad contract | `./...` |
 
+Native reader latency checks include a fresh authenticated worker, a 3,000-row
+read, the three-document architecture batch, and an eight-file Go inspection at
+the default shared budget. Run them without installing a binary:
+
+```sh
+make test TEST_PACKAGES=./internal/router TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeFrontends -benchtime=3x -count=1'
+```
+
+The inspection batch intentionally exercises incomplete-output recovery. These
+benchmarks clear the thread identity and exclude active-session lease/retention
+costs. `BenchmarkSelectRows` in `./internal/tokenizer` isolates row admission from
+process startup and source I/O.
+
 Generation uses Go to rebuild the embedded WASM core for configured JavaScript plugins
 through the directive in `internal/router/toolplugin/runtime.go`. Built-in frontends
 and output formatting are compiled Go and require no generated JavaScript assets or

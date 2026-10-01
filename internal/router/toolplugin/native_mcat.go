@@ -81,7 +81,7 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 	incomplete, unavailable, oversized, open, pendingCR := false, false, false, false, false
 	reason := ""
 	budget := nativeBudget{}
-	finish := func() error {
+	finish := func() {
 		if (start == 0 || line >= start && line <= end) && !oversized {
 			selected++
 			s := row.String() + "\n"
@@ -113,16 +113,10 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 			} else if !incomplete {
 				if o.lines > 0 && selected > o.lines {
 					incomplete = true
+				} else if shown.Len()+len(s) > o.budget*128 {
+					incomplete = true
 				} else {
-					fit, e := budget.fits(shown.String()+s, o.budget)
-					if e != nil {
-						return e
-					}
-					if fit {
-						shown.WriteString(s)
-					} else {
-						incomplete = true
-					}
+					shown.WriteString(s)
 				}
 			}
 		}
@@ -130,7 +124,6 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 		line++
 		open = false
 		oversized = false
-		return nil
 	}
 	for {
 		if err := ctx.Err(); err != nil {
@@ -148,9 +141,7 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 		}
 		if pendingCR {
 			pendingCR = false
-			if err := finish(); err != nil {
-				return ExecutionOutput{}, err
-			}
+			finish()
 			if ch == '\n' {
 				continue
 			}
@@ -161,9 +152,7 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 			continue
 		}
 		if ch == '\n' {
-			if err := finish(); err != nil {
-				return ExecutionOutput{}, err
-			}
+			finish()
 			continue
 		}
 		open = true
@@ -187,29 +176,21 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 		row.WriteRune(ch)
 	}
 	if open || pendingCR {
-		if err := finish(); err != nil {
-			return ExecutionOutput{}, err
-		}
+		finish()
 	}
 	if start > line-1 {
 		return fail(fmt.Errorf("rows %d:%d past EOF (%d rows)", start, end, line-1))
 	}
 	current := shown.String()
 	if o.tail {
-		current = ""
-		for i := len(tailRows) - 1; i >= tailHead; i-- {
-			candidate := tailRows[i] + current
-			fit, e := budget.fits(candidate, o.budget)
-			if e != nil {
-				return ExecutionOutput{}, e
-			}
-			if !fit {
-				incomplete = true
-				break
-			}
-			current = candidate
-		}
+		current = strings.Join(tailRows[tailHead:], "")
 	}
+	bounded, err := budget.selectRows(current, o.budget, o.tail)
+	if err != nil {
+		return ExecutionOutput{}, err
+	}
+	incomplete = incomplete || len(bounded) < len(current)
+	current = bounded
 	result := ExecutionOutput{Stdout: current}
 	if incomplete {
 		result.ExitCode = 1

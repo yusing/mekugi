@@ -20,6 +20,12 @@ validated by the native implementation; built-ins have no custom-tool grammar.
 Configured plugin declarations cannot claim a native executor. Reader
 implementations and AX observation are not duplicated in the registry.
 
+The shared tokenizer owns bounded LF-row admission for native source, outline,
+and semantic reads. It reuses counts for completed lexer pieces and recounts only
+the piece at a row boundary (plus its following piece for a tail cut), rather than
+tokenizing the accumulated output again for every row. Readers retain their
+source normalization, numbering, byte bounds, framing, and omitted-output stores.
+
 Native-only snapshots contain no JavaScript or WASM runtime assets and need no Node.js
 lookup. Configured extensions add the authenticated JavaScript host and shared core.
 `mekugi:core/v1` owns deterministic portable helpers, not file access or

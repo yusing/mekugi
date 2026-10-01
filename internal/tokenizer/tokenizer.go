@@ -22,6 +22,7 @@ import (
 type Codec interface {
 	GetName() string
 	Count(string) (int, error)
+	SelectRows(string, int, bool) (string, error)
 	Encode(string) ([]uint, []string, error)
 	Decode([]uint) (string, error)
 }

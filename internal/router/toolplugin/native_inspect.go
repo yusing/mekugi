@@ -274,14 +274,7 @@ func nativeInspect(ctx context.Context, args []string) (ExecutionOutput, error) 
 			rows = append([]string{"--- " + inspectDisplay(data.Path) + " ---\n"}, rows...)
 		}
 		for _, row := range rows {
-			fit := false
-			if !incomplete {
-				fit, e = fits(output.String() + row)
-				if e != nil {
-					return ExecutionOutput{}, e
-				}
-			}
-			if fit {
+			if !incomplete && output.Len()+len(row) <= 65536 {
 				output.WriteString(row)
 			} else {
 				incomplete = true
@@ -296,7 +289,22 @@ func nativeInspect(ctx context.Context, args []string) (ExecutionOutput, error) 
 			}
 		}
 	}
-	result.Stdout = output.String()
+	result.Stdout, err = counter.selectRows(output.String(), options.budget, false)
+	if err != nil {
+		return ExecutionOutput{}, err
+	}
+	if len(result.Stdout) < output.Len() {
+		incomplete = true
+		if !unavailable {
+			if output.Len()-len(result.Stdout)+omitted.Len() > nativeRetainedBytes {
+				unavailable = true
+			} else {
+				remaining := output.String()[len(result.Stdout):] + omitted.String()
+				omitted.Reset()
+				omitted.WriteString(remaining)
+			}
+		}
+	}
 	if incomplete {
 		result.ExitCode = 1
 		result.FailureClass = "output_limit"

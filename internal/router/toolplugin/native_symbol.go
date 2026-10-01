@@ -385,11 +385,7 @@ func nativeSymbol(ctx context.Context, args []string) (ExecutionOutput, error) {
 		}
 		retained.WriteString(row)
 		if !incomplete {
-			fit, e := counter.fits(shown.String()+row, budget)
-			if e != nil {
-				return e
-			}
-			if fit {
+			if shown.Len()+len(row) <= budget*128 {
 				shown.WriteString(row)
 			} else {
 				incomplete = true
@@ -558,7 +554,11 @@ func nativeSymbol(ctx context.Context, args []string) (ExecutionOutput, error) {
 		}
 		result.Stderr += "msymbol: skipped " + strings.Join(parts, ", ") + "\n"
 	}
-	result.Stdout = shown.String()
+	result.Stdout, err = counter.selectRows(shown.String(), budget, false)
+	if err != nil {
+		return ExecutionOutput{}, err
+	}
+	incomplete = incomplete || len(result.Stdout) < shown.Len()
 	if incomplete {
 		result.ExitCode = 1
 		result.FailureClass = "output_limit"

@@ -120,6 +120,16 @@ func (b *nativeBudget) fits(s string, limit int) (bool, error) {
 	n, e := b.count(s)
 	return n <= limit, e
 }
+
+func (b *nativeBudget) selectRows(value string, limit int, tail bool) (string, error) {
+	if len(value) <= limit {
+		return value, nil
+	}
+	if _, err := b.count(""); err != nil {
+		return "", err
+	}
+	return b.codec.SelectRows(value, limit, tail)
+}
 func nativeJSON(v any) string {
 	b, err := json.Marshal(v, json.Deterministic(true), jsontext.PreserveRawStrings(true), jsontext.AllowInvalidUTF8(true))
 	if err != nil {
