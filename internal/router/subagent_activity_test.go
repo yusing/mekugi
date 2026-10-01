@@ -5,6 +5,10 @@ import (
 	"testing"
 )
 
+func (a *subagentActivity) collect(thread, source, kind, text string) {
+	a.collectEvent(activityEvent{thread: thread, source: source, kind: kind, text: text})
+}
+
 func TestNativeActivityIsolatedByAncestryAndIdentity(t *testing.T) {
 	a := newSubagentActivity()
 	a.attachNativePane("root-a")

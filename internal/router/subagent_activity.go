@@ -132,10 +132,6 @@ func (a *subagentActivity) invalidate(thread string) {
 	}
 }
 
-func (a *subagentActivity) collect(thread, source, kind, text string) {
-	a.collectEvent(activityEvent{thread: thread, source: source, kind: kind, text: text})
-}
-
 func (a *subagentActivity) collectEvent(event activityEvent) {
 	if a == nil {
 		return

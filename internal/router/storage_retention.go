@@ -537,10 +537,6 @@ type storageSnapshot struct {
 	owners   map[string]int
 }
 
-func (s *mekugiReplayStore) storageSnapshot() (storageSnapshot, error) {
-	return s.storageSnapshotContext(context.Background())
-}
-
 func (s *mekugiReplayStore) storageSnapshotContext(ctx context.Context) (storageSnapshot, error) {
 	snapshot := storageSnapshot{files: make(map[string]int64), owners: make(map[string]int)}
 	entries, err := os.ReadDir(s.directory)
@@ -895,10 +891,6 @@ func (s *mekugiReplayStore) lockStorageSnapshot(ctx context.Context) (func(), er
 
 // Age-based cleanup is router maintenance, not part of any request's replay
 // view. An unrelated catalog must not prevent a new thread from starting.
-func (s *mekugiReplayStore) runRetentionSweeps(ctx context.Context, notice func()) {
-	runStorageRetention(ctx, func() *mekugiReplayStore { return s }, notice)
-}
-
 func runStorageRetention(ctx context.Context, store func() *mekugiReplayStore, notice func()) {
 	cleanup := func() {
 		if err := store().cleanupSessions(ctx); err != nil && ctx.Err() == nil && notice != nil {

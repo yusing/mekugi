@@ -13,6 +13,14 @@ import (
 	"github.com/gofrs/flock"
 )
 
+func (s *mekugiReplayStore) storageSnapshot() (storageSnapshot, error) {
+	return s.storageSnapshotContext(context.Background())
+}
+
+func (s *mekugiReplayStore) runRetentionSweeps(ctx context.Context, notice func()) {
+	runStorageRetention(ctx, func() *mekugiReplayStore { return s }, notice)
+}
+
 func retentionTestSession(t *testing.T, store *mekugiReplayStore, thread string, age time.Duration) (context.Context, func()) {
 	t.Helper()
 	ctx, release, err := store.beginSession(t.Context(), thread, thread)

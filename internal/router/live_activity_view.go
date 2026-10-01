@@ -831,7 +831,7 @@ func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int,
 	}
 
 	if v.childrenOnly && !rosterOnly {
-		return v.activityHeader(rows, width)
+		return v.activityHeader(width)
 	}
 	left := "\x1b[1m" + v.painter.Theme.Accent() + title + activityui.Reset
 	responding, errors := v.statusCounts(rows)
@@ -875,10 +875,10 @@ func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int,
 
 // activityHeader names the native feed and its filter. Following the live
 // edge is the default, so only a paused feed says so.
-func (v *liveActivityView) activityHeader(rows []liveActivityRosterRow, width int) string {
+func (v *liveActivityView) activityHeader(width int) string {
 	left := "\x1b[1m" + v.painter.Theme.Accent() + "Activity" + activityui.Reset
 	if v.only {
-		rows = v.feedAgents()
+		rows := v.feedAgents()
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
 		left += activityui.Dim + " · only " + activityui.Undim + v.painter.Agent(v.selected) + activityui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + activityui.Undim
 	}
