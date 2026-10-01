@@ -147,8 +147,11 @@ func TestMain(m *testing.M) {
 			err = errors.Join(err, os.RemoveAll(fixture.directory))
 		}
 	}
+	if execTrackHelperDirectory != "" {
+		err = errors.Join(err, os.RemoveAll(execTrackHelperDirectory))
+	}
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "clean up proxy test fixture: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "clean up router test fixtures: %v\n", err)
 		code = 1
 	}
 	os.Exit(code)

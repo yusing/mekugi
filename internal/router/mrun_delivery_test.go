@@ -12,15 +12,18 @@ import (
 func TestShellRunnerMRunAcceptedMaximumDoesNotCreateContinuation(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
+	// Keep the exact accepted token boundary without one huge BPE word. The
+	// whitespace-delimited fixture exercises delivery, not tokenizer worst cases.
+	want := strings.Repeat("a ", 14999) + "a"
 	stdout, stderr, status := runShellWorkerTest(t, registry, "bash", nil,
-		`mrun --max-tokens 15000 -- sh -c 'head -c 120000 /dev/zero | tr "\000" a'`, nil,
+		`mrun --max-tokens 15000 -- awk 'BEGIN {for (i=1; i<15000; i++) printf "a "; printf "a"}'`, nil,
 		newShellWorkerTestInvocation(t.TempDir(), "BASH_ENV="))
 	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	count, err := codec.Count(stdout)
-	if status != 0 || err != nil || count != 15000 || stdout != strings.Repeat("a", 120000) || stderr != "" {
+	if status != 0 || err != nil || count != 15000 || stdout != want || stderr != "" {
 		t.Fatalf("maximum-budget delivery: status=%d bytes=%d tokens=%d stderr=%q err=%v", status, len(stdout), count, stderr, err)
 	}
 }

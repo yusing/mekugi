@@ -21,11 +21,16 @@ import (
 	"github.com/yusing/mekugi/internal/execsegment"
 )
 
+// Owned by TestMain, like the shared registry fixtures. Build once per test
+// process, but do not leave one executable behind after every validation run.
+var execTrackHelperDirectory string
+
 var execTrackHelper = sync.OnceValues(func() (string, error) {
 	directory, err := os.MkdirTemp("", "mekugi-exec-test-")
 	if err != nil {
 		return "", err
 	}
+	execTrackHelperDirectory = directory
 	helper := filepath.Join(directory, "mekugi-exec")
 	output, err := exec.Command("go", "build", "-o", helper, "github.com/yusing/mekugi/cmd/mekugi-exec").CombinedOutput()
 	if err != nil {
