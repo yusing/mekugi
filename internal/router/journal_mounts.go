@@ -33,6 +33,9 @@ func journalRelative(journals map[string]threadJournal, caller, target string) b
 }
 
 func journalReadTarget(journals map[string]threadJournal, recordErrors map[string]error, caller, agent string) (string, error) {
+	if agent != "" && !strings.HasPrefix(agent, "/") {
+		agent = "/root/" + agent
+	}
 	if len(journalAncestry(journals, caller)) == 0 {
 		return "", errors.New("journal ancestry is unavailable")
 	}

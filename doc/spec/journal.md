@@ -102,7 +102,9 @@ Task `add` accepts optional `agent` to create and bind in one atomic operation;
 The binding cannot be changed or duplicated. It can precede the child's first
 request; until durable ancestry proves the child, only an unresolved mount appears.
 Only complete, nonconflicting ancestry in the selected workspace permits content
-to appear. Reading an ancestor does not reveal the caller's siblings. Ambiguous
+to appear. Read and list agent selectors accept canonical paths or paths with the
+`/root/` prefix omitted; task bindings still require canonical paths.
+Reading an ancestor does not reveal the caller's siblings. Ambiguous
 agent identity rejects the combined read rather than selecting a journal.
 
 Owned paths remain ordinal. Combined reads reserve `@agents` for the unlinked
