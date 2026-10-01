@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -216,40 +217,42 @@ func TestJournalDeletionWaitsForDelivery(t *testing.T) {
 
 func TestJournalDeliverySerializesIndependentStores(t *testing.T) {
 	t.Parallel()
-	replay, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	first, second := newJournalStore(), newJournalStore()
-	ctx := t.Context()
-	if err := first.initialize(ctx, replay, "", "root", "/root", ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := first.apply(ctx, replay, "", "root", "", []journalMutation{{Op: "add", Text: new("Notice")}}); err != nil {
-		t.Fatal(err)
-	}
-	release, err := first.lockDelivery(ctx, replay)
-	if err != nil {
-		t.Fatal(err)
-	}
-	waiting, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
-	defer cancel()
-	if _, err := second.apply(waiting, replay, "", "root", "", []journalMutation{{Op: "delete", ID: "amber", ReportNow: true}}); !errors.Is(err, context.DeadlineExceeded) {
+	synctest.Test(t, func(t *testing.T) {
+		replay, err := openMekugiReplayStore(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, second := newJournalStore(), newJournalStore()
+		ctx := t.Context()
+		if err := first.initialize(ctx, replay, "", "root", "/root", ""); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := first.apply(ctx, replay, "", "root", "", []journalMutation{{Op: "add", Text: new("Notice")}}); err != nil {
+			t.Fatal(err)
+		}
+		release, err := first.lockDelivery(ctx, replay)
+		if err != nil {
+			t.Fatal(err)
+		}
+		waiting, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+		defer cancel()
+		if _, err := second.apply(waiting, replay, "", "root", "", []journalMutation{{Op: "delete", ID: "amber", ReportNow: true}}); !errors.Is(err, context.DeadlineExceeded) {
+			release()
+			t.Fatalf("independent store did not wait for delivery: %v", err)
+		}
+		if err := first.acknowledge(ctx, replay, "", "root", map[string]uint64{"amber": 1}, false); err != nil {
+			release()
+			t.Fatal(err)
+		}
 		release()
-		t.Fatalf("independent store did not wait for delivery: %v", err)
-	}
-	if err := first.acknowledge(ctx, replay, "", "root", map[string]uint64{"amber": 1}, false); err != nil {
-		release()
-		t.Fatal(err)
-	}
-	release()
-	if _, err := second.apply(ctx, replay, "", "root", "", []journalMutation{{Op: "delete", ID: "amber", ReportNow: true}}); err != nil {
-		t.Fatal(err)
-	}
-	journal, _, err := readThreadJournal(replay, "", "root")
-	if err != nil || len(journal.Retractions) != 1 {
-		t.Fatalf("cross-store retraction lost: %+v %v", journal.Retractions, err)
-	}
+		if _, err := second.apply(ctx, replay, "", "root", "", []journalMutation{{Op: "delete", ID: "amber", ReportNow: true}}); err != nil {
+			t.Fatal(err)
+		}
+		journal, _, err := readThreadJournal(replay, "", "root")
+		if err != nil || len(journal.Retractions) != 1 {
+			t.Fatalf("cross-store retraction lost: %+v %v", journal.Retractions, err)
+		}
+	})
 }
 
 func TestJournalStateWaitHonorsCancellation(t *testing.T) {

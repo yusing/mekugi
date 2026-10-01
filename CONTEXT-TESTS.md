@@ -82,7 +82,12 @@ or explicit update removes its stale candidate. Rerun the check after acceptance
 
 Keep repeatable test costs visible. Reuse immutable registry fixtures while
 isolating mutable thread, workspace, and process state. Startup and shutdown
-tests still need their own owners. Use controlled time for in-process lifetimes.
+tests still need their own owners. Disposable Git fixtures must isolate system
+and global configuration so setup does not invoke personal signing programs or
+hooks; keep repository-local settings for filter and worktree boundary tests.
+Use controlled time for in-process lifetimes, including retention retries and
+filesystem-lock contention. Keep subtests and parallel scheduling outside each
+`synctest` bubble, and create and clean up its workers inside it.
 Preserve real process-cleanup coverage and prove boundary coverage before
 shrinking large fixtures.
 

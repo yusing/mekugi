@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
@@ -30,84 +31,86 @@ func awaitCommandSegments(t *testing.T, u *appServerUI) {
 }
 
 func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing.T) {
-	workspace := t.TempDir()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	u := newAppServerSessionTestUI(t, workspace)
-	u.proxy = &mekugiProxy{replayStore: store}
-	key := [3]string{"main", "turn", "command"}
-	first, second := u.session.outputs.New(), u.session.outputs.New()
-	first.Finish(new("first\n"), new(0))
-	second.Finish(new("second\n"), new(0))
-	u.execTrack = &execTrackHub{tracks: map[[3]string]*execTrack{key: {done: true, ended: true, segments: []execTrackSegment{
-		{source: "echo first", began: true, ended: true, full: first},
-		{source: "echo second", began: true, ended: true, full: second},
-	}}}}
-	item := appServerItem{ID: key[2], Type: "commandExecution", Command: "bash -lc 'echo first; echo second'", ExitCode: new(0), AggregatedOutput: new("first\nsecond\n")}
-	entry := activityPaneEntry{native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2]}}
-	lock := flock.New(filepath.Join(store.directory, "store.lock"))
-	if err := lock.Lock(); err != nil {
-		t.Fatal(err)
-	}
-	defer lock.Unlock()
-	ctx, cancel := context.WithTimeout(t.Context(), 25*time.Millisecond)
-	err = store.put(ctx, workspace, nil)
-	cancel()
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("shared-store contention did not produce the diagnosed deadline error: %v", err)
-	}
-	started := time.Now()
-	done := u.trackedCommandDone(key, entry, item)
-	if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
-		t.Fatalf("storage contention blocked command presentation for %s", elapsed)
-	}
-	if len(done) != 1 || len(done[0].native.segments) != 2 || done[0].native.segments[0].output != first {
-		t.Fatalf("live command completion lost its output: %+v", done)
-	}
-	// Switching sessions and releasing live buffers must not change the pending
-	// report's evidence or ownership. Hold beyond the former one-second limit.
-	u.session.cwd, u.thread = t.TempDir(), "other"
-	first.Release()
-	second.Release()
-	time.Sleep(1100 * time.Millisecond)
-	select {
-	case result := <-u.commandSegmentWrites:
-		u.commandSegmentRetained(result)
-		t.Fatalf("report abandoned a temporary storage lock: %v", result.err)
-	default:
-	}
-	if err := lock.Unlock(); err != nil {
-		t.Fatal(err)
-	}
-	u.finishCommandSegments()
-	if notices := u.issues.Pending(); len(notices) != 0 {
-		t.Fatal(notices)
-	}
-	reopened, err := openMekugiReplayStore(store.directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	restored := newAppServerSessionTestUI(t, workspace)
-	restored.proxy = &mekugiProxy{replayStore: reopened}
-	entry.native = &liveActivityNativeItem{thread: "fork", turn: key[1], item: key[2]}
-	restored.restoreCommandSegments(&entry, item, workspace)
-	if len(entry.native.segments) != 2 {
-		t.Fatalf("report not available after restart: %+v", entry.native)
-	}
-	for i, want := range []string{"first", "second"} {
-		if got := strings.Join(entry.native.segments[i].output.View().Lines, "\n"); got != want {
-			t.Fatalf("retained output %d = %q, want %q", i, got, want)
+	synctest.Test(t, func(t *testing.T) {
+		workspace := t.TempDir()
+		store, err := openMekugiReplayStore(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	catalog, err := reopened.readRetainedSession(storageSessionName(key[0]))
-	if err != nil || !catalog.Files[replayRecordName(workspace, commandSegmentsID(key[1], key[2]), false)] {
-		t.Fatalf("original thread did not retain its report: %+v, %v", catalog, err)
-	}
-	if _, err := reopened.readRetainedSession(storageSessionName("other")); !os.IsNotExist(err) {
-		t.Fatalf("pending write borrowed switched thread ownership: %v", err)
-	}
+		u := newAppServerSessionTestUI(t, workspace)
+		u.proxy = &mekugiProxy{replayStore: store}
+		key := [3]string{"main", "turn", "command"}
+		first, second := u.session.outputs.New(), u.session.outputs.New()
+		first.Finish(new("first\n"), new(0))
+		second.Finish(new("second\n"), new(0))
+		u.execTrack = &execTrackHub{tracks: map[[3]string]*execTrack{key: {done: true, ended: true, segments: []execTrackSegment{
+			{source: "echo first", began: true, ended: true, full: first},
+			{source: "echo second", began: true, ended: true, full: second},
+		}}}}
+		item := appServerItem{ID: key[2], Type: "commandExecution", Command: "bash -lc 'echo first; echo second'", ExitCode: new(0), AggregatedOutput: new("first\nsecond\n")}
+		entry := activityPaneEntry{native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2]}}
+		lock := flock.New(filepath.Join(store.directory, "store.lock"))
+		if err := lock.Lock(); err != nil {
+			t.Fatal(err)
+		}
+		defer lock.Unlock()
+		ctx, cancel := context.WithTimeout(t.Context(), 25*time.Millisecond)
+		err = store.put(ctx, workspace, nil)
+		cancel()
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("shared-store contention did not produce the diagnosed deadline error: %v", err)
+		}
+		started := time.Now()
+		done := u.trackedCommandDone(key, entry, item)
+		if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
+			t.Fatalf("storage contention blocked command presentation for %s", elapsed)
+		}
+		if len(done) != 1 || len(done[0].native.segments) != 2 || done[0].native.segments[0].output != first {
+			t.Fatalf("live command completion lost its output: %+v", done)
+		}
+		// Switching sessions and releasing live buffers must not change the pending
+		// report's evidence or ownership. Hold beyond the former one-second limit.
+		u.session.cwd, u.thread = t.TempDir(), "other"
+		first.Release()
+		second.Release()
+		time.Sleep(1100 * time.Millisecond)
+		select {
+		case result := <-u.commandSegmentWrites:
+			u.commandSegmentRetained(result)
+			t.Fatalf("report abandoned a temporary storage lock: %v", result.err)
+		default:
+		}
+		if err := lock.Unlock(); err != nil {
+			t.Fatal(err)
+		}
+		u.finishCommandSegments()
+		if notices := u.issues.Pending(); len(notices) != 0 {
+			t.Fatal(notices)
+		}
+		reopened, err := openMekugiReplayStore(store.directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		restored := newAppServerSessionTestUI(t, workspace)
+		restored.proxy = &mekugiProxy{replayStore: reopened}
+		entry.native = &liveActivityNativeItem{thread: "fork", turn: key[1], item: key[2]}
+		restored.restoreCommandSegments(&entry, item, workspace)
+		if len(entry.native.segments) != 2 {
+			t.Fatalf("report not available after restart: %+v", entry.native)
+		}
+		for i, want := range []string{"first", "second"} {
+			if got := strings.Join(entry.native.segments[i].output.View().Lines, "\n"); got != want {
+				t.Fatalf("retained output %d = %q, want %q", i, got, want)
+			}
+		}
+		catalog, err := reopened.readRetainedSession(storageSessionName(key[0]))
+		if err != nil || !catalog.Files[replayRecordName(workspace, commandSegmentsID(key[1], key[2]), false)] {
+			t.Fatalf("original thread did not retain its report: %+v, %v", catalog, err)
+		}
+		if _, err := reopened.readRetainedSession(storageSessionName("other")); !os.IsNotExist(err) {
+			t.Fatalf("pending write borrowed switched thread ownership: %v", err)
+		}
+	})
 }
 
 func TestCommandSegmentsPendingRetentionIsBoundedAndCanceled(t *testing.T) {

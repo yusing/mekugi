@@ -16,6 +16,10 @@ import (
 func inventoryGit(t *testing.T, workspace string, args ...string) string {
 	t.Helper()
 	command := exec.Command("git", append([]string{"-C", workspace, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid"}, args...)...)
+	// Disposable repositories must not run the user's commit signing program,
+	// hooks, or filters. Repository-local configuration remains available to
+	// tests that exercise worktree conversions and other Git boundaries.
+	command.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_TERMINAL_PROMPT=0")
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v: %s", args, err, output)
@@ -32,6 +36,20 @@ func inventoryRepository(t *testing.T, workspace string, files map[string]string
 	}
 	inventoryGit(t, workspace, "add", "-A")
 	inventoryGit(t, workspace, "commit", "--quiet", "-m", "baseline")
+}
+
+func TestInventoryRepositoryIgnoresUserGitConfig(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "gitconfig")
+	writeTestFile(t, config, "[commit]\n\tgpgSign = true\n[gpg]\n\tprogram = /nonexistent/mekugi-test-signing-program\n")
+	t.Setenv("GIT_CONFIG_GLOBAL", config)
+	workspace := t.TempDir()
+	inventoryRepository(t, workspace, map[string]string{"file.txt": "baseline\n"})
+	if got := inventoryGit(t, workspace, "show", "HEAD:file.txt"); got != "baseline\n" {
+		t.Fatalf("fixture commit lost its contents: %q", got)
+	}
+	if strings.Contains(inventoryGit(t, workspace, "cat-file", "commit", "HEAD"), "\ngpgsig ") {
+		t.Fatal("disposable fixture commit inherited user signing")
+	}
 }
 
 func observeInventoryCommand(t *testing.T, workspace, workdir, command string, excluded []string) *execObservation {

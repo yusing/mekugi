@@ -17,17 +17,9 @@ func TestResolvedStockEditsPreserveCreationAndCrossAgentNet(t *testing.T) {
 	proxy := &mekugiProxy{replayStore: f.store}
 	git := func(args ...string) string {
 		t.Helper()
-		command := exec.Command("git", append([]string{"-C", f.workspace}, args...)...)
-		output, err := command.CombinedOutput()
-		if err != nil {
-			t.Fatalf("git %v: %v: %s", args, err, output)
-		}
-		return string(output)
+		return inventoryGit(t, f.workspace, args...)
 	}
-	git("init", "--quiet")
-	writeTestFile(t, filepath.Join(f.workspace, "existing.txt"), "before\n")
-	git("add", "existing.txt")
-	git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "baseline")
+	inventoryRepository(t, f.workspace, map[string]string{"existing.txt": "before\n"})
 
 	// This is the reported producer shape: a generated patch, not a literal
 	// string argument. No evaluator runs during observation.
