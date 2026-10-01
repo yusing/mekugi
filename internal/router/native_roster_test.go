@@ -242,12 +242,12 @@ func TestNativeRosterMetricsAlignParts(t *testing.T) {
 	if ansi.StringWidth(rows[0]) != ansi.StringWidth(rows[1]) {
 		t.Fatalf("rows differ in width:\n%s", strings.Join(rows, "\n"))
 	}
-	// Columns fit their widest values: "171.3K/285K • 60%", "1m34s · 1m34s ago",
+	// Columns fit their widest values: "24.4K/285K • 9%", "1m34s · 1m34s ago",
 	// "↑411.6K ↓30K" and "T+3", each after a two-column gap.
-	if got := ansi.StringWidth(rows[0]); got != 4*2+17+17+12+3 {
+	if got := ansi.StringWidth(rows[0]); got != 4*2+14+17+13+3 {
 		t.Fatalf("metric width = %d:\n%s", got, strings.Join(rows, "\n"))
 	}
-	for _, mark := range []string{"/", "•", "·", "↓", "T+"} {
+	for _, mark := range []string{"·", "↓", "T+"} {
 		if !strings.Contains(rows[0], mark) || ansi.StringWidth(rows[0][:strings.Index(rows[0], mark)]) != ansi.StringWidth(rows[1][:strings.Index(rows[1], mark)]) {
 			t.Fatalf("%q is not aligned:\n%s", mark, strings.Join(rows, "\n"))
 		}

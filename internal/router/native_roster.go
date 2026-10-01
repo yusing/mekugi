@@ -230,13 +230,15 @@ const nativeMetricParts = 10
 
 func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now time.Time) [nativeMetricParts]string {
 	var parts [nativeMetricParts]string
-	context := contextWindowLabel(agent)
-	if used, percent, ok := strings.Cut(context, " • "); ok {
-		parts[0], parts[1] = used, percent
-	} else if strings.HasSuffix(context, "%") {
-		parts[1] = context
-	} else {
-		parts[0] = context
+	if agent.Name != "/root" {
+		context := contextWindowLabel(agent)
+		if used, percent, ok := strings.Cut(context, " • "); ok {
+			parts[0], parts[1] = used, percent
+		} else if strings.HasSuffix(context, "%") {
+			parts[1] = context
+		} else {
+			parts[0] = context
+		}
 	}
 	_, timer := v.current(agent, now)
 	parts[2], parts[3], _ = strings.Cut(timer, " · ")

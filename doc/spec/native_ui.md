@@ -780,7 +780,8 @@ beyond the retained window is not hydrated. Unexpected server requests stay
 visibly pending, never auto-approved.
 
 Activity shows only child agents; Main stays in the roster for status and usage.
-The composer and agent roster show `used/window • percent%` from the latest
+Main's context usage appears only in the composer, not its roster row.
+The composer and child-agent roster rows show `used/window • percent%` from the latest
 Codex `tokenUsage.last.totalTokens` and `modelContextWindow`, independently of
 cumulative usage totals. Before the first usage report, show `0%` used, equivalent
 to Codex's initial `100% context left`; a missing window shows `N used` without
@@ -795,7 +796,7 @@ Roster edit counts use green for additions and red for removals, independent of
 the syntax theme. Show known captured edits only: incomplete captures must not
 hide confirmed counts from the same agent or other agents. Omit each zero or
 unknown count, including in session totals; detailed capture gaps remain in Diff.
-Narrow roster rows retain context before other metrics;
+Narrow child-agent roster rows retain context before other metrics;
 the composer's bottom border shows `model (effort) • used/window • percent%`
 as one right-aligned caption, shortening or omitting the model first when narrow.
 Working roster rows show the latest operation or public summary, including its

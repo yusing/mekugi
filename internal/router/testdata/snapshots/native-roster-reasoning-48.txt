@@ -1,4 +1,4 @@
 ─ 4 Agents · 2 · 2 working ─────────────────────
- ◐ main      Checking main                   0%
+ ◐ main      Checking main                     
  ◐ └ worker  Checking child                  0% 
  Roles: ● worker

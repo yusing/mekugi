@@ -51,7 +51,7 @@ func TestAppServerContextWindow(t *testing.T) {
 			}
 		}
 		roster := ansi.Strip(strings.Join(lines, "\n"))
-		if width >= 80 && (!strings.Contains(roster, "20K/200K • 10%") || !strings.Contains(roster, "100K/400K • 25%")) {
+		if width >= 80 && !strings.Contains(roster, "20K/200K • 10%") {
 			t.Fatalf("missing thread-isolated context at %d: %s", width, roster)
 		}
 	}

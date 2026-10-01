@@ -1,5 +1,5 @@
 ─ 4 Agents · 4 · 1 working ──────────────────────────────────────────────────── ↑1.2K ↓240 · $0.02 ─
- ✓ main         done                                                    0%               ↑1.2K ↓240
+ ✓ main         done                                                                     ↑1.2K ↓240
  ✓ ├ inventory  done                                                    0%                         
  ◐ └ review     Read native_ui_snapshot_test.go                         0%  2m · 2m ago             
  ·   └ probe    idle                                                    0%                         

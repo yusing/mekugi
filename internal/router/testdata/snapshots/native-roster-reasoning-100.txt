@@ -1,4 +1,4 @@
 ─ 4 Agents · 2 · 2 working ─────────────────────────────────────────────────────────────────────────
- ◐ main      Checking main                                                        0%  0s · just now
+ ◐ main      Checking main                                                            0s · just now
  ◐ └ worker  Checking child                                                       0%  0s · just now 
  Roles: ● worker

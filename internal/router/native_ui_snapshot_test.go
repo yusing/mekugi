@@ -110,6 +110,21 @@ func TestUISnapshotNativeRosterEditCounts(t *testing.T) {
 	assertNativeUISnapshot(t, "native-roster-edit-counts", v.nativeRoster(100, 6, now, true))
 }
 
+func TestUISnapshotNativeRosterContext(t *testing.T) {
+	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
+	for _, width := range []int{48, 100} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			v := newLiveActivityView()
+			v.painter.Theme = livediff.DarkTheme
+			v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
+				{Name: "/root", ContextKnown: true, ContextTokens: 171_300, ContextWindow: 285_000},
+				{Name: "/root/child", ContextKnown: true, ContextTokens: 24_400, ContextWindow: 285_000},
+			}})
+			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-context-%d", width), v.nativeRoster(width, 6, now, true))
+		})
+	}
+}
+
 func TestUISnapshotNativeLockedComposer(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.status = "Ready"
