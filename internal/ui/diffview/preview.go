@@ -43,13 +43,12 @@ type PreviewPane struct {
 	Retain  bool // Native edit batches retain completed calls until the caller settles.
 	batches map[string]*previewBatch
 	// A dock too short for every call keeps one card open and folds the rest
-	// to their headings. prefer names the caller whose card opens first;
-	// pinned holds a card chosen with next() until that call completes.
-	Prefer       string
-	open, pinned string
-	openedAt     time.Time
-	Accordion    bool // The last frame folded cards.
-	Compact      bool // Keep concurrent cards folded even when an even split fits.
+	// to their headings. Prefer names the caller whose card opens first.
+	Prefer    string
+	open      string
+	openedAt  time.Time
+	Accordion bool // The last frame folded cards.
+	Compact   bool // Keep concurrent cards folded even when an even split fits.
 }
 
 // liveDiffDockRows is the least a card needs to be worth an even split: its
@@ -252,7 +251,7 @@ func (p *PreviewPane) renderAccordion(ctx context.Context, workspace string, the
 		}
 	}
 	if hidden > 0 {
-		label := fmt.Sprintf("+%d more calls · next shows another", hidden)
+		label := fmt.Sprintf("+%d more calls", hidden)
 		lines = append(lines, ansi.Truncate(theme.Accent()+label+"\x1b[0m", max(0, width-1), ""))
 	}
 	for _, id := range p.Order {
@@ -263,18 +262,14 @@ func (p *PreviewPane) renderAccordion(ctx context.Context, workspace string, the
 	return lines, nil
 }
 
-// chooseOpen picks the card that keeps its source rows: a pinned live card,
-// then the preferred caller's, then the current one while it is still
+// chooseOpen picks the card that keeps its source rows: the preferred caller's,
+// then the current one while it is still
 // arriving, then the card that changed most recently.
 func (p *PreviewPane) chooseOpen(now time.Time) string {
 	if now.IsZero() {
 		now = time.Now()
 	}
 	exists := func(id string) bool { return id != "" && p.Views[id] != nil }
-	if exists(p.pinned) && !p.Views[p.pinned].Complete {
-		return p.setOpen(p.pinned, now)
-	}
-	p.pinned = ""
 	if p.Prefer != "" {
 		best := ""
 		for _, id := range p.Order {
@@ -307,17 +302,6 @@ func (p *PreviewPane) setOpen(id string, now time.Time) string {
 		p.open, p.openedAt = id, now
 	}
 	return id
-}
-
-// next opens the following card and holds it open until its call completes.
-func (p *PreviewPane) Next() bool {
-	if len(p.Order) < 2 {
-		return false
-	}
-	at := slices.Index(p.Order, p.open)
-	p.pinned = p.Order[(at+1)%len(p.Order)]
-	p.setOpen(p.pinned, time.Now())
-	return true
 }
 
 // callers counts distinct callers with a card, for the dock heading.

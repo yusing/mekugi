@@ -103,6 +103,7 @@ func TestUISnapshotDiffPreview(t *testing.T) {
 		{"preview_unavailable", []Preview{{ID: "unavailable", Workspace: "/workspace", Caller: "/root", Status: PreviewUnavailable + "baseline unavailable"}}, 48, 4},
 		{"preview_concurrent", []Preview{pending, edit}, 60, 12},
 		{"preview_accordion", []Preview{pending, edit}, 42, 7},
+		{"preview_hidden_calls", []Preview{pending, edit}, 42, 5},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// Prefer a caller explicitly; never choose the open card by wall-clock arrival time.
