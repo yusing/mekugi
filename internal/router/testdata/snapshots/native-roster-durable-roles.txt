@@ -1,0 +1,9 @@
+─ 4 Agents · 7 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ✓ main           done                                                                                                                                                             
+ ✓ ├ investigate  done                                                                                                                                                           0%
+ ✓ ├ tests        done                                                                                                                                                           0%
+ ✓ ├ review       done                                                                                                                                                           0% 
+ ✓ │ └ probe      done                                                                                                                                                           0%
+ ✓ ├ simplify     done                                                                                                                                                           0%
+ ✓ └ unknown      done                                                                                                                                                           0%
+ Roles: ● investigator  ● worker  ● review-correctness  ● explorer  ● review-simplify

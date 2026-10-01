@@ -257,7 +257,10 @@ before the status bar when terminal height permits. Collapsed rows place activit
 without reserving name-column padding. Each row shows state, timer, tokens, cost
 and turns, dropping from the right when narrow. Observed roles color the status
 glyphs, with a color-to-role legend only in the expanded Agents pane; role labels
-are not repeated in each row. Agent names retain their identity colors. Every pane has a title bar with
+are not repeated in each row. When host metadata omits a role, authenticated
+spawn evidence supplies it, including after resume and for nested descendants.
+Missing or conflicting spawn evidence supplies no role label; explicit host
+metadata remains authoritative. Agent names retain their identity colors. Every pane has a title bar with
 its tab number, focus and scroll state, and the status bar shows the tabs with
 contextual key hints. Ctrl-B + number focuses a pane.
 

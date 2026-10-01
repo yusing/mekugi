@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -206,12 +207,13 @@ func journalReadView(items []journalItem, path string, depth *int, view string) 
 	return journalTree(j.Items, path, depth)
 }
 
-// Mounted views read only a record's own items, identity and host lifecycle.
+// Mounted views read a record's items, identity, spawn roles and host lifecycle.
 // Delivery cursors, receipts and counters leave every view unchanged.
 func mountedViewChanged(before, after threadJournal) bool {
 	return before.Parent != after.Parent || before.Author != after.Author || before.IdentityKnown != after.IdentityKnown ||
 		before.IdentityConflicted != after.IdentityConflicted || before.LifecycleState != after.LifecycleState ||
-		before.LifecycleReason != after.LifecycleReason || before.LifecycleAt != after.LifecycleAt || !reflect.DeepEqual(before.Items, after.Items)
+		before.LifecycleReason != after.LifecycleReason || before.LifecycleAt != after.LifecycleAt ||
+		!reflect.DeepEqual(before.SpawnRoles, after.SpawnRoles) || !reflect.DeepEqual(before.Items, after.Items)
 }
 
 // Called under the state and replay locks after persistence. Child mutations
@@ -268,6 +270,17 @@ func (s *journalStore) publishMountedViews(store *mekugiReplayStore, workspace, 
 		root, ok := journals[sink.thread]
 		if !ok {
 			continue
+		}
+		// Role evidence follows the same proven descendant boundary as mounts.
+		// This is a presentation copy, not another durable role owner.
+		root.SpawnRoles = maps.Clone(root.SpawnRoles)
+		if root.SpawnRoles == nil {
+			root.SpawnRoles = make(map[string]journalSpawnRole)
+		}
+		for thread, child := range journals {
+			if thread != sink.thread && recordErrors[thread] == nil && slices.Contains(journalAncestry(journals, thread), sink.thread) {
+				maps.Copy(root.SpawnRoles, child.SpawnRoles)
+			}
 		}
 		items, err := mountedJournalItems(journals, recordErrors, sink.thread, sink.thread)
 		sink.mu.Lock()

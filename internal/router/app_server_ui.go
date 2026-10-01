@@ -1524,6 +1524,7 @@ func (u *appServerUI) ensureShell() {
 
 func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	u.ensureShell()
+	u.refreshRosterRoles()
 	u.agents.mainView = u.view
 	u.view.status = livediff.Safe(u.status, false)
 	u.shell.width, u.shell.height = max(1, width), max(1, height)
