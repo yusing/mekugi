@@ -9,15 +9,6 @@
 │ ◆ 3 earlier notes · click to open                                                      │
 ╰────────────────────────────────────────────────────────────────────────────────────────╯
 40 columns, sample content
-╭─ ✓ journal · 2 done ────────── 22:31 ╮
-│ This turn                            │
-│ ● /1 Repair replay selection         │
-│ ● /2 Validate journal presentation   │
-│ ◆ Focused transport and snapshot     │
-│   checks passed.                     │
-│ ◆ Independent review found no        │
-│   remaining correctness issue.       │
-│ ◆ Live model compliance is still     │
-│   unmeasured.                        │
-│ ◆ 3 earlier notes · click to open    │
+╭─ ✓ journal · 2 done · 6 notes ───────╮
+│ ▸ Details · click to open            │
 ╰──────────────────────────────────────╯

@@ -915,6 +915,8 @@ func journalCardFacts(changed []journalEvent, open int, includeNotes bool) []str
 	return facts
 }
 
+const journalCompletedCardRows = 8 // Body budget; with borders, a small card is at most ten rows.
+
 // journalCardRows lays out a work report's body: what
 // happened this turn one node per row, then the tasks still open. This turn
 // aggregates each node to its final state in the window; a node both added
@@ -996,6 +998,11 @@ func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, 
 	section("Remaining", remaining)
 	if len(rows) == 0 {
 		rows = []string{activityui.Dim + "No journal changes this turn; no open tasks." + activityui.Undim}
+	}
+	// Measure the actual preview after wrapping, not the number of tasks. Keep
+	// open work and mount diagnostics visible; the full dialog is never collapsed.
+	if !expand && open == 0 && card.Journal.mountUnavailable == "" && len(rows) > journalCompletedCardRows {
+		return activityui.Hang("▸ ", "Details"+activityui.Dim+" · click to open"+activityui.Undim, inner), journalCardFacts(changed, open, true)
 	}
 	return rows, journalCardFacts(changed, open, expand)
 }

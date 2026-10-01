@@ -61,6 +61,10 @@ toward the title's open total. Captured answers are excluded. Collapsed node row
 use at most two visual rows, with short blocker explanations. The newest three
 changed notes show result-first previews, in chronological order, with an
 older-note disclosure when needed. Changed context remains visible independently.
+Once no owned tasks remain open, a preview exceeding eight rendered body rows
+collapses to a disclosure with task and note counts. Wrapping at the current width
+counts toward that budget, not task count; smaller cards stay readable inline.
+Mount diagnostics prevent this automatic collapse.
 A click opens the shared dialog with full reasons and bodies, including older notes;
 copied reports also retain that detail. Time and counts appear on the detail row.
 Current-node evidence remains available through reads; the router retains the

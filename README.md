@@ -395,7 +395,8 @@ See [live view details](doc/spec/changes.md#live-terminal-view).
 ### Journal pane
 
 Press `Ctrl-B` then `5` to open Journal. Its title counts tasks by state. Open tasks
-come first; finished subtrees start collapsed. Use `j`/`k` or arrows to select,
+come first; subtrees start expanded and collapse oldest-first when space runs short.
+Use `j`/`k` or arrows to select,
 `Space` to expand or collapse, `d` to read full details, `Enter` to open a row, and
 `c` to copy the selected path. Click a `▸` marker to expand it, or click a row to open it.
 When requests without workspace metadata keep a separate unscoped journal, the title
@@ -415,8 +416,9 @@ transitions, plus notes while Journal is hidden. Answers stay in the conversatio
 When there are new work updates, a separate journal card shows the new work and
 unchanged remaining tasks without repeating changed tasks. It previews the newest
 three notes and short blocker reasons; open the card for complete evidence and
-older notes. An unchanged plan
-does not add a card to an ordinary reply.
+older notes. Completed reports taller than eight body rows collapse to a compact
+disclosure; small cards stay readable, and clicking still opens the full report.
+An unchanged plan does not add a card to an ordinary reply.
 
 With Codex `exec --json`, child journal milestones appear in Main's next response,
 separately from the child's final result. A host tool wait can delay those updates;
