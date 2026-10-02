@@ -55,6 +55,20 @@ benchmarks clear the thread identity and exclude active-session lease/retention
 costs. `BenchmarkSelectRows` in `./internal/tokenizer` isolates row admission from
 process startup and source I/O.
 
+Go symbol checks require an existing `gopls` and install nothing. Opt in to real
+cross-package/test reference and source-freshness acceptance with:
+
+```sh
+env MEKUGI_TEST_REAL_GOPLS=1 make test TEST_PACKAGES=./internal/router/toolplugin TEST_RUN='^TestNativeSymbolRealGoplsReferences$'
+```
+
+Fresh-process resolver and authenticated frontend benchmarks use normal caches;
+the frontend measurements exclude registry creation and active-session leases:
+
+```sh
+make test TEST_PACKAGES='./internal/router/toolplugin ./internal/router' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
+```
+
 Generation uses Go to rebuild the embedded WASM core for configured JavaScript plugins
 through the directive in `internal/router/toolplugin/runtime.go`. Built-in frontends
 and output formatting are compiled Go and require no generated JavaScript assets or
