@@ -13,7 +13,7 @@ declare module "mekugi:core/v1" {
 
   export type SourceCapabilities = {
     kind: "code" | "markdown" | "json";
-    language?: "go" | "javascript" | "typescript" | "python";
+    language?: "go" | "javascript" | "typescript" | "python" | "rust";
     jsx?: boolean;
     outline?: boolean;
     semanticResolver?: "gopls" | "typescript" | "python";

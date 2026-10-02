@@ -33,6 +33,11 @@ describe("shared core v1", () => {
       semanticResolver: "typescript",
     });
     expect(classifySourcePath("source.txt")).toBeNull();
+    expect(classifySourcePath("source.rs")).toEqual({
+      kind: "code",
+      language: "rust",
+      outline: true,
+    });
     expect(isGoIdentifier("世界9")).toBe(true);
     expect(isGoIdentifier("func")).toBe(false);
     expect(decodeGoStringLiteral('"example.com/pkg"')).toBe("example.com/pkg");

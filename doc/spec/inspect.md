@@ -10,7 +10,7 @@ Codex owns filesystem permissions.
 
 Extension matching is exact and case-sensitive. Supported formats are `.go`, `.py`,
 `.pyi`, `.ts`, `.tsx`, `.d.ts`, `.mts`, `.d.mts`, `.cts`, `.d.cts`, `.js`,
-`.jsx`, `.mjs`, `.cjs`, `.md`, and `.json`. Every other extension returns
+`.jsx`, `.mjs`, `.cjs`, `.rs`, `.md`, and `.json`. Every other extension returns
 `kind: "none"`, regular-file byte size, `line_count: null`,
 `parse_complete: true`, and an empty outline without reading or decoding content.
 Supported files must be strict UTF-8, and their logical line count follows
@@ -26,9 +26,19 @@ With `--json`, single-file success is one LF-terminated JSON document with
 document per path.
 `data` contains the normalized requested path, kind, language, exact inspected byte size, logical
 line count, parser-completeness flag, and a flat source-ordered outline. Code entries include only
-imports, top-level constants and variables, types, classes, functions, and direct methods.
+imports, top-level constants and variables, types, classes, modules, macros, functions, and direct methods.
 Declaration-owned names MUST exclude initializer-local declarations, type parameters, and fields,
 including when the enclosing top-level declaration spans multiple lines.
+Rust projects structs, enums, unions, traits, and aliases as `type`, `const` as `constant`,
+`static` as `variable`, named modules as `module`, and macro definitions as `macro`.
+Functions in top-level extern blocks are `function`; direct functions and signatures in
+traits and impl blocks are `method`, using the trait name or implemented type as receiver.
+Impl receiver names omit generic arguments, array lengths, lifetimes, mutability, and function signatures;
+type paths and reference/pointer/array/tuple structure remain visible without values or bodies.
+Use declarations and extern crates project imported binding names, aliases, or `*` for wildcards.
+Attached outer attributes belong to the following declaration's span. Inline module contents,
+associated constants/types, enum variants, macro bodies/invocations, and function-local items
+are not expanded. Rust inspection is structural only and adds no semantic resolver.
 JavaScript and TypeScript side-effect imports use their decoded module string as the name,
 including single- and double-quoted literals and ECMAScript escapes and line continuations.
 Recovered invalid module strings MUST NOT contribute fabricated names.
@@ -48,7 +58,7 @@ retains the rest for `mread`. Single-file JSON returns
 Omitted complete entries are available as JSON arrays through the shared `mread` interface,
 without repeating the prefix or reopening the source. Multi-file JSON retains
 omitted JSONL documents as an exact byte stream; a continuation may split a JSONL
-document. Go uses the host toolchain's native `go/parser` grammar, including the repository's supported Go syntax. JavaScript, TypeScript, Python, and JSON use native
+document. Go uses the host toolchain's native `go/parser` grammar, including the repository's supported Go syntax. JavaScript, TypeScript, Python, Rust, and JSON use native
 Tree-sitter grammars with syntax recovery. JSON syntax is validated independently
 of its recovery grammar, including exponent signs and exactly one root value;
 comments and malformed number/string literals mark parsing incomplete. Parser recovery or YAML
@@ -86,5 +96,5 @@ Acceptance:
    when host permissions allow; non-regular files still fail.
 6. Compact, JSON, and multi-path output have exact-output coverage. Compact output
    for a representative declaration-rich source fixture uses at least 70% fewer tokens than JSON.
-7. Tracked Go sources and TypeScript fixtures have complete declaration spans;
+7. Tracked Go sources and TypeScript and Rust fixtures have complete declaration spans;
    an unrelated syntax error does not prevent expansion of an error-free declaration.

@@ -16,6 +16,7 @@ import (
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	javascript "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
 	python "github.com/tree-sitter/tree-sitter-python/bindings/go"
+	rust "github.com/tree-sitter/tree-sitter-rust/bindings/go"
 	typescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 	"github.com/yusing/mekugi/internal/gooutline"
 	"github.com/yusing/mekugi/internal/sourcekind"
@@ -181,6 +182,8 @@ func parseNativeSource(ctx context.Context, source string, format sourcekind.For
 		switch format.Language {
 		case "python":
 			language = sitter.NewLanguage(python.Language())
+		case "rust":
+			language = sitter.NewLanguage(rust.Language())
 		case "javascript":
 			language = sitter.NewLanguage(javascript.Language())
 		case "typescript":
@@ -285,9 +288,207 @@ func bindingNodes(n *sitter.Node) []*sitter.Node {
 // Only declaration-owned bindings are projected. Never walk initializer bodies
 // to discover names, or recursively collect methods from nested classes.
 func (s *parsedSource) codeOutline(root *sitter.Node) {
+	if s.format.Language == "rust" {
+		s.rustDeclarations(root, "")
+		return
+	}
 	for _, top := range nodeChildren(root) {
 		s.codeDeclaration(top, top)
 	}
+}
+
+// Rust attributes are siblings of their declarations, not declaration wrappers.
+// Only source-file declarations and direct trait/impl/extern members are visited.
+func (s *parsedSource) rustDeclarations(root *sitter.Node, receiver string) {
+	children := nodeChildren(root)
+	if root != nil && root.IsError() {
+		// Recovery can flatten an unfinished body into ERROR alongside its local
+		// declarations. Only declarations outside actual brace tokens are peers.
+		children = nil
+		depth := 0
+		var recover func(*sitter.Node)
+		recover = func(n *sitter.Node) {
+			if n.IsError() {
+				for i := uint(0); i < n.ChildCount(); i++ {
+					recover(n.Child(i))
+				}
+				return
+			}
+			switch n.Kind() {
+			case "{":
+				depth++
+			case "}":
+				depth = max(0, depth-1)
+			default:
+				if depth == 0 && n.IsNamed() {
+					children = append(children, n)
+				}
+			}
+		}
+		recover(root)
+	}
+	from := -1
+	for _, n := range children {
+		switch n.Kind() {
+		case "attribute_item":
+			if from < 0 {
+				from = int(n.StartByte())
+			}
+			continue
+		case "line_comment", "block_comment":
+			continue
+		}
+		if from < 0 {
+			from = int(n.StartByte())
+		}
+		s.rustDeclaration(n, from, receiver)
+		from = -1
+	}
+}
+
+func (s *parsedSource) rustDeclaration(n *sitter.Node, from int, receiver string) {
+	add := func(kind string, name *sitter.Node) {
+		if name != nil && !name.IsMissing() {
+			s.add(kind, s.text(name), from, int(n.EndByte()), int(name.StartByte()), int(name.EndByte()), !n.HasError())
+			s.entries[len(s.entries)-1].receiver = receiver
+		}
+	}
+	switch n.Kind() {
+	case "function_item", "function_signature_item":
+		kind := "function"
+		if receiver != "" {
+			kind = "method"
+		}
+		add(kind, n.ChildByFieldName("name"))
+	case "ERROR":
+		s.rustDeclarations(n, receiver)
+	case "foreign_mod_item":
+		if receiver == "" {
+			s.rustDeclarations(n.ChildByFieldName("body"), "")
+		}
+	case "impl_item":
+		if receiver == "" {
+			s.rustDeclarations(n.ChildByFieldName("body"), s.rustReceiver(n.ChildByFieldName("type")))
+		}
+	default:
+		if receiver != "" {
+			return // Associated constants/types and nested declarations are not methods.
+		}
+		switch n.Kind() {
+		case "struct_item", "enum_item", "union_item", "type_item", "trait_item":
+			name := n.ChildByFieldName("name")
+			add("type", name)
+			if n.Kind() == "trait_item" && name != nil {
+				s.rustDeclarations(n.ChildByFieldName("body"), s.text(name))
+			}
+		case "const_item":
+			add("constant", n.ChildByFieldName("name"))
+		case "static_item":
+			add("variable", n.ChildByFieldName("name"))
+		case "mod_item":
+			add("module", n.ChildByFieldName("name"))
+		case "macro_definition":
+			add("macro", n.ChildByFieldName("name"))
+		case "extern_crate_declaration":
+			name := n.ChildByFieldName("alias")
+			if name == nil {
+				name = n.ChildByFieldName("name")
+			}
+			add("import", name)
+		case "use_declaration":
+			pathName := func(path *sitter.Node) *sitter.Node {
+				if path != nil && path.Kind() == "scoped_identifier" {
+					return path.ChildByFieldName("name")
+				}
+				return path
+			}
+			var visit func(*sitter.Node, *sitter.Node)
+			visit = func(argument, scope *sitter.Node) {
+				if argument == nil {
+					return
+				}
+				switch argument.Kind() {
+				case "use_as_clause":
+					add("import", argument.ChildByFieldName("alias"))
+				case "scoped_identifier":
+					name := argument.ChildByFieldName("name")
+					if name != nil && name.Kind() == "self" {
+						name = pathName(argument.ChildByFieldName("path"))
+					}
+					add("import", name)
+				case "self":
+					if scope != nil {
+						add("import", scope)
+					} else {
+						add("import", argument)
+					}
+				case "identifier", "super", "crate":
+					add("import", argument)
+				case "use_wildcard":
+					s.add("import", "*", from, int(n.EndByte()), -1, -1, !n.HasError())
+				case "scoped_use_list":
+					visit(argument.ChildByFieldName("list"), pathName(argument.ChildByFieldName("path")))
+				case "use_list":
+					for _, child := range nodeChildren(argument) {
+						visit(child, scope)
+					}
+				}
+			}
+			visit(n.ChildByFieldName("argument"), nil)
+		}
+	}
+}
+
+// Receivers are type navigation names, never raw type expressions. In particular,
+// generic arguments and array lengths can contain values or entire Rust bodies.
+func (s *parsedSource) rustReceiver(n *sitter.Node) string {
+	if n == nil {
+		return ""
+	}
+	switch n.Kind() {
+	case "identifier", "type_identifier", "primitive_type", "self", "super", "crate":
+		return s.text(n)
+	case "generic_type":
+		return s.rustReceiver(n.ChildByFieldName("type"))
+	case "scoped_type_identifier", "scoped_identifier":
+		return s.rustReceiver(n.ChildByFieldName("path")) + "::" + s.rustReceiver(n.ChildByFieldName("name"))
+	case "reference_type":
+		return "&" + s.rustReceiver(n.ChildByFieldName("type"))
+	case "pointer_type":
+		return "*" + s.rustReceiver(n.ChildByFieldName("type"))
+	case "array_type":
+		return "[" + s.rustReceiver(n.ChildByFieldName("element")) + "]"
+	case "tuple_type":
+		var types []string
+		for _, child := range nodeChildren(n) {
+			types = append(types, s.rustReceiver(child))
+		}
+		return "(" + strings.Join(types, ", ") + ")"
+	case "unit_type":
+		return "()"
+	case "dynamic_type", "abstract_type":
+		return s.rustReceiver(n.ChildByFieldName("trait"))
+	case "function_type":
+		if trait := n.ChildByFieldName("trait"); trait != nil {
+			return s.rustReceiver(trait)
+		}
+		return "fn"
+	case "bracketed_type":
+		return "<" + s.rustReceiver(n.NamedChild(0)) + ">"
+	case "qualified_type":
+		return s.rustReceiver(n.ChildByFieldName("type")) + " as " + s.rustReceiver(n.ChildByFieldName("alias"))
+	case "bounded_type":
+		var types []string
+		for _, child := range nodeChildren(n) {
+			if child.Kind() != "lifetime" && child.Kind() != "use_bounds" {
+				types = append(types, s.rustReceiver(child))
+			}
+		}
+		return strings.Join(types, " + ")
+	case "never_type":
+		return "!"
+	}
+	return "_"
 }
 func (s *parsedSource) codeDeclaration(n, span *sitter.Node) {
 	kind := n.Kind()
