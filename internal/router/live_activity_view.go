@@ -153,10 +153,12 @@ type liveActivityRunKey struct {
 }
 
 func newLiveActivityView() *liveActivityView {
-	return &liveActivityView{
+	v := &liveActivityView{
 		following: true, status: "CONNECTING",
 		painter: activityui.Painter{CopySource: true, Theme: livediff.EnvironmentTheme(os.Getenv("COLORFGBG"))},
 	}
+	v.painter.Clock = v.now
+	return v
 }
 
 // apply reports whether the viewer should exit.

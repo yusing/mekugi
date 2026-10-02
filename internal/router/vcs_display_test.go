@@ -78,12 +78,15 @@ func TestVCSCommitShowsTheRecordedCommit(t *testing.T) {
 	hash := gitCommitHead.FindStringSubmatch(strings.Split(output, "\n")[0])[2]
 	script := "git diff --check && git add a.go b.go gone.txt && git commit -F - <<'EOF'\namend! feat(router): pin latest reply\n\nbody\nEOF"
 	u := vcsCommandUI(t, g.dir)
+	now := time.Date(2026, 10, 2, 8, 0, 0, 0, time.UTC)
+	u.clock = func() time.Time { return now }
+	u.view.clock = u.clock
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "cwd": g.dir, "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	u.view.pace(time.Now().Add(time.Second))
-	// Staging leads into the commit, so only the check and commit show; the
-	// request is not yet a recorded commit.
-	if got, want := mainFeed(u, 90), "├ Check  working tree · git diff --check\n└ Commit amend! feat(router): pin latest reply · git"; got != want {
+	u.view.pace(now.Add(time.Second))
+	// Staging folds into the commit; the extra batch row owns invocation timing.
+	// The request is not yet a recorded commit.
+	if got, want := mainFeed(u, 90), "├ Check   working tree · git diff --check\n├ Commit  amend! feat(router): pin latest reply · git\n└ Running shell batch"; got != want {
 		t.Fatalf("started commit =\n%s\nwant\n%s", got, want)
 	}
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output

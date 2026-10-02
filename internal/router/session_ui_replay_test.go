@@ -190,6 +190,30 @@ func TestSessionUIReplayPlaybackControlsClampAndPreserveClock(t *testing.T) {
 	}
 }
 
+func TestSessionUIReplayBatchElapsedUsesRecordedClock(t *testing.T) {
+	p := replayPlaybackTestNew(t)
+	for _, tc := range []struct {
+		position time.Duration
+		elapsed  string
+	}{
+		{4500 * time.Millisecond, "500ms"},
+		{5500 * time.Millisecond, "1s"},
+		{4500 * time.Millisecond, "500ms"},
+	} {
+		move := p.advance
+		if tc.position < p.position {
+			move = p.seek
+		}
+		if err := move(tc.position); err != nil {
+			t.Fatal(err)
+		}
+		frame := replayPlaybackTestPaint(t, p, 120, 28)
+		if !strings.Contains(frame, "Running shell batch · "+tc.elapsed) {
+			t.Fatalf("replayed elapsed time at %v is not %s:\n%s", tc.position, tc.elapsed, frame)
+		}
+	}
+}
+
 func TestUISnapshotSessionUIReplay(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

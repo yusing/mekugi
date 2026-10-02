@@ -1,7 +1,7 @@
 ┌ 1 Main ──────────────────────────────────────────────────┐┌ 3 Activity ────────────────────────────────────── FOLLOW ┐
 │• Inspecting repaint timing for 2s                        ││                                                          │
-│└ Running sleep 1; printf 'captured output'               ││                                                          │
-│                                                          ││                                                          │
+│├ Running sleep 1; printf 'captured output'               ││                                                          │
+│└ Running shell batch · 500ms                             ││                                                          │
 │                                                          ││                                                          │
 │                                                          ││                                                          │
 │                                                          ││                                                          │
@@ -23,6 +23,6 @@
 │╰─────────────────────────────────────────────────── 0% ─╯││                                                          │
 └──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
 ─ 4 Agents · 1 · 1 working ─────────────────────────────────────────────────────────────────────────────────────────────
- ◐ main  Running sleep 1; printf 'captured output'                                                          4s · 4s ago
+ ◐ main  Running shell batch · +1 more                                                                      4s · 4s ago
 
  ▶ Replay · simulated · 1.0x · 00:04/00:20 ━━───────  ^B 1-5 · Space pause · +/- speed · [/] seek · r restart · q quit

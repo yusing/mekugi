@@ -30,12 +30,20 @@ type Painter struct {
 	Theme  livediff.Theme
 	Colors Colors
 	syntax livediff.Renderer
+	Clock  func() time.Time // Optional presentation clock, shared with replay.
 	// LayoutOnly skips syntax decoration while retaining exact text geometry.
 	// The feed uses it for cold off-screen runs, never visible rows or dialogs.
 	LayoutOnly bool
 	// CopySource carries semantic annotations to the native viewport.
 	CopySource bool
 	CopyScope  uint64 // Stable native entry/block scope for cached source identities.
+}
+
+func (p *Painter) now() time.Time {
+	if p.Clock != nil {
+		return p.Clock()
+	}
+	return time.Now()
 }
 
 func VerbColor(verb string) string {
@@ -571,7 +579,7 @@ func (p *Painter) Block(block Block, width int) []string {
 		}
 	}
 	if block.Verb != "Run" && !block.Skipped && len(lines) > 0 {
-		if elapsed := RunElapsed(block, time.Now()); elapsed != "" {
+		if elapsed := RunElapsed(block, p.now()); elapsed != "" {
 			suffix := Dim + " · " + elapsed + Undim
 			if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 				lines[0] += suffix
@@ -1081,7 +1089,7 @@ func (p *Painter) ranRow(block Block, width int) []string {
 	case exit != "":
 		lines = suffix(lines, exit)
 	}
-	if elapsed := RunElapsed(block, time.Now()); elapsed != "" {
+	if elapsed := RunElapsed(block, p.now()); elapsed != "" {
 		if strings.Contains(code, "\n") {
 			lines = append(lines, padding+Dim+"· "+elapsed+Undim)
 		} else {

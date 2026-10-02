@@ -50,7 +50,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		}
 		block.Running = !view.Done
 	}
-	page := DialogPage{Title: p.DialogPageTitle(block, time.Now(), width), Live: block.Live || !view.Done}
+	page := DialogPage{Title: p.DialogPageTitle(block, p.now(), width), Live: block.Live || !view.Done}
 	var detail []string
 	if len(block.Reads) == 1 && len(block.Reads[0].Ranges) > 0 {
 		detail = append(detail, lineRanges(block.Reads[0].Ranges))
