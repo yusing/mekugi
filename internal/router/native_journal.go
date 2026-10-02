@@ -825,6 +825,12 @@ func journalNodeParts(theme livediff.Theme, node journalNode, verb string) (lead
 	return color + journalGlyphs[node.State] + activityui.Reset + " ", text
 }
 
+// Native journal entries use the same rich item renderer in Main and Activity.
+// Parsed blocks remain the retained detail/copy sources, not another feed renderer.
+func nativeJournalEntry(entry activityPaneEntry) bool {
+	return entry.Kind == "journal_event" || entry.Kind == "journal_card" || entry.journal != nil
+}
+
 func (v *liveActivityView) applyTreeJournal(thread string, p nativeJournalPublication) {
 	kind := "journal_event"
 	text := p.item.Text
@@ -1010,7 +1016,7 @@ func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, 
 // journalEventsItem shows adjacent journal changes as one journal item: a
 // heading, then each task change or note on its own row under the journal
 // gutter. A row's time shows only where it differs from the row above.
-func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last, width int) []activityui.Block {
+func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last, width int) ([]activityui.Block, map[uint64]int) {
 	p := &v.painter
 	accent := p.Theme.Accent()
 	head := v.entries[first].activityPaneEntry
@@ -1018,12 +1024,14 @@ func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last
 	gutter := accent + "│" + activityui.Reset + " "
 	body := max(1, width-2)
 	var laid []activityui.Block
+	entryRows := make(map[uint64]int)
 	stamp := head.Observed.Local().Format("15:04")
 	for k := first; k <= last; k++ {
 		entry := v.entries[k].activityPaneEntry
 		if !v.visible(entry) || entry.Kind != "journal_event" {
 			continue
 		}
+		entryRows[entry.Seq] = len(out.lines)
 		lead, text := "", livediff.Safe(entry.Text, false)
 		detail := ""
 		if event := entry.journalEvent; event != nil {
@@ -1050,5 +1058,5 @@ func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last
 			out.snippets[len(out.snippets)-1] = snippet
 		}
 	}
-	return laid
+	return laid, entryRows
 }

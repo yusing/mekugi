@@ -432,8 +432,8 @@ func TestLiveActivityMainJournalContentOnly(t *testing.T) {
 	agents := ansi.Strip(strings.Join(v.renderFeed(80, 20).lines, "\n"))
 	v.conversation = true
 	main := ansi.Strip(strings.Join(v.renderFeed(80, 20).lines, "\n"))
-	if !strings.Contains(agents, "✓ Final answer") || strings.Contains(main, "Final answer") {
-		t.Fatal("Main heading change affected Agents or reused stale cache")
+	if agents != main {
+		t.Fatal("Main and Activity must share journal rendering without stale cache")
 	}
 	if !strings.Contains(main, "↩ re: original message (not loaded)") || !strings.Contains(main, "▎ Original question") {
 		t.Fatal("Main lost the actual question text")

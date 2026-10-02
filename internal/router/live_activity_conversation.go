@@ -404,9 +404,10 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	switch {
 	case entry.Kind == "journal_card":
 		laid = blocks
+		entryRows[entry.Seq] = 0
 		v.journalCardLines(&out, entry, width)
 	case entry.Kind == "journal_event":
-		laid = v.journalEventsItem(&out, first, last, width)
+		laid, entryRows = v.journalEventsItem(&out, first, last, width)
 	case entry.Agent == "Main" && entry.Kind == "progress":
 		for _, block := range blocks {
 			out.add(0, v.paintBlock(len(out.lines), 0, func() []string { return p.Block(block, width) })...)
@@ -488,15 +489,37 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			out.snippets[len(out.snippets)-1] = toggles[i]
 		}
 	case entry.Agent == "Main" && entry.journal != nil && len(blocks) == 1 && blocks[0].Journal != nil:
+		var details []activityui.Block
+		for _, group := range blocks[0].Journal.Groups {
+			for _, answer := range group.Answers {
+				details = append(details, activityui.Block{Kind: "text", Verb: "Journal", Label: answer.ID, Body: answer.Text, Detail: group.Question})
+			}
+		}
+		laid = []activityui.Block{{Kind: "text", Members: details}}
+		entryRows[entry.Seq] = 0
 		v.flushItem(&out, entry, blocks[0].Journal, first, width)
+		for i := 1; i < len(out.lines); i++ {
+			out.snippets[i] = liveActivitySnippet{run: entry.Seq, block: 0}
+		}
 	case conversationMilestone(entry):
 		var milestones []string
+		var details []activityui.Block
 		for k := first; k <= last; k++ {
 			if v.visible(v.entries[k].activityPaneEntry) {
 				milestones = append(milestones, livediff.Safe(v.entries[k].Text, false))
+				for _, block := range v.entries[k].blocks {
+					block.Source = v.entries[k].Seq
+					details = append(details, block)
+				}
+				entryRows[v.entries[k].Seq] = 0
 			}
 		}
+		laid = []activityui.Block{{Kind: "text", Members: details}}
 		v.milestoneItem(&out, entry, milestones, width)
+		// One segmented dialog retains all adjacent milestone bodies for copy.
+		for i := 1; i < len(out.lines); i++ {
+			out.snippets[i] = liveActivitySnippet{run: entry.Seq, block: 0}
+		}
 	case entry.Agent == "Main" && entry.Kind == "text":
 		out.add(0, mainHeading(p, entry, width))
 		gutter := mainGutter(p)

@@ -1461,6 +1461,7 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 			continue
 		}
 		agent := v.entries[i].Agent
+		journal := nativeJournalEntry(v.entries[i].activityPaneEntry)
 		if last, ok := lastPreview[agent]; ok {
 			if i == last {
 				appendPreview(agent)
@@ -1473,7 +1474,11 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 			if !v.visible(v.entries[j].activityPaneEntry) {
 				continue
 			}
-			if v.entries[j].Agent != agent {
+			next := v.entries[j].activityPaneEntry
+			if next.Agent != agent || nativeJournalEntry(next) != journal {
+				break
+			}
+			if journal && j != i && !(conversationJournalEvent(v.entries[i].activityPaneEntry) && conversationJournalEvent(next) || conversationMilestone(v.entries[i].activityPaneEntry) && conversationMilestone(next)) {
 				break
 			}
 			last = j
@@ -1494,6 +1499,9 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 		}
 		first := i // The deferred painter must not borrow the advancing loop cursor.
 		render := func() liveActivityRun {
+			if journal {
+				return v.conversationItem(first, last, width, conversationThread{})
+			}
 			var blocks []activityui.Block
 			for k := first; k <= last; k++ {
 				if v.visible(v.entries[k].activityPaneEntry) {

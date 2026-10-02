@@ -21,7 +21,7 @@ Operation-row formatting and feed controls are specified by
 
 Journal shares the auxiliary column with Diff and Activity (`Ctrl-B 5`). No bare
 key opens it, so composer text that starts with any letter is typed. Its plan strip, tree navigation, transition rows and expandable
-terminal card follow [journal presentation](journal.md#native-main-presentation).
+terminal card follow [journal presentation](journal.md#native-journal-presentation).
 Pane preferences retain its visibility and focus; transient selection and expansion
 remain local to the active frontend.
 The bottom pane selectors are clickable and perform the same selection as
@@ -1070,7 +1070,7 @@ above Main's composer or at the bottom of Activity. Scrolling stops at the last
 full viewport, including after resizing or following a link, and the link target
 briefly highlights. Frames replace changed rows
 without blanking the terminal. Journal records arrive typed from the journal
-owner and follow the [native journal presentation](journal.md#native-main-presentation)
+owner and follow the [native journal presentation](journal.md#native-journal-presentation)
 contract. A request without workspace metadata keeps its unscoped journal
 namespace; the app-server cwd never grants it filesystem authority.
 

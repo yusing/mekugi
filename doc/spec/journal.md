@@ -1,6 +1,6 @@
 # Journal
 
-## Native Main presentation
+## Native journal presentation
 
 V2 journals have a Journal pane alongside Diff and Activity, selected by `Ctrl-B 5`;
 composer letters never open it. The pane title counts the journal's own tasks by state
@@ -47,6 +47,8 @@ has no state label. Child changes refresh mounted views without copying notes in
 the parent's record or acknowledging child events on behalf of the parent. The plan
 strip counts only the presented journal's own tasks.
 
+Native Main and Activity use the same rich journal event and work-report rendering,
+while retaining independent pane navigation and the shared detail/copy dialog.
 Native Main receives event rows after persistence. Adjacent rows share one `journal`
 item: a state glyph colored by state, the dim path, the title and the change, one node
 per row, wrapped under the title. A row's time shows only where it differs from the
