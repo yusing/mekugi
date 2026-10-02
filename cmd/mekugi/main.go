@@ -31,6 +31,10 @@ func run() int {
 		return exitCode
 	}
 
+	if len(os.Args) > 1 && os.Args[1] == "claude" {
+		return runClaude(ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
+	}
+
 	if len(os.Args) > 1 && os.Args[1] == "post-compact" {
 		return router.RunPostCompactHook(ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
 	}

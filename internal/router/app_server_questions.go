@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/session"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -26,6 +27,8 @@ type nativeQuestion struct {
 	IsSecret               bool           `json:"isSecret"`
 	Options                jsontext.Value `json:"options"`
 	choices                []nativeQuestionOption
+	multiple               bool
+	chosen                 map[int]bool
 	editor                 questionEditor
 	selected, top, textTop int
 	note, done, skipped    bool
@@ -33,6 +36,7 @@ type nativeQuestion struct {
 	outcome                string
 }
 type nativeQuestionCall struct {
+	prompt             *session.Prompt
 	thread, turn, item string
 	request            jsontext.Value
 	questions          []nativeQuestion
@@ -348,6 +352,14 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 			return true, nil
 		}
 	}
+	if q.multiple && key == " " && q.selected < len(q.choices) && u.draft == "" {
+		if q.chosen == nil {
+			q.chosen = make(map[int]bool)
+		}
+		q.chosen[q.selected] = !q.chosen[q.selected]
+		q.done = false
+		return true, nil
+	}
 	switch key {
 	case "\x1b":
 		if q.note {
@@ -389,6 +401,18 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		if !q.skipped {
 			if q.selected < len(q.choices) {
 				q.answer = []string{q.choices[q.selected].Label}
+				if q.multiple {
+					q.answer = nil
+					for i, choice := range q.choices {
+						if q.chosen[i] {
+							q.answer = append(q.answer, choice.Label)
+						}
+					}
+					if len(q.answer) == 0 {
+						q.done = false
+						return true, nil
+					}
+				}
 				if len(c.request) > 0 && u.draft != "" {
 					q.answer = append(q.answer, "user_note: "+u.draft)
 				}
@@ -445,6 +469,9 @@ func (u *appServerUI) submitQuestions() error {
 	c := u.questions.active
 	if c == nil || c.resolved || c.sent {
 		return nil
+	}
+	if c.prompt != nil {
+		return u.runtimeDecision(true)
 	}
 	defer func() {
 		u.pruneDraftImages()
@@ -717,7 +744,7 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 		if state == "" {
 			if c.sent {
 				state = "sending"
-			} else if len(c.request) > 0 {
+			} else if len(c.request) > 0 || c.prompt != nil {
 				state = "waiting"
 			} else {
 				state = "open"
@@ -756,7 +783,7 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 	if len(c.questions) == 1 {
 		label = strings.Replace(label, "questions", "question", 1)
 	}
-	if len(c.request) == 0 && !c.resolved && u.turn == "" {
+	if len(c.request) == 0 && c.prompt == nil && !c.resolved && u.turn == "" {
 		label += " · answer starts a new turn"
 	}
 	text := label + "\n" + strings.Join(body, "\n\n")
@@ -790,7 +817,7 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	padding := min(2, max(0, (width-20)/2))
 	inner := max(1, width-2*padding)
 	state := "open"
-	if len(c.request) > 0 {
+	if len(c.request) > 0 || c.prompt != nil {
 		state = "waiting"
 	}
 	head := fmt.Sprintf("? %d of %d", d.index+1, len(c.questions))
@@ -807,6 +834,9 @@ func (u *appServerUI) questionRows(width, height int) []string {
 		rows = append(rows, "")
 	}
 	keys := [][2]string{{fmt.Sprintf("1–%d", min(9, len(q.choices)+1)), "choose"}, {"type", "answer"}}
+	if q.multiple {
+		keys = append(keys, [2]string{"space", "toggle"})
+	}
 	if len(c.request) > 0 {
 		keys = append(keys, [2]string{"tab", "note"})
 	}
@@ -864,9 +894,21 @@ func (u *appServerUI) questionRows(width, height int) []string {
 		if i == q.selected {
 			prefix = "› "
 		}
-		line := fmt.Sprintf("%s%d. %s", prefix, i+1, pickerText(o.Label))
-		if inner-columns-7 >= 24 {
-			line += strings.Repeat(" ", max(0, columns-ansi.StringWidth(pickerText(o.Label)))+2) + dim + pickerText(o.Description) + reset
+		label := pickerText(o.Label)
+		if q.multiple && i < len(q.choices) {
+			check := "[ ] "
+			if q.chosen[i] {
+				check = "[x] "
+			}
+			label = check + label
+		}
+		line := fmt.Sprintf("%s%d. %s", prefix, i+1, label)
+		extra := 0
+		if q.multiple {
+			extra = 4
+		}
+		if inner-columns-7-extra >= 24 {
+			line += strings.Repeat(" ", max(0, columns+extra-ansi.StringWidth(label))+2) + dim + pickerText(o.Description) + reset
 		}
 		line = ansi.Truncate(line, inner, "…")
 		if i == q.selected {

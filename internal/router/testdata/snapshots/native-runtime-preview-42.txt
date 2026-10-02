@@ -1,0 +1,32 @@
+┌ 1 Main ────────────────────────────────┐
+│LIVE · Write · 1 file                   │
+│  main · ◐ A example.txt +1 -0          │
+│▎ 1│+incoming preview                   │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│Incoming content prefix · replacement … │
+│                                        │
+│╭─ Ready ──────────────────────────────╮│
+││ ❯                                    ││
+│╰────────────────────── claude-sonnet ─╯│
+└────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal

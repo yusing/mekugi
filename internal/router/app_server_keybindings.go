@@ -8,6 +8,10 @@ import (
 )
 
 func renderNativeKeybindings(width, height int) []string {
+	return renderNativeKeybindingsForRuntime(width, height, false)
+}
+
+func renderNativeKeybindingsForRuntime(width, height int, nativeRuntime bool) []string {
 	const bold = "\x1b[1m"
 	const blue = "\x1b[38;2;80;155;225m"
 	groups := []struct {
@@ -55,6 +59,19 @@ func renderNativeKeybindings(width, height int) []string {
 	var band []string
 	used := 0
 	for _, group := range groups {
+		if nativeRuntime {
+			var keys [][2]string
+			for _, key := range group.keys {
+				switch key[0] {
+				case "!", "/ / @ / $", "ctrl+v", "tab", "alt+↑ / shift+←", "shift+↑ / shift+↓", "/status /session", "/btw QUESTION", "/model /effort /tier":
+					continue
+				case "enter":
+					key[1] = "Send when idle"
+				}
+				keys = append(keys, key)
+			}
+			group.keys = keys
+		}
 		keyWidth := 0
 		for _, key := range group.keys {
 			keyWidth = max(keyWidth, ansi.StringWidth(key[0]))

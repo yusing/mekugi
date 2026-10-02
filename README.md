@@ -6,13 +6,18 @@ blade.
 
 Mekugi adds compact, recoverable tools and live subagent activity to stock
 Codex. Codex keeps editing, execution, the sandbox, permissions, command
-sessions, and patch review. No fork, no config edits, no daemon.
+sessions, and patch review. No fork, no config edits, no daemon. The
+[Claude backend preview](#claude-code-preview) uses the official runtime in the same UI.
 
 [Features](#features) · [Install](#install) · [Usage](#usage) ·
 [Native UI](#native-ui) · [Metrics](#metrics) · [Configuration](#configuration) ·
 [Documentation](#documentation)
 
 ## Features
+
+- **Claude Code preview.** `mekugi claude` offers streaming conversation, native
+  permission decisions and interruption without an inference router. See its
+  [current limits and build instructions](#claude-code-preview).
 
 ### Agent-facing
 
@@ -122,6 +127,54 @@ start a new session to pick up an update.
 
 ## Usage
 
+### Claude Code preview
+
+Build and try the first presentation-only version from this checkout:
+
+```sh
+make build-claude
+./bin/mekugi claude --cwd /path/to/project
+```
+
+Requires Node.js 18 or newer and an installed, authenticated official `claude`
+CLI. The initial compatibility target is Claude Code 2.1.287 with Agent SDK
+0.3.287. Sign in using Claude's own CLI before launching. Authentication and
+billing remain native; this preview does not claim subscription eligibility or
+switch you to API billing. Existing Claude settings, instructions and extensions
+load normally, including their configured permission mode. Mekugi adds no tools,
+hooks, prompt instructions, frontend PATH entries or inference router.
+
+The build writes only to `bin/`, not the installed Mekugi location. It installs
+locked bridge dependencies into that build directory. Keep `bin/claude-bridge`
+beside `bin/mekugi`. You can select a native model with `--model MODEL` or continue
+a native session with `--resume SESSION_ID`; the ID appears at the bottom of the
+screen. Resume preserves Claude's context and restores available transcript rows
+from the selected workspace. Display restoration reads at most 2,000 messages;
+a notice identifies longer histories. No tools or approvals are replayed.
+
+Enter sends a message; Ctrl-J adds a line; bracketed paste preserves multiline
+text. The same composer supports undo/redo, external editing and copying. Use
+PgUp/PgDn or the mouse wheel to scroll, and Ctrl-B 1 / 2 / 3 to select Main / Diff /
+Activity. Native approvals use the shared question dock: select Allow once or
+Deny and press Enter. Questions accept option numbers or free text; multi-select
+questions use Space to toggle choices before Enter. Ctrl-C declines a pending request,
+otherwise clears the draft, interrupts active work, then quits when idle.
+`/quit` exits when idle. Input entered during a turn stays in the composer rather
+than being silently steered or queued.
+
+Claude uses the existing pane shell, not a separate interface. Edit/Write input
+streams appear as provisional proposals in the shared live-edit dock and Diff
+pane. Partial content does not claim deletion of an unseen suffix. Native tool
+completion does not turn these proposals into saved edit evidence. Bash previews,
+saved changes, journals, agent controls, attachments and in-session model/effort
+controls are not connected yet. Commands advertised by the SDK are forwarded
+natively; unadvertised commands are rejected rather than emulated. There is no
+companion plugin, compaction replacement, shell tracing or output rewriting.
+Only exposed text and native tool input/results are displayed; unavailable usage
+and change evidence are not invented. Oversized bridge events stop the client with an error;
+Claude's own session remains the history authority. The full Codex interface below
+is unchanged and is not a claim of Claude feature parity.
+
 ### Start Mekugi
 
 Choose a mode and authenticate with the provider it uses:
@@ -136,8 +189,8 @@ Standalone mode fails at startup if no third-party provider has credentials.
 Its default uses [Grok's model selection](#grok-models) when authenticated,
 otherwise the first available OpenCode Go model, then Zen.
 
-Mekugi opens its native terminal workspace. Interactive launches currently require
-explicit `--yolo` (no approvals or sandbox).
+Mekugi opens its native terminal workspace. Codex-backed interactive launches
+currently require explicit `--yolo` (no approvals or sandbox).
 
 Mekugi flags go **before** `codex`, `grok`, or standalone Codex arguments.
 Interactive launches accept `--yolo`, model

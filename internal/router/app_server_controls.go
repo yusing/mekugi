@@ -22,6 +22,13 @@ func (u *appServerUI) lockNotice() {
 // Only keyboard cancellation is guarded. Host lifecycle and already-admitted
 // interrupts retain their authority, and contextual Escape/copy still work.
 func (u *appServerUI) keyboardInterrupt() error {
+	if u.runtime != nil {
+		if !u.runtime.busy {
+			return nil
+		}
+		u.status = "Interrupting…"
+		return u.runtime.client.Interrupt(u.ctx)
+	}
 	if u.interruptLocked {
 		u.lockNotice()
 		return nil

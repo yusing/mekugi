@@ -332,7 +332,11 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 				body = strings.Split(u.diffScreen.Render(), "\n")
 			}
 			summary, state := u.diff.nativeTitle()
-			title, label = nativeTitle(2, "Diff", "saved · "+summary, u.focus == 1), state
+			mode := "saved · " + summary
+			if !u.diff.diffMode {
+				mode = "live proposals"
+			}
+			title, label = nativeTitle(2, "Diff", mode, u.focus == 1), state
 			u.diffUnseen = false
 		} else if content > 0 && u.journalOpen {
 			l.journal = terminalRect{right.x + 1, contentY, iw, content}

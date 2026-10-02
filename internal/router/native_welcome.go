@@ -49,7 +49,11 @@ func (u *appServerUI) welcome() string {
 	if strings.HasPrefix(version, "v") {
 		label = "mekugi-" + version
 	}
-	label += " • codex"
+	if u.runtime != nil {
+		label += " • " + u.runtime.name
+	} else {
+		label += " • codex"
+	}
 	if u.backendVersion != "" {
 		label += " v" + u.backendVersion
 	}

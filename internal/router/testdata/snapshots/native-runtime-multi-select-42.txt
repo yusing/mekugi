@@ -1,0 +1,32 @@
+┌ 1 Main ────────────────────────────────┐
+│└ Asked  1 question · waiting           │
+│    Which checks should run?            │
+│    Unit tests · Snapshots ·            │
+│    Integration                         │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│  ? 1 of 1 · Validation        waiting  │
+│                                        │
+│  Which checks should run?              │
+│                                        │
+│    1. [x] Unit tests                   │
+│    2. [x] Snapshots                    │
+│  › 3. [ ] Integration                  │
+│    4. Other                            │
+│                                        │
+│  1–4 choose · type answer · space      │
+│  toggle · ctrl+] skip · esc hide       │
+│                                        │
+│╭─ answering ──────────────────────────╮│
+││ ❯                                    ││
+│╰────────────────────── claude-sonnet ─╯│
+└────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal

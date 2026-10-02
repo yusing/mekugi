@@ -106,6 +106,11 @@ func (u *appServerUI) finishPaste() {
 		}
 		q.done, q.skipped = false, false
 	}
+	if u.runtime != nil {
+		u.insertDraft(text)
+		u.run = runNone
+		return
+	}
 	path, ok := pastedImagePath(text)
 	if !ok {
 		if text != "" {

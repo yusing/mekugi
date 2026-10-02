@@ -7,7 +7,7 @@ import (
 )
 
 func (u *appServerUI) shellMode() bool {
-	return u.currentQuestion() == nil && strings.HasPrefix(u.draft, "!")
+	return u.runtime == nil && u.currentQuestion() == nil && strings.HasPrefix(u.draft, "!")
 }
 
 // Source: codex-rs/tui/src/chatwidget/input_submission.rs:36:67@1cc7e236.

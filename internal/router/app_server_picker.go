@@ -138,6 +138,9 @@ func (u *appServerUI) completionTarget() composerTarget {
 }
 
 func (u *appServerUI) refreshPicker() {
+	if u.runtime != nil {
+		return
+	}
 	for _, stack := range [][]composerDraft{u.unsent, u.queued} {
 		for i := range stack {
 			before := len(stack[i].skills)

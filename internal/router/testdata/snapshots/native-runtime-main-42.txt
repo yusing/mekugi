@@ -1,0 +1,28 @@
+┌ 1 Main ────────────────────────────────┐
+│❯ Use the existing Mekugi UI.  12:00:00 │
+│                                        │
+│● main                         12:00:00 │
+│┃ The same shell, composer, and panes   │
+│┃ are in use.                           │
+│                                        │
+│● Main                         12:00:00 │
+││ Bash   {"command":"echo **literal**"} │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│╭─ Ready ──────────────────────────────╮│
+││ ❯                                    ││
+│╰────────────────────── claude-sonnet ─╯│
+└────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal

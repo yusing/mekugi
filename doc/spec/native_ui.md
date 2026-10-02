@@ -1,4 +1,41 @@
-# Native app-server UI
+# Native runtime UI
+
+## REQ-NATIVE-UI-002 — Claude presentation backend
+
+`mekugi claude` selects the official Claude Code Agent SDK backend before router
+startup. It uses the existing Main/composer, Activity, question dock, live-edit
+dock and Diff controllers. Codex-specific controls do not dispatch from this
+backend; runtime commands are admitted only when advertised by its SDK. Claude
+keeps execution, permissions, authentication, configuration and native history.
+No companion, inference routing or model-visible Mekugi guidance is activated.
+
+The initial bridge pins Agent SDK 0.3.287 and targets Claude Code 2.1.287. Its
+private JSON-lines frames are bounded to 8 MiB. Malformed or oversized transport
+frames fail the connection, not silently change native arguments or results.
+User input is held until initialization and history loading complete; input during
+an active turn remains a draft. Native terminal results settle turn activity.
+
+Native permission requests use explicit allow-once/deny decisions. Question
+requests support single choice, multiple choices and free text through the same
+question dock. Native cancellation retires its prompt without a fabricated answer.
+Historical transcript rows cannot recreate pending permissions or tools. Resume
+validates the selected workspace against SDK session metadata before accepting
+new input; at most 2,000 messages are read for display, with longer history noted.
+
+Edit/Write arguments are correlated by native parent/message/block and tool-use
+identity. Each partial input is bounded to 256 KiB, with at most 128 active
+buffers. Complete paths and operands are required; partial content is marked as
+an incoming prefix, never removal of an unseen suffix. Full arguments remain
+provisional until a native tool result, and result arrival still does not make a
+saved capture. Preview filesystem reads use the existing bounded reader. Bash
+preview, saved change evidence, durable journals, agent controls and compaction
+extensions remain unavailable in this presentation-only backend.
+
+Acceptance includes adapter correlation/escape/bound tests; shared-composer,
+permission and multi-select interaction tests; reviewed narrow/wide snapshots;
+and PTY streaming, preview arrival before tool completion, focus, scrolling and
+resize. These offline fixtures do not establish authenticated inference fidelity,
+subscription eligibility, native hook ordering or compaction replacement support.
 
 ## REQ-NATIVE-UI-001 — Native app-server UI
 

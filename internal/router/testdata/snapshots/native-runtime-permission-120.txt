@@ -1,0 +1,28 @@
+┌ 1 Main ──────────────────────────────────────────────────┐┌ 5 Journal ───────────────────── space expand · d details ┐
+│❯ Use the existing Mekugi UI.                    12:00:00 ││ No journal entries.                                      │
+│                                                          ││                                                          │
+│● main                                           12:00:00 ││                                                          │
+│┃ The same shell, composer, and panes are in use.         ││                                                          │
+│                                                          ││                                                          │
+│● Main                                           12:00:00 ││                                                          │
+││ Bash   {"command":"echo **literal**"}                   ││                                                          │
+│                                                          ││                                                          │
+│└ Asked  1 question · waiting                             ││                                                          │
+│    {"command":"echo **literal** `code` [link](path)"}    ││                                                          │
+│    Allow once · Deny                                     ││                                                          │
+│                                                          ││                                                          │
+│  ? 1 of 1 · Permission · Bash                   waiting  ││                                                          │
+│                                                          ││                                                          │
+│  {"command":"echo **literal** `code` [link](path)"}      ││                                                          │
+│                                                          ││                                                          │
+│    1. Allow once                                         ││                                                          │
+│  › 2. Deny                                               ││                                                          │
+│    3. Other       Type your answer                       ││                                                          │
+│                                                          ││                                                          │
+│  1–3 choose · type answer · ctrl+] skip · esc hide       ││                                                          │
+│                                                          ││                                                          │
+│╭─ answering ────────────────────────────────────────────╮││                                                          │
+││ ❯                                                      │││                                                          │
+│╰──────────────────────────────────────── claude-sonnet ─╯││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes

@@ -36,3 +36,21 @@ test-ui-snapshots:
 # Replaces baselines for the selected tests; review candidates/diffs first.
 update-ui-snapshots:
 	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(GO) test $(SNAPSHOT_PACKAGES) -run '$(value SNAPSHOT)' -count=1
+
+# Development preview only. Never replaces the installed mekugi binary.
+.PHONY: build-claude test-claude
+build-claude:
+	mkdir -p bin/claude-bridge
+	rm -f bin/claude-bridge/*.ts
+	rm -rf bin/claude-bridge/dist
+	cp internal/claude/bridge/package.json internal/claude/bridge/package-lock.json internal/claude/bridge/tsconfig.json internal/claude/bridge/bridge.ts bin/claude-bridge/
+	npm ci --prefix bin/claude-bridge --ignore-scripts
+	npm run build --prefix bin/claude-bridge
+	$(GO) build -o bin/mekugi ./cmd/mekugi
+
+test-claude:
+	npm ci --prefix internal/claude/bridge --ignore-scripts
+	rm -rf internal/claude/bridge/dist
+	npm run build --prefix internal/claude/bridge
+	$(MAKE) test TEST_PACKAGES='./internal/claude ./internal/session ./cmd/mekugi'
+	$(MAKE) test TEST_PACKAGES=./internal/router TEST_RUN='NativeRuntime|UISnapshotNativeRuntime'

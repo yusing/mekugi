@@ -68,8 +68,9 @@ type appServerItem struct {
 
 type appServerUI struct {
 	appServerLifecycle
-	replay                    *uiReplayPlayback // Offline transport controls; nil for live sessions.
-	clock                     func() time.Time  // Optional presentation clock for offline replay.
+	runtime                   *nativeRuntimeSession // Non-Codex runtime intent; never an app-server protocol shim.
+	replay                    *uiReplayPlayback     // Offline transport controls; nil for live sessions.
+	clock                     func() time.Time      // Optional presentation clock for offline replay.
 	backendVersion            string
 	title                     string            // Host-confirmed thread name, independent of naming work.
 	pendingTitle              string            // Manual name entered before the host thread exists.
@@ -908,8 +909,16 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.hideQuestions()
 	}
 	if u.escape == "" && key != 27 {
+		if u.runtime != nil && key == 3 && u.questions.active != nil {
+			return false, u.runtimeDecision(false)
+		}
 		if handled, err := u.questionKey(string([]byte{key})); handled {
 			return false, err
+		}
+	}
+	if u.runtime != nil {
+		if handled, quit, err := u.runtimeKey(key); handled {
+			return quit, err
 		}
 	}
 	defer u.refreshPicker()
@@ -964,6 +973,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			case "\x1b[1;2A", "\x1b[1;2B":
 				sequence := u.escape
 				u.escape = ""
+				if u.runtime != nil {
+					return false, nil
+				}
 				return false, u.stepReasoning(strings.HasSuffix(sequence, "A"))
 			case "\x1b[1;3A", "\x1b[1;2D":
 				u.editQueued()
@@ -1313,7 +1325,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		}
 		if u.keybindings && (u.shell == nil || u.shell.focus == 0) {
 			u.mainContentPainted = false
-			frame = renderNativeKeybindings(width, room)
+			frame = renderNativeKeybindingsForRuntime(width, room, u.runtime != nil)
 		}
 		if u.pickerVisible() {
 			// The publication may occupy precisely the rows hidden by the picker.
@@ -1394,6 +1406,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		}
 		model = strings.ReplaceAll(livediff.Safe(model, false), "\n", " ")
 		context := contextWindowLabel(activityPaneAgent{})
+		if u.runtime != nil {
+			context = ""
+		}
 		if agent := u.session.agent("/root"); agent != nil {
 			context = contextWindowLabel(*agent)
 			if throughput := outputThroughputLabel(agent.OutputThroughput); throughput != "" {
@@ -1402,7 +1417,10 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		}
 		caption := context
 		if room := width - 7 - ansi.StringWidth(context) - 3; model != "" && room > 0 {
-			caption = ansi.Truncate(model, room, "…") + " • " + context
+			caption = ansi.Truncate(model, room, "…")
+			if context != "" {
+				caption += " • " + context
+			}
 		}
 		caption = activityui.Dim + ansi.Truncate(caption, max(0, width-7), "…") + activityui.Reset
 		frame = append(frame, composerBorder("╰", "╯", "", caption, width, border))
@@ -1485,11 +1503,23 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 }
 
 func (u *appServerUI) sessionAnimating() bool {
+	if u.runtime != nil {
+		return u.runtime.busy
+	}
 	return u.btw != nil && (u.btw.busy || u.btw.starting) || !u.alert && (u.turn != "" || u.starting() || u.submission.text != "" || u.restoring != nil || u.thread == "")
 }
 
 func (u *appServerUI) sessionLabel(now time.Time) string {
 	status := strings.ReplaceAll(livediff.Safe(u.status, false), "\n", " ")
+	if u.runtime != nil {
+		if u.alert {
+			return activityui.Red + "✗ " + status + activityui.Reset
+		}
+		if u.runtime.busy {
+			return activityui.StatusPulse(status, now, u.view.painter.Colors) + activityui.Reset
+		}
+		return "\x1b[39m" + status + activityui.Reset
+	}
 	switch {
 	case status == "":
 		return ""

@@ -77,6 +77,21 @@ must precede a new `turn/start`. Waiting user input takes precedence over the on
 automatic continuation message. Interrupt cancels that intent immediately; replay
 and session switching never revive it. Codex still owns compaction and execution.
 
+Claude is a second backend of this same UI. `internal/claude` owns its bounded
+private-stdio SDK bridge, native event decoding and runtime shutdown.
+`internal/session` carries presentation events and user intent without importing
+either runtime protocol. `RunNativeSession` in `internal/router` uses the existing
+shell, composer, question dock, activity views, preview dock and Diff controller;
+it does not construct a Codex client, proxy or synthetic app-server messages.
+`cmd/mekugi` selects this backend before any inference router starts. Runtime
+intent dispatch remains separate from Codex lifecycle control. Claude keeps its
+native permissions, configuration and execution; presentation owns no journal
+transactions, capture store or inference transport. Historical transcript events
+restore display only, never live argument buffers, approval requests or processes.
+Structured Edit/Write intentions feed the shared bounded source reader and review
+renderer. Argument completion remains distinct from tool completion, and neither
+promotes predictions into durable captured changes.
+
 Dependencies point from router integration into the client and presentation packages,
 not back into router internals. Shared diff rendering remains in `internal/livediff`;
 UI extraction does not introduce a second capturer, history store, or transcript.
