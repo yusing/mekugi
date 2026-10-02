@@ -37,7 +37,7 @@ func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64, path s
 				if chunk.Review.Action().Title() == "Move" && path == pathdisplay.Move(workspace, chunk.Review.BeforePath, chunk.Review.AfterPath) {
 					path = display
 				}
-				pages = append(pages, activityui.Block{Kind: "op", Verb: "Edit", Path: display, Code: chunk.Review.UnifiedDiffForWorkspace(workspace), Lang: "diff", Fenced: true})
+				pages = append(pages, activityui.Block{Kind: "op", Verb: chunk.Review.Action().Title(), Path: display, Code: chunk.Review.UnifiedDiffForWorkspace(workspace), Lang: "diff", Fenced: true})
 			}
 			if u.openEditPages(view, pages, path) {
 				return true

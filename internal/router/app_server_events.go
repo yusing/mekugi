@@ -887,7 +887,17 @@ func appServerEditPages(item appServerItem, cwd, phase string) []activityui.Bloc
 		if diff == "" {
 			continue
 		}
-		pages = append(pages, activityui.Block{Kind: "op", Verb: "Edit", Path: path, Code: diff, Lang: "diff", Fenced: true})
+		verb, lang := "Edit", "diff"
+		switch change.Kind.Type {
+		case "add":
+			verb, lang = "Create", ""
+		case "delete":
+			verb, lang = "Delete", ""
+		}
+		if cmp.Or(change.Kind.MovePath, change.Kind.MovePath2) != "" {
+			verb = "Move"
+		}
+		pages = append(pages, activityui.Block{Kind: "op", Verb: verb, Path: path, Code: diff, Lang: lang, Fenced: true})
 	}
 	return pages
 }

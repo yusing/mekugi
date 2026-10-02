@@ -15,11 +15,17 @@ var unifiedHunk = regexp.MustCompile(`^@@ -[0-9]+(?:,([0-9]+))? \+[0-9]+(?:,([0-
 // ColorDiff decorates unified output without changing its rows or metadata.
 // Partial streaming hunks use the same source lexer as the diff pane.
 func (r *Renderer) ColorDiff(ctx context.Context, theme Theme, source string) ([]string, error) {
+	return r.ColorDiffPath(ctx, theme, "", source)
+}
+
+// ColorDiffPath supplies the file identity for host hunks without unified
+// headers. Explicit headers still select the language for each file.
+func (r *Renderer) ColorDiffPath(ctx context.Context, theme Theme, path, source string) ([]string, error) {
 	lines := strings.Split(source, "\n")
 	if len(source) > MaxSyntaxBytes {
 		return lines, nil
 	}
-	review := mekugi.ReviewFile{}
+	review := mekugi.ReviewFile{BeforePath: path, AfterPath: path}
 	for i := 0; i < len(lines); {
 		line := lines[i]
 		if strings.HasPrefix(line, "--- ") && i+1 < len(lines) && strings.HasPrefix(lines[i+1], "+++ ") {

@@ -99,7 +99,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 
 	code := livediff.Safe(block.Code, false)
 	page.Text = code
-	if code != "" && (strings.Contains(code, "\n") || ansi.StringWidth(code) > width/2) {
+	if code != "" && (block.Path != "" || strings.Contains(code, "\n") || ansi.StringWidth(code) > width/2) {
 		colored := strings.Split(code, "\n")
 		if len(code) <= dialogHighlightBytes {
 			colored = p.dialogHighlight(block, code)
@@ -212,6 +212,18 @@ func dialogLanguage(block Block) string {
 
 func (p *Painter) dialogHighlight(block Block, source string) []string {
 	lang := dialogLanguage(block)
+	if block.Path != "" && !p.LayoutOnly {
+		var rows []string
+		var err error
+		if strings.EqualFold(lang, "diff") {
+			rows, err = p.syntax.ColorDiffPath(context.Background(), p.Theme, block.Path, source)
+		} else {
+			rows, err = p.syntax.ColorSource(context.Background(), p.Theme, block.Path, source+"\n")
+		}
+		if err == nil && len(rows) > 0 {
+			return rows
+		}
+	}
 	if !strings.EqualFold(lang, "diff") {
 		source += "\n" // The source renderer consumes one line terminator; diff does not.
 	}
