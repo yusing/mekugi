@@ -30,8 +30,11 @@ const (
 )
 
 var (
-	commentaryRouteTTL   = time.Hour
-	commentaryHTTPClient = &http.Client{Timeout: 2 * time.Second}
+	commentaryRouteTTL = time.Hour
+	// Journal persistence can wait for an in-flight delivery in another router.
+	// Let the stock worker's context own cancellation, not a shorter HTTP timer
+	// that can report failure after the mutation has already been committed.
+	commentaryHTTPClient = &http.Client{}
 )
 
 type publishedCommentary struct {
