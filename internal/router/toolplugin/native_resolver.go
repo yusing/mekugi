@@ -11,11 +11,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 )
 
 const nativeResolverTimeout = 30 * time.Second
@@ -52,89 +50,6 @@ func retireNativeResolver(cmd *exec.Cmd, ctx context.Context) {
 	} else {
 		_ = cmd.Process.Kill()
 	}
-}
-
-var goplsReferenceLine = regexp.MustCompile(`^(.*):([1-9][0-9]*):([1-9][0-9]*)-([1-9][0-9]*)$`)
-
-// Source: plugins/msymbol.ts:315:416@[543de4f3] runGopls/parseDefinition/parseReferences
-func runNativeGopls(ctx context.Context, root string, q *symbolQuery) ([]symbolLocation, string, error) {
-	deadline, cancel := context.WithTimeout(ctx, nativeResolverTimeout)
-	defer cancel()
-	args := []string{"definition", "-json"}
-	if q.mode == "refs" {
-		args = []string{"references", "-d"}
-	}
-	args = append(args, fmt.Sprintf("%s:#%d", q.file.path, q.offset))
-	cmd := nativeResolverCommand(deadline, root, "gopls", args...)
-	defer retireNativeResolver(cmd, ctx)
-	stdout, stderr := &boundedHostOutput{limit: nativeRetainedBytes + 1}, &boundedHostOutput{limit: nativeRetainedBytes + 1}
-	cmd.Stdout, cmd.Stderr = stdout, stderr
-	if err := cmd.Start(); err != nil {
-		return nil, "", resolverStartError("gopls", err)
-	}
-	err := cmd.Wait()
-	if deadline.Err() != nil {
-		return nil, "", resolverTimeoutError()
-	}
-	if err != nil && !errors.Is(err, exec.ErrWaitDelay) {
-		message := strings.TrimSpace(stderr.String())
-		if message == "" {
-			message = err.Error()
-		} else {
-			message, _, _ = strings.Cut(message, "\n")
-		}
-		return nil, "", errors.New(message)
-	}
-	if stdout.Len() > nativeRetainedBytes || stderr.Len() > nativeRetainedBytes {
-		return nil, "", &symbolFailure{"output_limit", "resolver output exceeds the 16 MiB bound"}
-	}
-	if !utf8.Valid(stdout.Bytes()) || !utf8.Valid(stderr.Bytes()) {
-		return nil, "", errors.New("gopls output is not UTF-8")
-	}
-	var locations []symbolLocation
-	if q.mode == "def" {
-		var data struct {
-			Span *struct {
-				URI   string `json:"uri"`
-				Start *struct {
-					Line   *int `json:"line"`
-					Offset *int `json:"offset"`
-				} `json:"start"`
-				End *struct {
-					Offset *int `json:"offset"`
-				} `json:"end"`
-			} `json:"span"`
-		}
-		if json.Unmarshal(stdout.Bytes(), &data) != nil || data.Span == nil || data.Span.Start == nil || data.Span.End == nil || data.Span.Start.Line == nil || data.Span.Start.Offset == nil || data.Span.End.Offset == nil {
-			return nil, "", errors.New("invalid gopls definition span")
-		}
-		span := data.Span
-		if *span.Start.Line < 1 || *span.Start.Offset < 0 || *span.End.Offset < *span.Start.Offset {
-			return nil, "", errors.New("invalid gopls definition span")
-		}
-		path, e := symbolURIPath(span.URI)
-		if e != nil {
-			return nil, "", e
-		}
-		locations = append(locations, symbolLocation{path: path, line: *span.Start.Line, from: *span.Start.Offset, to: *span.End.Offset})
-	} else {
-		for raw := range strings.SplitSeq(stdout.String(), "\n") {
-			line := strings.TrimSuffix(raw, "\r")
-			if line == "" {
-				continue
-			}
-			match := goplsReferenceLine.FindStringSubmatch(line)
-			if match == nil {
-				return nil, "", errors.New("invalid gopls references output")
-			}
-			n, e := positiveSymbolInteger(match[2], "reference line")
-			if e != nil {
-				return nil, "", e
-			}
-			locations = append(locations, symbolLocation{path: match[1], line: n, from: -1, to: -1})
-		}
-	}
-	return locations, stderr.String(), nil
 }
 
 type nativeRPCMessage struct {
@@ -351,7 +266,7 @@ func parseNativeLocations(raw jsontext.Value, mode string) ([]symbolLocation, er
 		path, err := symbolURIPath(uri)
 		// A non-file URI is not a relative filesystem operand, even if a
 		// same-spelled path happens to exist inside the workspace.
-		out = append(out, symbolLocation{path: path, outside: err != nil, position: &p, from: -1, to: -1})
+		out = append(out, symbolLocation{path: path, outside: err != nil, position: &p})
 	}
 	return out, nil
 }
@@ -418,7 +333,14 @@ func runNativeLSP(ctx context.Context, root, resolver string, queries []*symbolQ
 	go readNativeRPC(outputR, events, stop)
 	lsp := nativeLSP{input: inputW, events: events, folders: []map[string]string{{"uri": symbolFileURI(root), "name": filepath.Base(root)}}}
 	defer func() {
-		shutdown, cancelShutdown := context.WithTimeout(context.Background(), nativeResolverDrain)
+		grace := nativeResolverDrain
+		if resolver == "gopls" {
+			// Queries are finished. gopls shutdown can otherwise
+			// wait for unrelated background diagnostics; do not charge that work
+			// to a completed one-shot lookup.
+			grace = 100 * time.Millisecond
+		}
+		shutdown, cancelShutdown := context.WithTimeout(context.Background(), grace)
 		defer cancelShutdown()
 		_, _ = lsp.request(shutdown, "shutdown", nil)
 		_ = lsp.notify("exit", nil)
@@ -449,7 +371,14 @@ func runNativeLSP(ctx context.Context, root, resolver string, queries []*symbolQ
 			queries[0].stderr = diagnostic.String()
 		}
 	}()
-	initialized, err := lsp.request(deadline, "initialize", map[string]any{"processId": os.Getpid(), "clientInfo": map[string]string{"name": "mekugi", "version": "1"}, "rootUri": symbolFileURI(root), "workspaceFolders": lsp.folders, "capabilities": map[string]any{"general": map[string]any{"positionEncodings": []string{"utf-16"}}, "workspace": map[string]any{"configuration": true, "workspaceFolders": true}, "textDocument": map[string]any{}}})
+	params := map[string]any{"processId": os.Getpid(), "clientInfo": map[string]string{"name": "mekugi", "version": "1"}, "rootUri": symbolFileURI(root), "workspaceFolders": lsp.folders, "capabilities": map[string]any{"general": map[string]any{"positionEncodings": []string{"utf-16"}}, "workspace": map[string]any{"configuration": true, "workspaceFolders": true}, "textDocument": map[string]any{}}}
+	if resolver == "gopls" {
+		// This short-lived client only consumes semantic locations, not lint
+		// diagnostics. Avoid competing staticcheck work without narrowing the
+		// workspace, disabling tests, or changing reference resolution.
+		params["initializationOptions"] = map[string]any{"staticcheck": false}
+	}
+	initialized, err := lsp.request(deadline, "initialize", params)
 	if err != nil {
 		failAll(err)
 		return

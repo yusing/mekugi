@@ -51,12 +51,15 @@ substitutes text search. Go and LSP processes both run in the selected workspace
 Several `(def|refs) PATH [LINE] SYMBOL [N]` tuples may follow each other in one
 invocation. Each input is validated before resolver startup; invalid inputs are reported while valid tuples continue. Tuples share one
 language-server session per language in the selected workspace, and one combined
-output budget. Results follow tuple order. A single Go query uses gopls CLI; a
-Go batch uses one invocation-owned gopls LSP server. No detached cross-invocation
+output budget. Results follow tuple order. Go queries, including single queries, use one
+invocation-owned gopls LSP server. Its unused Staticcheck diagnostics are disabled
+without changing semantic workspace or test coverage. No detached cross-invocation
 daemon is started. The session deadline is 30 seconds, shared by its queries;
 timeouts use `resolver_timeout` and suggest a narrower `--workspace ROOT`. Final pipe
-drain and protocol shutdown are bounded to one second; protocol replies receive a
-separate one-second dispatch grace after process exit. A reply completed within
+drain and protocol shutdown are bounded to one second; gopls receives only 100 ms
+for protocol shutdown after its queries finish, so unrelated background diagnostics
+cannot delay completed results. Protocol replies receive a separate one-second
+dispatch grace after process exit. A reply completed within
 those bounds remains valid, and forced cleanup does not change completed stdout or
 exit status. Reference queries include declarations. Missing dependencies, invalid
 input, changed source, malformed protocol results, timeouts, and failed queries

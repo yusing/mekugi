@@ -31,10 +31,7 @@ func TestResolverCleanupRetiresInheritedPipeDescendants(t *testing.T) {
 	}
 	for _, owner := range []string{"direct", "frontend"} {
 		for _, kind := range []string{"gopls", "lsp"} {
-			outcomes := []string{"success", "failure", "cancellation", "deadline"}
-			if kind == "lsp" {
-				outcomes = append(outcomes, "ignore_shutdown", "exit", "queued_success", "queued_no_response")
-			}
+			outcomes := []string{"success", "failure", "cancellation", "deadline", "ignore_shutdown", "exit", "queued_success", "queued_no_response"}
 			for _, outcome := range outcomes {
 				t.Run(owner+"/"+kind+"/"+outcome, func(t *testing.T) {
 					t.Parallel()
@@ -238,21 +235,6 @@ func runCleanupResolver(t *testing.T, directory string) {
 			t.Fatal(err)
 		}
 	}
-	if os.Getenv("FIXTURE_KIND") == "gopls" {
-		switch outcome {
-		case "success":
-			fmt.Printf("%s:2:5-11\n", os.Getenv("FIXTURE_SOURCE"))
-			return
-		case "failure":
-			fmt.Fprintln(os.Stderr, "query failed")
-			os.Exit(1)
-		default:
-			ready()
-			for {
-				time.Sleep(time.Hour)
-			}
-		}
-	}
 	frame := func(v any) []byte {
 		data, err := json.Marshal(v)
 		if err != nil {
@@ -309,7 +291,11 @@ func runCleanupResolver(t *testing.T, directory string) {
 				ready()
 				continue
 			}
-			result := []symbolFixtureLocation{nativeSymbolFixtureLocation(os.Getenv("FIXTURE_SOURCE"), 0, 6, 12)}
+			line, column := 0, 6
+			if os.Getenv("FIXTURE_KIND") == "gopls" {
+				line, column = 1, 4
+			}
+			result := []symbolFixtureLocation{nativeSymbolFixtureLocation(os.Getenv("FIXTURE_SOURCE"), line, column, column+6)}
 			if strings.HasPrefix(outcome, "queued_") {
 				var buffered bytes.Buffer
 				for i := range 10000 {

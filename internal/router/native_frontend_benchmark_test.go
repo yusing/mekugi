@@ -76,3 +76,55 @@ func BenchmarkNativeFrontends(b *testing.B) {
 		})
 	}
 }
+
+// Measures the authenticated frontend boundary with a fresh worker and resolver
+// per iteration, using the repository workload and normal OS/Go caches.
+func BenchmarkNativeSymbolFrontend(b *testing.B) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		b.Skip("gopls is not on PATH")
+	}
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		b.Fatal(err)
+	}
+	directory := b.TempDir()
+	replay := filepath.Join(directory, "replay")
+	if _, err := openMekugiReplayStore(replay); err != nil {
+		b.Fatal(err)
+	}
+	registry, err := buildToolRegistryAt(b.Context(), filepath.Join(directory, "data"), false, filepath.Join(directory, "runtime"), replay)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer registry.Close()
+	if err := registry.installFrontends(); err != nil {
+		b.Fatal(err)
+	}
+	for _, tuples := range []int{1, 2} {
+		name := "single"
+		if tuples == 2 {
+			name = "batch"
+		}
+		b.Run(name, func(b *testing.B) {
+			args := []string{"--max-tokens", "3000"}
+			for range tuples {
+				args = append(args, "refs", "internal/router/session_title_generate.go", "generate")
+			}
+			for b.Loop() {
+				cmd := exec.CommandContext(b.Context(), registry.frontends["msymbol"], args...)
+				cmd.Dir = root
+				cmd.Env = append(os.Environ(), routerTestWorkerEnvironment+"=1", "CODEX_THREAD_ID=")
+				output, err := cmd.CombinedOutput()
+				if err != nil {
+					b.Fatalf("symbol frontend: %v\n%s", err, output)
+				}
+				text := string(output)
+				if strings.Count(text, "func (g *sessionTitleGenerator) generate(") != tuples ||
+					strings.Count(text, "_, _ = g.generate(t.Context(), \"main\", \"Question\", nil)") != tuples ||
+					!strings.Contains(text, "session_title_generate_test.go") {
+					b.Fatalf("symbol frontend lost declaration or test references:\n%s", text)
+				}
+			}
+		})
+	}
+}

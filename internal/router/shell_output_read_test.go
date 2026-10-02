@@ -434,20 +434,15 @@ func TestMSymbolFrontendRecoveryAfterSourceRemoval(t *testing.T) {
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
 	source := filepath.Join(directory, "sample.go")
-	var content, references strings.Builder
+	var content strings.Builder
 	content.WriteString("package p\nfunc Target() {}\n")
 	for index := range 80 {
 		fmt.Fprintf(&content, "func Use%d() { Target() }\n", index)
-		fmt.Fprintf(&references, "%s:%d:14-20\n", source, index+3)
 	}
 	if err := os.WriteFile(source, []byte(content.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	resolverDirectory := t.TempDir()
-	resolver := "#!/bin/sh\ncat <<'EOF'\n" + references.String() + "EOF\n"
-	if err := os.WriteFile(filepath.Join(resolverDirectory, "gopls"), []byte(resolver), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	resolverDirectory := installMSymbolRecoveryLSP(t, source)
 	invocation := newShellWorkerTestInvocation(directory,
 		"PATH="+resolverDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
 	full, diagnostic, status := runShellWorkerTest(t, registry, "sh", nil,

@@ -28,10 +28,9 @@ type symbolRange struct {
 	End   symbolPosition `json:"end"`
 }
 type symbolLocation struct {
-	outside        bool
-	path           string
-	line, from, to int
-	position       *symbolRange
+	outside  bool
+	path     string
+	position *symbolRange
 }
 type symbolQuery struct {
 	mode, path, name         string
@@ -345,11 +344,7 @@ func nativeSymbol(ctx context.Context, args []string) (ExecutionOutput, error) {
 	var wg sync.WaitGroup
 	for resolver, group := range groups {
 		wg.Go(func() {
-			if resolver == "gopls" && len(group) == 1 {
-				group[0].locations, group[0].stderr, group[0].err = runNativeGopls(ctx, root, group[0])
-			} else {
-				runNativeLSP(ctx, root, resolver, group)
-			}
+			runNativeLSP(ctx, root, resolver, group)
 		})
 	}
 	wg.Wait()
@@ -452,20 +447,15 @@ func nativeSymbol(ctx context.Context, args []string) (ExecutionOutput, error) {
 				queryErr = e
 				break
 			}
-			start, end := loc.line, loc.line
-			from, to := loc.from, loc.to
-			if loc.position != nil {
-				var ok1, ok2 bool
-				from, ok1 = file.parsed.lines.offset(loc.position.Start)
-				to, ok2 = file.parsed.lines.offset(loc.position.End)
-				if !ok1 || !ok2 || to < from {
-					skip("unavailable")
-					continue
-				}
-				start = loc.position.Start.Line + 1
-				end = start
+			from, ok1 := file.parsed.lines.offset(loc.position.Start)
+			to, ok2 := file.parsed.lines.offset(loc.position.End)
+			if !ok1 || !ok2 || to < from {
+				skip("unavailable")
+				continue
 			}
-			if q.mode == "def" && from >= 0 {
+			start := loc.position.Start.Line + 1
+			end := start
+			if q.mode == "def" {
 				for _, entry := range file.parsed.entries {
 					if entry.kind != "import" && entry.complete && entry.nameFrom == from && entry.nameTo == to {
 						start, end = entry.line, entry.endLine

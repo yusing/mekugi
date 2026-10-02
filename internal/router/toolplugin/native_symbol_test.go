@@ -29,7 +29,6 @@ type symbolFixtureLocation struct {
 type symbolResolverFixture struct {
 	Definitions   []symbolFixtureLocation
 	References    []symbolFixtureLocation
-	CLIOutput     string
 	MutateMethod  string
 	MutatePath    string
 	MutatedSource string
@@ -44,7 +43,11 @@ type symbolProtocolEvent struct {
 		ID     jsontext.Value `json:"id"`
 		Method string         `json:"method"`
 		Params struct {
-			Position symbolFixturePosition `json:"position"`
+			Position              symbolFixturePosition `json:"position"`
+			InitializationOptions map[string]bool       `json:"initializationOptions"`
+			Context               struct {
+				IncludeDeclaration bool `json:"includeDeclaration"`
+			} `json:"context"`
 		} `json:"params"`
 	} `json:"message"`
 }
@@ -89,7 +92,7 @@ func installSymbolResolvers(t *testing.T, fixtures map[string]symbolResolverFixt
 }
 
 // TestNativeSymbolResolverProcess is a short-lived fake resolver launched by the
-// production process owner. It implements CLI responses and framed LSP replies,
+// production process owner. It implements framed LSP replies,
 // without depending on an installed Go/TypeScript/Python language server.
 func TestNativeSymbolResolverProcess(t *testing.T) {
 	directory := os.Getenv("MEKUGI_NATIVE_SYMBOL_FIXTURE")
@@ -130,15 +133,6 @@ func TestNativeSymbolResolverProcess(t *testing.T) {
 	}
 	cwd, _ := os.Getwd()
 	appendLog(map[string]any{"event": "start", "command": command, "args": args[1:], "cwd": cwd})
-	if command == "gopls" && (len(args) < 2 || args[1] != "serve") {
-		if fixture.MutateMethod == "cli" {
-			if os.WriteFile(fixture.MutatePath, []byte(fixture.MutatedSource), 0o600) != nil {
-				os.Exit(2)
-			}
-		}
-		fmt.Print(fixture.CLIOutput)
-		os.Exit(0)
-	}
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		length := -1
@@ -239,31 +233,32 @@ func writeSymbolSource(t *testing.T, name, source string) string {
 }
 
 // Source: internal/router/toolplugin/tests/symbol-batch.test.ts, Go outline lookup
-func TestNativeSymbolGoCLIByteOffsetsAndExactExpansion(t *testing.T) {
+func TestNativeSymbolGoLSPExactExpansion(t *testing.T) {
 	source := "\ufeffpackage p\n// 😀 名稱\nfunc Pick() {\n println(1)\n}\n"
 	path := writeSymbolSource(t, "sample.go", source)
-	start := strings.Index(source, "Pick")
-	uri := nativeSymbolFixtureLocation(path, 2, 5, 9).URI
-	span := map[string]any{"span": map[string]any{"uri": uri, "start": map[string]int{"line": 3, "column": 6, "offset": start}, "end": map[string]int{"line": 3, "column": 10, "offset": start + 4}}}
-	encoded, err := json.Marshal(&span)
-	if err != nil {
-		t.Fatal(err)
-	}
-	log := installSymbolResolvers(t, map[string]symbolResolverFixture{"gopls": {CLIOutput: string(encoded) + "\n"}})
+	log := installSymbolResolvers(t, map[string]symbolResolverFixture{"gopls": {Definitions: []symbolFixtureLocation{nativeSymbolFixtureLocation(path, 2, 5, 9)}}})
 	out := nativeExecute(t, "msymbol", "def", "sample.go", "pkg.Pick")
 	want := "\"sample.go\":3-5\nfunc Pick() {\n println(1)\n}\n"
 	if out.ExitCode != 0 || out.Stdout != want || out.Stderr != "" {
 		t.Fatalf("definition expansion: %+v", out)
 	}
 	events := readSymbolLog(t, log)
-	if len(events) != 1 || !reflect.DeepEqual(events[0].Args, []string{"definition", "-json", path + ":#" + strconv.Itoa(start)}) || events[0].CWD != filepath.Dir(path) {
-		t.Fatalf("byte-offset CLI invocation: %+v", events)
+	if len(events) == 0 || !reflect.DeepEqual(events[0].Args, []string{"serve"}) || events[0].CWD != filepath.Dir(path) {
+		t.Fatalf("single-query LSP invocation: %+v", events)
+	}
+	for _, event := range events {
+		if event.Message.Method == "initialize" && !reflect.DeepEqual(event.Message.Params.InitializationOptions, map[string]bool{"staticcheck": false}) {
+			t.Fatalf("one-shot diagnostics configuration: %+v", event)
+		}
+		if event.Message.Method == "textDocument/definition" && event.Message.Params.Position != (symbolFixturePosition{2, 5}) {
+			t.Fatalf("definition position: %+v", event)
+		}
 	}
 }
 
 func TestNativeSymbolSelectionAndConfinementBeforeStartup(t *testing.T) {
 	source := "package p\nfunc Use() {\n 名稱 := 1; _ = 名稱; _ = \"名稱\" // 名稱\n}\n"
-	path := writeSymbolSource(t, "path with spaces.go", source)
+	writeSymbolSource(t, "path with spaces.go", source)
 	log := installSymbolResolvers(t, map[string]symbolResolverFixture{"gopls": {}})
 	outside := nativeFixture(t, "external.go", source)
 	if err := os.Symlink(outside, "escaped.go"); err != nil {
@@ -287,11 +282,21 @@ func TestNativeSymbolSelectionAndConfinementBeforeStartup(t *testing.T) {
 	if out.ExitCode != 0 || out.Stdout != "" || out.Stderr != "" {
 		t.Fatalf("second true token: %+v", out)
 	}
-	first := strings.Index(source, "名稱")
-	second := first + len("名稱") + strings.Index(source[first+len("名稱"):], "名稱")
 	events := readSymbolLog(t, log)
-	if len(events) != 1 || !reflect.DeepEqual(events[0].Args, []string{"references", "-d", path + ":#" + strconv.Itoa(second)}) {
-		t.Fatalf("exact occurrence byte offset: %+v", events)
+	found := false
+	for _, event := range events {
+		if event.Message.Method == "textDocument/references" {
+			found = true
+			if !event.Message.Params.Context.IncludeDeclaration {
+				t.Fatal("reference request omitted declarations")
+			}
+			if event.Message.Params.Position != (symbolFixturePosition{2, 14}) {
+				t.Fatalf("exact occurrence UTF-16 position: %+v", event)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing reference request")
 	}
 }
 
@@ -395,6 +400,19 @@ func TestNativeSymbolChangedInputPreservesIndependentTuple(t *testing.T) {
 	out := nativeExecute(t, "msymbol", "def", "sample.ts", "1", "Pick", "def", "other.ts", "1", "Other")
 	if out.ExitCode != 1 || out.Stdout != "\"other.ts\":1-1\n"+otherSource || !strings.Contains(out.Stderr, "input changed during query") {
 		t.Fatalf("changed input isolation: %+v", out)
+	}
+}
+
+func TestNativeSymbolGoChangedInput(t *testing.T) {
+	source := "package p\nfunc Pick() {}\n"
+	path := writeSymbolSource(t, "sample.go", source)
+	installSymbolResolvers(t, map[string]symbolResolverFixture{"gopls": {
+		References:   []symbolFixtureLocation{nativeSymbolFixtureLocation(path, 1, 5, 9)},
+		MutateMethod: "textDocument/references", MutatePath: path, MutatedSource: source + "func Use() { Pick() }\n",
+	}})
+	out := nativeExecute(t, "msymbol", "refs", "sample.go", "Pick")
+	if out.ExitCode != 1 || out.Stdout != "" || !strings.Contains(out.Stderr, "input changed during query") {
+		t.Fatalf("changed Go input was not rejected: %+v", out)
 	}
 }
 
