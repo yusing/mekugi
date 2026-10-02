@@ -1,0 +1,18 @@
+AGENTS  1 agents · 0 responding                                                              FOLLOW
+ ✓ probe  Run test -f /tmp/.tmpw4Pr3l/uv.lock · +1…                                                
+───────────────────────────────────────────────────────────────────────────────────────────────────
+● probe ────────────────────────────────────────────────────────────────────────────────── 12:00:00
+▎ Ran test -f /tmp/.tmpw4Pr3l/pyproject.toml
+▎ Ran test -f /tmp/.tmpw4Pr3l/uv.lock
+
+
+
+
+
+
+
+
+
+
+
+ALL · click agent · n/p agent · a only · j/k scroll · End bottom

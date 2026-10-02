@@ -1,0 +1,18 @@
+AGENTS  1 agents · 0 responding                                                              FOLLOW
+ ✓ probe  Check working tree in setup.sh setup.cha…                                                
+───────────────────────────────────────────────────────────────────────────────────────────────────
+● probe ────────────────────────────────────────────────────────────────────────────────── 12:00:00
+▎ Ran   bash -n setup.sh .local/tests/setup_config_test.sh
+▎ Check working tree in setup.sh setup.changelog.md README.md +1 more · git diff --check
+
+
+
+
+
+
+
+
+
+
+
+ALL · click agent · n/p agent · a only · j/k scroll · End bottom

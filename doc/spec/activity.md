@@ -67,8 +67,11 @@ Literal `printf` and `echo` section headings alongside other operations are
 omitted as display decoration, including colon-ended labels and bordered headings.
 Bare `printf` titles framed by leading and trailing newlines also qualify when
 they are capitalized, multi-word text containing only letters, spaces, hyphens,
-and slashes, without format arguments. Unframed text, other values, and data-bearing
-formats remain visible.
+and slashes, without format arguments. Newline-terminated literal `printf`
+confirmations ending in `checks passed.` or `evidence remains available.` also
+qualify when their capitalized text otherwise contains only letters, spaces,
+hyphens, and slashes. Other unframed text, values, and data-bearing formats
+remain visible.
 Live and successful tracked heading segments are omitted too; failed ones remain
 visible. Standalone, redirected, escaped, or dynamic headings remain `Run` operations.
 Literal `mread` recovery calls omit activity entries rather than appearing as `Run`.

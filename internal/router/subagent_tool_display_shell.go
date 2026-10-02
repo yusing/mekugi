@@ -218,6 +218,7 @@ func toolActivityStatementDisplayEnd(script string, statement *syntax.Stmt) int 
 // Literal section headings alongside other operations are decoration.
 // Keep dynamic output, redirections, and headings-only scripts visible.
 var activityPlainHeading = regexp.MustCompile(`^[A-Z][A-Za-z/-]*( [A-Za-z][A-Za-z/-]*)+$`)
+var activitySuccessMarker = regexp.MustCompile(`^[A-Z][A-Za-z/-]*( [A-Za-z][A-Za-z/-]*)* (checks passed|evidence remains available)\.$`)
 
 func toolActivityReadSeparator(statement *syntax.Stmt) bool {
 	argv, ok := toolActivityLiteralCall(statement)
@@ -241,6 +242,9 @@ func toolActivityReadSeparator(statement *syntax.Stmt) bool {
 	// A bare title must be a blank-line-framed, multi-word literal printf,
 	// not a format with data arguments or an arbitrary output value.
 	plainTitle := argv[0] == "printf" && len(argv) == 2 && strings.HasPrefix(heading, `\n`) && strings.HasSuffix(heading, `\n`)
+	// Literal check/evidence confirmations are display-only status markers,
+	// not arbitrary unframed prose or formats carrying values.
+	successMarker := argv[0] == "printf" && len(argv) == 2 && strings.HasSuffix(heading, `\n`) && activitySuccessMarker.MatchString(strings.TrimSuffix(heading, `\n`))
 	heading = strings.TrimSpace(strings.ReplaceAll(heading, `\n`, "\n"))
 	if strings.ContainsAny(heading, "\r\n\\") {
 		return false
@@ -250,7 +254,7 @@ func toolActivityReadSeparator(statement *syntax.Stmt) bool {
 			return true
 		}
 	}
-	if plainTitle && activityPlainHeading.MatchString(heading) {
+	if successMarker || plainTitle && activityPlainHeading.MatchString(heading) {
 		return true
 	}
 	return strings.HasSuffix(heading, ":") && strings.TrimSpace(strings.TrimSuffix(heading, ":")) != ""

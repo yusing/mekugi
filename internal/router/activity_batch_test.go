@@ -101,6 +101,84 @@ func TestActivityBatchPreservesUnframedPrintfData(t *testing.T) {
 	}
 }
 
+func TestActivityBatchLiteralSuccessMarkers(t *testing.T) {
+	for _, marker := range []string{
+		`printf 'Recovered rich-cli dependency-lock evidence remains available.\n'`,
+		`printf 'Final syntax and whitespace checks passed.\n'`,
+	} {
+		command := "test -f evidence.txt && " + marker
+		if got := toolActivityShell(command); got != "Run `test -f evidence.txt`" {
+			t.Fatalf("success marker leaked: %q", got)
+		}
+		if got := toolActivityShell(marker); !strings.Contains(got, marker) {
+			t.Fatalf("standalone output hidden: %q", got)
+		}
+		entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{command: command, segments: []commandSegment{
+			{source: "test -f evidence.txt", text: execSegmentText("test -f evidence.txt")},
+			{source: marker, text: execSegmentText(marker)},
+		}}}
+		for _, state := range []string{"running", "completed", "failed", "skipped"} {
+			segment := &entry.native.segments[1]
+			segment.running, segment.skipped, segment.exit = state == "running", state == "skipped", 0
+			if state == "failed" {
+				segment.exit = 1
+			}
+			blocks := parseLiveActivity(entry)
+			if state == "failed" || state == "skipped" {
+				if len(blocks) != 2 || blocks[1].Code != marker || blocks[1].ExitCode != segment.exit || blocks[1].Skipped != segment.skipped {
+					t.Fatalf("%s marker lost: %+v", state, blocks)
+				}
+			} else if len(blocks) != 1 {
+				t.Fatalf("%s marker leaked: %+v", state, blocks)
+			}
+		}
+	}
+	for _, command := range []string{
+		`printf '%s\n' 'Final syntax checks passed.'`,
+		`printf 'Final syntax checks passed.\n' > results.txt`,
+		`printf "$status\n"`, `printf 'Final syntax checks passed.'`,
+		`printf 'Alice Smith\n'`, `printf 'Final score: 42\n'`,
+		`printf '{"checks":"passed"}\n'`, `printf 'Final syntax checks passed.\t\n'`,
+	} {
+		if got := toolActivityShell("test -f evidence.txt && " + command); !strings.Contains(got, command) {
+			t.Fatalf("data-bearing operation hidden: %s: %s", command, got)
+		}
+	}
+}
+
+func TestUISnapshotActivityPrintfSuccessMarkers(t *testing.T) {
+	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
+	for _, producer := range []struct {
+		name  string
+		parts []string
+	}{
+		{"recovered", []string{"test -f /tmp/.tmpw4Pr3l/pyproject.toml", "test -f /tmp/.tmpw4Pr3l/uv.lock", `printf 'Recovered rich-cli dependency-lock evidence remains available.\n'`}},
+		{"validated", []string{"bash -n setup.sh .local/tests/setup_config_test.sh", "git diff --check -- setup.sh setup.changelog.md README.md .local/tests/setup_config_test.sh", `printf 'Final syntax and whitespace checks passed.\n'`}},
+	} {
+		for _, state := range []string{"preview", "completed", "failed-marker"} {
+			t.Run(producer.name+"/"+state, func(t *testing.T) {
+				script := strings.Join(producer.parts, " && ")
+				command := "/usr/bin/bash -lc " + quoteShellWord(script)
+				entry := activityPaneEntry{Seq: 1, Agent: "/root/probe", Kind: "tool", Text: toolActivityShell(script), Observed: now,
+					native: &liveActivityNativeItem{command: command}}
+				if state != "preview" {
+					for _, source := range producer.parts {
+						entry.native.segments = append(entry.native.segments, commandSegment{source: source, text: execSegmentText(source)})
+					}
+					if state == "failed-marker" {
+						last := &entry.native.segments[len(entry.native.segments)-1]
+						last.exit, last.tail = 1, []string{"printf: write error"}
+					}
+				}
+				v := newLiveActivityView()
+				v.painter.Theme = livediff.DarkTheme
+				v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/probe", Final: true}}, Entries: []activityPaneEntry{entry}})
+				assertNativeUISnapshot(t, "activity-printf-success-"+producer.name+"-"+state, v.render(100, 18, now))
+			})
+		}
+	}
+}
+
 func TestActivityBatchTimingEvidence(t *testing.T) {
 	for _, command := range []string{"sleep 1; sleep 2", "sleep 1 && sleep 2", "printf 'Heading:'; sleep 2", "trap true EXIT; sleep 2"} {
 		for _, wrapped := range []bool{false, true} {
