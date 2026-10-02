@@ -16,6 +16,10 @@ import (
 
 const generatedTitleResponse = `{"id":"title","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Improve session naming"}]}]}`
 
+func sessionTitleAuthHeaders() http.Header {
+	return http.Header{"Authorization": {"Bearer test"}, chatGPTAccountIDHeader: {"account"}}
+}
+
 func awaitSessionTitle(t *testing.T, g *sessionTitleGenerator) sessionTitleUpdate {
 	t.Helper()
 	select {
@@ -53,13 +57,13 @@ func TestSessionTitleGenerationRequest(t *testing.T) {
 			})
 			g := newSessionTitleGenerator(t.Context(), provider, nil)
 			g.register(appServerThreadInfo{ID: "main"})
-			headers := http.Header{"Authorization": {"Bearer test"}, chatGPTAccountIDHeader: {"account"}}
+			headers := sessionTitleAuthHeaders()
 			headers.Set(codexTurnMetadataHeader, "private-turn")
 			headers.Set(threadIDHeader, "main")
 			g.observe("main", "First request", headers, false)
 			g.observe("main", "Later request", headers, true)
 			update := awaitSessionTitle(t, g)
-			if update.err != nil || update.name != "Improve session naming" || update.thread != "main" {
+			if update.name != "Improve session naming" || update.thread != "main" {
 				t.Fatalf("update = %+v", update)
 			}
 		})
@@ -77,19 +81,19 @@ func TestSessionTitleGenerationEligibility(t *testing.T) {
 		g.register(appServerThreadInfo{ID: "resumed", Turns: []appServerHistoryTurn{{ID: "old"}}})
 		g.register(appServerThreadInfo{ID: "fork", Name: "Inherited title"})
 		for _, thread := range []string{"saved", "resumed", "fork", "child", "side"} {
-			g.observe(thread, "Question", nil, true)
+			g.observe(thread, "Question", sessionTitleAuthHeaders(), true)
 		}
 		synctest.Wait()
 		g.register(appServerThreadInfo{ID: "fresh"})
-		g.observe("fresh", "Question", nil, false)
+		g.observe("fresh", "Question", sessionTitleAuthHeaders(), false)
 		if calls.Load() != 0 {
 			t.Fatal("generation preceded successful upstream completion")
 		}
-		g.observe("fresh", "Question", nil, true)
+		g.observe("fresh", "Question", sessionTitleAuthHeaders(), true)
 		awaitSessionTitle(t, g)
 		g.register(appServerThreadInfo{ID: "fresh"})
 		for range 3 {
-			g.observe("fresh", "Follow-up", nil, true)
+			g.observe("fresh", "Follow-up", sessionTitleAuthHeaders(), true)
 		}
 		synctest.Wait()
 		if calls.Load() != 1 {
@@ -114,24 +118,23 @@ func TestSessionTitleGenerationFailures(t *testing.T) {
 			}
 		})
 	}
-	ctx, cancel := context.WithCancel(t.Context())
-	started := make(chan struct{})
-	g := newSessionTitleGenerator(ctx, serverProviderFunc(func(_, responseCtx context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
-		close(started)
-		<-responseCtx.Done()
-		return nil, responseCtx.Err()
-	}), nil)
-	g.register(appServerThreadInfo{ID: "main"})
-	g.observe("main", "Question", nil, true)
-	<-started
-	cancel()
-	select {
-	case update := <-g.updates:
-		if !errors.Is(update.err, context.Canceled) {
-			t.Fatal(update.err)
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		started := make(chan struct{})
+		g := newSessionTitleGenerator(ctx, serverProviderFunc(func(_, responseCtx context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+			close(started)
+			<-responseCtx.Done()
+			return nil, responseCtx.Err()
+		}), nil)
+		g.register(appServerThreadInfo{ID: "main"})
+		g.observe("main", "Question", sessionTitleAuthHeaders(), true)
+		<-started
+		cancel()
+		synctest.Wait()
+		if len(g.updates) != 0 {
+			t.Fatal("canceled naming published a title update")
 		}
-	case <-ctx.Done():
-	}
+	})
 }
 
 func TestSessionTitleUpstreamCompletionTrigger(t *testing.T) {
@@ -149,6 +152,8 @@ func TestSessionTitleUpstreamCompletionTrigger(t *testing.T) {
 				request.streamResponse = stream
 				headers := serverMetadataHeaders(t, "turn", nil)
 				headers.Set(threadIDHeader, "main")
+				headers.Set("Authorization", "Bearer test")
+				headers.Set(chatGPTAccountIDHeader, "account")
 				response := `{"id":"response","status":"` + status + `","output":[]}`
 				if stream {
 					response = "data: {\"type\":\"response." + status + "\",\"response\":" + response + "}\n\n"
@@ -159,8 +164,8 @@ func TestSessionTitleUpstreamCompletionTrigger(t *testing.T) {
 				executor := requestExecutor{provider: provider, output: io.Discard, titleGenerator: g}
 				_ = executor.execute(t.Context(), t.Context(), request, headers, "main")
 				if status == "completed" {
-					if update := awaitSessionTitle(t, g); update.err != nil {
-						t.Fatal(update.err)
+					if update := awaitSessionTitle(t, g); update.name != "Improve session naming" {
+						t.Fatal("wrong title update", update)
 					}
 				} else {
 					g.mu.Lock()
@@ -233,7 +238,7 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 		t.Fatalf("primary response changed: %d %s", output.Code, output.Body)
 	}
 	update := awaitSessionTitle(t, g)
-	if update.err != nil || update.name != "Improve session naming" || calls.Load() != 2 {
+	if update.name != "Improve session naming" || calls.Load() != 2 {
 		t.Fatalf("title=%+v calls=%d", update, calls.Load())
 	}
 	if cache.title("main") != "" {
@@ -266,4 +271,122 @@ func TestSessionTitleUsageAccounting(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSessionTitleSkipsWithoutCodexAccess(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		headers    http.Header
+		noProvider bool
+	}{
+		{"no credentials", nil, false},
+		{"no account", http.Header{"Authorization": {"Bearer test"}}, false},
+		{"third-party credentials", http.Header{"Authorization": {"Bearer other-provider"}}, false},
+		{"invalid credentials", http.Header{"Authorization": {"Basic other-provider"}, chatGPTAccountIDHeader: {"account"}}, false},
+		{"multiple credentials", http.Header{"Authorization": {"Bearer test", "Bearer other"}, chatGPTAccountIDHeader: {"account"}}, false},
+		{"no API", sessionTitleAuthHeaders(), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				var calls atomic.Int32
+				var provider responseProvider = serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+					calls.Add(1)
+					return serverHTTPResponse(generatedTitleResponse), nil
+				})
+				if tc.noProvider {
+					provider = nil
+				}
+				cache := newSessionTitleCacheAt("")
+				cache.set("other", "Existing title")
+				g := newSessionTitleGenerator(t.Context(), provider, cache)
+				g.usage = newThreadUsage()
+				g.register(appServerThreadInfo{ID: "main"})
+				g.observe("main", "First request", tc.headers, true)
+				g.observe("main", "Later request", sessionTitleAuthHeaders(), true)
+				synctest.Wait()
+				if calls.Load() != 0 || len(g.updates) != 0 || cache.title("other") != "Existing title" {
+					t.Fatal("skipped naming called a provider or changed title metadata")
+				}
+				if _, observed := g.usage.snapshot("main"); observed {
+					t.Fatal("skipped naming fabricated usage")
+				}
+			})
+		})
+	}
+}
+
+func TestSessionTitleUnavailableLunaSkipsSilently(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		status         int
+		body           string
+		transportError bool
+	}{
+		{"API unreachable", 0, "", true},
+		{"auth rejected", 401, `{}`, false},
+		{"model denied", 403, `{}`, false},
+		{"model missing", 404, `{}`, false},
+		{"rate limited", 429, `{}`, false},
+		{"service unavailable", 503, `{}`, false},
+		{"stream model failure", 200, "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"model_not_found\"}}}\n\n", false},
+		{"incomplete response", 200, `{"status":"incomplete","output":[]}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				var calls atomic.Int32
+				g := newSessionTitleGenerator(t.Context(), serverProviderFunc(func(_, _ context.Context, body []byte, _ http.Header, _ string) (*http.Response, error) {
+					calls.Add(1)
+					request, _ := parseResponsesRequest(body)
+					if request.model() != sessionTitleModel || request.reasoningEffort() != "medium" {
+						t.Error("naming fell back to another model or effort")
+					}
+					if tc.transportError {
+						return nil, errors.New("API unavailable")
+					}
+					response := serverHTTPResponse(tc.body)
+					response.StatusCode = tc.status
+					return response, nil
+				}), nil)
+				g.register(appServerThreadInfo{ID: "main"})
+				g.observe("main", "Question", sessionTitleAuthHeaders(), true)
+				synctest.Wait()
+				g.observe("main", "Follow-up", sessionTitleAuthHeaders(), true)
+				synctest.Wait()
+				if calls.Load() != 1 || len(g.updates) != 0 {
+					t.Fatal("unavailable Luna emitted an update, retried, or fell back")
+				}
+			})
+		})
+	}
+}
+
+func TestSessionTitleThirdPartyRequestWithoutCodexAuth(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var namingCalls atomic.Int32
+		g := newSessionTitleGenerator(t.Context(), serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+			namingCalls.Add(1)
+			return serverHTTPResponse(generatedTitleResponse), nil
+		}), nil)
+		g.register(appServerThreadInfo{ID: "main"})
+		request := modelTestRequest(t, "opencode-go:test")
+		headers := serverMetadataHeaders(t, "turn", nil)
+		headers.Set(threadIDHeader, "main")
+		headers.Set("Authorization", "Bearer third-party-fixture")
+		const primary = `{"id":"primary","status":"completed","output":[]}`
+		var output strings.Builder
+		executor := requestExecutor{titleGenerator: g, output: &output, provider: serverProviderFunc(func(_, _ context.Context, body []byte, _ http.Header, _ string) (*http.Response, error) {
+			forwarded, err := parseResponsesRequest(body)
+			if err != nil || forwarded.model() != "opencode-go:test" {
+				t.Error("primary session model was changed")
+			}
+			return serverHTTPResponse(primary), nil
+		})}
+		if err := executor.execute(t.Context(), t.Context(), request, headers, "main"); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		if output.String() != primary || namingCalls.Load() != 0 || len(g.updates) != 0 {
+			t.Fatal("skipped naming affected the successful third-party request")
+		}
+	})
 }

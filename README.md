@@ -222,7 +222,9 @@ the shared scrollable dialog without leaving your current view. Close it with
 Main's top-right header shows the saved session title. For a new conversation,
 the first successful upstream request starts a separate title-generation request
 using GPT-6 Luna with medium reasoning. This small additional model request does
-not block the conversation. Saved and inherited titles are reused on resume or fork.
+not block the conversation. If Codex credentials or Luna are unavailable, automatic
+naming is silently skipped, without switching to another model. Saved and inherited
+titles are reused on resume or fork.
 
 Terminal titles and desktop notifications work as in Codex and follow its
 `tui.notifications` settings. Inside Herdr, its working, blocked, done, and

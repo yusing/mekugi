@@ -17,7 +17,6 @@ const sessionTitleModel = "gpt-6-luna"
 
 type sessionTitleUpdate struct {
 	thread, name string
-	err          error
 }
 
 type sessionTitleJob struct {
@@ -105,18 +104,29 @@ func (g *sessionTitleGenerator) observe(thread, prompt string, headers http.Head
 	prompt = job.prompt
 	job.prompt = ""
 	g.mu.Unlock()
+	// Optional naming must not require credentials or a model API merely to
+	// keep using a third-party or offline session. Never fall back to its model.
+	if g.provider == nil {
+		return
+	}
+	authorization, accountID, err := requiredCodexAuthHeaders(headers)
+	if err != nil {
+		return
+	}
 	// Capture only authentication before launching asynchronous work; execution
 	// and steering identity never enter the independent naming request.
 	auxHeaders := http.Header{}
-	for _, key := range []string{"Authorization", chatGPTAccountIDHeader} {
-		auxHeaders.Set(key, headers.Get(key))
-	}
+	auxHeaders.Set("Authorization", authorization)
+	auxHeaders.Set(chatGPTAccountIDHeader, accountID)
 	go func() {
 		ctx, cancel := context.WithTimeout(g.ctx, time.Minute)
 		defer cancel()
 		name, err := g.generate(ctx, thread, prompt, auxHeaders)
+		if err != nil {
+			return // Luna unavailable or unsuccessful: silently keep the host name.
+		}
 		select {
-		case g.updates <- sessionTitleUpdate{thread: thread, name: name, err: err}:
+		case g.updates <- sessionTitleUpdate{thread: thread, name: name}:
 		case <-g.ctx.Done():
 		}
 	}()

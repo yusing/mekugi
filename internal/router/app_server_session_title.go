@@ -13,13 +13,6 @@ func (u *appServerUI) persistSessionTitle(update sessionTitleUpdate) {
 	if u.titleGenerator.named(update.thread, nil) {
 		return // A host rename won the race against automatic naming.
 	}
-	if update.err != nil {
-		if update.thread == u.thread {
-			u.setNotice("Session title could not be generated", false)
-			u.dirty = true
-		}
-		return
-	}
 	id, err := u.requestAs("thread/name/set", "session/title", map[string]any{"threadId": update.thread, "name": update.name})
 	if err != nil {
 		u.setNotice("Session title could not be saved", false)

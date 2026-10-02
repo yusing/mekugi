@@ -279,15 +279,20 @@ Scroll position and unread counts remain alongside the name when space permits.
 
 Automatic naming and title presentation are separate operations. For a new empty
 Main thread without a saved name, the first successful completed upstream request
-starts one asynchronous naming request using `gpt-6-luna` with `medium` reasoning.
+starts one asynchronous naming request using `gpt-6-luna` with `medium` reasoning
+when valid Codex credentials and a provider are present. Otherwise naming is
+silently skipped without a request. There is no fallback to the session's model
+and no separate availability probe. An unavailable service or model, rejected
+credentials, or another unsuccessful naming response also silently skips naming.
 Only the first user request text is used, not instructions, tools, or later history.
 Prewarm, compaction, unsuccessful responses, children, and side questions do not
 start naming. Naming uses separate request identity and does not block or change
 the original response. Its tokens are included in router usage totals.
 The result is saved through `thread/name/set`; Main changes only after host
 confirmation or a `thread/name/updated` event. A host rename received while naming
-is pending takes precedence. Generation or save failures leave conversation work
-unaffected and show nonfatal composer feedback. Existing nonempty threads without
+is pending takes precedence. Skipped naming leaves conversation work, existing
+titles, and composer feedback unchanged. Host name-save failures show nonfatal
+composer feedback without affecting conversation work. Existing nonempty threads without
 a title are not automatically renamed on resume.
 
 A blank row immediately above the composer separates it from the latest message

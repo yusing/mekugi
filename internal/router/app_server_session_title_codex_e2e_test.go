@@ -138,7 +138,9 @@ func TestAppServerSessionTitleNativeCodexE2E(t *testing.T) {
 		}()
 		t.Cleanup(func() {
 			stoppingReplies.Store(true)
-			_, _ = screen.Write([]byte("\x1b[5n"))
+			// The last PTY chunk can end inside a control string. Cancel it and
+			// terminate strings before injecting the cleanup status query.
+			_, _ = screen.Write([]byte("\x18\x1b\\\x1b[5n"))
 			<-repliesDone
 			_ = screen.Close()
 		})
