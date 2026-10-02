@@ -973,9 +973,6 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			case "\x1b[1;2A", "\x1b[1;2B":
 				sequence := u.escape
 				u.escape = ""
-				if u.runtime != nil {
-					return false, nil
-				}
 				return false, u.stepReasoning(strings.HasSuffix(sequence, "A"))
 			case "\x1b[1;3A", "\x1b[1;2D":
 				u.editQueued()
@@ -1400,6 +1397,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		model := u.model
 		if model != "" && u.reasoningEffort != "" {
 			model += " (" + u.reasoningEffort + ")"
+		}
+		if u.runtime != nil && u.runtime.effortRequest != "" {
+			model += " · effort request " + u.runtime.effortRequest
 		}
 		if tier := u.displayServiceTier(); tier != "" {
 			model += " · " + tier

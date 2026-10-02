@@ -52,6 +52,6 @@ test-claude:
 	npm ci --prefix internal/claude/bridge --ignore-scripts
 	rm -rf internal/claude/bridge/dist
 	npm run build --prefix internal/claude/bridge
-	node --test internal/claude/bridge/dist/companion.test.js
+	node --test internal/claude/bridge/dist/*.test.js
 	$(MAKE) test TEST_PACKAGES='./internal/claude ./internal/session ./cmd/mekugi'
 	$(MAKE) test TEST_PACKAGES=./internal/router TEST_RUN='NativeRuntime|UISnapshotNativeRuntime'

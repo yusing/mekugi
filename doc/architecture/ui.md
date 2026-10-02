@@ -88,6 +88,12 @@ intent dispatch remains separate from Codex lifecycle control. Claude keeps its
 native permissions, configuration and execution; presentation owns no journal
 transactions, capture store or inference transport. Historical transcript events
 restore display only, never live argument buffers, approval requests or processes.
+Runtime-advertised model/effort values feed the shared settings picker. The optional
+session settings capability sends identified invocation-local controls; only the
+matching native acknowledgement or failure settles a pending control. Claude's
+adapter uses `setModel` and `applyFlagSettings`, never the settings-file writer.
+Effort presentation distinguishes a requested override from a policy-limited
+effective level; subsequent native initialization supplies the resolved model.
 Structured Edit/Write intentions feed the shared bounded source reader and review
 renderer. Argument completion remains distinct from tool completion, and neither
 promotes predictions into durable captured changes.

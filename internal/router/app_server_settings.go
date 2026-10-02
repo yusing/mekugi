@@ -33,6 +33,12 @@ func (u *appServerUI) currentModel() *appServerModel {
 }
 
 func (u *appServerUI) effortChoices() []string {
+	if u.runtime != nil {
+		if m := u.runtimeModel(); m != nil && m.SupportsEffort {
+			return m.Efforts
+		}
+		return nil
+	}
 	var choices []string
 	if model := u.currentModel(); model != nil {
 		for _, effort := range model.Efforts {
@@ -46,6 +52,14 @@ func (u *appServerUI) effortChoices() []string {
 // intent, never synthetic Responses items or writes to the user's config file.
 // Source: codex-rs/app-server-protocol/src/protocol/v2/{thread,turn}.rs
 func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
+	if u.runtime != nil {
+		if len(change) != 1 {
+			return false, fmt.Errorf("native settings require one control")
+		}
+		for field, value := range change {
+			return u.runtimeUpdateSettings(field, fmt.Sprint(value))
+		}
+	}
 	if u.thread == "" || u.restoring != nil || u.starting() || u.replacement.pending() {
 		u.setNotice("Wait for the thread or turn to finish starting", true)
 		return false, nil
@@ -101,6 +115,10 @@ func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
 }
 
 func (u *appServerUI) stepReasoning(up bool) error {
+	if u.runtime != nil && u.runtime.effortRequest == "" {
+		u.runtimeSettingsPicker("/effort")
+		return nil
+	}
 	if u.modelsLoading {
 		u.reasoningKey = new(up)
 		u.setNotice("Loading model choices…", false)
@@ -113,7 +131,11 @@ func (u *appServerUI) stepReasoning(up bool) error {
 	}
 	index := slices.Index(choices, u.reasoningEffort)
 	if index < 0 {
-		index = slices.Index(choices, u.currentModel().DefaultEffort)
+		if u.runtime != nil {
+			index = slices.Index(choices, u.runtime.effortRequest)
+		} else {
+			index = slices.Index(choices, u.currentModel().DefaultEffort)
+		}
 	}
 	if index < 0 {
 		index = 0
@@ -353,9 +375,20 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 	p.choices = nil
 	u.settingsChoices = command
 	current := u.model
+	if u.runtime != nil && command == "/model" {
+		if model := u.runtimeModel(); model != nil {
+			current = model.ID
+		}
+	}
 	switch command {
 	case "/reasoning", "/effort":
 		current = u.reasoningEffort
+		if u.runtime != nil {
+			current = u.runtime.effortRequest
+			if current == "" {
+				current = "default"
+			}
+		}
 	case "/tier":
 		current = u.serviceTier
 		if current == "" {
@@ -367,8 +400,25 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 	}
 	for _, value := range choices {
 		choice := composerChoice{name: value}
+		if u.runtime != nil && command == "/model" {
+			for _, model := range u.runtime.models {
+				if model.ID == value {
+					choice.description = model.Name
+					if model.Description != "" {
+						if choice.description != "" {
+							choice.description += " · "
+						}
+						choice.description += model.Description
+					}
+					break
+				}
+			}
+		}
 		if value == current {
 			choice.description = "Current"
+			if u.runtime != nil && command != "/model" {
+				choice.description = "Requested"
+			}
 			if command == "/tier" && effectiveServiceTier(u.model, "", u.serviceTiers) != "" {
 				choice.description = "Current in Codex"
 			}

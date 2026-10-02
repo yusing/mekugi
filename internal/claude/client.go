@@ -167,6 +167,9 @@ func (c *Client) Respond(ctx context.Context, d session.Decision) error {
 func (c *Client) Interrupt(ctx context.Context) error {
 	return c.send(ctx, map[string]string{"kind": "interrupt"})
 }
+func (c *Client) SetSettings(ctx context.Context, s session.Settings) error {
+	return c.send(ctx, map[string]string{"kind": "settings", "id": s.ID, "field": s.Field, "value": s.Value})
+}
 func (c *Client) Close() error {
 	c.closeOnce.Do(func() {
 		c.input.Close()

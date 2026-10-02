@@ -1,0 +1,28 @@
+┌ 1 Main ──────────────────────────────────────────────────┐┌ 5 Journal ───────────────────── space expand · d details ┐
+│                                                          ││ No journal entries.                                      │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│  Choose model                                            ││                                                          │
+│  default                                                 ││                                                          │
+│› sonnet   Current                                        ││                                                          │
+│  opus     Opus · Complex tasks                           ││                                                          │
+│  haiku    Haiku · Fast responses                         ││                                                          │
+│                                                          ││                                                          │
+│  ↑/↓ navigate · enter apply · esc cancel                 ││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes

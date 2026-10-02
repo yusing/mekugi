@@ -1,0 +1,28 @@
+┌ 1 Main ────────────────────────────────┐
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│  Choose model                          │
+│  default                               │
+│› sonnet   Current                      │
+│  opus     Opus · Complex tasks         │
+│  haiku    Haiku · Fast responses       │
+│                                        │
+│  ↑/↓ navigate · enter apply · esc cance│
+└────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal

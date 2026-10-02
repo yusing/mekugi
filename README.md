@@ -162,6 +162,16 @@ otherwise clears the draft, interrupts active work, then quits when idle.
 `/quit` exits when idle. Input entered during a turn stays in the composer rather
 than being silently steered or queued.
 
+`/model` opens the shared picker with Claude's advertised models; `/model MODEL`
+uses the native model setter, including custom model IDs. `/effort` (or `/reasoning`)
+shows the current model's advertised effort levels. `/effort default` resets the
+session override to Claude's model default. Shift-Up/Down steps a requested effort;
+without an override it opens the picker. Native acknowledgements and failures
+settle these controls. Model switches affect subsequent native requests; effort
+overrides apply on the next turn and may be limited by native policy. The composer
+labels effort as a request, not a guaranteed effective level. These controls are
+invocation-local and do not save settings files or offer Codex service tiers.
+
 Claude uses the existing pane shell, not a separate interface. Edit/Write input
 streams appear as provisional proposals in the shared live-edit dock and Diff
 pane. Partial content does not claim deletion of an unseen suffix. Native tool
@@ -183,8 +193,8 @@ observation cannot attribute changes made while Mekugi was disconnected. Press
 updates. Permission prompts follow Claude's configured policy, including native
 automatic approval; enabling capture does not change that policy.
 
-Bash previews, journals, utility frontends, agent controls, attachments and
-in-session model/effort controls are not connected yet. Commands advertised by the SDK are forwarded
+Bash previews, journals, utility frontends, agent controls and attachments are
+not connected yet. Commands advertised by the SDK are forwarded
 natively; unadvertised commands are rejected rather than emulated. The capture-only companion does not yet include plugin utilities or journals.
 Compaction replacement, shell tracing and output rewriting remain unavailable.
 Only exposed text and native tool input/results are displayed; unavailable usage

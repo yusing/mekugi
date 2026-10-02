@@ -1,0 +1,28 @@
+┌ 1 Main ──────────────────────────────────────────────────┐┌ 5 Journal ───────────────────── space expand · d details ┐
+│Mekugi dev • Claude Code                                  ││ No journal entries.                                      │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│╭─ Ready · Effort override accepted for next turn · na… ─╮││                                                          │
+││ ❯                                                      │││                                                          │
+│╰────────────────── claude-sonnet · effort request high ─╯││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes

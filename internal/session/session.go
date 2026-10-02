@@ -17,6 +17,26 @@ type Event struct {
 	Edit       *Edit
 	Historical bool
 	Caller     string
+	Models     []Model
+	Settings   *Settings
+}
+
+// Model choices are advertised by the runtime, not the inference router.
+type Model struct {
+	ID             string   `json:"value"`
+	Resolved       string   `json:"resolvedModel,omitempty"`
+	Name           string   `json:"displayName"`
+	Description    string   `json:"description"`
+	SupportsEffort bool     `json:"supportsEffort,omitzero"`
+	Efforts        []string `json:"supportedEffortLevels,omitempty"`
+}
+
+// Settings carries invocation-local intent. An acknowledgement does not prove
+// an effort's effective value: native policy may clamp it.
+type Settings struct{ ID, Field, Value string }
+
+type SettingsClient interface {
+	SetSettings(context.Context, Settings) error
 }
 
 type Option struct{ Label, Description string }

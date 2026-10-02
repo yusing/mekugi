@@ -32,6 +32,12 @@ func TestAdapterSessionAndTextStreaming(t *testing.T) {
 	assertDecode(t, &a, `{"kind":"event","event":{"type":"result","session_id":"session-1","is_error":false}}`, []session.Event{{Kind: "done", SessionID: "session-1"}})
 }
 
+func TestAdapterNativeSettingsDiscoveryAndReceipts(t *testing.T) {
+	var a adapter
+	assertDecode(t, &a, `{"kind":"ready","commands":["compact"],"models":[{"value":"sonnet","resolvedModel":"claude-sonnet","displayName":"Sonnet","description":"Native","supportsEffort":true,"supportedEffortLevels":["low","high"]}]}`, []session.Event{{Kind: "ready", Commands: []string{"compact"}, Models: []session.Model{{ID: "sonnet", Resolved: "claude-sonnet", Name: "Sonnet", Description: "Native", SupportsEffort: true, Efforts: []string{"low", "high"}}}}})
+	assertDecode(t, &a, `{"kind":"settings","id":"1","field":"effort","value":"high","failed":true,"text":"Native restriction"}`, []session.Event{{Kind: "settings", Settings: &session.Settings{ID: "1", Field: "effort", Value: "high"}, Failed: true, Text: "Native restriction"}})
+}
+
 func TestAdapterToolLifecycle(t *testing.T) {
 	var a adapter
 	assertDecode(t, &a, `{"kind":"event","event":{"type":"stream_event","event":{"type":"content_block_start","content_block":{"type":"tool_use","id":"tool-1","name":"Bash","input":{}}}}}`, []session.Event{{Kind: "tool", ID: "tool-1", Role: "Bash", Text: "{}"}})

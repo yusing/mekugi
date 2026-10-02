@@ -1,0 +1,28 @@
+┌ 1 Main ────────────────────────────────┐
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│  Choose effort                         │
+│  default                               │
+│  low                                   │
+│› high     Requested                    │
+│                                        │
+│  ↑/↓ navigate · enter apply · esc cance│
+└────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal

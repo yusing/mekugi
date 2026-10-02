@@ -1,0 +1,28 @@
+┌ 1 Main ────────────────────────────────┐
+│Mekugi dev • Claude Code                │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│╭─ Ready · Effort override accepted … ─╮│
+││ ❯                                    ││
+│╰───── claude-sonnet · effort reques… ─╯│
+└────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal

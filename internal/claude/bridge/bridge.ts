@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { realpath } from 'node:fs/promises';
 import { companion, type CompanionConfig } from './companion.js';
 import { readFileSync, closeSync } from 'node:fs';
+import { setSettings, type SettingsCommand } from './controls.js';
 
 const limit = 8 * 1024 * 1024;
 const config = JSON.parse(process.argv[2]) as {cwd: string; executable: string; resume?: string; model?: string; companionFD?: number};
@@ -18,6 +19,7 @@ let wake: (() => void) | undefined;
 const inputs: SDKUserMessage[] = [];
 const permissions = new Map<string, (result: PermissionResult) => void>();
 let serial = 0;
+let controls = Promise.resolve();
 
 // Bound frames without transforming native tool inputs/results. An oversized
 // event terminates this presentation connection rather than fabricating evidence.
@@ -94,6 +96,9 @@ lines.on('line', (line: string) => {
       case 'interrupt':
         void running.interrupt().catch(async error => { await emit({kind: 'notice', text: `Interrupt failed: ${String(error)}`}); });
         break;
+      case 'settings':
+        controls = controls.then(async () => { await emit(await setSettings(running, command as SettingsCommand)); }).catch(stop);
+        break;
       case 'close': stop(); break;
       default: throw new Error('Unknown bridge control');
     }
@@ -115,7 +120,11 @@ try {
     if (history.length > 2000) await emit({kind: 'notice', text: 'Transcript display limited to the first 2000 messages; native resume retains its own context'});
   }
   const commands = await running.supportedCommands();
-  await emit({kind: 'ready', commands: commands.flatMap(command => [command.name, ...(command.aliases ?? [])])});
+  const models = await running.supportedModels().catch(async error => {
+    await emit({kind: 'notice', text: `Native model choices unavailable: ${String(error)}`});
+    return [];
+  });
+  await emit({kind: 'ready', commands: commands.flatMap(command => [command.name, ...(command.aliases ?? [])]), models});
   for await (const event of running) {
     await observer?.event(event);
     await emit({kind: 'event', event});

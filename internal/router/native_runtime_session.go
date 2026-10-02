@@ -31,6 +31,9 @@ type nativeRuntimeSession struct {
 	observationEvents <-chan liveDiffEvent
 	observationGap    <-chan struct{}
 	commands          []string
+	models            []session.Model
+	settings          *session.Settings
+	effortRequest     string
 }
 
 func newRuntimeUI(ctx context.Context, client session.Client, name, cwd string) *appServerUI {
@@ -139,6 +142,9 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 			u.showCopyPicker()
 			return true, false, nil
 		}
+		if handled, err := u.runtimeSettingsCommand(text); handled {
+			return true, false, err
+		}
 		if strings.HasPrefix(strings.TrimSpace(text), "/") && !slices.Contains(r.commands, strings.TrimPrefix(strings.Fields(text)[0], "/")) {
 			u.setNotice("This runtime command is not connected yet", true)
 			return true, false, nil
@@ -149,6 +155,10 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 		}
 		if r.busy {
 			u.setNotice("Runtime is working · draft kept · Ctrl-C interrupts", false)
+			return true, false, nil
+		}
+		if r.settings != nil {
+			u.setNotice("Settings update pending · draft kept", false)
 			return true, false, nil
 		}
 		if err := r.client.Send(u.ctx, text); err != nil {
@@ -184,8 +194,11 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 	switch e.Kind {
 	case "ready":
 		u.runtime.commands = e.Commands
+		u.runtime.models = e.Models
 		u.runtime.ready = true
 		u.status = "Ready"
+	case "settings":
+		u.runtimeSettingsReceipt(e)
 	case "session":
 		u.thread, u.model = e.SessionID, e.Model
 	case "edit":

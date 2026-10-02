@@ -17,14 +17,18 @@ type adapter struct {
 
 func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 	var frame struct {
-		Commands    []string       `json:"commands"`
-		Kind        string         `json:"kind"`
-		ID          string         `json:"id"`
-		Tool        string         `json:"tool"`
-		Text        string         `json:"text"`
-		Description string         `json:"description"`
-		Input       jsontext.Value `json:"input"`
-		Event       nativeEvent    `json:"event"`
+		Commands    []string        `json:"commands"`
+		Models      []session.Model `json:"models"`
+		Field       string          `json:"field"`
+		Value       string          `json:"value"`
+		Failed      bool            `json:"failed"`
+		Kind        string          `json:"kind"`
+		ID          string          `json:"id"`
+		Tool        string          `json:"tool"`
+		Text        string          `json:"text"`
+		Description string          `json:"description"`
+		Input       jsontext.Value  `json:"input"`
+		Event       nativeEvent     `json:"event"`
 	}
 	if err := json.Unmarshal(data, &frame); err != nil {
 		return nil, fmt.Errorf("invalid Claude bridge frame: %w", err)
@@ -38,7 +42,9 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 	}()
 	switch frame.Kind {
 	case "ready":
-		return []session.Event{{Kind: "ready", Commands: frame.Commands}}, nil
+		return []session.Event{{Kind: "ready", Commands: frame.Commands, Models: frame.Models}}, nil
+	case "settings":
+		return []session.Event{{Kind: "settings", Settings: &session.Settings{ID: frame.ID, Field: frame.Field, Value: frame.Value}, Failed: frame.Failed, Text: frame.Text}}, nil
 	case "history":
 		return historyEvents(frame.Event)
 	case "notice":
