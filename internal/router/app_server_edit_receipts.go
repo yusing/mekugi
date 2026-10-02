@@ -133,7 +133,7 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 					}
 				}
 				if batch != nil {
-					blocks = append(blocks, *batch)
+					blocks = retainBatchResult(blocks, *batch)
 				}
 				v.replaceEntry(i, entry, blocks)
 			}

@@ -238,7 +238,9 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			for i, v0 := range slices.Backward(v.entries) {
 				if v0.Agent == entry.Agent && v0.CallID == entry.CallID && entry.CallID != "" {
 					code, _ := strconv.Atoi(entry.Text)
-					v.replaceEntry(i, v0.activityPaneEntry, commandExitBlocks(v.entries[i].blocks, code, entry.outputTail, entry.outputOmit))
+					blocks := commandExitBlocks(v.entries[i].blocks, code, entry.outputTail, entry.outputOmit)
+					setCommandTiming(blocks, v0.activityPaneEntry)
+					v.replaceEntry(i, v0.activityPaneEntry, blocks)
 					break
 				}
 			}
@@ -258,7 +260,9 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 				entry.Seq = prior.Seq
 				blocks[0].ExitCode = v.entries[i].blocks[0].ExitCode
 				for _, annotation := range v.entries[i].blocks[1:] {
-					if annotation.Kind == "filter" || annotation.BatchExit {
+					if annotation.BatchExit {
+						blocks = retainBatchResult(blocks, annotation)
+					} else if annotation.Kind == "filter" {
 						blocks = append(blocks, annotation)
 					}
 				}

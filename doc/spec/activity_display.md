@@ -144,9 +144,12 @@ Completed observations retain timestamps and duration across resume and forks;
 skipped commands have neither. A disconnected report supplies no invented end.
 Single-command invocations show their live-observed host boundary timestamps and
 use the host duration when complete; replay never reconstructs missing timestamps.
-Older or unsupported batch observations without per-command timing
-omit it; an invocation's total is never copied onto individual command rows. The
-combined-output dialog may show the invocation duration.
+Older per-command observations without timing omit it rather than borrowing the
+invocation total. For batches without per-command boundaries, available host
+timing appears once on an explicit `shell batch` row, which shows the live elapsed
+time or completed duration and owns the combined output. The combined-output
+dialog shows that same invocation duration; the total is never copied onto
+individual command rows.
 
 The shared content dialog captures keys and pointer events above both panes.
 Observed shell segments appear as command tabs, selectable by click or Left/Right.

@@ -112,7 +112,7 @@ func TestActivityBatchTimingEvidence(t *testing.T) {
 			for _, running := range []bool{false, true} {
 				entry.native.running = running
 				for _, block := range parseLiveActivity(entry) {
-					if block.Duration != 0 || !block.Started.IsZero() || activityui.RunElapsed(block, time.Now()) != "" {
+					if !block.BatchExit && (block.Duration != 0 || !block.Started.IsZero() || activityui.RunElapsed(block, time.Now()) != "") {
 						t.Fatalf("aggregate attributed to command: %+v", block)
 					}
 				}

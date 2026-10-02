@@ -28,6 +28,20 @@ func setCommandTiming(blocks []activityui.Block, entry activityPaneEntry) {
 	if entry.native == nil {
 		return
 	}
+	compound := commandTimingIsCompound(blocks, entry)
+	for i := range blocks {
+		block := &blocks[i]
+		if (block.Kind != "op" && block.Kind != "reads") || block.Skipped || compound && !block.BatchExit {
+			continue
+		}
+		block.Duration, block.Started, block.Ended = entry.native.duration, entry.native.commandStarted, entry.native.commandEnded
+		if entry.native.running && block.Started.IsZero() {
+			block.Started = entry.Observed
+		}
+	}
+}
+
+func commandTimingIsCompound(blocks []activityui.Block, entry activityPaneEntry) bool {
 	command := entry.native.command
 	if script, ok := appServerShellScript(command); ok {
 		command = script
@@ -41,20 +55,22 @@ func setCommandTiming(blocks []activityui.Block, entry activityPaneEntry) {
 			}
 		}
 	}
-	for i := range blocks {
-		block := &blocks[i]
-		if (block.Kind != "op" && block.Kind != "reads") || block.Skipped || compound && !block.BatchExit {
-			continue
-		}
-		block.Duration, block.Started, block.Ended = entry.native.duration, entry.native.commandStarted, entry.native.commandEnded
-		if entry.native.running && block.Started.IsZero() {
-			block.Started = entry.Observed
-		}
-	}
+	return compound
 }
 
 func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 	defer func() {
+		// An unsupported batch has one host clock, not a clock per classified
+		// operation. Keep that total visible and its output on one explicit row.
+		if n := entry.native; entry.Kind == "tool" && n != nil && n.command != "" && len(n.segments) == 0 &&
+			(n.running || n.duration > 0) && commandTimingIsCompound(blocks, entry) &&
+			!slices.ContainsFunc(blocks, func(b activityui.Block) bool { return b.BatchExit }) {
+			batch := activityui.Block{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true, Running: n.running, Output: n.output, Tail: entry.outputTail, TailOmitted: entry.outputOmit, Collapsed: n.collapsed}
+			for i := range blocks {
+				blocks[i].Output, blocks[i].Tail, blocks[i].TailOmitted = nil, nil, 0
+			}
+			blocks = append(blocks, batch)
+		}
 		setCommandTiming(blocks, entry)
 		if entry.Kind == "tool" && entry.native != nil && entry.native.workdir != "" && len(blocks) > 0 {
 			// Every row keeps the directory for merging; one label per invocation.
@@ -227,6 +243,16 @@ func toolOperationBlocks(text string) []activityui.Block {
 func instantOperations(text string) bool {
 	blocks := toolOperationBlocks(livediff.Safe(text, false))
 	return len(blocks) > 0 && !slices.ContainsFunc(blocks, func(block activityui.Block) bool { return !block.Instant() })
+}
+
+// retainBatchResult preserves the outcome and output across receipt reparses,
+// replacing a synthesized timing row rather than duplicating the invocation.
+func retainBatchResult(blocks []activityui.Block, batch activityui.Block) []activityui.Block {
+	if at := slices.IndexFunc(blocks, func(b activityui.Block) bool { return b.BatchExit }); at >= 0 {
+		blocks[at] = batch
+		return blocks
+	}
+	return append(blocks, batch)
 }
 
 // commandExitBlocks keeps a combined shell failure separate from classified

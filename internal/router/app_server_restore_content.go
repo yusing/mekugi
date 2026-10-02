@@ -438,6 +438,7 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 		*entries = append(*entries, entry)
 	case "commandExecution", "fileChange", "webSearch":
 		entry.Kind, entry.Text = "tool", appServerToolText(item, info.Cwd)
+		entry.native.command, entry.native.duration = item.Command, appServerDuration(item)
 		entry.native.workdir = appServerCommandWorkdir(item, info.Cwd)
 		if item.Type == "fileChange" {
 			entry.Text = appServerEditText(item, info.Cwd)
