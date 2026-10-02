@@ -1,5 +1,5 @@
-LIVE · python3 · 2 files · 2–2/2 · ^B e next
-  main · ◐ M src/python.go +1 -1
+LIVE · cat · 2 files · 2–2/2 · ^B e next
+  main · ◐ M src/cat.go +1 -1
   1│ package main
   2│ 
   3│-const value = 1                                                   

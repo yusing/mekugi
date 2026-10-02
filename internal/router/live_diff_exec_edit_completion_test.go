@@ -149,7 +149,7 @@ func TestExecEditCompletionBeforeFollowingTestFinishes(t *testing.T) {
 	partial := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
 		return preview.ID == "running:edit-then-test" && len(preview.Files) == 1
 	})
-	if partial.Complete {
+	if partial.Complete || partial.Tool != "python3" {
 		t.Fatal("partial Python write completed the edit card")
 	}
 	// Consume the partial frame, as the native viewer does while the process runs.
@@ -171,7 +171,7 @@ func TestExecEditCompletionBeforeFollowingTestFinishes(t *testing.T) {
 			t.Fatal("completion was replaced by a removal marker before the native viewer could render it")
 		}
 	}
-	if completed.Status != diffview.PreviewRunning || completed.Footer != "observed edit" || len(completed.Files) != 1 {
+	if completed.Tool != "python3" || completed.Status != diffview.PreviewRunning || completed.Footer != "observed edit" || len(completed.Files) != 1 {
 		t.Fatalf("edit completion lost the observed content: %+v", completed)
 	}
 	registry.mu.Lock()

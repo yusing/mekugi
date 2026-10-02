@@ -96,12 +96,6 @@ func (p *PreviewPane) RenderBatch(ctx context.Context, caller, workspace string,
 	}
 	label := "LIVE"
 	if tool := b.files[b.selected].Current.Tool; tool != "" {
-		switch tool {
-		case "exec_command":
-			tool = "shell"
-		case "exec":
-			tool = "Code Mode"
-		}
 		label += " · " + livediff.Safe(tool, false)
 	}
 	label += fmt.Sprintf(" · %d %s", count, noun)

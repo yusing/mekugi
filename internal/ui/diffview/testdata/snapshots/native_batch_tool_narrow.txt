@@ -1,4 +1,4 @@
-LIVE · shell · 1 file
+LIVE · python3 · 1 file
   main · ◐ M src/a.go +
   1│ package main
   2│ 

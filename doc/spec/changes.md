@@ -429,9 +429,10 @@ current file follows, styled like file navigation: its status and live `+N -N` l
 several.
 
 The live batch header names the editing tool for its selected edit before the
-file count: `apply_patch`, `shell` for command execution, or `Code Mode` for
-Code Mode execution. Unknown tool identity is omitted. Following a new edit or
-pinning another edit switches the header to that edit's tool, not a sibling's.
+file count, such as `apply_patch`, `python`, or `cat`, including edits nested
+in Code Mode. The enclosing executor is not the editing tool. Unknown editing
+tool identity is omitted. Following a new edit or pinning another edit switches
+the header to that edit's tool, not a sibling's.
 
 The integrated `Diff preview` pane opens on its first displayable preview, not on
 an execution or launch request with no stream content. Agent activity can open

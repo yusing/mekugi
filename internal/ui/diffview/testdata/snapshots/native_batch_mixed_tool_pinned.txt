@@ -1,4 +1,4 @@
-LIVE · python3 · 2 files · 2–2/2 · ^B e next
+LIVE · python3 · 2 files · 1–1/2 · ^B e next · pinned
   main · ◐ M src/python.go +1 -1
   1│ package main
   2│ 

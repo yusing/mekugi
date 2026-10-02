@@ -1,4 +1,4 @@
-LIVE · Code Mode · 1 file
+LIVE · cat · 1 file
   main · ◐ M src/a.go +1 -1
   1│ package main
   2│ 

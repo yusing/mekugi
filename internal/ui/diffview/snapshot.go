@@ -19,5 +19,5 @@ type Preview struct {
 	DiffText  bool `json:",omitzero"`
 	Status    string
 	Footer    string `json:",omitempty"`
-	Tool      string `json:",omitempty"` // The host tool whose input is predicted.
+	Tool      string `json:",omitempty"` // The evidenced editing tool, not its host executor.
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 type liveDiffPreviewWorker struct {
@@ -73,7 +74,7 @@ func startLiveDiffPreview(ctx context.Context, broker *liveDiffBroker, workspace
 		wake:    make(chan struct{}, 1), done: make(chan struct{}),
 	}
 	if len(kind) != 0 {
-		worker.kind, worker.preview.Tool = kind[0], kind[0]
+		worker.kind = kind[0]
 	}
 	go worker.run()
 	return worker
@@ -205,6 +206,7 @@ func (w *liveDiffPreviewWorker) projectStockPreview(input, workspace string, fin
 		}
 	}
 	preview.Complete = final
+	preview.Tool = applyPatchToolName
 	projected := projectStockPatchPreview(ctx, workspace, preview)
 	return projected, true
 }
@@ -306,7 +308,7 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		projected.Complete = final
 		projected.ID, projected.Workspace, projected.Thread, projected.Caller = preview.ID, preview.Workspace, preview.Thread, preview.Caller
-		projected.Tool, projected.Turn = preview.Tool, preview.Turn
+		projected.Turn = preview.Turn
 		changed := len(projected.Files) != 0 && !slices.Equal(projected.Files, lastFiles)
 		if changed && !release && !lastReveal.IsZero() && w.ctx.Err() == nil {
 			// Transport candidates may arrive every animation frame. Reveal a
@@ -347,14 +349,14 @@ func (w *liveDiffPreviewWorker) run() {
 // text that is not an edit has no preview.
 func (w *liveDiffPreviewWorker) project(input, workspace string, final bool) (diffview.Preview, bool) {
 	shell := func(call codeModeShellCall) (diffview.Preview, bool) {
-		files, recognized, err := w.projectShell(call.cmd, liveDiffWorkdir(workspace, call.workdir), final)
+		files, tool, recognized, err := w.projectShellWithTool(call.cmd, liveDiffWorkdir(workspace, call.workdir), final)
 		switch {
 		case recognized && call.dynamicWorkdir:
 			return diffview.Preview{Status: diffview.PreviewUnavailable + "edit target depends on a computed workdir"}, true
 		case !recognized || err != nil:
 			return diffview.Preview{}, recognized
 		}
-		return diffview.Preview{Files: files, Status: diffview.PreviewEdit}, true
+		return diffview.Preview{Files: files, Tool: tool, Status: diffview.PreviewEdit}, true
 	}
 	switch w.kind {
 	case applyPatchToolName:
@@ -440,6 +442,11 @@ func liveDiffWorkdir(workspace, workdir string) string {
 // projectShell predicts literal shell and interpreter writes without running
 // the command. Recognized reports an edit even when its projection failed.
 func (w *liveDiffPreviewWorker) projectShell(program, directory string, final bool) ([]mekugi.ReviewFile, bool, error) {
+	files, _, recognized, err := w.projectShellWithTool(program, directory, final)
+	return files, recognized, err
+}
+
+func (w *liveDiffPreviewWorker) projectShellWithTool(program, directory string, final bool) ([]mekugi.ReviewFile, string, bool, error) {
 	statements, directory, partialLine, parsed := liveDiffShellStatements(program, directory)
 	if !final && !partialLine {
 		// A normal command's final operand may still be arriving. An open
@@ -448,7 +455,7 @@ func (w *liveDiffPreviewWorker) projectShell(program, directory string, final bo
 		statements, directory, partialLine, parsed = liveDiffShellStatements(program, directory)
 	}
 	if !parsed {
-		return nil, false, nil
+		return nil, "", false, nil
 	}
 	projectionContext := w.ctx
 	if final {
@@ -459,6 +466,7 @@ func (w *liveDiffPreviewWorker) projectShell(program, directory string, final bo
 	ctx, cancel := context.WithTimeout(projectionContext, time.Second)
 	defer cancel()
 	var files []mekugi.ReviewFile
+	var tools []string
 	recognized := false
 	seenPaths := make(map[string]struct{})
 	tainted := false
@@ -480,15 +488,15 @@ func (w *liveDiffPreviewWorker) projectShell(program, directory string, final bo
 		}
 		recognized = true
 		if tainted {
-			return nil, true, errors.New("edit follows unsupported shell state")
+			return nil, "", true, errors.New("edit follows unsupported shell state")
 		}
 		if err != nil {
-			return nil, true, err
+			return nil, "", true, err
 		}
 		if statementPartial && !final && len(projected) == 0 {
 			// Keep all previously displayed files while this statement waits
 			// for source, rather than publishing only its completed siblings.
-			return nil, true, nil
+			return nil, "", true, nil
 		}
 		operationPaths := make(map[string]struct{})
 		for _, file := range projected {
@@ -501,15 +509,25 @@ func (w *liveDiffPreviewWorker) projectShell(program, directory string, final bo
 		}
 		for path := range operationPaths {
 			if _, exists := seenPaths[path]; exists {
-				return nil, true, errors.New("edits depend on an earlier operation")
+				return nil, "", true, errors.New("edits depend on an earlier operation")
 			}
 		}
 		for path := range operationPaths {
 			seenPaths[path] = struct{}{}
 		}
 		files = append(files, projected...)
+		if len(projected) > 0 {
+			if call, ok := stmt.Cmd.(*syntax.CallExpr); ok && len(call.Args) > 0 {
+				if name, literal := shellCatLiteral(call.Args[0]); literal {
+					name = shellsyntax.InterpreterIdentity(name)
+					if !slices.Contains(tools, name) {
+						tools = append(tools, name)
+					}
+				}
+			}
+		}
 	}
-	return files, recognized, nil
+	return files, strings.Join(tools, "+"), recognized, nil
 }
 
 // Cleanup only live state. An unconditional removal would overwrite an atomic
@@ -549,7 +567,7 @@ func (b *liveDiffBroker) publishPreview(preview diffview.Preview, remove bool) {
 		// a bounded raw-diff window, never the preceding shell source. A lone
 		// newline is the pending stock-patch marker, not a new blank edit.
 		if previous := b.previews[preview.ID]; len(previous.Files) != 0 || previous.DiffText {
-			preview.Files, preview.Input = previous.Files, previous.Input
+			preview.Files, preview.Input, preview.Tool = previous.Files, previous.Input, previous.Tool
 			preview.DiffText, preview.Truncated = previous.DiffText, previous.Truncated
 		}
 	}

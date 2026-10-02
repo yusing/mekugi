@@ -44,8 +44,23 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	turn := window.turn
 	go func() {
 		defer func() { <-execRunningPreviewSlots }()
-		runExecScopePreview(ctx, broker, observation, diffview.Preview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Turn: turn, Caller: caller, Tool: nativeExecCommandToolName}, tracking)
+		runExecScopePreview(ctx, broker, observation, diffview.Preview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Turn: turn, Caller: caller}, tracking)
 	}()
+}
+
+// Reuse captured program attribution, not the enclosing stock executor.
+// A missing program label is unknown, not evidence that a shell edited it.
+func execPreviewTool(observation execObservation) string {
+	// The classifier's opaque-statement fallback is scope uncertainty,
+	// not an evidenced executable. Keep it out of display attribution.
+	observation.Programs = slices.DeleteFunc(slices.Clone(observation.Programs), func(program execProgram) bool {
+		return program.Label == "shell"
+	})
+	tool := observation.sourceLabel()
+	if tool == nativeExecCommandToolName {
+		return ""
+	}
+	return tool
 }
 
 func execPreviewPaths(observation execObservation) []string {
@@ -186,6 +201,7 @@ func execPreviewExpected(ctx context.Context, observation execObservation) map[s
 }
 
 func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observation execObservation, preview diffview.Preview, tracking *execPreviewTrack) {
+	preview.Tool = execPreviewTool(observation)
 	defer tracking.close()
 	defer broker.discardRunningPreview(preview)
 	expected := execPreviewExpected(ctx, observation)
@@ -313,7 +329,6 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 		if settled && len(settledPaths) == len(observation.Files) || !tracked && len(expected) > 0 && len(matched) == len(expected) {
 			if len(preview.Files) > 0 && ctx.Err() == nil {
 				preview.Status, preview.Complete = diffview.PreviewRunning, true
-				preview.Tool = nativeExecCommandToolName
 				preview.Footer = "observed edit"
 				broker.publishPreview(preview, false)
 			}

@@ -202,11 +202,11 @@ func TestUISnapshotNativeBatchToolIdentity(t *testing.T) {
 		width, height int
 	}{
 		{"patch", "apply_patch", 72, 16},
-		{"shell", "exec_command", 72, 16},
-		{"code_mode", "exec", 72, 16},
+		{"python3", "python3", 72, 16},
+		{"cat", "cat", 72, 16},
 		{"unknown", "", 72, 16},
 		{"short", "apply_patch", 72, 10},
-		{"narrow", "exec_command", 24, 16},
+		{"narrow", "python3", 24, 16},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pane := PreviewPane{Retain: true}
@@ -225,15 +225,32 @@ func TestUISnapshotNativeBatchToolIdentity(t *testing.T) {
 	patch.Tool = "apply_patch"
 	pane.Update(patch)
 	batchTestRender(t, &pane, 16)
-	shell := batchTestPreview("shell", "/root", "src/shell.go")
-	shell.Tool = "exec_command"
-	pane.Update(shell)
+	python := batchTestPreview("python", "/root", "src/python.go")
+	python.Tool = "python3"
+	pane.Update(python)
 	assertRowsSnapshot(t, "native_batch_tool_follow", batchTestRender(t, &pane, 16))
 	pane.NextBatch("/root")
 	assertRowsSnapshot(t, "native_batch_tool_pinned", batchTestRender(t, &pane, 16))
 	other := batchTestPreview("other-caller", "/root/worker", "src/worker.go")
-	other.Tool = "exec"
+	other.Tool = "cat"
 	pane.Update(other)
 	// A sibling's tool must not change the pinned caller-local header.
 	assertRowsSnapshot(t, "native_batch_tool_pinned", batchTestRender(t, &pane, 16))
+}
+
+func TestUISnapshotNativeBatchMixedToolCall(t *testing.T) {
+	pane := PreviewPane{Retain: true}
+	preview := batchTestPreview("program", "/root", "src/python.go")
+	preview.Tool = "python3"
+	pane.Update(preview)
+	assertRowsSnapshot(t, "native_batch_mixed_tool_initial", batchTestRender(t, &pane, 16))
+	// One streaming call can advance to a different editing command and file.
+	preview = batchTestPreview("program", "/root", "src/cat.go")
+	preview.Tool = "cat"
+	pane.Update(preview)
+	assertRowsSnapshot(t, "native_batch_mixed_tool_follow", batchTestRender(t, &pane, 16))
+	if !pane.NextBatch("/root") {
+		t.Fatal("could not select the earlier editing command")
+	}
+	assertRowsSnapshot(t, "native_batch_mixed_tool_pinned", batchTestRender(t, &pane, 16))
 }

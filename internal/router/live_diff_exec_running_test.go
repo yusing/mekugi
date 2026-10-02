@@ -212,7 +212,7 @@ func TestExecRunningPreviewShowsScopedVCSAndCancelsWithoutEvidence(t *testing.T)
 	preview = waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
 		return preview.ID == "running:call-1" && preview.Status == diffview.PreviewRunning && len(preview.Files) == 1
 	})
-	if preview.Tool != nativeExecCommandToolName {
+	if preview.Tool != "git restore" {
 		t.Fatalf("active shell observation lost editing tool: %+v", preview)
 	}
 	if path := preview.Files[0].AfterPath; path != tracked {
