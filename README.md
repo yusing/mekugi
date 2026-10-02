@@ -490,8 +490,11 @@ Herdr is optional and does not control Mekugi's internal panes.
 
 Click a command, program, read, error, or long-content excerpt in Main or Activity to
 open its full content in the shared dialog above the panes, without expanding
-the transcript. Read source and unified diffs use syntax colors. When
-`mekugi-exec` recorded a command list, each command gets its own tab with its
+the transcript. Read source and unified diffs use syntax colors. Untyped command
+output above 8 KiB stays uncolored for responsiveness; its text remains available
+for reading, searching, and copying. File-specific and diff highlighting retain
+their 256 KiB limit. When `mekugi-exec` recorded a command list, each command gets
+its own tab with its
 output, exit status, start/end timestamps and measured duration. Older history
 without timing evidence shows no per-command duration.
 Without retained output boundaries, the dialog labels the output as combined.

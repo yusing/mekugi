@@ -1,0 +1,4 @@
+Running custom-producer
++698    ┆ var answer = 42
+        ┆ var answer = 42
+        ┆ completed successfully

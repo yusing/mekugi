@@ -12,6 +12,49 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
+func TestExtractCopyUnannotatedRows(t *testing.T) {
+	for _, row := range []string{"", "plain 猫 text", "\x1b[11G\x1b[31mcolored\x1b[0m", "\x1b]8;;https://example.com\x1b\\link\x1b]8;;\x1b\\"} {
+		if got, spans := ExtractCopy(row); got != row || len(spans) != 0 {
+			t.Fatalf("unannotated row changed: %q, %+v", got, spans)
+		}
+		if allocs := testing.AllocsPerRun(100, func() { ExtractCopy(row) }); allocs != 0 {
+			t.Fatalf("unannotated row allocated: %g", allocs)
+		}
+	}
+}
+
+func TestExtractCopyReusedParser(t *testing.T) {
+	// An annotation may exceed the pooled parser's data buffer. Extraction
+	// uses the complete decoded sequence, not that buffer's truncated data.
+	for _, source := range []string{"first", strings.Repeat("猫", 3000), "last"} {
+		fragment := CopyFragment{Text: source, Width: 4}
+		for _, prefix := range []string{"\x1b[31G", "\x1b[G", "猫 "} {
+			wantColumn := map[string]int{"\x1b[31G": 30, "\x1b[G": 0, "猫 ": 3}[prefix]
+			row := prefix + copyTag(fragment) + "text\x1b[0m"
+			clean, spans := ExtractCopy(row)
+			if clean != prefix+"text\x1b[0m" || len(spans) != 1 || spans[0].Column != wantColumn || spans[0].Text != source {
+				t.Fatalf("parser reuse lost source or cursor: clean=%q spans=%d", clean, len(spans))
+			}
+		}
+	}
+}
+
+func BenchmarkExtractCopy(b *testing.B) {
+	for _, annotated := range []bool{false, true} {
+		name, row := "plain", "\x1b[12G\x1b[32mterminal output 猫\x1b[0m"
+		if annotated {
+			name = "annotated"
+			row = "\x1b[12G" + copyTag(CopyFragment{Text: "terminal output 猫", Width: 18}) + row
+		}
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				ExtractCopy(row)
+			}
+		})
+	}
+}
+
 func selectedMarkdown(t *testing.T, source string, width int) string {
 	t.Helper()
 	p := Painter{CopySource: true}

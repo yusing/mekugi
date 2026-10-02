@@ -1,12 +1,87 @@
 package activity
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
+
+func TestCommandOutputAutoHighlightLimit(t *testing.T) {
+	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+		for _, size := range []int{outputAutoHighlightBytes, outputAutoHighlightBytes + 1} {
+			source := "var answer = 42 // "
+			source += strings.Repeat("x", size-len(source))
+			rows := []string{source}
+			p := Painter{Theme: theme}
+			got := p.outputColors(Block{Verb: "Run"}, rows)
+			if ansi.Strip(got[0]) != source || (got[0] != source) != (size <= outputAutoHighlightBytes) {
+				t.Fatalf("size %d: text or color boundary changed", size)
+			}
+		}
+		rows := strings.Split(strings.Repeat("var answer = 42\n", 700), "\n")
+		block := selectedOutputBlock(Block{Verb: "Run"}, rows, len(rows)-3)
+		p := Painter{Theme: theme}
+		if got := p.tailColors(block); !slices.Equal(got, block.Tail) {
+			t.Fatal("small tail bypassed retained output bound")
+		}
+		page := p.DialogPage(block, 80)
+		if page.Text != strings.Join(block.Output.View().Lines, "\n") {
+			t.Fatal("large output lost copyable text")
+		}
+		for _, row := range page.Lines {
+			if row.Gutter == "┆" && ansi.Strip(row.Text) != row.Text {
+				t.Fatal("dialog bypassed automatic syntax bound")
+			}
+		}
+		for _, hinted := range []Block{
+			{Kind: "reads", Verb: "Read", Reads: []Read{{Path: "file.go"}}},
+			{Verb: "Search", Label: "Search in `file.go`"},
+		} {
+			hintedRows := rows
+			if hinted.Verb == "Search" {
+				hintedRows = make([]string, len(rows))
+				for i, row := range rows {
+					hintedRows[i] = fmt.Sprintf("%d:%s", i+1, row)
+				}
+			}
+			if got := p.outputColors(hinted, hintedRows); slices.Equal(got, hintedRows) {
+				t.Fatalf("explicit %s hint lost above automatic bound", hinted.Verb)
+			}
+		}
+		diff := "--- a/file.go\n+++ b/file.go\n@@ -0,0 +1,700 @@\n" + strings.Repeat("+var answer = 42\n", 700)
+		for _, block := range []Block{{Verb: "Run"}, {Verb: "Diff", Code: "git diff"}} {
+			rows := strings.Split(diff, "\n")
+			if got := p.outputColors(block, rows); slices.Equal(got, rows) {
+				t.Fatal("diff colors lost above automatic bound")
+			}
+		}
+	}
+}
+
+func TestUISnapshotCommandOutputAutoHighlightLimit(t *testing.T) {
+	rows := strings.Split(strings.Repeat("var answer = 42\n", 700)+"completed successfully", "\n")
+	block := selectedOutputBlock(Block{Kind: "op", Verb: "Run", Code: "custom-producer", Running: true}, rows, len(rows)-3)
+	p := Painter{Theme: livediff.DarkTheme}
+	uisnapshot.Assert(t, "testdata/snapshots/output_auto_highlight_limit.txt", strings.Join(p.Block(block, 80), "\n")+"\n")
+}
+
+func BenchmarkCommandOutputAutoHighlight(b *testing.B) {
+	for _, size := range []int{8 << 10, 16 << 10, 64 << 10} {
+		b.Run(fmt.Sprint(size), func(b *testing.B) {
+			rows := strings.Split(strings.Repeat("var answer = 42\n", size/16+1)[:size], "\n")
+			b.ReportAllocs()
+			for b.Loop() {
+				p := Painter{Theme: livediff.DarkTheme}
+				p.outputColors(Block{Verb: "Run"}, rows)
+			}
+		})
+	}
+}
 
 func TestCommandOutputSyntaxIndependentOfProducer(t *testing.T) {
 	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {

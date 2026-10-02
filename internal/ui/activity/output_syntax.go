@@ -7,6 +7,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// Untyped command output may select an expensive, unrelated lexer. Keep
+// automatic decoration bounded on the paint path; explicit hints and diffs
+// retain the larger shared highlighting bound.
+const outputAutoHighlightBytes = 8 << 10
+
 // Output syntax follows the content, never the command that produced it.
 // Both inline tails and dialogs use the same bounded renderer and cache.
 func (p *Painter) outputColors(block Block, rows []string) []string {
@@ -48,6 +53,9 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 			colored[i] = p.dialogSearchLine(block, line)
 		}
 		return colored
+	}
+	if path == "" && len(content) > outputAutoHighlightBytes {
+		return selectRows(rows)
 	}
 	// Supply a terminator so a retained trailing blank row keeps its position.
 	colored, err := p.syntax.ColorSource(context.Background(), p.Theme, path, content+"\n")

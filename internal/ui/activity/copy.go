@@ -169,11 +169,15 @@ func (p *Painter) copyWrapped(rows []string, source CopyFragment, gutter int) []
 // ExtractCopy resolves the final composed row, including absolute cursor moves.
 // No private annotation reaches the terminal emulator or external terminal.
 func ExtractCopy(row string) (string, []CopySpan) {
+	if !strings.Contains(row, copyEnvelope) {
+		return row, nil
+	}
 	var out strings.Builder
 	var spans []CopySpan
 	column := 0
 	var state byte
-	parser := ansi.NewParser()
+	parser := ansi.GetParser()
+	defer ansi.PutParser(parser)
 	for len(row) > 0 {
 		seq, width, n, next := ansi.DecodeSequence(row, state, parser)
 		if n == 0 {

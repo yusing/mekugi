@@ -184,9 +184,12 @@ types and numbered search matches retain their explicit syntax hints. Unified
 diffs reuse the diff pane’s per-language hunk syntax and added/deleted row
 fills whether produced by `git diff`, `mchanges`, or another command. Rolling
 tails use available retained headers and source context before selecting visible
-rows; expanded output and dialogs use the same renderer. Unrecognized content
-and buffers above 256 KiB
-remain plain text; inferred syntax never changes output bytes or line numbering.
+rows; expanded output and dialogs use the same renderer. To keep large mixed
+command output responsive, automatic syntax detection stops above 8 KiB of
+retained context, not merely the selected tail. Explicit file/search hints and
+unified diffs retain the 256 KiB highlighting limit. Unrecognized content and
+buffers above their highlighting limit remain plain text; inferred syntax never
+changes output bytes or line numbering.
 Command titles and source bodies use syntax colors for their language; file-read
 output uses the file type, including when it ends in blank lines. Copying remains
 plain text. Skill-read output renders as Markdown, wrapping to the dialog width
