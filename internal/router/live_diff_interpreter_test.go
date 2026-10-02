@@ -300,10 +300,10 @@ func TestLiveDiffInterpreterHelperStreamsArrivingReplacement(t *testing.T) {
 	path := filepath.Join(directory, "demo.go")
 	writeTestFile(t, path, "package demo\n\nfunc old() {}\n\nfunc tail() {}\n")
 	w := liveDiffPreviewWorker{ctx: t.Context()}
-	prefix := "python3 - <<'PY'\ns = open('demo.go').read()\ndef rep(a, b):\n    global s\n    s = s.replace(a, b)\nrep('func old() {}', '''func renamed() {\n\tprepare()\n"
+	prefix := "python3 - <<'PY'\ns = open('demo.go').read()\ndef rep(a, b):\n    global s\n    s = s.replace(a, b)\n    open('demo.go', 'w').write(s)\nrep('func old() {}', '''func renamed() {\n\tprepare()\n"
 	files, recognized, err := w.projectShell(prefix, directory, false)
 	if err != nil || !recognized || len(files) != 1 || files[0].AfterPath != path {
-		t.Fatalf("arriving helper replacement = %+v, %t, %v", files, recognized, err)
+		t.Fatalf("arriving helper write = %+v, %t, %v", files, recognized, err)
 	}
 	if diff := files[0].Diff; !strings.Contains(diff, "-func old() {}") || !strings.Contains(diff, "+\tprepare()") || strings.Contains(diff, "-func tail") {
 		t.Fatalf("arriving helper replacement diff:\n%s", diff)

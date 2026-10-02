@@ -118,12 +118,8 @@ func (s *execSourceScope) pythonText(node *sitter.Node, depth int) bool {
 		return false
 	}
 	name := s.text(function.ChildByFieldName("attribute"))
-	if name == "read_text" {
+	if name == "read_text" || name == "read_bytes" || name == "read" {
 		return true
-	}
-	if name == "read" {
-		open, _ := sourceCall(function.ChildByFieldName("object"))
-		return s.text(open) == "open"
 	}
 	return name == "replace" && s.pythonText(function.ChildByFieldName("object"), depth+1)
 }
@@ -158,14 +154,23 @@ func (s *execSourceScope) pythonCall(function *sitter.Node, base string, args []
 	module := object == nil || name == "os" || name == "shutil"
 	switch base {
 	case "open":
-		modeNode := arg(1)
-		if len(s.paths(object)) != 0 {
-			modeNode = arg(0)
-		}
+		var positional []*sitter.Node
+		var modeNode *sitter.Node
 		for _, node := range args {
-			if node.Kind() == "keyword_argument" && s.text(node.ChildByFieldName("name")) == "mode" {
-				modeNode = node.ChildByFieldName("value")
+			if node.Kind() == "keyword_argument" {
+				if s.text(node.ChildByFieldName("name")) == "mode" {
+					modeNode = node.ChildByFieldName("value")
+				}
+			} else if node.Kind() != "comment" {
+				positional = append(positional, node)
 			}
+		}
+		modeIndex := 1
+		if len(s.paths(object)) != 0 {
+			modeIndex = 0
+		}
+		if modeNode == nil && modeIndex < len(positional) {
+			modeNode = positional[modeIndex]
 		}
 		mode, ok := s.literal(modeNode)
 		if ok && strings.ContainsAny(mode, "wax+") {

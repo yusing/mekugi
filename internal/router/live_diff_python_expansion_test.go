@@ -119,15 +119,13 @@ func TestLiveDiffPythonExpansionArrivingExpressions(t *testing.T) {
 			before := map[string]string{"target.txt": "old\n"}
 			writeTestFile(t, filepath.Join(directory, "target.txt"), before["target.txt"])
 			worker := liveDiffPreviewWorker{ctx: t.Context()}
-			prefix := "python3 - <<'PY'\ns = open('target.txt').read()\n" + tc.body
+			prefix := "python3 - <<'PY'\ns = open('target.txt').read()\nopen('target.txt', 'w').write(" + strings.TrimPrefix(tc.body, "s = ")
 			files, recognized, err := worker.projectShell(prefix, directory, false)
 			if err != nil || !recognized {
 				t.Fatalf("arriving expression recognized=%v err=%v files=%+v", recognized, err, files)
 			}
-			// Only the arriving replacement has reached the preview, not the
-			// original suffix newline beyond its tip.
 			assertPythonExpansionDiffs(t, directory, files, before, map[string]string{"target.txt": strings.TrimSuffix(tc.after, "\n")})
-			files, recognized, err = worker.projectShell(prefix+tc.completion+"open('target.txt', 'w').write(s)\nPY\n", directory, true)
+			files, recognized, err = worker.projectShell(prefix+strings.TrimSuffix(tc.completion, "\n")+")\nPY\n", directory, true)
 			if err != nil || !recognized {
 				t.Fatalf("completed expression recognized=%v err=%v files=%+v", recognized, err, files)
 			}

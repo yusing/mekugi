@@ -95,7 +95,7 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 		return nil, false, nil
 	}
 	defer tree.Close()
-	editScript := python && liveDiffPythonEditIntent(tree.RootNode(), data, 0)
+	editScript := python && liveDiffPythonEditIntent(tree.RootNode(), data, input.deadline)
 	if tree.RootNode().HasError() {
 		return nil, editScript, nil
 	}
@@ -119,8 +119,6 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 		scan.pythonClearBinding(&state, name)
 	}
 	var writes []liveDiffPredictedWrite
-	var textOrder []string
-	seen := make(map[string]bool)
 	recordWrite := func(write liveDiffPredictedWrite) {
 		state.written[write.path] = write.content
 		if index := slices.IndexFunc(writes, func(w liveDiffPredictedWrite) bool { return w.path == write.path }); index >= 0 {
@@ -128,7 +126,6 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 		} else {
 			writes = append(writes, write)
 		}
-		seen[write.path] = true
 	}
 	var failure error
 	var failed *sitter.Node
@@ -307,7 +304,6 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 					scan.vars[name] = []string{execProviderPath(input.cwd, value.content)}
 					scan.segments[name] = []string{value.content}
 				}
-				textOrder = append(textOrder, name)
 				return
 			}
 			if hasInt {
@@ -345,7 +341,6 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 				scan.vars[name] = []string{execProviderPath(input.cwd, joined.content)}
 				scan.segments[name] = []string{joined.content}
 			}
-			textOrder = append(textOrder, name)
 			return
 		}
 		if python && (node.Kind() == "delete_statement" || node.Kind() == "named_expression") {
@@ -492,29 +487,6 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 			*note = fmt.Errorf("%w: %s %q", failure, failed.Kind(), scan.text(failed))
 		}
 		return nil, editScript, nil
-	}
-	// While source arrives, show the current replacement buffer even before
-	// its final write statement. This is a prediction, never execution evidence.
-	if partial {
-		for _, name := range slices.Backward(textOrder) {
-			value := state.texts[name]
-			if value.path == "" || seen[value.path] {
-				continue
-			}
-			if len(writes) >= 32 {
-				return nil, false, nil
-			}
-			before, exists, err := liveDiffSourceRead(ctx, value.path, liveDiffPreviewFile)
-			if err != nil || !exists || before == value.content {
-				continue
-			}
-			write := liveDiffPredictedWrite{path: value.path, content: value.content, tip: len(value.content)}
-			if value.tip > 0 {
-				write.tip, write.arriving = value.tip, true
-			}
-			writes = append(writes, write)
-			seen[value.path] = true
-		}
 	}
 	if len(writes) == 0 {
 		return nil, editScript, nil
@@ -733,24 +705,11 @@ func liveDiffFirstMatch(lines, old []string, from int) int {
 
 // Keep an unfinished or unsupported edit script from replacing its target diff
 // with the script's own source. Inspect syntax, not text inside comments/strings.
-func liveDiffPythonEditIntent(node *sitter.Node, source []byte, depth int) bool {
-	if node == nil || depth > 128 {
-		return false
-	}
-	if function, _ := sourceCall(node); function != nil {
-		if attribute := function.ChildByFieldName("attribute"); attribute != nil {
-			switch string(source[attribute.StartByte():attribute.EndByte()]) {
-			case "read_text", "write_text":
-				return true
-			}
-		}
-	}
-	for i := range node.NamedChildCount() {
-		if liveDiffPythonEditIntent(node.NamedChild(uint(i)), source, depth+1) {
-			return true
-		}
-	}
-	return false
+func liveDiffPythonEditIntent(node *sitter.Node, source []byte, deadline time.Time) bool {
+	scan := execSourceScope{input: execProviderInput{deadline: deadline}, source: source, python: true, intentOnly: true,
+		vars: make(map[string][]string), texts: make(map[string]bool), assigned: make(map[string]int), aliases: make(map[string]string)}
+	scan.walk(node)
+	return scan.writes
 }
 
 // liveDiffPythonSetup reports whether received Python source is still only the

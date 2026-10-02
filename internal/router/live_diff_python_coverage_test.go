@@ -210,10 +210,9 @@ func TestLiveDiffPythonCoverageArrivingAugmentedAssignment(t *testing.T) {
 			worker := liveDiffPreviewWorker{ctx: t.Context()}
 			prefix := "python3 - <<'PY'\n" + script
 			files, recognized, err := worker.projectShell(prefix, directory, false)
-			if err != nil || !recognized || len(files) != 1 {
-				t.Fatalf("arriving += prediction: files=%+v recognized=%v err=%v", files, recognized, err)
+			if err != nil || recognized || len(files) != 0 {
+				t.Fatalf("arriving += invented a write: files=%+v recognized=%v err=%v", files, recognized, err)
 			}
-			assertPythonExpansionDiffs(t, directory, files, before, map[string]string{"target.txt": "old\narriving\nnext\n"})
 			completion := "'''\n"
 			if strings.Contains(script, "append('''") {
 				completion = "''')\n"

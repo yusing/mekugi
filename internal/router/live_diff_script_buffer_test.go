@@ -15,17 +15,21 @@ func TestLiveDiffPythonScriptPrefixesDoNotFlashSource(t *testing.T) {
 	writeTestFile(t, filepath.Join(directory, "target.txt"), "old\n")
 	w := liveDiffPreviewWorker{ctx: t.Context()}
 	prefix := "cat >edit.py <<'PY'\n"
-	for _, line := range []string{"from pathlib import Path\n", "p=Path('target.txt')\n", "s=p.read_text()\n"} {
+	for _, line := range []string{"from pathlib import Path\n", "p=Path('target.txt')\n"} {
 		prefix += line
 		files, _, err := w.projectShell(prefix, directory, false)
 		if err != nil || len(files) != 0 {
 			t.Fatalf("setup prefix exposed script source: files=%+v err=%v", files, err)
 		}
 	}
-	prefix += "s=s.replace('old','new')\n"
+	prefix += "s=p.read_text()\ns=s.replace('old','new')\n"
 	files, recognized, err := w.projectShell(prefix, directory, false)
+	if err != nil || !recognized || len(files) != 1 || files[0].AfterPath != filepath.Join(directory, "edit.py") {
+		t.Fatalf("read-only prefix was treated as a target write: files=%+v err=%v", files, err)
+	}
+	files, recognized, err = w.projectShell(prefix+"p.write_text(s)\n", directory, false)
 	if err != nil || !recognized || len(files) != 1 || files[0].AfterPath != filepath.Join(directory, "target.txt") {
-		t.Fatalf("replacement prefix failed to show target: files=%+v err=%v", files, err)
+		t.Fatalf("write prefix failed to show target: files=%+v err=%v", files, err)
 	}
 	files, recognized, err = w.projectShell("cat >ordinary.py <<'PY'\nprint('hello')\nPY\n", directory, true)
 	if err != nil || !recognized || len(files) != 1 || files[0].AfterPath != filepath.Join(directory, "ordinary.py") {

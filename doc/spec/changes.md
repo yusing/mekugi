@@ -336,8 +336,11 @@ including empty contexts. Closed handles and concurrent handles on one file
 where either is a writer are not predicted. Guards that only stop the script, such as
 `if old not in text: raise SystemExit(...)`, `assert`, and `print`, do not
 prevent a prediction. A Python edit script composed through a `cat` heredoc
-previews these target-file changes rather than the script file. While it
-arrives, a changed read buffer can be shown before its final write statement.
+previews these target-file changes rather than the script file. Reads and
+in-memory string transformations do not establish edit intent: target-file
+previews wait for an explicit write operation, including a writable `open`
+mode. A completed read-only script previews its own source when created,
+not changes to the files it reads.
 This is a provisional prediction only: script creation does not claim that its
 edits ran, and neither the script nor the host tool call is rewritten or
 executed by the preview.

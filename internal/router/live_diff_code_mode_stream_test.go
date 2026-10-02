@@ -105,6 +105,12 @@ func TestLiveDiffNativeExecPythonStreamsTargetDiff(t *testing.T) {
 			if point < 0 {
 				t.Fatal("missing Python write")
 			}
+			if preview, _ := worker.project(input[:point], workspace, false); len(preview.Files) != 0 {
+				t.Fatalf("read-only prefix invented a target edit: %+v", preview)
+			}
+			// The write has arrived, but the transporting JSON and heredoc
+			// are still open. A read-buffer change alone is not an edit.
+			point += len(write) + len("(s)")
 			worker.appendDelta(input[:point])
 			preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
 				return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+new old")

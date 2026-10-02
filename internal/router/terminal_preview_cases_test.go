@@ -206,6 +206,8 @@ func previewBoundaryCases() []previewBoundaryCase {
 func previewPythonReplacementCase() previewBoundaryCase {
 	_, replacement, command := previewPythonEditCommand()
 	command = strings.ReplaceAll(command, "internal/pane/launch.go", "boundary-python-target.go")
+	command = strings.Replace(command, "s = s.replace(", "p.write_text(s.replace(", 1)
+	command = strings.Replace(command, ", 1)\np.write_text(s)", ", 1))", 1)
 	literal := strconv.Quote(replacement)
 	start := strings.Index(command, literal)
 	firstEnd := start + strings.Index(literal, `\n`) + 2
