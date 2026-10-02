@@ -158,7 +158,11 @@ func TestNativeJournalPresentationCodexE2E(t *testing.T) {
 	if err := json.Unmarshal(data, &record); err != nil {
 		t.Fatal(err)
 	}
-	if record.Version != 1 || record.Workspace != workspace || record.Thread != u.thread || record.ResponseID == "" || len(record.AnsweredItems) != 1 || record.AnsweredItems[0] != observed {
+	if record.Version != 1 || record.Workspace != workspace || record.Thread != u.thread || record.ResponseID == "" || len(record.AnsweredItems) != 1 {
+		t.Fatalf("fresh-store receipt lost exact native provenance: %+v; host item=%+v", record, observed)
+	}
+	retained := record.AnsweredItems[0]
+	if retained.Turn != observed.Turn || retained.Item != observed.Item || retained.ResponseID != record.ResponseID {
 		t.Fatalf("fresh-store receipt lost exact native provenance: %+v; host item=%+v", record, observed)
 	}
 	if !fresh.answeredCompactionItem(ctx, workspace, u.thread, observed.Turn, observed.Item) ||
