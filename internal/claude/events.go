@@ -17,18 +17,18 @@ type adapter struct {
 
 func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 	var frame struct {
-		Commands    []string        `json:"commands"`
-		Models      []session.Model `json:"models"`
-		Field       string          `json:"field"`
-		Value       string          `json:"value"`
-		Failed      bool            `json:"failed"`
-		Kind        string          `json:"kind"`
-		ID          string          `json:"id"`
-		Tool        string          `json:"tool"`
-		Text        string          `json:"text"`
-		Description string          `json:"description"`
-		Input       jsontext.Value  `json:"input"`
-		Event       nativeEvent     `json:"event"`
+		CommandInfo []session.Command `json:"commandInfo"`
+		Models      []session.Model   `json:"models"`
+		Field       string            `json:"field"`
+		Value       string            `json:"value"`
+		Failed      bool              `json:"failed"`
+		Kind        string            `json:"kind"`
+		ID          string            `json:"id"`
+		Tool        string            `json:"tool"`
+		Text        string            `json:"text"`
+		Description string            `json:"description"`
+		Input       jsontext.Value    `json:"input"`
+		Event       nativeEvent       `json:"event"`
 	}
 	if err := json.Unmarshal(data, &frame); err != nil {
 		return nil, fmt.Errorf("invalid Claude bridge frame: %w", err)
@@ -42,7 +42,7 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 	}()
 	switch frame.Kind {
 	case "ready":
-		return []session.Event{{Kind: "ready", Commands: frame.Commands, Models: frame.Models}}, nil
+		return []session.Event{{Kind: "ready", CommandInfo: frame.CommandInfo, Models: frame.Models}}, nil
 	case "settings":
 		return []session.Event{{Kind: "settings", Settings: &session.Settings{ID: frame.ID, Field: frame.Field, Value: frame.Value}, Failed: frame.Failed, Text: frame.Text}}, nil
 	case "task_control":
@@ -94,6 +94,9 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 			return []session.Event{{Kind: "limit", Limit: e.Limit}}, nil
 		}
 	case "system":
+		if e.Subtype == "commands_changed" {
+			return []session.Event{{Kind: "commands", CommandInfo: e.Commands}}, nil
+		}
 		if e.TaskID != "" {
 			task := &session.Task{ID: e.TaskID, ToolID: e.ToolUseID, Kind: e.TaskType, Description: e.Description, Summary: e.Summary, Ambient: e.Ambient || e.SkipTranscript}
 			switch e.Subtype {

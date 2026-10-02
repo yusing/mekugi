@@ -199,6 +199,7 @@ type content struct {
 }
 type nativeEvent struct {
 	session.Usage
+	Commands       []session.Command  `json:"commands"`
 	Limit          *session.RateLimit `json:"rate_limit_info"`
 	TaskID         string             `json:"task_id"`
 	ToolUseID      string             `json:"tool_use_id"`

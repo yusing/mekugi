@@ -202,9 +202,18 @@ observation cannot attribute changes made while Mekugi was disconnected. Press
 updates. Permission prompts follow Claude's configured policy, including native
 automatic approval; enabling capture does not change that policy.
 
-Bash previews, journals, utility frontends, agent messaging/switching and attachments are
-not connected yet. Commands advertised by the SDK are forwarded
-natively; unadvertised commands are rejected rather than emulated. The capture-only companion does not yet include plugin utilities or journals.
+The shared composer completes SDK-advertised commands and skills with `/` and
+workspace file paths with `@`, including ignored files but excluding VCS internals.
+File mentions remain native `@path` input; Claude resolves them through its own
+workflow, potentially using native Read, rather than Mekugi submitting file contents. Select an image from
+file completion, paste an image path, or use Ctrl-V for a clipboard image. Images
+are sent as native content blocks, limited to PNG, JPEG, GIF or WebP, 5 MiB each
+and an 8 MiB combined bridge frame. Failed submissions keep the draft and images.
+
+Bash previews, journals, utility frontends and agent messaging/switching are not
+connected yet. Commands advertised by the SDK are forwarded natively;
+unadvertised commands, including a separate `/btw` workflow, are rejected rather
+than emulated. The capture-only companion does not yet include plugin utilities or journals.
 Compaction replacement, shell tracing and output rewriting remain unavailable.
 Only exposed text, native tool input/results and task/usage observations are displayed;
 unavailable usage and change evidence are not invented. Oversized bridge events stop the client with an error;

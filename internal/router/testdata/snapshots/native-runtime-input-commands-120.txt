@@ -1,0 +1,28 @@
+┌ 1 Main ──────────────────────────────────────────────────┐┌ 5 Journal ───────────────────── space expand · d details ┐
+│                                                          ││ No journal entries.                                      │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│› /compact  Compact conversation                          ││                                                          │
+│  /copy     Copy a response                               ││                                                          │
+│  /quit     Quit when idle                                ││                                                          │
+│  /review   Review current workspace changes [scope]      ││                                                          │
+│  /rv       Review current workspace changes [scope]      ││                                                          │
+│  /session  Show native usage and limits                  ││                                                          │
+│  /usage    Show native usage and limits                  ││                                                          │
+│                                                          ││                                                          │
+│  ↑/↓ navigate · enter select · tab complete · esc close  ││                                                          │
+│╭─ Ready ────────────────────────────────────────────────╮││                                                          │
+││ ❯ /                                                    │││                                                          │
+│╰──────────────────────────────────────── claude-sonnet ─╯││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes

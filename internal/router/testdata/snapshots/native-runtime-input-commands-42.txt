@@ -1,0 +1,28 @@
+┌ 1 Main ────────────────────────────────┐
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│› /compact  Compact conversation        │
+│  /copy     Copy a response             │
+│  /quit     Quit when idle              │
+│  /review   Review current workspace ch…│
+│  /rv       Review current workspace ch…│
+│  /session  Show native usage and limits│
+│  /usage    Show native usage and limits│
+│                                        │
+│  ↑/↓ navigate · enter select · tab comp│
+│╭─ Ready ──────────────────────────────╮│
+││ ❯ /                                  ││
+│╰────────────────────── claude-sonnet ─╯│
+└────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal

@@ -88,6 +88,12 @@ intent dispatch remains separate from Codex lifecycle control. Claude keeps its
 native permissions, configuration and execution; presentation owns no journal
 transactions, capture store or inference transport. Historical transcript events
 restore display only, never live argument buffers, approval requests or processes.
+Native command metadata and replacement pushes feed the existing slash picker,
+including skills and aliases. File completion uses the shared read-only workspace
+scan without Codex search APIs; mentions remain native input, with
+`client_composed` unset so Claude retains attachment/configuration expansion.
+The optional structured-input capability sends ordered native text/image blocks
+through the same composer; image encoding is bounded and does not transform bytes.
 Runtime-advertised model/effort values feed the shared settings picker. The optional
 session settings capability sends identified invocation-local controls; only the
 matching native acknowledgement or failure settles a pending control. Claude's

@@ -183,7 +183,7 @@ func TestNativeRuntimeCommandsAndStartupAdmission(t *testing.T) {
 	if len(f.sent) != 0 || u.draft != "kept" {
 		t.Fatal("input escaped startup gate")
 	}
-	u.runtimeEvent(session.Event{Kind: "ready", Commands: []string{"compact"}})
+	u.runtimeEvent(session.Event{Kind: "ready", CommandInfo: []session.Command{{Name: "compact"}}})
 	runtimeKeys(t, u, "\r")
 	if len(f.sent) != 1 || f.sent[0] != "kept" {
 		t.Fatal("ready did not admit unchanged draft")

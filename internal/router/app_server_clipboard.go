@@ -21,7 +21,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/internal/session"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	_ "golang.org/x/image/webp"
 )
 
 type composerImage struct {
@@ -106,7 +108,11 @@ func (u *appServerUI) finishPaste() {
 		}
 		q.done, q.skipped = false, false
 	}
+	nativeImages := false
 	if u.runtime != nil {
+		_, nativeImages = u.runtime.client.(session.InputClient)
+	}
+	if u.runtime != nil && (!nativeImages || u.currentQuestion() != nil) {
 		u.insertDraft(text)
 		u.run = runNone
 		return

@@ -34,7 +34,7 @@ func TestAdapterSessionAndTextStreaming(t *testing.T) {
 
 func TestAdapterNativeSettingsDiscoveryAndReceipts(t *testing.T) {
 	var a adapter
-	assertDecode(t, &a, `{"kind":"ready","commands":["compact"],"models":[{"value":"sonnet","resolvedModel":"claude-sonnet","displayName":"Sonnet","description":"Native","supportsEffort":true,"supportedEffortLevels":["low","high"]}]}`, []session.Event{{Kind: "ready", Commands: []string{"compact"}, Models: []session.Model{{ID: "sonnet", Resolved: "claude-sonnet", Name: "Sonnet", Description: "Native", SupportsEffort: true, Efforts: []string{"low", "high"}}}}})
+	assertDecode(t, &a, `{"kind":"ready","commandInfo":[{"name":"compact"}],"models":[{"value":"sonnet","resolvedModel":"claude-sonnet","displayName":"Sonnet","description":"Native","supportsEffort":true,"supportedEffortLevels":["low","high"]}]}`, []session.Event{{Kind: "ready", CommandInfo: []session.Command{{Name: "compact"}}, Models: []session.Model{{ID: "sonnet", Resolved: "claude-sonnet", Name: "Sonnet", Description: "Native", SupportsEffort: true, Efforts: []string{"low", "high"}}}}})
 	assertDecode(t, &a, `{"kind":"settings","id":"1","field":"effort","value":"high","failed":true,"text":"Native restriction"}`, []session.Event{{Kind: "settings", Settings: &session.Settings{ID: "1", Field: "effort", Value: "high"}, Failed: true, Text: "Native restriction"}})
 }
 

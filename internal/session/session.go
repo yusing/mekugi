@@ -5,23 +5,23 @@ package session
 import "context"
 
 type Event struct {
-	Commands   []string
-	Kind       string
-	ID         string
-	Role       string
-	Text       string
-	SessionID  string
-	Model      string
-	Failed     bool
-	Prompt     *Prompt
-	Edit       *Edit
-	Historical bool
-	Caller     string
-	Models     []Model
-	Settings   *Settings
-	Usage      *Usage
-	Limit      *RateLimit
-	Task       *Task
+	CommandInfo []Command
+	Kind        string
+	ID          string
+	Role        string
+	Text        string
+	SessionID   string
+	Model       string
+	Failed      bool
+	Prompt      *Prompt
+	Edit        *Edit
+	Historical  bool
+	Caller      string
+	Models      []Model
+	Settings    *Settings
+	Usage       *Usage
+	Limit       *RateLimit
+	Task        *Task
 }
 
 // Usage totals are the latest native query-pipeline snapshot, including native
@@ -53,6 +53,18 @@ type Task struct {
 }
 type TaskClient interface {
 	StopTask(context.Context, string) error
+}
+
+type InputPart struct{ Text, ImagePath string }
+type InputClient interface {
+	SendInput(context.Context, []InputPart) error
+}
+type Command struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Arguments   string   `json:"argumentHint"`
+	Aliases     []string `json:"aliases,omitempty"`
+	Builtin     bool     `json:"builtin,omitzero"`
 }
 
 // Model choices are advertised by the runtime, not the inference router.

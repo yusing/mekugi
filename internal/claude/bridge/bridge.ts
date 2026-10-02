@@ -79,11 +79,11 @@ const lines = createInterface({input: process.stdin, crlfDelay: Infinity});
 lines.on('line', (line: string) => {
   if (Buffer.byteLength(line) > limit) { stop(); return; }
   try {
-    const command = JSON.parse(line) as {kind: string; text?: string; id?: string; allow?: boolean; answers?: Record<string, string>};
+    const command = JSON.parse(line) as {kind: string; text?: string; content?: SDKUserMessage['message']['content']; id?: string; allow?: boolean; answers?: Record<string, string>};
     switch (command.kind) {
       case 'input':
-        if (inputs.length >= 16 || typeof command.text !== 'string') throw new Error('Invalid or excessive pending input');
-        inputs.push({type: 'user', message: {role: 'user', content: command.text}, parent_tool_use_id: null, origin: {kind: 'human'}});
+        if (inputs.length >= 16 || typeof command.text !== 'string' && !Array.isArray(command.content)) throw new Error('Invalid or excessive pending input');
+        inputs.push({type: 'user', message: {role: 'user', content: command.content ?? command.text!}, parent_tool_use_id: null, origin: {kind: 'human'}});
         wake?.(); wake = undefined;
         break;
       case 'decision': {
@@ -129,7 +129,7 @@ try {
     await emit({kind: 'notice', text: `Native model choices unavailable: ${String(error)}`});
     return [];
   });
-  await emit({kind: 'ready', commands: commands.flatMap(command => [command.name, ...(command.aliases ?? [])]), models});
+  await emit({kind: 'ready', commandInfo: commands, models});
   for await (const event of running) {
     await observer?.event(event);
     await emit({kind: 'event', event});

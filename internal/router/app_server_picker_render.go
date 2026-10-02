@@ -122,6 +122,9 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 	}
 	if p.target.kind == '@' {
 		footer = "  " + bold + "@!" + reset + dim + " include excluded files" + reset
+		if u.runtime != nil {
+			footer = "  " + dim + "Workspace files, including ignored" + reset
+		}
 	}
 	if p.modal == "manage" {
 		header := append([]string{bold + "Enable/Disable Skills" + reset}, pickerWrap("Turn skills on or off. Your changes are saved automatically.", max(1, width-4))...)

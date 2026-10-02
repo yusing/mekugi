@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/internal/session"
 )
 
 // Source: codex-rs/tui/src/bottom_pane/chat_composer.rs:2094:2250,2744:2805
@@ -139,6 +140,7 @@ func (u *appServerUI) completionTarget() composerTarget {
 
 func (u *appServerUI) refreshPicker() {
 	if u.runtime != nil {
+		u.refreshRuntimePicker()
 		return
 	}
 	for _, stack := range [][]composerDraft{u.unsent, u.queued} {
@@ -495,7 +497,11 @@ func (u *appServerUI) pickerKey(key string) bool {
 			if !filepath.IsAbs(path) {
 				path = filepath.Join(u.session.cwd, path)
 			}
-			if imageFile(path) {
+			canAttach := u.runtime == nil
+			if u.runtime != nil {
+				_, canAttach = u.runtime.client.(session.InputClient)
+			}
+			if canAttach && imageFile(path) {
 				imagePath = path
 				text = fmt.Sprintf("[Image %d]", len(u.images)+1)
 			}

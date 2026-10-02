@@ -31,8 +31,8 @@ func TestHistoryUserAndNativeCommands(t *testing.T) {
 	if err != nil || len(events) != 1 || events[0].Role != "You" || events[0].Text != "Original intent" {
 		t.Fatalf("events=%+v err=%v", events, err)
 	}
-	events, err = a.decode([]byte(`{"kind":"ready","commands":["compact","btw"]}`))
-	if err != nil || len(events) != 1 || len(events[0].Commands) != 2 {
+	events, err = a.decode([]byte(`{"kind":"ready","commandInfo":[{"name":"compact"},{"name":"btw"}]}`))
+	if err != nil || len(events) != 1 || len(events[0].CommandInfo) != 2 {
 		t.Fatalf("commands=%+v err=%v", events, err)
 	}
 }

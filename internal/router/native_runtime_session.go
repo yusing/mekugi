@@ -30,7 +30,7 @@ type nativeRuntimeSession struct {
 	observations      *ObservationService
 	observationEvents <-chan liveDiffEvent
 	observationGap    <-chan struct{}
-	commands          []string
+	commandInfo       []session.Command
 	models            []session.Model
 	settings          *session.Settings
 	effortRequest     string
@@ -86,6 +86,8 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 					u.applyRuntimeObservation(event)
 				case <-u.runtime.observationGap:
 					u.attachRuntimeObservation(u.runtime.observations)
+				case result := <-u.picker.scanResults:
+					u.applyPickerScan(result)
 				case key, ok := <-keys:
 					if !ok {
 						return io.EOF
@@ -125,6 +127,13 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 // single existing composer implementation below this boundary.
 func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 	r := u.runtime
+	// Enter on a native slash completion must dispatch through this backend,
+	// not fall through to Codex's command handlers after the picker closes.
+	if key == '\r' && u.escape == "" && u.picker.open && u.statusPanel == nil {
+		if u.pickerKey("\r") {
+			return true, false, nil
+		}
+	}
 	if u.picker.open || u.statusPanel != nil {
 		return false, false, nil
 	}
@@ -154,7 +163,9 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 		if handled, err := u.runtimeSettingsCommand(text); handled {
 			return true, false, err
 		}
-		if strings.HasPrefix(strings.TrimSpace(text), "/") && !slices.Contains(r.commands, strings.TrimPrefix(strings.Fields(text)[0], "/")) {
+		if strings.HasPrefix(strings.TrimSpace(text), "/") && !slices.ContainsFunc(r.commandInfo, func(c session.Command) bool {
+			return c.Name == strings.TrimPrefix(strings.Fields(text)[0], "/")
+		}) {
 			u.setNotice("This runtime command is not connected yet", true)
 			return true, false, nil
 		}
@@ -170,8 +181,9 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 			u.setNotice("Settings update pending · draft kept", false)
 			return true, false, nil
 		}
-		if err := r.client.Send(u.ctx, text); err != nil {
-			return true, false, err
+		if err := u.sendRuntimeInput(); err != nil {
+			u.setNotice("Input not sent: "+err.Error()+" · draft kept", true)
+			return true, false, nil
 		}
 		u.rememberInput(u.draftSnapshot())
 		u.loadDraft(composerDraft{})
@@ -193,7 +205,11 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 		}
 		return true, true, nil
 	case 22:
-		u.setNotice("Image input is not connected for this runtime yet", false)
+		if _, ok := r.client.(session.InputClient); ok {
+			u.pasteImage()
+		} else {
+			u.setNotice("Image input is unavailable for this runtime", false)
+		}
 		return true, false, nil
 	}
 	return false, false, nil
@@ -202,10 +218,13 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 func (u *appServerUI) runtimeEvent(e session.Event) error {
 	switch e.Kind {
 	case "ready":
-		u.runtime.commands = e.Commands
+		u.runtimeCommands(e.CommandInfo)
 		u.runtime.models = e.Models
 		u.runtime.ready = true
 		u.status = "Ready"
+	case "commands":
+		u.runtimeCommands(e.CommandInfo)
+		u.refreshRuntimePicker()
 	case "settings":
 		u.runtimeSettingsReceipt(e)
 	case "usage":
