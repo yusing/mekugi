@@ -176,10 +176,6 @@ records wall-clock timestamps and measures elapsed time with its monotonic clock
 before draining end-of-command output. The shell's EXIT boundary closes the active
 segment if its ordinary end hook was bypassed. Missing boundaries never borrow
 invocation duration. Protocol version 3 carries this timing with boundary reports.
-For an untracked invocation, the output dialog labels UI notification receipt
-timestamps as `Observed start` and `Observed end`, separately from `Host elapsed`.
-Their span is not the host's execution duration. Restored history without these
-observations shows only the retained host duration.
 Output a background descendant writes later is attributed to the segment that
 is running when it arrives. A terminal command is not relayed, because
 programs would detect a pipe; it reports statuses only and keeps the host's

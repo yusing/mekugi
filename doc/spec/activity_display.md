@@ -142,8 +142,10 @@ than merging reads or folding staging into a commit. An EXIT boundary also
 ends the active command when `exit` or `errexit` bypasses its normal end hook.
 Completed observations retain timestamps and duration across resume and forks;
 skipped commands have neither. A disconnected report supplies no invented end.
-Single-command invocations show their live-observed host boundary timestamps and
-use the host duration when complete; replay never reconstructs missing timestamps.
+Untracked invocations use the host duration when complete. Their dialog labels UI
+notification receipt timestamps as `Observed start` and `Observed end`, separately
+from `Host elapsed`: their span is not the host's execution duration. Replay never
+reconstructs missing notification timestamps.
 Older per-command observations without timing omit it rather than borrowing the
 invocation total. For batches without per-command boundaries, available host
 timing appears once on an explicit `shell batch` row, which shows the live elapsed
