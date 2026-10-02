@@ -475,7 +475,8 @@ func parseLiveActivityReads(label string) ([]Read, bool) {
 // left open stays its own row until it settles. Merged blocks own their
 // slices; parsed entries are shared.
 func MergeLiveActivityReads(blocks []Block) []Block {
-	var merged, firsts []Block
+	var merged []Block
+	var first Block // Only the last group can receive another adjacent read.
 	for _, block := range blocks {
 		n := len(merged)
 		if n == 0 || !mergesReads(merged[n-1], block) {
@@ -485,12 +486,12 @@ func MergeLiveActivityReads(blocks []Block) []Block {
 					block.Reads[i].Ranges = slices.Clone(block.Reads[i].Ranges)
 				}
 			}
-			merged, firsts = append(merged, block), append(firsts, block)
+			merged, first = append(merged, block), block
 			continue
 		}
 		last := &merged[n-1]
 		if last.Members == nil {
-			last.Members = []Block{firsts[n-1]}
+			last.Members = []Block{first}
 			last.countContent()
 		}
 		last.Members = append(last.Members, block)

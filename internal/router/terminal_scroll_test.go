@@ -199,3 +199,35 @@ func TestScrollablePaneWheelBurstAccumulates(t *testing.T) {
 		t.Fatalf("wheel burst lost events before paint: diff=%d saved=%d agents=%d", c.offset, c.view.Scroll["scroll.txt"], v.offset)
 	}
 }
+
+func TestScrollableDiffBeforePaintAndAfterFileChange(t *testing.T) {
+	for _, geometry := range []struct {
+		name   string
+		render livediff.Render
+	}{
+		{name: "not painted"},
+		{name: "removed file", render: livediff.Render{Lines: []string{"old", "other"}, Starts: []int{0, 1}}},
+	} {
+		t.Run(geometry.name, func(t *testing.T) {
+			for _, keys := range []string{"\x1b[5~", "\x1b[6~", "\x1b[A", "\x1b[B", "g", "G", "\x1b[<64;1;2M"} {
+				c := newTerminalScrollTestController(50, true)
+				c.rendering = geometry.render
+				c.lines = geometry.render.Lines
+				for _, key := range []byte(keys) {
+					c.handleKey(key)
+				}
+				if c.view.Selected != 0 || c.view.Scroll["scroll.txt"] != 50 {
+					t.Fatalf("input used stale geometry: selection=%d scroll=%v", c.view.Selected, c.view.Scroll)
+				}
+				// Valid painted geometry restores ordinary scrolling immediately.
+				c.rendering = livediff.Render{Lines: make([]string, 100), Starts: []int{0}}
+				c.lines, c.offset = c.rendering.Lines, 50
+				c.handleKey('k')
+				if c.view.Scroll["scroll.txt"] != 49 {
+					t.Fatalf("scroll did not recover after paint: %v", c.view.Scroll)
+				}
+				c.close()
+			}
+		})
+	}
+}

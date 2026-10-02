@@ -127,42 +127,14 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 	if item.Type != "commandExecution" || item.ExitCode == nil || item.AggregatedOutput == nil || u.proxy == nil || u.proxy.replayStore == nil {
 		return
 	}
-	script, ok := appServerShellScript(item.Command)
-	parts, split := execsegment.Split(script)
-	if !ok || !split {
-		return
-	}
-	ctx, cancel := context.WithTimeout(u.ctx, time.Second)
-	defer cancel()
-	ctx = context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: entry.native.thread})
-	store := u.proxy.replayStore.scoped(ctx)
-	id := commandSegmentsID(entry.native.turn, entry.native.item)
 	var record *retainedCommandSegments
-	err := store.locked(ctx, func() error {
-		r, found, err := store.read(workspace, id, false)
-		if err != nil || !found {
-			return err
-		}
-		candidate := r.History.CommandSegments
-		if candidate == nil || candidate.Command != item.Command || candidate.Exit != *item.ExitCode || candidate.Output != sha256.Sum256([]byte(*item.AggregatedOutput)) || len(candidate.Parts) != len(parts) {
-			return nil
-		}
-		for i, part := range candidate.Parts {
-			if part.Source != parts[i].Source || part.Skipped && (part.Output != nil || part.Exit != 0 || part.Timing != (execsegment.Timing{})) {
-				return nil
-			}
-			timing := part.Timing
-			if timing.ElapsedNS < 0 || timing.Started.IsZero() && (!timing.Ended.IsZero() || timing.ElapsedNS != 0) || timing.Ended.IsZero() && timing.ElapsedNS != 0 {
-				return nil
-			}
-		}
-		if err := store.retainFiles(replayRecordName(workspace, id, false)); err != nil {
-			return err
-		}
-		record = candidate
-		return nil
-	})
-	if err != nil || record == nil {
+	if u.restoredSegments != nil {
+		record = u.restoredSegments[entry.native.item]
+	} else {
+		item.ID = entry.native.item
+		record = u.prepareCommandSegments(entry.native.thread, workspace, appServerHistoryTurn{ID: entry.native.turn, Items: []appServerItem{item}})[item.ID]
+	}
+	if record == nil {
 		return
 	}
 	separate := true
@@ -187,4 +159,83 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 	if !separate {
 		entry.outputTail, entry.outputOmit = appServerOutputTail(item.AggregatedOutput)
 	}
+}
+
+// Validate and adopt independent history records before exposing their segments.
+// Batching avoids rewriting a growing catalog and rescanning storage per item.
+func (u *appServerUI) prepareCommandSegments(thread, workspace string, turn appServerHistoryTurn) map[string]*retainedCommandSegments {
+	result := make(map[string]*retainedCommandSegments)
+	if u.proxy == nil || u.proxy.replayStore == nil {
+		return result
+	}
+	const batchSize = 64
+	for start := 0; start < len(turn.Items); start += batchSize {
+		items := turn.Items[start:min(start+batchSize, len(turn.Items))]
+		ctx, cancel := context.WithTimeout(u.ctx, time.Second)
+		ctx = context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: thread})
+		store := u.proxy.replayStore.scoped(ctx)
+		_ = store.locked(ctx, func() error {
+			accepted := make(map[string]*retainedCommandSegments)
+			var names []string
+			for _, item := range items {
+				candidate, err := readCommandSegments(store, workspace, turn.ID, item)
+				if err != nil || candidate == nil {
+					continue
+				}
+				accepted[item.ID] = candidate
+				names = append(names, replayRecordName(workspace, commandSegmentsID(turn.ID, item.ID), false))
+			}
+			if len(names) == 0 {
+				return nil
+			}
+			if err := store.retainFiles(names...); err == nil {
+				for id, candidate := range accepted {
+					result[id] = candidate
+				}
+			} else {
+				// A large combined catalog admission must not suppress valid
+				// smaller neighbors that still fit, or records already owned.
+				for _, item := range items {
+					if candidate := accepted[item.ID]; candidate != nil {
+						if err := store.retainFiles(replayRecordName(workspace, commandSegmentsID(turn.ID, item.ID), false)); err == nil {
+							result[item.ID] = candidate
+						}
+					}
+				}
+			}
+			return nil
+		})
+		cancel()
+	}
+	return result
+}
+
+// Called with the store locked. A malformed neighbor never prevents other reads.
+func readCommandSegments(store *mekugiReplayStore, workspace, turn string, item appServerItem) (*retainedCommandSegments, error) {
+	if item.Type != "commandExecution" || item.ExitCode == nil || item.AggregatedOutput == nil {
+		return nil, nil
+	}
+	script, ok := appServerShellScript(item.Command)
+	parts, split := execsegment.Split(script)
+	if !ok || !split {
+		return nil, nil
+	}
+	r, found, err := store.read(workspace, commandSegmentsID(turn, item.ID), false)
+	if err != nil || !found {
+		return nil, err
+	}
+	candidate := r.History.CommandSegments
+	if candidate == nil || candidate.Command != item.Command || candidate.Exit != *item.ExitCode || candidate.Output != sha256.Sum256([]byte(*item.AggregatedOutput)) || len(candidate.Parts) != len(parts) {
+		return nil, nil
+	}
+	for i, part := range candidate.Parts {
+		if part.Source != parts[i].Source || part.Skipped && (part.Output != nil || part.Exit != 0 || part.Timing != (execsegment.Timing{})) {
+			return nil, nil
+		}
+		timing := part.Timing
+		if timing.ElapsedNS < 0 || timing.Started.IsZero() && (!timing.Ended.IsZero() || timing.ElapsedNS != 0) || timing.Ended.IsZero() && timing.ElapsedNS != 0 {
+			return nil, nil
+		}
+	}
+	return candidate, nil
 }

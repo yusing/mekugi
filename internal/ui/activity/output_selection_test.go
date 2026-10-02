@@ -213,3 +213,42 @@ func BenchmarkSearchOutputRetainedSelectedTail(b *testing.B) {
 		})
 	}
 }
+
+func TestOutputTailLayoutPreservesBoundedText(t *testing.T) {
+	for _, content := range []string{
+		strings.Repeat("long output ", 2000),
+		strings.Repeat("界 é 👩‍💻 ", 2000),
+	} {
+		block := selectedOutputBlock(Block{Kind: "op", Verb: "Run", Code: "producer"}, []string{"old", "", content, "done"}, 1)
+		plain := Painter{LayoutOnly: true, Theme: livediff.DarkTheme}
+		colored := Painter{Theme: livediff.DarkTheme}
+		if got := plain.tailColors(block); !slices.Equal(got, block.Tail) {
+			t.Fatal("layout changed the observed tail")
+		}
+		if got := colored.tailColors(block); !slices.Equal(got, block.Tail) {
+			t.Fatal("unhighlighted retained output changed the observed tail")
+		}
+		for _, width := range []int{22, 80} {
+			got := plain.Block(block, width)
+			want := colored.Block(block, width)
+			if ansi.Strip(strings.Join(got, "\n")) != ansi.Strip(strings.Join(want, "\n")) {
+				t.Fatal("layout and decorated output geometry differ")
+			}
+		}
+	}
+}
+
+func BenchmarkOutputTailLongRetainedLine(b *testing.B) {
+	block := selectedOutputBlock(Block{Kind: "op", Verb: "Run"}, []string{strings.Repeat("large untyped output ", 800)}, 0)
+	for _, layout := range []bool{true, false} {
+		b.Run(fmt.Sprintf("layout-%t", layout), func(b *testing.B) {
+			p := Painter{Theme: livediff.DarkTheme, LayoutOnly: layout}
+			b.ReportAllocs()
+			for b.Loop() {
+				if got := p.tailColors(block); !slices.Equal(got, block.Tail) {
+					b.Fatal("tail changed")
+				}
+			}
+		})
+	}
+}

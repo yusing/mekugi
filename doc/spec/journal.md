@@ -93,6 +93,8 @@ Ordinary commands mentioning `mjournal` remain visible. Enqueueing is not acknow
 UI output acknowledges exact revisions through the journal owner. Terminal
 records become eligible only after successful downstream response completion.
 Failed presentation leaves unacknowledged records durable and pending.
+Receipt persistence must not block scrolling, input, or rendering, including
+when a completed batch publishes many flat tasks or storage is busy.
 
 The substantive provider final remains in Codex's response and displays once on
 the ordinary answer path; durable capture does not hide or reframe it. Only an

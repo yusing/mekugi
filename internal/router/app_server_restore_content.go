@@ -333,6 +333,8 @@ func restoredAgentTimes(info appServerThreadInfo) (start, last time.Time) {
 // Observational history never opens previews, resumes children, or fabricates
 // a live response. Only a subsequent live notification can mark an agent busy.
 func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
+	previousSegments := u.restoredSegments
+	defer func() { u.restoredSegments = previousSegments }()
 	s := &u.session
 	name := s.paths[info.ID]
 	agent := s.agent(name)
@@ -361,6 +363,7 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 		delete(r.pane, name)
 	}
 	for index, turn := range info.Turns {
+		u.restoredSegments = u.prepareCommandSegments(info.ID, u.session.cwd, turn)
 		observed := historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt, info.UpdatedAt))
 		var entries []activityPaneEntry
 		var times []time.Time // When each entry happened, to place Main's copy.
@@ -413,6 +416,9 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 }
 
 func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServerHistoryTurn, item appServerItem, name string, observed time.Time, entries *[]activityPaneEntry, lastMessage *int) {
+	if u.internalJournalCommand(info.ID, item) {
+		return
+	}
 	s := &u.session
 	entry := activityPaneEntry{Seq: s.next(), Agent: name, Observed: observed, CallID: item.ID,
 		native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", searchResults: appServerSearchResults(item)}}

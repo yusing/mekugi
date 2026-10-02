@@ -145,6 +145,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	if !sameFiles || c.renderedFocus != focus || c.renderedFocusFile != focusFile || diffWidth != c.diffWidth || c.theme != c.renderedTheme {
 		previous := c.rendering
 		c.renderer.Caller = diffview.CallerStyle(c.theme)
+		c.renderer.LayoutOnly = true
 		c.rendering, err = c.renderer.Render(ctx, c.theme, files, c.workspace, diffWidth, focusFile, focus)
 		if err != nil {
 			return err
@@ -208,6 +209,9 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	// A reverted last file has an empty span at EOF. Normalize the
 	// actual viewport offset too, not only scrollTo's selection argument.
 	offset = max(0, min(offset, len(lines)-1))
+	if err := c.rendering.PaintViewport(ctx, offset, offset+rows); err != nil {
+		return err
+	}
 	c.view.ScrollTo(c.rendering, offset)
 	activeKey := ""
 	if len(files) > 0 {

@@ -94,6 +94,11 @@ authentication, routing and transport failures remain HTTP errors. Replay of an 
 Delivery snapshots and leases the originating journal before rendering. V2 delivery selects event windows from live and terminal cursors and acknowledges
 only after successful downstream delivery. Main's ordinary final-answer receipt
 acknowledges only the exact captured answer revision, not the work-report window.
+Native presentation combines each frame's live and terminal receipt windows and
+persists them in one bounded worker per sink, outside the terminal event loop.
+Only the exact in-flight revisions are withheld from repeated presentation;
+newer revisions remain visible, failures remain pending, and shutdown drains
+the sink's worker before detaching it.
 Durable capture does not transfer substantive answer presentation to the journal
 renderer. Retained v1 operations preserve legacy
 receipt and alias compatibility. The tree is derived inside the journal owner, not

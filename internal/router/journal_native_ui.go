@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -19,6 +20,8 @@ type nativeJournalSink struct {
 	answers             map[string]bool // Exact empty-Outcome item IDs replaced by work reports.
 	sequence            uint64
 	current             map[string]uint64
+	inflight            map[string]nativeJournalPublication
+	acknowledged        <-chan error
 }
 
 type nativeJournalPublication struct {
@@ -184,6 +187,9 @@ func (s *nativeJournalSink) snapshot() []nativeJournalPublication {
 	defer s.mu.Unlock()
 	items := make([]nativeJournalPublication, 0, len(s.pending))
 	for _, item := range s.pending {
+		if held, ok := s.inflight[item.item.ID]; ok && held.item.Updated == item.item.Updated && held.terminal == item.terminal {
+			continue
+		}
 		items = append(items, item)
 	}
 	slices.SortFunc(items, func(a, b nativeJournalPublication) int {
@@ -207,21 +213,111 @@ func (s *nativeJournalSink) snapshot() []nativeJournalPublication {
 // Receipts belong to the journal owner and follow the successful terminal write.
 // Failure retains the pending revision; enqueueing or reading is not delivery.
 func (s *nativeJournalSink) acknowledge(ctx context.Context, p *mekugiProxy, items []nativeJournalPublication) error {
-	for _, item := range items {
-		if item.card != nil || item.event != nil {
-			if err := p.journals.acknowledgeTree(ctx, p.replayStore, s.workspace, s.thread, item.item.Updated, item.terminal); err != nil {
+	// A painted frame is one delivery, not one store transaction per row.
+	// Keep terminal and live windows separate: a later live event must not
+	// advance the terminal cursor, and legacy receipts still name revisions.
+	for _, terminal := range []bool{false, true} {
+		var sequence uint64
+		var tree bool
+		revisions := make(map[string]uint64)
+		for _, item := range items {
+			if item.terminal != terminal {
+				continue
+			}
+			if item.card != nil || item.event != nil {
+				tree = true
+				sequence = max(sequence, item.item.Updated)
+			} else {
+				revisions[item.item.ID] = item.item.Updated
+			}
+		}
+		if tree {
+			if err := p.journals.acknowledgeTree(ctx, p.replayStore, s.workspace, s.thread, sequence, terminal); err != nil {
 				return err
 			}
-		} else if err := p.journals.acknowledge(ctx, p.replayStore, s.workspace, s.thread, map[string]uint64{item.item.ID: item.item.Updated}, item.terminal); err != nil {
-			return err
+		}
+		if len(revisions) > 0 {
+			if err := p.journals.acknowledge(ctx, p.replayStore, s.workspace, s.thread, revisions, terminal); err != nil {
+				return err
+			}
 		}
 		s.mu.Lock()
-		if pending, ok := s.pending[item.item.ID]; ok && pending.item.Updated == item.item.Updated && pending.terminal == item.terminal {
-			delete(s.pending, item.item.ID)
+		for _, item := range items {
+			if item.terminal != terminal {
+				continue
+			}
+			if pending, ok := s.pending[item.item.ID]; ok && pending.item.Updated == item.item.Updated && pending.terminal == item.terminal {
+				delete(s.pending, item.item.ID)
+			}
 		}
 		s.mu.Unlock()
 	}
 	return nil
+}
+
+// Start only after successful presentation. One worker per sink bounds both
+// persistence and pending results; newer revisions remain eligible to paint.
+func (s *nativeJournalSink) startAcknowledgement(ctx context.Context, p *mekugiProxy, items []nativeJournalPublication) {
+	if len(items) == 0 {
+		return
+	}
+	s.mu.Lock()
+	if s.acknowledged != nil {
+		s.mu.Unlock()
+		return
+	}
+	items = slices.Clone(items)
+	s.inflight = make(map[string]nativeJournalPublication, len(items))
+	for _, item := range items {
+		s.inflight[item.item.ID] = item
+	}
+	done := make(chan error, 1)
+	s.acknowledged = done
+	s.mu.Unlock()
+	go func() { done <- s.acknowledge(ctx, p, items) }()
+}
+
+// The UI polls without waiting, then drains its owned worker on exit before
+// detaching the sink. Failed receipts become pending again, never delivered.
+func (s *nativeJournalSink) finishAcknowledgement(wait bool) error {
+	s.mu.Lock()
+	done := s.acknowledged
+	s.mu.Unlock()
+	if done == nil {
+		return nil
+	}
+	var err error
+	if wait {
+		err = <-done
+	} else {
+		select {
+		case err = <-done:
+		default:
+			return nil
+		}
+	}
+	s.mu.Lock()
+	s.acknowledged, s.inflight = nil, nil
+	s.mu.Unlock()
+	return err
+}
+
+// Session replacement can detach a sink while its already-painted receipt is
+// still being persisted. The UI retains that worker until completion.
+func (u *appServerUI) finishJournalAcknowledgements(wait bool) error {
+	var result error
+	for sink := range u.journalReceipts {
+		if err := sink.finishAcknowledgement(wait); err != nil {
+			result = errors.Join(result, fmt.Errorf("journal presentation receipt: %w", err))
+		}
+		sink.mu.Lock()
+		pending := sink.acknowledged != nil
+		sink.mu.Unlock()
+		if !pending {
+			delete(u.journalReceipts, sink)
+		}
+	}
+	return result
 }
 
 // Apply persisted milestones before later host events, not only at the next

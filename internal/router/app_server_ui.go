@@ -93,6 +93,7 @@ type appServerUI struct {
 	commitReads               chan gitCommitKey        // Commit objects read off the UI goroutine.
 	commandSegmentWrites      chan commandSegmentWrite // Completed replay writes, consumed only by the UI.
 	commandSegmentPending     int
+	restoredSegments          map[string]*retainedCommandSegments // Turn-local, validated and adopted history.
 	files                     []composerFile
 	selections                []composerSelection
 	skills                    []composerSkill
@@ -106,6 +107,7 @@ type appServerUI struct {
 	journalView               nativeJournalView
 	journal                   *nativeJournalSink
 	unscopedJournal           *nativeJournalSink
+	journalReceipts           map[*nativeJournalSink]bool // Includes workers from replaced sessions.
 	shell                     *terminalUI
 	session                   appServerSession
 	ctx                       context.Context
@@ -350,6 +352,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						notices := u.applyCriticalNotices()
 						journalPending := make(map[*nativeJournalSink][]nativeJournalPublication)
+						if err := u.finishJournalAcknowledgements(false); err != nil {
+							return err
+						}
 						for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
 							if sink == nil {
 								continue
@@ -383,8 +388,12 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 									}
 									items = slices.DeleteFunc(slices.Clone(items), func(p nativeJournalPublication) bool { return p.card != nil || p.event == nil })
 								}
-								if err := sink.acknowledge(ctx, proxy, items); err != nil {
-									return fmt.Errorf("journal presentation receipt: %w", err)
+								sink.startAcknowledgement(ctx, proxy, items)
+								if len(items) > 0 {
+									if u.journalReceipts == nil {
+										u.journalReceipts = make(map[*nativeJournalSink]bool)
+									}
+									u.journalReceipts[sink] = true
 								}
 							}
 							u.dirty = false
@@ -411,6 +420,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 			}
 		}
 		u.finishCommandSegments()
+		err = errors.Join(err, u.finishJournalAcknowledgements(true))
 		u.hideQuestions()
 		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
 			fmt.Fprintln(stdout, "Unsent draft:\n"+livediff.Safe(unsent.text, false))

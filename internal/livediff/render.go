@@ -20,6 +20,8 @@ import (
 // Syntax is independent of wrapping, coordinates, and recency marks. Keep
 // bounded caches in each viewer, never shared across sessions.
 type Renderer struct {
+	// LayoutOnly defers complete-hunk syntax decoration until PaintViewport.
+	LayoutOnly  bool
 	syntax      map[syntaxKey][]string
 	lexers      map[string]chroma.Lexer
 	syntaxBytes int
@@ -344,9 +346,18 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 				if hunkIndex == 0 {
 					hunkStart = chunkStart // Keep prepared status visible when following.
 				}
-				before, after, err := r.ColorHunk(ctx, theme, review, hunk.Rows)
-				if err != nil {
-					return Render{}, err
+				var before, after []string
+				if !r.LayoutOnly {
+					before, after, err = r.ColorHunk(ctx, theme, review, hunk.Rows)
+					if err != nil {
+						return Render{}, err
+					}
+				}
+				var paint syntaxHunk
+				if r.LayoutOnly {
+					paint = syntaxHunk{renderer: r, theme: theme, review: review, rows: hunk.Rows,
+						start: len(render.Lines), width: width, sourceWidth: sourceWidth, digits: digits,
+						numberWidth: numberWidth, highlighted: chunk.Highlighted}
 				}
 				oldLine, newLine := hunk.BeforeStart+1, hunk.AfterStart+1
 				oldIndex, newIndex := 0, 0
@@ -364,13 +375,23 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 						bestDistance, bestKind = distance, row.Kind
 					}
 					coordinate, text := 0, ""
+					if r.LayoutOnly {
+						text = Safe(strings.TrimSuffix(row.Text, "\n"), false)
+						paint.rowStarts = append(paint.rowStarts, len(render.Lines))
+					}
 					if row.Kind != '+' {
-						coordinate, text = oldLine, before[oldIndex]
+						coordinate = oldLine
+						if !r.LayoutOnly {
+							text = before[oldIndex]
+						}
 						oldLine++
 						oldIndex++
 					}
 					if row.Kind != '-' {
-						coordinate, text = newLine, after[newIndex]
+						coordinate = newLine
+						if !r.LayoutOnly {
+							text = after[newIndex]
+						}
 						newLine++
 						newIndex++
 					}
@@ -380,29 +401,15 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 					if numberWidth > 0 {
 						numbers = Subtle + strings.Repeat(" ", max(0, digits-len(number))) + number + "│" + SubtleReset
 					}
-					// Wrap source independently of the fixed coordinate column.
-					fragments := ansi.Hardwrap(text, sourceWidth, true)
-					carry := ""
-					continuation := false
-					for fragment := range strings.SplitSeq(fragments, "\n") {
-						fragment = carry + fragment
-						// Syntax emits only foreground SGR. Restore its last color
-						// on continuations, which may be the first visible row.
-						if start := strings.LastIndex(fragment, "\x1b["); start >= 0 {
-							if end := strings.IndexByte(fragment[start:], 'm'); end >= 0 {
-								carry = fragment[start : start+end+1]
-							}
-						}
+					for n, line := range sourceFragments(theme, width, sourceWidth, numbers, continuationNumbers, text, row.Kind) {
 						prefix := numbers
-						if continuation && numbers != "" {
+						if n > 0 && numbers != "" {
 							prefix = continuationNumbers
 						}
-						line := SourceLine(theme, width, prefix, fragment, row.Kind)
 						source.Content = gutterWidth + ansi.StringWidth(prefix)
-						if err := appendLine(line, chunk.Highlighted, continuation); err != nil {
+						if err := appendLine(line, chunk.Highlighted, n > 0); err != nil {
 							return Render{}, err
 						}
-						continuation = true
 					}
 					if isFocus {
 						render.FocusRow = len(render.Lines) - 1
@@ -415,10 +422,101 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 						}
 					}
 				}
+				if r.LayoutOnly {
+					paint.end = len(render.Lines)
+					render.syntaxHunks = append(render.syntaxHunks, paint)
+				}
 			}
 		}
 	}
+	render.renderedBytes = renderedBytes
 	return render, nil
+}
+
+// Source wrapping is shared by layout and decoration, so syntax cannot change geometry.
+func sourceFragments(theme Theme, width, sourceWidth int, numbers, continuationNumbers, text string, kind byte) []string {
+	var lines []string
+	carry := ""
+	for fragment := range strings.SplitSeq(ansi.Hardwrap(text, sourceWidth, true), "\n") {
+		fragment = carry + fragment
+		if start := strings.LastIndex(fragment, "\x1b["); start >= 0 {
+			if end := strings.IndexByte(fragment[start:], 'm'); end >= 0 {
+				carry = fragment[start : start+end+1]
+			}
+		}
+		prefix := numbers
+		if len(lines) > 0 && numbers != "" {
+			prefix = continuationNumbers
+		}
+		lines = append(lines, SourceLine(theme, width, prefix, fragment, kind))
+	}
+	return lines
+}
+
+type syntaxHunk struct {
+	renderer                                            *Renderer
+	theme                                               Theme
+	review                                              mekugi.ReviewFile
+	rows                                                []mekugi.ReviewRow
+	rowStarts                                           []int
+	start, end, width, sourceWidth, digits, numberWidth int
+	highlighted, painted                                bool
+}
+
+// PaintViewport decorates intersecting complete hunks. Coordinates and source
+// attribution were fixed during layout; off-screen hunks never invoke a lexer.
+func (render *Render) PaintViewport(ctx context.Context, start, end int) error {
+	if end <= start {
+		return nil
+	}
+	for i := range render.syntaxHunks {
+		h := &render.syntaxHunks[i]
+		if h.painted || h.end <= start || h.start >= end {
+			continue
+		}
+		before, after, err := h.renderer.ColorHunk(ctx, h.theme, h.review, h.rows)
+		if err != nil {
+			return err
+		}
+		var lines []string
+		oldIndex, newIndex := 0, 0
+		for n, row := range h.rows {
+			text := ""
+			if row.Kind != '+' {
+				text = before[oldIndex]
+				oldIndex++
+			}
+			if row.Kind != '-' {
+				text = after[newIndex]
+				newIndex++
+			}
+			numbers, continuation := "", ""
+			if h.numberWidth > 0 {
+				number := strconv.Itoa(render.Sources[h.rowStarts[n]].Line)
+				numbers = Subtle + strings.Repeat(" ", max(0, h.digits-len(number))) + number + "│" + SubtleReset
+				continuation = Subtle + strings.Repeat(" ", h.digits) + "│" + SubtleReset
+			}
+			lines = append(lines, sourceFragments(h.theme, h.width, h.sourceWidth, numbers, continuation, text, row.Kind)...)
+			if !strings.HasSuffix(row.Text, "\n") {
+				lines = append(lines, Subtle+"\\ No newline at end of file"+SubtleReset)
+			}
+		}
+		if len(lines) != h.end-h.start {
+			return errors.New("live diff syntax changed layout")
+		}
+		delta := 0
+		for n, line := range lines {
+			lines[n] = ansi.Truncate(Gutter(h.highlighted, h.theme)+line, max(0, h.width-1), "")
+			delta += len(lines[n]) - len(render.Lines[h.start+n])
+		}
+		if render.renderedBytes+delta > MaxSourceBytes {
+			return errors.New("live diff rendering exceeds 64 MiB; use mchanges with a narrower range")
+		}
+		copy(render.Lines[h.start:h.end], lines)
+		render.renderedBytes += delta
+		h.painted = true
+	}
+	return nil
 }
 
 // originChanges names the changes a composed file shows, comma-separated;

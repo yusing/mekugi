@@ -11,6 +11,7 @@ import (
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/goutils/synk"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/pathdisplay"
 )
@@ -363,7 +364,16 @@ func GroupCaptures(captures []Chunk) []File {
 // Only text and SGR colors may reach the viewport. In particular, captured
 // source must not emit cursor controls, OSC clipboard writes, or terminal titles.
 func Safe(text string, colors bool) string {
-	var out strings.Builder
+	var local [512]byte
+	out := local[:0]
+	// Tabs are the only expansion. Bound the borrowed storage up front so
+	// appending never abandons a pooled allocation or returns an alias to it.
+	if size := len(text) + 3*strings.Count(text, "\t"); size > len(local) {
+		pool := synk.GetSizedBytesPool()
+		buf := pool.GetSized(size)
+		defer func() { clear(buf); pool.Put(buf) }()
+		out = buf[:0]
+	}
 	var state byte
 	for len(text) > 0 {
 		seq, width, n, next := ansi.DecodeSequence(text, state, nil)
@@ -372,18 +382,18 @@ func Safe(text string, colors bool) string {
 		}
 		state, text = next, text[n:]
 		if width > 0 || seq == "\n" {
-			out.WriteString(seq)
+			out = append(out, seq...)
 		} else if seq == "\t" {
-			out.WriteString("    ")
+			out = append(out, "    "...)
 		} else if colors && strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") &&
 			strings.Trim(seq[2:len(seq)-1], "0123456789;:") == "" {
-			out.WriteString(seq)
+			out = append(out, seq...)
 		} else if r, _ := utf8.DecodeRuneInString(seq); unicode.IsMark(r) || r == '\u200c' || r == '\u200d' {
 			// Zero-width marks and joiners are source text, not terminal controls.
-			out.WriteString(seq)
+			out = append(out, seq...)
 		}
 	}
-	return out.String()
+	return string(out)
 }
 
 func fileAction(file mekugi.ReviewFile, workspace string) string {
@@ -439,14 +449,16 @@ type Counts struct {
 }
 
 type Render struct {
-	Lines       []string
-	Starts      []int
-	Hunks       []int        // Display offsets for hunk navigation.
-	RowStarts   []int        // First display row of each logical row, including chrome.
-	Sources     []LineSource // Aligned with Lines.
-	Counts      []Counts
-	FocusOffset int // Hunk/context anchor retained while locating the target.
-	FocusRow    int // Latest changed row to center in the viewport.
+	syntaxHunks   []syntaxHunk
+	renderedBytes int
+	Lines         []string
+	Starts        []int
+	Hunks         []int        // Display offsets for hunk navigation.
+	RowStarts     []int        // First display row of each logical row, including chrome.
+	Sources       []LineSource // Aligned with Lines.
+	Counts        []Counts
+	FocusOffset   int // Hunk/context anchor retained while locating the target.
+	FocusRow      int // Latest changed row to center in the viewport.
 }
 
 func (r Render) FollowOffset(rows int) int {
@@ -472,7 +484,9 @@ func (v *View) JumpTo(render Render, offset int) {
 }
 
 func (v *View) moveTo(render Render, offset int, forget bool) {
-	if len(v.Files) == 0 {
+	// Events and keys can arrive before the next paint. Never use absent or
+	// stale file geometry to change the viewport's file-local positions.
+	if len(v.Files) == 0 || len(render.Starts) != len(v.Files) {
 		return
 	}
 	offset = max(0, min(offset, len(render.Lines)-1))

@@ -31,11 +31,11 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 		}
 		return selected
 	}
-	if len(rows) == 0 {
-		return rows
+	if len(rows) == 0 || p.LayoutOnly {
+		return selectRows(rows)
 	}
 	content := strings.Join(rows, "\n")
-	if p.LayoutOnly || len(content) > dialogHighlightBytes {
+	if len(content) > dialogHighlightBytes {
 		return selectRows(rows)
 	}
 	path := ""
@@ -68,6 +68,11 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 // Color from retained context before selecting the animated tail. Blank rows
 // are absent from the tail, and its last revealed row may precede live output.
 func (p *Painter) tailColors(block Block) []string {
+	// The observed tail is already bounded and sanitized. Measuring layout
+	// must not revisit and truncate its potentially much larger retained lines.
+	if p.LayoutOnly {
+		return block.Tail
+	}
 	if block.Output == nil || len(block.Tail) == 0 {
 		return p.outputColors(block, block.Tail)
 	}
@@ -93,7 +98,11 @@ func (p *Painter) tailColors(block Block) []string {
 	tail := p.outputColorsAt(block, view.Lines[:indexes[len(indexes)-1]+1], indexes)
 	for i, index := range indexes {
 		if view.Lines[index] != block.Tail[i] {
-			tail[i] = ansi.Truncate(tail[i], ansi.StringWidth(block.Tail[i]), "…")
+			if tail[i] == view.Lines[index] {
+				tail[i] = block.Tail[i] // No syntax was added; reuse the exact observed tail.
+			} else {
+				tail[i] = ansi.Truncate(tail[i], ansi.StringWidth(block.Tail[i]), "…")
+			}
 		}
 	}
 	return tail

@@ -2,10 +2,13 @@ package router
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestNativeJournalPrecedesNextHostCommand(t *testing.T) {
@@ -97,6 +100,79 @@ func TestNativeJournalTransportHiddenWithDurableProvenance(t *testing.T) {
 	if u.internalJournalCommand("other-thread", appServerItem{Type: "commandExecution", Command: command}) {
 		t.Fatal("borrowed another thread's provenance")
 	}
+}
+
+func nativeChildJournalHistoryFixture(t *testing.T) (*appServerUI, string, string) {
+	t.Helper()
+	transform, proxy, _, workspace := newMekugiTestTransform(t)
+	proxy.commentaryEndpoint = "http://127.0.0.1:1234/internal/commentary"
+	const callID = "child-journal-cell"
+	const child = "child-thread"
+	const source = `await journal({op:"add", text:"Checked"});`
+	transform.shellThreadID = child
+	lowered, changed, err := transform.lowerCodeModeCommentary(callID, source)
+	if err != nil || !changed {
+		t.Fatalf("lowering: changed=%v err=%v", changed, err)
+	}
+	u := newAppServerSessionTestUI(t, workspace)
+	u.proxy = proxy
+	u.thread = "parent"
+	proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := workerCommand("mjournal", []string{commentaryOnceArgument, proxy.commentaryEndpoint, transform.commentarySubscriptions[0].token}) + " '%7B%22op%22%3A%22list%22%7D'"
+	history := mekugiHistory{ToolName: "exec", Script: source, CarrierPayload: lowered, ExecutingThread: child}
+	if err := proxy.replayStore.put(t.Context(), workspace, map[string]mekugiHistory{callID: history}); err != nil {
+		t.Fatal(err)
+	}
+	proxy.commentary.cancel(transform.commentarySubscriptions[0].token)
+	proxy.replayStore, err = openMekugiReplayStore(proxy.replayStore.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u, child, command
+}
+
+func TestNativeJournalChildHistoryHidesOnlyProvenTransport(t *testing.T) {
+	u, child, command := nativeChildJournalHistoryFixture(t)
+	for _, older := range []bool{false, true} {
+		for _, test := range []struct {
+			name, thread, command string
+			hidden                bool
+		}{
+			{name: "proven", thread: child, command: command, hidden: true},
+			{name: "wrapped proven", thread: child, command: workerCommand("/bin/bash", []string{"-c", command}), hidden: true},
+			{name: "other thread", thread: "unrelated", command: command},
+			{name: "extra command", thread: child, command: command + "; echo visible"},
+			{name: "ordinary mention", thread: child, command: "echo mjournal"},
+		} {
+			t.Run(fmt.Sprintf("older=%t/%s", older, test.name), func(t *testing.T) {
+				u.agents = newLiveActivityView()
+				u.session.path(test.thread)
+				item := appServerItem{ID: "transport", Type: "commandExecution", Command: test.command, ExitCode: new(0), AggregatedOutput: new("transport output")}
+				u.restoreActivityThread(appServerThreadInfo{ID: test.thread, Cwd: u.session.cwd, Turns: []appServerHistoryTurn{{ID: "turn", Status: "completed", olderPage: older, Items: []appServerItem{item}}}})
+				if got := len(u.agents.entries); test.hidden && got != 0 || !test.hidden && got == 0 {
+					t.Fatalf("child history visibility: entries=%d hidden=%v", got, test.hidden)
+				}
+			})
+		}
+	}
+}
+
+func TestUISnapshotNativeJournalChildHistoryTransport(t *testing.T) {
+	u, child, command := nativeChildJournalHistoryFixture(t)
+	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
+	u.clock = func() time.Time { return now }
+	u.agents.clock = u.clock
+	u.agents.painter.Theme = livediff.DarkTheme
+	u.agents.bare, u.agents.feedOnly = true, true
+	u.session.path(child)
+	u.restoreActivityThread(appServerThreadInfo{ID: child, Cwd: u.session.cwd, Turns: []appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{
+		{ID: "transport", Type: "commandExecution", Command: command, ExitCode: new(0), AggregatedOutput: new("transport output")},
+		{ID: "ordinary", Type: "commandExecution", Command: "echo mjournal", ExitCode: new(0), AggregatedOutput: new("mjournal\n")},
+	}}}})
+	assertNativeJournalSnapshot(t, "journal-child-history-transport", u.agents.render(100, 12, now))
 }
 
 func TestNativeJournalUnlinkedAnswerWaitsForTerminal(t *testing.T) {
