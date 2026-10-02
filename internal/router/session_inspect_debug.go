@@ -18,6 +18,7 @@ import (
 )
 
 type debugInspectionArtifact struct {
+	Bytes   *int64         `json:"bytes,omitempty"`
 	Name    string         `json:"name"`
 	Path    string         `json:"path"`
 	State   string         `json:"state"`
@@ -103,8 +104,21 @@ func inspectDebugSession(ctx context.Context, directory, requestID, field string
 		path := filepath.Join(directory, name)
 		keys := metadataKeys[name]
 		artifact := debugInspectionArtifact{Name: name, Path: path, State: "observed", Counts: make(map[string]int)}
+		var instructions debugInstructionDecoder
+		var instructionErr error
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+			artifact.Bytes = new(info.Size())
+		}
 		err := readDebugInspectionFile(ctx, path, true, func(line int, row map[string]jsontext.Value) {
 			artifact.Records++
+			if name == "instructions.jsonl" {
+				if err := instructions.resolve(row); err != nil {
+					if instructionErr == nil {
+						instructionErr = fmt.Errorf("line %d: %w", line, err)
+					}
+					return
+				}
+			}
 			kind := debugInspectionString(row, "event")
 			if name == "capture.jsonl" {
 				kind = debugInspectionString(row, "boundary") + "/" + debugInspectionString(row, "response_status")
@@ -168,6 +182,7 @@ func inspectDebugSession(ctx context.Context, directory, requestID, field string
 				addEvidence(name, line, row, keys, []string{"instructions", "developer_messages", "tools", "additional_tools", "wire_developer_messages", "wire_additional_tools"})
 			}
 		})
+		err = errors.Join(err, instructionErr)
 		if err != nil {
 			artifact.State = "invalid_or_unavailable"
 			reportError(path, err)
@@ -178,10 +193,13 @@ func inspectDebugSession(ctx context.Context, directory, requestID, field string
 	for _, name := range []string{"metrics.json", "ax.json"} {
 		path := filepath.Join(directory, name)
 		artifact := debugInspectionArtifact{Name: name, Path: path, State: "observed"}
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+			artifact.Bytes = new(info.Size())
+		}
 		err := readDebugInspectionFile(ctx, path, false, func(_ int, row map[string]jsontext.Value) {
 			artifact.Records++
 			if name == "metrics.json" {
-				result.Metrics = debugInspectionFields(row, []string{"schema", "mode", "requests", "usage", "cache", "transport", "capture"})
+				result.Metrics = debugInspectionFields(row, []string{"schema", "mode", "requests", "usage", "cache", "transport", "capture", "storage_writes"})
 			} else {
 				result.AX = debugInspectionFields(row, []string{"schema", "scope", "journal_state", "dropped_threads", "threads", "journal_only_threads", "dropped_journal_threads", "unattributed_reads"})
 				if selected := debugInspectionString(row, "read_log"); filepath.IsAbs(selected) {
@@ -196,6 +214,9 @@ func inspectDebugSession(ctx context.Context, directory, requestID, field string
 		result.Artifacts = append(result.Artifacts, artifact)
 	}
 	reads := debugInspectionArtifact{Name: "reads.jsonl", Path: readLog, State: "observed"}
+	if info, err := os.Stat(readLog); err == nil && info.Mode().IsRegular() {
+		reads.Bytes = new(info.Size())
+	}
 	if _, err := capturer.ReadAXReadJournal(ctx, readLog); err != nil {
 		reads.State = "invalid_or_unavailable"
 		reportError(readLog, err)

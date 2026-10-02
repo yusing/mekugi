@@ -4,7 +4,7 @@
 
 `mekugi inspect-session --debug-dir DIR --field diagnostic` diagnoses one debug
 bundle without starting a router or executing retained inputs. It returns
-`mekugi.session.debug.v1` JSON with per-artifact availability and record counts,
+`mekugi.session.debug.v1` JSON with per-artifact availability, file bytes and record counts,
 request outcome counts, a request index, failure evidence, capture-owned metrics, and the stored
 AX report. The report does not infer that an issue is absent from a lack of recorded
 failures. Successful output from readable artifacts remains available when another
@@ -15,7 +15,12 @@ Evidence identifies its source file and line, request/capture ID, thread, phase,
 status, and diagnostic reference where recorded. `--request-id ID` selects exact
 request or capture identities across router, capture, and instruction records.
 `--field diagnostic` includes original error text; `--field all` also includes
-selected request instruction/tool text. Without a field selection, private text
+selected request instruction/tool text. Compact instruction references resolve within
+the selected bundle; older inline-only records remain readable. Unresolved or conflicting
+references fail that artifact with a source line, without suppressing other artifacts.
+Capture-owned metrics include measured application-write accounting when available;
+artifact bytes describe current file sizes, not cumulative writes or physical disk I/O.
+Without a field selection, private text
 is omitted. These files and selected text are not sanitized.
 Feature branch outcomes remain separate from request outcomes; rejected or unavailable
 branches are diagnostic evidence, while accepted, prepared, and observed branches are

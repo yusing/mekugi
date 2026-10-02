@@ -19,16 +19,17 @@ import (
 // Debug output is separate from sanitized capture. Failure events include the
 // complete error string, which can contain request content or credentials.
 type debugOutput struct {
-	writes           *persistence.Counter
-	release          func() error
-	mu               sync.Mutex
-	log              *os.File
-	dump             *os.File
-	paths            []string
-	metricsPath      string
-	axThreads        map[string]bool
-	axDroppedThreads bool
-	err              error
+	instructionContent map[string]bool
+	writes             *persistence.Counter
+	release            func() error
+	mu                 sync.Mutex
+	log                *os.File
+	dump               *os.File
+	paths              []string
+	metricsPath        string
+	axThreads          map[string]bool
+	axDroppedThreads   bool
+	err                error
 }
 
 type debugContextKey struct{}
@@ -210,7 +211,7 @@ func (d *debugOutput) instructions(body, wire []byte, headers http.Header, sessi
 			wireAdditional = append(wireAdditional, raw)
 		}
 	}
-	d.write(d.dump, map[string]any{
+	d.writeInstructions(map[string]any{
 		"timestamp": time.Now().UTC(), "request_id": requestID,
 		"client_request_id": headers.Get("x-client-request-id"),
 		"thread_id":         codexThreadID(headers), "session_id": sessionID,

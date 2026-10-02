@@ -191,7 +191,17 @@ The files survive shutdown. Default files use mode 0600 and the directory uses m
 
 The instruction JSONL records preserve instruction text and JSON values for the final
 `instructions`, developer-role input messages, top-level tools, and `additional_tools`
-items after all request rewriting. They include timestamp, unique local request ID,
+items after all request rewriting. Each request retains one line with
+`schema: mekugi.instructions.v2`. Large repeated content values are stored once inline
+and subsequently represented by `content_refs`, mapping the original field name to
+the SHA-256 of its compact encoded JSON value. References resolve within the same
+file, against inline values on earlier lines or the same line, including reuse between
+projected and wire fields. Only the six instruction/tool content fields may be referenced.
+Values of at most 128 encoded bytes stay inline; a 4,096-entry digest dictionary bounds
+writer memory, with unseen content staying inline once full. Request identity, cache
+and wire provenance always remain inline. Inspection resolves these references and
+still reads older inline-only bundles; missing content is reported, not treated as empty.
+Existing bundles are not rewritten. Records include timestamp, unique local request ID,
 client request ID, thread/session IDs, model, previous response ID, and cached input count.
 The dump uses `scope: projected_responses_request` for the local projection before
 cached-prefix removal. Separate `wire_developer_messages`, `wire_additional_tools`,

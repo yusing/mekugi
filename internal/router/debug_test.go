@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"io"
 	"maps"
 	"net/http"
@@ -15,6 +16,27 @@ import (
 
 	"github.com/coder/websocket"
 )
+
+func readDebugInstructionRows(ctx context.Context, path string) ([][]byte, error) {
+	var decoder debugInstructionDecoder
+	var rows [][]byte
+	var decodeErr error
+	err := readDebugInspectionFile(ctx, path, true, func(_ int, row map[string]jsontext.Value) {
+		if decodeErr != nil {
+			return
+		}
+		decodeErr = decoder.resolve(row)
+		if decodeErr == nil {
+			var data []byte
+			data, decodeErr = json.Marshal(row)
+			rows = append(rows, data)
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return rows, decodeErr
+}
 
 func TestDebugSessionArtifacts(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
@@ -110,6 +132,10 @@ func TestDebugInstructionSelectionAndWriteFailure(t *testing.T) {
 	headers := http.Header{"Authorization": {"excluded credential"}, "X-Client-Request-Id": {"client-1"}}
 	d.instructions(body, body, headers, "session-1", "request-1", 1)
 	dump, _ := os.ReadFile(d.paths[3])
+	rows, err := readDebugInstructionRows(t.Context(), d.paths[3])
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("instruction records: %d, %v", len(rows), err)
+	}
 	var got struct {
 		Instructions   string            `json:"instructions"`
 		Developers     []json.RawMessage `json:"developer_messages"`
@@ -118,7 +144,7 @@ func TestDebugInstructionSelectionAndWriteFailure(t *testing.T) {
 		Scope          string            `json:"scope"`
 		WireDevelopers []json.RawMessage `json:"wire_developer_messages"`
 	}
-	if err := json.Unmarshal(dump, &got); err != nil || got.Instructions != "exact\n  text\t" || len(got.Developers) != 1 || len(got.Additional) != 1 || got.Cached != 1 {
+	if err := json.Unmarshal(rows[0], &got); err != nil || got.Instructions != "exact\n  text\t" || len(got.Developers) != 1 || len(got.Additional) != 1 || got.Cached != 1 {
 		t.Fatalf("instruction selection: %+v, %v", got, err)
 	}
 	if bytes.Contains(dump, []byte("excluded")) {
@@ -203,12 +229,11 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 			} else if len(input) != 1 || jsonString(request, "previous_response_id") != "first" {
 				t.Error("continuation did not use upstream cached input")
 			}
-			dump, err := os.ReadFile(d.paths[3])
+			lines, err := readDebugInstructionRows(ctx, d.paths[3])
 			if err != nil {
 				t.Error(err)
 				return
 			}
-			lines := bytes.Split(bytes.TrimSpace(dump), []byte{'\n'})
 			var record struct {
 				Instructions   json.RawMessage   `json:"instructions"`
 				Developers     []json.RawMessage `json:"developer_messages"`

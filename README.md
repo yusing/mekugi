@@ -590,7 +590,11 @@ These bytes cover this router's managed-record and debug/capture writes, not
 physical disk traffic or subprocess writes. On exit,
 “To diagnose this session” prints an inspection command ready to share with an
 agent. Debug bundles include private session content and are **not sanitized**.
-Debug mode records future requests only. See
+Repeated instruction/tool content is stored once and referenced by later requests,
+while request and wire-projection evidence remain available through the inspection
+command. Its report includes artifact sizes and application-write metrics to help
+identify bulky or incomplete evidence. Older bundles remain readable and are not
+rewritten. Debug mode records future requests only. See
 [debug evidence](doc/spec/router.md#feature-usage-debug-evidence).
 
 ## Configuration
