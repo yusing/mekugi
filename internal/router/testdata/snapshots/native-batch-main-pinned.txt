@@ -10,7 +10,7 @@
 │  30│+one_line_30                                                   ││  39│+child_line_39                                                 │
 │  31│+one_line_31                                                   ││▎ 40│+child_line_40                                                 │
 │  32│+one_line_32                                                   ││                                                                    │
-│  33│+one_line_33                                                   ││reviewer                                                   12:00:00 │
+│  33│+one_line_33                                                   ││● reviewer                                                 12:00:00 │
 │  34│+one_line_34                                                   │││ OTHER_ACTIVITY remains readable                                   │
 │  35│+one_line_35                                                   ││                                                                    │
 │  36│+one_line_36                                                   ││                                                                    │

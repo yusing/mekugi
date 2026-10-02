@@ -1,7 +1,7 @@
 AGENTS  1 agents · 0 responding                                                              FOLLOW
  ✓ probe  Run printf 'Final syntax and whitespace …                                                
 ───────────────────────────────────────────────────────────────────────────────────────────────────
-● probe ────────────────────────────────────────────────────────────────────────────────── 12:00:00
+● probe                                                                                    12:00:00
 ▎ Ran   bash -n setup.sh .local/tests/setup_config_test.sh
 ▎ Check working tree in setup.sh setup.changelog.md README.md +1 more · git diff --check
 ▎ Ran   printf 'Final syntax and whitespace checks passed.\n' · exit 1

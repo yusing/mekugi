@@ -4,13 +4,13 @@ AGENTS  4 agents · 1 responding                                FOLLOW
  ◐ └ review     Read native_ui_snapshot_test.go                      
  ·   └ probe    Checking narrow layouts and baseline whitespace.
 ─────────────────────────────────────────────────────────────────────
-● inventory ──────────────────────────────────────────────── 12:00:00
-▎ → main
-▎ Found uncovered output dialogs and native pickers.
+✉ inventory → main · worker                                  12:00:00
+│ Found uncovered output dialogs and native pickers.
 
-● review ─────────────────────────────────────────────────── 12:00:00
+● review · review                                            12:00:00
 ▎ Read native_ui_snapshot_test.go
 
-● review/probe ───────────────────────────────────────────── 12:00:00
+● review/probe · explorer                                    12:00:00
 ▎ Checking narrow layouts and baseline whitespace.
+
 ALL · click agent · n/p agent · a only · j/k scroll · End bottom

@@ -1,7 +1,7 @@
 AGENTS  1 agents · 0 responding                                                              FOLLOW
  ✓ probe  Run printf 'Recovered rich-cli dependenc…                                                
 ───────────────────────────────────────────────────────────────────────────────────────────────────
-● probe ────────────────────────────────────────────────────────────────────────────────── 12:00:00
+● probe                                                                                    12:00:00
 ▎ Ran test -f /tmp/.tmpw4Pr3l/pyproject.toml
 ▎ Ran test -f /tmp/.tmpw4Pr3l/uv.lock
 ▎ Ran printf 'Recovered rich-cli dependency-lock evidence remains available.\n' · exit 1

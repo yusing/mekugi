@@ -239,7 +239,7 @@ func TestAppServerOutgoingMessageHeader(t *testing.T) {
 	u.view.conversation = true
 	u.applyActivity([]activityPaneEntry{{Seq: 1, Agent: "/root/reviewer", Kind: "reply", message: &activityMessage{from: "/root", to: "/root/reviewer", text: "Check the answer link."}}}, nil)
 	feed := u.view.renderFeed(90, 20)
-	if len(feed.lines) != 2 || !strings.HasPrefix(ansi.Strip(feed.lines[0]), "→ reviewer ") || ansi.Strip(feed.lines[1]) != "│ Check the answer link." {
+	if len(feed.lines) != 2 || !strings.HasPrefix(ansi.Strip(feed.lines[0]), "→ reviewer") || ansi.Strip(feed.lines[1]) != "│ Check the answer link." {
 		t.Fatalf("outgoing recipient must head Main's message, above its body: %q", feed.lines)
 	}
 	screen := vt.NewEmulator(90, 2)
@@ -266,17 +266,22 @@ func TestAppServerActivityGroupsAgentRun(t *testing.T) {
 	for _, line := range u.agents.renderFeed(90, 40).lines {
 		plain = append(plain, strings.TrimRight(ansi.Strip(line), " "))
 	}
-	// One stable heading per agent run; each event names sender and recipient on its
-	// own row, with its body below and a spacer before the next event.
-	want := []string{"reviewer", "│ main → reviewer", "│ Check the link.", "│", "│ reviewer → main", "│ Link checked.", "│", "│ Checking the next item."}
-	if len(plain) != len(want) || !strings.HasSuffix(plain[0], "12:30:10") || !strings.HasPrefix(plain[0], want[0]+" ") {
-		t.Fatalf("Activity run = %q", plain)
+	// Narrative events retain their individual timestamps and message direction.
+	if len(plain) != 8 {
+		t.Fatalf("Activity events = %q", plain)
 	}
-	for i := 1; i < len(want); i++ {
-		if plain[i] != want[i] {
-			t.Fatalf("Activity run row %d = %q, want %q in %q", i, plain[i], want[i], plain)
+	for i, stamp := range []string{"12:30:10", "12:30:20", "12:30:30"} {
+		if !strings.HasSuffix(plain[i*3], stamp) {
+			t.Fatalf("event lost timestamp: %q", plain[i*3])
 		}
 	}
+	if !strings.Contains(plain[0], "main → reviewer") || !strings.Contains(plain[3], "reviewer → main") {
+		t.Fatalf("message direction lost: %q", plain)
+	}
+	if plain[1] != "│ Check the link." || plain[4] != "│ Link checked." || plain[7] != "│ Checking the next item." {
+		t.Fatalf("message bodies lost: %q", plain)
+	}
+
 }
 
 func TestCodexReasoningSummaryPresentation(t *testing.T) {

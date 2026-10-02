@@ -1,8 +1,9 @@
-worker                                                                  08:00:02
+● worker                                                                08:00:02
 │ • Inspecting order for 2s
 │   First checkpoint.
 │   Second checkpoint.
-│ 
+
+✓ worker finished                                                       08:00:02
 │ ╭─ ✓ answer ─────────────────────────────────────────────────────────────────╮
 │ │ Answer after reasoning.                                                    │
 │ ╰────────────────────────────────────────────────────────────────────────────╯

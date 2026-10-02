@@ -23,9 +23,17 @@ func ErrorPreview(body string) string {
 	return ""
 }
 
-// ErrorRows paints only the preview and a discoverable shared-dialog target.
+// ErrorHasDetails reports content omitted by the inline first-line preview.
+func ErrorHasDetails(block Block) bool {
+	return strings.TrimSpace(livediff.Safe(block.Body, false)) != ErrorPreview(block.Body)
+}
+
+// ErrorRows adds a dialog hint only when the preview omits retained content.
 func ErrorRows(block Block, width int) []string {
 	rows := Wrap(Red+ErrorPreview(block.Body)+Reset, width, false)
+	if !ErrorHasDetails(block) {
+		return rows
+	}
 	hint := "details · ctrl+b !"
 	if block.Hovered {
 		hint = Underline(hint)

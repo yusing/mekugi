@@ -48,7 +48,7 @@ func ReasoningSummaryBody(text string) string {
 const ThinkingTailRows = 3
 
 // thinkingHeader labels long reasoning blocks; short summaries render directly.
-func (p *Painter) thinkingHeader(block Block, width int) string {
+func (p *Painter) thinkingHeader(block Block, width int) (string, bool) {
 	label := block.Label
 	if label == "" {
 		label = ReasoningSections(block.Body)[0].Label
@@ -63,11 +63,12 @@ func (p *Painter) thinkingHeader(block Block, width int) string {
 		suffix := " for " + block.Elapsed
 		label = strings.TrimSuffix(reasoningFor(label, block.Elapsed), suffix)
 		if width > ansi.StringWidth(suffix) {
-			return ansi.Truncate(label, width-ansi.StringWidth(suffix), "…") + suffix
+			room := width - ansi.StringWidth(suffix)
+			return ansi.Truncate(label, room, "…") + suffix, ansi.StringWidth(label) > room
 		}
 		label += suffix
 	}
-	return ansi.Truncate(label, max(1, width), "…")
+	return ansi.Truncate(label, max(1, width), "…"), ansi.StringWidth(label) > max(1, width)
 }
 
 // Strip the visible trailing period, preserving Markdown's terminal styles.
@@ -99,4 +100,26 @@ func reasoningRow(row string) string {
 	}
 	out.WriteString(Reset)
 	return out.String()
+}
+
+// ReasoningElided uses the same wrapped body and short-summary rule as the
+// renderer. A settled one-line summary is not a collapsed detail view.
+func (p *Painter) ReasoningElided(block Block, width int) bool {
+	width = max(8, width)
+	rows, short, titleOnly := p.reasoningContent(block, width)
+	_, headingElided := p.thinkingHeader(block, width-2)
+	return len(rows) > 0 && !short && (block.Collapsed || block.Live && len(rows) > ThinkingTailRows || headingElided && !titleOnly)
+}
+
+func (p *Painter) reasoningContent(block Block, width int) (rows []string, short, titleOnly bool) {
+	if block.Label == "" {
+		block.Label = ReasoningSections(block.Body)[0].Label
+	}
+	body := ReasoningSummaryBody(block.Body)
+	if body == "" {
+		return nil, false, false
+	}
+	rows = p.markdown(body, max(1, width-2), true)
+	titleOnly = body == strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(block.Body), "<!-- -->"))
+	return rows, len(rows) == 1 && (block.Label == "" || titleOnly), titleOnly
 }

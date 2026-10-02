@@ -18,6 +18,29 @@ const reasoningSnapshotBody = "First I will inspect the stream renderer and its 
 	"  This line continues that bullet with **more detail**.\n" +
 	"- Preserve the final observation and reopen the complete reasoning after collapse."
 
+func TestUISnapshotReasoningElidedHeading(t *testing.T) {
+	p := Painter{Theme: livediff.DarkTheme}
+	title := "**Investigating the very long reasoning heading with UNIQUE_HIDDEN_SUFFIX**"
+	var rows []string
+	for _, live := range []bool{false, true} {
+		for _, titleOnly := range []bool{false, true} {
+			body := title
+			if !titleOnly {
+				body += "\n\nShort body."
+			}
+			block := Block{Kind: "summary", Body: body, Live: live}
+			block.Hovered = p.ReasoningElided(block, 36)
+			if block.Hovered == titleOnly {
+				t.Fatalf("wrong heading-only detail eligibility: %+v", block)
+			}
+			rows = append(rows, fmt.Sprintf("live=%t title-only=%t", live, titleOnly))
+			rows = append(rows, p.Block(block, 36)...)
+			rows = append(rows, "")
+		}
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/reasoning_elided_heading.txt", strings.Join(rows, "\n"))
+}
+
 func TestUISnapshotReasoningStreaming(t *testing.T) {
 	for _, width := range []int{32, 80} {
 		for _, titled := range []bool{false, true} {

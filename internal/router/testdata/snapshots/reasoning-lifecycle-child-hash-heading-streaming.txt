@@ -1,2 +1,2 @@
-worker                                                                  08:00:00
+● worker                                                                08:00:00
 │ • Checking tests

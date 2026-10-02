@@ -1,8 +1,8 @@
 ┌ 1 Main ────────────────────────────────────────┐┌ 3 Activity ──────────────────────────── FOLLOW ┐
-│● main                                 12:00:00 ││editor                                 12:00:00 │
+│● main                                 12:00:00 ││● editor                               12:00:00 │
 │┃ MAIN_TRANSCRIPT                               │││ EDITOR_TRANSCRIPT                             │
 │                                                ││                                                │
-│                                                ││reviewer                               12:00:00 │
+│                                                ││● reviewer                             12:00:00 │
 │                                                │││ OTHER_ACTIVITY remains readable               │
 │                                                ││                                                │
 │                                                ││                                                │

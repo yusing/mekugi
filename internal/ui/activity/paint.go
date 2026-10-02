@@ -647,22 +647,19 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		if body == "" {
 			// A request's thinking block before its first delta.
 			if block.Live && strings.TrimSpace(block.Body) == "" {
-				return []string{Dim + "• " + p.thinkingHeader(block, width-2) + Undim}
+				header, _ := p.thinkingHeader(block, width-2)
+				return []string{Dim + "• " + header + Undim}
 			}
 			return nil
 		}
-		header := p.thinkingHeader(block, width-2)
-		rows := p.markdown(body, max(1, width-2), true)
-		titleOnly := body == strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(block.Body), "<!-- -->"))
-		if len(rows) == 1 && (block.Label == "" || titleOnly) {
+		header, headingElided := p.thinkingHeader(block, width-2)
+		rows, short, titleOnly := p.reasoningContent(block, width)
+		if short {
 			// Short summaries stay visible, including heading-only summaries,
 			// both while streaming and after completion.
 			text := rows[0]
 			if !block.Live && block.Elapsed != "" {
 				text = reasoningFor(text, block.Elapsed)
-			}
-			if block.Hovered {
-				text = Underline(text)
 			}
 			rows = liveActivityHang("• ", text, width)
 			for i, row := range rows {
@@ -679,10 +676,14 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		if block.Live {
 			var hidden int
 			if rows, hidden = TailRows(rows, ThinkingTailRows); hidden > 0 {
-				suffix := " · " + Elision{Hidden: hidden, Form: ElisionSuffix}.String()
+				suffix := " · " + Elision{Hidden: hidden, Form: ElisionSuffix, Hovered: block.Hovered}.String()
 				suffix = ansi.Truncate(suffix, max(0, width-3), "…")
-				header = p.thinkingHeader(block, width-2-ansi.StringWidth(suffix)) + suffix + Dim
+				header, headingElided = p.thinkingHeader(block, width-2-ansi.StringWidth(suffix))
+				header += suffix + Dim
 			}
+		}
+		if block.Hovered && headingElided && !titleOnly {
+			header = Underline(header)
 		}
 		for i, row := range rows {
 			rows[i] = reasoningRow("  " + row)
@@ -1346,12 +1347,12 @@ func (p *Painter) Event(block Block, width int) []string {
 	width = max(8, width)
 	// A flashed entry highlights its text, never its label row.
 	label := func(head string, body []string) []string {
-		return append([]string{ansi.Truncate(head, width, "…")}, p.flash(block, body)...)
+		return append([]string{ansi.Truncate(head, width, "…")}, p.Flash(block, body)...)
 	}
 	done := Green + "✓" + Reset + Dim + " answer" + Undim
 	switch block.Kind {
 	case "message":
-		return label(p.route(block), p.Markdown(block.Body, width))
+		return label(p.Route(block), p.Markdown(block.Body, width))
 	case "start":
 		head := Green + "▶" + Reset + Dim + " started"
 		if model := strings.TrimSpace(ansi.Strip(p.Inline(block.Label))); model != "" {
@@ -1395,16 +1396,16 @@ func (p *Painter) Event(block Block, width int) []string {
 		if width < 12 {
 			return label(title, rows)
 		}
-		return liveActivityCard(title, p.flash(block, rows), width, block.Flash)
+		return liveActivityCard(title, p.Flash(block, rows), width, block.Flash)
 	case "text":
-		return p.flash(block, p.Markdown(block.Body, width))
+		return p.Flash(block, p.Markdown(block.Body, width))
 	}
-	return p.flash(block, p.Block(block, width))
+	return p.Flash(block, p.Block(block, width))
 }
 
-// flash highlights the text of a flashed block's rows, leaving padding and
+// Flash highlights the text of a flashed block's rows, leaving padding and
 // frames plain.
-func (p *Painter) flash(block Block, rows []string) []string {
+func (p *Painter) Flash(block Block, rows []string) []string {
 	if !block.Flash {
 		return rows
 	}
@@ -1679,8 +1680,8 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 	return firstLine(block.Body)
 }
 
-// route names both ends of a message, sender first.
-func (p Painter) route(block Block) string {
+// Route names both ends of a message, sender first.
+func (p Painter) Route(block Block) string {
 	return p.recipient(block.From) + Dim + " → " + Undim + p.recipient(block.To)
 }
 

@@ -91,33 +91,22 @@ func TestNativeParallelJournalDetailsAndNavigation(t *testing.T) {
 	}
 }
 
-func TestNativeParallelLegacyJournalDialogs(t *testing.T) {
+func TestNativeParallelLegacyJournalFullyShown(t *testing.T) {
 	for _, conversation := range []bool{true, false} {
 		for _, terminal := range []bool{true, false} {
 			v := newLiveActivityView()
 			v.conversation = conversation
-			for i, text := range []string{strings.Repeat("Long milestone details\n\n", 8), "Second milestone body"} {
-				v.applyJournal("main", nativeJournalPublication{item: journalItem{ID: fmt.Sprint(i), Text: text}, terminal: terminal, batch: 1})
+			for i, body := range []string{"Milestone details", "Second milestone body"} {
+				v.applyJournal("main", nativeJournalPublication{item: journalItem{ID: fmt.Sprint(i), Text: body}, terminal: terminal, batch: 1})
 			}
 			feed := v.renderFeed(60, 80)
-			u := &terminalUI{}
 			for _, snippet := range feed.snippets {
-				if snippet.run != 0 && u.openOutput(v, snippet) {
-					break
+				if snippet.run != 0 {
+					t.Fatalf("fully shown milestone has redundant dialog: %+v", snippet)
 				}
 			}
-			if u.output == nil {
-				t.Fatalf("retained v1 dialog unavailable: conversation=%v terminal=%v", conversation, terminal)
-			}
-			var copied string
-			for _, page := range u.output.pages {
-				copied += v.painter.DialogPage(page, 60).Text
-			}
-			if !strings.Contains(copied, "Long milestone details") || !strings.Contains(copied, "Second milestone body") {
-				t.Fatalf("segmented v1 copy lost adjacent bodies (conversation=%v terminal=%v entries=%d pages=%d): %q", conversation, terminal, len(v.entries), len(u.output.pages), copied)
-			}
 			if _, ok := v.questionRows[1]; !ok {
-				t.Fatal("retained v1 journal lost its navigation target")
+				t.Fatal("journal lost navigation target")
 			}
 		}
 	}

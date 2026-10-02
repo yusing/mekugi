@@ -402,6 +402,15 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	entryRows := make(map[uint64]int)
 	p := &v.painter
 	switch {
+	case len(blocks) == 1 && blocks[0].Kind == "journal":
+		laid = blocks
+		entryRows[entry.Seq] = 0
+		v.milestoneItem(&out, entry, []string{blocks[0].Body}, width)
+		for i := 1; i < len(out.lines); i++ {
+			for state, glyph := range journalGlyphs {
+				out.lines[i] = strings.ReplaceAll(out.lines[i], glyph+" ", journalStateColor(p.Theme, state)+glyph+activityui.Reset+" ")
+			}
+		}
 	case entry.Kind == "journal_card":
 		laid = blocks
 		entryRows[entry.Seq] = 0
@@ -422,7 +431,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		for index, block := range laid {
 			// Thinking and reset disclosures share the existing output dialog.
 			snippet := liveActivitySnippet{run: entry.Seq, block: index}
-			toggle := v.clickTarget(&block, snippet)
+			toggle := v.clickTarget(&block, snippet, width)
 			for _, row := range v.paintBlock(len(out.lines), 0, func() []string { return p.Block(block, width) }) {
 				out.add(0, row)
 				if toggle {
@@ -456,7 +465,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		laid = activityui.AlignVerbs(activityui.GroupOperations(activityui.MergeLiveActivityReads(group)))
 		for index, block := range laid {
 			snippet := liveActivitySnippet{run: entry.Seq, block: index}
-			toggle := v.clickTarget(&block, snippet)
+			toggle := v.clickTarget(&block, snippet, width-2)
 			if block.Kind == "op" && block.Code != "" {
 				// The output dialog shows the whole source.
 				block.SourceRows = conversationSourceRows
@@ -485,37 +494,19 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			out.snippets[len(out.snippets)-1] = toggles[i]
 		}
 	case entry.Agent == "Main" && entry.journal != nil && len(blocks) == 1 && blocks[0].Journal != nil:
-		var details []activityui.Block
-		for _, group := range blocks[0].Journal.Groups {
-			for _, answer := range group.Answers {
-				details = append(details, activityui.Block{Kind: "text", Verb: "Journal", Label: answer.ID, Body: answer.Text, Detail: group.Question})
-			}
-		}
-		laid = []activityui.Block{{Kind: "text", Members: details}}
 		entryRows[entry.Seq] = 0
 		v.flushItem(&out, entry, blocks[0].Journal, first, width)
-		for i := 1; i < len(out.lines); i++ {
-			out.snippets[i] = liveActivitySnippet{run: entry.Seq, block: 0}
-		}
+
 	case conversationMilestone(entry):
 		var milestones []string
-		var details []activityui.Block
 		for k := first; k <= last; k++ {
 			if v.visible(v.entries[k].activityPaneEntry) {
 				milestones = append(milestones, livediff.Safe(v.entries[k].Text, false))
-				for _, block := range v.entries[k].blocks {
-					block.Source = v.entries[k].Seq
-					details = append(details, block)
-				}
 				entryRows[v.entries[k].Seq] = 0
 			}
 		}
-		laid = []activityui.Block{{Kind: "text", Members: details}}
 		v.milestoneItem(&out, entry, milestones, width)
-		// One segmented dialog retains all adjacent milestone bodies for copy.
-		for i := 1; i < len(out.lines); i++ {
-			out.snippets[i] = liveActivitySnippet{run: entry.Seq, block: 0}
-		}
+
 	case entry.Agent == "Main" && entry.Kind == "text":
 		out.add(0, mainHeading(p, entry, width))
 		gutter := mainGutter(p)
@@ -530,7 +521,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		out.hang(gutter, gutter, p.Markdown(entry.Text, width-2))
 	default:
 		v.agentItem(&out, entry, blocks, first, width, thread)
-		if entry.Kind == "error" {
+		if entry.Kind == "error" && len(blocks) > 0 && activityui.ErrorHasDetails(blocks[0]) {
 			laid = blocks
 			for row := range out.snippets {
 				out.snippets[row] = liveActivitySnippet{run: entry.Seq, block: 0}
@@ -543,16 +534,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 // conversationHeading is one item heading: a glyph, a name, optional dim
 // detail, and the time right-aligned when it fits.
 func conversationHeading(glyph, name, detail string, entry activityPaneEntry, width int) string {
-	head := glyph + " " + name
-	if detail != "" {
-		head += " " + activityui.Dim + detail + activityui.Undim
-	}
-	stamp := activityui.Dim + entry.Observed.Local().Format("15:04:05") + activityui.Undim
-	head = ansi.Truncate(head, width, "…")
-	if gap := width - ansi.StringWidth(head) - ansi.StringWidth(stamp); gap >= 2 {
-		head += strings.Repeat(" ", gap) + stamp
-	}
-	return activityui.CopyDecoration(head)
+	return activityui.EventHeading(glyph, name, detail, entry.Observed, width)
 }
 
 // mainHeading and mainGutter mark Main's own replies the way agent traffic
@@ -569,7 +551,11 @@ func mainGutter(p *activityui.Painter) string {
 // so progress notes cannot be mistaken for Main's replies.
 func (v *liveActivityView) milestoneItem(out *conversationLines, entry activityPaneEntry, milestones []string, width int) {
 	accent := v.painter.Theme.Accent()
-	out.add(0, conversationHeading(accent+"◆"+activityui.Reset, "\x1b[1m"+accent+"journal"+activityui.Reset, "", entry, width))
+	detail := ""
+	if entry.Agent != "Main" {
+		detail = v.painter.Agent(entry.Agent)
+	}
+	out.add(0, conversationHeading(accent+"◆"+activityui.Reset, "\x1b[1m"+accent+"journal"+activityui.Reset, detail, entry, width))
 	gutter := accent + "│" + activityui.Reset + " "
 	for _, text := range milestones {
 		body := width - 4
@@ -683,11 +669,28 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 			detail = "failed"
 		}
 	}
+	name := p.Agent(agent)
+	if !v.conversation {
+		agent = entry.Agent
+		name = p.Agent(agent)
+		if block.Kind == "message" {
+			glyph, name = activityui.Dim+"✉"+activityui.Undim, p.Route(block)
+		}
+		if i := slices.IndexFunc(v.agents, func(a activityPaneAgent) bool { return a.Name == entry.Agent }); i >= 0 {
+			if role := liveActivityRole(v.agents[i]); role != "" {
+				detail += " · " + role
+			}
+		}
+		detail = strings.TrimSpace(detail)
+	}
 	color := activityui.Gutter(agent, p.Theme)
+	if !v.conversation && block.Kind == "message" {
+		color = activityui.Gutter(block.From, p.Theme)
+	}
 	if thread.joined {
 		out.add(0, threadHeading(color+"├─"+activityui.Reset+glyph, detail, entry, v.entries[thread.previous].activityPaneEntry, reply, width))
 	} else {
-		out.add(0, conversationHeading(glyph, p.Agent(agent), detail, entry, width))
+		out.add(0, conversationHeading(glyph, name, detail, entry, width))
 	}
 	gutter := color + "│" + activityui.Reset + " "
 	tail, limit := color+"╰─"+activityui.Reset, conversationLatestRows
@@ -696,6 +699,9 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 	}
 	body := width - 2
 	switch {
+	case !v.conversation && block.Kind == "final":
+		block.Flash = v.flashQuestion == entry.Seq && v.now().Before(v.flashUntil)
+		out.hang(gutter, gutter, v.paintBlock(len(out.lines), 5, func() []string { return p.Event(block, body) }))
 	case block.Kind == "start" || block.Kind == "message":
 		switch {
 		case entry.activitySeq != 0 && reply:

@@ -35,8 +35,8 @@ func TestErrorPreview(t *testing.T) {
 }
 
 func TestErrorDetailsHover(t *testing.T) {
-	plain := ErrorRows(Block{Kind: "error", Body: "failed"}, 40)
-	hovered := ErrorRows(Block{Kind: "error", Body: "failed", Hovered: true}, 40)
+	plain := ErrorRows(Block{Kind: "error", Body: "failed\nAdditional diagnostics"}, 40)
+	hovered := ErrorRows(Block{Kind: "error", Body: "failed\nAdditional diagnostics", Hovered: true}, 40)
 	if strings.Join(plain, "\n") == strings.Join(hovered, "\n") {
 		t.Fatal("hover does not decorate the details target")
 	}
@@ -99,6 +99,8 @@ func TestUISnapshotActivityErrorInline(t *testing.T) {
 		body    string
 		hovered bool
 	}{
+		{"complete", 48, "Request failed: permission denied", true},
+		{"wrapped_complete", 20, "Request failed: permission denied", true},
 		{"multiline", 48, "\nRequest failed: permission denied\nSensitive diagnostic remains in details\nAnother detail", false},
 		{"long", 48, "Request failed: " + strings.Repeat("diagnostic ", 30) + "\nFinal diagnostic", false},
 		{"hovered", 48, "Request failed: permission denied\nFull diagnostic", true},

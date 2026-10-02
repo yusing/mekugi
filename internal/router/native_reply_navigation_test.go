@@ -216,6 +216,7 @@ func TestNativeRepliesShareHeaderQuoteAnswerLayout(t *testing.T) {
 		for _, kind := range []string{"main raw", "main journal", "agent raw", "agent journal", "agent excerpt"} {
 			t.Run(fmt.Sprintf("%s/%d", kind, width), func(t *testing.T) {
 				v := newLiveActivityView()
+				v.conversation = true
 				question := activityPaneEntry{Seq: 1, Agent: "You", Kind: "text", Text: "Original request.\n\nSecond detail.\n\nThird detail.", Observed: time.Now()}
 				entry := activityPaneEntry{Seq: 2, Agent: "Main", Kind: "text", Text: "Answer body.", native: &liveActivityNativeItem{question: 1}}
 				block := activityui.Block{Kind: "text", Body: entry.Text}

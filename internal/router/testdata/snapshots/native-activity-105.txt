@@ -1,13 +1,13 @@
 AGENTS  4 agents · 1 responding                                                                   FOLLOW
- ✓ main                       — │ ● inventory ───────────────────────────────────────────────── 12:00:00
-   ← inventory Found uncovered… │ ▎ → main
-   ↑ 1.2K                       │ ▎ Found uncovered output dialogs and native pickers.
- ✓ ├ inventory                — │ 
-   │ → main Found uncovered ou… │ ● review ──────────────────────────────────────────────────── 12:00:00
-   │                            │ ▎ Read native_ui_snapshot_test.go
- ◐ └ review              2m ago │ 
-     Read native_ui_snapshot_t… │ ● review/probe ────────────────────────────────────────────── 12:00:00
-                                │ ▎ Checking narrow layouts and baseline whitespace.
+ ✓ main                       — │ ✉ inventory → main · worker                                   12:00:00
+   ← inventory Found uncovered… │ │ Found uncovered output dialogs and native pickers.
+   ↑ 1.2K                       │ 
+ ✓ ├ inventory                — │ ● review · review                                             12:00:00
+   │ → main Found uncovered ou… │ ▎ Read native_ui_snapshot_test.go
+   │                            │ 
+ ◐ └ review              2m ago │ ● review/probe · explorer                                     12:00:00
+     Read native_ui_snapshot_t… │ ▎ Checking narrow layouts and baseline whitespace.
+                                │ 
  ·   └ probe                  — │ 
        Checking narrow layouts… │ 
                                 │ 

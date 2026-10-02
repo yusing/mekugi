@@ -76,11 +76,8 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 			t.Fatalf("restored summary did not fold: %q", got)
 		}
 		row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
-		if row < 0 || !u.shell.openOutput(view, feed.snippets[row]) {
-			t.Fatal("restored reasoning cannot reopen")
-		}
-		if page := view.painter.DialogPage(u.shell.output.pages[0], 80); page.Text != "Public restored summary." {
-			t.Fatalf("restored reasoning lost its public body: %q", page.Text)
+		if row >= 0 {
+			t.Fatal("fully shown restored reasoning has a redundant detail target")
 		}
 	}
 	// Raw-only items are decodable but produce no visible entry.
@@ -407,8 +404,8 @@ func TestAppServerStartedSummarySettlesWithoutDelta(t *testing.T) {
 					t.Fatalf("started summary did not settle: %s", got)
 				}
 				row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
-				if row < 0 || !u.shell.openOutput(view, feed.snippets[row]) || !strings.Contains(u.shell.output.pages[0].Body, "Started public body.") {
-					t.Fatal("started summary lost its dialog body")
+				if row >= 0 {
+					t.Fatal("fully shown started summary has a redundant detail target")
 				}
 			}
 		})

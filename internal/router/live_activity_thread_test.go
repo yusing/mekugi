@@ -248,7 +248,7 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 			}
 			opened++
 		}
-		if opened != 3 {
+		if opened != 2 {
 			t.Fatalf("only %d items could reopen", opened)
 		}
 	}

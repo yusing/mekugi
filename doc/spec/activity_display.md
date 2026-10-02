@@ -154,8 +154,10 @@ dialog shows that same invocation duration; the total is never copied onto
 individual command rows.
 
 The shared content dialog captures keys and pointer events above both panes.
-Errors show a bounded first-line preview and a details link rather than an
-unbounded inline diagnostic. Clicking the error opens its complete retained text,
+Errors show a bounded first-line preview rather than an unbounded inline diagnostic.
+A details link and click target appear only when that preview omits retained content;
+a complete single-line diagnostic may wrap without gaining a redundant link.
+Clicking an elided error opens its complete retained text,
 including multiline Code Mode failures restored from history. `Ctrl-B !` opens
 the newest error in the focused Main or Activity transcript; Left/Right navigates
 its other retained errors, respecting the Activity agent filter. Error details
@@ -376,14 +378,21 @@ Counts follow each agent's status symbol, so a responding agent is never also
 counted as an error.
 The viewport moves only when selection leaves it, not to recenter each selection.
 The separate roster header omits feed follow state; the feed header is `ACTIVITY`
-with its filter and follow state. Feed-only controls do not offer clicking agents. The feed groups
-consecutive entries by agent under a colored heading. In the shared view it clips
-narrative entries longer than five rows, including in single-agent mode.
+with its filter and follow state. Feed-only controls do not offer clicking agents.
+Narrative events use Main’s shared colored event headings, timestamps, and rails;
+child journal messages use the same accent diamond and journal rail. Available
+timestamps show only where they fit, and unknown timestamps stay absent. Consecutive
+operations and reasoning still group by agent under a colored heading. Narrative
+previews keep up to five body rows below their heading, including in single-agent
+mode; longer content ends with a hidden-row hint.
 Operation source and output each keep up to five rows without clipping their status. Hovering a clipped
 snippet underlines its hidden-line count. Clicking an operation opens the output
-dialog; narrative text, including thinking and delegation assignments, opens
-in the same dialog. Neither action changes transcript following. Roster rows are
-clickable: hovering highlights an agent; clicking it shows only that agent,
+dialog when it carries retained output or additional source; narrative text,
+including thinking and delegation assignments, opens in the same dialog only
+when its presentation elides content or retains distinct additional detail.
+Fully displayed short reasoning, diagnostics, and journal milestones have no
+redundant underline hint or full-view click target. Neither action changes
+transcript following. Roster rows are clickable: hovering highlights an agent; clicking it shows only that agent,
 and clicking it again restores the shared feed. In the roster, `↑`/`↓` or
 `k`/`j` move through all agents followed by each individual agent, stopping at
 either end. Main's activity belongs to Main, so Activity neither shows nor counts

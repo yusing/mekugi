@@ -88,6 +88,10 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		return []activityui.Block{{Kind: "summary", Label: "Journal", Body: text, Collapsed: true}}
 	case "journal_event":
 		return []activityui.Block{{Kind: "progress", Body: text}}
+	case "text":
+		if body, ok := strings.CutPrefix(strings.TrimSpace(source), "Journal\n"); ok {
+			return []activityui.Block{{Kind: "journal", Body: strings.TrimSpace(body)}}
+		}
 	case "reply":
 		// Direction comes from the delivered message, never from its text.
 		if entry.message != nil {

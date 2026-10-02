@@ -632,8 +632,13 @@ func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 // clickTarget prepares a block whose rows a click acts on, and reports whether
 // they do: operations, compact reasoning and collapsed narrative text open the shared dialog.
 // Under the pointer, the block underlines its count.
-func (v *liveActivityView) clickTarget(block *activityui.Block, snippet liveActivitySnippet) bool {
-	if outputBlock(*block) || (block.Kind == "summary" || block.Kind == "error" || block.Kind == "progress" && block.Label != "") && strings.TrimSpace(block.Body) != "" {
+func (v *liveActivityView) clickTarget(block *activityui.Block, snippet liveActivitySnippet, width int) bool {
+	if block.Kind == "summary" || block.Kind == "error" {
+		details := block.Kind == "summary" && v.painter.ReasoningElided(*block, width) || block.Kind == "error" && activityui.ErrorHasDetails(*block)
+		block.Hovered = details && v.snippet == snippet
+		return details
+	}
+	if outputBlock(*block) || block.Kind == "progress" && block.Label != "" && strings.TrimSpace(block.Body) != "" {
 		block.Hovered = v.snippet == snippet
 		return true
 	}
@@ -1462,6 +1467,7 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 		}
 		agent := v.entries[i].Agent
 		journal := nativeJournalEntry(v.entries[i].activityPaneEntry)
+		shared := !journal && v.sharedEvent(i)
 		if last, ok := lastPreview[agent]; ok {
 			if i == last {
 				appendPreview(agent)
@@ -1475,7 +1481,7 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 				continue
 			}
 			next := v.entries[j].activityPaneEntry
-			if next.Agent != agent || nativeJournalEntry(next) != journal {
+			if next.Agent != agent || nativeJournalEntry(next) != journal || !journal && j != i && (shared || v.sharedEvent(j)) {
 				break
 			}
 			if journal && j != i && !(conversationJournalEvent(v.entries[i].activityPaneEntry) && conversationJournalEvent(next) || conversationMilestone(v.entries[i].activityPaneEntry) && conversationMilestone(next)) {
@@ -1501,6 +1507,9 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 		render := func() liveActivityRun {
 			if journal {
 				return v.conversationItem(first, last, width, conversationThread{})
+			}
+			if shared {
+				return v.activityEventItem(first, width, clip, key.flash)
 			}
 			var blocks []activityui.Block
 			for k := first; k <= last; k++ {
@@ -1551,22 +1560,17 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 }
 
 func (v *liveActivityView) renderRun(first uint64, agent string, observed time.Time, blocks []activityui.Block, width, clip int) liveActivityRun {
-	stamp := " " + observed.Local().Format("15:04:05")
-	head := activityui.Gutter(agent, v.painter.Theme) + "●" + activityui.Reset + " " + v.painter.Agent(agent)
-	rule := max(1, width-ansi.StringWidth(head)-ansi.StringWidth(stamp)-1)
-	heading := head + " " + activityui.Dim + strings.Repeat("─", rule) + stamp + activityui.Undim
-	if v.childrenOnly {
-		// The gutter already separates agents; a rule on every run is noise.
-		head = v.painter.Agent(agent)
-		if i := slices.IndexFunc(v.agents, func(a activityPaneAgent) bool { return a.Name == agent }); i >= 0 {
-			if role := liveActivityRole(v.agents[i]); role != "" {
-				head += activityui.Dim + " · " + role + activityui.Undim
-			}
+	head := v.painter.Agent(agent)
+	detail := ""
+	if i := slices.IndexFunc(v.agents, func(a activityPaneAgent) bool { return a.Name == agent }); i >= 0 {
+		if role := liveActivityRole(v.agents[i]); role != "" {
+			detail = "· " + role
 		}
-		heading = head + strings.Repeat(" ", max(1, width-ansi.StringWidth(head)-ansi.StringWidth(stamp))) + activityui.Dim + stamp + activityui.Undim
 	}
+	heading := activityui.EventHeading(activityui.Gutter(agent, v.painter.Theme)+"●"+activityui.Reset, head, detail, observed, width)
+
 	run := liveActivityRun{
-		lines:     []string{activityui.CopyDecoration(ansi.Truncate(heading, width, ""))},
+		lines:     []string{heading},
 		snippets:  make([]liveActivitySnippet, 1),
 		questions: make([]uint64, 1),
 		entryRows: make(map[uint64]int),
@@ -1588,7 +1592,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		v.painter.CopyScope = first + uint64(index)
 		// Native Activity joins consecutive operations into one tree.
 		tree := v.childrenOnly && operation(block) && !continued(block)
-		toggle := v.clickTarget(&block, liveActivitySnippet{run: first, block: index})
+		toggle := v.clickTarget(&block, liveActivitySnippet{run: first, block: index}, width-2)
 		if operation(block) {
 			block.SourceRows = 5
 			if block.TailRows == 0 || block.TailRows > 5 {

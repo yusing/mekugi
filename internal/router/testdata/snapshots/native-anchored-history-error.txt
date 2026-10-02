@@ -1,5 +1,5 @@
 ┌ 1 Main ────────────────────────────────────────┐┌ 3 Activity · History unavailable · o retry ────┐
-│Mekugi dev • codex                              ││worker · worker                        11:59:50 │
+│Mekugi dev • codex                              ││✓ worker finished · worker             11:59:50 │
 │                                                │││ ╭─ ✓ answer ────────────────────────────────╮ │
 │                                                │││ │ Latest retained answer                    │ │
 │                                                │││ ╰───────────────────────────────────────────╯ │

@@ -1,0 +1,19 @@
+live=false title-only=false
+• Investigating the very long reaso…
+  Short body.
+
+live=false title-only=true
+• Investigating the very long reaso…
+  Investigating the very long
+  reasoning heading with
+  UNIQUE_HIDDEN_SUFFIX
+
+live=true title-only=false
+• Investigating the very long reaso…
+  Short body.
+
+live=true title-only=true
+• Investigating the very long reaso…
+  Investigating the very long
+  reasoning heading with
+  UNIQUE_HIDDEN_SUFFIX

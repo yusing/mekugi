@@ -1,7 +1,7 @@
 AGENTS  1 agents · 0 responding                                                              FOLLOW
  ✓ probe  Run printf '%s\n' 'count=42' · +4 more                                                   
 ───────────────────────────────────────────────────────────────────────────────────────────────────
-● probe ────────────────────────────────────────────────────────────────────────────────── 12:00:00
+● probe                                                                                    12:00:00
 ▎ Ran  printf '\nToday session files\n' · exit 1
 ▎      ┆ printf: write error
 ▎ List .codex/sessions/2026/09/30 · exit 1

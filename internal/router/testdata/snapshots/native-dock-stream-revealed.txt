@@ -1,8 +1,8 @@
 ┌ 1 Main ────────────────────────────────────────┐┌ 3 Activity ──────────────────────────── FOLLOW ┐
-│LIVE · 1 file                                   ││editor                                 12:00:00 │
+│LIVE · 1 file                                   ││● editor                               12:00:00 │
 │  main · ◐ A small.txt +40 -0                   │││ EDITOR_TRANSCRIPT                             │
 │  26│+small_line_26                             ││                                                │
-│  27│+small_line_27                             ││reviewer                               12:00:00 │
+│  27│+small_line_27                             ││● reviewer                             12:00:00 │
 │  28│+small_line_28                             │││ OTHER_ACTIVITY remains readable               │
 │  29│+small_line_29                             ││                                                │
 │  30│+small_line_30                             ││                                                │

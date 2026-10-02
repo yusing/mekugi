@@ -10,7 +10,7 @@
 │                                                                    ││  39│+child_line_39                                                 │
 │                                                                    ││▎ 40│+child_line_40                                                 │
 │                                                                    ││                                                                    │
-│                                                                    ││reviewer                                                   12:00:00 │
+│                                                                    ││● reviewer                                                 12:00:00 │
 │                                                                    │││ OTHER_ACTIVITY remains readable                                   │
 │                                                                    ││                                                                    │
 │                                                                    ││                                                                    │
