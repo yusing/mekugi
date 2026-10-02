@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -48,7 +49,7 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 	}
 	capturer.ObserveCompaction(a.startCtx, "provider", 0, 0, 0)
 	p := a.executor.mekugiCalls
-	if p == nil || p.replayStore == nil || p.journalCompaction != "auto" && p.journalCompaction != "slice" ||
+	if p == nil || p.replayStore == nil || a.prewarm ||
 		a.threadID == "" || a.metadata.activityIdentityInvalid ||
 		a.metadata.ThreadID != "" && a.metadata.ThreadID != a.threadID ||
 		slices.ContainsFunc(a.headers.Values(threadIDHeader), func(value string) bool {
@@ -67,15 +68,31 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 		return false
 	}
 	store := p.replayStore.scoped(ctx)
+	if workspace == "" {
+		err = store.locked(ctx, func() error {
+			workspace, err = store.compactionWorkspace(a.threadID)
+			return err
+		})
+	}
+	if err == nil {
+		// Both compaction policies consume these results. Reconcile on a
+		// detached request: persist host outcomes, discard replay projections.
+		observed := a.request
+		observed.fields = maps.Clone(a.request.fields)
+		_, err = p.reconcileVisibleInput(ctx, &observed, workspace, workspace+"\x00"+a.threadID)
+	}
+	if err != nil {
+		release()
+		a.journalCompactionFallback(err)
+		return false // Auxiliary capture failure must not block stock compaction.
+	}
+	if p.journalCompaction != "auto" && p.journalCompaction != "slice" {
+		release()
+		return false
+	}
 	var summary journalSummary
 	var wire []byte
 	err = store.locked(ctx, func() error {
-		if workspace == "" {
-			workspace, err = store.compactionWorkspace(a.threadID)
-			if err != nil {
-				return err
-			}
-		}
 		j, exists, err := readThreadJournal(store, workspace, a.threadID)
 		if err != nil {
 			return err

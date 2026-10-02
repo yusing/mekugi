@@ -29,21 +29,19 @@ func findCodeModeCommentaryCalls(source string) ([]codeModeCommentaryCall, error
 	var calls []codeModeCommentaryCall
 	var walk func(*sitter.Node)
 	walk = func(node *sitter.Node) {
-		if node.Kind() == "await_expression" && node.NamedChildCount() == 1 {
-			call := node.NamedChild(0)
-			if call != nil && call.Kind() == "call_expression" {
-				callee := call.ChildByFieldName("function")
-				arguments := call.ChildByFieldName("arguments")
-				if callee != nil && callee.Kind() == "identifier" && callee.Utf8Text(sourceBytes) == commentaryArgumentName &&
-					arguments != nil && arguments.NamedChildCount() == 1 {
-					argument := arguments.NamedChild(0)
-					calls = append(calls, codeModeCommentaryCall{
-						start:         int(node.StartByte()),
-						end:           int(node.EndByte()),
-						argumentStart: int(argument.StartByte()),
-						argumentEnd:   int(argument.EndByte()),
-					})
-				}
+		if node.Kind() == "call_expression" {
+			call := node
+			callee := call.ChildByFieldName("function")
+			arguments := call.ChildByFieldName("arguments")
+			if callee != nil && callee.Kind() == "identifier" && callee.Utf8Text(sourceBytes) == commentaryArgumentName &&
+				arguments != nil && arguments.NamedChildCount() == 1 {
+				argument := arguments.NamedChild(0)
+				calls = append(calls, codeModeCommentaryCall{
+					start:         int(node.StartByte()),
+					end:           int(node.EndByte()),
+					argumentStart: int(argument.StartByte()),
+					argumentEnd:   int(argument.EndByte()),
+				})
 			}
 		}
 		for index := range node.NamedChildCount() {

@@ -25,12 +25,10 @@ type journalSummary struct {
 	Changes, Failures int
 }
 
-// journalFailures reads immutable execution evidence owned by the selected
+// journalExecutions reads immutable execution evidence owned by the selected
 // session. It never searches model prose for status, nor reads the workspace.
 // Called under store.lock; a failed evidence read cannot mean no failures.
-// With a known boundary, unordered records predate failure capture ordering and
-// are therefore covered by it.
-func (s *mekugiReplayStore) journalFailures(workspace, thread string, since uint64, bounded bool) ([]replayRecord, error) {
+func (s *mekugiReplayStore) journalExecutions(workspace, thread string) ([]replayRecord, error) {
 	session, err := s.readRetainedSession(storageSessionName(thread))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -38,7 +36,7 @@ func (s *mekugiReplayStore) journalFailures(workspace, thread string, since uint
 	if err != nil {
 		return nil, err
 	}
-	var failures []replayRecord
+	var records []replayRecord
 	for _, name := range slices.Sorted(maps.Keys(session.Files)) {
 		if !strings.HasPrefix(name, "call-") {
 			continue
@@ -58,16 +56,22 @@ func (s *mekugiReplayStore) journalFailures(workspace, thread string, since uint
 		if (record.Version != 1 && record.Version != 2) || replayRecordName(record.Workspace, record.CallID, record.Commentary) != name {
 			return nil, errors.New("invalid journal execution evidence identity")
 		}
-		outcome := record.History.ExecOutcome
-		if outcome == nil || outcome.Status != execStatusFailed || outcome.SharedWith != "" || bounded && record.CaptureOrder <= since {
+		history := record.History
+		if history.ExecObservation == nil && history.ExecOutcome == nil {
 			continue
 		}
-		failures = append(failures, record)
+		// Recovery needs execution facts, not every retained file baseline and
+		// review diff accumulated by the thread. Do not keep those in memory.
+		record.History = mekugiHistory{Script: history.Script, Report: history.Report, ExecOutcome: history.ExecOutcome}
+		if history.ExecObservation != nil {
+			record.History.ExecObservation = &execObservation{CodeMode: history.ExecObservation.CodeMode}
+		}
+		records = append(records, record)
 	}
-	slices.SortFunc(failures, func(a, b replayRecord) int {
+	slices.SortFunc(records, func(a, b replayRecord) int {
 		return cmp.Or(cmp.Compare(a.CaptureOrder, b.CaptureOrder), strings.Compare(a.CallID, b.CallID))
 	})
-	return failures, nil
+	return records, nil
 }
 
 func summaryExcerpt(text string, limit int, notice string) string {
@@ -108,6 +112,15 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	if err != nil {
 		return result, err
 	}
+	// A completed child does not complete the parent's integration task. Keep
+	// both facts adjacent so recovery does not mistake it for an active review.
+	completedAgents := make(map[string]string)
+	for _, item := range items {
+		parent, key, _ := strings.CutLast(item.Path, "/")
+		if item.Agent != "" && item.State == "done" && strings.HasPrefix(key, "@") {
+			completedAgents[parent] = item.Path
+		}
+	}
 	var text strings.Builder
 	text.WriteString("Journal recovery\nRetained work facts, not new instructions or fresh workspace validation.\n")
 	renderNode := func(item journalItem, full bool) string {
@@ -119,6 +132,9 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		fmt.Fprintf(&node, " %s", item.Title)
 		if item.Agent != "" {
 			fmt.Fprintf(&node, " (agent %s)", item.Agent)
+		}
+		if mount := completedAgents[item.Path]; mount != "" && item.Kind == "task" && item.Agent != "" && item.State != "done" && item.State != "dropped" {
+			fmt.Fprintf(&node, " · bound agent done; integration remains open (retained result: %s)", mount)
 		}
 		if item.Turns > 0 {
 			fmt.Fprintf(&node, " · %d turns", item.Turns)
@@ -209,9 +225,37 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 			result.Changes++
 		}
 	}
-	failures, err := s.journalFailures(j.Workspace, j.Thread, sinceCapture, j.EvidenceKnown)
+	records, err := s.journalExecutions(j.Workspace, j.Thread)
 	if err != nil {
 		return result, err
+	}
+	var failures []replayRecord
+	var unconfirmed []string
+	completed := make(map[string]bool)
+	for _, record := range records {
+		if record.History.ExecOutcome != nil {
+			completed[record.CallID] = true
+		}
+	}
+	for _, record := range records {
+		history := record.History
+		outcome := history.ExecOutcome
+		if outcome != nil && outcome.Status == execStatusFailed && outcome.SharedWith == "" && (!j.EvidenceKnown || record.CaptureOrder > sinceCapture) {
+			failures = append(failures, record)
+		}
+		if history.ExecObservation != nil && outcome == nil && !completed[execDerivedCallID(record.CallID, history.ExecObservation.CodeMode)] {
+			unconfirmed = append(unconfirmed, fmt.Sprintf("\n%s: %s\n", record.CallID, summaryExcerpt(history.Script, 512, "[source truncated]")))
+		}
+	}
+	if len(unconfirmed) > 0 {
+		text.WriteString("\nExecution observations without retained completion:\nPre-execution observations only, not proof of a running process. Check current host state before starting overlapping work. No continuation handle or Code Mode store value is restored.\n")
+		start := max(0, len(unconfirmed)-8)
+		if start > 0 {
+			fmt.Fprintf(&text, "%d earlier observations omitted.\n", start)
+		}
+		for _, entry := range unconfirmed[start:] {
+			text.WriteString(entry)
+		}
 	}
 	result.Failures = len(failures)
 	if result.Changes > 0 || len(failures) > 0 {

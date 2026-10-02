@@ -25,6 +25,13 @@ complete evidence and no file differences remain in command history without a ne
 An unfinished call has no completed record. Storage failure must not expose
 dependent review evidence as durable.
 
+Completed host results first visible in a compaction request are reconciled before
+either journal synthesis or provider forwarding can discard that input. This
+includes native patches, Code Mode patches and exec-observed writes. Observation
+does not project replay carriers or edit notices into the forwarded compaction
+payload. Missing workspace metadata may use only the unique retained workspace
+owned by that thread; ambiguity cannot establish capture scope.
+
 New records retain bounded file evidence inline. Workspace snapshots (see
 Command effects) are private comparison state, not record evidence: Mekugi
 produces no dependency fingerprints, Git baseline reconstructions, or shared

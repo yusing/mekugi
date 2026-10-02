@@ -84,10 +84,10 @@ func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) 
 		if token == "" {
 			// Let the host execute the normal carrier. The failed journal helper
 			// becomes a model-visible tool error, not a router translation fault.
-			replacements[index] = `(await (async mutation => { throw new Error(` + strconv.Quote(journalPublisherUnavailable) + `); })(` + argument + `))`
+			replacements[index] = `((async mutation => { throw new Error(` + strconv.Quote(journalPublisherUnavailable) + `); })(` + argument + `))`
 			continue
 		}
-		replacements[index] = `(await ` + helperName + `(` + argument + `))`
+		replacements[index] = helperName + `(` + argument + `)`
 	}
 
 	result := input

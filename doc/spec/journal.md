@@ -141,6 +141,19 @@ follow. When completed work exceeds its budget, the newest results are kept in
 tree order and the omitted count is stated. Bounded detail excerpts point back to
 `read`, never claim to be complete.
 
+When an open task's bound child has an observed done lifecycle, recovery places
+that fact and its retained result path beside the parent task. The parent's
+integration remains open; neither child prose nor a done lifecycle completes it.
+Pre-execution observations without a retained outcome are listed separately, with
+at most eight entries and an omitted count. These are not claims that processes
+are still running. Recovery restores neither continuation handles nor Code Mode
+store values; the host remains authoritative for live execution state.
+
+Journal guidance asks authors to retain explicit constraints, settled decisions
+and the needed facts from loaded documents and skills in context. Recovery cannot
+reconstruct unrecorded decisions or replace missing document contents with a
+claim that a read occurred.
+
 Changes and failed commands captured after the latest journal event appear in a
 separate section. It includes change ranges, aggregated numstat, failed commands,
 observed exit status, the end of bounded host output and durable `mread`
@@ -258,7 +271,9 @@ unknown rather than fabricated.
 Each mutation is `plan`, `add`, `set`, `log`, or `remove`. Native eligible non-strict
 function tools accept an optional atomic `journal` array, applied before execution
 and removed from host arguments. Code Mode uses the exec-local `journal(...)` helper.
-No dedicated journal tool is exposed. Operations are:
+The helper returns a Promise: direct awaits and calls joined in an awaited
+`Promise.all` or `Promise.allSettled` preserve normal JavaScript concurrency and
+rejection handling. No dedicated journal tool is exposed. Operations are:
 
 - `plan {under?, tasks, reset?}`: each string adds a pending task; objects contain
   `p?`, `title`, `state?`, `body?`, `reason?`, and nested `tasks?`. Existing paths must
