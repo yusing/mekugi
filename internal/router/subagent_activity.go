@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // Bound native message display independently of authored journal publications.
@@ -60,6 +62,7 @@ type activityEvent struct {
 	thread, source, kind, text string
 	callID                     string
 	raw                        string // Unattributed text for the agents pane.
+	errorDetail                string // Complete host error, separate from the inline preview.
 	observed                   time.Time
 	queued                     time.Time // Queue retention is independent of original message time.
 	assignment                 *activityAssignment
@@ -165,7 +168,12 @@ func (a *subagentActivity) collectEventLocked(event activityEvent) {
 		node.seen[source] = struct{}{}
 		return
 	}
-	raw := clipNativeActivityMessage(text)
+	raw := text
+	if kind == "error" {
+		event.errorDetail, raw = text, activityui.ErrorPreview(text)
+	} else {
+		raw = clipNativeActivityMessage(text)
+	}
 	if event.message != nil {
 		message := *event.message
 		message.text = clipNativeActivityMessage(message.text)

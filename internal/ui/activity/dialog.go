@@ -24,9 +24,10 @@ type DialogPage struct {
 	digits int    // Width of the line-number column.
 }
 
-// DialogLine is one numbered source or output line, or an unnumbered row
-// such as a note or rendered Markdown.
+// DialogLine is one numbered source/output line, a logical unnumbered error
+// line, or a pre-laid-out row such as a note or rendered Markdown.
 type DialogLine struct {
+	Wrap   bool   // Keep an unnumbered logical line intact for search; wrap only for display.
 	Number int    // Zero leaves the number column blank.
 	Gutter string // "│" before source, "┆" before output, empty for other rows.
 	Text   string // Styled.
@@ -116,13 +117,22 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	}
 	if block.Body != "" {
 		page.Text = block.Body
+		if block.Kind == "error" {
+			page.Text = livediff.Safe(block.Body, false)
+		}
 		gap()
 		rows := block.Rows
-		if rows == nil {
-			rows = func(width int) []string { return p.markdown(block.Body, width, block.Kind == "summary") }
-		}
-		for _, row := range rows(width) {
-			add(DialogLine{Text: row})
+		if block.Kind == "error" {
+			for line := range strings.SplitSeq(page.Text, "\n") {
+				add(DialogLine{Text: Red + line + Reset, Wrap: true})
+			}
+		} else {
+			if rows == nil {
+				rows = func(width int) []string { return p.markdown(block.Body, width, block.Kind == "summary") }
+			}
+			for _, row := range rows(width) {
+				add(DialogLine{Text: row})
+			}
 		}
 	}
 	var notes []string
@@ -278,6 +288,9 @@ func (d DialogPage) Indent(i int) int {
 func (d DialogPage) RowCount(i, width int) int {
 	line := d.Lines[i]
 	if line.Gutter == "" {
+		if line.Wrap {
+			return wrappedRows(line.Text, max(1, width))
+		}
 		return 1 // Notes and Markdown rows are laid out already.
 	}
 	return wrappedRows(line.Text, d.textWidth(width))
@@ -306,6 +319,9 @@ func wrappedRows(text string, width int) int {
 func (d DialogPage) Rows(i, width int) []string {
 	line := d.Lines[i]
 	if line.Gutter == "" {
+		if line.Wrap {
+			return Wrap(line.Text, max(1, width), true)
+		}
 		return []string{line.Text}
 	}
 	parts := Wrap(line.Text, d.textWidth(width), true)
@@ -318,6 +334,22 @@ func (d DialogPage) Rows(i, width int) []string {
 		rows[k] = Dim + strings.Repeat(" ", d.digits-len(number)) + number + " " + line.Gutter + Undim + " " + part
 	}
 	return rows
+}
+
+// MatchRow finds a case-insensitive substring in a logical line and locates
+// its first display row. Search must not lose text at visual wrap boundaries.
+func (d DialogPage) MatchRow(i, width int, query string) (int, bool) {
+	text := strings.ToLower(ansi.Strip(d.Lines[i].Text))
+	at := strings.Index(text, strings.ToLower(query))
+	if at < 0 {
+		return 0, false
+	}
+	if d.Lines[i].Wrap {
+		for _, first := range text[at:] {
+			return wrappedRows(text[:at]+string(first), max(1, width)) - 1, true
+		}
+	}
+	return 0, true
 }
 
 // DialogFrame is one frame of the output dialog, before layout.
@@ -428,6 +460,8 @@ func (p *Painter) DialogPageTitle(block Block, now time.Time, width int) string 
 			verb = p.thinkingHeader(block, max(1, width-7))
 		case "final":
 			verb = "Answer"
+		case "error":
+			verb = "Error"
 		default:
 			verb = "Message"
 		}

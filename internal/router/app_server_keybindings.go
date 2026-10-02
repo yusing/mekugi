@@ -43,7 +43,7 @@ func renderNativeKeybindings(width, height int) []string {
 			{"ctrl+b 1–5", "Focus pane"},
 			{"J (empty draft)", "Open journal"},
 			{"ctrl+b e", "Next live item"},
-			{"ctrl+b q", "Answer questions"},
+			{"ctrl+b q / !", "Questions / error details"},
 			{"ctrl+b ← / →", "Resize panes"},
 		}},
 		{"Transcript", [][2]string{

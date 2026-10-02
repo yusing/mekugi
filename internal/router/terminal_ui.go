@@ -207,6 +207,8 @@ func (u *terminalUI) key(key byte) error {
 			if u.main != nil {
 				u.main.openQuestions()
 			}
+		case '!':
+			u.openErrors()
 		case 'e':
 			u.nextLive()
 		case 'r':

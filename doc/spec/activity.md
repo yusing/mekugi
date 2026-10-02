@@ -22,8 +22,9 @@ execution. Static source recognition used for [execution previews](execution.md)
 and [change capture](changes.md) remains separate from native activity delivery.
 The host emits no item for a Code Mode cell itself. When a new cell result carries
 the host's `Script failed` header, the router adds one error row to that agent's
-activity with the first line of the host's trailing script error, so a script that
-fails before any nested tool call still shows. The result reaches the model
+activity with a bounded first-line preview of the host's trailing script error,
+so a script that fails before any nested tool call still shows. The complete error
+is retained separately for the shared content dialog. The result reaches the model
 unchanged, and failures from earlier requests are not shown again. Resumed
 history restores these rows from the retained rollout under
 [native UI resume](native_ui.md).

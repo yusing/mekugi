@@ -823,7 +823,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 	case "filter":
 		return filterRows(block.Body, width, min(block.cell("Run"), width/2))
 	case "error":
-		return liveActivityIndent(Wrap(Red+block.Body+Reset, width-2, false), Red+"✗"+Reset+" ")
+		return liveActivityIndent(ErrorRows(block, width-2), Red+"✗"+Reset+" ")
 	}
 	return p.Markdown(block.Body, width)
 }
@@ -1670,7 +1670,7 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 	case "compaction":
 		return Amber + "◉ Context compacted" + Reset
 	case "error":
-		return Red + "✗ " + firstLine(block.Body) + Reset
+		return Red + "✗ " + ErrorPreview(block.Body) + Reset
 	}
 	return firstLine(block.Body)
 }

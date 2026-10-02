@@ -444,10 +444,10 @@ func (d *outputDialog) find(step int) {
 	}
 	for k := 1; k <= n; k++ {
 		i := ((from+step*k)%n + n) % n
-		if strings.Contains(strings.ToLower(ansi.Strip(d.laid.Lines[i].Text)), d.query) {
+		if row, found := d.laid.MatchRow(i, d.laidKey.width, d.query); found {
 			d.match, d.missed = i, false
 			d.navigate(i, i+1, false)
-			d.top = max(0, min(d.starts[i]-d.rows/3, d.bottom()))
+			d.top = max(0, min(d.starts[i]+row-d.rows/3, d.bottom()))
 			return
 		}
 	}

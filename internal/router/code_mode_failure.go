@@ -5,12 +5,7 @@ import (
 	"encoding/json"
 	jsonv2 "encoding/json/v2"
 	"strings"
-
-	"github.com/yusing/mekugi/internal/livediff"
 )
-
-// codeModeFailureChars bounds the script error shown for a failed cell.
-const codeModeFailureChars = 240
 
 // observeCodeModeFailures annotates Code Mode cells that failed, such as on a
 // JavaScript syntax error. The host emits no item for the cell itself, so a
@@ -102,7 +97,8 @@ func codeModeReturnedNothing(raw json.RawMessage) bool {
 }
 
 // codeModeFailureText reads the host's failure header and, when the host
-// appended one as the final part, the first line of its script error.
+// appended one as the final part, its complete script error. Presentation
+// bounds the inline preview separately; the host result is never modified.
 func codeModeFailureText(texts []string) (string, bool) {
 	if len(texts) == 0 {
 		return "", false
@@ -113,20 +109,10 @@ func codeModeFailureText(texts []string) (string, bool) {
 	text := "Code Mode script failed"
 	if len(texts) > 1 {
 		if detail, ok := strings.CutPrefix(texts[len(texts)-1], "Script error:\n"); ok {
-			for line := range strings.SplitSeq(detail, "\n") {
-				if line = strings.TrimSpace(livediff.Safe(line, false)); line != "" {
-					text += ": " + clipCodeModeFailure(line)
-					break
-				}
+			if strings.TrimSpace(detail) != "" {
+				text += ": " + detail
 			}
 		}
 	}
 	return text, true
-}
-
-func clipCodeModeFailure(text string) string {
-	if len(text) <= codeModeFailureChars {
-		return text
-	}
-	return strings.ToValidUTF8(text[:codeModeFailureChars], "") + "…"
 }

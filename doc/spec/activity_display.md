@@ -152,6 +152,14 @@ dialog shows that same invocation duration; the total is never copied onto
 individual command rows.
 
 The shared content dialog captures keys and pointer events above both panes.
+Errors show a bounded first-line preview and a details link rather than an
+unbounded inline diagnostic. Clicking the error opens its complete retained text,
+including multiline Code Mode failures restored from history. `Ctrl-B !` opens
+the newest error in the focused Main or Activity transcript; Left/Right navigates
+its other retained errors, respecting the Activity agent filter. Error details
+render literally rather than as Markdown, and use the dialog's full-page copy
+and search controls. Terminal control sequences are sanitized for display and copy;
+the retained host error and stock tool result remain unchanged.
 Observed shell segments appear as command tabs, selectable by click or Left/Right.
 Tab paths use the shared front-truncation format, retaining nearby directories and
 filenames rather than an indistinguishable leading path prefix.

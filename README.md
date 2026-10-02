@@ -464,13 +464,17 @@ Herdr is optional and does not control Mekugi's internal panes.
 
 ### Output dialog
 
-Click a command, program, read, or long-content excerpt in Main or Activity to
+Click a command, program, read, error, or long-content excerpt in Main or Activity to
 open its full content in the shared dialog above the panes, without expanding
 the transcript. Read source and unified diffs use syntax colors. When
 `mekugi-exec` recorded a command list, each command gets its own tab with its
 output, exit status, start/end timestamps and measured duration. Older history
 without timing evidence shows no per-command duration.
 Without retained output boundaries, the dialog labels the output as combined.
+Errors keep a short inline preview. Click **details**, or focus Main or Activity
+and press `Ctrl-B` then `!`, to read the full error, including restored Code Mode
+failures. The keyboard shortcut opens the newest error; Left/Right reaches the
+other retained errors in that transcript. Host-omitted text cannot be recovered.
 
 - Left/Right or a click switches tabs. `j`/`k`, `PgUp`/`PgDn`, and `g`/`G`
   scroll; live output follows its tail until you scroll up.

@@ -1,0 +1,20 @@
+╭─ Error ──────── [×] ─╮
+│                      │
+├──────────────────────┤
+│ **Request failed**   │
+│                      │
+│ Provider rejected th │
+│ e request.           │
+│ ```json              │
+│ {"error": "permissio │
+│ n denied"}           │
+│ ```                  │
+│ Details: token lacks │
+│  scope.              │
+│                      │
+│                      │
+│                      │
+│                      │
+│                      │
+│                      │
+╰─ esc close · ↑↓ sc… ─╯

@@ -163,7 +163,10 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 			return []activityui.Block{block}
 		}
 	case "error":
-		return []activityui.Block{{Kind: "error", Body: text}}
+		if entry.ErrorDetail != "" {
+			text = livediff.Safe(entry.ErrorDetail, false)
+		}
+		return []activityui.Block{{Kind: "error", Body: text, Label: entry.Agent}}
 	case "compaction":
 		return []activityui.Block{{Kind: "compaction", Body: text}}
 	case "tool":

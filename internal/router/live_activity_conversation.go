@@ -511,6 +511,12 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		out.hang(gutter, gutter, p.Markdown(entry.Text, width-2))
 	default:
 		v.agentItem(&out, entry, blocks, first, width, thread)
+		if entry.Kind == "error" {
+			laid = blocks
+			for row := range out.snippets {
+				out.snippets[row] = liveActivitySnippet{run: entry.Seq, block: 0}
+			}
+		}
 	}
 	return liveActivityRun{lines: out.lines, blocks: laid, snippets: out.snippets, questions: out.questions, entryRows: entryRows}
 }
@@ -706,7 +712,8 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 	default:
 		for _, block := range blocks {
 			if block.Kind == "error" {
-				out.hang(gutter, gutter, activityui.Wrap(activityui.Red+block.Body+activityui.Reset, body, false))
+				block.Hovered = v.snippet == (liveActivitySnippet{run: entry.Seq, block: 0})
+				out.hang(gutter, gutter, activityui.ErrorRows(block, body))
 				continue
 			}
 			if block.Kind == "final" {

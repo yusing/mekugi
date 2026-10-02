@@ -14,6 +14,7 @@ type activityPaneEntry struct {
 	Agent        string
 	Kind         string
 	Text         string
+	ErrorDetail  string `json:",omitempty"` // Full error evidence; Text is the bounded preview.
 	CallID       string `json:",omitempty"`
 	Observed     time.Time
 
@@ -263,7 +264,7 @@ func (a *subagentActivity) takeNativeActivity(root string) []activityPaneEntry {
 			kept = append(kept, event)
 			continue
 		}
-		entries = append(entries, activityPaneEntry{Agent: node.name, Kind: event.kind, Text: event.raw, CallID: event.callID, Observed: event.observed,
+		entries = append(entries, activityPaneEntry{Agent: node.name, Kind: event.kind, Text: event.raw, ErrorDetail: event.errorDetail, CallID: event.callID, Observed: event.observed,
 			assignment: event.assignment, message: event.message, start: event.start})
 	}
 	clear(a.events[len(kept):])

@@ -1,0 +1,15 @@
+╭─ Error ──────────────────────────────────────────────── [×] ─╮
+│                                                              │
+├──────────────────────────────────────────────────────────────┤
+│ **Request failed**                                           │
+│                                                              │
+│ Provider rejected the request.                               │
+│ ```json                                                      │
+│ {"error": "permission denied"}                               │
+│ ```                                                          │
+│ Details: token lacks scope.                                  │
+│                                                              │
+│                                                              │
+│                                                              │
+│                                                              │
+╰─ esc close · ↑↓ scroll · y copy ─────────────────────────────╯
