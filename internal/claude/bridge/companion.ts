@@ -1,6 +1,6 @@
 import { request } from 'node:http';
 import { realpath } from 'node:fs/promises';
-import type { HookCallback, HookInput, Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { HookCallback, HookInput, Options, SDKMessage, SDKSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 
 export interface CompanionConfig { socket: string; token: string }
 interface Binding { runtime: 'claude'; session: string; workspace: string; agent?: string }
@@ -13,6 +13,7 @@ const object = (value: unknown): Record<string, unknown> | undefined =>
 // tool-result edits or model context, including when observation is unavailable.
 export function companion(config: CompanionConfig, cwd: string, notice: (text: string) => Promise<void>): {
   hooks: Options['hooks']; event: (event: SDKMessage) => Promise<void>;
+  resume: (info: SDKSessionInfo) => Promise<void>;
 } {
   const send = (payload: unknown, signal?: AbortSignal): Promise<void> => new Promise((resolve, reject) => {
     const data = JSON.stringify(payload);
@@ -83,6 +84,12 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
   };
   const matcher = {hooks: [hook], timeout: 6};
   return {
+    resume: async info => {
+      try {
+        if (!info.cwd) throw new Error('native resume workspace unavailable');
+        await send({operation: 'bind', binding: await binding({session_id: info.sessionId, cwd: info.cwd})});
+      } catch (error) { void notice(`Companion capture unavailable: ${String(error)}`).catch(() => {}); }
+    },
     hooks: {SessionStart: [matcher], SubagentStart: [matcher], PreToolUse: [{...matcher, matcher: 'Edit|Write|Bash'}],
       PostToolUse: [{...matcher, matcher: 'Edit|Write|Bash'}], PostToolUseFailure: [{...matcher, matcher: 'Edit|Write|Bash'}]},
     event: async event => {

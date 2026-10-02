@@ -1,6 +1,24 @@
 package claude
 
-import "testing"
+import (
+	"github.com/yusing/mekugi/internal/session"
+	"testing"
+)
+
+func TestVerifiedResumeIdentityBeforePrompt(t *testing.T) {
+	var a adapter
+	assertDecode(t, &a, `{"kind":"session","sessionID":"verified-native-session"}`, []session.Event{{Kind: "session", SessionID: "verified-native-session"}})
+	assertDecode(t, &a, `{"kind":"event","event":{"type":"system","subtype":"init","session_id":"verified-native-session","model":"native-model"}}`, []session.Event{{Kind: "session", SessionID: "verified-native-session", Model: "native-model"}})
+	if _, err := a.decode([]byte(`{"kind":"event","event":{"type":"system","subtype":"init","session_id":"different-native-session"}}`)); err == nil {
+		t.Fatal("resume switched native identities after restoring evidence")
+	}
+	if _, err := a.decode([]byte(`{"kind":"session","sessionID":""}`)); err == nil {
+		t.Fatal("empty verified identity accepted")
+	}
+	if len(a.tools) != 0 || len(a.streams) != 0 {
+		t.Fatal("resume evidence revived live tools")
+	}
+}
 
 func TestHistoryRestoresMixedBlocksWithoutLiveEffects(t *testing.T) {
 	var a adapter

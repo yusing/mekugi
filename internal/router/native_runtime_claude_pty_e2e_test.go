@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -52,7 +53,7 @@ func TestNativeRuntimeClaudePTYLive(t *testing.T) {
 	}
 	workspace, state := t.TempDir(), t.TempDir()
 	var content strings.Builder
-	for i := range 100 {
+	for i := range 400 {
 		fmt.Fprintf(&content, "NATIVE_PTY_ROW_%03d amber cedar violet\n", i)
 	}
 	path := filepath.Join(workspace, "native-runtime-claude-pty.txt")
@@ -60,7 +61,7 @@ func TestNativeRuntimeClaudePTYLive(t *testing.T) {
 	first.await("ready", func(s string) bool { return strings.Contains(s, "Ready") })
 	first.keys("\x02" + "2")
 	first.await("Diff focus", func(s string) bool { return strings.Contains(s, "2 Diff") })
-	prompt := fmt.Sprintf("Remember the private conversation marker NATIVE_PTY_MEMORY_CEDAR. Use your native Write tool exactly once to create %s with exactly 100 lines, numbered 000 through 099, each in the format NATIVE_PTY_ROW_000 amber cedar violet followed by a newline. Do not use Bash, Read, other tools or subagents. Then reply only NATIVE_PTY_COMPLETE. This is an authorized isolated acceptance fixture.", path)
+	prompt := fmt.Sprintf("Remember the private conversation marker NATIVE_PTY_MEMORY_CEDAR. Use your native Write tool exactly once to create %s with exactly 400 lines, numbered 000 through 399, each in the format NATIVE_PTY_ROW_000 amber cedar violet followed by a newline. Do not use Bash, Read, other tools or subagents. Then reply only NATIVE_PTY_COMPLETE. This is an authorized isolated acceptance fixture.", path)
 	first.keys("\x02" + "1")
 	first.paste(prompt)
 	first.keys("\x02" + "2")
@@ -72,20 +73,51 @@ func TestNativeRuntimeClaudePTYLive(t *testing.T) {
 		t.Error("UNPROVEN: first observed preview did not precede the actual filesystem write")
 	}
 	first.evidence("streaming")
+	initialRow := nativeClaudeMaxRow(first.screen.String())
+	first.await("continued streaming follow", func(s string) bool {
+		return strings.Contains(s, "live") && nativeClaudeMaxRow(s) > initialRow+30
+	})
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("continued preview following was not observed before filesystem effects")
+	}
+	first.evidence("streaming-follow")
+	mainBefore := nativeClaudeMainPane(first.screen.String())
+	beforeScroll := nativeClaudeMaxRow(first.screen.String())
+	first.keys("\x1b[5~")
+	first.await("streaming Diff scroll", func(s string) bool {
+		return strings.Contains(s, "live") && nativeClaudeMaxRow(s) >= 0 && nativeClaudeMaxRow(s) < beforeScroll
+	})
+	if nativeClaudeMainPane(first.screen.String()) != mainBefore {
+		t.Fatal("streaming Diff scrolling changed Main viewport")
+	}
+	first.evidence("streaming-scrolled")
+	first.resize(72, 22)
+	first.await("streaming resize", func(s string) bool {
+		return nativeClaudeNarrowDiff(s) && strings.Contains(s, "live") && nativeClaudeMaxRow(s) >= 0
+	})
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("streaming resize did not precede filesystem effects")
+	}
+	first.evidence("streaming-resized")
+	first.resize(120, 30)
 	first.await("native completion and saved reconciliation", func(s string) bool {
 		return strings.Contains(s, "Ready") && strings.Contains(s, "saved") && strings.Contains(nativeClaudeDiffPane(s), "│+NATIVE_PTY_ROW_")
 	})
 	first.evidence("saved")
 	first.keys("\x1b[H")
 	first.await("saved first row", func(s string) bool { return strings.Contains(nativeClaudeDiffPane(s), "│+NATIVE_PTY_ROW_000") })
+	mainBefore = nativeClaudeMainPane(first.screen.String())
 	first.keys("\x1b[6~")
 	first.await("independent Diff page down", func(s string) bool {
 		return strings.Contains(nativeClaudeDiffPane(s), "│+NATIVE_PTY_ROW_") && !strings.Contains(nativeClaudeDiffPane(s), "│+NATIVE_PTY_ROW_000")
 	})
 	first.evidence("scrolled")
+	if nativeClaudeMainPane(first.screen.String()) != mainBefore {
+		t.Fatal("independent Diff scrolling changed Main viewport")
+	}
 	first.resize(72, 22)
 	first.await("resized saved Diff", func(s string) bool {
-		return strings.Contains(s, "saved") && strings.Contains(nativeClaudeDiffPane(s), "│+NATIVE_PTY_ROW_")
+		return nativeClaudeNarrowDiff(s) && strings.Contains(s, "saved") && strings.Contains(nativeClaudeDiffPane(s), "│+NATIVE_PTY_ROW_")
 	})
 	first.evidence("resized")
 	first.keys("v")
@@ -153,7 +185,7 @@ func TestNativeRuntimeClaudePTYLive(t *testing.T) {
 	if b.Change != a.Change || !b.SavedContent {
 		t.Error("fresh-process saved capture identity changed")
 	}
-	t.Logf("CLI 2.1.287 / SDK 0.3.287: two real prompts; UI PIDs %d and %d; %d partial edits; preview preceded native result by %s; saved capture %s restored after resumed prompt; no resumed tools", first.cmd.Process.Pid, second.cmd.Process.Pid, a.Partials, time.Duration(a.ResultAt-previewAt), a.Change)
+	t.Logf("CLI 2.1.287 / SDK 0.3.287: two real prompts; UI PIDs %d and %d; %d partial edits; preview preceded native result by %s; saved capture %s restored before resumed prompt; no resumed tools", first.cmd.Process.Pid, second.cmd.Process.Pid, a.Partials, time.Duration(a.ResultAt-previewAt), a.Change)
 }
 
 type nativeClaudePTYResult struct {
@@ -492,6 +524,48 @@ func nativeClaudeDiffPane(frame string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func nativeClaudeMaxRow(frame string) int {
+	last := -1
+	for line := range strings.SplitSeq(nativeClaudeDiffPane(frame), "\n") {
+		_, rest, found := strings.Cut(line, "NATIVE_PTY_ROW_")
+		if found && len(rest) >= 3 {
+			if row, err := strconv.Atoi(rest[:3]); err == nil {
+				last = max(last, row)
+			}
+		}
+	}
+	return last
+}
+
+func nativeClaudeMainPane(frame string) string {
+	lines := strings.Split(frame, "\n")
+	start := strings.Index(lines[0], "┌ 2 Diff")
+	if start < 0 {
+		return ""
+	}
+	col := len([]rune(lines[0][:start]))
+	for i, line := range lines[:len(lines)-2] {
+		cells := []rune(line)
+		lines[i] = string(cells[:min(col, len(cells))])
+	}
+	return strings.Join(lines[:len(lines)-2], "\n")
+}
+
+func nativeClaudeNarrowDiff(frame string) bool {
+	return strings.HasPrefix(frame, "┌ 2 Diff") && !strings.Contains(frame, "┌ 1 Main")
+}
+
+func TestNativeRuntimeClaudePTYResizeAcknowledgement(t *testing.T) {
+	u, _ := runtimeTestUI(t)
+	u.shell.selectNativePane(1)
+	if nativeClaudeNarrowDiff(runtimeFrame(t, u, 120, 30)) {
+		t.Fatal("old wide layout acknowledged narrow resize")
+	}
+	if !nativeClaudeNarrowDiff(runtimeFrame(t, u, 72, 22)) {
+		t.Fatal("actual shared narrow Diff layout was not acknowledged")
+	}
 }
 
 // This is a harness state regression, not native-runtime acceptance or a UI snapshot.

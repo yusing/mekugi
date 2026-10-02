@@ -88,6 +88,10 @@ intent dispatch remains separate from Codex lifecycle control. Claude keeps its
 native permissions, configuration and execution; presentation owns no journal
 transactions, capture store or inference transport. Historical transcript events
 restore display only, never live argument buffers, approval requests or processes.
+Ordinary resume validates SDK session-history identity and workspace before ready,
+publishes that verified identity through the neutral session interface and binds
+the optional observation owner so saved captures load before new input. Later
+native initialization must match that identity; a mismatch terminates the client.
 An explicit resume-and-fork launch uses SDK `forkSession`; the native init event
 establishes the fork's new identity, not a fabricated Codex thread. Display history
 can come from the verified source session, but observation stores remain scoped to

@@ -10,9 +10,10 @@ import (
 )
 
 type adapter struct {
-	streams map[string]string
-	text    map[string]*textMessage
-	tools   map[toolBlock]*toolInput
+	resumeSession string
+	streams       map[string]string
+	text          map[string]*textMessage
+	tools         map[toolBlock]*toolInput
 }
 
 func (a *adapter) decode(data []byte) (events []session.Event, err error) {
@@ -23,6 +24,7 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		Value       string            `json:"value"`
 		Failed      bool              `json:"failed"`
 		Kind        string            `json:"kind"`
+		SessionID   string            `json:"sessionID"`
 		ID          string            `json:"id"`
 		Tool        string            `json:"tool"`
 		Text        string            `json:"text"`
@@ -41,6 +43,12 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		}
 	}()
 	switch frame.Kind {
+	case "session":
+		if frame.SessionID == "" {
+			return nil, fmt.Errorf("native resume identity unavailable")
+		}
+		a.resumeSession = frame.SessionID
+		return []session.Event{{Kind: "session", SessionID: frame.SessionID}}, nil
 	case "ready":
 		return []session.Event{{Kind: "ready", CommandInfo: frame.CommandInfo, Models: frame.Models}}, nil
 	case "settings":
@@ -117,6 +125,9 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 			return []session.Event{{Kind: "message", ID: e.UUID, Role: "Claude", Text: e.Content}}, nil
 		}
 		if e.Subtype == "init" {
+			if a.resumeSession != "" && e.Parent == "" && e.SessionID != a.resumeSession {
+				return nil, fmt.Errorf("native resumed session identity changed")
+			}
 			return []session.Event{{Kind: "session", SessionID: e.SessionID, Model: e.Model}}, nil
 		}
 	case "stream_event":

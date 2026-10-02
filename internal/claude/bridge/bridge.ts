@@ -116,8 +116,14 @@ process.on('SIGINT', stop);
 try {
   if (config.resume) {
     const info = await getSessionInfo(config.resume, {dir: config.cwd});
-    if (!info || !info.cwd || await realpath(info.cwd) !== await realpath(config.cwd)) {
+    if (!info || info.sessionId !== config.resume || !info.cwd || await realpath(info.cwd) !== await realpath(config.cwd)) {
       throw new Error('Resume session does not belong to the selected workspace');
+    }
+    // Verified native history establishes an ordinary resumed session before
+    // the first prompt. A fork must wait for its newly assigned native identity.
+    if (!config.forkSession) {
+      await observer?.resume(info);
+      await emit({kind: 'session', sessionID: info.sessionId});
     }
     const history = await getSessionMessages(config.resume, {dir: config.cwd, limit: 2001});
     for (const message of history.slice(0, 2000)) {

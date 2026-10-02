@@ -71,6 +71,18 @@ test('background mapping waits for either native terminal event, never root comp
   assert.deepEqual(notices, []);
 });
 
+test('verified native resume restores only matching workspace evidence before tools', async t => {
+  const {observer, payloads, notices, cwd} = await fixture(t);
+  const info = {sessionId: 'resume-session', cwd, summary: 'Native history', lastModified: 0};
+  await observer.resume(info);
+  assert.deepEqual(payloads, [{operation: 'bind', binding: {runtime: 'claude', session: 'resume-session', workspace: cwd}}]);
+  assert.deepEqual(notices, []);
+  await observer.resume({...info, cwd: undefined});
+  await observer.resume({...info, cwd: '/'});
+  assert.equal(payloads.length, 1);
+  assert.equal(notices.length, 2);
+});
+
 test('missing binding or task evidence fails observationally without changing hook decisions', async t => {
   const {observer, payloads, notices, cwd} = await fixture(t);
   const tool = {session_id: 'session', cwd, transcript_path: '/native/transcript', tool_use_id: 'bash-id', tool_name: 'Bash', tool_input: {command: 'original', run_in_background: true}};
