@@ -422,6 +422,7 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 		if text != "" {
 			entry.Kind, entry.Text = "progress", text
 			entry.native.wait = wait
+			entry.native.recovery = u.progressRecovery(text, info.ID, turn.ID, item.ID)
 			entry.native.phase = progressPhase
 			*entries = append(*entries, entry)
 		}

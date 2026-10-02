@@ -621,7 +621,9 @@ Every section is optional. Settings are read at startup and never rewritten.
   of improved model success or token savings. In the native UI, sliced plans show
   a countdown between successful turns; Esc cancels. `slice` and `auto` reset
   context before continuing, while `off` continues without resetting. An interrupted
-  reset may require manual continuation. See [compaction behavior](doc/spec/journal.md#router-answered-compaction).
+  reset may require manual continuation. Click **Context reset from journal** to
+  read the recovery message shown to the model. Older or expired messages are
+  marked unavailable. See [compaction behavior](doc/spec/journal.md#router-answered-compaction).
 - **Instructions:** Wrapped sessions disable Codex's `/goal` feature. Anything
   between `<!-- mekugi:omit -->` and `<!-- /mekugi:omit -->` in instruction files
   is omitted for the session; the files themselves are not changed. When

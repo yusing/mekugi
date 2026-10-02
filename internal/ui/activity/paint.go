@@ -633,7 +633,11 @@ func (p *Painter) blockRows(block Block, width int) []string {
 	}
 	switch block.Kind {
 	case "progress":
-		return Wrap(Dim+"• "+block.progressText(true)+Reset, width, false)
+		text := block.progressText(true)
+		if block.Label != "" && block.Hovered {
+			text = Underline(text)
+		}
+		return Wrap(Dim+"• "+text+Reset, width, false)
 	case "summary":
 		// Public reasoning shares one streaming block across providers.
 		if block.Label == "" {

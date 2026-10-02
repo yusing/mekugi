@@ -1,0 +1,18 @@
+╭─ Journal recovery · Context reset…  [×] ─╮
+│                                          │
+├──────────────────────────────────────────┤
+│ The exact model-visible recovery message │
+│ is unavailable for this reset. It was    │
+│ not retained or its retained evidence is │
+│ no longer readable.                      │
+│                                          │
+│                                          │
+│                                          │
+│                                          │
+│                                          │
+│                                          │
+│                                          │
+│                                          │
+│                                          │
+│                                          │
+╰─ ↑↓ scroll · / find · y copy · esc ──────╯

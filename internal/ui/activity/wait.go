@@ -12,7 +12,11 @@ func (b Block) ProgressText() string { return b.progressText(false) }
 
 func (b Block) progressText(styled bool) string {
 	var text strings.Builder
-	text.WriteString(livediff.Safe(b.Body, false))
+	body := b.Body
+	if b.Label != "" {
+		body = b.Label // Progress disclosures keep the full message in Body.
+	}
+	text.WriteString(livediff.Safe(body, false))
 	for i, target := range b.WaitTargets {
 		if i == 0 {
 			text.WriteString(" · ")

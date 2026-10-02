@@ -33,8 +33,20 @@ type journalCompactionRecord struct {
 }
 
 type journalCompactionItem struct {
-	Turn string `json:"turn"`
-	Item string `json:"item"`
+	Turn       string `json:"turn"`
+	Item       string `json:"item"`
+	ResponseID string `json:"response_id,omitempty"`
+}
+
+type journalCompactionRecovery struct {
+	Workspace  string `json:"workspace"`
+	Thread     string `json:"thread"`
+	ResponseID string `json:"response_id"`
+	Text       string `json:"text"`
+}
+
+func journalCompactionRecoveryName(workspace, thread, response string) string {
+	return fmt.Sprintf("compaction-%x.json", sha256.Sum256([]byte("recovery\x00"+journalKey(workspace, thread)+"\x00"+response)))
 }
 
 func journalCompactionName(workspace, thread string) string {
@@ -139,9 +151,19 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 			// A standalone manual turn owns one compaction lifecycle. Ordinary
 			// turns may own several, and buffered UI events cannot identify which
 			// item issued this HTTP request. Never infer that from the live sink.
-			item := journalCompactionItem{Turn: a.metadata.TurnID}
+			item := journalCompactionItem{Turn: a.metadata.TurnID, ResponseID: id}
 			if !slices.Contains(record.AnsweredItems, item) {
 				record.AnsweredItems = append(record.AnsweredItems, item)
+			}
+			// Save the exact model-visible message, not a future regeneration.
+			// Separate records keep later receipts small and preserve old resets.
+			recovery := journalCompactionRecovery{Workspace: workspace, Thread: a.threadID, ResponseID: id, Text: summary.Text}
+			data, err := json.Marshal(&recovery)
+			if err != nil {
+				return err
+			}
+			if err := store.writeManagedFile(journalCompactionRecoveryName(workspace, a.threadID, id), "compaction-pending-", data); err != nil {
+				return err
 			}
 		}
 		data, err := json.Marshal(&record)
@@ -193,7 +215,7 @@ func (s *mekugiReplayStore) bindStandaloneCompactionItem(ctx context.Context, wo
 		if record.Version != 1 || record.Workspace != workspace || record.Thread != thread {
 			return nil
 		}
-		pending := slices.Index(record.AnsweredItems, journalCompactionItem{Turn: turn})
+		pending := slices.IndexFunc(record.AnsweredItems, func(entry journalCompactionItem) bool { return entry.Turn == turn && entry.Item == "" })
 		if pending < 0 {
 			return nil
 		}
@@ -382,8 +404,56 @@ func (s *mekugiReplayStore) answeredCompactionItem(ctx context.Context, workspac
 		if err := json.Unmarshal(data, &record); err != nil {
 			return err
 		}
-		matched = record.Version == 1 && record.Workspace == workspace && record.Thread == thread && slices.Contains(record.AnsweredItems, journalCompactionItem{Turn: turn, Item: item})
+		matched = record.Version == 1 && record.Workspace == workspace && record.Thread == thread && slices.ContainsFunc(record.AnsweredItems, func(entry journalCompactionItem) bool { return entry.Turn == turn && entry.Item == item })
 		return nil
 	})
 	return err == nil && matched
+}
+
+// compactionRecovery reads only the original message bound to this exact host
+// item. Missing historical evidence never substitutes the current journal.
+func (s *mekugiReplayStore) compactionRecovery(ctx context.Context, workspace, thread, turn, item string) (string, error) {
+	if turn == "" || item == "" {
+		return "", nil
+	}
+	var text string
+	err := s.locked(ctx, func() error {
+		data, err := readManagedOutputFile(filepath.Join(s.directory, journalCompactionName(workspace, thread)))
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		var record journalCompactionRecord
+		if err := json.Unmarshal(data, &record); err != nil {
+			return err
+		}
+		if record.Version != 1 || record.Workspace != workspace || record.Thread != thread {
+			return errors.New("invalid compaction receipt identity")
+		}
+		for _, entry := range record.AnsweredItems {
+			if entry.Turn != turn || entry.Item != item || entry.ResponseID == "" {
+				continue
+			}
+			data, err := readManagedOutputFile(filepath.Join(s.directory, journalCompactionRecoveryName(workspace, thread, entry.ResponseID)))
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			var recovery journalCompactionRecovery
+			if err := json.Unmarshal(data, &recovery); err != nil {
+				return err
+			}
+			if recovery.Workspace != workspace || recovery.Thread != thread || recovery.ResponseID != entry.ResponseID || len(recovery.Text) > maxJournalSummaryBytes {
+				return errors.New("invalid compaction recovery identity or size")
+			}
+			text = recovery.Text
+			return nil
+		}
+		return nil
+	})
+	return text, err
 }

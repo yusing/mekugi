@@ -408,11 +408,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		v.journalCardLines(&out, entry, width)
 	case entry.Kind == "journal_event":
 		laid, entryRows = v.journalEventsItem(&out, first, last, width)
-	case entry.Agent == "Main" && entry.Kind == "progress":
-		for _, block := range blocks {
-			out.add(0, v.paintBlock(len(out.lines), 0, func() []string { return p.Block(block, width) })...)
-		}
-	case entry.Agent == "Main" && entry.Kind == "reasoning":
+	case entry.Agent == "Main" && (entry.Kind == "reasoning" || entry.Kind == "progress"):
 		var summaries []activityui.Block
 		for k := first; k <= last; k++ {
 			if v.visible(v.entries[k].activityPaneEntry) {
@@ -424,7 +420,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		}
 		laid = summaries
 		for index, block := range laid {
-			// Settled thinking shows its header; a click opens its dialog.
+			// Thinking and reset disclosures share the existing output dialog.
 			snippet := liveActivitySnippet{run: entry.Seq, block: index}
 			toggle := v.clickTarget(&block, snippet)
 			for _, row := range v.paintBlock(len(out.lines), 0, func() []string { return p.Block(block, width) }) {

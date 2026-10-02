@@ -214,6 +214,13 @@ Buffered manual standalone notifications bind their retained answer to the uniqu
 host item. Ordinary automatic compactions keep host wording because several can
 share one turn, and buffered UI observations do not identify the HTTP request's item.
 
+The native “Context reset from journal” row opens the shared scrollable dialog
+with the exact model-visible recovery message retained for that response. The
+message remains associated with its original thread, turn and item across later
+resets and resume; it is never regenerated from newer journal state. Older
+receipts or unreadable retained messages open an explicit unavailable notice.
+Provider compaction rows do not acquire a journal-recovery disclosure.
+
 The recovery hook suppresses duplicate injection only when Codex's latest
 compacted transcript record identifies that persisted response. Missing or
 unreadable transcript evidence, older host records without response IDs, and

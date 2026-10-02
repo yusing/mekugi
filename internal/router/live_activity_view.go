@@ -633,7 +633,7 @@ func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 // they do: operations, compact reasoning and collapsed narrative text open the shared dialog.
 // Under the pointer, the block underlines its count.
 func (v *liveActivityView) clickTarget(block *activityui.Block, snippet liveActivitySnippet) bool {
-	if outputBlock(*block) || (block.Kind == "summary" || block.Kind == "error") && strings.TrimSpace(block.Body) != "" {
+	if outputBlock(*block) || (block.Kind == "summary" || block.Kind == "error" || block.Kind == "progress" && block.Label != "") && strings.TrimSpace(block.Body) != "" {
 		block.Hovered = v.snippet == snippet
 		return true
 	}

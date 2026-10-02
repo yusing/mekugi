@@ -158,6 +158,7 @@ type liveActivityNativeItem struct {
 	thread, turn, item string
 	phase              string
 	wait               *activityui.Block // Structured wait progress is roster-only.
+	recovery           string            // Exact retained model-visible reset message, or an unavailable notice.
 	command, status    string
 	workdir            string // Display form of a command's directory outside the shown workspace.
 	searchResults      *int

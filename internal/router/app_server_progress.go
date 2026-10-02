@@ -48,6 +48,28 @@ func (u *appServerUI) progress(item appServerItem, method, thread, turn string) 
 	return text, wait, handled
 }
 
+func (u *appServerUI) progressRecovery(text, thread, turn, item string) string {
+	if text != "Context reset from journal" || thread != u.thread {
+		return ""
+	}
+	if u.proxy != nil && u.proxy.replayStore != nil {
+		for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
+			if sink != nil && sink.thread == thread {
+				if message, err := u.proxy.replayStore.compactionRecovery(u.ctx, sink.workspace, thread, turn, item); err == nil && message != "" {
+					return message
+				}
+			}
+		}
+	}
+	if d := u.reset; d != nil && d.thread == thread && d.compactTurn == turn && d.proxy != nil && d.proxy.replayStore != nil {
+		d.proxy.replayStore.bindStandaloneCompactionItem(u.ctx, d.workspace, thread, turn, item)
+		if message, err := d.proxy.replayStore.compactionRecovery(u.ctx, d.workspace, thread, turn, item); err == nil && message != "" {
+			return message
+		}
+	}
+	return "The exact model-visible recovery message is unavailable for this reset. It was not retained or its retained evidence is no longer readable."
+}
+
 func appServerWaitProgress(item appServerItem, method string) *activityui.Block {
 	if item.Type != "collabAgentToolCall" || item.Tool != "wait" {
 		return nil
