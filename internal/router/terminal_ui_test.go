@@ -19,8 +19,10 @@ func TestTerminalUIBatchKeepsSettlingTime(t *testing.T) {
 	defer u.shell.diffScreen.Close()
 	p := diffview.Preview{ID: "edit", Caller: "/root", Workspace: t.TempDir(), Status: diffview.PreviewEdit, Input: "source"}
 	u.shell.preview(p)
+	revealNativeDock(u.shell)
 	p.Complete = true
 	u.shell.preview(p)
+	revealNativeDock(u.shell)
 	now := time.Now()
 	if !u.shell.animating(now) || len(u.shell.liveDock.Order) != 1 {
 		t.Fatal("completed batch did not wait for another edit")
@@ -136,6 +138,7 @@ func TestTerminalUIMainLivePreservesActivity(t *testing.T) {
 	}
 	workspace := t.TempDir()
 	u.shell.preview(projectStockPatchPreview(t.Context(), workspace, diffview.Preview{Workspace: workspace, ID: "main-edit", Caller: "/root", Tool: applyPatchToolName, Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: idle-live.txt\n+unique-live-line\n*** End Patch"}))
+	revealNativeDock(u.shell)
 	u.agents.agents = []activityPaneAgent{{Name: "/root", Responding: true}}
 	frame := paint()
 	if u.shell.layout.agents.h == 0 || !strings.Contains(frame, "3 Activity") || !strings.Contains(frame, "unique-live-line") {
@@ -220,9 +223,12 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 						}
 					}
 					assertCollapsed()
-					preview := diffview.Preview{ID: "edit", Caller: caller, Tool: applyPatchToolName, Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: live.txt\n+live\n*** End Patch", Complete: true}
+					preview := diffview.Preview{ID: "edit", Caller: caller, Tool: applyPatchToolName, Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: live.txt\n+live\n*** End Patch"}
 					preview.Workspace = t.TempDir()
 					preview = projectStockPatchPreview(t.Context(), preview.Workspace, preview)
+					u.shell.preview(preview)
+					revealNativeDock(u.shell)
+					preview.Complete = true
 					u.shell.preview(preview)
 					now := time.Now()
 					u.shell.animating(now.Add(nativeDockMinimum - time.Millisecond))
@@ -234,6 +240,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					assertCollapsed()
 					preview.Complete = false
 					u.shell.preview(preview)
+					revealNativeDock(u.shell)
 					paint()
 					if len(u.shell.liveDock.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root" || !saved) {
 						t.Fatal("new batch did not respect the owning pane")
@@ -283,6 +290,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			assertFollow(paint(120, 40))
 			workspace := t.TempDir()
 			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, diffview.Preview{ID: "edit", Workspace: workspace, Caller: caller, Tool: applyPatchToolName, Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: follow.txt\n+live content\n*** End Patch"}))
+			revealNativeDock(u.shell)
 			assertLiveFollow := func(frame string) {
 				t.Helper()
 				body := strings.Join(strings.Split(frame, "\n")[:u.shell.layout.roster.y], "\n")
@@ -301,6 +309,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			u.shell.diffOpen = false
 			assertLiveFollow(paint(140, 32))
 			u.shell.preview(diffview.Preview{ID: "edit", Workspace: workspace})
+			revealNativeDock(u.shell)
 			assertFollow(paint(140, 32))
 			view.scrollKey(terminalui.PaneWheelDown)
 			assertFollow(paint(140, 32))

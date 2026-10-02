@@ -79,6 +79,7 @@ func TestUISnapshotNativeLiveToggle(t *testing.T) {
 	preview := diffview.Preview{ID: "edit", Workspace: t.TempDir(), Caller: "/root", Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: live.txt\n+Live edit still in progress\n*** End Patch"}
 	u.session.cwd = preview.Workspace
 	u.shell.preview(projectStockPatchPreview(t.Context(), preview.Workspace, preview))
+	revealNativeDock(u.shell)
 	for _, value := range []string{"off", "on"} {
 		appServerTestKeys(t, u, "/live\r")
 		if err := u.paint(screen, 100, 28); err != nil {
@@ -107,6 +108,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			workspace := t.TempDir()
 			preview := diffview.Preview{ID: "edit", Workspace: workspace, Caller: caller, Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: a.txt\n+VISIBLE_EDIT\n*** End Patch"}
 			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, preview))
+			revealNativeDock(u.shell)
 			if caller != "/root" {
 				u.shell.journalOpen = false
 				if width < 100 {
@@ -133,6 +135,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			appServerTestKeys(t, u, "/live\r")
 			preview.Complete = true
 			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, preview))
+			revealNativeDock(u.shell)
 			u.shell.animating(time.Now().Add(time.Hour))
 			appServerTestKeys(t, u, "/live\r")
 			if strings.Contains(paint(), "VISIBLE_EDIT") {

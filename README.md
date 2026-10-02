@@ -284,7 +284,8 @@ Mekugi differs in these ways:
   Interrupt returns unsent input to the composer without automatically resending
   it. Interrupting an uncommitted first message leaves an empty transcript.
 - **Live diffs.** Edits temporarily replace Main's transcript or the editing
-  agent's Activity transcript, leaving other agents visible.
+  agent's Activity transcript, leaving other agents visible. Brief edits finish
+  without opening this temporary view; their saved diffs remain available.
   Ctrl-B e cycles and pins files; Ctrl-B r resumes Main's live following. Completed
   edits stay together until the batch settles, then the transcript returns.
   `/live` toggles the view; `/live on` or `/live off` applies directly for the

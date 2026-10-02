@@ -1,0 +1,28 @@
+┌ 1 Main ────────────────────────────────────────┐┌ 3 Activity ──────────────────────────── FOLLOW ┐
+│LIVE · 1 file                                   ││editor                                 12:00:00 │
+│  main · ◐ A small.txt +40 -0                   │││ EDITOR_TRANSCRIPT                             │
+│  26│+small_line_26                             ││                                                │
+│  27│+small_line_27                             ││reviewer                               12:00:00 │
+│  28│+small_line_28                             │││ OTHER_ACTIVITY remains readable               │
+│  29│+small_line_29                             ││                                                │
+│  30│+small_line_30                             ││                                                │
+│  31│+small_line_31                             ││                                                │
+│  32│+small_line_32                             ││                                                │
+│  33│+small_line_33                             ││                                                │
+│  34│+small_line_34                             ││                                                │
+│  35│+small_line_35                             ││                                                │
+│  36│+small_line_36                             ││                                                │
+│  37│+small_line_37                             ││                                                │
+│  38│+small_line_38                             ││                                                │
+│  39│+small_line_39                             ││                                                │
+│▎ 40│+small_line_40                             ││                                                │
+│                                                ││                                                │
+│╭─ Ready ──────────────────────────────────────╮││                                                │
+││ ❯                                            │││                                                │
+│╰───────────────── snapshot-model (high) • 0% ─╯││                                                │
+└────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
+─ 4 Agents · 2 ─────────────────────────────────────────────────────────────────────────────────────
+ ● editor  idle                                                                                  0%
+ ● reviewer  idle                                                                                0%
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes

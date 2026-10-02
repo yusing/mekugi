@@ -609,6 +609,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 			p.add("stream "+name, func() {
 				preview := projectStockPatchPreview(p.ui.ctx, p.workspace, diffview.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.path(edit.thread), Tool: applyPatchToolName, Status: diffview.PreviewEdit, Input: input})
 				p.ui.shell.applyDiff(p.ui.ctx, liveDiffEvent{Kind: "preview", Preview: &preview})
+				revealNativeDock(p.ui.shell)
 			})
 		}
 		if !more {
@@ -622,6 +623,7 @@ func (p *nativePreview) stream(name string, edits ...nativePreviewEdit) {
 func (p *nativePreview) apply(edit nativePreviewEdit) {
 	preview := projectStockPatchPreview(p.ui.ctx, p.workspace, diffview.Preview{ID: edit.item, Workspace: p.workspace, Thread: edit.thread, Caller: p.ui.session.path(edit.thread), Tool: applyPatchToolName, Status: diffview.PreviewEdit, Input: edit.patch, Complete: true})
 	p.ui.shell.applyDiff(p.ui.ctx, liveDiffEvent{Kind: "preview", Preview: &preview})
+	revealNativeDock(p.ui.shell)
 	change := edit.change(-1)
 	item := map[string]any{"id": edit.item, "type": "fileChange", "status": "inProgress", "changes": []any{change}}
 	p.notify("item/started", map[string]any{"threadId": edit.thread, "turnId": p.active[edit.thread], "item": item})

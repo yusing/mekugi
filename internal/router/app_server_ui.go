@@ -253,6 +253,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						u.dirty = true
 					case <-diffGap:
 						u.shell.liveDock = diffview.PreviewPane{}
+						clear(u.shell.livePending)
 						sub = u.shell.auto.events.subscribe()
 						diffEvents, diffGap, diffReady = sub.events, sub.gap, sub.previewReady
 						u.dirty = true

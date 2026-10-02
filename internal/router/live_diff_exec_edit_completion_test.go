@@ -76,6 +76,7 @@ func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
 		if event.Preview != nil {
 			completed = completed || event.Preview.Complete
 			u.shell.preview(*event.Preview)
+			revealNativeDock(u.shell)
 		}
 	}
 	if !completed || len(u.shell.liveDock.Order) != 0 {
@@ -196,8 +197,10 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 	workspace := t.TempDir()
 	preview := diffview.Preview{ID: "running:edit-then-test", Workspace: workspace, Thread: "thread", Caller: "/root", Tool: nativeExecCommandToolName, Status: diffview.PreviewRunning, Input: "observed edit"}
 	u.shell.preview(preview)
+	revealNativeDock(u.shell)
 	preview.Complete = true
 	u.shell.preview(preview)
+	revealNativeDock(u.shell)
 	if u.shell.liveDock.Live() != 0 || u.status != "Working" {
 		t.Fatal("edit completion changed process status or retained an active dock")
 	}
@@ -215,6 +218,7 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 	}
 	// A final host observation must not create a second, late completion card.
 	u.shell.preview(diffview.Preview{ID: "late:edit-then-test", Workspace: workspace, Tool: nativeExecCommandToolName, Complete: true, Status: diffview.PreviewRunning})
+	revealNativeDock(u.shell)
 	if len(u.shell.liveDock.Order) != 0 {
 		t.Fatal("late shell completion resurrected the dock")
 	}

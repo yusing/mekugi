@@ -70,6 +70,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	for _, preview := range []diffview.Preview{main, child} {
 		auto.events.publishPreview(preview, false)
 		u.shell.preview(preview)
+		revealNativeDock(u.shell)
 	}
 	queued := main
 	queued.ID, queued.Complete, queued.Evaluated, queued.Tool = "queued-final", true, true, applyPatchToolName

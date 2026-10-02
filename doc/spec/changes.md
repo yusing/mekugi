@@ -435,6 +435,12 @@ an execution or launch request with no stream content. Agent activity can open
 independently without reserving an empty live-input area. Explicitly focusing
 the diff pane still opens it on demand.
 
+Native transcript-replacing live docks defer a new caller's first reveal by
+300 ms. Completion or withdrawal before reveal does not open a dock; captured
+changes remain available through Activity and saved diff. Once visible, the
+caller's burst updates without another reveal delay and retains its normal quiet
+settling interval.
+
 The router publishes to one in-process UI mailbox without waiting for rendering.
 Replaceable previews retain only the latest frame per call; a mailbox that falls
 behind resynchronizes from durable changes and retained display state.

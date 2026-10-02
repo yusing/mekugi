@@ -36,6 +36,7 @@ type terminalUI struct {
 	diffOpen                                       bool
 	diffUnseen                                     bool // Saved changes arrived while Activity held the right column.
 	liveDock                                       diffview.PreviewPane
+	livePending                                    map[string]nativePendingPreview
 	liveHidden                                     bool // Presentation only, local to this frontend session.
 	prefix                                         bool
 	sequenceAt                                     time.Time

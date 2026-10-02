@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -17,10 +18,16 @@ import (
 // Live edits temporarily replace their caller's transcript, never another pane.
 const (
 	nativeDockMinimum = 1500 * time.Millisecond // Quiet interval before a completed caller batch closes.
+	nativeDockReveal  = 300 * time.Millisecond  // Short edits never replace the transcript just to disappear.
 	nativeRosterRows  = 4                       // Unfocused roster rows.
 	nativeRosterShare = 0.4                     // Focused roster share of the screen.
 	nativeFramedRows  = 8                       // Below this, panes drop their frames.
 )
+
+type nativePendingPreview struct {
+	preview diffview.Preview
+	since   time.Time
+}
 
 // A Main excerpt carries an Activity identity, not a nearby question or run.
 func (u *terminalUI) openActivityReply(seq uint64) bool {
@@ -46,11 +53,25 @@ func (u *terminalUI) preview(preview diffview.Preview) {
 	if preview.Caller == "" && preview.Workspace != "" {
 		preview.Caller = "/root"
 	}
-	// A shell projection first discovered at completion is no longer a live
-	// stream. Keep its captured receipt and saved diff, without flashing a dock.
-	if preview.Complete && (preview.Tool == nativeExecCommandToolName || preview.Tool == "exec") && dock.Views[preview.ID] == nil {
+	// Already visible callers retain their burst, without another reveal delay.
+	// A call completed or withdrawn before first reveal never opens a dock.
+	if dock.Views[preview.ID] == nil && !slices.Contains(dock.Callers(), preview.Caller) {
+		if preview.Complete || preview.Workspace == "" || preview.Status == "" && len(preview.Files) == 0 && preview.Input == "" {
+			delete(u.livePending, preview.ID)
+			return
+		}
+		if u.livePending == nil {
+			u.livePending = make(map[string]nativePendingPreview)
+		}
+		pending, exists := u.livePending[preview.ID]
+		if !exists {
+			pending.since = time.Now()
+		}
+		pending.preview = preview
+		u.livePending[preview.ID] = pending
 		return
 	}
+	delete(u.livePending, preview.ID)
 	dock.Update(preview)
 }
 
@@ -69,6 +90,7 @@ func (u *terminalUI) applyNativeDiff(ctx context.Context, event liveDiffEvent) {
 	case "coverage":
 		if strings.HasPrefix(event.Status, "RECONNECTING:") {
 			u.liveDock = diffview.PreviewPane{}
+			clear(u.livePending)
 		}
 	case "change":
 		u.diffUnseen = u.diffUnseen || !u.diffOpen
@@ -86,8 +108,16 @@ func (u *terminalUI) applyNativeDiff(ctx context.Context, event liveDiffEvent) {
 
 // animating keeps frames coming until each caller's completed burst expires.
 func (u *terminalUI) animating(now time.Time) bool {
+	for _, pending := range slices.SortedFunc(maps.Values(u.livePending), func(a, b nativePendingPreview) int {
+		return a.since.Compare(b.since)
+	}) {
+		if now.Sub(pending.since) >= nativeDockReveal {
+			u.liveDock.Update(pending.preview)
+			delete(u.livePending, pending.preview.ID)
+		}
+	}
 	changed := u.liveDock.ExpireBatches(now, nativeDockMinimum)
-	return changed || len(u.liveDock.Order) > 0
+	return changed || len(u.liveDock.Order) > 0 || len(u.livePending) > 0
 }
 
 // nextLive cycles files in the focused caller's retained batch.

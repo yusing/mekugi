@@ -23,6 +23,11 @@ func (u *appServerUI) endTurnPreviews(thread, turn string) {
 		}
 	}
 	if u.shell != nil {
+		for id, pending := range u.shell.livePending {
+			if pending.preview.Thread == thread && pending.preview.Turn == turn {
+				delete(u.shell.livePending, id)
+			}
+		}
 		for _, id := range slices.Clone(u.shell.liveDock.Order) {
 			view := u.shell.liveDock.Views[id]
 			if view != nil && view.Current.Thread == thread && view.Current.Turn == turn {

@@ -159,12 +159,14 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 		t.Fatal("app-server reconstructed a duplicate projection")
 	}
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
+	revealNativeDock(u.shell)
 	card := u.shell.liveDock.Views["patch"].Current
 	if len(card.Files) != 1 || !strings.Contains(card.Files[0].Diff, "+package b") || strings.Contains(card.Status, "cannot be projected") {
 		t.Fatalf("shared preview lost: %+v", card)
 	}
 	preview.Complete = true
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
+	revealNativeDock(u.shell)
 	if !u.shell.liveDock.Views["patch"].Complete {
 		t.Fatal("shared completion lost")
 	}
@@ -177,11 +179,13 @@ func TestAppServerSessionDocksSharedPreviewsByCaller(t *testing.T) {
 	}
 	preview.ID, preview.Thread, preview.Caller, preview.Tool = "exec", "child", "/root/worker", nativeExecCommandToolName
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
+	revealNativeDock(u.shell)
 	if u.shell.liveDock.Views["exec"] != nil {
 		t.Fatal("completion-only shell preview flashed a dock")
 	}
 	preview.Complete = false
 	u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview})
+	revealNativeDock(u.shell)
 	if u.shell.liveDock.Views["exec"] == nil {
 		t.Fatal("child preview missing from shared dock")
 	}
