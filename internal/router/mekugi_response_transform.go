@@ -739,17 +739,11 @@ func (t *mekugiResponseTransform) observeStockExecCommand(item *responsesItem) e
 // write outside its source-named scope. Neutral readers take no checkpoint;
 // without one, an unscoped call stays unobserved as before.
 func (t *mekugiResponseTransform) snapshotExecObservation(observation *execObservation, observed bool) (*execObservation, bool) {
-	if observation != nil && observation.Class != execNeutral.String() && t.proxy != nil && t.proxy.replayStore != nil {
-		if tree := t.proxy.replayStore.snapshots.checkpoint(t.ctx, t.directory); tree != "" {
-			observation.Tree = tree
-			observation.Roots = execAddRoot(observation.Roots, t.directory)
-			return observation, true
-		}
+	var store *mekugiReplayStore
+	if t.proxy != nil {
+		store = t.proxy.replayStore
 	}
-	if !observed {
-		return nil, false
-	}
-	return observation, true
+	return snapshotObservedWorkspace(t.ctx, store, t.directory, observation, observed)
 }
 
 func (t *mekugiResponseTransform) execCaptureEnvironment(patches []nativePatchObservation) execCaptureEnv {

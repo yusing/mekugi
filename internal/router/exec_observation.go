@@ -297,6 +297,15 @@ func captureExecObservation(commands []execCommandInput, dynamic, codeMode bool,
 	if len(commands) == 0 && !dynamic {
 		return nil, false
 	}
+	return captureObservationWithinBudget(func() (*execObservation, bool) {
+		return captureExecObservationWithin(commands, dynamic, codeMode, env)
+	}, func() *execObservation { return incompleteExecCapture(commands, codeMode, env) })
+}
+
+// captureObservationWithinBudget never admits a baseline completed after the
+// host can proceed. Native path adapters and shell classification share its
+// bounded worker pool and deadline, independently of execution authority.
+func captureObservationWithinBudget(capture func() (*execObservation, bool), incomplete func() *execObservation) (*execObservation, bool) {
 	deadline := time.Now().Add(execCaptureHold)
 	type result struct {
 		observation *execObservation
@@ -309,11 +318,11 @@ func captureExecObservation(commands []execCommandInput, dynamic, codeMode bool,
 	case execCaptureSlots <- struct{}{}:
 		go func() {
 			defer func() { <-execCaptureSlots }()
-			observation, observed := captureExecObservationWithin(commands, dynamic, codeMode, env)
+			observation, observed := capture()
 			done <- result{observation, observed}
 		}()
 	case <-timer.C:
-		return incompleteExecCapture(commands, codeMode, env), true
+		return incomplete(), true
 	}
 	select {
 	case result := <-done:
@@ -322,8 +331,7 @@ func captureExecObservation(commands []execCommandInput, dynamic, codeMode bool,
 		}
 	case <-timer.C:
 	}
-	// Late reads never enter evidence: the host may already be writing by then.
-	return incompleteExecCapture(commands, codeMode, env), true
+	return incomplete(), true
 }
 
 // Isolate potentially stalled filesystem syscalls from forwarding while keeping
@@ -935,6 +943,8 @@ func renderExecReview(beforePath, afterPath string, before, after execFileSnapsh
 // execReconcileEnv identifies paths claimed by overlapping calls, and the
 // workspace snapshot changes outside the captured scope.
 type execReconcileEnv struct {
+	before   map[string]execFileSnapshot
+	observed map[string]execFileSnapshot
 	excluded []string
 	snapshot []execSnapshotChange
 }
@@ -947,7 +957,10 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 	complete = true
 	coverage = execCoverageExact
 	budget := maxExecContentBytes
-	after := make(map[string]execFileSnapshot, len(observation.Files))
+	after := env.observed
+	if after == nil {
+		after = make(map[string]execFileSnapshot, len(observation.Files))
+	}
 	metadata := make(map[string]execFileSnapshot, len(observation.Files))
 	// record keeps one path's before/after evidence as a change, or as an
 	// incomplete review when either side could not be read.
@@ -995,6 +1008,9 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 		record(before, current)
 	}
 	for _, before := range observation.Files {
+		if claimed, ok := env.before[before.Path]; ok {
+			before = claimed
+		}
 		compare(before)
 	}
 	omitted := func(path string) bool {
@@ -1081,7 +1097,18 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 	}
 	for _, snapshot := range env.snapshot {
 		if !claimed(snapshot.before.Path) {
+			if endpoint, ok := env.before[snapshot.before.Path]; ok {
+				snapshot.before = endpoint
+			}
 			record(snapshot.before, snapshot.after)
+			after[snapshot.before.Path] = snapshot.after
+		}
+	}
+	// A later overlapping window may restore its original snapshot tree. Compare
+	// already-recorded endpoints even when diff-tree reports no raw difference.
+	for _, endpoint := range env.before {
+		if _, captured := after[endpoint.Path]; !captured {
+			compare(endpoint)
 		}
 	}
 	// A deletion and an addition with identical content form one move. Empty
@@ -1414,6 +1441,58 @@ func execDerivedUpstreamItem(derivedCallID, arguments string) map[string]json.Ra
 	}
 }
 
+// reconcileObservedWindow shares scope comparison and overlap attribution across
+// native runtimes. The caller holds the snapshot serialization lock through durable
+// publication; this function neither interprets host results nor executes tools.
+func reconcileObservedWindow(ctx context.Context, store *mekugiReplayStore, windows *execWindowRegistry, workspace string, refs []string, observation execObservation) ([]mekugi.ReviewFile, bool, *execOutcome) {
+	view := windows.close(refs...)
+	background := slices.Compact(slices.Sorted(slices.Values(view.background)))
+	env := execReconcileEnv{excluded: view.excluded, before: view.namedClaims}
+	if view.named {
+		env.observed = make(map[string]execFileSnapshot)
+	}
+	snapshotErr := ""
+	if observation.Tree != "" && view.snapshot && store != nil {
+		var claims workspaceSnapshotClaims
+		var err error
+		env.snapshot, claims, err = store.snapshots.since(ctx, workspace, observation.Tree, view.claims)
+		if err != nil {
+			snapshotErr = err.Error()
+		}
+		windows.claim(refs, claims)
+	}
+	reviews, complete, coverage, unswept := reconcileExecObservation(observation, env)
+	if view.named {
+		windows.claimNamed(refs, env.observed)
+	}
+	if snapshotErr != "" && coverage == execCoverageExact {
+		// Effects outside the named scope went unobserved.
+		coverage = execCoveragePartial
+	}
+	outcome := &execOutcome{
+		Class: observation.Class, Labels: observation.Labels, Coverage: coverage, Unswept: unswept,
+		ScopeReason: observation.Reason,
+		CodeMode:    observation.CodeMode, Overlaps: view.overlaps, Background: background,
+	}
+	outcome.Scope = observation.scopePaths()
+	if len(env.before) > 0 {
+		for path := range env.before {
+			if !slices.Contains(outcome.Scope, path) {
+				outcome.Scope = append(outcome.Scope, path)
+			}
+		}
+		slices.Sort(outcome.Scope)
+		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; overlapping endpoint baseline", "; ")
+	}
+	if snapshotErr != "" {
+		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; workspace snapshot unavailable: "+snapshotErr, "; ")
+	}
+	if observation.RepeatedPaths {
+		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; intermediate writes unobserved (call-window comparison only)", "; ")
+	}
+	return reviews, complete, outcome
+}
+
 // finalizeExecObservations persists the observed effect of terminal command
 // results. Members are parallel siblings that share one record, keyed by the
 // first; the others keep a record naming it. An empty effect is retained
@@ -1458,36 +1537,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		// concurrent finalizations cannot both record one effect.
 		defer p.replayStore.snapshots.serialize(workspace)()
 	}
-	view := p.execWindows.close(refs...)
-	background := slices.Compact(slices.Sorted(slices.Values(view.background)))
-	env := execReconcileEnv{excluded: view.excluded}
-	snapshotErr := ""
-	if observation.Tree != "" && view.snapshot && p.replayStore != nil {
-		var claims workspaceSnapshotClaims
-		var err error
-		env.snapshot, claims, err = p.replayStore.snapshots.since(ctx, workspace, observation.Tree, view.claims)
-		if err != nil {
-			snapshotErr = err.Error()
-		}
-		p.execWindows.claim(refs, claims)
-	}
-	reviews, complete, coverage, unswept := reconcileExecObservation(observation, env)
-	if snapshotErr != "" && coverage == execCoverageExact {
-		// Effects outside the named scope went unobserved.
-		coverage = execCoveragePartial
-	}
-	outcome := &execOutcome{
-		Class: observation.Class, Labels: observation.Labels, Coverage: coverage, Unswept: unswept,
-		ScopeReason: observation.Reason,
-		CodeMode:    observation.CodeMode, Overlaps: view.overlaps, Background: background,
-	}
-	outcome.Scope = observation.scopePaths()
-	if snapshotErr != "" {
-		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; workspace snapshot unavailable: "+snapshotErr, "; ")
-	}
-	if observation.RepeatedPaths {
-		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; intermediate writes unobserved (call-window comparison only)", "; ")
-	}
+	reviews, complete, outcome := reconcileObservedWindow(ctx, p.replayStore, p.execWindows, workspace, refs, observation)
 	var reports, failureReports []string
 	var hostResults []nativeToolResult
 	for index, member := range members {
@@ -1741,4 +1791,20 @@ func execLiteralCommand(args []*sitter.Node, source []byte, directory, sessionSh
 		arguments[key] = text
 	}
 	return execCommandArguments(string(mustMarshalJSON(arguments)), directory, sessionShell)
+}
+
+// snapshotObservedWorkspace belongs to capture, not Responses dispatch. Native
+// adapters use the same private snapshot owner and reader/writer classification.
+func snapshotObservedWorkspace(ctx context.Context, store *mekugiReplayStore, workspace string, observation *execObservation, observed bool) (*execObservation, bool) {
+	if observation != nil && observation.Class != execNeutral.String() && store != nil {
+		if tree := store.snapshots.checkpoint(ctx, workspace); tree != "" {
+			observation.Tree = tree
+			observation.Roots = execAddRoot(observation.Roots, workspace)
+			return observation, true
+		}
+	}
+	if !observed {
+		return nil, false
+	}
+	return observation, true
 }

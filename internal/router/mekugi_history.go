@@ -23,8 +23,9 @@ const (
 // Exported field names are the durable JSON schema. Unexported fields are never
 // serialized and durableHistory clears them before immutable comparisons.
 type mekugiHistory struct {
-	ToolName string
-	PluginID string
+	ToolName          string
+	NativeObservation *nativeObservationRecord `json:",omitempty"`
+	PluginID          string
 
 	Script          string
 	Root            string

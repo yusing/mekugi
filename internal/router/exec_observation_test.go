@@ -210,7 +210,12 @@ func TestExecObservationBoundsEncodedCapture(t *testing.T) {
 	// the bound.
 	writeTestFile(t, filepath.Join(workspace, "page.html"), strings.Repeat("\x01", 2<<20))
 	writeTestFile(t, filepath.Join(workspace, "small"), "kept\n")
-	observation := observeTestCommand(t, workspace, "touch page.html small")
+	// This case exercises encoded-size bounds, not wall-clock admission. Race
+	// instrumentation can exceed the production hold while encoding control bytes.
+	observation, observed := captureExecObservationWithin([]execCommandInput{{Command: "touch page.html small", Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{})
+	if !observed {
+		t.Fatal("bounded source scope was not captured")
+	}
 	if size := len(mustMarshalJSON(observation)); size > maxExecObservationBytes {
 		t.Fatalf("encoded capture is %d bytes", size)
 	}

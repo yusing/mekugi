@@ -31,7 +31,11 @@ type execWindow struct {
 	previewCancel context.CancelFunc
 	// claims are snapshot states that overlapping calls already recorded.
 	// This window's snapshot comparison starts from them.
-	claims workspaceSnapshotClaims
+	named         bool
+	endpointScope []string
+	endpointWide  bool
+	namedClaims   map[string]execFileSnapshot
+	claims        workspaceSnapshotClaims
 }
 
 type execWindowRegistry struct {
@@ -122,8 +126,10 @@ type execWindowView struct {
 	background []string
 	// claims merge the windows' own claims; snapshot reports whether every
 	// window is known and not background.
-	claims   workspaceSnapshotClaims
-	snapshot bool
+	claims      workspaceSnapshotClaims
+	named       bool
+	namedClaims map[string]execFileSnapshot
+	snapshot    bool
 }
 
 func execRootsMeet(a, b []string) bool {
@@ -164,6 +170,11 @@ func (r *execWindowRegistry) close(refs ...string) execWindowView {
 			}
 			selves = append(selves, window)
 			view.claims = view.claims.merge(window.claims)
+			view.named = view.named || window.named
+			if view.namedClaims == nil {
+				view.namedClaims = make(map[string]execFileSnapshot)
+			}
+			maps.Copy(view.namedClaims, window.namedClaims)
 		}
 	}
 	// A background window, or one lost to a restart or eviction, may span
@@ -239,4 +250,30 @@ func execBackgroundLabel(session string) string {
 		return "background cell " + id
 	}
 	return "a background command"
+}
+
+// claimNamed advances overlapping native call baselines to the exact endpoint
+// already recorded. It is display/capture composition, not per-write attribution.
+func (r *execWindowRegistry) claimNamed(refs []string, states map[string]execFileSnapshot) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var roots []string
+	for _, ref := range refs {
+		if w := r.find(ref); w != nil {
+			roots = append(roots, w.roots...)
+		}
+	}
+	for _, w := range r.windows {
+		if !w.named || !w.closed.IsZero() || slices.Contains(refs, w.ref) || !execRootsMeet(w.roots, roots) {
+			continue
+		}
+		if w.namedClaims == nil {
+			w.namedClaims = make(map[string]execFileSnapshot)
+		}
+		for path, state := range states {
+			if slices.Contains(w.endpointScope, path) || w.endpointWide && slices.ContainsFunc(w.roots, func(root string) bool { return execPathWithin(path, root) }) {
+				w.namedClaims[path] = state
+			}
+		}
+	}
 }

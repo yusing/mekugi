@@ -1,0 +1,183 @@
+package router
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	json "encoding/json/v2"
+	"errors"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+// ObservationEndpoint is an invocation-private capability held by the SDK bridge.
+// It is not placed in Claude's environment or model-visible tool configuration.
+type ObservationEndpoint struct {
+	Socket string `json:"socket"`
+	Token  string `json:"token"`
+}
+
+// ObservationService provides only observational operations. It exposes no tool
+// executor, mutation command, permission decision or inference transport.
+type ObservationService struct {
+	owner     *nativeObservationOwner
+	server    *http.Server
+	directory string
+	endpoint  ObservationEndpoint
+}
+
+type observationRequest struct {
+	Operation string              `json:"operation"`
+	Binding   ObservationBinding  `json:"binding,omitzero"`
+	Call      ObservationCall     `json:"call,omitzero"`
+	Terminal  ObservationTerminal `json:"terminal,omitzero"`
+	Task      observationTask     `json:"task,omitzero"`
+}
+
+type observationTask struct {
+	ID      string `json:"id"`
+	CallID  string `json:"callID,omitempty"`
+	Session string `json:"session"`
+	Status  string `json:"status"`
+	Report  string `json:"report,omitempty"`
+}
+
+// StartObservationService is opt-in. Presentation-only launches never call it.
+func StartObservationService(ctx context.Context, runtime, workspace string) (*ObservationService, error) {
+	directory, err := defaultMekugiReplayDirectory()
+	if err != nil {
+		return nil, err
+	}
+	store, err := openMekugiReplayStore(directory)
+	if err != nil {
+		return nil, err
+	}
+	owner, err := newNativeObservationOwner(ctx, store, runtime, workspace)
+	if err != nil {
+		return nil, err
+	}
+	return startObservationService(owner)
+}
+
+func startObservationService(owner *nativeObservationOwner) (*ObservationService, error) {
+	directory, err := os.MkdirTemp("", "mekugi-observe-")
+	if err != nil {
+		owner.close()
+		return nil, err
+	}
+	endpoint := ObservationEndpoint{Socket: filepath.Join(directory, "service.sock"), Token: rand.Text()}
+	listener, err := net.Listen("unix", endpoint.Socket)
+	if err != nil {
+		os.Remove(directory)
+		owner.close()
+		return nil, err
+	}
+	s := &ObservationService{owner: owner, directory: directory, endpoint: endpoint}
+	slots := make(chan struct{}, 16)
+	s.server = &http.Server{ReadTimeout: 4 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: time.Second, MaxHeaderBytes: 4096,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost || r.URL.Path != "/observe" {
+				http.NotFound(w, r)
+				return
+			}
+			if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+endpoint.Token)) != 1 {
+				http.Error(w, "invalid observation capability", http.StatusUnauthorized)
+				return
+			}
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+			default:
+				http.Error(w, "observation capacity reached", http.StatusServiceUnavailable)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+			defer cancel()
+			var request observationRequest
+			if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 8<<20), &request, json.RejectUnknownMembers(true)); err != nil {
+				http.Error(w, "invalid observation request", http.StatusBadRequest)
+				return
+			}
+			var err error
+			switch request.Operation {
+			case "bind":
+				err = owner.bind(ctx, request.Binding)
+			case "before":
+				err = owner.before(ctx, request.Call)
+			case "after":
+				_, err = owner.after(ctx, request.Call, request.Terminal)
+			case "task":
+				err = owner.task(ctx, request.Task)
+			default:
+				err = errors.New("unsupported observation operation")
+			}
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			// The hook is capture-only: no change receipts or added model context.
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte("{}"))
+		})}
+	go func() { _ = s.server.Serve(listener) }()
+	return s, nil
+}
+func (s *ObservationService) Endpoint() ObservationEndpoint { return s.endpoint }
+func (s *ObservationService) Close() error {
+	err := s.server.Close()
+	s.owner.close()
+	// Remove only the exact resources this launch created. Retained evidence stays.
+	return errors.Join(err, removeObservationSocket(s.endpoint.Socket), os.Remove(s.directory))
+}
+func removeObservationSocket(path string) error {
+	err := os.Remove(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
+func (o *nativeObservationOwner) task(ctx context.Context, event observationTask) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if event.Session != o.session || event.ID == "" {
+		return errors.New("background task binding mismatch")
+	}
+	if event.Status != "completed" && event.Status != "failed" && event.Status != "stopped" {
+		return nil
+	}
+	key := o.tasks[event.ID]
+	if key == "" {
+		if o.pendingCount.Load() == 0 {
+			return nil
+		}
+		// Terminal edges can race PostToolUse. Keep a bounded, process-local edge;
+		// it cannot settle anything without the hook's persisted task/call mapping.
+		if len(o.taskEvents) >= 1024 {
+			return errors.New("pending background event limit reached")
+		}
+		event.Report = execTruncateReport(event.Report, maxExecReportBytes)
+		o.taskEvents[event.ID] = event
+		return nil
+	}
+	record, found, err := o.store.lookup(ctx, o.workspace, key+"/background")
+	if err != nil {
+		return err
+	}
+	if !found || record.NativeObservation == nil || record.NativeObservation.Call == nil {
+		return errors.New("background call mapping unavailable")
+	}
+	call := *record.NativeObservation.Call
+	if event.CallID != "" && event.CallID != call.ID {
+		return errors.New("background event tool ID mismatch")
+	}
+	ctx, err = o.callContext(ctx, call)
+	if err != nil {
+		return err
+	}
+	_, err = o.finishLocked(ctx, call, ObservationTerminal{Task: event.ID, Status: event.Status, Report: event.Report, Interrupted: event.Status == "stopped"})
+	return err
+}
