@@ -449,8 +449,10 @@ the diff pane still opens it on demand.
 Native transcript-replacing live docks defer a new caller's first reveal by
 300 ms. Completion or withdrawal before reveal does not open a dock; captured
 changes remain available through Activity and saved diff. Once visible, the
-caller's burst updates without another reveal delay and retains its normal quiet
-settling interval.
+caller's burst updates without another reveal delay. Each completed call retires
+after its own 1.5-second settling interval; running siblings and newer edits do
+not retain its files. A pinned surviving file keeps its selection; if the selected
+call expires, the dock resumes following the newest remaining file.
 
 The router publishes to one in-process UI mailbox without waiting for rendering.
 Replaceable previews retain only the latest frame per call; a mailbox that falls

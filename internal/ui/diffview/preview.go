@@ -40,7 +40,7 @@ type PreviewPane struct {
 	Views   map[string]*PreviewView
 	Order   []string
 	Motion  PreviewMotion
-	Retain  bool // Native edit batches retain completed calls until the caller settles.
+	Retain  bool // Native edit batches retain completed calls until their individual holds expire.
 	batches map[string]*previewBatch
 	// A dock too short for every call keeps one card open and folds the rest
 	// to their headings. Prefer names the caller whose card opens first.

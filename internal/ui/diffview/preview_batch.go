@@ -137,39 +137,26 @@ func (p *PreviewPane) NextBatch(caller string) bool {
 	return true
 }
 
-// ExpireBatches closes a caller's entire burst together after its last update
-// has settled. Other callers neither retain nor prematurely close that burst.
+// ExpireBatches retires each completed call after its own settling interval.
+// Running siblings and newer edits must not retain an older completed call.
 func (p *PreviewPane) ExpireBatches(now time.Time, hold time.Duration) bool {
 	changed := false
-	for _, caller := range p.Callers() {
-		live, latest := false, time.Time{}
-		for _, id := range p.Order {
-			view := p.Views[id]
-			if view.Current.Caller != caller {
-				continue
-			}
-			live = live || !view.Complete
-			if view.updated.After(latest) {
-				latest = view.updated
-			}
+	p.Order = slices.DeleteFunc(p.Order, func(id string) bool {
+		view := p.Views[id]
+		if !view.Complete || now.Sub(view.updated) < hold {
+			return false
 		}
-		if live || now.Sub(latest) < hold {
-			continue
-		}
-		p.Order = slices.DeleteFunc(p.Order, func(id string) bool {
-			if p.Views[id].Current.Caller != caller {
-				return false
-			}
-			delete(p.Views, id)
-			return true
-		})
-		delete(p.batches, caller)
+		delete(p.Views, id)
 		changed = true
-	}
-	// Turn interruption and withdrawal can remove the final call directly.
+		return true
+	})
+	// Reconcile retained file viewports and selection as well as empty callers.
+	callers := p.Callers()
 	for caller := range p.batches {
-		if !slices.Contains(p.Callers(), caller) {
+		if !slices.Contains(callers, caller) {
 			delete(p.batches, caller)
+		} else if changed {
+			p.batch(caller)
 		}
 	}
 	return changed

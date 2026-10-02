@@ -17,7 +17,7 @@ import (
 
 // Live edits temporarily replace their caller's transcript, never another pane.
 const (
-	nativeDockMinimum = 1500 * time.Millisecond // Quiet interval before a completed caller batch closes.
+	nativeDockMinimum = 1500 * time.Millisecond // Settling interval before a completed call retires.
 	nativeDockReveal  = 300 * time.Millisecond  // Short edits never replace the transcript just to disappear.
 	nativeRosterRows  = 4                       // Unfocused roster rows.
 	nativeRosterShare = 0.4                     // Focused roster share of the screen.
@@ -106,7 +106,7 @@ func (u *terminalUI) applyNativeDiff(ctx context.Context, event liveDiffEvent) {
 	}
 }
 
-// animating keeps frames coming until each caller's completed burst expires.
+// animating keeps frames coming while previews reveal or completed calls expire.
 func (u *terminalUI) animating(now time.Time) bool {
 	for _, pending := range slices.SortedFunc(maps.Values(u.livePending), func(a, b nativePendingPreview) int {
 		return a.since.Compare(b.since)

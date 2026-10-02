@@ -163,7 +163,7 @@ func TestNativeBatchExpiryIsolation(t *testing.T) {
 		{"old", "/root", true, now.Add(-10 * time.Second)},
 		{"recent", "/root", true, now.Add(-time.Second)},
 		{"worker", "/root/worker", true, now.Add(-10 * time.Second)},
-		{"live", "/root/live", false, now.Add(-10 * time.Second)},
+		{"live", "/root", false, now.Add(-10 * time.Second)},
 	} {
 		preview := batchTestPreview(tc.id, tc.caller, tc.id+".go")
 		preview.Complete = tc.complete
@@ -174,14 +174,14 @@ func TestNativeBatchExpiryIsolation(t *testing.T) {
 	if !pane.ExpireBatches(now, hold) {
 		t.Fatal("settled worker batch did not expire")
 	}
-	if !slices.Equal(pane.Order, []string{"old", "recent", "live"}) || pane.batches["/root/worker"] != nil {
+	if !slices.Equal(pane.Order, []string{"recent", "live"}) || pane.batches["/root/worker"] != nil {
 		t.Fatalf("caller isolation failed: order=%v", pane.Order)
 	}
 	if pane.ExpireBatches(now, hold) {
 		t.Fatal("recent update or incomplete call expired")
 	}
-	if !pane.ExpireBatches(now.Add(time.Second), hold) || !slices.Equal(pane.Order, []string{"live"}) || pane.batches["/root"] != nil {
-		t.Fatalf("entire burst did not expire at hold boundary: order=%v", pane.Order)
+	if !pane.ExpireBatches(now.Add(time.Second), hold) || !slices.Equal(pane.Order, []string{"live"}) || pane.batches["/root"] == nil {
+		t.Fatalf("completed call did not expire at hold boundary: order=%v", pane.Order)
 	}
 	// Completion starts a fresh hold, even for a call that was live a long time.
 	finished := pane.Views["live"].Current
@@ -193,6 +193,35 @@ func TestNativeBatchExpiryIsolation(t *testing.T) {
 	}
 	if !pane.ExpireBatches(now.Add(3*time.Second), hold) || len(pane.Views) != 0 || len(pane.batches) != 0 {
 		t.Fatal("completed burst or viewport cache survived expiry")
+	}
+}
+
+func TestUISnapshotNativeBatchCompletedSiblingExpiry(t *testing.T) {
+	for _, pinned := range []bool{false, true} {
+		name := "follow"
+		if pinned {
+			name = "pinned"
+		}
+		t.Run(name, func(t *testing.T) {
+			pane := PreviewPane{Retain: true}
+			pane.Update(batchTestPreview("running", "/root", "src/running.go"))
+			finished := batchTestPreview("finished", "/root", "src/done.go", "src/also_done.go")
+			finished.Complete = true
+			pane.Update(finished)
+			batchTestRender(t, &pane, 31)
+			if pinned {
+				pane.NextBatch("/root") // Pin the surviving running file.
+			}
+			now := pane.Views["finished"].updated.Add(2 * time.Second)
+			if !pane.ExpireBatches(now, 2*time.Second) {
+				t.Fatal("running sibling retained a completed edit")
+			}
+			batch := pane.batches["/root"]
+			if len(batch.files) != 1 || batch.selected.call != "running" || batch.pinned != pinned {
+				t.Fatalf("expired viewports or selection survived: %+v", batch)
+			}
+			assertRowsSnapshot(t, "native_batch_expired_sibling_"+name, batchTestRender(t, &pane, 31))
+		})
 	}
 }
 
