@@ -25,11 +25,12 @@ type ObservationEndpoint struct {
 }
 
 type Config struct {
-	Companion  *ObservationEndpoint `json:"companion,omitempty"`
-	Cwd        string               `json:"cwd"`
-	Executable string               `json:"executable"`
-	Resume     string               `json:"resume,omitempty"`
-	Model      string               `json:"model,omitempty"`
+	Companion   *ObservationEndpoint `json:"companion,omitempty"`
+	Cwd         string               `json:"cwd"`
+	Executable  string               `json:"executable"`
+	Resume      string               `json:"resume,omitempty"`
+	ForkSession bool                 `json:"forkSession,omitzero"`
+	Model       string               `json:"model,omitempty"`
 }
 type Client struct {
 	cmd       *exec.Cmd
@@ -44,6 +45,9 @@ type Client struct {
 }
 
 func Start(ctx context.Context, node, bridge string, config Config) (*Client, error) {
+	if config.ForkSession && config.Resume == "" {
+		return nil, errors.New("native session fork requires a resume session ID")
+	}
 	launch := struct {
 		Config
 		CompanionFD int `json:"companionFD,omitzero"`

@@ -51,7 +51,7 @@ func nextEvent(t *testing.T, client *Client) session.Event {
 }
 
 func TestClientExactConfigurationAndInput(t *testing.T) {
-	config := Config{Cwd: t.TempDir(), Executable: "/path with spaces/claude", Resume: "session-id", Model: "claude-model"}
+	config := Config{Cwd: t.TempDir(), Executable: "/path with spaces/claude", Resume: "session-id", ForkSession: true, Model: "claude-model"}
 	client := startMockBridge(t, t.Context(), `
 const readline = require('node:readline');
 console.log(JSON.stringify({kind: 'error', text: JSON.stringify({config: JSON.parse(process.argv[2]), cwd: process.cwd()})}));
@@ -147,6 +147,13 @@ func TestClientRejectsOversizedAndCancelledInput(t *testing.T) {
 	}
 	if err := client.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestClientRejectsForkWithoutResumeBeforeLaunch(t *testing.T) {
+	c, err := Start(t.Context(), "must-not-execute", "must-not-open", Config{ForkSession: true})
+	if c != nil || err == nil || !strings.Contains(err.Error(), "resume session ID") {
+		t.Fatalf("unbound native fork accepted: %v", err)
 	}
 }
 

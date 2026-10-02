@@ -172,6 +172,14 @@ overrides apply on the next turn and may be limited by native policy. The compos
 labels effort as a request, not a guaranteed effective level. These controls are
 invocation-local and do not save settings files or offer Codex service tiers.
 
+To branch a native conversation in a new launch, use
+`mekugi claude --cwd /path/to/workspace --resume SESSION_ID --fork-session`.
+Claude assigns a new session ID and retains the source conversation's context;
+subsequent fork input does not change the source. Workspace admission and native
+history remain the same as resume. Saved Mekugi observations remain scoped to
+their native session: a fork does not copy the parent's capture history or revive
+its running tools.
+
 `/usage` or `/session` opens the shared status dialog with the latest available
 Claude-reported cumulative tokens, cache usage and limit windows. Missing fields
 are omitted. API-equivalent cost estimates are labeled separately from subscription

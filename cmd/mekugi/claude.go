@@ -20,6 +20,7 @@ func runClaude(ctx context.Context, args []string, in, out *os.File, stderr io.W
 	flags.SetOutput(stderr)
 	cwd := flags.String("cwd", ".", "workspace directory")
 	resume := flags.String("resume", "", "Claude session ID to resume")
+	fork := flags.Bool("fork-session", false, "fork the resumed native conversation to a new Claude session")
 	model := flags.String("model", "", "native Claude model choice")
 	capture := flags.Bool("companion", false, "enable invocation-local observational capture hooks")
 	bridge := flags.String("bridge", "", "path to built Claude SDK bridge")
@@ -35,6 +36,10 @@ func runClaude(ctx context.Context, args []string, in, out *os.File, stderr io.W
 	}
 	if flags.NArg() != 0 {
 		fmt.Fprintln(stderr, "mekugi claude: unexpected positional arguments")
+		return 2
+	}
+	if *fork && *resume == "" {
+		fmt.Fprintln(stderr, "mekugi claude: --fork-session requires --resume SESSION")
 		return 2
 	}
 	fail := func(err error) int { fmt.Fprintln(stderr, "mekugi claude:", err); return 1 }
@@ -82,7 +87,7 @@ func runClaude(ctx context.Context, args []string, in, out *os.File, stderr io.W
 	if _, err := os.Stat(*bridge); err != nil {
 		return fail(fmt.Errorf("Claude bridge unavailable; run make build-claude: %w", err))
 	}
-	config := claude.Config{Cwd: workspace, Executable: executable, Resume: *resume, Model: *model}
+	config := claude.Config{Cwd: workspace, Executable: executable, Resume: *resume, ForkSession: *fork, Model: *model}
 	var observations *router.ObservationService
 	if *capture {
 		observations, err = router.StartObservationService(ctx, "claude", workspace)

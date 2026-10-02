@@ -7,7 +7,7 @@ import { readFileSync, closeSync } from 'node:fs';
 import { setSettings, type SettingsCommand } from './controls.js';
 
 const limit = 8 * 1024 * 1024;
-const config = JSON.parse(process.argv[2]) as {cwd: string; executable: string; resume?: string; model?: string; companionFD?: number};
+const config = JSON.parse(process.argv[2]) as {cwd: string; executable: string; resume?: string; forkSession?: boolean; model?: string; companionFD?: number};
 let endpoint: CompanionConfig | undefined;
 if (config.companionFD !== undefined) {
   try { endpoint = JSON.parse(readFileSync(config.companionFD, 'utf8')) as CompanionConfig; }
@@ -43,6 +43,7 @@ const running = query({prompt: messages(), options: {
   settingSources: ['user', 'project', 'local'],
   includePartialMessages: true,
   ...(config.resume ? {resume: config.resume} : {}),
+  ...(config.forkSession ? {forkSession: true} : {}),
   ...(config.model ? {model: config.model} : {}),
   abortController,
   ...(observer ? {hooks: observer.hooks} : {}),
