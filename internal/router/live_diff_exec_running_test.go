@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
@@ -168,6 +169,10 @@ func TestExecRunningPreviewShowsScopedVCSAndCancelsWithoutEvidence(t *testing.T)
 	registry := &execWindowRegistry{}
 	registry.open(&execWindow{ref: "call-1", roots: []string{repo}, thread: "thread"})
 	ui := startLiveDiffTerminal(t, repo, store.directory, connection, 22)
+	// Keep the literal path on one row regardless of the build's temp root.
+	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 22, Cols: uint16(max(100, ansi.StringWidth(tracked)+16))}); err != nil {
+		t.Fatal(err)
+	}
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 	registry.preview("call-1", *observation, broker, repo, "thread", "exec-test-caller")
 
