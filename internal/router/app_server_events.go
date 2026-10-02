@@ -875,8 +875,10 @@ func appServerEditPages(item appServerItem, cwd, phase string) []activityui.Bloc
 	var pages []activityui.Block
 	for _, change := range item.Changes {
 		path, diff := pathdisplay.ForWorkspace(cwd, change.Path), change.Diff
+		syntaxPath := ""
 		if moved := cmp.Or(change.Kind.MovePath, change.Kind.MovePath2); moved != "" {
 			path = pathdisplay.Move(cwd, change.Path, moved)
+			syntaxPath = pathdisplay.ForWorkspace(cwd, moved)
 			if body, ok := strings.CutSuffix(diff, "\n\nMoved to: "+moved); ok {
 				diff = body + "\n\nMoved to: " + pathdisplay.ForWorkspace(cwd, moved)
 			}
@@ -897,7 +899,7 @@ func appServerEditPages(item appServerItem, cwd, phase string) []activityui.Bloc
 		if cmp.Or(change.Kind.MovePath, change.Kind.MovePath2) != "" {
 			verb = "Move"
 		}
-		pages = append(pages, activityui.Block{Kind: "op", Verb: verb, Path: path, Code: diff, Lang: lang, Fenced: true})
+		pages = append(pages, activityui.Block{Kind: "op", Verb: verb, Path: path, SyntaxPath: syntaxPath, Code: diff, Lang: lang, Fenced: true})
 	}
 	return pages
 }

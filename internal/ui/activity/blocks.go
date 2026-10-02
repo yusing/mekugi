@@ -25,6 +25,7 @@ type Block struct {
 	Verb        string // Operation verb, or a message headline.
 	Label       string // Markdown remainder of the operation label.
 	Path        string // Literal operation target, rendered with shared path styling.
+	SyntaxPath  string // File identity when Path is a compressed display label.
 	Workdir     string // Display path of a command directory other than the workspace; set on every row it applies to.
 	ShowWorkdir bool   // The invocation's first row labels Workdir.
 	Code        string // Inline code or fenced program under the label.

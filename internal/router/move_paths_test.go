@@ -80,3 +80,40 @@ func TestHostMoveDialogMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestUISnapshotHostMoveDialogSyntax(t *testing.T) {
+	change := appServerFileChange{Path: "/w/internal/old.go", Diff: "@@ -1 +1 @@\n-var answer = 41\n+var answer = 42\n"}
+	change.Kind.Type, change.Kind.MovePath = "update", "/w/internal/new.go"
+	item := appServerItem{Status: "completed", Changes: []appServerFileChange{change}}
+	pages := appServerEditPages(item, "/w", "item/completed")
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.painter.Theme = livediff.DarkTheme
+	if !u.shell.openEditPages(u.view, pages, "internal/{old.go=>new.go}") {
+		t.Fatal("compressed host move did not open its exact page")
+	}
+	frame := drawOutputDialog(u.shell)
+	var renderer livediff.Renderer
+	want, err := renderer.ColorDiffPath(t.Context(), livediff.DarkTheme, "internal/new.go", change.Diff)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range want {
+		if row == "" {
+			continue
+		}
+		found := false
+		for _, line := range u.shell.output.laid.Lines {
+			if line.Text == row {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("compressed move label lost source token colors: missing %q", row)
+		}
+	}
+	if pages[0].Verb != "Move" || u.shell.output.laid.Text != change.Diff {
+		t.Fatal("move action or copied source changed")
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/host-move-dialog-syntax.txt", frame+"\n")
+}

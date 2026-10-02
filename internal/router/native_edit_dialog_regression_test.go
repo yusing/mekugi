@@ -44,7 +44,7 @@ func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, capture
 		c.data = newLiveDiffData()
 		c.data.order = []string{"edit"}
 		c.data.attempts["edit"] = liveDiffAttempt{thread: "main", correlation: "patch\x000", chunks: []livediff.Chunk{chunk}}
-		want = chunk.Review.UnifiedDiff()
+		want = chunk.Review.UnifiedDiffForWorkspace(c.workspace)
 		u.view.entries = []liveActivityRecord{{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch"}}}
 	} else {
 		change := appServerFileChange{Path: path, Diff: tc.host}

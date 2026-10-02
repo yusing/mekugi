@@ -3,7 +3,7 @@
 
 
 
-╭─ Edit · internal/router/old.txt ─────────────────────────────── [×] ─╮
+╭─ Move · internal/router/old.txt ─────────────────────────────── [×] ─╮
 │                                                                      │
 ├──────────────────────────────────────────────────────────────────────┤
 │ 1 │ move "internal/router/old.txt.new" -> "internal/router/old.txt"  │

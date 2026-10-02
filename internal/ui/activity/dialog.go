@@ -1,6 +1,7 @@
 package activity
 
 import (
+	"cmp"
 	"context"
 	"regexp"
 	"strconv"
@@ -212,13 +213,13 @@ func dialogLanguage(block Block) string {
 
 func (p *Painter) dialogHighlight(block Block, source string) []string {
 	lang := dialogLanguage(block)
-	if block.Path != "" && !p.LayoutOnly {
+	if path := cmp.Or(block.SyntaxPath, block.Path); path != "" && !p.LayoutOnly {
 		var rows []string
 		var err error
 		if strings.EqualFold(lang, "diff") {
-			rows, err = p.syntax.ColorDiffPath(context.Background(), p.Theme, block.Path, source)
+			rows, err = p.syntax.ColorDiffPath(context.Background(), p.Theme, path, source)
 		} else {
-			rows, err = p.syntax.ColorSource(context.Background(), p.Theme, block.Path, source+"\n")
+			rows, err = p.syntax.ColorSource(context.Background(), p.Theme, path, source+"\n")
 		}
 		if err == nil && len(rows) > 0 {
 			return rows
