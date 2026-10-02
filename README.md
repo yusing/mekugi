@@ -172,6 +172,15 @@ overrides apply on the next turn and may be limited by native policy. The compos
 labels effort as a request, not a guaranteed effective level. These controls are
 invocation-local and do not save settings files or offer Codex service tiers.
 
+`/usage` or `/session` opens the shared status dialog with the latest available
+Claude-reported cumulative tokens, cache usage and limit windows. Missing fields
+are omitted. API-equivalent cost estimates are labeled separately from subscription
+charges; these views do not make token-count requests or show router traffic.
+Native tasks and their updates appear in Activity and the Agents roster. These
+rows identify native tasks, not writable agent journal namespaces. Select a live
+task in Agents and press `x` to request its native stop; only a terminal runtime
+event settles its row. Root-turn completion does not complete background tasks.
+
 Claude uses the existing pane shell, not a separate interface. Edit/Write input
 streams appear as provisional proposals in the shared live-edit dock and Diff
 pane. Partial content does not claim deletion of an unseen suffix. Native tool
@@ -193,12 +202,12 @@ observation cannot attribute changes made while Mekugi was disconnected. Press
 updates. Permission prompts follow Claude's configured policy, including native
 automatic approval; enabling capture does not change that policy.
 
-Bash previews, journals, utility frontends, agent controls and attachments are
+Bash previews, journals, utility frontends, agent messaging/switching and attachments are
 not connected yet. Commands advertised by the SDK are forwarded
 natively; unadvertised commands are rejected rather than emulated. The capture-only companion does not yet include plugin utilities or journals.
 Compaction replacement, shell tracing and output rewriting remain unavailable.
-Only exposed text and native tool input/results are displayed; unavailable usage
-and change evidence are not invented. Oversized bridge events stop the client with an error;
+Only exposed text, native tool input/results and task/usage observations are displayed;
+unavailable usage and change evidence are not invented. Oversized bridge events stop the client with an error;
 Claude's own session remains the history authority. The full Codex interface below
 is unchanged and is not a claim of Claude feature parity.
 

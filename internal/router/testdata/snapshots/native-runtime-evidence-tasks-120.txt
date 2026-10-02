@@ -1,0 +1,32 @@
+┌ 1 Main ──────────────────────────────────────────── ▲ 17 ┐┌ 5 Journal ───────────────────── space expand · d details ┐
+││ failed                                                  ││ No journal entries.                                      │
+││                                                         ││                                                          │
+││ Compiler rejected input                                 ││                                                          │
+│                                                          ││                                                          │
+│● native/task/cancelled                          12:00:00 ││                                                          │
+││ Stop background job                                     ││                                                          │
+││                                                         ││                                                          │
+││ stopped                                                 ││                                                          │
+│                                                          ││                                                          │
+│● native/task/waiting                            12:00:00 ││                                                          │
+││ Await native continuation                               ││                                                          │
+││                                                         ││                                                          │
+││ paused                                                  ││                                                          │
+│                                                          ││                                                          │
+│● native/task/pending                            12:00:00 ││                                                          │
+││ Await native lifecycle evidence                         ││                                                          │
+│                                                          ││                                                          │
+│╭─ Ready ────────────────────────────────────────────────╮││                                                          │
+││ ❯                                                      │││                                                          │
+│╰──────────────────────────────────────── claude-sonnet ─╯││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+─ 4 Agents · 6 · 1 working · 1 error ───────────────────────────────────────────────────────────────────────────────────
+ ◐ native/task/checks     running
+ ✓ native/task/review     completed
+ ! native/task/build      failed
+ · native/task/cancelled  stopped
+ · native/task/waiting    paused
+ · native/task/pending
+ Roles: ● local_bash  ● local_agent
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents¹   j/k task · a all · esc back · x stop task · ^B 1-5 panes

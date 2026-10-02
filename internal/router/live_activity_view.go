@@ -508,6 +508,8 @@ func (v *liveActivityView) agentStatus(agent activityPaneAgent) rune {
 	switch {
 	case agent.Responding:
 		return '◐'
+	case agent.State != nil && *agent.State == "failed":
+		return '!'
 	case latest >= 0 && v.entries[latest].Kind == "error":
 		return '!'
 	case agent.Final:

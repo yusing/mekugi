@@ -45,6 +45,8 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		return []session.Event{{Kind: "ready", Commands: frame.Commands, Models: frame.Models}}, nil
 	case "settings":
 		return []session.Event{{Kind: "settings", Settings: &session.Settings{ID: frame.ID, Field: frame.Field, Value: frame.Value}, Failed: frame.Failed, Text: frame.Text}}, nil
+	case "task_control":
+		return []session.Event{{Kind: "task_control", ID: frame.ID, Failed: frame.Failed, Text: frame.Text}}, nil
 	case "history":
 		return historyEvents(frame.Event)
 	case "notice":
@@ -87,7 +89,27 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 	}
 	e := frame.Event
 	switch e.Type {
+	case "rate_limit_event":
+		if e.Limit != nil {
+			return []session.Event{{Kind: "limit", Limit: e.Limit}}, nil
+		}
 	case "system":
+		if e.TaskID != "" {
+			task := &session.Task{ID: e.TaskID, ToolID: e.ToolUseID, Kind: e.TaskType, Description: e.Description, Summary: e.Summary, Ambient: e.Ambient || e.SkipTranscript}
+			switch e.Subtype {
+			case "task_started":
+				task.Status = "running"
+			case "task_progress":
+				// Progress is not a lifecycle transition (for example unpausing).
+			case "task_notification":
+				task.Status = e.Status
+			case "task_updated":
+				task.Status, task.Description, task.Summary = e.Patch.Status, e.Patch.Description, e.Patch.Error
+			default:
+				return nil, nil
+			}
+			return []session.Event{{Kind: "task", Role: e.Subtype, Task: task}}, nil
+		}
 		if e.Subtype == "local_command_output" {
 			return []session.Event{{Kind: "message", ID: e.UUID, Role: "Claude", Text: e.Content}}, nil
 		}
@@ -199,7 +221,11 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		clear(a.tools)
 		clear(a.text)
 		clear(a.streams)
-		return []session.Event{{Kind: "done", Failed: e.IsError, Text: strings.Join(e.Errors, "\n"), SessionID: e.SessionID}}, nil
+		result := []session.Event{{Kind: "done", Failed: e.IsError, Text: strings.Join(e.Errors, "\n"), SessionID: e.SessionID}}
+		if e.StartupFailure == "" && (!e.IsError || len(e.Usage.Models) > 0) && (len(e.Usage.Models) > 0 || e.Usage.CostUSD != nil) {
+			result = append(result, session.Event{Kind: "usage", Usage: &e.Usage})
+		}
+		return result, nil
 	}
 	return nil, nil
 }

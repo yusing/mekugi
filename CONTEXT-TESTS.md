@@ -49,6 +49,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Native frontends and output formatting | `./internal/router/toolplugin`, then `./internal/router` |
 | Configured JavaScript plugin host | `./internal/router/toolplugin`, then `bun test ./internal/router/toolplugin/tests` |
 | Router process entry point | `./cmd/mekugi` |
+| Claude native SDK usage and fresh-bridge resume | `MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/claude TEST_RUN='^TestClaudeNativeUsageAndFreshBridgeResume$' TEST_FLAGS='-count=1 -v'` after `make test-claude`; sends two real prompts through the installed authenticated Claude runtime, with its normal billing/configuration |
 | Configured frontend host acceptance | `-tags journal_e2e ./internal/router -run '^TestConfiguredToolFrontendNativeCodexE2E$'` (installed Codex, local mock provider) |
 | Native mrun continuation acceptance | `-tags journal_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
 | Native journal child-result acceptance | `-tags journal_e2e ./internal/router -run '^TestJournalNativeCodexSpawnE2E$'` (installed Codex, local mock provider) |

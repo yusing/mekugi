@@ -99,6 +99,11 @@ lines.on('line', (line: string) => {
       case 'settings':
         controls = controls.then(async () => { await emit(await setSettings(running, command as SettingsCommand)); }).catch(stop);
         break;
+      case 'stop_task':
+        if (!command.id) throw new Error('Missing native task ID');
+        void running.stopTask(command.id).then(() => emit({kind: 'task_control', id: command.id}))
+          .catch(error => emit({kind: 'task_control', id: command.id, failed: true, text: String(error)})).catch(stop);
+        break;
       case 'close': stop(); break;
       default: throw new Error('Unknown bridge control');
     }

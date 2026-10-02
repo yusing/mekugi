@@ -233,7 +233,7 @@ const nativeMetricParts = 11
 
 func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now time.Time) [nativeMetricParts]string {
 	var parts [nativeMetricParts]string
-	if agent.Name != "/root" {
+	if agent.Name != "/root" && (agent.State == nil || agent.ContextKnown) {
 		context := contextWindowLabel(agent)
 		if used, percent, ok := strings.Cut(context, " • "); ok {
 			parts[0], parts[1] = used, percent
@@ -444,6 +444,9 @@ func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
 // agentState preserves lifecycle states when idle, and shares the detailed
 // activity summary while an agent is working.
 func (v *liveActivityView) agentState(agent activityPaneAgent, width int) string {
+	if agent.State != nil {
+		return ansi.Truncate(strings.ReplaceAll(livediff.Safe(*agent.State, false), "\n", " "), width, "…")
+	}
 	source, owner := v, agent.Name
 	if agent.Name == "/root" && v.mainView != nil {
 		source, owner = v.mainView, "Main"

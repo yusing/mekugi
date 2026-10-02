@@ -170,6 +170,9 @@ func (c *Client) Interrupt(ctx context.Context) error {
 func (c *Client) SetSettings(ctx context.Context, s session.Settings) error {
 	return c.send(ctx, map[string]string{"kind": "settings", "id": s.ID, "field": s.Field, "value": s.Value})
 }
+func (c *Client) StopTask(ctx context.Context, id string) error {
+	return c.send(ctx, map[string]string{"kind": "stop_task", "id": id})
+}
 func (c *Client) Close() error {
 	c.closeOnce.Do(func() {
 		c.input.Close()
@@ -195,6 +198,22 @@ type content struct {
 	IsError   bool           `json:"is_error"`
 }
 type nativeEvent struct {
+	session.Usage
+	Limit          *session.RateLimit `json:"rate_limit_info"`
+	TaskID         string             `json:"task_id"`
+	ToolUseID      string             `json:"tool_use_id"`
+	TaskType       string             `json:"task_type"`
+	Description    string             `json:"description"`
+	Status         string             `json:"status"`
+	Summary        string             `json:"summary"`
+	Ambient        bool               `json:"ambient"`
+	SkipTranscript bool               `json:"skip_transcript"`
+	StartupFailure string             `json:"startup_failure_reason"`
+	Patch          struct {
+		Status      string `json:"status"`
+		Description string `json:"description"`
+		Error       string `json:"error"`
+	} `json:"patch"`
 	Content   string   `json:"content"`
 	UUID      string   `json:"uuid"`
 	Type      string   `json:"type"`

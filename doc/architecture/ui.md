@@ -94,6 +94,11 @@ matching native acknowledgement or failure settles a pending control. Claude's
 adapter uses `setModel` and `applyFlagSettings`, never the settings-file writer.
 Effort presentation distinguishes a requested override from a policy-limited
 effective level; subsequent native initialization supplies the resolved model.
+Native usage snapshots replace prior cumulative query totals in the shared status
+dialog, with optional fields preserving absence. Task IDs and originating tool-use
+IDs correlate Activity and roster rows but confer no agent/store authorization.
+Task patches merge independently of root-turn completion; stop acknowledgements
+settle the control request, while terminal task events settle the displayed task.
 Structured Edit/Write intentions feed the shared bounded source reader and review
 renderer. Argument completion remains distinct from tool completion, and neither
 promotes predictions into durable captured changes.

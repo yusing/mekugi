@@ -1,0 +1,32 @@
+┌ 5 Journal ─── space expand · d details ┐
+│ No journal entries.                    │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+└────────────────────────────────────────┘
+─ 4 Agents · 6 · 1 working · 1 error ─────
+ ◐ nat…checks  running
+ ✓ nat…review  completed
+ ! nati…build  failed
+ · native/ta…  stopped
+ · na…waiting  paused
+ · na…pending
+ Roles: ● local_bash  ● local_agent
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal

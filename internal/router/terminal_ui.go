@@ -329,6 +329,9 @@ func (u *terminalUI) terminalColor(reply string) {
 }
 
 func (u *terminalUI) send(s string) error {
+	if s == "x" && u.focus == 3 && u.main != nil && u.main.runtimeCanStopTask() && u.output == nil {
+		return u.main.runtimeStopTask()
+	}
 	if s == "\x1b" && u.focus == 2 && u.main != nil && u.main.historyLoading != nil {
 		return u.main.cancelOlderActivity()
 	}

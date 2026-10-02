@@ -34,6 +34,12 @@ type nativeRuntimeSession struct {
 	models            []session.Model
 	settings          *session.Settings
 	effortRequest     string
+	usage             *session.Usage
+	limits            map[string]session.RateLimit
+	usagePanel        *appServerStatusReport
+	tasks             map[string]session.Task
+	taskOrder         []string
+	stoppingTasks     map[string]bool
 }
 
 func newRuntimeUI(ctx context.Context, client session.Client, name, cwd string) *appServerUI {
@@ -119,7 +125,7 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 // single existing composer implementation below this boundary.
 func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 	r := u.runtime
-	if u.picker.open {
+	if u.picker.open || u.statusPanel != nil {
 		return false, false, nil
 	}
 	if u.escape != "" || key == 27 {
@@ -140,6 +146,9 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 			return true, true, nil
 		case "/copy":
 			u.showCopyPicker()
+			return true, false, nil
+		case "/usage", "/session":
+			u.showRuntimeUsage()
 			return true, false, nil
 		}
 		if handled, err := u.runtimeSettingsCommand(text); handled {
@@ -199,6 +208,29 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		u.status = "Ready"
 	case "settings":
 		u.runtimeSettingsReceipt(e)
+	case "usage":
+		if e.Usage != nil {
+			u.runtime.usage = e.Usage
+			u.renderRuntimeUsage()
+		}
+	case "limit":
+		if e.Limit != nil {
+			if u.runtime.limits == nil {
+				u.runtime.limits = make(map[string]session.RateLimit)
+			}
+			u.runtime.limits[e.Limit.Window+"/"+e.Limit.Scope] = *e.Limit
+			u.renderRuntimeUsage()
+		}
+	case "task":
+		u.runtimeTask(e)
+	case "task_control":
+		if u.runtime.stoppingTasks[e.ID] {
+			delete(u.runtime.stoppingTasks, e.ID)
+			u.setNotice("Native task stop requested", false)
+			if e.Failed {
+				u.setNotice("Native task stop failed: "+e.Text, true)
+			}
+		}
 	case "session":
 		u.thread, u.model = e.SessionID, e.Model
 	case "edit":
@@ -302,6 +334,12 @@ func (u *appServerUI) runtimeEntry(e session.Event) {
 		entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "text", Text: e.Text, CallID: e.ID, Observed: u.now()}
 		if e.Caller != "" {
 			entry.Agent = "native/" + e.Caller
+			for _, id := range u.runtime.taskOrder {
+				if task := u.runtime.tasks[id]; task.ToolID == e.Caller {
+					entry.Agent = runtimeTaskLane(id)
+					break
+				}
+			}
 		}
 		if e.Role == "You" {
 			entry.Agent = "You"

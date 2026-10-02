@@ -35,6 +35,7 @@ type activityPaneEntry struct {
 type activityPaneAgent struct {
 	WorkTimer    activeWorkTimer `json:",omitzero"`
 	Name         string
+	State        *string   `json:",omitempty"` // Explicit native lifecycle, including an unavailable (empty) state.
 	Role         string    `json:",omitzero"`
 	Responding   bool      `json:",omitzero"`
 	Final        bool      `json:",omitzero"`

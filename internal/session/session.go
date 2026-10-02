@@ -19,6 +19,40 @@ type Event struct {
 	Caller     string
 	Models     []Model
 	Settings   *Settings
+	Usage      *Usage
+	Limit      *RateLimit
+	Task       *Task
+}
+
+// Usage totals are the latest native query-pipeline snapshot, including native
+// subagents and prior retained turns. Never add successive cumulative snapshots.
+type Usage struct {
+	Models  map[string]ModelUsage `json:"modelUsage,omitempty"`
+	CostUSD *float64              `json:"total_cost_usd,omitempty"`
+}
+type ModelUsage struct {
+	Input         *uint64 `json:"inputTokens,omitempty"`
+	Output        *uint64 `json:"outputTokens,omitempty"`
+	Thinking      *uint64 `json:"thinkingTokens,omitempty"`
+	CacheRead     *uint64 `json:"cacheReadInputTokens,omitempty"`
+	CacheWrite    *uint64 `json:"cacheCreationInputTokens,omitempty"`
+	ContextWindow *uint64 `json:"contextWindow,omitempty"`
+}
+type RateLimit struct {
+	Status      string   `json:"status"`
+	Window      string   `json:"rateLimitType,omitempty"`
+	Utilization *float64 `json:"utilization,omitempty"`
+	ResetsAt    *float64 `json:"resetsAt,omitempty"`
+	Scope       string   `json:"limitScope,omitempty"`
+}
+
+// Task identity is not an agent principal or authorization to that agent's store.
+type Task struct {
+	ID, ToolID, Kind, Description, Status, Summary string
+	Ambient                                        bool
+}
+type TaskClient interface {
+	StopTask(context.Context, string) error
 }
 
 // Model choices are advertised by the runtime, not the inference router.

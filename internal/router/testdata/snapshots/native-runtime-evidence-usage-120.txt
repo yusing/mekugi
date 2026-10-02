@@ -1,0 +1,32 @@
+┌ 1 Main ──────────────────────────────────────────────────┐┌ 5 Journal ───────────────────── space expand · d details ┐
+│                                                          ││ No journal entries.                                      │
+│                                                          ││                                                          │
+│  ╭ Claude · Usage ───────────────────────── Esc close ╮  ││                                                          │
+│  │                                                    │  ││                                                          │
+│  │  Usage  ─────────────────────────────────────────  │  ││                                                          │
+│  │  Scope          Latest cumulative native query     │  ││                                                          │
+│  │                 totals, including subagents and    │  ││                                                          │
+│  │                 retained turns                     │  ││                                                          │
+│  │  API-equivalent estimate                           │  ││                                                          │
+│  │  $0.1234 · not subscription charges                │  ││                                                          │
+│  │                                                    │  ││                                                          │
+│  │  Model · claude-sonnet  ─────────────────────────  │  ││                                                          │
+│  │  Input tokens   1200                               │  ││                                                          │
+│  │  Output tokens  180                                │  ││                                                          │
+│  │  Thinking (included in output)                     │  ││                                                          │
+│  │  40                                                │  ││                                                          │
+│  │  Cache read tokens                                 │  ││                                                          │
+│  │  900                                               │  ││                                                          │
+│  │  Context capacity                                  │  ││                                                          │
+│  │  200000                                            │  ││                                                          │
+│  │                                                    │  ││                                                          │
+│  │  Limit · five hour · account  ───────────────────  │  ││                                                          │
+│  │  Status         allowed                            │  ││                                                          │
+│  │  Used           25.0%                              │  ││                                                          │
+│  │                                                    │  ││                                                          │
+│  ╰─ ↑↓ scroll  PgUp/PgDn ─────────────────────────────╯  ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes
