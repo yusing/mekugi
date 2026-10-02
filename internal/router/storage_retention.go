@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+
+	"github.com/yusing/mekugi/internal/persistence"
 )
 
 const sessionRetention = 14 * 24 * time.Hour
@@ -833,8 +835,7 @@ func (s *mekugiReplayStore) writeManagedFile(name, pattern string, data []byte) 
 
 // Called under store.lock. The record and every dependency it references are
 // retained in one catalog update and admitted together before any write. The
-// missing dependencies and any existing ones whose earlier publication may not
-// have been synced are durable before the record is published.
+// missing dependencies are published before the record referencing them.
 func (s *mekugiReplayStore) writeManagedFiles(record managedFile, dependencies []string, missing []managedFile) error {
 	if err := s.retainFiles(append([]string{record.name}, dependencies...)...); err != nil {
 		return storageIOError(err)
@@ -861,11 +862,11 @@ func (s *mekugiReplayStore) writeDependencies(files []managedFile) error {
 		}
 	}
 	for _, file := range files {
-		if err := writeAtomicFile(filepath.Join(s.directory, file.name), file.pattern, file.data, true); err != nil {
+		if err := persistence.AtomicFile(filepath.Join(s.directory, file.name), file.pattern, file.data, s.writes); err != nil {
 			return err
 		}
 	}
-	return syncReplayDirectory(s.directory)
+	return nil
 }
 
 // Readers acquire this lease before store.lock; cleanup only tries it without
@@ -892,7 +893,14 @@ func (s *mekugiReplayStore) lockStorageSnapshot(ctx context.Context) (func(), er
 // Age-based cleanup is router maintenance, not part of any request's replay
 // view. An unrelated catalog must not prevent a new thread from starting.
 func runStorageRetention(ctx context.Context, store func() *mekugiReplayStore, notice func()) {
+	var debugSweep time.Time
 	cleanup := func() {
+		if time.Since(debugSweep) >= time.Hour {
+			debugSweep = time.Now()
+			if err := cleanupDebugBundles(ctx, debugSweep); err != nil && ctx.Err() == nil && notice != nil {
+				notice()
+			}
+		}
 		if err := store().cleanupSessions(ctx); err != nil && ctx.Err() == nil && notice != nil {
 			notice()
 		}

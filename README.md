@@ -563,8 +563,14 @@ credentials. Provider-reported usage is authoritative; local token estimates
 are not billing figures. Costs are API estimates, not subscription charges. See
 the [metrics reference](doc/spec/metrics.md).
 
-`mekugi --debug codex --yolo` writes a private `mekugi-debug-*` directory in the
-system temporary directory. `/session` shows its path in Overview; on exit,
+`mekugi --debug codex --yolo` writes a private `mekugi-debug-*` bundle under
+`$XDG_STATE_HOME/mekugi/debug` (default `~/.local/state/mekugi/debug`).
+Inactive bundles are removed after 14 days; copy a bundle elsewhere to keep it.
+Explicit external capture/read destinations are not removed. Existing temporary
+bundles are left untouched. `/session` shows the bundle path and measured
+application-write bytes in Overview; final metrics include the same accounting.
+These bytes cover this router's managed-record and debug/capture writes, not
+physical disk traffic or subprocess writes. On exit,
 “To diagnose this session” prints an inspection command ready to share with an
 agent. Debug bundles include private session content and are **not sanitized**.
 Debug mode records future requests only. See
@@ -651,7 +657,10 @@ Every section is optional. Settings are read at startup and never rewritten.
 Replay records live in `$XDG_STATE_HOME/mekugi/replay`, or
 `~/.local/state/mekugi/replay` if that variable is unset. Resuming and side
 conversations need no extra flag. Replay doesn't rerun old commands or restore
-processes.
+processes. Roster usage shares this managed store; existing records need no
+migration. Publication remains atomic for readers, with disk flushing left to the
+kernel. Sudden power loss may lose recent records; unavailable retained evidence
+is not recovered by rerunning the original operation.
 
 For read-only storage diagnosis, use `mekugi inspect-storage`; see the
 [storage inspection reference](doc/spec/router.md) for selectors and output limits.

@@ -119,7 +119,7 @@ func (d *debugOutput) writeAXReport() error {
 	if err != nil {
 		return err
 	}
-	return errors.Join(json.NewEncoder(file).Encode(report), file.Close())
+	return errors.Join(json.NewEncoder(d.writes.Writer(file)).Encode(report), file.Close())
 }
 
 func discoverDebugRollouts(ctx context.Context, threads []string) (map[string][]string, error) {

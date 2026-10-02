@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/yusing/mekugi/internal/persistence"
 )
 
 // Session preferences are separate from correctness/replay records. Applied
@@ -190,7 +192,7 @@ func (p *nativePanePersistence) save(u *terminalUI, now time.Time, flush bool) e
 	if err := os.MkdirAll(filepath.Dir(p.path), 0700); err != nil {
 		return err
 	}
-	return writeAtomicFile(p.path, "panes-pending-", data, true)
+	return persistence.AtomicFile(p.path, "panes-pending-", data, nil)
 }
 
 // Only authoritative start/resume results and settings notifications reach here.

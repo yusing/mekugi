@@ -165,7 +165,7 @@ func (s *mekugiReplayStore) reserveChange(ctx context.Context, workspace, thread
 		for existing, change := range index.Changes {
 			if change.Correlation == correlation {
 				id = existing
-				return syncReplayDirectory(s.directory)
+				return nil
 			}
 		}
 		stream := slices.IndexFunc(index.Streams, func(stream changeStream) bool { return stream.Thread == thread })
@@ -245,7 +245,7 @@ func (s *mekugiReplayStore) publishChanges(workspace string, histories map[strin
 		}
 	}
 	if !changed {
-		return syncReplayDirectory(s.directory)
+		return nil
 	}
 	if err := s.writeChangeIndex(index); err != nil {
 		return err
@@ -308,7 +308,7 @@ func (s *mekugiReplayStore) repairVisibleChangeCalls(ctx context.Context, worksp
 			index.Changes[history.ChangeID] = change
 		}
 		if !changed {
-			return syncReplayDirectory(s.directory)
+			return nil
 		}
 		if err := s.writeChangeIndex(index); err != nil {
 			return err

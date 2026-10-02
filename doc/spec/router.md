@@ -108,8 +108,20 @@ wait. Cancellation interrupts the wait. Retrying persistence must not rerun the 
 or upstream request. Background work notices pressure promptly without waiting for the next age sweep.
 An age-sweep failure does not fail an
 unrelated request and is reported as a router-wide notice.
-The policy never deletes Codex transcripts, workspace files, exported metrics, or explicit debug
-bundles. It never infers expiry from request truncation or compaction.
+The policy never deletes Codex transcripts, workspace files, explicitly selected external
+capture/read outputs, or exported copies of debug bundles. Generated debug bundles under
+the state root have independent age retention, not the replay-data byte budget.
+It never infers expiry from request truncation or compaction.
+
+Managed publication uses private same-directory temporary files, close, then rename
+under the existing cross-process store lock. Dependencies and ownership are published
+before exposing references. Neither publications nor cleanup force file or directory
+flushes; the kernel owns flushing. This is atomic visibility and process-restart
+recovery, not a power-loss durability guarantee. Missing or invalid records after an
+unclean shutdown remain unavailable, never grounds for replaying effects. Existing
+replay paths and record schemas are unchanged; no data migration is required.
+Identical managed records are not rewritten. Roster usage retains bounded pending
+per-thread deltas and coalesces bursts before publication; shutdown drains the writer.
 
 Small per-thread namespace bindings and allocation high-water marks outlive reclaimed
 payloads, like storage lease metadata. They prevent resumed sessions from reusing
@@ -153,11 +165,18 @@ No scan of other sessions substitutes evidence for an unavailable selection.
 wrapper exit do not create token-usage Markdown files or announce metrics paths.
 
 `--debug` is a boolean flag requiring no argument. It creates a private, unique
-`mekugi-debug-*` directory in the system temporary directory, with router diagnostics,
+`mekugi-debug-*` directory under `$XDG_STATE_HOME/mekugi/debug` (default
+`~/.local/state/mekugi/debug`), with router diagnostics,
 sanitized capture, final metrics, an instruction dump, runtime read journal, and AX report.
 Debug implies AX instrumentation: the wrapper supplies the journal path to the executor
 and the authenticated worker manifest retains it across child environment changes.
 Explicit capture and `MEKUGI_AX_OUTPUT` destinations retain precedence.
+The background storage owner removes generated bundles after 14 days of inactivity,
+checking their owner marker and exclusive process lease. Running bundles remain
+protected; inactivity begins at close (or last lease timestamp after a crash).
+Cleanup does not follow symlinks to external capture files. Existing temporary
+bundles are not migrated or discovered for deletion. Copy a bundle outside the
+managed debug directory to retain it indefinitely.
 The debug bundle's `capture.jsonl` resolves to the selected capture destination
 when overridden, so the same bundle remains usable for offline replay.
 The wrapper prints one `To diagnose this session, ask an agent to run:`

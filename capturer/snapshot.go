@@ -7,6 +7,8 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+
+	"github.com/yusing/mekugi/internal/persistence"
 )
 
 type usageMetrics struct {
@@ -137,6 +139,7 @@ type exchangeMetrics struct {
 
 // MetricsSnapshot is a detached, capture-owned metrics view.
 type MetricsSnapshot struct {
+	StorageWrites  *persistence.Snapshot    `json:"storage_writes,omitempty"`
 	Schema         string                   `json:"schema"`
 	Mode           string                   `json:"mode"`
 	Requests       requestTotals            `json:"requests"`
@@ -172,6 +175,7 @@ func (r *Recorder) snapshot() MetricsSnapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	snapshot := cloneMetricsSnapshot(r.metrics)
+	snapshot.StorageWrites = r.writes.Snapshot()
 	diagnoseCacheExchanges(snapshot.Exchanges)
 	return snapshot
 }

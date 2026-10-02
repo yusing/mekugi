@@ -21,6 +21,8 @@ import (
 
 	responseevents "github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/tokenizer"
+
+	"github.com/yusing/mekugi/internal/persistence"
 )
 
 const schemaVersion = 7
@@ -38,6 +40,7 @@ type captureKey struct{}
 // Config identifies the observed router behavior and optional durable JSONL
 // destination. An empty Output retains records only for the process lifetime.
 type Config struct {
+	Writes *persistence.Counter
 	Output string
 	Mode   string
 }
@@ -108,6 +111,7 @@ type captureRecord struct {
 // Recorder owns correlation, sanitized measurement, durable capture, and
 // derived metrics for one router process.
 type Recorder struct {
+	writes              *persistence.Counter
 	lastRequestSequence map[string]uint64
 	fingerprintKey      [32]byte
 	mu                  sync.Mutex
@@ -217,7 +221,7 @@ func New(config Config) (*Recorder, error) {
 		return nil, fmt.Errorf("initialize private cache fingerprints: %w", err)
 	}
 	return &Recorder{
-		fingerprintKey: fingerprintKey, file: file, codec: codec, mode: config.Mode,
+		writes: config.Writes, fingerprintKey: fingerprintKey, file: file, codec: codec, mode: config.Mode,
 		lastRequestSequence: make(map[string]uint64),
 		metrics:             newMetricsSnapshot(config.Mode),
 	}, nil
@@ -568,7 +572,7 @@ func (r *Recorder) write(record captureRecord, state *requestState) {
 		return
 	}
 	if r.file != nil {
-		if _, err := r.file.Write(encoded); err != nil {
+		if _, err := r.writes.Writer(r.file).Write(encoded); err != nil {
 			r.metrics.Capture.WriteErrors++
 		}
 	}

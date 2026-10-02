@@ -1,0 +1,18 @@
+╭ Session · Overview ─────────────╮
+│                                 │
+│  Storage writes  ─────────────  │
+│  Application bytes              │
+│  12345                          │
+│  router-process managed         │
+│  records and debug/capture      │
+│  writes; excludes               │
+│  subprocesses, filesystem       │
+│  metadata and physical device   │
+│  I/O                            │
+│                                 │
+│  Requests  ───────────────────  │
+│  Scope                          │
+│  All threads in this launch ·   │
+│  mekugi                         │
+│                                 │
+╰─ ←→ views  ↑↓ scroll  Esc ──────╯

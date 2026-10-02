@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"time"
 )
 
 // This is the durable form of the canonical counters, not a second usage
@@ -209,6 +210,17 @@ func (u *threadUsage) flush(ctx context.Context) error {
 
 func (u *threadUsage) runWriter(ctx context.Context) {
 	defer close(u.writerDone)
+	// Collect bursts before taking the store lock. Pending state remains one delta
+	// per thread; flush and shutdown still wait for publication of all observations.
+	coalesce := func() {
+		timer := time.NewTimer(25 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+		}
+	}
+	coalesce()
 	for {
 		u.mu.Lock()
 		if err := ctx.Err(); err != nil {
@@ -233,6 +245,7 @@ func (u *threadUsage) runWriter(ctx context.Context) {
 			case <-changed:
 			case <-ctx.Done():
 			}
+			coalesce()
 			continue
 		}
 		u.writing = true

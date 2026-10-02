@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/yusing/mekugi/internal/persistence"
 )
 
 const maxReplayRecordBytes = 32 << 20
@@ -25,6 +26,7 @@ const maxReplayRecordBytes = 32 << 20
 // Durable records are immutable translation facts. Request-local confirmation and
 // ordering are intentionally absent. Session retention removes only inactive, unshared records.
 type mekugiReplayStore struct {
+	writes             *persistence.Counter
 	directory          string
 	maxBytes           int64
 	session            storageSessionIdentity
@@ -80,7 +82,7 @@ func durableHistory(h mekugiHistory) mekugiHistory {
 	return h
 }
 
-func defaultMekugiReplayDirectory() (string, error) {
+func mekugiStateDirectory() (string, error) {
 	base := os.Getenv("XDG_STATE_HOME")
 	if base == "" {
 		home, err := os.UserHomeDir()
@@ -92,7 +94,14 @@ func defaultMekugiReplayDirectory() (string, error) {
 	if !filepath.IsAbs(base) {
 		return "", errors.New("XDG_STATE_HOME must be absolute")
 	}
-	return filepath.Join(base, "mekugi", "replay"), nil
+	return filepath.Join(base, "mekugi"), nil
+}
+func defaultMekugiReplayDirectory() (string, error) {
+	base, err := mekugiStateDirectory()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "replay"), nil
 }
 func openMekugiReplayStore(directory string) (*mekugiReplayStore, error) {
 	return openMekugiReplayStoreContext(context.Background(), directory)
@@ -103,42 +112,8 @@ func openMekugiReplayStoreContext(ctx context.Context, directory string) (*mekug
 	if err != nil {
 		return nil, err
 	}
-	// Inspect existing ancestors before MkdirAll can create anything through a
-	// symlink. The second check below also validates the completed path.
-	for ancestor := directory; ; ancestor = filepath.Dir(ancestor) {
-		info, err := os.Lstat(ancestor)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return nil, err
-		}
-		if err == nil && info.Mode()&os.ModeSymlink != 0 {
-			return nil, errors.New("replay directory must not contain symlinks")
-		}
-		if filepath.Dir(ancestor) == ancestor {
-			break
-		}
-	}
-	if err := os.MkdirAll(directory, 0700); err != nil {
+	if err := ensurePrivateStateDirectory(directory); err != nil {
 		return nil, err
-	}
-	resolved, err := filepath.EvalSymlinks(directory)
-	if err != nil {
-		return nil, err
-	}
-	if resolved != directory {
-		return nil, errors.New("replay directory must not contain symlinks")
-	}
-	if err := os.Chmod(directory, 0700); err != nil {
-		return nil, err
-	}
-	// Sync the complete ancestry, including on startup retries: an existing
-	// directory can be left by an earlier creation whose parent sync failed.
-	for ancestor := directory; ; ancestor = filepath.Dir(ancestor) {
-		if err := syncReplayDirectory(ancestor); err != nil {
-			return nil, fmt.Errorf("persist replay directory ancestry: %w", err)
-		}
-		if filepath.Dir(ancestor) == ancestor {
-			break
-		}
 	}
 	s := &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, snapshots: newWorkspaceSnapshots(directory)}
 	if err := s.locked(ctx, func() error { return nil }); err != nil {
@@ -374,9 +349,7 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 			return err
 		}
 		if reflect.DeepEqual(previous, r) {
-			// A prior rename may have succeeded while its directory sync failed.
-			// Even an identical retry must establish durability before success.
-			return syncReplayDirectory(s.directory)
+			return nil
 		}
 	}
 	failed := r.History.ExecOutcome != nil && r.History.ExecOutcome.Status == execStatusFailed && r.History.ExecOutcome.SharedWith == ""
@@ -401,44 +374,66 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 	return s.writeManagedFiles(managedFile{name: name, pattern: prefix + "pending-", data: data}, nil, nil)
 }
 
-// writeFile publishes an already-validated record. Callers retain their lock,
-// schema, identity, and quota policies; all records share the durability sequence.
+// writeFile publishes a validated record under the caller's lock. Identical
+// records need no write or revision invalidation. The kernel owns disk flushing.
 func (s *mekugiReplayStore) writeFile(name, pattern string, data []byte) error {
+	path := filepath.Join(s.directory, name)
+	info, err := os.Lstat(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err == nil {
+		if !info.Mode().IsRegular() {
+			return errors.New("managed record is not a regular file")
+		}
+		if info.Size() == int64(len(data)) {
+			file, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			previous, readErr := io.ReadAll(io.LimitReader(file, int64(len(data))+1))
+			if err := errors.Join(readErr, file.Close()); err != nil {
+				return err
+			}
+			if bytes.Equal(previous, data) {
+				return nil
+			}
+		}
+	}
 	if err := s.advanceStorageRevision(); err != nil {
 		return err
 	}
-	if err := writeAtomicFile(filepath.Join(s.directory, name), pattern, data, true); err != nil {
-		return err
-	}
-	return syncReplayDirectory(s.directory)
+	return persistence.AtomicFile(path, pattern, data, s.writes)
 }
 
-// writeAtomicFile publishes in the destination directory. Durability beyond
-// the file itself (directory sync), quotas, and locks remain caller-owned.
-func writeAtomicFile(path, pattern string, data []byte, syncFile bool) error {
-	f, err := os.CreateTemp(filepath.Dir(path), pattern)
-	if err != nil {
-		return err
-	}
-	defer func() { f.Close(); os.Remove(f.Name()) }()
-	if _, err = f.Write(data); err != nil {
-		return err
-	}
-	if syncFile {
-		if err = f.Sync(); err != nil {
+func ensurePrivateStateDirectory(directory string) error {
+	// Inspect existing ancestors before MkdirAll can create anything through a
+	// symlink. The second check below also validates the completed path.
+	for ancestor := directory; ; ancestor = filepath.Dir(ancestor) {
+		info, err := os.Lstat(ancestor)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
+		if err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("state directory must not contain symlinks")
+		}
+		if filepath.Dir(ancestor) == ancestor {
+			break
+		}
 	}
-	if err = f.Close(); err != nil {
+	if err := os.MkdirAll(directory, 0700); err != nil {
 		return err
 	}
-	return os.Rename(f.Name(), path)
-}
-
-func syncReplayDirectory(directory string) error {
-	dir, err := os.Open(directory)
+	resolved, err := filepath.EvalSymlinks(directory)
 	if err != nil {
 		return err
 	}
-	return errors.Join(dir.Sync(), dir.Close())
+	if resolved != directory {
+		return errors.New("state directory must not contain symlinks")
+	}
+	if err := os.Chmod(directory, 0700); err != nil {
+		return err
+	}
+
+	return nil
 }

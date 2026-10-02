@@ -30,6 +30,14 @@ Fork and resume views use visible durable facts. Compaction removes invisible
 ancestry from one request view without deleting records needed by other
 branches. Expired output references and Codex process handles are not revived.
 
+The shared persistence primitive closes a private same-directory temporary file
+before rename; successful application-write byte counts are invocation-owned.
+The kernel owns flushing. Store locks and dependency-first publication preserve
+reader visibility, not power-loss durability. Replay and roster usage retain their
+existing paths below the state root; generated debug bundles use its debug subtree
+with process leases and age cleanup owned by storage maintenance. Diagnostic bytes
+do not consume the correctness-state quota.
+
 Session retention keeps shared durable dependencies and protects running work.
 New call envelopes retain file evidence inline and create no shared
 filesystem snapshots; workspace snapshots are not retention dependencies.

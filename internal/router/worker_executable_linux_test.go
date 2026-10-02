@@ -68,6 +68,18 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 	if stage == "before-registry" {
 		replace()
 	}
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	// The real launcher opens replay storage before dispatching a worker. Do
+	// not rely on another test (or the developer's state) to have created it.
+	replayDirectory, err := defaultMekugiReplayDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := openMekugiReplayStore(replayDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.snapshots.close()
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
 	registry, err := buildToolRegistry(t.Context(), t.TempDir(), false)
 	if err != nil {

@@ -13,11 +13,14 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/internal/persistence"
 )
 
 // Debug output is separate from sanitized capture. Failure events include the
 // complete error string, which can contain request content or credentials.
 type debugOutput struct {
+	writes           *persistence.Counter
+	release          func() error
 	mu               sync.Mutex
 	log              *os.File
 	dump             *os.File
@@ -34,14 +37,19 @@ func openDebugOutput(flags routerFlags) (*debugOutput, error) {
 	if !*flags.debug {
 		return nil, nil
 	}
-	directory, err := os.MkdirTemp("", "mekugi-debug-")
+	directory, release, err := createDebugBundle()
 	if err != nil {
 		return nil, fmt.Errorf("create debug directory: %w", err)
 	}
-	directory, err = filepath.Abs(directory)
-	if err != nil {
-		return nil, err
-	}
+	success := false
+	var d *debugOutput
+	defer func() {
+		if !success {
+			if d == nil || d.release != nil {
+				_ = release()
+			}
+		}
+	}()
 	if *flags.captureOutput == "" {
 		*flags.captureOutput = filepath.Join(directory, "capture.jsonl")
 	}
@@ -67,7 +75,8 @@ func openDebugOutput(flags routerFlags) (*debugOutput, error) {
 			return nil, fmt.Errorf("link debug capture: %w", err)
 		}
 	}
-	d := &debugOutput{
+	d = &debugOutput{
+		writes: new(persistence.Counter), release: release,
 		paths: []string{filepath.Join(directory, "router.jsonl"), capture, metrics,
 			filepath.Join(directory, "instructions.jsonl"), readLog, filepath.Join(directory, "ax.json")},
 		metricsPath: metrics,
@@ -88,6 +97,7 @@ func openDebugOutput(flags routerFlags) (*debugOutput, error) {
 		return nil, fmt.Errorf("initialize debug artifacts in %s: %w", directory, d.close())
 	}
 
+	success = true
 	return d, nil
 }
 
@@ -140,7 +150,7 @@ func (d *debugOutput) write(file *os.File, value any) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.err == nil {
-		d.err = json.NewEncoder(file).Encode(value)
+		d.err = json.NewEncoder(d.writes.Writer(file)).Encode(value)
 	}
 }
 
@@ -239,5 +249,11 @@ func (d *debugOutput) close() error {
 			closeErr = errors.Join(closeErr, file.Close())
 		}
 	}
-	return errors.Join(d.err, closeErr, d.writeAXReport())
+	axErr := d.writeAXReport()
+	var releaseErr error
+	if d.release != nil {
+		releaseErr = d.release()
+		d.release = nil
+	}
+	return errors.Join(d.err, closeErr, axErr, releaseErr)
 }

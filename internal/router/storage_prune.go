@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+
+	"github.com/yusing/mekugi/internal/persistence"
 )
 
 const storagePruneBatchFiles = 16
@@ -54,7 +56,7 @@ func (s *mekugiReplayStore) advanceStorageRevision() error {
 	if _, err := s.storageRevision(); err != nil {
 		return err
 	}
-	return writeAtomicFile(filepath.Join(s.directory, "storage-revision"), "revision-pending-", []byte(rand.Text()+"\n"), false)
+	return persistence.AtomicFile(filepath.Join(s.directory, "storage-revision"), "revision-pending-", []byte(rand.Text()+"\n"), s.writes)
 }
 
 func (s *mekugiReplayStore) requestStoragePrune(request storagePressureRequest) error {
@@ -276,9 +278,6 @@ func (s *mekugiReplayStore) commitStoragePrune(ctx context.Context, plan *storag
 			delete(candidate.files, name)
 		}
 		candidate.pending = candidate.pending[len(names):]
-		if err := syncReplayDirectory(s.directory); err != nil {
-			return err
-		}
 		plan.revision, err = s.storageRevision()
 		committed = err == nil
 		return err
@@ -377,6 +376,12 @@ func (s *mekugiReplayStore) cleanupSessions(ctx context.Context) error {
 				return err
 			}
 		}
-		return s.writeFile("retention-sweep", "retention-pending-", nil)
+		if err := s.writeFile("retention-sweep", "retention-pending-", nil); err != nil {
+			return err
+		}
+		// The empty marker is intentionally content-stable; refresh its clock even
+		// when publication skipped an identical rewrite.
+		now := time.Now()
+		return os.Chtimes(filepath.Join(s.directory, "retention-sweep"), now, now)
 	})
 }

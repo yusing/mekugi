@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/internal/persistence"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
 
@@ -124,7 +125,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	var mekugiCalls *mekugiProxy
 	defer func() {
 		if debug != nil {
-			debug.event(map[string]any{"event": "router_stop", "failed": runErr != nil})
+			debug.event(map[string]any{"event": "router_stop", "failed": runErr != nil, "storage_writes": debug.writes.Snapshot()})
 			runErr = errors.Join(runErr, debug.close())
 		}
 		if artifacts != nil {
@@ -137,7 +138,11 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			}
 		}
 	}()
-	capture, err := capturer.New(capturer.Config{Output: *flags.captureOutput, Mode: *flags.mode})
+	var writes *persistence.Counter
+	if debug != nil {
+		writes = debug.writes
+	}
+	capture, err := capturer.New(capturer.Config{Output: *flags.captureOutput, Mode: *flags.mode, Writes: writes})
 	if err != nil {
 		return fmt.Errorf("initialize capture: %w", err)
 	}
@@ -150,7 +155,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}
 	defer func() {
 		if metricsFile != nil {
-			runErr = errors.Join(runErr, capture.WriteMetrics(metricsFile), metricsFile.Close())
+			runErr = errors.Join(runErr, capture.WriteMetrics(writes.Writer(metricsFile)), metricsFile.Close())
 		}
 		runErr = errors.Join(runErr, capture.Close())
 	}()
@@ -216,6 +221,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	provider.titleGenerator = newSessionTitleGenerator(titleCtx, provider, titles)
 	if issues != nil {
 		issues.persistFailures = true
+		issues.writes = writes
 	}
 	if *flags.mode == "mekugi" {
 		registry, err := buildToolRegistry(ctx, dataDirectory, os.Getenv("MEKUGI_DIAGNOSE") == "1")
@@ -240,6 +246,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		if err != nil {
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
+		replayStore.writes = writes
 		defer replayStore.snapshots.close()
 		mekugiCalls = newMekugiProxy(registry, titles)
 		provider.titleGenerator.usage = mekugiCalls.usage

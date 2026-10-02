@@ -288,7 +288,7 @@ func (s *mekugiReplayStore) putReadRecord(ctx context.Context, record shellOutpu
 			if err := s.retainReadRecord(record); err != nil {
 				return err
 			}
-			return syncReplayDirectory(s.directory)
+			return nil
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}

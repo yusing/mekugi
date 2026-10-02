@@ -134,6 +134,10 @@ func (u *appServerUI) renderSessionMetrics() {
 		add("Debug", "Directory", pathdisplay.ForWorkspace(u.session.cwd, u.replayDebugDirectory))
 		p.fields[len(p.fields)-1].path = true
 	}
+	if m.tab == 0 && s.StorageWrites != nil {
+		add("Storage writes", "Application bytes", s.StorageWrites.Bytes)
+		add("Storage writes", "", s.StorageWrites.Scope)
+	}
 	if s.Schema == "" {
 		add("Capture", "", "Metrics are unavailable for this frontend. Live launch metrics are not restored from saved sessions.")
 		u.dirty = true

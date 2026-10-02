@@ -65,6 +65,19 @@ provider wire request.
 calculations belong to the capturer, not the router, engine, plugin, comparison
 report or session dialog. Journal operation evidence comes from its durable owner.
 
+With `--debug`, the snapshot includes optional `storage_writes` with cumulative
+`bytes` and a `scope` description, displayed in `/session` Overview and debug
+`metrics.json`. Accounting is invocation-local and counts successful byte counts
+returned by instrumented writes, including partial writes and temporary files whose
+rename fails. It covers this router process's managed records (including usage,
+ownership and revision records), router/instruction logs, capture, metrics and AX
+report writes. It excludes other processes (including frontend/AX-journal workers
+and Git snapshots), filesystem metadata, uninstrumented caches and physical device
+I/O. No counter is exported when instrumentation is disabled; missing is not zero.
+Each snapshot excludes its own serialization and any later writes; the shutdown
+router log also records the snapshot at that event. No counter is restored across
+resume or combined with another router's state.
+
 Exchange and provider-attempt details retain wall-clock duration in milliseconds,
 HTTP status, response completeness and bounded capture-error codes. Exchange duration
 includes local compaction. Local token estimates are not provider usage or savings.

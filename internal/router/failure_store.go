@@ -35,6 +35,7 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 	c.mu.Lock()
 	store := c.failureStore
 	enabled := c.persistFailures || store != nil
+	writes := c.writes
 	c.mu.Unlock()
 	if !enabled {
 		return
@@ -47,6 +48,7 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 			store, err = openMekugiReplayStoreContext(ctx, directory)
 		}
 		if err == nil {
+			store.writes = writes
 			store.storageNotice = func(session, thread, phase, message string) {
 				c.addThreadNotice(session, thread, "storage_cleanup_"+phase, message)
 			}

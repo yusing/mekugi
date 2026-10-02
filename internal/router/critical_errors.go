@@ -14,12 +14,14 @@ import (
 	"syscall"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/internal/persistence"
 )
 
 // CriticalErrors retains bounded, actionable session notices with complete error text,
 // but no request snapshots or operational event history. It outlives router shutdown so
 // the launcher can report notices that could not reach Codex.
 type CriticalErrors struct {
+	writes          *persistence.Counter
 	mu              sync.Mutex
 	entries         []*criticalNotice
 	overflow        uint64

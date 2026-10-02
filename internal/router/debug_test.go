@@ -45,8 +45,18 @@ func TestDebugSessionArtifacts(t *testing.T) {
 		t.Fatal("missing feature-observation coverage marker")
 	}
 	metrics, _ := os.ReadFile(paths[2])
-	if !json.Valid(metrics) {
-		t.Fatal("missing final metrics")
+	var exported struct {
+		StorageWrites *struct {
+			Bytes uint64 `json:"bytes"`
+			Scope string `json:"scope"`
+		} `json:"storage_writes"`
+	}
+	if err := json.Unmarshal(metrics, &exported); err != nil || exported.StorageWrites == nil || exported.StorageWrites.Bytes == 0 || exported.StorageWrites.Scope == "" {
+		t.Fatalf("missing application write accounting: %s, %v", metrics, err)
+	}
+	root, err := debugStorageDirectory()
+	if err != nil || filepath.Dir(filepath.Dir(paths[0])) != root {
+		t.Fatalf("bundle not in managed state: %v, %v", paths, err)
 	}
 }
 

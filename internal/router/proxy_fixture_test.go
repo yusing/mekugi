@@ -115,6 +115,24 @@ func TestMain(m *testing.M) {
 			os.Exit(code)
 		}
 	}
+	// Debug bundles and failure records now share the state root. Keep all test
+	// publications outside the user's retained data, including parallel cases.
+	var stateDirectory string
+	var err error
+	// Child test executables must retain their parent's authenticated store path.
+	if os.Getenv("MEKUGI_ROUTER_TEST_STATE_ISOLATED") == "" {
+		stateDirectory, err = os.MkdirTemp("", "mekugi-test-state-")
+		if err == nil {
+			err = os.Setenv("XDG_STATE_HOME", stateDirectory)
+		}
+		if err == nil {
+			err = os.Setenv("MEKUGI_ROUTER_TEST_STATE_ISOLATED", "1")
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}
 	// Chroma lexers set regexp2 match timeouts, which lazily start one shared
 	// clock goroutine. Start it here so a synctest bubble never owns it.
 	clock := regexp2.MustCompile("x", regexp2.None)
@@ -138,7 +156,9 @@ func TestMain(m *testing.M) {
 		}
 	}
 	code := m.Run()
-	var err error
+	if stateDirectory != "" {
+		err = os.RemoveAll(stateDirectory)
+	}
 	for _, fixture := range []*proxyRegistryFixture{&proxyTestFixture, &pluginProxyTestFixture} {
 		if fixture.registry != nil {
 			err = errors.Join(err, fixture.registry.Close())

@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/yusing/mekugi/internal/persistence"
 )
 
 const openCodeCatalogTTL = time.Hour
@@ -341,7 +343,7 @@ func (c *openCodeCatalog) save(snapshot *openCodeSnapshot) error {
 	if err != nil {
 		return err
 	}
-	return writeAtomicFile(c.path, ".opencode-models-*", data, false)
+	return persistence.AtomicFile(c.path, ".opencode-models-*", data, nil)
 }
 
 // Explicit context tiers supersede the legacy 200k field. Unknown tier types

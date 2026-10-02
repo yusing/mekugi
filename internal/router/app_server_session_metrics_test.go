@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/persistence"
 )
 
 // Decode the public snapshot boundary rather than naming capture-owned types.
@@ -186,6 +187,8 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 		debug                   string
 	}{
 		{name: "overview", width: 90, height: 55},
+		{name: "storage", width: 90, height: 24},
+		{name: "storage-narrow", width: 35, height: 18},
 		{name: "transport", tab: 1, width: 90, height: 55},
 		{name: "exchanges", tab: 2, width: 90, height: 60},
 		{name: "exchanges-scrolled", tab: 2, width: 90, height: 25, top: 27},
@@ -208,6 +211,9 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 			m.tab = tc.tab
 			if !tc.missing {
 				m.snapshot = sessionMetricsFixture(t)
+			}
+			if strings.HasPrefix(tc.name, "storage") {
+				m.snapshot.StorageWrites = &persistence.Snapshot{Bytes: 12345, Scope: new(persistence.Counter).Snapshot().Scope}
 			}
 			if tc.empty {
 				m.snapshot.Exchanges = nil

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/internal/router"
 	"github.com/yusing/mekugi/internal/shellsyntax"
@@ -92,5 +93,37 @@ func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {
 			normalized := strings.ReplaceAll(after, shellsyntax.Quote(argv[2]), "'/tmp/mekugi-debug-session'")
 			uisnapshot.Assert(t, filepath.Join(fixtures, "debug-handoff.txt"), normalized)
 		})
+	}
+}
+
+// Exercise the real handoff tests in a fresh package invocation with ambient
+// retained state. Neither generated bundles nor retention may touch that state.
+func TestDebugHandoffTestsIsolateAmbientState(t *testing.T) {
+	state := t.TempDir()
+	root := filepath.Join(state, "mekugi", "debug")
+	oldBundle := filepath.Join(root, "mekugi-debug-existing")
+	if err := os.MkdirAll(oldBundle, 0700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(oldBundle, ".mekugi-debug-v1.lock")
+	if err := os.WriteFile(marker, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-15 * 24 * time.Hour)
+	if err := os.Chtimes(marker, old, old); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestUISnapshotDebugHandoffAfterCodexExit$")
+	command.Env = append(os.Environ(), "XDG_STATE_HOME="+state, "MEKUGI_LAUNCHER_TEST_STATE_ISOLATED=")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("handoff subprocess: %v\n%s", err, output)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 1 || entries[0].Name() != filepath.Base(oldBundle) {
+		t.Fatalf("ambient debug state changed: %v, %v", entries, err)
+	}
+	info, err := os.Stat(marker)
+	if err != nil || !info.ModTime().Equal(old) {
+		t.Fatalf("ambient retained bundle changed: %v, %v", info, err)
 	}
 }

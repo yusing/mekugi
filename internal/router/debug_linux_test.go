@@ -26,7 +26,7 @@ func TestDebugInitialWriteFailure(t *testing.T) {
 		return
 	}
 	directory := t.TempDir()
-	t.Setenv("TMPDIR", directory)
+	t.Setenv("XDG_STATE_HOME", directory)
 	t.Setenv(capturer.AXReadOutputEnvironment, "")
 	signal.Ignore(syscall.SIGXFSZ)
 	var original syscall.Rlimit
@@ -47,7 +47,7 @@ func TestDebugInitialWriteFailure(t *testing.T) {
 	if debug != nil || !errors.Is(initErr, syscall.EFBIG) || !strings.Contains(initErr.Error(), "initialize debug artifacts") {
 		t.Fatalf("startup did not reject failed first write: %v, %v", debug, initErr)
 	}
-	logs, err := filepath.Glob(filepath.Join(directory, "mekugi-debug-*", "router.jsonl"))
+	logs, err := filepath.Glob(filepath.Join(directory, "mekugi", "debug", "mekugi-debug-*", "router.jsonl"))
 	if err != nil || len(logs) != 1 {
 		t.Fatalf("startup did not reach initial event: %v, %v", logs, err)
 	}
