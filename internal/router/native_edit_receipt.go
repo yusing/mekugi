@@ -78,6 +78,9 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 			path = file.BeforePath
 		}
 		path = pathdisplay.ForWorkspace(workspace, path)
+		if action == "Move" {
+			path = pathdisplay.Move(workspace, file.BeforePath, file.AfterPath)
+		}
 		if file.Directory {
 			summaries = append(summaries, action+" "+commentaryCode(path+"/"))
 			continue

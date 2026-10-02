@@ -101,3 +101,35 @@ func TestDirectoryReviewCannotInventContent(t *testing.T) {
 		t.Fatal("directory metadata became composable content")
 	}
 }
+
+func TestReviewWorkspaceDisplay(t *testing.T) {
+	for _, tc := range []struct{ before, after, old, new string }{
+		{"/w/old name", "/w/new name", "same\n", "same\n"},
+		{"/w/old", "/w/new", "--- /w/source-row\n", "+++ /w/source-row\n"},
+		{"", "/w/new", "", "new\n"},
+		{"/w/old", "", "old\n", ""},
+		{"/outside/old", "/outside/new", "old\n", "new\n"},
+	} {
+		file := RenderReviewFile(tc.before, tc.after, tc.old, tc.new)
+		original := file
+		want := RenderReviewFile(strings.TrimPrefix(tc.before, "/w/"), strings.TrimPrefix(tc.after, "/w/"), tc.old, tc.new).UnifiedDiff()
+		if got := file.UnifiedDiffForWorkspace("/w"); got != want {
+			t.Errorf("display = %q, want %q", got, want)
+		}
+		if file != original {
+			t.Fatal("display changed retained evidence")
+		}
+	}
+}
+
+func TestBinaryReviewWorkspaceDisplay(t *testing.T) {
+	file := RenderBinaryReviewFile("/w/old.bin", "/w/new.bin", 10, 12, "oldhash", "newhash")
+	original := file
+	want := RenderBinaryReviewFile("old.bin", "new.bin", 10, 12, "oldhash", "newhash").UnifiedDiff()
+	if got := file.UnifiedDiffForWorkspace("/w"); got != want {
+		t.Fatalf("binary display = %q, want %q", got, want)
+	}
+	if file != original {
+		t.Fatal("display changed binary evidence")
+	}
+}

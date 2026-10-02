@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/pmezard/go-difflib/difflib"
+	"github.com/yusing/mekugi/internal/pathdisplay"
 )
 
 // ReviewFile is an immutable original-to-final review projection. Unlike the
@@ -81,6 +82,34 @@ func (file ReviewFile) UnifiedDiff() string {
 		return rest
 	}
 	return file.Diff
+}
+
+// UnifiedDiffForWorkspace shortens display headers without changing retained
+// paths or source rows. Composition and filesystem operations use the originals.
+func (file ReviewFile) UnifiedDiffForWorkspace(workspace string) string {
+	before, after := file.BeforePath, file.AfterPath
+	file.BeforePath = pathdisplay.ForWorkspace(workspace, before)
+	file.AfterPath = pathdisplay.ForWorkspace(workspace, after)
+	operation := fmt.Sprintf("%s %q -> %q\n", file.Action(), before, after)
+	if rest, ok := strings.CutPrefix(file.Diff, operation); ok {
+		file.Diff = fmt.Sprintf("%s %q -> %q\n", file.Action(), file.BeforePath, file.AfterPath) + rest
+	}
+	oldHeader := fmt.Sprintf("--- %s\n+++ %s\n", reviewPath(before), reviewPath(after))
+	newHeader := fmt.Sprintf("--- %s\n+++ %s\n", reviewPath(file.BeforePath), reviewPath(file.AfterPath))
+	// Headers occur at the start or immediately after the operation, never in hunks.
+	first, rest, _ := strings.Cut(file.Diff, "\n")
+	if file.Binary {
+		oldBinary := fmt.Sprintf("Binary files %s and %s differ (", reviewPath(before), reviewPath(after))
+		if tail, ok := strings.CutPrefix(rest, oldBinary); ok {
+			file.Diff = first + "\n" + fmt.Sprintf("Binary files %s and %s differ (", reviewPath(file.BeforePath), reviewPath(file.AfterPath)) + tail
+		}
+	}
+	if tail, ok := strings.CutPrefix(rest, oldHeader); ok {
+		file.Diff = first + "\n" + newHeader + tail
+	} else if tail, ok := strings.CutPrefix(file.Diff, oldHeader); ok {
+		file.Diff = newHeader + tail
+	}
+	return file.UnifiedDiff()
 }
 
 // LineCounts counts added and removed source rows in a captured review projection.

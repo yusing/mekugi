@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -457,7 +456,7 @@ func TestMChangesSlicesNetComposesRepeatedEditsAndRejectsIncompleteEvidence(t *t
 	second := mekugi.RenderReviewFile(path, path, "intermediate value\n", "final value\n")
 	f.publish(t, id, correlation, "net-first-call", mekugiHistory{ReviewFiles: []mekugi.ReviewFile{first}})
 	f.publish(t, id, correlation, "net-second-call", mekugiHistory{Attempt: 2, ReviewFiles: []mekugi.ReviewFile{second}})
-	want := "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1,1 +1,1 @@\n-old value\n+final value\n"
+	want := "--- \"target.txt\"\n+++ \"target.txt\"\n@@ -1,1 +1,1 @@\n-old value\n+final value\n"
 	stdout, stderr, status := f.run(t, "mchanges --net "+id)
 	if status != 0 || stderr != "" || stdout != want {
 		t.Fatalf("net composition = %q, %q, %d; want %q", stdout, stderr, status, want)

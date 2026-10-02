@@ -849,7 +849,11 @@ func appServerEditText(item appServerItem, cwd string) string {
 		case "delete":
 			verb = "Delete"
 		}
-		text := verb + " " + commentaryCode(pathdisplay.ForWorkspace(cwd, change.Path)) + fmt.Sprintf(" · +%d −%d", added, removed)
+		path := pathdisplay.ForWorkspace(cwd, change.Path)
+		if moved := cmp.Or(change.Kind.MovePath, change.Kind.MovePath2); moved != "" {
+			verb, path = "Move", pathdisplay.Move(cwd, change.Path, moved)
+		}
+		text := verb + " " + commentaryCode(path) + fmt.Sprintf(" · +%d −%d", added, removed)
 		switch item.Status {
 		case "failed", "declined":
 			text += " · " + item.Status
@@ -870,10 +874,20 @@ func appServerEditPages(item appServerItem, cwd, phase string) []activityui.Bloc
 	}
 	var pages []activityui.Block
 	for _, change := range item.Changes {
-		if change.Diff == "" {
+		path, diff := pathdisplay.ForWorkspace(cwd, change.Path), change.Diff
+		if moved := cmp.Or(change.Kind.MovePath, change.Kind.MovePath2); moved != "" {
+			path = pathdisplay.Move(cwd, change.Path, moved)
+			if body, ok := strings.CutSuffix(diff, "\n\nMoved to: "+moved); ok {
+				diff = body + "\n\nMoved to: " + pathdisplay.ForWorkspace(cwd, moved)
+			}
+			if diff == "" {
+				diff = fmt.Sprintf("move %q -> %q\n", pathdisplay.ForWorkspace(cwd, change.Path), pathdisplay.ForWorkspace(cwd, moved))
+			}
+		}
+		if diff == "" {
 			continue
 		}
-		pages = append(pages, activityui.Block{Kind: "op", Verb: "Edit", Path: pathdisplay.ForWorkspace(cwd, change.Path), Code: change.Diff, Lang: "diff", Fenced: true})
+		pages = append(pages, activityui.Block{Kind: "op", Verb: "Edit", Path: path, Code: diff, Lang: "diff", Fenced: true})
 	}
 	return pages
 }

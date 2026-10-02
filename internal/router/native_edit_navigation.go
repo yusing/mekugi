@@ -32,8 +32,12 @@ func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64, path s
 			var pages []activityui.Block
 			for _, chunk := range attempt.chunks {
 				target := cmp.Or(chunk.Review.AfterPath, chunk.Review.BeforePath)
-				display := pathdisplay.ForWorkspace(cmp.Or(chunk.Workspace, u.diff.workspace), target)
-				pages = append(pages, activityui.Block{Kind: "op", Verb: "Edit", Path: display, Code: chunk.Review.UnifiedDiff(), Lang: "diff", Fenced: true})
+				workspace := cmp.Or(chunk.Workspace, u.diff.workspace)
+				display := pathdisplay.ForWorkspace(workspace, target)
+				if chunk.Review.Action().Title() == "Move" && path == pathdisplay.Move(workspace, chunk.Review.BeforePath, chunk.Review.AfterPath) {
+					path = display
+				}
+				pages = append(pages, activityui.Block{Kind: "op", Verb: "Edit", Path: display, Code: chunk.Review.UnifiedDiffForWorkspace(workspace), Lang: "diff", Fenced: true})
 			}
 			if u.openEditPages(view, pages, path) {
 				return true

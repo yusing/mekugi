@@ -197,8 +197,10 @@ known stream. If the stream is unknown, the error identifies the selected
 workspace so callers can correct `--workspace`.
 
 `--net` composes selected completed captures in recorded capture order using the
-same review composition as the live view. It follows moves and emits canonical
-absolute paths; it never reads the live workspace. Pending or retired history and
+same review composition as the live view. It follows moves; diff output and edit
+dialogs show workspace-relative paths inside the owning workspace and preserve
+absolute paths outside it. Retained evidence keeps canonical paths. It never reads
+the live workspace. Pending or retired history and
 inconsistent, incomplete, partial-coverage, or binary capture chains
 fail rather than claim a complete net diff; ordinary reads preserve that evidence.
 Complete captured diffs remain composable regardless of command exit status,
@@ -229,8 +231,10 @@ Completed file changes can publish a generated `Create` or `Edit` commentary
 summary, including changes left by a command that exits nonzero. Classification
 uses the same captured review files as `mchanges`, including whether a path
 existed before the edit. Each summary carries a bounded copy of the captured
-hunks. Unchanged and unfinished calls publish no edit summary. These messages
-are user-only presentation, not substituted tool results. After persistence, the
+hunks. Unchanged and unfinished calls publish no edit summary. Move summaries
+show both endpoints of moves, compressing shared directory prefixes as
+`internal/router/{old.go=>new.go}`. These messages are user-only presentation,
+not substituted tool results. After persistence, the
 agent-visible completed tool response also receives a separate text part with
 the change ID and `mchanges ID --summary` statistics. This bounded notice does
 not replace the original host result or alter the user-facing edit display.

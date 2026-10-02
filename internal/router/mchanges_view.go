@@ -183,7 +183,7 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 			if len(options.paths) > 0 && !changePathMatches(options, file.BeforePath) && !changePathMatches(options, file.AfterPath) {
 				continue
 			}
-			output.WriteString(file.UnifiedDiff())
+			output.WriteString(file.UnifiedDiffForWorkspace(options.workspace))
 			if output.Len() > maxChangeReadBytes {
 				return "", errors.New("change read exceeds 64 MiB; narrow the range or paths after --")
 			}

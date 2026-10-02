@@ -467,7 +467,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 					if file.OriginNote != "" {
 						fmt.Fprintln(&output, file.OriginNote)
 					}
-					output.WriteString(file.UnifiedDiff())
+					output.WriteString(file.UnifiedDiffForWorkspace(options.workspace))
 				}
 			}
 			if output.Len() > maxChangeReadBytes {

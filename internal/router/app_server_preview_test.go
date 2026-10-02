@@ -1412,7 +1412,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 					continue
 				}
 				for _, chunk := range attempt.chunks {
-					if u.shell.output.pages[u.shell.output.page].Code == chunk.Review.UnifiedDiff() {
+					if u.shell.output.pages[u.shell.output.page].Code == chunk.Review.UnifiedDiffForWorkspace(u.shell.diff.workspace) {
 						found = true
 					}
 				}
