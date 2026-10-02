@@ -144,9 +144,17 @@ V2 recovery uses a deterministic summary of constraints, open tasks, established
 results and retained changes, with actionable paths first. Context nodes are kept
 in full. Working tasks precede pending and blocked tasks; completed work and notes
 follow. A superseded node renders as one line naming its replacement, without its
-body or descendants, so recovery does not present a replaced decision as current. When completed work exceeds its budget, the newest results are kept in
-tree order and the omitted count is stated. Bounded detail excerpts point back to
-`read`, never claim to be complete.
+body or descendants, so recovery does not present a replaced decision as current.
+Finished work is represented by its own result. A done or dropped task with a body
+renders without its notes and bound agents. A finished agent renders with only its
+latest outcome, since earlier outcomes may report defects it later resolved. Each
+folded line states how many entries it folds and the `read` path that returns them.
+Open tasks, their work and context nodes are never folded: an open task bounds
+folding even under a dropped task or a finished agent. When completed work exceeds its
+budget, the newest results are kept in tree order and the omitted count is stated.
+Bounded detail excerpts point back to `read`, never claim to be complete. Retained
+changes list only their ranges, pointing to `mchanges ID[..ID] --summary` for file
+statistics.
 
 When an open task's bound child has an observed done lifecycle, recovery places
 that fact and its retained result path beside the parent task. The parent's

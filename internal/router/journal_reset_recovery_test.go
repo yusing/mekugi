@@ -145,3 +145,95 @@ func TestJournalSummaryDoesNotPromoteDescendantTaskState(t *testing.T) {
 		t.Fatalf("descendant task overrode child lifecycle: %s", summary.Text)
 	}
 }
+
+// Finished work recovers as its own result: a done task's body stands for its
+// logs and bound agent, and a finished agent's latest outcome stands for its
+// earlier outcomes, which may report defects it later resolved.
+func TestJournalSummaryFoldsFinishedWorkIntoItsResult(t *testing.T) {
+	proxy, workspace := mountFixture(t)
+	treeApply(t, proxy, workspace,
+		journalMutation{Op: "add", Kind: "task", Title: new("Delegate tests"), State: new("working"), Agent: "/root/child"},
+		journalMutation{Op: "log", P: "/1", Text: new("PARENT-LOG-DETAIL")},
+	)
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "child", "", []journalMutation{{Op: "log", Text: new("CHILD-LOG-DETAIL")}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := proxy.journals.observeLifecycle(t.Context(), proxy.replayStore, workspace, "child", "done", ""); err != nil {
+		t.Fatal(err)
+	}
+	treeApply(t, proxy, workspace,
+		journalMutation{Op: "set", P: "/1", State: new("done"), Body: new("Tests added and passing")},
+		journalMutation{Op: "add", Kind: "task", Title: new("Next slice"), State: new("pending")},
+	)
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "sibling", "", []journalMutation{
+		{Op: "add", Kind: "task", Title: new("Review"), State: new("done")},
+		{Op: "log", P: "/1", Text: new("REVIEW-LOG-DETAIL")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sibling, _, err := readThreadJournal(proxy.replayStore, workspace, "sibling")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sibling.Items = append(sibling.Items,
+		journalItem{ID: "/2", Path: "/2", Kind: "answer", Title: "Outcome", Body: "STALE: two defects found", Author: sibling.Author},
+		journalItem{ID: "/3", Path: "/3", Kind: "answer", Title: "Outcome", Body: "Both defects resolved", Author: sibling.Author},
+	)
+	if err := writeThreadJournal(proxy.replayStore, sibling); err != nil {
+		t.Fatal(err)
+	}
+	if err := proxy.journals.observeLifecycle(t.Context(), proxy.replayStore, workspace, "sibling", "done", ""); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := summaryForTest(t, t.Context(), proxy.replayStore, workspace, "tree")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"/1 [done] Delegate tests (agent /root/child)\nTests added and passing\n3 entries folded; journal({op:\"read\", p:\"/1\"}) retains them.",
+		"/@agents/@sibling [done] /root/sibling (agent /root/sibling)\n3 entries folded; journal({op:\"read\", p:\"/@agents/@sibling\"}) retains them.",
+		"/@agents/@sibling/3 Outcome\nBoth defects resolved", "Resume: continue /2",
+	} {
+		if !strings.Contains(summary.Text, want) {
+			t.Errorf("summary missing %q:\n%s", want, summary.Text)
+		}
+	}
+	for _, folded := range []string{"PARENT-LOG-DETAIL", "CHILD-LOG-DETAIL", "REVIEW-LOG-DETAIL", "STALE", "/@agents Agents"} {
+		if strings.Contains(summary.Text, folded) {
+			t.Errorf("summary kept folded entry %q:\n%s", folded, summary.Text)
+		}
+	}
+	// The fold hint names a read that returns what recovery omitted.
+	if _, ok := mountFind(mountRead(t, proxy, workspace, "tree", "", "/@agents/@sibling"), "/@agents/@sibling/2"); !ok {
+		t.Fatal("folded agent outcome is not readable at the hinted path")
+	}
+}
+
+func TestJournalSummaryOpenSubtaskBoundsFolding(t *testing.T) {
+	proxy, workspace := mountFixture(t)
+	treeApply(t, proxy, workspace,
+		journalMutation{Op: "add", Kind: "task", Title: new("Original approach"), State: new("working")},
+		journalMutation{Op: "add", Under: "/1", Kind: "task", Title: new("Kept subtask"), State: new("working"), Agent: "/root/child"},
+		journalMutation{Op: "log", P: "/1/1", Text: new("OPEN-SUB-PROGRESS")},
+		journalMutation{Op: "log", P: "/1", Text: new("DROPPED-DETAIL")},
+	)
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "child", "", []journalMutation{{Op: "log", Text: new("CHILD-NOTE")}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := proxy.journals.observeLifecycle(t.Context(), proxy.replayStore, workspace, "child", "done", ""); err != nil {
+		t.Fatal(err)
+	}
+	treeApply(t, proxy, workspace, journalMutation{Op: "set", P: "/1", State: new("dropped"), Reason: new("Approach replaced"), Body: new("Superseded plan")})
+	summary, err := summaryForTest(t, t.Context(), proxy.replayStore, workspace, "tree")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"OPEN-SUB-PROGRESS", "CHILD-NOTE", "retained result: /1/1/@child", "1 entry folded; journal({op:\"read\", p:\"/1\"})"} {
+		if !strings.Contains(summary.Text, want) {
+			t.Errorf("summary missing %q:\n%s", want, summary.Text)
+		}
+	}
+	if strings.Contains(summary.Text, "DROPPED-DETAIL") {
+		t.Errorf("dropped task kept its own folded note:\n%s", summary.Text)
+	}
+}

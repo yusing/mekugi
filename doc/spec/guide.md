@@ -140,7 +140,8 @@ The hook reads the retained journal and executing-thread-owned change evidence
 through their existing owners. V2 uses the [evidence-backed journal summary](journal.md#evidence-backed-recovery),
 including paths, task states, constraints and changes/failures captured after the
 last journal event. Retained v1 journals include IDs, authors, questions and delivery
-state. Both include retained change ranges and aggregated numstat, not full diffs. These are
+state. Both include retained change ranges, not full diffs. V2 adds aggregated numstat
+only for changes after the last journal event; v1 includes it for all retained changes. These are
 historical facts, not new authorization or proof of current workspace state. No
 tools or effects are replayed, and listing does not acknowledge journal delivery.
 

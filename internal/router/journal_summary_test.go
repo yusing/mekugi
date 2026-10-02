@@ -124,7 +124,8 @@ func TestJournalSummarySeparatesEarlierEvidenceFromUnreportedFailure(t *testing.
 		}
 	}
 	retained, delta, ok := strings.Cut(after.Text, "Since the last journal event:")
-	if !ok || !strings.Contains(retained, "render.go") || !strings.Contains(retained, "new.go") ||
+	// Recorded work keeps only its ranges; unrecorded changes keep file statistics.
+	if !ok || !strings.Contains(retained, changeID+".."+laterChange) || strings.Contains(retained, "render.go") || strings.Contains(retained, "new.go") ||
 		strings.Contains(delta, "render.go") || !strings.Contains(delta, "new.go") {
 		t.Fatalf("cumulative and delta changes lost their evidence boundary: %s", after.Text)
 	}

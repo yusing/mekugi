@@ -27,11 +27,13 @@ func (s *mekugiReplayStore) childJournalChangesSince(ctx context.Context, worksp
 	if err != nil {
 		return journalChangesUnavailable + err.Error() + "\n", since
 	}
-	return s.renderChildJournalChanges(ctx, index, thread, since, delivered)
+	return s.renderChildJournalChanges(ctx, index, thread, since, delivered, true)
 }
 
 // renderChildJournalChanges reuses a validated index under the replay lock.
-func (s *mekugiReplayStore) renderChildJournalChanges(ctx context.Context, index changeIndex, thread string, since uint64, delivered bool) (result string, cursor uint64) {
+// Without withStat it lists only the ranges, for callers that point at mchanges
+// instead of repeating file statistics the work already recorded.
+func (s *mekugiReplayStore) renderChildJournalChanges(ctx context.Context, index changeIndex, thread string, since uint64, delivered, withStat bool) (result string, cursor uint64) {
 	selected := changeIndex{Workspace: index.Workspace, Changes: make(map[string]trackedChange)}
 	var ids, ranges []string
 	retired := false
@@ -122,6 +124,10 @@ func (s *mekugiReplayStore) renderChildJournalChanges(ctx context.Context, index
 	fmt.Fprintf(&output, "\n\n**Changes:** %s\n", strings.Join(ranges, ", "))
 	if retired {
 		output.WriteString("Stat unavailable: older change records were removed by session cleanup.\n")
+		return output.String(), index.Sequence
+	}
+	if !withStat {
+		output.WriteString("mchanges ID[..ID] --summary shows a listed range's file statistics.\n")
 		return output.String(), index.Sequence
 	}
 	stat, err := s.renderChanges(ctx, changeReadOptions{workspace: index.Workspace, ids: ids, view: "summary"}, selected)

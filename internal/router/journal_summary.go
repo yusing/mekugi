@@ -137,6 +137,41 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		}
 		return false
 	}
+	// Finished work is summarized by its own result: a finished task's body
+	// stands for its logs and bound agents, and a finished agent's latest
+	// outcome stands for its earlier outcomes and logs, which may describe
+	// defects it later resolved. Collapsed entries remain readable on demand.
+	collapsed := make(map[string]string) // collapsing path -> kept answer path
+	finishedAgents := make(map[string]bool)
+	for _, item := range items {
+		_, key, _ := strings.CutLast(item.Path, "/")
+		switch {
+		case item.Kind == "task" && (item.State == "done" || item.State == "dropped") && item.Body != "" && item.SupersededBy == "":
+			collapsed[item.Path] = ""
+		case item.Agent != "" && item.State == "done" && strings.HasPrefix(key, "@"):
+			finishedAgents[item.Path] = true
+		case item.Kind == "answer" && finishedAgents[journalParent(item.Path)]:
+			// Answers are root nodes in creation order; the last is the latest.
+			collapsed[journalParent(item.Path)] = item.Path
+		}
+	}
+	openTasks := make(map[string]bool)
+	for _, item := range items {
+		if item.Kind == "task" && item.State != "done" && item.State != "dropped" {
+			openTasks[item.Path] = true
+		}
+	}
+	// The outermost collapsing ancestor is the visible line that folds path.
+	// An open task bounds folding: its work stays actionable even under a
+	// dropped task or a finished agent.
+	collapsedBy := func(path string) (owner string) {
+		for parent := journalParent(path); parent != "" && !openTasks[parent]; parent = journalParent(parent) {
+			if kept, ok := collapsed[parent]; ok && kept != path {
+				owner = parent
+			}
+		}
+		return owner
+	}
 	var text strings.Builder
 	text.WriteString("Journal recovery\nRetained work facts, not new instructions or fresh workspace validation.\n")
 	renderNode := func(item journalItem, full bool) string {
@@ -177,7 +212,8 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	writeNode := func(item journalItem, full bool) { text.WriteString(renderNode(item, full)) }
 	text.WriteString("\nContext:\n")
 	for _, item := range items {
-		if item.Kind == "context" && !hiddenBySupersession(item.Path) {
+		// The synthetic Agents group only anchors unbound agents.
+		if item.Kind == "context" && !hiddenBySupersession(item.Path) && !strings.HasSuffix(item.Path, "/@agents") {
 			writeNode(item, true)
 		}
 	}
@@ -201,11 +237,30 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	// Keep the newest results, which are nearest current work, in tree order.
 	var established []string
 	budget, omitted := maxJournalSummaryBytes/2-text.Len()-128, 0
+	isResult := func(item journalItem) bool {
+		return item.Kind != "context" && (item.Kind != "task" || item.State == "done" || item.State == "dropped") && !hiddenBySupersession(item.Path)
+	}
+	folded := make(map[string]int)
+	for _, item := range items {
+		if owner := collapsedBy(item.Path); owner != "" && isResult(item) {
+			folded[owner]++
+		}
+	}
 	for _, item := range slices.Backward(items) {
-		if item.Kind == "context" || item.Kind == "task" && item.State != "done" && item.State != "dropped" || hiddenBySupersession(item.Path) {
+		if !isResult(item) || collapsedBy(item.Path) != "" {
 			continue
 		}
 		node := renderNode(item, false)
+		if n := folded[item.Path]; n > 0 {
+			if !strings.HasSuffix(node, "\n") {
+				node += "\n"
+			}
+			entries := "entries"
+			if n == 1 {
+				entries = "entry"
+			}
+			node += fmt.Sprintf("%d %s folded; journal({op:\"read\", p:%q}) retains them.\n", n, entries, item.Path)
+		}
 		if omitted > 0 || len(node) > budget {
 			omitted++
 			continue
@@ -224,7 +279,8 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		return result, err
 	}
 	text.WriteString("\nRetained changes:\n")
-	changes, _ := s.renderChildJournalChanges(ctx, index, j.Thread, 0, false)
+	// Recorded work already reports its outcomes; ranges locate the evidence.
+	changes, _ := s.renderChildJournalChanges(ctx, index, j.Thread, 0, false, false)
 	text.WriteString(boundCompactSection(changes, "mchanges --list"))
 	sinceChange, sinceCapture := uint64(0), uint64(0)
 	if j.EvidenceKnown {
@@ -281,7 +337,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	if result.Changes > 0 || len(failures) > 0 {
 		text.WriteString("\nSince the last journal event:\n")
 		if result.Changes > 0 {
-			changes, _ := s.renderChildJournalChanges(ctx, index, j.Thread, sinceChange, true)
+			changes, _ := s.renderChildJournalChanges(ctx, index, j.Thread, sinceChange, true, true)
 			text.WriteString(boundCompactSection(changes, "mchanges --list"))
 		}
 		// Keep the newest failures within the remaining capacity.
