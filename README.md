@@ -177,8 +177,11 @@ operand coverage and ignored Bash targets are unavailable. Explicit Edit/Write
 paths are captured even when ignored. Background captures remain unfinished until
 a matching native terminal task event is available. Missing baselines, interrupted
 observation or storage failures do not become successful saved changes. Resume
-restores saved observations, never running hooks or processes. Press `v` in Diff
-to select live proposals or saved captures; your selection survives updates.
+restores saved observations, never running hooks or processes. An unfinished
+observation cannot attribute changes made while Mekugi was disconnected. Press
+`v` in Diff to select live proposals or saved captures; your selection survives
+updates. Permission prompts follow Claude's configured policy, including native
+automatic approval; enabling capture does not change that policy.
 
 Bash previews, journals, utility frontends, agent controls, attachments and
 in-session model/effort controls are not connected yet. Commands advertised by the SDK are forwarded

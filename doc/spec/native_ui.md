@@ -40,6 +40,9 @@ change ID. Baseline and publication failures remain coverage gaps. Captures desc
 observation windows, not exact per-write authorship. Background return is not a
 completion boundary; only matching native terminal task evidence can settle it.
 Resume restores saved evidence and caller labels, not unfinished process windows.
+Delayed pre-tool receipts cannot reopen a settled call or establish its baseline
+after effects occurred. Retained task/call identities remain historical evidence,
+not authority to resume an observation or invoke tools as a saved child agent.
 Live predictions never become saved bytes. Explicit live/saved selection survives
 updates, focus and resizing. This initial companion scope includes no journal,
 utility frontends, compaction replacement, shell tracing or output transformation.
