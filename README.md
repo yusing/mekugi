@@ -129,7 +129,7 @@ start a new session to pick up an update.
 
 ### Claude Code preview
 
-Build and try the first presentation-only version from this checkout:
+Build and try the Claude backend in the existing UI from this checkout:
 
 ```sh
 make build-claude
@@ -141,8 +141,8 @@ CLI. The initial compatibility target is Claude Code 2.1.287 with Agent SDK
 0.3.287. Sign in using Claude's own CLI before launching. Authentication and
 billing remain native; this preview does not claim subscription eligibility or
 switch you to API billing. Existing Claude settings, instructions and extensions
-load normally, including their configured permission mode. Mekugi adds no tools,
-hooks, prompt instructions, frontend PATH entries or inference router.
+load normally, including their configured permission mode. By default, Mekugi adds
+no tools, hooks, prompt instructions, frontend PATH entries or inference router.
 
 The build writes only to `bin/`, not the installed Mekugi location. It installs
 locked bridge dependencies into that build directory. Keep `bin/claude-bridge`
@@ -165,11 +165,25 @@ than being silently steered or queued.
 Claude uses the existing pane shell, not a separate interface. Edit/Write input
 streams appear as provisional proposals in the shared live-edit dock and Diff
 pane. Partial content does not claim deletion of an unseen suffix. Native tool
-completion does not turn these proposals into saved edit evidence. Bash previews,
-saved changes, journals, agent controls, attachments and in-session model/effort
-controls are not connected yet. Commands advertised by the SDK are forwarded
-natively; unadvertised commands are rejected rather than emulated. There is no
-companion plugin, compaction replacement, shell tracing or output rewriting.
+completion does not turn these proposals into saved edit evidence.
+
+Add `--companion` to enable invocation-local observational hooks. Actual Edit/Write
+file effects, including partial effects of failed tools, enter the same saved Diff
+pane and separate Activity capture cards with retained change IDs. The hooks leave
+native arguments, results and permissions unchanged. They install no persistent
+settings or model-visible utilities. Bash observation uses bounded private workspace
+snapshots; the native hook does not establish a shell executable, so literal Bash
+operand coverage and ignored Bash targets are unavailable. Explicit Edit/Write
+paths are captured even when ignored. Background captures remain unfinished until
+a matching native terminal task event is available. Missing baselines, interrupted
+observation or storage failures do not become successful saved changes. Resume
+restores saved observations, never running hooks or processes. Press `v` in Diff
+to select live proposals or saved captures; your selection survives updates.
+
+Bash previews, journals, utility frontends, agent controls, attachments and
+in-session model/effort controls are not connected yet. Commands advertised by the SDK are forwarded
+natively; unadvertised commands are rejected rather than emulated. The capture-only companion does not yet include plugin utilities or journals.
+Compaction replacement, shell tracing and output rewriting remain unavailable.
 Only exposed text and native tool input/results are displayed; unavailable usage
 and change evidence are not invented. Oversized bridge events stop the client with an error;
 Claude's own session remains the history authority. The full Codex interface below

@@ -40,6 +40,8 @@ type liveDiffTerminalController struct {
 	previewFrameC     <-chan time.Time
 	previewFrameDue   time.Time
 	turnRevision      uint64
+	allowModeSwitch   bool
+	modeChosen        bool
 	diffMode          bool
 	renderer          livediff.Renderer
 	rendering         livediff.Render
@@ -793,10 +795,11 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	}
 	switch key {
 	case 'v':
-		if c.native {
+		if c.native && !c.allowModeSwitch {
 			break
 		}
 		c.diffMode = !c.diffMode
+		c.modeChosen = true
 		c.followDirty = c.diffMode && c.view.Following
 	case '{', '}':
 		if c.diffMode {

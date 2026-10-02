@@ -198,3 +198,21 @@ func TestClientCancellationUnblocksFullEventQueue(t *testing.T) {
 	for range client.Events() {
 	}
 }
+
+func TestClientCompanionCapabilityUsesPrivatePipe(t *testing.T) {
+	endpoint := &ObservationEndpoint{Socket: "/private/socket", Token: "private-connection-capability"}
+	client := startMockBridge(t, t.Context(), `
+const fs = require('node:fs');
+const config = JSON.parse(process.argv[2]);
+const endpoint = JSON.parse(fs.readFileSync(config.companionFD, 'utf8'));
+fs.closeSync(config.companionFD);
+console.log(JSON.stringify({kind:'notice',text: endpoint.socket === '/private/socket' && endpoint.token === 'private-connection-capability' ? 'capability received privately' : 'bad capability'}));
+process.stdin.resume();
+`, Config{Cwd: t.TempDir(), Companion: endpoint})
+	if strings.Contains(strings.Join(client.cmd.Args, " "), endpoint.Token) {
+		t.Fatal("capability exposed in process arguments")
+	}
+	if event := nextEvent(t, client); event.Text != "capability received privately" {
+		t.Fatal("private configuration pipe failed")
+	}
+}

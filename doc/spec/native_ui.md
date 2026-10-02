@@ -7,7 +7,8 @@ startup. It uses the existing Main/composer, Activity, question dock, live-edit
 dock and Diff controllers. Codex-specific controls do not dispatch from this
 backend; runtime commands are admitted only when advertised by its SDK. Claude
 keeps execution, permissions, authentication, configuration and native history.
-No companion, inference routing or model-visible Mekugi guidance is activated.
+No companion, inference routing or model-visible Mekugi guidance is activated
+by default.
 
 The initial bridge pins Agent SDK 0.3.287 and targets Claude Code 2.1.287. Its
 private JSON-lines frames are bounded to 8 MiB. Malformed or oversized transport
@@ -31,11 +32,26 @@ saved capture. Preview filesystem reads use the existing bounded reader. Bash
 preview, saved change evidence, durable journals, agent controls and compaction
 extensions remain unavailable in this presentation-only backend.
 
+Optional `--companion` activation adds native observational hooks, without altering
+user configuration, permissions, tool inputs or results. Actual file effects enter
+saved Diff and separate Activity capture cards through the existing change store.
+Failed operations can leave changes; successful no-effect operations receive no
+change ID. Baseline and publication failures remain coverage gaps. Captures describe
+observation windows, not exact per-write authorship. Background return is not a
+completion boundary; only matching native terminal task evidence can settle it.
+Resume restores saved evidence and caller labels, not unfinished process windows.
+Live predictions never become saved bytes. Explicit live/saved selection survives
+updates, focus and resizing. This initial companion scope includes no journal,
+utility frontends, compaction replacement, shell tracing or output transformation.
+
 Acceptance includes adapter correlation/escape/bound tests; shared-composer,
 permission and multi-select interaction tests; reviewed narrow/wide snapshots;
 and PTY streaming, preview arrival before tool completion, focus, scrolling and
-resize. These offline fixtures do not establish authenticated inference fidelity,
-subscription eligibility, native hook ordering or compaction replacement support.
+resize. Observation acceptance includes native exactly-once execution and hook/SDK
+identity equality, persisted baselines, failed and no-effect edits, ignored explicit
+paths, concurrent scopes, storage retries and fresh-process saved evidence. Offline
+fixtures do not establish native background ordering, permission fidelity,
+subscription eligibility or compaction replacement support.
 
 ## REQ-NATIVE-UI-001 — Native app-server UI
 

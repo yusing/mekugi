@@ -21,13 +21,16 @@ import (
 // It uses the existing shell, composer, question dock and pane controllers.
 // No Codex client, proxy, synthetic RPC message or executor is constructed.
 type nativeRuntimeSession struct {
-	client   session.Client
-	name     string
-	busy     bool
-	ready    bool
-	serial   uint64
-	previews map[string]*runtimePreview
-	commands []string
+	client            session.Client
+	name              string
+	busy              bool
+	ready             bool
+	serial            uint64
+	previews          map[string]*runtimePreview
+	observations      *ObservationService
+	observationEvents <-chan liveDiffEvent
+	observationGap    <-chan struct{}
+	commands          []string
 }
 
 func newRuntimeUI(ctx context.Context, client session.Client, name, cwd string) *appServerUI {
@@ -43,8 +46,11 @@ func newRuntimeUI(ctx context.Context, client session.Client, name, cwd string) 
 
 // RunNativeSession presents a native runtime in the same UI used by Codex.
 // The caller owns runtime startup/shutdown; this loop owns only the terminal.
-func RunNativeSession(ctx context.Context, client session.Client, name, cwd string, stdin, stdout *os.File) error {
+func RunNativeSession(ctx context.Context, client session.Client, name, cwd string, stdin, stdout *os.File, observations ...*ObservationService) error {
 	u := newRuntimeUI(ctx, client, name, cwd)
+	if len(observations) > 0 && observations[0] != nil {
+		u.attachRuntimeObservation(observations[0])
+	}
 	defer u.shell.diff.close()
 	defer u.shell.diffScreen.Close()
 	defer u.cancelPickerScan()
@@ -67,6 +73,10 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 						return err
 					}
 					u.dirty = true
+				case event := <-u.runtime.observationEvents:
+					u.applyRuntimeObservation(event)
+				case <-u.runtime.observationGap:
+					u.attachRuntimeObservation(u.runtime.observations)
 				case key, ok := <-keys:
 					if !ok {
 						return io.EOF
@@ -194,6 +204,9 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 			u.settleRuntimePreview(id, true)
 		}
 		u.runtime.busy = false
+		if u.runtime.observations != nil && u.runtime.observations.owner.pendingCount.Load() == 0 && !u.shell.diff.modeChosen {
+			u.shell.diff.diffMode, u.shell.diff.dirty = true, true
+		}
 		u.status, u.alert = "Ready", e.Failed
 		if e.Failed {
 			u.status = "Turn ended"
@@ -317,5 +330,42 @@ func (u *appServerUI) runtimeEntry(e session.Event) {
 			v.lastSeq = entry.Seq
 			v.appendEntry(entry, blocks)
 		}
+	}
+}
+
+// attachRuntimeObservation reuses the durable Diff mailbox and resnapshot path.
+// It never restores preview workers, native hooks or running processes.
+func (u *appServerUI) attachRuntimeObservation(service *ObservationService) {
+	u.runtime.observations = service
+	sub := service.owner.broker.subscribe()
+	u.runtime.observationEvents, u.runtime.observationGap = sub.events, sub.gap
+	u.shell.diff.store = service.owner.store
+	u.shell.diff.allowModeSwitch = true
+	u.shell.diff.coverage = "Companion observations · call-window evidence"
+}
+
+func (u *appServerUI) applyRuntimeObservation(event liveDiffEvent) {
+	if _, err := u.shell.diff.applyEvent(u.ctx, event); err != nil {
+		u.shell.diffFailure = err.Error()
+	} else {
+		u.shell.diff.coverage = "Companion observations · call-window evidence"
+		u.runtimeCapturedEdits()
+		// The existing controller preserves navigator/follow anchors on Merge.
+		if !u.runtime.busy && u.runtime.observations.owner.pendingCount.Load() == 0 && !u.shell.diff.modeChosen {
+			u.shell.diff.diffMode, u.shell.diff.dirty = true, true
+		}
+	}
+	u.dirty = true
+}
+
+func (u *appServerUI) runtimeCapturedEdits() {
+	for _, key := range u.shell.diff.data.order {
+		receipt := u.shell.diff.data.attempts[key].receipt
+		if receipt == nil || receipt.runtime == "" {
+			continue
+		}
+		// A capture card is separate evidence, not a rewritten native tool result.
+		u.runtimeEntry(session.Event{Kind: "capture", ID: "capture/" + key, Role: "Capture", Caller: receipt.agent,
+			Text: "Captured " + receipt.change + "\n\n" + receipt.text, Historical: true})
 	}
 }

@@ -92,6 +92,23 @@ Structured Edit/Write intentions feed the shared bounded source reader and revie
 renderer. Argument completion remains distinct from tool completion, and neither
 promotes predictions into durable captured changes.
 
+An explicitly activated capture companion registers SDK observation callbacks
+against a launcher-owned authenticated Unix IPC service. Its connection capability
+travels through a private inherited pipe, not arguments, environment or native
+settings. `runtime_observation.go` binds native runtime/session/workspace/agent/tool
+identities to the existing replay, retention, change-index and capture-order owners.
+Its source-path adapter and Codex observation share bounded capture scheduling;
+workspace snapshots and endpoint/overlap reconciliation remain shared owners.
+There is no dummy proxy, Codex request carrier, second diff store or tool executor.
+The observation service has only binding, pre-tool, terminal-tool and terminal-task
+operations. Calls persist baselines before acknowledgement, and frozen terminal
+outcomes survive publication retries without rereading the workspace. A fresh
+process restores saved membership without reopening prior observation windows.
+Durable publications feed the existing bounded Diff mailbox; overflow resubscribes
+from retained captures. Activity capture cards remain separate from native tool
+results. The bridge returns empty observational hook outputs and adds no model
+context. Missing MCP caller correlation does not grant writable journal authority.
+
 Dependencies point from router integration into the client and presentation packages,
 not back into router internals. Shared diff rendering remains in `internal/livediff`;
 UI extraction does not introduce a second capturer, history store, or transcript.

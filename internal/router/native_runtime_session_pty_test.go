@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -54,9 +55,13 @@ func TestNativeRuntimePTYStreamingScrollingResizeAndPrompt(t *testing.T) {
 		}
 	}()
 	t.Cleanup(func() { cancel(); slave.Close(); master.Close(); <-readerDone })
+	observations, binding, _ := observationHTTPFixture(t)
+	if err := observations.owner.bind(ctx, binding); err != nil {
+		t.Fatal(err)
+	}
 	f := &runtimeTestClient{events: make(chan model.Event, 16)}
 	done := make(chan error, 1)
-	go func() { done <- RunNativeSession(ctx, f, "Claude Code", "/work", slave, slave) }()
+	go func() { done <- RunNativeSession(ctx, f, "Claude Code", binding.Workspace, slave, slave, observations) }()
 	t.Cleanup(func() {
 		cancel()
 		select {
@@ -121,6 +126,39 @@ func TestNativeRuntimePTYStreamingScrollingResizeAndPrompt(t *testing.T) {
 	waitFrame("PTY_PREVIEW_PREFIX")
 	f.events <- model.Event{Kind: "tool_result", ID: "edit", Failed: true, Text: "denied"}
 	waitFrame("preview")
+	// Saved bytes arrive independently after a failed native tool. Capture never
+	// promotes the proposal, and the existing pane reconciles through its mailbox.
+	call := ObservationCall{Binding: binding, ID: "captured", Tool: "Write", Input: `{}`, Paths: []string{"captured.txt"}}
+	if err := observations.owner.before(ctx, call); err != nil {
+		t.Fatal(err)
+	}
+	f.events <- model.Event{Kind: "edit", ID: call.ID, Role: "Write", Edit: &model.Edit{Path: "captured.txt", Content: "NOT_THE_CAPTURE", Partial: true}}
+	waitFrame("NOT_THE_CAPTURE")
+	nativeObservationWrite(t, filepath.Join(binding.Workspace, "captured.txt"), "ACTUAL_CAPTURED_BYTES\n")
+	if _, err := observations.owner.after(ctx, call, ObservationTerminal{Status: "failed"}); err != nil {
+		t.Fatal(err)
+	}
+	f.events <- model.Event{Kind: "tool_result", ID: call.ID, Failed: true, Text: "partial write failure"}
+	f.events <- model.Event{Kind: "done", Failed: true, Text: "native tool failed"}
+	frame = waitFrame("ACTUAL_CAPTURED_BYTES")
+	if strings.Contains(frame, "NOT_THE_CAPTURE") {
+		t.Fatal("proposed bytes were promoted into saved capture")
+	}
+	// User selection remains live until explicitly switched back, including resize.
+	if _, err := master.Write([]byte("v")); err != nil {
+		t.Fatal(err)
+	}
+	waitFrame("live proposals")
+	if err := pty.Setsize(master, &pty.Winsize{Cols: 90, Rows: 24}); err != nil {
+		t.Fatal(err)
+	}
+	screen.Resize(90, 24)
+	waitFrame("live proposals")
+	if _, err := master.Write([]byte("v")); err != nil {
+		t.Fatal(err)
+	}
+	waitFrame("ACTUAL_CAPTURED_BYTES")
+
 	if _, err := master.Write([]byte("\x02" + "1")); err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +167,7 @@ func TestNativeRuntimePTYStreamingScrollingResizeAndPrompt(t *testing.T) {
 	if _, err := master.Write([]byte("2\r")); err != nil {
 		t.Fatal(err)
 	}
-	waitFrame("Ready")
+	waitFrame("Turn ended")
 	f.events <- model.Event{Kind: "tool", ID: "t", Role: "Read", Text: "observed tool"}
 	if _, err := master.Write([]byte("\x02" + "3")); err != nil {
 		t.Fatal(err)

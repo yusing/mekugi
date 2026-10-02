@@ -10,9 +10,13 @@ import (
 // Retain only the display receipt and durable host identities, not scripts or
 // another filesystem snapshot. The live diff loader owns replay and scope.
 type capturedActivityEdit struct {
-	thread string
-	calls  []string
-	text   string
+	runtime string
+	session string
+	agent   string
+	change  string
+	thread  string
+	calls   []string
+	text    string
 }
 
 func capturedEditActivity(workspace string, history mekugiHistory) *capturedActivityEdit {
@@ -22,6 +26,10 @@ func capturedEditActivity(workspace string, history mekugiHistory) *capturedActi
 	receipt := &capturedActivityEdit{thread: history.ExecutingThread, text: editReceiptText(workspace, history)}
 	if receipt.text == "" {
 		return nil
+	}
+	if native := history.NativeObservation; native != nil && native.Call != nil {
+		receipt.runtime, receipt.session, receipt.agent, receipt.change = native.Binding.Runtime, native.Binding.Session, native.Binding.Agent, history.ChangeID
+		receipt.calls = append(receipt.calls, native.Call.ID)
 	}
 	if !history.ExecOutcome.CodeMode {
 		if call, ok := strings.CutSuffix(history.CorrelationID, "\x00exec"); ok {

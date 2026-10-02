@@ -76,6 +76,9 @@ func (u *appServerUI) runtimePreview(e session.Event) {
 		}
 		preview.Files = []mekugi.ReviewFile{mekugi.RenderReviewPreviewFile(beforePath, path, p.before, after)}
 	}
+	if len(preview.Files) > 0 && !u.shell.diff.modeChosen {
+		u.shell.diff.diffMode = false
+	}
 	p.preview = preview
 	u.shell.preview(preview)
 	u.shell.diff.previewPane.Update(preview)
@@ -90,6 +93,9 @@ func (u *appServerUI) settleRuntimePreview(id string, failed bool) {
 	preview := p.preview
 	preview.Complete = true
 	preview.Footer = "Native tool ended · proposal only, no saved capture"
+	if u.runtime.observations != nil {
+		preview.Footer = "Native tool ended · saved evidence is captured independently"
+	}
 	if failed {
 		preview.Footer = "Native tool failed or was denied · proposal not confirmed"
 	}

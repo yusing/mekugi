@@ -2,9 +2,16 @@ import { query, getSessionInfo, getSessionMessages, type SDKUserMessage, type Pe
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { realpath } from 'node:fs/promises';
+import { companion, type CompanionConfig } from './companion.js';
+import { readFileSync, closeSync } from 'node:fs';
 
 const limit = 8 * 1024 * 1024;
-const config = JSON.parse(process.argv[2]) as {cwd: string; executable: string; resume?: string; model?: string};
+const config = JSON.parse(process.argv[2]) as {cwd: string; executable: string; resume?: string; model?: string; companionFD?: number};
+let endpoint: CompanionConfig | undefined;
+if (config.companionFD !== undefined) {
+  try { endpoint = JSON.parse(readFileSync(config.companionFD, 'utf8')) as CompanionConfig; }
+  finally { closeSync(config.companionFD); }
+}
 const abortController = new AbortController();
 let stopping = false;
 let wake: (() => void) | undefined;
@@ -26,6 +33,7 @@ async function* messages(): AsyncGenerator<SDKUserMessage> {
     else await new Promise<void>(resolve => { wake = resolve; });
   }
 }
+const observer = endpoint ? companion(endpoint, config.cwd, text => emit({kind: 'notice', text})) : undefined;
 const running = query({prompt: messages(), options: {
   cwd: config.cwd,
   pathToClaudeCodeExecutable: config.executable,
@@ -35,6 +43,7 @@ const running = query({prompt: messages(), options: {
   ...(config.resume ? {resume: config.resume} : {}),
   ...(config.model ? {model: config.model} : {}),
   abortController,
+  ...(observer ? {hooks: observer.hooks} : {}),
   canUseTool: async (tool, input, options) => {
     const id = String(++serial);
     return new Promise<PermissionResult>((resolve) => {
@@ -107,7 +116,10 @@ try {
   }
   const commands = await running.supportedCommands();
   await emit({kind: 'ready', commands: commands.flatMap(command => [command.name, ...(command.aliases ?? [])])});
-  for await (const event of running) await emit({kind: 'event', event});
+  for await (const event of running) {
+    await observer?.event(event);
+    await emit({kind: 'event', event});
+  }
 } catch (error) {
   if (!stopping) { await emit({kind: 'error', text: String(error)}); process.exitCode = 1; }
 } finally {

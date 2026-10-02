@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -18,11 +19,17 @@ import (
 
 const frameLimit = 8 << 20
 
+type ObservationEndpoint struct {
+	Socket string `json:"socket"`
+	Token  string `json:"token"`
+}
+
 type Config struct {
-	Cwd        string `json:"cwd"`
-	Executable string `json:"executable"`
-	Resume     string `json:"resume,omitempty"`
-	Model      string `json:"model,omitempty"`
+	Companion  *ObservationEndpoint `json:"companion,omitempty"`
+	Cwd        string               `json:"cwd"`
+	Executable string               `json:"executable"`
+	Resume     string               `json:"resume,omitempty"`
+	Model      string               `json:"model,omitempty"`
 }
 type Client struct {
 	cmd       *exec.Cmd
@@ -37,13 +44,39 @@ type Client struct {
 }
 
 func Start(ctx context.Context, node, bridge string, config Config) (*Client, error) {
-	payload, err := json.Marshal(config)
+	launch := struct {
+		Config
+		CompanionFD int `json:"companionFD,omitzero"`
+	}{Config: config}
+	launch.Companion = nil // Capabilities never enter argv, environment or host settings.
+	var endpointPipe *os.File
+	if config.Companion != nil {
+		reader, writer, err := os.Pipe()
+		if err != nil {
+			return nil, err
+		}
+		endpointPipe = reader
+		defer reader.Close()
+		data, err := json.Marshal(config.Companion)
+		if err == nil {
+			_, err = writer.Write(data)
+		}
+		closeErr := writer.Close()
+		if err != nil || closeErr != nil {
+			return nil, errors.Join(err, closeErr)
+		}
+		launch.CompanionFD = 3
+	}
+	payload, err := json.Marshal(launch)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	cmd := exec.CommandContext(ctx, node, bridge, string(payload))
 	cmd.Dir = config.Cwd
+	if endpointPipe != nil {
+		cmd.ExtraFiles = []*os.File{endpointPipe}
+	}
 	cmd.WaitDelay = 2 * time.Second
 	configureProcess(cmd)
 	input, err := cmd.StdinPipe()
