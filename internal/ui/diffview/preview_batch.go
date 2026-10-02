@@ -94,7 +94,17 @@ func (p *PreviewPane) RenderBatch(ctx context.Context, caller, workspace string,
 	if count == 1 {
 		noun = "file"
 	}
-	label := fmt.Sprintf("LIVE · %d %s", count, noun)
+	label := "LIVE"
+	if tool := b.files[b.selected].Current.Tool; tool != "" {
+		switch tool {
+		case "exec_command":
+			tool = "shell"
+		case "exec":
+			tool = "Code Mode"
+		}
+		label += " · " + livediff.Safe(tool, false)
+	}
+	label += fmt.Sprintf(" · %d %s", count, noun)
 	if slots == 0 {
 		return []string{ansi.Truncate(theme.Accent()+label+" · enlarge for diff\x1b[0m", width, "…")}, nil
 	}

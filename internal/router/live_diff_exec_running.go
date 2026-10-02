@@ -44,7 +44,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	turn := window.turn
 	go func() {
 		defer func() { <-execRunningPreviewSlots }()
-		runExecScopePreview(ctx, broker, observation, diffview.Preview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Turn: turn, Caller: caller}, tracking)
+		runExecScopePreview(ctx, broker, observation, diffview.Preview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Turn: turn, Caller: caller, Tool: nativeExecCommandToolName}, tracking)
 	}()
 }
 

@@ -195,3 +195,45 @@ func TestNativeBatchExpiryIsolation(t *testing.T) {
 		t.Fatal("completed burst or viewport cache survived expiry")
 	}
 }
+
+func TestUISnapshotNativeBatchToolIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name, tool    string
+		width, height int
+	}{
+		{"patch", "apply_patch", 72, 16},
+		{"shell", "exec_command", 72, 16},
+		{"code_mode", "exec", 72, 16},
+		{"unknown", "", 72, 16},
+		{"short", "apply_patch", 72, 10},
+		{"narrow", "exec_command", 24, 16},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pane := PreviewPane{Retain: true}
+			preview := batchTestPreview("edit", "/root", "src/a.go")
+			preview.Tool = tc.tool
+			pane.Update(preview)
+			rows, err := pane.RenderBatch(t.Context(), "/root", "/workspace", livediff.DarkTheme, tc.width, tc.height, 15)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertRowsSnapshot(t, "native_batch_tool_"+tc.name, rows)
+		})
+	}
+	pane := PreviewPane{Retain: true}
+	patch := batchTestPreview("patch", "/root", "src/patch.go")
+	patch.Tool = "apply_patch"
+	pane.Update(patch)
+	batchTestRender(t, &pane, 16)
+	shell := batchTestPreview("shell", "/root", "src/shell.go")
+	shell.Tool = "exec_command"
+	pane.Update(shell)
+	assertRowsSnapshot(t, "native_batch_tool_follow", batchTestRender(t, &pane, 16))
+	pane.NextBatch("/root")
+	assertRowsSnapshot(t, "native_batch_tool_pinned", batchTestRender(t, &pane, 16))
+	other := batchTestPreview("other-caller", "/root/worker", "src/worker.go")
+	other.Tool = "exec"
+	pane.Update(other)
+	// A sibling's tool must not change the pinned caller-local header.
+	assertRowsSnapshot(t, "native_batch_tool_pinned", batchTestRender(t, &pane, 16))
+}
