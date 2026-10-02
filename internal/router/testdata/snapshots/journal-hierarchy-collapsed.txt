@@ -1,0 +1,20 @@
+   ◆ /4 No new dependencies
+ ▸ ◐ /3 Review implementation ⎇ review +7
+   · Root evidence
+   ● /1 Finished preparation
+ ▾ ⎇ Agents
+   ▾ ⎇ tests · running
+   │ └ ○ /1 Run focused suite
+   └ ⎇ unstarted
+   ✓ Outcome  Hierarchy evidence remains available.
+
+
+
+
+
+
+
+
+
+
+

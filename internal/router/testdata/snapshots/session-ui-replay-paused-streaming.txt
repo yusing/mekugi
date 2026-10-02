@@ -25,4 +25,4 @@
 ─ 4 Agents · 1 · 1 working ─────────────────────────────────────────────────────────────────────────────────────────────
  ◐ main  Repaint diagnosis                                                                                  8s · 8s ago
 
- Ⅱ Replay · simulated · 1.0x · 00:08/00:20 ━━━──────  ^B 1-5 · Space pause · +/- speed · [/] seek · r restart · q quit
+ Ⅱ Replay · simulated · 1.0x · 00:08/00:20 ━━━━━────────  ^B 1-5 · p pause · +/- speed · [/] seek · r restart · q quit

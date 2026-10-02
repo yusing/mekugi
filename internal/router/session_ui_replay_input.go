@@ -6,6 +6,22 @@ import (
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
 
+const (
+	replayUp byte = 0x82 + iota
+	replayDown
+	replayRight
+	replayLeft
+	replayPageUp
+	replayPageDown
+	replayHome
+	replayEnd
+)
+
+var replayNavigation = map[byte]string{
+	replayUp: "\x1b[A", replayDown: "\x1b[B", replayRight: "\x1b[C", replayLeft: "\x1b[D",
+	replayPageUp: "\x1b[5~", replayPageDown: "\x1b[6~", replayHome: "\x1b[H", replayEnd: "\x1b[F",
+}
+
 // Decode terminal reports before interpreting playback controls. State persists
 // across reads, so fragmented mouse or navigation sequences cannot quit replay.
 type uiReplayInput struct {
@@ -71,7 +87,15 @@ func (in *uiReplayInput) consume(key byte) byte {
 		}
 	}
 	if key >= 0x40 && key <= 0x7e {
+		sequence := in.escape + string(key)
 		in.escape = ""
+		for action, report := range replayNavigation {
+			if sequence == report {
+				return action
+			}
+		}
+	} else if len(in.escape) < 32 {
+		in.escape += string(key)
 	}
 	return 0
 }

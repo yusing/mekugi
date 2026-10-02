@@ -6,7 +6,8 @@ V2 journals have a Journal pane alongside Diff and Activity, selected by `Ctrl-B
 composer letters never open it. The pane title counts the journal's own tasks by state
 in their state colors, dropping state names before its pane keys when narrow; an
 untitled short pane shows the counts as its first row when at least four rows fit.
-Open tasks precede finished tasks. Subtrees start expanded; when they exceed the
+Open tasks precede finished tasks; unlinked Agents groups follow owned work, and
+Outcomes follow their sibling work. Subtrees start expanded; when they exceed the
 pane height, the least recently updated subtrees collapse first, considering their
 descendants too. More height expands them again. Explicit disclosure choices stay
 fixed; manual expansions are not hidden by automatic ancestor collapse. A disclosure
@@ -38,8 +39,11 @@ any owned task is open; during a Main turn after the last task finishes it shows
 the most recently updated finished task. An idle all-finished journal has no strip.
 
 Child journals mount read-only under the parent's linked task, or under an Agents
-group when unlinked. Pane rows and detail headings use the agent's display name and
-local ordinal path instead of opaque mounted addresses. Copy, selection, disclosure,
+group when unlinked. Mount headings name the agent once and distinguish its host
+lifecycle with running/finished labels from parent-owned task state. Expanded
+bindings omit the redundant agent suffix; collapsed bindings retain it. Descendant
+pane rows use local ordinals, while detail headings retain the agent's display name
+and local ordinal path instead of opaque mounted addresses. Copy, selection, disclosure,
 and reads retain the full durable address. Enter on a mount opens that child's Activity; an agent absent
 from the roster, including an unresolved mount, yields a notice. The parent task
 remains parent-owned; the mounted root observes the host lifecycle. Unknown lifecycle

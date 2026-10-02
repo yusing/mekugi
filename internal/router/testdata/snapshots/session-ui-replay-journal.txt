@@ -25,4 +25,4 @@
 ─ 4 Agents · 1 ─────────────────────────────────────────────────────────────────────────────────────────────────────────
  ✓ main  done                                                                                             2s · just now
 
- ■ Replay · simulated · 1.0x · 00:02/00:02 ━━━━━━━━━  ^B 1-5 · Space pause · +/- speed · [/] seek · r restart · q quit
+ ■ Replay · simulated · 1.0x · 00:02/00:02 ━━━━━━━━━━━━━  ^B 1-5 · p pause · +/- speed · [/] seek · r restart · q quit

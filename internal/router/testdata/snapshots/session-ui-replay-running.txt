@@ -25,4 +25,4 @@
 ─ 4 Agents · 1 · 1 working ─────────────────────────────────────────────────────────────────────────────────────────────
  ◐ main  Running shell batch · +1 more                                                                      4s · 4s ago
 
- ▶ Replay · simulated · 1.0x · 00:04/00:20 ━━───────  ^B 1-5 · Space pause · +/- speed · [/] seek · r restart · q quit
+ ▶ Replay · simulated · 1.0x · 00:04/00:20 ━━───────────  ^B 1-5 · p pause · +/- speed · [/] seek · r restart · q quit

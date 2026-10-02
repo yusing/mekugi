@@ -26,7 +26,11 @@ commands and output, file-change activity, agent lifecycle and collaboration,
 compaction, and image-view activity. Encrypted/raw reasoning is never projected.
 Question and answer presentation is limited to retained semantic items; input
 keystrokes, resize events, journal publications, and live diff previews are absent.
-Retained semantic journal messages remain visible. Router-generated journal
+Retained semantic journal messages remain visible. Authorized child journals use
+retained revisions and recorded host turns to reconstruct mounted and unmounted
+hierarchies. Latest stored child items or lifecycle cannot supply historical state;
+missing records or unproven ancestry are disclosed. Journal progress uses the
+recorded clock, including pause and backward seek. Router-generated journal
 transport commands and their synthetic output are hidden only when the strict
 generated shell grammar matches the durable translated carrier for the executing
 thread and metadata workspace (or its original empty workspace scope). Reading
@@ -64,9 +68,13 @@ snapshots cover running, paused, completed, and narrow playback states.
 columns and 8–500 rows). It emits no terminal bytes and returns a JSON timing
 summary on stdout; loading/coverage/progress notices use stderr. Interactive
 mode requires terminal stdin/stdout and restores terminal state on exit.
-Wheel reports scroll Main and cannot become playback commands or quit replay;
-other mouse reports and terminal navigation sequences are consumed without
-triggering controls. A standalone Escape, Ctrl+C, or q quits. Mouse reporting
+The p key pauses playback; Space also pauses outside Journal. Focused Journal
+supports selection with j/k or navigation keys, Space disclosure, namespace
+switching, copied durable addresses, and d/Enter for read-only details. Its wheel
+scrolls without changing selection. Details support scrolling and close with
+Escape or q; Ctrl+C always quits replay. Outside details, Escape or q quits.
+Other wheel reports scroll Main; unsupported mouse/navigation reports cannot
+become playback commands. These presentation controls never submit host intent. Mouse reporting
 is enabled only during interactive playback and disabled on exit.
 
 `--cpu-profile` and `--heap-profile` create new mode-0600 files and reject existing

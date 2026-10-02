@@ -23,6 +23,7 @@ import (
 )
 
 type uiReplayPlayback struct {
+	journals              map[string]map[string]threadJournal
 	paintedAt             time.Time
 	source                *sessionUIReplay
 	ui                    *appServerUI
@@ -49,8 +50,10 @@ func newUIReplayPlayback(ctx context.Context, source *sessionUIReplay, speed flo
 
 func (p *uiReplayPlayback) reset() {
 	var previous *terminalUI
+	var journalView nativeJournalView
 	if p.ui != nil {
 		previous = p.ui.shell
+		journalView.unscoped, journalView.expanded = p.ui.journalView.unscoped, p.ui.journalView.expanded
 		p.close()
 	}
 	p.at, p.next = p.source.Start, 0
@@ -66,12 +69,14 @@ func (p *uiReplayPlayback) reset() {
 		}
 	}
 	u.ensureShell()
+	u.journalView = journalView
 	u.shell.journalOpen = false
 	if previous != nil {
 		u.shell.focus, u.shell.side = previous.focus, previous.side
 		u.shell.journalOpen, u.shell.diffOpen, u.shell.activityOpen = previous.journalOpen, previous.diffOpen, previous.activityOpen
 	}
 	p.ui = u
+	p.journals = make(map[string]map[string]threadJournal)
 }
 
 func (p *uiReplayPlayback) close() {
@@ -95,32 +100,11 @@ func (p *uiReplayPlayback) advance(position time.Duration) error {
 			p.ui.session.registerThread(appServerThreadInfo{ID: id, AgentNickname: strings.TrimPrefix(p.source.Threads[id], "/root/")})
 		}
 		p.at = e.At
+		p.observeReplayJournalTurn(e)
 		p.next++
 		switch e.Method {
 		case "replay/journal":
-			update := e.Journal
-			sink := p.ui.journal
-			if update.workspace == "" {
-				sink = p.ui.unscopedJournal
-			}
-			if sink == nil {
-				sink = &nativeJournalSink{workspace: update.workspace, thread: p.source.Thread, tree: &threadJournal{Version: 2, TreeAuthored: true, Author: "/root"}}
-				if update.workspace == "" {
-					p.ui.unscopedJournal = sink
-				} else {
-					p.ui.journal = sink
-				}
-			}
-			if event := update.publication.event; event != nil {
-				applyJournalReplayEvent(sink.tree, *event)
-			}
-			if update.tree != nil {
-				copy := update.tree.clone()
-				sink.tree = &copy
-			} else {
-				p.ui.applyJournalPublication(sink, update.publication)
-			}
-			p.ui.session.seq = max(p.ui.session.seq, p.ui.view.lastSeq)
+			p.applyReplayJournal(e)
 		case "replay/providerStarted":
 			p.ui.applyActivity(p.ui.session.beginThinking(e.Params.ThreadID, e.At), nil)
 		case "replay/providerCompleted", "replay/transportBoundary":
@@ -214,7 +198,7 @@ func (p *uiReplayPlayback) bar(width int) string {
 		speed += ".0"
 	}
 	label := fmt.Sprintf(" %s Replay · simulated · %sx · %s/%s", state, speed, replayTime(p.position), replayTime(p.until))
-	hint := "  ^B 1-5 · Space pause · +/- speed · [/] seek · r restart · q quit"
+	hint := "  ^B 1-5 · p pause · +/- speed · [/] seek · r restart · q quit"
 	remaining := width - ansi.StringWidth(label) - ansi.StringWidth(hint) - 3
 	if remaining >= 6 {
 		filled := 0
@@ -237,6 +221,20 @@ func replayTime(d time.Duration) string {
 // key is deliberately not routed to the live composer. Playback controls can
 // never execute recorded commands, answer questions, or launch external tools.
 func (p *uiReplayPlayback) key(key byte) (bool, error) {
+	shell := p.ui.shell
+	if key != 3 && shell.output != nil && (shell.output.typing || !strings.ContainsRune("p+-=[]r", rune(key))) {
+		navigation := replayNavigation[key]
+		if navigation == "" {
+			navigation = string(key)
+		}
+		if key == terminalui.PaneWheelUp {
+			navigation = "k"
+		} else if key == terminalui.PaneWheelDown {
+			navigation = "j"
+		}
+		shell.outputKey(navigation)
+		return false, nil
+	}
 	if key == 'q' || key == 3 || key == 27 {
 		return true, nil
 	}
@@ -247,10 +245,33 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 		}
 		return false, nil
 	}
+	if shell.focus == 4 && shell.journalOpen {
+		navigation := replayNavigation[key]
+		switch key {
+		case 'j', 'k', 'g', 'G', ' ', 'd', 'n', 'c':
+			navigation = string(key)
+		case 'h':
+			navigation = "\x1b[D"
+		case 'l':
+			navigation = "\x1b[C"
+		case '\r', '\n':
+			// Details are always presentation-only, including mounted roots.
+			navigation = "d"
+		case terminalui.PaneWheelUp:
+			p.ui.journalView.offset = max(0, p.ui.journalView.offset-3)
+			return false, nil
+		case terminalui.PaneWheelDown:
+			p.ui.journalView.offset += 3
+			return false, nil
+		}
+		if navigation != "" {
+			return false, shell.journalKey(navigation)
+		}
+	}
 	switch key {
 	case 2:
 		p.prefix = true
-	case ' ':
+	case ' ', 'p':
 		p.paused = !p.paused
 	case '+', '=':
 		p.speed = replaySpeedStep(p.speed, true)
@@ -427,6 +448,14 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 				return ctx.Err()
 			case <-input.escapeC:
 				// Only a standalone Escape quits; CSI/SS3/mouse reports do not.
+				input.escape, input.escapeC = "", nil
+				if p.ui.shell.output != nil {
+					p.ui.shell.outputKey("\x1b")
+					if err := paint(); err != nil {
+						return err
+					}
+					continue
+				}
 				return nil
 			case key, ok := <-keys:
 				if !ok {

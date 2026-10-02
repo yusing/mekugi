@@ -427,7 +427,10 @@ Use `j`/`k` or arrows to select,
 `Space` to expand or collapse, `d` to read full details, `Enter` to open a row, and
 `c` to copy the selected path. Click a `▸` marker to expand it, or click a row to open it.
 `Esc` returns to Main. Blocked tasks show their reason; notes have no state label.
-Delegated journals appear under their owning task, or in an Agents group. Press
+Delegated journals appear under their owning task, or in an Agents group after
+the owned plan. Agent headings show their lifecycle separately from task states;
+expanded descendants use local paths without repeating the agent name. Outcomes
+follow the work they summarize. Press
 `c` to copy their full journal address. Press `Enter` on, or click, an agent to
 open its Activity.
 
@@ -724,14 +727,17 @@ or duplicate rollouts are reported as errors.
 Playback defaults to **1.0x**. Streaming is simulated from retained text and
 timing, not a screen recording; `--seed 1` makes comparisons repeatable.
 Referenced child rollouts are included when available. Retained journal records
-restore task progress and completion cards when timing is available. Missing
+restore task progress, delegated hierarchies, and completion cards when timing is available. Missing
 records are reported. Original keystrokes, window sizes, and live diff previews
 are not reconstructed.
 
-The playback bar shows position, speed, and simulated-streaming status. **Space**
+The playback bar shows position, speed, and simulated-streaming status. **p**
 pauses, **+/-** steps through speed presets from 0.1x to 100x, **[/]** seeks ten
 seconds, **r** restarts, **Ctrl-B 1–5** selects Main, Diff, Activity, Agents, or
-Journal, **j/k** or the mouse wheel scrolls Main, and **q** quits.
+Journal, and **q** quits. In Journal, **j/k** or arrows select, **Space** expands
+or collapses, **d/Enter** opens read-only details, and the wheel scrolls the tree.
+**Esc/q** closes details before quitting replay. Outside Journal, **Space** also
+pauses and **j/k** or the wheel scrolls Main.
 Playback stops on its final frame until you quit.
 Use `--from 5m --until 6m` to review a recorded interval; earlier state is loaded
 first. The current terminal size controls layout.

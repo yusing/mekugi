@@ -103,7 +103,7 @@ func TestSessionUIReplayInputReportsDoNotBecomeControls(t *testing.T) {
 		{"missing-coordinate", "\x1b[<64;10M", 0},
 		{"zero-coordinate", "\x1b[<64;0;5M", 0},
 		{"overlong", "\x1b[<" + strings.Repeat("1", 60) + ";10;5M", 0},
-		{"arrow", "\x1b[A", 0},
+		{"arrow", "\x1b[A", replayUp},
 		{"modified-arrow", "\x1b[1;5A", 0},
 		{"ss3", "\x1bOP", 0},
 		{"x10-control-payload", "\x1b[Mq+-", 0},
@@ -327,6 +327,19 @@ func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 				replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
 				replayTestItem("root", "turn", replayTestEpoch+1, replayTestEpoch+2, map[string]any{"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"text": transcript.String()}}}),
 				replayTestRecord("event_msg", replayTestEpoch+600000, map[string]any{"type": "task_complete", "turn_id": "turn"}))
+			replayDir, err := defaultMekugiReplayDirectory()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(replayDir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			journal := threadJournal{Version: 2, TreeAuthored: true, Workspace: "/workspace/replay", Thread: "root", Author: "/root", IdentityKnown: true,
+				Receipts: map[string]journalReceipt{}, Events: []journalEvent{{Seq: 1, At: time.UnixMilli(replayTestEpoch).Format(time.RFC3339Nano), Op: "add", Path: "/1",
+					Fields: journalNode{Path: "/1", Kind: "task", Title: "Replay journal task", Body: "Retained journal detail", State: "pending"}}}}
+			if err := writeThreadJournal(&mekugiReplayStore{directory: replayDir}, journal); err != nil {
+				t.Fatal(err)
+			}
 			master, slave, err := pty.Open()
 			if err != nil {
 				t.Fatal(err)
@@ -450,11 +463,22 @@ func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 				t.Fatalf("PTY rendered controls but lost transcript:\n%s", screen.String())
 			}
 			write("\x025")
-			await("No journal entries.")
-			journalTitle := screen.CellAt(62, 0)
-			if journalTitle == nil || journalTitle.Content != "5" || journalTitle.Style.Attrs&uv.AttrBold == 0 {
-				t.Fatal("rendered Journal did not receive focus")
-			}
+			awaitFrame("focused Journal", func() bool {
+				journalTitle := screen.CellAt(62, 0)
+				return journalTitle != nil && journalTitle.Content == "5" && journalTitle.Style.Attrs&uv.AttrBold != 0 && strings.Contains(screen.String(), "Replay journal task")
+			})
+			write("d")
+			await("Retained journal detail")
+			write("\x1b")
+			awaitFrame("closed journal details", func() bool {
+				return !strings.Contains(screen.String(), "Retained journal detail") && strings.Contains(screen.String(), "Replay journal task")
+			})
+			// Exercise the terminal timeout, not direct key dispatch: the very
+			// next ordinary control must not be consumed as an escape suffix.
+			write("+")
+			await("0.25x")
+			write("-")
+			await("0.125x")
 			// Main keeps the selected auxiliary pane visible. Its focused
 			// title proves the switch back rather than merely seeing its text.
 			write("\x021+")
@@ -462,7 +486,7 @@ func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 				mainTitle := screen.CellAt(2, 0)
 				return mainTitle != nil && mainTitle.Content == "1" && mainTitle.Style.Attrs&uv.AttrBold != 0 && strings.Contains(screen.String(), "0.25x")
 			})
-			if !strings.Contains(screen.String(), "No journal entries.") || !strings.Contains(screen.String(), "Replay terminal row 36.") {
+			if !strings.Contains(screen.String(), "Replay journal task") || !strings.Contains(screen.String(), "Replay terminal row 36.") {
 				t.Fatalf("switching back to Main lost the visible Journal or transcript:\n%s", screen.String())
 			}
 			write("\x02") // Cancellation must also override a pending pane prefix.

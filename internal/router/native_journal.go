@@ -115,6 +115,12 @@ func (v *nativeJournalView) rebuild(j *threadJournal) {
 	walk = func(nodes []journalNode, lead string, depth int) {
 		slices.SortStableFunc(nodes, func(a, b journalNode) int {
 			rank := func(n journalNode) int {
+				if n.Kind == "answer" {
+					return 4
+				}
+				if journalViewGroup(n) {
+					return 3
+				}
 				if n.Kind == "context" && !journalViewGroup(n) {
 					return 0
 				}
@@ -372,15 +378,34 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 	}
 	dim := func(text string) string { return activityui.Dim + text + activityui.Undim }
 	safe := func(text string) string { return livediff.Safe(text, false) }
+	path := journalDisplayPath(node)
+	if _, mounted, ok := strings.CutLast(node.Path, "/@"); ok {
+		if _, local, descendant := strings.Cut(mounted, "/"); descendant {
+			path = "/" + local
+		}
+	}
 	var text string
 	switch node.Kind {
 	case "task":
 		_, key, _ := strings.CutLast(node.Path, "/")
 		if node.Agent != "" && strings.HasPrefix(key, "@") {
-			text = journalStateGlyph(node.State) + " " + journalAgentName(node.Agent, theme)
+			text = dim("⎇ ") + journalAgentName(node.Agent, theme)
+			state := node.State
+			switch state {
+			case "done":
+				state = "finished"
+			case "working":
+				state = "running"
+			}
+			if state != "" {
+				text += dim(" · ") + journalStateColor(theme, node.State) + state + activityui.Reset
+			}
 		} else {
-			text = journalStateGlyph(node.State) + " " + dim(safe(journalDisplayPath(node))) + " " + safe(node.Title)
-			if node.Agent != "" {
+			text = journalStateGlyph(node.State) + " " + dim(safe(path)) + " " + safe(node.Title)
+			mounted := row.open && slices.ContainsFunc(node.Children, func(child journalNode) bool {
+				return child.Agent == node.Agent && strings.HasPrefix(child.Path, node.Path+"/@")
+			})
+			if node.Agent != "" && !mounted {
 				text += dim(" ⎇ ") + journalAgentName(node.Agent, theme)
 			}
 		}
@@ -401,7 +426,7 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 		case journalViewGroup(node):
 			text = dim("⎇ ") + "\x1b[1m" + safe(node.Title) + "\x1b[22m"
 		default:
-			text = theme.Accent() + "◆" + activityui.Reset + " " + dim(safe(journalDisplayPath(node))) + " " + safe(node.Title)
+			text = theme.Accent() + "◆" + activityui.Reset + " " + dim(safe(path)) + " " + safe(node.Title)
 		}
 	case "answer":
 		first := journalPreview(node.Body)
@@ -726,7 +751,7 @@ func (u *appServerUI) journalPlanStrip(width int) string {
 	left := journalNodeRow(theme, journalCompactNode(node), "")
 	if pin.node.State == "working" && pin.node.Started != nil {
 		if start, err := time.Parse(time.RFC3339Nano, pin.node.Started.At); err == nil {
-			left += activityui.Dim + " · " + time.Since(start).Round(time.Second).String() + activityui.Undim
+			left += activityui.Dim + " · " + max(time.Duration(0), u.now().Sub(start)).Round(time.Second).String() + activityui.Undim
 		}
 	}
 	// The pane key yields first, then progress, before the task's title.

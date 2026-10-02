@@ -1,0 +1,20 @@
+   ◆ /4 No new dependencies
+ ▾ ◐ /3 Review implementation
+   ├ ◆ /3/3 Preserve authorization
+   ├ · Local evidence
+   ├ ○ /3/4 Pending follow-up
+   ├ ● /3/1 Finished local check
+   ▸ ⎇ review · finished +2
+   · Root evidence
+   ● /1 Finished preparation
+ ▾ ⎇ Agents
+   ▾ ⎇ tests · running
+   │ └ ○ /1 Run focused suite
+   └ ⎇ unstarted
+   ✓ Outcome  Hierarchy evidence re…
+
+
+
+
+
+
