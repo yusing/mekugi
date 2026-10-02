@@ -13,6 +13,8 @@ import (
 
 func TestAppServerContextWindow(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.proxy = &mekugiProxy{usage: newThreadUsage()}
+	u.proxy.usage.observation("main", "main", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 900000, UncachedInputTokens: 900000, OutputTokens: 50000})
 	notify := func(thread string, used, window uint64) {
 		appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{
 			"threadId": thread, "tokenUsage": map[string]any{

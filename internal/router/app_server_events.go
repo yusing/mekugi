@@ -268,7 +268,6 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		}
 		agent := s.agent(s.path(p.ThreadID))
 		agent.LastResponse = now // Usage arrives once per provider response.
-		agent.InputTokens, agent.OutputTokens = p.TokenUsage.Total.InputTokens, p.TokenUsage.Total.OutputTokens
 		agent.ContextWindow = p.TokenUsage.ModelContextWindow
 		agent.ContextKnown = p.TokenUsage.Last != nil
 		agent.ContextTokens = 0
@@ -458,6 +457,11 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			}
 		case "collabAgentToolCall":
 			if m.Method == "item/completed" && (item.Status == "" || item.Status == "completed") {
+				if item.Tool == "spawnAgent" && u.proxy != nil {
+					for _, child := range item.ReceiverThreadIDs {
+						u.proxy.usage.markNew(child)
+					}
+				}
 				entries = append(entries, s.collab(item, id, now)...)
 			}
 		case "agentMessage":
@@ -669,17 +673,27 @@ func (s *appServerSession) collab(item appServerItem, id string, now time.Time) 
 	return entries
 }
 
-// observeCost reads the router's accounting for the thread. App-server token
-// counts are shown, never priced a second time.
+// observeCost reads all consumption metrics from the same canonical owner.
+// App-server context and exit usage are separate, never priced or added here.
 func (u *appServerUI) observeCost(thread string, agent *activityPaneAgent) {
 	if u.proxy == nil || u.proxy.usage == nil {
 		return
 	}
 	report, observed := u.proxy.usage.snapshot(thread)
+	agent.Roundtrips = report.roundtrips
+	agent.InputTokens, agent.OutputTokens = report.InputTokens, report.OutputTokens
+	agent.TokensKnown = observed && agent.Roundtrips > report.missingUsage
 	agent.Cost = report.cost.cachedInput + report.cost.uncachedInput + report.cost.output
-	agent.CostKnown = observed && report.cost.known
-	agent.CostPartial = report.missingUsage != 0
-	agent.Roundtrips = u.proxy.usage.roundtrips(thread)
+	agent.CostKnown = agent.TokensKnown && report.cost.known
+	agent.CostPartial = report.missingUsage != 0 || report.priorUnknown
+	agent.UsagePartial = agent.CostPartial
+	agent.RoundtripsPartial = report.priorUnknown
+}
+
+func (u *appServerUI) restoreUsage(info appServerThreadInfo) {
+	if u.proxy != nil && u.proxy.usage != nil {
+		u.proxy.usage.restore(info.ID, len(info.Turns) > 0)
+	}
 }
 
 // appServerCommandWorkdir is the display form of the directory the host ran

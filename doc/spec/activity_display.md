@@ -348,7 +348,11 @@ an accepted or transport-interrupted response without usable usage
 shows the observed cost as a lower bound, `≥$N`, and later usage does not erase the
 mark; definite rejections and non-generating prewarm leave no mark. When a thread has
 no observed usage, its pricing is unavailable, or its totals are unavailable, the cost
-is omitted rather than claimed as zero. Explicitly reported zero input or output totals
+is omitted rather than claimed as zero. Incomplete observed token totals carry `≥`;
+an unknown historical window also marks observed roundtrips with `≥`. Restored
+rows read retained canonical accounting even when the child stays idle. Missing
+historical accounting remains blank until there is new observed consumption.
+Explicitly reported zero input or output totals
 remain valid. While a response streams, output grows by an estimate of about four
 bytes of visible delta per token, refreshed every second; the provider's reported
 usage replaces the estimate when the response ends. Hidden reasoning is not

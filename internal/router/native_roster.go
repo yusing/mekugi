@@ -69,9 +69,11 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	var input, output uint64
 	var cost float64
 	costKnown, partial := false, false
+	tokensPartial := false
 	for _, row := range rows {
 		input += row.agent.InputTokens
 		output += row.agent.OutputTokens
+		tokensPartial = tokensPartial || row.agent.UsagePartial || row.agent.Turns > 0 && !row.agent.TokensKnown && row.agent.InputTokens == 0 && row.agent.OutputTokens == 0
 		if row.agent.CostKnown {
 			cost, costKnown = cost+row.agent.Cost, true
 			partial = partial || row.agent.CostPartial
@@ -91,7 +93,8 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		totals = append(totals, strings.TrimSpace(diffview.CountStats(*v.netCounts, v.painter.Theme)))
 	}
 	if input+output > 0 {
-		totals = append(totals, "↑"+formatUsageTokens(input)+" ↓"+formatUsageTokens(output))
+		in, out := liveActivityTokenParts(activityPaneAgent{InputTokens: input, OutputTokens: output, UsagePartial: tokensPartial})
+		totals = append(totals, "↑"+in+" ↓"+out)
 	}
 	if costKnown {
 		prefix := "$"
@@ -245,8 +248,9 @@ func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now t
 	if count, ok := v.rosterLines[agent.Name]; ok {
 		parts[4], parts[5] = v.lineCountParts(count)
 	}
-	if agent.InputTokens+agent.OutputTokens > 0 {
-		parts[6], parts[7] = "↑"+formatUsageTokens(agent.InputTokens), "↓"+formatUsageTokens(agent.OutputTokens)
+	if agent.TokensKnown || agent.InputTokens > 0 || agent.OutputTokens > 0 {
+		input, output := liveActivityTokenParts(agent)
+		parts[6], parts[7] = "↑"+input, "↓"+output
 	}
 	parts[8], parts[9] = liveActivityCost(agent), ansi.Strip(liveActivityTurns(agent))
 	return parts

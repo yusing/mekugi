@@ -405,6 +405,7 @@ func (u *appServerUI) hydrateChildHistoryMetadata(h *appServerChildHistory) {
 		}
 	}
 	restoreContextUsage(agent, h.info)
+	u.restoreUsage(h.info)
 	u.observeCost(h.info.ID, agent)
 	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
 }

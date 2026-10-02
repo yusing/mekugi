@@ -19,6 +19,8 @@ type tokenUsageReport struct {
 	cost         tokenCost
 	model        string
 	missingUsage uint64
+	priorUnknown bool
+	roundtrips   uint64
 }
 
 type tokenPrice struct {

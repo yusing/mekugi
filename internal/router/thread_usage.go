@@ -11,9 +11,13 @@ import (
 // Existing identities are never evicted: an untracked thread must not later show a
 // partial lifetime total as though it were complete.
 type threadUsage struct {
-	mu      sync.Mutex
-	threads map[string]*threadUsageTotal
-	closed  bool
+	mu            sync.Mutex
+	threads       map[string]*threadUsageTotal
+	closed        bool
+	store         *mekugiReplayStore
+	storageFailed map[string]bool
+	fresh         map[string]bool // Positive native creation evidence in this router lifetime.
+	notice        func(string, error)
 }
 
 type threadUsageTotal struct {
@@ -23,6 +27,7 @@ type threadUsageTotal struct {
 	missingUsage uint64
 	roundtrips   uint64
 	models       []string
+	priorUnknown bool
 }
 
 type threadUsageObservation struct {
@@ -71,15 +76,16 @@ func (u *threadUsage) add(thread, model, reasoning, serviceTier string, counts t
 	if u.closed {
 		return
 	}
-	total := u.threads[thread]
-	if total == nil {
-		total = &threadUsageTotal{complete: true, cost: tokenCost{known: true}}
-		u.threads[thread] = total
-	}
-	addThreadUsageTotal(total, model, reasoning, serviceTier, counts, conflicted, price)
+	u.updateLocked(thread, func(total *threadUsageTotal) {
+		addThreadUsageTotal(total, model, reasoning, serviceTier, counts, conflicted, price)
+	})
 }
 
 func addThreadUsageTotal(total *threadUsageTotal, model, reasoning, serviceTier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
+	if total.roundtrips == ^uint64(0) {
+		total.complete = false
+		return
+	}
 	total.roundtrips++ // Forwarded requests count whether or not usage arrived.
 	displayModel := usageModelLabel(model, reasoning, serviceTier)
 	if displayModel != "" && !slices.Contains(total.models, displayModel) {
@@ -132,10 +138,13 @@ func usageTokenCost(model, serviceTier string, counts tokenCounts, price *openCo
 }
 
 func usageTotalReport(total *threadUsageTotal) (tokenUsageReport, bool) {
-	if total == nil || !total.complete {
+	if total == nil {
 		return tokenUsageReport{}, false
 	}
-	return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage}, true
+	if !total.complete {
+		return tokenUsageReport{roundtrips: total.roundtrips, priorUnknown: total.priorUnknown}, false
+	}
+	return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage, priorUnknown: total.priorUnknown, roundtrips: total.roundtrips}, true
 }
 
 func (u *threadUsage) snapshot(thread string) (tokenUsageReport, bool) {
@@ -145,6 +154,7 @@ func (u *threadUsage) snapshot(thread string) (tokenUsageReport, bool) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if !u.closed {
+		u.loadLocked(thread)
 		report, observed := usageTotalReport(u.threads[thread])
 		return report, observed
 	}
@@ -159,7 +169,11 @@ func (u *threadUsage) roundtrips(thread string) uint64 {
 	}
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	if u.closed || u.threads[thread] == nil {
+	if u.closed {
+		return 0
+	}
+	u.loadLocked(thread)
+	if u.threads[thread] == nil {
 		return 0
 	}
 	return u.threads[thread].roundtrips

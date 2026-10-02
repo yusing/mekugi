@@ -262,6 +262,10 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		replayStore.liveDiff = mekugiCalls.autoLiveDiff.events.publish
 		defer stopLiveDiff()
 		mekugiCalls.replayStore = replayStore
+		mekugiCalls.usage.store = replayStore
+		mekugiCalls.usage.notice = func(thread string, err error) {
+			mekugiCalls.notice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
+		}
 		if issues != nil {
 			issues.failureStore = replayStore
 		}

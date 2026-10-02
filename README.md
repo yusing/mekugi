@@ -442,7 +442,11 @@ with their elapsed time, provider round trips, and cumulative edited lines as
 across agents, so superseded edits and files created then deleted do not inflate it.
 It uses recorded changes, not a live Git diff; incomplete or inconsistent evidence
 shows `?`. Main's conversation and progress stay in Main. Usage and estimated
-API costs appear per thread; see [Metrics](#metrics) for launch-wide totals.
+API costs appear per thread and survive resume while their records are retained,
+including for completed agents. Missing consumption is not zero: `≥` marks known
+lower bounds (including restored totals), and unavailable metrics stay blank.
+Older sessions without retained accounting cannot recover usage from context
+counts. See [Metrics](#metrics) for launch-wide totals.
 
 - Click an agent to inspect its activity; reply links address that agent.
 - In Activity or Agents, `a` toggles selected-agent filtering. The hint reads

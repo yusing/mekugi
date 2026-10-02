@@ -945,10 +945,19 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time, width
 
 // liveActivityTokens shows cumulative input (sent) and output (received) tokens.
 func liveActivityTokens(agent activityPaneAgent) string {
-	if agent.InputTokens == 0 && agent.OutputTokens == 0 {
+	if !agent.TokensKnown && agent.InputTokens == 0 && agent.OutputTokens == 0 {
 		return ""
 	}
-	return "↑ " + formatUsageTokens(agent.InputTokens) + " ↓ " + formatUsageTokens(agent.OutputTokens)
+	input, output := liveActivityTokenParts(agent)
+	return "↑ " + input + " ↓ " + output
+}
+
+func liveActivityTokenParts(agent activityPaneAgent) (string, string) {
+	prefix := ""
+	if agent.UsagePartial {
+		prefix = "≥"
+	}
+	return prefix + formatUsageTokens(agent.InputTokens), prefix + formatUsageTokens(agent.OutputTokens)
 }
 
 // liveActivityCost omits unknown cost rather than claiming zero; a response
@@ -968,7 +977,11 @@ func liveActivityTurns(agent activityPaneAgent) string {
 	if agent.Roundtrips == 0 {
 		return ""
 	}
-	return activityui.Dim + "T+" + activityui.Undim + fmt.Sprint(agent.Roundtrips)
+	prefix := ""
+	if agent.RoundtripsPartial {
+		prefix = "≥"
+	}
+	return activityui.Dim + prefix + "T+" + activityui.Undim + fmt.Sprint(agent.Roundtrips)
 }
 
 // selectRow fills the selected agent's rows, so selection takes no column of
@@ -1220,7 +1233,8 @@ func (v *liveActivityView) metricTable(rows []liveActivityRosterRow, now time.Ti
 		_, timer := v.current(row.agent, now)
 		tokens := liveActivityTokens(row.agent)
 		if tokens != "" {
-			tokens = activityui.Dim + "↑ " + activityui.Undim + liveActivityPad(formatUsageTokens(row.agent.InputTokens), 6) + activityui.Dim + " ↓ " + activityui.Undim + liveActivityPad(formatUsageTokens(row.agent.OutputTokens), 6)
+			input, output := liveActivityTokenParts(row.agent)
+			tokens = activityui.Dim + "↑ " + activityui.Undim + liveActivityPad(input, 6) + activityui.Dim + " ↓ " + activityui.Undim + liveActivityPad(output, 6)
 		}
 		timerCell := ""
 		if timer != "" {

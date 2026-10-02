@@ -666,6 +666,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			if method == "thread/start" {
 				u.settings.restoredEffort()
+				if u.proxy != nil {
+					u.proxy.usage.markNew(result.Thread.ID)
+				}
 			}
 			u.models, u.modelsLoading = nil, true // A cleared or switched session lists them again.
 			if err := u.request("model/list", map[string]any{"includeHidden": true}); err != nil {
@@ -687,6 +690,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				}
 			}
 			restoreContextUsage(u.session.agent("/root"), result.Thread)
+			u.restoreUsage(result.Thread)
+			u.observeCost(u.thread, u.session.agent("/root"))
 			if u.agents != nil {
 				u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
 			}

@@ -9,8 +9,10 @@ counts. The native roster consumes these totals without adding usage messages to
 conversation. Main completion and wrapper exit do not write Markdown usage files.
 Thread accounting remains separate from capture-owned [metrics](metrics.md);
 compaction and routing-session changes do not reset totals. Repeated terminal observations
-within one request count once. Totals remain in memory until router shutdown without a
-lifetime thread-count ceiling. Arithmetic overflow makes the affected total unavailable.
+within one request count once. Retained totals survive router shutdown and restore
+idle completed agents as well as resumed requests, without a lifetime thread-count
+ceiling in memory. Managed storage retention may reclaim inactive records.
+Arithmetic overflow makes the affected total unavailable.
 An accepted or transport-interrupted request without usable terminal usage increments that
 thread's missing-usage count once. Missing or null input, cached-input, output, or reasoning
 counts likewise exclude that response from observed totals. Earlier totals, known model labels,
@@ -20,6 +22,16 @@ not a claim that those responses consumed zero tokens. Definite HTTP rejections,
 rejected before forwarding, and non-generating WebSocket prewarm do not create usage gaps.
 Failed and incomplete terminal responses with complete usage still contribute
 to later totals without producing their own notices.
+
+Only positively observed native thread creation establishes a fresh lifetime
+baseline. Otherwise the prior window is unknown, even when accounting arrives
+before history hydration or without a native UI. Restored counters also remain
+lower bounds: persisted counters cannot prove that a later request was retained
+before another router stopped. Later observed tokens, cost and roundtrips never
+erase this uncertainty. Host context counts and host-normalized usage cannot fill
+that window or establish pricing. Diagnostic capture exports are not silently imported into live
+accounting. Storage failure leaves live observations available with a notice; only
+successfully retained observations are recoverable after restart.
 
 ### Reference pricing
 
@@ -64,5 +76,8 @@ Acceptance:
 2. Pricing remains per response across model and tier switches, without double-charging
    cached input or reasoning.
 3. Missing usage remains explicit after later successes, compaction, and session remapping.
-   Unavailable evidence is never inferred zero; restart begins a new accounting window.
+   Unavailable evidence is never inferred zero; restart restores retained accounting.
 4. Per-thread counters exclude other threads, including descendants and fork sources.
+5. Idle completed children retain tokens, reference cost and roundtrips after restart;
+   a later follow-up adds only its own new observations. Unknown legacy history stays
+   incomplete after follow-ups, model switches and subsequent restarts.
