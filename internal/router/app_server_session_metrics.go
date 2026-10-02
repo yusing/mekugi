@@ -153,6 +153,14 @@ func (u *appServerUI) renderSessionMetrics() {
 		add("Requests", "Failed", s.Requests.Failed)
 		add("Usage", "", "Provider-reported consumption, not local estimates. Missing normalized telemetry may default to zero; inspect Exchanges for explicit evidence.")
 		usage("Usage", s.Usage.InputTokens, s.Usage.CachedInputTokens, s.Usage.UncachedInputTokens, s.Usage.OutputTokens, s.Usage.ReasoningTokens)
+		if throughput := outputThroughputLabel(s.Usage.OutputThroughput); throughput != "" {
+			add("Usage", "Average output", throughput)
+			add("Usage", "Measured requests", s.Usage.OutputThroughput.MeasuredRequests)
+			add("Usage", "Measured duration", fmt.Sprintf("%.3f s", float64(s.Usage.OutputThroughput.DurationNanos)/1e9))
+		} else {
+			add("Usage", "Average output", "unavailable")
+		}
+		add("Usage", "Throughput basis", "Measured output tokens / summed provider-request seconds, including latency and retries. Unmeasured requests excluded; not session wall time or mean request TPS.")
 		add("Usage evidence", "", "Attempt coverage: complete categories, partial telemetry, legacy completeness unknown, or no usage observed.")
 		add("Usage evidence", "Complete", s.Usage.CompleteAttempts)
 		add("Usage evidence", "Partial", s.Usage.IncompleteAttempts)

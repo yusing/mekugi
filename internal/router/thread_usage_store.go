@@ -23,6 +23,7 @@ type threadUsageRecord struct {
 	CostKnown, Complete, PriorUnknown    bool
 	MissingUsage, Roundtrips             uint64
 	Models                               []string
+	RoundOutput                          providerRoundOutput
 }
 
 func threadUsageName(thread string) string {
@@ -46,13 +47,13 @@ func readThreadUsage(store *mekugiReplayStore, thread string) (*threadUsageTotal
 		return nil, errors.New("invalid provider usage record")
 	}
 	return &threadUsageTotal{counts: r.Counts, cost: tokenCost{uncachedInput: r.UncachedCost, cachedInput: r.CachedCost, output: r.OutputCost, known: r.CostKnown},
-		complete: r.Complete, priorUnknown: r.PriorUnknown, missingUsage: r.MissingUsage, roundtrips: r.Roundtrips, models: r.Models}, nil
+		complete: r.Complete, priorUnknown: r.PriorUnknown, missingUsage: r.MissingUsage, roundtrips: r.Roundtrips, models: r.Models, roundOutput: r.RoundOutput}, nil
 }
 
 func writeThreadUsage(store *mekugiReplayStore, thread string, total *threadUsageTotal) error {
 	r := threadUsageRecord{Version: 1, Thread: thread, Counts: total.counts,
 		UncachedCost: total.cost.uncachedInput, CachedCost: total.cost.cachedInput, OutputCost: total.cost.output, CostKnown: total.cost.known,
-		Complete: total.complete, PriorUnknown: total.priorUnknown, MissingUsage: total.missingUsage, Roundtrips: total.roundtrips, Models: total.models}
+		Complete: total.complete, PriorUnknown: total.priorUnknown, MissingUsage: total.missingUsage, Roundtrips: total.roundtrips, Models: total.models, RoundOutput: total.roundOutput}
 	data, err := json.Marshal(&r)
 	if err != nil {
 		return err
@@ -106,6 +107,9 @@ func (u *threadUsage) loadLocked(thread string) {
 // model, tier or input size. Pending memory is one total per thread, not a queue
 // growing with every response while storage is busy.
 func mergeThreadUsageTotal(total, delta *threadUsageTotal) {
+	if delta.roundOutput.StartedUnixNano > 0 && delta.roundOutput.StartedUnixNano >= total.roundOutput.StartedUnixNano {
+		total.roundOutput = delta.roundOutput
+	}
 	total.priorUnknown = total.priorUnknown || delta.priorUnknown
 	for _, model := range delta.models {
 		if !slices.Contains(total.models, model) {

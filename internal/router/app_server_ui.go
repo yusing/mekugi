@@ -1361,6 +1361,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		context := contextWindowLabel(activityPaneAgent{})
 		if agent := u.session.agent("/root"); agent != nil {
 			context = contextWindowLabel(*agent)
+			if throughput := outputThroughputLabel(agent.OutputThroughput); throughput != "" {
+				context += " • " + throughput
+			}
 		}
 		caption := context
 		if room := width - 7 - ansi.StringWidth(context) - 3; model != "" && room > 0 {
@@ -1545,6 +1548,20 @@ func (u *appServerUI) paint(out io.Writer, width, height int) error {
 func (u *appServerUI) applyObservedActivity() {
 	if u.proxy == nil || u.historyPending() {
 		return
+	}
+	// Provider rounds can start within one host turn, before another usage
+	// notification. Refresh from the owner so a prior round's TPS is not stale.
+	usageChanged := false
+	for thread, path := range u.session.paths {
+		if agent := u.session.agent(path); agent != nil {
+			before := *agent
+			u.observeCost(thread, agent)
+			usageChanged = usageChanged || before != *agent
+		}
+	}
+	if usageChanged {
+		u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
+		u.dirty = true
 	}
 	entries := u.proxy.activity.takeNativeActivity(u.thread)
 	for _, start := range u.proxy.activity.takeRequestStarts(u.thread) {

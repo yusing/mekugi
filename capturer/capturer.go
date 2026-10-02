@@ -49,11 +49,12 @@ type Config struct {
 // terminal Responses payload.
 type ProviderUsage struct {
 	// Nil means legacy normalization did not retain field-completeness evidence.
-	EvidenceComplete *bool  `json:"evidence_complete,omitempty"`
-	InputTokens      uint64 `json:"input_tokens"`
-	CachedTokens     uint64 `json:"cached_input_tokens"`
-	OutputTokens     uint64 `json:"output_tokens"`
-	ReasoningTokens  uint64 `json:"reasoning_tokens"`
+	EvidenceComplete *bool            `json:"evidence_complete,omitempty"`
+	InputTokens      uint64           `json:"input_tokens"`
+	CachedTokens     uint64           `json:"cached_input_tokens"`
+	OutputTokens     uint64           `json:"output_tokens"`
+	ReasoningTokens  uint64           `json:"reasoning_tokens"`
+	OutputThroughput OutputThroughput `json:"output_throughput,omitzero"`
 }
 
 type payloadMetrics struct {

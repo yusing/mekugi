@@ -5,6 +5,9 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/yusing/mekugi/capturer"
 )
 
 // Thread totals are auxiliary, independent of routing sessions and replay history.
@@ -26,6 +29,7 @@ type threadUsage struct {
 }
 
 type threadUsageTotal struct {
+	roundOutput  providerRoundOutput
 	cost         tokenCost
 	counts       tokenCounts
 	complete     bool
@@ -36,6 +40,8 @@ type threadUsageTotal struct {
 }
 
 type threadUsageObservation struct {
+	started       time.Time
+	throughput    capturer.OutputThroughput
 	once          sync.Once
 	totals        *threadUsage
 	conflicted    bool
@@ -62,7 +68,13 @@ func (o *threadUsageObservation) observe(counts tokenCounts) {
 	}
 	o.once.Do(func() {
 		tier := cmp.Or(counts.ServiceTier, o.serviceTier)
-		o.totals.add(o.thread, o.model, o.reasoning, tier, counts, o.conflicted, o.openCodePrice)
+		round := providerRoundOutput{}
+		if !o.started.IsZero() {
+			round.StartedUnixNano = o.started.UnixNano()
+			round.Throughput = measureOutputThroughput(counts, o.started)
+		}
+		o.throughput = round.Throughput
+		o.totals.addRound(o, tier, counts, round)
 	})
 }
 
@@ -73,6 +85,11 @@ func (o *threadUsageObservation) finish() {
 }
 
 func (u *threadUsage) add(thread, model, reasoning, serviceTier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
+	u.addRound(&threadUsageObservation{thread: thread, model: model, reasoning: reasoning, conflicted: conflicted, openCodePrice: price}, serviceTier, counts, providerRoundOutput{})
+}
+
+func (u *threadUsage) addRound(o *threadUsageObservation, serviceTier string, counts tokenCounts, round providerRoundOutput) {
+	thread, model, reasoning, conflicted, price := o.thread, o.model, o.reasoning, o.conflicted, o.openCodePrice
 	if u == nil || thread == "" || len(thread) > maxCommentaryPublicationBytes {
 		return
 	}
@@ -82,6 +99,7 @@ func (u *threadUsage) add(thread, model, reasoning, serviceTier string, counts t
 		return
 	}
 	delta := newThreadUsageTotal()
+	delta.roundOutput = round
 	delta.roundtrips = 1 // Forwarded requests count whether or not usage arrived.
 	displayModel := usageModelLabel(model, reasoning, serviceTier)
 	if displayModel != "" {
@@ -118,7 +136,7 @@ func usageTotalReport(total *threadUsageTotal) (tokenUsageReport, bool) {
 	if !total.complete {
 		return tokenUsageReport{roundtrips: total.roundtrips, priorUnknown: total.priorUnknown}, false
 	}
-	return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage, priorUnknown: total.priorUnknown, roundtrips: total.roundtrips}, true
+	return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage, priorUnknown: total.priorUnknown, roundtrips: total.roundtrips, roundOutput: total.roundOutput}, true
 }
 
 func (u *threadUsage) snapshot(thread string) (tokenUsageReport, bool) {

@@ -682,6 +682,7 @@ func (u *appServerUI) observeCost(thread string, agent *activityPaneAgent) {
 	}
 	report, observed := u.proxy.usage.snapshot(thread)
 	agent.Roundtrips = report.roundtrips
+	agent.OutputThroughput = report.roundOutput.Throughput
 	agent.InputTokens, agent.OutputTokens = report.InputTokens, report.OutputTokens
 	agent.TokensKnown = observed && agent.Roundtrips > report.missingUsage
 	agent.Cost = report.cost.cachedInput + report.cost.uncachedInput + report.cost.output

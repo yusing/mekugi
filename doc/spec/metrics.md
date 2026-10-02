@@ -94,6 +94,28 @@ Completeness describes token-category telemetry, independently of capture health
 Coverage counters remain cumulative when exchange details are evicted and reset with
 the recorder, never reconstructed from a previous launch.
 
+`output_throughput` pairs provider-authoritative `output_tokens` with
+`duration_ns` and `measured_requests`. The timer starts immediately before forwarding
+one provider request and stops at its first terminal usage observation, including
+request latency and automatic transport retries, excluding local preparation,
+post-response delivery, tools and idle time between requests. Output includes reasoning.
+Missing or inconsistent token totals, absent timing and nonpositive elapsed time
+produce no measurement, not zero TPS. Explicit zero output with positive timing
+remains a measured zero rate. The session average is the sum of measured output tokens
+divided by the sum of the paired durations in seconds, never the arithmetic mean
+of request rates or session wall-clock duration. Unmeasured requests contribute to
+neither sum. Coverage is the measured-request count and summed duration. Measurements
+are attached to the usage-bearing attempt and remain cumulative after detail eviction.
+
+Main's composer and each agent's roster display the latest started forwarded
+provider request's rate, not the user/app-server turn or a streamed token estimate.
+A newly started request clears the old rate until terminal usage arrives. Late
+responses from older requests cannot replace the newest round. Retained last-round
+measurements restore by stable thread identity through the existing usage record;
+restoration never revives an in-flight stopwatch. Old records without timing leave
+throughput absent. `/session` retains its existing all-threads-in-this-launch scope.
+
+
 Metrics v7 removes v6's previous-input-length cache attribution. It does not
 reinterpret schema-7 records or remove their request fingerprints.
 Representation diagnostics remain distinct from measured cache usage; no inferred

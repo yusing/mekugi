@@ -228,8 +228,8 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 
 // Metric parts, in column order: context used and percent, elapsed and last
 // response, added and removed lines, input and output tokens, cost, and
-// roundtrips.
-const nativeMetricParts = 10
+// roundtrips, and current-round output throughput.
+const nativeMetricParts = 11
 
 func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now time.Time) [nativeMetricParts]string {
 	var parts [nativeMetricParts]string
@@ -253,6 +253,7 @@ func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now t
 		parts[6], parts[7] = "↑"+input, "↓"+output
 	}
 	parts[8], parts[9] = liveActivityCost(agent), ansi.Strip(liveActivityTurns(agent))
+	parts[10] = outputThroughputLabel(agent.OutputThroughput)
 	return parts
 }
 
@@ -352,7 +353,7 @@ func nativeRosterColumns(rows [][nativeMetricParts]string, room int) []string {
 		separator     string
 	}
 	var columns []column
-	for _, c := range []column{{0, 1, " • "}, {2, 3, " · "}, {4, 5, " "}, {6, 7, " "}, {8, -1, ""}, {9, -1, ""}} {
+	for _, c := range []column{{0, 1, " • "}, {10, -1, ""}, {2, 3, " · "}, {4, 5, " "}, {6, 7, " "}, {8, -1, ""}, {9, -1, ""}} {
 		if widths[c.first] > 0 || c.second >= 0 && widths[c.second] > 0 {
 			columns = append(columns, c)
 		}

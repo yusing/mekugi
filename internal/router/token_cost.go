@@ -21,6 +21,7 @@ type tokenUsageReport struct {
 	missingUsage uint64
 	priorUnknown bool
 	roundtrips   uint64
+	roundOutput  providerRoundOutput
 }
 
 type tokenPrice struct {

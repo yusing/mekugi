@@ -47,8 +47,9 @@ sessions, and patch review. No fork, no config edits, no daemon.
   without a separate agent read; unreadable or oversized attachments have explicit notices.
 - **Composer additions.** Mention selected messages or diffs, and ask
   [`/btw` side questions](#composer) without interrupting Main.
-- **Usage and cost.** See per-thread usage and estimated API costs in Agents,
-  plus launch-wide usage coverage, retries, and diagnostics in [`/session`](#metrics).
+- **Usage, throughput and cost.** See per-thread usage, output tokens/sec and
+  estimated API costs in Agents, plus launch-wide average throughput, usage
+  coverage, retries, and diagnostics in [`/session`](#metrics).
 - **Other providers and tiers.** Use [Grok](#grok-models) or
   [OpenCode Go and Zen](#opencode-go-and-zen), and choose [service tiers](#mekugi-settings).
 - **Diagnostics.** [Inspect past sessions](#inspect-a-session), record debug evidence,
@@ -439,7 +440,8 @@ in the conversation, and an unchanged plan does not add a report card.
 
 The **Activity** pane streams child activity, messages, and replies, including
 while Main waits. The **Agents** roster below the main columns shows children
-with their elapsed time, provider round trips, and cumulative edited lines as
+with their elapsed time, provider round trips, current-round output tokens/sec,
+and cumulative edited lines as
 `+N -N`. The roster header's `+N -N` reports the final composed outcome
 across agents, so superseded edits and files created then deleted do not inflate it.
 It uses recorded changes, not a live Git diff; incomplete or inconsistent evidence
@@ -448,7 +450,11 @@ API costs appear per thread and survive resume while their records are retained,
 including for completed agents. Missing consumption is not zero: `≥` marks known
 lower bounds (including restored totals), and unavailable metrics stay blank.
 Older sessions without retained accounting cannot recover usage from context
-counts. See [Metrics](#metrics) for launch-wide totals.
+counts. Output throughput also appears beside context in Main's composer.
+A round is one forwarded provider request, not a user turn. Its measured rate
+appears when provider usage arrives and clears when the next request starts;
+no streamed token estimates are shown. Retained last-round measurements survive
+resume, but missing timing stays blank. See [Metrics](#metrics) for launch-wide totals.
 
 - Click an agent to inspect its activity; reply links address that agent.
 - In Activity or Agents, `a` toggles selected-agent filtering. The hint reads
@@ -540,7 +546,15 @@ and [execution contract](doc/spec/execution.md).
 ## Metrics
 
 Open `/session` in Main for the current launch's request and retry counts, provider usage,
-usage-evidence coverage, measured cache rate, capture health, and transport details.
+usage-evidence coverage, average output tokens/sec, measured cache rate, capture
+health, and transport details. Average throughput is measured output tokens divided
+by the sum of their provider-request seconds, including request latency and automatic
+transport retries, not an average of individual rates or session wall time. Local
+preparation, tool execution, and idle time between requests are excluded. Requests
+without timing or authoritative token totals are excluded from both sums; measured
+request count and duration show the coverage. Output includes provider-counted
+reasoning tokens. A measured zero-output request has zero throughput; missing timing
+is unavailable.
 Exchanges shows timings, errors, and each attempt's provider-returned
 service tier, not the configured tier; missing evidence stays unavailable.
 Left/Right or Tab switches Overview, Transport, and Exchanges;

@@ -12,16 +12,17 @@ import (
 )
 
 type usageMetrics struct {
-	CompleteAttempts    uint64 `json:"complete_attempts"`
-	IncompleteAttempts  uint64 `json:"incomplete_attempts"`
-	UnknownAttempts     uint64 `json:"unknown_attempts"`
-	MissingAttempts     uint64 `json:"missing_attempts"`
-	InputTokens         uint64 `json:"input_tokens"`
-	CachedInputTokens   uint64 `json:"cached_input_tokens"`
-	UncachedInputTokens uint64 `json:"uncached_input_tokens"`
-	OutputTokens        uint64 `json:"output_tokens"`
-	ReasoningTokens     uint64 `json:"reasoning_tokens"`
-	ProviderAttempts    uint64 `json:"provider_attempts"`
+	OutputThroughput    OutputThroughput `json:"output_throughput,omitzero"`
+	CompleteAttempts    uint64           `json:"complete_attempts"`
+	IncompleteAttempts  uint64           `json:"incomplete_attempts"`
+	UnknownAttempts     uint64           `json:"unknown_attempts"`
+	MissingAttempts     uint64           `json:"missing_attempts"`
+	InputTokens         uint64           `json:"input_tokens"`
+	CachedInputTokens   uint64           `json:"cached_input_tokens"`
+	UncachedInputTokens uint64           `json:"uncached_input_tokens"`
+	OutputTokens        uint64           `json:"output_tokens"`
+	ReasoningTokens     uint64           `json:"reasoning_tokens"`
+	ProviderAttempts    uint64           `json:"provider_attempts"`
 }
 
 type requestTotals struct {
@@ -330,6 +331,7 @@ func usageOf(usage ProviderUsage) usageMetrics {
 		UncachedInputTokens: usage.InputTokens - cached,
 		OutputTokens:        usage.OutputTokens, ReasoningTokens: usage.ReasoningTokens,
 		ProviderAttempts: 1,
+		OutputThroughput: usage.OutputThroughput,
 	}
 	switch {
 	case usage.EvidenceComplete == nil:
@@ -343,6 +345,7 @@ func usageOf(usage ProviderUsage) usageMetrics {
 }
 
 func addUsage(total *usageMetrics, usage usageMetrics) {
+	total.OutputThroughput.Add(usage.OutputThroughput)
 	total.InputTokens += usage.InputTokens
 	total.CachedInputTokens += usage.CachedInputTokens
 	total.UncachedInputTokens += usage.UncachedInputTokens

@@ -1,0 +1,25 @@
+    ╭ Session · Overview ───────────────────────────────────────────────── Esc close ╮
+    │                                                                                │
+    │  Output             12                                                         │
+    │  Reasoning          4                                                          │
+    │  Average output     0.0 tok/s                                                  │
+    │  Measured requests  2                                                          │
+    │  Measured duration  10.000 s                                                   │
+    │  Throughput basis   Measured output tokens / summed provider-request           │
+    │                     seconds, including latency and retries.                    │
+    │                     Unmeasured requests excluded; not session wall             │
+    │                     time or mean request TPS.                                  │
+    │                                                                                │
+    │  Usage evidence  ────────────────────────────────────────────────────────────  │
+    │  Attempt coverage: complete categories, partial telemetry, legacy              │
+    │  completeness unknown, or no usage observed.                                   │
+    │  Complete           1                                                          │
+    │  Partial            1                                                          │
+    │  Legacy             0                                                          │
+    │  Missing            1                                                          │
+    │                                                                                │
+    │  Cache  ─────────────────────────────────────────────────────────────────────  │
+    │  Provider rate      0.0%                                                       │
+    │  Cached / input from observed usage. Partial or missing telemetry is not       │
+    │                                                                                │
+    ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close  15–35 / 46 ─────────────────────╯

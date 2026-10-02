@@ -22,7 +22,7 @@ func sessionMetricsFixture(t *testing.T) capturer.MetricsSnapshot {
 	err := json.Unmarshal([]byte(`{
   "schema":"mekugi.capture.metrics.v7","mode":"mekugi",
   "requests":{"logical":2,"provider_attempts":3,"retries":1,"completed":2,"failed":0},
-  "usage":{"input_tokens":120,"cached_input_tokens":0,"uncached_input_tokens":120,"output_tokens":12,"reasoning_tokens":4,"provider_attempts":2,"complete_attempts":1,"incomplete_attempts":1,"missing_attempts":1},
+  "usage":{"output_throughput":{"output_tokens":12,"duration_ns":10000000000,"measured_requests":2},"input_tokens":120,"cached_input_tokens":0,"uncached_input_tokens":120,"output_tokens":12,"reasoning_tokens":4,"provider_attempts":2,"complete_attempts":1,"incomplete_attempts":1,"missing_attempts":1},
   "cache":{"provider_cache_rate":0},
   "capture":{"records":5,"dropped_exchange_details":7},
   "transport":{
@@ -74,6 +74,8 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 	u.statusPanel.metrics.snapshot = sessionMetricsFixture(t)
 	u.renderSessionMetrics()
 	sessionMetricField(t, u, "Requests", "Attempts", "3")
+	sessionMetricField(t, u, "Usage", "Average output", "1.2 tok/s")
+	sessionMetricField(t, u, "Usage", "Measured duration", "10.000 s")
 	sessionMetricField(t, u, "Cache", "Provider rate", "0.0%")
 	u.statusPanelFrame(80, 12)
 	u.statusPanelKey("\x1b[B")
@@ -184,11 +186,15 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 		name                    string
 		tab, width, height, top int
 		empty, missing          bool
+		throughput              string
 		debug                   string
 	}{
-		{name: "overview", width: 90, height: 55},
+		{name: "overview", width: 90, height: 65},
 		{name: "storage", width: 90, height: 24},
 		{name: "storage-narrow", width: 35, height: 18},
+		{name: "throughput-narrow", width: 36, height: 22, top: 18},
+		{name: "throughput-absent", width: 90, height: 25, top: 14, throughput: "absent"},
+		{name: "throughput-zero", width: 90, height: 25, top: 14, throughput: "zero"},
 		{name: "transport", tab: 1, width: 90, height: 55},
 		{name: "exchanges", tab: 2, width: 90, height: 60},
 		{name: "exchanges-scrolled", tab: 2, width: 90, height: 25, top: 27},
@@ -214,6 +220,12 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 			}
 			if strings.HasPrefix(tc.name, "storage") {
 				m.snapshot.StorageWrites = &persistence.Snapshot{Bytes: 12345, Scope: new(persistence.Counter).Snapshot().Scope}
+			}
+			if tc.throughput == "absent" {
+				m.snapshot.Usage.OutputThroughput = capturer.OutputThroughput{}
+			}
+			if tc.throughput == "zero" {
+				m.snapshot.Usage.OutputThroughput.OutputTokens = 0
 			}
 			if tc.empty {
 				m.snapshot.Exchanges = nil

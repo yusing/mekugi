@@ -1,0 +1,22 @@
+╭ Session · Overview ─── Esc close ╮
+│                                  │
+│  normalized telemetry may        │
+│  default to zero; inspect        │
+│  Exchanges for explicit          │
+│  evidence.                       │
+│  Input                           │
+│  120                             │
+│  Cached input                    │
+│  0                               │
+│  Uncached input                  │
+│  120                             │
+│  Output                          │
+│  12                              │
+│  Reasoning                       │
+│  4                               │
+│  Average output                  │
+│  1.2 tok/s                       │
+│  Measured requests               │
+│  2                               │
+│                                  │
+╰─ ←→ views  ↑↓ scroll  Esc ───────╯

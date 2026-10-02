@@ -60,6 +60,7 @@ type requestAttempt struct {
 	bridge          *subagentBridge
 	forwardBody     []byte
 	usageTracker    *threadUsageObservation
+	providerStarted time.Time
 
 	response           *http.Response
 	streamResponse     bool
@@ -379,6 +380,9 @@ func (a *requestAttempt) forward() error {
 	}
 	if a.usageTracker != nil {
 		a.usageTracker.reasoning = a.request.reasoningEffort()
+		a.usageTracker.begin()
+	} else {
+		a.providerStarted = time.Now()
 	}
 	a.response, err = a.executor.provider.forwardExecution(
 		a.startCtx,
@@ -457,7 +461,12 @@ func (a *requestAttempt) prepareResponse() error {
 				a.usageTracker.observe(counts)
 			}
 		}
+		throughput := measureOutputThroughput(counts, a.providerStarted)
+		if a.usageTracker != nil {
+			throughput = a.usageTracker.throughput
+		}
 		capturer.ObserveProviderUsage(a.executionCtx, capturer.ProviderUsage{
+			OutputThroughput: throughput,
 			EvidenceComplete: new(!counts.Incomplete && !counts.Inconsistent),
 			InputTokens:      counts.InputTokens,
 			CachedTokens:     counts.InputTokens - counts.UncachedInputTokens,
