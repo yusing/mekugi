@@ -30,8 +30,14 @@ lower bounds: persisted counters cannot prove that a later request was retained
 before another router stopped. Later observed tokens, cost and roundtrips never
 erase this uncertainty. Host context counts and host-normalized usage cannot fill
 that window or establish pricing. Diagnostic capture exports are not silently imported into live
-accounting. Storage failure leaves live observations available with a notice; only
-successfully retained observations are recoverable after restart.
+accounting. Accounting and roster restoration MUST NOT wait for contention on the
+shared publication lock. Pending observations MUST remain available in live totals
+and MUST be retained once ordinary contention clears, without repeating provider
+requests or counting a response twice. Graceful shutdown MUST attempt to drain
+pending publication; cancellation of a waiting caller MUST NOT discard observations.
+Storage failure leaves live observations available with a notice; only successfully
+retained observations are recoverable after restart. An abrupt stop or exhausted
+shutdown wait can leave pending observations unretained.
 
 ### Reference pricing
 
@@ -81,3 +87,6 @@ Acceptance:
 5. Idle completed children retain tokens, reference cost and roundtrips after restart;
    a later follow-up adds only its own new observations. Unknown legacy history stays
    incomplete after follow-ups, model switches and subsequent restarts.
+6. Contention longer than 250 ms does not block usage consumers, emit a storage
+   failure, or permanently disable retention. Queued observations merge across
+   concurrent routers with their original pricing, model labels and usage gaps.

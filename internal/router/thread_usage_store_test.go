@@ -35,6 +35,7 @@ func requireStoredUsage(t *testing.T, u *threadUsage, thread string, input, outp
 func TestThreadUsageStoreRestartFollowupAndIdentityIsolation(t *testing.T) {
 	directory := t.TempDir()
 	first := storedUsageFixture(usageStoreFixture(t, directory))
+	t.Cleanup(first.close)
 	counts := tokenCounts{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000, TotalsKnown: true}
 	observation := first.observation("child", "child", "grok:grok-4.6", "")
 	observation.observe(counts)
@@ -46,6 +47,7 @@ func TestThreadUsageStoreRestartFollowupAndIdentityIsolation(t *testing.T) {
 	first.close()
 
 	restored := storedUsageFixture(usageStoreFixture(t, directory))
+	t.Cleanup(restored.close)
 	restored.restore("child", true)
 	report := requireStoredUsage(t, restored, "child", 300_000, 30_000, 3, .82)
 	if !report.priorUnknown || report.missingUsage != 0 {
@@ -69,6 +71,7 @@ func TestThreadUsageStoreConcurrentOwnersMerge(t *testing.T) {
 	store := usageStoreFixture(t, directory)
 	owners := []*threadUsage{storedUsageFixture(store), storedUsageFixture(store)}
 	for _, owner := range owners {
+		t.Cleanup(owner.close)
 		owner.restore("child", false)
 	}
 	var workers sync.WaitGroup
@@ -91,10 +94,12 @@ func TestThreadUsageStoreConcurrentOwnersMerge(t *testing.T) {
 func TestThreadUsageStoreRetainsHistoricalUnknownAndUsageGaps(t *testing.T) {
 	directory := t.TempDir()
 	first := storedUsageFixture(usageStoreFixture(t, directory))
+	t.Cleanup(first.close)
 	first.restore("historical", true)
 	first.observation("gap", "gap", "gpt-6-sol", "").finish()
 	first.close()
 	restored := storedUsageFixture(usageStoreFixture(t, directory))
+	t.Cleanup(restored.close)
 	restored.restore("historical", false)
 	if report, ok := restored.snapshot("historical"); !ok || !report.priorUnknown || restored.roundtrips("historical") != 0 {
 		t.Fatalf("historical unknown baseline lost: %+v valid=%v", report, ok)

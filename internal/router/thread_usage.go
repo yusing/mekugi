@@ -2,7 +2,7 @@ package router
 
 import (
 	"cmp"
-	"slices"
+	"context"
 	"strings"
 	"sync"
 )
@@ -18,6 +18,11 @@ type threadUsage struct {
 	storageFailed map[string]bool
 	fresh         map[string]bool // Positive native creation evidence in this router lifetime.
 	notice        func(string, error)
+	pending       map[string]*threadUsageWrite
+	writing       bool
+	changed       chan struct{}
+	writerCancel  context.CancelFunc
+	writerDone    chan struct{}
 }
 
 type threadUsageTotal struct {
@@ -42,7 +47,7 @@ type threadUsageObservation struct {
 }
 
 func newThreadUsage() *threadUsage {
-	return &threadUsage{threads: make(map[string]*threadUsageTotal)}
+	return &threadUsage{threads: make(map[string]*threadUsageTotal), changed: make(chan struct{})}
 }
 
 // Transport identity owns usage accounting, not auxiliary author or ancestry
@@ -76,55 +81,24 @@ func (u *threadUsage) add(thread, model, reasoning, serviceTier string, counts t
 	if u.closed {
 		return
 	}
-	u.updateLocked(thread, func(total *threadUsageTotal) {
-		addThreadUsageTotal(total, model, reasoning, serviceTier, counts, conflicted, price)
-	})
-}
-
-func addThreadUsageTotal(total *threadUsageTotal, model, reasoning, serviceTier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
-	if total.roundtrips == ^uint64(0) {
-		total.complete = false
-		return
-	}
-	total.roundtrips++ // Forwarded requests count whether or not usage arrived.
+	delta := newThreadUsageTotal()
+	delta.roundtrips = 1 // Forwarded requests count whether or not usage arrived.
 	displayModel := usageModelLabel(model, reasoning, serviceTier)
-	if displayModel != "" && !slices.Contains(total.models, displayModel) {
-		total.models = append(total.models, displayModel)
+	if displayModel != "" {
+		delta.models = []string{displayModel}
 	}
-	if conflicted {
-		total.complete = false
-	}
-	if !total.complete {
-		return
-	}
+	delta.complete = !conflicted
 	if counts.Incomplete {
-		if total.missingUsage == ^uint64(0) {
-			total.complete = false
-		} else {
-			total.missingUsage++
+		delta.missingUsage = 1
+	} else {
+		delta.counts = tokenCounts{
+			InputTokens: counts.InputTokens, UncachedInputTokens: counts.UncachedInputTokens,
+			CacheWriteTokens: counts.CacheWriteTokens, OutputTokens: counts.OutputTokens,
+			ReasoningTokens: counts.ReasoningTokens, Inconsistent: counts.Inconsistent,
 		}
-		return
+		delta.cost = usageTokenCost(model, serviceTier, counts, price)
 	}
-	sum := total.counts
-	for _, pair := range []struct {
-		dst *uint64
-		add uint64
-	}{
-		{&sum.InputTokens, counts.InputTokens},
-		{&sum.UncachedInputTokens, counts.UncachedInputTokens},
-		{&sum.CacheWriteTokens, counts.CacheWriteTokens},
-		{&sum.OutputTokens, counts.OutputTokens},
-		{&sum.ReasoningTokens, counts.ReasoningTokens},
-	} {
-		if ^uint64(0)-*pair.dst < pair.add {
-			total.complete = false
-			return
-		}
-		*pair.dst += pair.add
-	}
-	sum.Inconsistent = sum.Inconsistent || counts.Inconsistent
-	total.cost.add(usageTokenCost(model, serviceTier, counts, price))
-	total.counts = sum
+	u.updateLocked(thread, delta)
 }
 
 func usageTokenCost(model, serviceTier string, counts tokenCounts, price *openCodePrice) tokenCost {
@@ -184,9 +158,19 @@ func (u *threadUsage) close() {
 		return
 	}
 	u.mu.Lock()
-	defer u.mu.Unlock()
 	u.closed = true
+	cancel, done := u.writerCancel, u.writerDone
+	u.mu.Unlock()
+	if done != nil {
+		ctx, stop := context.WithTimeout(context.Background(), shutdownTimeout)
+		_ = u.flush(ctx) // The writer reports any unretained observations through notice.
+		stop()
+		cancel()
+		<-done
+	}
+	u.mu.Lock()
 	clear(u.threads)
+	u.mu.Unlock()
 }
 
 // Model labels include reasoning and service tier; pricing uses the bare model.

@@ -19,6 +19,7 @@ func restoredUsageRosterFixture(t *testing.T) *appServerUI {
 	usage.close()
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.proxy = &mekugiProxy{usage: storedUsageFixture(usageStoreFixture(t, directory))}
+	t.Cleanup(u.proxy.usage.close)
 	for _, thread := range []string{"child", "gap", "historical"} {
 		info := appServerThreadInfo{ID: thread, AgentNickname: thread, Turns: []appServerHistoryTurn{{ID: "old", Status: "completed"}}}
 		u.session.registerThread(info)

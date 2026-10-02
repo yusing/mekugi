@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
+	"slices"
 )
 
 // This is the durable form of the canonical counters, not a second usage
@@ -59,18 +59,13 @@ func writeThreadUsage(store *mekugiReplayStore, thread string, total *threadUsag
 	return store.writeManagedFile(threadUsageName(thread), "usage-pending-", data)
 }
 
-// Usage is auxiliary: storage contention has a bounded wait, independent of
-// request cancellation, and cannot fail or replace the provider response.
-func (u *threadUsage) storage(thread string, run func(*mekugiReplayStore) error) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
-	defer cancel()
-	store := *u.store
-	store.session = storageSessionIdentity{Thread: thread, Namespace: thread}
-	return store.locked(ctx, func() error { return run(&store) })
-}
-
 func newThreadUsageTotal() *threadUsageTotal {
 	return &threadUsageTotal{complete: true, cost: tokenCost{known: true}}
+}
+
+type threadUsageWrite struct {
+	baseline threadUsageTotal
+	delta    *threadUsageTotal
 }
 
 func (u *threadUsage) storageFailure(thread string, err error) {
@@ -87,67 +82,205 @@ func (u *threadUsage) storageFailure(thread string, err error) {
 	}
 }
 
-// Cache restored records, including absence, so UI refreshes do no disk I/O.
+// Atomic publication makes a single record safe to read without store.lock.
+// Absence, including concurrent retirement, is an unknown prior window rather
+// than a new lifetime. Cache it so UI refreshes do no further disk I/O.
 func (u *threadUsage) loadLocked(thread string) {
 	if _, loaded := u.threads[thread]; loaded || u.store == nil || thread == "" {
 		return
 	}
-	err := u.storage(thread, func(store *mekugiReplayStore) error {
-		total, err := readThreadUsage(store, thread)
-		if err == nil {
-			if total != nil {
-				// A retained counter proves observed consumption, not that every
-				// later request was persisted before another router stopped.
-				total.priorUnknown = true
-			}
-			u.threads[thread] = total
-		}
-		return err
-	})
+	total, err := readThreadUsage(u.store, thread)
 	if err != nil {
 		u.storageFailure(thread, err)
+		return
+	}
+	if total != nil {
+		// Retained counters prove consumption, not uninterrupted coverage.
+		total.priorUnknown = true
+	}
+	u.threads[thread] = total
+}
+
+// Merge already-priced observations, never reprice an aggregate at its final
+// model, tier or input size. Pending memory is one total per thread, not a queue
+// growing with every response while storage is busy.
+func mergeThreadUsageTotal(total, delta *threadUsageTotal) {
+	total.priorUnknown = total.priorUnknown || delta.priorUnknown
+	for _, model := range delta.models {
+		if !slices.Contains(total.models, model) {
+			total.models = append(total.models, model)
+		}
+	}
+	if ^uint64(0)-total.roundtrips < delta.roundtrips {
+		total.complete = false
+		return
+	}
+	total.roundtrips += delta.roundtrips
+	total.complete = total.complete && delta.complete
+	if !total.complete {
+		return
+	}
+	sum := total.counts
+	for _, pair := range []struct {
+		dst *uint64
+		add uint64
+	}{
+		{&sum.InputTokens, delta.counts.InputTokens},
+		{&sum.UncachedInputTokens, delta.counts.UncachedInputTokens},
+		{&sum.CacheWriteTokens, delta.counts.CacheWriteTokens},
+		{&sum.OutputTokens, delta.counts.OutputTokens},
+		{&sum.ReasoningTokens, delta.counts.ReasoningTokens},
+	} {
+		if ^uint64(0)-*pair.dst < pair.add {
+			total.complete = false
+			return
+		}
+		*pair.dst += pair.add
+	}
+	if ^uint64(0)-total.missingUsage < delta.missingUsage {
+		total.complete = false
+		return
+	}
+	total.missingUsage += delta.missingUsage
+	sum.Inconsistent = sum.Inconsistent || delta.counts.Inconsistent
+	total.counts = sum
+	total.cost.add(delta.cost)
+}
+
+func (u *threadUsage) updateLocked(thread string, delta *threadUsageTotal) {
+	u.loadLocked(thread)
+	total := u.threads[thread]
+	if total == nil {
+		total = newThreadUsageTotal()
+		total.priorUnknown = u.store != nil && !u.fresh[thread]
+		u.threads[thread] = total
+	}
+	delta.priorUnknown = delta.priorUnknown || total.priorUnknown
+	var baseline threadUsageTotal
+	if u.store != nil && !u.storageFailed[thread] && u.pending[thread] == nil {
+		baseline = *total
+		baseline.models = slices.Clone(total.models)
+	}
+	mergeThreadUsageTotal(total, delta)
+	if u.store == nil || u.storageFailed[thread] {
+		return
+	}
+	if u.pending == nil {
+		u.pending = make(map[string]*threadUsageWrite)
+	}
+	if pending := u.pending[thread]; pending != nil {
+		mergeThreadUsageTotal(pending.delta, delta)
+	} else {
+		u.pending[thread] = &threadUsageWrite{baseline: baseline, delta: delta}
+	}
+	if u.writerDone == nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		u.writerCancel, u.writerDone = cancel, make(chan struct{})
+		go u.runWriter(ctx)
+	}
+	if !u.writing {
+		u.changedLocked()
 	}
 }
 
-// Serialize read-modify-write across router processes. After an ambiguous write
-// failure keep this router's live evidence, but never overwrite a durable record
-// with a cache that may have missed another writer or double-add an observation.
-func (u *threadUsage) updateLocked(thread string, mutate func(*threadUsageTotal)) {
-	total := u.threads[thread]
-	applied := false
-	apply := func() {
-		if total == nil {
-			total = newThreadUsageTotal()
-			// Accounting may precede asynchronous history hydration, and
-			// headless callers never hydrate native history at all.
-			total.priorUnknown = u.store != nil && !u.fresh[thread]
+func (u *threadUsage) changedLocked() {
+	close(u.changed)
+	u.changed = make(chan struct{})
+}
+
+// flush waits for managed publication without holding the accounting mutex.
+// Canceling a waiter does not cancel or discard the writer's pending facts.
+func (u *threadUsage) flush(ctx context.Context) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	for len(u.pending) != 0 || u.writing {
+		changed := u.changed
+		u.mu.Unlock()
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			u.mu.Lock()
+			return ctx.Err()
 		}
-		mutate(total)
-		u.threads[thread] = total
-		applied = true
+		u.mu.Lock()
 	}
-	if u.store == nil || u.storageFailed[thread] {
-		apply()
-		return
+	return nil
+}
+
+func (u *threadUsage) runWriter(ctx context.Context) {
+	defer close(u.writerDone)
+	for {
+		u.mu.Lock()
+		if err := ctx.Err(); err != nil {
+			for thread := range u.pending {
+				u.storageFailure(thread, err)
+			}
+			clear(u.pending)
+			u.changedLocked()
+			u.mu.Unlock()
+			return
+		}
+		var thread string
+		var write *threadUsageWrite
+		for thread, write = range u.pending {
+			delete(u.pending, thread)
+			break
+		}
+		if write == nil {
+			changed := u.changed
+			u.mu.Unlock()
+			select {
+			case <-changed:
+			case <-ctx.Done():
+			}
+			continue
+		}
+		u.writing = true
+		u.mu.Unlock()
+
+		retained, err := u.persist(ctx, thread, write)
+		u.mu.Lock()
+		if err != nil {
+			// A write or unlock failure may follow publication. Never replay
+			// the same delta, or overwrite another writer with our live cache.
+			u.storageFailure(thread, err)
+			delete(u.pending, thread)
+		} else {
+			// Include concurrent local observations and other router writers.
+			if pending := u.pending[thread]; pending != nil {
+				pending.baseline = *retained
+				pending.baseline.models = slices.Clone(retained.models)
+				mergeThreadUsageTotal(retained, pending.delta)
+			}
+			u.threads[thread] = retained
+		}
+		u.writing = false
+		u.changedLocked()
+		u.mu.Unlock()
 	}
-	err := u.storage(thread, func(store *mekugiReplayStore) error {
-		retained, err := readThreadUsage(store, thread)
+}
+
+// Only this background writer waits on the publication lock. Normal contention
+// is not a storage failure and cannot stall provider delivery or roster reads.
+func (u *threadUsage) persist(ctx context.Context, thread string, write *threadUsageWrite) (*threadUsageTotal, error) {
+	store := *u.store
+	store.session = storageSessionIdentity{Thread: thread, Namespace: thread}
+	var retained *threadUsageTotal
+	err := store.locked(ctx, func() error {
+		var err error
+		retained, err = readThreadUsage(&store, thread)
 		if err != nil {
 			return err
 		}
-		if retained != nil {
-			retained.priorUnknown = retained.priorUnknown || total == nil || total.priorUnknown
-			total = retained
+		if retained == nil {
+			// Retirement must not discard consumption still known in this
+			// live owner. The baseline excludes this batch and later deltas.
+			retained = &write.baseline
 		}
-		apply()
-		return writeThreadUsage(store, thread, total)
+		mergeThreadUsageTotal(retained, write.delta)
+		return writeThreadUsage(&store, thread, retained)
 	})
-	if err != nil {
-		if !applied {
-			apply()
-		}
-		u.storageFailure(thread, err)
-	}
+	return retained, err
 }
 
 // Only an observed native creation, not absent history or a new routing session,
@@ -181,10 +314,8 @@ func (u *threadUsage) restore(thread string, history bool) {
 	}
 	u.loadLocked(thread)
 	if history && !u.fresh[thread] && u.threads[thread] == nil {
-		u.updateLocked(thread, func(total *threadUsageTotal) {
-			if total.roundtrips == 0 {
-				total.priorUnknown = true
-			}
-		})
+		delta := newThreadUsageTotal()
+		delta.priorUnknown = true
+		u.updateLocked(thread, delta)
 	}
 }
