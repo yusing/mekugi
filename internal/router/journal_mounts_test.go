@@ -453,3 +453,29 @@ func TestJournalLargeMountedTasksDoNotInflateMainCard(t *testing.T) {
 		t.Fatalf("mounted task detail inflated Main's owned work report or lost the outcome: %q", card)
 	}
 }
+
+func TestJournalMountTurnCountSurvivesRestartAndRecovery(t *testing.T) {
+	proxy, workspace := mountFixture(t)
+	treeApply(t, proxy, workspace, journalMutation{Op: "add", Kind: "task", Title: new("Review"), State: new("working")},
+		journalMutation{Op: "set", P: "/1", Agent: "/root/child"})
+	// Repeated requests within one host turn count once; each follow-up turn counts again.
+	for _, turn := range []string{"assign", "assign", "follow-up-1", "follow-up-1", "follow-up-2"} {
+		if err := proxy.journals.beginJournalTurn(t.Context(), proxy.replayStore, workspace, "child", turn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	proxy.journals = newJournalStore()
+	if node, ok := mountFind(mountRead(t, proxy, workspace, "tree", "", ""), "/1/@child"); !ok || node.Turns != 3 {
+		t.Fatalf("mounted child turn count = %+v, want 3", node)
+	}
+	if node, ok := mountFind(mountRead(t, proxy, workspace, "tree", "", ""), "/1"); !ok || node.Turns != 0 {
+		t.Fatalf("parent-owned task gained a turn count: %+v", node)
+	}
+	summary, err := summaryForTest(t, t.Context(), proxy.replayStore, workspace, "tree")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(summary.Text, "/1/@child /root/child (agent /root/child) · 3 turns") {
+		t.Fatalf("recovery omitted the child's turn count: %s", summary.Text)
+	}
+}

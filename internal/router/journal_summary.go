@@ -120,6 +120,9 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		if item.Agent != "" {
 			fmt.Fprintf(&node, " (agent %s)", item.Agent)
 		}
+		if item.Turns > 0 {
+			fmt.Fprintf(&node, " · %d turns", item.Turns)
+		}
 		if item.Reason != "" {
 			fmt.Fprintf(&node, " · %s", item.Reason)
 		}

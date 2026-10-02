@@ -27,6 +27,7 @@ func (s *journalStore) beginJournalTurn(ctx context.Context, store *mekugiReplay
 			return errJournalUnchanged
 		}
 		j.TurnID, j.TurnStartSeq = turn, j.Sequence
+		j.Turns++
 		return nil
 	})
 }

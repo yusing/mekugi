@@ -73,6 +73,7 @@ type journalItem struct {
 	Started      *journalStamp `json:"started,omitempty"`
 	Finished     *journalStamp `json:"finished,omitempty"`
 	TerminalOnly bool          `json:"terminal_only,omitzero"`
+	Turns        int           `json:"turns,omitzero"` // Mounted agents only; view-only.
 	ID           string        `json:"id"`
 	Text         string        `json:"text"`
 	Question     string        `json:"question,omitempty"`
@@ -105,6 +106,7 @@ type threadJournal struct {
 	Counters             *capturer.JournalMetrics    `json:"counters,omitempty"`
 	CounterReceipts      []string                    `json:"counter_receipts,omitempty"`
 	TurnID               string                      `json:"turn_id,omitempty"`
+	Turns                int                         `json:"turns,omitzero"` // Distinct host turn IDs seen.
 	TurnStartSeq         uint64                      `json:"turn_start_seq,omitzero"`
 	ResetHandledTurn     string                      `json:"reset_handled_turn,omitempty"`
 	ResetIntent          *journalResetIntent         `json:"reset_intent,omitempty"`

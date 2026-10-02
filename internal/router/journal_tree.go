@@ -29,6 +29,7 @@ type journalNode struct {
 	Reason   string        `json:"reason,omitempty"`
 	Question string        `json:"question,omitempty"`
 	Agent    string        `json:"agent,omitempty"`
+	Turns    int           `json:"turns,omitzero"`
 	Author   string        `json:"author"`
 	Created  journalStamp  `json:"created"`
 	Updated  journalStamp  `json:"updated"`
@@ -93,7 +94,7 @@ func (j *threadJournal) ensureTree() {
 }
 
 func (item journalItem) node() journalNode {
-	return journalNode{Path: item.Path, Kind: item.Kind, Title: item.Title, Body: item.Body, State: item.State, Reason: item.Reason, Question: item.Question, Agent: item.Agent, Author: item.Author,
+	return journalNode{Path: item.Path, Kind: item.Kind, Title: item.Title, Body: item.Body, State: item.State, Reason: item.Reason, Question: item.Question, Agent: item.Agent, Turns: item.Turns, Author: item.Author,
 		Created: journalStamp{Seq: item.Created, At: item.CreatedAt}, Updated: journalStamp{Seq: item.Updated, At: item.UpdatedAt}, Started: item.Started, Finished: item.Finished, Children: []journalNode{}}
 }
 

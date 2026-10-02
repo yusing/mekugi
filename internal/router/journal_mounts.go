@@ -112,7 +112,7 @@ func mountedJournalItems(journals map[string]threadJournal, recordErrors map[str
 			}
 			path := under + "/@" + journalPointerKey(child.Thread)
 			mount := journalItem{Path: path, Kind: "task", Title: child.Author, Agent: child.Author, Author: child.Author,
-				State: child.LifecycleState, Reason: child.LifecycleReason, UpdatedAt: child.LifecycleAt}
+				State: child.LifecycleState, Reason: child.LifecycleReason, UpdatedAt: child.LifecycleAt, Turns: child.Turns}
 			items = append(items, mount)
 			if len(items) > maxViewItems {
 				return errors.New("combined journal exceeds 8192 nodes; read a narrower agent subtree")
@@ -215,7 +215,7 @@ func journalReadView(items []journalItem, path string, depth *int, view string) 
 func mountedViewChanged(before, after threadJournal) bool {
 	return before.Parent != after.Parent || before.Author != after.Author || before.IdentityKnown != after.IdentityKnown ||
 		before.IdentityConflicted != after.IdentityConflicted || before.LifecycleState != after.LifecycleState ||
-		before.LifecycleReason != after.LifecycleReason || before.LifecycleAt != after.LifecycleAt ||
+		before.LifecycleReason != after.LifecycleReason || before.LifecycleAt != after.LifecycleAt || before.Turns != after.Turns ||
 		!reflect.DeepEqual(before.SpawnRoles, after.SpawnRoles) || !reflect.DeepEqual(before.Items, after.Items)
 }
 

@@ -114,7 +114,9 @@ not mutation targets. `read agent` addresses the child's local paths. Combined
 views are bounded to 8,192 nodes; larger views require a narrower agent read.
 
 The router records a child's accepted requests as working. Native app-server
-turn completion supplies done or blocked lifecycle evidence. Provider response
+turn completion supplies done or blocked lifecycle evidence. Each new host turn ID
+increments the child's durable turn count, including its initial assignment; mounted
+reads and journal recovery show it, so delegation limits survive compaction. Provider response
 completion alone is not child completion. Frontends without host completion
 evidence retain the last observed state. A parent cannot become done while any
 mounted descendant remains open, including an unresolved mount. The check applies
