@@ -31,7 +31,7 @@ func TestJournalTransportWaitsForCompletionOrCallerCancellation(t *testing.T) {
 				if scenario != "committed response" {
 					// An independent router holds the shared delivery lease until
 					// its downstream write is confirmed, longer than the old timer.
-					release, err := newJournalStore().lockDelivery(t.Context(), replay)
+					release, err := newJournalStore().lockDelivery(t.Context(), replay, "workspace")
 					if err != nil {
 						t.Fatal(err)
 					}

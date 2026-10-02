@@ -114,7 +114,7 @@ func (t *mekugiResponseTransform) prepareOwnJournalDelivery(terminal bool) ([]ma
 		}
 	}
 	t.journalQuietFile = nil
-	release, err := t.proxy.journals.lockDelivery(t.ctx, t.proxy.replayStore)
+	release, err := t.proxy.journals.lockDelivery(t.ctx, t.proxy.replayStore, t.directory)
 	if err != nil {
 		return nil, err
 	}

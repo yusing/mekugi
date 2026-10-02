@@ -234,6 +234,13 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		http.Error(writer, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	if b.debug != nil {
+		started := time.Now()
+		latency := new(journalLatency)
+		request = request.WithContext(context.WithValue(request.Context(), journalLatencyKey{}, latency))
+		writer = journalLatencyWriter{ResponseWriter: writer, latency: latency}
+		defer latency.record(b.debug, thread, callID, started)
+	}
 
 	// Validate the complete operation before publishing any mutations.
 	raw := bytes.TrimSpace(publication.Journal)

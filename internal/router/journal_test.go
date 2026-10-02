@@ -192,7 +192,7 @@ func TestJournalDeletionWaitsForDelivery(t *testing.T) {
 	if _, err := store.apply(ctx, nil, "", "root", "", []journalMutation{{Op: "add", Text: new("Notice")}}); err != nil {
 		t.Fatal(err)
 	}
-	release, err := store.lockDelivery(ctx, nil)
+	release, err := store.lockDelivery(ctx, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestJournalDeliverySerializesIndependentStores(t *testing.T) {
 		if _, err := first.apply(ctx, replay, "", "root", "", []journalMutation{{Op: "add", Text: new("Notice")}}); err != nil {
 			t.Fatal(err)
 		}
-		release, err := first.lockDelivery(ctx, replay)
+		release, err := first.lockDelivery(ctx, replay, "")
 		if err != nil {
 			t.Fatal(err)
 		}

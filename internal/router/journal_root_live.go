@@ -26,7 +26,7 @@ func (t *mekugiResponseTransform) prepareRootJournalLive() []map[string]jsonv1.R
 	t.journalRootQuietFile = nil
 	ownedLease := t.journalDeliveryRelease == nil
 	if ownedLease {
-		release, err := t.proxy.journals.lockDelivery(t.ctx, t.proxy.replayStore)
+		release, err := t.proxy.journals.lockDelivery(t.ctx, t.proxy.replayStore, t.directory)
 		if err != nil {
 			return nil
 		}

@@ -169,20 +169,30 @@ func (j threadJournal) clone() threadJournal {
 // The replay store's filesystem lock serializes journal transactions across router
 // processes too. Journal files share the managed session storage budget.
 type journalStore struct {
-	deliveryGate chan struct{}
-	stateGate    chan struct{}
-	memory       map[string]threadJournal
-	nativeMu     sync.Mutex
-	native       map[string]*nativeJournalSink
+	deliveryMu    sync.Mutex
+	deliveryGates map[string]*journalDeliveryGate
+	stateGate     chan struct{}
+	memory        map[string]threadJournal
+	nativeMu      sync.Mutex
+	native        map[string]*nativeJournalSink
+}
+
+type journalDeliveryGate struct {
+	gate  chan struct{}
+	users int
 }
 
 func newJournalStore() *journalStore {
-	return &journalStore{memory: make(map[string]threadJournal), deliveryGate: make(chan struct{}, 1), stateGate: make(chan struct{}, 1)}
+	return &journalStore{memory: make(map[string]threadJournal), deliveryGates: make(map[string]*journalDeliveryGate), stateGate: make(chan struct{}, 1)}
 }
 
 // Keep the complete state transaction serialized without trapping canceled callers
 // behind another request's replay-lock wait.
 func (s *journalStore) lockState(ctx context.Context) (func(), error) {
+	if latency := journalLatencyFor(ctx); latency != nil {
+		started := time.Now()
+		defer func() { latency.stateWait += time.Since(started) }()
+	}
 	select {
 	case s.stateGate <- struct{}{}:
 		if err := ctx.Err(); err != nil {
@@ -197,21 +207,48 @@ func (s *journalStore) lockState(ctx context.Context) (func(), error) {
 
 // Serialize mutations with in-flight delivery. The transport holds this lease
 // from its snapshot through write confirmation, so deletion cannot overtake a
-// notice and lose the required retraction. Waiting remains request-cancellable.
-func (s *journalStore) lockDelivery(ctx context.Context, store *mekugiReplayStore) (func(), error) {
+// notice and lose the required retraction. Workspace ancestry shares a lease;
+// unrelated workspaces do not wait for each other's downstream writes.
+// Waiting remains request-cancellable.
+func (s *journalStore) lockDelivery(ctx context.Context, store *mekugiReplayStore, workspace string) (func(), error) {
+	if latency := journalLatencyFor(ctx); latency != nil {
+		started := time.Now()
+		defer func() { latency.deliveryWait += time.Since(started) }()
+	}
+	s.deliveryMu.Lock()
+	gate := s.deliveryGates[workspace]
+	if gate == nil {
+		gate = &journalDeliveryGate{gate: make(chan struct{}, 1)}
+		s.deliveryGates[workspace] = gate
+	}
+	gate.users++
+	s.deliveryMu.Unlock()
+	drop := func() {
+		s.deliveryMu.Lock()
+		gate.users--
+		if gate.users == 0 {
+			delete(s.deliveryGates, workspace)
+		}
+		s.deliveryMu.Unlock()
+	}
 	select {
-	case s.deliveryGate <- struct{}{}:
+	case gate.gate <- struct{}{}:
 	case <-ctx.Done():
+		drop()
 		return nil, ctx.Err()
 	}
-	release := func() { <-s.deliveryGate }
+	release := func() { <-gate.gate; drop() }
+	if err := ctx.Err(); err != nil {
+		release()
+		return nil, err
+	}
 	if store == nil {
 		return release, nil
 	}
 	// Keep a separate lock from replay transactions: delivery must be able to
 	// retain provenance and acknowledge revisions while excluding mutations
 	// from other router processes.
-	path := filepath.Join(store.directory, "journal-delivery.lock")
+	path := filepath.Join(store.directory, fmt.Sprintf("journal-delivery-%x.lock", sha256.Sum256([]byte(workspace))))
 	info, err := os.Lstat(path)
 	if err == nil && !info.Mode().IsRegular() {
 		release()
@@ -305,6 +342,7 @@ func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore
 		return err
 	}
 	defer release()
+	latency := journalLatencyFor(ctx)
 	run := func() error {
 		key := journalKey(workspace, thread)
 		current, exists := s.memory[key]
@@ -346,7 +384,12 @@ func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore
 					}
 				}
 			}
-			if err := writeThreadJournal(store, next); err != nil {
+			writeStarted := time.Now()
+			err := writeThreadJournal(store, next)
+			if latency != nil {
+				latency.persistWrite += time.Since(writeStarted)
+			}
+			if err != nil {
 				return err
 			}
 		}
@@ -420,7 +463,7 @@ func (s *journalStore) initialize(ctx context.Context, store *mekugiReplayStore,
 // Retain accepted ancestry with the journal, so main can flush children after a
 // router restart without depending on the live activity collector.
 func (s *journalStore) bindIdentity(ctx context.Context, store *mekugiReplayStore, workspace, thread, parent, author string, valid bool) error {
-	release, err := s.lockDelivery(ctx, store)
+	release, err := s.lockDelivery(ctx, store, workspace)
 	if err != nil {
 		return err
 	}
@@ -593,7 +636,7 @@ func decodeJournalMutations(raw []byte) ([]journalMutation, error) {
 }
 
 func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, workspace, thread, receiptID string, mutations []journalMutation) ([]string, error) {
-	release, err := s.lockDelivery(ctx, store)
+	release, err := s.lockDelivery(ctx, store, workspace)
 	if err != nil {
 		return nil, err
 	}
