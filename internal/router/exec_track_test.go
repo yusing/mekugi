@@ -232,6 +232,35 @@ func TestExecTrackRunsUnmatchedScriptsUntracked(t *testing.T) {
 	}
 }
 
+func TestExecTrackMatchesDelayedHostStart(t *testing.T) {
+	shell := newExecTrackShell(t)
+	script := "echo first; false && echo never; echo last"
+	key := [3]string{"thread", "turn", "delayed"}
+	cmd := exec.CommandContext(t.Context(), "bash", "-lc", script)
+	cmd.Env, cmd.Dir = shell.env, t.TempDir()
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	// Codex emits item/started after its early-exit grace, not at spawn.
+	time.Sleep(250 * time.Millisecond)
+	shell.hub.start(key, "/usr/bin/bash -lc "+quoteShellWord(script))
+	if err := cmd.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if stdout.String() != "first\nlast\n" || stderr.Len() != 0 {
+		t.Fatalf("host output changed: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	view := shell.awaitView(t, key)
+	if !view.complete || !view.output || view.code != 0 || len(view.segments) != 4 {
+		t.Fatalf("missing delayed command boundaries: %+v", view)
+	}
+	if strings.Join(view.segments[0].tail, "\n") != "first" || view.segments[1].exit != 1 || !view.segments[2].skipped || strings.Join(view.segments[3].tail, "\n") != "last" {
+		t.Fatalf("incorrect segment outputs/states: %+v", view.segments)
+	}
+}
+
 func TestExecTrackLeavesNestedShellsAlone(t *testing.T) {
 	shell := newExecTrackShell(t)
 	key := [3]string{"thread", "turn", "item"}

@@ -150,7 +150,7 @@ func journalQuestionMatches(entry activityPaneEntry, source string) bool {
 // Native items extend the activity model rather than creating another transcript
 // cache. Their identities are deliberately not joined to provider call IDs.
 type liveActivityNativeItem struct {
-	commandStarted     time.Time // Live host command boundary; not reconstructed on replay.
+	commandStarted     time.Time // UI receipt of host start notification; not reconstructed on replay.
 	commandEnded       time.Time
 	duration           time.Duration
 	questions          []activityui.Question

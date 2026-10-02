@@ -85,13 +85,17 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 
 	// Keep timestamps in distinct metadata rows rather than clipping both
 	// into the dialog's single-line status strip. They are not copied output.
+	startedLabel, endedLabel, elapsedLabel := "Started ", "Ended   ", "Elapsed "
+	if block.NotificationTiming {
+		startedLabel, endedLabel, elapsedLabel = "Observed start ", "Observed end   ", "Host elapsed   "
+	}
 	if !block.Started.IsZero() {
-		add(DialogLine{Text: Dim + "Started " + block.Started.Local().Format("2006-01-02 15:04:05.000 MST") + Undim})
+		add(DialogLine{Text: Dim + startedLabel + block.Started.Local().Format("2006-01-02 15:04:05.000 MST") + Undim})
 	}
 	if !block.Ended.IsZero() {
-		add(DialogLine{Text: Dim + "Ended   " + block.Ended.Local().Format("2006-01-02 15:04:05.000 MST") + Undim})
+		add(DialogLine{Text: Dim + endedLabel + block.Ended.Local().Format("2006-01-02 15:04:05.000 MST") + Undim})
 		if block.Duration > 0 {
-			add(DialogLine{Text: Dim + "Elapsed " + block.Duration.String() + Undim})
+			add(DialogLine{Text: Dim + elapsedLabel + block.Duration.String() + Undim})
 		}
 	}
 	if !block.Started.IsZero() {

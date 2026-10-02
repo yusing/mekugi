@@ -56,6 +56,9 @@ func TestUISnapshotActivityBlocks(t *testing.T) {
 }
 
 func TestUISnapshotActivityOutputDialog(t *testing.T) {
+	previous := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() { time.Local = previous })
 	for _, tc := range []struct {
 		name     string
 		width    int
@@ -65,6 +68,20 @@ func TestUISnapshotActivityOutputDialog(t *testing.T) {
 		paused   bool
 		top      int
 	}{
+		{
+			name: "notification_timing", width: 80, height: 15,
+			block: Block{Kind: "op", Verb: "Run", Label: "combined output", Code: "pwd; rg --files", NotificationTiming: true,
+				Started: time.Date(2026, 10, 2, 3, 4, 7, 94000000, time.UTC),
+				Ended:   time.Date(2026, 10, 2, 3, 4, 7, 196000000, time.UTC), Duration: 268 * time.Millisecond,
+				Tail: []string{"/workspace", "setup.sh"}},
+		},
+		{
+			name: "segment_timing", width: 80, height: 15,
+			block: Block{Kind: "op", Verb: "Run", Code: "pwd", Segment: true,
+				Started: time.Date(2026, 10, 2, 3, 4, 7, 94000000, time.UTC),
+				Ended:   time.Date(2026, 10, 2, 3, 4, 7, 196000000, time.UTC), Duration: 102 * time.Millisecond,
+				Tail: []string{"/workspace"}},
+		},
 		{
 			name: "failed_output", width: 64, height: 14, position: "2 / 3",
 			block: Block{Kind: "op", Verb: "Run", Code: "printf 'one\\ntwo\\n'\nexit 2", ExitCode: 2, Duration: 125 * time.Millisecond,

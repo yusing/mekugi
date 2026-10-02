@@ -138,8 +138,8 @@ func TestActivitySingleCommandObservedTimestamps(t *testing.T) {
 			continue
 		}
 		blocks := parseLiveActivity(entry.activityPaneEntry)
-		if len(blocks) != 1 || blocks[0].Started.Before(started) || blocks[0].Ended.Before(blocks[0].Started) || blocks[0].Duration != 123*time.Millisecond {
-			t.Fatalf("observed host timestamps/duration: %+v", blocks)
+		if len(blocks) != 1 || !blocks[0].NotificationTiming || blocks[0].Started.Before(started) || blocks[0].Ended.Before(blocks[0].Started) || blocks[0].Duration != 123*time.Millisecond {
+			t.Fatalf("notification timestamps/host duration: %+v", blocks)
 		}
 		return
 	}

@@ -17,10 +17,10 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// Codex reports a command item just after it spawns the shell, which is
-// still reading its startup files. A report waits this long for its item
-// before the shell runs the script untracked.
-const execTrackClaimWait = 150 * time.Millisecond
+// Codex can wait 150 ms for early process exit before reporting the command
+// item. Allow that grace period plus notification delivery time, while staying
+// below the helper's 500 ms reply timeout. An unmatched shell then runs untracked.
+const execTrackClaimWait = 350 * time.Millisecond
 
 // A completed command waits this long for its report to end before it
 // falls back to the combined host output.

@@ -35,6 +35,7 @@ func setCommandTiming(blocks []activityui.Block, entry activityPaneEntry) {
 			continue
 		}
 		block.Duration, block.Started, block.Ended = entry.native.duration, entry.native.commandStarted, entry.native.commandEnded
+		block.NotificationTiming = true
 		if entry.native.running && block.Started.IsZero() {
 			block.Started = entry.Observed
 		}

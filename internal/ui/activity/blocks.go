@@ -15,50 +15,51 @@ import (
 // so it can lay them out natively. Unrecognized text stays a plain text block;
 // nothing is interpreted, expanded, or executed.
 type Block struct {
-	Ended       time.Time     // Observed command end; zero when unavailable.
-	Started     time.Time     // Observed live command start, presentation only.
-	Duration    time.Duration // Host or measured segment duration; zero means unavailable.
-	Questions   []Question
-	Source      uint64 // Activity entry identity for exact cross-pane navigation.
-	Section     int    // Reasoning section ordinal within that entry, retained by dialogs.
-	Kind        string // op, reads, message, start, error, text
-	Verb        string // Operation verb, or a message headline.
-	Label       string // Markdown remainder of the operation label.
-	Path        string // Literal operation target, rendered with shared path styling.
-	SyntaxPath  string // File identity when Path is a compressed display label.
-	Workdir     string // Display path of a command directory other than the workspace; set on every row it applies to.
-	ShowWorkdir bool   // The invocation's first row labels Workdir.
-	Code        string // Inline code or fenced program under the label.
-	Lang        string
-	Fenced      bool
-	From, To    string
-	Owner       string
-	Body        string
-	Reads       []Read
-	Journal     *Journal     // A final answer in journal-result form.
-	WaitTargets []WaitTarget // Canonical identity and observed status, not parsed display text.
-	Results     *int
-	ExitCode    int    // Nonzero command exit; zero means no failure label.
-	BatchExit   bool   // This row owns an invocation-wide exit, not an individual operation's.
-	EditSource  string // Editing source shared by this invocation's file rows.
-	EditOutcome string // Live segment outcome, distinct from captured file evidence.
-	EditHeader  bool   // First row of a contiguous source group.
-	GroupHeader string // Presentation-only edit outcome shared by a group's rows.
-	GroupStart  bool
-	GroupCount  int  // Edit invocations in this group.
-	VerbAlign   int  // Widest row verb in this row's group.
-	VerbColumn  int  // Verb column shared with adjacent operations; 0 uses the default.
-	PathAlign   int  // Widest aligned edit path in this row's group.
-	StatAlign   int  // Widest line-count text in this row's group.
-	StatScale   int  // Largest changed-line total in a multi-row group; 0 omits bars.
-	Running     bool // A live command the host has not completed.
-	Segment     bool // Ends one tracked segment of a command list; shows that segment's exit.
-	Skipped     bool // A tracked segment the command list never reached.
-	Tail        []string
-	TailOmitted int         // Output lines before Tail.
-	TailRows    int         // Tail lines open output shows; 0 shows all of Tail.
-	Changes     []ChangeRow // Change history rows open output shows instead of Tail.
-	Output      *Output     // The invocation's retained output, which the output dialog reads.
+	Ended              time.Time     // Observed command end; zero when unavailable.
+	Started            time.Time     // Observed live command start, presentation only.
+	Duration           time.Duration // Host or measured segment duration; zero means unavailable.
+	NotificationTiming bool          // Timestamps are UI notification observations, not host execution boundaries; Duration is host elapsed.
+	Questions          []Question
+	Source             uint64 // Activity entry identity for exact cross-pane navigation.
+	Section            int    // Reasoning section ordinal within that entry, retained by dialogs.
+	Kind               string // op, reads, message, start, error, text
+	Verb               string // Operation verb, or a message headline.
+	Label              string // Markdown remainder of the operation label.
+	Path               string // Literal operation target, rendered with shared path styling.
+	SyntaxPath         string // File identity when Path is a compressed display label.
+	Workdir            string // Display path of a command directory other than the workspace; set on every row it applies to.
+	ShowWorkdir        bool   // The invocation's first row labels Workdir.
+	Code               string // Inline code or fenced program under the label.
+	Lang               string
+	Fenced             bool
+	From, To           string
+	Owner              string
+	Body               string
+	Reads              []Read
+	Journal            *Journal     // A final answer in journal-result form.
+	WaitTargets        []WaitTarget // Canonical identity and observed status, not parsed display text.
+	Results            *int
+	ExitCode           int    // Nonzero command exit; zero means no failure label.
+	BatchExit          bool   // This row owns an invocation-wide exit, not an individual operation's.
+	EditSource         string // Editing source shared by this invocation's file rows.
+	EditOutcome        string // Live segment outcome, distinct from captured file evidence.
+	EditHeader         bool   // First row of a contiguous source group.
+	GroupHeader        string // Presentation-only edit outcome shared by a group's rows.
+	GroupStart         bool
+	GroupCount         int  // Edit invocations in this group.
+	VerbAlign          int  // Widest row verb in this row's group.
+	VerbColumn         int  // Verb column shared with adjacent operations; 0 uses the default.
+	PathAlign          int  // Widest aligned edit path in this row's group.
+	StatAlign          int  // Widest line-count text in this row's group.
+	StatScale          int  // Largest changed-line total in a multi-row group; 0 omits bars.
+	Running            bool // A live command the host has not completed.
+	Segment            bool // Ends one tracked segment of a command list; shows that segment's exit.
+	Skipped            bool // A tracked segment the command list never reached.
+	Tail               []string
+	TailOmitted        int         // Output lines before Tail.
+	TailRows           int         // Tail lines open output shows; 0 shows all of Tail.
+	Changes            []ChangeRow // Change history rows open output shows instead of Tail.
+	Output             *Output     // The invocation's retained output, which the output dialog reads.
 	// Members are the invocations a merged read row stands for, each with its
 	// own output, which the output dialog pages through.
 	Members    []Block
