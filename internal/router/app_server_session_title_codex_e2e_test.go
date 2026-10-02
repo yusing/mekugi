@@ -22,6 +22,14 @@ import (
 // The installed host owns name persistence; both model requests terminate at
 // a local fixture. A fresh host resume proves the title is not only UI memory.
 func TestAppServerSessionTitleNativeCodexE2E(t *testing.T) {
+	testAppServerSessionTitleNativeCodexE2E(t, false)
+}
+
+func TestAppServerSessionTitleManualNativeCodexE2E(t *testing.T) {
+	testAppServerSessionTitleNativeCodexE2E(t, true)
+}
+
+func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 	codex, err := exec.LookPath("codex")
 	if err != nil {
 		t.Fatal(err)
@@ -29,7 +37,10 @@ func TestAppServerSessionTitleNativeCodexE2E(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx, cancel := context.WithTimeout(t.Context(), 75*time.Second)
 	defer cancel()
-	const title = "Improve session naming"
+	title := "Improve session naming"
+	if manual {
+		title = "My manually renamed session"
+	}
 	namingStarted, releaseNaming := make(chan struct{}), make(chan struct{})
 	var releaseOnce sync.Once
 	release := func() { releaseOnce.Do(func() { close(releaseNaming) }) }
@@ -48,6 +59,13 @@ func TestAppServerSessionTitleNativeCodexE2E(t *testing.T) {
 			return
 		}
 		if request.model() == sessionTitleModel {
+			if manual {
+				namingCalls.Add(1)
+				t.Error("manual rename made an automatic naming request")
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, generatedTitleResponse)
+				return
+			}
 			if namingCalls.Add(1) != 1 {
 				t.Error("duplicate naming request")
 				w.WriteHeader(400)
@@ -191,21 +209,30 @@ func TestAppServerSessionTitleNativeCodexE2E(t *testing.T) {
 	}
 	await, send, quit := start("", generator)
 	await("startup", func(frame string) bool { return strings.Contains(frame, "Ready") })
+	if manual {
+		send("/title " + title + "\r")
+		await("manual Main title before first prompt", headerHasTitle)
+		if primaryCalls.Load() != 0 || namingCalls.Load() != 0 {
+			t.Fatal("manual title command reached the model")
+		}
+	}
 	send("Explain native session naming\r")
 	await("primary completion while naming gated", func(frame string) bool {
 		return strings.Contains(frame, "Recovered after a retry.") && strings.Contains(frame, "╭─ Completed")
 	})
-	select {
-	case <-namingStarted:
-	case <-ctx.Done():
-		t.Fatal("naming did not start", ctx.Err())
-	}
-	await("absence of unconfirmed title", func(frame string) bool {
-		if headerHasTitle(frame) {
-			t.Fatal("title displayed before naming response was released")
+	if !manual {
+		select {
+		case <-namingStarted:
+		case <-ctx.Done():
+			t.Fatal("naming did not start", ctx.Err())
 		}
-		return true
-	})
+		await("absence of unconfirmed title", func(frame string) bool {
+			if headerHasTitle(frame) {
+				t.Fatal("title displayed before naming response was released")
+			}
+			return true
+		})
+	}
 	var thread string
 	select {
 	case thread = <-threads:
@@ -218,12 +245,26 @@ func TestAppServerSessionTitleNativeCodexE2E(t *testing.T) {
 	release()
 	await("host-confirmed Main title", headerHasTitle)
 	quit()
-	// No generator is supplied to the fresh native loop. Only host metadata can
-	// restore this Main title, and resuming must not make another model request.
-	awaitResume, _, quitResume := start(thread, nil)
+	// A fresh generator and host process restore only durable title metadata.
+	fresh := newSessionTitleGenerator(ctx, provider, newSessionTitleCacheAt(""))
+	provider.titleGenerator = fresh
+	awaitResume, sendResume, quitResume := start(thread, fresh)
 	awaitResume("persisted title after fresh app-server resume", func(frame string) bool { return headerHasTitle(frame) && strings.Contains(frame, "Ready") })
+	if fresh.needsPrompt(thread) || !fresh.named(thread, nil) {
+		t.Fatal("fresh process remained eligible for title generation")
+	}
+	if manual {
+		sendResume("Continue after manual rename\r")
+		awaitResume("resumed completion", func(frame string) bool {
+			return strings.Count(frame, "Recovered after a retry.") == 2 && strings.Contains(frame, "╭─ Completed")
+		})
+	}
 	quitResume()
-	if primaryCalls.Load() != 1 || namingCalls.Load() != 1 {
+	wantPrimary, wantNaming := int32(1), int32(1)
+	if manual {
+		wantPrimary, wantNaming = 2, 0
+	}
+	if primaryCalls.Load() != wantPrimary || namingCalls.Load() != wantNaming {
 		t.Fatalf("provider calls: primary=%d naming=%d", primaryCalls.Load(), namingCalls.Load())
 	}
 }

@@ -71,10 +71,12 @@ type appServerUI struct {
 	replay                    *uiReplayPlayback // Offline transport controls; nil for live sessions.
 	clock                     func() time.Time  // Optional presentation clock for offline replay.
 	backendVersion            string
-	title                     string // Host-confirmed thread name, independent of naming work.
+	title                     string            // Host-confirmed thread name, independent of naming work.
+	pendingTitle              string            // Manual name entered before the host thread exists.
+	titleRenames              map[string]string // Latest manual name awaiting host confirmation, by thread.
 	titleGenerator            *sessionTitleGenerator
 	titleUpdates              <-chan sessionTitleUpdate
-	titleRequests             map[string]sessionTitleUpdate
+	titleRequests             map[string]sessionTitleRequest
 	reset                     *journalResetDriver
 	btw                       *appServerBTW
 	btwRequests               map[string]btwRequest
@@ -652,6 +654,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.thread, u.status = result.Thread.ID, "Ready"
 			u.title = result.Thread.Name
 			u.titleGenerator.register(result.Thread)
+			if u.pendingTitle != "" {
+				name := u.pendingTitle
+				u.pendingTitle = ""
+				u.renameSessionTitle(name)
+			}
 			u.model, u.reasoningEffort, u.serviceTier = result.Model, result.ReasoningEffort, result.ServiceTier
 			if method == "thread/resume" {
 				u.settings.restoreEffort = u.takeDefaultEffort()
@@ -1008,6 +1015,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if handled, err := u.controlsCommand(text); handled {
 			return false, err
 		}
+		if u.titleCommand(text) {
+			return false, nil
+		}
 		if text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
 			return false, u.submitBTW()
 		}
@@ -1048,7 +1058,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /compact, /clear, /resume, /btw, /status, /session, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /btw, /status, /session, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil {

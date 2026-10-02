@@ -277,6 +277,18 @@ restored on resume and inherited by forks. An unnamed thread has no placeholder;
 long names truncate to the available width and terminal controls are not rendered.
 Scroll position and unread counts remain alongside the name when space permits.
 
+`/title <title>` renames Main locally without submitting a model prompt or
+interrupting running work. A nonempty name appears immediately in Main's top-right
+header while `thread/name/set` saves it. Before the host thread exists, the latest
+entered name stays visible and is saved when startup or resume supplies its identity.
+Empty names show usage feedback without changing the title. During a session
+replacement, the command waits for the new session and preserves its draft.
+Manual renaming suppresses automatic naming immediately; the saved host name
+retains that suppression across fresh-process resume and fork. Older name writes
+finish before the latest manual name is saved, so an in-flight generated result
+cannot overwrite it. Save failures restore the last confirmed name and show
+nonfatal composer feedback without affecting conversation work.
+
 Automatic naming and title presentation are separate operations. For a new empty
 Main thread without a saved name, the first successful completed upstream request
 starts one asynchronous naming request using `gpt-6-luna` with `medium` reasoning
@@ -288,7 +300,7 @@ Only the first user request text is used, not instructions, tools, or later hist
 Prewarm, compaction, unsuccessful responses, children, and side questions do not
 start naming. Naming uses separate request identity and does not block or change
 the original response. Its tokens are included in router usage totals.
-The result is saved through `thread/name/set`; Main changes only after host
+The generated result is saved through `thread/name/set`; Main changes only after host
 confirmation or a `thread/name/updated` event. A host rename received while naming
 is pending takes precedence. Skipped naming leaves conversation work, existing
 titles, and composer feedback unchanged. Host name-save failures show nonfatal
@@ -480,7 +492,7 @@ results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
 Typing `/` at the start of an otherwise single-token draft opens a local command
-catalog with descriptions for `/compact`, `/clear`, `/resume`, `/btw`, `/status`, `/session`, `/copy`,
+catalog with descriptions for `/title`, `/compact`, `/clear`, `/resume`, `/btw`, `/status`, `/session`, `/copy`,
 `/model`, `/effort`, `/reasoning`, `/tier`, `/live`, `/skills`, and `/quit`.
 Typing filters commands with fuzzy matching; Up/Down selects, Tab
 completes without executing, Enter runs the selected command, and Escape closes

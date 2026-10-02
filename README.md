@@ -219,7 +219,12 @@ the shared scrollable dialog without leaving your current view. Close it with
   the pane under the pointer.
 - `Ctrl-C` in an auxiliary pane returns focus to Main.
 
-Main's top-right header shows the saved session title. For a new conversation,
+Main's top-right header shows the session title. Use `/title <title>` to rename
+it, even before the session has started or while a task is running. The new title
+appears immediately and is saved with the session; a save failure restores the
+last saved title and shows composer feedback. Manual renaming skips automatic
+title generation, including after resume or fork.
+For a new conversation without a title,
 the first successful upstream request starts a separate title-generation request
 using GPT-6 Luna with medium reasoning. This small additional model request does
 not block the conversation. If Codex credentials or Luna are unavailable, automatic
