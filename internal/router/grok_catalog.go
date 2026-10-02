@@ -8,17 +8,17 @@ import (
 	"strings"
 )
 
-var grokModels = []string{"grok-4.5", "grok-4.6", "grok-4.7", "grok-4.7-build-fast"}
+var grokModels = []string{"grok-4.7", "grok-4.6", "grok-4.5", "grok-4.7-build-fast"}
 
 func grokProviderModel(slug string) (string, bool) {
-	model, ok := strings.CutPrefix(slug, "grok:")
-	return model, ok && slices.Contains(grokModels, model)
+	model := strings.TrimPrefix(slug, "grok:")
+	return model, slices.Contains(grokModels, model)
 }
 
 // ProviderModelCatalog adds only configured providers to the private catalog.
 // It rebuilds cached provider entries from a native v2 template, preserving
 // other models and Codex’s evolving instruction and executor metadata.
-func ProviderModelCatalog(body []byte, grok bool, openCode OpenCodeConfig) ([]byte, error) {
+func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
 	var catalog map[string]json.RawMessage
 	if json.Unmarshal(body, &catalog) != nil || catalog == nil {
 		return nil, errors.New("invalid Codex model catalog")
@@ -27,14 +27,18 @@ func ProviderModelCatalog(body []byte, grok bool, openCode OpenCodeConfig) ([]by
 	if json.Unmarshal(catalog["models"], &models) != nil {
 		return nil, errors.New("codex model catalog is missing models")
 	}
-	models = slices.DeleteFunc(models, func(model map[string]json.RawMessage) bool {
-		slug := jsonString(model, "slug")
-		return strings.HasPrefix(slug, "grok:") || isOpenCodeModel(slug)
-	})
 	var template map[string]json.RawMessage
 	for _, model := range models {
 		if jsonString(model, "slug") == "gpt-6-sol" && jsonString(model, "multi_agent_version") == "v2" {
 			template = model
+		}
+	}
+	if template == nil {
+		for _, model := range models {
+			if !isChatCompletionsModel(jsonString(model, "slug")) && jsonString(model, "multi_agent_version") == "v2" {
+				template = model
+				break
+			}
 		}
 	}
 	if template == nil {
@@ -62,15 +66,27 @@ func ProviderModelCatalog(body []byte, grok bool, openCode OpenCodeConfig) ([]by
 	}
 	// Do not inherit account-gated OpenAI scheduling or model-upgrade defaults.
 	delete(model, "multi_agent_reasoning_effort")
-	if grok {
-		for _, id := range grokModels {
+	if session.ThirdPartyOnly {
+		models = nil
+	} else {
+		models = slices.DeleteFunc(models, func(model map[string]json.RawMessage) bool {
+			return isChatCompletionsModel(jsonString(model, "slug"))
+		})
+	}
+	if session.GrokEnabled {
+		for i, id := range grokModels {
 			entry := maps.Clone(model)
-			entry["slug"] = mustMarshalJSON("grok:" + id)
-			entry["display_name"] = mustMarshalJSON("grok:" + id)
+			slug := "grok:" + id
+			if session.GrokUnprefixed {
+				slug = id
+			}
+			entry["slug"] = mustMarshalJSON(slug)
+			entry["display_name"] = mustMarshalJSON(slug)
+			entry["priority"] = mustMarshalJSON(100 + i)
 			models = append(models, entry)
 		}
 	}
-	for _, service := range openCode.services() {
+	for _, service := range session.OpenCode.services() {
 		for _, definition := range service.models() {
 			entry := maps.Clone(model)
 			slug := service.prefix + ":" + definition.id

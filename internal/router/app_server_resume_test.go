@@ -123,7 +123,7 @@ func TestAppServerResumePendingBound(t *testing.T) {
 }
 
 func TestAppServerResumeConfig(t *testing.T) {
-	config := appServerResumeConfig([]string{"codex", "app-server", "-c", `model="old"`, "-c", `model = 'new'`, "-c", "model_provider=preview", "-c", `model_reasoning_effort="high"`, "-c", `service_tier="flex"`, "-c", "other=true"})
+	config := appServerResumeConfig([]string{"codex", "app-server", "-c", `model="old"`, "-c", `model = 'new'`, "-c", "model_provider=preview", "-c", `model_reasoning_effort="high"`, "-c", `service_tier="flex"`, "-c", "other=true"}, nil)
 	if len(config) != 4 || config["model"] != "new" || config["model_provider"] != "preview" || config["model_reasoning_effort"] != "high" || config["service_tier"] != "flex" {
 		t.Fatalf("explicit resume settings: %+v", config)
 	}

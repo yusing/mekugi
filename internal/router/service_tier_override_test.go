@@ -34,7 +34,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(directory, "mekugi", "config.toml"), []byte("[service_tiers]\n\"gpt-6.1-sol\" = \"fast\"\n\"gpt-6-astra\" = \"flex\"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	config, err := loadMekugiConfig()
+	config, err := loadMekugiConfig(false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestServiceTierConfig(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(directory, "mekugi", "config.toml"), []byte(body), 0600); err != nil {
 				t.Fatal(err)
 			}
-			config, err := loadMekugiConfig()
+			config, err := loadMekugiConfig(false)
 			if tc.want == "" {
 				if err == nil {
 					t.Fatal("invalid tier accepted")

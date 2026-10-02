@@ -28,7 +28,7 @@ func bridgeTestRequest(t *testing.T, additional bool) parsedResponsesRequest {
 func TestSubagentBridgeProjectsAndRestoresPlaintext(t *testing.T) {
 	for _, additional := range []bool{false, true} {
 		request := bridgeTestRequest(t, additional)
-		bridge, err := prepareSubagentBridge(&request, true)
+		bridge, err := prepareSubagentBridge(&request, true, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -81,7 +81,7 @@ func TestSubagentBridgeLeavesRecordedDispatchInstructionUnchanged(t *testing.T) 
 			map[string]any{"type": "message", "role": "user", "content": prior},
 		)
 		request.setInput(mustTestJSON(t, input))
-		if _, err := prepareSubagentBridge(&request, false); err != nil {
+		if _, err := prepareSubagentBridge(&request, false, false); err != nil {
 			t.Fatal(err)
 		}
 		if !strings.HasPrefix(jsonString(request.fields, "instructions"), prior) {
@@ -106,7 +106,7 @@ func TestSubagentBridgeLeavesRecordedDispatchInstructionUnchanged(t *testing.T) 
 
 func TestGrokCatalogPreservesNativeMetadata(t *testing.T) {
 	catalog := []byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2","use_responses_lite":true,"model_messages":{"instructions_template":"native instructions"},"unknown_future_field":42}],"extra":"keep"}`)
-	result, err := ProviderModelCatalog(catalog, true, OpenCodeConfig{})
+	result, err := ProviderModelCatalog(catalog, Session{GrokEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestGrokCatalogPreservesNativeMetadata(t *testing.T) {
 	if string(parsed.Models[2]["use_responses_lite"]) != "false" {
 		t.Fatal("inherited OpenAI lite transport")
 	}
-	repeated, err := ProviderModelCatalog(result, true, OpenCodeConfig{})
+	repeated, err := ProviderModelCatalog(result, Session{GrokEnabled: true})
 	if err != nil || !bytes.Equal(result, repeated) {
 		t.Fatalf("catalog changed when pinning a cached Grok entry: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestSubagentBridgePreservesScalarOpenAIInput(t *testing.T) {
 		if !withTools {
 			delete(request.fields, "tools")
 		}
-		_, err := prepareSubagentBridge(&request, true)
+		_, err := prepareSubagentBridge(&request, true, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -159,7 +159,7 @@ func TestGrokCatalogRequiresAnActualV2Template(t *testing.T) {
 		if fallback {
 			models = append(models, map[string]any{"slug": "other", "multi_agent_version": "v2", "marker": "correct"})
 		}
-		result, err := ProviderModelCatalog(mustTestJSON(t, map[string]any{"models": models}), true, OpenCodeConfig{})
+		result, err := ProviderModelCatalog(mustTestJSON(t, map[string]any{"models": models}), Session{GrokEnabled: true})
 		if !fallback {
 			if err == nil {
 				t.Fatal("accepted non-v2 catalog")
@@ -201,7 +201,7 @@ func TestModelsHandlerPreservesNativeCatalogWithGrokEnabled(t *testing.T) {
 
 func TestGrokCatalogRebuildsCachedMetadata(t *testing.T) {
 	body := []byte(`{"models":[{"slug":"grok:grok-4.6","multi_agent_version":"v2","apply_patch_tool_type":null},{"slug":"gpt-5.6-sol","multi_agent_version":"v2","apply_patch_tool_type":"freeform","shell_type":"unified_exec"}]}`)
-	result, err := ProviderModelCatalog(body, true, OpenCodeConfig{})
+	result, err := ProviderModelCatalog(body, Session{GrokEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 				request.fields["tools"] = mustMarshalJSON([]any{})
 				request.fields["input"] = mustMarshalJSON([]any{map[string]any{"type": "additional_tools", "tools": []any{ns}}})
 			}
-			bridge, err := prepareSubagentBridge(&request, true)
+			bridge, err := prepareSubagentBridge(&request, true, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -333,7 +333,7 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 
 func TestSubagentBridgeDoesNotAddAbsentSpawnArguments(t *testing.T) {
 	request := bridgeTestRequest(t, false)
-	if _, err := prepareSubagentBridge(&request, true); err != nil {
+	if _, err := prepareSubagentBridge(&request, true, false); err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(request.fields["tools"], []byte(`"fork_turns":`)) ||
@@ -345,7 +345,7 @@ func TestSubagentBridgeDoesNotAddAbsentSpawnArguments(t *testing.T) {
 func TestSubagentBridgeWithoutGrok(t *testing.T) {
 	for _, additional := range []bool{false, true} {
 		request := bridgeTestRequest(t, additional)
-		bridge, err := prepareSubagentBridge(&request, false)
+		bridge, err := prepareSubagentBridge(&request, false, false)
 		if err != nil || bridge == nil {
 			t.Fatalf("prepare ordinary bridge: %v", err)
 		}
@@ -424,7 +424,7 @@ func TestSubagentBridgePreservesEncryptedHistory(t *testing.T) {
 	message := journalTestAssignment("/root/child", "NEW_TASK", "")
 	message["content"] = append(message["content"].([]any), map[string]any{"type": "encrypted_content", "encrypted_content": "opaque"})
 	request.fields["input"] = mustTestJSON(t, []any{encrypted, message, plain})
-	if _, err := prepareSubagentBridge(&request, false); err != nil {
+	if _, err := prepareSubagentBridge(&request, false, false); err != nil {
 		t.Fatal(err)
 	}
 	var input []map[string]json.RawMessage

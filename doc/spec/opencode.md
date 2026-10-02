@@ -48,7 +48,7 @@ invalid or unknown settings fail startup without quoting secrets. `OPENCODE_API_
 overrides both file keys, then `OPENCODE_GO_API_KEY` and `OPENCODE_ZEN_API_KEY` override
 their respective service. Keys are trimmed; an explicitly empty environment value
 disables that service. Nonempty keys enable catalog registration and routing in
-Mekugi mode only. No new command-line flag, credential-store write, or Codex config
+standalone `mekugi` only, not `mekugi codex` or `mekugi grok`. No new command-line flag, credential-store write, or Codex config
 rewrite is introduced.
 
 Go requests use `https://opencode.ai/zen/go/v1` with `/chat/completions`, `/messages`

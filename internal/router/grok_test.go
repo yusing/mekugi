@@ -472,7 +472,7 @@ func TestGrokUnauthorizedRefreshRetriesOnceWithoutCredentialLeak(t *testing.T) {
 func TestGrokDisabledAndUnknownModelFailBeforeProvider(t *testing.T) {
 	provider := newProviderClient("http://127.0.0.1:1", nil)
 	_, err := provider.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, true), grokTestHeaders(), "")
-	if err == nil || !strings.Contains(err.Error(), "--grok") {
+	if err == nil || !strings.Contains(err.Error(), "mekugi grok") {
 		t.Fatalf("disabled route=%v", err)
 	}
 	body := bytes.Replace(grokTestRequest(t, true), []byte(grokModel), []byte("grok:unknown"), 1)
@@ -642,7 +642,7 @@ func TestGrokAPIKeyStartupWithoutHome(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	err := RunSession(ctx, []string{"--grok"}, nil, func(Session) { cancel() }, nil)
+	err := RunSession(ctx, []string{"grok"}, nil, func(Session) { cancel() }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -674,7 +674,7 @@ func TestGrokOutputBudgetRejectedBeforeInference(t *testing.T) {
 func TestGrokWhitespaceAPIKeyUsesOAuthHome(t *testing.T) {
 	t.Setenv("HOME", "")
 	t.Setenv("XAI_API_KEY", " \t ")
-	err := RunSession(t.Context(), []string{"--grok"}, nil, nil, nil)
+	err := RunSession(t.Context(), []string{"grok"}, nil, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "locate Grok credentials") {
 		t.Fatalf("expected default OAuth path lookup, got %v", err)
 	}

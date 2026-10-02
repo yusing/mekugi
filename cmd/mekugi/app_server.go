@@ -10,7 +10,11 @@ import (
 // command or selector. The exit renderer appends the actual current thread.
 func appServerResumeArgv(executable string, routerArgs, args []string) []string {
 	argv := append([]string{executable}, routerArgs...)
-	argv = append(argv, "codex")
+	if len(routerArgs) > 0 && routerArgs[len(routerArgs)-1] == "third-party" {
+		argv = argv[:len(argv)-1]
+	} else if len(routerArgs) == 0 || routerArgs[len(routerArgs)-1] != "grok" {
+		argv = append(argv, "codex")
+	}
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; arg {
 		case "resume", "--last":

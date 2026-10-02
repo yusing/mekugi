@@ -17,6 +17,8 @@ credentials or live model usage. These tests require the `journal_e2e` build tag
 - `TestAppServerReasoningStreamNativeCodexE2E`
 - `TestRouterTransformFaultNativeCodexE2E`
 - `TestRetryablePrestream5xxStillRetriesInNativeCodexE2E`
+- `TestThirdPartyAuthenticationNativeCodexE2E`
+- `TestThirdPartyResumeModelNativeCodexE2E`
 
 The frontend fixture invokes an authenticated configured command through
 stock Code Mode `tools.exec_command`, including cwd, environment, argv, stdin
@@ -62,3 +64,14 @@ outside the repository; do not use an installation build.
 The router-fault fixture forces an intercepted-call translation failure after response
 creation and checks one upstream request, one terminal turn failure, and durable reference
 lookup. Its retry case confirms a pre-stream 503 still permits a successful retry.
+
+The third-party authentication fixture uses empty isolated Codex credentials and
+its bundled native catalog. Dedicated plain-ID and standalone namespaced Grok
+requests complete through the real adapter with a local mock provider over HTTP
+and WebSocket. It checks one inference and credential separation without live
+provider usage.
+
+The third-party resume fixture uses the native UI and the real Grok adapter to
+verify saved model restoration after a fresh launch and in-session switching,
+plus explicit model overrides, in both namespaces. It checks inferred models
+and thread identity against a local provider, without live model usage.

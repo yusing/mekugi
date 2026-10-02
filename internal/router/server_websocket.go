@@ -29,9 +29,11 @@ func responsesWebSocketHandler(lifecycle context.Context, timeout time.Duration,
 	lifecycle, cancel := context.WithCancel(lifecycle)
 	endpoint := &responsesWebSocketEndpoint{cancel: cancel}
 	endpoint.handler = func(w http.ResponseWriter, r *http.Request) {
-		if _, _, err := requiredCodexAuthHeaders(r.Header); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+		if provider.grok == nil && len(provider.opencode) == 0 {
+			if _, _, err := requiredCodexAuthHeaders(r.Header); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 		}
 		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {

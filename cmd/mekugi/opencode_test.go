@@ -14,7 +14,7 @@ func TestPrepareOpenCodeCatalog(t *testing.T) {
 		Go:  router.OpenCodeServiceConfig{APIKey: "go-private"},
 		Zen: router.OpenCodeServiceConfig{APIKey: "zen-private"},
 	}
-	directory, path, err := prepareProviderCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1", nil, false, config)
+	directory, path, err := prepareProviderCatalog(t.Context(), executable, nil, router.Session{ThirdPartyOnly: true, OpenCode: config})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,21 +8,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/yusing/mekugi/internal/router"
 	"golang.org/x/term"
 )
 
-// prepareProviderCatalog leaves authentication and configuration loading to Codex.
+// prepareProviderCatalog uses bundled metadata for third-party-only launches,
+// without depending on Codex login.
 // The launched session uses a private static catalog instead of rereading the
 // provider-neutral models cache that other Codex processes can replace.
-func prepareProviderCatalog(ctx context.Context, executable, baseURL string, args []string, grok bool, openCode router.OpenCodeConfig) (directory, path string, err error) {
-	overrides, cwd, err := catalogConfigArgs(args)
-	if err != nil {
-		return "", "", err
-	}
+func prepareProviderCatalog(ctx context.Context, executable string, args []string, session router.Session) (directory, path string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	stopProgress := startCatalogProgress(ctx, os.Stderr, term.IsTerminal(int(os.Stderr.Fd())))
@@ -33,8 +29,8 @@ func prepareProviderCatalog(ctx context.Context, executable, baseURL string, arg
 			fmt.Fprintln(os.Stderr, "mekugi: catalog progress unavailable")
 		}
 	}()
-	cmd := exec.CommandContext(ctx, executable, codexArgs(baseURL, append([]string{"debug", "models"}, overrides...), false, false)...)
-	cmd.Dir = cwd
+	cmd := exec.CommandContext(ctx, executable, "debug", "models", "--bundled")
+	cmd.Dir = catalogWorkingDirectory(args)
 	cmd.WaitDelay = 5 * time.Second
 	// Do not forward diagnostics from the bootstrap command into the TUI or
 	// include configuration/authentication details in a startup error.
@@ -67,7 +63,7 @@ func prepareProviderCatalog(ctx context.Context, executable, baseURL string, arg
 	if waitErr != nil {
 		return "", "", fmt.Errorf("codex debug models failed: %w; check that Codex supports this command and its catalog configuration is valid", waitErr)
 	}
-	body, err = router.ProviderModelCatalog(body, grok, openCode)
+	body, err = router.ProviderModelCatalog(body, session)
 	if err != nil {
 		return "", "", fmt.Errorf("prepare provider model catalog: %w", err)
 	}
@@ -138,26 +134,20 @@ func startCatalogProgress(ctx context.Context, output io.Writer, interactive boo
 	}
 }
 
-// Only configuration selectors belong to debug models, not the user's command,
-// prompt, or arguments after --. Reject configuration modes debug models cannot
-// honor, and apply -C through the bootstrap process's working directory.
-func catalogConfigArgs(args []string) (overrides []string, cwd string, err error) {
+// Bundled metadata needs no host configuration. Apply -C through the bootstrap
+// process's working directory, without interpreting config operands or prompts.
+func catalogWorkingDirectory(args []string) (cwd string) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
 			break
 		}
-		if arg == "--profile" || strings.HasPrefix(arg, "--profile=") || strings.HasPrefix(arg, "-p") {
-			return nil, "", errors.New("third-party model catalogs (--grok or OpenCode) do not support --profile: codex debug models cannot load named profiles; use the default configuration or -c model_catalog_json instead")
+		if _, ok := codexArgumentValue(args, &i, "-c", "--config"); ok {
+			continue
 		}
-		if arg == "--ignore-user-config" || strings.HasPrefix(arg, "--ignore-user-config=") {
-			return nil, "", errors.New("third-party model catalogs (--grok or OpenCode) do not support --ignore-user-config: codex debug models cannot exclude user configuration")
-		}
-		if value, ok := codexArgumentValue(args, &i, "-c", "--config"); ok {
-			overrides = append(overrides, "-c", value)
-		} else if value, ok := codexArgumentValue(args, &i, "-C", "--cd"); ok {
+		if value, ok := codexArgumentValue(args, &i, "-C", "--cd"); ok {
 			cwd = value
 		}
 	}
-	return overrides, cwd, nil
+	return cwd
 }

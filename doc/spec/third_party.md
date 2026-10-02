@@ -8,16 +8,22 @@ interruption, follow-up, tool execution, permissions, sandboxing, and lifecycle.
 providers and adapts their protocols; it never creates a substitute agent process or executes a
 tool itself.
 
-When any third-party route is enabled, the wrapper runs `codex debug models` with the invocation's
-configuration and working-directory selectors, writes a private session catalog, and enforces its
+When any third-party route is enabled, the wrapper obtains native metadata from
+`codex debug models`, writes a private session catalog, and enforces its
 `model_catalog_json` path in the final invocation-only config layer. The selected Codex catalog must
-provide a native v2 template. Named Codex profiles (`--profile`/`-p`) and
-`exec --ignore-user-config` are rejected before catalog loading because the catalog command cannot
-honor those configuration modes. The default configuration and an explicit
-`-c model_catalog_json` remain supported. The catalog is fixed for the session and cannot be
+provide a native v2 template. Standalone and dedicated Grok launches use `--bundled`
+to avoid authenticated model discovery and exclude OpenAI models from the resulting
+catalog. Their template is independent of user catalog configuration; profiles and
+`exec --ignore-user-config` remain host-owned invocation selectors. `mekugi codex`
+does not enable third-party routes or prepare their catalog. The catalog is fixed for the session and cannot be
 replaced by another Codex process's shared cache. Catalog command failure, invalid output, or
 private-file creation failure prevents the main Codex launch. Output is bounded to 8 MiB and
 catalog preparation to one minute.
+
+Noninteractive `exec resume` and `exec fork` receive the same automatic startup
+default as new launches. Stock exec always supplies a provider override, which
+skips its saved-model merge, so the saved model is not restored; an explicit
+invocation model still wins.
 
 Preparation emits content-free stderr progress immediately and every ten seconds while waiting.
 Interactive status is width-bounded and cleared before terminal handoff; redirected output uses

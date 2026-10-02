@@ -4,17 +4,28 @@
 
 Grok follows the shared [third-party native-agent routing contract](third_party.md).
 
-`--grok` enables `grok:grok-4.5`, `grok:grok-4.6`, `grok:grok-4.7`, and
-`grok:grok-4.7-build-fast` in `mekugi` mode. Passthrough mode rejects the flag.
-Without it, the existing model catalog and OpenAI routing remain unchanged;
-a `grok:` request fails locally rather than sending it to the OpenAI provider.
+`mekugi grok [Codex arguments...]` selects a Grok-only session with plain model
+IDs: `grok-4.5`, `grok-4.6`, `grok-4.7`, and `grok-4.7-build-fast`.
+Standalone `mekugi` enables Grok when its credentials are usable, retaining the
+`grok:` model prefix alongside configured OpenCode routes. The old `--grok` flag
+is rejected. Both launch modes require `mekugi` response mode and no Codex login.
+`mekugi codex` preserves OpenAI behavior and rejects Grok requests locally.
 
-The wrapper adds a Grok model to Codex's selected catalog, retaining the catalog's native v2
+An explicit invocation model wins. Otherwise Grok's default follows
+`[models].default` in `~/.grok/config.toml`, falling back to the latest standard
+model (`grok-4.7`) if absent or empty. Standalone adds the `grok:` namespace to
+this selection; dedicated Grok uses plain IDs. An unreadable or malformed Grok
+config fails with actionable advice unless the invocation selects a model.
+Automatic startup defaults are not resume overrides: saved model/provider choices
+survive startup resume and in-session session switching unless the caller explicitly
+selects a model.
+
+The wrapper builds Grok models from Codex's bundled catalog, retaining its native v2
 instruction and executor metadata. The entry advertises text/image input, the 500,000-token context
 window, and low/medium/high/xhigh reasoning (high by default). It does not inherit OpenAI's Responses
-Lite transport, hosted search, service tiers, or upgrade schedule. Existing catalog entries remain
-unchanged, and an existing cached Grok entry is rebuilt from the native template rather than
-duplicated.
+Lite transport, hosted search, service tiers, or upgrade schedule. OpenAI catalog entries are
+excluded from third-party-only sessions. Existing third-party entries are rebuilt
+rather than duplicated. Wrong-mode Grok namespaces fail locally before inference.
 
 When Grok is enabled, the projected spawn catalog places Grok's fresh-context and reasoning
 requirements beside
@@ -25,7 +36,7 @@ a self-contained assignment; projection never changes submitted arguments.
 
 Grok uses streaming Chat Completions, either through the public xAI API with `XAI_API_KEY`, or through
 the Grok CLI chat proxy with the existing Grok OAuth credential store. An API key takes precedence.
-`grok:grok-4.7-build-fast` is available only through the OAuth proxy, not the public API;
+`grok-4.7-build-fast` is available only through the OAuth proxy, not the public API;
 an API-key request for it fails locally. The selected model is sent as the proxy model override.
 `--grok-auth-file` selects a different credential file; otherwise the router uses the current user's
 Grok OAuth store. This route supports the standard `https://auth.x.ai` Grok public client, not custom
@@ -34,7 +45,8 @@ and retries one rejected access token. Refresh uses Grok's cross-process advisor
 credentials under that lock, and atomically saves rotated credentials while preserving unrelated
 accounts and fields. No credentials, provider error bodies, or prompts enter sanitized capture or
 metrics; diagnostic error strings can contain them.
-Codex credentials and internal account/thread headers are never forwarded to Grok, and Grok credentials
+Grok inference does not require Codex Authorization or account headers, including
+HTTP and WebSocket clients. Codex credentials and internal account/thread headers are never forwarded to Grok, and Grok credentials
 never reach OpenAI. Credential-bearing requests do not follow redirects.
 
 The adapter preserves supported text/image messages, plaintext agent messages, custom/function tool
@@ -88,8 +100,10 @@ output tokens, retaining reasoning as a breakdown rather than counting it twice.
 
 Acceptance:
 
-1. Disabled routing preserves existing OpenAI behavior; enabled catalog registration allows native
-   model validation without changing Codex configuration files or launching another agent runtime.
+1. Dedicated and standalone launches work without Codex login, preserve their distinct
+   model namespaces, and select the configured/default model without changing user config.
+   Disabled routing preserves existing OpenAI behavior. Catalog registration allows native
+   model validation without launching another agent runtime.
 2. JSON/SSE projection and replay preserve native agent call IDs and plaintext handoffs, including
    messages sent while a child runs and follow-ups after it completes or is interrupted.
 3. A Grok-generated custom/function tool call is executed once by Codex, replayed with its result,

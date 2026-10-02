@@ -45,12 +45,15 @@ func effectiveServiceTier(model, requested string, overrides map[string]string) 
 	return requested
 }
 
-func loadMekugiConfig() (mekugiConfig, error) {
+func loadMekugiConfig(withProviders bool) (mekugiConfig, error) {
 	var config mekugiConfig
 	directory, err := os.UserConfigDir()
 	if err != nil {
 		// Without a configuration directory there can be no file to load.
 		// Preserve environment-only setup and the existing startup diagnostics.
+		if !withProviders {
+			return config, nil
+		}
 		config.Providers, err = openCodeEnvironment(OpenCodeConfig{})
 		return config, err
 	}
@@ -79,6 +82,10 @@ func loadMekugiConfig() (mekugiConfig, error) {
 		default:
 			return mekugiConfig{}, errors.New("invalid service tier in Mekugi config.toml")
 		}
+	}
+	if !withProviders {
+		config.Providers = OpenCodeConfig{}
+		return config, nil
 	}
 	config.Providers, err = openCodeEnvironment(config.Providers)
 	return config, err

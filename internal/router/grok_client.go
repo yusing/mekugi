@@ -16,13 +16,11 @@ type grokClient struct {
 	httpClient        *http.Client
 	openCode          *openCodeService
 	auth              *grokAuth
+	unprefixed        bool
 	streamIdleTimeout time.Duration
 }
 
 func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, body []byte, headers http.Header) (*http.Response, error) {
-	if _, _, err := requiredCodexAuthHeaders(headers); err != nil {
-		return nil, err
-	}
 	service := g.openCode
 	if service != nil {
 		if service.catalog != nil {
@@ -201,4 +199,6 @@ type grokResponseBody struct {
 
 func (b *grokResponseBody) Close() error { return b.close() }
 
-func isGrokModel(model string) bool { return strings.HasPrefix(model, "grok:") }
+func isGrokModel(model string) bool {
+	return strings.HasPrefix(model, "grok:") || strings.HasPrefix(model, "grok-")
+}

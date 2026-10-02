@@ -170,7 +170,7 @@ func (u *appServerUI) resumeLastResponse(m appserver.Message) error {
 // Codex merges saved model metadata after loading process CLI configuration.
 // Forward explicit model settings on resume as well so that invocation-local
 // overrides retain their meaning. Other config keeps its app-server owner.
-func appServerResumeConfig(args []string) map[string]any {
+func appServerResumeConfig(args, resumeArgv []string) map[string]any {
 	config := make(map[string]any)
 	for i := 0; i < len(args); i++ {
 		if args[i] != "-c" || i+1 == len(args) {
@@ -178,7 +178,7 @@ func appServerResumeConfig(args []string) map[string]any {
 		}
 		i++
 		key, value, ok := strings.Cut(args[i], "=")
-		key = strings.TrimSpace(key)
+		key = strings.Trim(strings.TrimSpace(key), `"'`)
 		if !ok || (key != "model" && key != "model_provider" && key != "model_reasoning_effort" && key != "service_tier") {
 			continue
 		}
@@ -188,6 +188,14 @@ func appServerResumeConfig(args []string) map[string]any {
 		} else {
 			// Codex accepts bare strings when a CLI value is not valid TOML.
 			config[key] = strings.TrimSpace(value)
+		}
+	}
+	if len(resumeArgv) > 0 {
+		_, userArgs, err := SplitCommand(resumeArgv[1:])
+		if err == nil && !HasModelOverride(userArgs) {
+			// Startup defaults are not explicit resume overrides. Retain the
+			// original invocation's selection, not launcher-generated config.
+			delete(config, "model")
 		}
 	}
 	return config

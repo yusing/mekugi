@@ -73,6 +73,17 @@ func (s openCodeService) models() []openCodeModel {
 	return models
 }
 
+// DefaultModel picks a stable available model from the first authenticated
+// service. An explicit invocation model always takes precedence.
+func (c OpenCodeConfig) DefaultModel() string {
+	for _, service := range c.services() {
+		if models := service.models(); len(models) > 0 {
+			return service.prefix + ":" + models[0].id
+		}
+	}
+	return ""
+}
+
 func (s openCodeService) model(id string) (openCodeMetadata, bool) {
 	entry, ok := s.pin().snapshot.Models[s.prefix][id]
 	return entry, ok

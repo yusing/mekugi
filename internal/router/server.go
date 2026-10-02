@@ -41,6 +41,8 @@ type Session struct {
 	JournalEnabled         bool
 	PostCompactRecovery    bool
 	GrokEnabled            bool
+	GrokUnprefixed         bool
+	ThirdPartyOnly         bool
 	OpenCode               OpenCodeConfig
 	AXReadOutput           string
 	SkillsManagerAvailable bool
@@ -61,7 +63,9 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		}
 		return fmt.Errorf("parse flags: %w", err)
 	}
-	if flags.NArg() != 0 {
+	grokEnabled := flags.NArg() == 1 && flags.Arg(0) == "grok"
+	standalone := flags.NArg() == 1 && flags.Arg(0) == "third-party"
+	if flags.NArg() != 0 && !grokEnabled && !standalone {
 		return errors.New("positional arguments are not supported")
 	}
 	if *flags.mode != "mekugi" && *flags.mode != "passthrough" {
@@ -90,20 +94,17 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		}
 		*flags.postCompactRecovery = false
 	}
-	if *flags.grokEnabled && *flags.mode != "mekugi" {
-		return errors.New("--grok requires --mode mekugi")
+	if (grokEnabled || standalone) && *flags.mode != "mekugi" {
+		return errors.New("third-party launches require --mode mekugi")
 	}
-	if !*flags.grokEnabled && *flags.grokAuthFile != "" {
-		return errors.New("--grok-auth-file requires --grok")
+	if !grokEnabled && !standalone && *flags.grokAuthFile != "" {
+		return errors.New("--grok-auth-file requires standalone mekugi or mekugi grok")
 	}
-	config, err := loadMekugiConfig()
+	config, err := loadMekugiConfig(standalone)
 	if err != nil {
 		return err
 	}
 	openCode := config.Providers
-	if openCode.Enabled() && *flags.mode != "mekugi" {
-		return errors.New("OpenCode providers require --mode mekugi")
-	}
 	if *flags.timeout <= 0 {
 		return errors.New("--timeout must be positive")
 	}
@@ -154,27 +155,37 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		runErr = errors.Join(runErr, capture.Close())
 	}()
 	provider := newProviderClient(codexBaseURL, nil)
+	provider.thirdPartyOnly = grokEnabled || standalone
 	provider.httpClient.Transport = capture.Transport(provider.httpClient.Transport)
 	provider.streamIdleTimeout = *flags.streamIdleTimeout
 	provider.enableWebSockets(ctx)
 	// Cover early setup returns before ctx is canceled; close is idempotent
 	// with enableWebSockets' normal context-shutdown callback.
 	defer provider.websockets.close()
-	if *flags.grokEnabled {
+	if grokEnabled || standalone {
 		apiKey := strings.TrimSpace(os.Getenv("XAI_API_KEY"))
 		path := *flags.grokAuthFile
 		if path == "" && apiKey == "" {
 			home, err := os.UserHomeDir()
-			if err != nil {
+			if err != nil && !standalone {
 				return fmt.Errorf("locate Grok credentials: %w", err)
 			}
-			path = filepath.Join(home, ".grok", "auth.json")
+			if err == nil {
+				path = filepath.Join(home, ".grok", "auth.json")
+			}
 		}
 		auth := newGrokAuth(path, apiKey)
-		client := withDialTimeout(nil)
-		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-		client.Transport = capture.Transport(client.Transport)
-		provider.grok = &grokClient{httpClient: client, auth: auth, streamIdleTimeout: *flags.streamIdleTimeout}
+		if _, authErr := auth.credentials(ctx); authErr == nil {
+			client := withDialTimeout(nil)
+			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+			client.Transport = capture.Transport(client.Transport)
+			provider.grok = &grokClient{httpClient: client, auth: auth, unprefixed: grokEnabled, streamIdleTimeout: *flags.streamIdleTimeout}
+		} else if grokEnabled {
+			return authErr
+		}
+	}
+	if standalone && provider.grok == nil && !openCode.Enabled() {
+		return errors.New("no authenticated third-party providers; run grok login --oauth or set XAI_API_KEY, OPENCODE_GO_API_KEY, or OPENCODE_ZEN_API_KEY")
 	}
 	if openCode.Enabled() {
 		openCode.catalog = newOpenCodeCatalog()
@@ -322,7 +333,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		serverError <- server.Serve(listener)
 	}()
 	if ready != nil && ctx.Err() == nil {
-		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: *flags.grokEnabled, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, SkillsManagerAvailable: skillsManagerAvailable}
+		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, SkillsManagerAvailable: skillsManagerAvailable}
 		if mekugiCalls != nil {
 			session.StartHeadless = func(ctx context.Context, cmd *exec.Cmd, input io.Reader, output io.Writer) (func() error, error) {
 				return startHeadlessAppServer(ctx, cmd, input, output, mekugiCalls)

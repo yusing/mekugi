@@ -195,7 +195,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	u.resumeArgv = slices.Clone(resumeArgv)
 	u.replayDebugDirectory = debugDirectory
 	u.sessionCapture = capture
-	u.resumeConfig = appServerResumeConfig(cmd.Args)
+	u.resumeConfig = appServerResumeConfig(cmd.Args, resumeArgv)
 	u.notifications = &nativeNotifications{out: stdout, focused: true}
 	u.resumeCwd = resumeCwd
 	u.panes = new(nativePanePersistence)

@@ -9,8 +9,8 @@ Codex. Codex keeps editing, execution, the sandbox, permissions, command
 sessions, and patch review. No fork, no config edits, no daemon.
 
 [Features](#features) · [Install](#install) · [Usage](#usage) ·
-[Native UI](#native-ui) · [Metrics](#metrics) · [Settings](#mekugi-settings) ·
-[Troubleshooting](#configuration-and-troubleshooting) · [Documentation](#documentation)
+[Native UI](#native-ui) · [Metrics](#metrics) · [Configuration](#configuration) ·
+[Documentation](#documentation)
 
 ## Features
 
@@ -20,7 +20,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
   offer bounded and batched reads, semantic symbol lookup, and structural outlines.
 - **Recoverable output and changes.** Continue omitted output without rerunning,
   and review, revert, or reapply captured edits by ID. Gaps in coverage are labeled.
-- **Leaner instructions.** [Omit marked instruction blocks](#configuration-and-troubleshooting)
+- **Leaner instructions.** [Omit marked instruction blocks](#troubleshooting-and-integrations)
   for the session without changing instruction files or unmarked policy.
 - **Task journal.** Record plans, results, constraints, and blockers as durable
   work state, rather than repeating status summaries in conversation.
@@ -60,7 +60,7 @@ comparisons, use [codex-setup-ab](https://github.com/yusing/codex-setup-ab).
 
 Requirements:
 
-- **Codex CLI**, signed in with `codex login` using ChatGPT authentication.
+- **Codex CLI** for tool execution in every [launch mode](#start-mekugi).
 - For configured JavaScript plugins only: **Node.js 24+** as `node`. Plugins declaring regex grammars also require **ripgrep** as `rg` on the router's `PATH`.
 - Built-in frontends need neither Node.js nor Bun; semantic lookup requires the language servers listed under [agent-facing tools](#agent-facing).
 - Any interpreter your agent picks, such as `python3`, on the executor's `PATH`.
@@ -114,29 +114,33 @@ optional plugin shared core and installs `mekugi` and `mekugi-exec`. `make unins
 removes only those binaries. Running sessions keep their worker executable, so
 start a new session to pick up an update.
 
-### Start Mekugi
-
-```sh
-codex login
-mekugi codex --yolo
-```
-
-Mekugi opens its native terminal workspace. Interactive launches currently require
-explicit `--yolo` (no approvals or sandbox). With `mekugi-exec` installed beside
-`mekugi`, command lists show separate output and exit status for each command.
-Without it, they show as one command.
-
 ## Usage
 
-Mekugi flags go **before** `codex`. Interactive launches accept `--yolo`, model
+### Start Mekugi
+
+Choose a mode and authenticate with the provider it uses:
+
+| Launch | Models | Authentication |
+| --- | --- | --- |
+| `mekugi --yolo` | Authenticated third-party providers, using `grok:` and `opencode*:` IDs | [Grok credentials](#grok-models) or [OpenCode API keys](#opencode-go-and-zen); no Codex login |
+| `mekugi grok --yolo` | Grok only, using plain IDs such as `grok-4.7` | [Grok credentials](#grok-models); no Codex login |
+| `mekugi codex --yolo` | Codex only, no third-party models | `codex login` with ChatGPT authentication |
+
+Standalone mode fails at startup if no third-party provider has credentials.
+Its default uses [Grok's model selection](#grok-models) when authenticated,
+otherwise the first available OpenCode Go model, then Zen.
+
+Mekugi opens its native terminal workspace. Interactive launches currently require
+explicit `--yolo` (no approvals or sandbox).
+
+Mekugi flags go **before** `codex`, `grok`, or standalone Codex arguments.
+Interactive launches accept `--yolo`, model
 and config options, and [`resume`, `resume THREAD_ID` or `resume --last`](#resume); enter
 prompts in the [native UI](#native-ui). Noninteractive commands keep their
 ordinary Codex arguments and output:
 
 ```sh
-mekugi codex --yolo --model gpt-6.1-sol
-mekugi codex exec "Explain this repository"
-mekugi codex --yolo resume 'CONVERSATION_ID'
+mekugi exec "Explain this repository"
 ```
 
 ### Launch behavior and limits
@@ -145,11 +149,13 @@ Independent sessions can run side by side. Ctrl-C during startup cancels the
 launch. On native UI exit, Mekugi prints commands to resume with the original
 options or replay offline. Noninteractive commands retain Codex's exit status.
 
-- ChatGPT login is required. Standalone serving, fixed ports, custom provider
-  endpoints, and `--oss` are not supported.
-- Your network must allow secure WebSockets for ChatGPT. Mekugi falls back to
+- There is no standalone router or daemon. Fixed ports, custom provider endpoints,
+  and `--oss` are not supported.
+- OpenAI sessions need secure WebSockets to ChatGPT. Mekugi falls back to
   HTTP only when ChatGPT explicitly rejects the upgrade, and never silently
   replays a request.
+- Grok and OpenCode requests use HTTP and their own credentials. Third-party
+  credentials do not enable those providers in `mekugi codex`.
 - Invocation-only overrides disable collaboration-mode instructions, route
   `gpt-5.6-terra` to `gpt-6-sol`, and select standard cybersecurity safeguards
   rather than Daybreak. No configuration files change.
@@ -160,11 +166,11 @@ options or replay offline. Noninteractive commands retain Codex's exit status.
 
 ### Headless slice plans
 
-`mekugi codex headless --yolo` reads one prompt from stdin and runs a new
+The `headless --yolo` subcommand reads one prompt from stdin and runs a new
 session to completion, including any planned slice continuations:
 
 ```sh
-mekugi --journal-compaction=slice codex headless --yolo -m gpt-6-sol < prompt.txt
+mekugi --journal-compaction=slice headless --yolo < prompt.txt
 ```
 
 Use `off` to continue slices in one context, or `slice` to reset between them.
@@ -184,10 +190,9 @@ exit means the run or its shutdown failed. Ordinary `codex exec` is unchanged.
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `--ansi-faint` | `auto` | Dimming: `auto` detects mosh ancestry, `on` uses ANSI faint, `off` uses fixed muted colors |
-| `--mode` | `mekugi` | Use `passthrough` to forward traffic without Mekugi tools or plugins |
+| `--mode` | `mekugi` | Use `passthrough` with `mekugi codex` to forward traffic without Mekugi tools or plugins |
 | `--post-compact-recovery` | `true` | Use `false` to skip the post-compaction context hook |
 | `--journal-compaction` | `off` | Experimental `auto` uses journal summaries without a provider request; `slice` resets only between planned slices |
-| `--grok` | `false` | Enable Grok models in mekugi mode |
 | `--grok-auth-file` | `~/.grok/auth.json` | Select a Grok OAuth credential store |
 | `--timeout` | `10m` | Wait for the upstream response to start |
 | `--stream-idle-timeout` | `4m` | Limit gaps between provider messages during an active response, or HTTP response bytes |
@@ -204,15 +209,21 @@ to that invocation and does not modify terminal configuration.
 ### Grok models
 
 Authenticate with `grok login --oauth`, or set `XAI_API_KEY` in the router's
-environment; an API key takes precedence. Codex credentials are never sent to
-Grok.
+environment; an API key takes precedence. Codex credentials are never sent to Grok.
 
 ```sh
-mekugi --grok codex --yolo -m grok:grok-4.7
+mekugi grok --yolo -m grok-4.7
+mekugi --yolo -m grok:grok-4.7
 ```
 
-Subagents can use `grok:grok-4.5`, `grok:grok-4.6`, `grok:grok-4.7`, or
-`grok:grok-4.7-build-fast` (OAuth only) in fresh context (`fork_turns="none"`).
+The default follows `[models].default` in `~/.grok/config.toml`, falling back to
+the latest standard model, currently `grok-4.7`. An explicit `-m` or `-c model=...`
+takes precedence. Standalone mode adds the `grok:` prefix to this default;
+`mekugi grok` uses plain IDs. The old `--grok` flag is not supported.
+
+Subagents use the same IDs as their launch mode: `grok-4.5`, `grok-4.6`,
+`grok-4.7`, or `grok-4.7-build-fast`, prefixed with `grok:` in standalone mode.
+Use fresh context (`fork_turns="none"`). Build Fast requires Grok OAuth, not an API key.
 Grok can't read encrypted OpenAI history, so switching an existing OpenAI
 conversation to Grok isn't supported. See the [Grok requirements](doc/spec/grok.md).
 
@@ -221,21 +232,19 @@ conversation to Grok isn't supported. See the [Grok requirements](doc/spec/grok.
 Set an API key here or in [Mekugi settings](#mekugi-settings):
 
 ```sh
-OPENCODE_GO_API_KEY='your-key' mekugi codex --yolo -m opencode-go:glm-5.3
-OPENCODE_ZEN_API_KEY='your-key' mekugi codex --yolo -m opencode-zen:kimi-k3
+OPENCODE_GO_API_KEY='your-key' mekugi --yolo -m opencode-go:glm-5.3
+OPENCODE_ZEN_API_KEY='your-key' mekugi --yolo -m opencode-zen:kimi-k3
 ```
 
 Models, reasoning controls, and prices refresh from an hourly cache. The model
 picker updates on the next launch. See the [provider contract](doc/spec/opencode.md).
 
-Grok and OpenCode requests use HTTP and their own authentication. Their models
-are added to Codex's catalog for the invocation. That can't be combined with
-`--profile` or `exec --ignore-user-config`; use the default configuration or an
-explicit `-c model_catalog_json=...` instead.
+`OPENCODE_API_KEY` overrides both service keys from the settings file. Per-service
+variables override it and any file keys; an empty per-service value disables that service.
 
 ## Native UI
 
-An interactive `mekugi codex --yolo` launch lays out Main, Diff, Activity, Journal,
+Every interactive launch lays out Main, Diff, Activity, Journal,
 and Agents panes in one terminal without an external pane manager. Main holds the
 conversation and composer. Markdown tables render as aligned grids that switch
 to a record layout in narrow panes. Completed Mermaid flowchart fences render as
@@ -367,6 +376,8 @@ including priority and default selections made before the first turn. Storage
 failures are reported in Activity. If no saved model settings are available, a
 notice explains that Codex defaults and explicit flags apply instead. Main
 histories larger than 16 MiB cannot resume in the native UI. Older child activity loads on demand.
+In third-party modes, noninteractive `exec resume` and `exec fork` use the
+mode's default model rather than the saved one; pass `-m` to choose another.
 Codex does not save an empty conversation before its first turn.
 If Codex rejects restoring default reasoning, waiting input returns to the
 composer and stays blocked until you choose `/effort VALUE` or restart resume.
@@ -549,7 +560,9 @@ agent. Debug bundles include private session content and are **not sanitized**.
 Debug mode records future requests only. See
 [debug evidence](doc/spec/router.md#feature-usage-debug-evidence).
 
-## Mekugi settings
+## Configuration
+
+### Mekugi settings
 
 Create `mekugi/config.toml` in your user configuration directory:
 `$XDG_CONFIG_HOME` or `~/.config` on Linux, `~/Library/Application Support` on macOS.
@@ -577,11 +590,10 @@ Every section is optional. Settings are read at startup and never rewritten.
   `/tier` still changes Codex's requested tier and discloses any overriding
   Mekugi setting. `/session` reports the provider-returned tier, which can differ
   from the requested tier.
-- **API keys:** `OPENCODE_API_KEY` overrides both file keys. The per-service
-  variables override their own service. Setting one to an empty string turns
-  that service off.
+- **API keys:** these file keys are optional alternatives to the
+  [OpenCode environment variables](#opencode-go-and-zen).
 
-## Configuration and troubleshooting
+### Troubleshooting and integrations
 
 - **Post-compaction recovery:** After compaction, Mekugi restores a bounded
   snapshot of Main's journal and changes. Subagents and passthrough mode are
@@ -699,7 +711,7 @@ remain local and may appear on screen. See the [replay reference](doc/spec/sessi
 
 Finish active sessions before replacing an older installation. Retire any old
 service and provider configuration separately, keeping unrelated settings and
-authentication. Use `mekugi codex` from then on.
+authentication. Then choose a current [launch mode](#start-mekugi).
 
 ## Documentation
 

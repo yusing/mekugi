@@ -294,7 +294,7 @@ func (a *requestAttempt) prepareWire() error {
 	// tools or their instructions.
 	compaction := a.metadataValid && a.metadata.RequestKind == responses.Compaction
 	if !compaction && (a.mekugiTransform != nil || a.prewarm && a.executor.mekugiCalls != nil || grokEnabled || len(openCodeModels) > 0) {
-		a.bridge, err = prepareSubagentBridge(&a.request, grokEnabled, openCodeModels...)
+		a.bridge, err = prepareSubagentBridge(&a.request, grokEnabled, grokEnabled && client.grok.unprefixed, openCodeModels...)
 		if err != nil {
 			return fmt.Errorf("prepare collaboration bridge: %w", err)
 		}

@@ -22,7 +22,7 @@ import (
 
 func TestCodexArgsPreservesArguments(t *testing.T) {
 	forwarded := []string{"exec", "-c", "model=\"example\"", "--", "a prompt with spaces"}
-	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true)
+	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true, true)
 	index := slices.Index(forwarded, "--")
 	if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[index+14:], forwarded[index:]) {
 		t.Fatalf("forwarded arguments changed: %q", args)
@@ -74,7 +74,7 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 		t.Fatalf("provider = %+v", provider)
 	}
 	withoutDelimiter := []string{"exec", "-c", `model="example"`, "prompt"}
-	if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter, true, true); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
+	if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter, true, true, true); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
 		t.Fatalf("ordinary -c or prompt moved: %q", got)
 	}
 }
@@ -114,7 +114,7 @@ func TestCodexArgsEnforcesCollaborationModeInstructions(t *testing.T) {
 		{"-c", "include_collaboration_mode_instructions=true", "exec", "--config=include_collaboration_mode_instructions=true", "prompt"},
 		{"resume", "session", "-cinclude_collaboration_mode_instructions=true", "--", "prompt"},
 	} {
-		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true)
+		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true, true)
 		end := slices.Index(args, "--")
 		if end < 0 {
 			end = len(args)
@@ -131,7 +131,7 @@ func TestCodexArgsEnforcesSkillInstructionsWhenSkillsManagerAvailable(t *testing
 		{"exec", "--config=skills.include_instructions=true", "prompt"},
 		{"resume", "session", "-cskills.include_instructions=true", "--", "prompt"},
 	} {
-		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, false, true)
+		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, false, true, true)
 		end := slices.Index(args, "--")
 		if end < 0 {
 			end = len(args)
@@ -144,7 +144,7 @@ func TestCodexArgsEnforcesSkillInstructionsWhenSkillsManagerAvailable(t *testing
 
 func TestCodexArgsPreservesSkillInstructionsWithoutSkillsManager(t *testing.T) {
 	forwarded := []string{"exec", "--config=skills.include_instructions=true", "prompt"}
-	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, false, false)
+	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, false, false, true)
 	if !slices.Equal(args[:len(forwarded)], forwarded) || slices.Contains(args[len(forwarded):], "skills.include_instructions=false") {
 		t.Fatalf("skill instructions changed without skills-mgr: %q", args)
 	}
@@ -174,11 +174,29 @@ func TestWrappedCodexProcess(t *testing.T) {
 			}
 		}
 		body, err := os.ReadFile(catalogPath)
-		if err != nil || !bytes.Contains(body, []byte("grok:grok-4.6")) || !bytes.Contains(body, []byte("freeform")) {
+		if err != nil || !bytes.Contains(body, []byte("grok-4.6")) || !bytes.Contains(body, []byte("freeform")) {
 			os.Exit(98)
 		}
 		if err := os.WriteFile(os.Getenv("MEKUGI_TEST_ADDRESS")+".catalog", []byte(catalogPath), 0o600); err != nil {
 			os.Exit(99)
+		}
+		if os.Getenv("MEKUGI_TEST_LAUNCH_MODE") == "standalone" {
+			var settings struct {
+				Model     string
+				Providers map[string]struct {
+					Auth bool `toml:"requires_openai_auth"`
+				} `toml:"model_providers"`
+			}
+			for i := 0; i+1 < len(os.Args); i++ {
+				if os.Args[i] == "-c" {
+					_, _ = toml.Decode(os.Args[i+1], &settings)
+					i++
+				}
+			}
+			provider, ok := settings.Providers["mekugi_wrap"]
+			if !ok || provider.Auth || settings.Model != "grok:grok-4.7" || !bytes.Contains(body, []byte("grok:grok-4.6")) || bytes.Contains(body, []byte("gpt-")) {
+				os.Exit(98)
+			}
 		}
 	}
 	interrupts := make(chan os.Signal, 1)
@@ -242,8 +260,40 @@ func TestWrappedRouterProcess(t *testing.T) {
 	if os.Getenv("MEKUGI_TEST_ROUTER") != "1" {
 		return
 	}
-	os.Args = []string{os.Args[0], "--grok", "codex"}
+	os.Args = []string{os.Args[0], "grok"}
+	if os.Getenv("MEKUGI_TEST_LAUNCH_MODE") == "standalone" {
+		os.Args = []string{os.Args[0], "exec", "--yolo", "hello"}
+	}
 	os.Exit(run())
+}
+
+func TestStandaloneRunWithoutCodexLogin(t *testing.T) {
+	directory := t.TempDir()
+	for _, key := range []string{"HOME", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "MEKUGI_RUNTIME_DIR"} {
+		t.Setenv(key, t.TempDir())
+	}
+	for _, key := range []string{"OPENCODE_API_KEY", "OPENCODE_GO_API_KEY", "OPENCODE_ZEN_API_KEY", "OPENAI_API_KEY", "CODEX_API_KEY"} {
+		t.Setenv(key, "")
+	}
+	t.Setenv("XAI_API_KEY", "test")
+	t.Setenv("MEKUGI_TEST_ROUTER", "1")
+	t.Setenv("MEKUGI_TEST_CODEX", "1")
+	t.Setenv("MEKUGI_TEST_EXIT", "0")
+	t.Setenv("MEKUGI_TEST_LAUNCH_MODE", "standalone")
+	t.Setenv("MEKUGI_TEST_PINNED_CATALOG", "1")
+	t.Setenv("MEKUGI_TEST_ADDRESS", filepath.Join(directory, "address"))
+	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stub := "#!/bin/sh\nexec " + strconv.Quote(os.Args[0]) + " -test.run=^TestWrappedCodexProcess$ -- \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(directory, "codex"), []byte(stub), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestWrappedRouterProcess$")
+	output, err := command.CombinedOutput()
+	if err != nil || !bytes.Contains(output, []byte("codex stdout")) {
+		t.Fatalf("standalone launch failed: %v\n%s", err, output)
+	}
 }
 
 func TestWrapTerminalInterruptAndTermination(t *testing.T) {
@@ -252,6 +302,7 @@ func TestWrapTerminalInterruptAndTermination(t *testing.T) {
 	t.Setenv("TMPDIR", logDirectory)
 	runtimeDirectory := t.TempDir()
 	addressFile := filepath.Join(directory, "address")
+	t.Setenv("XAI_API_KEY", "test")
 	t.Setenv("CODEX_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -363,6 +414,7 @@ func testWrapCodexLifecycle(t *testing.T, exit string, wantCode int, grok bool) 
 	t.Setenv("TMPDIR", t.TempDir())
 	runtimeDirectory := t.TempDir()
 	addressFile := filepath.Join(directory, "address")
+	t.Setenv("XAI_API_KEY", "test")
 	t.Setenv("CODEX_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -396,7 +448,7 @@ func testWrapCodexLifecycle(t *testing.T, exit string, wantCode int, grok bool) 
 	defer deadline.Stop()
 	var routerArgs []string
 	if grok {
-		routerArgs = []string{"--grok"}
+		routerArgs = []string{"grok"}
 		t.Setenv("MEKUGI_TEST_PINNED_CATALOG", "1")
 	}
 	code, err := wrapCodex(ctx, routerArgs, []string{"exec", "prompt with spaces"})
@@ -459,11 +511,26 @@ func TestValidateCodexArgs(t *testing.T) {
 	}
 }
 
-func TestRunWrapUsage(t *testing.T) {
-	for _, args := range [][]string{nil, {"other"}} {
-		if code := runWrap(nil, args); code != 2 {
-			t.Errorf("runWrap(%q) = %d", args, code)
+func TestRunWrapRejectsUnauthenticatedStandalone(t *testing.T) {
+	for _, key := range []string{"HOME", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME"} {
+		t.Setenv(key, t.TempDir())
+	}
+	for _, key := range []string{"XAI_API_KEY", "OPENCODE_API_KEY", "OPENCODE_GO_API_KEY", "OPENCODE_ZEN_API_KEY"} {
+		t.Setenv(key, "")
+	}
+	directory := t.TempDir()
+	marker := filepath.Join(directory, "launched")
+	t.Setenv("PATH", directory)
+	if err := os.WriteFile(filepath.Join(directory, "codex"), []byte("#!/bin/sh\nprintf launched > "+strconv.Quote(marker)+"\nexit 99\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{nil, {"exec", "--yolo", "hello"}} {
+		if code := runWrap(nil, args); code != 1 {
+			t.Errorf("unauthenticated runWrap(%q) = %d", args, code)
 		}
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("unauthenticated standalone launched Codex: %v", err)
 	}
 }
 
@@ -474,6 +541,7 @@ func TestWrapCodexStartupFailures(t *testing.T) {
 			t.Setenv("TMPDIR", t.TempDir())
 			runtimeDirectory := t.TempDir()
 			configDirectory := t.TempDir()
+			t.Setenv("XAI_API_KEY", "test")
 			t.Setenv("CODEX_HOME", t.TempDir())
 			t.Setenv("HOME", t.TempDir())
 			t.Setenv("XDG_CONFIG_HOME", configDirectory)
@@ -544,7 +612,7 @@ func TestWrapDebugPassesAXJournalToCodex(t *testing.T) {
 
 func TestCodexArgsJournalPlanOverridePreservesPassthrough(t *testing.T) {
 	for _, journal := range []bool{false, true} {
-		args := codexArgs("http://127.0.0.1:12345/v1", []string{"exec", "-c", "tools.update_plan.enabled=true", "--", "prompt"}, journal, false)
+		args := codexArgs("http://127.0.0.1:12345/v1", []string{"exec", "-c", "tools.update_plan.enabled=true", "--", "prompt"}, journal, false, true)
 		end := slices.Index(args, "--")
 		disabled := slices.Contains(args[:end], "tools.update_plan.enabled=false")
 		if disabled != journal {
@@ -559,6 +627,7 @@ func TestWrapStartupInterrupt(t *testing.T) {
 	runtimeDirectory := t.TempDir()
 	addressFile := filepath.Join(directory, "address")
 	t.Setenv("TMPDIR", temporary)
+	t.Setenv("XAI_API_KEY", "test")
 	t.Setenv("CODEX_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())

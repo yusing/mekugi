@@ -48,7 +48,7 @@ func TestOpenCodeConfig(t *testing.T) {
 	}
 	t.Setenv("OPENCODE_GO_API_KEY", "")
 	t.Setenv("OPENCODE_ZEN_API_KEY", "")
-	config, err := loadMekugiConfig()
+	config, err := loadMekugiConfig(true)
 	if err != nil || config.Providers.Enabled() {
 		t.Fatalf("missing config: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestOpenCodeConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	// An explicitly empty environment key disables a configured provider.
-	config, err = loadMekugiConfig()
+	config, err = loadMekugiConfig(true)
 	if err != nil || config.Providers.Enabled() {
 		t.Fatalf("empty override: %v", err)
 	}
@@ -70,22 +70,22 @@ func TestOpenCodeConfig(t *testing.T) {
 	if err := os.Unsetenv("OPENCODE_ZEN_API_KEY"); err != nil {
 		t.Fatal(err)
 	}
-	config, err = loadMekugiConfig()
+	config, err = loadMekugiConfig(true)
 	if err != nil || config.Providers.Go.APIKey != "config-go" || config.Providers.Zen.APIKey != "config-zen" {
 		t.Fatalf("config not loaded: %v", err)
 	}
 	t.Setenv("OPENCODE_GO_API_KEY", " env-go ")
-	config, err = loadMekugiConfig()
+	config, err = loadMekugiConfig(true)
 	if err != nil || config.Providers.Go.APIKey != "env-go" || config.Providers.Zen.APIKey != "config-zen" {
 		t.Fatalf("provider isolation/precedence: %v", err)
 	}
 	t.Setenv("OPENCODE_API_KEY", "shared")
-	config, err = loadMekugiConfig()
+	config, err = loadMekugiConfig(true)
 	if err != nil || config.Providers.Go.APIKey != "env-go" || config.Providers.Zen.APIKey != "shared" {
 		t.Fatalf("shared key precedence: %v", err)
 	}
 	t.Setenv("OPENCODE_ZEN_API_KEY", "")
-	config, err = loadMekugiConfig()
+	config, err = loadMekugiConfig(true)
 	if err != nil || config.Providers.Go.APIKey != "env-go" || config.Providers.Zen.APIKey != "" {
 		t.Fatalf("service-specific disable after shared key: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestOpenCodeConfig(t *testing.T) {
 		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := loadMekugiConfig(); err == nil || strings.Contains(err.Error(), "private-secret") {
+		if _, err := loadMekugiConfig(true); err == nil || strings.Contains(err.Error(), "private-secret") {
 			t.Fatalf("unsanitized config error: %v", err)
 		}
 	}
@@ -105,7 +105,7 @@ func TestOpenCodeConfig(t *testing.T) {
 func TestOpenCodeCatalog(t *testing.T) {
 	config := OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "go"}, Zen: OpenCodeServiceConfig{APIKey: "zen"}}
 	body := []byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2","shell_type":"unified_exec","apply_patch_tool_type":"freeform","model_messages":{"instructions_template":"native"},"unknown_future":42}]}`)
-	catalog, err := ProviderModelCatalog(body, false, config)
+	catalog, err := ProviderModelCatalog(body, Session{OpenCode: config})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,11 +134,11 @@ func TestOpenCodeCatalog(t *testing.T) {
 	if !foundDescription || !foundReasoning {
 		t.Fatal("embedded provider metadata was not projected")
 	}
-	again, err := ProviderModelCatalog(catalog, false, config)
+	again, err := ProviderModelCatalog(catalog, Session{OpenCode: config})
 	if err != nil || !bytes.Equal(catalog, again) {
 		t.Fatalf("catalog not idempotent: %v", err)
 	}
-	disabled, err := ProviderModelCatalog(catalog, true, OpenCodeConfig{})
+	disabled, err := ProviderModelCatalog(catalog, Session{GrokEnabled: true})
 	if err != nil || bytes.Contains(disabled, []byte("opencode-")) {
 		t.Fatalf("stale disabled providers retained: %v", err)
 	}
@@ -189,8 +189,9 @@ func TestOpenCodeRoutesAndCredentials(t *testing.T) {
 				}
 			}
 			provider := newProviderClient("http://unused.invalid", nil)
-			if _, err := provider.forwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders(), ""); err == nil || !strings.Contains(err.Error(), "not configured") {
-				t.Fatalf("disabled route leaked to OpenAI: %v", err)
+			_, err := provider.forwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders(), "")
+			if compatibility, ok := err.(*requestCompatibilityError); !ok || compatibility.code != "opencode_not_configured" {
+				t.Fatalf("disabled route was not rejected locally: %v", err)
 			}
 		})
 	}
@@ -389,6 +390,8 @@ func TestOpenCodeMixedReasoningMultiTurnReplay(t *testing.T) {
 }
 
 func TestOpenCodeStartupAndMode(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XAI_API_KEY", "")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
@@ -405,13 +408,13 @@ func TestOpenCodeStartupAndMode(t *testing.T) {
 	if directory, _ := os.UserConfigDir(); directory != os.Getenv("XDG_CONFIG_HOME") {
 		t.Skip("platform does not use XDG_CONFIG_HOME")
 	}
-	if err := RunSession(t.Context(), []string{"--mode", "passthrough"}, nil, nil, nil); err == nil || !strings.Contains(err.Error(), "require --mode mekugi") {
+	if err := RunSession(t.Context(), []string{"--mode", "passthrough", "third-party"}, nil, nil, nil); err == nil || !strings.Contains(err.Error(), "require --mode mekugi") {
 		t.Fatalf("passthrough accepted OpenCode: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	ready := false
-	err := RunSession(ctx, nil, nil, func(session Session) {
+	err := RunSession(ctx, []string{"third-party"}, nil, func(session Session) {
 		ready = true
 		if session.GrokEnabled || session.OpenCode.Go.APIKey != "go-test" || session.OpenCode.Zen.APIKey != "zen-test" {
 			t.Error("startup lost separate OpenCode settings")

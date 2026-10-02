@@ -70,7 +70,7 @@ func TestAppServerInstantInterruptOptIn(t *testing.T) {
 			}
 			// The final wrapper must neither override the opt-in nor enable it
 			// by default, including resumed launches.
-			wrapped := codexArgs("http://127.0.0.1:12345/v1", got, false, false)
+			wrapped := codexArgs("http://127.0.0.1:12345/v1", got, false, false, true)
 			if !slices.Equal(wrapped[:len(want)], want) {
 				t.Fatalf("wrapper changed host options: %q", wrapped)
 			}

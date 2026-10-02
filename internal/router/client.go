@@ -130,6 +130,7 @@ func composeResponseTransformers(first, second responseTransformer) responseTran
 }
 
 type providerClient struct {
+	thirdPartyOnly    bool
 	titleGenerator    *sessionTitleGenerator
 	serviceTiers      map[string]string
 	websockets        *providerWebSockets
@@ -198,15 +199,21 @@ func (c *providerClient) forwardExecution(startCtx, responseCtx context.Context,
 		prefix, _, _ := strings.Cut(model.Model, ":")
 		client := c.opencode[prefix]
 		if client == nil {
-			return nil, incompatibleRequest("opencode_not_configured", "OpenCode provider is not configured; set its API key in the environment or Mekugi config.toml")
+			return nil, incompatibleRequest("opencode_not_configured", "OpenCode models require standalone mekugi with the provider's API key in the environment or Mekugi config.toml")
 		}
 		return client.forwardExecution(startCtx, responseCtx, body, headers)
 	}
 	if isGrokModel(model.Model) {
 		if c.grok == nil {
-			return nil, errors.New("grok models require --grok")
+			return nil, incompatibleRequest("grok_not_enabled", "Grok models require authenticated standalone mekugi or mekugi grok")
+		}
+		if c.grok.unprefixed != strings.HasPrefix(model.Model, "grok-") {
+			return nil, incompatibleRequest("grok_model_namespace", "Use plain Grok model IDs in mekugi grok, and grok: model IDs in standalone mekugi")
 		}
 		return c.grok.forwardExecution(startCtx, responseCtx, body, headers)
+	}
+	if c.thirdPartyOnly {
+		return nil, incompatibleRequest("third_party_model_required", "This launch supports only its authenticated third-party models; use mekugi codex for OpenAI models")
 	}
 
 	authorization, accountID, err := requiredCodexAuthHeaders(headers)

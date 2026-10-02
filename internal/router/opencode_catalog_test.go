@@ -119,7 +119,7 @@ func TestOpenCodeOnlineCatalogRefresh(t *testing.T) {
 	if _, err := translateProviderRequest([]byte(`{"model":"opencode-go:unknown-format","input":[]}`), &service); err == nil {
 		t.Fatal("unknown protocol silently treated as Chat")
 	}
-	body, err := ProviderModelCatalog([]byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2"}]}`), false, config)
+	body, err := ProviderModelCatalog([]byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2"}]}`), Session{OpenCode: config})
 	if err != nil || !strings.Contains(string(body), "opencode-go:brand-new") || strings.Contains(string(body), "unknown-format") {
 		t.Fatalf("dynamic Codex catalog: %s, %v", body, err)
 	}
@@ -176,7 +176,7 @@ func TestOpenCodeOnlineCatalogRefresh(t *testing.T) {
 	if loaded.current().Models["opencode-go"]["brand-new"].Description != "Upstream description 2." {
 		t.Fatal("description update did not survive cache reload")
 	}
-	updated, err := ProviderModelCatalog(body, false, config)
+	updated, err := ProviderModelCatalog(body, Session{OpenCode: config})
 	if err != nil || !strings.Contains(string(updated), `"description":"Upstream description 2."`) {
 		t.Fatal("refreshed upstream description not used")
 	}

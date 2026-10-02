@@ -4,11 +4,26 @@
 
 `mekugi [flags] codex [Codex arguments...]` starts one private router on an
 OS-assigned port bound to `127.0.0.1` and launches Codex from PATH only after
-initialization and binding succeed. There is no standalone or daemon command,
+initialization and binding succeed. There is no standalone router or daemon command,
 fixed-listener flag, custom-provider flag, or installed old-name alias.
+This mode supports Codex models only: third-party credentials do not register
+provider models, prepare a third-party catalog, or enable third-party requests.
+
+`mekugi [flags] [Codex arguments...]` launches standalone third-party mode using
+the same Codex execution engine, without Codex authentication or login. It offers
+only authenticated Grok and configured OpenCode Go/Zen routes, retaining their
+`grok:` and `opencode*:` model namespaces. No usable third-party credentials
+causes startup failure before the main Codex process launches. API-key presence
+enables a provider; key validity is established by its inference response. Grok
+OAuth credentials are validated/refreshed through their existing owner.
+Explicit model selection wins; otherwise authenticated Grok supplies the default
+under [REQ-GROK-001](grok.md), then the first available Go model, then Zen.
+`mekugi grok` is the dedicated, unprefixed Grok-only variant.
 
 Invocation-only provider overrides select the listener, Responses transport,
-and Codex-managed authentication against the fixed ChatGPT upstream. Provider
+and Codex-managed authentication against the fixed ChatGPT upstream for
+`mekugi codex`. Third-party-only launches use `requires_openai_auth=false` and
+provider-owned credentials; OpenAI requests are rejected locally in these modes. Provider
 selection in config and profiles is overridden without modifying configuration.
 Provider-selection arguments are rejected. Mekugi flags precede `codex`; subsequent
 noninteractive arguments remain intact, including subcommands and `--` delimiters.
@@ -37,7 +52,7 @@ choices without changing the model or other access programs. Grok and OpenCode
 requests are unchanged. This request-body selection cannot prevent an upstream
 eligibility-service failure during a WebSocket upgrade before the body is sent.
 
-With `--grok` or configured OpenCode providers, the wrapper pins the selected model catalog through Codex's
+In standalone or dedicated Grok mode, or with configured OpenCode providers, the wrapper pins the model catalog through Codex's
 `model_catalog_json` setting before launching the interactive or execution command.
 The session catalog and its cleanup follow [REQ-THIRD-PARTY-001](third_party.md).
 Other invocations do not run the catalog command or pin model metadata.

@@ -22,27 +22,23 @@ import (
 
 const testNativeModelCatalog = `{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2","shell_type":"unified_exec","apply_patch_tool_type":"freeform","model_messages":{"instructions_template":"native instructions"}}]}`
 
-func TestCatalogConfigArgs(t *testing.T) {
+func TestCatalogWorkingDirectory(t *testing.T) {
 	tests := []struct {
-		name       string
-		args, want []string
-		cwd        string
+		name string
+		args []string
+		cwd  string
 	}{
-		{"resume", []string{"resume", "thread", "-c", `model_catalog_json="chosen.json"`, "-C", "/tmp/work", "--", "-p", "ignored"},
-			[]string{"-c", `model_catalog_json="chosen.json"`}, "/tmp/work"},
-		{"inline", []string{"exec", "--config=model=x", `-c=foo="old"`, "--cd=/tmp/next"},
-			[]string{"-c", "model=x", "-c", `foo="old"`}, "/tmp/next"},
-		{"short", []string{"-cfoo=1", "-C/tmp", "prompt"},
-			[]string{"-c", "foo=1"}, "/tmp"},
-		{"long", []string{"--config", "foo=1", "--cd", "/tmp"},
-			[]string{"-c", "foo=1"}, "/tmp"},
-		{"plain", []string{"exec", "a prompt with spaces"}, nil, ""},
+		{"resume", []string{"resume", "thread", "-c", `model_catalog_json="chosen.json"`, "-C", "/tmp/work", "--", "-C", "ignored"}, "/tmp/work"},
+		{"inline", []string{"exec", "--config=model=x", `-c=foo="old"`, "--cd=/tmp/next"}, "/tmp/next"},
+		{"short", []string{"-cfoo=1", "-C/tmp", "prompt"}, "/tmp"},
+		{"long", []string{"--config", "foo=1", "--cd", "/tmp"}, "/tmp"},
+		{"config_operand", []string{"-c", "-C/ignored"}, ""},
+		{"plain", []string{"exec", "a prompt with spaces"}, ""},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, cwd, err := catalogConfigArgs(test.args)
-			if err != nil || !slices.Equal(got, test.want) || cwd != test.cwd {
-				t.Fatalf("catalog selectors = %v, %q; want %v, %q", got, cwd, test.want, test.cwd)
+			if got := catalogWorkingDirectory(test.args); got != test.cwd {
+				t.Fatalf("catalog working directory = %q; want %q", got, test.cwd)
 			}
 		})
 	}
@@ -123,7 +119,7 @@ func cancelWhenCatalogReady(t *testing.T) context.Context {
 func TestPrepareGrokCatalogExpiredDeadline(t *testing.T) {
 	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
 	defer cancel()
-	directory, path, err := prepareProviderCatalog(ctx, "not-launched", "http://127.0.0.1:12345/v1", nil, true, router.OpenCodeConfig{})
+	directory, path, err := prepareProviderCatalog(ctx, "not-launched", nil, router.Session{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true})
 	if !errors.Is(err, context.DeadlineExceeded) || directory != "" || path != "" || strings.Contains(err.Error(), "configuration") {
 		t.Fatalf("deadline result = %q, %q, %v", directory, path, err)
 	}
@@ -134,8 +130,8 @@ func TestPrepareGrokCatalog(t *testing.T) {
 	record := filepath.Join(t.TempDir(), "args.json")
 	t.Setenv("MEKUGI_TEST_CATALOG_ARGS", record)
 	cwd := t.TempDir()
-	directory, path, err := prepareProviderCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1",
-		[]string{"resume", "thread", "-C", cwd, "-c", `model_catalog_json="custom.json"`, "--", "prompt"}, true, router.OpenCodeConfig{})
+	directory, path, err := prepareProviderCatalog(t.Context(), executable,
+		[]string{"resume", "thread", "-C", cwd, "-c", `model_catalog_json="custom.json"`, "--", "prompt"}, router.Session{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,11 +149,11 @@ func TestPrepareGrokCatalog(t *testing.T) {
 	var catalog struct {
 		Models []map[string]any
 	}
-	if err := json.Unmarshal(body, &catalog); err != nil || len(catalog.Models) != 5 {
+	if err := json.Unmarshal(body, &catalog); err != nil || len(catalog.Models) != 4 {
 		t.Fatalf("catalog models: %v, %v", catalog.Models, err)
 	}
-	grok := catalog.Models[2]
-	if grok["slug"] != "grok:grok-4.6" || grok["apply_patch_tool_type"] != "freeform" || grok["shell_type"] != "unified_exec" {
+	grok := catalog.Models[1]
+	if grok["slug"] != "grok-4.6" || grok["apply_patch_tool_type"] != "freeform" || grok["shell_type"] != "unified_exec" {
 		t.Fatalf("lost Grok execution metadata: %v", grok)
 	}
 	var recorded struct {
@@ -168,7 +164,7 @@ func TestPrepareGrokCatalog(t *testing.T) {
 	if err != nil || json.Unmarshal(data, &recorded) != nil {
 		t.Fatalf("read command record: %v", err)
 	}
-	want := codexArgs("http://127.0.0.1:12345/v1", []string{"debug", "models", "-c", `model_catalog_json="custom.json"`}, false, false)
+	want := []string{"debug", "models", "--bundled"}
 	if !slices.Equal(recorded.Args, want) || recorded.Cwd != cwd {
 		t.Fatalf("debug models arguments = %v, cwd %q", recorded.Args, recorded.Cwd)
 	}
@@ -185,7 +181,7 @@ func TestPrepareGrokCatalogFailure(t *testing.T) {
 			if mode == "wait" {
 				ctx = cancelWhenCatalogReady(t)
 			}
-			directory, path, err := prepareProviderCatalog(ctx, executable, "http://127.0.0.1:12345/v1", nil, true, router.OpenCodeConfig{})
+			directory, path, err := prepareProviderCatalog(ctx, executable, nil, router.Session{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true})
 			if err == nil || directory != "" || path != "" || strings.Contains(err.Error(), "private bootstrap diagnostic") {
 				t.Fatalf("failure result = %q, %q, %v", directory, path, err)
 			}
@@ -199,18 +195,34 @@ func TestPrepareGrokCatalogFailure(t *testing.T) {
 	}
 }
 
-func TestGrokCatalogRejectsNamedProfiles(t *testing.T) {
-	for _, args := range [][]string{
-		{"-p", "work"}, {"resume", "thread", "--profile", "work"},
-		{"exec", "--profile=work", "prompt"}, {"-pwork"}, {"-p=work"}, {"-p"}, {"--profile"},
+func TestPrepareProviderCatalogAcceptsHostConfigSelectors(t *testing.T) {
+	executable := catalogTestExecutable(t)
+	record := filepath.Join(t.TempDir(), "args.json")
+	t.Setenv("MEKUGI_TEST_CATALOG_ARGS", record)
+	cwd := t.TempDir()
+	for _, session := range []router.Session{
+		{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true},
+		{ThirdPartyOnly: true, OpenCode: router.OpenCodeConfig{Go: router.OpenCodeServiceConfig{APIKey: "test"}}},
 	} {
-		_, _, err := catalogConfigArgs(args)
-		if err == nil || !strings.Contains(err.Error(), "do not support --profile") {
-			t.Fatalf("accepted named profile %v: %v", args, err)
+		directory, _, err := prepareProviderCatalog(t.Context(), executable,
+			[]string{"exec", "--ignore-user-config", "--profile", "work", "-C", cwd, "-c", "model=chosen"}, session)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.RemoveAll(directory) })
+		var recorded struct {
+			Args []string
+			Cwd  string
+		}
+		data, err := os.ReadFile(record)
+		if err != nil || json.Unmarshal(data, &recorded) != nil {
+			t.Fatalf("read bootstrap arguments: %v", err)
+		}
+		if !slices.Equal(recorded.Args, []string{"debug", "models", "--bundled"}) || recorded.Cwd != cwd {
+			t.Fatalf("bundled catalog depends on host config selectors: %+v", recorded)
 		}
 	}
 }
-
 func TestPrepareGrokCatalogUsesAbsolutePath(t *testing.T) {
 	executable := catalogTestExecutable(t)
 	t.Chdir(t.TempDir())
@@ -219,7 +231,7 @@ func TestPrepareGrokCatalogUsesAbsolutePath(t *testing.T) {
 	}
 	t.Setenv("TMPDIR", "temporary")
 	cwd := t.TempDir()
-	directory, path, err := prepareProviderCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1", []string{"-C", cwd}, true, router.OpenCodeConfig{})
+	directory, path, err := prepareProviderCatalog(t.Context(), executable, []string{"-C", cwd}, router.Session{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,12 +252,13 @@ func TestWrapGrokCatalogFailureCleansRuntime(t *testing.T) {
 	runtime := t.TempDir()
 	t.Setenv("TMPDIR", temporary)
 	t.Setenv("MEKUGI_RUNTIME_DIR", runtime)
+	t.Setenv("XAI_API_KEY", "test")
 	t.Setenv("CODEX_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
-	code, err := wrapCodex(ctx, []string{"--grok"}, []string{"exec", "prompt"})
+	code, err := wrapCodex(ctx, []string{"grok"}, []string{"exec", "prompt"})
 	if code != 1 || err == nil || !strings.Contains(err.Error(), "codex debug models failed") {
 		t.Fatalf("catalog bootstrap failure = %d, %v", code, err)
 	}
@@ -253,22 +266,6 @@ func TestWrapGrokCatalogFailureCleansRuntime(t *testing.T) {
 		if entries, err := os.ReadDir(path); err != nil || len(entries) != 0 {
 			t.Fatalf("bootstrap failure leaked runtime files: %v, %v", entries, err)
 		}
-	}
-}
-
-func TestGrokCatalogRejectsIgnoreUserConfigBeforeBootstrap(t *testing.T) {
-	executable := filepath.Join(t.TempDir(), "missing-codex")
-	for _, args := range [][]string{
-		{"exec", "--ignore-user-config", "prompt"},
-		{"exec", "--ignore-user-config=true", "prompt"},
-	} {
-		_, _, err := prepareProviderCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1", args, true, router.OpenCodeConfig{})
-		if err == nil || !strings.Contains(err.Error(), "do not support --ignore-user-config") {
-			t.Fatalf("did not reject configuration selector before bootstrap: %v", err)
-		}
-	}
-	if _, _, err := catalogConfigArgs([]string{"exec", "--", "--ignore-user-config"}); err != nil {
-		t.Fatalf("treated prompt data as a configuration selector: %v", err)
 	}
 }
 
@@ -301,7 +298,7 @@ func TestCatalogProgressOutput(t *testing.T) {
 				output <- body
 			}()
 			ctx := cancelWhenCatalogReady(t)
-			_, _, err = prepareProviderCatalog(ctx, executable, "http://127.0.0.1:12345/v1", nil, true, router.OpenCodeConfig{})
+			_, _, err = prepareProviderCatalog(ctx, executable, nil, router.Session{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true})
 			writer.Close()
 			body := string(<-output)
 			if !errors.Is(err, context.Canceled) {
@@ -415,7 +412,7 @@ func TestPrepareCatalogSucceedsWithBrokenProgress(t *testing.T) {
 	original := os.Stderr
 	os.Stderr = stderr
 	defer func() { os.Stderr = original }()
-	directory, path, err := prepareProviderCatalog(t.Context(), executable, "http://127.0.0.1:12345/v1", nil, true, router.OpenCodeConfig{})
+	directory, path, err := prepareProviderCatalog(t.Context(), executable, nil, router.Session{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true})
 	if err != nil {
 		t.Fatalf("auxiliary output failure replaced catalog result: %v", err)
 	}

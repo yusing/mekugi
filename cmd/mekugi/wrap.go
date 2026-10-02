@@ -22,22 +22,26 @@ import (
 )
 
 func runWrap(routerArgs, args []string) int {
-	if len(args) == 0 || args[0] != "codex" {
-		fmt.Fprintln(os.Stderr, "usage: mekugi [flags] codex [Codex arguments...]")
-		return 2
+	if len(args) > 0 && args[0] == "grok" {
+		routerArgs = append(slices.Clone(routerArgs), "grok")
+		args = args[1:]
+	} else if len(args) > 0 && args[0] == "codex" {
+		args = args[1:]
+	} else {
+		routerArgs = append(slices.Clone(routerArgs), "third-party")
 	}
-	if interactiveCodexArgs(args[1:]) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
+	if interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
 		if err := exposeHerdrCodex(); err != nil {
 			fmt.Fprintln(os.Stderr, "mekugi: Herdr agent hint:", err)
 		}
 	}
 	signals := []os.Signal{syscall.SIGTERM}
-	if len(args) > 1 && args[1] == "headless" {
+	if len(args) > 0 && args[0] == "headless" {
 		signals = append(signals, os.Interrupt)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), signals...)
 	defer stop()
-	code, err := wrapCodex(ctx, routerArgs, args[1:])
+	code, err := wrapCodex(ctx, routerArgs, args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mekugi:", err)
 	}
@@ -111,8 +115,8 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		return 1, err
 	case session = <-ready:
 	}
-	if session.GrokEnabled || session.OpenCode.Enabled() {
-		catalogDirectory, catalogPath, err := prepareProviderCatalog(ctx, executable, session.BaseURL, args, session.GrokEnabled, session.OpenCode)
+	if session.ThirdPartyOnly {
+		catalogDirectory, catalogPath, err := prepareProviderCatalog(ctx, executable, args, session)
 		if err != nil {
 			cancel()
 			return 1, errors.Join(err, <-routerDone)
@@ -128,6 +132,11 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			index = len(args)
 		}
 		args = slices.Insert(slices.Clone(args), index, "-c", fmt.Sprintf("model_catalog_json=%q", catalogPath))
+		args, err = thirdPartyDefaultArgs(args, session)
+		if err != nil {
+			cancel()
+			return 1, errors.Join(err, <-routerDone)
+		}
 	}
 
 	if session.PostCompactRecovery {
@@ -142,7 +151,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			fmt.Fprintln(os.Stderr, "mekugi: explicit CLI hooks configuration retained; add the post-compact SessionStart hook to that configuration to enable recovery")
 		}
 	}
-	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.JournalEnabled, session.SkillsManagerAvailable)...)
+	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.JournalEnabled, session.SkillsManagerAvailable, !session.ThirdPartyOnly)...)
 	cmd.Env = append(os.Environ(), "MEKUGI_BASE_URL="+session.BaseURL)
 	if session.NativeTraceDirectory != "" {
 		cmd.Env = append(cmd.Env, "CODEX_ROLLOUT_TRACE_ROOT="+session.NativeTraceDirectory)
@@ -327,7 +336,7 @@ func watchStartupInterrupts(ctx context.Context, cancel context.CancelFunc, inte
 	})
 }
 
-func codexArgs(baseURL string, args []string, journal, skillsManagerAvailable bool) []string {
+func codexArgs(baseURL string, args []string, journal, skillsManagerAvailable, openAIAuth bool) []string {
 	// Keep overrides in the final command's config layer: Codex subcommands
 	// can replace pre-subcommand -c settings with their own. Never cross --.
 	index := slices.Index(args, "--")
@@ -342,7 +351,7 @@ func codexArgs(baseURL string, args []string, journal, skillsManagerAvailable bo
 		"--disable", "goals",
 		"-c", "features.goals=false",
 		"-c", `model_provider="mekugi_wrap"`,
-		"-c", fmt.Sprintf(`model_providers.mekugi_wrap={name="mekugi",base_url=%q,wire_api="responses",requires_openai_auth=true,supports_websockets=false}`, baseURL),
+		"-c", fmt.Sprintf(`model_providers.mekugi_wrap={name="mekugi",base_url=%q,wire_api="responses",requires_openai_auth=%t,supports_websockets=false}`, baseURL, openAIAuth),
 		"-c", `include_collaboration_mode_instructions=false`,
 	}
 	if skillsManagerAvailable {

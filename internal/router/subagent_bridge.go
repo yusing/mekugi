@@ -17,7 +17,11 @@ type subagentBridge struct {
 	names map[string]bool
 }
 
-func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool, openCode ...string) (*subagentBridge, error) {
+func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled, grokUnprefixed bool, openCode ...string) (*subagentBridge, error) {
+	grokModelNote := embeddedInstruction("grok_model")
+	if grokUnprefixed {
+		grokModelNote = strings.ReplaceAll(grokModelNote, "grok:", "")
+	}
 	openCodeNote := ""
 	if len(openCode) > 0 {
 		openCodeNote = " " + strings.ReplaceAll(embeddedInstruction("opencode_spawn"), "%MODELS%", strings.Join(openCode, ", "))
@@ -69,7 +73,7 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled bool, op
 						}
 						if grokEnabled && jsonString(fn, "name") == "spawn_agent" {
 							for name, note := range map[string]string{
-								"model":            embeddedInstruction("grok_model"),
+								"model":            grokModelNote,
 								"fork_turns":       embeddedInstruction("grok_fork_turns"),
 								"reasoning_effort": embeddedInstruction("grok_reasoning_effort"),
 							} {
