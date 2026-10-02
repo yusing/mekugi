@@ -35,14 +35,15 @@ type (
 	}
 
 	toolWorkerManifest struct {
-		HookDirectory   string             `json:"hook_directory,omitempty"`
-		ReplayDirectory string             `json:"replay_directory,omitempty"`
-		AXReadOutput    string             `json:"ax_read_output,omitempty"`
-		Version         int                `json:"version"`
-		RegistryID      string             `json:"registry_id"`
-		GuidanceSHA256  string             `json:"guidance_sha256"`
-		NodeExecutable  string             `json:"node_executable,omitempty"`
-		RuntimeRoot     string             `json:"runtime_root"`
-		Tools           []toolContribution `json:"tools"`
+		Runtime         *runtimeFrontendBinding `json:"runtime,omitempty"`
+		HookDirectory   string                  `json:"hook_directory,omitempty"`
+		ReplayDirectory string                  `json:"replay_directory,omitempty"`
+		AXReadOutput    string                  `json:"ax_read_output,omitempty"`
+		Version         int                     `json:"version"`
+		RegistryID      string                  `json:"registry_id"`
+		GuidanceSHA256  string                  `json:"guidance_sha256"`
+		NodeExecutable  string                  `json:"node_executable,omitempty"`
+		RuntimeRoot     string                  `json:"runtime_root"`
+		Tools           []toolContribution      `json:"tools"`
 	}
 )

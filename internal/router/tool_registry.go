@@ -43,6 +43,16 @@ func buildToolRegistryAt(
 	diagnose bool,
 	runtimeDirectory, replayDirectory string,
 ) (*toolRegistry, error) {
+	return buildToolRegistryWithRuntime(ctx, dataDirectory, diagnose, runtimeDirectory, replayDirectory, nil)
+}
+
+func buildToolRegistryWithRuntime(
+	ctx context.Context,
+	dataDirectory string,
+	diagnose bool,
+	runtimeDirectory, replayDirectory string,
+	binding *runtimeFrontendBinding,
+) (*toolRegistry, error) {
 	if err := os.MkdirAll(runtimeDirectory, 0o700); err != nil {
 		return nil, fmt.Errorf("create tool runtime directory: %w", err)
 	}
@@ -146,6 +156,10 @@ func buildToolRegistryAt(
 	if len(validationErrors) != 0 {
 		return fail(errors.Join(validationErrors...))
 	}
+	if binding != nil {
+		// Validate the full catalog before omitting Codex-only built-ins.
+		contributions = slices.DeleteFunc(contributions, func(tool toolContribution) bool { return tool.Builtin })
+	}
 	frontendGuidance, err := frontendGuidanceFromRegistry(contributions)
 	if err != nil {
 		return fail(err)
@@ -153,6 +167,7 @@ func buildToolRegistryAt(
 
 	guidanceHash := sha256.Sum256([]byte(frontendGuidance))
 	manifest := toolWorkerManifest{
+		Runtime:         binding,
 		ReplayDirectory: replayDirectory,
 		HookDirectory:   dataDirectory,
 		Version:         1,

@@ -33,7 +33,11 @@ type changeReadOptions struct {
 }
 
 func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) {
-	options := changeReadOptions{workspace: cwd, maxTokens: 4000}
+	return parseChangeReadAt(arguments, cwd, cwd)
+}
+
+func parseChangeReadAt(arguments []string, cwd, workspace string) (changeReadOptions, error) {
+	options := changeReadOptions{workspace: workspace, maxTokens: 4000}
 	seen := make(map[string]bool)
 	var refs []string
 	if len(arguments) > 0 && (arguments[0] == "revert" || arguments[0] == "apply") {
@@ -605,9 +609,21 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments
 	if err != nil {
 		return fail(fmt.Errorf("resolve working directory: %w", err))
 	}
-	options, err := parseChangeRead(arguments, cwd)
+	workspace := cwd
+	if manifest.Runtime != nil {
+		workspace = manifest.Runtime.Workspace
+	}
+	options, err := parseChangeReadAt(arguments, cwd, workspace)
 	if err != nil {
 		return fail(err)
+	}
+	if manifest.Runtime != nil {
+		if options.mine {
+			return fail(errors.New("own-agent mchanges caller unavailable; use explicit change IDs"))
+		}
+		if options.workspace != manifest.Runtime.Workspace {
+			return fail(errors.New("workspace does not match the runtime frontend workspace"))
+		}
 	}
 	// The authenticated manifest pins the router's store. Do not derive it from
 	// mutable child environment or create a store as a side effect of reading.

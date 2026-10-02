@@ -167,6 +167,18 @@ func runAuthenticatedToolWorker(
 			return fail(err)
 		}
 	}
+	thread := os.Getenv("CODEX_THREAD_ID")
+	if manifest.Runtime != nil {
+		binding, err := runtimeFrontendContext(ctx, *manifest.Runtime)
+		if err != nil {
+			return fail(err)
+		}
+		// This root session identity owns retention, not agent authorship or journals.
+		thread = observationThread(binding)
+		if manifest.ReplayDirectory == "" {
+			return fail(errors.New("runtime frontend storage is unavailable"))
+		}
+	}
 	if manifest.ReplayDirectory != "" {
 		store, err := shellOutputStore(manifest)
 		if err != nil {
@@ -174,7 +186,7 @@ func runAuthenticatedToolWorker(
 		}
 		store.storageNotice = func(_, _, _ string, message string) { _, _ = fmt.Fprintln(stderr, message) }
 		var release func()
-		ctx, release, err = store.beginSession(ctx, os.Getenv("CODEX_THREAD_ID"), "")
+		ctx, release, err = store.beginSession(ctx, thread, "")
 		if err != nil {
 			return fail(err)
 		}
