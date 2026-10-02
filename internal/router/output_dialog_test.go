@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/execsegment"
@@ -239,6 +240,16 @@ func TestOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
 				}
 			}
 			frame := ansi.Strip(screen.String())
+			border := screen.CellAt(u.output.rect.x, u.output.rect.y).Style
+			if border.Bg == nil || border.Attrs&uv.AttrFaint != 0 {
+				t.Fatalf("dialog inherited backdrop or lost surface: %+v", border)
+			}
+			if width >= outputDialogFullWidth {
+				background := screen.CellAt(0, 0).Style
+				if background.Bg != nil || background.Attrs&uv.AttrFaint == 0 {
+					t.Fatalf("backdrop lost isolation: %+v", background)
+				}
+			}
 			t.Logf("dialog frame:\n%s", frame)
 			if !strings.Contains(frame, "modal content") || width >= outputDialogFullWidth && !strings.Contains(frame, "background") {
 				t.Fatalf("VT overlay lost dialog or background: %q", frame)

@@ -6,9 +6,64 @@ import (
 	"testing"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
 )
+
+func TestDialogSurfaceStyles(t *testing.T) {
+	for _, theme := range []livediff.Theme{livediff.TerminalTheme, livediff.DarkTheme, livediff.LightTheme} {
+		for _, fallback := range []bool{false, true} {
+			t.Run(fmt.Sprintf("theme=%d/fallback=%v", theme, fallback), func(t *testing.T) {
+				p := Painter{Theme: theme}
+				frame := DialogFrame{Page: DialogPage{Title: "Title", Detail: Dim + "metadata" + Undim}, Rows: []string{
+					"A\x1b[0mB\x1b[mC\x1b[39;49mD",
+					"\x1b[31mR\x1b[48;2;1;2;3mF\x1b[49mS",
+				}, Footer: "esc close"}
+				screen := vt.NewEmulator(40, 9)
+				defer screen.Close()
+				rows := p.Dialog(frame, 40, 8)
+				for y, row := range rows {
+					if fallback {
+						row = FaintFallback(row)
+					}
+					if _, err := screen.WriteString(fmt.Sprintf("\x1b[%d;1H%s", y+1, row)); err != nil {
+						t.Fatal(err)
+					}
+				}
+				base := screen.CellAt(2, 3).Style
+				if base.Bg == nil || base.Fg == nil || base.Attrs&uv.AttrFaint != 0 {
+					t.Fatalf("body lacks full-strength surface: %+v", base)
+				}
+				for y := range 8 {
+					for x := range 40 {
+						if screen.CellAt(x, y).Style.Bg == nil {
+							t.Fatalf("surface hole at %d,%d", x, y)
+						}
+					}
+				}
+				for x := 3; x < 6; x++ {
+					if got := screen.CellAt(x, 3).Style; got.Fg != base.Fg || got.Bg != base.Bg {
+						t.Fatalf("reset lost surface at %d: %+v", x, got)
+					}
+				}
+				if screen.CellAt(0, 0).Style.Fg == base.Fg {
+					t.Fatal("frame lost accent")
+				}
+				if screen.CellAt(2, 4).Style.Fg == base.Fg || screen.CellAt(3, 4).Style.Bg == base.Bg || screen.CellAt(4, 4).Style.Bg != base.Bg {
+					t.Fatal("explicit content colors or surface restoration lost")
+				}
+				if _, err := screen.WriteString("\x1b[9;1Houtside"); err != nil {
+					t.Fatal(err)
+				}
+				if screen.CellAt(0, 8).Style.Bg != nil {
+					t.Fatal("dialog surface leaked outside frame")
+				}
+			})
+		}
+	}
+}
 
 func TestDialogPageNumberingAndGutters(t *testing.T) {
 	var p Painter

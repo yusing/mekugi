@@ -175,7 +175,9 @@ When per-command boundaries were not retained (including restored history,
 terminal-only or lossy reports), the dialog labels the host buffer as combined
 output instead of attributing it to the last command. It never guesses boundaries. It takes
 at most 90% of each dimension, or the available screen below 60 columns, over
-the panes faded to faint uncolored text; its frame keeps full strength.
+the panes faded to faint uncolored text. A theme-aware filled surface and
+accent-colored frame separate the dialog from those panes; syntax, diff, and
+selection colors remain visible within it.
 The top-right `[×]` close button, `Esc`/`q`, or a click outside closes it. `↑`/`↓`, `j`/`k`, `PgUp`/`PgDn`,
 `b`/space and `g`/`G` (Home/End) scroll; the wheel scrolls only the dialog.
 All command output uses shared best-effort content-based syntax detection in

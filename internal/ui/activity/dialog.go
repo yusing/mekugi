@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 )
@@ -394,8 +395,8 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 	if width < 12 || height < DialogChrome+1 {
 		return nil
 	}
-	// Full-strength edges hold the frame apart from the faded backdrop.
-	edge := func(s string) string { return s }
+	// Accent edges and an opaque surface separate the modal from the panes.
+	edge := func(s string) string { return p.Theme.Accent() + s + Reset }
 	inner := width - 4
 	right := f.Position
 	if f.Page.Live {
@@ -446,7 +447,50 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 		lines = append(lines, row(text, i >= thumbFrom && i <= thumbTo))
 	}
 	footer := ansi.Truncate(f.Footer, max(0, width-6), "…")
-	return append(lines, edge("╰─ ")+footer+Reset+" "+edge(strings.Repeat("─", max(0, width-5-ansi.StringWidth(footer)))+"╯"))
+	lines = append(lines, edge("╰─ ")+footer+Reset+" "+edge(strings.Repeat("─", max(0, width-5-ansi.StringWidth(footer)))+"╯"))
+	background, ink := p.codeBackground(), "\x1b[38;2;230;237;243m"
+	if background == "" {
+		background = "\x1b[48;2;32;35;40m"
+	}
+	if p.Theme == livediff.LightTheme {
+		ink = "\x1b[38;2;31;41;55m"
+	}
+	for i, line := range lines {
+		lines[i] = dialogSurface(line, ink, background)
+	}
+	return lines
+}
+
+// Restore the surface after any SGR color reset, including combined resets,
+// without overwriting explicit syntax colors, diff fills, or selection styles.
+func dialogSurface(row, ink, fill string) string {
+	var out strings.Builder
+	out.WriteString(Reset + ink + fill)
+	var style uv.Style
+	parser := ansi.GetParser()
+	defer func() { parser.SetHandler(ansi.Handler{}); ansi.PutParser(parser) }()
+	parser.SetHandler(ansi.Handler{HandleCsi: func(cmd ansi.Cmd, params ansi.Params) {
+		if cmd == 'm' {
+			uv.ReadStyle(params, &style)
+		}
+	}})
+	var state byte
+	for row != "" {
+		seq, _, n, next := ansi.DecodeSequence(row, state, nil)
+		out.WriteString(seq)
+		if strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
+			parser.Parse([]byte(seq))
+			if style.Fg == nil {
+				out.WriteString(ink)
+			}
+			if style.Bg == nil {
+				out.WriteString(fill)
+			}
+		}
+		row, state = row[n:], next
+	}
+	out.WriteString(Reset)
+	return out.String()
 }
 
 func (p *Painter) DialogPageTitle(block Block, now time.Time, width int) string {
