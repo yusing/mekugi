@@ -223,6 +223,17 @@ func (o *nativeObservationOwner) before(ctx context.Context, call ObservationCal
 		// Replay never opens another observation window or captures a later baseline.
 		return nil
 	}
+	// A terminal receipt may arrive without a successful pre-tool observation.
+	// Its coverage gap is final: a delayed hook cannot supply a baseline after
+	// the effect or reopen display settlement for the completed call.
+	if prior, found, err := o.store.lookup(ctx, o.workspace, key+"/after"); err != nil {
+		return err
+	} else if found {
+		if prior.NativeObservation == nil || !reflect.DeepEqual(prior.NativeObservation.Call, &call) {
+			return errors.New("native call identity/input changed")
+		}
+		return nil
+	}
 	if len(o.live) >= 1024 {
 		return errors.New("native pending observation limit reached")
 	}
