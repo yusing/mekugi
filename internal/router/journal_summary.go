@@ -100,6 +100,40 @@ func summaryTail(text string, limit int, notice string) string {
 // mandatory context and open tasks must fit; otherwise synthesis must fall back
 // to the provider rather than silently discarding a constraint or resume target.
 func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJournal) (journalSummary, error) {
+	return s.renderJournalSummaryLocked(ctx, j, 0)
+}
+
+// journalSummaryBoundedLocked uses UTF-16 code units, matching JavaScript
+// string.length. It preserves mandatory facts in full or returns no text. Like
+// journalSummaryLocked, the caller owns the journal and replay-store locks.
+func (s *mekugiReplayStore) journalSummaryBoundedLocked(ctx context.Context, j threadJournal, maxCharacters int) (journalSummary, error) {
+	if maxCharacters <= 0 {
+		return journalSummary{}, errors.New("journal summary character capacity must be positive")
+	}
+	return s.renderJournalSummaryLocked(ctx, j, maxCharacters)
+}
+
+func journalSummaryCharacters(text string) int {
+	n := 0
+	for _, r := range text {
+		n++
+		if r > 0xffff {
+			n++
+		}
+	}
+	return n
+}
+
+// A zero character limit selects the existing byte-budget policy. Both carriers
+// select and render the same durable facts; only admission and full open-task
+// bodies differ. Optional sections are admitted atomically, never packet-clipped.
+func (s *mekugiReplayStore) renderJournalSummaryLocked(ctx context.Context, j threadJournal, maxCharacters int) (journalSummary, error) {
+	bounded := maxCharacters > 0
+	measure := func(text string) int { return len(text) }
+	capacity := maxJournalSummaryBytes
+	if bounded {
+		measure, capacity = journalSummaryCharacters, maxCharacters
+	}
 	var result journalSummary
 	if !j.IdentityKnown || j.IdentityConflicted {
 		return result, errors.New("journal summary identity is unavailable or conflicted")
@@ -228,17 +262,52 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 			if next == "" && !strings.Contains(item.Path, "/@") {
 				next = item.Path
 			}
-			writeNode(item, false)
+			writeNode(item, bounded)
 		}
 	}
-	if text.Len() > maxJournalSummaryBytes/2 {
+	mandatoryLimit := maxJournalSummaryBytes / 2
+	if bounded {
+		mandatoryLimit = capacity
+	}
+	if measure(text.String()) > mandatoryLimit {
 		return result, errors.New("journal context and open tasks exceed summary capacity")
 	}
-	text.WriteString("\nEstablished results and completed work:\n")
-	text.WriteString("Completed task bodies and history are on demand: journal({op:\"read\", p:\"PATH\"}).\n")
+	// Reserve the resume target before optional evidence. Keep section boundaries
+	// so an omission never leaves a partial node, change range, or diagnostic.
+	footer := ""
+	if bounded {
+		footer = fmt.Sprintf("\nResume: continue %s; consult durable journal reads and retained change/output references.\n", cmp.Or(next, "the journal plan"))
+		if measure(text.String())+measure(footer) > capacity {
+			return result, errors.New("journal context and open tasks exceed summary capacity")
+		}
+	}
+	var sections []string
+	used, evidenceOmitted := measure(text.String())+measure(footer), false
+	remaining := func() int {
+		if bounded {
+			return capacity - used
+		}
+		return capacity - text.Len()
+	}
+	writeSection := func(section string, hasEvidence bool) {
+		if !bounded {
+			text.WriteString(section)
+		} else if measure(section) <= remaining() {
+			sections = append(sections, section)
+			used += measure(section)
+		} else if hasEvidence {
+			evidenceOmitted = true
+		}
+	}
+	var establishedText strings.Builder
+	establishedText.WriteString("\nEstablished results and completed work:\n")
+	establishedText.WriteString("Completed task bodies and history are on demand: journal({op:\"read\", p:\"PATH\"}).\n")
 	// Keep the newest results, which are nearest current work, in tree order.
 	var established []string
-	budget, omitted := maxJournalSummaryBytes/2-text.Len()-128, 0
+	budget, omitted := maxJournalSummaryBytes/2-text.Len()-establishedText.Len()-128, 0
+	if bounded {
+		budget = remaining()/2 - establishedText.Len() - 128
+	}
 	isResult := func(item journalItem) bool {
 		return item.Kind != "context" && (item.Kind != "task" || item.State == "done" || item.State == "dropped") && !hiddenBySupersession(item.Path)
 	}
@@ -247,27 +316,38 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 			continue
 		}
 		node := renderNode(item, false)
-		if omitted > 0 || len(node) > budget {
+		if omitted > 0 || measure(node) > budget {
 			omitted++
 			continue
 		}
-		budget -= len(node)
+		budget -= measure(node)
 		established = append(established, node)
 	}
 	if omitted > 0 {
-		fmt.Fprintf(&text, "\n%d earlier results omitted; journal({op:\"read\", view:\"outline\"}) locates own retained paths.\n", omitted)
+		fmt.Fprintf(&establishedText, "\n%d earlier results omitted; journal({op:\"read\", view:\"outline\"}) locates own retained paths.\n", omitted)
 	}
 	for _, node := range slices.Backward(established) {
-		text.WriteString(node)
+		establishedText.WriteString(node)
 	}
+	writeSection(establishedText.String(), len(established) > 0 || omitted > 0)
 	index, err := s.readChangeIndex(j.Workspace)
 	if err != nil {
 		return result, err
 	}
-	text.WriteString("\nRetained changes:\n")
 	// Recorded work already reports its outcomes; ranges locate the evidence.
 	changes, _ := s.renderChildJournalChanges(ctx, index, j.Thread, 0, false, false)
-	text.WriteString(boundCompactSection(changes, "mchanges --list"))
+	changeRecovery := "mchanges --list"
+	if bounded {
+		changeRecovery = "saved Diff or explicit-ID mchanges reads when utilities are enabled"
+	}
+	// Ask the shared changes renderer for its empty view rather than duplicating
+	// its ownership/retention classification or depending on a prose literal.
+	hasChanges := true
+	if bounded {
+		emptyChanges, _ := s.renderChildJournalChanges(ctx, changeIndex{}, j.Thread, 0, false, false)
+		hasChanges = changes != emptyChanges
+	}
+	writeSection("\nRetained changes:\n"+boundCompactSection(changes, changeRecovery), hasChanges)
 	sinceChange, sinceCapture := uint64(0), uint64(0)
 	if j.EvidenceKnown {
 		sinceChange, sinceCapture = j.EvidenceChangeSeq, j.EvidenceCaptureOrder
@@ -306,29 +386,38 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 			failures = append(failures, record)
 		}
 		if history.ExecObservation != nil && outcome == nil && !completed[execDerivedCallID(record.CallID, history.ExecObservation.CodeMode)] {
+			if bounded && len(history.Script) > 512 {
+				evidenceOmitted = true
+			}
 			unconfirmed = append(unconfirmed, fmt.Sprintf("\n%s: %s\n", record.CallID, summaryExcerpt(history.Script, 512, "[source truncated]")))
 		}
 	}
 	if len(unconfirmed) > 0 {
-		text.WriteString("\nExecution observations without retained completion:\nPre-execution observations only, not proof of a running process. Check current host state before starting overlapping work. No continuation handle or Code Mode store value is restored.\n")
+		var observations strings.Builder
+		observations.WriteString("\nExecution observations without retained completion:\nPre-execution observations only, not proof of a running process. Check current host state before starting overlapping work. No continuation handle or Code Mode store value is restored.\n")
 		start := max(0, len(unconfirmed)-8)
 		if start > 0 {
-			fmt.Fprintf(&text, "%d earlier observations omitted.\n", start)
+			fmt.Fprintf(&observations, "%d earlier observations omitted.\n", start)
+			if bounded {
+				evidenceOmitted = true
+			}
 		}
 		for _, entry := range unconfirmed[start:] {
-			text.WriteString(entry)
+			observations.WriteString(entry)
 		}
+		writeSection(observations.String(), true)
 	}
 	result.Failures = len(failures)
 	if result.Changes > 0 || len(failures) > 0 {
-		text.WriteString("\nSince the last journal event:\n")
+		var delta strings.Builder
+		delta.WriteString("\nSince the last journal event:\n")
 		if result.Changes > 0 {
 			changes, _ := s.renderChildJournalChanges(ctx, index, j.Thread, sinceChange, true, true)
-			text.WriteString(boundCompactSection(changes, "mchanges --list"))
+			delta.WriteString(boundCompactSection(changes, changeRecovery))
 		}
 		// Keep the newest failures within the remaining capacity.
 		var listed []string
-		budget := maxJournalSummaryBytes - text.Len() - 512
+		budget := remaining() - measure(delta.String()) - 512
 		for _, failure := range slices.Backward(failures) {
 			if len(listed) == maxJournalSummaryFailures {
 				break
@@ -353,24 +442,58 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 			if outcome.Exit != nil {
 				exit = fmt.Sprint(*outcome.Exit)
 			}
+			if bounded && (len(failure.History.Script) > 1024 || outcome.OutputRef == "" && len(failure.History.Report) > 1024) {
+				evidenceOmitted = true
+			}
 			entry := fmt.Sprintf("\nFailed: %s\nExit: %s · %s\n%s\n", summaryExcerpt(failure.History.Script, 1024, "[command truncated]"), exit, output, summaryTail(failure.History.Report, 1024, notice))
-			if len(entry) > budget {
+			if measure(entry) > budget {
 				break
 			}
-			budget -= len(entry)
+			budget -= measure(entry)
 			listed = append(listed, entry)
 		}
 		if earlier := len(failures) - len(listed); earlier > 0 {
-			fmt.Fprintf(&text, "\n%d earlier failed commands omitted.\n", earlier)
+			fmt.Fprintf(&delta, "\n%d earlier failed commands omitted.\n", earlier)
+			if bounded {
+				evidenceOmitted = true
+			}
 		}
 		for _, entry := range slices.Backward(listed) {
-			text.WriteString(entry)
+			delta.WriteString(entry)
 		}
-		fmt.Fprintf(&text, "\nResume: continue %s; read the listed journal paths, mchanges ranges and mread references as needed.\n", cmp.Or(next, "the journal plan"))
-	} else {
+		writeSection(delta.String(), true)
+		if !bounded {
+			fmt.Fprintf(&text, "\nResume: continue %s; read the listed journal paths, mchanges ranges and mread references as needed.\n", cmp.Or(next, "the journal plan"))
+		}
+	} else if !bounded {
 		fmt.Fprintf(&text, "\nResume: continue %s; read retained journal paths and mchanges ranges as needed.\n", cmp.Or(next, "the journal plan"))
 	}
-	if text.Len() > maxJournalSummaryBytes {
+	if bounded {
+		// Omitted command records remain discoverable even when individual mread
+		// references cannot fit. The manifest names immutable retained records.
+		notice := "\nOptional evidence omitted; durable journal reads and explicit-ID mchanges reviews retain details when utilities are enabled."
+		if len(records) > 0 {
+			notice += fmt.Sprintf(" Execution records: %q (files relative to %q).", filepath.Join(s.directory, storageSessionName(j.Thread)), s.directory)
+		}
+		notice += "\n"
+		if evidenceOmitted {
+			for len(sections) > 0 && used+measure(notice) > capacity {
+				used -= measure(sections[len(sections)-1])
+				sections = sections[:len(sections)-1]
+			}
+			if used+measure(notice) > capacity {
+				return result, errors.New("journal mandatory facts and evidence recovery references exceed summary capacity")
+			}
+		}
+		for _, section := range sections {
+			text.WriteString(section)
+		}
+		if evidenceOmitted {
+			text.WriteString(notice)
+		}
+		text.WriteString(footer)
+	}
+	if measure(text.String()) > capacity {
 		return result, errors.New("journal evidence exceeds summary capacity")
 	}
 	result.Text = text.String()
