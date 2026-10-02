@@ -177,7 +177,7 @@ func (u *appServerUI) flushInput() error {
 func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	if len(parts) == 1 && parts[0].text == "/compact" {
 		u.compaction.begin(parts[0].continueTask)
-		u.status = "Compacting context…"
+		u.status = u.compactionProgressText() + "…"
 		return u.request("thread/compact/start", map[string]any{"threadId": u.thread})
 	}
 	for i := range parts {

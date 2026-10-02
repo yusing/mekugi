@@ -189,6 +189,18 @@ made, and no model usage is fabricated. Metrics distinguish router answers from
 provider answers and report zero provider attempts/tokens for router answers.
 Summary bytes and evidence counts are measurements, never savings estimates.
 
+In `auto`, `/compact` describes an attempted journal context reset, including
+provider fallback, rather than promising a journal answer. Live progress follows
+that intent. Completion and restored history say “Context reset from journal” only
+for the exact thread, turn and item retained in a router-answer receipt, or the
+standalone turn identified by a slice-reset event. Provider answers keep “Context
+compacted”, regardless of configured mode.
+Receipts retain answered-item provenance across later compactions; older receipts
+without it keep host wording rather than guessing from the current setting.
+Buffered manual standalone notifications can bind their retained answer to the
+host item later. Ordinary automatic compactions without observed item identity
+keep host wording, because several compactions can share one ordinary turn.
+
 The recovery hook suppresses duplicate injection only when Codex's latest
 compacted transcript record identifies that persisted response. Missing or
 unreadable transcript evidence, older host records without response IDs, and

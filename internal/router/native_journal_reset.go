@@ -62,17 +62,46 @@ func (u *appServerUI) journalResetTurn(thread, turn string) bool {
 }
 
 func (u *appServerUI) journalResetCompleted(thread, turn string) bool {
+	if turn == "" || thread != u.thread {
+		return false
+	}
 	if u.journalResetEvent(thread, turn) {
 		return true
 	}
 	d := u.reset
-	if turn == "" || thread != u.thread || d == nil || d.thread != thread || d.compactTurn != turn || d.intent == nil {
+	if d == nil || d.thread != thread || d.compactTurn != turn || d.intent == nil {
 		return false
 	}
 	// Router completion persists consumption before host item/completed, but
 	// does not publish a journal mutation. Read that evidence, not dispatch intent.
 	intent, err := d.proxy.replayStore.resetIntent(d.ctx, d.workspace, thread)
 	return err == nil && intent != nil && intent.ID == d.intent.ID && intent.Phase == "consumed"
+}
+
+func (u *appServerUI) journalCompactionAnswered(thread, turn, item string) bool {
+	if turn == "" || item == "" || thread != u.thread {
+		return false
+	}
+	if u.proxy != nil && u.proxy.replayStore != nil {
+		for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
+			if sink != nil && sink.thread == thread {
+				u.proxy.replayStore.bindStandaloneCompactionItem(u.ctx, sink.workspace, thread, turn, item)
+				if u.proxy.replayStore.answeredCompactionItem(u.ctx, sink.workspace, thread, turn, item) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// Auto mode attempts journal synthesis for ordinary compactions too. Dispatch
+// wording expresses that intent; only an exact receipt changes completion.
+func (u *appServerUI) compactionProgressText() string {
+	if u.proxy != nil && u.proxy.journalCompaction == "auto" {
+		return "Resetting context from journal if available"
+	}
+	return "Compacting context"
 }
 
 func (u *appServerUI) journalResetEvent(thread, turn string) bool {

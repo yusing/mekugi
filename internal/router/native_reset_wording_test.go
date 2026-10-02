@@ -12,7 +12,7 @@ import (
 func resetWordingCompaction(t *testing.T, d *journalResetDriver, fallback bool) {
 	t.Helper()
 	if fallback {
-		if err := d.change(func(j *threadJournal, _ *journalResetIntent) error {
+		if err := d.proxy.journals.transaction(t.Context(), d.proxy.replayStore, d.workspace, d.thread, func(j *threadJournal, _ bool) error {
 			j.IdentityConflicted = true
 			return nil
 		}); err != nil {
@@ -21,6 +21,7 @@ func resetWordingCompaction(t *testing.T, d *journalResetDriver, fallback bool) 
 	}
 	request, headers := journalCompactionRequest(t, d.workspace, d.thread)
 	metadata, _ := decodeCodexTurnMetadata(headers)
+	metadata.TurnID = d.compactTurn
 	metadata.Compaction = mustTestJSON(t, map[string]any{
 		"trigger": "manual", "reason": "user_requested", "implementation": "responses",
 		"phase": "standalone_turn", "strategy": "memento",
@@ -130,5 +131,97 @@ func TestUISnapshotNativeResetProviderFallback(t *testing.T) {
 			rows, _ := u.mainFrame(100, 16, 0)
 			assertNativeUISnapshot(t, "native-reset-provider-fallback-"+mode, rows)
 		})
+	}
+}
+
+func TestUISnapshotNativeAutoCompactionWording(t *testing.T) {
+	transform, proxy, _, workspace := newDurableTreeTransform(t)
+	proxy.journalCompaction = "auto"
+	d := &journalResetDriver{ctx: t.Context(), proxy: proxy, workspace: workspace, thread: transform.shellThreadID}
+	u := newAppServerSessionTestUI(t, d.workspace)
+	u.thread, u.proxy = d.thread, d.proxy
+	u.session.start(d.thread, d.workspace)
+	u.journal = d.proxy.journals.attachNative(d.workspace, d.thread)
+	t.Cleanup(func() { d.proxy.journals.detachNative(u.journal) })
+	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	u.view.painter.Theme = livediff.DarkTheme
+	u.view.clock = func() time.Time { return now }
+	// Ordinary auto compactions have no slice-reset driver or armed intent.
+	for _, turn := range []string{"auto-first", "auto-second", "provider-fallback"} {
+		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": d.thread, "turn": map[string]any{"id": turn}})
+		item := appServerItem{ID: turn + "-item", Type: "contextCompaction"}
+		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": d.thread, "turnId": turn, "item": item})
+		u.turnStarted = now
+		if turn == "auto-first" {
+			assertNativeUISnapshot(t, "native-auto-compaction-working", []string{u.sessionLabel(now)})
+		}
+		d.compactTurn = turn
+		resetWordingCompaction(t, d, turn == "provider-fallback")
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": d.thread, "turnId": turn, "item": item})
+	}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": d.thread, "turnId": "auto-first", "item": appServerItem{ID: "same-turn-provider", Type: "contextCompaction"}})
+	u.turn, u.status = "", "Ready"
+	rows, _ := u.mainFrame(100, 16, 0)
+	assertNativeUISnapshot(t, "native-auto-compaction-completed", rows)
+
+	// Restore only this thread in a fresh store and view, without a live driver.
+	reopened, err := openMekugiReplayStore(d.proxy.replayStore.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := newAppServerSessionTestUI(t, d.workspace)
+	restored.thread = d.thread
+	restored.proxy = &mekugiProxy{replayStore: reopened, journalCompaction: "auto"}
+	restored.session.start(d.thread, d.workspace)
+	restored.journal = &nativeJournalSink{workspace: d.workspace, thread: d.thread}
+	restored.view.painter.Theme = livediff.DarkTheme
+	restored.view.clock = u.view.clock
+	var turns []appServerHistoryTurn
+	for _, turn := range []string{"auto-first", "auto-second", "provider-fallback"} {
+		turns = append(turns, appServerHistoryTurn{ID: turn, Status: "completed", Items: []appServerItem{{ID: turn + "-item", Type: "contextCompaction"}}})
+	}
+	turns[0].Items = append(turns[0].Items, appServerItem{ID: "same-turn-provider", Type: "contextCompaction"})
+	restored.restoreHistory(turns)
+	rows, _ = restored.mainFrame(100, 16, 0)
+	assertNativeUISnapshot(t, "native-auto-compaction-restored", rows)
+	if restored.journalCompactionAnswered("child", "auto-first", "auto-first-item") || restored.journalCompactionAnswered(d.thread, "", "auto-first-item") || restored.journalCompactionAnswered(d.thread, "provider-fallback", "provider-fallback-item") || restored.journalCompactionAnswered(d.thread, "auto-first", "different-item") {
+		t.Fatal("journal compaction receipt leaked to another thread, unknown turn or provider fallback")
+	}
+}
+
+func TestUISnapshotNativeCompactCommand(t *testing.T) {
+	for _, mode := range []string{"auto", "slice", "off"} {
+		u, _ := newAppServerTestUI()
+		u.proxy = &mekugiProxy{journalCompaction: mode}
+		u.view.painter.Theme = livediff.DarkTheme
+		u.picker.open = true
+		u.filterCommands("compact")
+		assertNativeUISnapshot(t, "native-compact-command-"+mode, u.renderPicker(88, 5))
+	}
+}
+
+func TestNativeAutoCompactionDelayedNotification(t *testing.T) {
+	transform, proxy, _, workspace := newDurableTreeTransform(t)
+	proxy.journalCompaction = "auto"
+	d := &journalResetDriver{ctx: t.Context(), proxy: proxy, workspace: workspace, thread: transform.shellThreadID, compactTurn: "delayed-manual"}
+	u := newAppServerSessionTestUI(t, workspace)
+	u.thread, u.proxy = d.thread, proxy
+	u.session.start(u.thread, workspace)
+	u.journal = proxy.journals.attachNative(workspace, u.thread)
+	t.Cleanup(func() { proxy.journals.detachNative(u.journal) })
+	resetWordingCompaction(t, d, false)
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": d.thread, "turn": map[string]any{"id": d.compactTurn}})
+	item := appServerItem{ID: "delayed-item", Type: "contextCompaction"}
+	for _, method := range []string{"item/started", "item/completed"} {
+		appServerTestNotify(t, u, method, map[string]any{"threadId": d.thread, "turnId": d.compactTurn, "item": item})
+	}
+	if !proxy.replayStore.answeredCompactionItem(t.Context(), workspace, u.thread, d.compactTurn, item.ID) {
+		t.Fatal("buffered standalone notifications did not durably bind exact item identity")
+	}
+	if text, _, _ := u.progress(item, "item/completed", d.thread, d.compactTurn); text != "Context reset from journal" {
+		t.Fatalf("late host item lost journal-reset presentation: %q", text)
+	}
+	if text, _, _ := u.progress(appServerItem{ID: "other", Type: "contextCompaction"}, "item/completed", d.thread, d.compactTurn); text != "Context compacted" {
+		t.Fatalf("standalone receipt relabeled another host item: %q", text)
 	}
 }

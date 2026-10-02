@@ -207,6 +207,9 @@ func (u *appServerUI) filterCommands(query string) {
 	}
 	p.choices, p.loading, p.problem = nil, false, ""
 	for _, command := range nativeCommands {
+		if command.name == "/compact" && u.proxy != nil && u.proxy.journalCompaction == "auto" {
+			command.description = "Reset context from journal if available, or queue while busy"
+		}
 		if _, ok := pickerMatchScore(command.name[1:], query); ok {
 			p.choices = append(p.choices, command)
 		}

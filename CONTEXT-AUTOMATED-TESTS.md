@@ -12,6 +12,7 @@ credentials or live model usage. These tests require the `journal_e2e` build tag
 - `TestJournalNativeCodexSpawnE2E`
 - `TestPostCompactNativeCodexE2E`
 - `TestJournalCompactionNativeCodexE2E`
+- `TestNativeJournalPresentationCodexE2E`
 - `TestJournalSliceResetNativeCodexE2E`
 - `TestJournalHeadlessNativeCodexE2E`
 - `TestAppServerReasoningStreamNativeCodexE2E`
@@ -42,6 +43,9 @@ trust UI or manual `/compact` command.
 The journal-compaction fixture additionally verifies that a router-authored
 summary is accepted by installed Codex, never reaches the mock provider, restores
 task/change evidence, and suppresses only the matching recovery hook injection.
+The native journal-presentation fixture drives ordinary manual `/compact` in
+`auto` mode through real app-server notifications, checking journal-reset rendering
+and exact host-item provenance after reopening storage, without slice-driven dispatch.
 The slice-reset fixture drives manual app-server compaction followed by the next
 planned turn through the shared reset policy. It verifies the continuation path,
 recovered summary and consumed intent without a provider compaction request.

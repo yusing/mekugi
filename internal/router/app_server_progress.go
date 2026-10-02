@@ -42,7 +42,7 @@ func appServerProgress(item appServerItem, method string) (text string, wait *ac
 
 func (u *appServerUI) progress(item appServerItem, method, thread, turn string) (string, *activityui.Block, bool) {
 	text, wait, handled := appServerProgress(item, method)
-	if item.Type == "contextCompaction" && text != "" && u.journalResetCompleted(thread, turn) {
+	if item.Type == "contextCompaction" && text != "" && (u.journalCompactionAnswered(thread, turn, item.ID) || u.journalResetCompleted(thread, turn)) {
 		text = "Context reset from journal"
 	}
 	return text, wait, handled
@@ -94,6 +94,15 @@ func (u *appServerUI) observeProgress(method string, p appServerEvent) {
 	if p.ThreadID != u.thread {
 		return
 	}
+	if method == "turn/started" || method == "turn/completed" && p.Turn.ID == u.turn {
+		for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
+			if sink != nil && sink.thread == p.ThreadID {
+				sink.mu.Lock()
+				sink.compaction = journalCompactionItem{}
+				sink.mu.Unlock()
+			}
+		}
+	}
 	switch method {
 	case "turn/started":
 		u.compacting = nil
@@ -140,6 +149,19 @@ func (u *appServerUI) observeProgress(method string, p appServerEvent) {
 			u.compacting = &key
 		} else if u.compacting != nil && *u.compacting == key {
 			u.compacting = nil
+		}
+		for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
+			if sink == nil || sink.thread != p.ThreadID {
+				continue
+			}
+			sink.mu.Lock()
+			item := journalCompactionItem{Turn: p.TurnID, Item: p.Item.ID}
+			if method == "item/started" {
+				sink.compaction = item
+			} else if sink.compaction == item {
+				sink.compaction = journalCompactionItem{}
+			}
+			sink.mu.Unlock()
 		}
 	}
 }

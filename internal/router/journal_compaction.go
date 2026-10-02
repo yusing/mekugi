@@ -21,13 +21,19 @@ import (
 	"github.com/yusing/mekugi/internal/responses"
 )
 
-// One latest response per workspace/thread is sufficient: a missing or replaced
-// match only repeats hook recovery, never suppresses a provider summary's hook.
+// Hook recovery matches only the latest response. Native history presentation
+// retains exact answered items so later compactions cannot relabel older items.
 type journalCompactionRecord struct {
-	Version    int    `json:"version"`
-	Workspace  string `json:"workspace"`
-	Thread     string `json:"thread"`
-	ResponseID string `json:"response_id"`
+	Version       int                     `json:"version"`
+	Workspace     string                  `json:"workspace"`
+	Thread        string                  `json:"thread"`
+	ResponseID    string                  `json:"response_id"`
+	AnsweredItems []journalCompactionItem `json:"answered_items,omitempty"`
+}
+
+type journalCompactionItem struct {
+	Turn string `json:"turn"`
+	Item string `json:"item"`
 }
 
 func journalCompactionName(workspace, thread string) string {
@@ -104,6 +110,31 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 			return err
 		}
 		record := journalCompactionRecord{Version: 1, Workspace: workspace, Thread: a.threadID, ResponseID: id}
+		// Presentation provenance is auxiliary: unavailable older receipts must
+		// not stop an otherwise usable journal summary from replacing context.
+		if previous, err := readManagedOutputFile(filepath.Join(store.directory, journalCompactionName(workspace, a.threadID))); err == nil {
+			var prior journalCompactionRecord
+			if json.Unmarshal(previous, &prior) == nil && prior.Version == 1 && prior.Workspace == workspace && prior.Thread == a.threadID {
+				record.AnsweredItems = prior.AnsweredItems
+			}
+		}
+		if sink := p.journals.nativeSink(workspace, a.threadID); sink != nil {
+			sink.mu.Lock()
+			item := sink.compaction
+			sink.mu.Unlock()
+			if item.Turn != "" && item.Turn == a.metadata.TurnID && item.Item != "" {
+				if !slices.Contains(record.AnsweredItems, item) {
+					record.AnsweredItems = append(record.AnsweredItems, item)
+				}
+			} else if a.metadata.TurnID != "" && metadata.Trigger == "manual" && metadata.Phase == "standalone_turn" {
+				// A standalone manual turn owns one compaction lifecycle. Keep
+				// its answer until buffered host notifications supply the item ID.
+				item = journalCompactionItem{Turn: a.metadata.TurnID}
+				if !slices.Contains(record.AnsweredItems, item) {
+					record.AnsweredItems = append(record.AnsweredItems, item)
+				}
+			}
+		}
 		data, err := json.Marshal(&record)
 		if err != nil {
 			return err
@@ -133,6 +164,37 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 	a.finalization.upstreamStatusCode = http.StatusOK
 	capturer.ObserveCompaction(a.startCtx, "router", len(summary.Text), summary.Changes, summary.Failures)
 	return true
+}
+
+// Only manual standalone receipts may bind a late host item. Ordinary automatic
+// compactions can share a turn, so missing identity there must remain unknown.
+func (s *mekugiReplayStore) bindStandaloneCompactionItem(ctx context.Context, workspace, thread, turn, item string) {
+	if turn == "" || item == "" {
+		return
+	}
+	_ = s.locked(ctx, func() error {
+		data, err := readManagedOutputFile(filepath.Join(s.directory, journalCompactionName(workspace, thread)))
+		if err != nil {
+			return err
+		}
+		var record journalCompactionRecord
+		if err := json.Unmarshal(data, &record); err != nil {
+			return err
+		}
+		if record.Version != 1 || record.Workspace != workspace || record.Thread != thread {
+			return nil
+		}
+		pending := slices.Index(record.AnsweredItems, journalCompactionItem{Turn: turn})
+		if pending < 0 {
+			return nil
+		}
+		record.AnsweredItems[pending].Item = item
+		data, err = json.Marshal(&record)
+		if err != nil {
+			return err
+		}
+		return s.writeManagedFile(journalCompactionName(workspace, thread), "compaction-pending-", data)
+	})
 }
 
 func (a *requestAttempt) journalCompactionFallback(err error) {
@@ -291,6 +353,27 @@ func (s *mekugiReplayStore) answeredCompaction(ctx context.Context, workspace, t
 			return err
 		}
 		matched = record.Version == 1 && record.Workspace == workspace && record.Thread == thread && record.ResponseID == responseID
+		return nil
+	})
+	return err == nil && matched
+}
+
+// Missing exact item provenance (including older receipts) keeps host wording.
+func (s *mekugiReplayStore) answeredCompactionItem(ctx context.Context, workspace, thread, turn, item string) bool {
+	if turn == "" || item == "" {
+		return false
+	}
+	matched := false
+	err := s.locked(ctx, func() error {
+		data, err := readManagedOutputFile(filepath.Join(s.directory, journalCompactionName(workspace, thread)))
+		if err != nil {
+			return err
+		}
+		var record journalCompactionRecord
+		if err := json.Unmarshal(data, &record); err != nil {
+			return err
+		}
+		matched = record.Version == 1 && record.Workspace == workspace && record.Thread == thread && slices.Contains(record.AnsweredItems, journalCompactionItem{Turn: turn, Item: item})
 		return nil
 	})
 	return err == nil && matched

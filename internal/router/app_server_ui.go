@@ -1463,7 +1463,7 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 			if u.shellCommand.standalone() {
 				status = "Running shell"
 			} else if u.compacting != nil {
-				status = "Compacting context"
+				status = u.compactionProgressText()
 				if u.journalResetTurn(u.thread, u.compacting[0]) {
 					status = "Resetting context from journal"
 				}

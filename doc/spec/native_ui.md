@@ -786,7 +786,9 @@ Codex owns validation, precedence, preemption, and continuation. The client uses
 the same `turn/steer` path whether the feature is enabled or disabled and never
 implements instant steering by aborting a turn or replaying a tool.
 
-`/compact` asks Codex to compact the current conversation. While busy it appears
+`/compact` asks Codex to replace the current conversation context. In journal
+`auto` mode its description and live progress identify an attempted journal reset
+with provider fallback; other modes describe ordinary compaction. While busy it appears
 in the pending-input list and runs after the active turn; it never replaces that
 turn, and the command itself never becomes model input. It separates surrounding
 text batches, and later input waits until compaction finishes. Successful busy-queued
@@ -962,9 +964,11 @@ continuations appear as auto-continue rows, not user bubbles. Pending user input
 cancels an undispatched continuation rather than competing with it.
 
 Host progress has one presentation mapping for live events and restored history.
-Compaction start replaces Main’s `Working` label with `Compacting context`;
-completion restores ordinary turn status and adds a `Context compacted` event,
-without a reply-context (`re:`) line. Turn completion, failure, or interruption
+Compaction start replaces Main’s `Working` label with mode-aware progress;
+completion restores ordinary turn status and adds a `Context compacted` event
+for host compaction, or `Context reset from journal` when exact retained journal
+answer evidence identifies the completed item. Neither adds a reply-context
+(`re:`) line. Turn completion, failure, or interruption
 clears an unfinished compaction without claiming it succeeded. Child compaction
 does not change Main’s composer. Agent wait starts, completions, and failures appear
 only as the working caller's latest roster status, never in Main or Activity transcripts
