@@ -36,6 +36,9 @@ func (u *appServerUI) tickJournalReset(now time.Time) error {
 	if u.reset == nil {
 		return nil
 	}
+	if u.questionCount() > 0 && u.reset.cancellable() {
+		return u.reset.cancel()
+	}
 	err := u.reset.tick(now)
 	u.dirty = u.dirty || u.reset.active()
 	u.showResetNotice()

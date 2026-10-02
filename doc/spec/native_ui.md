@@ -957,7 +957,7 @@ agent identity colors. This applies to metadata, secondary labels, separators,
 and diff coordinates; non-dimmed semantic colors, syntax highlighting and
 animated status ramps stay unchanged.
 
-Slice plans use the [journal continuation policy](journal.md#slice-continuation).
+Journal plans use the [journal continuation policy](journal.md#journal-continuation).
 The pinned countdown names the next path and title and shows `Esc cancels`.
 Completed context-reset events remain visible even with the Journal pane open or
 when continuation is rejected or interrupted. Router-authored

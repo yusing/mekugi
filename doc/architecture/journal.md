@@ -43,9 +43,14 @@ For native compaction's missing workspace metadata, the session ownership catalo
 proves the unique prior selected workspace from exact thread-owned records. This
 lookup remains valid after restart and rejects multiple historical workspaces.
 
-Slice reset state belongs to the journal record: turn-start sequence, handled
-turn ID and one intent bound to the completed turn. Intent transitions persist
-before dependent app-server RPCs. A manual standalone compaction consumes only
+Continuation state belongs to the journal record: turn-start sequence, handled
+turn ID and one intent bound to the completed turn. The intent distinguishes
+ordinary unfinished-work continuation from a slice boundary; ordinary continuation
+never arms compaction. User stops retain the handled turn and per-task stopped-turn
+identities before interrupt RPCs. Those pauses copy with forked facts; explicit
+later-turn working mutations release the selected task subtree atomically.
+Intent transitions persist before dependent app-server RPCs.
+A manual standalone compaction consumes only
 an armed intent in the requesting thread/workspace, recording its response ID.
 Fork initialization does not copy turn checkpoints or intents.
 

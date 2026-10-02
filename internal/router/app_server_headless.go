@@ -157,6 +157,15 @@ func (h *headlessAppServer) message(m appserver.Message) error {
 	if m.Method != "" && len(m.ID) != 0 {
 		return fmt.Errorf("headless cannot answer host request %s; continue interactively", m.Method)
 	}
+	if m.Method == "item/started" || m.Method == "item/completed" {
+		var p appServerEvent
+		if err := json.Unmarshal(m.Params, &p); err != nil {
+			return err
+		}
+		if p.ThreadID == h.thread && p.Item.Type == "agentMessage" && p.Item.Delivery == "async" && len(p.Item.Questions) > 0 {
+			return errors.New("headless cannot answer pending questions; continue interactively")
+		}
+	}
 	if m.Method == "" && string(m.ID) == h.requestID {
 		method := h.request
 		h.request, h.requestID = "", ""
@@ -212,6 +221,11 @@ func (h *headlessAppServer) message(m appserver.Message) error {
 		return nil
 	}
 	if p.Turn.Status != "completed" {
+		if p.Turn.Status == "interrupted" {
+			if err := h.reset.stop(p.Turn.ID); err != nil {
+				return err
+			}
+		}
 		return fmt.Errorf("headless turn %s: %s", p.Turn.ID, p.Turn.Status)
 	}
 	h.completed = true

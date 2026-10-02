@@ -31,6 +31,9 @@ sessions, and patch review. No fork, no config edits, no daemon.
 
 ### User-facing
 
+- **Auto resume accidental stop.** Continue unfinished journal work when the agent
+  stops, including after answering a follow-up. Explicit user stops, blockers, and
+  pending questions are respected. See the [Journal pane](#journal-pane).
 - **Native terminal UI.** [Main, Diff, Activity, Journal, and Agents](#native-ui)
   share one terminal without an external pane manager.
 - **Task journal.** Plans, results, and blockers stay visible without extra model
@@ -170,14 +173,14 @@ options or replay offline. Noninteractive commands retain Codex's exit status.
 ### Headless slice plans
 
 The `headless --yolo` subcommand reads one prompt from stdin and runs a new
-session to completion, including any planned slice continuations:
+session to completion, continuing unfinished journal work and any planned slices:
 
 ```sh
 mekugi --journal-compaction=slice headless --yolo < prompt.txt
 ```
 
 Use `off` to continue slices in one context, or `slice` to reset between them.
-Unlike the native UI, headless slice continuations have no countdown delay.
+Unlike the native UI, headless journal continuations have no countdown delay.
 It accepts model and `-c` options, not resume or positional prompts. Prompts must
 be nonempty and at most 16 MiB. Like the native UI, it requires explicit `--yolo`.
 It does not answer approval or user-input questions: those end the run with an
@@ -436,8 +439,16 @@ follow the work they summarize. Press
 `c` to copy their full journal address. Press `Enter` on, or click, an agent to
 open its Activity.
 
-The plan strip stays above the composer while work remains. Main shows task
-transitions and, while Journal is hidden, notes. Work updates appear in separate
+The plan strip stays above the composer while work remains. Main offers a
+continuation countdown after an agent stops with unfinished work, including after
+answering a follow-up. Esc cancels. Blocked tasks and pending questions pause
+automatic continuation. Explicitly stopped work stays paused across later questions,
+forks, and resume until reactivated. Ordinary continuation keeps the current
+context, while planned slice boundaries follow the selected
+compaction mode. Headless sessions use the same policy without a countdown and
+require interactive continuation when a question needs an answer.
+
+Main shows task transitions and, while Journal is hidden, notes. Work updates appear in separate
 cards; open a card for full evidence and older notes. Ordinary answers remain
 in the conversation, and an unchanged plan does not add a report card.
 

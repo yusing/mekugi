@@ -325,6 +325,15 @@ func (j *threadJournal) applyTree(m journalMutation) ([]string, error) {
 		if err := j.treeEvent("set", index, transition); err != nil {
 			return nil, err
 		}
+		// Only an explicit task reactivation in a later user-driven turn releases
+		// a user stop. Status notes and unrelated new work cannot revive it.
+		if m.State != nil && *m.State == "working" && j.TurnID != "" {
+			for path, turn := range j.StoppedTasks {
+				if turn != j.TurnID && (path == m.P || strings.HasPrefix(path, m.P+"/")) {
+					delete(j.StoppedTasks, path)
+				}
+			}
+		}
 		return []string{m.P}, nil
 	case "remove":
 		index := j.treeIndex(m.P)
@@ -344,6 +353,7 @@ func (j *threadJournal) applyTree(m journalMutation) ([]string, error) {
 		}
 		for _, item := range j.Items {
 			if item.Path == m.P || strings.HasPrefix(item.Path, m.P+"/") {
+				delete(j.StoppedTasks, item.Path)
 				j.Retractions = append(j.Retractions, journalRetraction{ID: item.ID, Sequence: j.Sequence})
 			}
 		}

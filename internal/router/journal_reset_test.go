@@ -60,8 +60,8 @@ func TestJournalResetTurnBoundaryAndDurability(t *testing.T) {
 	if err := proxy.journals.beginJournalTurn(t.Context(), reopened, workspace, thread, "turn-2"); err != nil {
 		t.Fatal(err)
 	}
-	if stale, err := proxy.journals.completedSlice(t.Context(), reopened, workspace, thread, "turn-2"); err != nil || stale != nil {
-		t.Fatalf("prior-turn completion reused=%+v err=%v", stale, err)
+	if next, err := proxy.journals.completedSlice(t.Context(), reopened, workspace, thread, "turn-2"); err != nil || next == nil || !next.Resume {
+		t.Fatalf("unfinished work should continue without reusing slice boundary: %+v err=%v", next, err)
 	}
 }
 
@@ -91,7 +91,7 @@ func TestJournalResetRequiresNewDoneTransitionAndPendingSibling(t *testing.T) {
 				}
 			}
 			intent, err := proxy.journals.completedSlice(t.Context(), proxy.replayStore, workspace, thread, "turn")
-			if err != nil || intent != nil {
+			if err != nil || (scenario == "blocked" && intent != nil) || (scenario != "blocked" && (intent == nil || !intent.Resume)) {
 				t.Fatalf("scenario %s generated intent=%+v err=%v", scenario, intent, err)
 			}
 		})

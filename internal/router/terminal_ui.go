@@ -333,7 +333,7 @@ func (u *terminalUI) send(s string) error {
 		return u.main.cancelOlderActivity()
 	}
 	if s == "\x1b" && u.main != nil && u.main.reset.cancellable() && !u.main.reset.cancelled {
-		err := u.main.reset.cancel()
+		err := u.main.reset.stop(u.main.reset.intent.Turn)
 		u.main.showResetNotice()
 		return err
 	}

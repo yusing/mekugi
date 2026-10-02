@@ -119,6 +119,25 @@ func (d *journalResetDriver) cancel() error {
 	return d.finish()
 }
 
+func (d *journalResetDriver) stop(turn string) error {
+	if d == nil {
+		return nil
+	}
+	d.cancelled, d.pendingCompleted = true, ""
+	// An already-dispatched RPC remains host-owned, but cannot launch more work.
+	if d.intent != nil {
+		if turn == d.compactTurn {
+			turn = d.intent.Turn
+		}
+		d.notice = "Journal continuation cancelled"
+	}
+	if err := d.proxy.journals.stopJournalTurn(d.ctx, d.proxy.replayStore, d.workspace, d.thread, turn); err != nil {
+		return err
+	}
+	d.intent, d.startPending, d.phase, d.requestID = nil, false, "", ""
+	return nil
+}
+
 func (d *journalResetDriver) finish() error {
 	if d.intent != nil {
 		if err := d.change(func(j *threadJournal, _ *journalResetIntent) error { j.ResetIntent = nil; return nil }); err != nil {
@@ -150,13 +169,12 @@ func (d *journalResetDriver) tick(now time.Time) error {
 	if d == nil || d.phase != "countdown" || now.Before(d.deadline) {
 		return nil
 	}
-	if d.proxy.journalCompaction == "off" || d.proxy.journalCompaction == "" {
+	if d.intent.Resume || d.proxy.journalCompaction == "off" || d.proxy.journalCompaction == "" {
 		return d.continuePlan(false)
 	}
 	if err := d.change(func(j *threadJournal, intent *journalResetIntent) error {
-		i := j.treeIndex(intent.Path)
-		if i < 0 || j.Items[i].State != "pending" {
-			return errors.New("next slice is no longer pending")
+		if !j.continuationCurrent(intent) {
+			return errors.New("journal work is no longer available")
 		}
 		intent.Phase = "armed"
 		return nil
@@ -199,9 +217,8 @@ func (d *journalResetDriver) continuePlan(compacted bool) error {
 		}
 	}
 	if err := d.change(func(j *threadJournal, intent *journalResetIntent) error {
-		i := j.treeIndex(intent.Path)
-		if i < 0 || j.Items[i].State != "pending" {
-			return errors.New("next slice is no longer pending")
+		if !j.continuationCurrent(intent) {
+			return errors.New("journal work is no longer available")
 		}
 		if compacted && intent.Phase != "consumed" {
 			return errors.New("context reset did not consume the journal reset intent")
@@ -319,7 +336,7 @@ func (d *journalResetDriver) label(now time.Time) string {
 	}
 	if d.phase == "countdown" {
 		verb := "Resetting context"
-		if d.proxy.journalCompaction == "off" || d.proxy.journalCompaction == "" {
+		if d.intent.Resume || d.proxy.journalCompaction == "off" || d.proxy.journalCompaction == "" {
 			verb = "Continuing plan"
 		}
 		return fmt.Sprintf("%s in %ds · starting %s %s · Esc cancels", verb, max(0, int(d.deadline.Sub(now).Seconds()+1)), d.intent.Path, d.intent.Title)

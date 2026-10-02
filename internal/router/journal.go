@@ -112,6 +112,7 @@ type threadJournal struct {
 	TurnStartSeq         uint64                      `json:"turn_start_seq,omitzero"`
 	ResetHandledTurn     string                      `json:"reset_handled_turn,omitempty"`
 	ResetIntent          *journalResetIntent         `json:"reset_intent,omitempty"`
+	StoppedTasks         map[string]string           `json:"stopped_tasks,omitempty"` // Task path -> user-stopped host turn.
 	EvidenceKnown        bool                        `json:"evidence_known,omitzero"`
 	EvidenceChangeSeq    uint64                      `json:"evidence_change_seq,omitzero"`
 	EvidenceCaptureOrder uint64                      `json:"evidence_capture_order,omitzero"`
@@ -161,6 +162,7 @@ func (j threadJournal) clone() threadJournal {
 	j.Events = slices.Clone(j.Events)
 	j.NextOrdinal = maps.Clone(j.NextOrdinal)
 	j.SliceParents = maps.Clone(j.SliceParents)
+	j.StoppedTasks = maps.Clone(j.StoppedTasks)
 	j.Retractions = slices.Clone(j.Retractions)
 	j.Items = slices.Clone(j.Items)
 	j.Receipts = maps.Clone(j.Receipts)
@@ -452,6 +454,7 @@ func (s *journalStore) initialize(ctx context.Context, store *mekugiReplayStore,
 		}
 		j.NextOrdinal = maps.Clone(source.NextOrdinal)
 		j.SliceParents = maps.Clone(source.SliceParents)
+		j.StoppedTasks = maps.Clone(source.StoppedTasks)
 		j.Items = slices.Clone(source.Items)
 		// A fork copies facts and task states, not authority over children of
 		// another parent. Historical bindings remain in the copied event log.

@@ -817,6 +817,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 		}
 		if p.ThreadID == u.thread && p.Turn.ID == u.turn {
+			if p.Turn.Status == "interrupted" {
+				if err := u.reset.stop(p.Turn.ID); err != nil {
+					u.setNotice("Journal stop: "+err.Error(), true)
+				}
+			}
 			u.completed(p.Turn.Status == "completed")
 			u.endSyncQuestions(p.Turn.ID)
 			u.status, u.alert = strings.ToUpper(p.Turn.Status[:min(1, len(p.Turn.Status))])+p.Turn.Status[min(1, len(p.Turn.Status)):], p.Turn.Status == "failed"
@@ -1602,6 +1607,9 @@ func (u *appServerUI) interruptTurn() error {
 	}
 	if !u.interruption.begin(u.turn) {
 		return nil
+	}
+	if err := u.reset.stop(u.turn); err != nil {
+		u.setNotice("Journal stop: "+err.Error(), true)
 	}
 	u.endSyncQuestions(u.turn)
 	u.status = "Interrupting…"

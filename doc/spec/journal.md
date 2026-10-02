@@ -248,7 +248,37 @@ unreadable transcript evidence, older host records without response IDs, and
 provider-written summaries keep normal hook recovery. Failed or interrupted local
 responses cannot suppress recovery for another compaction.
 
-### Slice continuation
+### Journal continuation
+
+After a successful native Main turn, unfinished local journal tasks continue
+automatically, including when the agent stopped after answering a follow-up
+without changing the plan. Working tasks take priority over pending tasks.
+Ordinary continuation keeps the current context, regardless of compaction mode;
+only the slice boundary below can request a reset.
+
+The native frontend offers the same cancellable three-second countdown for
+ordinary and slice continuation. A blocked task pauses journal continuation;
+pending user questions, queued input, failed/interrupted turns, and explicit
+user interruption do not trigger it. User interruption wins even when the host
+races to report successful completion. Finished/dropped tasks and work owned by
+delegates cannot drive a new Main turn. A parent waiting on unfinished children
+does not independently drive continuation. Once no runnable local task remains,
+automatic continuation stops. Plain conversational questions require the agent
+to record an input-needed task as blocked; answer prose is not a state signal.
+
+Explicit user interruption or Escape during the countdown pauses the current
+unfinished tasks durably. Later questions, notes, restart, and forks retain that
+pause; newly authorized unrelated tasks can proceed without reviving stopped work.
+Resuming a stopped task is represented by explicitly setting it to `working` in a
+later turn, which also reactivates its stopped descendants. Mutations from the
+interrupted turn cannot reactivate it. Queued input and pending questions cancel
+the countdown without marking the underlying work user-stopped.
+
+Each continuation is bound to its workspace, thread and completed turn, and is
+revalidated against the durable journal before dispatch. A restored pending
+countdown can continue still-runnable work; dispatched requests never replay.
+Forks and side threads do not inherit a live continuation. Switching models or
+viewing another agent does not transfer continuation ownership.
 
 A plan marked `reset: "slice"` can continue between successful native Main turns.
 When a task becomes done during the completed turn and has a pending sibling,
