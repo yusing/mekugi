@@ -372,7 +372,21 @@ callback, metric counter, listener, or execution dependency. JSON, SSE, runtime
 publication, repeated observation, excluded content, suppression, and auxiliary
 write failure must preserve those boundaries.
 
-Acceptance:
+### Journal latency debug evidence
+
+With `--debug`, authenticated journal requests emit `journal_latency` in
+`router.jsonl` with `schema_version: 1`. Numeric microsecond fields are
+`delivery_wait_us`, `state_wait_us`, `replay_wait_us`, `persist_write_us`,
+`response_write_us`, and `total_us`. They cover server handling of mutations and
+reads; zero may mean a phase was not reached. `response_write_us` measures the
+handler's response write, not client or network round-trip latency.
+
+Optional `thread_id` and `call_id` use the feature-record identity sanitization
+above. Journal contents, receipt IDs, credentials, and paths are never included.
+These diagnostics remain auxiliary operational evidence, not capture metrics,
+provider consumption, or proof that the client received a result.
+
+## Acceptance
 
 1. Each invocation owns a bound random loopback port without close-and-rebind races.
 2. Codex can reach it immediately on launch; no config or persistent service is changed.

@@ -69,6 +69,15 @@ the frontend measurements exclude registry creation and active-session leases:
 make test TEST_PACKAGES='./internal/router/toolplugin ./internal/router' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
 ```
 
+Journal contention checks compare authenticated HTTP latency with a synthetic
+20 ms delivery hold in the same or an unrelated workspace:
+
+```sh
+make test TEST_PACKAGES=./internal/router TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkJournalConcurrentWorkspaceHTTP -benchtime=10x -count=1'
+```
+
+These are controlled contention measurements, not live-session latency claims.
+
 Generation uses Go to rebuild the embedded WASM core for configured JavaScript plugins
 through the directive in `internal/router/toolplugin/runtime.go`. Built-in frontends
 and output formatting are compiled Go and require no generated JavaScript assets or

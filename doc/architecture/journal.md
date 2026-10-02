@@ -4,7 +4,10 @@
 
 The journal store owns per-thread task/note trees, ordinal paths, events, capacity, atomic mutation
 transactions, relationship binding, persistence, replay receipts, and delivery
-acknowledgements. It shares durable workspace coordination and session retention with replay.
+acknowledgements. Delivery leases are workspace-scoped and remain held through
+downstream write confirmation, preserving ancestry and deletion ordering without
+blocking unrelated workspaces. State and replay transactions retain their shared
+serialization and session-retention owners.
 Journal mutations do not impose a lifetime thread-count limit. Journal state is durable while
 its session is retained; a request's completion intent is not.
 
