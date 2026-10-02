@@ -20,7 +20,16 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
     const req = request({socketPath: config.socket, path: '/observe', method: 'POST', signal,
       headers: {'Authorization': `Bearer ${config.token}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data)}}, response => {
       let bytes = 0; let message = '';
-      response.on('data', (chunk: Buffer) => { bytes += chunk.length; if (bytes > 8192) req.destroy(new Error('oversized observation response')); else message += chunk.toString(); });
+      response.on('data', (chunk: Buffer) => {
+        bytes += chunk.length;
+        if (bytes > 8192) {
+          const error = new Error('oversized observation response');
+          // A buffered response can emit end before destroy emits error. Reject
+          // now so that its 200 status cannot acknowledge oversized evidence.
+          reject(error);
+          req.destroy(error);
+        } else message += chunk.toString();
+      });
       response.on('end', () => response.statusCode === 200 ? resolve() : reject(new Error(`observation rejected (${response.statusCode}): ${message.trim()}`)));
       response.on('error', reject);
     });
@@ -84,8 +93,12 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
         } else if (event.subtype === 'task_notification' && terminal(event.status)) {
           await send({operation: 'task', task: {id: event.task_id, session: event.session_id, status: event.status,
             ...(event.tool_use_id ? {callID: event.tool_use_id} : {}), report: report(event.summary)}});
-        } else if (event.subtype === 'task_updated' && event.patch.status && terminal(event.patch.status)) {
-          await send({operation: 'task', task: {id: event.task_id, session: event.session_id, status: event.patch.status}});
+        } else if (event.subtype === 'task_updated') {
+          // Native TaskStop emits killed here and stopped in task_notification.
+          // Either terminal form must settle the same original observation.
+          const status = event.patch.status === 'killed' ? 'stopped' : event.patch.status;
+          if (!status || !terminal(status)) return;
+          await send({operation: 'task', task: {id: event.task_id, session: event.session_id, status}});
         }
       } catch (error) { void notice(`Companion capture unavailable: ${String(error)}`).catch(() => {}); }
     },

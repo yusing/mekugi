@@ -1,0 +1,2303 @@
+{
+  "runtime": "2.1.287",
+  "sdk": "0.3.287",
+  "observed": "2026-10-02",
+  "provenance": "Opt-in installed-Claude acceptance with native user settings, SDK prompt preset and original authentication. Selected complete hook/tool/task frames. Workspace, transcript and task output paths redacted. Denied case was auto-approved without canUseTool, so it is not denial evidence.",
+  "cases": {
+    "disabled": [
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011CfdfuKqTzNHSXoHNUEbrd",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_016A8DNuNHQPZd6b7qDMaky1",
+                "name": "Write",
+                "input": {
+                  "file_path": "<workspace>/native.txt",
+                  "content": "native-once\n"
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 6147,
+              "cache_read_input_tokens": 13181,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 6147
+              },
+              "output_tokens": 16,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": null,
+          "session_id": "260db35e-57f0-4e12-82d8-71964c8bd774",
+          "uuid": "44a93bbb-8d61-4a98-9d3e-bffb14762f84",
+          "timestamp": "2026-10-02T15:47:00.711Z",
+          "request_id": "req_011CfdfuJ8Xa7eBjib8RHgre"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "260db35e-57f0-4e12-82d8-71964c8bd774",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "2af7fc7a-61ad-4740-a8a8-81bd918a1de8",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "<workspace>/native.txt",
+            "content": "native-once\n"
+          },
+          "tool_use_id": "toolu_016A8DNuNHQPZd6b7qDMaky1"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "260db35e-57f0-4e12-82d8-71964c8bd774",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "2af7fc7a-61ad-4740-a8a8-81bd918a1de8",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "<workspace>/native.txt",
+            "content": "native-once\n"
+          },
+          "tool_response": {
+            "type": "create",
+            "filePath": "<workspace>/native.txt",
+            "content": "native-once\n",
+            "structuredPatch": [],
+            "originalFile": null,
+            "userModified": false
+          },
+          "tool_use_id": "toolu_016A8DNuNHQPZd6b7qDMaky1",
+          "duration_ms": 15
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "tool_use_id": "toolu_016A8DNuNHQPZd6b7qDMaky1",
+                "type": "tool_result",
+                "content": "File created successfully at: <workspace>/native.txt (file state is current in your context \u2014 no need to Read it back)"
+              }
+            ]
+          },
+          "parent_tool_use_id": null,
+          "session_id": "260db35e-57f0-4e12-82d8-71964c8bd774",
+          "uuid": "ae8f09ad-127d-4a48-b25e-7dec0ba950a1",
+          "timestamp": "2026-10-02T15:47:01.342Z",
+          "tool_use_result": {
+            "type": "create",
+            "filePath": "<workspace>/native.txt",
+            "content": "native-once\n",
+            "structuredPatch": [],
+            "originalFile": null,
+            "userModified": false
+          }
+        }
+      }
+    ],
+    "write": [
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011Cfdfv88XnFUBdZidnxAtA",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_01PesxtmLJpbebZnmAeNPNeK",
+                "name": "Write",
+                "input": {
+                  "file_path": "<workspace>/native.txt",
+                  "content": "native-once\n"
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 6146,
+              "cache_read_input_tokens": 13181,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 6146
+              },
+              "output_tokens": 16,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": null,
+          "session_id": "77f99dff-65cd-4477-ab89-d21eb7f31f9a",
+          "uuid": "ecd07ceb-6302-4c0e-a660-a3f1b8ab359d",
+          "timestamp": "2026-10-02T15:47:11.634Z",
+          "request_id": "req_011Cfdfv6S63iTPN3ds7MvMq"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "77f99dff-65cd-4477-ab89-d21eb7f31f9a",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "58173fe1-e707-4061-a240-b1d1fe86e46d",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "<workspace>/native.txt",
+            "content": "native-once\n"
+          },
+          "tool_use_id": "toolu_01PesxtmLJpbebZnmAeNPNeK"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "77f99dff-65cd-4477-ab89-d21eb7f31f9a",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "58173fe1-e707-4061-a240-b1d1fe86e46d",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "<workspace>/native.txt",
+            "content": "native-once\n"
+          },
+          "tool_response": {
+            "type": "create",
+            "filePath": "<workspace>/native.txt",
+            "content": "native-once\n",
+            "structuredPatch": [],
+            "originalFile": null,
+            "userModified": false
+          },
+          "tool_use_id": "toolu_01PesxtmLJpbebZnmAeNPNeK",
+          "duration_ms": 11
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "tool_use_id": "toolu_01PesxtmLJpbebZnmAeNPNeK",
+                "type": "tool_result",
+                "content": "File created successfully at: <workspace>/native.txt (file state is current in your context \u2014 no need to Read it back)"
+              }
+            ]
+          },
+          "parent_tool_use_id": null,
+          "session_id": "77f99dff-65cd-4477-ab89-d21eb7f31f9a",
+          "uuid": "552f15db-e7ca-40b0-ad5c-ebecccaedcca",
+          "timestamp": "2026-10-02T15:47:11.998Z",
+          "tool_use_result": {
+            "type": "create",
+            "filePath": "<workspace>/native.txt",
+            "content": "native-once\n",
+            "structuredPatch": [],
+            "originalFile": null,
+            "userModified": false
+          }
+        }
+      }
+    ],
+    "failed": [
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011CfdfzjZsK6neE4kCB46U4",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_01RzZyJDKzCgaECxHtBZyjnU",
+                "name": "Bash",
+                "input": {
+                  "command": "exit 7",
+                  "description": "Exit with status 7"
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 6145,
+              "cache_read_input_tokens": 13172,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 6145
+              },
+              "output_tokens": 16,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": null,
+          "session_id": "917ed344-f472-4641-9123-bb5881a742a9",
+          "uuid": "59cd63a2-a467-4f35-a96f-11bda30c4ee5",
+          "timestamp": "2026-10-02T15:48:15.537Z",
+          "request_id": "req_011Cfdfzii1qoYAE3Y2XNVcX"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "917ed344-f472-4641-9123-bb5881a742a9",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "78ccb9bb-2834-4170-8d01-1d337d9d91f9",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "exit 7",
+            "description": "Exit with status 7"
+          },
+          "tool_use_id": "toolu_01RzZyJDKzCgaECxHtBZyjnU"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "917ed344-f472-4641-9123-bb5881a742a9",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "78ccb9bb-2834-4170-8d01-1d337d9d91f9",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUseFailure",
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "exit 7",
+            "description": "Exit with status 7"
+          },
+          "tool_use_id": "toolu_01RzZyJDKzCgaECxHtBZyjnU",
+          "error": "Exit code 7",
+          "is_interrupt": false,
+          "duration_ms": 482
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": "Exit code 7",
+                "is_error": true,
+                "tool_use_id": "toolu_01RzZyJDKzCgaECxHtBZyjnU"
+              }
+            ]
+          },
+          "parent_tool_use_id": null,
+          "session_id": "917ed344-f472-4641-9123-bb5881a742a9",
+          "uuid": "f7ac9efb-5146-48aa-8145-e34be712c1cd",
+          "timestamp": "2026-10-02T15:48:16.409Z",
+          "tool_use_result": "Error: Exit code 7"
+        }
+      }
+    ],
+    "partial": [
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011Cfdg1g6n35TeAcZgiLKMU",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_01MYqwHkiqkQFuuw5NbnKpGZ",
+                "name": "Bash",
+                "input": {
+                  "command": "printf 'native-once\\n' >> native.txt; exit 7",
+                  "description": "Append a line to native.txt and exit with code 7"
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 6146,
+              "cache_read_input_tokens": 13189,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 6146
+              },
+              "output_tokens": 16,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": null,
+          "session_id": "57c097c1-aaee-445c-b0df-59922875386a",
+          "uuid": "cd1608d0-6d08-47ff-ae44-dd97969ce33c",
+          "timestamp": "2026-10-02T15:48:27.634Z",
+          "request_id": "req_011Cfdg1f6GUjzZXtgrSsWLr"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "57c097c1-aaee-445c-b0df-59922875386a",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "de4f2ec3-b03c-4ff0-b583-7359fd02897c",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "printf 'native-once\\n' >> native.txt; exit 7",
+            "description": "Append a line to native.txt and exit with code 7"
+          },
+          "tool_use_id": "toolu_01MYqwHkiqkQFuuw5NbnKpGZ"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "57c097c1-aaee-445c-b0df-59922875386a",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "de4f2ec3-b03c-4ff0-b583-7359fd02897c",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUseFailure",
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "printf 'native-once\\n' >> native.txt; exit 7",
+            "description": "Append a line to native.txt and exit with code 7"
+          },
+          "tool_use_id": "toolu_01MYqwHkiqkQFuuw5NbnKpGZ",
+          "error": "Exit code 7",
+          "is_interrupt": false,
+          "duration_ms": 205
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "content": "Exit code 7",
+                "is_error": true,
+                "tool_use_id": "toolu_01MYqwHkiqkQFuuw5NbnKpGZ"
+              }
+            ]
+          },
+          "parent_tool_use_id": null,
+          "session_id": "57c097c1-aaee-445c-b0df-59922875386a",
+          "uuid": "01ecbe25-835f-41ae-a9a6-0dec1ac446f2",
+          "timestamp": "2026-10-02T15:48:28.225Z",
+          "tool_use_result": "Error: Exit code 7"
+        }
+      }
+    ],
+    "no_effect": [
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011Cfdg2cAfkL7FH1BqhNwPa",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_01K4hktupbQGaMDamASRK5a8",
+                "name": "Bash",
+                "input": {
+                  "command": "printf native-no-effect",
+                  "description": "Print test string"
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 6148,
+              "cache_read_input_tokens": 13176,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 6148
+              },
+              "output_tokens": 16,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": null,
+          "session_id": "35ca88c2-97e0-43ba-93d6-b65e1ec4e4c6",
+          "uuid": "bea78fab-052a-4f5a-9c2b-0a92c11abeab",
+          "timestamp": "2026-10-02T15:48:39.531Z",
+          "request_id": "req_011Cfdg2bAu6Wywp7c6VYZ43"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "35ca88c2-97e0-43ba-93d6-b65e1ec4e4c6",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "2e59a54e-abf5-44df-83dd-f6467d8d6d22",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "printf native-no-effect",
+            "description": "Print test string"
+          },
+          "tool_use_id": "toolu_01K4hktupbQGaMDamASRK5a8"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "35ca88c2-97e0-43ba-93d6-b65e1ec4e4c6",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "2e59a54e-abf5-44df-83dd-f6467d8d6d22",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUse",
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "printf native-no-effect",
+            "description": "Print test string"
+          },
+          "tool_response": {
+            "stdout": "native-no-effect",
+            "stderr": "",
+            "interrupted": false,
+            "isImage": false,
+            "noOutputExpected": false
+          },
+          "tool_use_id": "toolu_01K4hktupbQGaMDamASRK5a8",
+          "duration_ms": 173
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "tool_use_id": "toolu_01K4hktupbQGaMDamASRK5a8",
+                "type": "tool_result",
+                "content": "native-no-effect",
+                "is_error": false
+              }
+            ]
+          },
+          "parent_tool_use_id": null,
+          "session_id": "35ca88c2-97e0-43ba-93d6-b65e1ec4e4c6",
+          "uuid": "7e405dd6-3ca8-41a4-9044-422d7e898174",
+          "timestamp": "2026-10-02T15:48:40.047Z",
+          "tool_use_result": {
+            "stdout": "native-no-effect",
+            "stderr": "",
+            "interrupted": false,
+            "isImage": false,
+            "noOutputExpected": false
+          }
+        }
+      }
+    ],
+    "background": [
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011Cfdg3HHtWzhPTPTte9CRm",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_0172c4hXj8ukpuXFzrUfRmsE",
+                "name": "Bash",
+                "input": {
+                  "command": "sleep 8; printf 'native-once\\n' >> native.txt",
+                  "description": "Append a line to a file after a short delay",
+                  "run_in_background": true
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 7016,
+              "cache_read_input_tokens": 12327,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 7016
+              },
+              "output_tokens": 16,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": null,
+          "session_id": "68fc2916-b728-4e20-8a29-0e1139b25656",
+          "uuid": "5ae98966-dac5-49b3-8f36-8c3c4db96896",
+          "timestamp": "2026-10-02T15:48:48.391Z",
+          "request_id": "req_011Cfdg3FZiPDMJMqm2sdJhH"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "68fc2916-b728-4e20-8a29-0e1139b25656",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "f3badcc0-36dd-4913-9dee-4b4afa2d24ba",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "sleep 8; printf 'native-once\\n' >> native.txt",
+            "description": "Append a line to a file after a short delay",
+            "run_in_background": true
+          },
+          "tool_use_id": "toolu_0172c4hXj8ukpuXFzrUfRmsE"
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "system",
+          "subtype": "task_started",
+          "task_id": "bqmfeptan",
+          "tool_use_id": "toolu_0172c4hXj8ukpuXFzrUfRmsE",
+          "description": "Append a line to a file after a short delay",
+          "is_backgrounded": true,
+          "task_type": "local_bash",
+          "uuid": "88946d99-7232-46c7-acbd-b86bab87c99f",
+          "session_id": "68fc2916-b728-4e20-8a29-0e1139b25656"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "68fc2916-b728-4e20-8a29-0e1139b25656",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "f3badcc0-36dd-4913-9dee-4b4afa2d24ba",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUse",
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "sleep 8; printf 'native-once\\n' >> native.txt",
+            "description": "Append a line to a file after a short delay",
+            "run_in_background": true
+          },
+          "tool_response": {
+            "stdout": "",
+            "stderr": "",
+            "interrupted": false,
+            "isImage": false,
+            "noOutputExpected": false,
+            "backgroundTaskId": "bqmfeptan"
+          },
+          "tool_use_id": "toolu_0172c4hXj8ukpuXFzrUfRmsE",
+          "duration_ms": 176
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "tool_use_id": "toolu_0172c4hXj8ukpuXFzrUfRmsE",
+                "type": "tool_result",
+                "content": "Command running in background with ID: bqmfeptan. Output is being written to: <native-task-output>. You will be notified when it completes. To check interim output, use Read on that file path.",
+                "is_error": false
+              }
+            ]
+          },
+          "parent_tool_use_id": null,
+          "session_id": "68fc2916-b728-4e20-8a29-0e1139b25656",
+          "uuid": "5efe286d-dce3-494f-944c-f504ccb0dc4a",
+          "timestamp": "2026-10-02T15:48:48.880Z",
+          "tool_use_result": {
+            "stdout": "",
+            "stderr": "",
+            "interrupted": false,
+            "isImage": false,
+            "noOutputExpected": false,
+            "backgroundTaskId": "bqmfeptan"
+          }
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "system",
+          "subtype": "task_updated",
+          "task_id": "bqmfeptan",
+          "patch": {
+            "status": "completed",
+            "end_time": 1790956136874
+          },
+          "uuid": "3db71fa5-7214-4bb9-be09-2857a0722443",
+          "session_id": "68fc2916-b728-4e20-8a29-0e1139b25656"
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "system",
+          "subtype": "task_notification",
+          "task_id": "bqmfeptan",
+          "tool_use_id": "toolu_0172c4hXj8ukpuXFzrUfRmsE",
+          "status": "completed",
+          "output_file": "<native-transcript>",
+          "summary": "Background command \"Append a line to a file after a short delay\" completed (exit code 0)",
+          "uuid": "2af795eb-c94c-44b2-9956-5b582774d178",
+          "session_id": "68fc2916-b728-4e20-8a29-0e1139b25656"
+        }
+      }
+    ],
+    "subagent": [
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011CfdfxVZgsuh7X7m4jgNTE",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_01EVC3smEDpS3U7bf6G9gP87",
+                "name": "Agent",
+                "input": {
+                  "description": "Write native.txt once",
+                  "subagent_type": "general-purpose",
+                  "prompt": "Use the Write tool exactly once to create the file <workspace>/native.txt with content exactly \"native-once\\n\" (the text native-once followed by a single newline). Use no other tools, do not delegate, and do not retry or repair if the write fails or is denied. Report the result.",
+                  "run_in_background": false
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 6147,
+              "cache_read_input_tokens": 13243,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 6147
+              },
+              "output_tokens": 17,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": null,
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d",
+          "uuid": "4d5b7c67-8dea-4b9a-878b-70e868bae949",
+          "timestamp": "2026-10-02T15:47:45.185Z",
+          "request_id": "req_011CfdfxTnXieTivdN5EdvKo"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "9fb67556-0f1b-4763-ab2d-cfef9fea462d",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Agent",
+          "tool_input": {
+            "description": "Write native.txt once",
+            "prompt": "Use the Write tool exactly once to create the file <workspace>/native.txt with content exactly \"native-once\\n\" (the text native-once followed by a single newline). Use no other tools, do not delegate, and do not retry or repair if the write fails or is denied. Report the result.",
+            "subagent_type": "general-purpose",
+            "run_in_background": false
+          },
+          "tool_use_id": "toolu_01EVC3smEDpS3U7bf6G9gP87"
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "system",
+          "subtype": "task_started",
+          "task_id": "a630881a913d23593",
+          "tool_use_id": "toolu_01EVC3smEDpS3U7bf6G9gP87",
+          "description": "Write native.txt once",
+          "subagent_type": "general-purpose",
+          "is_backgrounded": false,
+          "spawn_depth": 1,
+          "task_type": "local_agent",
+          "prompt": "Use the Write tool exactly once to create the file <workspace>/native.txt with content exactly \"native-once\\n\" (the text native-once followed by a single newline). Use no other tools, do not delegate, and do not retry or repair if the write fails or is denied. Report the result.",
+          "uuid": "91008796-1645-4db0-b950-3ce186c086dd",
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "9fb67556-0f1b-4763-ab2d-cfef9fea462d",
+          "agent_id": "a630881a913d23593",
+          "agent_type": "general-purpose",
+          "hook_event_name": "SubagentStart"
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011CfdfxtqR2BdWDeNAHxFgd",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_015VJvwDa97Jkw9skiWr2rPj",
+                "name": "Write",
+                "input": {
+                  "file_path": "<workspace>/native.txt",
+                  "content": "native-once\n"
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 12312,
+              "cache_read_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 12312,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "output_tokens": 16,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": "toolu_01EVC3smEDpS3U7bf6G9gP87",
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d",
+          "uuid": "22695c51-94be-49ee-88c9-0e607604fe6b",
+          "timestamp": "2026-10-02T15:47:48.963Z",
+          "request_id": "req_011CfdfxsxaQJ7Po9kGXhvzy",
+          "subagent_type": "general-purpose",
+          "task_description": "Write native.txt once"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "9fb67556-0f1b-4763-ab2d-cfef9fea462d",
+          "permission_mode": "auto",
+          "agent_id": "a630881a913d23593",
+          "agent_type": "general-purpose",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "<workspace>/native.txt",
+            "content": "native-once\n"
+          },
+          "tool_use_id": "toolu_015VJvwDa97Jkw9skiWr2rPj"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "9fb67556-0f1b-4763-ab2d-cfef9fea462d",
+          "permission_mode": "auto",
+          "agent_id": "a630881a913d23593",
+          "agent_type": "general-purpose",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "<workspace>/native.txt",
+            "content": "native-once\n"
+          },
+          "tool_response": {
+            "type": "create",
+            "filePath": "<workspace>/native.txt",
+            "content": "native-once\n",
+            "structuredPatch": [],
+            "originalFile": null,
+            "userModified": false
+          },
+          "tool_use_id": "toolu_015VJvwDa97Jkw9skiWr2rPj",
+          "duration_ms": 13
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "tool_use_id": "toolu_015VJvwDa97Jkw9skiWr2rPj",
+                "type": "tool_result",
+                "content": "File created successfully at: <workspace>/native.txt (file state is current in your context \u2014 no need to Read it back)"
+              }
+            ]
+          },
+          "parent_tool_use_id": "toolu_01EVC3smEDpS3U7bf6G9gP87",
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d",
+          "uuid": "1f9981d9-03a0-4d92-8e54-31846a23f049",
+          "timestamp": "2026-10-02T15:47:49.307Z",
+          "subagent_type": "general-purpose",
+          "task_description": "Write native.txt once"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "9fb67556-0f1b-4763-ab2d-cfef9fea462d",
+          "permission_mode": "auto",
+          "agent_id": "a630881a913d23593",
+          "agent_type": "general-purpose",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "SubagentHandback",
+          "tool_input": {
+            "message": "I made one Write call and it worked. The file <workspace>/native.txt now exists with the content \"native-once\" followed by a single newline. I used no other tools and didn't delegate. I didn't read the file back, as instructed; my only confirmation is the tool's \"File created successfully\" message.\n\nSeparately, the session reported that the claude.ai Figma connector needs to be authorized in its claude.ai connector settings before its tools can be used. This task didn't need it."
+          },
+          "tool_use_id": "toolu_01NrKpUD4PFnw5J5LEkHgkx5"
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011CfdfyAorVviM6Uqtv32kz",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_01NrKpUD4PFnw5J5LEkHgkx5",
+                "name": "SubagentHandback",
+                "input": {
+                  "message": "I made one Write call and it worked. The file <workspace>/native.txt now exists with the content \"native-once\" followed by a single newline. I used no other tools and didn't delegate. I didn't read the file back, as instructed; my only confirmation is the tool's \"File created successfully\" message.\n\nSeparately, the session reported that the claude.ai Figma connector needs to be authorized in its claude.ai connector settings before its tools can be used. This task didn't need it."
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 2612,
+              "cache_read_input_tokens": 12312,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 2612,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "output_tokens": 24,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": "toolu_01EVC3smEDpS3U7bf6G9gP87",
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d",
+          "uuid": "ee8db358-039e-4b9c-8df6-e88a0b3fd9fe",
+          "timestamp": "2026-10-02T15:47:53.582Z",
+          "request_id": "req_011CfdfyA1EGMNZJiFVxTZqY",
+          "subagent_type": "general-purpose",
+          "task_description": "Write native.txt once"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "9fb67556-0f1b-4763-ab2d-cfef9fea462d",
+          "permission_mode": "auto",
+          "agent_id": "a630881a913d23593",
+          "agent_type": "general-purpose",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUse",
+          "tool_name": "SubagentHandback",
+          "tool_input": {
+            "message": "I made one Write call and it worked. The file <workspace>/native.txt now exists with the content \"native-once\" followed by a single newline. I used no other tools and didn't delegate. I didn't read the file back, as instructed; my only confirmation is the tool's \"File created successfully\" message.\n\nSeparately, the session reported that the claude.ai Figma connector needs to be authorized in its claude.ai connector settings before its tools can be used. This task didn't need it."
+          },
+          "tool_response": {
+            "success": true,
+            "message": "Report delivered to your caller."
+          },
+          "tool_use_id": "toolu_01NrKpUD4PFnw5J5LEkHgkx5",
+          "duration_ms": 26
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "tool_use_id": "toolu_01NrKpUD4PFnw5J5LEkHgkx5",
+                "type": "tool_result",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "{\"success\":true,\"message\":\"Report delivered to your caller.\"}"
+                  }
+                ]
+              }
+            ]
+          },
+          "parent_tool_use_id": "toolu_01EVC3smEDpS3U7bf6G9gP87",
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d",
+          "uuid": "33aa7081-27f1-447a-8821-17bb9cc165d5",
+          "timestamp": "2026-10-02T15:47:54.015Z",
+          "subagent_type": "general-purpose",
+          "task_description": "Write native.txt once"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "9fb67556-0f1b-4763-ab2d-cfef9fea462d",
+          "permission_mode": "auto",
+          "agent_id": "a630881a913d23593",
+          "agent_type": "general-purpose",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "SubagentStop",
+          "stop_hook_active": false,
+          "agent_transcript_path": "<native-transcript>",
+          "background_tasks": [],
+          "session_crons": []
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "system",
+          "subtype": "task_updated",
+          "task_id": "a630881a913d23593",
+          "patch": {
+            "status": "completed",
+            "end_time": 1790956074024
+          },
+          "uuid": "a9ad7052-8e67-4d90-b085-8b8ab9390e1a",
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "9fb67556-0f1b-4763-ab2d-cfef9fea462d",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUse",
+          "tool_name": "Agent",
+          "tool_input": {
+            "description": "Write native.txt once",
+            "prompt": "Use the Write tool exactly once to create the file <workspace>/native.txt with content exactly \"native-once\\n\" (the text native-once followed by a single newline). Use no other tools, do not delegate, and do not retry or repair if the write fails or is denied. Report the result.",
+            "subagent_type": "general-purpose",
+            "run_in_background": false
+          },
+          "tool_response": {
+            "status": "completed",
+            "prompt": "Use the Write tool exactly once to create the file <workspace>/native.txt with content exactly \"native-once\\n\" (the text native-once followed by a single newline). Use no other tools, do not delegate, and do not retry or repair if the write fails or is denied. Report the result.",
+            "agentId": "a630881a913d23593",
+            "agentType": "general-purpose",
+            "handback": "send",
+            "handbackReport": {
+              "text": "I made one Write call and it worked. The file <workspace>/native.txt now exists with the content \"native-once\" followed by a single newline. I used no other tools and didn't delegate. I didn't read the file back, as instructed; my only confirmation is the tool's \"File created successfully\" message.\n\nSeparately, the session reported that the claude.ai Figma connector needs to be authorized in its claude.ai connector settings before its tools can be used. This task didn't need it."
+            },
+            "harnessNoteCount": 1,
+            "harnessTailCount": 0,
+            "harnessSectionHash": "2e819020a962678b",
+            "content": [
+              {
+                "type": "text",
+                "text": "This agent's report was delivered to you as a message from \"a630881a913d23593\" (its SubagentHandback call). Read it there; it is not repeated here.\n"
+              }
+            ],
+            "resolvedModel": "claude-opus-5-5[1m]",
+            "totalDurationMs": 8496,
+            "totalTokens": 15150,
+            "totalToolUseCount": 2,
+            "usage": {
+              "output_tokens_details": {
+                "thinking_tokens": 0
+              },
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 2612,
+              "cache_read_input_tokens": 12312,
+              "output_tokens": 224,
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 2612
+              },
+              "inference_geo": "not_available",
+              "iterations": [],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "toolStats": {
+              "readCount": 0,
+              "searchCount": 0,
+              "bashCount": 0,
+              "editFileCount": 1,
+              "linesAdded": 2,
+              "linesRemoved": 0,
+              "otherToolCount": 1
+            }
+          },
+          "tool_use_id": "toolu_01EVC3smEDpS3U7bf6G9gP87",
+          "duration_ms": 8498
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "system",
+          "subtype": "task_notification",
+          "task_id": "a630881a913d23593",
+          "tool_use_id": "toolu_01EVC3smEDpS3U7bf6G9gP87",
+          "status": "completed",
+          "output_file": "<native-transcript>",
+          "summary": "This agent's report was delivered to you as a message from \"a630881a913d23593\" (its SubagentHandback call). Read it there; it is not repeated here.\n",
+          "usage": {
+            "total_tokens": 15150,
+            "tool_uses": 2,
+            "duration_ms": 8495
+          },
+          "uuid": "bc692974-2893-4b00-84fe-73e1a32b1655",
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d"
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "tool_use_id": "toolu_01EVC3smEDpS3U7bf6G9gP87",
+                "type": "tool_result",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "  This agent's report was delivered to you as a message from \"a630881a913d23593\" (its SubagentHandback call). Read it there; it is not repeated here.\n  \nagentId: a630881a913d23593 (use SendMessage with to: 'a630881a913d23593', summary: '<5-10 word recap>' to continue this agent)\n<usage>subagent_tokens: 15150\ntool_uses: 2\nduration_ms: 8496</usage>"
+                  }
+                ]
+              }
+            ]
+          },
+          "parent_tool_use_id": null,
+          "session_id": "829130ef-f384-45d7-ba8f-51e075cce50d",
+          "uuid": "f493ab4d-c774-4395-9933-caf3b3fea27d",
+          "timestamp": "2026-10-02T15:47:54.030Z",
+          "tool_use_result": {
+            "status": "completed",
+            "prompt": "Use the Write tool exactly once to create the file <workspace>/native.txt with content exactly \"native-once\\n\" (the text native-once followed by a single newline). Use no other tools, do not delegate, and do not retry or repair if the write fails or is denied. Report the result.",
+            "agentId": "a630881a913d23593",
+            "agentType": "general-purpose",
+            "handback": "send",
+            "handbackReport": {
+              "text": "I made one Write call and it worked. The file <workspace>/native.txt now exists with the content \"native-once\" followed by a single newline. I used no other tools and didn't delegate. I didn't read the file back, as instructed; my only confirmation is the tool's \"File created successfully\" message.\n\nSeparately, the session reported that the claude.ai Figma connector needs to be authorized in its claude.ai connector settings before its tools can be used. This task didn't need it."
+            },
+            "harnessNoteCount": 1,
+            "harnessTailCount": 0,
+            "harnessSectionHash": "2e819020a962678b",
+            "content": [
+              {
+                "type": "text",
+                "text": "This agent's report was delivered to you as a message from \"a630881a913d23593\" (its SubagentHandback call). Read it there; it is not repeated here.\n"
+              }
+            ],
+            "resolvedModel": "claude-opus-5-5[1m]",
+            "totalDurationMs": 8496,
+            "totalTokens": 15150,
+            "totalToolUseCount": 2,
+            "usage": {
+              "output_tokens_details": {
+                "thinking_tokens": 0
+              },
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 2612,
+              "cache_read_input_tokens": 12312,
+              "output_tokens": 224,
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 2612
+              },
+              "inference_geo": "not_available",
+              "iterations": [],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "toolStats": {
+              "readCount": 0,
+              "searchCount": 0,
+              "bashCount": 0,
+              "editFileCount": 1,
+              "linesAdded": 2,
+              "linesRemoved": 0,
+              "otherToolCount": 1
+            }
+          }
+        }
+      }
+    ],
+    "coexist": [
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011Cfdfw1WD6nn3S8C4ErRNP",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_01LyspC9Snmtu919g87QdTGT",
+                "name": "Write",
+                "input": {
+                  "file_path": "<workspace>/native.txt",
+                  "content": "native-once\n"
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 6147,
+              "cache_read_input_tokens": 13181,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 6147
+              },
+              "output_tokens": 16,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": null,
+          "session_id": "6a26ef56-79c3-4f7f-9c83-926073a085e7",
+          "uuid": "08157e07-37e1-4cea-a7d3-e3761e9207bd",
+          "timestamp": "2026-10-02T15:47:23.857Z",
+          "request_id": "req_011CfdfvzqX7yvfrvQh7PGZq"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "6a26ef56-79c3-4f7f-9c83-926073a085e7",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "863a874e-f8b2-4b01-bdd0-e88dcf4a3102",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "<workspace>/native.txt",
+            "content": "native-once\n"
+          },
+          "tool_use_id": "toolu_01LyspC9Snmtu919g87QdTGT"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "6a26ef56-79c3-4f7f-9c83-926073a085e7",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "863a874e-f8b2-4b01-bdd0-e88dcf4a3102",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "<workspace>/native.txt",
+            "content": "native-once\n"
+          },
+          "tool_response": {
+            "type": "create",
+            "filePath": "<workspace>/native.txt",
+            "content": "native-once\n",
+            "structuredPatch": [],
+            "originalFile": null,
+            "userModified": false
+          },
+          "tool_use_id": "toolu_01LyspC9Snmtu919g87QdTGT",
+          "duration_ms": 16
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "tool_use_id": "toolu_01LyspC9Snmtu919g87QdTGT",
+                "type": "tool_result",
+                "content": "File created successfully at: <workspace>/native.txt (file state is current in your context \u2014 no need to Read it back)"
+              }
+            ]
+          },
+          "parent_tool_use_id": null,
+          "session_id": "6a26ef56-79c3-4f7f-9c83-926073a085e7",
+          "uuid": "2421490a-ea4f-415e-a265-916c0c35365a",
+          "timestamp": "2026-10-02T15:47:24.978Z",
+          "tool_use_result": {
+            "type": "create",
+            "filePath": "<workspace>/native.txt",
+            "content": "native-once\n",
+            "structuredPatch": [],
+            "originalFile": null,
+            "userModified": false
+          }
+        }
+      },
+      {
+        "kind": "user_hook",
+        "value": {
+          "owner": "project",
+          "input": {
+            "session_id": "6a26ef56-79c3-4f7f-9c83-926073a085e7",
+            "transcript_path": "<native-transcript>",
+            "cwd": "<workspace>",
+            "prompt_id": "863a874e-f8b2-4b01-bdd0-e88dcf4a3102",
+            "permission_mode": "auto",
+            "effort": {
+              "level": "high"
+            },
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Write",
+            "tool_input": {
+              "file_path": "<workspace>/native.txt",
+              "content": "native-once\n"
+            },
+            "tool_use_id": "toolu_01LyspC9Snmtu919g87QdTGT"
+          }
+        }
+      },
+      {
+        "kind": "user_hook",
+        "value": {
+          "owner": "plugin",
+          "input": {
+            "session_id": "6a26ef56-79c3-4f7f-9c83-926073a085e7",
+            "transcript_path": "<native-transcript>",
+            "cwd": "<workspace>",
+            "prompt_id": "863a874e-f8b2-4b01-bdd0-e88dcf4a3102",
+            "permission_mode": "auto",
+            "effort": {
+              "level": "high"
+            },
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Write",
+            "tool_input": {
+              "file_path": "<workspace>/native.txt",
+              "content": "native-once\n"
+            },
+            "tool_use_id": "toolu_01LyspC9Snmtu919g87QdTGT"
+          }
+        }
+      },
+      {
+        "kind": "user_hook",
+        "value": {
+          "owner": "project",
+          "input": {
+            "session_id": "6a26ef56-79c3-4f7f-9c83-926073a085e7",
+            "transcript_path": "<native-transcript>",
+            "cwd": "<workspace>",
+            "prompt_id": "863a874e-f8b2-4b01-bdd0-e88dcf4a3102",
+            "permission_mode": "auto",
+            "effort": {
+              "level": "high"
+            },
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Write",
+            "tool_input": {
+              "file_path": "<workspace>/native.txt",
+              "content": "native-once\n"
+            },
+            "tool_response": {
+              "type": "create",
+              "filePath": "<workspace>/native.txt",
+              "content": "native-once\n",
+              "structuredPatch": [],
+              "originalFile": null,
+              "userModified": false
+            },
+            "tool_use_id": "toolu_01LyspC9Snmtu919g87QdTGT",
+            "duration_ms": 16
+          }
+        }
+      },
+      {
+        "kind": "user_hook",
+        "value": {
+          "owner": "plugin",
+          "input": {
+            "session_id": "6a26ef56-79c3-4f7f-9c83-926073a085e7",
+            "transcript_path": "<native-transcript>",
+            "cwd": "<workspace>",
+            "prompt_id": "863a874e-f8b2-4b01-bdd0-e88dcf4a3102",
+            "permission_mode": "auto",
+            "effort": {
+              "level": "high"
+            },
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Write",
+            "tool_input": {
+              "file_path": "<workspace>/native.txt",
+              "content": "native-once\n"
+            },
+            "tool_response": {
+              "type": "create",
+              "filePath": "<workspace>/native.txt",
+              "content": "native-once\n",
+              "structuredPatch": [],
+              "originalFile": null,
+              "userModified": false
+            },
+            "tool_use_id": "toolu_01LyspC9Snmtu919g87QdTGT",
+            "duration_ms": 16
+          }
+        }
+      }
+    ],
+    "service_unavailable": [
+      {
+        "kind": "notice",
+        "value": "Companion capture unavailable: Error: connect ENOENT /tmp/TestNativeObservationClaudeHookAcceptanceservice_unavailable4245000033/003/absent.sock"
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011CfdfwpMWbEw7bBxvNjWQD",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_01NPNLteRH3B6gNEfe9HKXg2",
+                "name": "Write",
+                "input": {
+                  "file_path": "<workspace>/native.txt",
+                  "content": "native-once\n"
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 6151,
+              "cache_read_input_tokens": 13181,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 6151
+              },
+              "output_tokens": 16,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": null,
+          "session_id": "28ee33db-b6e7-46e1-8049-ae3e34de48b5",
+          "uuid": "7d8108ce-e700-4bb3-8c99-d42614b292af",
+          "timestamp": "2026-10-02T15:47:34.195Z",
+          "request_id": "req_011CfdfwoQDGDASARRZUcky9"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "28ee33db-b6e7-46e1-8049-ae3e34de48b5",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "8cf9b0bc-cdc7-47ab-9232-b89ef2f11fbd",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "<workspace>/native.txt",
+            "content": "native-once\n"
+          },
+          "tool_use_id": "toolu_01NPNLteRH3B6gNEfe9HKXg2"
+        }
+      },
+      {
+        "kind": "notice",
+        "value": "Companion capture unavailable: Error: connect ENOENT /tmp/TestNativeObservationClaudeHookAcceptanceservice_unavailable4245000033/003/absent.sock"
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "28ee33db-b6e7-46e1-8049-ae3e34de48b5",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "8cf9b0bc-cdc7-47ab-9232-b89ef2f11fbd",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "<workspace>/native.txt",
+            "content": "native-once\n"
+          },
+          "tool_response": {
+            "type": "create",
+            "filePath": "<workspace>/native.txt",
+            "content": "native-once\n",
+            "structuredPatch": [],
+            "originalFile": null,
+            "userModified": false
+          },
+          "tool_use_id": "toolu_01NPNLteRH3B6gNEfe9HKXg2",
+          "duration_ms": 18
+        }
+      },
+      {
+        "kind": "notice",
+        "value": "Companion capture unavailable: Error: connect ENOENT /tmp/TestNativeObservationClaudeHookAcceptanceservice_unavailable4245000033/003/absent.sock"
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "tool_use_id": "toolu_01NPNLteRH3B6gNEfe9HKXg2",
+                "type": "tool_result",
+                "content": "File created successfully at: <workspace>/native.txt (file state is current in your context \u2014 no need to Read it back)"
+              }
+            ]
+          },
+          "parent_tool_use_id": null,
+          "session_id": "28ee33db-b6e7-46e1-8049-ae3e34de48b5",
+          "uuid": "19c65995-8dcc-4361-b627-c36e9a7c703d",
+          "timestamp": "2026-10-02T15:47:34.560Z",
+          "tool_use_result": {
+            "type": "create",
+            "filePath": "<workspace>/native.txt",
+            "content": "native-once\n",
+            "structuredPatch": [],
+            "originalFile": null,
+            "userModified": false
+          }
+        }
+      }
+    ],
+    "denied": [
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011Cfdfywkp3R41KPAWsCTbC",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_018CdZxjnvvFgGwsPmpnU9Fj",
+                "name": "Write",
+                "input": {
+                  "file_path": "<workspace>/native.txt",
+                  "content": "native-once\n"
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 6145,
+              "cache_read_input_tokens": 13188,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 6145
+              },
+              "output_tokens": 16,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": null,
+          "session_id": "4d8a19ce-83ca-4a5d-8811-acd85d16ce33",
+          "uuid": "a0f83f44-35ea-4233-bbc8-52cf1eb58017",
+          "timestamp": "2026-10-02T15:48:03.410Z",
+          "request_id": "req_011CfdfyvkXjvYPkr41tNptH"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "4d8a19ce-83ca-4a5d-8811-acd85d16ce33",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "37b1aaaf-4cd3-46fe-82b6-7c264ccc90af",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "<workspace>/native.txt",
+            "content": "native-once\n"
+          },
+          "tool_use_id": "toolu_018CdZxjnvvFgGwsPmpnU9Fj"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "4d8a19ce-83ca-4a5d-8811-acd85d16ce33",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "37b1aaaf-4cd3-46fe-82b6-7c264ccc90af",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUse",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "<workspace>/native.txt",
+            "content": "native-once\n"
+          },
+          "tool_response": {
+            "type": "create",
+            "filePath": "<workspace>/native.txt",
+            "content": "native-once\n",
+            "structuredPatch": [],
+            "originalFile": null,
+            "userModified": false
+          },
+          "tool_use_id": "toolu_018CdZxjnvvFgGwsPmpnU9Fj",
+          "duration_ms": 11
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "tool_use_id": "toolu_018CdZxjnvvFgGwsPmpnU9Fj",
+                "type": "tool_result",
+                "content": "File created successfully at: <workspace>/native.txt (file state is current in your context \u2014 no need to Read it back)"
+              }
+            ]
+          },
+          "parent_tool_use_id": null,
+          "session_id": "4d8a19ce-83ca-4a5d-8811-acd85d16ce33",
+          "uuid": "b3d4009e-84ae-474a-b1c4-bbda1bb9e0b0",
+          "timestamp": "2026-10-02T15:48:03.971Z",
+          "tool_use_result": {
+            "type": "create",
+            "filePath": "<workspace>/native.txt",
+            "content": "native-once\n",
+            "structuredPatch": [],
+            "originalFile": null,
+            "userModified": false
+          }
+        }
+      }
+    ],
+    "background_stopped": [
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011CfdgoymwxVCm5iDC5J1A2",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_015uVNs5e8QK2LshoEodCsT2",
+                "name": "Bash",
+                "input": {
+                  "command": "sleep 30; printf 'native-once\\n' >> native.txt",
+                  "description": "Run delayed append in background",
+                  "run_in_background": true
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 7046,
+              "cache_read_input_tokens": 12327,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 7046
+              },
+              "output_tokens": 8,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": null,
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139",
+          "uuid": "043c1bdc-4930-41f9-97c2-2e20661ec109",
+          "timestamp": "2026-10-02T15:58:57.722Z",
+          "request_id": "req_011CfdgoxCwMd5Wq3REngXN4"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "8400e41a-1766-4bbd-b760-870c35228c53",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "sleep 30; printf 'native-once\\n' >> native.txt",
+            "description": "Run delayed append in background",
+            "run_in_background": true
+          },
+          "tool_use_id": "toolu_015uVNs5e8QK2LshoEodCsT2"
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011CfdgoymwxVCm5iDC5J1A2",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_01SZm7q7w8tSEuLVGsqDdgHp",
+                "name": "ToolSearch",
+                "input": {
+                  "query": "select:TaskStop",
+                  "max_results": 1
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 7046,
+              "cache_read_input_tokens": 12327,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 7046
+              },
+              "output_tokens": 8,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": null,
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139",
+          "uuid": "237dc686-bd79-4175-a185-d468286b9ad5",
+          "timestamp": "2026-10-02T15:58:57.742Z",
+          "request_id": "req_011CfdgoxCwMd5Wq3REngXN4"
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "system",
+          "subtype": "task_started",
+          "task_id": "bqjsn0npg",
+          "tool_use_id": "toolu_015uVNs5e8QK2LshoEodCsT2",
+          "description": "Run delayed append in background",
+          "is_backgrounded": true,
+          "task_type": "local_bash",
+          "uuid": "89b4e84b-af9c-4b00-843f-df6c21c4b979",
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "8400e41a-1766-4bbd-b760-870c35228c53",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUse",
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "sleep 30; printf 'native-once\\n' >> native.txt",
+            "description": "Run delayed append in background",
+            "run_in_background": true
+          },
+          "tool_response": {
+            "stdout": "",
+            "stderr": "",
+            "interrupted": false,
+            "isImage": false,
+            "noOutputExpected": false,
+            "backgroundTaskId": "bqjsn0npg"
+          },
+          "tool_use_id": "toolu_015uVNs5e8QK2LshoEodCsT2",
+          "duration_ms": 462
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "8400e41a-1766-4bbd-b760-870c35228c53",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "ToolSearch",
+          "tool_input": {
+            "query": "select:TaskStop",
+            "max_results": 1
+          },
+          "tool_use_id": "toolu_01SZm7q7w8tSEuLVGsqDdgHp"
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "tool_use_id": "toolu_015uVNs5e8QK2LshoEodCsT2",
+                "type": "tool_result",
+                "content": "Command running in background with ID: bqjsn0npg. Output is being written to: <native-task-output>. You will be notified when it completes. To check interim output, use Read on that file path.",
+                "is_error": false
+              }
+            ]
+          },
+          "parent_tool_use_id": null,
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139",
+          "uuid": "a9892c25-3767-4868-a114-3f370a728a86",
+          "timestamp": "2026-10-02T15:58:58.556Z",
+          "tool_use_result": {
+            "stdout": "",
+            "stderr": "",
+            "interrupted": false,
+            "isImage": false,
+            "noOutputExpected": false,
+            "backgroundTaskId": "bqjsn0npg"
+          }
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "8400e41a-1766-4bbd-b760-870c35228c53",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUse",
+          "tool_name": "ToolSearch",
+          "tool_input": {
+            "query": "select:TaskStop",
+            "max_results": 1
+          },
+          "tool_response": {
+            "matches": [
+              "TaskStop"
+            ],
+            "query": "select:TaskStop",
+            "total_deferred_tools": 48
+          },
+          "tool_use_id": "toolu_01SZm7q7w8tSEuLVGsqDdgHp",
+          "duration_ms": 2
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "tool_use_id": "toolu_01SZm7q7w8tSEuLVGsqDdgHp",
+                "content": [
+                  {
+                    "type": "tool_reference",
+                    "tool_name": "TaskStop"
+                  }
+                ]
+              }
+            ]
+          },
+          "parent_tool_use_id": null,
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139",
+          "uuid": "81e23c87-e8c2-49ae-9d1b-c000136d42ea",
+          "timestamp": "2026-10-02T15:58:58.577Z",
+          "tool_use_result": {
+            "matches": [
+              "TaskStop"
+            ],
+            "query": "select:TaskStop",
+            "total_deferred_tools": 48
+          }
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "assistant",
+          "message": {
+            "model": "claude-opus-5-5",
+            "id": "msg_011CfdgpWTfCCSavs3XiTUe5",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_01UTrTDeCgHhfYaErRo4CHBH",
+                "name": "TaskStop",
+                "input": {
+                  "task_id": "bqjsn0npg"
+                },
+                "caller": {
+                  "type": "direct"
+                }
+              }
+            ],
+            "container": null,
+            "stop_reason": null,
+            "stop_sequence": null,
+            "stop_details": null,
+            "usage": {
+              "input_tokens": 2,
+              "cache_creation_input_tokens": 3459,
+              "cache_read_input_tokens": 19373,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 3459
+              },
+              "output_tokens": 24,
+              "service_tier": "standard",
+              "inference_geo": "not_available"
+            },
+            "input_transformations": [],
+            "diagnostics": null,
+            "context_management": null
+          },
+          "parent_tool_use_id": null,
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139",
+          "uuid": "8a87acbf-e398-4e52-8f5a-460314b6318b",
+          "timestamp": "2026-10-02T15:59:01.839Z",
+          "request_id": "req_011CfdgpVTt4GmFYjHDDRU9n"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "8400e41a-1766-4bbd-b760-870c35228c53",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PreToolUse",
+          "tool_name": "TaskStop",
+          "tool_input": {
+            "task_id": "bqjsn0npg"
+          },
+          "tool_use_id": "toolu_01UTrTDeCgHhfYaErRo4CHBH"
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "system",
+          "subtype": "task_updated",
+          "task_id": "bqjsn0npg",
+          "patch": {
+            "status": "killed",
+            "end_time": 1790956741876
+          },
+          "uuid": "6791f312-c0f5-432d-8e52-8706dd6fe309",
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139"
+        }
+      },
+      {
+        "kind": "hook",
+        "value": {
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139",
+          "transcript_path": "<native-transcript>",
+          "cwd": "<workspace>",
+          "prompt_id": "8400e41a-1766-4bbd-b760-870c35228c53",
+          "permission_mode": "auto",
+          "effort": {
+            "level": "high"
+          },
+          "hook_event_name": "PostToolUse",
+          "tool_name": "TaskStop",
+          "tool_input": {
+            "task_id": "bqjsn0npg"
+          },
+          "tool_response": {
+            "message": "Successfully stopped task: bqjsn0npg (sleep 30; printf 'native-once\\n' >> native.txt)",
+            "task_id": "bqjsn0npg",
+            "task_type": "local_bash",
+            "command": "sleep 30; printf 'native-once\\n' >> native.txt"
+          },
+          "tool_use_id": "toolu_01UTrTDeCgHhfYaErRo4CHBH",
+          "duration_ms": 18
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "system",
+          "subtype": "task_notification",
+          "task_id": "bqjsn0npg",
+          "tool_use_id": "toolu_015uVNs5e8QK2LshoEodCsT2",
+          "status": "stopped",
+          "output_file": "<native-transcript>",
+          "summary": "Run delayed append in background",
+          "uuid": "3ab61c32-80a0-4393-b72d-928d7058adb4",
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139"
+        }
+      },
+      {
+        "kind": "sdk",
+        "value": {
+          "type": "user",
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "tool_use_id": "toolu_01UTrTDeCgHhfYaErRo4CHBH",
+                "type": "tool_result",
+                "content": "{\"message\":\"Successfully stopped task: bqjsn0npg (sleep 30; printf 'native-once\\\\n' >> native.txt)\",\"task_id\":\"bqjsn0npg\",\"task_type\":\"local_bash\",\"command\":\"sleep 30; printf 'native-once\\\\n' >> native.txt\"}"
+              }
+            ]
+          },
+          "parent_tool_use_id": null,
+          "session_id": "1c232fe2-fd2c-4b0d-9e44-9923e2f64139",
+          "uuid": "632a5dce-ff39-4946-b200-0ba34e229612",
+          "timestamp": "2026-10-02T15:59:01.898Z",
+          "tool_use_result": {
+            "message": "Successfully stopped task: bqjsn0npg (sleep 30; printf 'native-once\\n' >> native.txt)",
+            "task_id": "bqjsn0npg",
+            "task_type": "local_bash",
+            "command": "sleep 30; printf 'native-once\\n' >> native.txt"
+          }
+        }
+      }
+    ]
+  }
+}
