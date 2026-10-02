@@ -2,9 +2,12 @@
 
 ## REQ-NATIVE-UI-001 — Native app-server UI
 
-An empty launch view welcomes the user with `Mekugi <version> • codex <version>`.
-The versions identify the running executable and backend. Development builds
-without revision metadata show `dev`; unavailable backend versions are omitted.
+An empty launch view welcomes the user with `mekugi-v<version> • codex v<version>`
+for a versioned release. The versions identify the running executable and backend.
+The embedded release tag takes precedence over module and revision metadata;
+versioned source installs use their module version. Development builds show
+`Mekugi <revision>`, or `Mekugi dev` without revision metadata; unavailable backend
+versions are omitted.
 The welcome remains visible while composing the first prompt, including compact
 Main frames with at least six rows. History, live-edit replacement, and open
 modal views and the full multiline composer take precedence. The welcome is

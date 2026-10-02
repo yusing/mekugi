@@ -60,28 +60,71 @@ comparisons, use [codex-setup-ab](https://github.com/yusing/codex-setup-ab).
 
 Requirements:
 
-- **Go 1.27+**, with CGO enabled and a C toolchain.
 - **Codex CLI**, signed in with `codex login` using ChatGPT authentication.
 - For configured JavaScript plugins only: **Node.js 24+** as `node`. Plugins declaring regex grammars also require **ripgrep** as `rg` on the router's `PATH`.
 - Built-in frontends need neither Node.js nor Bun; semantic lookup requires the language servers listed under [agent-facing tools](#agent-facing).
 - Any interpreter your agent picks, such as `python3`, on the executor's `PATH`.
 
+### Release binaries
+
+Download an archive from [GitHub Releases](https://github.com/yusing/mekugi/releases/latest).
+Each archive includes `mekugi` and `mekugi-exec`; Go and a C toolchain are not needed.
+
+| Platform | Archive | Minimum OS |
+| --- | --- | --- |
+| Linux x86-64 | `mekugi_linux_amd64.tar.gz` | glibc 2.39, such as Ubuntu 24.04 |
+| Linux ARM64 | `mekugi_linux_arm64.tar.gz` | glibc 2.39, such as Ubuntu 24.04 |
+| macOS Apple Silicon | `mekugi_darwin_arm64.tar.gz` | macOS 15 |
+
+For example, install the Linux x86-64 release into `~/.local/bin`:
+
 ```sh
-go install github.com/yusing/mekugi/cmd/mekugi@latest github.com/yusing/mekugi/cmd/mekugi-exec@latest
-codex login
-mekugi codex --yolo
+(
+  set -eu
+  mekugi_install_tmp=$(mktemp -d)
+  trap 'rm -rf "$mekugi_install_tmp"' EXIT
+  cd "$mekugi_install_tmp"
+  curl -fLO https://github.com/yusing/mekugi/releases/latest/download/mekugi_linux_amd64.tar.gz
+  curl -fLO https://github.com/yusing/mekugi/releases/latest/download/SHA256SUMS
+  sha256sum --ignore-missing -c SHA256SUMS
+  tar -xzf mekugi_linux_amd64.tar.gz
+  mkdir -p "$HOME/.local/bin"
+  install -m 755 mekugi mekugi-exec "$HOME/.local/bin/"
+)
 ```
 
-Add `$GOBIN`, or `$(go env GOPATH)/bin` if that is unset, to your `PATH`. Mekugi
-opens its native terminal workspace.
-Interactive launches currently require explicit `--yolo` (no approvals or sandbox).
-With `mekugi-exec` installed beside `mekugi`, command lists show separate output
-and exit status for each command. Without it, they show as one command.
+Use the archive for your platform. On macOS, verify it with
+`shasum -a 256 --ignore-missing -c SHA256SUMS` instead of `sha256sum`.
+Add `~/.local/bin` to your `PATH` if needed. Installing replaces both binaries
+at that destination. Linux releases need glibc and do not run on stock Alpine Linux;
+use a source build for other environments.
+
+### Build from source
+
+Source installs require **Go 1.27+**, CGO enabled, and a C toolchain:
+
+```sh
+go install github.com/yusing/mekugi/cmd/mekugi@latest github.com/yusing/mekugi/cmd/mekugi-exec@latest
+```
+
+Add `$GOBIN`, or `$(go env GOPATH)/bin` if that is unset, to your `PATH`.
 
 From a checkout with **Make**, run `make install`. It regenerates the
 optional plugin shared core and installs `mekugi` and `mekugi-exec`. `make uninstall`
 removes only those binaries. Running sessions keep their worker executable, so
 start a new session to pick up an update.
+
+### Start Mekugi
+
+```sh
+codex login
+mekugi codex --yolo
+```
+
+Mekugi opens its native terminal workspace. Interactive launches currently require
+explicit `--yolo` (no approvals or sandbox). With `mekugi-exec` installed beside
+`mekugi`, command lists show separate output and exit status for each command.
+Without it, they show as one command.
 
 ## Usage
 
@@ -201,7 +244,8 @@ Unsupported syntax (including subgraphs), incomplete fences, and diagrams too
 wide for the pane remain readable source.
 
 The empty launch view shows the Mekugi and
-Codex versions. Click tool output, long-content excerpts, or edit rows to open
+Codex versions. Release builds show their tag, such as `mekugi-v1.2.3`, rather than
+a commit SHA. Click tool output, long-content excerpts, or edit rows to open
 the shared scrollable dialog without leaving your current view. Close it with
 `Esc` or its top-right close button.
 
@@ -666,6 +710,12 @@ authentication. Use `mekugi codex` from then on.
 - [Codex end-to-end checks](doc/codex-router-e2e.md)
 
 ## Development
+
+The [build workflow](.github/workflows/release.yml) tests and packages both commands
+for Linux amd64/arm64 and macOS arm64 on pushes to `main`, pull requests, and manual
+runs. Pushing a `v*` tag also publishes the three archives and `SHA256SUMS` to a
+GitHub release, with the tag embedded as the welcome version. Rerunning a tag build
+replaces that release's matching assets.
 
 To review the native app-server UI without Codex or model requests, run
 `make preview-native-ui` in a terminal. It plays a synthetic session through the

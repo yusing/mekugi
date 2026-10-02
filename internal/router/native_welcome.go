@@ -7,8 +7,14 @@ import (
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
+// Release builds set this to their tag with -ldflags -X.
+var buildVersion string
+
 // Read the running executable's build identity, never the workspace checkout.
 func mekugiVersion() string {
+	if buildVersion != "" {
+		return buildVersion
+	}
 	if info, ok := debug.ReadBuildInfo(); ok {
 		for _, setting := range info.Settings {
 			if setting.Key == "vcs.revision" && setting.Value != "" {
@@ -38,7 +44,12 @@ func backendVersion(agent string) string {
 }
 
 func (u *appServerUI) welcome() string {
-	label := "Mekugi " + mekugiVersion() + " • codex"
+	version := mekugiVersion()
+	label := "Mekugi " + version
+	if strings.HasPrefix(version, "v") {
+		label = "mekugi-" + version
+	}
+	label += " • codex"
 	if u.backendVersion != "" {
 		label += " v" + u.backendVersion
 	}
