@@ -109,9 +109,6 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 			return entry.native.attachments
 		}
 	case "progress":
-		if entry.native != nil && entry.native.recovery != "" {
-			return []activityui.Block{{Kind: "progress", Verb: "Journal recovery", Label: text, Body: entry.native.recovery}}
-		}
 		if entry.native != nil && entry.native.wait != nil {
 			return []activityui.Block{*entry.native.wait}
 		}

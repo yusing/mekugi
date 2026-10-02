@@ -650,7 +650,8 @@ Every section is optional. Settings are read at startup and never rewritten.
   of improved model success or token savings. In the native UI, sliced plans show
   a countdown between successful turns; Esc cancels. `slice` and `auto` reset
   context before continuing, while `off` continues without resetting. An interrupted
-  reset may require manual continuation. Click **Context reset from journal** to
+  reset may require manual continuation. Resets appear once in the journal, not as
+  duplicate commentary. Click the journal's **Context reset from journal** row to
   read the recovery message shown to the model. Older or expired messages are
   marked unavailable. See [compaction behavior](doc/spec/journal.md#router-answered-compaction).
 - **Instructions:** Wrapped sessions disable Codex's `/goal` feature. Anything

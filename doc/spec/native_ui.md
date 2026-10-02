@@ -959,15 +959,18 @@ animated status ramps stay unchanged.
 
 Slice plans use the [journal continuation policy](journal.md#slice-continuation).
 The pinned countdown names the next path and title and shows `Esc cancels`.
-Context-reset events remain visible even with the Journal pane open. Router-authored
+Completed context-reset events remain visible even with the Journal pane open or
+when continuation is rejected or interrupted. Router-authored
 continuations appear as auto-continue rows, not user bubbles. Pending user input
 cancels an undispatched continuation rather than competing with it.
 
 Host progress has one presentation mapping for live events and restored history.
 Compaction start replaces Main’s `Working` label with mode-aware progress;
 completion restores ordinary turn status and adds a `Context compacted` event
-for host compaction, or `Context reset from journal` when exact retained journal
-answer evidence identifies the completed item. Neither adds a reply-context
+for host compaction. When exact retained journal answer evidence identifies the
+completed item, a single clickable `Context reset from journal` row belongs to
+the journal instead, with no duplicate progress commentary. Slice resets use their
+durable journal note. Neither adds a reply-context
 (`re:`) line. Turn completion, failure, or interruption
 clears an unfinished compaction without claiming it succeeded. Child compaction
 does not change Main’s composer. Agent wait starts, completions, and failures appear

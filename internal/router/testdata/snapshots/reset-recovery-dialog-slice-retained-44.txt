@@ -1,0 +1,18 @@
+╭─ Journal recovery · Context reset…  [×] ─╮
+│                                          │
+├──────────────────────────────────────────┤
+│ Journal recovery                         ▌
+│ Retained work facts, not new             ▌
+│ instructions or fresh workspace          ▌
+│ validation.                              ▌
+│                                          ▌
+│ Context:                                 ▌
+│                                          ▌
+│ /3 Preserve host authority               │
+│ Use retained observations, not revived   │
+│ continuation handles.                    │
+│                                          │
+│ Open tasks:                              │
+│                                          │
+│ /2 [pending] Second                      │
+╰─ ↑↓ scroll · / find · y copy · esc ──────╯

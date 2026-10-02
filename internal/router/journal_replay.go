@@ -192,6 +192,9 @@ func (u *appServerUI) restoredJournalPlacements(turns []appServerHistoryTurn, it
 			if update.tree != nil || p.event != nil && p.item.Text == "" {
 				continue
 			}
+			if p.event != nil && p.event.Op == "reset" {
+				p.recovery = u.journalResetRecovery(workspace, u.thread, p.event.ResetTurn)
+			}
 			view.applyJournal(journalKey(workspace, u.thread), p)
 			entry := view.entries[len(view.entries)-1].activityPaneEntry
 			entry.Observed = update.at

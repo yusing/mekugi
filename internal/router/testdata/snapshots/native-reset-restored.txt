@@ -1,7 +1,7 @@
-• Context reset from journal
-
 • Context compacted
 
+◆ journal                                                                                  20:00:00
+│ ◆ ↻ Context reset from journal · 0 provider tokens ›
 
 
 

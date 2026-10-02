@@ -42,6 +42,32 @@ func resetWordingCompaction(t *testing.T, d *journalResetDriver, fallback bool) 
 	}
 }
 
+// Isolate the reset presentation from the fixture's earlier task milestones,
+// and fix the durable event timestamp before rendering it.
+func applyResetWordingJournal(u *appServerUI) {
+	for _, p := range u.journal.snapshot() {
+		if p.event != nil && p.event.Op == "reset" {
+			event := *p.event
+			event.At = u.view.now().Format(time.RFC3339Nano)
+			p.event = &event
+			u.applyJournalPublication(u.journal, p)
+		}
+	}
+}
+
+func fixResetPresentationTime(u *appServerUI) {
+	for i := range u.view.entries {
+		u.view.mutateEntry(i, func(record *liveActivityRecord) {
+			record.Observed = u.view.now()
+			if record.journalEvent != nil {
+				event := *record.journalEvent
+				event.At = record.Observed.Format(time.RFC3339Nano)
+				record.journalEvent = &event
+			}
+		})
+	}
+}
+
 func TestUISnapshotNativeResetWording(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	for _, mode := range []string{"slice", "auto", "off"} {
@@ -50,7 +76,14 @@ func TestUISnapshotNativeResetWording(t *testing.T) {
 			u := newAppServerSessionTestUI(t, d.workspace)
 			u.thread, u.reset = d.thread, d
 			u.session.start(d.thread, d.workspace)
+			u.journal = d.proxy.journals.attachNative(d.workspace, d.thread)
+			t.Cleanup(func() { d.proxy.journals.detachNative(u.journal) })
+			if err := d.proxy.journals.restoreNative(t.Context(), d.proxy.replayStore, u.journal); err != nil {
+				t.Fatal(err)
+			}
 			u.view.painter.Theme = livediff.DarkTheme
+			u.view.clock = func() time.Time { return now }
+			u.clock = u.view.clock
 			// Render the driver's real countdown without wall-clock-dependent timing.
 			d.deadline = now.Add(3 * time.Second)
 			assertNativeUISnapshot(t, "native-reset-countdown-"+mode, []string{d.label(now)})
@@ -68,9 +101,14 @@ func TestUISnapshotNativeResetWording(t *testing.T) {
 			assertNativeUISnapshot(t, "native-reset-working-"+mode, []string{u.sessionLabel(now)})
 			resetWordingCompaction(t, d, false)
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": d.thread, "turnId": "reset-turn", "item": item})
+			if err := d.continuePlan(true); err != nil {
+				t.Fatal(err)
+			}
+			applyResetWordingJournal(u)
 			// Keep ordinary provider compaction wording even in reset-enabled sessions.
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": d.thread, "turnId": "provider-turn", "item": map[string]any{"id": "provider-item", "type": "contextCompaction"}})
 			u.turn = "" // No duration-dependent status in the completion frame.
+			fixResetPresentationTime(u)
 			rows, _ := u.mainFrame(100, 16, 0)
 			assertNativeUISnapshot(t, "native-reset-completed-"+mode, rows)
 		})
@@ -94,6 +132,7 @@ func TestUISnapshotNativeResetRestored(t *testing.T) {
 	}
 	u := newAppServerSessionTestUI(t, d.workspace)
 	u.thread = d.thread
+	u.proxy = &mekugiProxy{replayStore: reopened}
 	u.session.start(d.thread, d.workspace)
 	store := newJournalStore()
 	u.journal = store.attachNative(d.workspace, d.thread)
@@ -101,10 +140,13 @@ func TestUISnapshotNativeResetRestored(t *testing.T) {
 		t.Fatal(err)
 	}
 	u.view.painter.Theme = livediff.DarkTheme
+	u.view.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
 	u.restoreHistory([]appServerHistoryTurn{
 		{ID: "reset-turn", Status: "completed", Items: []appServerItem{{ID: "reset", Type: "contextCompaction"}}},
 		{ID: "provider-turn", Status: "completed", Items: []appServerItem{{ID: "provider", Type: "contextCompaction"}}},
 	})
+	applyResetWordingJournal(u)
+	fixResetPresentationTime(u)
 	rows, _ := u.mainFrame(100, 16, 0)
 	assertNativeUISnapshot(t, "native-reset-restored", rows)
 	if u.journalResetTurn("child", "reset-turn") || u.journalResetTurn(d.thread, "") {
@@ -146,6 +188,7 @@ func TestUISnapshotNativeAutoCompactionWording(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	u.view.painter.Theme = livediff.DarkTheme
 	u.view.clock = func() time.Time { return now }
+	u.clock = u.view.clock
 	// Ordinary auto compactions have no slice-reset driver or armed intent.
 	for _, turn := range []string{"auto-first", "auto-second", "provider-fallback"} {
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": d.thread, "turn": map[string]any{"id": turn}})
@@ -161,6 +204,7 @@ func TestUISnapshotNativeAutoCompactionWording(t *testing.T) {
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": d.thread, "turnId": "auto-first", "item": appServerItem{ID: "same-turn-provider", Type: "contextCompaction"}})
 	u.turn, u.status = "", "Ready"
+	fixResetPresentationTime(u)
 	rows, _ := u.mainFrame(100, 16, 0)
 	assertNativeUISnapshot(t, "native-auto-compaction-completed", rows)
 
@@ -182,6 +226,7 @@ func TestUISnapshotNativeAutoCompactionWording(t *testing.T) {
 	}
 	turns[0].Items = append(turns[0].Items, appServerItem{ID: "same-turn-provider", Type: "contextCompaction"})
 	restored.restoreHistory(turns)
+	fixResetPresentationTime(restored)
 	rows, _ = restored.mainFrame(100, 16, 0)
 	assertNativeUISnapshot(t, "native-auto-compaction-restored", rows)
 	if restored.journalCompactionAnswered("child", "auto-first", "auto-first-item") || restored.journalCompactionAnswered(d.thread, "", "auto-first-item") || restored.journalCompactionAnswered(d.thread, "provider-fallback", "provider-fallback-item") || restored.journalCompactionAnswered(d.thread, "auto-first", "different-item") {

@@ -884,7 +884,7 @@ func (v *liveActivityView) applyTreeJournal(thread string, p nativeJournalPublic
 		kind = "journal_card"
 	}
 	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: kind, Text: text, Observed: v.now(), journalCard: p.card, journalEvent: p.event,
-		native: &liveActivityNativeItem{thread: thread, turn: "journal-v2", item: p.item.ID, phase: kind}}
+		native: &liveActivityNativeItem{thread: thread, turn: "journal-v2", item: p.item.ID, phase: kind, recovery: p.recovery}}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 }
 
@@ -1089,12 +1089,21 @@ func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last
 			}
 		}
 		snippet := liveActivitySnippet{}
-		if detail != "" {
+		if entry.native != nil && entry.native.recovery != "" {
+			if detail == "" {
+				text += activityui.Dim + " ›" + activityui.Undim
+			}
+			snippet = liveActivitySnippet{run: head.Seq, block: len(laid)}
+			laid = append(laid, activityui.Block{Kind: "progress", Verb: "Journal recovery", Label: "Context reset from journal", Body: entry.native.recovery})
+		} else if detail != "" {
 			snippet = liveActivitySnippet{run: head.Seq, block: len(laid)}
 			laid = append(laid, activityui.Block{Kind: "text", Verb: "Journal", Label: entry.journalEvent.Path, Body: livediff.Safe(detail, false)})
 		}
 		// Wrapped rows hang under the text, past the state glyph.
 		for _, line := range activityui.Hang(lead, text, body) {
+			if entry.native != nil && entry.native.recovery != "" && v.snippet == snippet {
+				line = activityui.Underline(line)
+			}
 			out.add(0, gutter+line)
 			out.snippets[len(out.snippets)-1] = snippet
 		}

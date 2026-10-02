@@ -118,6 +118,8 @@ func TestJournalCompactionRecoveryExactDeliveredSummaryAndRestart(t *testing.T) 
 	}
 	requireCompactionRecovery(t, reopened, workspace, thread, "first-reset", "first-item", first)
 	requireCompactionRecovery(t, reopened, workspace, thread, "second-reset", "second-item", second)
+	requireCompactionRecovery(t, reopened, workspace, thread, "first-reset", "", first)
+	requireCompactionRecovery(t, reopened, workspace, thread, "second-reset", "", second)
 	for _, key := range [][4]string{
 		{t.TempDir(), thread, "first-reset", "first-item"},
 		{workspace, "foreign-thread", "first-reset", "first-item"},
@@ -125,10 +127,32 @@ func TestJournalCompactionRecoveryExactDeliveredSummaryAndRestart(t *testing.T) 
 		{workspace, thread, "first-reset", "foreign-item"},
 		{workspace, thread, "second-reset", "first-item"},
 		{workspace, thread, "", "first-item"},
-		{workspace, thread, "first-reset", ""},
 	} {
 		requireCompactionRecovery(t, reopened, key[0], key[1], key[2], key[3], "")
 	}
+}
+
+func TestJournalCompactionRecoveryTurnDisclosureRejectsAmbiguousReceipts(t *testing.T) {
+	transform, proxy, _, workspace := newDurableTreeTransform(t)
+	thread := transform.shellThreadID
+	proxy.journalCompaction = "auto"
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, thread, "", []journalMutation{
+		{Op: "add", Kind: "task", Title: new("Original recovery")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, first := deliverRecoveryCompaction(t, proxy, workspace, thread, "shared-turn")
+	proxy.replayStore.bindStandaloneCompactionItem(t.Context(), workspace, thread, "shared-turn", "first-item")
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, thread, "", []journalMutation{
+		{Op: "set", P: "/1", Title: new("Later recovery")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, second := deliverRecoveryCompaction(t, proxy, workspace, thread, "shared-turn")
+	proxy.replayStore.bindStandaloneCompactionItem(t.Context(), workspace, thread, "shared-turn", "second-item")
+	requireCompactionRecovery(t, proxy.replayStore, workspace, thread, "shared-turn", "", "")
+	requireCompactionRecovery(t, proxy.replayStore, workspace, thread, "shared-turn", "first-item", first)
+	requireCompactionRecovery(t, proxy.replayStore, workspace, thread, "shared-turn", "second-item", second)
 }
 
 func TestJournalCompactionRecoveryUnavailableLegacyAndMissing(t *testing.T) {

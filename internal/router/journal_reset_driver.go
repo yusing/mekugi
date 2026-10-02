@@ -167,7 +167,37 @@ func (d *journalResetDriver) tick(now time.Time) error {
 	return d.send("compacting", "thread/compact/start", map[string]any{"threadId": d.thread})
 }
 
+// A completed reset is a fact independent of whether its next slice can still
+// continue. Persist it before continuation validation, including removed slices.
+func (d *journalResetDriver) recordReset() error {
+	return d.change(func(j *threadJournal, intent *journalResetIntent) error {
+		if intent.Phase != "consumed" {
+			return errJournalUnchanged
+		}
+		for _, event := range j.Events {
+			if event.Op == "reset" && event.ResetTurn == d.compactTurn {
+				return errJournalUnchanged
+			}
+		}
+		parent := intent.Path
+		if j.treeIndex(parent) < 0 {
+			parent = ""
+		}
+		if _, err := j.applyTree(journalMutation{Op: "log", P: parent, Text: new("↻ Context reset from journal · 0 provider tokens")}); err != nil {
+			return err
+		}
+		j.Events[len(j.Events)-1].Op = "reset"
+		j.Events[len(j.Events)-1].ResetTurn = d.compactTurn
+		return nil
+	})
+}
+
 func (d *journalResetDriver) continuePlan(compacted bool) error {
+	if compacted {
+		if err := d.recordReset(); err != nil {
+			return d.fail("Reset journal unavailable: " + err.Error())
+		}
+	}
 	if err := d.change(func(j *threadJournal, intent *journalResetIntent) error {
 		i := j.treeIndex(intent.Path)
 		if i < 0 || j.Items[i].State != "pending" {
@@ -177,14 +207,6 @@ func (d *journalResetDriver) continuePlan(compacted bool) error {
 			return errors.New("context reset did not consume the journal reset intent")
 		}
 		intent.Phase = "starting"
-		if compacted {
-			_, err := j.applyTree(journalMutation{Op: "log", P: intent.Path, Text: new("↻ Context reset from journal · 0 provider tokens")})
-			if err != nil {
-				return err
-			}
-			j.Events[len(j.Events)-1].Op = "reset"
-			j.Events[len(j.Events)-1].ResetTurn = d.compactTurn
-		}
 		return nil
 	}); err != nil {
 		return d.fail("Slice continuation unavailable: " + err.Error())
@@ -276,6 +298,9 @@ func (d *journalResetDriver) message(m appserver.Message) (bool, error) {
 	if d.phase == "compacting" {
 		if m.Method == "item/completed" && p.TurnID == d.compactTurn && p.Item.Type == "contextCompaction" {
 			d.compactDone = true
+			if err := d.recordReset(); err != nil {
+				return false, d.fail("Reset journal unavailable: " + err.Error())
+			}
 		}
 		if m.Method == "turn/completed" && p.Turn.ID == d.compactTurn {
 			if p.Turn.Status != "completed" || !d.compactDone {

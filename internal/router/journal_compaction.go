@@ -410,10 +410,11 @@ func (s *mekugiReplayStore) answeredCompactionItem(ctx context.Context, workspac
 	return err == nil && matched
 }
 
-// compactionRecovery reads only the original message bound to this exact host
-// item. Missing historical evidence never substitutes the current journal.
+// compactionRecovery reads only the original retained message. Slice journal
+// events identify a standalone turn, so an empty item requires a unique receipt
+// for that turn. Missing or ambiguous evidence never substitutes today's journal.
 func (s *mekugiReplayStore) compactionRecovery(ctx context.Context, workspace, thread, turn, item string) (string, error) {
-	if turn == "" || item == "" {
+	if turn == "" {
 		return "", nil
 	}
 	var text string
@@ -432,8 +433,19 @@ func (s *mekugiReplayStore) compactionRecovery(ctx context.Context, workspace, t
 		if record.Version != 1 || record.Workspace != workspace || record.Thread != thread {
 			return errors.New("invalid compaction receipt identity")
 		}
+		if item == "" {
+			matches := 0
+			for _, entry := range record.AnsweredItems {
+				if entry.Turn == turn {
+					matches++
+				}
+			}
+			if matches != 1 {
+				return nil
+			}
+		}
 		for _, entry := range record.AnsweredItems {
-			if entry.Turn != turn || entry.Item != item || entry.ResponseID == "" {
+			if entry.Turn != turn || item != "" && entry.Item != item || entry.ResponseID == "" {
 				continue
 			}
 			data, err := readManagedOutputFile(filepath.Join(s.directory, journalCompactionRecoveryName(workspace, thread, entry.ResponseID)))

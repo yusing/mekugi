@@ -22,6 +22,7 @@ type nativeJournalSink struct {
 }
 
 type nativeJournalPublication struct {
+	recovery            string // Presentation-only retained reset disclosure.
 	order               uint64
 	event               *journalEvent
 	card                *nativeJournalCard
@@ -248,6 +249,9 @@ func (u *appServerUI) applyJournalPublication(sink *nativeJournalSink, publicati
 		return
 	}
 	if publication.event == nil || publication.item.Text != "" { // Non-transition edits render no row.
+		if publication.event != nil && publication.event.Op == "reset" {
+			publication.recovery = u.journalResetRecovery(sink.workspace, sink.thread, publication.event.ResetTurn)
+		}
 		u.view.applyJournal(journalKey(sink.workspace, sink.thread), publication)
 	}
 }

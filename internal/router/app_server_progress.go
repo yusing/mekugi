@@ -42,10 +42,28 @@ func appServerProgress(item appServerItem, method string) (text string, wait *ac
 
 func (u *appServerUI) progress(item appServerItem, method, thread, turn string) (string, *activityui.Block, bool) {
 	text, wait, handled := appServerProgress(item, method)
-	if item.Type == "contextCompaction" && text != "" && (u.journalCompactionAnswered(thread, turn, item.ID) || u.journalResetCompleted(thread, turn)) {
-		text = "Context reset from journal"
+	if item.Type == "contextCompaction" && text != "" {
+		answered := u.journalCompactionAnswered(thread, turn, item.ID)
+		if u.journalResetEvent(thread, turn) {
+			return "", wait, handled // The slice driver's durable journal event owns this reset.
+		}
+		if answered || u.journalResetCompleted(thread, turn) {
+			text = "Context reset from journal"
+		}
 	}
 	return text, wait, handled
+}
+
+// Standalone journal answers have no slice note. Present their exact host receipt
+// as a journal row, not a second progress/commentary surface.
+func (u *appServerUI) progressEntry(entry activityPaneEntry) activityPaneEntry {
+	if entry.Text == "Context reset from journal" {
+		entry.Kind = "journal_event"
+		entry.journalEvent = &journalEvent{Op: "reset", ResetTurn: entry.native.turn,
+			Fields: journalNode{Kind: "note", Title: "↻ Context reset from journal · 0 provider tokens"}}
+		entry.native.recovery = u.progressRecovery(entry.Text, entry.native.thread, entry.native.turn, entry.native.item)
+	}
+	return entry
 }
 
 func (u *appServerUI) progressRecovery(text, thread, turn, item string) string {
@@ -67,7 +85,27 @@ func (u *appServerUI) progressRecovery(text, thread, turn, item string) string {
 			return message
 		}
 	}
-	return "The exact model-visible recovery message is unavailable for this reset. It was not retained or its retained evidence is no longer readable."
+	return journalRecoveryUnavailable
+}
+
+const journalRecoveryUnavailable = "The exact model-visible recovery message is unavailable for this reset. It was not retained or its retained evidence is no longer readable."
+
+// Durable reset notes already own a workspace; do not search another journal
+// namespace for a turn with the same name.
+func (u *appServerUI) journalResetRecovery(workspace, thread, turn string) string {
+	if thread != u.thread {
+		return ""
+	}
+	p := u.proxy
+	if p == nil && u.reset != nil && u.reset.thread == thread && u.reset.workspace == workspace {
+		p = u.reset.proxy
+	}
+	if p != nil && p.replayStore != nil {
+		if message, err := p.replayStore.compactionRecovery(u.ctx, workspace, thread, turn, ""); err == nil && message != "" {
+			return message
+		}
+	}
+	return journalRecoveryUnavailable
 }
 
 func appServerWaitProgress(item appServerItem, method string) *activityui.Block {

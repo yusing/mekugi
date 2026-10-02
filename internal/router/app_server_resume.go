@@ -321,10 +321,10 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 	if _, _, progress := appServerProgress(item, method); progress {
 		method = appServerHistoryProgressPhase(item, turn.Status)
 		if text, wait, _ := u.progress(item, method, u.thread, turn.ID); text != "" {
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{u.progressEntry(activityPaneEntry{
 				Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),
-				native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, wait: wait, recovery: u.progressRecovery(text, u.thread, turn.ID, item.ID)},
-			}}})
+				native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, wait: wait},
+			})}})
 		}
 		return
 	}

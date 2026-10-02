@@ -222,7 +222,8 @@ Summary bytes and evidence counts are measurements, never savings estimates.
 
 In `auto`, `/compact` describes an attempted journal context reset, including
 provider fallback, rather than promising a journal answer. Live progress follows
-that intent. Completion and restored history say “Context reset from journal” only
+that intent. Completion and restored history show one journal reset row, without
+duplicate native progress commentary, only
 for the exact thread, turn and item retained in a router-answer receipt, or the
 standalone turn identified by a slice-reset event. Provider answers keep “Context
 compacted”, regardless of configured mode.
@@ -232,10 +233,12 @@ Buffered manual standalone notifications bind their retained answer to the uniqu
 host item. Ordinary automatic compactions keep host wording because several can
 share one turn, and buffered UI observations do not identify the HTTP request's item.
 
-The native “Context reset from journal” row opens the shared scrollable dialog
+The journal's “Context reset from journal” row opens the shared scrollable dialog
 with the exact model-visible recovery message retained for that response. The
 message remains associated with its original thread, turn and item across later
-resets and resume; it is never regenerated from newer journal state. Older
+resets and resume; it is never regenerated from newer journal state. Slice-reset
+notes identify their standalone turn and disclose recovery only when that turn has
+one retained answer receipt. Older
 receipts or unreadable retained messages open an explicit unavailable notice.
 Provider compaction rows do not acquire a journal-recovery disclosure.
 
