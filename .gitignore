@@ -2,3 +2,6 @@ internal/router/toolplugin/dist/*.js
 node_modules/
 __pycache__/
 doc/proposals/
+
+/bin/
+/internal/claude/bridge/dist/
