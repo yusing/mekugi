@@ -279,6 +279,11 @@ No dedicated journal tool is exposed. Operations are:
   A note or context `p` selects its containing task. Neither case attributes the
   fact to an unrelated task.
 - `remove {p}`: removes a mistaken subtree, retaining its removal event.
+- `finish`: a control marker with no operands or node, allowed only last in a
+  Code Mode helper batch or a native stock `exec_command`/`write_stdin` journal array.
+  The preceding mutations and invocation-scoped receipt persist atomically; the marker
+  contributes no returned path. A lone helper marker returns null. A rejected batch
+  records no finish receipt. It does not stop or execute host work.
 - `read {p?, agent?, depth?, view?}`: returns the selected subtree. Depth zero omits
   child nodes. Omitted agent selects the caller; explicit agents require proven
   ancestry. The default `combined` view includes read-only mounted agents. `own`
@@ -332,13 +337,22 @@ the router does not claim a journal flush or lose the answer from subsequent pro
 Inference is request-local;
 concurrent threads and branches do not share its source. Journal mutation schemas do not
 expose an answer flag, and ordinary milestone edits preserve any attached question. Previously
-retained answer-marked and finish calls remain replayable but are not offered to new model turns.
+retained answer-marked and direct finish calls remain replayable but are not offered to new model turns.
 
 Reads authorize and return one locked durable snapshot. Unknown, ambiguous or
 conflicted ancestry fails closed, including after a router restart with only the
 requesting thread observed. Agent names alone do not authorize access.
 
-The agent finishes naturally with a final answer after inspecting required tool results.
+The final useful host invocation may request completion through the finish marker.
+On Codex's subsequent continuation, matching successful host results and the retained
+thread/turn/call receipt select a local completed response and journal delivery without
+forwarding that request to the provider. Later user input, unrelated calls, missing
+receipts, failed results and unfinished work cannot select this path. Matching host
+continuations remain host-owned. Code Mode additionally requires its completed native
+trace and successful nested tool outcomes, not printed success prose. Restart can
+recover a receipt for the same thread and turn; forks and later turns cannot reuse it.
+When results require further provider interpretation or the user needs a substantive
+answer, the agent instead finishes naturally after inspecting those results.
 On a successful completed response with no client-dispatched calls, the router captures the final
 answer for durable recovery and delivers Main's substantive provider final unchanged.
 Pending work-report events are delivered separately in that same response, without
@@ -450,10 +464,12 @@ is not a new note. Standing constraints belong in context once. Parents record
 integration decisions, not copies of child journals. Coordinator requests for implementation-completion reports
 use the same journal channel, including commit IDs, checks, review outcomes and
 limitations. They do not make that evidence a separate conversational deliverable.
-Work completion is not a conversational exception:
-finish with exactly `Done.` unless the user needs a usable deliverable, usage
-explanation or decision beyond the work report. That Outcome does not repeat
-progress, validation, review status or remaining work. Requested explanations,
+Work completion uses the finish marker in the final useful execution when its
+result can establish completion. It adds neither a standalone finalization tool
+call nor a follow-up `Done.` provider acknowledgment. Required result interpretation
+is not skipped. A usable deliverable, usage explanation or decision beyond the work
+report instead uses a natural final answer. That Outcome does not repeat progress,
+validation, review status or remaining work. Requested explanations,
 review findings, answers to user questions and necessary questions remain substantive
 conversation, without a journal-specific length or format.
 

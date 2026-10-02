@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -45,6 +46,7 @@ type publishedCommentary struct {
 
 type commentaryRoute struct {
 	journalQuestion string
+	finishReceipt   string
 	originThread    string
 	sessionID       string
 	callID          string
@@ -223,9 +225,10 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	b.mu.Lock()
 	b.cleanupExpiredLocked(time.Now())
 	route := b.routes[token]
-	var session, thread, question, callID string
+	var session, thread, question, callID, finishReceipt string
 	if route != nil {
 		question, callID = route.journalQuestion, route.callID
+		finishReceipt = route.finishReceipt
 		session, thread = route.sessionID, route.originThread
 		route.expires = time.Now().Add(commentaryRouteTTL)
 	}
@@ -283,8 +286,19 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 			return
 		}
 	}
+	mutations, finish, err := splitJournalFinish(mutations)
+	if err == nil && finish && finishReceipt == "" {
+		err = errors.New("journal finish requires a turn-bound host invocation")
+	}
+	if err != nil {
+		writeJournalRejection(writer, b.debug, thread, callID, err)
+		return
+	}
+	if finish {
+		publication.ReceiptID = finishReceipt
+	}
 	ids := []string{}
-	if len(mutations) != 0 {
+	if len(mutations) != 0 || finish {
 		if b.journalPublisher == nil {
 			http.Error(writer, journalPublisherUnavailable, http.StatusBadRequest)
 			return
@@ -296,6 +310,9 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 		}
 		trace := featureUsageTrace{debug: b.debug, threadID: thread}
 		trace.record("journal", "code_mode", "mutation", "accepted", callID, "")
+	}
+	if ids == nil {
+		ids = []string{}
 	}
 
 	switch publication.Op {

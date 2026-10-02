@@ -585,8 +585,8 @@ func TestJournalSharedGuidance(t *testing.T) {
 			t.Fatalf("journal description lacks %q: %q", required, description)
 		}
 	}
-	if strings.Contains(description, "without another provider request or separate final answer") {
-		t.Fatal("journal guidance still directs an explicit finish instead of a natural final answer")
+	if strings.Contains(description, "Finish with exactly `Done.`") {
+		t.Fatal("journal guidance still requires a Done-only provider final")
 	}
 }
 

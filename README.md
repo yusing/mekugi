@@ -34,7 +34,9 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Native terminal UI.** [Main, Diff, Activity, Journal, and Agents](#native-ui)
   share one terminal without an external pane manager.
 - **Task journal.** Plans, results, and blockers stay visible without extra model
-  requests for status reports. See the [Journal pane](#journal-pane).
+  requests for status reports. Work established complete by the final tool result
+  needs no separate model-generated completion acknowledgment.
+  See the [Journal pane](#journal-pane).
 - **Live subagent activity.** See model, effort, progress, and message excerpts
   in Main or the [Agents pane](#agents-pane), alongside elapsed time and edit activity.
 - **Live diffs.** [Inspect streaming previews and saved edits](#live-diff-pane);

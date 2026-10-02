@@ -39,6 +39,7 @@ that cross its boundary. A focused pass is not evidence for unselected tests.
 | Configured frontend host acceptance | `-tags journal_e2e ./internal/router -run '^TestConfiguredToolFrontendNativeCodexE2E$'` (installed Codex, local mock provider) |
 | Native mrun continuation acceptance | `-tags journal_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
 | Native journal child-result acceptance | `-tags journal_e2e ./internal/router -run '^TestJournalNativeCodexSpawnE2E$'` (installed Codex, local mock provider) |
+| Native journal host-result completion | `-tags journal_e2e ./internal/router -run '^TestJournalHostFinishNativeCodexSpawnE2E$'` (installed Codex, local mock provider) |
 | Native post-compaction recovery | `-tags journal_e2e ./internal/router -run '^TestPostCompactNativeCodexE2E$'` (installed Codex, local mock provider) |
 | Cross-package or broad contract | `./...` |
 

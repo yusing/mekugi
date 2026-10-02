@@ -29,6 +29,10 @@ type journalCodexProvider struct {
 	journalResultSeen bool
 	childRequests     int
 	childLiveVisible  chan struct{}
+	hostFinish        bool
+	rootFinishSent    bool
+	childFinishSent   bool
+	hostOutputs       []string
 }
 
 func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []byte, headers http.Header, _ string) (*http.Response, error) {
@@ -45,6 +49,33 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 	if err := json.Unmarshal(body, &request); err != nil {
 		return nil, err
 	}
+	var advertised []map[string]json.RawMessage
+	if rawTools := request["tools"]; len(rawTools) != 0 {
+		if err := json.Unmarshal(rawTools, &advertised); err != nil {
+			return nil, err
+		}
+	}
+	var checkTools func([]map[string]json.RawMessage) error
+	checkTools = func(catalog []map[string]json.RawMessage) error {
+		for _, tool := range catalog {
+			if jsonString(tool, "name") == "journal" {
+				return fmt.Errorf("standalone journal tool exposed to installed Codex")
+			}
+			if nested := tool["tools"]; len(nested) != 0 {
+				var children []map[string]json.RawMessage
+				if err := json.Unmarshal(nested, &children); err != nil {
+					return err
+				}
+				if err := checkTools(children); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	if err := checkTools(advertised); err != nil {
+		return nil, err
+	}
 	input := string(request["input"])
 	var inputItems []map[string]json.RawMessage
 	if err := json.Unmarshal(request["input"], &inputItems); err != nil {
@@ -52,6 +83,9 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 	}
 	for _, inputItem := range inputItems {
 		kind := jsonString(inputItem, "type")
+		if (kind == "custom_tool_call_output" || kind == "function_call_output") && len(p.hostOutputs) < 12 {
+			p.hostOutputs = append(p.hostOutputs, string(mustMarshalJSON(inputItem)))
+		}
 		content := inputItem["content"]
 		liveText := bytes.Contains(content, []byte("Native child live milestone"))
 		if (kind == "message" || kind == "agent_message") && (bytes.Contains(content, []byte("Journal update")) || bytes.Contains(content, []byte(`Journal\n`))) ||
@@ -65,7 +99,18 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 	child := metadata.SubagentKind != ""
 	var item map[string]any
 	call := func(name string, args any) map[string]any {
-		return map[string]any{"type": "function_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn), "call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": name, "namespace": map[bool]string{true: "functions", false: subagentBridgeNamespace}[name == "journal"], "arguments": string(mustMarshalJSON(args)), "status": "completed"}
+		return map[string]any{"type": "function_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn), "call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": name, "namespace": subagentBridgeNamespace, "arguments": string(mustMarshalJSON(args)), "status": "completed"}
+	}
+	journalCall := func(title string) map[string]any {
+		return map[string]any{"type": "custom_tool_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn), "call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": "exec", "status": "completed", "input": `await journal({op:"add",title:` + string(mustMarshalJSON(title)) + `});`}
+	}
+	finishCall := func(titles ...string) map[string]any {
+		mutations := make([]any, 0, len(titles)+1)
+		for _, title := range titles {
+			mutations = append(mutations, map[string]any{"op": "add", "title": title})
+		}
+		mutations = append(mutations, map[string]any{"op": "finish"})
+		return map[string]any{"type": "custom_tool_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn), "call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": "exec", "status": "completed", "input": `const result = await tools.exec_command({cmd:"printf journal-host-finish"}); if (result.exit_code !== 0) throw new Error("fixture host failed"); await journal(` + string(mustMarshalJSON(mutations)) + `);`}
 	}
 	if child {
 		p.childRequests++
@@ -93,7 +138,7 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 			}
 		}
 		if turn == 1 {
-			item = call("journal", map[string]any{"op": "add", "text": "Native child live milestone", "report_now": true})
+			item = journalCall("Native child live milestone")
 		} else {
 			if p.childLiveVisible != nil {
 				// Keep the child working until the actual root JSON consumer
@@ -107,14 +152,22 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 				}
 				p.mu.Lock()
 			}
-			item = map[string]any{"type": "message", "id": fmt.Sprintf("answer_%s_%d", thread, turn), "role": "assistant",
-				"phase": "final_answer", "status": "completed",
-				"content": []any{map[string]any{"type": "output_text", "text": "Native child milestone\n\nNative child second finding"}}}
+			if p.hostFinish {
+				p.childFinishSent = true
+				item = finishCall("Native child milestone", "Native child second finding")
+			} else {
+				item = map[string]any{"type": "message", "id": fmt.Sprintf("answer_%s_%d", thread, turn), "role": "assistant",
+					"phase": "final_answer", "status": "completed",
+					"content": []any{map[string]any{"type": "output_text", "text": "Native child milestone\n\nNative child second finding"}}}
+			}
 		}
 	} else {
+		if p.rootFinishSent {
+			return nil, fmt.Errorf("root host completion triggered an extra provider request")
+		}
 		switch {
 		case turn == 1:
-			item = call("journal", map[string]any{"op": "add", "text": "Native root milestone", "report_now": true})
+			item = journalCall("Native root milestone")
 		case turn == 2:
 			item = call("spawn_agent", map[string]any{"message": "Record your milestone, then report your findings.", "task_name": "journal_child", "fork_turns": "none"})
 		case strings.Contains(input, "Native child milestone") && strings.Contains(input, "Native child second finding") && strings.Contains(input, "Record your milestone, then report your findings."):
@@ -126,10 +179,15 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 				return nil, fmt.Errorf("native completion lost child change ranges or numstat: %.500s", input[start:])
 			}
 			p.childResultSeen = true
-			p.journalResultSeen = strings.Contains(input, "function_call_output") && strings.Contains(input, `\"id\":\"amber\"`)
-			item = map[string]any{"type": "message", "id": fmt.Sprintf("answer_%s_%d", thread, turn), "role": "assistant",
-				"phase": "final_answer", "status": "completed",
-				"content": []any{map[string]any{"type": "output_text", "text": "Native root completion after child review."}}}
+			p.journalResultSeen = strings.Contains(input, "custom_tool_call_output") && strings.Contains(input, "Native root milestone")
+			if p.hostFinish {
+				p.rootFinishSent = true
+				item = finishCall("Native root completion after child review.")
+			} else {
+				item = map[string]any{"type": "message", "id": fmt.Sprintf("answer_%s_%d", thread, turn), "role": "assistant",
+					"phase": "final_answer", "status": "completed",
+					"content": []any{map[string]any{"type": "output_text", "text": "Native root completion after child review."}}}
+			}
 		case turn < 8:
 			item = call("wait_agent", map[string]any{"timeout_ms": 10000})
 		default:
@@ -156,10 +214,14 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 }
 
 func TestJournalNativeCodexSpawnE2E(t *testing.T) {
-	runJournalNativeCodexSpawnE2E(t)
+	runJournalNativeCodexSpawnE2E(t, false)
 }
 
-func runJournalNativeCodexSpawnE2E(t *testing.T) {
+func TestJournalHostFinishNativeCodexSpawnE2E(t *testing.T) {
+	runJournalNativeCodexSpawnE2E(t, true)
+}
+
+func runJournalNativeCodexSpawnE2E(t *testing.T, hostFinish bool) {
 	t.Setenv("TMPDIR", t.TempDir())
 	codex, err := exec.LookPath("codex")
 	if err != nil {
@@ -168,7 +230,9 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 	t.Setenv("CODEX_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	workspace := t.TempDir()
-	provider := &journalCodexProvider{turns: make(map[string]int), childLiveVisible: make(chan struct{})}
+	provider := &journalCodexProvider{turns: make(map[string]int), childLiveVisible: make(chan struct{}), hostFinish: hostFinish}
+	traceRoot := t.TempDir()
+	t.Setenv("CODEX_ROLLOUT_TRACE_ROOT", traceRoot)
 	proxy := newManagedMekugiProxy(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -176,6 +240,10 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 	}
 	provider.store = store
 	proxy.replayStore = store
+	proxy.nativeTrace = &nativeToolTrace{directory: traceRoot}
+	publisher := httptest.NewServer(http.HandlerFunc(proxy.commentary.serveHTTP))
+	defer publisher.Close()
+	proxy.commentaryEndpoint = publisher.URL + commentaryPublisherPath
 	issues := NewCriticalErrors()
 	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy))
 	defer server.Close()
@@ -185,6 +253,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 	cmd := exec.CommandContext(ctx, codex,
 		"-c", config, "-c", `model_provider="journal_fixture"`,
 		"-c", "features.plugins=false",
+		"-c", "features.code_mode=true", "-c", "features.code_mode_host=true",
 		"-c", `features.multi_agent_v2={enabled=true,tool_namespace="collaboration"}`,
 		"-c", "tools.update_plan.enabled=false",
 		"-c", "include_collaboration_mode_instructions=false",
@@ -194,7 +263,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &journalRootLiveConsumer{output: &stdout, visible: provider.childLiveVisible}, &stderr
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("native Codex fixture: %v\nstdout: %.8000s\nstderr: %.8000s", err, stdout.String(), stderr.String())
+		t.Fatalf("native Codex fixture: %v\nstdout: %.8000s\nstderr: %.8000s\noutputs: %q", err, stdout.String(), stderr.String(), provider.hostOutputs)
 	}
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
@@ -230,7 +299,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 			lastMessage = text
 			messages = append(messages, text)
 		}
-		if strings.HasPrefix(text, "Journal flush `/root`") {
+		if strings.HasPrefix(text, "Journal\n\n**This turn**") {
 			rootFlushes++
 		}
 		if text == "Native root completion after child review." {
@@ -247,13 +316,22 @@ func runJournalNativeCodexSpawnE2E(t *testing.T) {
 			t.Fatalf("main repeated the native child result: %s", text)
 		}
 	}
-	if rootFlushes != 1 || rootFinals != 1 || lastMessage != "Native root completion after child review." {
+	if hostFinish {
+		if !provider.rootFinishSent || !provider.childFinishSent || rootFlushes != 1 || rootFinals != 0 || !strings.Contains(lastMessage, "Native root completion after child review.") {
+			t.Fatalf("host completion did not end root and child with journal reports: root=%v child=%v flushes=%d finals=%d messages=%q", provider.rootFinishSent, provider.childFinishSent, rootFlushes, rootFinals, messages)
+		}
+		for _, message := range messages {
+			if strings.TrimSpace(message) == "Done." {
+				t.Fatalf("host completion added a Done-only final: %q", messages)
+			}
+		}
+	} else if rootFlushes != 1 || rootFinals != 1 || lastMessage != "Native root completion after child review." {
 		t.Fatalf("native consumer must receive one journal flush before one ordinary final, with nothing after it; flushes=%d finals=%d last=%s", rootFlushes, rootFinals, lastMessage)
 	}
 	if provider.childRequests != 2 {
 		t.Fatalf("child provider requests = %d, want live update then a natural final answer without another request", provider.childRequests)
 	}
-	if !childLiveUpdate || !strings.Contains(stdout.String(), "Journal flush ") {
+	if !childLiveUpdate || rootFlushes != 1 {
 		t.Fatalf("native consumer did not display distinct live updates and terminal flushes; messages=%q", messages)
 	}
 	issues.mu.Lock()

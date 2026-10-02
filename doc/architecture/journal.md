@@ -78,7 +78,12 @@ the current response flow rather than a host executor. A valid direct finish
 can select terminal delivery when no client-dispatched work remains. Code Mode
 mutations use a call-scoped authenticated publisher through a stock executable
 frontend; that publisher cannot complete a turn or acquire Codex execution
-authority. Its mutation rejections are structured results for the helper, while
+authority. Its finish marker retains a receipt scoped to the originating host
+call and turn. The request pipeline selects local terminal delivery only after
+visible host results and, for Code Mode, native trace outcomes confirm completion.
+This restores v1's result-driven completion boundary without its old shell executor.
+Codex still owns the continuation request; no provider inference is admitted for
+that local response. Its mutation rejections are structured results for the helper, while
 authentication, routing and transport failures remain HTTP errors. Replay of an old result cannot finish a later turn.
 
 Delivery snapshots and leases the originating journal before rendering. V2 delivery selects event windows from live and terminal cursors and acknowledges

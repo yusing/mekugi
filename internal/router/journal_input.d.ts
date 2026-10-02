@@ -14,7 +14,8 @@ type JournalSet = {
 };
 type JournalMutation = JournalPlan | JournalAdd | JournalSet
   | { op: "log"; p?: string; text: string }
-  | { op: "remove"; p: string };
+  | { op: "remove"; p: string }
+  | { op: "finish" };
 type JournalRead = { op: "read"; p?: string; agent?: string; depth?: number; view?: "combined" | "own" | "tasks" };
 type JournalStamp = { seq: number; at?: string };
 type JournalNode = {

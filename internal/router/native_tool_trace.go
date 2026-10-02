@@ -226,9 +226,11 @@ func (b *nativeTraceBundle) event(directory string, event nativeTraceEvent) erro
 		}
 		if tool.Tool == "write_stdin" {
 			var args struct {
-				Chars string `json:"chars"`
+				Chars   string         `json:"chars"`
+				Session jsontext.Value `json:"session_id"`
 			}
 			tool.stdinPoll = json.Unmarshal([]byte(invocation.Payload.Arguments), &args) == nil && args.Chars == ""
+			tool.session = strings.Trim(string(args.Session), "\"")
 		}
 		cell.tools = append(cell.tools, tool)
 		b.calls[event.Thread+"\x00"+p.Tool] = tool
@@ -253,7 +255,7 @@ func (b *nativeTraceBundle) event(directory string, event nativeTraceEvent) erro
 			tool.terminal = true
 			return nil
 		}
-		if tool.Tool != "exec_command" {
+		if tool.Tool != "exec_command" && tool.Tool != "write_stdin" {
 			tool.terminal = true
 			return nil
 		}
@@ -274,12 +276,21 @@ func (b *nativeTraceBundle) event(directory string, event nativeTraceEvent) erro
 			tool.ExitCode = result.Value.Exit
 			tool.terminal = true
 		}
-		tool.session = strings.Trim(string(result.Value.Session), "\"")
-		if tool.session == "null" {
-			tool.session = ""
+		if session := strings.Trim(string(result.Value.Session), "\""); session != "" && session != "null" {
+			tool.session = session
 		}
 		if tool.ExitCode != nil && *tool.ExitCode != 0 {
 			tool.Status = "failed"
+		}
+		if tool.Tool == "write_stdin" && tool.terminal && tool.session != "" {
+			// A terminal poll resolves earlier yielded observations of this
+			// same host process, without completing other threads or sessions.
+			for key, prior := range b.calls {
+				if strings.HasPrefix(key, event.Thread+"\x00") && !prior.terminal &&
+					prior.Status == "completed" && prior.session == tool.session {
+					prior.ExitCode, prior.Status, prior.terminal = tool.ExitCode, tool.Status, true
+				}
+			}
 		}
 	case "tool_call_runtime_ended":
 		tool := b.calls[event.Thread+"\x00"+p.Tool]

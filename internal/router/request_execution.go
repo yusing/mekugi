@@ -154,6 +154,16 @@ func (a *requestAttempt) run() (*requestContinuation, error) {
 		}
 		return a.deliver()
 	}
+	if finished, err := a.tryJournalHostFinish(); err != nil {
+		return nil, err
+	} else if finished {
+		if err := a.prepareResponse(); err != nil {
+			return nil, err
+		}
+		// This terminal has no provider usage, including no missing-usage gap.
+		a.hooks.onUsage = nil
+		return a.deliver()
+	}
 	if err := a.prepareWire(); err != nil {
 		return nil, err
 	}

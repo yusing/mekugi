@@ -141,6 +141,7 @@ func commentaryExcluded(namespace, name string) bool {
 
 type structuredCommentary struct {
 	mutations         []journalMutation
+	finish            bool
 	originalArguments string
 	arguments         string
 }
@@ -165,6 +166,10 @@ func extractStructuredCommentary(item map[string]json.RawMessage, catalog commen
 			return structuredCommentary{}, false, fmt.Errorf("%s: %w", tool.qualifiedName, err)
 		}
 		result.mutations = mutations
+		result.mutations, result.finish, err = splitJournalFinish(result.mutations)
+		if err != nil {
+			return structuredCommentary{}, false, fmt.Errorf("%s: %w", tool.qualifiedName, err)
+		}
 		delete(arguments, commentaryArgumentName)
 		result.arguments = string(mustMarshalJSON(arguments))
 	}
@@ -241,8 +246,16 @@ func (t *mekugiResponseTransform) transformStructuredCommentary(item map[string]
 		return nil, nil
 	}
 	var ids []string
-	if len(extracted.mutations) != 0 {
-		ids, err = t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, callID+":journal", bindJournalAnswers(extracted.mutations, t.journalQuestion))
+	receipt, finishTurn := callID+":journal", ""
+	if extracted.finish {
+		name := strings.TrimPrefix(jsonString(item, "name"), "functions.")
+		if t.shellTurnID == "" || name != nativeExecCommandToolName && name != "write_stdin" {
+			return nil, errors.New("journal finish requires a turn-bound stock execution call")
+		}
+		receipt, finishTurn = "runtime:"+journalHostFinishReceipt(t.shellTurnID, callID), t.shellTurnID
+	}
+	if len(extracted.mutations) != 0 || extracted.finish {
+		ids, err = t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, receipt, bindJournalAnswers(extracted.mutations, t.journalQuestion))
 		if err != nil {
 			return nil, err
 		}
@@ -253,6 +266,7 @@ func (t *mekugiResponseTransform) transformStructuredCommentary(item map[string]
 		Script:   extracted.originalArguments, CarrierKind: codeModeCarrierFunction,
 		CarrierName: jsonString(item, "name"), CarrierPayload: extracted.arguments,
 		UpstreamItem: maps.Clone(item), JournalIDs: ids,
+		JournalFinishTurnID: finishTurn, ExecutingThread: t.shellThreadID,
 	})
 	item["arguments"] = mustMarshalJSON(extracted.arguments)
 	return nil, nil

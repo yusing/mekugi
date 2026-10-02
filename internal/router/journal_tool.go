@@ -21,7 +21,7 @@ const journalHistoryTool = "__mekugi_journal"
 const codeModeJournalStart = "<!-- mekugi-journal:start -->"
 const codeModeJournalEnd = "<!-- mekugi-journal:end -->"
 
-const codeModeJournalHint = "In Code Mode, use the exec-local journal helper for reads and mutations: record mutations with await journal(...) inside your next useful exec call, and finish naturally with an answer instead of a journal call."
+const codeModeJournalHint = "In Code Mode, use the exec-local journal helper for reads and mutations. Put a finish marker in the final useful execution when its result can establish completion; finish naturally when further interpretation or a substantive answer is needed."
 
 var journalToolDescription = embeddedInstruction("journal_tool")
 
@@ -82,6 +82,7 @@ func journalMutationsSchema() json.RawMessage {
 			}, "op", "p"),
 			object(map[string]any{"op": op("log"), "p": text, "text": text}, "op", "text"),
 			object(map[string]any{"op": op("remove"), "p": text}, "op", "p"),
+			object(map[string]any{"op": op("finish")}, "op"),
 		}},
 	})
 }

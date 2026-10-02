@@ -49,6 +49,7 @@ func TestJournalNativeInputsAreOperationSpecific(t *testing.T) {
 		{"set", "op p title body state reason agent", "op p"},
 		{"log", "op p text", "op text"},
 		{"remove", "op p", "op p"},
+		{"finish", "op", "op"},
 	}
 	if len(input.Items.AnyOf) != len(want) {
 		t.Fatalf("mutation variants = %d, want %d", len(input.Items.AnyOf), len(want))

@@ -638,6 +638,9 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 			ExecutingThread: t.shellThreadID,
 			Caller:          t.operationCaller(),
 		}
+		if changed {
+			history.JournalFinishTurnID = t.shellTurnID
+		}
 		if !changed {
 			history.CommentaryMessageIDs = []string{commentaryMessageID(callID)}
 		}
@@ -697,7 +700,11 @@ func (t *mekugiResponseTransform) observeStockExecCommand(item *responsesItem) e
 		if retained.CarrierPayload != arguments {
 			return fmt.Errorf("stock exec_command call %q changed arguments", callID)
 		}
+		// Observation sees stripped host arguments; replay keeps the exact
+		// provider input, including its original JSON string encoding.
+		providerArguments := retained.UpstreamItem["arguments"]
 		retained.UpstreamItem = item.cloneFields()
+		retained.UpstreamItem["arguments"] = providerArguments
 		t.local[callID] = retained
 		return nil
 	}

@@ -71,6 +71,21 @@ delivery, not live-model behavior. Root-only publication still needs a writable
 root response; it cannot display a new milestone during a host tool wait until
 that response channel opens again.
 
+### Host-result journal completion (2026-10-02)
+
+Codex CLI 0.160.0 accepted `TestJournalHostFinishNativeCodexSpawnE2E` with
+a deterministic local provider. Root and native child carried the finish marker
+inside useful stock Code Mode execution. Their matching successful results
+selected local terminal journal delivery without another provider request or
+a provider-generated acknowledgment. No standalone journal tool was advertised.
+The ordinary `TestJournalNativeCodexSpawnE2E` also passed, preserving substantive
+provider-authored finals and child-result delivery.
+
+These fixtures establish installed-host acceptance, not live-model marker usage
+or interactive terminal behavior. Offline checks separately cover failed and
+yielded work, native trace requirements, continuation matching, and retained
+receipt isolation across restart and fork.
+
 ### Anchored child Activity history (2026-09-30)
 
 Codex CLI 0.159.2 accepted `thread/items/list` item anchors introduced by

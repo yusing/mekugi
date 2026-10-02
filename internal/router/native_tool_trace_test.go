@@ -146,6 +146,26 @@ func TestNativeTraceFailuresAndYieldAreNotSuccess(t *testing.T) {
 	}
 }
 
+func TestNativeTraceTerminalPollIsThreadScoped(t *testing.T) {
+	f := newNativeTraceFixture(t)
+	for _, thread := range []string{"author", "other"} {
+		f.start(thread, "cell", "outer", "source")
+		f.tool(thread, "cell", "command", "exec_command", `{"cmd":"sleep 1"}`)
+		f.result(thread, "command", "completed", map[string]any{"session_id": 7})
+	}
+	f.tool("author", "cell", "poll", "write_stdin", `{"session_id":7,"chars":""}`)
+	f.result("author", "poll", "completed", map[string]any{"exit_code": 0})
+	f.end("author", "cell")
+	f.end("other", "cell")
+	trace := &nativeToolTrace{directory: f.root}
+	if cell := trace.readCell("author", "outer", "source"); cell == nil || cell.pending() {
+		t.Fatal("terminal poll did not resolve its host process")
+	}
+	if cell := trace.readCell("other", "outer", "source"); cell == nil || !cell.pending() {
+		t.Fatal("terminal poll resolved another thread's process")
+	}
+}
+
 func TestNativeTracePatchOccurrencesKeepDistinctOutcomes(t *testing.T) {
 	f := newNativeTraceFixture(t)
 	f.start("author", "runtime", "outer", "source")

@@ -49,6 +49,7 @@ type mekugiHistory struct {
 	// Deferred diagnostics are projected onto the model-visible result, never
 	// evaluated in a program that owns the host's output-helper identifier.
 	JournalIDs           []string
+	JournalFinishTurnID  string `json:",omitempty"`
 	OutputWarning        string
 	TranslationError     string
 	CorrelationID        string

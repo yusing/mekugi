@@ -10,6 +10,7 @@ credentials or live model usage. These tests require the `journal_e2e` build tag
 - `TestMChangesNestedNativeCodexE2E`
 - `TestMRunNativeCodexYieldAndWriteStdinE2E`
 - `TestJournalNativeCodexSpawnE2E`
+- `TestJournalHostFinishNativeCodexSpawnE2E`
 - `TestPostCompactNativeCodexE2E`
 - `TestJournalCompactionNativeCodexE2E`
 - `TestNativeJournalPresentationCodexE2E`
@@ -27,6 +28,12 @@ separation, and exit status. The mrun fixture checks Codex-owned PTY yield and
 `write_stdin` continuation. The journal fixture checks native child
 assignment, live milestones, terminal child result, and parent delivery without
 an extra final-answer provider request.
+
+The host-finish journal fixture carries the completion marker with useful stock
+execution inside Code Mode for both root and native child. It verifies terminal
+journal delivery without forwarding the tool-result continuation to the provider,
+and that no standalone journal tool is advertised. The ordinary journal fixture
+retains provider-authored substantive-final coverage.
 
 The mchanges fixture executes nested stock patch and shell calls without printing
 their results, then checks durable native receipts, net review, explicit-ID reads

@@ -57,6 +57,7 @@ func (t *mekugiResponseTransform) lowerCodeModeCommentary(callID, input string) 
 	if token != "" {
 		t.proxy.commentary.bindJournalQuestion(token, t.journalQuestion)
 		t.proxy.commentary.bindActivity(token, t.shellThreadID)
+		t.proxy.commentary.bindJournalFinish(token, t.shellTurnID)
 		t.commentarySubscriptions = append(t.commentarySubscriptions, commentarySubscription{token: token, callID: callID})
 	}
 	outcome := "prepared"
@@ -152,7 +153,7 @@ if (publication.items.some(id => typeof id !== "string")) {
 if ((Array.isArray(mutation) ? mutation.some(op => op.op === "plan") : mutation.op === "plan") && typeof globalThis.text === "function") {
   globalThis.text("journal paths: " + JSON.stringify(publication.items));
 }
-return Array.isArray(mutation) || mutation.op === "plan" ? publication.items : publication.items[0];
+return Array.isArray(mutation) || mutation.op === "plan" ? publication.items : publication.items[0] ?? null;
 }
 } catch (error) {
   throw new Error("journal " + operation + " failed: " + (error instanceof Error ? error.message : String(error)));

@@ -131,8 +131,8 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 		if strings.Contains(codeModeJournalGuidance, "After every required tool result, finish") {
 			t.Error("Code Mode journal guidance still directs finishing after every individual tool result")
 		}
-		if strings.Contains(got, "finish without another provider request or separate final answer") {
-			t.Error("Code Mode guidance still directs an explicit finish instead of a natural final answer")
+		if strings.Contains(got, "Finish with exactly `Done.`") {
+			t.Error("Code Mode guidance still requires a Done-only provider final")
 		}
 		checkStableRefresh(t, fields)
 	})
