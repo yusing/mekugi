@@ -1,0 +1,32 @@
+┌ 1 Main ──────────────────────────────────────────────────┐┌ 2 Diff · saved · 1 file +1 -0 ───────────────────────────┐
+│● Main                                           12:00:00 ││▎ 1/1  example.txt · New file +1 -0 ───────────────────── │
+││ Write  native result                                    ││▎ ┄ amber1 main·Bash                                      │
+││        ┆ native result                                  ││▎ 1│+observed background effect                           │
+│                                                          ││                                                          │
+│● main                                           12:00:00 ││                                                          │
+│┃ Captured amber1                                         ││                                                          │
+│┃                                                         ││                                                          │
+│┃ Create example.txt +1 -0 · printf                       ││                                                          │
+│┃  @@ -0,0 +1,1 @@                                        ││                                                          │
+│┃  +observed background effect                            ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│╭─ Ready ────────────────────────────────────────────────╮││                                                          │
+││ ❯                                                      │││                                                          │
+│╰──────────────────────────────────────── claude-sonnet ─╯││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   s files · tab changes · [ ] hunks · a caller · r follow · ? hel

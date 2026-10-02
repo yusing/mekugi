@@ -1,0 +1,32 @@
+┌ 1 Main ──────────────────────────────────────────────────┐┌ 2 Diff · live proposals ─────────────────────────────────┐
+│● Main                                           12:00:00 ││                                                          │
+││ Write  native result                                    ││  main · ○ A foreground.txt +1 -0 · preview               │
+││        ┆ native result                                  ││▎ 1│+incoming proposal                                    │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│╭─ Ready ────────────────────────────────────────────────╮││                                                          │
+││ ❯                                                      │││                                                          │
+│╰──────────────────────────────────────── claude-sonnet ─╯││Native tool ended · saved evidence is captured independe… │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   s files · tab changes · [ ] hunks · a caller · r follow · ? hel

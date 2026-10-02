@@ -141,3 +141,44 @@ func TestNativeRuntimeObservationAutomaticModeRepaints(t *testing.T) {
 		})
 	}
 }
+
+func TestUISnapshotNativeRuntimeBackgroundCapture(t *testing.T) {
+	for _, width := range []int{42, 120} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			u, service, binding := observedRuntimeUIFixture(t)
+			u.runtime.busy = true
+			u.shell.diffOpen = true
+			u.shell.focus = 1
+			call := ObservationCall{Binding: binding, ID: "background-write", Tool: "Bash", Input: `{}`, Command: "printf observed > example.txt", Shell: "bash"}
+			if err := service.owner.before(t.Context(), call); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := service.owner.after(t.Context(), call, ObservationTerminal{Status: "running", Task: "native-background"}); err != nil {
+				t.Fatal(err)
+			}
+			runtimePreviewEvent(t, u, session.Event{Kind: "edit", ID: "foreground-write", Role: "Write", Edit: &session.Edit{Path: "foreground.txt", Content: "incoming proposal\n", Partial: true}})
+			runtimePreviewEvent(t, u, session.Event{Kind: "tool_result", ID: "foreground-write", Role: "Write", Text: "native result"})
+			runtimePreviewEvent(t, u, session.Event{Kind: "done"})
+			if u.shell.diff.diffMode || service.owner.pendingCount.Load() != 1 || len(u.shell.diff.view.Files) != 0 {
+				t.Fatal("root completion settled or fabricated background evidence")
+			}
+			u.thread = "native-session"
+			u.session.cwd = "/workspace"
+			frame := strings.ReplaceAll(runtimeFrame(t, u, width, 32), binding.Workspace, "/workspace")
+			uisnapshot.Assert(t, filepath.Join("testdata", "snapshots", fmt.Sprintf("native-runtime-background-pending-%d.txt", width)), frame)
+
+			nativeObservationWrite(t, filepath.Join(binding.Workspace, "example.txt"), "observed background effect\n")
+			if err := service.owner.task(t.Context(), observationTask{ID: "native-background", CallID: call.ID, Session: binding.Session, Status: "failed", Report: "native background failure"}); err != nil {
+				t.Fatal(err)
+			}
+			for range 2 {
+				u.applyRuntimeObservation(<-u.runtime.observationEvents)
+			}
+			if !u.shell.diff.diffMode || service.owner.pendingCount.Load() != 0 || len(u.shell.diff.view.Files) != 1 {
+				t.Fatal("terminal background effect did not independently select saved evidence")
+			}
+			frame = strings.ReplaceAll(runtimeFrame(t, u, width, 32), binding.Workspace, "/workspace")
+			uisnapshot.Assert(t, filepath.Join("testdata", "snapshots", fmt.Sprintf("native-runtime-background-settled-%d.txt", width)), frame)
+		})
+	}
+}

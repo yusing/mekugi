@@ -1,0 +1,32 @@
+┌ 2 Diff · live proposals ───────────────┐
+│                                        │
+│  main · ○ A foreground.txt +1 -0 · pre │
+│▎ 1│+incoming proposal                  │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│Native tool ended · saved evidence is … │
+└────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal

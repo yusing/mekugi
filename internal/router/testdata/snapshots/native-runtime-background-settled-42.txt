@@ -1,0 +1,32 @@
+┌ 2 Diff · saved · 1 file +1 -0 ─────────┐
+│▎ 1/1  example.txt · New file +1 -0 ─── │
+│▎ ┄ amber1 main·Bash                    │
+│▎ 1│+observed background effect         │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+└────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal
