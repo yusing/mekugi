@@ -118,21 +118,13 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 				record.AnsweredItems = prior.AnsweredItems
 			}
 		}
-		if sink := p.journals.nativeSink(workspace, a.threadID); sink != nil {
-			sink.mu.Lock()
-			item := sink.compaction
-			sink.mu.Unlock()
-			if item.Turn != "" && item.Turn == a.metadata.TurnID && item.Item != "" {
-				if !slices.Contains(record.AnsweredItems, item) {
-					record.AnsweredItems = append(record.AnsweredItems, item)
-				}
-			} else if a.metadata.TurnID != "" && metadata.Trigger == "manual" && metadata.Phase == "standalone_turn" {
-				// A standalone manual turn owns one compaction lifecycle. Keep
-				// its answer until buffered host notifications supply the item ID.
-				item = journalCompactionItem{Turn: a.metadata.TurnID}
-				if !slices.Contains(record.AnsweredItems, item) {
-					record.AnsweredItems = append(record.AnsweredItems, item)
-				}
+		if a.metadata.TurnID != "" && metadata.Trigger == "manual" && metadata.Phase == "standalone_turn" {
+			// A standalone manual turn owns one compaction lifecycle. Ordinary
+			// turns may own several, and buffered UI events cannot identify which
+			// item issued this HTTP request. Never infer that from the live sink.
+			item := journalCompactionItem{Turn: a.metadata.TurnID}
+			if !slices.Contains(record.AnsweredItems, item) {
+				record.AnsweredItems = append(record.AnsweredItems, item)
 			}
 		}
 		data, err := json.Marshal(&record)
@@ -166,8 +158,8 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 	return true
 }
 
-// Only manual standalone receipts may bind a late host item. Ordinary automatic
-// compactions can share a turn, so missing identity there must remain unknown.
+// Only manual standalone receipts may bind a host item. Ordinary automatic
+// compactions can share a turn, so their request-to-item identity remains unknown.
 func (s *mekugiReplayStore) bindStandaloneCompactionItem(ctx context.Context, workspace, thread, turn, item string) {
 	if turn == "" || item == "" {
 		return

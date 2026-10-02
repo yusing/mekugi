@@ -10,7 +10,6 @@ import (
 // A native sink is scoped to one launched Main thread and workspace. Durable
 // journal records remain the owner; this holds only pending presentation copies.
 type nativeJournalSink struct {
-	compaction          journalCompactionItem // Live observed host identity, never restored as running work.
 	mounted             *threadJournal
 	publicationSequence uint64
 	tree                *threadJournal

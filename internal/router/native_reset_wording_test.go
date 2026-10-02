@@ -225,3 +225,55 @@ func TestNativeAutoCompactionDelayedNotification(t *testing.T) {
 		t.Fatalf("standalone receipt relabeled another host item: %q", text)
 	}
 }
+
+func TestNativeAutomaticCompactionBufferedPreviousItem(t *testing.T) {
+	transform, proxy, _, workspace := newDurableTreeTransform(t)
+	proxy.journalCompaction = "auto"
+	d := &journalResetDriver{ctx: t.Context(), proxy: proxy, workspace: workspace, thread: transform.shellThreadID, compactTurn: "ordinary-turn"}
+	u := newAppServerSessionTestUI(t, workspace)
+	u.thread, u.proxy = d.thread, proxy
+	u.session.start(u.thread, workspace)
+	u.journal = proxy.journals.attachNative(workspace, u.thread)
+	t.Cleanup(func() { proxy.journals.detachNative(u.journal) })
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": u.thread, "turn": map[string]any{"id": d.compactTurn}})
+	old := appServerItem{ID: "prior-provider-item", Type: "contextCompaction"}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": u.thread, "turnId": d.compactTurn, "item": old})
+	// The prior provider completion and next automatic start are buffered in
+	// the native client; the router already receives the next compaction HTTP request.
+	request, headers := journalCompactionRequest(t, workspace, u.thread)
+	metadata, _ := decodeCodexTurnMetadata(headers)
+	metadata.TurnID = d.compactTurn
+	metadata.Compaction = mustTestJSON(t, map[string]any{"trigger": "auto", "reason": "context_limit", "phase": "mid_turn", "implementation": "responses_compaction_v2", "strategy": "memento"})
+	headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, metadata)))
+	provider := &serverFakeProvider{}
+	if err := executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, io.Discard, nil, proxy); err != nil {
+		t.Fatal(err)
+	}
+	if len(provider.forwarded) != 0 {
+		t.Fatal("expected router journal answer")
+	}
+	if text, _, _ := u.progress(old, "item/completed", u.thread, d.compactTurn); text != "Context compacted" {
+		t.Fatalf("prior provider item incorrectly relabeled after a later journal answer: %q", text)
+	}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": u.thread, "turnId": d.compactTurn, "item": old})
+	next := appServerItem{ID: "next-journal-item", Type: "contextCompaction"}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": u.thread, "turnId": d.compactTurn, "item": next})
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": u.thread, "turnId": d.compactTurn, "item": next})
+	reopened, err := openMekugiReplayStore(proxy.replayStore.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := newAppServerSessionTestUI(t, workspace)
+	restored.thread = u.thread
+	restored.proxy = &mekugiProxy{replayStore: reopened, journalCompaction: "auto"}
+	restored.journal = &nativeJournalSink{workspace: workspace, thread: u.thread}
+	restored.session.start(u.thread, workspace)
+	restored.restoreHistory([]appServerHistoryTurn{{ID: d.compactTurn, Status: "completed", Items: []appServerItem{old, next}}})
+	for _, view := range []*appServerUI{u, restored} {
+		for _, item := range []appServerItem{old, next} {
+			if text, _, _ := view.progress(item, "item/completed", u.thread, d.compactTurn); text != "Context compacted" {
+				t.Fatalf("ambiguous automatic item %s relabeled: %q", item.ID, text)
+			}
+		}
+	}
+}

@@ -197,9 +197,9 @@ standalone turn identified by a slice-reset event. Provider answers keep “Cont
 compacted”, regardless of configured mode.
 Receipts retain answered-item provenance across later compactions; older receipts
 without it keep host wording rather than guessing from the current setting.
-Buffered manual standalone notifications can bind their retained answer to the
-host item later. Ordinary automatic compactions without observed item identity
-keep host wording, because several compactions can share one ordinary turn.
+Buffered manual standalone notifications bind their retained answer to the unique
+host item. Ordinary automatic compactions keep host wording because several can
+share one turn, and buffered UI observations do not identify the HTTP request's item.
 
 The recovery hook suppresses duplicate injection only when Codex's latest
 compacted transcript record identifies that persisted response. Missing or

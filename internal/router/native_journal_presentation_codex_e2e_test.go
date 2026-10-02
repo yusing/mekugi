@@ -12,8 +12,8 @@ import (
 	"github.com/yusing/mekugi/internal/appserver"
 )
 
-// Exercise host ordering without driver-dispatched reset or a gated provider: the native
-// item must reach observeProgress before router synthesis retains its identity.
+// Exercise manual standalone compaction without driver-dispatched reset or a
+// gated provider. Completion binds the retained answer to the unique host item.
 func TestNativeJournalPresentationCodexE2E(t *testing.T) {
 	ctx, cmd, provider := journalResetCodexFixture(t)
 	proxy, workspace := provider.proxy, provider.workspace
@@ -100,19 +100,13 @@ func TestNativeJournalPresentationCodexE2E(t *testing.T) {
 						t.Fatalf("unexpected native compaction start: %+v", event)
 					}
 					observed = journalCompactionItem{Turn: event.TurnID, Item: event.Item.ID}
-					u.journal.mu.Lock()
-					bound := u.journal.compaction
-					u.journal.mu.Unlock()
-					if bound != observed {
-						t.Fatalf("native sink did not observe host item: got %+v want %+v", bound, observed)
-					}
 				case "item/completed":
 					if observed != (journalCompactionItem{Turn: event.TurnID, Item: event.Item.ID}) {
 						t.Fatalf("native completion lacks matching start: observed=%+v event=%+v", observed, event)
 					}
 					text, _, handled := u.progress(event.Item, m.Method, event.ThreadID, event.TurnID)
 					if !handled || text != "Context reset from journal" {
-						t.Fatalf("native completion presentation = %q, handled=%t; synthesis may have preceded UI observation of %+v", text, handled, observed)
+						t.Fatalf("native completion presentation = %q, handled=%t; host item=%+v", text, handled, observed)
 					}
 					frame := ansi.Strip(strings.Join(u.view.renderFeed(100, 30).lines, "\n"))
 					if !strings.Contains(frame, "Context reset from journal") || strings.Contains(frame, "Context compacted") {
