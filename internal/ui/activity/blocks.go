@@ -99,7 +99,8 @@ func (b Block) Collapsible() bool {
 // ReadOutput reports a file or skill read, whose output is what the agent
 // read rather than a result to watch, so it starts collapsed.
 func (b Block) ReadOutput() bool {
-	return b.Verb == "Read" || b.Verb == "Skill" && b.Kind == "reads"
+	return b.Verb == "Read" || b.Verb == "Skill" && b.Kind == "reads" ||
+		b.Kind == "op" && (b.Verb == "Attached" || b.Verb == "Attached skill")
 }
 
 // Instant reports an operation that prints what it reads at once: a read,

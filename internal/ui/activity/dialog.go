@@ -163,7 +163,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	}
 	content := strings.Join(view.Lines, "\n")
 	page.Text = content
-	if block.Verb == "Skill" && block.ReadOutput() {
+	if (block.Verb == "Skill" || block.Verb == "Attached skill") && block.ReadOutput() {
 		for _, row := range p.Markdown(content, width) {
 			add(DialogLine{Text: row})
 		}

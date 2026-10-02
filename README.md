@@ -323,8 +323,10 @@ Mekugi differs in these ways:
 - **Skill references attach automatically.** Complete enabled `$skill-name`
   references are recognized when you finish the word or submit a pasted prompt;
   unknown, disabled, or ambiguous names stay plain text. With `skills-mgr`, managed
-  skills attach their actual instructions automatically, with an `Attached skill` receipt;
-  unreadable or oversized contents produce an explicit omission notice.
+  skills attach their actual instructions automatically, with an `Attached skill` receipt.
+  Click successful file or skill attachment receipts to open their submitted contents,
+  including after resume.
+  Unreadable or oversized contents produce an explicit omission notice.
   Without it, contents come from Codex-discovered skill files. Use `skills-mgr`
   to manage its skills; `/skills` toggles Codex-discovered skills.
 - **Waiting messages combine.** Steers typed while an earlier one is still

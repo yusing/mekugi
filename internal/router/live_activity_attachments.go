@@ -23,6 +23,23 @@ func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.
 	}
 	var blocks []activityui.Block
 	seen := make(map[string]bool)
+	contents := make(map[int]string)
+	indexes := make(map[string]int)
+	appendContent := func(key, rest string, block activityui.Block, source string) {
+		_, body, ok := strings.Cut(rest, "):\n")
+		if !ok {
+			return
+		}
+		index, exists := indexes[key]
+		if !exists {
+			index = len(blocks)
+			indexes[key] = index
+			block.Collapsed = true
+			block.Reads = []activityui.Read{{Path: source}}
+			blocks = append(blocks, block)
+		}
+		contents[index] += body
+	}
 	for _, part := range parts {
 		if part.Type != "text" {
 			continue
@@ -31,8 +48,10 @@ func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.
 		if !ok {
 			continue
 		}
+		// Each envelope is a submitted snapshot; only its chunks belong together.
+		clear(indexes)
 		for _, frame := range frames {
-			if name, _, rest := skillAttachmentFrame(frame); name != "" {
+			if name, source, rest := skillAttachmentFrame(frame); name != "" {
 				verb, label := "Attached skill", name
 				if strings.HasPrefix(rest, ": CONTENT NOT ATTACHED (") {
 					reason, err := strconv.QuotedPrefix(strings.TrimPrefix(rest, ": CONTENT NOT ATTACHED ("))
@@ -42,7 +61,11 @@ func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.
 					message, _ := strconv.Unquote(reason)
 					verb, label = "Attach failed", "skill "+name+" · "+message
 				}
-				key := verb + "\x00skill\x00" + name
+				key := verb + "\x00skill\x00" + name + "\x00" + source
+				if verb == "Attached skill" {
+					appendContent(key, rest, activityui.Block{Kind: "op", Verb: verb, Label: livediff.Safe(label, false)}, source)
+					continue
+				}
 				if !seen[key] {
 					seen[key] = true
 					blocks = append(blocks, activityui.Block{Kind: "op", Verb: verb, Label: livediff.Safe(label, false)})
@@ -74,11 +97,18 @@ func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.
 				continue
 			}
 			key := verb + "\x00" + path + "\x00" + label
+			if verb == "Attached" {
+				appendContent(key, rest, activityui.Block{Kind: "op", Verb: verb, Path: pathdisplay.ForWorkspace(cwd, path)}, path)
+				continue
+			}
 			if !seen[key] {
 				seen[key] = true
 				blocks = append(blocks, activityui.Block{Kind: "op", Verb: verb, Path: pathdisplay.ForWorkspace(cwd, path), Label: livediff.Safe(label, false)})
 			}
 		}
+	}
+	for index, content := range contents {
+		blocks[index].Tail = strings.Split(livediff.Safe(content, false), "\n")
 	}
 	return blocks
 }

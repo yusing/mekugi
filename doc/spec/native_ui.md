@@ -434,7 +434,8 @@ travel in the versioned attachment envelope, and project into separate user
 messages. Transcript replay recovers identity and immutable instructions from
 that envelope without rerunning the manager. Input history restores the selected
 references; resubmitting recalled input reads current contents, as with `@`.
-The transcript shows an `Attached skill` receipt without dumping its body.
+The transcript shows a collapsed `Attached skill` receipt. Clicking it opens the
+submitted instructions in the shared read dialog, including after replay.
 Unreadable, oversized or budget-exceeding instructions yield explicit omission
 frames and `Attach failed` receipts, not truncated contents. Both sources reuse
 the file snapshot store, budgets, UTF-8 framing and delivery; no separate skill
@@ -472,12 +473,15 @@ Unreadable, non-regular, non-UTF-8, NUL-containing, and oversized files are not
 silently truncated: the model receives explicit omission notices and the composer
 reports the first omission. Each submitted user item shows file outcomes before
 agent activity: an `Attached` operation per included file, or `Attach failed`
-with the file and omission reason. Chunked files appear once. These operations
+with the file and omission reason. Chunked files appear once per submitted snapshot; stacked submissions retain
+separate receipts for each snapshot. These operations
 render paths without surrounding quotes, using the existing shared path formatting
 (workspace-relative paths, subdued directories and emphasized filename), not
 transport-envelope syntax. Paths outside the owning workspace stay absolute. They
-are restored from submitted snapshots on resume, without reopening files or
-displaying their contents; rejected submissions do not claim attachment success.
+are restored from submitted snapshots on resume without reopening files. Successful
+receipts open the complete submitted content in the shared read dialog when clicked,
+while keeping it out of the transcript feed. Failed receipts do not open content;
+rejected submissions do not claim attachment success.
 A stacked submission with attachments must fit a conservative
 1 MiB UTF-8 text budget, including encoded snapshots. Larger submissions remain
 unsent and return to the composer with an actionable notice. These bounds limit

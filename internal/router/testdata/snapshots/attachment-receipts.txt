@@ -1,0 +1,5 @@
+❯                                                                       12:34:56
+
+├ Attached sample.go (4 lines)
+├ Attached skill guide (4 lines)
+└ Attach failed missing.txt · missing
