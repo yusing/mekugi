@@ -48,6 +48,26 @@ func TestReviewMergeFollowsShiftedContent(t *testing.T) {
 	}
 }
 
+func TestReviewMergeKeepsNearbyChangesIndependent(t *testing.T) {
+	before := numberedLines(40, nil)
+	after := numberedLines(40, map[int]string{6: "first edit\n", 17: "second edit\n"})
+	file := RenderReviewFile("a.txt", "a.txt", before, after)
+	if strings.Count(file.Diff, "@@ -") != 1 {
+		t.Fatal("nearby changes should share historical display context")
+	}
+	partial := numberedLines(40, map[int]string{17: "second edit\n"})
+	for _, reverse := range []bool{false, true} {
+		want := after
+		if reverse {
+			want = before
+		}
+		merged, err := file.Merge(partial, reverse, "test")
+		if err != nil || merged.Content != want || merged.Satisfied != 1 || merged.Conflicts != 0 || len(merged.Rejected) != 0 {
+			t.Fatalf("reverse=%t: partial replay = %+v, %v", reverse, merged, err)
+		}
+	}
+}
+
 func TestReviewMergeLeavesConflictMarkers(t *testing.T) {
 	before := numberedLines(30, nil)
 	after := numberedLines(30, map[int]string{15: "agent edit\n"})

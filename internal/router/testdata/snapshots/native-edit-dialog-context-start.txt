@@ -1,0 +1,36 @@
+
+
+
+
+
+
+
+
+╭─ Edit · answer.go ─────────────────────────────────────────────────────────────── [×] ─╮
+│                                                                                        │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│  1 │ --- "answer.go"                                                                   │
+│  2 │ +++ "answer.go"                                                                   │
+│  3 │ @@ -1,11 +1,11 @@                                                                 │
+│  4 │ -historical_line_00                                                               │
+│  5 │ +changed_line                                                                     │
+│  6 │  historical_line_01                                                               │
+│  7 │  historical_line_02                                                               │
+│  8 │  historical_line_03                                                               │
+│  9 │  historical_line_04                                                               │
+│ 10 │  historical_line_05                                                               │
+│ 11 │  historical_line_06                                                               │
+│ 12 │  historical_line_07                                                               │
+│ 13 │  historical_line_08                                                               │
+│ 14 │  historical_line_09                                                               │
+│ 15 │  historical_line_10                                                               │
+│ 16 │                                                                                   │
+╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ──────────────────────────────────────╯
+
+
+
+
+
+
+
+

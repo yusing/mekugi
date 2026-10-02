@@ -1,9 +1,47 @@
 package mekugi
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
+
+func TestReviewCaptureSurroundingContext(t *testing.T) {
+	lines := make([]string, 60)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line_%02d\n", i+1)
+	}
+	before := strings.Join(lines, "")
+	for _, at := range []int{0, 29, 59} {
+		t.Run(fmt.Sprint(at), func(t *testing.T) {
+			after := strings.Replace(before, lines[at], "changed\n", 1)
+			file := RenderReviewFile("a", "a", before, after)
+			first, last := max(0, at-10), min(len(lines), at+11)
+			want := fmt.Sprintf("--- %q\n+++ %q\n@@ -%d,%d +%d,%d @@\n", "a", "a", first+1, last-first, first+1, last-first)
+			for i := first; i < last; i++ {
+				if i == at {
+					want += "-" + lines[i] + "+changed\n"
+				} else {
+					want += " " + lines[i]
+				}
+			}
+			if got := file.UnifiedDiff(); got != want {
+				t.Fatalf("historical context differs:\n%s\nwant:\n%s", got, want)
+			}
+			if added, removed := file.LineCounts(); added != 1 || removed != 1 {
+				t.Fatalf("context counted as changes: +%d -%d", added, removed)
+			}
+		})
+	}
+	for _, tc := range []struct{ second, hunks int }{{30, 1}, {31, 2}} {
+		after := strings.Replace(before, lines[9], "first\n", 1)
+		after = strings.Replace(after, lines[tc.second], "second\n", 1)
+		file := RenderReviewFile("a", "a", before, after)
+		if got := strings.Count(file.Diff, "@@ -"); got != tc.hunks {
+			t.Errorf("second change at %d: %d hunks, want %d", tc.second, got, tc.hunks)
+		}
+	}
+}
 
 func TestReviewFiles(t *testing.T) {
 	files := []ReviewFile{

@@ -41,6 +41,20 @@ func (file ReviewFile) Merge(current string, reverse bool, label string) (Review
 	if err != nil {
 		return ReviewMerge{}, err
 	}
+	// Wider historical display context must not join independently replayable
+	// changes. Use the existing compact grouping for mutation, without reading
+	// any source outside the retained hunk.
+	var compactHunks []ReviewHunk
+	for _, hunk := range hunks {
+		before, after, _ := hunk.sides(false)
+		compact := renderReviewFile(file, before, after, hunk.BeforeStart, hunk.AfterStart)
+		group, err := parseReviewHunks(compact, false)
+		if err != nil {
+			return ReviewMerge{}, err
+		}
+		compactHunks = append(compactHunks, group...)
+	}
+	hunks = compactHunks
 	lines := reviewLines(current)
 	var result ReviewMerge
 	var output []string

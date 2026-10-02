@@ -263,7 +263,7 @@ func TestLiveDiffPredictedPatchProjectsPredictedContent(t *testing.T) {
 				}
 				return text
 			}
-			if want := mekugi.RenderReviewFile(path, path, display(tc.before), display(tc.after)); files[0].Diff != want.Diff {
+			if want := mekugi.RenderReviewPreviewFile(path, path, display(tc.before), display(tc.after)); files[0].Diff != want.Diff {
 				t.Fatalf("patch\n%s\nprojected\n%s\nwant\n%s", patch, files[0].Diff, want.Diff)
 			}
 		})

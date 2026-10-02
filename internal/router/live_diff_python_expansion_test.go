@@ -219,7 +219,7 @@ func assertPythonExpansionDiffs(t *testing.T, directory string, files []mekugi.R
 			beforePath = filepath.Join(directory, name)
 		}
 		afterPath := filepath.Join(directory, name)
-		want := mekugi.RenderReviewFile(beforePath, afterPath, display(before[name]), display(text))
+		want := mekugi.RenderReviewPreviewFile(beforePath, afterPath, display(before[name]), display(text))
 		if file.BeforePath != beforePath || file.AfterPath != afterPath || file.Diff != want.Diff {
 			t.Fatalf("target %s: got paths %q -> %q diff:\n%s\nwant paths %q -> %q diff:\n%s", name, file.BeforePath, file.AfterPath, file.Diff, beforePath, afterPath, want.Diff)
 		}

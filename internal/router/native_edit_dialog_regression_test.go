@@ -120,3 +120,19 @@ func TestUISnapshotNativeEditDialogRegression(t *testing.T) {
 		}
 	}
 }
+
+func TestUISnapshotNativeEditDialogSurroundingContext(t *testing.T) {
+	before := liveDiffLinesFile("historical", 50)
+	for _, tc := range []struct {
+		name string
+		line int
+	}{{"start", 0}, {"middle", 24}, {"end", 49}} {
+		t.Run(tc.name, func(t *testing.T) {
+			after := strings.Replace(before, fmt.Sprintf("historical_line_%02d", tc.line), "changed_line", 1)
+			u, _ := openRegressionEditDialog(t, editDialogRegressionCase{kind: "update", before: before, after: after}, true)
+			rows := make([]string, 36)
+			u.paintOutput(rows, 100, len(rows))
+			uisnapshot.Assert(t, "testdata/snapshots/native-edit-dialog-context-"+tc.name+".txt", strings.Join(rows, "\n")+"\n")
+		})
+	}
+}

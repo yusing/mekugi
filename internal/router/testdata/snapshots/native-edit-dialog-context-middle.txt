@@ -1,0 +1,36 @@
+
+
+
+╭─ Edit · answer.go ─────────────────────────────────────────────────────────────── [×] ─╮
+│                                                                                        │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│  1 │ --- "answer.go"                                                                   │
+│  2 │ +++ "answer.go"                                                                   │
+│  3 │ @@ -15,21 +15,21 @@                                                               │
+│  4 │  historical_line_14                                                               │
+│  5 │  historical_line_15                                                               │
+│  6 │  historical_line_16                                                               │
+│  7 │  historical_line_17                                                               │
+│  8 │  historical_line_18                                                               │
+│  9 │  historical_line_19                                                               │
+│ 10 │  historical_line_20                                                               │
+│ 11 │  historical_line_21                                                               │
+│ 12 │  historical_line_22                                                               │
+│ 13 │  historical_line_23                                                               │
+│ 14 │ -historical_line_24                                                               │
+│ 15 │ +changed_line                                                                     │
+│ 16 │  historical_line_25                                                               │
+│ 17 │  historical_line_26                                                               │
+│ 18 │  historical_line_27                                                               │
+│ 19 │  historical_line_28                                                               │
+│ 20 │  historical_line_29                                                               │
+│ 21 │  historical_line_30                                                               │
+│ 22 │  historical_line_31                                                               │
+│ 23 │  historical_line_32                                                               │
+│ 24 │  historical_line_33                                                               │
+│ 25 │  historical_line_34                                                               │
+│ 26 │                                                                                   │
+╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ──────────────────────────────────────╯
+
+
+

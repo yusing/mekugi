@@ -98,7 +98,7 @@ func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directo
 	if partialLine && !final && !liveDiffSourceReady(ctx, path, content) {
 		return nil, true, nil
 	}
-	return []mekugi.ReviewFile{mekugi.RenderReviewFile(beforePath, path, before, content)}, true, nil
+	return []mekugi.ReviewFile{mekugi.RenderReviewPreviewFile(beforePath, path, before, content)}, true, nil
 }
 
 const liveDiffPreviewFileLimit = 256 << 10
@@ -203,7 +203,7 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 				return nil, true, err
 			}
 			if exists {
-				files = append(files, mekugi.RenderReviewFile(path, "", before, ""))
+				files = append(files, mekugi.RenderReviewPreviewFile(path, "", before, ""))
 			}
 		}
 		return files, true, nil
@@ -228,7 +228,7 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 			if partialLine && !final && (!liveDiffSourceTerminated(ctx, path, content) || !liveDiffSourceComplete(ctx, path, after)) {
 				return nil, true, nil
 			}
-			files = append(files, mekugi.RenderReviewFile(beforePath, path, before, after))
+			files = append(files, mekugi.RenderReviewPreviewFile(beforePath, path, before, after))
 		}
 		return files, true, nil
 	}
@@ -252,7 +252,7 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 		if !targetExists {
 			beforePath = ""
 		}
-		file := mekugi.RenderReviewFile(beforePath, target, before, content)
+		file := mekugi.RenderReviewPreviewFile(beforePath, target, before, content)
 		if !targetExists {
 			file.CopyFrom = source
 		}
@@ -262,9 +262,9 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 		// A replacing move deletes the target's content, which one move
 		// entry cannot show.
 		return []mekugi.ReviewFile{
-			mekugi.RenderReviewFile(source, "", content, ""),
-			mekugi.RenderReviewFile(target, target, before, content),
+			mekugi.RenderReviewPreviewFile(source, "", content, ""),
+			mekugi.RenderReviewPreviewFile(target, target, before, content),
 		}, true, nil
 	}
-	return []mekugi.ReviewFile{mekugi.RenderReviewFile(source, target, content, content)}, true, nil
+	return []mekugi.ReviewFile{mekugi.RenderReviewPreviewFile(source, target, content, content)}, true, nil
 }

@@ -21,11 +21,11 @@ func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
 		t.Skip("Python is required for this shell execution fixture")
 	}
 	workspace := t.TempDir()
-	writeTestFile(t, filepath.Join(workspace, "source.go"), "before\n")
+	writeTestFile(t, filepath.Join(workspace, "source.go"), strings.Repeat("context\n", 20)+"before\n"+strings.Repeat("context\n", 20))
 	// The second process is an actual read-only test. It signals that the
 	// edit landed, then waits for us to inspect the UI before it can exit.
 	command := "python3 - <<'PY'\np='source.go'\ns=open(p).read().replace('before', 'after')\nopen(p,'w').write(s)\nPY\n" +
-		`python3 -c 'import sys; assert open("source.go").read() == "after\n"; print("test running", flush=True); assert sys.stdin.readline().strip() == "continue"'`
+		`python3 -c 'import sys; assert open("source.go").read() == "context\n"*20 + "after\n" + "context\n"*20; print("test running", flush=True); assert sys.stdin.readline().strip() == "continue"'`
 	observation, ok := captureExecObservation([]execCommandInput{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
 	if !ok || observation == nil {
 		t.Fatal("missing edit observation")

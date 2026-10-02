@@ -136,6 +136,16 @@ func (file ReviewFile) LineCounts() (added, removed int) {
 // diff semantics as engine edits. An empty path denotes an absent side. Pure
 // moves may supply empty contents on both sides without reading the source.
 func RenderReviewFile(beforePath, afterPath, before, after string) ReviewFile {
+	a, b := reviewLines(before), reviewLines(after)
+	// Retain useful surrounding source for historical edit dialogs. It cannot
+	// be recovered later from the workspace without changing the evidence.
+	const contextLines = 10
+	return renderReviewGroups(ReviewFile{BeforePath: beforePath, AfterPath: afterPath}, a, b, 0, 0, difflib.NewMatcher(a, b).GetGroupedOpCodes(contextLines))
+}
+
+// RenderReviewPreviewFile projects provisional before/after content with compact
+// context. It is display-only, not completed historical capture evidence.
+func RenderReviewPreviewFile(beforePath, afterPath, before, after string) ReviewFile {
 	return renderReviewFile(ReviewFile{BeforePath: beforePath, AfterPath: afterPath}, reviewLines(before), reviewLines(after), 0, 0)
 }
 

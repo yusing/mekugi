@@ -39,6 +39,13 @@ filesystem-snapshot objects. Historical snapshot-backed records remain
 readable and retain their storage dependencies until their last owner expires.
 Missing or corrupt historical evidence remains unavailable, never an empty diff.
 
+New text captures retain up to ten unchanged lines on each side of a change for
+historical Edit dialogs and individual-record reads. Nearby changes share their
+context; file boundaries limit it. Older records and completed host-only diffs
+show only their retained rows, never context borrowed from the current workspace
+or another invocation. Composed net views and apply/revert hunk grouping remain
+compact, so wider review context does not join independently replayable changes.
+
 Patches inside one Code Mode cell share a pre-cell/post-cell observation window.
 Literal complete inputs name their baselines before execution. Host tracing
 confirms individual outcomes and repeated literal call occurrences, without
@@ -372,11 +379,11 @@ An interpreter prediction is expressed as a stock patch and projected exactly as
 a streaming `apply_patch` input, so both share gating, rendering, and
 completion. While replacement text arrives, the patch ends at the arriving
 text: removed rows of the region it replaces precede its arriving added rows.
-Once that text closes, the preview uses normal minimal review hunks, as does
-completed change evidence. Because patch lines carry no carriage returns or
-missing final newlines, the preview omits both; a change only to a file's final
-newline shows no rows. A target path that a patch header cannot express has no
-preview.
+Once that text closes, the preview uses normal minimal review hunks. Completed
+captures retain the wider historical context described above. Because patch lines
+carry no carriage returns or missing final newlines, the preview omits both; a
+change only to a file's final newline shows no rows. A target path that a patch
+header cannot express has no preview.
 Command and script text is never displayed. A command that is not a
 recognized edit has no card, and a later non-edit call keeps the last
 displayed edit. A literal `workdir` resolves relative targets, as does a literal

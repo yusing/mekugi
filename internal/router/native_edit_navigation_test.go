@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -174,13 +176,16 @@ func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 	c.data.order = []string{"clicked"}
 	c.data.attempts["clicked"] = liveDiffAttempt{thread: "main", correlation: "call\x000", change: "amber1", chunks: captures[:1]}
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `target.go` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "call"}}}})
+	if err := os.WriteFile(filepath.Join(u.session.cwd, "target.go"), []byte("unrelated_workspace_content\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if !u.shell.openActivityEdit(u.view, 1, "target.go") {
 		t.Fatal("edit dialog failed")
 	}
 	if err := u.paint(&bytes.Buffer{}, 120, 24); err != nil {
 		t.Fatal(err)
 	}
-	if got := u.shell.output.laid.Text; !strings.Contains(got, "clicked_hunk") || strings.Contains(got, "later_hunk") {
+	if got := u.shell.output.laid.Text; !strings.Contains(got, "clicked_hunk") || !strings.Contains(got, "target_line_70") || !strings.Contains(got, "target_line_90") || strings.Contains(got, "later_hunk") || strings.Contains(got, "unrelated_workspace_content") {
 		t.Fatalf("dialog did not show historical capture: %q", got)
 	}
 	u.shell.outputKey("\x1b")

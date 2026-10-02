@@ -211,7 +211,7 @@ func stockPatchReviewPreview(ctx context.Context, workspace, input string, final
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			reviews = append(reviews, mekugi.RenderReviewFile(edit.beforePath, edit.afterPath, edit.before, edit.after))
+			reviews = append(reviews, mekugi.RenderReviewPreviewFile(edit.beforePath, edit.afterPath, edit.before, edit.after))
 		}
 	}
 	return reviews, nil

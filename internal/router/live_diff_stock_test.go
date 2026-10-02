@@ -13,7 +13,43 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
+
+func TestUISnapshotLiveDiffCompactProvisionalContext(t *testing.T) {
+	workspace := t.TempDir()
+	before := liveDiffLinesFile("context", 40)
+	after := strings.Replace(before, "context_line_20", "changed_line", 1)
+	path := filepath.Join(workspace, "file.txt")
+	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []string{"stock", "shell"} {
+		t.Run(source, func(t *testing.T) {
+			preview := diffview.Preview{ID: "edit", Workspace: workspace, Caller: "/root", Status: diffview.PreviewEdit, Complete: true}
+			if source == "stock" {
+				preview.Input = "*** Begin Patch\n*** Update File: file.txt\n@@\n-context_line_20\n+changed_line\n*** End Patch\n"
+				preview = projectStockPatchPreview(t.Context(), workspace, preview)
+			} else {
+				files, recognized, err := testLiveDiffShellWrite(t.Context(), "cat <<'EOF' > file.txt\n"+after+"EOF\n", workspace)
+				if err != nil || !recognized {
+					t.Fatalf("shell preview: recognized=%t, err=%v", recognized, err)
+				}
+				preview.Files = files
+			}
+			if len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "@@ -18,7 +18,7 @@\n") {
+				t.Fatalf("provisional context is not compact: %+v", preview.Files)
+			}
+			var pane diffview.PreviewPane
+			pane.Update(preview)
+			rows, err := pane.Render(t.Context(), workspace, livediff.DarkTheme, 80, 14)
+			if err != nil {
+				t.Fatal(err)
+			}
+			uisnapshot.Assert(t, "testdata/snapshots/live-diff-compact-context-"+source+".txt", strings.Join(rows, "\n")+"\n")
+		})
+	}
+}
 
 func TestStockPatchPreviewUsesObservedSourceAndLanguageRenderer(t *testing.T) {
 	workspace := t.TempDir()

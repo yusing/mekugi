@@ -281,7 +281,13 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 				if before.Error == "" && after.Error == "" {
 					file = renderExecReview(beforePath, afterPath, before, after)
 				}
-				if file == target {
+				comparison := file
+				if file.Diff != "" && !file.Binary && !file.Link {
+					// Predictions are compact; compare that projection without
+					// shrinking the observed evidence shown below or retained later.
+					comparison.Diff = mekugi.RenderReviewPreviewFile(beforePath, afterPath, execReviewText(before), execReviewText(after)).Diff
+				}
+				if comparison == target {
 					matched[before.Path] = true
 				} else {
 					delete(matched, before.Path)
