@@ -108,16 +108,21 @@ func TestJournalSurveyLoweringPayloadGrowth(t *testing.T) {
 	}
 }
 
-func TestJournalSurveyBatchReturnValuesAndPlanReceipts(t *testing.T) {
+// Created plan and add paths must reach the model, which cannot otherwise
+// address a new node without reading the tree back. Logs and edits stay quiet.
+func TestJournalSurveyBatchReturnValuesAndCreationReceipts(t *testing.T) {
 	transform, _ := newRuntimeCommentaryTransform(t)
 	lowered := lowerJournalSurveyCell(t, transform, `const plain = await journal([{op:"log",text:"Finding"}]);
 const plan = await journal([{op:"plan",tasks:["Work"]},{op:"log",text:"Evidence"}]);
 const single = await journal({op:"log",text:"Single"});
-return {plain,plan,single};`)
+const added = await journal({op:"add",kind:"context",title:"Constraint"});
+const edited = await journal([{op:"set",p:"/5",body:"Revised"},{op:"add",title:"Fact"}]);
+const quiet = await journal({op:"set",p:"/5",superseded_by:"/2"});
+return {plain,plan,single,added,edited,quiet};`)
 	setup := `const receipts=[]; globalThis.text=value=>receipts.push(value); let calls=0;
-const tools={exec_command:async()=>({exit_code:0,output:JSON.stringify({ok:true,items:[["/1"],["/2","/3"],["/4"]][calls++]})})};`
-	runJournalSurveyCell(t, setup, lowered, `assert.deepEqual(result,{plain:["/1"],plan:["/2","/3"],single:"/4"});
-assert.deepEqual(receipts,['journal paths: ["/2","/3"]']); assert.equal(calls,3);`)
+const tools={exec_command:async()=>({exit_code:0,output:JSON.stringify({ok:true,items:[["/1"],["/2","/3"],["/4"],["/5"],["/5","/6"],["/5"]][calls++]})})};`
+	runJournalSurveyCell(t, setup, lowered, `assert.deepEqual(result,{plain:["/1"],plan:["/2","/3"],single:"/4",added:"/5",edited:["/5","/6"],quiet:"/5"});
+assert.deepEqual(receipts,['journal paths: ["/2","/3"]','journal paths: ["/5"]','journal paths: ["/5","/6"]']); assert.equal(calls,6);`)
 }
 
 func TestJournalSurveyOperationFailuresKeepTransportDetail(t *testing.T) {

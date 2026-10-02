@@ -427,6 +427,8 @@ Use `j`/`k` or arrows to select,
 `Space` to expand or collapse, `d` to read full details, `Enter` to open a row, and
 `c` to copy the selected path. Click a `▸` marker to expand it, or click a row to open it.
 `Esc` returns to Main. Blocked tasks show their reason; notes have no state label.
+Entries replaced by later direction stay dimmed with `superseded by` and the path of
+their replacement.
 Delegated journals appear under their owning task, or in an Agents group after
 the owned plan. Agent headings show their lifecycle separately from task states;
 expanded descendants use local paths without repeating the agent name. Outcomes

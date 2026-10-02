@@ -30,6 +30,8 @@ app-server requests without workspace metadata. Only notes from the presented na
 are suppressed in Main or acknowledged via the pane. Router stamps display in local time
 at the row's right edge when the pane is wide enough.
 Only tasks show state; blocked tasks retain their reason and dropped tasks are dimmed.
+A superseded node is dimmed with a `superseded by PATH` suffix, in the pane and in
+journal event rows; its pane subtree starts collapsed.
 A plan strip above the composer shows current owned work: working tasks precede
 blocked tasks, then pending tasks. Within a state, the most recently updated task
 wins. Adding pending work cannot displace working work. The strip uses the same
@@ -141,7 +143,8 @@ mounted journals unavailable. Explicit combined reads still fail.
 V2 recovery uses a deterministic summary of constraints, open tasks, established
 results and retained changes, with actionable paths first. Context nodes are kept
 in full. Working tasks precede pending and blocked tasks; completed work and notes
-follow. When completed work exceeds its budget, the newest results are kept in
+follow. A superseded node renders as one line naming its replacement, without its
+body or descendants, so recovery does not present a replaced decision as current. When completed work exceeds its budget, the newest results are kept in
 tree order and the omitted count is stated. Bounded detail excerpts point back to
 `read`, never claim to be complete.
 
@@ -153,10 +156,13 @@ at most eight entries and an omitted count. These are not claims that processes
 are still running. Recovery restores neither continuation handles nor Code Mode
 store values; the host remains authoritative for live execution state.
 
-Journal guidance asks authors to retain explicit constraints, settled decisions
-and the needed facts from loaded documents and skills in context. Recovery cannot
-reconstruct unrecorded decisions or replace missing document contents with a
-claim that a read occurred.
+Journal guidance asks authors to keep explicit constraints and settled decisions
+in context, with one owning node per topic that corrections update in place, and
+to mark replaced decisions superseded. Authors record the facts later work needs
+from loaded documents and skills, not which ones were read, and keep handoff
+details in task notes, since context renders in full. Recovery cannot reconstruct
+unrecorded decisions or replace missing document contents with a claim that a
+read occurred.
 
 Changes and failed commands captured after the latest journal event appear in a
 separate section. It includes change ranges, aggregated numstat, failed commands,
@@ -269,7 +275,8 @@ not addresses. Notes and context nodes have no state. Only tasks have `pending`,
 `working`, `done`, `blocked`, or `dropped` state. Answers remain router-owned.
 
 Nodes contain a one-line nonblank title, optional Markdown body, author, creation
-and update stamps (`seq`, RFC 3339 `at`), and children. Tasks can additionally contain
+and update stamps (`seq`, RFC 3339 `at`), children, and an optional `superseded_by`
+path naming the node that replaced them. Tasks can additionally contain
 a reason, their first working stamp and their latest completion/drop stamp.
 Reopening a finished task clears its current finished stamp without rewriting history.
 The tree has at most 512 nodes; combined title, body, reason and question content is
@@ -298,8 +305,16 @@ rejection handling. No dedicated journal tool is exposed. Operations are:
   display order, not stable keys, and must name a sibling. Only tasks accept children. Ordinals are
   shared by every kind, so a non-task `under` rejects naming that node's kind, title
   and containing task, rather than moving a plan to another parent.
-- `set {p, title?, body?, state?, reason?, agent?}`: updates writable fields. Blocked and
-  dropped tasks require a reason. A final task reopens only with working.
+- `set {p, title?, body?, state?, reason?, agent?, superseded_by?}`: updates writable
+  fields. Blocked and dropped tasks require a reason. A final task reopens only with
+  working. `superseded_by` names an existing node outside the target's subtree; an
+  empty string clears it. Only context nodes, notes, and done or dropped tasks can be
+  superseded: an open task is replaced by dropping it, and a superseded subtree has
+  no open tasks. Batch validation rejects a pointer left dangling by removal, so a
+  batch that removes a replacement also retargets or clears its pointers. It also
+  rejects a pointer chain, including one continued by a superseded ancestor, that
+  leads back to the node. Combined views prefix a mounted node's pointer like its
+  path; rows display both by the child's local path.
 - `log {p?, text}`: adds a timestamped note under `p`, or else under the working
   leaf task. Several working leaves select their deepest common task, or root.
   A note or context `p` selects its containing task. Neither case attributes the
@@ -315,9 +330,11 @@ rejection handling. No dedicated journal tool is exposed. Operations are:
   ancestry. The default `combined` view includes read-only mounted agents. `own`
   reads only the selected journal, without mounting descendants. `tasks` reads
   only its own tasks and omits their bodies and questions for compact path/state
-  recovery. `view: "tasks", depth: 0` returns only root tasks. Own and task reads
-  without an explicit agent require only the caller's record, so unavailable
-  descendant journals cannot prevent local ID recovery.
+  recovery. `view: "tasks", depth: 0` returns only root tasks. `outline` reads
+  every node kind of the selected journal without bodies or questions, so a note
+  or context node to amend can be found without reading full content. Own, task
+  and outline reads without an explicit agent require only the caller's record, so
+  unavailable descendant journals cannot prevent local ID recovery.
 
 Model-facing native inputs are operation-specific closed schemas; Code Mode guidance
 includes discriminated TypeScript input declarations. They reject unsupported fields
@@ -334,8 +351,9 @@ and do not retain a success receipt.
 A rejected operation in a batch names its one-based position and op. Undecodable
 payloads name the offending member.
 Single mutations return their affected path; plans and batches return paths in order.
-Code Mode also displays the returned path array for a plan or a batch containing
-a plan, without changing the helper's return value or performing another read.
+Code Mode also displays the returned path array for a plan, an add, or a batch
+containing either, without changing the helper's return value or performing another
+read. Other mutations address paths the caller already holds and display nothing.
 Receipt replay returns the original result without applying effects twice.
 
 Ordinary forks copy the source's latest journal at their first accepted request and

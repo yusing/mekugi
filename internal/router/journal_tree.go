@@ -21,21 +21,24 @@ type journalStamp struct {
 }
 
 type journalNode struct {
-	Path     string        `json:"path"`
-	Kind     string        `json:"kind"`
-	Title    string        `json:"title"`
-	Body     string        `json:"body,omitempty"`
-	State    string        `json:"state,omitempty"`
-	Reason   string        `json:"reason,omitempty"`
-	Question string        `json:"question,omitempty"`
-	Agent    string        `json:"agent,omitempty"`
-	Turns    int           `json:"turns,omitzero"`
-	Author   string        `json:"author"`
-	Created  journalStamp  `json:"created"`
-	Updated  journalStamp  `json:"updated"`
-	Started  *journalStamp `json:"started,omitempty"`
-	Finished *journalStamp `json:"finished,omitempty"`
-	Children []journalNode `json:"children"`
+	Path   string `json:"path"`
+	Kind   string `json:"kind"`
+	Title  string `json:"title"`
+	Body   string `json:"body,omitempty"`
+	State  string `json:"state,omitempty"`
+	Reason string `json:"reason,omitempty"`
+	// SupersededBy names the node that replaced this one; the node itself stays
+	// as history, but reads and recovery no longer present it as current.
+	SupersededBy string        `json:"superseded_by,omitempty"`
+	Question     string        `json:"question,omitempty"`
+	Agent        string        `json:"agent,omitempty"`
+	Turns        int           `json:"turns,omitzero"`
+	Author       string        `json:"author"`
+	Created      journalStamp  `json:"created"`
+	Updated      journalStamp  `json:"updated"`
+	Started      *journalStamp `json:"started,omitempty"`
+	Finished     *journalStamp `json:"finished,omitempty"`
+	Children     []journalNode `json:"children"`
 }
 
 type journalEvent struct {
@@ -94,8 +97,15 @@ func (j *threadJournal) ensureTree() {
 }
 
 func (item journalItem) node() journalNode {
-	return journalNode{Path: item.Path, Kind: item.Kind, Title: item.Title, Body: item.Body, State: item.State, Reason: item.Reason, Question: item.Question, Agent: item.Agent, Turns: item.Turns, Author: item.Author,
+	return journalNode{Path: item.Path, Kind: item.Kind, Title: item.Title, Body: item.Body, State: item.State, Reason: item.Reason, SupersededBy: item.SupersededBy, Question: item.Question, Agent: item.Agent, Turns: item.Turns, Author: item.Author,
 		Created: journalStamp{Seq: item.Created, At: item.CreatedAt}, Updated: journalStamp{Seq: item.Updated, At: item.UpdatedAt}, Started: item.Started, Finished: item.Finished, Children: []journalNode{}}
+}
+
+// item restores a retained event's node; delivery fields start unset.
+func (node journalNode) item() journalItem {
+	return journalItem{ID: node.Path, Path: node.Path, Kind: node.Kind, Title: node.Title, Body: node.Body, State: node.State, Reason: node.Reason,
+		SupersededBy: node.SupersededBy, Question: node.Question, Agent: node.Agent, Author: node.Author, Created: node.Created.Seq, CreatedAt: node.Created.At,
+		Updated: node.Updated.Seq, UpdatedAt: node.Updated.At, Started: node.Started, Finished: node.Finished}
 }
 
 func (j *threadJournal) treeIndex(path string) int {
@@ -165,7 +175,7 @@ func journalMutationPathError(p string) error {
 	if !strings.HasPrefix(p, "/") {
 		return fmt.Errorf("journal path not found: %s; use the returned path starting with /, not a plan position; recover task paths with read view tasks", p)
 	}
-	return fmt.Errorf("journal path not found: %s; recover task paths with read view tasks, or note paths with read view own", p)
+	return fmt.Errorf("journal path not found: %s; recover task paths with read view tasks, or every node's path with read view outline", p)
 }
 
 func journalReadOnlyError(item journalItem) error {
@@ -303,6 +313,9 @@ func (j *threadJournal) applyTree(m journalMutation) ([]string, error) {
 		if m.Reason != nil {
 			item.Reason = *m.Reason
 		}
+		if m.SupersededBy != nil {
+			item.SupersededBy = *m.SupersededBy
+		}
 		if m.State != nil {
 			item.State = *m.State
 			if item.State != "blocked" && item.State != "dropped" {
@@ -418,6 +431,9 @@ func (j *threadJournal) applyPlan(m journalMutation) ([]string, error) {
 func (j *threadJournal) validateTree() error {
 	var open []string
 	for _, item := range j.Items {
+		if err := j.validateSupersession(item); err != nil {
+			return err
+		}
 		contentBytes := len(item.Title) + len(item.Body) + len(item.Reason) + len(item.Question)
 		if item.ID != item.Path {
 			contentBytes = len(item.Text) + len(item.Question) + len(item.Reason)
@@ -454,6 +470,50 @@ func (j *threadJournal) validateTree() error {
 		return fmt.Errorf("done tasks have open descendants: %s", strings.Join(slices.Compact(open), ", "))
 	}
 	return nil
+}
+
+// A superseded node remains history. Its replacement must stay addressable,
+// and an open task is replaced by dropping it, not by hiding it from recovery.
+func (j *threadJournal) validateSupersession(item journalItem) error {
+	by := item.SupersededBy
+	if by == "" {
+		return nil
+	}
+	if item.Kind == "task" && item.State != "done" && item.State != "dropped" {
+		return fmt.Errorf("%s: only a done or dropped task can be superseded; drop it with a reason, or finish it first", item.Path)
+	}
+	if by == item.Path || strings.HasPrefix(by, item.Path+"/") {
+		return fmt.Errorf("%s: superseded_by must name a node outside this subtree, not %s", item.Path, by)
+	}
+	if j.treeIndex(by) < 0 {
+		return fmt.Errorf("%s: superseded_by %s does not exist; name the replacement's returned path, or clear it with \"\" in the same batch that removes the replacement", item.Path, by)
+	}
+	// Recovery hides a superseded subtree, so it must not hide open work.
+	for _, child := range j.Items {
+		if child.Kind == "task" && strings.HasPrefix(child.Path, item.Path+"/") && child.State != "done" && child.State != "dropped" {
+			return fmt.Errorf("%s: superseded subtree has open task %s; finish or drop it in the same batch", item.Path, child.Path)
+		}
+	}
+	// A reader follows pointers, including a superseded ancestor's, to the
+	// current owner. A cycle would hide every node on it from recovery.
+	for current, steps := by, 0; current != "" && steps <= len(j.Items); steps++ {
+		if current == item.Path || strings.HasPrefix(current, item.Path+"/") {
+			return fmt.Errorf("%s: superseded_by %s leads back to this node; point at the node that now owns the topic", item.Path, by)
+		}
+		current = j.supersededTarget(current)
+	}
+	return nil
+}
+
+// supersededTarget is where a reader of path is sent: its own replacement,
+// otherwise its nearest superseded ancestor's.
+func (j *threadJournal) supersededTarget(path string) string {
+	for ; path != ""; path = journalParent(path) {
+		if index := j.treeIndex(path); index >= 0 && j.Items[index].SupersededBy != "" {
+			return j.Items[index].SupersededBy
+		}
+	}
+	return ""
 }
 
 func journalTree(items []journalItem, path string, depth *int) ([]journalNode, error) {
@@ -493,6 +553,9 @@ func journalTree(items []journalItem, path string, depth *int) ([]journalNode, e
 func validateTreeMutation(m journalMutation) error {
 	if m.Agent != "" && m.Op != "set" && m.Op != "add" {
 		return errors.New("agent binding is only supported by task add and set")
+	}
+	if m.SupersededBy != nil && m.Op != "set" {
+		return errors.New("superseded_by is only supported by set")
 	}
 	extra := false
 	switch m.Op {

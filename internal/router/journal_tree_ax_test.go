@@ -64,7 +64,7 @@ func TestJournalRejectionsNameTheCorrection(t *testing.T) {
 		{name: "root note parent", mutations: []journalMutation{{Op: "plan", Under: "/2", Tasks: []jsontext.Value{jsontext.Value(`"Step"`)}}},
 			want: `journal parent must be a task: /2 is a note ("Root finding"); omit under for the root`},
 		{name: "batch position", mutations: []journalMutation{{Op: "log", Text: new("Fine")}, {Op: "set", P: "/7", State: new("done")}},
-			want: "operation 2 (set): journal path not found: /7; recover task paths with read view tasks, or note paths with read view own"},
+			want: "operation 2 (set): journal path not found: /7; recover task paths with read view tasks, or every node's path with read view outline"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "tree", "", test.mutations)

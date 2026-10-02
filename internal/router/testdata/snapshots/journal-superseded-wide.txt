@@ -1,0 +1,8 @@
+ ◐ 1 working · ● 1 done
+   ◆ /1 Separate preview UI · superseded by /3
+   ◆ /3 Same Mekugi UI
+   ◐ /4 Connect the existing UI
+ ▸ ● /2 Minimal client · superseded by /4 +1
+
+
+

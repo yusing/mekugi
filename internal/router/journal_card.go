@@ -105,7 +105,14 @@ func journalTaskText(node journalNode) string {
 	if elapsed := journalTaskElapsed(node); elapsed != "" {
 		text += " · " + elapsed
 	}
-	return text
+	return text + journalSupersededText(node)
+}
+
+func journalSupersededText(node journalNode) string {
+	if node.SupersededBy == "" {
+		return ""
+	}
+	return " · superseded by " + node.SupersededBy
 }
 
 func journalEventText(event journalEvent) string {
@@ -123,7 +130,7 @@ func journalEventText(event journalEvent) string {
 		}
 		return text
 	}
-	text := node.Title
+	text := node.Title + journalSupersededText(node)
 	if node.Body != "" {
 		text += "\n\n" + node.Body
 	}

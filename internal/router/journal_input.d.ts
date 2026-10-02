@@ -10,17 +10,17 @@ type JournalAdd = { op: "add"; under?: string; title: string; body?: string; bef
 );
 type JournalSet = {
   op: "set"; p: string; title?: string; body?: string;
-  state?: JournalState; reason?: string; agent?: string;
+  state?: JournalState; reason?: string; agent?: string; superseded_by?: string;
 };
 type JournalMutation = JournalPlan | JournalAdd | JournalSet
   | { op: "log"; p?: string; text: string }
   | { op: "remove"; p: string }
   | { op: "finish" };
-type JournalRead = { op: "read"; p?: string; agent?: string; depth?: number; view?: "combined" | "own" | "tasks" };
+type JournalRead = { op: "read"; p?: string; agent?: string; depth?: number; view?: "combined" | "own" | "tasks" | "outline" };
 type JournalStamp = { seq: number; at?: string };
 type JournalNode = {
   path: string; kind: "task" | "note" | "context" | "answer";
-  title: string; body?: string; state?: JournalState; reason?: string;
+  title: string; body?: string; state?: JournalState; reason?: string; superseded_by?: string;
   question?: string; agent?: string; author: string;
   created: JournalStamp; updated: JournalStamp;
   started?: JournalStamp; finished?: JournalStamp; children: JournalNode[];

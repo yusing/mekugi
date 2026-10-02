@@ -49,6 +49,7 @@ type journalMutation struct {
 	Body             *string          `json:"body,omitempty"`
 	State            *string          `json:"state,omitempty"`
 	Reason           *string          `json:"reason,omitempty"`
+	SupersededBy     *string          `json:"superseded_by,omitempty"`
 	Before           string           `json:"before,omitempty"`
 	Reset            string           `json:"reset,omitempty"`
 	Tasks            []jsontext.Value `json:"tasks,omitempty"`
@@ -67,6 +68,7 @@ type journalItem struct {
 	Body         string        `json:"body,omitempty"`
 	State        string        `json:"state,omitempty"`
 	Reason       string        `json:"reason,omitempty"`
+	SupersededBy string        `json:"superseded_by,omitempty"`
 	Agent        string        `json:"agent,omitempty"`
 	CreatedAt    string        `json:"created_at,omitempty"`
 	UpdatedAt    string        `json:"updated_at,omitempty"`

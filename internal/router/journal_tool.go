@@ -78,7 +78,7 @@ func journalMutationsSchema() json.RawMessage {
 				"kind": map[string]any{"type": "string", "enum": []string{"note", "context"}},
 			}, "op", "title"),
 			object(map[string]any{
-				"op": op("set"), "p": text, "title": text, "body": text, "state": state, "reason": text, "agent": agent,
+				"op": op("set"), "p": text, "title": text, "body": text, "state": state, "reason": text, "agent": agent, "superseded_by": text,
 			}, "op", "p"),
 			object(map[string]any{"op": op("log"), "p": text, "text": text}, "op", "text"),
 			object(map[string]any{"op": op("remove"), "p": text}, "op", "p"),
@@ -169,7 +169,7 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 				result = map[string]any{"ok": true, "finish_requested": true}
 			}
 		} else if args.Op == "list" || args.Op == "read" {
-			if args.ID != "" || args.Text != nil || args.Answer != nil || args.ReportNow || args.Under != "" || args.Kind != "" || args.Title != nil || args.Body != nil || args.State != nil || args.Reason != nil || args.Tasks != nil || args.Reset != "" || args.Before != "" || args.Op == "list" && (args.P != "" || args.Depth != nil || args.View != "") {
+			if args.ID != "" || args.Text != nil || args.Answer != nil || args.ReportNow || args.Under != "" || args.Kind != "" || args.Title != nil || args.Body != nil || args.State != nil || args.Reason != nil || args.SupersededBy != nil || args.Tasks != nil || args.Reset != "" || args.Before != "" || args.Op == "list" && (args.P != "" || args.Depth != nil || args.View != "") {
 				err = fmt.Errorf("journal %s accepts only %s and batched journal mutations", args.Op, map[string]string{"list": "agent", "read": "p, agent, depth, view"}[args.Op])
 			}
 			var items []journalItem

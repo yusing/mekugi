@@ -130,10 +130,7 @@ func applyJournalReplayEvent(j *threadJournal, event journalEvent) {
 		})
 		return
 	}
-	node := event.Fields
-	item := journalItem{ID: node.Path, Path: node.Path, Kind: node.Kind, Title: node.Title, Body: node.Body, State: node.State, Reason: node.Reason,
-		Question: node.Question, Agent: node.Agent, Author: node.Author, Created: node.Created.Seq, CreatedAt: node.Created.At,
-		Updated: node.Updated.Seq, UpdatedAt: node.Updated.At, Started: node.Started, Finished: node.Finished}
+	item := event.Fields.item()
 	if index := j.treeIndex(event.Path); index >= 0 {
 		j.Items[index] = item
 	} else {

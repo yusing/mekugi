@@ -83,6 +83,9 @@ func mountedJournalItems(journals map[string]threadJournal, recordErrors map[str
 		start := len(items)
 		for _, item := range j.Items {
 			item.Path = prefix + item.Path
+			if item.SupersededBy != "" {
+				item.SupersededBy = prefix + item.SupersededBy
+			}
 			items = append(items, item)
 		}
 		var children []threadJournal
@@ -138,12 +141,12 @@ func mountedJournalItems(journals map[string]threadJournal, recordErrors map[str
 }
 
 func (s *journalStore) readTree(ctx context.Context, store *mekugiReplayStore, workspace, caller, agent, path string, depth *int, view string) ([]journalNode, error) {
-	if view != "" && view != "combined" && view != "own" && view != "tasks" {
-		return nil, errors.New("journal view must be combined, own, or tasks")
+	if !validJournalView(view) {
+		return nil, errJournalView
 	}
 	// Own reads need no mounted records or ancestry discovery. In particular,
 	// recovering task IDs must still work when a descendant record is unavailable.
-	if agent == "" && (view == "own" || view == "tasks") {
+	if agent == "" && view != "" && view != "combined" {
 		items, err := s.list(ctx, store, workspace, caller)
 		if err != nil {
 			return nil, err
@@ -171,7 +174,7 @@ func (s *journalStore) readTree(ctx context.Context, store *mekugiReplayStore, w
 			return errors.New("journal state is missing")
 		}
 		var items []journalItem
-		if view == "own" || view == "tasks" {
+		if view != "" && view != "combined" {
 			if err := recordErrors[target]; err != nil {
 				return err
 			}
@@ -193,15 +196,25 @@ func (s *journalStore) readTree(ctx context.Context, store *mekugiReplayStore, w
 	return nodes, err
 }
 
+var errJournalView = errors.New("journal view must be combined, own, tasks, or outline")
+
+// Every view except combined reads only the selected journal. Outline keeps
+// all node kinds but no bodies, so any path can be found without full content.
+func validJournalView(view string) bool {
+	return view == "" || view == "combined" || view == "own" || view == "tasks" || view == "outline"
+}
+
 func journalReadView(items []journalItem, path string, depth *int, view string) ([]journalNode, error) {
-	if view != "" && view != "combined" && view != "own" && view != "tasks" {
-		return nil, errors.New("journal view must be combined, own, or tasks")
+	if !validJournalView(view) {
+		return nil, errJournalView
 	}
 	// Normalize retained v1 aliases without mutating their durable record.
 	j := threadJournal{Items: slices.Clone(items)}
 	j.ensureTree()
 	if view == "tasks" {
 		j.Items = slices.DeleteFunc(j.Items, func(item journalItem) bool { return item.Kind != "task" })
+	}
+	if view == "tasks" || view == "outline" {
 		for i := range j.Items {
 			j.Items[i].Body = ""
 			j.Items[i].Question = ""

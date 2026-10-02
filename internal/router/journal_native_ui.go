@@ -159,7 +159,7 @@ func journalRowText(event journalEvent) string {
 	case event.Fields.Kind == "task":
 		return journalTaskText(event.Fields)
 	}
-	return event.Fields.Title
+	return event.Fields.Title + journalSupersededText(event.Fields)
 }
 
 func (s *nativeJournalSink) bindAnswer(ids []string) {

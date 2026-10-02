@@ -46,7 +46,7 @@ func TestJournalNativeInputsAreOperationSpecific(t *testing.T) {
 		{"plan", "op under tasks reset", "op tasks"},
 		{"add", "op under kind title body before state reason agent", "op kind title"},
 		{"add", "op under kind title body before", "op title"},
-		{"set", "op p title body state reason agent", "op p"},
+		{"set", "op p title body state reason agent superseded_by", "op p"},
 		{"log", "op p text", "op text"},
 		{"remove", "op p", "op p"},
 		{"finish", "op", "op"},

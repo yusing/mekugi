@@ -133,7 +133,8 @@ func (v *nativeJournalView) rebuild(j *threadJournal) {
 		})
 		for i, node := range nodes {
 			row := journalPaneRow{node: node, lead: lead, depth: depth, last: i == len(nodes)-1}
-			row.open = row.expandable()
+			// Superseded history stays reachable but starts collapsed.
+			row.open = row.expandable() && node.SupersededBy == ""
 			if expanded, explicit := v.expanded[node.Path]; explicit {
 				row.open = row.expandable() && expanded
 			}
@@ -379,10 +380,8 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 	dim := func(text string) string { return activityui.Dim + text + activityui.Undim }
 	safe := func(text string) string { return livediff.Safe(text, false) }
 	path := journalDisplayPath(node)
-	if _, mounted, ok := strings.CutLast(node.Path, "/@"); ok {
-		if _, local, descendant := strings.Cut(mounted, "/"); descendant {
-			path = "/" + local
-		}
+	if local := journalLocalPath(node.Path); local != node.Path {
+		path = local
 	}
 	var text string
 	switch node.Kind {
@@ -441,11 +440,14 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 		}
 		text = dim("·") + " " + safe(title)
 	}
+	if node.SupersededBy != "" {
+		text += dim(" · superseded by " + safe(journalLocalPath(node.SupersededBy)))
+	}
 	if row.expandable() && !row.open {
 		text += dim(fmt.Sprintf(" +%d", journalDescendants(node)))
 	}
 	line := strings.Repeat(" ", journalRowMargin) + dim(row.lead) + disclosure + text
-	if node.State == "dropped" {
+	if node.State == "dropped" || node.SupersededBy != "" {
 		line = dim(ansi.Strip(line))
 	}
 	stamp := journalLocalTime(node.Updated.At)
@@ -455,6 +457,16 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 	room := width - ansi.StringWidth(stamp) - 3
 	line = ansi.Truncate(line, room, "…")
 	return line + strings.Repeat(" ", max(0, room-ansi.StringWidth(line))) + " " + dim(stamp) + " "
+}
+
+// journalLocalPath shows a mounted descendant by its child-local ordinal path.
+func journalLocalPath(path string) string {
+	if _, mounted, ok := strings.CutLast(path, "/@"); ok {
+		if _, local, descendant := strings.Cut(mounted, "/"); descendant {
+			return "/" + local
+		}
+	}
+	return path
 }
 
 func journalAgentName(agent string, theme livediff.Theme) string {
@@ -813,6 +825,10 @@ func journalNodeParts(theme livediff.Theme, node journalNode, verb string) (lead
 	safe := func(text string) string { return livediff.Safe(strings.Join(strings.Fields(text), " "), false) }
 	title := safe(node.Title)
 	path := safe(journalDisplayPath(node))
+	superseded := ""
+	if node.SupersededBy != "" {
+		superseded = activityui.Dim + " · superseded by " + safe(journalLocalPath(node.SupersededBy)) + activityui.Undim
+	}
 	switch {
 	case verb == "removed":
 		return activityui.Dim + "⊖ " + activityui.Undim, activityui.Dim + path + " " + title + " · removed" + activityui.Undim
@@ -821,9 +837,9 @@ func journalNodeParts(theme livediff.Theme, node journalNode, verb string) (lead
 			first, _, _ := strings.Cut(node.Body, "\n")
 			title = safe(first)
 		}
-		return theme.Accent() + "◆" + activityui.Reset + " ", title
+		return theme.Accent() + "◆" + activityui.Reset + " ", title + superseded
 	case node.Kind != "task":
-		return activityui.Dim + "◇ " + activityui.Undim, activityui.Dim + path + activityui.Undim + " " + title
+		return activityui.Dim + "◇ " + activityui.Undim, activityui.Dim + path + activityui.Undim + " " + title + superseded
 	}
 	color := journalStateColor(theme, node.State)
 	var details []string
@@ -847,7 +863,7 @@ func journalNodeParts(theme livediff.Theme, node journalNode, verb string) (lead
 		}
 		text += style + " · " + strings.Join(details, " · ") + activityui.Reset
 	}
-	return color + journalGlyphs[node.State] + activityui.Reset + " ", text
+	return color + journalGlyphs[node.State] + activityui.Reset + " ", text + superseded
 }
 
 // Native journal entries use the same rich item renderer in Main and Activity.

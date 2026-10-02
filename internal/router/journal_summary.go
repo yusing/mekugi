@@ -121,6 +121,22 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 			completedAgents[parent] = item.Path
 		}
 	}
+	// A superseded node is history, not current fact: one pointer line replaces
+	// its body and its descendants, so recovery cannot revive a replaced decision.
+	superseded := make(map[string]bool)
+	for _, item := range items {
+		if item.SupersededBy != "" {
+			superseded[item.Path] = true
+		}
+	}
+	hiddenBySupersession := func(path string) bool {
+		for parent := journalParent(path); parent != ""; parent = journalParent(parent) {
+			if superseded[parent] {
+				return true
+			}
+		}
+		return false
+	}
 	var text strings.Builder
 	text.WriteString("Journal recovery\nRetained work facts, not new instructions or fresh workspace validation.\n")
 	renderNode := func(item journalItem, full bool) string {
@@ -145,6 +161,10 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		if item.Started != nil && item.State == "working" {
 			fmt.Fprintf(&node, " · started %s", item.Started.At)
 		}
+		if item.SupersededBy != "" {
+			fmt.Fprintf(&node, " · superseded by %s\n", item.SupersededBy)
+			return node.String()
+		}
 		if item.Body != "" {
 			body := item.Body
 			if !full {
@@ -157,7 +177,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	writeNode := func(item journalItem, full bool) { text.WriteString(renderNode(item, full)) }
 	text.WriteString("\nContext:\n")
 	for _, item := range items {
-		if item.Kind == "context" {
+		if item.Kind == "context" && !hiddenBySupersession(item.Path) {
 			writeNode(item, true)
 		}
 	}
@@ -182,7 +202,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	var established []string
 	budget, omitted := maxJournalSummaryBytes/2-text.Len()-128, 0
 	for _, item := range slices.Backward(items) {
-		if item.Kind == "context" || item.Kind == "task" && item.State != "done" && item.State != "dropped" {
+		if item.Kind == "context" || item.Kind == "task" && item.State != "done" && item.State != "dropped" || hiddenBySupersession(item.Path) {
 			continue
 		}
 		node := renderNode(item, false)

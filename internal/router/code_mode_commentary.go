@@ -150,7 +150,7 @@ if (!Array.isArray(mutation) && (mutation.op === "list" || mutation.op === "read
 if (publication.items.some(id => typeof id !== "string")) {
   throw new Error("invalid journal result");
 }
-if ((Array.isArray(mutation) ? mutation.some(op => op.op === "plan") : mutation.op === "plan") && typeof globalThis.text === "function") {
+if ((Array.isArray(mutation) ? mutation : [mutation]).some(op => op.op === "plan" || op.op === "add") && typeof globalThis.text === "function") {
   globalThis.text("journal paths: " + JSON.stringify(publication.items));
 }
 return Array.isArray(mutation) || mutation.op === "plan" ? publication.items : publication.items[0] ?? null;
