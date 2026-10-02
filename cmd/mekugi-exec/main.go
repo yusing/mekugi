@@ -366,7 +366,7 @@ type byteWriter interface{ Write([]byte) (int, error) }
 // dial connects to the router without the net package, whose resolver would
 // link the helper dynamically and slow every tracked command's start.
 func dial(socket string) (*os.File, error) {
-	fd, err := unix.Socket(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
+	fd, err := newUnixSocket()
 	if err != nil {
 		return nil, err
 	}
