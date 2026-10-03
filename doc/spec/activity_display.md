@@ -283,7 +283,11 @@ authored Markdown. Blank lines opening or closing a message, as some providers s
 add no rows. Main completion previews retain the response excerpt and show
 the linked assignment excerpt below its timestamp on separate, wrapped quote rows.
 Each excerpt shows up to two content rows with an ellipsis when truncated;
-Activity retains the complete response.
+Activity retains the complete response. When a retained child result contains
+provider answers, exact replacement provenance combines their cards into one
+complete enriched reply in Main and Activity. The assignment link and full reply
+remain available. Host messages stay unchanged; missing replacement evidence keeps
+the messages separate rather than guessing from matching text.
 
 Authored Markdown tables render as compact bordered grids with emphasized headers,
 column alignment, inline styles and links, and wrapped cells rather than clipped

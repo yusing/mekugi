@@ -36,6 +36,12 @@ stable entry IDs move with their source;
 consumers do not maintain index-aligned entry and block collections. Main's
 threaded layout invalidates cross-entry dependent runs on record updates, while
 ordinary Activity updates keep unrelated completed runs warm.
+The commentary replay record owns the exact provider item IDs contained in an
+enriched child result, scoped to workspace, thread, and turn. Native feed records
+consume that provenance to replace the source cards in place, preserving stable
+links and timestamps. Reversed live arrival and older history pages cannot restore
+the replaced cards. Missing provenance preserves host content; text and ID prefixes
+do not establish replacement. This presentation does not change host transcripts.
 
 ## CTR-ACTIVITY-002 — Native child history pages
 

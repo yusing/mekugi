@@ -344,6 +344,12 @@ func writeThreadJournal(store *mekugiReplayStore, journal threadJournal) error {
 }
 
 func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore, workspace, thread string, mutate func(*threadJournal, bool) error) error {
+	return s.transactionWithTiming(ctx, store, workspace, thread, true, mutate)
+}
+
+// Counter-only persistence must not change the view it measures. Work and
+// lifecycle transactions still checkpoint timers before capturing their events.
+func (s *journalStore) transactionWithTiming(ctx context.Context, store *mekugiReplayStore, workspace, thread string, checkpointTimers bool, mutate func(*threadJournal, bool) error) error {
 	if strings.TrimSpace(thread) == "" {
 		return errors.New("journal requires a stable thread ID")
 	}
@@ -370,9 +376,11 @@ func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore
 			}
 		}
 		next := current.clone()
-		next.discardForeignTimerAnchors()
-		next.TimerOwner = journalTimerOwner
-		next.checkpointWorkTimers(time.Now())
+		if checkpointTimers {
+			next.discardForeignTimerAnchors()
+			next.TimerOwner = journalTimerOwner
+			next.checkpointWorkTimers(time.Now())
+		}
 		if err := mutate(&next, exists); err != nil {
 			if errors.Is(err, errJournalUnchanged) {
 				if store == nil {

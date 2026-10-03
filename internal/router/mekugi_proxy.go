@@ -115,7 +115,7 @@ func mekugiDataDirectory() (string, error) {
 type mekugiProxy struct {
 	registry           *toolRegistry
 	titles             *sessionTitleCache
-	memoryCommentary   map[string]map[string]struct{}
+	memoryCommentary   map[string]map[string]*commentaryReplacement
 	commentary         *commentaryBroker
 	commentaryEndpoint string
 	journals           *journalStore

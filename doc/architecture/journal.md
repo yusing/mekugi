@@ -26,6 +26,9 @@ nodes distinct without changing local ordinals. Native
 sinks cache immutable composed views only. Child lifecycle comes from accepted
 requests and host turn observations, never provider final-answer text. A child's
 publication refreshes ancestor views without mutating ancestor event logs or cursors.
+Parent completion validates mounted host lifecycles, not child-authored task states.
+The child result exposes unchanged open tasks alongside its event delta; only the
+child can change those states, and the parent retains the integration decision.
 
 Journal transactions checkpoint the change owner's sequence and durable capture
 order when they append events. These counters are separate from journal sequence;
@@ -74,8 +77,9 @@ is one JSON object per line: host `appserver.Message` objects plus
 idle, not a task state. Content is not sanitized. Errors use stderr and nonzero
 exit; successful task completion does not mask a later host-shutdown error.
 
-Journal counters persist with the owning thread, separate from event and delivery
-cursors. Mutation counters share accepted-batch receipt deduplication. Public
+Journal counters persist with the owning thread without changing task or timer
+fields, separate from event and delivery cursors. Mutation counters share
+accepted-batch receipt deduplication. Public
 read carriers and provider-final observation add measurements without work events;
 a bounded window of recent read-call and final-response identities deduplicates
 repeated observation without joining the permanent call receipts. Metrics snapshot these

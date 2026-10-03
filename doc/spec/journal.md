@@ -129,7 +129,9 @@ increments the child's durable turn count, including its initial assignment; mou
 reads and journal recovery show it, so delegation limits survive compaction. Provider response
 completion alone is not child completion. Frontends without host completion
 evidence retain the last observed state. A parent cannot become done while any
-mounted descendant remains open, including an unresolved mount. The check applies
+mounted host lifecycle remains open, including nested or unresolved mounts. Child-authored
+task states do not gate parent completion: they remain unchanged and visible at the
+completion handoff, where the parent owns the integration decision. The check applies
 to tasks a batch completes or rebinds; a child resumed under an already done task
 does not block the parent's other writes. Reading and restarting do not revive
 child processes.
@@ -400,9 +402,10 @@ type-check against the declarations before submitting. Runtime validation still
 checks identity, task kind, uniqueness and immutable binding. Planned task objects
 do not accept agent; bind an existing planned task with `set`.
 
-Mutation batches validate at the end. A done task cannot retain open descendant
-tasks. Rejection lists those paths and rolls back all nodes, ordinals and events. Invalid
-bindings, including duplicate child mounts, likewise leave the entire batch unchanged
+Mutation batches validate at the end. A done task cannot retain open owned descendant
+tasks or open mounted host lifecycles. Rejection lists those paths and rolls back all
+nodes, ordinals and events. Invalid bindings, including duplicate child mounts,
+likewise leave the entire batch unchanged
 and do not retain a success receipt.
 A rejected operation in a batch names its one-based position and op. Undecodable
 payloads name the offending member.
@@ -497,15 +500,18 @@ acknowledgement deferred until successful terminal delivery. Journal changes aft
 that preparation remain pending rather than adding commentary after the answer. Failed,
 incomplete and interrupted responses never terminal-flush.
 Retained v1 authoring keeps its legacy presentation and delivery receipts during replay.
-A child completes without flushing and emits a result containing only
-revisions newer than its durable `resultSeq` cursor. The result has no author
-heading: Codex names the child on its completion notification and inter-agent
+A child completes without flushing and emits a result containing
+revisions newer than its durable `resultSeq` cursor, followed by a Remaining section
+for unchanged open owned tasks. Changed open tasks appear only in the revision delta.
+Completion does not mark these tasks done or discard blocked or unfinished work.
+The result has no author heading: Codex names the child on its completion notification and inter-agent
 result. Activity recognizes the result by its closing change report, and still
 recognizes retained results that lead with `Journal result`, painting the report
 as per-file rows with the totals in the answer title. Agent recipients see neither
 the echoed assignment nor opaque item IDs. Notes are Markdown bullets and answers
 are standalone Markdown; stored questions and the complete journal remain available
-through reads, Activity, replay and forks. An empty delta says `No new journal entries.`
+through reads, Activity, replay and forks. An empty delta with no open tasks says
+`No new journal entries.`
 The cursor advances only after successful downstream terminal response delivery.
 Failure leaves the previous window available for retry. Result acknowledgement
 does not consume Main live or terminal delivery state.

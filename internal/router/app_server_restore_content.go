@@ -308,6 +308,7 @@ func historyTime(seconds int64) time.Time {
 
 func (u *appServerUI) applyRestoredActivity(entries []activityPaneEntry) {
 	for i := range entries {
+		u.annotateChildCompletion(&entries[i])
 		entries[i].Agent = paneActivityAgent(entries[i])
 	}
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: entries, Agents: slices.Clone(u.session.agents)})

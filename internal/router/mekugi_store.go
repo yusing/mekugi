@@ -40,9 +40,18 @@ type replayRecord struct {
 	Workspace    string
 	CallID       string
 	Commentary   bool
-	CaptureOrder uint64 `json:",omitzero"`
+	Replacement  *commentaryReplacement `json:",omitempty"`
+	CaptureOrder uint64                 `json:",omitzero"`
 	History      mekugiHistory
 	Snapshots    *replaySnapshots `json:",omitempty"`
+}
+
+// A child result contains these exact provider answers. Native presentation can
+// replace their cards without changing host messages or relying on text matches.
+type commentaryReplacement struct {
+	Thread string
+	Turn   string
+	Items  []string
 }
 
 // Keep request-local state out of immutable replay comparisons as well as JSON.
@@ -249,13 +258,17 @@ func (s *mekugiReplayStore) hasCommentary(ctx context.Context, workspace, id str
 	return
 }
 func (s *mekugiReplayStore) putCommentary(ctx context.Context, workspace string, ids []string) error {
+	return s.putCommentaryReplacing(ctx, workspace, ids, nil)
+}
+
+func (s *mekugiReplayStore) putCommentaryReplacing(ctx context.Context, workspace string, ids []string, replacement *commentaryReplacement) error {
 	if s == nil {
 		return nil
 	}
 	s = s.scoped(ctx)
 	return s.locked(ctx, func() error {
 		for _, id := range ids {
-			if err := s.write(replayRecord{Version: 1, Workspace: workspace, CallID: id, Commentary: true}); err != nil {
+			if err := s.write(replayRecord{Version: 1, Workspace: workspace, CallID: id, Commentary: true, Replacement: replacement}); err != nil {
 				return err
 			}
 		}
@@ -343,6 +356,12 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 		return err
 	}
 	if exists {
+		if r.Commentary && previous.Replacement != nil {
+			if r.Replacement != nil && !reflect.DeepEqual(previous.Replacement, r.Replacement) {
+				return errors.New("conflicting commentary replacement provenance")
+			}
+			r.Replacement = previous.Replacement
+		}
 		r.CaptureOrder = previous.CaptureOrder
 		r.History, err = mergeReplayHistory(previous.History, r.History)
 		if err != nil {

@@ -7,6 +7,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"strings"
 
@@ -485,7 +486,11 @@ func (t *mekugiResponseTransform) journalTerminalMessages(response []byte) ([]ma
 		id := commentaryMessageID("journal-summary\x00" + jsonResponseID(response))
 		message := assistantCommentaryMessage(id, t.journalChildResult)
 		message["phase"] = mustMarshalJSON("final_answer")
-		retained := t.retainCommentary(message)
+		var replacement *commentaryReplacement
+		if t.shellTurnID != "" && len(t.journalNaturalAnswerIDs) > 0 {
+			replacement = &commentaryReplacement{Thread: t.shellThreadID, Turn: t.shellTurnID, Items: slices.Sorted(maps.Keys(t.journalNaturalAnswerIDs))}
+		}
+		retained := t.retainCommentaryReplacing(replacement, message)
 		if len(retained) == 0 {
 			return nil, errors.New("cannot retain child journal terminal summary")
 		}

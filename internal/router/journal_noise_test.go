@@ -168,7 +168,7 @@ func TestJournalNoiseInlineMainAggregatesButChildKeepsDelta(t *testing.T) {
 	if strings.Count(child, "Check build prerequisites and recovery") != 2 || !strings.Contains(child, "CAPTURED-ANSWER") || !strings.Contains(child, "Transient task") {
 		t.Fatalf("Main aggregation changed child event delta: %s", child)
 	}
-	if later := journalTurnCard(j, 2, true); strings.Contains(later, "Check build prerequisites and recovery") {
-		t.Fatalf("child follow-up repeated earlier task events: %s", later)
+	if later := journalTurnCard(j, 2, true); strings.Count(later, "Check build prerequisites and recovery") != 1 || !strings.Contains(later, "**Remaining**") {
+		t.Fatalf("child follow-up lost unchanged open task or repeated earlier events: %s", later)
 	}
 }

@@ -1,0 +1,30 @@
+
+
+
+
+
+
+╭─ /root/worker ──────────────────────────────────────────────────────────────────────────── [×] ─╮
+│                                                                                                 │
+├─────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ The complete provider answer.                                                                   │
+│                                                                                                 │
+│ • First finding                                                                                 │
+│ • Second finding                                                                                │
+│                                                                                                 │
+│  verify()                                                                                       │
+│                                                                                                 │
+│ End of original answer.                                                                         │
+│                                                                                                 │
+│ • Focused validation passed.                                                                    │
+│                                                                                                 │
+│ Changes:                                                                                        │
+│ No recorded changes.                                                                            │
+╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ───────────────────────────────────────────────╯
+
+
+
+
+
+
+

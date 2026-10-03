@@ -159,6 +159,7 @@ type liveActivityNativeItem struct {
 	phase              string
 	wait               *activityui.Block // Structured wait progress is roster-only.
 	recovery           string            // Exact retained model-visible reset message, or an unavailable notice.
+	replacesItems      []string          // Exact provider items contained in this retained child result.
 	command, status    string
 	workdir            string // Display form of a command's directory outside the shown workspace.
 	searchResults      *int
@@ -183,9 +184,13 @@ func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {
 	return other != nil && n.thread == other.thread && n.turn == other.turn && n.item == other.item
 }
 
+func (n *liveActivityNativeItem) replacesItem(other *liveActivityNativeItem) bool {
+	return n != nil && len(n.replacesItems) != 0 && other != nil && n.thread == other.thread && n.turn == other.turn && slices.Contains(n.replacesItems, other.item)
+}
+
 func (v *liveActivityView) entrySeq(entry activityPaneEntry) uint64 {
 	for _, current := range v.entries {
-		if entry.native != nil && entry.native.sameItem(current.native) || entry.native == nil && current.Seq == entry.Seq {
+		if entry.native != nil && (entry.native.sameItem(current.native) || current.native.replacesItem(entry.native)) || entry.native == nil && current.Seq == entry.Seq {
 			return current.Seq
 		}
 	}
@@ -200,7 +205,7 @@ func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, metho
 		return
 	}
 	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "text", Text: item.Text, Observed: v.now(),
-		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, command: item.Command, status: item.Status, duration: appServerDuration(item)}}
+		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, command: item.Command, status: item.Status, duration: appServerDuration(item), replacesItems: item.replacesItems}}
 	if thread != main {
 		entry.Agent = "Thread " + thread
 	}
@@ -332,6 +337,35 @@ func appServerUserText(content jsontext.Value) (string, []activityui.TextSpan, b
 func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 	if entry.native == nil {
 		return false
+	}
+	// A retained child result replaces only the exact answers it contains.
+	// Keep the original record's stable link and position. In reverse arrival
+	// order, a late provider notification or history page cannot add it again.
+	replacement := -1
+	for i, previous := range v.entries {
+		if previous.native.replacesItem(entry.native) {
+			return true
+		}
+		if entry.native.replacesItem(previous.native) {
+			if replacement < 0 {
+				replacement = i
+			}
+		}
+	}
+	if replacement >= 0 {
+		previous := v.entries[replacement]
+		entry.Seq, entry.Observed = previous.Seq, previous.Observed
+		entry.native.question = previous.native.question
+		for i := len(v.entries) - 1; i >= 0; i-- {
+			if i != replacement && (entry.native.replacesItem(v.entries[i].native) || entry.native.sameItem(v.entries[i].native)) {
+				v.removeEntries(i, i+1)
+				if i < replacement {
+					replacement--
+				}
+			}
+		}
+		v.replaceEntry(replacement, entry, parseLiveActivity(entry))
+		return true
 	}
 	for i, previous := range v.entries {
 		if previous.native != nil && previous.native.phase == "input/pending" && entry.Agent == "You" && entry.native.thread == previous.native.thread && entry.Text == previous.Text {

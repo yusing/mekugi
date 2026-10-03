@@ -1,0 +1,6 @@
+✓ worker finished                                                                           12:00:00
+│ ╭─ ✓ answer ─────────────────────────────────────────────────────────────────────────────────────╮
+│ │ The complete provider answer.                                                                  │
+│ │                                                                                                │
+│ │ • First finding                                                                                │
+│ … +8 lines

@@ -173,7 +173,17 @@ func journalTurnCard(j threadJournal, since uint64, child bool) string {
 		entries++
 		text.WriteString("\n- " + strings.TrimPrefix(indentJournalText(journalEventText(event), "  "), "  "))
 	}
-	if entries == 0 {
+	// The event delta can omit tasks from an earlier turn. Surface their
+	// current state at handoff without changing child-owned work or replaying
+	// old events. Changed open tasks already appear in the delta above.
+	_, remaining, _ := journalCardEntries(j, since)
+	if len(remaining) > 0 {
+		text.WriteString("\n\n**Remaining**")
+		for _, node := range remaining {
+			text.WriteString("\n- " + strings.TrimPrefix(indentJournalText(journalEventText(journalEvent{Fields: node}), "  "), "  "))
+		}
+	}
+	if entries == 0 && len(remaining) == 0 {
 		return "No new journal entries."
 	}
 	return strings.TrimLeft(text.String(), "\n")

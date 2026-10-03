@@ -359,7 +359,11 @@ func (s *journalStore) validateMountedCompletion(store *mekugiReplayStore, j thr
 			continue
 		}
 		for _, child := range items {
-			if child.Kind == "task" && (strings.HasPrefix(child.Path, parent.Path+"/")) && child.State != "done" && child.State != "dropped" {
+			// Foreign task states belong to the child. Only the synthetic mount
+			// roots gate parent integration on observed host completion. Keep
+			// checking nested mounts even when their ancestor host has finished.
+			mounted := strings.HasPrefix(child.Path[strings.LastIndex(child.Path, "/")+1:], "@")
+			if child.Kind == "task" && mounted && strings.HasPrefix(child.Path, parent.Path+"/") && child.State != "done" && child.State != "dropped" {
 				open = append(open, child.Path)
 			}
 		}

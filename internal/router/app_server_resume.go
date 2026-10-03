@@ -360,6 +360,9 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{exit}})
 		}
 	default:
+		if item.Type == "agentMessage" {
+			item.replacesItems = u.proxy.commentaryReplacementItems(u.ctx, u.session.cwd, u.thread, turn.ID, item.ID)
+		}
 		u.view.applyAppServerItem(u.session.cwd, u.thread, u.thread, turn.ID, item.ID, method, "", item)
 	}
 }

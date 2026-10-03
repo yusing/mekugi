@@ -28,6 +28,7 @@ import (
 )
 
 type appServerItem struct {
+	replacesItems    []string                  // Retained presentation provenance, not a host field.
 	DurationMS       *int64                    `json:"durationMs"`
 	Delivery         string                    `json:"delivery"`
 	Questions        []nativeQuestion          `json:"questions"`
@@ -894,6 +895,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				return nil
 			}
 		}
+		if p.Item.Type == "agentMessage" && m.Method == "item/completed" {
+			p.Item.replacesItems = u.proxy.commentaryReplacementItems(u.ctx, u.session.cwd, p.ThreadID, p.TurnID, p.ItemID)
+		}
 		u.view.applyAppServerItem(u.session.cwd, u.thread, p.ThreadID, p.TurnID, p.ItemID, m.Method, p.Delta, p.Item)
 	}
 	return nil
@@ -1179,6 +1183,7 @@ func mainActivityLinked(entry activityPaneEntry) bool {
 }
 
 func (u *appServerUI) applyMainActivity(entry activityPaneEntry) {
+	u.annotateChildCompletion(&entry)
 	entry.Seq = u.view.lastSeq + 1
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	if entry.Kind == "final" && (u.restoring == nil || !u.restoring.paging) {
@@ -1186,9 +1191,24 @@ func (u *appServerUI) applyMainActivity(entry activityPaneEntry) {
 	}
 }
 
+func (u *appServerUI) annotateChildCompletion(entry *activityPaneEntry) {
+	if entry.Kind != "final" || entry.native == nil || entry.Agent == "/root" || entry.Agent == "Main" || len(entry.native.replacesItems) != 0 {
+		return
+	}
+	items := u.proxy.commentaryReplacementItems(u.ctx, u.session.cwd, entry.native.thread, entry.native.turn, entry.native.item)
+	if len(items) != 0 {
+		native := *entry.native
+		native.replacesItems = items
+		entry.native = &native
+	}
+}
+
 // applyActivity projects the collector once into the two audiences. Ordinary
 // root activity stays in Main, but a directed message belongs at both ends.
 func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activityPaneAgent) {
+	for i := range entries {
+		u.annotateChildCompletion(&entries[i])
+	}
 	paneEntries := slices.Clone(entries)
 	for i := range paneEntries {
 		paneEntries[i].Agent = paneActivityAgent(paneEntries[i])
