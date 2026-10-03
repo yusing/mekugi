@@ -1,0 +1,14 @@
+Usage: mekugi claude [--cwd DIR] [--resume SESSION] [--model MODEL]
+
+Claude Code backend for the shared UI. Requires Node and an installed, authenticated
+Claude Code runtime. Releases and make install include the bridge. No inference router.
+  -bridge string
+    	path to built Claude SDK bridge
+  -cwd string
+    	workspace directory (default ".")
+  -fork-session
+    	fork the resumed native conversation to a new Claude session
+  -model string
+    	native Claude model choice
+  -resume string
+    	Claude session ID to resume

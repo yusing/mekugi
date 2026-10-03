@@ -12,7 +12,7 @@ func TestClaudeCLIHelpAndValidation(t *testing.T) {
 		args []string
 		code int
 		want string
-	}{{[]string{"--help"}, 0, "make build-claude"}, {[]string{"--fork-session"}, 2, "requires --resume SESSION"}, {[]string{"--unknown"}, 2, "flag provided but not defined"}, {[]string{"extra"}, 2, "unexpected positional"}, {nil, 1, "interactive terminal required"}} {
+	}{{[]string{"--help"}, 0, "Releases and make install include the bridge"}, {[]string{"--fork-session"}, 2, "requires --resume SESSION"}, {[]string{"--unknown"}, 2, "flag provided but not defined"}, {[]string{"extra"}, 2, "unexpected positional"}, {nil, 1, "interactive terminal required"}} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			in, err := os.Open(os.DevNull)
 			if err != nil {

@@ -1,0 +1,25 @@
+Usage: mekugi [flags] [Codex arguments...]
+       mekugi [flags] codex [Codex arguments...]
+       mekugi [flags] grok [Codex arguments...]
+       mekugi [flags] codex headless --yolo [-m MODEL] [-c KEY=VALUE] < prompt.txt
+       mekugi claude [--cwd DIR] [--resume SESSION] [--model MODEL]
+       mekugi inspect-session --session PATH [options]
+       mekugi inspect-storage --workspace DIR --call-id ID [options]
+  -ansi-faint string
+    	dim text: auto (detect mosh), on (ANSI faint), or off (fixed colors) (default "auto")
+  -capture-output string
+    	optional sanitized capture JSONL path
+  -debug
+    	record diagnostics, capture, metrics, instructions, runtime reads, and AX report; print session diagnosis command on exit
+  -grok-auth-file string
+    	Grok OAuth credential file (default ~/.grok/auth.json)
+  -journal-compaction string
+    	journal compaction: auto, slice, or off (default remains gated on evaluation) (default "off")
+  -mode string
+    	response mode: mekugi or passthrough (default "mekugi")
+  -post-compact-recovery
+    	restore journal and change context after compaction through a pre-trusted Codex hook (default true)
+  -stream-idle-timeout duration
+    	maximum upstream inactivity between WebSocket messages or HTTP response bytes (default 4m0s)
+  -timeout duration
+    	upstream response-start timeout (default 10m0s)

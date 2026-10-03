@@ -37,8 +37,15 @@ jobs:
       - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: internal/claude/bridge/package-lock.json
       - name: Generate embedded assets
         run: make preview-assets
+      - name: Check Claude bridge offline
+        run: make test-claude
       - name: Test commands
         run: make test TEST_PACKAGES='./cmd/mekugi ./cmd/mekugi-exec'
       - name: Test welcome and linked version
@@ -52,9 +59,11 @@ jobs:
           package_dir="$RUNNER_TEMP/package"
           mkdir -p "$package_dir" "$RUNNER_TEMP/artifacts"
           go build -trimpath -ldflags="-s -w -X github.com/yusing/mekugi/internal/router.buildVersion=$BUILD_TAG" -o "$package_dir/" ./cmd/mekugi ./cmd/mekugi-exec
+          make build-claude-bridge CLAUDE_BRIDGE_DIR="$package_dir/claude-bridge"
           "$package_dir/mekugi" --help
           cp LICENSE "$package_dir/"
-          tar -czf "$RUNNER_TEMP/artifacts/mekugi_${PLATFORM}.tar.gz" -C "$package_dir" mekugi mekugi-exec LICENSE
+          tar -czf "$RUNNER_TEMP/artifacts/mekugi_${PLATFORM}.tar.gz" -C "$package_dir" mekugi mekugi-exec claude-bridge LICENSE
+          make test-claude-package CLAUDE_PACKAGE_DIR="$package_dir"
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: mekugi_${{ matrix.platform }}

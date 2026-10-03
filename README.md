@@ -72,7 +72,8 @@ comparisons, use [codex-setup-ab](https://github.com/yusing/codex-setup-ab).
 
 Requirements:
 
-- **Codex CLI** for tool execution in every [launch mode](#start-mekugi).
+- **Codex CLI** for Codex and Grok [launch modes](#start-mekugi).
+- For `mekugi claude`: **Node.js 18+** as `node` and the installed, authenticated official **Claude Code CLI** as `claude`. No Codex installation is needed for this backend.
 - For configured JavaScript plugins only: **Node.js 24+** as `node`. Plugins declaring regex grammars also require **ripgrep** as `rg` on the router's `PATH`.
 - Built-in frontends need neither Node.js nor Bun; semantic lookup requires the language servers listed under [agent-facing tools](#agent-facing).
 - Any interpreter your agent picks, such as `python3`, on the executor's `PATH`.
@@ -80,7 +81,9 @@ Requirements:
 ### Release binaries
 
 Download an archive from [GitHub Releases](https://github.com/yusing/mekugi/releases/latest).
-Each archive includes `mekugi` and `mekugi-exec`; Go and a C toolchain are not needed.
+Each archive includes `mekugi`, `mekugi-exec`, and the private `claude-bridge` runtime
+bundle; Go, npm, and a C toolchain are not needed. Keep the bridge directory beside
+`mekugi`, including when relocating the installation.
 
 | Platform | Archive | Minimum OS |
 | --- | --- | --- |
@@ -102,18 +105,21 @@ For example, install the Linux x86-64 release into `~/.local/bin`:
   tar -xzf mekugi_linux_amd64.tar.gz
   mkdir -p "$HOME/.local/bin"
   install -m 755 mekugi mekugi-exec "$HOME/.local/bin/"
+  rm -rf "$HOME/.local/bin/claude-bridge"
+  cp -R claude-bridge "$HOME/.local/bin/"
 )
 ```
 
 Use the archive for your platform. On macOS, verify it with
 `shasum -a 256 --ignore-missing -c SHA256SUMS` instead of `sha256sum`.
 Add `~/.local/bin` to your `PATH` if needed. Installing replaces both binaries
-at that destination. Linux releases need glibc and do not run on stock Alpine Linux;
-use a source build for other environments.
+and their bridge bundle at that destination. Linux releases need glibc and do not
+run on stock Alpine Linux; use a source build for other environments.
 
 ### Build from source
 
-Source installs require **Go 1.27+**, CGO enabled, and a C toolchain:
+Source installs require **Go 1.27+**, CGO enabled, and a C toolchain.
+A binary-only Go install supports Codex and Grok, but does not include the Claude bridge:
 
 ```sh
 go install github.com/yusing/mekugi/cmd/mekugi@latest github.com/yusing/mekugi/cmd/mekugi-exec@latest
@@ -121,16 +127,30 @@ go install github.com/yusing/mekugi/cmd/mekugi@latest github.com/yusing/mekugi/c
 
 Add `$GOBIN`, or `$(go env GOPATH)/bin` if that is unset, to your `PATH`.
 
-From a checkout with **Make**, run `make install`. It regenerates the
-optional plugin shared core and installs `mekugi` and `mekugi-exec`. `make uninstall`
-removes only those binaries. Running sessions keep their worker executable, so
-start a new session to pick up an update.
+For all backends, use a checkout with **Make**, **Node.js 18+**, and **npm**:
+
+```sh
+git clone https://github.com/yusing/mekugi.git
+cd mekugi
+make install
+```
+
+This regenerates the optional plugin shared core, builds the locked Claude bridge,
+and installs it beside `mekugi` and `mekugi-exec` in the Go binary directory.
+`make uninstall` removes those binaries and their bridge bundle. Running sessions
+keep their worker executable, so start a new session to pick up an update.
 
 ## Usage
 
 ### Claude Code preview
 
-Build and try the Claude backend in the existing UI from this checkout:
+After a release or checkout installation, launch the Claude backend in the existing UI:
+
+```sh
+mekugi claude --cwd /path/to/project
+```
+
+For a development preview without replacing installed binaries:
 
 ```sh
 make build-claude
@@ -138,18 +158,20 @@ make build-claude
 ```
 
 Requires Node.js 18 or newer and an installed, authenticated official `claude`
-CLI. The initial compatibility target is Claude Code 2.1.287 with Agent SDK
-0.3.287. Sign in using Claude's own CLI before launching. Authentication and
+CLI. The bridge uses the SDK version locked by the checkout or release.
+Sign in using Claude's own CLI before launching. Authentication and
 billing remain native; this preview does not claim subscription eligibility or
 switch you to API billing. Existing Claude settings, instructions and extensions
 load normally, including their configured permission mode. Mekugi supplies its
 shared utilities, journal MCP tools and observational hooks for this launch only.
 It does not route inference or change persistent Claude settings.
 
-The build writes only to `bin/`, not the installed Mekugi location. It installs
-locked bridge dependencies into that build directory. Keep `bin/claude-bridge`
-beside `bin/mekugi`. You can select a native model with `--model MODEL` or continue
-a native session with `--resume SESSION_ID`; the ID appears at the bottom of the
+The preview writes only to `bin/`, not the installed Mekugi location. Its private
+production SDK dependencies stay in `bin/claude-bridge`; no global npm installation
+is needed. Keep that directory beside `bin/mekugi`. The bridge uses your installed
+Claude executable, not a second bundled Claude CLI. Launch works from any directory,
+including through a symlink to `mekugi`. You can select a native model with
+`--model MODEL` or continue a native session with `--resume SESSION_ID`; the ID appears at the bottom of the
 screen. Resume preserves Claude's context and restores available transcript rows
 from the selected workspace. Display restoration reads at most 2,000 messages;
 a notice identifies longer histories. No tools or approvals are replayed.
@@ -944,9 +966,10 @@ authentication. Then choose a current [launch mode](#start-mekugi).
 
 ## Development
 
-The [build workflow](.github/workflows/release.yml) tests and packages both commands
-for Linux amd64/arm64 and macOS arm64 on pushes to `main`, pull requests, and manual
-runs. Pushing a `v*` tag also publishes the three archives and `SHA256SUMS` to a
+The [build workflow](.github/workflows/release.yml) checks the bridge offline and
+packages both commands with the private Claude bridge. It smoke-tests extracted,
+relocated Claude startup without model requests for Linux amd64/arm64 and macOS
+arm64 on pushes to `main`, pull requests, and manual runs. Pushing a `v*` tag also publishes the three archives and `SHA256SUMS` to a
 GitHub release, with the tag embedded as the welcome version. Rerunning a tag build
 replaces that release's matching assets.
 
@@ -958,6 +981,11 @@ click reply links to inspect them. Keys behave as in the real UI: Enter steers
 the playing turn or, once idle, starts a new one that echoes your prompt; Tab
 queues for the next turn; Ctrl-C clears the draft, then interrupts playback,
 then exits, as does `/quit`.
+
+Run `make test-claude` for offline bridge compilation and transport tests. After
+`make build-claude`, run `make test-claude-package CLAUDE_PACKAGE_DIR=bin` to
+check extracted and relocated package startup with a fake Claude executable.
+These checks do not prove compatibility with an authenticated live Claude session.
 
 For offline terminal-layout regression checks, run `make test-ui-snapshots`.
 Failures leave `.txt.new` candidates beside the reviewed fixtures and print a

@@ -24,7 +24,7 @@ func runClaude(ctx context.Context, args []string, in, out *os.File, stderr io.W
 	model := flags.String("model", "", "native Claude model choice")
 	bridge := flags.String("bridge", "", "path to built Claude SDK bridge")
 	flags.Usage = func() {
-		fmt.Fprint(stderr, "Usage: mekugi claude [--cwd DIR] [--resume SESSION] [--model MODEL]\n\nClaude Code backend for the shared UI. Requires Node and an installed, authenticated\nClaude Code runtime. Build with make build-claude. No inference router.\n")
+		fmt.Fprint(stderr, "Usage: mekugi claude [--cwd DIR] [--resume SESSION] [--model MODEL]\n\nClaude Code backend for the shared UI. Requires Node and an installed, authenticated\nClaude Code runtime. Releases and make install include the bridge. No inference router.\n")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -77,6 +77,10 @@ func runClaude(ctx context.Context, args []string, in, out *os.File, stderr io.W
 		if err != nil {
 			return fail(err)
 		}
+		own, err = filepath.EvalSymlinks(own)
+		if err != nil {
+			return fail(err)
+		}
 		*bridge = filepath.Join(filepath.Dir(own), "claude-bridge", "dist", "bridge.js")
 	}
 	*bridge, err = filepath.Abs(*bridge)
@@ -84,7 +88,7 @@ func runClaude(ctx context.Context, args []string, in, out *os.File, stderr io.W
 		return fail(err)
 	}
 	if _, err := os.Stat(*bridge); err != nil {
-		return fail(fmt.Errorf("Claude bridge unavailable; run make build-claude: %w", err))
+		return fail(fmt.Errorf("Claude bridge unavailable; keep claude-bridge beside mekugi, reinstall the full package, or run make build-claude: %w", err))
 	}
 	config := claude.Config{Cwd: workspace, Executable: executable, Resume: *resume, ForkSession: *fork, Model: *model}
 	observations, err := router.StartObservationService(ctx, "claude", workspace)

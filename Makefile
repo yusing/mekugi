@@ -1,4 +1,7 @@
 GO ?= go
+NPM ?= npm
+CLAUDE_BRIDGE_DIR ?= bin/claude-bridge
+INSTALL_BIN = $(shell $(GO) env GOBIN GOPATH | awk 'NR == 1 {dir = $$0} NR == 2 {print dir == "" ? $$0 "/bin" : dir}')
 
 .PHONY: install uninstall preview-assets preview-native-ui test test-ui-snapshots update-ui-snapshots
 
@@ -11,10 +14,12 @@ SNAPSHOT ?= ^TestUISnapshot
 SNAPSHOT_PACKAGES ?= ./internal/ui/... ./internal/router ./cmd/mekugi
 
 install: preview-assets
+	$(MAKE) build-claude-bridge CLAUDE_BRIDGE_DIR="$(INSTALL_BIN)/claude-bridge"
 	$(GO) install ./cmd/mekugi ./cmd/mekugi-exec
 
 uninstall:
 	$(GO) clean -i ./cmd/mekugi ./cmd/mekugi-exec
+	rm -rf "$(INSTALL_BIN)/claude-bridge"
 
 preview-assets:
 	go generate ./internal/router/toolplugin
@@ -37,21 +42,38 @@ test-ui-snapshots:
 update-ui-snapshots:
 	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(GO) test $(SNAPSHOT_PACKAGES) -run '$(value SNAPSHOT)' -count=1
 
-# Development preview only. Never replaces the installed mekugi binary.
-.PHONY: build-claude test-claude
-build-claude:
-	mkdir -p bin/claude-bridge
-	rm -f bin/claude-bridge/*.ts
-	rm -rf bin/claude-bridge/dist
-	cp internal/claude/bridge/package.json internal/claude/bridge/package-lock.json internal/claude/bridge/tsconfig.json internal/claude/bridge/*.ts bin/claude-bridge/
-	npm ci --prefix bin/claude-bridge --ignore-scripts
-	npm run build --prefix bin/claude-bridge
-	$(GO) build -o bin/mekugi ./cmd/mekugi
+# One relocatable runtime bundle owner for preview, installation, and releases.
+# Build in a temporary directory so source dependencies/manifests stay untouched.
+.PHONY: build-claude-bridge build-claude test-claude test-claude-package
+build-claude-bridge:
+	@set -eu; \
+	bridge_build=$$(mktemp -d); \
+	trap 'rm -rf "$$bridge_build"' EXIT; \
+	cp internal/claude/bridge/package.json internal/claude/bridge/package-lock.json internal/claude/bridge/tsconfig.json internal/claude/bridge/*.ts "$$bridge_build/"; \
+	$(NPM) ci --prefix "$$bridge_build" --ignore-scripts; \
+	$(NPM) run build --prefix "$$bridge_build"; \
+	$(NPM) prune --prefix "$$bridge_build" --ignore-scripts --omit=dev --omit=optional; \
+	(cd "$$bridge_build" && node --input-type=module -e 'await import("@anthropic-ai/claude-agent-sdk"); await import("zod")'); \
+	rm -f "$$bridge_build"/dist/*.test.js; \
+	mkdir -p "$(CLAUDE_BRIDGE_DIR)"; \
+	rm -rf "$(CLAUDE_BRIDGE_DIR)/dist" "$(CLAUDE_BRIDGE_DIR)/node_modules"; \
+	cp -R "$$bridge_build/dist" "$$bridge_build/node_modules" "$$bridge_build/package.json" "$$bridge_build/package-lock.json" "$(CLAUDE_BRIDGE_DIR)/"
 
+# Development preview only. Never replaces the installed mekugi binary.
+build-claude: build-claude-bridge
+	$(GO) build -o bin/mekugi ./cmd/mekugi
+	$(GO) build -o bin/mekugi-exec ./cmd/mekugi-exec
+
+# Offline bridge compilation and tests; native acceptance remains opt-in.
 test-claude:
-	npm ci --prefix internal/claude/bridge --ignore-scripts
+	$(NPM) ci --prefix internal/claude/bridge --ignore-scripts
 	rm -rf internal/claude/bridge/dist
-	npm run build --prefix internal/claude/bridge
+	$(NPM) run build --prefix internal/claude/bridge
 	node --test internal/claude/bridge/dist/*.test.js
 	$(MAKE) test TEST_PACKAGES='./internal/claude ./internal/session ./cmd/mekugi'
 	$(MAKE) test TEST_PACKAGES=./internal/router TEST_RUN='NativeRuntime|UISnapshotNativeRuntime'
+
+# Uses a preassembled package; the smoke test extracts and relocates it itself.
+test-claude-package:
+	test -n "$(CLAUDE_PACKAGE_DIR)"
+	MEKUGI_TEST_CLAUDE_PACKAGE="$(abspath $(CLAUDE_PACKAGE_DIR))" $(MAKE) test TEST_PACKAGES=./cmd/mekugi TEST_RUN='^TestClaudePackagedLaunch$$' TEST_FLAGS='-count=1 -v'
