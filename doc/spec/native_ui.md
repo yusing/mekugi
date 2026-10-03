@@ -810,6 +810,8 @@ cells. Native launches forward feature toggles unchanged, including on resume;
 Codex owns validation, precedence, preemption, and continuation. The client uses
 the same `turn/steer` path for conversation input whether the feature is enabled
 or disabled and never implements instant steering by aborting a turn or replaying a tool.
+Explicit composer Escape delivery is separate: it interrupts through Codex and
+resubmits uncommitted steers as a new turn, without replaying tools.
 
 `/compact` asks Codex to replace the current conversation context. In journal
 `auto` mode its description and live progress identify an attempted journal reset
@@ -860,9 +862,19 @@ Consecutive user items in one turn appear as one prompt in the transcript,
 with each item's own navigation target retained.
 Stacked image files stay owned until sent.
 
-Escape in the focused composer interrupts an active turn without clearing its draft
-and never quits. Dismissing a picker, help, or selection and returning a paused
-transcript to the bottom take precedence.
+While a turn is active, Escape in the focused composer expedites pending or
+locally unsent steers rather than retracting them into the editor. It requests
+host `turn/interrupt`, waits for
+the interruption acknowledgement, turn completion, and unresolved steer
+acknowledgements to settle, then resubmits only uncommitted steers through
+`turn/start`. A rejected interrupt does not resubmit input. The current draft
+stays unchanged when steers are resent, and separately Tab-queued input stays
+queued. If all pending steers commit before interruption completes, nothing is
+resent and normal restoration of queued input applies. Committed user input is
+never resent. During a starting turn, or with no pending steers, Escape retains normal
+interrupt-and-restore behavior without automatic resubmission. It never quits.
+Dismissing a picker, help, or selection and returning a paused transcript to the
+bottom take precedence.
 
 `/lock` protects against keyboard interruption: composer Escape and Ctrl-C cannot
 interrupt active or starting work or discard waiting input, and Ctrl-C cannot exit
@@ -874,7 +886,8 @@ lifecycle events and an already-requested interrupt are unaffected.
 
 Ctrl-C first clears a non-empty draft (Ctrl+Z restores it), then interrupts the
 active or starting turn, and exits like `/quit` only when no input is waiting.
-Interrupt restores uncommitted submissions, locally stacked steers, and queued
+Outside Escape's expedited steer delivery, interrupt restores uncommitted
+submissions, locally stacked steers, and queued
 entries ahead of the current draft, preserving attachments and typed order;
 nothing is automatically resent. A committed user message stays in the transcript.
 An interrupted start that Codex has not committed removes its provisional
@@ -882,7 +895,8 @@ transcript entry. If it was the first message, Main returns to an empty transcri
 and Ready composer with that draft restored. An interrupt requested before the
 host supplies the turn ID waits for that ID rather than inventing one.
 A rejected steer, or a steer whose turn ended without committing it, also returns
-to the composer. Submissions settle after their in-flight acknowledgement, so
+to the composer unless it is part of Escape's expedited delivery.
+Submissions settle after their in-flight acknowledgement, so
 restoration cannot reorder or duplicate input. On exit, stacked input is
 printed with the unsent draft, and unresolved or uncommitted submissions as
 outcome unknown, never resent. Composer notices (command, paste, editor and

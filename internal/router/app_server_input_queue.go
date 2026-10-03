@@ -14,8 +14,9 @@ import (
 )
 
 // Busy input follows Codex's composer queue: Enter steers the running turn,
-// Tab queues input for the next turn. Interrupt returns uncommitted input
-// to the composer instead of resending it. Unlike Codex, waiting input stacks:
+// Tab queues input for the next turn. Ctrl-C restores uncommitted input;
+// Escape expedites pending steers after interrupting the turn. Unlike Codex,
+// waiting input stacks:
 // unsent steers, and separately queued messages, go out as one message joined
 // by newlines instead of one message per turn.
 // Source: codex-rs/tui/src/chatwidget/{input_queue,input_flow,input_restore}.rs
@@ -296,6 +297,12 @@ func (u *appServerUI) submissionResponse(method string, failure *appserver.Error
 		u.settleSteers(s.interrupted)
 		return
 	}
+	if failure != nil && u.sendSteersAfterInterrupt && s.turn == u.interruption.target && !s.committed {
+		// An interrupt may reject the in-flight steer before its completion
+		// event arrives. Keep it in order until that outcome settles.
+		u.steers = append(u.steers, s)
+		return
+	}
 	if failure != nil {
 		u.status, u.alert = method+": "+failure.Message, true
 		u.withdraw(s)
@@ -363,15 +370,21 @@ func (u *appServerUI) settleInput(turn string, interrupted bool) {
 	u.settleSteers(interrupted)
 }
 
-// Uncommitted input returns to the editor; interruption never resends it.
+// Only Escape with pending steers resends uncommitted input after interruption.
 func (u *appServerUI) settleSteers(interrupted bool) {
 	steers := u.steerParts(u.steers)
 	u.steers = nil
+	sendNow := interrupted && u.sendSteersAfterInterrupt
+	u.sendSteersAfterInterrupt = false
 	switch {
 	case interrupted && u.compaction.interrupting:
 		// The explicit command survives its own interruption. Host-owned
 		// uncommitted steers still return to the editor, never get replayed.
 		u.restoreDrafts(steers...)
+	case sendNow && len(steers)+len(u.unsent) > 0:
+		// The host discarded uncommitted steers. Preserve their order and
+		// attachments, leave the editor alone, and keep Tab input queued.
+		u.unsent = slices.Concat(steers, u.unsent)
 	case interrupted:
 		u.restoreDrafts(slices.Concat(steers, u.unsent, u.queued)...)
 		u.unsent, u.queued = nil, nil
@@ -415,12 +428,14 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 	if u.submission.turn != "" {
 		steers = append(steers, u.submission.parts...)
 	}
-	header := "Steering after the next tool call · ctrl+c interrupts and restores input"
+	header := "Steering after the next tool call · esc sends now · ctrl+c interrupts and restores input"
 	switch {
 	case u.compaction.interrupting:
 		header = "Compacting after interruption · ctrl+c cancels compaction"
 	case u.shellCommand.standalone():
 		header = "Waiting for shell command to finish"
+	case u.sendSteersAfterInterrupt || u.steerInterruptAckPending:
+		header = "Sending steer once interrupted · ctrl+c restores input"
 	case u.interruption.target != "":
 		header = "Restoring input once interrupted"
 	case u.compaction.running():

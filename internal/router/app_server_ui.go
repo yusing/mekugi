@@ -596,6 +596,21 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			return nil
 		}
+		if method == "steer/interrupt" {
+			u.steerInterruptAckPending = false
+			if m.Error != nil {
+				u.sendSteersAfterInterrupt = false
+				u.interruption.finish()
+				// The completion can precede this rejection. Do not deliver
+				// steers that were moved to the local stack in that interval.
+				if u.turn == "" {
+					u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
+					u.unsent, u.queued = nil, nil
+				}
+				u.setNotice("Could not interrupt to send steer: "+m.Error.Message, true)
+			}
+			return nil
+		}
 		if method == "thread/start" && u.replacement.pending() && m.Error != nil {
 			u.replacement.finish()
 			u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
@@ -614,6 +629,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			if method == "turn/interrupt" {
 				u.interruption.finish()
+				u.sendSteersAfterInterrupt = false
 			}
 			return nil
 		}
@@ -1665,6 +1681,14 @@ func (u *appServerUI) interruptTurn() error {
 	u.status = "Interrupting…"
 	if u.compaction.interrupting {
 		_, err := u.requestAs("turn/interrupt", "compact/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
+		return err
+	}
+	if u.sendSteersAfterInterrupt {
+		u.steerInterruptAckPending = true
+		_, err := u.requestAs("turn/interrupt", "steer/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
+		if err != nil {
+			u.steerInterruptAckPending = false
+		}
 		return err
 	}
 	return u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})

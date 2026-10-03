@@ -338,7 +338,16 @@ Mekugi differs in these ways:
   sending, and queued messages, each appear as one stack and send as one message,
   one entry per line. Alt+Up or Shift+Left returns all locally waiting input to
   the composer. Already-sent steers remain pending until Codex commits them or
-  the turn ends; interrupt to restore input that has not committed.
+  the turn ends. While a turn is active, Esc expedites pending or locally waiting
+  steers: it interrupts the turn, then sends only uncommitted steers in a new
+  turn, leaving your draft unchanged. Tab-queued input stays queued when a steer
+  is resent. If all pending steers commit before interruption completes, nothing
+  is resent and queued input returns to the composer as in a normal interrupt.
+  Already-committed input is never resent.
+  Ctrl-C clears the draft first, then interrupts and restores waiting input
+  without resending it. With no pending steers, Esc interrupts and restores input
+  without resending, and never quits. Closing a picker, help, or selection and
+  returning scrollback to the bottom take precedence over Esc interruption.
 - **Session controls.** Enter on `/compact` interrupts the current turn and compacts
   after Codex acknowledges its end, with or without `instant_interrupt`. Tab queues
   compaction until the current turn ends. After successful busy compaction, waiting
@@ -350,8 +359,9 @@ Mekugi differs in these ways:
   pending prevents compaction but cannot undo that interruption; once compaction
   starts, it interrupts only that compaction. `/clear` starts a fresh session and clears its transcript; it is
   available while idle and does not delete saved sessions or filesystem changes.
-  Interrupt returns unsent input to the composer without automatically resending
-  it. Interrupting an uncommitted first message leaves an empty transcript.
+  A normal interrupt returns unsent input to the composer without automatically
+  resending it; Esc with pending steers uses the expedited delivery above.
+  Interrupting an uncommitted first message leaves an empty transcript.
 - **Live diffs.** Edits temporarily replace Main's transcript or the editing
   agent's Activity transcript, leaving other agents visible. Brief edits finish
   without opening this temporary view; their saved diffs remain available.
