@@ -31,8 +31,8 @@ func TestScrollablePaneKeysAgreeAtConsumers(t *testing.T) {
 		{name: "g home", keys: "g", offset: 0, starting: 50},
 		{name: "end", keys: "\x1b[F", offset: 90, starting: 50},
 		{name: "G end", keys: "G", offset: 90, starting: 50},
-		{name: "end pauses following", keys: "G", offset: 90, starting: 50, initialFollow: true},
-		{name: "resume", keys: "r", offset: 50, follow: true, starting: 50},
+		{name: "Activity end resumes following", keys: "G", offset: 90, starting: 50, initialFollow: true},
+		{name: "removed saved resume shortcut", keys: "r", offset: 50, starting: 50},
 		{name: "clamp at top", keys: "k", offset: 0, starting: 0},
 		{name: "clamp at bottom", keys: "j", offset: 99, starting: 99},
 		{name: "clamp page at bottom", keys: " ", offset: 99, starting: 95},
@@ -40,7 +40,7 @@ func TestScrollablePaneKeysAgreeAtConsumers(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			controller := newTerminalScrollTestController(test.starting, test.initialFollow)
+			controller := newTerminalScrollTestController(test.starting)
 			defer controller.close()
 			for _, key := range []byte(test.keys) {
 				controller.handleKey(key)
@@ -48,8 +48,8 @@ func TestScrollablePaneKeysAgreeAtConsumers(t *testing.T) {
 			if got := controller.view.Scroll["scroll.txt"]; got != test.offset {
 				t.Fatalf("live diff offset = %d, want %d", got, test.offset)
 			}
-			if controller.view.Following != test.follow {
-				t.Fatalf("live diff following = %v, want %v", controller.view.Following, test.follow)
+			if controller.view.Following {
+				t.Fatalf("live diff following = %v, want %v", controller.view.Following, false)
 			}
 
 			activity := newLiveActivityView()
@@ -97,7 +97,7 @@ func TestScrollablePaneWheelAgreesAtConsumers(t *testing.T) {
 		{name: "up pauses following", seq: "\x1b[<64;1;2M", action: 'k', starting: 50, following: true, diffWant: 47, activityWant: 87},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			controller := newTerminalScrollTestController(test.starting, test.following)
+			controller := newTerminalScrollTestController(test.starting)
 			defer controller.close()
 			for _, key := range []byte(test.seq) {
 				controller.handleKey(key)
@@ -159,16 +159,15 @@ func TestLiveDiffStreamWheelPauseSurvivesUpdates(t *testing.T) {
 	}
 }
 
-func newTerminalScrollTestController(offset int, following bool) *liveDiffTerminalController {
+func newTerminalScrollTestController(offset int) *liveDiffTerminalController {
 	controller := newLiveDiffTerminalController(nil, "", os.Stdout)
 	lines := make([]string, 100)
 	controller.diffMode, controller.lines, controller.offset, controller.rows = true, lines, offset, 10
 	controller.lastWidth, controller.lastHeight = 80, 20
 	controller.rendering = livediff.Render{Lines: lines, Starts: []int{0}}
 	controller.view = livediff.View{
-		Files:     []livediff.File{{Path: "scroll.txt"}},
-		Scroll:    map[string]int{"scroll.txt": offset},
-		Following: following,
+		Files:  []livediff.File{{Path: "scroll.txt"}},
+		Scroll: map[string]int{"scroll.txt": offset},
 	}
 	return controller
 }
@@ -184,7 +183,7 @@ func terminalScrollStreamPreview(rows int) diffview.Preview {
 }
 
 func TestScrollablePaneWheelBurstAccumulates(t *testing.T) {
-	c := newTerminalScrollTestController(50, false)
+	c := newTerminalScrollTestController(50)
 	defer c.close()
 	v := newLiveActivityView()
 	v.following = false
@@ -210,7 +209,7 @@ func TestScrollableDiffBeforePaintAndAfterFileChange(t *testing.T) {
 	} {
 		t.Run(geometry.name, func(t *testing.T) {
 			for _, keys := range []string{"\x1b[5~", "\x1b[6~", "\x1b[A", "\x1b[B", "g", "G", "\x1b[<64;1;2M"} {
-				c := newTerminalScrollTestController(50, true)
+				c := newTerminalScrollTestController(50)
 				c.rendering = geometry.render
 				c.lines = geometry.render.Lines
 				for _, key := range []byte(keys) {

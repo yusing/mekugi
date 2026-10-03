@@ -248,7 +248,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		frame := waitFrame(func(frame string) bool {
 			return strings.Contains(frame, "DIFF · ") || strings.Contains(frame, "STREAM · ")
 		})
-		if !strings.Contains(frame, "FOLLOW") || !strings.Contains(frame, "Temporary file one.") {
+		if !strings.Contains(frame, "Temporary file one.") {
 			t.Fatalf("horizontal input %q changed the view: %q", report, frame)
 		}
 	}
@@ -259,7 +259,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	atStatus := func(frame string) bool {
-		return strings.Contains(frame, "PAUSED") && strings.Contains(frame, "Status: created") &&
+		return strings.Contains(frame, "DIFF · v stream") && strings.Contains(frame, "Status: created") &&
 			!strings.Contains(frame, strings.Repeat("x", 8))
 	}
 	waitFrame(atStatus)
@@ -278,10 +278,10 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	}
 	waitFrame(atStatus)
 
-	if _, err := terminal.Write([]byte("r")); err != nil {
+	if _, err := terminal.Write([]byte("g")); err != nil {
 		t.Fatal(err)
 	}
-	frame = waitFrame(func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+	frame = waitFrame(func(frame string) bool { return strings.Contains(frame, "DIFF · v stream") })
 	if strings.Contains(frame, "LATEST UPDATE") || strings.Contains(frame, "●") {
 		t.Fatal("startup history was marked as newly observed")
 	}
@@ -297,11 +297,11 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	if strings.Contains(frame, "LATEST UPDATE") {
 		t.Fatal("update label is still displayed")
 	}
-	if _, err := terminal.Write([]byte("n")); err != nil {
+	if _, err := terminal.Write([]byte("gpn")); err != nil {
 		t.Fatal(err)
 	}
 	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "PAUSED") &&
+		return strings.Contains(frame, "DIFF · v stream") &&
 			strings.Contains(frame, "Temporary file two.") && !strings.Contains(frame, "Temporary file one.")
 	})
 	if err := os.WriteFile(filepath.Join(workspace, "first.txt"),
@@ -310,27 +310,27 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	}
 	publish("update-first", []capturedEdit{{"first.txt", "Temporary file one." + longSuffix + "\nStatus: adjusted 界 é\n"}})
 	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "PAUSED · new changes available") &&
+		return strings.Contains(frame, "DIFF · v stream") &&
 			!strings.Contains(frame, "LATEST UPDATE")
 	})
 	if err := pty.Setsize(terminal, &pty.Winsize{Rows: 44, Cols: 90}); err != nil {
 		t.Fatal(err)
 	}
 	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "PAUSED · new changes available")
+		return strings.Contains(frame, "DIFF · v stream")
 	})
-	if _, err := terminal.Write([]byte("r")); err != nil {
+	if _, err := terminal.Write([]byte("pg")); err != nil {
 		t.Fatal(err)
 	}
 	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "FOLLOW") &&
+		return strings.Contains(frame, "DIFF · v stream") &&
 			strings.Contains(frame, "adjusted 界 é") && !strings.Contains(frame, "new changes available")
 	})
 	if _, err := terminal.Write([]byte("n")); err != nil {
 		t.Fatal(err)
 	}
 	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "PAUSED") && strings.Contains(frame, "Temporary file two.") &&
+		return strings.Contains(frame, "DIFF · v stream") && strings.Contains(frame, "Temporary file two.") &&
 			!strings.Contains(frame, "new changes available")
 	})
 	if _, err := terminal.Write([]byte{3}); err != nil {

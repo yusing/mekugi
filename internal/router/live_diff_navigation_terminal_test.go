@@ -104,7 +104,7 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 	})
 	// Pointer scrolling targets the list, not the selected file's viewport.
 	ui.write(t, "\x1b[<65;5;10M")
-	wheel := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
+	wheel := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream") })
 	if !strings.Contains(ansi.Strip(wheel), "file_023_content") {
 		t.Fatal("list wheel moved the selected diff viewport")
 	}

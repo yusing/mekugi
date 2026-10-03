@@ -413,8 +413,12 @@ arrives. When a turn finishes, the viewer switches to the saved diff. A failed
 or unfinished call never becomes a saved change.
 
 - `v` switches views; `?` lists diff shortcuts.
-- `s` shows or hides the file tree, `t` toggles tree/flat paths, `/` filters
-  files.
+- In the saved Diff, `s` shows and focuses the file/Changes navigator; press
+  it again to hide the navigator. `t` toggles tree/flat paths, `/` filters files.
+- The navigator and diff have separate focus. Arrow keys act on the focused
+  region. Selecting or clicking a file previews it while keeping list focus;
+  `Enter` opens it and focuses the diff. Click the diff to focus it, or press
+  `Esc` from an opened diff to return to the list.
 - `n`/`p` change files, `[`/`]` jump between hunks, and `j`/`k`, `Space`/`b`,
   and `g`/`G` scroll. Opening a file starts at its header.
 - `Tab` switches the navigator to **Changes**: a graph of changes by caller
@@ -428,7 +432,9 @@ or unfinished call never becomes a saved change.
   and scroll positions unchanged. Completed host file-change diffs open even
   while other commands in the same batch are still running. `Esc` dismisses
   the dialog.
-- Browsing pauses following; `r` resumes.
+- New saved edits refresh the content without moving your chosen file or
+  scroll position. Streaming previews still follow live edits until you browse;
+  `r` resumes preview following.
 
 See [live view details](doc/spec/changes.md#live-terminal-view).
 

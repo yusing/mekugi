@@ -403,3 +403,23 @@ func TestLiveDiffIndependentFocusArrows(t *testing.T) {
 		c.close()
 	}
 }
+
+func TestLiveDiffUpdatesPreserveManualChoice(t *testing.T) {
+	c := liveDiffChangesController(t, 120, 12, []livediff.Chunk{
+		liveDiffCapture("one", "a.go", 1, "", strings.Repeat("first\n", 40), livediff.Origin{}),
+		liveDiffCapture("two", "b.go", 2, "", "second\n", livediff.Origin{}),
+	})
+	c.handleKey('j')
+	c.frame(t)
+	selected, offset := c.view.Selected, c.offset
+	files := append([]livediff.File(nil), c.view.Files...)
+	files[1].Chunks = append(files[1].Chunks, liveDiffCapture("three", "b.go", 3, "second\n", "updated\n", livediff.Origin{}))
+	c.view.Merge(files)
+	c.view.RefreshVisible()
+	c.frame(t)
+	c.handleKey('r')
+	c.frame(t)
+	if c.view.Selected != selected || c.offset != offset || c.view.Following {
+		t.Fatalf("incoming edit or removed shortcut moved choice: file=%d offset=%d", c.view.Selected, c.offset)
+	}
+}

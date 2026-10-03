@@ -17,7 +17,7 @@ import (
 )
 
 // Real terminal acceptance: sequential publications cannot hide behind an
-// interval/debounce, and following must show each edited row, not stale content.
+// interval/debounce, and live refresh must show edits to the selected file, not stale content.
 func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 	workspace := t.TempDir()
 	directory := filepath.Join(t.TempDir(), "not-yet", "replay")
@@ -110,17 +110,19 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 	publish("initial", initial, nil)
 	waitFrame("+original")
 	start := time.Now()
-	for i, edit := range []struct{ file, line int }{{0, 18}, {3, 1}, {2, 20}, {1, 10}, {4, 2}, {0, 3}} {
+	for i, edit := range []struct{ file, line int }{{0, 1}, {0, 1}, {0, 1}, {0, 1}, {0, 1}, {0, 1}} {
 		marker := fmt.Sprintf("LATEST%d", i)
+		before := "original"
+		if i > 0 {
+			before = fmt.Sprintf("LATEST%d", i-1)
+		}
 		chunk := liveDiffHighlightChunk("", paths[edit.file],
-			fmt.Sprintf("@@ -%d +%d @@\n-original\n+%s\n", edit.line, edit.line, marker))
+			fmt.Sprintf("@@ -%d +%d @@\n-%s\n+%s\n", edit.line, edit.line, before, marker))
 		publish(fmt.Sprintf("update%d", i), []mekugi.ReviewFile{chunk.Review}, nil)
 		frame := waitFrame("+" + marker)
-		if middle := rowText(frame, 4) + rowText(frame, 5); !strings.Contains(middle, "+"+marker) {
-			t.Fatalf("latest change is not centered: rows 4-5: %q", middle)
-		}
-		if !strings.Contains(frame, "FOLLOW") || strings.Contains(frame, "Unable to combine") {
-			t.Fatalf("update %d lost follow or composition: %q", i, frame)
+
+		if strings.Contains(frame, "FOLLOW") || strings.Contains(frame, "Unable to combine") {
+			t.Fatalf("update %d exposed stale follow or lost composition: %q", i, frame)
 		}
 	}
 	elapsed := time.Since(start)
@@ -132,13 +134,13 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 		t.Fatalf("updates are delayed: six round trips took %s", elapsed)
 	}
 
-	// Resizing a following pane must keep its target inside the smaller body.
+	// Resizing preserves the chosen file without a follow state.
 	for _, height := range []uint16{5, 3, 9} {
 		if err := pty.Setsize(terminal, &pty.Winsize{Rows: height, Cols: 100}); err != nil {
 			t.Fatal(err)
 		}
-		frame := waitFrame("+LATEST5")
-		if !strings.Contains(frame, fmt.Sprintf("\x1b[%d;1H", height)) || !strings.Contains(frame, "FOLLOW") {
+		frame := waitFrame("DIFF · v stream")
+		if !strings.Contains(frame, fmt.Sprintf("\x1b[%d;1H", height)) || strings.Contains(frame, "FOLLOW") {
 			t.Fatalf("resize to %d lost target or footer: %q", height, frame)
 		}
 	}
@@ -146,15 +148,15 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 	if _, err := terminal.Write([]byte("g")); err != nil {
 		t.Fatal(err)
 	}
-	frame := waitFrame("PAUSED")
+	frame := waitFrame("DIFF · v stream")
 	if heading := rowText(frame, 1); !strings.Contains(heading, "Files  5/5 · tree") || strings.Contains(heading, "Changes") ||
 		strings.Contains(heading, "| row") || !strings.Contains(heading, "▎ 1/5  file1.tmp") {
 		t.Fatalf("navigator and first diff heading are shifted: heading=%q", heading)
 	}
 	chunk := liveDiffHighlightChunk("", paths[4], "@@ -19 +19 @@\n-original\n+PREPARED19\n")
 	publish("failed-command-edit", []mekugi.ReviewFile{chunk.Review}, &execOutcome{Status: execStatusFailed, Exit: new(1)})
-	waitFrame("PAUSED · new changes available")
-	if _, err := terminal.Write([]byte("r")); err != nil {
+	waitFrame("DIFF · v stream")
+	if _, err := terminal.Write([]byte("/" + filepath.Base(paths[4]) + "\rG")); err != nil {
 		t.Fatal(err)
 	}
 	frame = waitFrame("+PREPARED19")

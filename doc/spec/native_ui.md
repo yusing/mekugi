@@ -360,8 +360,13 @@ labelled as a preview, never a green success check; host item status and capture
 effects establish the outcome. A new
 saved diff never replaces Activity; the Diff tab shows an unseen badge instead,
 and the saved diff lists its files or changes above the content when the pane is
-narrow; focusing that list (Tab, s) enlarges it without covering the diff, and s
-again hides it. A roster pick that changes Activity's agent filter shows
+narrow; `s` shows and focuses that list, enlarging it without covering the diff,
+and `s` again hides it. The navigator and diff content have separate keyboard
+focus: arrows act on the focused region, clicking a list row keeps list focus,
+and clicking diff content focuses the diff. Enter opens a selected file and
+focuses the diff; Esc returns from that opened diff to the list. Incoming saved
+edits refresh content without moving the chosen file or scroll position. Saved
+Diff has no follow mode; streaming-preview following is unchanged. A roster pick that changes Activity's agent filter shows
 Activity in place of the saved diff.
 
 Clicking a compact Edit event opens the shared dialog at the clicked file’s

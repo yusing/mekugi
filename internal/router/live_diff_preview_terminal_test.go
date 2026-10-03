@@ -161,11 +161,11 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 	})
 	broker.publishTurn(false)
 	ui.frame(t, func(frame string) bool {
-		return strings.Contains(frame, "v stream") && strings.Contains(ansi.Strip(frame), "80│+new")
+		return strings.Contains(frame, "v stream") && strings.Contains(ansi.Strip(frame), "1│-old")
 	})
 	ui.write(t, "g")
 	// The diff footer reports the call still streaming in the other mode.
-	paused := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream (1 live) · PAUSED") })
+	paused := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream (1 live)") })
 	pausedHeader := liveDiffFrameRow(paused, 1)
 
 	ui.write(t, "v")
@@ -189,7 +189,7 @@ func TestLiveDiffTerminalStreamingRegion(t *testing.T) {
 
 	// Toggling modes preserves captured-diff paused position.
 	broker.publishTurn(false)
-	resumedDiff := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream · PAUSED") })
+	resumedDiff := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream") })
 	if liveDiffFrameRow(resumedDiff, 1) == "" || pausedHeader == "" {
 		t.Fatal("turn transition lost captured-diff navigation state")
 	}
@@ -327,7 +327,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 	ui.write(t, "v")
 	ui.write(t, "g")
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream") })
 	ui.write(t, "v")
 	first := previewViewFixture("first", 100)
 	first.Workspace, first.Caller = workspace, "/root"
@@ -372,7 +372,7 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 	broker.publishPreview(second, true)
 	ui.frame(t, func(frame string) bool { return strings.Count(ansi.Strip(frame), "○ edit") == 2 })
 	ui.write(t, "v")
-	diff := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
+	diff := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream") })
 	if !strings.Contains(diff, "v stream") {
 		t.Fatal("stream updates changed the paused diff mode")
 	}

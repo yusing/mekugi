@@ -347,7 +347,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		waitFor(reply.theme.Foreground(chroma.GenericInserted), "FOLLOW")
+		waitFor(reply.theme.Foreground(chroma.GenericInserted), "DIFF · v stream")
 	}
 	// Unrelated and malformed OSC payloads must not flush, navigate, or quit,
 	// even when they include escape-prefixed command keys or overflow the buffer.
@@ -373,7 +373,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 		}
 		return false
 	}
-	before := waitFor("M second.go", "PAUSED", livediff.DarkTheme.SelectionBackground())
+	before := waitFor("M second.go", "DIFF · v stream", livediff.DarkTheme.SelectionBackground())
 	if !selectedFileHighlighted(before, "M second.go", 20) {
 		t.Fatalf("navigation did not select second.go: %q", liveDiffFrameRow(before, 5))
 	}
@@ -387,7 +387,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	_, beforeSource, _ := strings.Cut(lastRow(before, 2), "│")
 	liveDiffTestChange(t, store, workspace, "three", "first.go")
 	liveDiffTestChange(t, store, workspace, "four", "third.go")
-	after := waitFor("M second.go", "3/3 · tree", "PAUSED", livediff.DarkTheme.SelectionBackground())
+	after := waitFor("M second.go", "3/3 · tree", "DIFF · v stream", livediff.DarkTheme.SelectionBackground())
 	if !selectedFileHighlighted(after, "M second.go", 20) {
 		t.Fatalf("new files moved paused selection: %q", liveDiffFrameRow(after, 5))
 	}
@@ -405,8 +405,8 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	if _, err := terminal.Write([]byte("r")); err != nil {
 		t.Fatal(err)
 	}
-	if output := waitFor("FOLLOW", "M third.go", livediff.DarkTheme.SelectionBackground()); !selectedFileHighlighted(output, "M third.go", 25) {
-		t.Fatalf("resume did not select latest edit: %s", output)
+	if output := waitFor("DIFF · v stream", "M second.go", livediff.DarkTheme.SelectionBackground()); !selectedFileHighlighted(output, "M second.go", 25) {
+		t.Fatalf("removed r shortcut changed selected file: %s", output)
 	}
 	if _, err := terminal.Write([]byte{3}); err != nil {
 		t.Fatal(err)

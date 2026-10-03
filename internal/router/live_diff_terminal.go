@@ -56,7 +56,6 @@ type liveDiffTerminalController struct {
 	escapeTimer       *time.Timer
 	escapeC           <-chan time.Time
 	dirty             bool
-	followDirty       bool
 	// pinned reports a frame without a title row, where a mid-file viewport
 	// pins its file heading and scrolling reaches one row further.
 	pinned bool
@@ -101,9 +100,9 @@ func newLiveDiffTerminalController(store *mekugiReplayStore, workspace string, s
 		store: store, workspace: workspace, stdout: stdout,
 		size: func() (int, int, error) { return term.GetSize(int(stdout.Fd())) },
 		data: newLiveDiffData(), coverage: "CONNECTING",
-		view:              livediff.View{Scroll: make(map[string]int), Following: true},
+		view:              livediff.View{Scroll: make(map[string]int)},
 		previewFrame:      previewFrame,
-		renderedFocusFile: -1, dirty: true, followDirty: true,
+		renderedFocusFile: -1, dirty: true,
 		theme: theme, renderedTheme: theme,
 	}
 }
@@ -155,11 +154,11 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		}
 		c.renderedTheme = c.theme
 		c.rendered, c.renderedFocus, c.renderedFocusFile = files, focus, focusFile
-		c.dirty, c.followDirty = true, true
+		c.dirty = true
 	}
 	resized := height != c.lastHeight || width != c.lastWidth
 	if resized {
-		c.dirty, c.followDirty = true, true
+		c.dirty = true
 	}
 	c.lastWidth, c.lastHeight, c.diffWidth = width, height, diffWidth
 	lines := c.rendering.Lines
@@ -198,14 +197,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		}
 		offset = start + min(c.view.Scroll[c.view.Files[c.view.Selected].Key()], max(0, end-start-1))
 	}
-	if c.view.Following && c.followDirty {
-		viewport := rows
-		if !titled {
-			viewport-- // A mid-file offset shares the viewport with the pinned heading.
-		}
-		offset = c.rendering.FollowOffset(viewport)
-	}
-	c.followDirty = false
+
 	// A reverted last file has an empty span at EOF. Normalize the
 	// actual viewport offset too, not only scrollTo's selection argument.
 	offset = max(0, min(offset, len(lines)-1))
@@ -343,7 +335,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 				text = left + strings.Repeat(" ", max(0, navWidth-ansi.StringWidth(left))) + livediff.Subtle + "│\x1b[0m" + text
 			}
 			if c.help {
-				help := slices.DeleteFunc([]string{"", "  Diff navigation", "", "  s       show / hide files", "  Tab     files / changes by caller", "          Changes: Enter caller filters · Enter h/l expand / collapse change", "  /       filter paths, or changes by id, @caller, source · Ctrl-U clear", "  t       tree / flat list", "  ↑↓ j/k  move or scroll", "  ←→ h/l  collapse / expand folder", "  Enter   open file or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  { / }   previous / next change", "  a / 0   next caller / all callers", "  PgUp/Dn page · Home/End first / last", "  r       resume following changes", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help", "  Ctrl-C  quit"}, func(line string) bool {
+				help := slices.DeleteFunc([]string{"", "  Diff navigation", "", "  s       focus / hide files", "  Tab     files / changes by caller", "          Changes: Enter caller filters · Enter h/l expand / collapse change", "  /       filter paths, or changes by id, @caller, source · Ctrl-U clear", "  t       tree / flat list", "  ↑↓ j/k  move focused list / scroll diff", "  ←→ h/l  collapse / expand folder", "  Enter   focus diff or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  { / }   previous / next change", "  a / 0   next caller / all callers", "  PgUp/Dn page · Home/End first / last", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help", "  Ctrl-C  quit"}, func(line string) bool {
 					return c.native && strings.HasPrefix(line, "  v ")
 				})
 				text = ""
@@ -387,15 +379,12 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		c.previewFrameC = c.previewFrame.C
 		c.previewFrameDue = now.Add(diffview.PreviewFrameDelay)
 	}
-	mode := "FOLLOW"
-	if !c.view.Following {
-		mode = "PAUSED"
-		if c.view.UnseenUpdate {
-			mode += " · new changes available"
-		}
-	}
+	mode := ""
 	if c.coverage != "" && !strings.HasPrefix(c.coverage, "SIMULATION:") {
 		mode, _, _ = strings.Cut(c.coverage, ":")
+	}
+	if mode != "" {
+		mode = " · " + mode
 	}
 	// Each mode reports what is waiting in the other one.
 	switch {
@@ -410,7 +399,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 			name, _ := diffview.CallerStyle(c.theme)(c.view.Caller)
 			scope = " · @" + livediff.Safe(name, false) + " (0 all)"
 		}
-		writeRow(height, "DIFF · "+stream+" · "+mode+scope+" · s files · Tab changes · ? help")
+		writeRow(height, "DIFF · "+stream+mode+scope+" · s files · Tab changes · ? help")
 	default:
 		diff := "v diff"
 		if count := len(c.files); count > 0 {
@@ -431,12 +420,12 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 func (c *liveDiffTerminalController) resetScope() {
 	c.data, c.scope, c.callerCounts, c.coverage = newLiveDiffData(), liveDiffScope{}, nil, "CONNECTING"
 	c.netCounts = nil
-	c.view = livediff.View{Scroll: make(map[string]int), Following: true}
+	c.view = livediff.View{Scroll: make(map[string]int)}
 	c.navigation = diffview.Navigation{Flat: c.navigation.Flat}
 	c.previewPane, c.back = diffview.PreviewPane{}, liveDiffBack{}
 	c.files, c.lines, c.offset, c.rendered = nil, nil, 0, nil
 	c.renderedFocus, c.renderedFocusFile = livediff.Chunk{}, -1
-	c.awaitingResync, c.dirty, c.followDirty = true, true, true
+	c.awaitingResync, c.dirty = true, true
 	c.refreshChanges()
 }
 
@@ -461,7 +450,6 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 			c.turnRevision = event.TurnRevision
 			c.diffMode = event.Status == "completed"
 			c.dirty = true
-			c.followDirty = c.diffMode && c.view.Following
 		}
 	case "coverage":
 		c.coverage, c.dirty = event.Status, true
@@ -803,7 +791,6 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 			break
 		}
 		c.diffMode = !c.diffMode
-		c.followDirty = c.diffMode && c.view.Following
 	case '{', '}':
 		if c.diffMode {
 			c.stepChange(map[byte]int{'{': -1, '}': 1}[key])
@@ -868,7 +855,7 @@ func (c *liveDiffTerminalController) callerDots() []string {
 }
 
 // nativeTitle summarizes the saved diff for the shell's title bar: file and
-// line totals on the left; coverage, caller filter, follow state and the open
+// line totals on the left; coverage, caller filter, focus and the open
 // file's position on the right.
 func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 	left := "no captured edits yet"
@@ -903,15 +890,7 @@ func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 		name, _ := diffview.CallerStyle(c.theme)(c.view.Caller)
 		right = append(right, "@"+livediff.Safe(name, false))
 	}
-	switch {
-	case len(c.files) == 0:
-	case c.view.Following:
-		right = append(right, "FOLLOW")
-	case c.view.UnseenUpdate:
-		right = append(right, activityui.Amber+"PAUSED · new changes"+activityui.Reset)
-	default:
-		right = append(right, activityui.Amber+"PAUSED"+activityui.Reset)
-	}
+
 	if len(c.files) > 1 {
 		right = append(right, fmt.Sprintf("%d/%d", c.view.Selected+1, len(c.files)))
 	}
