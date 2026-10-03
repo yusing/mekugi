@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
-
-	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 // Capture a completed provider answer for recovery without making Main's answer
@@ -72,8 +70,7 @@ func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) er
 		}
 		t.journalNaturalFinalSeen = true
 		if jsonString(item, "id") == "" || t.finalAnswer.disabled {
-			// Streaming may already have exposed an oversized answer. Do not
-			// duplicate it under a new journal-owned identity.
+			// An interrupted stream cannot prepare a journal-owned completion.
 			capturable = false
 		}
 		if answer.Len() != 0 {
@@ -151,44 +148,13 @@ func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) er
 	return nil
 }
 
-func (t *mekugiResponseTransform) filterNaturalAnswerEvents(events [][]byte) [][]byte {
-	if t.journalNativeSink != nil || len(t.journalNaturalAnswerIDs) == 0 {
-		return events
-	}
-	type event struct {
-		Type        responseevents.Kind        `json:"type"`
-		ItemID      string                     `json:"item_id"`
-		OutputIndex *int                       `json:"output_index"`
-		Item        map[string]json.RawMessage `json:"item"`
-	}
-	indexes := make(map[int]bool)
-	for _, payload := range events {
-		var current event
-		if json.Unmarshal(payload, &current) == nil && current.OutputIndex != nil && t.journalNaturalAnswerIDs[jsonString(current.Item, "id")] {
-			indexes[*current.OutputIndex] = true
-		}
-	}
-	visible := make([][]byte, 0, len(events))
-	for _, payload := range events {
-		var current event
-		if json.Unmarshal(payload, &current) == nil {
-			if t.journalNaturalAnswerIDs[current.ItemID] || t.journalNaturalAnswerIDs[jsonString(current.Item, "id")] ||
-				current.OutputIndex != nil && indexes[*current.OutputIndex] {
-				continue
-			}
-		}
-		visible = append(visible, payload)
-	}
-	return visible
-}
-
 func (t *mekugiResponseTransform) withoutNaturalAnswer(output []map[string]json.RawMessage) []map[string]json.RawMessage {
 	if t.journalNativeSink != nil || len(t.journalNaturalAnswerIDs) == 0 {
 		return output
 	}
 	kept := make([]map[string]json.RawMessage, 0, len(output))
 	for _, item := range output {
-		if !t.journalNaturalAnswerIDs[jsonString(item, "id")] {
+		if id := jsonString(item, "id"); !t.journalNaturalAnswerIDs[id] || t.finalAnswer.itemIDs[id] {
 			kept = append(kept, item)
 		}
 	}

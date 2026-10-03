@@ -89,31 +89,6 @@ func (chain responseTransformerChain) TransformSSE(payload []byte) ([][]byte, er
 	return transformed, nil
 }
 
-// Optional draining keeps transforms without buffered answer events unchanged.
-func flushResponseSSE(transformer responseTransformer) ([][]byte, error) {
-	if flusher, ok := transformer.(interface{ FlushSSE() ([][]byte, error) }); ok {
-		return flusher.FlushSSE()
-	}
-	return nil, nil
-}
-
-func (chain responseTransformerChain) FlushSSE() ([][]byte, error) {
-	pending, err := flushResponseSSE(chain.first)
-	if err != nil {
-		return nil, err
-	}
-	var visible [][]byte
-	for _, payload := range pending {
-		events, err := chain.second.TransformSSE(payload)
-		if err != nil {
-			return visible, err
-		}
-		visible = append(visible, events...)
-	}
-	tail, err := flushResponseSSE(chain.second)
-	return append(visible, tail...), err
-}
-
 func (chain responseTransformerChain) Finish(streamEvent bool) error {
 	return errors.Join(chain.first.Finish(streamEvent), chain.second.Finish(streamEvent))
 }
@@ -595,29 +570,6 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 	if hooks != nil {
 		defer func() { hooks.streamDiagnostics.copyStopped(resultErr) }()
 	}
-	defer func() {
-		if errors.Is(resultErr, errResponseWrite) {
-			return // The downstream is no longer writable.
-		}
-		pending, err := flushResponseSSE(transformer)
-		resultErr = errors.Join(resultErr, err)
-		for _, payload := range pending {
-			_, err := writeSSEEvent(writer, responseSSELines(payload, "\n"), "\n", nil, nil)
-			if err != nil {
-				if hooks != nil {
-					hooks.streamDiagnostics.writeStopped(err)
-				}
-				if resultErr != nil {
-					// A cleanup write must not reclassify the primary failure
-					// as downstream cancellation.
-					resultErr = fmt.Errorf("%w; downstream drain failed: %v", resultErr, err)
-				} else {
-					resultErr = err
-				}
-				return
-			}
-		}
-	}()
 	if hooks != nil && hooks.streamDiagnostics != nil {
 		reader = diagnosticStreamReader{reader: reader, diagnostics: hooks.streamDiagnostics}
 	}
@@ -739,7 +691,7 @@ func writeSSEEvent(writer io.Writer, lines []string, separator string, transform
 			Type string `json:"type"`
 		}
 		_ = json.Unmarshal(eventPayload, &transformedEnvelope)
-		if len(visible) > 1 || transformedEnvelope.Type != originalEnvelope.Type {
+		if !bytes.Equal(eventPayload, payload) && (len(visible) > 1 || transformedEnvelope.Type != originalEnvelope.Type) {
 			lineEnding := "\n"
 			if separator == "\r\n" {
 				lineEnding = "\r\n"
@@ -796,8 +748,7 @@ func ssePayload(lines []string) []byte {
 	return []byte(strings.Join(parts, "\n"))
 }
 
-// Synthesized frames need the same event name and data framing as live SSE,
-// including when buffered answer events are released after an interrupted stream.
+// Synthesized frames need the same event name and data framing as live SSE.
 func responseSSELines(payload []byte, ending string) []string {
 	var envelope struct {
 		Type string `json:"type"`

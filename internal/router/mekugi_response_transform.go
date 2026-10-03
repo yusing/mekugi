@@ -102,9 +102,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		Response  json.RawMessage     `json:"response"`
 	}
 	if err := json.Unmarshal(payload, &envelope); err != nil {
-		if visible, buffered := t.finalAnswer.observe(payload); buffered {
-			return visible, nil
-		}
+		t.finalAnswer.observe(payload)
 		if len(t.pending) != 0 {
 			return nil, staticCriticalDiagnostic("malformed_pending_intercepted_event", "the upstream sent a malformed event while an intercepted function call was pending")
 		}
@@ -113,9 +111,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 	if envelope.Delta != "" && t.threadID != "" && strings.HasSuffix(string(envelope.Type), ".delta") {
 		t.proxy.activity.streamOutput(t.threadID, len(envelope.Delta))
 	}
-	if visible, buffered := t.finalAnswer.observe(payload); buffered {
-		return visible, nil
-	}
+	t.finalAnswer.observe(payload)
 	switch {
 	case envelope.Type == responseevents.Created:
 		visible := [][]byte{payload}
@@ -376,7 +372,9 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			}
 			for _, publication := range t.proxy.commentary.drain(subscription.token) {
 				if message := t.runtimeCommentaryMessage(publication); message != nil {
-					if t.subagentTurn {
+					if t.subagentTurn || t.finalAnswer.substantive {
+						// Keep late progress in history without a completed message
+						// after the streamed final. Stock Codex would render it again.
 						threadMessages = append(threadMessages, message)
 					} else {
 						visible = append(visible, assistantCommentaryDoneEvent(message))
@@ -402,7 +400,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			}
 		}
 		t.releaseCommentarySubscriptions()
-		visible = append(visible, t.finalAnswer.flush()...)
 		visible = append(visible, event)
 		return visible, nil
 

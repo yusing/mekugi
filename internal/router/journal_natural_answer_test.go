@@ -73,8 +73,8 @@ func TestNaturalJournalAnswerStreamsWhenTerminalStatusIsAbsent(t *testing.T) {
 	answer := map[string]any{"type": "message", "id": "answer-item", "role": "assistant", "phase": "final_answer", "status": "completed",
 		"content": []any{map[string]any{"type": "output_text", "text": "Requested result delivered."}}}
 	first, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": answer}))
-	if err != nil || len(first) != 0 {
-		t.Fatalf("answer escaped before terminal: %s, %v", first, err)
+	if err != nil || len(first) != 1 {
+		t.Fatalf("answer did not stream before terminal: %s, %v", first, err)
 	}
 	last, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.completed", "response": map[string]any{"id": "no-status", "output": []any{answer}}}))
 	if err != nil {
@@ -141,6 +141,7 @@ func TestNaturalJournalAnswerWithLocalJournalCall(t *testing.T) {
 					if _, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": item})); err != nil {
 						t.Fatal(err)
 					}
+					transform.ReleaseDelivery()
 				}
 				events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.completed", "response": response}))
 				if err != nil {
@@ -173,27 +174,31 @@ func TestNaturalJournalAnswerCapacityFallbackWithLocalCall(t *testing.T) {
 	}
 }
 
-func TestNaturalJournalAnswerKeepsBufferedCommentary(t *testing.T) {
+func TestNaturalJournalAnswerKeepsStreamedCommentary(t *testing.T) {
 	transform, _, _, _ := newMekugiTestTransform(t)
 	commentary := map[string]any{"type": "message", "id": "commentary-item", "role": "assistant", "phase": "commentary", "status": "completed",
 		"content": []any{map[string]any{"type": "output_text", "text": "Progress."}}}
 	unknown := map[string]any{"type": "message", "id": "commentary-item", "role": "assistant", "status": "in_progress"}
 	answer := map[string]any{"type": "message", "id": "answer-item", "role": "assistant", "phase": "final_answer", "status": "completed",
 		"content": []any{map[string]any{"type": "output_text", "text": "Requested result delivered."}}}
+	var events [][]byte
 	for _, event := range []any{
 		map[string]any{"type": "response.output_item.added", "output_index": 0, "item": unknown},
 		map[string]any{"type": "response.output_text.delta", "output_index": 0, "delta": "Progress."},
 		map[string]any{"type": "response.output_item.done", "output_index": 0, "item": commentary},
 		map[string]any{"type": "response.output_item.done", "output_index": 1, "item": answer},
 	} {
-		if _, err := transform.TransformSSE(mustTestJSON(t, event)); err != nil {
+		visible, err := transform.TransformSSE(mustTestJSON(t, event))
+		if err != nil {
 			t.Fatal(err)
 		}
+		events = append(events, visible...)
 	}
-	events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.completed", "response": map[string]any{"id": "mixed-stream", "status": "completed", "output": []any{commentary, answer}}}))
+	last, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.completed", "response": map[string]any{"id": "mixed-stream", "status": "completed", "output": []any{commentary, answer}}}))
 	if err != nil {
 		t.Fatal(err)
 	}
+	events = append(events, last...)
 	var commentaryDone, answerDone, commentaryDelta bool
 	for _, payload := range events {
 		var event struct {
@@ -206,6 +211,6 @@ func TestNaturalJournalAnswerKeepsBufferedCommentary(t *testing.T) {
 		commentaryDelta = commentaryDelta || event.Type == "response.output_text.delta"
 	}
 	if !commentaryDone || !commentaryDelta || !answerDone {
-		t.Fatalf("buffered commentary or ordinary answer lifecycle lost: %s", events)
+		t.Fatalf("streamed commentary or ordinary answer lifecycle lost: %s", events)
 	}
 }

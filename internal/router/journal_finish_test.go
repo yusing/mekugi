@@ -569,6 +569,7 @@ func TestNaturalProviderAnswerBecomesJournalTerminalResult(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+					transform.ReleaseDelivery()
 					last, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.completed", "response": response}))
 					if err != nil {
 						t.Fatal(err)
@@ -587,7 +588,7 @@ func TestNaturalProviderAnswerBecomesJournalTerminalResult(t *testing.T) {
 					transform.Delivered(output)
 				}
 				transform.ReleaseDelivery()
-				if bytes.Contains(output, []byte(`"id":"natural-answer"`)) == child || !bytes.Contains(output, []byte("Provider answer is captured.")) {
+				if bytes.Contains(output, []byte(`"id":"natural-answer"`)) == (child && !stream) || !bytes.Contains(output, []byte("Provider answer is captured.")) {
 					t.Fatalf("provider answer violated Main/child delivery ownership: %s", output)
 				}
 				if child {

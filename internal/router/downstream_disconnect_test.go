@@ -258,31 +258,20 @@ func TestDownstreamWriteDiagnostics(t *testing.T) {
 	}
 }
 
-func TestDownstreamDisconnectDuringAnswerDrain(t *testing.T) {
-	for _, primary := range []error{nil, io.ErrUnexpectedEOF, errors.Join(errResponseTransform, errors.New("bad transform"))} {
-		t.Run(fmt.Sprint(primary), func(t *testing.T) {
-			transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
-			var reader io.Reader = strings.NewReader(finalAnswerTestWire(finalAnswerTestEvents(t, "final_answer")))
-			if primary != nil {
-				reader = io.MultiReader(reader, finalAnswerErrorReader{primary})
-			}
-			disconnected := downstreamDisconnectError(websocket.CloseError{Code: websocket.StatusGoingAway, Reason: "private"})
-			diagnostics := &streamDiagnostics{}
-			_, err := copySSETransformed(serverErrorWriter{err: disconnected}, reader, transform, &responseHooks{streamDiagnostics: diagnostics})
-			f := &requestFinalization{}
-			f.classifyCopyError(err)
-			issues := NewCriticalErrors()
-			_ = f.finish(t.Context(), err, &webSocketOutput{}, issues)
-			if primary != nil {
-				if !errors.Is(err, primary) || f.observation.outcome != requestOutcomeFailed || len(issues.Pending()) == 0 {
-					t.Fatalf("lost primary failure: %v, outcome %v, notices %v", err, f.observation.outcome, issues.Pending())
-				}
-			} else if f.observation.outcome != requestOutcomeCanceledBeforeResponse || len(issues.Pending()) != 0 {
-				t.Fatalf("drain disconnect: %v, outcome %v, notices %v", err, f.observation.outcome, issues.Pending())
-			}
-			if diagnostics.WriteTermination != "downstream_websocket_close_1001" || diagnostics.WriteWebSocketCloseCode != 1001 {
-				t.Fatalf("lost drain diagnostics: %+v", diagnostics)
-			}
-		})
+func TestDownstreamDisconnectDuringAnswerStreaming(t *testing.T) {
+	transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
+	reader := strings.NewReader(finalAnswerTestWire(finalAnswerTestEvents(t, "final_answer")))
+	disconnected := downstreamDisconnectError(websocket.CloseError{Code: websocket.StatusGoingAway, Reason: "private"})
+	diagnostics := &streamDiagnostics{}
+	_, err := copySSETransformed(serverErrorWriter{err: disconnected}, reader, transform, &responseHooks{streamDiagnostics: diagnostics})
+	f := &requestFinalization{}
+	f.classifyCopyError(err)
+	issues := NewCriticalErrors()
+	_ = f.finish(t.Context(), err, &webSocketOutput{}, issues)
+	if f.observation.outcome != requestOutcomeCanceledBeforeResponse || len(issues.Pending()) != 0 {
+		t.Fatalf("stream disconnect: %v, outcome %v, notices %v", err, f.observation.outcome, issues.Pending())
+	}
+	if diagnostics.WriteTermination != "downstream_websocket_close_1001" || diagnostics.WriteWebSocketCloseCode != 1001 {
+		t.Fatalf("lost stream diagnostics: %+v", diagnostics)
 	}
 }

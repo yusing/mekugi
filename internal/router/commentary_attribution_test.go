@@ -111,8 +111,8 @@ func TestChildCommentaryAttributionJSONAndSSE(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if len(events) != 0 {
-					t.Fatal("answer was not buffered")
+				if len(events) != 1 {
+					t.Fatal("answer did not stream")
 				}
 				events, err = next.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.completed", "response": map[string]any{"status": "completed", "output": []any{answer}}}))
 				if err != nil {

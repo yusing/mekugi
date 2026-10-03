@@ -282,7 +282,7 @@ func (t *mekugiResponseTransform) prepareTreeDelivery(j threadJournal, terminal 
 	}
 	id := commentaryMessageID("journal-v2\x00" + t.directory + "\x00" + t.shellThreadID + "\x00" + identity)
 	message := assistantCommentaryMessage(id, text)
-	if terminal && (!t.journalNaturalFinalSeen || len(t.journalNaturalAnswerIDs) != 0) {
+	if terminal && !t.journalAnswerStarted && (!t.journalNaturalFinalSeen || len(t.journalNaturalAnswerIDs) != 0) {
 		message["phase"] = mustMarshalJSON("final_answer")
 	}
 	retained := t.retainCommentary(message)

@@ -431,8 +431,8 @@ source. An encrypted assignment cannot supply a question and blocks fallback to 
 The agent does not repeat the message. The completed answer is normally captured as a durable
 journal item before terminal delivery, and its original question is retained by list, durable
 replay, restart, and forks, independently of later user messages. If the automatic answer exceeds
-the per-item limit, the journal is full, or streaming already exposed the raw answer, the provider
-answer remains visible unchanged. In these capacity cases, unflushed milestones remain pending;
+the per-item limit or the journal is full, the provider answer remains visible unchanged.
+In these capacity cases, unflushed milestones remain pending;
 the router does not claim a journal flush or lose the answer from subsequent provider history.
 Inference is request-local;
 concurrent threads and branches do not share its source. Journal mutation schemas do not
@@ -482,15 +482,19 @@ reads. Neither captured answers nor unchanged open tasks alone trigger a report.
 Answers and their questions remain
 stored but are not echoed in the report. A blank final or a case-insensitive `done`
 with an optional period is an empty Outcome: no answer node is created for a tree
-journal, and the exact raw provider item is hidden only when a meaningful report
-replaces it. Otherwise the original final stays visible. The final message is
+journal. A meaningful report can replace a snapshot-only raw item or hide it in the
+native UI; streamed provider events remain unchanged and stay in the terminal snapshot.
+Otherwise the original final stays visible. The final message is
 still required. Retained v1 authoring without a turn card keeps such a final as its answer.
 
 Live v2 fallback uses the `Journal` heading without an author-path label and renders
 events after `liveSeq`, clipping a row that no single update
 can hold; journal reads retain it whole. Successful downstream delivery advances
 the corresponding cursor; failure preserves its window. Main reports precede the
-ordinary final in inline delivery so no commentary follows that final. Failed,
+substantive ordinary final in JSON output and terminal snapshots. Streaming answers are delivered
+as they arrive. Inline reports are prepared before the first answer event, with
+acknowledgement deferred until successful terminal delivery. Journal changes after
+that preparation remain pending rather than adding commentary after the answer. Failed,
 incomplete and interrupted responses never terminal-flush.
 Retained v1 authoring keeps its legacy presentation and delivery receipts during replay.
 A child completes without flushing and emits a result containing only
@@ -600,8 +604,11 @@ Unacknowledged revisions remain available for a later flush.
 A successful provider final message is captured for recovery; Main's ordinary answer
 delivery acknowledges only its captured revision, independently of pending work
 reports. A report acknowledges its own prepared window after successful delivery.
-Ordinary token-usage buffering remains bounded and releases provider events unchanged on
-failure or overflow.
+Provider answer lifecycle events and text deltas pass through immediately and unchanged,
+without waiting for usage, answer capture, or terminal delivery. Terminal decoration must not
+repeat a streamed item-done event or remove its item from provider history. Failed or
+interrupted streams preserve the events already delivered; usage and journal acknowledgement
+still require their own terminal evidence.
 
 ### Acceptance
 
@@ -613,8 +620,9 @@ failure or overflow.
    durable ancestry. Bounded transport reassembles complete trees without mixed revisions.
 4. Main answers remain ordinary messages, including replies while tasks are open.
    Cards require new non-answer events or diagnostics and never repeat the answer.
-   Empty Outcomes create no tree answer node and stay visible unless a report
-   replaces them. Failed delivery retains cursor windows for retry.
+   Empty Outcomes create no tree answer node. Streamed items stay in provider history;
+   snapshot-only items or native presentation can be replaced by a report.
+   Failed delivery retains cursor windows for retry.
 5. Child JSON/SSE results omit echoed questions and opaque aliases, deliver only new
    work after acknowledgement, and include only the corresponding owned evaluations.
 6. Instruction projection exposes one v2 API description, keeps stock tool authority,

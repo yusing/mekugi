@@ -85,8 +85,11 @@ func journalUpdateText(author, id, text string) string {
 }
 
 func (t *mekugiResponseTransform) prepareJournalDelivery(terminal bool) ([]map[string]json.RawMessage, error) {
+	if !terminal && t.journalEarlyReports != nil {
+		return nil, nil
+	}
 	messages, err := t.prepareOwnJournalDelivery(terminal)
-	if err != nil || !t.journalActive || t.subagentTurn || t.nativeJournal() != nil {
+	if err != nil || !t.journalActive || t.subagentTurn || t.nativeJournal() != nil || t.journalEarlyReports != nil {
 		return messages, err
 	}
 	// Codex's exec consumer sees only root response items. Child-stream write
@@ -205,6 +208,12 @@ func (t *mekugiResponseTransform) prepareOwnJournalDelivery(terminal bool) ([]ma
 		t.ReleaseDelivery()
 		return nil, nil
 	}
+	if terminal && t.journalEarlyReports != nil {
+		if len(t.journalEarlyReports) == 0 {
+			t.ReleaseDelivery()
+		}
+		return t.journalEarlyReports, nil
+	}
 	if childTerminal {
 		t.journalNewCount, t.journalFlushedCount = 0, 0
 		for _, item := range journal.Items {
@@ -263,7 +272,7 @@ func (t *mekugiResponseTransform) prepareOwnJournalDelivery(terminal bool) ([]ma
 		message := assistantCommentaryMessage(id, text)
 		prepared[id] = journalDelivery{thread: deliveryThread, revisions: revisions, terminal: terminal, sequence: journal.Sequence}
 		traceSource := "report_now"
-		if terminal && (!t.journalNaturalFinalSeen || len(t.journalNaturalAnswerIDs) != 0) {
+		if terminal && !t.journalAnswerStarted && (!t.journalNaturalFinalSeen || len(t.journalNaturalAnswerIDs) != 0) {
 			message["phase"] = mustMarshalJSON("final_answer")
 		}
 		if terminal {
@@ -409,6 +418,9 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 		if !ok {
 			continue
 		}
+		if delivery.terminal && envelope.Type != "response.completed" && envelope.Status != "completed" {
+			continue // An early report write is not evidence of turn completion.
+		}
 		if delivery.rootLive {
 			if err := t.proxy.journals.acknowledgeRootLive(t.ctx, t.proxy.replayStore, t.directory, delivery.thread, delivery.sequence); err == nil {
 				delete(t.journalDeliveries, id)
@@ -536,6 +548,29 @@ func (t *mekugiResponseTransform) decorateJournalJSON(payload []byte) ([]byte, e
 }
 
 func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][]byte) ([][]byte, error) {
+	// Stock Codex remembers the last completed assistant item, including
+	// commentary. A report after the final makes turn completion render the
+	// answer again. Prepare inline reports before its first provider event.
+	if !t.journalTerminal && !t.subagentTurn && t.nativeJournal() == nil && t.journalEarlyReports == nil {
+		var event struct {
+			Type responseevents.Kind        `json:"type"`
+			Item map[string]json.RawMessage `json:"item"`
+		}
+		if json.Unmarshal(original, &event) == nil && event.Type.ItemEvent() && isFinalAnswerMessage(event.Item) {
+			t.journalAnswerStarted = true
+			messages, err := t.prepareJournalDelivery(true)
+			if err != nil {
+				return nil, err
+			}
+			t.journalEarlyReports = append(make([]map[string]json.RawMessage, 0, len(messages)), messages...)
+			var visible [][]byte
+			for _, message := range messages {
+				visible = append(visible, assistantCommentaryDoneEvent(message))
+			}
+			return append(visible, events...), nil
+		}
+	}
+
 	if t.journalContinue {
 		messages, err := t.prepareJournalDelivery(false)
 		if err != nil {
@@ -559,11 +594,6 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 	messages, err := t.prepareJournalDelivery(t.journalTerminal)
 	if err != nil {
 		return nil, err
-	}
-	// Empty-outcome suppression is decided by the prepared report, not capture.
-	// Keep its buffered lifecycle until that decision is known.
-	if t.journalTerminal {
-		events = t.filterNaturalAnswerEvents(events)
 	}
 	if !t.journalTerminal {
 		var notices [][]byte
@@ -600,15 +630,20 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 		messages = append(terminalMessages, messages...)
 	}
 	var notices [][]byte
-	for _, message := range messages {
-		notices = append(notices, assistantCommentaryDoneEvent(message))
+	if t.journalEarlyReports == nil {
+		for _, message := range messages {
+			notices = append(notices, assistantCommentaryDoneEvent(message))
+		}
 	}
 	var visible [][]byte
 	reportBeforeFinal := !t.subagentTurn && t.journalNaturalFinalSeen && len(t.journalNaturalAnswerIDs) == 0
 	if reportBeforeFinal {
 		visible = append(visible, notices...)
 	}
-	doneItems := make(map[string]bool)
+	doneItems := t.finalAnswer.doneIDs
+	if doneItems == nil {
+		doneItems = make(map[string]bool)
+	}
 	for _, payload := range events {
 		var event struct {
 			Type     responseevents.Kind        `json:"type"`
@@ -629,21 +664,21 @@ func (t *mekugiResponseTransform) decorateJournalSSE(original []byte, events [][
 			output = t.withoutNaturalAnswer(output)
 			if reportBeforeFinal {
 				output = append(messages, output...)
-				// Snapshot-only finals still need their ordinary host message event.
-				// Buffered finals already have it; overflow fallback may have exposed
-				// it earlier and must not receive another copy.
-				if !t.finalAnswer.disabled {
-					for _, item := range output {
-						id := jsonString(item, "id")
-						if id != "" && isFinalAnswerMessage(item) && !doneItems[id] {
-							visible = append(visible, assistantCommentaryDoneEvent(item))
-							doneItems[id] = true
-						}
-					}
-				}
 			} else {
 				output = append(output, messages...)
 			}
+			// Finish snapshot-only finals, including streamed lifecycles whose
+			// provider omitted item-done. Never repeat a prior done event.
+			if !t.finalAnswer.disabled {
+				for _, item := range output {
+					id := jsonString(item, "id")
+					if id != "" && isFinalAnswerMessage(item) && !doneItems[id] && (reportBeforeFinal || t.finalAnswer.itemIDs[id]) {
+						visible = append(visible, assistantCommentaryDoneEvent(item))
+						doneItems[id] = true
+					}
+				}
+			}
+
 			event.Response["output"] = mustMarshalJSON(output)
 			payload, err = replaceRawField(payload, "response", mustMarshalJSON(event.Response))
 			if err != nil {

@@ -7,94 +7,53 @@ import (
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
-// Hold provider answer events until terminal handling. Every buffered
-// provider event is released unchanged, including on failure or buffer exhaustion.
+// Observe completion evidence without withholding provider answer events.
+// Message lifecycle IDs keep terminal journal decoration from replaying or
+// replacing an answer whose lifecycle has already reached the host.
 type finalAnswerStream struct {
-	events      [][]byte
 	itemIDs     map[string]bool
-	indexes     map[int]bool
-	bytes       int
+	doneIDs     map[string]bool
 	substantive bool
 	blocked     bool
 	disabled    bool
 }
 
-func (s *finalAnswerStream) observe(payload []byte) ([][]byte, bool) {
-	var event struct {
-		Type        responseevents.Kind        `json:"type"`
-		ItemID      string                     `json:"item_id"`
-		OutputIndex *int                       `json:"output_index"`
-		Item        map[string]json.RawMessage `json:"item"`
-	}
+func (s *finalAnswerStream) observe(payload []byte) {
 	if s.disabled {
-		return nil, false
+		return
 	}
 	if bytes.Equal(bytes.TrimSpace(payload), []byte("[DONE]")) {
 		s.disabled = true
-		return append(s.flush(), payload), true
+		return
+	}
+	var event struct {
+		Type responseevents.Kind        `json:"type"`
+		Item map[string]json.RawMessage `json:"item"`
 	}
 	if json.Unmarshal(payload, &event) != nil {
-		return nil, false
+		return
 	}
 	if event.Type == responseevents.Error {
 		s.disabled = true
-		return append(s.flush(), payload), true
+		return
 	}
-	itemEvent := event.Type.ItemEvent()
+	if !event.Type.ItemEvent() {
+		return
+	}
 	if event.Type == responseevents.OutputItemDone {
 		s.substantive = s.substantive || isSubstantiveAnswer(event.Item)
 		s.blocked = s.blocked || blocksTokenUsage(event.Item)
 	}
-	answer := false
-	if itemEvent {
-		// Completion can refine an initially unknown/final phase to commentary.
-		// Keep that item's lifecycle together rather than releasing done before
-		// its buffered added/text events.
-		answer = isFinalAnswerMessage(event.Item) || s.itemIDs[jsonString(event.Item, "id")]
-		if answer {
-			if s.itemIDs == nil {
+	if jsonString(event.Item, "type") == "message" {
+		if id := jsonString(event.Item, "id"); id != "" {
+			if s.doneIDs == nil {
 				s.itemIDs = make(map[string]bool)
-				s.indexes = make(map[int]bool)
+				s.doneIDs = make(map[string]bool)
 			}
-			if id := jsonString(event.Item, "id"); id != "" {
-				s.itemIDs[id] = true
-			}
-			if event.OutputIndex != nil {
-				s.indexes[*event.OutputIndex] = true
+			s.itemIDs[id] = true
+			if event.Type == responseevents.OutputItemDone {
+				s.doneIDs[id] = true
 			}
 		}
-	} else if event.Type.ResponseFamily() {
-		if event.ItemID != "" {
-			answer = s.itemIDs[event.ItemID]
-		} else if event.OutputIndex != nil {
-			answer = s.indexes[*event.OutputIndex]
-		}
 	}
-	if !answer {
-		return nil, false
-	}
-	// Auxiliary usage must not reject large answers or retain unbounded streams.
-	if len(payload) > upstreamJSONBufferBytes-s.bytes {
-		s.disabled = true
-		return append(s.flush(), payload), true
-	}
-	s.events = append(s.events, bytes.Clone(payload))
-	s.bytes += len(payload)
-	return nil, true
-}
-
-func (s *finalAnswerStream) flush() [][]byte {
-	events := s.events
-	s.events = nil
-	s.itemIDs = nil
-	s.indexes = nil
-	s.bytes = 0
-	return events
-}
-
-// FlushSSE releases provider events unchanged on EOF or transport/transform
-// failure. No usage commentary is synthesized here.
-func (t *mekugiResponseTransform) FlushSSE() ([][]byte, error) {
-	t.finalAnswer.disabled = true
-	return t.finalAnswer.flush(), nil
 }

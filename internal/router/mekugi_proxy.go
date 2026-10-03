@@ -269,6 +269,8 @@ type mekugiJournalState struct {
 	journalNativeTerminal   *threadJournal
 	journalAnswerDelivery   *journalDelivery // Raw Main answer receipt, independent of its work report.
 	journalDeliveries       map[string]journalDelivery
+	journalAnswerStarted    bool
+	journalEarlyReports     []map[string]json.RawMessage // Prepared before the answer; acknowledged only at terminal.
 	liveDiffCompletionReady bool
 	journalQuietFile        os.FileInfo
 	journalRootQuietFile    os.FileInfo

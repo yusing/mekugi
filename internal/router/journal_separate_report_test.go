@@ -248,7 +248,7 @@ func TestJournalSeparateReportEmptyOutcomeRequiresMeaningfulReport(t *testing.T)
 						}
 						messages, frames := separateReportFinal(t, transform, stream, "empty-outcome", final)
 						// Native still transports the stock item; hiding belongs to the UI.
-						separateReportPreservedAnswer(t, messages, "empty-outcome", final, native || !report)
+						separateReportPreservedAnswer(t, messages, "empty-outcome", final, stream || native || !report)
 						if sink != nil {
 							if sink.hides("raw-empty-outcome") != report {
 								t.Fatal("native suppressed empty outcome without a meaningful report, or failed to suppress redundant outcome")
@@ -394,5 +394,120 @@ func TestJournalSeparateReportAnswerOnlyAfterFreshRouterResumeAndFork(t *testing
 				t.Fatalf("durable thread state leaked: %+v", isolated.Items)
 			}
 		})
+	}
+}
+
+func TestJournalStreamingReportDoesNotRerenderFinal(t *testing.T) {
+	for _, phase := range []string{"final_answer", ""} {
+		t.Run(phase, func(t *testing.T) {
+			transform, proxy, _, workspace := newDurableTreeTransform(t)
+			if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, transform.shellThreadID, "seed", []journalMutation{{Op: "add", Kind: "note", Title: new("Verified change")}}); err != nil {
+				t.Fatal(err)
+			}
+			answer := finalAnswerTestEvents(t, phase)
+			var frames [][]byte
+			for _, payload := range answer {
+				events, err := transform.TransformSSE(payload)
+				if err != nil {
+					t.Fatal(err)
+				}
+				frames = append(frames, events...)
+				for _, event := range events {
+					transform.Delivered(event)
+				}
+				transform.ReleaseDelivery()
+			}
+			before := separateReportRead(t, proxy, workspace, transform.shellThreadID)
+			if before.FlushSeq != 0 {
+				t.Fatal("early report acknowledged without a terminal")
+			}
+			if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, transform.shellThreadID, "late", []journalMutation{{Op: "add", Kind: "note", Title: new("Late evidence")}}); err != nil {
+				t.Fatal(err)
+			}
+			terminal, err := transform.TransformSSE(finalAnswerTestTerminal(t, "completed", false))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer transform.ReleaseDelivery()
+			frames = append(frames, terminal...)
+			// Source: codex-rs/tui/src/chatwidget/streaming.rs:419 and
+			// protocol.rs:450@7135b303d (local host clone). Every done message changes
+			// lastCompleted, even commentary; completion renders the final again when
+			// the terminal snapshot's final ID differs.
+			lastCompleted, reportCount, answerCount := "", 0, 0
+			for _, payload := range frames {
+				var event struct {
+					Type     string                       `json:"type"`
+					Item     map[string]jsonv1.RawMessage `json:"item"`
+					Response struct {
+						Output []map[string]jsonv1.RawMessage `json:"output"`
+					} `json:"response"`
+				}
+				if err := json.Unmarshal(payload, &event); err != nil {
+					t.Fatal(err)
+				}
+				if event.Type == "response.output_item.done" && jsonString(event.Item, "type") == "message" {
+					lastCompleted = jsonString(event.Item, "id")
+					if lastCompleted == "answer" {
+						answerCount++
+					} else {
+						reportCount++
+					}
+					if strings.Contains(commentaryMessageText(event.Item), "Late evidence") {
+						t.Fatal("late report followed the answer")
+					}
+				}
+				if event.Type == "response.completed" {
+					finalID := ""
+					for _, item := range event.Response.Output {
+						if isFinalAnswerMessage(item) {
+							finalID = jsonString(item, "id")
+						}
+					}
+					if finalID != lastCompleted || finalID != "answer" {
+						t.Fatalf("host would rerender final %q after last completed %q", finalID, lastCompleted)
+					}
+				}
+			}
+			if reportCount != 1 || answerCount != 1 {
+				t.Fatalf("report events=%d answer events=%d", reportCount, answerCount)
+			}
+			for _, payload := range terminal {
+				transform.Delivered(payload)
+			}
+			after := separateReportRead(t, proxy, workspace, transform.shellThreadID)
+			if after.FlushSeq != before.Sequence || after.Items[1].Flushed {
+				t.Fatalf("terminal consumed unseen late evidence: %+v", after)
+			}
+		})
+	}
+}
+
+func TestJournalStreamingEarlyReportRemainsPendingOnFailure(t *testing.T) {
+	transform, proxy, _, workspace := newDurableTreeTransform(t)
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, transform.shellThreadID, "seed", []journalMutation{{Op: "add", Kind: "note", Title: new("Verified change")}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, payload := range finalAnswerTestEvents(t, "final_answer") {
+		events, err := transform.TransformSSE(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, event := range events {
+			transform.Delivered(event)
+		}
+		transform.ReleaseDelivery()
+	}
+	events, err := transform.TransformSSE(finalAnswerTestTerminal(t, "failed", false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		transform.Delivered(event)
+	}
+	transform.ReleaseDelivery()
+	after := separateReportRead(t, proxy, workspace, transform.shellThreadID)
+	if after.FlushSeq != 0 || after.Items[0].Flushed {
+		t.Fatalf("failed response acknowledged early report: %+v", after)
 	}
 }

@@ -103,7 +103,7 @@ func TestJournalCompactReportParityAtDelivery(t *testing.T) {
 				}
 				messages, frames := separateReportFinal(t, transform, stream, "compact-parity", "Done.")
 				// Native transports the stock final unchanged; its UI hides the empty outcome.
-				separateReportPreservedAnswer(t, messages, "compact-parity", "Done.", native)
+				separateReportPreservedAnswer(t, messages, "compact-parity", "Done.", native || stream)
 				if native && !sink.hides("raw-compact-parity") {
 					t.Fatal("native did not replace the empty outcome with its report")
 				}

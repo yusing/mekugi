@@ -171,7 +171,11 @@ func TestJournalLiveReportRemainsEligibleForTerminalFlush(t *testing.T) {
 			t.Fatalf("journal message phase: %s; want %s", mustTestJSON(t, messages), wantPhase)
 		}
 		if acknowledge {
-			transform.Delivered(assistantCommentaryDoneEvent(messages[0]))
+			if terminal {
+				transform.Delivered(mustTestJSON(t, map[string]any{"type": "response.completed", "response": map[string]any{"output": messages}}))
+			} else {
+				transform.Delivered(assistantCommentaryDoneEvent(messages[0]))
+			}
 		}
 	}
 	live := "Journal update `/root` (`amber`)\nTests passed"
@@ -626,6 +630,7 @@ func TestJournalFailedCompletedEnvelopeRetainsPendingRevisions(t *testing.T) {
 	if _, err := transform.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": answer})); err != nil {
 		t.Fatal(err)
 	}
+	transform.ReleaseDelivery()
 	events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
 		"type": "response.completed", "response": map[string]any{"id": "failed", "status": "failed", "output": []any{answer}},
 	}))
@@ -641,7 +646,7 @@ func TestJournalFailedCompletedEnvelopeRetainsPendingRevisions(t *testing.T) {
 	}
 	transform.ReleaseDelivery()
 	items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, transform.shellThreadID)
-	if err != nil || len(items) != 1 || items[0].Flushed || len(transform.journalDeliveries) != 0 {
+	if err != nil || len(items) != 1 || items[0].Flushed || transform.journalTerminal {
 		t.Fatalf("failed terminal changed delivery state: %+v, %v", items, err)
 	}
 }

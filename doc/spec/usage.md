@@ -78,7 +78,10 @@ token counts or presenting a partial cost as complete. Display behavior belongs 
 Acceptance:
 
 1. Main and child completion preserve usage accounting and response delivery without
-   writing Markdown usage files or adding usage commentary.
+   writing Markdown usage files or adding usage commentary. Provider answer events
+   stream unchanged before terminal usage is available. Auxiliary progress collected
+   after a substantive answer stays in terminal history rather than adding a trailing
+   completed message.
 2. Pricing remains per response across model and tier switches, without double-charging
    cached input or reasoning.
 3. Missing usage remains explicit after later successes, compaction, and session remapping.

@@ -133,22 +133,18 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 	}
 }
 
-func TestFinalAnswerStreamBuffersAnswersButStreamsProgressAndTools(t *testing.T) {
+func TestFinalAnswerStreamStreamsAnswersProgressAndTools(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
 	transform.journalActive = false
 	answer := finalAnswerTestEvents(t, "final_answer")
-	var observation finalAnswerStream
 	for _, event := range answer {
-		if visible, buffered := observation.observe(event); !buffered || len(visible) != 0 {
-			t.Fatalf("answer was not buffered: %q", visible)
-		}
 		visible, err := transform.TransformSSE(event)
-		if err != nil || len(visible) != 0 {
-			t.Fatalf("answer escaped before terminal: %q, %v", visible, err)
+		if err != nil || len(visible) != 1 || !bytes.Equal(visible[0], event) {
+			t.Fatalf("answer did not stream unchanged before terminal: %q, %v", visible, err)
 		}
 	}
-	if !observation.substantive || !transform.finalAnswer.substantive {
+	if !transform.finalAnswer.substantive {
 		t.Fatal("answer lifecycle did not retain substantive-completion evidence")
 	}
 	for _, event := range [][]byte{
@@ -162,31 +158,14 @@ func TestFinalAnswerStreamBuffersAnswersButStreamsProgressAndTools(t *testing.T)
 			t.Fatalf("progress/tool did not stream: %q, %v", visible, err)
 		}
 	}
+	if !transform.finalAnswer.blocked {
+		t.Fatal("tool completion did not block answer-only completion")
+	}
 	terminal := finalAnswerTestTerminal(t, "completed", true)
 	observeTestResponseUsage(t, transform, terminal, true)
 	visible, err := transform.TransformSSE(terminal)
-	if err != nil || len(visible) != len(answer)+1 || bytes.Contains(bytes.Join(visible, nil), []byte("Router session usage")) {
-		t.Fatalf("client dispatch produced usage or lost answer: %q, %v", visible, err)
-	}
-}
-
-func TestFinalAnswerStreamJournalBufferFlushesUnchanged(t *testing.T) {
-	var stream finalAnswerStream
-	expected := finalAnswerTestEvents(t, "final_answer")
-	for index, event := range expected {
-		visible, buffered := stream.observe(event)
-		if !buffered || len(visible) != 0 {
-			t.Fatalf("journal answer event %d escaped before terminal delivery: %q", index, visible)
-		}
-	}
-	if got := stream.flush(); len(got) != len(expected) {
-		t.Fatalf("flushed %d answer events, want %d", len(got), len(expected))
-	} else {
-		for i := range expected {
-			if !bytes.Equal(got[i], expected[i]) {
-				t.Fatalf("flushed event %d changed: %s", i, got[i])
-			}
-		}
+	if err != nil || len(visible) != 1 || bytes.Contains(bytes.Join(visible, nil), []byte("Router session usage")) {
+		t.Fatalf("terminal repeated answer or added usage: %q, %v", visible, err)
 	}
 }
 
@@ -240,20 +219,13 @@ type finalAnswerErrorReader struct{ err error }
 
 func (r finalAnswerErrorReader) Read([]byte) (int, error) { return 0, r.err }
 
-func TestFinalAnswerStreamBudgetPreservesOutput(t *testing.T) {
-	var stream finalAnswerStream
-	events := finalAnswerTestEvents(t, "final_answer")
-	if visible, buffered := stream.observe(events[0]); !buffered || len(visible) != 0 {
-		t.Fatal("answer not buffered")
-	}
-	stream.bytes = upstreamJSONBufferBytes
-	visible, buffered := stream.observe(events[1])
-	if !buffered || !stream.disabled || len(visible) != 2 ||
-		!bytes.Equal(visible[0], events[0]) || !bytes.Equal(visible[1], events[1]) {
-		t.Fatal("buffer exhaustion lost provider events")
-	}
-	if _, buffered := stream.observe(events[2]); buffered {
-		t.Fatal("buffering resumed after exhaustion")
+func TestFinalAnswerStreamLargeDeltaStreamsUnchanged(t *testing.T) {
+	transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
+	transform.journalActive = false
+	event := mustTestJSON(t, map[string]any{"type": "response.output_text.delta", "item_id": "answer", "delta": strings.Repeat("x", upstreamJSONBufferBytes+1)})
+	visible, err := transform.TransformSSE(event)
+	if err != nil || len(visible) != 1 || !bytes.Equal(visible[0], event) || transform.finalAnswer.disabled {
+		t.Fatalf("large delta was withheld or changed: events=%d, disabled=%v, err=%v", len(visible), transform.finalAnswer.disabled, err)
 	}
 }
 
@@ -284,12 +256,12 @@ func TestNonJournalAnswerStreamsWithoutUsageCommentary(t *testing.T) {
 			events := finalAnswerTestPayloads(output.String())
 			wantEvents := len(answer) + 1
 			if child {
-				wantEvents = 2
+				wantEvents++
 			}
 			if len(events) != wantEvents || bytes.Contains(output.Bytes(), []byte("Router session usage")) {
 				t.Fatalf("completion output = %s", output.String())
 			}
-			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || bytes.Contains(output.Bytes(), []byte(`"id":"answer"`)) == child {
+			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || !bytes.Contains(output.Bytes(), []byte(`"id":"answer"`)) {
 				t.Fatal("completion lost the answer or violated Main/child delivery ownership")
 			}
 			if !child && bytes.Contains(output.Bytes(), []byte("Journal flush")) {

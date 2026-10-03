@@ -500,7 +500,7 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 				return nil, true, err
 			}
 			t.journalContinue = true
-			return append(t.finalAnswer.flush(), results...), true, nil
+			return results, true, nil
 		}
 		return results, false, nil
 	case event.Type == responseevents.Failed || event.Type == responseevents.Incomplete:

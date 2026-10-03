@@ -100,7 +100,11 @@ func TestJournalMainFlushOnlyOwnJournalAfterRestart(t *testing.T) {
 					!strings.Contains(body, "\n- `apple`\n\n  More "+want) {
 					t.Fatalf("question context crossed author journals after restart: %s", body)
 				}
-				root.Delivered(assistantCommentaryDoneEvent(messages[i]))
+			}
+			if stream {
+				root.Delivered(mustTestJSON(t, map[string]any{"type": "response.completed", "response": map[string]any{"output": messages}}))
+			} else {
+				root.Delivered(mustTestJSON(t, map[string]any{"status": "completed", "output": messages}))
 			}
 			root.ReleaseDelivery()
 			for _, thread := range []string{"root", "a", "b", "nested"} {
