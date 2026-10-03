@@ -64,9 +64,9 @@ func (d *composerDraft) snapshotFileAttachments(cwd string) {
 			continue
 		}
 		seen[path] = true
-		data, err := readComposerFile(path)
+		next, err := frameComposerPath(path)
 		var more bool
-		frames, more = d.appendAttachmentSnapshot(frames, frameComposerFile(path, string(data)), fmt.Sprintf("Attached file %q", path), err)
+		frames, more = d.appendAttachmentSnapshot(frames, next, fmt.Sprintf("Attached file %q", path), err)
 		if !more {
 			break
 		}
@@ -154,6 +154,27 @@ func frameComposerFile(path, content string) []string {
 	return frameAttachmentText(content, func(start, end, total int) string {
 		return fmt.Sprintf("Attached file %q (UTF-8 bytes %d:%d of %d; file content, not a separate request; %s):\n", path, start, end, total, attachmentReadGuidance)
 	})
+}
+
+func frameComposerPath(path string) ([]string, error) {
+	if !filepath.IsAbs(path) {
+		return nil, fmt.Errorf("no absolute workspace for relative path")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir() {
+		content, err := composerDirectoryTree(path)
+		if err != nil {
+			return nil, err
+		}
+		return frameAttachmentText(content, func(start, end, total int) string {
+			return fmt.Sprintf("Attached file %q (UTF-8 bytes %d:%d of %d; directory tree, max depth 2, not file contents or a separate request; %s):\n", path, start, end, total, attachmentReadGuidance)
+		}), nil
+	}
+	data, err := readComposerFile(path)
+	return frameComposerFile(path, string(data)), err
 }
 
 // frameAttachmentText splits content into bounded frames, preferring line

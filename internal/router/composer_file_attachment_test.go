@@ -161,7 +161,7 @@ func TestComposerFileAttachmentChunksAndBounds(t *testing.T) {
 		}
 	}
 	d := composerDraft{}
-	for _, path := range []string{"empty", "empty", "binary", "invalid", "large", "escaped", "missing", "."} {
+	for _, path := range []string{"empty", "empty", "binary", "invalid", "large", "escaped", "missing"} {
 		d.files = append(d.files, composerFile{path: path})
 	}
 	d.snapshotFileAttachments(cwd)
@@ -169,7 +169,7 @@ func TestComposerFileAttachmentChunksAndBounds(t *testing.T) {
 		t.Fatal("attachment budget/notice missing")
 	}
 	frames, ok := decodeFileAttachments(d.attachments[0])
-	if !ok || len(frames) != 7 {
+	if !ok || len(frames) != 6 {
 		t.Fatalf("deduplication or notices lost: %q", frames)
 	}
 	if !strings.HasSuffix(frames[0], ":\n") {

@@ -199,6 +199,33 @@ func TestUISnapshotAttachmentDialogs(t *testing.T) {
 	}
 }
 
+func TestUISnapshotDirectoryAttachment(t *testing.T) {
+	cwd := t.TempDir()
+	root := filepath.Join(cwd, "src")
+	if err := os.MkdirAll(filepath.Join(root, "nested"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"main.go", "nested/child.go"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("contents must not appear"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	draft := composerDraft{text: "Review @src", files: []composerFile{{path: "src"}}}
+	draft.snapshotFileAttachments(cwd)
+	content, _ := json.Marshal(draft.input())
+	v := sharedEventsView(false)
+	v.applyAppServerItem(cwd, "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
+	feed := v.renderFeed(80, 40)
+	uisnapshot.Assert(t, "testdata/snapshots/directory-attachment-receipt.txt", strings.Join(feed.lines, "\n")+"\n")
+	page := v.painter.DialogPage(v.entries[1].blocks[0], 72)
+	var rows []string
+	for line := range page.Lines {
+		rows = append(rows, page.Rows(line, 72)...)
+	}
+	frame := activityui.DialogFrame{Page: page, Rows: rows, Total: len(rows), Footer: "escape close · scroll"}
+	uisnapshot.Assert(t, "testdata/snapshots/directory-attachment-dialog.txt", strings.Join(v.painter.Dialog(frame, 80, 14), "\n")+"\n")
+}
+
 func TestLiveActivityAttachmentStackedSnapshots(t *testing.T) {
 	for _, skill := range []bool{false, true} {
 		for _, second := range []string{"first\n", "second\n"} {

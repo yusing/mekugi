@@ -78,11 +78,24 @@ func execIgnoreExpression(pattern string) (string, bool) {
 			expression.WriteString(regexp.QuoteMeta(pattern[index+1 : index+2]))
 			index += 2
 		case pattern[index] == '[':
-			end := strings.IndexByte(pattern[index+1:], ']')
-			if end < 0 {
+			end := index + 1
+			for end < len(pattern) && pattern[end] != ']' {
+				// POSIX classes contain their own closing bracket, which is
+				// not the end of the enclosing glob bracket expression.
+				if strings.HasPrefix(pattern[end:], "[:") {
+					close := strings.Index(pattern[end+2:], ":]")
+					if close < 0 {
+						return "", false
+					}
+					end += close + 4
+				} else {
+					end++
+				}
+			}
+			if end == len(pattern) {
 				return "", false
 			}
-			class := pattern[index+1 : index+1+end]
+			class := pattern[index+1 : end]
 			if class == "" {
 				return "", false
 			}
@@ -90,7 +103,7 @@ func execIgnoreExpression(pattern string) (string, bool) {
 				class = "^" + class[1:]
 			}
 			expression.WriteString("[" + strings.ReplaceAll(class, `\`, `\\`) + "]")
-			index += end + 2
+			index = end + 1
 		default:
 			expression.WriteString(regexp.QuoteMeta(pattern[index : index+1]))
 			index++

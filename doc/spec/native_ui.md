@@ -407,10 +407,10 @@ Tab or Enter inserts the selected result without sending, and Escape dismisses
 without deleting the token. Bracketed paste does not open a picker. File paths
 with spaces are quoted. Selected files retain the `@` prefix as highlighted,
 atomic composer tokens, including navigation, deletion, undo, local input
-history, and rejected submissions. On submission or queueing, selected text files
+history, and rejected submissions. On submission or queueing, selected text files and directories
 are snapshotted from the active thread's absolute workspace. The model receives
 the prompt with its inline `@` tokens, followed by separate user messages with
-path and byte-range frames containing the file contents. Repeated paths in a
+path and byte-range frames containing file contents or a bounded directory tree. Repeated paths in a
 draft attach once. Line boundaries are preferred when splitting; long rows split
 only at UTF-8 boundaries, without dropping bytes. Supported images attach through
 the existing image composer.
@@ -460,7 +460,7 @@ unambiguous skill references when text elements are absent; explicit text
 elements take precedence for repeated identical labels. Without either kind of
 metadata historical lookalikes stay literal.
 
-File snapshots travel in Codex-owned input history, not a router-lifetime lookup.
+File and directory snapshots travel in Codex-owned input history, not a router-lifetime lookup.
 Queued and restored input, fork/resume, and provider switches retain
 the submitted content without reopening files. The native transcript and recalled
 prompt hide transport framing. A recalled draft with live file bindings takes a
@@ -469,7 +469,21 @@ text and never become developer or system instructions.
 
 Each draft has a 192 KiB encoded attachment budget, with half reserved for omission
 notices; file reads are bounded to 96 KiB and framed content chunks to 24 KiB.
-Unreadable, non-regular, non-UTF-8, NUL-containing, and oversized files are not
+Directory references snapshot a deterministic name-only tree at submission, never
+recursive file contents. Root children are depth 1, their children depth 2; deeper
+descendants and child symlink targets are not traversed. Ancestor and nested
+`.gitignore` files apply, stopping ancestor lookup at the nearest Git root, and
+VCS metadata is excluded even when attaching an ignored-picker reference.
+Trees list at most 256 entries and 16 KiB, scanning at most 4,096 entries including
+ignored names. A directory exceeding the remaining scan allowance is omitted
+whole rather than selecting a filesystem-order subset. Incomplete trees carry an
+explicit truncation marker; an empty filtered tree is identified as empty.
+Ignore-file input is limited to 64 KiB across at most 64 ancestor levels and the
+visited children. Unavailable ignore rules omit the affected listing explicitly.
+Directory trees reuse file framing, receipts, dialogs, shared path display and the
+encoded attachment budget. Git global excludes and repository info/exclude are
+not applied.
+Unreadable, non-regular/non-directory, non-UTF-8, NUL-containing, and oversized files are not
 silently truncated: the model receives explicit omission notices and the composer
 reports the first omission. Each submitted user item shows file outcomes before
 agent activity: an `Attached` operation per included file, or `Attach failed`

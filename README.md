@@ -46,7 +46,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
   click an Edit event to open its captured file and hunk.
 - **Readable command output.** Open [searchable retained output](#output-dialog).
   With `mekugi-exec`, command lists show each command's output, exit status, and timing.
-- **File and skill attachments.** [Send selected contents directly](#composer)
+- **File, directory and skill attachments.** [Send selected contents or a bounded directory tree directly](#composer)
   without a separate agent read; unreadable or oversized attachments have explicit notices.
 - **Composer additions.** Mention selected messages or diffs, and ask
   [`/btw` side questions](#composer) without interrupting Main.
@@ -313,10 +313,14 @@ steering new input.
 
 Mekugi differs in these ways:
 
-- **File contents attach.** `@!` also finds ignored files; neither picker lists
+- **Files and directory trees attach.** `@!` also finds ignored files; neither picker lists
   VCS metadata such as `.git`. Selected text files attach their contents when
   you submit or queue the prompt, and large or unreadable files produce an
-  explicit omission notice instead of truncated content.
+  explicit omission notice instead of truncated content. Directories attach a
+  sorted tree of children and grandchildren, not file contents. Trees respect
+  ancestor and nested `.gitignore` files, exclude VCS metadata, and list at most
+  256 entries within 16 KiB. A scan limit also bounds large directories; incomplete
+  trees have an explicit truncation marker. Queued prompts retain the submitted tree.
 - **Select to mention.** Drag across Main, Activity, or the saved Diff and press
   `r` to add the selection as one short mention, such as `[Selected message]` or
   `[Selected diff hunk @amber1:42-45]`. The selected text is sent with the
