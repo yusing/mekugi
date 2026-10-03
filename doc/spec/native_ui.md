@@ -61,8 +61,11 @@ resume and replay hints. Noninteractive commands retain Codex's own exit output.
 An unexpected app-server exit retains its diagnostic alongside the child's exit
 status; the normal session summary must not make a disconnect look like a clean quit.
 Temporary event bursts or paused presentation do not drop RPC messages or
-terminate app-server. Transport buffering is bounded and applies backpressure
-until the consumer catches up, preserving message order. Explicit close and
+terminate app-server. The pending-message queue is bounded and applies backpressure
+until the consumer catches up, preserving message order. A newline-delimited RPC
+frame can contain the full resumed history and has no fixed byte-size ceiling;
+memory use includes the complete frame and queued messages. Malformed or truncated
+JSON remains a transport failure. Explicit close and
 the graceful-shutdown deadline can release a reader waiting on that consumer.
 
 The client replaces presentation, not projection policy. Codex remains the agent
@@ -152,9 +155,8 @@ must finish before accepting resumed input and cannot modify user configuration
 or replay a turn. Rejected default-reasoning restoration returns waiting input
 to the composer without submitting it; successful restoration or an explicit
 reasoning selection releases the gate. The [UI boundary](../architecture/ui.md)
-owns settings evidence and the host RPC boundary. Full-history
-resume is limited by the 16 MiB RPC frame cap; oversized histories fail rather
-than bypassing the transport bound. Main's paginated hydration remains unfinished.
+owns settings evidence and the host RPC boundary. Main hydrates the full resume
+history in memory; its paginated hydration remains unfinished.
 
 Resume also restores the Agents roster and Activity from Codex's observational
 history APIs, including archived descendants. Names/roles, retained assignments,
@@ -195,9 +197,9 @@ automatic-diff owner. Retention gaps remain gaps, not successful recapture.
 Activity hydration reports progress, buffers live notifications, and keeps typed
 input as an unsent draft until reconciliation; `/quit` or Ctrl-C on an empty draft can exit while loading.
 Discovery is bounded to 128 descendants and eight list pages, with an explicit
-partial-history notice at the limit. Legacy child histories still use full reads
-and share the 16 MiB RPC frame limit. Paginated children use bounded item pages;
-a single oversized item can still exceed that transport bound. No additional
+partial-history notice at the limit. Legacy child histories still use full reads.
+Paginated children use bounded item counts per page, not byte-size bounds;
+a single large item can still require a large in-memory frame. No additional
 model requests or execution occur merely to restore pane content.
 
 Native pane preferences persist separately from replay/correctness records under

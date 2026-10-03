@@ -75,11 +75,22 @@ func Start(cmd *exec.Cmd) (*Client, error) {
 	}
 	go func() {
 		defer close(c.Messages)
-		scanner := bufio.NewScanner(c.Output)
-		scanner.Buffer(make([]byte, 64<<10), 16<<20)
-		for scanner.Scan() {
+		// Stdio RPC is newline-delimited, but a single resume response can
+		// contain the whole thread history. Bound the queue, not frame size:
+		// a Scanner token ceiling would turn valid history into a disconnect.
+		reader := bufio.NewReaderSize(c.Output, 64<<10)
+		for {
+			frame, readErr := reader.ReadBytes('\n')
+			if len(frame) == 0 && errors.Is(readErr, io.EOF) {
+				c.readDone <- nil
+				return
+			}
+			if readErr != nil && !errors.Is(readErr, io.EOF) {
+				c.readDone <- fmt.Errorf("read app-server: %w", readErr)
+				return
+			}
 			var message Message
-			if err := json.Unmarshal(scanner.Bytes(), &message); err != nil {
+			if err := json.Unmarshal(frame, &message); err != nil {
 				c.readDone <- fmt.Errorf("decode app-server: %w", err)
 				return
 			}
@@ -92,8 +103,13 @@ func Start(cmd *exec.Cmd) (*Client, error) {
 				c.readDone <- nil
 				return
 			}
+			// Preserve Scanner's acceptance of a complete final JSON frame
+			// without a newline; incomplete JSON still fails decoding above.
+			if errors.Is(readErr, io.EOF) {
+				c.readDone <- nil
+				return
+			}
 		}
-		c.readDone <- scanner.Err()
 	}()
 	// Wait only after stdout reaches EOF, as required by StdoutPipe.
 	go func() {
