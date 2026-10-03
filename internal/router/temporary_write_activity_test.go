@@ -29,6 +29,11 @@ func TestTemporaryWriteActivityIntent(t *testing.T) {
 		unknown, workspace  bool
 	}{
 		{name: "confirmed temporary artifacts", setup: temporaryPlanSetup, source: temporaryPlanSource},
+		{name: "original failed log prefix", setup: temporaryPlanSetup + "gh run view 37104437662 --log-failed > \"$batch_plan_dir/ci-failure.log\"\n", source: temporaryPlanSource},
+		{name: "failed log prefix with unresolved edit", setup: temporaryPlanSetup + "gh run view 37104437662 --log-failed > \"$batch_plan_dir/ci-failure.log\"\n", source: temporaryPlanSource + "Path(dynamic).write_text('code')\n", unknown: true},
+		{name: "builtin log prefix rebinds environment", setup: temporaryPlanSetup + "read MEKUGI_BATCH_PLAN_DIR > \"$batch_plan_dir/ci-failure.log\"\n", source: temporaryPlanSource, unknown: true},
+		{name: "log prefix has expansion effects", setup: temporaryPlanSetup + "gh run view 37104437662 --log-failed > \"${MEKUGI_BATCH_PLAN_DIR:=.}/ci-failure.log\"\n", source: temporaryPlanSource, unknown: true},
+		{name: "log prefix allocates environment descriptor", setup: temporaryPlanSetup + "gh run view 37104437662 --log-failed {MEKUGI_BATCH_PLAN_DIR}> \"$batch_plan_dir/ci-failure.log\"\n", source: temporaryPlanSource, unknown: true},
 		{name: "other temporary names", setup: strings.ReplaceAll(temporaryPlanSetup, "mekugi-batches", "arbitrary"), source: strings.ReplaceAll(temporaryPlanSource, "plan.json", "code.go")},
 		{name: "unrelated exported value", setup: "export OTHER=literal\n", source: "from pathlib import Path\nPath('workspace.go', 'child').write_text('code')\n", workspace: true},
 		{name: "workspace and temporary", setup: temporaryPlanSetup, source: temporaryPlanSource + "Path('workspace.go').write_text('code')\n", workspace: true},
@@ -76,7 +81,7 @@ func TestTemporaryWriteActivityIntent(t *testing.T) {
 }
 
 func TestTemporaryWritePreservesCaptureUncertainty(t *testing.T) {
-	command := temporaryPlanCommand(temporaryPlanSetup, temporaryPlanSource)
+	command := temporaryPlanCommand(temporaryPlanSetup+"gh run view 37104437662 --log-failed > \"$batch_plan_dir/ci-failure.log\"\n", temporaryPlanSource)
 	plan := classifyExecShell(command, t.TempDir(), "bash")
 	if plan.Class != execOpaque || len(plan.Scope) != 0 {
 		t.Fatalf("display-only proof changed capture coverage: %+v", plan)

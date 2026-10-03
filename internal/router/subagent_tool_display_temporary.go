@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -21,12 +22,31 @@ func toolActivityTemporaryEnv(script string, before *syntax.Stmt) map[string]str
 	}
 	vars, environment := make(map[string]string), make(map[string]string)
 	for _, statement := range program.Stmts {
-		if statement.Background || statement.Negated || statement.Coprocess || statement.Disown || len(statement.Redirs) != 0 {
+		if statement.Background || statement.Negated || statement.Coprocess || statement.Disown {
 			return nil
 		}
 		switch command := statement.Cmd.(type) {
 		case *syntax.CallExpr:
 			if len(command.Args) != 0 {
+				name, literal := shellCatLiteral(command.Args[0])
+				if !literal || interp.IsBuiltin(name) || len(command.Assigns) != 0 {
+					return nil
+				}
+				for _, arg := range command.Args[1:] {
+					if _, literal := shellCatLiteral(arg); !literal {
+						return nil
+					}
+				}
+				for _, redirect := range statement.Redirs {
+					if redirect.Op != syntax.RdrOut && redirect.Op != syntax.AppOut && redirect.Op != syntax.RdrClob || !toolActivityPatternWord(redirect.Word) || redirect.N != nil && !isDigits(redirect.N.Value) {
+						return nil
+					}
+				}
+				// A literal external call cannot rebind its parent shell's
+				// variables. Simple output paths have no expansion effects.
+				continue
+			}
+			if len(statement.Redirs) != 0 {
 				return nil
 			}
 			for _, assignment := range command.Assigns {
@@ -48,7 +68,7 @@ func toolActivityTemporaryEnv(script string, before *syntax.Stmt) map[string]str
 				}
 			}
 		case *syntax.DeclClause:
-			if command.Variant.Value != "export" {
+			if command.Variant.Value != "export" || len(statement.Redirs) != 0 {
 				return nil
 			}
 			for _, assignment := range command.Args {
