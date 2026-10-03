@@ -31,6 +31,7 @@ func awaitCommandSegments(t *testing.T, u *appServerUI) {
 }
 
 func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		workspace := t.TempDir()
 		store, err := openMekugiReplayStore(t.TempDir())
@@ -114,6 +115,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 }
 
 func TestCommandSegmentsPendingRetentionIsBoundedAndCanceled(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -148,6 +150,7 @@ func TestCommandSegmentsPendingRetentionIsBoundedAndCanceled(t *testing.T) {
 }
 
 func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing.T) {
+	t.Parallel()
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.thread = "other"
 	u.view.conversation = true
@@ -183,6 +186,7 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 }
 
 func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
+	t.Parallel()
 	shell := newExecTrackShell(t)
 	workspace := t.TempDir()
 	storeDirectory := t.TempDir()
@@ -290,6 +294,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 }
 
 func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"lossy", "released", "truncated", "long-line", "incomplete", "wrong-exit", "storage-failure", "corrupt", "missing"} {
 		t.Run(mode, func(t *testing.T) {
 			workspace := t.TempDir()
@@ -359,6 +364,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 }
 
 func TestCombinedOutputDialogUnwrapsOnlyLiteralShell(t *testing.T) {
+	t.Parallel()
 	for _, command := range []string{
 		`/usr/bin/bash -lc "mcat a.go; mcat b.go"`,
 		`/usr/bin/bash -lc 'mcat a.go; mcat b.go' > output`,
@@ -379,6 +385,7 @@ func TestCombinedOutputDialogUnwrapsOnlyLiteralShell(t *testing.T) {
 }
 
 func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
+	t.Parallel()
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {

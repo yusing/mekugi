@@ -13,6 +13,7 @@ import (
 )
 
 func TestJournalListTransportPagesLargeAuthenticatedSnapshot(t *testing.T) {
+	t.Parallel()
 	want := make([]journalItem, 100)
 	for index := range want {
 		want[index] = journalItem{ID: strconv.Itoa(index), Text: strings.Repeat("\x01", maxJournalItemBytes-1), Author: "/root"}
@@ -80,6 +81,7 @@ func TestJournalListTransportPagesLargeAuthenticatedSnapshot(t *testing.T) {
 }
 
 func TestJournalListTransportRejectsStaleAndInvalidContinuations(t *testing.T) {
+	t.Parallel()
 	items := make([]journalItem, journalListPageItems+1)
 	for index := range items {
 		items[index] = journalItem{ID: strconv.Itoa(index), Text: "original", Author: "/root"}

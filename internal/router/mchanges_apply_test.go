@@ -49,6 +49,7 @@ func readTestFile(t *testing.T, path string) string {
 }
 
 func TestMChangesRevertAndApplyReportHistoryStat(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -130,6 +131,7 @@ func TestMChangesRevertAndApplyReportHistoryStat(t *testing.T) {
 }
 
 func TestMChangesRevertLeavesConflictMarkers(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -162,6 +164,7 @@ func TestMChangesRevertLeavesConflictMarkers(t *testing.T) {
 }
 
 func TestMChangesRevertParsing(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	for _, arguments := range [][]string{{"revert"}, {"apply", "--summary", "amber1"}, {"revert", "--list"}} {
 		if _, err := parseChangeRead(arguments, workspace); err == nil {
@@ -177,6 +180,7 @@ func TestMChangesRevertParsing(t *testing.T) {
 // The router observes mchanges revert as a declared writer, so the revert is a
 // recorded change of its own and reverting it restores the reverted edit.
 func TestMChangesRevertIsRecordedAndRevertable(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	workspace := t.TempDir()
@@ -233,6 +237,7 @@ func TestMChangesRevertIsRecordedAndRevertable(t *testing.T) {
 }
 
 func TestMChangesMutationClassification(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	resolver := func(options changeReadOptions, _ time.Time) ([]string, error) {
 		if options.view != "revert" || options.workspace != workspace || len(options.ids) != 1 {
@@ -268,6 +273,7 @@ func TestMChangesMutationClassification(t *testing.T) {
 }
 
 func TestMChangesRevertReportsUnknownStat(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -310,6 +316,7 @@ func TestMChangesRevertReportsUnknownStat(t *testing.T) {
 }
 
 func TestMChangesRevertKeepsMoveSourceWhenDestinationFails(t *testing.T) {
+	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory permissions")
 	}
@@ -387,6 +394,7 @@ func TestMChangesFrontendRevertsWorkspace(t *testing.T) {
 }
 
 func TestMChangesMutationTaintsLivePreview(t *testing.T) {
+	t.Parallel()
 	for command, neutral := range map[string]bool{"mchanges amber1 --summary": true, "mchanges revert amber1": false, "mchanges apply amber1": false} {
 		program, err := syntax.NewParser().Parse(strings.NewReader(command), "")
 		if err != nil {
@@ -399,6 +407,7 @@ func TestMChangesMutationTaintsLivePreview(t *testing.T) {
 }
 
 func TestMChangesRevertSwapsDirectoryAndFile(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -442,6 +451,7 @@ func TestMChangesRevertSwapsDirectoryAndFile(t *testing.T) {
 }
 
 func TestMChangesSkipsRecordedSymlinks(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -477,6 +487,7 @@ func TestMChangesSkipsRecordedSymlinks(t *testing.T) {
 }
 
 func TestMChangesHistoryFollowsMovesToDroppedDiffs(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

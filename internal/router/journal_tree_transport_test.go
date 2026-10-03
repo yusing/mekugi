@@ -24,6 +24,7 @@ func newDurableTreeTransform(t *testing.T) (*mekugiResponseTransform, *mekugiPro
 }
 
 func TestJournalTreeReadTransportPagesFlatNodes(t *testing.T) {
+	t.Parallel()
 	items := []journalItem{{Path: "/1", ID: "/1", Kind: "task", Title: "Parent", State: "working", Author: "/root"}}
 	for i := 1; i <= journalListPageItems+1; i++ {
 		path := "/1/" + strconv.Itoa(i)
@@ -77,6 +78,7 @@ func TestJournalTreeReadTransportPagesFlatNodes(t *testing.T) {
 }
 
 func TestJournalNativeTreePlanAndRead(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, _ := newDurableTreeTransform(t)
 	call := func(id, arguments string) map[string]jsonv1.RawMessage {
 		t.Helper()
@@ -123,6 +125,7 @@ func TestJournalNativeTreePlanAndRead(t *testing.T) {
 }
 
 func TestJournalCodeModeTreeReadReassemblesPages(t *testing.T) {
+	t.Parallel()
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("Node is required to execute lowered Code Mode")
@@ -152,6 +155,7 @@ func TestJournalCodeModeTreeReadReassemblesPages(t *testing.T) {
 }
 
 func TestJournalTreeBatchMutationIsAtomic(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, _ := newDurableTreeTransform(t)
 	_, err := proxy.journals.apply(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID, "", []journalMutation{
 		{Op: "plan", Tasks: []jsontext.Value{jsontext.Value(`"Parent"`)}},
@@ -172,6 +176,7 @@ func TestJournalTreeBatchMutationIsAtomic(t *testing.T) {
 }
 
 func TestJournalTreeStockFieldStripsAndCommitsBatch(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	transform.commentaryTools = commentaryToolCatalog{
 		functionToolKey("functions", "exec_command"): {qualifiedName: "functions.exec_command"},
@@ -194,6 +199,7 @@ func TestJournalTreeStockFieldStripsAndCommitsBatch(t *testing.T) {
 }
 
 func TestJournalEmptyOutcomeOmitsAnswerButShowsRemaining(t *testing.T) {
+	t.Parallel()
 	for _, final := range []string{"Done.", "done", "DONE.", "   "} {
 		t.Run(strconv.Quote(final), func(t *testing.T) {
 			transform, proxy, _, _ := newDurableTreeTransform(t)

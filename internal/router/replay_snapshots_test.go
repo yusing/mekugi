@@ -58,6 +58,7 @@ func snapshotTestBlobs(t *testing.T, store *mekugiReplayStore) []string {
 }
 
 func TestReplaySnapshotsRoundTripDedupAndLegacy(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -102,6 +103,7 @@ func TestReplaySnapshotsRoundTripDedupAndLegacy(t *testing.T) {
 }
 
 func TestReplaySnapshotsRejectUnavailableAndCorruptEvidence(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"missing", "hash mismatch", "gzip corrupt", "symlink", "expansion bound"} {
 		t.Run(kind, func(t *testing.T) {
 			store, err := openMekugiReplayStore(t.TempDir())
@@ -150,6 +152,7 @@ func TestReplaySnapshotsRejectUnavailableAndCorruptEvidence(t *testing.T) {
 }
 
 func TestInlineEditStorageFailureDoesNotPublishCall(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -165,6 +168,7 @@ func TestInlineEditStorageFailureDoesNotPublishCall(t *testing.T) {
 
 // Inline evidence and its envelope are admitted atomically, without snapshot files.
 func TestInlineEditEvidenceAdmissionIsAtomic(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -200,6 +204,7 @@ func TestInlineEditEvidenceAdmissionIsAtomic(t *testing.T) {
 }
 
 func TestReplaySnapshotsForkDependenciesSurviveCleanup(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -242,6 +247,7 @@ func TestReplaySnapshotsForkDependenciesSurviveCleanup(t *testing.T) {
 }
 
 func TestReplaySnapshotsRetainedChangeOutputAfterRestart(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -290,6 +296,7 @@ func TestReplaySnapshotsRetainedChangeOutputAfterRestart(t *testing.T) {
 }
 
 func TestReplaySnapshotsPressureProtectsUnpublishedDependencies(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -321,6 +328,7 @@ func TestReplaySnapshotsPressureProtectsUnpublishedDependencies(t *testing.T) {
 }
 
 func TestReplaySnapshotsLegacyCatalogProtectsDependencies(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

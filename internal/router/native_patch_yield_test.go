@@ -10,6 +10,7 @@ import (
 )
 
 func TestCodeModeCompletedPatchFinalizesBeforeSiblingYieldedCommand(t *testing.T) {
+	t.Parallel()
 	for _, exit := range []int{0, 1} {
 		t.Run(fmt.Sprintf("command_exit_%d", exit), func(t *testing.T) {
 			testCompletedPatchBeforeYieldedCommand(t, exit)

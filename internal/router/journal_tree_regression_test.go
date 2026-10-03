@@ -73,6 +73,7 @@ func TestJournalTreeNaturalMarkdownAnswerKeepsShape(t *testing.T) {
 }
 
 func TestJournalTreeEventCapacityPreservesNaturalAnswer(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		name := "json"
 		if stream {

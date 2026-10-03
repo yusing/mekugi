@@ -49,6 +49,7 @@ func replayTestWrite(t *testing.T, dir, name string, records ...map[string]any) 
 }
 
 func TestSessionUIReplayNormalizesItemsAndRecordedTiming(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	sentinel := filepath.Join(dir, "must-not-exist")
 	command := "touch " + shellQuoteArgument(sentinel)
@@ -150,6 +151,7 @@ func TestSessionUIReplayNormalizesItemsAndRecordedTiming(t *testing.T) {
 }
 
 func TestSessionUIReplayDiscoversSiblingThreadsAndFiltersProviders(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	root := replayTestWrite(t, dir, "rollout-2023-root.jsonl", replayTestMeta("root"),
 		replayTestItem("root", "turn", replayTestEpoch+1000, replayTestEpoch+2000, map[string]any{"type": "SubAgentActivity", "id": "spawn", "agent_thread_id": "child", "agent_path": "/root/worker", "kind": "spawn"}),
@@ -193,6 +195,7 @@ func TestSessionUIReplayDiscoversSiblingThreadsAndFiltersProviders(t *testing.T)
 }
 
 func TestSessionUIReplayRejectsInvalidEvidence(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name   string
 		mutate func(map[string]any)
@@ -240,6 +243,7 @@ func TestSessionUIReplayRejectsInvalidEvidence(t *testing.T) {
 }
 
 func TestSessionUIReplaySimulatedDeltasPreserveUTF8AndSeed(t *testing.T) {
+	t.Parallel()
 	message := strings.Repeat("你好🌿 café ", 80)
 	summaries := []string{strings.Repeat("考慮 αβ ", 60), strings.Repeat("結論 ✅ ", 60)}
 	output := strings.Repeat("stdout 世界 🧪\n", 80)
@@ -301,6 +305,7 @@ func TestSessionUIReplaySimulatedDeltasPreserveUTF8AndSeed(t *testing.T) {
 }
 
 func TestSessionUIReplayChildInheritedHistoryDoesNotDuplicateAncestor(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	rootStart := replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "root-turn"})
 	rootComplete := replayTestRecord("event_msg", replayTestEpoch+3000, map[string]any{"type": "task_complete", "turn_id": "root-turn"})

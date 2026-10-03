@@ -9,6 +9,7 @@ import (
 )
 
 func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

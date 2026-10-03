@@ -61,6 +61,7 @@ func replayPlaybackTestPaint(t *testing.T, p *uiReplayPlayback, width, height in
 }
 
 func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
+	t.Parallel()
 	p := replayPlaybackTestNew(t)
 	var outgoing bytes.Buffer
 	p.ui.client.Input = replayDiscard{Writer: &outgoing}
@@ -118,6 +119,7 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 }
 
 func TestSessionUIReplayPlaybackShowsOnlyArrivedContent(t *testing.T) {
+	t.Parallel()
 	p := replayPlaybackTestNew(t)
 	if err := p.advance(4500 * time.Millisecond); err != nil {
 		t.Fatal(err)
@@ -146,6 +148,7 @@ func TestSessionUIReplayPlaybackShowsOnlyArrivedContent(t *testing.T) {
 }
 
 func TestSessionUIReplayPlaybackControlsClampAndPreserveClock(t *testing.T) {
+	t.Parallel()
 	p := replayPlaybackTestNew(t)
 	p.from = 2 * time.Second
 	if err := p.advance(p.from); err != nil {
@@ -191,6 +194,7 @@ func TestSessionUIReplayPlaybackControlsClampAndPreserveClock(t *testing.T) {
 }
 
 func TestSessionUIReplayBatchElapsedUsesRecordedClock(t *testing.T) {
+	t.Parallel()
 	p := replayPlaybackTestNew(t)
 	for _, tc := range []struct {
 		position time.Duration
@@ -215,6 +219,7 @@ func TestSessionUIReplayBatchElapsedUsesRecordedClock(t *testing.T) {
 }
 
 func TestUISnapshotSessionUIReplay(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		position time.Duration

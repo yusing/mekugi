@@ -14,6 +14,7 @@ import (
 )
 
 func TestStorageInspectionBoundedPagesAndNoMutation(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -91,6 +92,7 @@ func TestStorageInspectionBoundedPagesAndNoMutation(t *testing.T) {
 }
 
 func TestStorageInspectionPreciseErrorsAndCancellation(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "not-created")
 	for _, test := range []struct {
 		args []string
@@ -116,6 +118,7 @@ func TestStorageInspectionPreciseErrorsAndCancellation(t *testing.T) {
 }
 
 func TestStorageInspectionMissingContentNamesExactObject(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

@@ -11,6 +11,7 @@ import (
 )
 
 func TestLiveDiffPythonExpansionRuntime(t *testing.T) {
+	t.Parallel()
 	python, err := exec.LookPath("python3")
 	if err != nil {
 		t.Skip("python3 is unavailable for differential runtime validation")
@@ -275,6 +276,7 @@ func TestLiveDiffPythonExpansionRuntime(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			previewDirectory, runtimeDirectory := t.TempDir(), t.TempDir()
 			before := map[string]string{"target.txt": tc.before, "untouched.txt": "sentinel é🙂\n"}
 			after := map[string]string{"target.txt": tc.after, "untouched.txt": before["untouched.txt"]}

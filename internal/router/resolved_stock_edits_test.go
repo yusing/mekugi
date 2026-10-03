@@ -12,6 +12,7 @@ import (
 )
 
 func TestSupportedSnapshotGeneratorRetainsInitialCreation(t *testing.T) {
+	t.Parallel()
 	f := newMChangesSliceFixture(t, "snapshot-generator")
 	pythonName, pythonBinary := interpreterForTest("python3", "python")
 	if pythonBinary == "" {
@@ -48,6 +49,7 @@ func TestSupportedSnapshotGeneratorRetainsInitialCreation(t *testing.T) {
 }
 
 func TestPythonTemporaryWriteAndRestoreRetainsIncompleteHistory(t *testing.T) {
+	t.Parallel()
 	f := newMChangesSliceFixture(t, "write-restore")
 	pythonName, pythonBinary := interpreterForTest("python3", "python")
 	if pythonBinary == "" {
@@ -93,6 +95,7 @@ func TestPythonTemporaryWriteAndRestoreRetainsIncompleteHistory(t *testing.T) {
 }
 
 func TestMChangesSummaryComposesManagedAndDirectEdits(t *testing.T) {
+	t.Parallel()
 	f := newMChangesSliceFixture(t, "summary-composition")
 	path := filepath.Join(f.workspace, "file.txt")
 	for i, origin := range []string{"gofmt", "", "gofmt"} {
@@ -119,6 +122,7 @@ func TestMChangesSummaryComposesManagedAndDirectEdits(t *testing.T) {
 }
 
 func TestMChangesReadContextDistinguishesMissingEmptyAndPathScope(t *testing.T) {
+	t.Parallel()
 	f := newMChangesSliceFixture(t, "read-context")
 	id := f.reserve(t, "worker", "worker-effect")
 	f.publish(t, id, "worker-effect", "worker-call", mekugiHistory{ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")}})
@@ -151,6 +155,7 @@ func TestMChangesReadContextDistinguishesMissingEmptyAndPathScope(t *testing.T) 
 }
 
 func TestResolvedRepeatedStockCallsRetainEveryOutcome(t *testing.T) {
+	t.Parallel()
 	for _, literalLoop := range []bool{false, true} {
 		t.Run(fmt.Sprintf("literalLoop=%v", literalLoop), func(t *testing.T) {
 			f := newMChangesSliceFixture(t, "repeated-stock")
@@ -226,6 +231,7 @@ func TestResolvedRepeatedStockCallsRetainEveryOutcome(t *testing.T) {
 }
 
 func TestResolvedLiteralReadLoopsDoNotInventWriters(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	writeTestFile(t, filepath.Join(workspace, "file.txt"), "unchanged")
 	writer := "printf unchanged > file.txt"
@@ -255,6 +261,7 @@ func TestResolvedLiteralReadLoopsDoNotInventWriters(t *testing.T) {
 }
 
 func TestResolvedLiteralProviderLoopsReusePreCallClassification(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	python, _ := interpreterForTest("python3", "python")
 	writeTestFile(t, filepath.Join(workspace, "file.txt"), "unchanged")
@@ -284,6 +291,7 @@ func TestResolvedLiteralProviderLoopsReusePreCallClassification(t *testing.T) {
 }
 
 func TestMChangesFilteredZeroNetIsNotPathMismatch(t *testing.T) {
+	t.Parallel()
 	for _, creation := range []bool{false, true} {
 		t.Run(fmt.Sprintf("creation=%v", creation), func(t *testing.T) {
 			f := newMChangesSliceFixture(t, "filtered-zero-net")

@@ -13,6 +13,7 @@ import (
 )
 
 func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
+	t.Parallel()
 	path := replayTestWrite(t, t.TempDir(), "root.jsonl", replayTestMeta("root"),
 		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
 		replayTestItem("root", "turn", replayTestEpoch+2000, replayTestEpoch+2000, map[string]any{
@@ -50,6 +51,7 @@ func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 }
 
 func TestSessionUIReplayReasoningUsesRecordedItemStart(t *testing.T) {
+	t.Parallel()
 	path := replayTestWrite(t, t.TempDir(), "root.jsonl", replayTestMeta("root"),
 		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
 		replayTestItem("root", "turn", replayTestEpoch+1000, replayTestEpoch+3000, map[string]any{
@@ -78,6 +80,7 @@ func TestSessionUIReplayReasoningUsesRecordedItemStart(t *testing.T) {
 }
 
 func TestSessionUIReplayRustAgentStatusShapesReachFinalWaitDisplay(t *testing.T) {
+	t.Parallel()
 	states := map[string]any{
 		"running-agent": "running", "initializing-agent": "pending_init", "interrupted-agent": "interrupted",
 		"shutdown-agent": "shutdown", "missing-agent": "not_found",
@@ -140,6 +143,7 @@ func TestSessionUIReplayRustAgentStatusShapesReachFinalWaitDisplay(t *testing.T)
 }
 
 func TestSessionUIReplayDirectForkSkipsCopiedAncestorEvents(t *testing.T) {
+	t.Parallel()
 	rootItem := replayTestItem("ancestor", "ancestor-turn", replayTestEpoch+1000, replayTestEpoch+2000,
 		map[string]any{"type": "AgentMessage", "id": "ancestor-answer", "content": []map[string]any{{"text": "copied ancestor answer"}}})
 	path := replayTestWrite(t, t.TempDir(), "rollout-2023-fork.jsonl",
@@ -172,6 +176,7 @@ func TestSessionUIReplayDirectForkSkipsCopiedAncestorEvents(t *testing.T) {
 }
 
 func TestSessionUIReplayItemlessForkTurnUsesSettingsBoundary(t *testing.T) {
+	t.Parallel()
 	path := replayTestWrite(t, t.TempDir(), "fork.jsonl", replayTestMeta("fork"), replayTestMeta("ancestor"),
 		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "inherited"}),
 		replayTestRecord("event_msg", replayTestEpoch+1000, map[string]any{"type": "task_complete", "turn_id": "inherited"}),
@@ -208,6 +213,7 @@ func TestSessionUIReplayItemlessForkTurnUsesSettingsBoundary(t *testing.T) {
 }
 
 func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
+	t.Parallel()
 	start := time.Date(2026, 9, 30, 8, 0, 0, 0, time.UTC)
 	var lines []string
 	for j := range 200 {

@@ -65,10 +65,11 @@ func finalAnswerTestPayloads(wire string) [][]byte {
 }
 
 func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
+	t.Parallel()
 	for _, child := range []bool{false, true} {
 		for _, phase := range []string{"final_answer", ""} {
 			t.Run(map[bool]string{false: "root", true: "child"}[child]+"/"+phase, func(t *testing.T) {
-				t.Setenv("TMPDIR", t.TempDir())
+
 				metadata := codexTurnMetadata{}
 				if child {
 					metadata.SubagentKind = threadSpawnSubagentKind
@@ -134,7 +135,8 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 }
 
 func TestFinalAnswerStreamStreamsAnswersProgressAndTools(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	t.Parallel()
+
 	transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
 	transform.journalActive = false
 	answer := finalAnswerTestEvents(t, "final_answer")
@@ -220,6 +222,7 @@ type finalAnswerErrorReader struct{ err error }
 func (r finalAnswerErrorReader) Read([]byte) (int, error) { return 0, r.err }
 
 func TestFinalAnswerStreamLargeDeltaStreamsUnchanged(t *testing.T) {
+	t.Parallel()
 	transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
 	transform.journalActive = false
 	event := mustTestJSON(t, map[string]any{"type": "response.output_text.delta", "item_id": "answer", "delta": strings.Repeat("x", upstreamJSONBufferBytes+1)})
@@ -230,9 +233,10 @@ func TestFinalAnswerStreamLargeDeltaStreamsUnchanged(t *testing.T) {
 }
 
 func TestNonJournalAnswerStreamsWithoutUsageCommentary(t *testing.T) {
+	t.Parallel()
 	for _, child := range []bool{false, true} {
 		t.Run(map[bool]string{false: "root", true: "child"}[child], func(t *testing.T) {
-			t.Setenv("TMPDIR", t.TempDir())
+
 			proxy := newManagedMekugiProxy(t)
 			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = true })
 			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})

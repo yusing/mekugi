@@ -28,6 +28,7 @@ func mainFeed(u *appServerUI, width int) string {
 }
 
 func TestUISnapshotMChangesCaptureCompleteness(t *testing.T) {
+	t.Parallel()
 	output := "amber1 incomplete captured scope; use --history for diagnostics\nA\t2\t0\ttestdata/snapshots/new.txt\n?\t-\t-\toutside.txt\t\"resolved path is outside the pre-cell baseline\"\n"
 	u := mchangesDisplay(t, "mchanges amber1 --summary", output)
 	u.view.painter.Theme = livediff.DarkTheme
@@ -35,6 +36,7 @@ func TestUISnapshotMChangesCaptureCompleteness(t *testing.T) {
 }
 
 func TestMChangesSummaryShowsEditRows(t *testing.T) {
+	t.Parallel()
 	output := "M\t12\t3\tinternal/router/app.go\nA\t40\t0\tdoc/new.md\nRM\t1\t1\told.go => \"new => name.go\"\nD\t0\t9\tgone.go\n" +
 		"?\t-\t-\tunknown.bin\t\"missing capture\"\namber3 retired (partial history)\nM +30 -2; 1 counts unavailable\n" +
 		"? tool-managed: 2 missing capture; use --history for paths and full reasons\n"
@@ -63,6 +65,7 @@ func TestMChangesSummaryShowsEditRows(t *testing.T) {
 }
 
 func TestMChangesListShowsEditRows(t *testing.T) {
+	t.Parallel()
 	u := mchangesDisplay(t, "mchanges --list --max-tokens 400", "amber1..amber3 +12 -4\namber4 pending\namber5 +3 -1 ? managed:2\namber6 history:partial +1 -0 ?\n")
 	want := strings.Join([]string{
 		"└ Ran mchanges --list --max-tokens 400",
@@ -77,6 +80,7 @@ func TestMChangesListShowsEditRows(t *testing.T) {
 }
 
 func TestMChangesOutputRowsOnlyReadListingsAndSummaries(t *testing.T) {
+	t.Parallel()
 	output := "M\t1\t0\ta.go\n"
 	for _, command := range []string{"mchanges", "mchanges amber1", "mchanges --history", "mchanges --summary | head", "mchanges -- --summary", "echo --summary"} {
 		if rows := mchangesOutputRows(appServerItem{Command: command, AggregatedOutput: &output}); rows != nil {
@@ -99,6 +103,7 @@ func TestMChangesOutputRowsOnlyReadListingsAndSummaries(t *testing.T) {
 // The display reads what the store prints, so a format change there cannot
 // silently fall back to plain notes.
 func TestMChangesOutputRowsReadStoreOutput(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

@@ -9,6 +9,7 @@ import (
 )
 
 func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -55,6 +56,7 @@ func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
 }
 
 func TestMChangesListCompressesAppliedChangesRegardlessOfCommandAttribution(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -87,6 +89,7 @@ func TestMChangesListCompressesAppliedChangesRegardlessOfCommandAttribution(t *t
 }
 
 func TestMChangesListHidesLegacyNoOpsWithoutRetiringEvidence(t *testing.T) {
+	t.Parallel()
 	f := newMChangesSliceFixture(t, "legacy-noops")
 	var ids []string
 	for _, call := range []string{"first", "noop", "last"} {
@@ -113,6 +116,7 @@ func TestMChangesListHidesLegacyNoOpsWithoutRetiringEvidence(t *testing.T) {
 }
 
 func TestMChangesSummaryFileStatusesMatchDiffPane(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name  string
 		files []mekugi.ReviewFile

@@ -18,9 +18,10 @@ import (
 )
 
 func TestTokenUsageManualSwitch(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		t.Run(fmt.Sprint(stream), func(t *testing.T) {
-			t.Setenv("TMPDIR", t.TempDir())
+
 			proxy := newManagedMekugiProxy(t)
 			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 			// Manual switches retain the same stable thread and price each response
@@ -157,10 +158,11 @@ func TestTokenUsageRejectsIncompletePricing(t *testing.T) {
 }
 
 func TestTokenUsageGapRetainsObservedTotals(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		for _, gap := range []string{"missing", "null", "partial", "invalid", "interrupted", "transport-error", "http-rejection", "failed-with-usage", "incomplete-with-usage", "compaction"} {
 			t.Run(fmt.Sprintf("stream=%t/%s", stream, gap), func(t *testing.T) {
-				t.Setenv("TMPDIR", t.TempDir())
+
 				proxy := newManagedMekugiProxy(t)
 				headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 				for step := range 3 {

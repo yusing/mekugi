@@ -97,11 +97,13 @@ func TestMRunFormattingPreservesBackgroundCommand(t *testing.T) {
 }
 
 func TestMRunCancellationDrainsDescendantPipes(t *testing.T) {
-	testMRunCancellation(t, []string{"--max-tokens", "20", "--tail", "--", "sh", "-c", "sleep 30 & printf ready > ready; wait"})
+	t.Parallel()
+	testMRunCancellation(t, []string{"--max-tokens", "20", "--tail", "--", "sh", "-c", `sleep 30 & printf ready > "$1"; wait`})
 }
 
 func TestMRunLineCancellation(t *testing.T) {
-	testMRunCancellation(t, []string{"-n", "20", "--", "sh", "-c", "printf ready > ready; exec yes"})
+	t.Parallel()
+	testMRunCancellation(t, []string{"-n", "20", "--", "sh", "-c", `printf ready > "$1"; exec yes`})
 }
 
 func testMRunCancellation(t *testing.T, arguments []string) {
@@ -109,7 +111,9 @@ func testMRunCancellation(t *testing.T, arguments []string) {
 
 	registry := sharedProxyTestRegistry(t)
 	directory := t.TempDir()
-	t.Chdir(directory)
+	// The readiness file is the command's only filesystem effect. Pass its
+	// private path as a shell argument instead of changing the process cwd.
+	arguments = append(arguments, "mrun-test", filepath.Join(directory, "ready"))
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	finished := make(chan int, 1)

@@ -17,6 +17,7 @@ import (
 )
 
 func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("Python is required for this shell execution fixture")
 	}
@@ -103,6 +104,7 @@ func execEditThenTestObservation(t *testing.T, workspace string) (execObservatio
 }
 
 func TestExecEditCompletionUsesCapturedBaseline(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	observation, path := execEditThenTestObservation(t, workspace)
 	if err := os.WriteFile(path, []byte("after\n"), 0o600); err != nil {
@@ -133,6 +135,7 @@ func TestExecEditCompletionUsesCapturedBaseline(t *testing.T) {
 }
 
 func TestExecEditCompletionBeforeFollowingTestFinishes(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	observation, path := execEditThenTestObservation(t, workspace)
 	ctx, cancel := context.WithCancel(t.Context())
@@ -190,6 +193,7 @@ func TestExecEditCompletionBeforeFollowingTestFinishes(t *testing.T) {
 }
 
 func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.T) {
+	t.Parallel()
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
@@ -225,6 +229,7 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 }
 
 func TestExecEditCompletionTerminalFrameBeforeHostExit(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	observation, path := execEditThenTestObservation(t, workspace)
 	store, err := openMekugiReplayStore(t.TempDir())

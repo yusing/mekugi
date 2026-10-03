@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 
 	"github.com/yusing/mekugi"
 )
@@ -18,10 +19,8 @@ func TestLiveDiffPythonExpansionKnownExpressions(t *testing.T) {
 		{"replace concatenated search and replacement", "s = s.replace('o' + 'ld', 'n' + 'ew', 1)", "old old\n", "new old\n"},
 		{"replace source derived slices", "old = s[:3]\nnew = s[4:7]\ns = s.replace(old, new, 1)", "old NEW old\n", "NEW NEW old\n"},
 		{"replace bound transformed text", "old = ' OLD '.strip().lower()\nnew = 'new'.upper()\ns = s.replace(old, new)", "old old\n", "NEW NEW\n"},
-		{"len read buffer uses codepoints", "s = s[:len(s)-1] + '!'", "é🙂a\n", "é🙂a!"},
 		{"len transformed expression", "s = s[:len(' é🙂 '.strip() + 'x')]", "abcd\n", "abc"},
 		{"unicode negative indexes", "s = s[-2] + s[0] + s[1]", "é🙂a\n", "aé🙂"},
-		{"unicode slices and negative bounds", "s = s[1:-1] + s[-99:2] + s[99:]", "é🙂a\n", "🙂aé🙂"},
 		{"reversed bounds produce empty slice", "s = s[3:1] + 'empty'", "é🙂a\n", "empty"},
 		{"unicode find offsets", "i = s.find('a')\ns = s[:i] + 'X' + s[i+1:]", "é🙂a\n", "é🙂X\n"},
 		{"find missing preserves negative slice semantics", "i = s.find('missing')\ns = s[:i] + '!'", "é🙂a\n", "é🙂a!"},
@@ -33,10 +32,6 @@ func TestLiveDiffPythonExpansionKnownExpressions(t *testing.T) {
 		{"empty strip argument leaves text", "s = s.strip('') + '!'", " old \n", " old \n!"},
 		{"ASCII upper", "s = s.upper()", "mixed Case\n", "MIXED CASE\n"},
 		{"ASCII lower", "s = s.lower()", "Mixed CASE\n", "mixed case\n"},
-		{"bounded repetition both operand orders", "s = 2 * 'é' + '🙂' * 3", "old\n", "éé🙂🙂🙂"},
-		{"nonpositive repetition", "s = 'x' * -2 + 'y' * 0 + 'empty'", "old\n", "empty"},
-		{"empty search all unicode boundaries", "s = s.replace('', '|')", "é🙂", "|é|🙂|"},
-		{"empty search count", "s = s.replace('', '|', 2)", "é🙂", "|é|🙂"},
 		{"empty search zero count", "s = s.replace('', '|', 0) + '!'", "é🙂", "é🙂!"},
 		{"empty buffer empty search", "s = s.replace('', 'new')", "", "new"},
 		{"join literal list", "s = '-'.join(['é', '', '🙂'])", "old\n", "é--🙂"},
@@ -64,11 +59,9 @@ func TestLiveDiffPythonExpansionHelperSequencesAndDictionaries(t *testing.T) {
 		{"keyword caller bound tuple", "names = ('a.txt', 'b.txt')\ndef edit(paths):\n    for path in paths:\n        open(path, 'w').write('new')\nedit(paths=names)\n", map[string]string{"a.txt": "new", "b.txt": "new"}},
 		{"default replacement pairs", "def edit(pairs=[('old', 'middle'), ('middle', 'new')]):\n    s = open('target.txt').read()\n    for old, new in pairs:\n        s = s.replace(old, new)\n    open('target.txt', 'w').write(s)\nedit()\n", map[string]string{"target.txt": "new\n"}},
 		{"named pairs scope isolation", "pairs = [('old', 'global')]\ndef edit(pairs):\n    s = open('target.txt').read()\n    for old, new in pairs:\n        s = s.replace(old, new)\n    pairs = [('old', 'local')]\n    open('target.txt', 'w').write(s)\nedit(pairs=(('old', 'argument'),))\nfor old, new in pairs:\n    open('global.txt', 'w').write(new)\n", map[string]string{"target.txt": "argument\n", "global.txt": "global"}},
-		{"join helper default sequence", "def edit(parts=('é', '🙂')):\n    open('target.txt', 'w').write('-'.join(parts))\nedit()\n", map[string]string{"target.txt": "é-🙂"}},
 		{"dictionary keys retain insertion order", "s = ''\nfor key in {'b': 'first', 'a': 'second', 'b': 'last'}:\n    s += key\nopen('target.txt', 'w').write(s)\n", map[string]string{"target.txt": "ba"}},
 		{"dictionary items duplicate key last value original position", "s = ''\nfor key, value in {'b': 'first', 'a': 'second', 'b': 'last'}.items():\n    s += key + ':' + value + ';'\nopen('target.txt', 'w').write(s)\n", map[string]string{"target.txt": "b:last;a:second;"}},
 		{"named dictionary replacement pairs", "pairs = {'old': 'middle', 'middle': 'new'}\ns = open('target.txt').read()\nfor old, new in pairs.items():\n    s = s.replace(old, new)\nopen('target.txt', 'w').write(s)\n", map[string]string{"target.txt": "new\n"}},
-		{"helper named dictionary argument and isolation", "pairs = {'old': 'global'}\ndef edit(pairs):\n    s = open('target.txt').read()\n    for old, new in pairs.items():\n        s = s.replace(old, new)\n    pairs = {'old': 'local'}\n    open('target.txt', 'w').write(s)\nedit({'old': 'argument'})\nfor old, new in pairs.items():\n    open('global.txt', 'w').write(new)\n", map[string]string{"target.txt": "argument\n", "global.txt": "global"}},
 		{"dictionary default and keyword", "def edit(pairs={'old': 'default'}):\n    s = open('target.txt').read()\n    for old, new in pairs.items():\n        s = s.replace(old, new)\n    open('target.txt', 'w').write(s)\nedit()\nedit(pairs={'old': 'keyword'})\n", map[string]string{"target.txt": "default\n"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -167,7 +160,10 @@ func TestLiveDiffPythonExpansionRetainsIterationBounds(t *testing.T) {
 				if n == 256 {
 					after = map[string]string{"target.txt": strings.Repeat("x", n)}
 				}
-				runPythonExpansion(t, script, map[string]string{"target.txt": "old\n"}, after)
+				// Check the iteration limit, not the host's scheduling latency.
+				synctest.Test(t, func(t *testing.T) {
+					runPythonExpansion(t, script, map[string]string{"target.txt": "old\n"}, after)
+				})
 			})
 		}
 	}

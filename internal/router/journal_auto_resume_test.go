@@ -27,6 +27,7 @@ func autoResumeFixture(t *testing.T) (*journalResetDriver, *appServerTestInput) 
 }
 
 func TestJournalAutoResumeFollowupUntilComplete(t *testing.T) {
+	t.Parallel()
 	d, wire := autoResumeFixture(t)
 	for _, turn := range []string{"answer", "continued"} {
 		if err := d.completed(turn); err != nil {
@@ -62,6 +63,7 @@ func TestJournalAutoResumeFollowupUntilComplete(t *testing.T) {
 }
 
 func TestJournalAutoResumeAdmission(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, task, want string }{
 		{"pending", `{"title":"Task"}`, "/1"},
 		{"working", `{"title":"Task","state":"working"}`, "/1"},
@@ -93,6 +95,7 @@ func TestJournalAutoResumeAdmission(t *testing.T) {
 }
 
 func TestJournalAutoResumeRevalidatesAndIsolatesRestart(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []string{"pending", "done", "blocked", "new-turn", "cancelled", "dispatched", "other-thread", "other-workspace"} {
 		t.Run(scenario, func(t *testing.T) {
 			d, wire := autoResumeFixture(t)
@@ -148,6 +151,7 @@ func TestJournalAutoResumeRevalidatesAndIsolatesRestart(t *testing.T) {
 }
 
 func TestNativeJournalAutoResumeStopsForInputAndCancellation(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []string{"natural", "interrupt-race", "question", "queued", "failed", "interrupted", "foreign", "stale"} {
 		t.Run(scenario, func(t *testing.T) {
 			d, wire := autoResumeFixture(t)
@@ -191,6 +195,7 @@ func TestNativeJournalAutoResumeStopsForInputAndCancellation(t *testing.T) {
 }
 
 func TestHeadlessJournalAutoResumeRequiresQuestionInput(t *testing.T) {
+	t.Parallel()
 	d, _ := autoResumeFixture(t)
 	h := &headlessAppServer{ctx: t.Context(), client: d.client, proxy: d.proxy, reset: d, thread: d.thread, output: jsontext.NewEncoder(io.Discard)}
 	err := headlessTestMessage(t, h, "item/completed", `{"threadId":"`+d.thread+`","turnId":"answer","item":{"type":"agentMessage","delivery":"async","questions":[{"title":"Which scope?"}]}}`)
@@ -200,6 +205,7 @@ func TestHeadlessJournalAutoResumeRequiresQuestionInput(t *testing.T) {
 }
 
 func TestUISnapshotJournalAutoResume(t *testing.T) {
+	t.Parallel()
 	d, _ := autoResumeFixture(t)
 	if err := d.completed("answer"); err != nil {
 		t.Fatal(err)
@@ -210,6 +216,7 @@ func TestUISnapshotJournalAutoResume(t *testing.T) {
 }
 
 func TestJournalAutoResumeOwnership(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []string{"child", "unknown", "conflicted", "delegated", "delegated-parent", "fork"} {
 		t.Run(scenario, func(t *testing.T) {
 			d, wire := autoResumeFixture(t)
@@ -256,6 +263,7 @@ func TestJournalAutoResumeOwnership(t *testing.T) {
 }
 
 func TestJournalAutoResumeRevalidatesBeforeDispatch(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []string{"done", "blocked", "new-turn", "delegated"} {
 		t.Run(scenario, func(t *testing.T) {
 			d, wire := autoResumeFixture(t)
@@ -288,6 +296,7 @@ func TestJournalAutoResumeRevalidatesBeforeDispatch(t *testing.T) {
 
 // An interrupt is a durable user decision, not just suppression of one host event.
 func TestJournalAutoResumeUserStopSurvivesLaterQuestions(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []string{"status-answer", "note", "same-state-status-edit", "same-turn-reactivation", "restart", "fork", "unrelated-work", "reactivate", "escape", "native-interrupted", "headless-interrupted", "atomic-rejection"} {
 		t.Run(scenario, func(t *testing.T) {
 			d, wire := autoResumeFixture(t)

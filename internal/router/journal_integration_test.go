@@ -9,6 +9,7 @@ import (
 )
 
 func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
+	t.Parallel()
 	for _, usage := range []struct {
 		name string
 		raw  json.RawMessage
@@ -20,7 +21,7 @@ func TestJournalRouterToolContinuesWithoutClientDispatch(t *testing.T) {
 	} {
 		for _, stream := range []bool{false, true} {
 			t.Run(usage.name+"/"+map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
-				t.Setenv("TMPDIR", t.TempDir())
+
 				proxy := newManagedMekugiProxy(t)
 				workspace := t.TempDir()
 				headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})

@@ -17,6 +17,7 @@ import (
 )
 
 func TestResponseTranslationRetriesPersistenceAfterBackgroundCleanup(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -116,6 +117,7 @@ func startResponseRetentionWorker(t *testing.T, store *mekugiReplayStore) {
 }
 
 func TestReplayStorageDefaultIsFourGiB(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -156,6 +158,7 @@ func TestReplayStorageDefaultIsFourGiB(t *testing.T) {
 }
 
 func TestResponsePersistencePressureStopsWithoutReclaimableData(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -179,6 +182,7 @@ func TestResponsePersistencePressureStopsWithoutReclaimableData(t *testing.T) {
 }
 
 func TestResponsePersistenceMaintenanceWaitIsCancellable(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		store, err := openMekugiReplayStore(t.TempDir())
 		if err != nil {
@@ -206,6 +210,7 @@ func TestResponsePersistenceMaintenanceWaitIsCancellable(t *testing.T) {
 }
 
 func TestResponsePersistenceRetriesSuccessiveHistoryWrites(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		store, err := openMekugiReplayStore(t.TempDir())
 		if err != nil {

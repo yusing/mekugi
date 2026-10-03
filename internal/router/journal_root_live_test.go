@@ -11,6 +11,7 @@ import (
 )
 
 func TestJournalRootLiveIndependentDelivery(t *testing.T) {
+	t.Parallel()
 	for _, tree := range []bool{false, true} {
 		t.Run(map[bool]string{false: "legacy", true: "tree"}[tree], func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
@@ -73,6 +74,7 @@ func TestJournalRootLiveIndependentDelivery(t *testing.T) {
 }
 
 func TestJournalRootLiveScope(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
 	root, _ := prepareActivityTest(t, proxy, "root", "root", "", "/root", nil)
 	prepareActivityTest(t, proxy, "other", "other", "", "/root", nil)
@@ -119,6 +121,7 @@ func TestJournalRootLiveScope(t *testing.T) {
 }
 
 func TestUISnapshotJournalRootLive(t *testing.T) {
+	t.Parallel()
 	text, _ := rootJournalLiveText(threadJournal{Author: "/root/reviewer", TreeAuthored: true, Events: []journalEvent{
 		{Seq: 1, Op: "add", Path: "/1", Fields: journalNode{Kind: "note", Title: "Consumer sees the live milestone before child completion."}},
 	}}, maxCommentaryPublicationBytes)
@@ -127,6 +130,7 @@ func TestUISnapshotJournalRootLive(t *testing.T) {
 }
 
 func TestJournalRootLiveBoundedWindow(t *testing.T) {
+	t.Parallel()
 	j := threadJournal{Author: "/root/child", TreeAuthored: true, Events: []journalEvent{
 		{Seq: 1, Op: "add", Path: "/1", Fields: journalNode{Kind: "note", Title: "Large milestone", Body: strings.Repeat("xyz\n", 4000)}},
 		{Seq: 2, Op: "add", Path: "/2", Fields: journalNode{Kind: "answer", Title: "Must stay terminal-only"}},
@@ -151,6 +155,7 @@ func TestJournalRootLiveBoundedWindow(t *testing.T) {
 }
 
 func TestJournalRootLiveLegacyOptIn(t *testing.T) {
+	t.Parallel()
 	j := threadJournal{Author: "/root/child", Items: []journalItem{{Path: "/1", Updated: 1}}, Events: []journalEvent{
 		{Legacy: true, Seq: 1, Op: "add", Path: "/1", Fields: journalNode{Kind: "note", Title: "Silent milestone"}},
 	}}
@@ -160,6 +165,7 @@ func TestJournalRootLiveLegacyOptIn(t *testing.T) {
 }
 
 func TestJournalRootLiveMixedLegacyAndTree(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
 	root, _ := prepareActivityTest(t, proxy, "root", "root", "", "/root", nil)
 	prepareActivityTest(t, proxy, "child", "child", "root", "/root/child", nil)
@@ -181,6 +187,7 @@ func TestJournalRootLiveMixedLegacyAndTree(t *testing.T) {
 }
 
 func TestJournalRootLiveLegacyRetractionEligibility(t *testing.T) {
+	t.Parallel()
 	for _, visible := range []bool{true, false} {
 		t.Run(map[bool]string{true: "silent-edit-after-visible", false: "unseen-item-before-visible-other"}[visible], func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
@@ -229,6 +236,7 @@ func TestJournalRootLiveLegacyRetractionEligibility(t *testing.T) {
 }
 
 func TestJournalRootLiveForkDoesNotInheritPublicationEvidence(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
 	root, _ := prepareActivityTest(t, proxy, "root", "root", "", "/root", nil)
 	prepareActivityTest(t, proxy, "child", "child", "root", "/root/child", nil)

@@ -17,6 +17,7 @@ import (
 )
 
 func TestUISnapshotLiveDiffCompactProvisionalContext(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	before := liveDiffLinesFile("context", 40)
 	after := strings.Replace(before, "context_line_20", "changed_line", 1)
@@ -52,6 +53,7 @@ func TestUISnapshotLiveDiffCompactProvisionalContext(t *testing.T) {
 }
 
 func TestStockPatchPreviewUsesObservedSourceAndLanguageRenderer(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "sample.go")
 	before := "package sample\n\nfunc before() {}\n"
@@ -88,6 +90,7 @@ func TestStockPatchPreviewUsesObservedSourceAndLanguageRenderer(t *testing.T) {
 }
 
 func TestStockPatchPreviewRefusesUnmatchedSource(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "sample.go")
 	if err := os.WriteFile(path, []byte("old()\n"), 0o600); err != nil {
@@ -103,6 +106,7 @@ func TestStockPatchPreviewRefusesUnmatchedSource(t *testing.T) {
 }
 
 func TestUnprojectableFinalPatchClearsPreviewWithoutClaimingFailure(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "sample.go"), []byte("old()\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -134,6 +138,7 @@ func TestUnprojectableFinalPatchClearsPreviewWithoutClaimingFailure(t *testing.T
 }
 
 func TestPendingPatchBetweenEditsKeepsLastProjectedDiff(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	for name, content := range map[string]string{"first.go": "old()\n", "second.go": "before()\n"} {
 		if err := os.WriteFile(filepath.Join(workspace, name), []byte(content), 0o600); err != nil {
@@ -186,6 +191,7 @@ func TestPendingPatchBetweenEditsKeepsLastProjectedDiff(t *testing.T) {
 }
 
 func TestNextCallPendingPatchKeepsCompletedDiffUntilItHasContent(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "first.go")
 	if err := os.WriteFile(path, []byte("old()\n"), 0o600); err != nil {
@@ -237,6 +243,7 @@ func TestNextCallPendingPatchKeepsCompletedDiffUntilItHasContent(t *testing.T) {
 }
 
 func TestStockPatchStreamingPartialLinesStayProjectable(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "sample.go"), []byte("old()\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -261,6 +268,7 @@ func TestStockPatchStreamingPartialLinesStayProjectable(t *testing.T) {
 }
 
 func TestStockPatchStreamingFramesEndAtTheirTip(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "sample.go"), []byte("a()\nb()\nc()\nd()\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -282,6 +290,7 @@ func TestStockPatchStreamingFramesEndAtTheirTip(t *testing.T) {
 }
 
 func TestStockPatchPreviewKeepsSourceFromBeforeTheCall(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "sample.go")
 	if err := os.WriteFile(path, []byte("old()\n"), 0o600); err != nil {
@@ -302,6 +311,7 @@ func TestStockPatchPreviewKeepsSourceFromBeforeTheCall(t *testing.T) {
 }
 
 func TestCodeModePatchFinalPreviewUsesPreExecutionSource(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
@@ -344,6 +354,7 @@ func TestCodeModePatchFinalPreviewUsesPreExecutionSource(t *testing.T) {
 }
 
 func TestStockPatchPreviewBlankContextAndInsertion(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ before, patch, removed, added string }{
 		{"a()\n\na()\n", "@@\n\n-a()\n+b()", "-a()", "+b()"},
 		{"first\n\n", "@@\n+added", "", "+added"},
@@ -374,6 +385,7 @@ func TestStockPatchPreviewBlankContextAndInsertion(t *testing.T) {
 }
 
 func TestStockPatchPreviewAcceptsCRLFEnvelope(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	preview := projectStockPatchPreview(t.Context(), workspace, diffview.Preview{
 		Input:  "*** Begin Patch\r\n*** Add File: crlf.go\r\n+package crlf\r\n*** End Patch\r\n",
@@ -385,6 +397,7 @@ func TestStockPatchPreviewAcceptsCRLFEnvelope(t *testing.T) {
 }
 
 func TestStockPatchFinalPreviewSurvivesTransportCancellation(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "file.go"), []byte("package old\n"), 0o600); err != nil {
 		t.Fatal(err)

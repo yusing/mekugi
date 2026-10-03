@@ -11,6 +11,7 @@ import (
 )
 
 func TestMChangesWorkspaceAllocationIgnoresForeignIndexPayload(t *testing.T) {
+	t.Parallel()
 	for _, namespace := range []string{"foreign", ""} {
 		t.Run("namespace="+namespace, func(t *testing.T) {
 			store, err := openMekugiReplayStore(t.TempDir())
@@ -40,6 +41,7 @@ func TestMChangesWorkspaceAllocationIgnoresForeignIndexPayload(t *testing.T) {
 // An ID is a namespace-wide handle, not the position of a stream in one
 // workspace's index. The same thread can edit two workspaces.
 func TestMChangesWorkspaceStreamIDsSurviveRestartAndBranch(t *testing.T) {
+	t.Parallel()
 	f := newMChangesSliceFixture(t, "workspace-streams")
 	other := t.TempDir()
 	first := f.reserve(t, f.thread, "first")
@@ -85,6 +87,7 @@ func TestMChangesWorkspaceStreamIDsSurviveRestartAndBranch(t *testing.T) {
 }
 
 func TestMChangesLegacyPositionalStreamsSeedNewWorkspaceID(t *testing.T) {
+	t.Parallel()
 	f := newMChangesSliceFixture(t, "legacy-workspace-streams")
 	for i, thread := range []string{f.thread, "legacy-agent-one", "legacy-agent-two"} {
 		id, err := f.store.reserveChange(f.ctx, f.workspace, thread, "legacy-"+thread)
@@ -126,6 +129,7 @@ func TestMChangesLegacyPositionalStreamsSeedNewWorkspaceID(t *testing.T) {
 }
 
 func TestMChangesWrongWorkspaceReadKeepsValidTargets(t *testing.T) {
+	t.Parallel()
 	f := newMChangesSliceFixture(t, "workspace-partial")
 	other := t.TempDir()
 	valid := f.reserve(t, f.thread, "valid")
@@ -150,6 +154,7 @@ func TestMChangesWrongWorkspaceReadKeepsValidTargets(t *testing.T) {
 }
 
 func TestMChangesWrongWorkspaceMutationIsAtomic(t *testing.T) {
+	t.Parallel()
 	f := newMChangesSliceFixture(t, "workspace-mutation")
 	other := t.TempDir()
 	valid := f.reserve(t, f.thread, "valid")

@@ -36,6 +36,7 @@ func lowerJournalSurveyCell(t *testing.T, transform *mekugiResponseTransform, so
 }
 
 func TestJournalSurveySharedHelperConcurrentNestedYieldedCalls(t *testing.T) {
+	t.Parallel()
 	transform, proxy := newRuntimeCommentaryTransform(t)
 	source := `// await journal({op:"log",text:"not executable"});
 const literal = "await journal({op:'list'})";
@@ -97,6 +98,7 @@ console.log("Observed stock calls: exec_command="+sessions.length+", write_stdin
 }
 
 func TestJournalSurveyLoweringPayloadGrowth(t *testing.T) {
+	t.Parallel()
 	transform, _ := newRuntimeCommentaryTransform(t)
 	one := lowerJournalSurveyCell(t, transform, `await journal({op:"read",view:"tasks"});`)
 	many := lowerJournalSurveyCell(t, transform, strings.Repeat(`await journal({op:"read",view:"tasks"});`, 20))
@@ -111,6 +113,7 @@ func TestJournalSurveyLoweringPayloadGrowth(t *testing.T) {
 // Created plan and add paths must reach the model, which cannot otherwise
 // address a new node without reading the tree back. Logs and edits stay quiet.
 func TestJournalSurveyBatchReturnValuesAndCreationReceipts(t *testing.T) {
+	t.Parallel()
 	transform, _ := newRuntimeCommentaryTransform(t)
 	lowered := lowerJournalSurveyCell(t, transform, `const plain = await journal([{op:"log",text:"Finding"}]);
 const plan = await journal([{op:"plan",tasks:["Work"]},{op:"log",text:"Evidence"}]);
@@ -126,6 +129,7 @@ assert.deepEqual(receipts,['journal paths: ["/2","/3"]','journal paths: ["/5"]',
 }
 
 func TestJournalSurveyOperationFailuresKeepTransportDetail(t *testing.T) {
+	t.Parallel()
 	for _, operation := range []string{"read", "list", "mutation"} {
 		for _, failure := range []string{"exit", "throw"} {
 			t.Run(operation+"/"+failure, func(t *testing.T) {
@@ -149,6 +153,7 @@ func TestJournalSurveyOperationFailuresKeepTransportDetail(t *testing.T) {
 }
 
 func TestJournalSurveySelectorFailureThroughPublisher(t *testing.T) {
+	t.Parallel()
 	proxy, workspace := mountFixture(t)
 	if err := proxy.journals.initialize(t.Context(), proxy.replayStore, workspace, "nested", "/root/child/nested", ""); err != nil {
 		t.Fatal(err)

@@ -8,6 +8,7 @@ import (
 )
 
 func TestNaturalJournalAnswerCapturesOnceAndFlushes(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, _ := newMekugiTestTransform(t)
 	transform.journalQuestion = "What changed?"
 	answer := map[string]any{"type": "message", "id": "answer-item", "role": "assistant", "phase": "final_answer", "status": "completed",
@@ -42,6 +43,7 @@ func TestNaturalJournalAnswerCapturesOnceAndFlushes(t *testing.T) {
 }
 
 func TestNaturalJournalAnswerRequiresSuccessfulHostFreeCompletion(t *testing.T) {
+	t.Parallel()
 	for _, status := range []string{"failed", "incomplete", "completed"} {
 		t.Run(status, func(t *testing.T) {
 			transform, proxy, _, _ := newMekugiTestTransform(t)
@@ -68,6 +70,7 @@ func TestNaturalJournalAnswerRequiresSuccessfulHostFreeCompletion(t *testing.T) 
 }
 
 func TestNaturalJournalAnswerStreamsWhenTerminalStatusIsAbsent(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, _ := newMekugiTestTransform(t)
 	transform.journalQuestion = "What changed?"
 	answer := map[string]any{"type": "message", "id": "answer-item", "role": "assistant", "phase": "final_answer", "status": "completed",
@@ -98,6 +101,7 @@ func TestNaturalJournalAnswerStreamsWhenTerminalStatusIsAbsent(t *testing.T) {
 }
 
 func TestNaturalJournalAnswerBeyondItemLimitStillCompletes(t *testing.T) {
+	t.Parallel()
 	for _, full := range []bool{false, true} {
 		t.Run(map[bool]string{false: "long-question", true: "full-journal"}[full], func(t *testing.T) {
 			transform, proxy, _, _ := newMekugiTestTransform(t)
@@ -127,6 +131,7 @@ func TestNaturalJournalAnswerBeyondItemLimitStillCompletes(t *testing.T) {
 }
 
 func TestNaturalJournalAnswerWithLocalJournalCall(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 			transform, _, _, _ := newMekugiTestTransform(t)
@@ -163,6 +168,7 @@ func TestNaturalJournalAnswerWithLocalJournalCall(t *testing.T) {
 }
 
 func TestNaturalJournalAnswerCapacityFallbackWithLocalCall(t *testing.T) {
+	t.Parallel()
 	transform, _, _, _ := newMekugiTestTransform(t)
 	transform.journalQuestion = strings.Repeat("Q", maxJournalItemBytes)
 	call := journalFinishCall(`{"op":"add","text":"Milestone"}`)
@@ -175,6 +181,7 @@ func TestNaturalJournalAnswerCapacityFallbackWithLocalCall(t *testing.T) {
 }
 
 func TestNaturalJournalAnswerKeepsStreamedCommentary(t *testing.T) {
+	t.Parallel()
 	transform, _, _, _ := newMekugiTestTransform(t)
 	commentary := map[string]any{"type": "message", "id": "commentary-item", "role": "assistant", "phase": "commentary", "status": "completed",
 		"content": []any{map[string]any{"type": "output_text", "text": "Progress."}}}

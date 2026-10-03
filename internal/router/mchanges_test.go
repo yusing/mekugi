@@ -188,6 +188,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 }
 
 func TestParseChangeRead(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	for _, arguments := range [][]string{
 		{"amber1", "--summary", "--", "first", "--history", "apple2", "first"},
@@ -227,6 +228,7 @@ func TestParseChangeRead(t *testing.T) {
 }
 
 func TestChangePathSpellings(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	for _, test := range []struct {
 		path, recorded string
@@ -256,6 +258,7 @@ func TestChangePathSpellings(t *testing.T) {
 }
 
 func TestChangesSummaryAggregatesEvaluations(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -299,6 +302,7 @@ func TestChangesSummaryAggregatesEvaluations(t *testing.T) {
 }
 
 func TestChangesSummaryRecoveryAndRetiredHistory(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

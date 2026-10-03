@@ -6,10 +6,11 @@ import (
 )
 
 func TestChildCompletionPreservesRootJournalAnswer(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		for _, missing := range []bool{false, true} {
 			t.Run(map[bool]string{false: "json", true: "sse"}[stream]+map[bool]string{false: "/complete", true: "/missing"}[missing], func(t *testing.T) {
-				t.Setenv("TMPDIR", t.TempDir())
+
 				proxy := newManagedMekugiProxy(t)
 				root, _ := prepareActivityTest(t, proxy, "shared-session", "root", "", "/root", nil)
 				child, _ := prepareActivityTest(t, proxy, "shared-session", "child", "root", "/root/worker", nil)

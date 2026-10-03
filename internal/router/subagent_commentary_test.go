@@ -7,7 +7,8 @@ import (
 )
 
 func TestChildCompletionsPreserveTerminalEvents(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	t.Parallel()
+
 	for _, status := range []string{"failed", "incomplete"} {
 		t.Run(status, func(t *testing.T) {
 			metadata := codexTurnMetadata{SubagentKind: "thread_spawn"}

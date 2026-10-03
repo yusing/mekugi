@@ -13,6 +13,7 @@ import (
 )
 
 func TestBackgroundPruneDoesNotBlockSessionStartAndRejectsStaleOwnership(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -82,6 +83,7 @@ func TestBackgroundPruneDoesNotBlockSessionStartAndRejectsStaleOwnership(t *test
 }
 
 func TestBackgroundPruneCommitsBoundedBatchesAndPreservesSnapshotDependencies(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -135,6 +137,7 @@ func TestBackgroundPruneCommitsBoundedBatchesAndPreservesSnapshotDependencies(t 
 }
 
 func TestBackgroundPruneLargeSessionCatalogWriteAmplification(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -206,6 +209,7 @@ func TestBackgroundPruneLargeSessionCatalogWriteAmplification(t *testing.T) {
 }
 
 func TestBackgroundPruneExpiresEmptyCatalogsWithoutRemovingActiveOwnership(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -228,6 +232,7 @@ func TestBackgroundPruneExpiresEmptyCatalogsWithoutRemovingActiveOwnership(t *te
 }
 
 func TestBackgroundPrunePressureIsQueuedWithoutForegroundDeletion(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -273,6 +278,7 @@ func TestBackgroundPrunePressureIsQueuedWithoutForegroundDeletion(t *testing.T) 
 }
 
 func TestBackgroundPruneCancellationAndCrossProcessLease(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

@@ -357,6 +357,7 @@ func TestJournalMountForkPreservesFactsNotSourceChildAuthority(t *testing.T) {
 }
 
 func TestJournalMountFailureDoesNotSuppressTerminalOutcome(t *testing.T) {
+	t.Parallel()
 	for _, native := range []bool{false, true} {
 		for _, oversized := range []bool{false, true} {
 			t.Run(fmt.Sprintf("native=%t/oversized=%t", native, oversized), func(t *testing.T) {
@@ -420,6 +421,7 @@ func TestJournalMountFailureDoesNotSuppressTerminalOutcome(t *testing.T) {
 }
 
 func TestJournalLargeMountedTasksDoNotInflateMainCard(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	defer transform.Close()
 	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, transform.shellThreadID, "", []journalMutation{{Op: "log", Text: new("Own fact")}}); err != nil {

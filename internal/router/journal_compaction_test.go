@@ -38,6 +38,7 @@ func journalCompactionRequest(t *testing.T, workspace, thread string) (parsedRes
 }
 
 func TestJournalCompactionDeliversDurableSummaryWithoutProvider(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	thread := transform.shellThreadID
 	proxy.journalCompaction = "auto"
@@ -94,6 +95,7 @@ func TestJournalCompactionDeliversDurableSummaryWithoutProvider(t *testing.T) {
 }
 
 func TestJournalCompactionFallbackPreservesProviderRequest(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []string{"off", "slice", "missing-thread", "conflicted-header", "conflicted-headers", "ambiguous-workspace", "ambiguous-history", "missing-evidence", "conflicted-journal", "oversize-summary", "record-failure"} {
 		t.Run(scenario, func(t *testing.T) {
 			transform, proxy, _, workspace := newDurableTreeTransform(t)
@@ -159,6 +161,7 @@ func TestJournalCompactionFallbackPreservesProviderRequest(t *testing.T) {
 }
 
 func TestJournalCompactionUsesChangeOnlyEvidence(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	proxy.journalCompaction = "auto"
@@ -191,6 +194,7 @@ func TestJournalCompactionUsesChangeOnlyEvidence(t *testing.T) {
 }
 
 func TestCompactedResponseIDUsesLatestCompleteRecord(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "rollout.jsonl")
 	for _, test := range []struct{ content, want string }{
 		{`{"type":"compacted","payload":{"compaction_response_id":"one"}}`, "one"},
@@ -211,6 +215,7 @@ func TestCompactedResponseIDUsesLatestCompleteRecord(t *testing.T) {
 }
 
 func TestJournalCompactionFlagGate(t *testing.T) {
+	t.Parallel()
 	flags := newRouterFlags(io.Discard)
 	if *flags.journalCompaction != "off" {
 		t.Fatal("auto was enabled without paid evaluation")
@@ -231,6 +236,7 @@ func TestJournalCompactionFlagGate(t *testing.T) {
 }
 
 func TestJournalCompactionPreservesRoutingPolicy(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"off", "auto"} {
 		for _, failed := range []bool{false, true} {
 			name := mode + "/completed"
@@ -279,6 +285,7 @@ func TestJournalCompactionPreservesRoutingPolicy(t *testing.T) {
 }
 
 func TestForwardedCompactionKeepsRequestProjections(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	request, headers := journalCompactionRequest(t, workspace, transform.shellThreadID)
 	// The shared fixture presets access programs and has no markers, which

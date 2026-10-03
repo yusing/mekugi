@@ -1,0 +1,2 @@
+# Rendered fixtures preserve terminal padding and intentional blank final rows.
+**/testdata/snapshots/*.txt whitespace=-blank-at-eol,-blank-at-eof

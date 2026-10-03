@@ -170,6 +170,7 @@ func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
 	t.Parallel()
 	for _, quote := range []string{"double", "template"} {
 		t.Run(quote, func(t *testing.T) {
+			t.Parallel()
 			workspace := t.TempDir()
 			store, err := openMekugiReplayStore(t.TempDir())
 			if err != nil {

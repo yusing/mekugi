@@ -85,6 +85,7 @@ func retentionTestPressureRetry(t *testing.T, store *mekugiReplayStore, ctx cont
 }
 
 func TestStorageRetentionExpiresInactiveSessionsOnly(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -115,6 +116,7 @@ func TestStorageRetentionExpiresInactiveSessionsOnly(t *testing.T) {
 }
 
 func TestStoragePressureRemovesOldestInactiveSessionAcrossWorkspaces(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -142,6 +144,7 @@ func TestStoragePressureRemovesOldestInactiveSessionAcrossWorkspaces(t *testing.
 }
 
 func TestStoragePressurePreservesRunningWorkAndReportsLimit(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -164,6 +167,7 @@ func TestStoragePressurePreservesRunningWorkAndReportsLimit(t *testing.T) {
 }
 
 func TestStorageRetentionForkOwnershipSurvivesRestart(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	store, err := openMekugiReplayStore(directory)
 	if err != nil {
@@ -198,6 +202,7 @@ func TestStorageRetentionForkOwnershipSurvivesRestart(t *testing.T) {
 }
 
 func TestStorageRetentionPreservesReadSourceAndExpiresSessionOutputs(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -233,6 +238,7 @@ func TestStorageRetentionPreservesReadSourceAndExpiresSessionOutputs(t *testing.
 }
 
 func TestStorageRetentionDoesNotFollowSymlinksOrRemoveUnknownFiles(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -256,6 +262,7 @@ func TestStorageRetentionDoesNotFollowSymlinksOrRemoveUnknownFiles(t *testing.T)
 }
 
 func TestStorageCleanupRetiresChangesWithoutReusingIDs(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -289,6 +296,7 @@ func TestStorageCleanupRetiresChangesWithoutReusingIDs(t *testing.T) {
 }
 
 func TestStorageChangeReadDependenciesSurviveOriginalSessionExpiry(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -333,6 +341,7 @@ func TestStorageChangeReadDependenciesSurviveOriginalSessionExpiry(t *testing.T)
 }
 
 func TestStorageAdoptsLegacyJournalReceiptEvenAfterJournalClaim(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -364,6 +373,7 @@ func TestStorageAdoptsLegacyJournalReceiptEvenAfterJournalClaim(t *testing.T) {
 }
 
 func TestStorageCatalogGrowthCountsAgainstQuota(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -392,6 +402,7 @@ func TestStorageCatalogGrowthCountsAgainstQuota(t *testing.T) {
 }
 
 func TestStorageSnapshotLeaseBridgesForkValidationAndAdoption(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -430,6 +441,7 @@ func TestStorageSnapshotLeaseBridgesForkValidationAndAdoption(t *testing.T) {
 }
 
 func TestStorageIndexLimitReclaimsInactiveChanges(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -460,6 +472,7 @@ func TestStorageIndexLimitReclaimsInactiveChanges(t *testing.T) {
 }
 
 func TestStorageAdmissionDoesNotPruneUnrelatedSessions(t *testing.T) {
+	t.Parallel()
 	for _, cleanup := range []bool{false, true} {
 		t.Run(strconv.FormatBool(cleanup), func(t *testing.T) {
 			store, err := openMekugiReplayStore(t.TempDir())
@@ -504,6 +517,7 @@ func TestStorageAdmissionDoesNotPruneUnrelatedSessions(t *testing.T) {
 }
 
 func TestStorageIndexPressurePersistsRetiredAttempts(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -563,6 +577,7 @@ func TestStorageIndexPressurePersistsRetiredAttempts(t *testing.T) {
 }
 
 func TestStorageLegacyJournalPressurePreservesReceipts(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -590,6 +605,7 @@ func TestStorageLegacyJournalPressurePreservesReceipts(t *testing.T) {
 }
 
 func TestStorageDuplicateCursorAdoptsDependencies(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -628,6 +644,7 @@ func TestStorageDuplicateCursorAdoptsDependencies(t *testing.T) {
 }
 
 func TestStoragePreparationProtectsLeaseFromPreviousTerminal(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -674,6 +691,7 @@ func TestStoragePreparationProtectsLeaseFromPreviousTerminal(t *testing.T) {
 }
 
 func TestStorageStaleTerminalPreservesNewerHandoff(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -716,6 +734,7 @@ func TestStorageStaleTerminalPreservesNewerHandoff(t *testing.T) {
 }
 
 func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -765,6 +784,7 @@ func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {
 }
 
 func TestNewRequestDoesNotReadUnrelatedRetentionCatalog(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	store := proxy.replayStore
@@ -783,6 +803,7 @@ func TestNewRequestDoesNotReadUnrelatedRetentionCatalog(t *testing.T) {
 }
 
 func TestBackgroundRetentionReportsUnrelatedCatalogFailure(t *testing.T) {
+	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

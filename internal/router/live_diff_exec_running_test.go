@@ -58,6 +58,7 @@ func waitExecScopePreviewGone(t *testing.T, broker *liveDiffBroker, id string) {
 }
 
 func TestExecScopePreviewFooterDeduplicatesBoundedTargets(t *testing.T) {
+	t.Parallel()
 	observation := execObservation{
 		Class:  execScoped.String(),
 		Reason: "additional VCS targets were unresolved",
@@ -73,6 +74,7 @@ func TestExecScopePreviewFooterDeduplicatesBoundedTargets(t *testing.T) {
 }
 
 func TestExecWatchWithoutCapturedPathsDoesNotCrowdStreamingInput(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -135,6 +137,7 @@ func TestExecPendingScopeParsesCapturedGitCommands(t *testing.T) {
 }
 
 func TestExecPendingScopeIgnoresUncalledFunction(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	command := "cleanup() { git clean -fd; }; printf x > ordinary.txt"
 	observation, observed := captureExecObservation([]execCommandInput{{
@@ -316,6 +319,7 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 }
 
 func TestExecPreviewEditThenTestKeepsKnownTarget(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "source.go")
 	writeTestFile(t, path, "before\n")

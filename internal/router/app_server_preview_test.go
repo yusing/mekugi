@@ -151,6 +151,7 @@ func TestNativeUIPreview(t *testing.T) {
 }
 
 func TestNativeUIPreviewRenderedFrame(t *testing.T) {
+	t.Parallel()
 	p := newNativePreview(t)
 	defer p.close()
 	// These renderer assertions exercise Activity, not automatic pane choice.
@@ -1350,6 +1351,7 @@ func TestNativeUIPreviewSessionReplyIdentity(t *testing.T) {
 }
 
 func TestNativePreviewEditMouseNavigation(t *testing.T) {
+	t.Parallel()
 	for _, activity := range []bool{false, true} {
 		t.Run(fmt.Sprint(activity), func(t *testing.T) {
 			p := newNativePreview(t)

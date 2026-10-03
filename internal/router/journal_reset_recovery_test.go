@@ -9,6 +9,7 @@ import (
 )
 
 func TestJournalSummarySeparatesCompletedAgentFromOpenIntegration(t *testing.T) {
+	t.Parallel()
 	proxy, workspace := mountFixture(t)
 	treeApply(t, proxy, workspace, journalMutation{Op: "add", Kind: "task", Title: new("Inspect changes"), State: new("working"), Agent: "/root/child"})
 	if err := proxy.journals.observeLifecycle(t.Context(), proxy.replayStore, workspace, "child", "done", ""); err != nil {
@@ -34,6 +35,7 @@ func TestJournalSummarySeparatesCompletedAgentFromOpenIntegration(t *testing.T) 
 }
 
 func TestJournalSummaryKeepsLatestAgentOutcomeForOpenIntegration(t *testing.T) {
+	t.Parallel()
 	proxy, workspace := mountFixture(t)
 	treeApply(t, proxy, workspace, journalMutation{Op: "add", Kind: "task", Title: new("Integrate review"), State: new("working"), Agent: "/root/child"})
 	child, _, err := readThreadJournal(proxy.replayStore, workspace, "child")
@@ -60,6 +62,7 @@ func TestJournalSummaryKeepsLatestAgentOutcomeForOpenIntegration(t *testing.T) {
 }
 
 func TestJournalSummaryClosedTasksWithoutBodiesKeepContextNotHistory(t *testing.T) {
+	t.Parallel()
 	for _, state := range []string{"done", "dropped"} {
 		t.Run(state, func(t *testing.T) {
 			transform, proxy, _, workspace := newDurableTreeTransform(t)
@@ -98,6 +101,7 @@ func TestJournalSummaryClosedTasksWithoutBodiesKeepContextNotHistory(t *testing.
 }
 
 func TestJournalSummaryUnconfirmedExecutionsUseRetainedOutcomes(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	ctx, thread := transform.ctx, transform.shellThreadID
 	histories := map[string]mekugiHistory{}
@@ -138,6 +142,7 @@ func TestJournalSummaryUnconfirmedExecutionsUseRetainedOutcomes(t *testing.T) {
 // The reported post-reset source passed journal() directly to allSettled.
 // A barrier proves lowering preserves Promise concurrency, not just its value.
 func TestJournalCodeModePromiseBatchRecovery(t *testing.T) {
+	t.Parallel()
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("Node is required to execute lowered Code Mode")
@@ -175,6 +180,7 @@ const timer=setTimeout(()=>{console.error("batch did not complete");process.exit
 }
 
 func TestJournalCodeModeCallRecognitionLeavesNonCallsAlone(t *testing.T) {
+	t.Parallel()
 	for _, source := range []string{`text("journal({op:'read'})")`, `// journal({op:'read'})`, `tools.journal({op:'read'})`, `const broken = ; journal({op:'read'})`} {
 		calls, err := findCodeModeCommentaryCalls(source)
 		if err != nil || len(calls) != 0 {
@@ -184,6 +190,7 @@ func TestJournalCodeModeCallRecognitionLeavesNonCallsAlone(t *testing.T) {
 }
 
 func TestJournalSummaryDoesNotPromoteDescendantTaskState(t *testing.T) {
+	t.Parallel()
 	proxy, workspace := mountFixture(t)
 	treeApply(t, proxy, workspace, journalMutation{Op: "add", Kind: "task", Title: new("Parent integration"), State: new("working"), Agent: "/root/child"})
 	if err := proxy.journals.initialize(t.Context(), proxy.replayStore, workspace, "grandchild", "/root/child/grandchild", ""); err != nil {
@@ -213,6 +220,7 @@ func TestJournalSummaryDoesNotPromoteDescendantTaskState(t *testing.T) {
 // Completed work keeps an addressable index, not inline result bodies or agent
 // history. The same paths still return the complete retained evidence.
 func TestJournalSummaryIndexesFinishedWorkForOnDemandReads(t *testing.T) {
+	t.Parallel()
 	proxy, workspace := mountFixture(t)
 	treeApply(t, proxy, workspace,
 		journalMutation{Op: "add", Kind: "task", Title: new("Delegate tests"), State: new("working"), Agent: "/root/child"},
@@ -280,6 +288,7 @@ func TestJournalSummaryIndexesFinishedWorkForOnDemandReads(t *testing.T) {
 }
 
 func TestJournalSummaryOpenSubtaskBoundsFolding(t *testing.T) {
+	t.Parallel()
 	proxy, workspace := mountFixture(t)
 	treeApply(t, proxy, workspace,
 		journalMutation{Op: "add", Kind: "task", Title: new("Original approach"), State: new("working")},

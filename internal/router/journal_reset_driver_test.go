@@ -81,6 +81,7 @@ func resetDriverRequireMethods(t *testing.T, wire *appServerTestInput, want ...s
 }
 
 func TestJournalResetDriverCompactionRequiresOwnSuccessfulTurnAndAcknowledgement(t *testing.T) {
+	t.Parallel()
 	d, wire := resetDriverFixture(t, "slice")
 	if d.phase != "countdown" {
 		t.Fatalf("phase %q", d.phase)
@@ -112,6 +113,7 @@ func TestJournalResetDriverCompactionRequiresOwnSuccessfulTurnAndAcknowledgement
 }
 
 func TestJournalResetDriverOffContinuesWithoutCompaction(t *testing.T) {
+	t.Parallel()
 	d, wire := resetDriverFixture(t, "off")
 	if err := d.tick(time.Unix(102, 0)); err != nil {
 		t.Fatal(err)
@@ -120,6 +122,7 @@ func TestJournalResetDriverOffContinuesWithoutCompaction(t *testing.T) {
 }
 
 func TestJournalResetDriverRejectedCompactDoesNotRetry(t *testing.T) {
+	t.Parallel()
 	d, wire := resetDriverFixture(t, "slice")
 	if err := d.tick(time.Unix(102, 0)); err != nil {
 		t.Fatal(err)
@@ -135,6 +138,7 @@ func TestJournalResetDriverRejectedCompactDoesNotRetry(t *testing.T) {
 }
 
 func TestJournalResetDriverRestartOnlyReplaysPendingIntent(t *testing.T) {
+	t.Parallel()
 	for _, phase := range []string{"pending", "armed", "starting"} {
 		t.Run(phase, func(t *testing.T) {
 			d, wire := resetDriverFixture(t, "slice")
@@ -161,6 +165,7 @@ func TestJournalResetDriverRestartOnlyReplaysPendingIntent(t *testing.T) {
 }
 
 func TestJournalResetDriverFailedCompactionNeverStartsContinuation(t *testing.T) {
+	t.Parallel()
 	d, wire := resetDriverFixture(t, "slice")
 	if err := d.tick(time.Unix(102, 0)); err != nil {
 		t.Fatal(err)
@@ -176,6 +181,7 @@ func TestJournalResetDriverFailedCompactionNeverStartsContinuation(t *testing.T)
 }
 
 func TestJournalResetDriverRejectedContinuationDoesNotRetry(t *testing.T) {
+	t.Parallel()
 	d, wire := resetDriverFixture(t, "off")
 	if err := d.tick(time.Unix(102, 0)); err != nil {
 		t.Fatal(err)
@@ -191,6 +197,7 @@ func TestJournalResetDriverRejectedContinuationDoesNotRetry(t *testing.T) {
 }
 
 func TestJournalResetDriverCancelCountdownClearsIntent(t *testing.T) {
+	t.Parallel()
 	d, wire := resetDriverFixture(t, "slice")
 	if err := d.cancel(); err != nil {
 		t.Fatal(err)
@@ -203,6 +210,7 @@ func TestJournalResetDriverCancelCountdownClearsIntent(t *testing.T) {
 }
 
 func TestJournalResetDriverDoesNotReplaceCompactionTurn(t *testing.T) {
+	t.Parallel()
 	d, wire := resetDriverFixture(t, "slice")
 	if err := d.tick(time.Unix(102, 0)); err != nil {
 		t.Fatal(err)
@@ -220,6 +228,7 @@ func TestJournalResetDriverDoesNotReplaceCompactionTurn(t *testing.T) {
 }
 
 func TestJournalResetDriverContinuationStartIdentity(t *testing.T) {
+	t.Parallel()
 	for _, beforeReply := range []bool{false, true} {
 		t.Run(map[bool]string{false: "after reply", true: "before reply"}[beforeReply], func(t *testing.T) {
 			d, _ := resetDriverFixture(t, "off")
@@ -260,6 +269,7 @@ func (resetFailingInput) Write([]byte) (int, error) { return 0, io.ErrClosedPipe
 func (resetFailingInput) Close() error              { return nil }
 
 func TestJournalResetDriverUncertainIntentDoesNotBlockLaterSlice(t *testing.T) {
+	t.Parallel()
 	d, wire := resetDriverFixture(t, "slice")
 	d.client = &appserver.Client{Input: resetFailingInput{}}
 	if err := d.tick(time.Unix(102, 0)); err == nil {
@@ -288,6 +298,7 @@ func TestJournalResetDriverUncertainIntentDoesNotBlockLaterSlice(t *testing.T) {
 }
 
 func TestJournalResetDriverRestoreDropsStaleIntents(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []string{"armed", "later-turn", "slice-started"} {
 		t.Run(scenario, func(t *testing.T) {
 			d, wire := resetDriverFixture(t, "slice")
@@ -323,6 +334,7 @@ func TestJournalResetDriverRestoreDropsStaleIntents(t *testing.T) {
 }
 
 func TestJournalResetDriverUnknownCompactDispatchDisarmsIntent(t *testing.T) {
+	t.Parallel()
 	d, _ := resetDriverFixture(t, "slice")
 	d.client = &appserver.Client{Input: resetFailingInput{}}
 	if err := d.tick(time.Unix(102, 0)); err == nil {
@@ -335,6 +347,7 @@ func TestJournalResetDriverUnknownCompactDispatchDisarmsIntent(t *testing.T) {
 }
 
 func TestJournalCompactionConsumesOnlyCurrentTurnResetIntent(t *testing.T) {
+	t.Parallel()
 	for _, stale := range []bool{false, true} {
 		t.Run(map[bool]string{false: "current", true: "later-turn"}[stale], func(t *testing.T) {
 			d, _ := resetDriverFixture(t, "slice")

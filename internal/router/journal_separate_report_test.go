@@ -133,6 +133,7 @@ func separateReportDeliver(transform *mekugiResponseTransform, frames [][]byte) 
 }
 
 func TestJournalSeparateReportAnswerOnlyPreservesFinal(t *testing.T) {
+	t.Parallel()
 	for _, native := range []bool{false, true} {
 		for _, stream := range []bool{false, true} {
 			t.Run(map[bool]string{false: "inline", true: "native"}[native]+"/"+map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
@@ -170,6 +171,7 @@ func TestJournalSeparateReportAnswerOnlyPreservesFinal(t *testing.T) {
 }
 
 func TestJournalSeparateReportKeepsFinalAndAcknowledgesExactSnapshot(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
 			transform, proxy, _, workspace := newDurableTreeTransform(t)
@@ -229,6 +231,7 @@ func TestJournalSeparateReportKeepsFinalAndAcknowledgesExactSnapshot(t *testing.
 }
 
 func TestJournalSeparateReportEmptyOutcomeRequiresMeaningfulReport(t *testing.T) {
+	t.Parallel()
 	for _, native := range []bool{false, true} {
 		for _, stream := range []bool{false, true} {
 			for _, report := range []bool{false, true} {
@@ -276,6 +279,7 @@ func TestJournalSeparateReportEmptyOutcomeRequiresMeaningfulReport(t *testing.T)
 }
 
 func TestJournalSeparateReportNativeDeliveryAndMountDiagnostic(t *testing.T) {
+	t.Parallel()
 	for _, diagnostic := range []bool{false, true} {
 		for _, stream := range []bool{false, true} {
 			t.Run(map[bool]string{false: "events", true: "mount-diagnostic"}[diagnostic]+"/"+map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
@@ -351,6 +355,7 @@ func TestJournalSeparateReportNativeDeliveryAndMountDiagnostic(t *testing.T) {
 }
 
 func TestJournalSeparateReportAnswerOnlyAfterFreshRouterResumeAndFork(t *testing.T) {
+	t.Parallel()
 	for _, fork := range []bool{false, true} {
 		t.Run(map[bool]string{false: "resume", true: "fork"}[fork], func(t *testing.T) {
 			first, proxy, _, workspace := newDurableTreeTransform(t)
@@ -398,6 +403,7 @@ func TestJournalSeparateReportAnswerOnlyAfterFreshRouterResumeAndFork(t *testing
 }
 
 func TestJournalStreamingReportDoesNotRerenderFinal(t *testing.T) {
+	t.Parallel()
 	for _, phase := range []string{"final_answer", ""} {
 		t.Run(phase, func(t *testing.T) {
 			transform, proxy, _, workspace := newDurableTreeTransform(t)
@@ -484,6 +490,7 @@ func TestJournalStreamingReportDoesNotRerenderFinal(t *testing.T) {
 }
 
 func TestJournalStreamingEarlyReportRemainsPendingOnFailure(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, transform.shellThreadID, "seed", []journalMutation{{Op: "add", Kind: "note", Title: new("Verified change")}}); err != nil {
 		t.Fatal(err)

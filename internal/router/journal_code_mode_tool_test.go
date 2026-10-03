@@ -15,6 +15,7 @@ import (
 )
 
 func TestPublishCommentaryOnceListsThroughAuthenticatedRoute(t *testing.T) {
+	t.Parallel()
 	broker := newCommentaryBroker()
 	broker.journalLister = func(_ context.Context, session, thread, agent string) ([]journalItem, error) {
 		if session != "session" || thread != "thread" || agent != "/root/child" {
@@ -65,6 +66,7 @@ func TestPublishCommentaryOnceListsThroughAuthenticatedRoute(t *testing.T) {
 }
 
 func TestLoweredCodeModeJournalListReturnsItems(t *testing.T) {
+	t.Parallel()
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("Node is required to execute lowered Code Mode")
@@ -96,6 +98,7 @@ const tools={exec_command:async ({cmd})=>{
 }
 
 func TestJournalToolIsAbsentInBothModes(t *testing.T) {
+	t.Parallel()
 	_, _, codeMode, _ := newMekugiTestTransformWithProxy(t, newManagedMekugiProxy(t))
 	_, native := newNativeMekugiTestTransformWithProxy(t, newManagedMekugiProxy(t))
 	for name, request := range map[string]*parsedResponsesRequest{"code mode": codeMode, "native": native} {
@@ -116,6 +119,7 @@ func TestJournalToolIsAbsentInBothModes(t *testing.T) {
 }
 
 func TestCodeModeJournalCompletionAvoidsProviderContinuation(t *testing.T) {
+	t.Parallel()
 	final := map[string]any{"type": "message", "id": "answer-item", "role": "assistant", "phase": "final_answer", "status": "completed",
 		"content": []any{map[string]any{"type": "output_text", "text": "The assigned work is complete."}}}
 	journalCall := func(callID, arguments string) map[string]any {

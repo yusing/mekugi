@@ -151,6 +151,11 @@ binary into the installation path: bare `make` defaults to `install`, which repl
 Before running tests or generating assets, read `CONTEXT-TESTS.md`; before automated live Codex
 tests, also read `CONTEXT-AUTOMATED-TESTS.md`.
 
+Keep the default offline test suite below 30 seconds for a fresh test run
+(`make test TEST_FLAGS=-count=1`) with warm build caches. Measure wall time, not
+cached test results. Optimize fixtures and waits without dropping coverage;
+report cold-build time and optional race or live acceptance checks separately.
+
 User-visible terminal UI changes require rendered-output snapshot coverage, adding a case
 when none covers the changed behavior. Prefer snapshots over unit tests for UI appearance
 assertions, including labels, rows, and layout. Keep unit tests for state, timing, interaction,

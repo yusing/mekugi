@@ -125,6 +125,7 @@ func TestFormatUsageTokens(t *testing.T) {
 }
 
 func TestTokenCostIncludesCompactionAcrossTransports(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name        string
 		stream      bool
@@ -141,7 +142,7 @@ func TestTokenCostIncludesCompactionAcrossTransports(t *testing.T) {
 		{"sse-excess-reasoning", true, "reasoning", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("TMPDIR", t.TempDir())
+
 			proxy := newManagedMekugiProxy(t)
 			for step, model := range []string{"gpt-6-astra", "gpt-5.6-sol"} {
 				requestStream := tc.stream || step == 0 // Compaction requires streaming.

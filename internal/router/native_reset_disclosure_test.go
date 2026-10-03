@@ -14,6 +14,7 @@ import (
 )
 
 func TestUISnapshotNativeResetRecoveryDisclosure(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"live", "restored", "unavailable", "slice-live", "slice-restored", "slice-unavailable"} {
 		t.Run(mode, func(t *testing.T) {
 			transform, proxy, _, workspace := newDurableTreeTransform(t)
@@ -169,6 +170,7 @@ func TestUISnapshotNativeResetRecoveryDisclosure(t *testing.T) {
 }
 
 func TestNativeProviderCompactionHasNoRecoveryDisclosure(t *testing.T) {
+	t.Parallel()
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": u.thread, "turnId": "provider-turn", "item": appServerItem{ID: "provider-item", Type: "contextCompaction"}})
 	feed := u.view.renderFeed(80, 20)
@@ -181,6 +183,7 @@ func TestNativeProviderCompactionHasNoRecoveryDisclosure(t *testing.T) {
 }
 
 func TestNativeResetRecoveryReplayKeepsJournalClickTarget(t *testing.T) {
+	t.Parallel()
 	d, _ := resetDriverFixture(t, "slice")
 	if err := d.tick(d.deadline); err != nil {
 		t.Fatal(err)
@@ -226,6 +229,7 @@ func TestNativeResetRecoveryReplayKeepsJournalClickTarget(t *testing.T) {
 }
 
 func TestNativeResetJournalDisclosureKeepsWorkspaceOwner(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	thread := transform.shellThreadID
 	proxy.journalCompaction = "auto"
@@ -249,6 +253,7 @@ func TestNativeResetJournalDisclosureKeepsWorkspaceOwner(t *testing.T) {
 }
 
 func TestNativeResetDisclosureSurvivesRejectedContinuation(t *testing.T) {
+	t.Parallel()
 	for _, next := range []string{"pending", "dropped", "removed"} {
 		for _, status := range []string{"completed", "interrupted"} {
 			t.Run(next+"/"+status, func(t *testing.T) {

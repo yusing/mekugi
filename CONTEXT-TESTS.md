@@ -22,6 +22,19 @@ does not regenerate assets or install binaries. Prepare missing assets once with
 Choose the narrowest affected owner from the table, then broaden only for effects
 that cross its boundary. A focused pass is not evidence for unselected tests.
 
+`TEST_PARALLEL` defaults to 32 so independent process and PTY fixtures can overlap
+their waits; override it for a constrained machine. Tests that change process-wide
+environment or working directory remain serial. Measure the default suite with
+`make test TEST_FLAGS=-count=1` after warming build caches; report compilation time
+separately from test execution.
+
+For router profiling, use a temporary output directory and pass `-cpuprofile`,
+`-blockprofile`, and `-o` paths through `TEST_FLAGS`. Exclude
+`TestSessionUIReplayCLI` with `-skip='^TestSessionUIReplayCLI$'` only in the profiling
+run: it tests its own CPU profiler, which cannot run alongside Go's test profiler.
+The normal validation run must still include it. Inspect both CPU and block
+profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time.
+
 | Changed owner | Focused check |
 | --- | --- |
 | Root review rendering | `.` |
@@ -106,6 +119,8 @@ layout/text checks, not independent state, interaction, parser, or color checks.
 wrapping, and borders remain exact. Tests fix time, theme, dimensions, and other
 nondeterministic inputs before invoking the actual renderer. Text snapshots do
 not establish color/style correctness or replace interaction and PTY acceptance.
+Repository Git attributes suppress trailing-space and final-blank-row warnings
+only for these text fixtures; `git diff --check` still checks ordinary sources.
 
 A missing or changed fixture fails the test and writes a sibling `.txt.new`
 candidate with a unified diff in the failure output. The reviewed fixture stays

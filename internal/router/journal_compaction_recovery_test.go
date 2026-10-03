@@ -81,6 +81,7 @@ func requireCompactionRecovery(t *testing.T, store *mekugiReplayStore, workspace
 }
 
 func TestJournalCompactionRecoveryReadsCompletedHistoryOnDemand(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	ctx, thread := transform.ctx, transform.shellThreadID
 	proxy.journalCompaction = "auto"
@@ -125,6 +126,7 @@ func TestJournalCompactionRecoveryReadsCompletedHistoryOnDemand(t *testing.T) {
 }
 
 func TestJournalCompactionRecoveryExactDeliveredSummaryAndRestart(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	thread := transform.shellThreadID
 	proxy.journalCompaction = "auto"
@@ -177,6 +179,7 @@ func TestJournalCompactionRecoveryExactDeliveredSummaryAndRestart(t *testing.T) 
 }
 
 func TestJournalCompactionRecoveryTurnDisclosureRejectsAmbiguousReceipts(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	thread := transform.shellThreadID
 	proxy.journalCompaction = "auto"
@@ -200,6 +203,7 @@ func TestJournalCompactionRecoveryTurnDisclosureRejectsAmbiguousReceipts(t *test
 }
 
 func TestJournalCompactionRecoveryUnavailableLegacyAndMissing(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []string{"missing", "legacy-item", "unbound-legacy-turn"} {
 		t.Run(scenario, func(t *testing.T) {
 			transform, proxy, _, workspace := newDurableTreeTransform(t)
@@ -233,6 +237,7 @@ func TestJournalCompactionRecoveryUnavailableLegacyAndMissing(t *testing.T) {
 }
 
 func TestJournalCompactionRecoveryRetainedContentUnavailableOrCorrupt(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []string{"missing", "corrupt-json", "foreign-identity"} {
 		t.Run(scenario, func(t *testing.T) {
 			transform, proxy, _, workspace := newDurableTreeTransform(t)

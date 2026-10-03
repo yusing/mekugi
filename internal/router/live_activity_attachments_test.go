@@ -103,6 +103,7 @@ func TestLiveActivityAttachmentLookalikes(t *testing.T) {
 }
 
 func TestLiveActivityAttachmentDialogs(t *testing.T) {
+	t.Parallel()
 	for _, child := range []bool{false, true} {
 		for _, body := range []string{"", "one", "one\n\nlast\n", "\x1b[2Jtab\tvalue\r\x07\n", strings.Repeat("界", fileAttachmentChunk)} {
 			for _, skill := range []bool{false, true} {

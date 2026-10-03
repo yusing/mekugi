@@ -21,6 +21,7 @@ import (
 // this one. A terminal-only dump therefore times out rather than passing on the
 // final accumulated output.
 func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
+	t.Parallel()
 	for _, upstreamWS := range []bool{false, true} {
 		for _, downstreamWS := range []bool{false, true} {
 			// Native downstream WebSocket sessions require an upstream WebSocket.
@@ -216,6 +217,7 @@ func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
 }
 
 func TestFinalAnswerStreamTerminalFinishesPartialLifecycle(t *testing.T) {
+	t.Parallel()
 	for _, child := range []bool{false, true} {
 		t.Run(map[bool]string{false: "main", true: "child"}[child], func(t *testing.T) {
 			transform, _, _, _ := newMekugiTestTransform(t)
@@ -267,6 +269,7 @@ func TestFinalAnswerStreamTerminalFinishesPartialLifecycle(t *testing.T) {
 }
 
 func TestFinalAnswerStreamKeepsLateProgressInTerminalHistory(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _ := newSubagentCommentaryTestTransform(t, nil)
 	transform.journalActive = false
 	token := testRuntimeCommentaryCall(t, transform, "late-progress")

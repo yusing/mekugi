@@ -71,6 +71,7 @@ func TestLiveDiffNativeExecPythonStreamsTargetDiff(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ openRead, computed bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
 		t.Run(fmt.Sprintf("openRead=%v/computed=%v", tc.openRead, tc.computed), func(t *testing.T) {
+			t.Parallel()
 			workspace := t.TempDir()
 			target := filepath.Join(workspace, "target.txt")
 			if err := os.WriteFile(target, []byte("old old\n"), 0o600); err != nil {

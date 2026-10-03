@@ -12,6 +12,7 @@ import (
 )
 
 func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
+	t.Parallel()
 	workspace := t.TempDir()
 	writeTestFile(t, filepath.Join(workspace, "boundary-python-target.go"), previewFiles["internal/pane/launch.go"])
 	broker := newLiveDiffBroker(t.Context())

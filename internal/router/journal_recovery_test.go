@@ -18,6 +18,7 @@ import (
 )
 
 func TestJournalTaskRecoveryAfterOutcomeAndRestart(t *testing.T) {
+	t.Parallel()
 	proxy, workspace := mountFixture(t)
 	treeApply(t, proxy, workspace, journalMutation{Op: "plan", Tasks: []jsontext.Value{
 		jsontext.Value(`{"title":"Completed one","state":"done"}`),
@@ -105,6 +106,7 @@ func TestJournalTaskRecoveryAfterOutcomeAndRestart(t *testing.T) {
 }
 
 func TestJournalCompactReadAuthenticatedTransports(t *testing.T) {
+	t.Parallel()
 	transform, proxy, _, _ := newDurableTreeTransform(t)
 	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID, "", []journalMutation{
 		{Op: "add", Title: new("Not a task")},
@@ -159,6 +161,7 @@ func TestJournalCompactReadAuthenticatedTransports(t *testing.T) {
 }
 
 func TestCodeModeJournalPlanPathsAreVisibleAndReturned(t *testing.T) {
+	t.Parallel()
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("Node is required to execute lowered Code Mode")

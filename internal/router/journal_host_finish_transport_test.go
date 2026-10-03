@@ -11,6 +11,7 @@ import (
 )
 
 func TestJournalHelperFinishBatchPersistsOnlyAcceptedReceipt(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name      string
 		mutations []journalMutation
@@ -62,6 +63,7 @@ func TestJournalHelperFinishBatchPersistsOnlyAcceptedReceipt(t *testing.T) {
 }
 
 func TestJournalNativeHostFinishSkipsProviderOnlyAfterSuccess(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		for _, test := range []struct {
 			name, result string

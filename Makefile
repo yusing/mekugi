@@ -5,6 +5,8 @@ GO ?= go
 TEST_PACKAGES ?= ./...
 TEST_RUN ?= .
 TEST_FLAGS ?=
+# Process/PTY fixtures spend most of their time waiting, not using a CPU.
+TEST_PARALLEL ?= 32
 SNAPSHOT ?= ^TestUISnapshot
 SNAPSHOT_PACKAGES ?= ./internal/ui/... ./internal/router ./cmd/mekugi
 
@@ -25,7 +27,7 @@ preview-native-ui:
 
 # Select the changed owner without rebuilding assets or disabling Go's test cache.
 test:
-	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(TEST_PACKAGES) -run '$(value TEST_RUN)' $(TEST_FLAGS)
+	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(TEST_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
 
 # Offline rendered-output regression checks. Mismatches leave .txt.new candidates.
 test-ui-snapshots:

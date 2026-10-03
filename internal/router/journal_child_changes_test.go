@@ -15,6 +15,7 @@ import (
 )
 
 func TestJournalChildCompletionChangesAfterRequestForward(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
 	var err error
 	proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
@@ -79,6 +80,7 @@ func TestJournalChildCompletionChangesAfterRequestForward(t *testing.T) {
 }
 
 func TestJournalChildCompletionIncludesOwnChanges(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -150,6 +152,7 @@ func TestJournalChildCompletionIncludesOwnChanges(t *testing.T) {
 }
 
 func TestJournalChildCompletionPartiallyRetiredForeignChangeUnavailable(t *testing.T) {
+	t.Parallel()
 	for _, withOwn := range []bool{false, true} {
 		t.Run(map[bool]string{false: "foreign-only", true: "with-owned"}[withOwn], func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
@@ -210,6 +213,7 @@ func TestJournalChildCompletionPartiallyRetiredForeignChangeUnavailable(t *testi
 }
 
 func TestJournalChildCompletionChangesEmptyUnavailableAndRestart(t *testing.T) {
+	t.Parallel()
 	t.Run("empty", func(t *testing.T) {
 		proxy := newManagedMekugiProxy(t)
 		var err error
@@ -292,6 +296,7 @@ func TestJournalChildCompletionChangesEmptyUnavailableAndRestart(t *testing.T) {
 }
 
 func TestJournalChildCompletionDoesNotAdvertiseScopeOnlyDiagnostics(t *testing.T) {
+	t.Parallel()
 	proxy := newManagedMekugiProxy(t)
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -323,6 +328,7 @@ func TestJournalChildCompletionDoesNotAdvertiseScopeOnlyDiagnostics(t *testing.T
 }
 
 func TestUISnapshotJournalChildCaptureFileDiagnostics(t *testing.T) {
+	t.Parallel()
 	for _, mixed := range []bool{false, true} {
 		name := "gaps"
 		if mixed {

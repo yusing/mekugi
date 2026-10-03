@@ -19,6 +19,7 @@ import (
 )
 
 func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
+	t.Parallel()
 	for _, edit := range []string{"gofmt -w source.go", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go"} {
 		t.Run(filepath.Base(strings.Fields(edit)[0]), func(t *testing.T) {
 			shell := newExecTrackShell(t)
@@ -174,6 +175,7 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 }
 
 func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
+	t.Parallel()
 	const script = "sed -i 's/a/b/' a; go test ./...; sed -i 's/b/c/' a"
 	for _, tc := range []struct {
 		name                                                                 string
@@ -214,6 +216,7 @@ func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
 }
 
 func TestAppServerTrackedEditFailureAndSkip(t *testing.T) {
+	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
 	script := "sed -i 's/a/b/' missing && sed -i 's/b/c/' skipped"
 	item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
@@ -230,6 +233,7 @@ func TestAppServerTrackedEditFailureAndSkip(t *testing.T) {
 }
 
 func TestAppServerTrackedSkippedEditBeforeHostExit(t *testing.T) {
+	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
 	script := "false && sed -i 's/a/b/' skipped; go test ./..."
 	tracking := newExecPreviewTrack(hub, "main", "turn", []execCommandInput{{Command: script}})
@@ -249,6 +253,7 @@ func TestAppServerTrackedSkippedEditBeforeHostExit(t *testing.T) {
 }
 
 func TestExecTrackRapidSegmentsKeepOwnOutput(t *testing.T) {
+	t.Parallel()
 	shell := newExecTrackShell(t)
 	var script strings.Builder
 	for i := range 128 {
@@ -269,6 +274,7 @@ func TestExecTrackRapidSegmentsKeepOwnOutput(t *testing.T) {
 }
 
 func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
+	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "source.go")
@@ -333,6 +339,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 }
 
 func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
+	t.Parallel()
 	for _, script := range []string{"gofmt -w source.go", "sed -i 's/A/B/' source.go", "cp", "install"} {
 		t.Run(strings.Fields(script)[0], func(t *testing.T) {
 			u, hub := newTrackedAppServerUI(t)
@@ -404,6 +411,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 }
 
 func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
+	t.Parallel()
 	for _, lateReport := range []bool{false, true} {
 		t.Run(fmt.Sprintf("late_report_%v", lateReport), func(t *testing.T) {
 			u, hub := newTrackedAppServerUI(t)
@@ -475,6 +483,7 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 }
 
 func TestExecTrackDeclinesAmbiguousHostIdentity(t *testing.T) {
+	t.Parallel()
 	const script = "sed -i 's/a/b/' a; go test ./..."
 	hub := &execTrackHub{changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack)}
 	for _, id := range []string{"one", "two"} {
@@ -491,6 +500,7 @@ func TestExecTrackDeclinesAmbiguousHostIdentity(t *testing.T) {
 }
 
 func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
+	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
 	workspace := t.TempDir()
 	auto, stop := newAutoLiveDiff(t.Context(), "")

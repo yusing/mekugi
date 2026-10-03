@@ -78,6 +78,7 @@ func assertViewportSyntaxEager(t *testing.T, lazy, eager *liveActivityView, widt
 }
 
 func TestLiveActivityViewportSyntaxMatchesEager(t *testing.T) {
+	t.Parallel()
 	for _, main := range []bool{false, true} {
 		t.Run(fmt.Sprintf("Main=%t", main), func(t *testing.T) {
 			lazy, eager := viewportSyntaxView(main, "go"), viewportSyntaxView(main, "go")
@@ -270,6 +271,7 @@ func TestLiveActivityViewportSyntaxGroupedBlocks(t *testing.T) {
 }
 
 func TestUISnapshotLiveActivityViewportSyntaxRepaint(t *testing.T) {
+	t.Parallel()
 	for _, main := range []bool{false, true} {
 		t.Run(fmt.Sprintf("Main=%t", main), func(t *testing.T) {
 			v := viewportSyntaxView(main, "go")
@@ -298,6 +300,7 @@ func TestUISnapshotLiveActivityViewportSyntaxRepaint(t *testing.T) {
 }
 
 func TestLiveActivityViewportSyntaxScrollEveryRow(t *testing.T) {
+	t.Parallel()
 	for _, main := range []bool{false, true} {
 		t.Run(fmt.Sprintf("Main=%t", main), func(t *testing.T) {
 			build := func() *liveActivityView {

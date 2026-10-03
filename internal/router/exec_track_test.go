@@ -109,6 +109,7 @@ func (s *execTrackShell) awaitView(t *testing.T, key [3]string) execTrackView {
 }
 
 func TestExecTrackReportsEachSegmentWithoutChangingTheCommand(t *testing.T) {
+	t.Parallel()
 	shell := newExecTrackShell(t)
 	for i, tc := range []struct {
 		script   string
@@ -190,6 +191,7 @@ func TestExecTrackReportsEachSegmentWithoutChangingTheCommand(t *testing.T) {
 // negated failures. Output printed before a fatal error shows that the
 // script ran once.
 func TestExecTrackMatchesPlainBash(t *testing.T) {
+	t.Parallel()
 	shell := newExecTrackShell(t)
 	for i, script := range []string{
 		"nosuchcmd; echo after",
@@ -221,6 +223,7 @@ func TestExecTrackMatchesPlainBash(t *testing.T) {
 }
 
 func TestExecTrackRunsUnmatchedScriptsUntracked(t *testing.T) {
+	t.Parallel()
 	shell := newExecTrackShell(t)
 	script := "echo one; echo two"
 	tracked := runExecTrackShell(t, shell.env, script)
@@ -233,6 +236,7 @@ func TestExecTrackRunsUnmatchedScriptsUntracked(t *testing.T) {
 }
 
 func TestExecTrackMatchesDelayedHostStart(t *testing.T) {
+	t.Parallel()
 	shell := newExecTrackShell(t)
 	script := "echo first; false && echo never; echo last"
 	key := [3]string{"thread", "turn", "delayed"}
@@ -262,6 +266,7 @@ func TestExecTrackMatchesDelayedHostStart(t *testing.T) {
 }
 
 func TestExecTrackLeavesNestedShellsAlone(t *testing.T) {
+	t.Parallel()
 	shell := newExecTrackShell(t)
 	key := [3]string{"thread", "turn", "item"}
 	script := "echo outer; bash -c 'echo inner; echo nested'"
@@ -357,6 +362,7 @@ func awaitMain(t *testing.T, u *appServerUI, want string) string {
 }
 
 func TestAppServerTrackedCommandShowsEachSegment(t *testing.T) {
+	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
 	script := "pwd && ls && cat a b"
 	command := "/usr/bin/bash -lc " + quoteShellWord(script)
@@ -390,6 +396,7 @@ func TestAppServerTrackedCommandShowsEachSegment(t *testing.T) {
 }
 
 func TestAppServerTrackedCommandShowsSkippedSegments(t *testing.T) {
+	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
 	script := "false && echo never"
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
@@ -409,6 +416,7 @@ func TestAppServerTrackedCommandShowsSkippedSegments(t *testing.T) {
 }
 
 func TestAppServerIncompleteReportFallsBackToHostOutput(t *testing.T) {
+	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
 	script := "echo a; cat b"
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
@@ -439,6 +447,7 @@ func TestAppServerIncompleteReportFallsBackToHostOutput(t *testing.T) {
 // A helper that declines after the match, as when the router's reply came
 // too late, leaves the shell to run the script untracked.
 func TestAppServerEarlyEndedReportShowsHostOutputLive(t *testing.T) {
+	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
 	script := "echo a; echo b"
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
@@ -466,6 +475,7 @@ func newTrackedAppServerUI(t *testing.T) (*appServerUI, *execTrackHub) {
 // Codex's default shell snapshot wraps each command in a shell that sources
 // the snapshot and re-executes the command shell with the original script.
 func TestExecTrackTracksTheCommandInsideCodexSnapshotWrapper(t *testing.T) {
+	t.Parallel()
 	shell := newExecTrackShell(t)
 	bash, err := exec.LookPath("bash")
 	if err != nil {
@@ -494,6 +504,7 @@ func TestExecTrackTracksTheCommandInsideCodexSnapshotWrapper(t *testing.T) {
 // A terminal cannot be relayed without changing what its programs detect,
 // so terminal commands report statuses and keep their output in place.
 func TestExecTrackReportsTerminalCommandStatusOnly(t *testing.T) {
+	t.Parallel()
 	shell := newExecTrackShell(t)
 	script := "test -t 1 && echo tty; false"
 	key := [3]string{"thread", "turn", "tty"}
@@ -517,6 +528,7 @@ func TestExecTrackReportsTerminalCommandStatusOnly(t *testing.T) {
 }
 
 func TestAppServerTrackedMChangesShowsRichRows(t *testing.T) {
+	t.Parallel()
 	for _, script := range []string{"echo before && mchanges --list --max-tokens 800", "echo before; mchanges --list --max-tokens 800"} {
 		t.Run(script, func(t *testing.T) {
 			u, hub := newTrackedAppServerUI(t)

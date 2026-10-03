@@ -8,6 +8,7 @@ import (
 )
 
 func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
+	t.Parallel()
 	shell := newExecTrackShell(t)
 	workspace, directory := t.TempDir(), t.TempDir()
 	store, err := openMekugiReplayStore(directory)
@@ -83,6 +84,7 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 }
 
 func TestActivityTimingDoesNotBorrowHostTotalWithoutMessageEvidence(t *testing.T) {
+	t.Parallel()
 	entry := activityPaneEntry{Kind: "tool", Text: "Run `sleep .04`\n\nRun `sleep .12`", Observed: time.Now().Add(-5 * time.Second), native: &liveActivityNativeItem{command: "sleep .04; sleep .12", duration: 5 * time.Second, segments: []commandSegment{{source: "sleep .04", text: "Run `sleep .04`"}, {source: "sleep .12", text: "Run `sleep .12`"}}}}
 	for _, block := range parseLiveActivity(entry) {
 		if block.Duration != 0 || !block.Started.IsZero() || !block.Ended.IsZero() {
@@ -92,6 +94,7 @@ func TestActivityTimingDoesNotBorrowHostTotalWithoutMessageEvidence(t *testing.T
 }
 
 func TestActivityTimingKeepsSeparateClassifiedReadCommands(t *testing.T) {
+	t.Parallel()
 	start := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
 	first := execsegment.Timing{Started: start, Ended: start.Add(8 * time.Millisecond), ElapsedNS: int64(8 * time.Millisecond)}
 	second := execsegment.Timing{Started: start.Add(10 * time.Millisecond), Ended: start.Add(31 * time.Millisecond), ElapsedNS: int64(21 * time.Millisecond)}
@@ -106,6 +109,7 @@ func TestActivityTimingKeepsSeparateClassifiedReadCommands(t *testing.T) {
 }
 
 func TestActivityTimingExitAndErrexitBoundaries(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, script string
 		ending       int
@@ -136,6 +140,7 @@ func TestActivityTimingExitAndErrexitBoundaries(t *testing.T) {
 }
 
 func TestActivityTimingLiveEvidenceDoesNotInheritHostTotal(t *testing.T) {
+	t.Parallel()
 	start := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
 	track := &execTrack{segments: []execTrackSegment{{source: "sleep .01"}, {source: "sleep .02"}}}
 	track.apply(execsegment.Message{Type: execsegment.Begin, Index: 0, Timing: execsegment.Timing{Started: start}})
