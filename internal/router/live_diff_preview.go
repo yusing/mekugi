@@ -42,7 +42,7 @@ func boundLiveDiffPreview(preview diffview.Preview) diffview.Preview {
 	if len(preview.Files) != 0 {
 		var tail string
 		for index := len(preview.Files) - 1; index >= 0 && len(tail) < 16<<10; index-- {
-			diff := preview.Files[index].UnifiedDiff()
+			diff := preview.Files[index].UnifiedDiffForWorkspace(preview.Workspace)
 			if len(diff) > 16<<10 {
 				diff = diff[len(diff)-(16<<10):]
 			}

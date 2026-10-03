@@ -389,7 +389,7 @@ func liveDiffPreviewFocus(before, after []PreviewRow) int {
 
 func (p *PreviewView) prepare(now time.Time) error {
 	current := p.Current
-	if p.Rendered.ID == current.ID && p.Rendered.Input == current.Input && slices.Equal(p.Rendered.Files, current.Files) {
+	if p.Rendered.ID == current.ID && p.Rendered.Input == current.Input && p.Rendered.DiffText == current.DiffText && slices.Equal(p.Rendered.Files, current.Files) {
 		return nil
 	}
 	file := min(p.file, max(0, len(current.Files)-1))
@@ -401,12 +401,14 @@ func (p *PreviewView) prepare(now time.Time) error {
 	var source []PreviewRow
 	var err error
 	if current.Input != "" {
-		for i, line := range strings.Split(strings.TrimSuffix(current.Input, "\n"), "\n") {
-			number := i + 1
-			if current.DiffText {
-				number = 0 // A clipped unified-diff row is not a source coordinate.
+		if current.DiffText {
+			for _, row := range livediff.DiffRows(strings.TrimSuffix(current.Input, "\n")) {
+				source = append(source, PreviewRow{Kind: row.Kind, Text: row.Text + "\n"})
 			}
-			source = append(source, PreviewRow{number, ' ', line + "\n"})
+		} else {
+			for i, line := range strings.Split(strings.TrimSuffix(current.Input, "\n"), "\n") {
+				source = append(source, PreviewRow{i + 1, ' ', line + "\n"})
+			}
 		}
 	}
 	if len(current.Files) > 0 {
@@ -556,20 +558,40 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 	}
 	var before, after []string
 	var err error
-	if p.Current.Input != "" {
-		// Raw diff tails and pending scope lists are plain text.
-		for _, row := range source {
-			after = append(after, livediff.Safe(strings.TrimSuffix(row.Text, "\n"), false))
+	if p.Current.Input != "" && p.Current.DiffText && len(p.Current.Files) == 0 {
+		// Input is a bounded unified tail. Parse its headers before selecting
+		// the window so an off-screen header still selects the source lexer.
+		colored, colorErr := p.renderer.ColorDiffRows(ctx, theme, "", livediff.Safe(strings.TrimSuffix(p.Current.Input, "\n"), false))
+		if colorErr != nil {
+			return nil, colorErr
 		}
-		before = after
+		copy(source, colored[colorStart:end])
+		for i := range source {
+			source[i].Text = livediff.Safe(source[i].Text, true)
+			if source[i].Kind == 0 {
+				if strings.HasPrefix(source[i].Text, "--- ") || strings.HasPrefix(source[i].Text, "+++ ") {
+					source[i].Text = livediff.Subtle + source[i].Text[:4] + livediff.SubtleReset + activityui.Path(source[i].Text[4:])
+				} else {
+					source[i].Text = livediff.Subtle + source[i].Text + livediff.SubtleReset
+				}
+			}
+		}
 	} else {
-		before, after, err = p.renderer.ColorHunk(ctx, theme, review, source)
+		if p.Current.Input != "" && len(p.Current.Files) == 0 {
+			// Pending scope lists are plain text, not diffs.
+			for _, row := range source {
+				after = append(after, livediff.Safe(strings.TrimSuffix(row.Text, "\n"), false))
+			}
+			before = after
+		} else {
+			before, after, err = p.renderer.ColorHunk(ctx, theme, review, source)
+		}
+		if err != nil {
+			return nil, err
+		}
+		livediff.AlignHunkColors(source, before, after)
 	}
 
-	if err != nil {
-		return nil, err
-	}
-	livediff.AlignHunkColors(source, before, after)
 	for i := colorStart; i < end && len(lines) <= rows; i++ {
 		row := p.Source[i]
 		text := source[i-colorStart].Text
@@ -610,7 +632,11 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 				progress = liveDiffPreviewFadeFloor + (1-liveDiffPreviewFadeFloor)*liveDiffPreviewEase(progress)
 				fragment = livediff.Fade(fragment, progress, theme.TextCanvas(row.Kind, motion.Canvas))
 			}
-			line := livediff.Gutter(i == p.Focus, theme) + livediff.SourceLine(theme, width, prefix, fragment, row.Kind)
+			kind := row.Kind
+			if kind == 0 {
+				kind = ' ' // Metadata has no source marker.
+			}
+			line := livediff.Gutter(i == p.Focus, theme) + livediff.SourceLine(theme, width, prefix, fragment, kind)
 			lines = append(lines, ansi.Truncate(line, max(0, width-1), ""))
 		}
 	}

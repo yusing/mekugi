@@ -1,0 +1,7 @@
+  main · ◐ edit · observed so far ·
+   +++ "src/main.go"
+   @@ -1,3 +1,3 @@
+   package main
+  -const label = "old"             
+▎ +const label = "a long replacemen
+▎ +t that wraps in the preview"    

@@ -85,6 +85,8 @@ func TestUISnapshotDiffChanges(t *testing.T) {
 func TestUISnapshotDiffPreview(t *testing.T) {
 	edit := Preview{ID: "edit", Workspace: "/workspace", Caller: "/root/worker", Status: PreviewEdit,
 		Files: []mekugi.ReviewFile{mekugi.RenderReviewFile("/workspace/src/main.go", "/workspace/src/main.go", "package main\n\nconst label = \"old\"\n", "package main\n\nconst label = \"a long replacement that wraps inside a narrow preview\"\n")}}
+	tail := Preview{ID: "tail", Workspace: "/workspace", Caller: "/root", Status: PreviewRunning,
+		Input: "+++ \"src/main.go\"\n@@ -1,3 +1,3 @@\n package main\n-const label = \"old\"\n+const label = \"a long replacement that wraps in the preview\"\n", DiffText: true, Truncated: true}
 	pending := Preview{ID: "pending", Workspace: "/workspace", Caller: "/root", Status: PreviewPending,
 		Input: "src/main.go\ndocs/guide.md", Footer: "may write · 2 scoped paths"}
 	completed := edit
@@ -96,6 +98,8 @@ func TestUISnapshotDiffPreview(t *testing.T) {
 		previews      []Preview
 		width, height int
 	}{
+		{"preview_diff_tail", []Preview{tail}, 72, 8},
+		{"preview_diff_tail_wrapped", []Preview{tail}, 36, 10},
 		{"preview_edit_wrapped", []Preview{edit}, 36, 8},
 		{"preview_completed", []Preview{completed}, 72, 7},
 		{"preview_observed", []Preview{observed}, 72, 7},

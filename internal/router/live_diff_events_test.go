@@ -531,3 +531,19 @@ func TestLiveDiffTurnEventValidation(t *testing.T) {
 		t.Fatal("accepted turn event without revision")
 	}
 }
+
+func TestLiveDiffBoundedPreviewWorkspacePaths(t *testing.T) {
+	for _, path := range []string{"/workspace/src/main.go", "/outside/main.go"} {
+		preview := boundLiveDiffPreview(diffview.Preview{Workspace: "/workspace", Files: []mekugi.ReviewFile{
+			mekugi.RenderReviewFile("", "/workspace/large.txt", "", strings.Repeat("padding\n", 10000)),
+			mekugi.RenderReviewFile(path, path, "const x = 1\n", "const x = 2\n"),
+		}})
+		want := path
+		if path == "/workspace/src/main.go" {
+			want = "src/main.go"
+		}
+		if !preview.DiffText || !strings.Contains(preview.Input, "+++ \""+want+"\"") || strings.Contains(preview.Input, "/workspace/") {
+			t.Fatalf("bad display paths: %q", preview.Input)
+		}
+	}
+}

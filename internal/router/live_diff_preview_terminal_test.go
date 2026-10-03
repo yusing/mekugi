@@ -16,6 +16,7 @@ import (
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 // The UI harness consumes complete terminal frames, not publication callbacks.
@@ -374,6 +375,40 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 	diff := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
 	if !strings.Contains(diff, "v stream") {
 		t.Fatal("stream updates changed the paused diff mode")
+	}
+	ui.quit(t)
+}
+
+func TestLiveDiffTerminalBoundedDiffPresentation(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "Diff preview") })
+	path := filepath.Join(workspace, "src", "main.go")
+	before := "package main\nconst liveTail = 1\n"
+	after := strings.Replace(before, "liveTail = 1", "liveTail = 2", 1)
+	preview := boundLiveDiffPreview(diffview.Preview{ID: "tail", Workspace: workspace, Thread: "thread", Caller: "/root", Status: diffview.PreviewRunning, Files: []mekugi.ReviewFile{mekugi.RenderReviewFile("", filepath.Join(workspace, "large.txt"), "", strings.Repeat("padding\n", 10000)), mekugi.RenderReviewFile(path, path, before, after)}})
+	if !preview.DiffText || !preview.Truncated || len(preview.Files) != 0 {
+		t.Fatalf("not a bounded diff tail: %+v", preview)
+	}
+	broker.publishPreview(preview, false)
+	frame := ui.frame(t, func(frame string) bool {
+		return strings.Contains(ansi.Strip(frame), "liveTail = 2") && strings.Contains(frame, livediff.DarkTheme.RowBackground('+')) && strings.Contains(frame, livediff.DarkTheme.Foreground(chroma.KeywordDeclaration))
+	})
+	plain := ansi.Strip(frame)
+	if strings.Contains(plain, workspace) || !strings.Contains(plain, "src/main.go") {
+		t.Fatalf("header path not shortened: %q", plain)
+	}
+	if !strings.Contains(frame, livediff.DarkTheme.RowBackground('-')) {
+		t.Fatal("missing deletion fill")
+	}
+	if !strings.Contains(frame, livediff.DarkTheme.Foreground(chroma.KeywordDeclaration)) {
+		t.Fatal("missing source syntax")
 	}
 	ui.quit(t)
 }
