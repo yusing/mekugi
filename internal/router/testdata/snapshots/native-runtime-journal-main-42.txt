@@ -1,0 +1,32 @@
+┌ 1 Main ────────────────────────────────┐
+│◆ journal                      12:00:00 │
+││ ◐ /1 Validate native journal ·        │
+││   started                             │
+││ ◆ Receipts persist before             │
+││   publication.                        │
+│                                        │
+│● main                         12:00:00 │
+│┃ Native tools retain execution         │
+│┃ authority.                            │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│                                        │
+│◐ /1 Validate native journal …  0/1 done│
+│                                        │
+│╭─ Ready ──────────────────────────────╮│
+││ ❯                                    ││
+│╰────────────────────── claude-sonnet ─╯│
+└────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal

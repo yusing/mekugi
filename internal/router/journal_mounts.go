@@ -312,6 +312,10 @@ func (s *journalStore) publishMountedViews(store *mekugiReplayStore, workspace, 
 }
 
 func (s *journalStore) observeLifecycle(ctx context.Context, store *mekugiReplayStore, workspace, thread, state, reason string) error {
+	return s.observeLifecycleReceipt(ctx, store, workspace, thread, state, reason, "")
+}
+
+func (s *journalStore) observeLifecycleReceipt(ctx context.Context, store *mekugiReplayStore, workspace, thread, state, reason, receipt string) error {
 	if state != "working" && state != "done" && state != "blocked" {
 		return fmt.Errorf("invalid journal lifecycle state: %s", state)
 	}
@@ -319,8 +323,21 @@ func (s *journalStore) observeLifecycle(ctx context.Context, store *mekugiReplay
 		if !exists || !j.IdentityKnown || j.IdentityConflicted {
 			return errJournalUnchanged
 		}
+		if receipt != "" {
+			digest := state + "\x00" + reason
+			if prior, ok := j.Receipts[receipt]; ok {
+				if prior.Digest != digest {
+					return errors.New("native lifecycle receipt changed")
+				}
+				return errJournalUnchanged
+			}
+			j.Receipts[receipt] = journalReceipt{Digest: digest}
+		}
 		if j.LifecycleState == state && j.LifecycleReason == reason && j.WorkPaused == (state != "working") && (state != "working" || !j.hasPausedWorkTimer()) {
-			return errJournalUnchanged
+			if receipt == "" {
+				return errJournalUnchanged
+			}
+			return nil
 		}
 		now := time.Now().UTC()
 		j.setWorkTimers(state == "working", now)

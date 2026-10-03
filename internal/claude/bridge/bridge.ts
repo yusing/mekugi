@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { realpath } from 'node:fs/promises';
 import { companion, type CompanionConfig } from './companion.js';
+import { journalServer } from './journal.js';
 import { readFileSync, closeSync } from 'node:fs';
 import { setSettings, type SettingsCommand } from './controls.js';
 
@@ -36,6 +37,7 @@ async function* messages(): AsyncGenerator<SDKUserMessage> {
   }
 }
 const observer = endpoint ? companion(endpoint, config.cwd, text => emit({kind: 'notice', text})) : undefined;
+const journal = endpoint ? journalServer(endpoint) : undefined;
 const running = query({prompt: messages(), options: {
   cwd: config.cwd,
   pathToClaudeCodeExecutable: config.executable,
@@ -47,6 +49,9 @@ const running = query({prompt: messages(), options: {
   ...(config.model ? {model: config.model} : {}),
   abortController,
   ...(observer ? {hooks: observer.hooks} : {}),
+  ...(endpoint?.plugin ? {plugins: [{type: 'local' as const, path: endpoint.plugin}]} : {}),
+  ...(endpoint?.frontendDirectory ? {env: {...process.env, PATH: `${endpoint.frontendDirectory}:${process.env.PATH ?? ''}`}} : {}),
+  ...(journal ? {mcpServers: {mekugi: journal}} : {}),
   canUseTool: async (tool, input, options) => {
     const id = String(++serial);
     return new Promise<PermissionResult>((resolve) => {

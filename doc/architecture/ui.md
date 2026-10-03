@@ -90,7 +90,7 @@ transactions, capture store or inference transport. Historical transcript events
 restore display only, never live argument buffers, approval requests or processes.
 Ordinary resume validates SDK session-history identity and workspace before ready,
 publishes that verified identity through the neutral session interface and binds
-the optional observation owner so saved captures load before new input. Later
+the shared observation owner so saved captures load before new input. Later
 native initialization must match that identity; a mismatch terminates the client.
 An explicit resume-and-fork launch uses SDK `forkSession`; the native init event
 establishes the fork's new identity, not a fabricated Codex thread. Display history
@@ -117,7 +117,7 @@ Structured Edit/Write intentions feed the shared bounded source reader and revie
 renderer. Argument completion remains distinct from tool completion, and neither
 promotes predictions into durable captured changes.
 
-An explicitly activated capture companion registers SDK observation callbacks
+The native backend registers SDK observation callbacks
 against a launcher-owned authenticated Unix IPC service. Its connection capability
 travels through a private inherited pipe, not arguments, environment or native
 settings. `runtime_observation.go` binds native runtime/session/workspace/agent/tool
@@ -125,14 +125,32 @@ identities to the existing replay, retention, change-index and capture-order own
 Its source-path adapter and Codex observation share bounded capture scheduling;
 workspace snapshots and endpoint/overlap reconciliation remain shared owners.
 There is no dummy proxy, Codex request carrier, second diff store or tool executor.
-The observation service has only binding, pre-tool, terminal-tool and terminal-task
-operations. Calls persist baselines before acknowledgement, and frozen terminal
+Capture-only service operations cover binding, pre-tool, terminal-tool and terminal-task
+observations. Calls persist baselines before acknowledgement, and frozen terminal
 outcomes survive publication retries without rereading the workspace. A fresh
 process restores saved membership without reopening prior observation windows.
 Durable publications feed the existing bounded Diff mailbox; overflow resubscribes
 from retained captures. Activity capture cards remain separate from native tool
-results. The bridge returns empty observational hook outputs and adds no model
-context. Missing MCP caller correlation does not grant writable journal authority.
+results. Capture-only hook outputs are empty and add no model context.
+
+Normal launch builds utility frontends from the authenticated shared registry
+and adds an invocation-local plugin skill and PATH, preserving the inherited
+environment. A separate session-only frontend capability admits explicit change IDs
+but cannot invoke observational or journal operations. Mutations execute in the
+native Bash process, never in IPC. The utility adapter publishes foreground
+capture receipts in hook additional context; native results remain unchanged.
+
+The backend adds an SDK MCP journal adapter. Native
+`claudecode/toolUseId` metadata must match a persisted authenticated PreToolUse
+receipt's exact input and SDK server provenance. `runtime_journal.go` maps that
+receipt to the shared journal transaction/publication owner. Native Agent result
+identity joins its pre-tool receipt before mounting children; absent ancestry leaves
+children independently scoped. Journal/Main/plan-strip composition remains shared,
+and successful painting acknowledges only the displayed revisions. Native root
+completion prepares a report without finishing authored tasks or hiding the answer.
+Classic compact SessionStart recovery uses the shared UTF-16-budgeted summary
+renderer, not Codex reset or replacement semantics. Transport or budget failure
+keeps native compaction intact.
 
 Dependencies point from router integration into the client and presentation packages,
 not back into router internals. Shared diff rendering remains in `internal/livediff`;

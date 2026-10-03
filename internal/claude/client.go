@@ -20,8 +20,11 @@ import (
 const frameLimit = 8 << 20
 
 type ObservationEndpoint struct {
-	Socket string `json:"socket"`
-	Token  string `json:"token"`
+	Socket            string         `json:"socket"`
+	Token             string         `json:"token"`
+	Plugin            string         `json:"plugin,omitempty"`
+	FrontendDirectory string         `json:"frontendDirectory,omitempty"`
+	JournalSchema     jsontext.Value `json:"journalSchema,omitempty"`
 }
 
 type Config struct {

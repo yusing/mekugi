@@ -1,5 +1,28 @@
 # Journal
 
+## Claude backend
+
+`mekugi claude` supplies native MCP journal batches and reads, shared
+Journal/Main/plan-strip presentation and bounded classic compact recovery. It
+uses the same durable journal owners as Codex, without another activation flag.
+The adapter accepts the shared plan/add/set/log/remove operations; it does not
+expose Codex's piggybacking or finish marker. Native tool identity and matching
+authenticated hook input authorize the caller, never model-supplied scope or
+transport request IDs. Native results must prove ancestry before children mount
+read-only. Missing proof leaves a child independently scoped.
+
+Persistence precedes publication. Only successful painting acknowledges displayed
+revisions; native turn completion prepares reports without completing authored
+tasks or rewriting substantive answers. Fresh resume restores retained state and
+delivery windows, never hooks, tools or processes. Forks have independent journals;
+source context alone does not prove inherited journal authorization.
+
+Classic native compact recovery is additive and preserves the native summary.
+Mandatory constraints and open tasks must fit the 10,000 UTF-16-unit carrier in
+full; overflow, missing evidence or transport failure reports unavailable recovery
+without blocking native compaction. It does not skip native summary inference,
+replace context or activate the Codex reset/continuation behavior described below.
+
 ## Native journal presentation
 
 V2 journals have a Journal pane alongside Diff and Activity, selected by `Ctrl-B 5`;

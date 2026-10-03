@@ -7,8 +7,8 @@ startup. It uses the existing Main/composer, Activity, question dock, live-edit
 dock and Diff controllers. Codex-specific controls do not dispatch from this
 backend; runtime commands are admitted only when advertised by its SDK. Claude
 keeps execution, permissions, authentication, configuration and native history.
-No companion, inference routing or model-visible Mekugi guidance is activated
-by default.
+Shared utility, journal and observation adapters are invocation-local. Claude
+keeps its normal configuration and permission policy; Mekugi does not route inference.
 
 The initial bridge pins Agent SDK 0.3.287 and targets Claude Code 2.1.287. Its
 private JSON-lines frames are bounded to 8 MiB. Malformed or oversized transport
@@ -28,11 +28,11 @@ identity. Each partial input is bounded to 256 KiB, with at most 128 active
 buffers. Complete paths and operands are required; partial content is marked as
 an incoming prefix, never removal of an unseen suffix. Full arguments remain
 provisional until a native tool result, and result arrival still does not make a
-saved capture. Preview filesystem reads use the existing bounded reader. Bash
-preview, saved change evidence, durable journals, agent controls and compaction
-extensions remain unavailable in this presentation-only backend.
+saved capture. Preview filesystem reads use the existing bounded reader. Bash previews and agent messaging remain unavailable. Saved change evidence,
+durable journals, native model/effort controls and task status/stop use the shared
+UI and their native adapters.
 
-Optional `--companion` activation adds native observational hooks, without altering
+Normal launch adds native observational hooks, without altering
 user configuration, permissions, tool inputs or results. Actual file effects enter
 saved Diff and separate Activity capture cards through the existing change store.
 Failed operations can leave changes; successful no-effect operations receive no
@@ -44,8 +44,8 @@ Delayed pre-tool receipts cannot reopen a settled call or establish its baseline
 after effects occurred. Retained task/call identities remain historical evidence,
 not authority to resume an observation or invoke tools as a saved child agent.
 Live predictions never become saved bytes. Explicit live/saved selection survives
-updates, focus and resizing. This initial companion scope includes no journal,
-utility frontends, compaction replacement, shell tracing or output transformation.
+updates, focus and resizing. Journal and utility adapters use the shared owners. Shell tracing and output
+transformation are not added by this backend.
 
 Acceptance includes adapter correlation/escape/bound tests; shared-composer,
 permission and multi-select interaction tests; reviewed narrow/wide snapshots;

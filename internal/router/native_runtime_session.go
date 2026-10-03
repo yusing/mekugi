@@ -97,6 +97,10 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 					}
 					u.dirty = true
 				case <-tick.C:
+					if s := u.runtime.observations; s != nil && s.journal != nil {
+						u.journal = s.journal.sink()
+					}
+					pending := u.runtimeJournalPending()
 					if err := u.shell.flushEscape(); err != nil {
 						return err
 					}
@@ -108,6 +112,9 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 						width, height = w, h
 						if err := u.paint(stdout, w, h); err != nil {
 							return err
+						}
+						if err := u.acknowledgeRuntimeJournal(pending); err != nil {
+							u.setNotice("Journal paint receipt unavailable: "+err.Error(), true)
 						}
 						u.dirty = false
 					}
@@ -121,6 +128,36 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 		u.shell.paintedRows = nil
 		u.dirty = true
 	}
+}
+
+func (u *appServerUI) runtimeJournalPending() []nativeJournalPublication {
+	if u.journal == nil {
+		return nil
+	}
+	items := u.journal.snapshot()
+	for _, item := range items {
+		u.applyJournalPublication(u.journal, item)
+	}
+	u.dirty = u.dirty || len(items) > 0
+	return items
+}
+
+func (u *appServerUI) acknowledgeRuntimeJournal(items []nativeJournalPublication) error {
+	s := u.runtime.observations
+	if s == nil || s.journal == nil || u.journal == nil {
+		return nil
+	}
+	if !u.mainContentPainted {
+		if !u.journalPanePresents(u.journal) {
+			return nil
+		}
+		items = slices.DeleteFunc(slices.Clone(items), func(p nativeJournalPublication) bool { return p.card != nil || p.event == nil })
+	}
+	ctx, err := s.journal.scope(u.ctx, s.journal.rootBinding())
+	if err != nil {
+		return err
+	}
+	return u.journal.acknowledgeOwned(ctx, s.journal.journals, s.owner.store, items)
 }
 
 // Runtime-specific actions stop here; ordinary editing continues through the
@@ -264,6 +301,11 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 	case "error":
 		return errors.New(e.Text)
 	case "done":
+		if s := u.runtime.observations; s != nil && s.journal != nil {
+			if err := s.journal.complete(u.ctx, e.ID); err != nil {
+				u.setNotice("Journal completion report unavailable: "+err.Error(), true)
+			}
+		}
 		for id := range u.runtime.previews {
 			u.settleRuntimePreview(id, true)
 		}

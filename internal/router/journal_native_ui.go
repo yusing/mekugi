@@ -213,6 +213,10 @@ func (s *nativeJournalSink) snapshot() []nativeJournalPublication {
 // Receipts belong to the journal owner and follow the successful terminal write.
 // Failure retains the pending revision; enqueueing or reading is not delivery.
 func (s *nativeJournalSink) acknowledge(ctx context.Context, p *mekugiProxy, items []nativeJournalPublication) error {
+	return s.acknowledgeOwned(ctx, p.journals, p.replayStore, items)
+}
+
+func (s *nativeJournalSink) acknowledgeOwned(ctx context.Context, journals *journalStore, store *mekugiReplayStore, items []nativeJournalPublication) error {
 	// A painted frame is one delivery, not one store transaction per row.
 	// Keep terminal and live windows separate: a later live event must not
 	// advance the terminal cursor, and legacy receipts still name revisions.
@@ -232,12 +236,12 @@ func (s *nativeJournalSink) acknowledge(ctx context.Context, p *mekugiProxy, ite
 			}
 		}
 		if tree {
-			if err := p.journals.acknowledgeTree(ctx, p.replayStore, s.workspace, s.thread, sequence, terminal); err != nil {
+			if err := journals.acknowledgeTree(ctx, store, s.workspace, s.thread, sequence, terminal); err != nil {
 				return err
 			}
 		}
 		if len(revisions) > 0 {
-			if err := p.journals.acknowledge(ctx, p.replayStore, s.workspace, s.thread, revisions, terminal); err != nil {
+			if err := journals.acknowledge(ctx, store, s.workspace, s.thread, revisions, terminal); err != nil {
 				return err
 			}
 		}

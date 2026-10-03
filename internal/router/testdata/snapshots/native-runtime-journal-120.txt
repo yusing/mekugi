@@ -1,0 +1,32 @@
+┌ 1 Main ──────────────────────────────────────────────────┐┌ 5 Journal · ◐ 1 working ─────── space expand · d details ┐
+│◆ journal                                        12:00:00 ││ ▾ ◐ /1 Validate native journal                    12:00  │
+││ ◐ /1 Validate native journal · started                  ││   └ · Receipts persist before publication.        12:00  │
+││ ◆ Receipts persist before publication.                  ││                                                          │
+│                                                          ││                                                          │
+│● main                                           12:00:00 ││                                                          │
+│┃ Native tools retain execution authority.                ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│◐ /1 Validate native journal · 0s                 0/1 done││                                                          │
+│                                                          ││                                                          │
+│╭─ Ready ────────────────────────────────────────────────╮││                                                          │
+││ ❯                                                      │││                                                          │
+│╰──────────────────────────────────────── claude-sonnet ─╯││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   j/k select · enter open · c copy path · esc Main · ^B 1-5 panes

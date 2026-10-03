@@ -1,4 +1,4 @@
-# Router-owned journals
+# Durable journals
 
 ## CTR-JOURNAL-001 — Journal ownership and delivery
 
@@ -34,6 +34,25 @@ observations share the capture-order owner and retain bounded host output throug
 the managed read store. Summaries read journal, change and failure evidence under
 one replay lock, scoped by durable thread/workspace identity. The same renderer
 serves v2 hook recovery and compaction synthesis; summary text is not usage evidence.
+
+Claude's native MCP adapter uses this same store without a router request or
+dummy proxy. A launcher-authenticated hook persists the native tool-use receipt,
+SDK server provenance and complete input before the MCP handler can join its native
+metadata to a runtime/session/workspace/agent principal. Shared receipt keys make
+retried mutations idempotent. Missing or changed evidence rejects the invocation.
+Native Agent results persist child/parent proof against the exact pre-tool receipt;
+the shared ancestry validator controls mounted reads. Unproven children remain
+independent, not root aliases. Task starts retain the native task/spawning-call
+mapping so either terminal SDK task form can settle background agent lifecycle;
+replayed terminal receipts cannot overwrite later child work. Native completion prepares a publication window,
+not an authored task-state mutation; shared sinks acknowledge exact painted
+revisions without hiding Claude's answer.
+
+Claude classic compact recovery reads one locked evidence snapshot and measures
+its carrier in UTF-16 units. Mandatory constraints and open-task bodies remain
+complete; optional evidence sections are admitted atomically with retained
+recovery references. Mandatory overflow produces no packet. This is additive
+SessionStart context, not a replacement preparation or installation receipt.
 
 The request executor selects local compaction after protocol validation, before
 provider preparation. Local responses reuse terminal delivery and cancellation,

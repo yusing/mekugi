@@ -16,7 +16,8 @@ sessions, and patch review. No fork, no config edits, no daemon. The
 ## Features
 
 - **Claude Code preview.** `mekugi claude` offers streaming conversation, native
-  permission decisions and interruption without an inference router. See its
+  permission decisions, shared live/saved Diff, Bash utilities and durable journals
+  in the existing interface, without an inference router. See its
   [current limits and build instructions](#claude-code-preview).
 
 ### Agent-facing
@@ -141,8 +142,9 @@ CLI. The initial compatibility target is Claude Code 2.1.287 with Agent SDK
 0.3.287. Sign in using Claude's own CLI before launching. Authentication and
 billing remain native; this preview does not claim subscription eligibility or
 switch you to API billing. Existing Claude settings, instructions and extensions
-load normally, including their configured permission mode. By default, Mekugi adds
-no tools, hooks, prompt instructions, frontend PATH entries or inference router.
+load normally, including their configured permission mode. Mekugi supplies its
+shared utilities, journal MCP tools and observational hooks for this launch only.
+It does not route inference or change persistent Claude settings.
 
 The build writes only to `bin/`, not the installed Mekugi location. It installs
 locked bridge dependencies into that build directory. Keep `bin/claude-bridge`
@@ -194,11 +196,10 @@ streams appear as provisional proposals in the shared live-edit dock and Diff
 pane. Partial content does not claim deletion of an unseen suffix. Native tool
 completion does not turn these proposals into saved edit evidence.
 
-Add `--companion` to enable invocation-local observational hooks. Actual Edit/Write
+Invocation-local observational hooks record actual Edit/Write
 file effects, including partial effects of failed tools, enter the same saved Diff
 pane and separate Activity capture cards with retained change IDs. The hooks leave
-native arguments, results and permissions unchanged. They install no persistent
-settings or model-visible utilities. Bash observation uses bounded private workspace
+native arguments, results and permissions unchanged. They install no persistent settings. Bash observation uses bounded private workspace
 snapshots; the native hook does not establish a shell executable, so literal Bash
 operand coverage and ignored Bash targets are unavailable. Explicit Edit/Write
 paths are captured even when ignored. Background captures remain unfinished until
@@ -208,7 +209,7 @@ restores saved observations, never running hooks or processes. An unfinished
 observation cannot attribute changes made while Mekugi was disconnected. Press
 `v` in Diff to select live proposals or saved captures; your selection survives
 updates. Permission prompts follow Claude's configured policy, including native
-automatic approval; enabling capture does not change that policy.
+automatic approval; observation does not change that policy.
 
 The shared composer completes SDK-advertised commands and skills with `/` and
 workspace file paths with `@`, including ignored files but excluding VCS internals.
@@ -218,10 +219,34 @@ file completion, paste an image path, or use Ctrl-V for a clipboard image. Image
 are sent as native content blocks, limited to PNG, JPEG, GIF or WebP, 5 MiB each
 and an 8 MiB combined bridge frame. Failed submissions keep the draft and images.
 
-Bash previews, journals, utility frontends and agent messaging/switching are not
-connected yet. Commands advertised by the SDK are forwarded natively;
+Shared utility frontends run in native Bash, including
+`mcat`, `inspect_file`, `msymbol`, `mrun`, `mread` and `mchanges`. An invocation-local
+skill describes their shared contracts. Completed foreground captures
+return explicit change IDs through companion hook context, without replacing the
+native tool result. Review those IDs with `mchanges`; apply/revert run only through
+native Bash and its permissions, and their actual effects become new captures.
+`mread` retrieves retained output without repeating execution. Bash does not expose
+a trustworthy per-agent caller binding: bare `mchanges`, `--mine`, and `--list`
+without explicit IDs are unavailable. The frontends cannot select another workspace.
+
+Native MCP journal batches/reads feed the shared Journal pane (`Ctrl-B 5`),
+Main event cards and plan strip, without an additional activation flag.
+Journal calls require native tool identity matched to authenticated hook evidence,
+not a model-provided agent ID. Native agent tool restrictions still apply;
+agents without access to the companion MCP tools cannot author a journal.
+Child journals mount read-only only after native
+results establish ancestry. Turn completion leaves authored task states unchanged
+and preserves Claude's substantive answer. Resume restores retained journal state.
+After native compaction, an additive recovery packet preserves constraints and
+open tasks within Claude's 10,000-character carrier. Overflow or missing evidence
+leaves the native summary intact and reports recovery unavailable. This still uses
+native summary inference; it does not replace compaction or automatically continue
+unfinished tasks. The utility and journal integration is invocation-local.
+
+Bash previews and agent messaging/switching are not connected yet.
+Commands advertised by the SDK are forwarded natively;
 unadvertised commands, including a separate `/btw` workflow, are rejected rather
-than emulated. The capture-only companion does not yet include plugin utilities or journals.
+than emulated.
 Compaction replacement, shell tracing and output rewriting remain unavailable.
 Only exposed text, native tool input/results and task/usage observations are displayed;
 unavailable usage and change evidence are not invented. Oversized bridge events stop the client with an error;

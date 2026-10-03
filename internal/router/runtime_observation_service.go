@@ -20,13 +20,18 @@ type ObservationEndpoint struct {
 	Token  string `json:"token"`
 }
 
-// ObservationService provides only observational operations. It exposes no tool
-// executor, mutation command, permission decision or inference transport.
+// ObservationService provides capture, journals and read-only frontend binding.
+// It exposes no tool executor, filesystem mutation command, permission decision
+// or inference transport.
 type ObservationService struct {
-	owner     *nativeObservationOwner
-	server    *http.Server
-	directory string
-	endpoint  ObservationEndpoint
+	owner         *nativeObservationOwner
+	server        *http.Server
+	directory     string
+	endpoint      ObservationEndpoint
+	journal       *runtimeJournalOwner
+	frontendToken string
+	registry      *toolRegistry
+	receipts      bool
 }
 
 type observationRequest struct {
@@ -35,6 +40,9 @@ type observationRequest struct {
 	Call      ObservationCall     `json:"call,omitzero"`
 	Terminal  ObservationTerminal `json:"terminal,omitzero"`
 	Task      observationTask     `json:"task,omitzero"`
+	NativeID  string              `json:"nativeID,omitempty"`
+	Input     string              `json:"input,omitempty"`
+	Child     string              `json:"child,omitempty"`
 }
 
 type observationTask struct {
@@ -45,7 +53,7 @@ type observationTask struct {
 	Report  string `json:"report,omitempty"`
 }
 
-// StartObservationService is opt-in. Presentation-only launches never call it.
+// StartObservationService owns the backend's invocation-local evidence service.
 func StartObservationService(ctx context.Context, runtime, workspace string) (*ObservationService, error) {
 	directory, err := defaultMekugiReplayDirectory()
 	if err != nil {
@@ -75,15 +83,20 @@ func startObservationService(owner *nativeObservationOwner) (*ObservationService
 		owner.close()
 		return nil, err
 	}
-	s := &ObservationService{owner: owner, directory: directory, endpoint: endpoint}
+	s := &ObservationService{owner: owner, directory: directory, endpoint: endpoint, frontendToken: rand.Text()}
 	slots := make(chan struct{}, 16)
 	s.server = &http.Server{ReadTimeout: 4 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: time.Second, MaxHeaderBytes: 4096,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPost || r.URL.Path != "/observe" {
+			frontend := r.URL.Path == "/frontend/context" && s.registry != nil
+			if r.Method != http.MethodPost || r.URL.Path != "/observe" && !frontend {
 				http.NotFound(w, r)
 				return
 			}
-			if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+endpoint.Token)) != 1 {
+			token := endpoint.Token
+			if frontend {
+				token = s.frontendToken
+			}
+			if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) != 1 {
 				http.Error(w, "invalid observation capability", http.StatusUnauthorized)
 				return
 			}
@@ -96,30 +109,97 @@ func startObservationService(owner *nativeObservationOwner) (*ObservationService
 			}
 			ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 			defer cancel()
+			if frontend {
+				owner.mu.Lock()
+				binding := ObservationBinding{Runtime: owner.runtime, Session: owner.session, Workspace: owner.workspace}
+				_, bound := owner.bindings[binding]
+				owner.mu.Unlock()
+				if !bound {
+					http.Error(w, "native session identity pending", http.StatusUnprocessableEntity)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.MarshalWrite(w, map[string]ObservationBinding{"binding": binding})
+				return
+			}
 			var request observationRequest
 			if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 8<<20), &request, json.RejectUnknownMembers(true)); err != nil {
 				http.Error(w, "invalid observation request", http.StatusBadRequest)
 				return
 			}
 			var err error
+			var changeID string
 			switch request.Operation {
 			case "bind":
 				err = owner.bind(ctx, request.Binding)
+				if err == nil && s.journal != nil {
+					err = s.journal.bind(ctx, request.Binding)
+				}
 			case "before":
 				err = owner.before(ctx, request.Call)
 			case "after":
-				_, err = owner.after(ctx, request.Call, request.Terminal)
+				changeID, err = owner.after(ctx, request.Call, request.Terminal)
 			case "task":
 				err = owner.task(ctx, request.Task)
+				if err == nil && s.journal != nil {
+					err = s.journal.task(ctx, request.Task, false)
+				}
+			case "journal_task_start":
+				if s.journal == nil {
+					err = errors.New("companion journal is disabled")
+				} else {
+					err = s.journal.task(ctx, request.Task, true)
+				}
+			case "journal_before":
+				if s.journal == nil {
+					err = errors.New("companion journal is disabled")
+				} else {
+					err = s.journal.before(ctx, request.Call)
+				}
+			case "journal_batch", "journal_read":
+				if s.journal == nil {
+					err = errors.New("companion journal is disabled")
+				} else {
+					var result any
+					result, err = s.journal.invoke(ctx, request.Operation, request.NativeID, request.Input)
+					if err == nil {
+						w.Header().Set("Content-Type", "application/json")
+						_ = json.MarshalWrite(w, result)
+						return
+					}
+				}
+			case "journal_recovery":
+				if s.journal == nil {
+					err = errors.New("companion journal is disabled")
+				} else {
+					var text string
+					text, err = s.journal.recover(ctx, request.Binding)
+					if err == nil {
+						w.Header().Set("Content-Type", "application/json")
+						_ = json.MarshalWrite(w, map[string]string{"text": text})
+						return
+					}
+				}
+			case "journal_parent":
+				if s.journal == nil {
+					err = errors.New("companion journal is disabled")
+				} else {
+					err = s.journal.parent(ctx, request.NativeID, request.Child, request.Terminal.Status)
+				}
 			default:
 				err = errors.New("unsupported observation operation")
 			}
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				http.Error(w, request.Operation+": "+err.Error(), http.StatusUnprocessableEntity)
 				return
 			}
-			// The hook is capture-only: no change receipts or added model context.
+			// Capture-only replies add no context. Utility-enabled replies may
+			// include a durable change receipt without replacing native results.
 			w.Header().Set("Content-Type", "application/json")
+			if s.receipts && changeID != "" {
+				_ = json.MarshalWrite(w, map[string]string{"changeID": changeID})
+				return
+			}
 			w.Write([]byte("{}"))
 		})}
 	go func() { _ = s.server.Serve(listener) }()
@@ -128,9 +208,10 @@ func startObservationService(owner *nativeObservationOwner) (*ObservationService
 func (s *ObservationService) Endpoint() ObservationEndpoint { return s.endpoint }
 func (s *ObservationService) Close() error {
 	err := s.server.Close()
+	companionErr := s.closeCompanion()
 	s.owner.close()
 	// Remove only the exact resources this launch created. Retained evidence stays.
-	return errors.Join(err, removeObservationSocket(s.endpoint.Socket), os.Remove(s.directory))
+	return errors.Join(err, companionErr, removeObservationSocket(s.endpoint.Socket), os.Remove(s.directory))
 }
 func removeObservationSocket(path string) error {
 	err := os.Remove(path)

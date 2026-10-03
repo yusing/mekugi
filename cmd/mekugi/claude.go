@@ -22,10 +22,9 @@ func runClaude(ctx context.Context, args []string, in, out *os.File, stderr io.W
 	resume := flags.String("resume", "", "Claude session ID to resume")
 	fork := flags.Bool("fork-session", false, "fork the resumed native conversation to a new Claude session")
 	model := flags.String("model", "", "native Claude model choice")
-	capture := flags.Bool("companion", false, "enable invocation-local observational capture hooks")
 	bridge := flags.String("bridge", "", "path to built Claude SDK bridge")
 	flags.Usage = func() {
-		fmt.Fprint(stderr, "Usage: mekugi claude [--cwd DIR] [--resume SESSION] [--model MODEL]\n\nClaude Code backend for the shared UI. Requires Node and an installed, authenticated\nClaude Code runtime. Build this preview with make build-claude. No inference router. Companion capture is opt-in.\n")
+		fmt.Fprint(stderr, "Usage: mekugi claude [--cwd DIR] [--resume SESSION] [--model MODEL]\n\nClaude Code backend for the shared UI. Requires Node and an installed, authenticated\nClaude Code runtime. Build with make build-claude. No inference router.\n")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -88,16 +87,17 @@ func runClaude(ctx context.Context, args []string, in, out *os.File, stderr io.W
 		return fail(fmt.Errorf("Claude bridge unavailable; run make build-claude: %w", err))
 	}
 	config := claude.Config{Cwd: workspace, Executable: executable, Resume: *resume, ForkSession: *fork, Model: *model}
-	var observations *router.ObservationService
-	if *capture {
-		observations, err = router.StartObservationService(ctx, "claude", workspace)
-		if err != nil {
-			return fail(err)
-		}
-		defer observations.Close()
-		endpoint := observations.Endpoint()
-		config.Companion = &claude.ObservationEndpoint{Socket: endpoint.Socket, Token: endpoint.Token}
+	observations, err := router.StartObservationService(ctx, "claude", workspace)
+	if err != nil {
+		return fail(err)
 	}
+	defer observations.Close()
+	presentation, err := observations.PrepareCompanion(ctx)
+	if err != nil {
+		return fail(err)
+	}
+	endpoint := observations.Endpoint()
+	config.Companion = &claude.ObservationEndpoint{Socket: endpoint.Socket, Token: endpoint.Token, Plugin: presentation.Plugin, FrontendDirectory: presentation.FrontendDirectory, JournalSchema: presentation.JournalSchema}
 	client, err := claude.Start(ctx, node, *bridge, config)
 	if err != nil {
 		return fail(err)

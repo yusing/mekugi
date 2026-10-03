@@ -235,7 +235,7 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		clear(a.tools)
 		clear(a.text)
 		clear(a.streams)
-		result := []session.Event{{Kind: "done", Failed: e.IsError, Text: strings.Join(e.Errors, "\n"), SessionID: e.SessionID}}
+		result := []session.Event{{Kind: "done", ID: e.UUID, Failed: e.IsError, Text: strings.Join(e.Errors, "\n"), SessionID: e.SessionID}}
 		if e.StartupFailure == "" && (!e.IsError || len(e.Usage.Models) > 0) && (len(e.Usage.Models) > 0 || e.Usage.CostUSD != nil) {
 			result = append(result, session.Event{Kind: "usage", Usage: &e.Usage})
 		}
