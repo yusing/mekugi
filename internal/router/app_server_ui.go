@@ -580,6 +580,21 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			return nil
 		}
+		if method == "compact/interrupt" {
+			u.compaction.interruptAckPending = false
+			if m.Error != nil {
+				u.compaction.interrupting = false
+				u.interruption.finish()
+				u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
+				u.unsent, u.queued = nil, nil
+				u.setNotice("Could not interrupt for compaction: "+m.Error.Message, true)
+				u.status = "Ready"
+				if u.turn != "" {
+					u.status = "Working"
+				}
+			}
+			return nil
+		}
 		if method == "thread/start" && u.replacement.pending() && m.Error != nil {
 			u.replacement.finish()
 			u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
@@ -901,7 +916,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	if u.statusPanelKey(string([]byte{key})) {
 		return false, nil
 	}
-	if u.escape == "" && key != 27 && u.pickerKey(string([]byte{key})) {
+	// An exact /compact has a submission meaning for Tab, not just completion.
+	compactTab := key == '\t' && strings.TrimSpace(u.draft) == "/compact" && u.picker.modal == ""
+	if u.escape == "" && key != 27 && !compactTab && u.pickerKey(string([]byte{key})) {
 		return false, nil
 	}
 	if u.escape == "\x1b" && (key == 127 || key == 8) {
@@ -1019,7 +1036,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.cancelQueuedCompact() {
 			return false, nil
 		}
-		if u.turn != "" || u.starting() || u.submission.text != "" || u.compaction.ackPending || u.compaction.running() || u.compaction.continueTask || len(u.unsent)+len(u.queued) > 0 {
+		if u.turn != "" || u.starting() || u.submission.text != "" || u.compaction.pending() || u.compaction.continueTask || len(u.unsent)+len(u.queued) > 0 {
 			return false, u.keyboardInterrupt()
 		}
 		if u.interruptLocked {
@@ -1098,6 +1115,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	case '\t':
 		// Tab queues busy input for the next turn; otherwise it sends like Enter.
 		text := strings.TrimSpace(u.draft)
+		if text == "/compact" {
+			return false, u.submitCompact(true)
+		}
 		if u.shellMode() || text == "" || strings.HasPrefix(text, "/") || u.turn == "" && !u.starting() && u.submission.text == "" {
 			return u.key('\r')
 		}
@@ -1623,6 +1643,10 @@ func (u *appServerUI) interruptTurn() error {
 	}
 	u.endSyncQuestions(u.turn)
 	u.status = "Interrupting…"
+	if u.compaction.interrupting {
+		_, err := u.requestAs("turn/interrupt", "compact/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
+		return err
+	}
 	return u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
 }
 

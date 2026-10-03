@@ -122,6 +122,7 @@ func (u *appServerUI) restoreDrafts(parts ...composerDraft) {
 func (u *appServerUI) editQueued() {
 	parts := slices.Concat(u.unsent, u.queued)
 	u.unsent, u.queued = nil, nil
+	u.compaction.interrupting = false
 	u.restoreDrafts(parts...)
 }
 
@@ -140,7 +141,11 @@ func (u *appServerUI) flushInput() error {
 	}
 	u.unsent = pendingQuestionReplies(u.unsent)
 	u.queued = pendingQuestionReplies(u.queued)
-	if u.waitingQuestion() || u.restoring != nil || !u.acceptsInput() {
+	if u.restoring != nil || !u.acceptsInput() {
+		return nil
+	}
+	compactSteer := len(u.unsent) > 0 && u.unsent[0].text == "/compact" && !u.unsent[0].queueCompact
+	if u.waitingQuestion() && !compactSteer {
 		return nil
 	}
 	if u.turn == "" && u.compaction.takeContinuation() {
@@ -154,7 +159,11 @@ func (u *appServerUI) flushInput() error {
 	switch {
 	case len(u.unsent) > 0:
 		if steer && u.unsent[0].text == "/compact" {
-			return nil
+			if u.unsent[0].queueCompact {
+				return nil
+			}
+			u.compaction.interrupting, u.compaction.interruptAckPending = true, true
+			return u.interruptTurn()
 		}
 		parts, u.unsent = questionSubmissionBatch(u.unsent)
 	case !steer && len(u.queued) > 0:
@@ -249,6 +258,10 @@ func (u *appServerUI) withdraw(s composerSubmission) {
 	u.view.removePendingInput(s.seq)
 	if s.interrupted && len(u.view.entries) == 0 {
 		u.status, u.turnStarted = "Ready", time.Time{}
+	}
+	if s.interrupted && u.compaction.interrupting {
+		u.restoreDrafts(s.parts...)
+		return
 	}
 	u.restoreDrafts(slices.Concat(s.parts, u.unsent, u.queued)...)
 	u.unsent, u.queued = nil, nil
@@ -355,6 +368,10 @@ func (u *appServerUI) settleSteers(interrupted bool) {
 	steers := u.steerParts(u.steers)
 	u.steers = nil
 	switch {
+	case interrupted && u.compaction.interrupting:
+		// The explicit command survives its own interruption. Host-owned
+		// uncommitted steers still return to the editor, never get replayed.
+		u.restoreDrafts(steers...)
 	case interrupted:
 		u.restoreDrafts(slices.Concat(steers, u.unsent, u.queued)...)
 		u.unsent, u.queued = nil, nil
@@ -400,6 +417,8 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 	}
 	header := "Steering after the next tool call · ctrl+c interrupts and restores input"
 	switch {
+	case u.compaction.interrupting:
+		header = "Compacting after interruption · ctrl+c cancels compaction"
 	case u.shellCommand.standalone():
 		header = "Waiting for shell command to finish"
 	case u.interruption.target != "":

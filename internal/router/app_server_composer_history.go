@@ -6,7 +6,8 @@ import (
 )
 
 type composerDraft struct {
-	continueTask     bool // Only a busy-queued /compact requests automatic continuation.
+	continueTask     bool // Busy /compact requests automatic continuation.
+	queueCompact     bool // Tab waits for Main instead of interrupting it.
 	questionCall     *nativeQuestionCall
 	text             string
 	cursorBack       int

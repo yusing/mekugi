@@ -58,7 +58,7 @@ func (h *appServerLifecycle) acceptsShell() bool {
 }
 
 func (h *appServerLifecycle) busy() bool {
-	return h.turn != "" || h.starting() || h.compaction.ackPending ||
+	return h.turn != "" || h.starting() || h.compaction.pending() ||
 		h.appServerInputOperation.pending() || h.settings.pending() ||
 		h.shellCommand.pending.text != "" || len(h.unsent)+len(h.queued) > 0
 }
@@ -135,9 +135,11 @@ const (
 )
 
 type appServerCompactOperation struct {
-	phase        compactPhase
-	ackPending   bool
-	continueTask bool
+	phase               compactPhase
+	ackPending          bool
+	continueTask        bool
+	interrupting        bool // Preserve waiting input across the pre-compaction interrupt.
+	interruptAckPending bool
 }
 
 func (o *appServerCompactOperation) begin(continueTask bool) {
@@ -151,7 +153,9 @@ func (o *appServerCompactOperation) started() {
 func (o *appServerCompactOperation) running() bool {
 	return o.phase == compactStarting || o.phase == compactRunning
 }
-func (o *appServerCompactOperation) pending() bool { return o.ackPending || o.running() }
+func (o *appServerCompactOperation) pending() bool {
+	return o.interruptAckPending || o.ackPending || o.running()
+}
 func (o *appServerCompactOperation) acknowledge(failed bool) {
 	o.ackPending = false
 	if failed {

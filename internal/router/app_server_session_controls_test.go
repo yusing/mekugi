@@ -38,7 +38,7 @@ func TestAppServerCompactIdleAndLifecycle(t *testing.T) {
 func TestAppServerCompactBusyQueuesAheadOfLaterText(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestTurn(t, u, "work")
-	appServerTestKeys(t, u, "/compact\r")
+	appServerTestKeys(t, u, "/compact\t")
 	appServerTestKeys(t, u, "after compact\r")
 	if got := appServerTurnRequests(t, w); len(got) != 0 || len(u.unsent) != 2 || u.turn != "work" {
 		t.Fatalf("busy compact replaced turn or sent text: requests=%+v unsent=%+v", got, u.unsent)

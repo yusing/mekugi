@@ -801,20 +801,27 @@ The host's opt-in `instant_interrupt` feature lets new input preempt model
 responses and yield long-running Code Mode calls without terminating their
 cells. Native launches forward feature toggles unchanged, including on resume;
 Codex owns validation, precedence, preemption, and continuation. The client uses
-the same `turn/steer` path whether the feature is enabled or disabled and never
-implements instant steering by aborting a turn or replaying a tool.
+the same `turn/steer` path for conversation input whether the feature is enabled
+or disabled and never implements instant steering by aborting a turn or replaying a tool.
 
 `/compact` asks Codex to replace the current conversation context. In journal
 `auto` mode its description and live progress identify an attempted journal reset
-with provider fallback; other modes describe ordinary compaction. While busy it appears
-in the pending-input list and runs after the active turn; it never replaces that
-turn, and the command itself never becomes model input. It separates surrounding
-text batches, and later input waits until compaction finishes. Successful busy-queued
+with provider fallback; other modes describe ordinary compaction. Enter interrupts
+the active turn through the host, then waits for both interruption acknowledgement
+and turn completion before starting compaction. This explicit command does not
+depend on `instant_interrupt`, which controls conversation steering rather than
+command dispatch. Tab queues compaction after the active turn without interrupting
+it. Both appear in the pending-input list, and the command itself never becomes
+model input. It separates surrounding text batches, and later input waits until
+compaction finishes. Successful busy
 compaction continues with waiting input, or sends one visible task-continuation
 message if none is waiting. Idle `/compact` stays idle. Failure or interruption
 cancels automatic continuation, including an interrupt racing successful completion.
 With an empty composer, Ctrl+C cancels a still-queued command and restores it
-along with other waiting input without interrupting Main. Once compaction is
+along with other waiting input without interrupting Main. Cancelling an Enter
+command while its interruption is pending prevents compaction, but cannot undo
+the interruption already requested. An interruption rejection restores the command
+and waiting input for retry without starting compaction. Once compaction is
 starting or running, Ctrl+C cancels that compaction, restores waiting input, and
 cancels its automatic continuation, not a later Main turn. Outside compact cancellation, normal Main interruption
 is unchanged. Host compaction progress and failures remain visible.

@@ -24,7 +24,7 @@ var nativeCommands = []composerChoice{
 	{name: "/status", description: "Show session settings and usage limits"},
 	{name: "/copy", description: "Copy the last response or part of it"},
 	{name: "/resume", description: "Resume a saved session"},
-	{name: "/compact", description: "Compact context, or queue compaction while busy"},
+	{name: "/compact", description: "Compact context now; Tab queues while busy"},
 	{name: "/clear", description: "Clear the transcript and start a new session"},
 	{name: "/lock", description: "Prevent accidental keyboard interruption"},
 	{name: "/unlock", description: "Allow keyboard interruption again"},
@@ -34,18 +34,15 @@ var nativeCommands = []composerChoice{
 // Source: codex-rs/tui/src/chatwidget/slash_dispatch.rs:268:310 and
 // codex-rs/tui/src/app/event_dispatch.rs:385:401@68e1a421.
 // Clear starts a fresh host thread.
-// Unlike stock's busy rejection, compact waits locally: the RPC replaces an
-// active host task, so it must never be sent as a turn/steer text payload.
+// Compact uses its native RPC after acknowledged interruption, never a
+// turn/steer text payload. Tab can explicitly queue it instead.
 func (u *appServerUI) sessionCommand(command string) error {
 	if u.thread == "" || u.restoring != nil || u.replacement.pending() {
 		u.setNotice("Wait for the session to be ready", false)
 		return nil
 	}
 	if command == "/compact" {
-		u.unsent = append(u.unsent, u.takeDraft())
-		u.unsent[len(u.unsent)-1].text = "/compact"
-		u.unsent[len(u.unsent)-1].continueTask = u.turn != "" || u.starting()
-		return u.flushInput()
+		return u.submitCompact(false)
 	}
 	if u.sessionBusy() {
 		u.setNotice("/clear is disabled while a task is in progress", true)
@@ -77,6 +74,18 @@ func (u *appServerUI) sessionCommand(command string) error {
 	return nil
 }
 
+func (u *appServerUI) submitCompact(queue bool) error {
+	if u.thread == "" || u.restoring != nil || u.replacement.pending() {
+		u.setNotice("Wait for the session to be ready", false)
+		return nil
+	}
+	draft := u.takeDraft()
+	draft.text, draft.queueCompact = "/compact", queue
+	draft.continueTask = u.turn != "" || u.starting()
+	u.unsent = append(u.unsent, draft)
+	return u.flushInput()
+}
+
 // sessionBusy reports work that leaving the current thread would strand.
 func (u *appServerUI) sessionBusy() bool {
 	return u.busy() || u.reset.active()
@@ -95,7 +104,12 @@ func (u *appServerUI) cancelQueuedCompact() bool {
 	u.compaction.cancelContinuation()
 	u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 	u.unsent, u.queued = nil, nil
-	u.setNotice("Queued compaction cancelled · input restored · Main continues", false)
+	if u.compaction.interrupting {
+		u.compaction.interrupting = false
+		u.setNotice("Compaction cancelled · input restored · interruption already requested", false)
+	} else {
+		u.setNotice("Queued compaction cancelled · input restored · Main continues", false)
+	}
 	return true
 }
 

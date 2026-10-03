@@ -1,0 +1,16 @@
+Mekugi dev • codex
+
+
+
+
+
+
+
+
+
+• Compacting after interruption · ctrl+c cancels compaction
+  ↳ /compact
+
+╭─ ◐ Interrupting… 0s ─────────────────────────────────────────────────────────╮
+│ ❯                                                                            │
+╰───────────────────────────────────────────────── snapshot-model (high) • 0% ─╯

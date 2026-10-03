@@ -386,7 +386,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 		return screen.String()
 	}
 	p.until("main streams its patch")
-	keys("/compact\r")
+	keys("/compact\t")
 	if p.ui.turn == "" || len(p.ui.unsent) != 1 || p.ui.unsent[0].text != "/compact" {
 		t.Fatal("busy compact was not queued locally")
 	}

@@ -1,5 +1,5 @@
 
-› /compact  Compact context, or queue compaction while busy                             
+› /compact  Compact context now; Tab queues while busy                                  
 
 
   enter insert · esc close

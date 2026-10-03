@@ -77,7 +77,7 @@ func TestNativeControlsTerminalFrames(t *testing.T) {
 	appServerOneRequest(t, wire, "thread/read", "") // Child metadata from the earlier spawn.
 	appServerTestKeys(t, u, "/unlock\r")
 	appServerTestTurn(t, u, "work")
-	appServerTestKeys(t, u, "/compact\r")
+	appServerTestKeys(t, u, "/compact\t")
 	if frame := paint(); !strings.Contains(frame, "Compaction queued after this turn") {
 		t.Fatalf("queued compaction is not visible:\n%s", frame)
 	}

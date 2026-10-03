@@ -47,7 +47,7 @@ func TestAppServerQueuedCompactContinuesNativeCodex(t *testing.T) {
 	terminal.awaitMatch("active task", func(screen string) bool {
 		return strings.Contains(screen, "Working") && !strings.Contains(screen, "Sending…")
 	})
-	terminal.send("/compact\r")
+	terminal.send("/compact\t")
 	terminal.await("↳ /compact")
 	select {
 	case body := <-provider.requests:

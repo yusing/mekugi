@@ -339,13 +339,16 @@ Mekugi differs in these ways:
   one entry per line. Alt+Up or Shift+Left returns all locally waiting input to
   the composer. Already-sent steers remain pending until Codex commits them or
   the turn ends; interrupt to restore input that has not committed.
-- **Session controls.** `/compact` compacts context, waiting for the current turn
-  when busy. After successful queued compaction, waiting input runs next; without
-  waiting input, Mekugi sends a visible continuation message to resume the task.
+- **Session controls.** Enter on `/compact` interrupts the current turn and compacts
+  after Codex acknowledges its end, with or without `instant_interrupt`. Tab queues
+  compaction until the current turn ends. After successful busy compaction, waiting
+  input runs next; without waiting input, Mekugi sends a visible continuation
+  message to resume the task.
   Idle compaction stays idle, and failure or interruption never automatically
   continues it. Ctrl+C cancels queued compaction and restores waiting input
-  without interrupting Main; once compaction starts, it interrupts only that
-  compaction. `/clear` starts a fresh session and clears its transcript; it is
+  without interrupting Main. Cancelling while an Enter-command interruption is
+  pending prevents compaction but cannot undo that interruption; once compaction
+  starts, it interrupts only that compaction. `/clear` starts a fresh session and clears its transcript; it is
   available while idle and does not delete saved sessions or filesystem changes.
   Interrupt returns unsent input to the composer without automatically resending
   it. Interrupting an uncommitted first message leaves an empty transcript.
