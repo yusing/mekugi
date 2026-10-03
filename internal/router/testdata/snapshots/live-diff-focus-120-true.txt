@@ -1,0 +1,19 @@
+2 files +2 -2 | files focus · CONNECTING · PAUSED · 2/2
+▎Files  2/2 · tree            │  2/2  b.go +1 -1 ──────────────────────────────────────────────────────────────────────
+ / filter paths               │  1│-before                                                                             
+M a.go +1 -1                  │  1│+after                                                                              
+M b.go +1 -1                  │
+                              │
+                              │
+                              │
+                              │
+                              │
+                              │
+                              │
+                              │
+                              │
+                              │
+                              │
+                              │
+                              │
+                              │

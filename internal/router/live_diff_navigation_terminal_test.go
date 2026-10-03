@@ -123,7 +123,7 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 	if !strings.Contains(ansi.Strip(hidden), "file_005_content") {
 		t.Fatal("hiding the file dock changed the diff selection")
 	}
-	ui.write(t, "s")
+	ui.write(t, "s\r")
 	ui.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 1), "Files") })
 	// On narrow panes the dock becomes a full-width picker toggled by s.
 	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 22, Cols: 70}); err != nil {

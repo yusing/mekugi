@@ -695,6 +695,10 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 			return false
 		}
 		c.dirty = true
+		if action == '\r' {
+			c.navigation.Focused = inNav
+			c.navigation.Filtering = false
+		}
 		if inNav && c.navigation.ChangesTab {
 			l := &c.navigation.Changes
 			if action == '\r' {
@@ -705,6 +709,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 				if index := l.Top + row - firstRow - 2; row >= firstRow+2 && index < len(l.Rows) {
 					l.Cursor, c.navigation.Focused, c.view.Following = index, true, false
 					c.openChangeRow()
+					c.navigation.Focused = true
 				}
 			} else {
 				delta := 1
@@ -726,6 +731,7 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 				if row >= firstRow+2 && index < len(n.Entries) {
 					n.Cursor, n.Focused, c.view.Following = index, true, false
 					c.openNavEntry()
+					n.Focused = true
 				}
 			} else {
 				c.view.Following = false
@@ -884,6 +890,11 @@ func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 		left += diffview.CountStats(total, c.theme)
 	}
 	var right []string
+	if c.navigation.Focused {
+		right = append(right, "files focus")
+	} else {
+		right = append(right, "diff focus")
+	}
 	if c.coverage != "" {
 		status, _, _ := strings.Cut(c.coverage, ":")
 		right = append(right, livediff.Safe(status, false))

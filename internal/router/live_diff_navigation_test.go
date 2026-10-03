@@ -288,6 +288,7 @@ func TestLiveDiffNavigationDockAndPickerKeys(t *testing.T) {
 		t.Fatal("s did not restore the wide dock")
 	}
 	c.lastWidth = 70
+	c.navigation.Focused = false
 	c.view.Following = true
 	c.navigationKey('s')
 	if !c.navigation.Focused || c.navigation.Hidden || c.navigation.Width(70) != 0 || c.view.Following {
@@ -367,5 +368,38 @@ func TestLiveDiffNavigationChainSplitKeepsAncestor(t *testing.T) {
 	nav.Top = 3
 	if row := ansi.Strip(nav.Render(files, nil, 0, 34, 10, livediff.DarkTheme)[2]); nav.Top != 0 || !strings.Contains(row, "internal") {
 		t.Fatalf("fitting tree scrolled to %d, first row %q", nav.Top, row)
+	}
+}
+
+func TestLiveDiffIndependentFocusArrows(t *testing.T) {
+	for _, width := range []int{70, 120} {
+		c := newLiveDiffTerminalController(nil, "", nil)
+		c.diffMode, c.native, c.lastWidth = true, true, width
+		c.files = []livediff.File{navigationFile("a.go"), navigationFile("b.go")}
+		c.view.Merge(c.files)
+		c.navigation.Flat = true
+		c.navigation.Rebuild(c.files, "")
+		c.navigationKey('s')
+		for _, key := range []byte("\x1b[B") {
+			c.handleKey(key)
+		}
+		if !c.navigation.Focused || c.navigation.Cursor != 1 || c.view.Selected != 1 || c.offset != 0 {
+			t.Fatalf("width %d: arrows did not navigate files independently: %+v", width, c.navigation)
+		}
+		c.handleKey('\r')
+		if c.navigation.Focused {
+			t.Fatal("Enter did not focus diff")
+		}
+		for _, key := range []byte("\x1b[A") {
+			c.handleKey(key)
+		}
+		if c.navigation.Cursor != 1 {
+			t.Fatal("diff arrow moved file cursor")
+		}
+		c.escapeKey()
+		if !c.navigation.Focused {
+			t.Fatal("Esc did not return to files")
+		}
+		c.close()
 	}
 }
