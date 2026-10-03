@@ -139,6 +139,8 @@ func TestComposerImagePastePTYLifecycle(t *testing.T) {
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	ready := make(chan struct{})
 	done := make(chan error, 1)
+	// Scrollback must not consume the ESC byte of either paste terminator.
+	u.view.following = false
 	go func() {
 		done <- terminalui.WithRawPane(ctx, slave, slave, "", "", func(keys <-chan byte) error {
 			close(ready)

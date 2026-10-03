@@ -88,7 +88,10 @@ func (u *terminalUI) key(key byte) error {
 			return nil
 		}
 		if u.focus == 0 {
-			return u.send(string([]byte{key}))
+			// Bypass shell shortcuts: even the ESC in the paste terminator
+			// belongs to the composer, not selection dismissal or transcript follow.
+			_, err := u.main.key(key)
+			return err
 		}
 		return nil
 	}
