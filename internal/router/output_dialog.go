@@ -458,6 +458,10 @@ func (d *outputDialog) find(step int) {
 func (u *terminalUI) outputKey(key string) {
 	d := u.output
 	if s := d.selection; s != nil {
+		if s.scrollKey(key) {
+			d.top, d.follow = s.top, false
+			return
+		}
 		switch key {
 		case "\x1b":
 			d.selection = nil
@@ -532,8 +536,8 @@ func (u *terminalUI) outputKey(key string) {
 func (u *terminalUI) outputMouse(button, x, y int, release bool) {
 	d := u.output
 	body := terminalRect{d.rect.x + 2, d.rect.y + d.chrome() - 1, d.rect.w - 4, d.rows}
-	if selected := d.selection; selected != nil && selected.dragging && (release || button&32 != 0 && button&3 == 0) {
-		selected.move(x-body.x, y-body.y, release)
+	if selected := d.selection; selected != nil && selected.mouse(button, x-body.x, y-body.y, release) {
+		d.top = selected.top
 		if selected.moved {
 			d.follow = false
 		}
@@ -566,6 +570,18 @@ func (u *terminalUI) outputMouse(button, x, y int, release bool) {
 			u.output = nil
 		} else if body.contains(x, y) && len(d.body) > 0 {
 			d.selection = &terminalSelection{rect: terminalRect{0, 0, body.w, len(d.body)}, rows: d.body, contentLeft: d.indents, startX: x - body.x, startY: y - body.y, endX: x - body.x, endY: y - body.y, dragging: true}
+			var lines []string
+			var indents []int
+			for i := range d.laid.Lines {
+				for _, row := range d.laid.Rows(i, body.w) {
+					lines = append(lines, d.highlight(row, d.laid.Indent(i), i == d.match))
+					indents = append(indents, d.laid.Indent(i))
+				}
+			}
+			d.selection.document(lines, d.top, 0)
+			if d.selection.screenRows != 0 {
+				d.selection.contentLeft = indents
+			}
 		}
 	}
 }
@@ -632,7 +648,7 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 	if selected := d.selection; selected != nil {
 		body = slices.Clone(body)
 		for i := range body {
-			body[i] = selected.row(i)
+			body[i] = selected.row(selected.documentY(i))
 		}
 	}
 	frame := activityui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.laid, Paused: d.laid.Live && !d.follow, Rows: body, Top: d.top, Total: d.total(), Footer: d.footer(w)}

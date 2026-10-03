@@ -29,8 +29,14 @@ scoped replay/change observations, accounting, and journal publications into dis
 values. Shared Markdown annotations travel with rendered fragments through wrapping,
 record layouts, gutters and viewport clipping. The router resolves them against the
 composed visible frame and removes their private transport before terminal delivery.
-A selection snapshots those annotations with its rows, so later streaming cannot
-change the selected source. Atomic submitted tokens consume the same bound composer
+A selection snapshots those annotations with its rows. A scrollable selection
+retains the full rendered document and keeps its own
+viewport, so later streaming cannot change selected or newly exposed source rows.
+The snapshot retains Markdown annotations, original click targets, pinned rows,
+and saved Diff gutters and change attribution. Main, Activity, saved Diff,
+side-answer docks and output dialogs share the selection mouse and scroll model;
+the caller retains composition and dismissal policy. Output dialogs defer live
+content refresh while their selection is active. Atomic submitted tokens consume the same bound composer
 spans through Codex text elements, rather than recognizing lookalike prompt text.
 Journal acknowledgements remain with their owner and occur only after the
 terminal write succeeds. Preview workers and brokers remain with router observation,

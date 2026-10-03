@@ -378,6 +378,10 @@ rows in the same capture. Click-through content (Edit, message excerpts, questio
 agent links) opens the shared content dialog above the existing panes. Its
 close button or Escape dismisses it without changing pane filters, scroll
 positions, or keyboard focus. New activity and captures remain available.
+Output-dialog text selection uses the shared drag and selection-scroll behavior.
+The selected document stays frozen while new output arrives; clearing or copying
+the selection releases it. Copy excludes the dialog's borders and gutters.
+Changing pages or resizing dismisses the selection.
 Edit pages use the exact host invocation, including grouped shell captures,
 rather than matching nearby paths or edits. Roster picks remain explicit filters.
 
@@ -585,7 +589,8 @@ WebSocket support remains unchanged. No warmup response is fabricated or discard
 The question and visible answer are selectable through the shared Reference, Copy,
 and Clear actions, excluding the dock border, status and hints. Selected answer
 content uses the same source-aware Markdown copying as Main and Activity.
-PgUp/PgDn scroll the side answer while the dock is open, dismissing a selection.
+PgUp/PgDn scroll the side answer while the dock is open. During selection,
+the question stays pinned while the frozen answer scrolls.
 Esc first clears a selection. After dismissing active questions or command menus,
 it closes the dock without changing the main
 draft or canceling Main. It cancels only a running side turn and unsubscribes its
@@ -714,8 +719,16 @@ notice; one that exceeds the remaining envelope budget is replaced by an explici
 omission frame, and the composer reports it. While a question is open, Reference
 inserts `> SELECTED_TEXT\n\n` instead, since an answer is plain text.
 Copy requests the terminal clipboard via OSC 52, and Clear leaves the draft intact.
-The selected viewport stays stable while the selection is active; resizing,
-scrolling, or resuming editing dismisses it. Clicking a Markdown absolute local
+Main, Activity, saved Diff and side-answer selections retain a frozen document,
+including off-screen rows, until the selection is dismissed. Mouse-wheel scrolling
+during a held drag extends the range through that document; dragging above or
+below its scrollable viewport scrolls one row per motion event. Up/Down,
+PgUp/PgDn and Home/End scroll an active scrollable selection without clearing it.
+Scrolling after releasing the drag leaves the selected range unchanged. Newly
+exposed rows retain source-aware Markdown copying and their original click targets;
+saved Diff rows retain their gutters and change attribution. Static selections
+retain their existing dismissal behavior. Resizing or resuming editing dismisses
+the selection. Clicking a Markdown absolute local
 path or HTTP(S) link copies its destination (a local path retains literal spaces
 and its line suffix), rather than opening it. Clipboard availability is controlled
 by the user's terminal.

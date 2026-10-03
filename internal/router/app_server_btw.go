@@ -25,6 +25,7 @@ type appServerBTW struct {
 	scroll, rows                   int
 	started                        time.Time
 	rect                           terminalRect
+	copyAnswer                     []string // Full rendered answer for shared scrolling selection.
 }
 
 type btwAnswer struct{ id, text string }
@@ -432,6 +433,7 @@ func (u *appServerUI) btwRows(width, height int) []string {
 		u.view.painter.CopyScope = uint64(index + 1)
 		answer = append(answer, u.view.painter.Markdown(item.text, inner)...)
 	}
+	b.copyAnswer = answer
 	b.rows = max(0, height-len(rows)-1)
 	b.scroll = min(b.scroll, max(0, len(answer)-b.rows))
 	end := len(answer) - b.scroll

@@ -344,6 +344,9 @@ func (u *terminalUI) send(s string) error {
 		u.outputKey(s)
 		return nil
 	}
+	if u.selection != nil && u.selection.scrollKey(s) {
+		return nil
+	}
 	if u.main != nil && u.focus == 0 && u.main.statusPanel != nil {
 		if u.selection != nil && !u.selection.dragging {
 			u.selection = nil
@@ -539,6 +542,19 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	if u.selectionMouse(button, x, y, release) {
 		return nil
+	}
+	if u.main != nil && u.main.btw != nil && !release && button&64 != 0 {
+		r := u.main.btw.rect
+		r.x += u.layout.codex.x
+		r.y += u.layout.codex.y
+		if r.contains(x, y) {
+			delta := outputDialogWheelRows
+			if button&1 != 0 {
+				delta = -delta
+			}
+			u.main.btw.scroll = max(0, u.main.btw.scroll+delta)
+			return nil
+		}
 	}
 	if release && u.drag != 0 {
 		u.drag = 0

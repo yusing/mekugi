@@ -30,6 +30,117 @@ type terminalSelection struct {
 	mention                    string                // Concise description Reference inserts.
 	diff                       []livediff.LineSource // Diff row attribution, aligned with rows.
 	workspace                  string                // Diff workspace for the mentioned path.
+	top, fixed                 int                   // Frozen document viewport and pinned prefix rows.
+	screenRows                 int                   // Frame height at the press, for resize invalidation.
+}
+
+// document retains off-screen rows in the same coordinate space as the press.
+// The visible snapshot wins, including pinned headings and link presentation.
+func (s *terminalSelection) document(lines []string, top, fixed int) {
+	if len(lines) <= s.rect.h {
+		return
+	}
+	s.screenRows = len(s.rows)
+	// Diff can start near EOF with blank viewport rows below its last line.
+	// Keep that offset instead of moving the snapshot over earlier source rows.
+	top = max(0, top)
+	lines = append(slices.Clone(lines), make([]string, max(0, top+s.rect.h-len(lines)))...)
+	rows := make([]string, s.rect.y+len(lines))
+	copySource := make([][]activityui.CopySpan, len(rows))
+	for i, line := range lines {
+		rows[s.rect.y+i], copySource[s.rect.y+i] = activityui.ExtractCopy(strings.Repeat(" ", s.rect.x) + line)
+	}
+	s.top, s.fixed = top, fixed
+	for y := s.rect.y; y < s.rect.y+s.rect.h && y < len(s.rows); y++ {
+		at := s.documentY(y)
+		rows[at] = s.rows[y]
+		if y < len(s.copySource) {
+			copySource[at] = s.copySource[y]
+		}
+	}
+	s.rows, s.copySource = rows, copySource
+	s.startY, s.endY = s.documentY(s.startY), s.documentY(s.endY)
+}
+
+func (s *terminalSelection) restart(x, y int, link string) *terminalSelection {
+	next := *s
+	next.startX, next.endX = x, x
+	next.startY, next.endY = s.documentY(y), s.documentY(y)
+	next.dragging, next.moved, next.link = true, false, link
+	return &next
+}
+
+func (s *terminalSelection) documentY(y int) int {
+	if y < s.rect.y+s.fixed {
+		return y
+	}
+	return y + s.top
+}
+
+func (s *terminalSelection) scroll(delta int) {
+	if s.screenRows == 0 {
+		return
+	}
+	s.top = max(0, min(s.top+delta, len(s.rows)-s.rect.y-s.rect.h))
+}
+
+// mouse shares wheel extension and edge-drag scrolling across panes and dialogs.
+func (s *terminalSelection) mouse(button, x, y int, release bool) bool {
+	if s.screenRows != 0 && !release && button&64 != 0 && (s.dragging || s.rect.contains(x, y)) {
+		delta := outputDialogWheelRows
+		if button&1 == 0 {
+			delta = -delta
+		}
+		s.scroll(delta)
+		if s.dragging {
+			s.move(x, y, false)
+		}
+		return true
+	}
+	if s.dragging && (release || button&32 != 0 && button&3 == 0) {
+		if !release {
+			if y < s.rect.y+s.fixed {
+				s.scroll(-1)
+			} else if y >= s.rect.y+s.rect.h {
+				s.scroll(1)
+			}
+		}
+		s.move(x, y, release)
+		return true
+	}
+	return false
+}
+
+func (s *terminalSelection) scrollKey(key string) bool {
+	delta := 0
+	switch key {
+	case "\x1b[A":
+		delta = -1
+	case "\x1b[B":
+		delta = 1
+	case "\x1b[5~":
+		delta = -max(1, s.rect.h-s.fixed-1)
+	case "\x1b[6~":
+		delta = max(1, s.rect.h-s.fixed-1)
+	case "\x1b[H", "\x1b[1~":
+		delta = -len(s.rows)
+	case "\x1b[F", "\x1b[4~":
+		delta = len(s.rows)
+	default:
+		return false
+	}
+	if s.screenRows == 0 {
+		return false
+	}
+	x, y := s.endX, s.endY-s.top
+	if s.endY < s.rect.y+s.fixed {
+		y = s.endY
+	}
+	s.scroll(delta)
+	if s.dragging {
+		s.move(x, y, false)
+	}
+	return true
 }
 
 // selectionSpan is the text a row offers for selection within [left, right).
@@ -141,7 +252,7 @@ func (s *terminalSelection) bounds(y int) (int, int) {
 // move follows a drag within its snapshot, including a release outside it.
 func (s *terminalSelection) move(x, y int, release bool) {
 	s.endX = min(max(x, s.rect.x), s.rect.x+s.rect.w-1)
-	s.endY = min(max(y, s.rect.y), s.rect.y+s.rect.h-1)
+	s.endY = s.documentY(min(max(y, s.rect.y), s.rect.y+s.rect.h-1))
 	s.moved = s.moved || s.endX != s.startX || s.endY != s.startY
 	if release {
 		s.dragging = false
@@ -185,8 +296,7 @@ func (u *terminalUI) selectionAction(action byte) {
 func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	previous := u.selection
 	if s := u.selection; s != nil {
-		if s.dragging && (release || button&32 != 0 && button&3 == 0) {
-			s.move(x, y, release)
+		if s.mouse(button, x, y, release) {
 			if release {
 				s.dragging = false
 				if !s.moved {
@@ -195,12 +305,12 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 						u.copyText(s.link)
 					} else {
 						index := s.startY - s.rect.y
-						if index < len(s.questions) && s.questions[index] != 0 {
+						if index >= 0 && index < len(s.questions) && s.questions[index] != 0 {
 							if s.view == u.main.view && u.openActivityReply(s.questions[index]) {
 								return true
 							}
 							u.openEntry(s.view, s.questions[index])
-						} else if index < len(s.snippets) && s.snippets[index] != (liveActivitySnippet{}) {
+						} else if index >= 0 && index < len(s.snippets) && s.snippets[index] != (liveActivitySnippet{}) {
 							snippet := s.snippets[index]
 							if snippet.block == editNavigationSnippet {
 								u.openActivityEdit(s.view, snippet.run, snippet.path)
@@ -241,7 +351,11 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 		view, pane, mention = u.agents, u.layout.agents, "activity"
 	case u.layout.diff.contains(x, y):
 		// The press still reaches the diff pane, so clicks keep their meaning.
-		u.selection = u.diffSelection(x, y)
+		if previous != nil && previous.diff != nil && previous.screenRows != 0 && previous.pane == u.layout.diff && previous.rect.contains(x, y) {
+			u.selection = previous.restart(x, y, "")
+		} else {
+			u.selection = u.diffSelection(x, y)
+		}
 		return false
 	default:
 		return false
@@ -279,8 +393,15 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	source := u.paintedRows
 	copySource := u.paintedCopy
 	if previous != nil && previous.view == view && previous.rect.contains(x, y) {
-		source, rect = previous.rows, previous.rect
-		copySource = previous.copySource
+		rect = previous.rect
+		source, copySource = slices.Clone(source), slices.Clone(copySource)
+		for row := rect.y; row < rect.y+rect.h; row++ {
+			at := previous.documentY(row)
+			source[row] = previous.rows[at]
+			if row < len(copySource) && at < len(previous.copySource) {
+				copySource[row] = previous.copySource[at]
+			}
+		}
 		questions, snippets, mention = previous.questions, previous.snippets, previous.mention
 	}
 	rows, link := u.selectionScreen(source, x, y)
@@ -290,7 +411,50 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 		u.focus = 2
 	}
 	u.selection = &terminalSelection{rect: rect, rows: rows, copySource: copySource, startX: x, startY: y, endX: x, endY: y, dragging: true, link: link, view: view, pane: pane, questions: questions, snippets: snippets, mention: mention}
+	if previous != nil && previous.screenRows != 0 && previous.view == view && previous.rect == rect {
+		u.selection = previous.restart(x, y, link)
+	} else {
+		u.selectionDocument(u.selection)
+	}
 	return true
+}
+
+func (u *terminalUI) selectionDocument(s *terminalSelection) {
+	switch s.mention {
+	case "message", "activity":
+		if s.view.feedLines > s.rect.h {
+			feed := s.view.renderFeed(s.rect.w, s.view.feedLines)
+			top, fixed := s.view.offset, 0
+			if !s.view.conversation && top+1 < len(feed.heads) && feed.heads[top] != top && feed.heads[top+1] == feed.heads[top] {
+				feed.lines = append([]string{feed.lines[feed.heads[top]]}, feed.lines...)
+				feed.questions = append([]uint64{0}, feed.questions...)
+				feed.snippets = append([]liveActivitySnippet{{}}, feed.snippets...)
+				top, fixed = top+1, 1
+			}
+			s.document(feed.lines, top, fixed)
+			questions, snippets := s.questions, s.snippets
+			s.questions = append(slices.Clone(feed.questions), make([]uint64, max(0, len(s.rows)-s.rect.y-len(feed.questions)))...)
+			s.snippets = append(slices.Clone(feed.snippets), make([]liveActivitySnippet, max(0, len(s.rows)-s.rect.y-len(feed.snippets)))...)
+			for row := 0; row < s.rect.h; row++ {
+				at := s.documentY(s.rect.y+row) - s.rect.y
+				if row < len(questions) {
+					s.questions[at] = questions[row]
+				}
+				if row < len(snippets) {
+					s.snippets[at] = snippets[row]
+				}
+			}
+		}
+	case "side answer":
+		b := u.main.btw
+		var lines []string
+		fixed := s.rect.h - min(b.rows, len(b.copyAnswer))
+		for y := s.rect.y; y < s.rect.y+fixed; y++ {
+			lines = append(lines, ansi.Cut(s.rows[y], s.rect.x, s.rect.x+s.rect.w))
+		}
+		lines = append(lines, b.copyAnswer...)
+		s.document(lines, max(0, len(b.copyAnswer)-b.rows-b.scroll), fixed)
+	}
 }
 
 // selectionScreen snapshots painted rows as a terminal shows them, with the
@@ -330,7 +494,28 @@ func (u *terminalUI) diffSelection(x, y int) *terminalSelection {
 		contentLeft[rect.y+row] = rect.x + source.Content
 		sources[rect.y+row] = source
 	}
-	return &terminalSelection{rect: rect, rows: rows, contentLeft: contentLeft, startX: x, startY: y, endX: x, endY: y, dragging: true, pane: pane, diff: sources, workspace: c.workspace}
+	s := &terminalSelection{rect: rect, rows: rows, contentLeft: contentLeft, startX: x, startY: y, endX: x, endY: y, dragging: true, pane: pane, diff: sources, workspace: c.workspace}
+	if len(c.lines) > rect.h {
+		lines, sources := c.lines, c.rendering.Sources
+		fixed := 0
+		if c.pinned && len(c.view.Files) > c.view.Selected && c.offset > c.rendering.Starts[c.view.Selected] {
+			heading := c.rendering.Starts[c.view.Selected]
+			lines = append([]string{lines[heading]}, lines...)
+			sources = append([]livediff.LineSource{sources[heading]}, sources...)
+			fixed = 1
+		}
+		s.document(lines, c.offset, fixed)
+		s.contentLeft = make([]int, len(s.rows))
+		s.diff = make([]livediff.LineSource, len(s.rows))
+		for i, source := range sources {
+			if rect.y+i >= len(s.rows) {
+				break
+			}
+			s.contentLeft[rect.y+i] = rect.x + source.Content
+			s.diff[rect.y+i] = source
+		}
+	}
+	return s
 }
 
 // mentionDescription names the selection concisely: its pane, or for the
@@ -390,12 +575,13 @@ func (u *terminalUI) paintSelection(rows []string) {
 	if s == nil {
 		return
 	}
-	if len(s.rows) != len(rows) || u.paintedWidth != u.width || s.pane != u.layout.codex && s.pane != u.layout.agents && s.pane != u.layout.diff {
+	if cmp.Or(s.screenRows, len(s.rows)) != len(rows) || u.paintedWidth != u.width || s.pane != u.layout.codex && s.pane != u.layout.agents && s.pane != u.layout.diff {
 		u.selection = nil
 		return
 	}
 	for y := s.rect.y; y < s.rect.y+s.rect.h; y++ {
-		line := ansi.Cut(s.row(y), s.rect.x, s.rect.x+s.rect.w)
+		line := ansi.Cut(s.row(s.documentY(y)), s.rect.x, s.rect.x+s.rect.w)
+		line += strings.Repeat(" ", max(0, s.rect.w-ansi.StringWidth(line)))
 		rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", s.rect.x+1, line)
 	}
 	if !s.dragging {
