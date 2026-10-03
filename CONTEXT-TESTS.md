@@ -19,8 +19,8 @@ The default is `./...`. Unchanged successful tests can use Go's test cache; use
 repeat/isolation checks, or `TEST_FLAGS=-race` when checking concurrency. The recipe
 does not regenerate assets or install binaries. Prepare missing assets once with
 `make preview-assets`, and regenerate when their sources change as described below.
-Choose the narrowest affected owner from the table, then broaden only for effects
-that cross its boundary. A focused pass is not evidence for unselected tests.
+Choose the narrowest affected owner; broaden only for changed contracts across its boundary.
+A focused pass does not cover unselected tests.
 
 `TEST_PARALLEL` defaults to 32 so independent process and PTY fixtures can overlap
 their waits; override it for a constrained machine. Tests that change process-wide
@@ -144,11 +144,12 @@ filesystem-lock contention. Keep subtests and parallel scheduling outside each
 Preserve real process-cleanup coverage and prove boundary coverage before
 shrinking large fixtures.
 
-Choose acceptance cases at the changed consumer:
+The following acceptance routes apply only when the requested change touches their contract;
+they are not additional features or a mandatory matrix for every fix:
 
-- **Continuity:** test durable review/output/journal access after restart with
-  only the requesting thread. Include affected fork, side-thread, agent-switch,
-  model-switch, and resume paths. Live ancestry is not retained identity.
+- **Continuity:** for changed durable review/output/journal state, test restart with only the
+  requesting thread and affected branch/switch/resume paths. Live ancestry is not retained identity.
+  Preserve existing scope; do not add persistence just to create a continuity test.
 - **Launcher handoff:** validate cancellation and rendering before and after
   Codex owns the terminal, including redirected output and delayed startup.
 - **Live diff:** test layout, viewport/follow state, and preview lifecycle
