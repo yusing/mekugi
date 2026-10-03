@@ -231,6 +231,10 @@ func TestPrepareGrokCatalogUsesAbsolutePath(t *testing.T) {
 	}
 	t.Setenv("TMPDIR", "temporary")
 	cwd := t.TempDir()
+	// The subprocess fixture also needs a valid relative TMPDIR in its own cwd.
+	if err := os.Mkdir(filepath.Join(cwd, "temporary"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	directory, path, err := prepareProviderCatalog(t.Context(), executable, []string{"-C", cwd}, router.Session{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true})
 	if err != nil {
 		t.Fatal(err)
