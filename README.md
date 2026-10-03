@@ -674,6 +674,9 @@ Every section is optional. Settings are read at startup and never rewritten.
   constraint, change and failed-command evidence instead of asking the model for a
   summary. It includes subagents and falls back to the provider if evidence cannot
   be safely recovered.
+  Recovery keeps constraints and open work inline; completed task bodies and agent
+  history stay available through journal reads when needed, rather than filling
+  the restored context.
   The default remains `off` pending comparative evaluation; this is not evidence
   of improved model success or token savings. In the native UI, sliced plans show
   a countdown between successful turns; Esc cancels. `slice` and `auto` reset

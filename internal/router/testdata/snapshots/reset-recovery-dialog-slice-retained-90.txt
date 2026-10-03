@@ -7,7 +7,7 @@
 │                                                                               ▌
 │ Context:                                                                      ▌
 │                                                                               ▌
-│ /3 Preserve host authority                                                    ▌
+│ /3 Preserve host authority                                                    │
 │ Use retained observations, not revived continuation handles.                  │
 │                                                                               │
 │ Open tasks:                                                                   │

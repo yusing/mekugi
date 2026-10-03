@@ -147,14 +147,18 @@ results and retained changes, with actionable paths first. Context nodes are kep
 in full. Working tasks precede pending and blocked tasks; completed work and notes
 follow. A superseded node renders as one line naming its replacement, without its
 body or descendants, so recovery does not present a replaced decision as current.
-Finished work is represented by its own result. A done or dropped task with a body
-renders without its notes and bound agents. A finished agent renders with only its
-latest outcome, since earlier outcomes may report defects it later resolved. Each
-folded line states how many entries it folds and the `read` path that returns them.
+Finished work is an addressable index: done or dropped tasks retain their path,
+state, title, binding and reason, but omit their bodies, notes and bound agents,
+even when the task has no body. Completed agent mounts also omit their history.
+The latest outcome of a completed agent stays inline only when its directly bound
+parent task is still open, so unresolved integration findings remain available.
+One shared `read` hint explains how to retrieve completed bodies and history by
+their listed paths; recovery does not repeat that hint for every completed node.
 Open tasks, their work and context nodes are never folded: an open task bounds
 folding even under a dropped task or a finished agent. When completed work exceeds its
 budget, the newest results are kept in tree order and the omitted count is stated.
-Bounded detail excerpts point back to `read`, never claim to be complete. Retained
+Bounded detail excerpts point back to `read`, never claim to be complete. Omitted
+own paths can be located with the body-free `outline` view. Retained
 changes list only their ranges, pointing to `mchanges ID[..ID] --summary` for file
 statistics.
 
@@ -181,7 +185,8 @@ references. Unknown exit status stays unknown. At most eight failed commands are
 listed, newest kept within the remaining capacity, with earlier ones counted. A
 failed command whose output was not retained is listed as such. Unordered records
 from before failure capture ordering are covered by a known journal boundary. The
-resume direction points at this evidence and the working task, rather than
+resume direction names the working task and offers evidence reads on demand,
+rather than requiring every retained change or output to be read before work or
 treating an investigation's hypothesis as established. Capturing failed output
 does not replace or alter the host's result. An unreadable evidence boundary does
 not block journal writes; the next summary treats the boundary as unknown.

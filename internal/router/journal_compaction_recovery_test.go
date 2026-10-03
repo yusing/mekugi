@@ -80,6 +80,50 @@ func requireCompactionRecovery(t *testing.T, store *mekugiReplayStore, workspace
 	}
 }
 
+func TestJournalCompactionRecoveryReadsCompletedHistoryOnDemand(t *testing.T) {
+	transform, proxy, _, workspace := newDurableTreeTransform(t)
+	ctx, thread := transform.ctx, transform.shellThreadID
+	proxy.journalCompaction = "auto"
+	body := strings.Repeat("Historical validation detail. ", 100)
+	mutations := []journalMutation{
+		{Op: "add", Kind: "context", Title: new("Current constraint"), Body: new("Keep wire compatibility")},
+		{Op: "add", Kind: "task", Title: new("Completed checkpoint"), State: new("done"), Body: &body},
+		{Op: "add", Kind: "task", Title: new("Pending acceptance"), State: new("pending")},
+		{Op: "log", P: "/3", Text: new("Live acceptance still needs evidence")},
+	}
+	for range 30 {
+		mutations = append(mutations, journalMutation{Op: "add", Under: "/2", Kind: "note", Title: new("Historical validation"), Body: &body})
+	}
+	if _, err := proxy.journals.apply(ctx, proxy.replayStore, workspace, thread, "", mutations); err != nil {
+		t.Fatal(err)
+	}
+	_, delivered := deliverRecoveryCompaction(t, proxy, workspace, thread, "lean-reset")
+	for _, want := range []string{"Keep wire compatibility", "/2 [done] Completed checkpoint", "Live acceptance still needs evidence", "Resume: continue /3"} {
+		if !strings.Contains(delivered, want) {
+			t.Errorf("delivered recovery omitted %q: %s", want, delivered)
+		}
+	}
+	if strings.Contains(delivered, "Historical validation") || len(delivered) > 2048 {
+		t.Fatalf("completed history inflated the delivered recovery: %d bytes", len(delivered))
+	}
+	reopened, err := openMekugiReplayStore(proxy.replayStore.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	depth := 1
+	nodes, err := newJournalStore().readTree(ctx, reopened, workspace, thread, "", "/2", &depth, "own")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 || nodes[0].Body != body || len(nodes[0].Children) != 30 || nodes[0].Children[29].Body != body {
+		t.Fatalf("on-demand read lost completed evidence after restart: %+v", nodes)
+	}
+	hook, err := reopened.postCompactContext(ctx, workspace, thread)
+	if err != nil || hook != delivered {
+		t.Fatalf("hook and synthesized recovery differ: %v\n%s", err, hook)
+	}
+}
+
 func TestJournalCompactionRecoveryExactDeliveredSummaryAndRestart(t *testing.T) {
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	thread := transform.shellThreadID

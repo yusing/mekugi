@@ -137,28 +137,28 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		}
 		return false
 	}
-	// Finished work is summarized by its own result: a finished task's body
-	// stands for its logs and bound agents, and a finished agent's latest
-	// outcome stands for its earlier outcomes and logs, which may describe
-	// defects it later resolved. Collapsed entries remain readable on demand.
+	openTasks := make(map[string]bool)
+	for _, item := range items {
+		if item.Kind == "task" && item.State != "done" && item.State != "dropped" {
+			openTasks[item.Path] = true
+		}
+	}
+	// Closed work is an index, not a replay of its result bodies and history.
+	// Keep a finished agent's latest answer inline only when its directly bound
+	// integration task is still open. All details remain readable by path.
 	collapsed := make(map[string]string) // collapsing path -> kept answer path
 	finishedAgents := make(map[string]bool)
 	for _, item := range items {
 		_, key, _ := strings.CutLast(item.Path, "/")
 		switch {
-		case item.Kind == "task" && (item.State == "done" || item.State == "dropped") && item.Body != "" && item.SupersededBy == "":
+		case item.Kind == "task" && (item.State == "done" || item.State == "dropped") && item.SupersededBy == "":
 			collapsed[item.Path] = ""
-		case item.Agent != "" && item.State == "done" && strings.HasPrefix(key, "@"):
-			finishedAgents[item.Path] = true
+			if item.Agent != "" && strings.HasPrefix(key, "@") && openTasks[journalParent(item.Path)] {
+				finishedAgents[item.Path] = true
+			}
 		case item.Kind == "answer" && finishedAgents[journalParent(item.Path)]:
 			// Answers are root nodes in creation order; the last is the latest.
 			collapsed[journalParent(item.Path)] = item.Path
-		}
-	}
-	openTasks := make(map[string]bool)
-	for _, item := range items {
-		if item.Kind == "task" && item.State != "done" && item.State != "dropped" {
-			openTasks[item.Path] = true
 		}
 	}
 	// The outermost collapsing ancestor is the visible line that folds path.
@@ -200,7 +200,8 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 			fmt.Fprintf(&node, " · superseded by %s\n", item.SupersededBy)
 			return node.String()
 		}
-		if item.Body != "" {
+		_, closed := collapsed[item.Path]
+		if item.Body != "" && (!closed || full) {
 			body := item.Body
 			if !full {
 				body = summaryExcerpt(body, 1024, "[read the retained node for full detail]")
@@ -234,33 +235,18 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		return result, errors.New("journal context and open tasks exceed summary capacity")
 	}
 	text.WriteString("\nEstablished results and completed work:\n")
+	text.WriteString("Completed task bodies and history are on demand: journal({op:\"read\", p:\"PATH\"}).\n")
 	// Keep the newest results, which are nearest current work, in tree order.
 	var established []string
 	budget, omitted := maxJournalSummaryBytes/2-text.Len()-128, 0
 	isResult := func(item journalItem) bool {
 		return item.Kind != "context" && (item.Kind != "task" || item.State == "done" || item.State == "dropped") && !hiddenBySupersession(item.Path)
 	}
-	folded := make(map[string]int)
-	for _, item := range items {
-		if owner := collapsedBy(item.Path); owner != "" && isResult(item) {
-			folded[owner]++
-		}
-	}
 	for _, item := range slices.Backward(items) {
 		if !isResult(item) || collapsedBy(item.Path) != "" {
 			continue
 		}
 		node := renderNode(item, false)
-		if n := folded[item.Path]; n > 0 {
-			if !strings.HasSuffix(node, "\n") {
-				node += "\n"
-			}
-			entries := "entries"
-			if n == 1 {
-				entries = "entry"
-			}
-			node += fmt.Sprintf("%d %s folded; journal({op:\"read\", p:%q}) retains them.\n", n, entries, item.Path)
-		}
 		if omitted > 0 || len(node) > budget {
 			omitted++
 			continue
@@ -269,7 +255,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		established = append(established, node)
 	}
 	if omitted > 0 {
-		fmt.Fprintf(&text, "\n%d earlier results omitted; journal({op:\"read\"}) retains the complete tree.\n", omitted)
+		fmt.Fprintf(&text, "\n%d earlier results omitted; journal({op:\"read\", view:\"outline\"}) locates own retained paths.\n", omitted)
 	}
 	for _, node := range slices.Backward(established) {
 		text.WriteString(node)
@@ -380,9 +366,9 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		for _, entry := range slices.Backward(listed) {
 			text.WriteString(entry)
 		}
-		fmt.Fprintf(&text, "\nResume: read the listed mchanges ranges and mread references, then continue %s.\n", cmp.Or(next, "the journal plan"))
+		fmt.Fprintf(&text, "\nResume: continue %s; read the listed journal paths, mchanges ranges and mread references as needed.\n", cmp.Or(next, "the journal plan"))
 	} else {
-		fmt.Fprintf(&text, "\nResume: continue %s; use journal({op:\"read\"}) and mchanges for retained details.\n", cmp.Or(next, "the journal plan"))
+		fmt.Fprintf(&text, "\nResume: continue %s; read retained journal paths and mchanges ranges as needed.\n", cmp.Or(next, "the journal plan"))
 	}
 	if text.Len() > maxJournalSummaryBytes {
 		return result, errors.New("journal evidence exceeds summary capacity")

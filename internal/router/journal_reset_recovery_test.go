@@ -33,6 +33,70 @@ func TestJournalSummarySeparatesCompletedAgentFromOpenIntegration(t *testing.T) 
 	}
 }
 
+func TestJournalSummaryKeepsLatestAgentOutcomeForOpenIntegration(t *testing.T) {
+	proxy, workspace := mountFixture(t)
+	treeApply(t, proxy, workspace, journalMutation{Op: "add", Kind: "task", Title: new("Integrate review"), State: new("working"), Agent: "/root/child"})
+	child, _, err := readThreadJournal(proxy.replayStore, workspace, "child")
+	if err != nil {
+		t.Fatal(err)
+	}
+	child.Items = append(child.Items,
+		journalItem{ID: "/1", Path: "/1", Kind: "answer", Title: "Outcome", Body: "Old reproduction now resolved", Author: child.Author},
+		journalItem{ID: "/2", Path: "/2", Kind: "answer", Title: "Outcome", Body: "One unresolved review finding needs integration", Author: child.Author},
+	)
+	if err := writeThreadJournal(proxy.replayStore, child); err != nil {
+		t.Fatal(err)
+	}
+	if err := proxy.journals.observeLifecycle(t.Context(), proxy.replayStore, workspace, "child", "done", ""); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := summaryForTest(t, t.Context(), proxy.replayStore, workspace, "tree")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(summary.Text, "One unresolved review finding needs integration") || strings.Contains(summary.Text, "Old reproduction now resolved") {
+		t.Fatalf("open integration lost its latest outcome or revived old findings: %s", summary.Text)
+	}
+}
+
+func TestJournalSummaryClosedTasksWithoutBodiesKeepContextNotHistory(t *testing.T) {
+	for _, state := range []string{"done", "dropped"} {
+		t.Run(state, func(t *testing.T) {
+			transform, proxy, _, workspace := newDurableTreeTransform(t)
+			ctx, thread := transform.ctx, transform.shellThreadID
+			if _, err := proxy.journals.apply(ctx, proxy.replayStore, workspace, thread, "", []journalMutation{
+				{Op: "add", Kind: "task", Title: new("Finished checkpoint"), State: new(state), Reason: new("Scope decision")},
+				{Op: "add", Under: "/1", Kind: "context", Title: new("Active protocol constraint"), Body: new("Keep version 1")},
+				{Op: "add", Under: "/1", Kind: "note", Title: new("Old validation"), Body: new(strings.Repeat("obsolete test detail ", 100))},
+				{Op: "add", Kind: "task", Title: new("Current acceptance"), State: new("working")},
+				{Op: "log", P: "/2", Text: new("Runtime acceptance remains unresolved")},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			summary, err := summaryForTest(t, ctx, proxy.replayStore, workspace, thread)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range []string{"Finished checkpoint", "Scope decision", "Active protocol constraint", "Keep version 1", "Runtime acceptance remains unresolved", "Resume: continue /2"} {
+				if !strings.Contains(summary.Text, want) {
+					t.Errorf("missing active fact %q: %s", want, summary.Text)
+				}
+			}
+			if strings.Contains(summary.Text, "obsolete test detail") {
+				t.Fatalf("bodyless closed task expanded its history: %s", summary.Text)
+			}
+			depth := 1
+			nodes, err := proxy.journals.readTree(ctx, proxy.replayStore, workspace, thread, "", "/1", &depth, "own")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if note, ok := mountFind(nodes, "/1/2"); !ok || !strings.Contains(note.Body, "obsolete test detail") {
+				t.Fatalf("on-demand read lost closed history: %+v", nodes)
+			}
+		})
+	}
+}
+
 func TestJournalSummaryUnconfirmedExecutionsUseRetainedOutcomes(t *testing.T) {
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	ctx, thread := transform.ctx, transform.shellThreadID
@@ -146,10 +210,9 @@ func TestJournalSummaryDoesNotPromoteDescendantTaskState(t *testing.T) {
 	}
 }
 
-// Finished work recovers as its own result: a done task's body stands for its
-// logs and bound agent, and a finished agent's latest outcome stands for its
-// earlier outcomes, which may report defects it later resolved.
-func TestJournalSummaryFoldsFinishedWorkIntoItsResult(t *testing.T) {
+// Completed work keeps an addressable index, not inline result bodies or agent
+// history. The same paths still return the complete retained evidence.
+func TestJournalSummaryIndexesFinishedWorkForOnDemandReads(t *testing.T) {
 	proxy, workspace := mountFixture(t)
 	treeApply(t, proxy, workspace,
 		journalMutation{Op: "add", Kind: "task", Title: new("Delegate tests"), State: new("working"), Agent: "/root/child"},
@@ -190,22 +253,29 @@ func TestJournalSummaryFoldsFinishedWorkIntoItsResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"/1 [done] Delegate tests (agent /root/child)\nTests added and passing\n3 entries folded; journal({op:\"read\", p:\"/1\"}) retains them.",
-		"/@agents/@sibling [done] /root/sibling (agent /root/sibling)\n3 entries folded; journal({op:\"read\", p:\"/@agents/@sibling\"}) retains them.",
-		"/@agents/@sibling/3 Outcome\nBoth defects resolved", "Resume: continue /2",
+		"/1 [done] Delegate tests (agent /root/child)",
+		"/@agents/@sibling [done] /root/sibling (agent /root/sibling)",
+		"Completed task bodies and history are on demand: journal({op:\"read\", p:\"PATH\"})", "Resume: continue /2",
 	} {
 		if !strings.Contains(summary.Text, want) {
 			t.Errorf("summary missing %q:\n%s", want, summary.Text)
 		}
 	}
-	for _, folded := range []string{"PARENT-LOG-DETAIL", "CHILD-LOG-DETAIL", "REVIEW-LOG-DETAIL", "STALE", "/@agents Agents"} {
+	for _, folded := range []string{"Tests added and passing", "Both defects resolved", "PARENT-LOG-DETAIL", "CHILD-LOG-DETAIL", "REVIEW-LOG-DETAIL", "STALE", "/@agents Agents"} {
 		if strings.Contains(summary.Text, folded) {
 			t.Errorf("summary kept folded entry %q:\n%s", folded, summary.Text)
 		}
 	}
-	// The fold hint names a read that returns what recovery omitted.
-	if _, ok := mountFind(mountRead(t, proxy, workspace, "tree", "", "/@agents/@sibling"), "/@agents/@sibling/2"); !ok {
-		t.Fatal("folded agent outcome is not readable at the hinted path")
+	store, err := openMekugiReplayStore(proxy.replayStore.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy.replayStore, proxy.journals = store, newJournalStore()
+	if node, ok := mountFind(mountRead(t, proxy, workspace, "tree", "", "/@agents/@sibling"), "/@agents/@sibling/3"); !ok || node.Body != "Both defects resolved" {
+		t.Fatalf("indexed agent outcome is not readable after restart: %+v", node)
+	}
+	if node, ok := mountFind(mountRead(t, proxy, workspace, "tree", "", "/1"), "/1"); !ok || node.Body != "Tests added and passing" {
+		t.Fatalf("indexed task body is not readable after restart: %+v", node)
 	}
 }
 
@@ -228,12 +298,12 @@ func TestJournalSummaryOpenSubtaskBoundsFolding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"OPEN-SUB-PROGRESS", "CHILD-NOTE", "retained result: /1/1/@child", "1 entry folded; journal({op:\"read\", p:\"/1\"})"} {
+	for _, want := range []string{"OPEN-SUB-PROGRESS", "retained result: /1/1/@child", "/1 [dropped] Original approach · Approach replaced"} {
 		if !strings.Contains(summary.Text, want) {
 			t.Errorf("summary missing %q:\n%s", want, summary.Text)
 		}
 	}
-	if strings.Contains(summary.Text, "DROPPED-DETAIL") {
+	if strings.Contains(summary.Text, "DROPPED-DETAIL") || strings.Contains(summary.Text, "Superseded plan") || strings.Contains(summary.Text, "CHILD-NOTE") {
 		t.Errorf("dropped task kept its own folded note:\n%s", summary.Text)
 	}
 }
