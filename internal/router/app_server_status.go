@@ -53,7 +53,7 @@ type appServerStatusConfig struct {
 }
 
 func (u *appServerUI) displayServiceTier() string {
-	return effectiveServiceTier(u.model, u.serviceTier, u.serviceTiers)
+	return effectiveServiceTier(u.model, u.serviceTier, u.serviceTiers, u.thread)
 }
 
 func (u *appServerUI) showStatus() error {

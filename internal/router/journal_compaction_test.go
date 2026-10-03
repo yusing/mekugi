@@ -262,7 +262,7 @@ func TestJournalCompactionPreservesRoutingPolicy(t *testing.T) {
 				}
 				executor := requestExecutor{
 					provider: provider, output: output, mekugiCalls: proxy,
-					serviceTiers: map[string]string{"gpt-6-sol": "fast"},
+					serviceTiers: &serviceTierSettings{configured: map[string]string{"gpt-6-sol": "fast"}},
 				}
 				err = executor.execute(t.Context(), t.Context(), request, headers, "compact")
 				if (err != nil) != failed {

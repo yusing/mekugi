@@ -107,7 +107,7 @@ func composeResponseTransformers(first, second responseTransformer) responseTran
 type providerClient struct {
 	thirdPartyOnly    bool
 	titleGenerator    *sessionTitleGenerator
-	serviceTiers      map[string]string
+	serviceTiers      *serviceTierSettings
 	websockets        *providerWebSockets
 	opencode          map[string]*grokClient
 	grok              *grokClient

@@ -20,7 +20,7 @@ import (
 // including router-generated journal continuations.
 type requestExecutor struct {
 	titleGenerator *sessionTitleGenerator
-	serviceTiers   map[string]string
+	serviceTiers   *serviceTierSettings
 	provider       responseProvider
 	output         io.Writer
 	issues         *CriticalErrors
@@ -230,7 +230,7 @@ func (a *requestAttempt) prepare() error {
 		exchange.history.providerReasoning = a.request.fields["reasoning"]
 	}
 	requestedTier := jsonString(a.request.fields, "service_tier")
-	if tier := effectiveServiceTier(a.request.model(), requestedTier, a.executor.serviceTiers); tier != requestedTier {
+	if tier := effectiveServiceTier(a.request.model(), requestedTier, a.executor.serviceTiers, a.threadID); tier != requestedTier {
 		a.request.fields["service_tier"] = mustMarshalJSON(tier)
 	}
 

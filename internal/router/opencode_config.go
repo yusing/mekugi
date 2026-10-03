@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/BurntSushi/toml"
 )
@@ -30,14 +31,28 @@ type mekugiConfig struct {
 	ServiceTiers map[string]string `toml:"service_tiers"`
 }
 
+type serviceTierSettings struct {
+	configured map[string]string
+	choices    sync.Map // [thread, routed model] -> confirmed tier
+}
+
+func serviceTierModel(model string) string {
+	if model == "gpt-5.6-terra" {
+		return "gpt-6-sol"
+	}
+	return model
+}
+
 // effectiveServiceTier follows request model selection and leaves host settings
 // untouched. The legacy Terra selection routes to Sol before tier lookup.
-func effectiveServiceTier(model, requested string, overrides map[string]string) string {
-	if model == "gpt-5.6-terra" {
-		model = "gpt-6-sol"
-	}
-	if tier := overrides[model]; tier != "" {
-		requested = tier
+func effectiveServiceTier(model, requested string, settings *serviceTierSettings, thread string) string {
+	model = serviceTierModel(model)
+	if settings != nil {
+		if tier, ok := settings.choices.Load([2]string{thread, model}); ok {
+			requested = tier.(string)
+		} else if tier := settings.configured[model]; tier != "" {
+			requested = tier
+		}
 	}
 	if requested == "fast" {
 		return "priority"

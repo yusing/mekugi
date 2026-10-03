@@ -198,7 +198,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			log.Printf("OpenCode catalog: refresh/cache update unavailable; retaining last usable metadata")
 		}
 	}
-	provider.serviceTiers = config.ServiceTiers
+	provider.serviceTiers = &serviceTierSettings{configured: config.ServiceTiers}
 	provider.opencode = make(map[string]*grokClient)
 	for _, service := range openCode.services() {
 		client := withDialTimeout(nil)
@@ -514,7 +514,7 @@ func responsesHandler(
 	issues *CriticalErrors,
 	mekugiCalls *mekugiProxy,
 ) http.HandlerFunc {
-	var serviceTiers map[string]string
+	var serviceTiers *serviceTierSettings
 	var titleGenerator *sessionTitleGenerator
 	if client, ok := provider.(*providerClient); ok {
 		serviceTiers = client.serviceTiers

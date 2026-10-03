@@ -129,7 +129,7 @@ type appServerUI struct {
 	turnStarted               time.Time // Shown as elapsed time while a turn runs.
 	model, reasoningEffort    string
 	serviceTier               string
-	serviceTiers              map[string]string // Shared invocation config; presentation only.
+	serviceTiers              *serviceTierSettings // Invocation defaults and confirmed thread/model choices.
 	models                    []appServerModel
 	modelsLoading             bool
 	reasoningKey              *bool
@@ -168,7 +168,7 @@ func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint, nil, nil, resumeArgv, "", nil)
 }
 
-func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers map[string]string, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionTitleGenerator) (func() error, error) {
+func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionTitleGenerator) (func() error, error) {
 	var resumeCwd string
 	if resumeThread == "--last" || resumeThread == resumePickerStartup {
 		var err error
