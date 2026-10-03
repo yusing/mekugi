@@ -440,7 +440,9 @@ A card header names the caller, then states the call with a roster glyph
 rather than a word: `◐` while the call is arriving or running, `✓` once it
 completes, and `!` with the reason when the edit cannot be projected. The
 current file follows, styled like file navigation: its status and live `+N -N` line counts, with `N/M files` when the call edits
-several.
+several. Deleted files do not open live source cards or count toward live
+batch slots. A deletion-only call leaves the transcript visible. Deleted-file
+evidence remains available in Activity and the saved diff.
 
 The live batch header names the editing tool for its selected edit before the
 file count, such as `apply_patch`, `python`, or `cat`, including edits nested

@@ -1,0 +1,31 @@
+LIVE · 1 file
+  main · ◐ A src/kept.go +24 -0
+   1│+source line                                                      
+   2│+source line                                                      
+   3│+source line                                                      
+   4│+source line                                                      
+   5│+source line                                                      
+   6│+source line                                                      
+   7│+source line                                                      
+   8│+source line                                                      
+   9│+source line                                                      
+  10│+source line                                                      
+  11│+source line                                                      
+  12│+source line                                                      
+  13│+source line                                                      
+  14│+source line                                                      
+  15│+source line                                                      
+  16│+source line                                                      
+  17│+source line                                                      
+  18│+source line                                                      
+  19│+source line                                                      
+  20│+source line                                                      
+  21│+source line                                                      
+  22│+source line                                                      
+  23│+source line                                                      
+▎ 24│+source line                                                      
+
+
+
+
+

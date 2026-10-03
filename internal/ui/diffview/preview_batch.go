@@ -44,6 +44,11 @@ func (p *PreviewPane) batch(caller string) *previewBatch {
 		}
 		for _, file := range files {
 			key := previewFileKey{id, cmp.Or(file.AfterPath, file.BeforePath)}
+			if file.BeforePath != "" && file.AfterPath == "" {
+				delete(b.files, key)
+				b.order = slices.DeleteFunc(b.order, func(old previewFileKey) bool { return old == key })
+				continue // Deletions have no live source viewport.
+			}
 			view := b.files[key]
 			if view == nil {
 				view = &PreviewView{}

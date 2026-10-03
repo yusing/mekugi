@@ -42,7 +42,11 @@ func boundLiveDiffPreview(preview diffview.Preview) diffview.Preview {
 	if len(preview.Files) != 0 {
 		var tail string
 		for index := len(preview.Files) - 1; index >= 0 && len(tail) < 16<<10; index-- {
-			diff := preview.Files[index].UnifiedDiffForWorkspace(preview.Workspace)
+			file := preview.Files[index]
+			if file.BeforePath != "" && file.AfterPath == "" {
+				continue // Deleted files do not have live source cards.
+			}
+			diff := file.UnifiedDiffForWorkspace(preview.Workspace)
 			if len(diff) > 16<<10 {
 				diff = diff[len(diff)-(16<<10):]
 			}
@@ -50,6 +54,10 @@ func boundLiveDiffPreview(preview diffview.Preview) diffview.Preview {
 		}
 		preview.Input = tail
 		preview.Files = nil
+		if tail == "" {
+			preview.Status = "" // Withdraw a deletion-only oversized preview.
+			return preview
+		}
 		preview.DiffText, preview.Truncated = true, true
 	}
 	for preview.Input != "" && len(mustMarshalJSON(preview)) > limit {

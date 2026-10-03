@@ -135,6 +135,14 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	if frame := paint(140, 48); strings.Contains(frame, "LIVE ·") || !strings.Contains(frame, "MAIN_TRANSCRIPT") {
 		t.Fatal("completed quick edit popped a dock")
 	}
+	deleted := diffview.Preview{ID: "deleted", Caller: "/root", Workspace: "/workspace", Status: diffview.PreviewEdit,
+		Files: []mekugi.ReviewFile{mekugi.RenderReviewFile("/workspace/deleted.go", "", "package old\n", "")}}
+	u.shell.preview(deleted)
+	revealNativeDock(u.shell)
+	if frame := paint(140, 48); strings.Contains(frame, "LIVE ·") || !strings.Contains(frame, "MAIN_TRANSCRIPT") {
+		t.Fatal("deletion-only call replaced transcript with an empty dock")
+	}
+	u.shell.preview(diffview.Preview{ID: "deleted", Workspace: "/workspace"})
 	p := nativeBatchPreview("main", "/root", "one")
 	u.shell.preview(p)
 	revealNativeDock(u.shell)
@@ -197,5 +205,30 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	revealNativeDock(u.shell)
 	if frame = paint(140, 48); !strings.Contains(frame, "EDITOR_TRANSCRIPT") || strings.Contains(frame, "LIVE ·") {
 		t.Fatal("withdrawal did not restore Activity")
+	}
+}
+
+func TestUISnapshotNativeBatchDeletionPresentation(t *testing.T) {
+	for _, mixed := range []bool{false, true} {
+		name := "native-batch-deletion-only"
+		if mixed {
+			name = "native-batch-deletion-mixed"
+		}
+		t.Run(name, func(t *testing.T) {
+			u := nativeBatchFixture(t)
+			preview := diffview.Preview{ID: "deleted", Caller: "/root", Workspace: "/workspace", Status: diffview.PreviewEdit,
+				Files: []mekugi.ReviewFile{mekugi.RenderReviewFile("/workspace/deleted.go", "", "package old\n", "")}}
+			if mixed {
+				preview.Files = append(preview.Files, nativeBatchPreview("kept", "/root", "kept").Files...)
+			}
+			u.shell.preview(preview)
+			revealNativeDock(u.shell)
+			screen := vt.NewEmulator(140, 48)
+			defer screen.Close()
+			if err := u.paint(screen, 140, 48); err != nil {
+				t.Fatal(err)
+			}
+			assertNativeUISnapshot(t, name, strings.Split(screen.String(), "\n"))
+		})
 	}
 }

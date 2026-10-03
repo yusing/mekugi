@@ -1,0 +1,48 @@
+┌ 1 Main ────────────────────────────────────────────────────────────┐┌ 3 Activity ──────────────────────────────────────────────── FOLLOW ┐
+│LIVE · 1 file                                                       ││● editor                                                   12:00:00 │
+│  main · ◐ A kept.txt +40 -0                                        │││ EDITOR_TRANSCRIPT                                                 │
+│   6│+kept_line_06                                                  ││                                                                    │
+│   7│+kept_line_07                                                  ││● reviewer                                                 12:00:00 │
+│   8│+kept_line_08                                                  │││ OTHER_ACTIVITY remains readable                                   │
+│   9│+kept_line_09                                                  ││                                                                    │
+│  10│+kept_line_10                                                  ││                                                                    │
+│  11│+kept_line_11                                                  ││                                                                    │
+│  12│+kept_line_12                                                  ││                                                                    │
+│  13│+kept_line_13                                                  ││                                                                    │
+│  14│+kept_line_14                                                  ││                                                                    │
+│  15│+kept_line_15                                                  ││                                                                    │
+│  16│+kept_line_16                                                  ││                                                                    │
+│  17│+kept_line_17                                                  ││                                                                    │
+│  18│+kept_line_18                                                  ││                                                                    │
+│  19│+kept_line_19                                                  ││                                                                    │
+│  20│+kept_line_20                                                  ││                                                                    │
+│  21│+kept_line_21                                                  ││                                                                    │
+│  22│+kept_line_22                                                  ││                                                                    │
+│  23│+kept_line_23                                                  ││                                                                    │
+│  24│+kept_line_24                                                  ││                                                                    │
+│  25│+kept_line_25                                                  ││                                                                    │
+│  26│+kept_line_26                                                  ││                                                                    │
+│  27│+kept_line_27                                                  ││                                                                    │
+│  28│+kept_line_28                                                  ││                                                                    │
+│  29│+kept_line_29                                                  ││                                                                    │
+│  30│+kept_line_30                                                  ││                                                                    │
+│  31│+kept_line_31                                                  ││                                                                    │
+│  32│+kept_line_32                                                  ││                                                                    │
+│  33│+kept_line_33                                                  ││                                                                    │
+│  34│+kept_line_34                                                  ││                                                                    │
+│  35│+kept_line_35                                                  ││                                                                    │
+│  36│+kept_line_36                                                  ││                                                                    │
+│  37│+kept_line_37                                                  ││                                                                    │
+│  38│+kept_line_38                                                  ││                                                                    │
+│  39│+kept_line_39                                                  ││                                                                    │
+│▎ 40│+kept_line_40                                                  ││                                                                    │
+│                                                                    ││                                                                    │
+│╭─ Ready ──────────────────────────────────────────────────────────╮││                                                                    │
+││ ❯                                                                │││                                                                    │
+│╰───────────────────────────────────── snapshot-model (high) • 0% ─╯││                                                                    │
+└────────────────────────────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────┘
+─ 4 Agents · 2 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ● editor  idle                                                                                                                          0%
+ ● reviewer  idle                                                                                                                        0%
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes

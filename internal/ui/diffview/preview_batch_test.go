@@ -283,3 +283,35 @@ func TestUISnapshotNativeBatchMixedToolCall(t *testing.T) {
 	}
 	assertRowsSnapshot(t, "native_batch_mixed_tool_pinned", batchTestRender(t, &pane, 16))
 }
+
+func TestUISnapshotNativeBatchOmitsDeletedFiles(t *testing.T) {
+	pane := PreviewPane{Retain: true}
+	preview := batchTestPreview("mixed", "/root", "src/kept.go")
+	preview.Files[0] = mekugi.RenderReviewFile("", "/workspace/src/kept.go", "", strings.Repeat("source line\n", 24))
+	preview.Files = append(preview.Files, mekugi.RenderReviewFile("/workspace/src/deleted.go", "", "package old\n", ""))
+	pane.Update(preview)
+	assertRowsSnapshot(t, "native_batch_omits_deleted", batchTestRender(t, &pane, 31))
+	if !slices.Equal(pane.Callers(), []string{"/root"}) || len(pane.batches["/root"].files) != 1 {
+		t.Fatal("deletion reserved a viewport")
+	}
+}
+
+func TestNativeBatchDeletedFileRemovesRetainedViewport(t *testing.T) {
+	pane := PreviewPane{Retain: true}
+	pane.Update(batchTestPreview("call", "/root", "src/a.go", "src/b.go"))
+	batchTestRender(t, &pane, 31)
+	pane.NextBatch("/root") // Pin a.go before it disappears.
+	preview := batchTestPreview("call", "/root", "src/b.go")
+	preview.Files = append(preview.Files, mekugi.RenderReviewFile("/workspace/src/a.go", "", "package old\n", ""))
+	pane.Update(preview)
+	batchTestRender(t, &pane, 31)
+	b := pane.batches["/root"]
+	if len(b.order) != 1 || b.selected.path != "/workspace/src/b.go" || b.pinned {
+		t.Fatalf("deleted viewport retained: %+v", b)
+	}
+	preview.Files = []mekugi.ReviewFile{mekugi.RenderReviewFile("/workspace/src/b.go", "", "package old\n", "")}
+	pane.Update(preview)
+	if rows := batchTestRender(t, &pane, 31); len(rows) != 0 || len(pane.Callers()) != 0 {
+		t.Fatal("deletion-only call still opens dock")
+	}
+}

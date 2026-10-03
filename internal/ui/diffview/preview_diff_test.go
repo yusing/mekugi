@@ -6,6 +6,7 @@ import (
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
@@ -61,5 +62,20 @@ func TestPreviewDiffFlagReplacesPlainRows(t *testing.T) {
 	row := pane.Views["tail"].Source[0]
 	if row.Kind != '+' || row.Number != 0 || row.Text != "new\n" {
 		t.Fatalf("stale plain row: %+v", row)
+	}
+}
+
+func TestLivePreviewOmitsDeletedFiles(t *testing.T) {
+	pane := PreviewPane{}
+	preview := batchTestPreview("call", "/root", "src/kept.go")
+	preview.Files = append(preview.Files, mekugi.RenderReviewFile("/workspace/src/deleted.go", "", "old\n", ""))
+	pane.Update(preview)
+	if len(pane.Views["call"].Current.Files) != 1 || len(preview.Files) != 2 {
+		t.Fatal("deleted file retained or original evidence changed")
+	}
+	preview.Files = preview.Files[1:]
+	pane.Update(preview)
+	if len(pane.Order) != 0 || len(pane.Callers()) != 0 {
+		t.Fatal("deletion-only preview not withdrawn")
 	}
 }

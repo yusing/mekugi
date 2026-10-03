@@ -387,7 +387,6 @@ func TestLiveDiffCompletedPreviewShowsDoneGlyph(t *testing.T) {
 func TestLiveDiffPreviewTitleShowsFileStatusAndCounts(t *testing.T) {
 	modified := mekugi.RenderReviewFile("/workspace/a.go", "/workspace/a.go", "one\ntwo\n", "one\nTWO\nthree\n")
 	added := mekugi.RenderReviewFile("", "/workspace/new.txt", "", "x\n")
-	deleted := mekugi.RenderReviewFile("/workspace/old.txt", "", "a\nb\n", "")
 	for _, tc := range []struct {
 		name    string
 		preview diffview.Preview
@@ -395,7 +394,6 @@ func TestLiveDiffPreviewTitleShowsFileStatusAndCounts(t *testing.T) {
 	}{
 		{"modified", diffview.Preview{Status: diffview.PreviewEdit, Files: []mekugi.ReviewFile{modified}}, "◐ M a.go +2 -1"},
 		{"added", diffview.Preview{Status: diffview.PreviewEdit, Files: []mekugi.ReviewFile{added}}, "◐ A new.txt +1 -0"},
-		{"deleted", diffview.Preview{Status: diffview.PreviewEdit, Files: []mekugi.ReviewFile{deleted}}, "◐ D old.txt +0 -2"},
 		{"several files", diffview.Preview{Status: diffview.PreviewEdit, Files: []mekugi.ReviewFile{modified, added}}, "◐ A new.txt +1 -0 2/2 files"},
 		{"running", diffview.Preview{Status: diffview.PreviewRunning, Files: []mekugi.ReviewFile{modified}}, "◐ M a.go +2 -1 · observed so far"},
 		{"pending", diffview.Preview{Status: diffview.PreviewPending, Input: "will restore (pending)\n/workspace/a.go"}, "◐ scoped effects"},

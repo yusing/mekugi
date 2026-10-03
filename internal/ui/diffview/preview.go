@@ -92,6 +92,19 @@ type PreviewRow struct {
 }
 
 func (p *PreviewPane) Update(preview Preview) {
+	if !p.Retain && len(preview.Files) > 0 {
+		files := make([]mekugi.ReviewFile, 0, len(preview.Files))
+		for _, file := range preview.Files {
+			if file.BeforePath == "" || file.AfterPath != "" {
+				files = append(files, file)
+			}
+		}
+		preview.Files = files
+		if len(files) == 0 {
+			// Withdraw deletion-only previews rather than opening an empty card.
+			preview.Status, preview.Input = "", ""
+		}
+	}
 	view := p.Views[preview.ID]
 	if preview.Workspace != "" && preview.Status == "" && preview.Input == "" && len(preview.Files) == 0 {
 		delete(p.Views, preview.ID)
@@ -309,6 +322,9 @@ func (p *PreviewPane) Callers() []string {
 	var names []string
 	for _, id := range p.Order {
 		if caller := p.Views[id].Current.Caller; !slices.Contains(names, caller) {
+			if p.Retain && len(p.batch(caller).order) == 0 {
+				continue
+			}
 			names = append(names, caller)
 		}
 	}

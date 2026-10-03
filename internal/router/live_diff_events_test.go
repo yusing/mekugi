@@ -547,3 +547,41 @@ func TestLiveDiffBoundedPreviewWorkspacePaths(t *testing.T) {
 		}
 	}
 }
+
+func TestLiveDiffBoundedPreviewOmitsDeletedFiles(t *testing.T) {
+	deleted := mekugi.RenderReviewFile("/workspace/deleted.go", "", strings.Repeat("old source\n", 10000), "")
+	for _, mixed := range []bool{false, true} {
+		preview := diffview.Preview{ID: "call", Workspace: "/workspace", Caller: "/root", Status: diffview.PreviewEdit, Files: []mekugi.ReviewFile{deleted}}
+		if mixed {
+			preview.Files = append(preview.Files, mekugi.RenderReviewFile("", "/workspace/kept.go", "", "package main\n"))
+		}
+		bounded := boundLiveDiffPreview(preview)
+		if strings.Contains(bounded.Input, "deleted.go") || strings.Contains(bounded.Input, "old source") {
+			t.Fatal("deleted rows survived tail conversion")
+		}
+		if preview.Files[0] != deleted {
+			t.Fatal("original deletion evidence changed")
+		}
+		for _, retain := range []bool{false, true} {
+			pane := diffview.PreviewPane{Retain: retain}
+			pane.Update(bounded)
+			var rows []string
+			var err error
+			if retain {
+				rows, err = pane.RenderBatch(t.Context(), "/root", "/workspace", livediff.DarkTheme, 72, 31, 15)
+			} else {
+				rows, err = pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 72, 31)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mixed {
+				if len(rows) == 0 || len(pane.Callers()) != 1 {
+					t.Fatal("mixed preview lost nondeleted source")
+				}
+			} else if len(rows) != 0 || len(pane.Callers()) != 0 {
+				t.Fatal("oversized deletion opened live dock")
+			}
+		}
+	}
+}
