@@ -1,0 +1,5 @@
+├ Ran  batch_plan_dir=$(mktemp -d /tmp/mekugi-batches.XXXXXX)
+├ Ran  export MEKUGI_BATCH_PLAN_DIR="$batch_plan_dir"
+├ Edit paths unavailable via python3 · requested
+└ Ran  shell batch · 157ms
+       ┆ /tmp/mekugi-batches.YcIbga/plan.json

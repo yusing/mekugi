@@ -1,0 +1,8 @@
+● worker                                                                                    20:00:00
+│ ├ Ran │ batch_plan_dir=$(mktemp -d /tmp/mekugi-batches.XXXXXX)
+│ │     │ export MEKUGI_BATCH_PLAN_DIR="$batch_plan_dir"
+│ │     │ python3 - <<'PY'
+│ │     │ import json, os
+│ │     │ … +6 lines
+│ └ Ran shell batch · 157ms
+│       ┆ /tmp/mekugi-batches.YcIbga/plan.json

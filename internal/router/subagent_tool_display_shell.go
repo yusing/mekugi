@@ -119,7 +119,7 @@ func toolActivityReads(script string) (string, bool) {
 	if hasHeredoc {
 		syntax.Walk(program, func(node syntax.Node) bool {
 			if statement, ok := node.(*syntax.Stmt); ok && !hasEdit {
-				_, hasEdit = toolActivityEditStatement(statement)
+				_, hasEdit = toolActivityEditStatement(script, statement)
 				if !hasEdit {
 					// A commit's heredoc is its message, not a program.
 					_, hasEdit = vcsStatement(statement)
@@ -267,7 +267,7 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 	if statement.Background || statement.Negated || statement.Coprocess || statement.Disown {
 		return "", false
 	}
-	if display, ok := toolActivityEditStatement(statement); ok {
+	if display, ok := toolActivityEditStatement(script, statement); ok {
 		return display, true
 	}
 	if call, ok := vcsStatement(statement); ok {
