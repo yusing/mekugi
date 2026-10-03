@@ -42,7 +42,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Observed review diffs, change IDs, and bounded reads | `review.go`, `internal/router/native_apply_patch.go`, `internal/router/mekugi_changes.go`, `internal/router/mchanges.go` |
 | Durable replay, request-visible history, and retained output | `internal/router/mekugi_store.go`, `internal/router/mekugi_history.go`, `internal/router/shell_output_read.go` |
 | Authenticated frontend registry, worker, and PATH | `internal/router/tool_registry.go`, `internal/router/tool_plugin_worker.go`, `internal/router/tool_wrapper.go`, `internal/runtimepath` |
-| Built-in tool sources, output tokenization, and plugin runtime | `plugins`, `internal/router/toolplugin` |
+| Built-in tool sources, output tokenization, and plugin runtime | `internal/router/toolplugin/native_*.go`; plugin loading and embedded assets in `internal/router/toolplugin/runtime.go` |
 | Router process signals, wrapped Codex lifecycle, and top-level exit | `cmd/mekugi/main.go`, `cmd/mekugi/wrap.go` |
 | Normative interface requirements | `doc/spec/index.md` and the listed requirement file |
 | Stable ownership contracts | `doc/architecture/index.md` and the listed contract file |
