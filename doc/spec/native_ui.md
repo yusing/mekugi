@@ -736,9 +736,9 @@ The current confirmed value is initially selected when advertised. Loading and
 unavailable choices remain in the picker. Commands and choice lists never enter
 the transcript or submit a prompt.
 `/tier default` clears the requested service tier. Codex validates explicit values.
-When a per-model Mekugi service-tier override applies, `/tier` identifies the
-override and labels the current selection as Codex's setting. Picker selections
-still update Codex's requested tier; they do not change the Mekugi override.
+`/tier` initially selects the effective current tier. Confirmed explicit choices,
+including `default`, override configured per-model defaults for that thread and
+routed model during this invocation without changing persistent user configuration.
 The native app-server invocation enables Codex's `step_model_switching` and
 `reasoning_effort_override` features without writing user configuration.
 The client submits `thread/settings/update` and waits for the scoped

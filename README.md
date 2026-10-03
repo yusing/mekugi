@@ -670,8 +670,10 @@ Every section is optional. Settings are read at startup and never rewritten.
   `priority`), `priority`, and `flex`. The provider must support the tier you
   choose. The native composer and `/status` show the effective tier, including
   this override, rather than only Codex's requested tier.
-  `/tier` still changes Codex's requested tier and discloses any overriding
-  Mekugi setting. `/session` reports the provider-returned tier, which can differ
+  `/tier` shows the effective current tier. Confirmed explicit choices, including
+  `default`, override configured defaults for that thread and routed model during
+  this invocation without changing your config file.
+  `/session` reports the provider-returned tier, which can differ
   from the requested tier.
 - **API keys:** these file keys are optional alternatives to the
   [OpenCode environment variables](#opencode-go-and-zen).
