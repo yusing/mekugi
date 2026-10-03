@@ -108,6 +108,9 @@ type appServerTurn struct {
 }
 
 type appServerEvent struct {
+	Status struct {
+		Type string `json:"type"`
+	} `json:"status"`
 	ThreadID   string              `json:"threadId"`
 	TurnID     string              `json:"turnId"`
 	ItemID     string              `json:"itemId"`
@@ -207,7 +210,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		return false, nil
 	}
 	switch m.Method {
-	case "thread/started", "thread/tokenUsage/updated", "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded",
+	case "thread/started", "thread/status/changed", "thread/tokenUsage/updated", "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded",
 		"turn/started", "turn/completed", "item/started", "item/completed", "item/agentMessage/delta", "item/commandExecution/terminalInteraction",
 		"item/commandExecution/outputDelta":
 	default:
@@ -218,9 +221,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		return true, fmt.Errorf("%s: %w", m.Method, err)
 	}
 	u.observeProgress(m.Method, p)
-	if u.proxy != nil && u.proxy.journals != nil && p.ThreadID != "" && p.ThreadID != u.thread {
+	if u.proxy != nil && u.proxy.journals != nil && p.ThreadID != "" {
 		if err := u.proxy.observeJournalHostTurn(u.ctx, u.session.cwd, m.Method, p); err != nil {
-			u.setNotice("Journal child lifecycle: "+err.Error(), true)
+			u.setNotice("Journal lifecycle: "+err.Error(), true)
 		}
 	}
 	if m.Method == "item/started" {
@@ -262,6 +265,19 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		s.registerThread(info)
 		u.renameThreadActivity(old, s.paths[info.ID])
 
+	case "thread/status/changed":
+		agent := s.agent(s.path(p.ThreadID))
+		switch p.Status.Type {
+		case "active":
+			// Status alone does not establish the first turn's start.
+			if !agent.Started.IsZero() {
+				agent.WorkTimer.update(true, now)
+				agent.Responding, agent.Final = true, false
+			}
+		case "idle", "notLoaded", "systemError":
+			agent.WorkTimer.update(false, now)
+			agent.Responding = false
+		}
 	case "thread/tokenUsage/updated":
 		if main {
 			u.exitUsage = p.TokenUsage.Total
@@ -280,6 +296,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			u.proxy.autoLiveDiff.events.setPreviewTurn(p.ThreadID, p.Turn.ID, true)
 		}
 		agent := s.agent(s.path(p.ThreadID))
+		agent.WorkTimer.update(true, now)
 		agent.Responding, agent.Final = true, false
 		if agent.Started.IsZero() {
 			agent.Started = now
@@ -297,6 +314,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		}
 		entries = append(entries, s.endThinking(p.ThreadID, now)...)
 		agent := s.agent(s.path(p.ThreadID))
+		agent.WorkTimer.update(false, now)
 		agent.Responding, agent.LastResponse = false, now
 		agent.Final = p.Turn.Status == "completed"
 		u.observeCost(p.ThreadID, agent)

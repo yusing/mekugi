@@ -322,6 +322,14 @@ and update stamps (`seq`, RFC 3339 `at`), children, and an optional `superseded_
 path naming the node that replaced them. Tasks can additionally contain
 a reason, their first working stamp and their latest completion/drop stamp.
 Reopening a finished task clears its current finished stamp without rewriting history.
+Task elapsed time accumulates only while the task is working and its thread is active.
+Blocked, pending, idle, interrupted and finished intervals do not accrue time;
+reopening or resuming retains the stopped total. Persisted `work_timer` values
+contain the known accumulated nanoseconds and, for a live observation, its active
+anchor. Historical events contain stopped totals, not running anchors. Forks and
+fresh router processes retain checkpointed work but do not revive inherited clocks.
+Older records without active-time evidence omit elapsed time rather than presenting
+wall time as work time.
 The tree has at most 512 nodes; combined title, body, reason and question content is
 limited to 16 KiB per node. Events are bounded at 4,096 and an 8 MiB content-and-metadata budget. At capacity, adjacent edits
 without state transitions may collapse. Notes and state transitions

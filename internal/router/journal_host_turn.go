@@ -17,6 +17,17 @@ func (p *mekugiProxy) observeJournalHostTurn(ctx context.Context, workspace, met
 			state, reason = "blocked", "Host turn "+event.Turn.Status
 		}
 	}
+	if method == "thread/status/changed" && event.ThreadID != "" {
+		switch event.Status.Type {
+		case "active", "idle", "notLoaded", "systemError":
+			running := event.Status.Type == "active"
+			err := p.journals.observeWorkStatus(ctx, p.replayStore, workspace, event.ThreadID, running)
+			if workspace != "" {
+				err = errors.Join(err, p.journals.observeWorkStatus(ctx, p.replayStore, "", event.ThreadID, running))
+			}
+			return err
+		}
+	}
 	if state == "" || event.ThreadID == "" {
 		return nil
 	}

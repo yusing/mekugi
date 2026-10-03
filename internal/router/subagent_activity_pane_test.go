@@ -191,10 +191,12 @@ func TestLiveActivityCombinedRosterShowsTimerCostAndUsage(t *testing.T) {
 	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 	view := liveActivityTestView("/root/a", "/root/b")
 	view.agents[0].Started = now.Add(-8 * time.Minute)
+	view.agents[0].WorkTimer = activeWorkTimer{Known: true, ElapsedNS: int64(7*time.Minute + 57*time.Second)}
 	view.agents[0].LastResponse = now.Add(-3 * time.Second)
 	view.agents[0].InputTokens, view.agents[0].OutputTokens = 1_000, 0
 	view.agents[0].Turns, view.agents[0].Roundtrips, view.agents[0].Cost, view.agents[0].CostKnown = 2, 2, 1.2, true
 	view.agents[1].Started = now.Add(-7 * time.Minute)
+	view.agents[1].WorkTimer = activeWorkTimer{Known: true, ElapsedNS: int64(5 * time.Minute)}
 	view.agents[1].LastResponse = now.Add(-2 * time.Minute)
 	view.agents[1].InputTokens, view.agents[1].OutputTokens = 500, 0
 	view.agents[1].Turns, view.agents[1].Roundtrips, view.agents[1].Cost, view.agents[1].CostKnown = 1, 1, 0, false
@@ -204,7 +206,7 @@ func TestLiveActivityCombinedRosterShowsTimerCostAndUsage(t *testing.T) {
 	}
 	first := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "$1.20") })
 	second := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "5m · ") })
-	// Idle agents stop their elapsed time at the last response. Unknown cost is
+	// Idle agents retain accumulated active work. Unknown cost is
 	// omitted rather than shown as n/a or zero.
 	if first < 0 || second < 0 || first != second-1 || !strings.Contains(lines[first], "7m57s · 3s ago ↑ 1K ↓ 0") ||
 		!strings.Contains(lines[first], "$1.20 T+2") || !strings.Contains(lines[second], "5m · 2m ago") ||

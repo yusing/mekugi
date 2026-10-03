@@ -316,13 +316,15 @@ func (s *journalStore) observeLifecycle(ctx context.Context, store *mekugiReplay
 		return fmt.Errorf("invalid journal lifecycle state: %s", state)
 	}
 	return s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
-		if !exists || !j.IdentityKnown || j.IdentityConflicted || j.Parent == "" {
+		if !exists || !j.IdentityKnown || j.IdentityConflicted {
 			return errJournalUnchanged
 		}
-		if j.LifecycleState == state && j.LifecycleReason == reason {
+		if j.LifecycleState == state && j.LifecycleReason == reason && j.WorkPaused == (state != "working") && (state != "working" || !j.hasPausedWorkTimer()) {
 			return errJournalUnchanged
 		}
-		j.LifecycleState, j.LifecycleReason, j.LifecycleAt = state, reason, time.Now().UTC().Format(time.RFC3339Nano)
+		now := time.Now().UTC()
+		j.setWorkTimers(state == "working", now)
+		j.LifecycleState, j.LifecycleReason, j.LifecycleAt = state, reason, now.Format(time.RFC3339Nano)
 		return nil
 	})
 }

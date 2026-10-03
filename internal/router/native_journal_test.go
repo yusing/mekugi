@@ -555,7 +555,7 @@ func TestNativeJournalStripPinsCurrentWork(t *testing.T) {
 	now := time.Now()
 	journal := threadJournal{Version: 2, TreeAuthored: true, Items: []journalItem{
 		{Path: "/1", Kind: "task", Title: "Parser", State: "done", Updated: 1},
-		{Path: "/2", Kind: "task", Title: "Renderer", State: "working", Updated: 2, Started: &journalStamp{At: now.Add(-time.Minute).Format(time.RFC3339Nano)}},
+		{Path: "/2", Kind: "task", Title: "Renderer", State: "working", Updated: 2, WorkTimer: activeWorkTimer{Known: true, Since: now.Add(-time.Minute)}, Started: &journalStamp{At: now.Add(-time.Minute).Format(time.RFC3339Nano)}},
 		{Path: "/3", Kind: "task", Title: "Docs", State: "pending"},
 	}, Events: []journalEvent{
 		nativeJournalEvent(1, now, "set", "/1", "task", "Parser", "done", ""),

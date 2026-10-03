@@ -19,7 +19,7 @@
 │                                                                    ││                                                                    │
 │                                                                    ││                                                                    │
 │                                                                    ││                                                                    │
-│◐ /1 Scoped parent · 10s                 0/1 done · Ctrl-B 5 journal││                                                                    │
+│◐ /1 Scoped parent                       0/1 done · Ctrl-B 5 journal││                                                                    │
 │                                                                    ││                                                                    │
 │╭─ ◐ Working 11s ──────────────────────────────────────────────────╮││                                                                    │
 ││ ❯                                                                │││                                                                    │

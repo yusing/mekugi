@@ -33,6 +33,7 @@ type activityPaneEntry struct {
 }
 
 type activityPaneAgent struct {
+	WorkTimer    activeWorkTimer `json:",omitzero"`
 	Name         string
 	Role         string    `json:",omitzero"`
 	Responding   bool      `json:",omitzero"`

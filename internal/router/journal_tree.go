@@ -21,6 +21,8 @@ type journalStamp struct {
 }
 
 type journalNode struct {
+	WorkTimer activeWorkTimer `json:"work_timer,omitzero"`
+
 	Path   string `json:"path"`
 	Kind   string `json:"kind"`
 	Title  string `json:"title"`
@@ -97,13 +99,13 @@ func (j *threadJournal) ensureTree() {
 }
 
 func (item journalItem) node() journalNode {
-	return journalNode{Path: item.Path, Kind: item.Kind, Title: item.Title, Body: item.Body, State: item.State, Reason: item.Reason, SupersededBy: item.SupersededBy, Question: item.Question, Agent: item.Agent, Turns: item.Turns, Author: item.Author,
+	return journalNode{WorkTimer: item.WorkTimer, Path: item.Path, Kind: item.Kind, Title: item.Title, Body: item.Body, State: item.State, Reason: item.Reason, SupersededBy: item.SupersededBy, Question: item.Question, Agent: item.Agent, Turns: item.Turns, Author: item.Author,
 		Created: journalStamp{Seq: item.Created, At: item.CreatedAt}, Updated: journalStamp{Seq: item.Updated, At: item.UpdatedAt}, Started: item.Started, Finished: item.Finished, Children: []journalNode{}}
 }
 
 // item restores a retained event's node; delivery fields start unset.
 func (node journalNode) item() journalItem {
-	return journalItem{ID: node.Path, Path: node.Path, Kind: node.Kind, Title: node.Title, Body: node.Body, State: node.State, Reason: node.Reason,
+	return journalItem{WorkTimer: node.WorkTimer, ID: node.Path, Path: node.Path, Kind: node.Kind, Title: node.Title, Body: node.Body, State: node.State, Reason: node.Reason,
 		SupersededBy: node.SupersededBy, Question: node.Question, Agent: node.Agent, Author: node.Author, Created: node.Created.Seq, CreatedAt: node.Created.At,
 		Updated: node.Updated.Seq, UpdatedAt: node.Updated.At, Started: node.Started, Finished: node.Finished}
 }
@@ -191,8 +193,10 @@ func (j *threadJournal) treeEvent(op string, index int, transition bool) error {
 		return errors.New("journal sequence exhausted")
 	}
 	j.Sequence++
-	stamp := journalStamp{Seq: j.Sequence, At: time.Now().UTC().Format(time.RFC3339Nano)}
+	now := time.Now().UTC()
+	stamp := journalStamp{Seq: j.Sequence, At: now.Format(time.RFC3339Nano)}
 	item := &j.Items[index]
+	item.WorkTimer.update(item.Kind == "task" && item.State == "working" && !j.WorkPaused, now)
 	item.Updated, item.UpdatedAt = stamp.Seq, stamp.At
 	if item.Created == 0 {
 		item.Created, item.CreatedAt = stamp.Seq, stamp.At
@@ -212,6 +216,7 @@ func (j *threadJournal) treeEvent(op string, index int, transition bool) error {
 		item.Text += "\n\n" + item.Body
 	}
 	event := journalEvent{Seq: stamp.Seq, At: stamp.At, Author: j.Author, Op: op, Path: item.Path, Fields: item.node(), Transition: transition}
+	event.Fields.WorkTimer.Since = time.Time{} // Events are retained facts, not live clocks.
 	return j.appendEvent(event)
 
 }

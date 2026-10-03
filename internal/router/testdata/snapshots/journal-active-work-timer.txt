@@ -1,0 +1,8 @@
+Working
+◐ /1 Active work · 2s                                0/1 done · Ctrl-B 5 journal
+Interrupted, one hour later
+◐ /1 Active work · 2s                                0/1 done · Ctrl-B 5 journal
+Resumed, three seconds later
+◐ /1 Active work · 5s                                0/1 done · Ctrl-B 5 journal
+Completed
+● /1 Active work · 5s

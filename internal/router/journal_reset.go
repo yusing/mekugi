@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 const journalContinuationPrefix = "mekugi-journal-continue-"
@@ -25,11 +26,14 @@ func (s *journalStore) beginJournalTurn(ctx context.Context, store *mekugiReplay
 		return nil
 	}
 	return s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
-		if !exists || j.TurnID == turn {
+		if !exists || j.TurnID == turn && !j.WorkPaused && !j.hasPausedWorkTimer() {
 			return errJournalUnchanged
 		}
-		j.TurnID, j.TurnStartSeq = turn, j.Sequence
-		j.Turns++
+		if j.TurnID != turn {
+			j.TurnID, j.TurnStartSeq = turn, j.Sequence
+			j.Turns++
+		}
+		j.setWorkTimers(true, time.Now())
 		return nil
 	})
 }
@@ -135,6 +139,7 @@ func (s *journalStore) stopJournalTurn(ctx context.Context, store *mekugiReplayS
 		if !exists || turn == "" || j.TurnID != turn {
 			return errJournalUnchanged
 		}
+		j.setWorkTimers(false, time.Now())
 		j.ResetHandledTurn, j.ResetIntent = turn, nil
 		j.StoppedTasks = make(map[string]string)
 		for _, item := range j.Items {

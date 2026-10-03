@@ -512,15 +512,10 @@ func journalDescendants(node journalNode) int {
 
 // journalTaskElapsed is a finished task's working time.
 func journalTaskElapsed(node journalNode) string {
-	if node.Started == nil || node.Finished == nil {
+	if node.Finished == nil || !node.WorkTimer.Known {
 		return ""
 	}
-	start, firstErr := time.Parse(time.RFC3339Nano, node.Started.At)
-	end, lastErr := time.Parse(time.RFC3339Nano, node.Finished.At)
-	if firstErr != nil || lastErr != nil || end.Before(start) {
-		return ""
-	}
-	return end.Sub(start).Round(time.Second).String()
+	return time.Duration(node.WorkTimer.ElapsedNS).Round(time.Second).String()
 }
 
 // journalRowAt is the node row at a pane row, or -1.
@@ -761,10 +756,8 @@ func (u *appServerUI) journalPlanStrip(width int) string {
 	node := pin.node
 	node.Body = "" // The strip identifies work; supporting detail belongs in the card.
 	left := journalNodeRow(theme, journalCompactNode(node), "")
-	if pin.node.State == "working" && pin.node.Started != nil {
-		if start, err := time.Parse(time.RFC3339Nano, pin.node.Started.At); err == nil {
-			left += activityui.Dim + " · " + max(time.Duration(0), u.now().Sub(start)).Round(time.Second).String() + activityui.Undim
-		}
+	if pin.node.Finished == nil && pin.node.WorkTimer.Known {
+		left += activityui.Dim + " · " + pin.node.WorkTimer.at(u.now()).Round(time.Second).String() + activityui.Undim
 	}
 	// The pane key yields first, then progress, before the task's title.
 	progress := fmt.Sprintf("%d/%d done", pin.done, pin.total)

@@ -10,6 +10,11 @@ blocking unrelated workspaces. State and replay transactions retain their shared
 serialization and session-retention owners.
 Journal mutations do not impose a lifetime thread-count limit. Journal state is durable while
 its session is retained; a request's completion intent is not.
+Task timing belongs to this same store. State transitions and observed host lifecycle
+checkpoint accumulated active intervals without creating authored journal events.
+Persisted live anchors carry a process owner; a new process discards those anchors
+while retaining their last checkpoint. Forks copy stopped timing facts, not clocks.
+Both the live plan strip and completed-task renderers consume this timing evidence.
 
 Cross-agent trees are derived views under the journal/replay locks, authorized by
 complete durable ancestry in one workspace. Records never contain child snapshots.

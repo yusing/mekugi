@@ -165,6 +165,7 @@ func (u *appServerUI) readRestoredChildren() error {
 		u.restoreDiffThread(info, false)
 		agent := u.session.agent(u.session.paths[id])
 		agent.Started, agent.LastResponse = restoredAgentTimes(info)
+		agent.WorkTimer = restoredAgentWork(info)
 	}
 	u.readRestoredRollouts()
 	for _, turn := range r.root.Turns {
@@ -330,6 +331,20 @@ func restoredAgentTimes(info appServerThreadInfo) (start, last time.Time) {
 	return start, last
 }
 
+// Restore only closed host intervals. Missing completion timing cannot prove
+// work duration, and an old in-progress turn must not revive a live clock.
+func restoredAgentWork(info appServerThreadInfo) (timer activeWorkTimer) {
+	for _, turn := range info.Turns {
+		start, end := historyTime(turn.StartedAt), historyTime(turn.CompletedAt)
+		if start.IsZero() || end.IsZero() || end.Before(start) {
+			continue
+		}
+		timer.Known = true
+		timer.ElapsedNS += int64(end.Sub(start))
+	}
+	return timer
+}
+
 // Observational history never opens previews, resumes children, or fabricates
 // a live response. Only a subsequent live notification can mark an agent busy.
 func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
@@ -341,6 +356,7 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 	restoreContextUsage(agent, info)
 	u.restoreUsage(info)
 	agent.Started, agent.LastResponse = restoredAgentTimes(info)
+	agent.WorkTimer = restoredAgentWork(info)
 	agent.Turns, agent.Responding = uint64(len(info.Turns)), false
 	u.observeCost(info.ID, agent)
 	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(s.agents)})

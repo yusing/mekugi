@@ -167,6 +167,7 @@ func TestRequestedRosterMetricSlotsStableAcrossAvailabilityAndFormat(t *testing.
 	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 	view := liveActivityTestView("/root/a")
 	view.agents[0].Started = now.Add(-52 * time.Second)
+	view.agents[0].WorkTimer = activeWorkTimer{Known: true, ElapsedNS: int64(52 * time.Second)}
 	view.agents[0].LastResponse = now
 	view.agents[0].InputTokens, view.agents[0].OutputTokens = 140_600, 789
 	view.agents[0].Turns, view.agents[0].Roundtrips, view.agents[0].Cost, view.agents[0].CostKnown = 7, 7, .5171, true

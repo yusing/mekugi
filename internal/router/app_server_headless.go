@@ -194,7 +194,7 @@ func (h *headlessAppServer) message(m appserver.Message) error {
 		}
 		return nil
 	}
-	if m.Method != "turn/started" && m.Method != "turn/completed" {
+	if m.Method != "turn/started" && m.Method != "turn/completed" && m.Method != "thread/status/changed" {
 		return nil
 	}
 	var p appServerEvent
@@ -204,10 +204,15 @@ func (h *headlessAppServer) message(m appserver.Message) error {
 	if h.thread == "" {
 		return nil
 	}
-	if p.ThreadID != h.thread {
-		if err := h.proxy.observeJournalHostTurn(h.ctx, h.reset.workspace, m.Method, p); err != nil {
-			return h.emit("mekugi/journal/notice", map[string]any{"threadId": p.ThreadID, "message": err.Error()})
+	if p.ThreadID == h.thread && m.Method == "turn/completed" && p.Turn.ID != h.turn {
+		return nil
+	}
+	if err := h.proxy.observeJournalHostTurn(h.ctx, h.reset.workspace, m.Method, p); err != nil {
+		if noticeErr := h.emit("mekugi/journal/notice", map[string]any{"threadId": p.ThreadID, "message": err.Error()}); noticeErr != nil {
+			return noticeErr
 		}
+	}
+	if p.ThreadID != h.thread || m.Method == "thread/status/changed" {
 		return nil
 	}
 	if m.Method == "turn/started" {

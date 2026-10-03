@@ -453,13 +453,15 @@ require interactive continuation when a question needs an answer.
 
 Main shows task transitions and, while Journal is hidden, notes. Work updates appear in separate
 cards; open a card for full evidence and older notes. Ordinary answers remain
-in the conversation, and an unchanged plan does not add a report card.
+in the conversation, and an unchanged plan does not add a report card. Task timers
+count active work, pause while blocked or the agent is inactive, and retain their
+totals when work resumes.
 
 ### Agents pane
 
 The **Activity** pane streams child activity, messages, and replies, including
 while Main waits. The **Agents** roster below the main columns shows children
-with their elapsed time, provider round trips, current-round output tokens/sec,
+with their active elapsed time, provider round trips, current-round output tokens/sec,
 and cumulative edited lines as
 `+N -N`. The roster header's `+N -N` reports the final composed outcome
 across agents, so superseded edits and files created then deleted do not inflate it.
@@ -469,7 +471,9 @@ API costs appear per thread and survive resume while their records are retained,
 including for completed agents. Missing consumption is not zero: `≥` marks known
 lower bounds (including restored totals), and unavailable metrics stay blank.
 Older sessions without retained accounting cannot recover usage from context
-counts. Output throughput also appears beside context in Main's composer.
+counts. Elapsed timers exclude idle gaps and freeze when work stops; the separate
+last-response age continues counting. Output throughput also appears beside context
+in Main's composer.
 A round is one forwarded provider request, not a user turn. Its measured rate
 appears when provider usage arrives and clears when the next request starts;
 no streamed token estimates are shown. Retained last-round measurements survive

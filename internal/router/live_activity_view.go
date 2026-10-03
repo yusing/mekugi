@@ -936,16 +936,11 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time, width
 	}
 	// Before its first response, an agent's last activity is its start.
 	last := cmp.Or(agent.LastResponse, agent.Started)
-	if agent.Started.IsZero() {
+	if agent.Started.IsZero() || !agent.WorkTimer.Known {
 		return summary, ""
 	}
-	// Elapsed time stops when the agent stops responding; the last-response
-	// age keeps counting.
-	end := now
-	if !agent.Responding && !agent.LastResponse.IsZero() {
-		end = agent.LastResponse
-	}
-	return summary, liveActivityAge(max(0, end.Sub(agent.Started))) + " · " + liveActivityLast(last, now)
+	// The response-age clock is independent of accumulated active work.
+	return summary, liveActivityAge(agent.WorkTimer.at(now)) + " · " + liveActivityLast(last, now)
 }
 
 // liveActivityTokens shows cumulative input (sent) and output (received) tokens.

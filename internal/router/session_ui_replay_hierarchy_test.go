@@ -303,7 +303,7 @@ func TestUISnapshotSessionUIReplayHierarchy(t *testing.T) {
 	uisnapshot.Assert(t, "testdata/snapshots/session-ui-replay-hierarchy.txt", replayPlaybackTestPaint(t, p, 140, 32))
 }
 
-func TestUISnapshotSessionUIReplayHierarchyRecordedPlanClock(t *testing.T) {
+func TestUISnapshotSessionUIReplayHierarchyUnknownPlanClock(t *testing.T) {
 	_, _, path := replayHierarchyFixture(t, nil)
 	p := replayHierarchyPlayback(t, path)
 	var lines []string

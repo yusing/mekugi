@@ -62,6 +62,8 @@ type journalMutation struct {
 }
 
 type journalItem struct {
+	WorkTimer activeWorkTimer `json:"work_timer,omitzero"`
+
 	Path         string        `json:"path,omitempty"`
 	Kind         string        `json:"kind,omitempty"`
 	Title        string        `json:"title,omitempty"`
@@ -105,6 +107,8 @@ type journalSpawnRole struct {
 }
 
 type threadJournal struct {
+	WorkPaused           bool                        `json:"work_paused,omitzero"`
+	TimerOwner           string                      `json:"timer_owner,omitempty"`
 	Counters             *capturer.JournalMetrics    `json:"counters,omitempty"`
 	CounterReceipts      []string                    `json:"counter_receipts,omitempty"`
 	TurnID               string                      `json:"turn_id,omitempty"`
@@ -323,6 +327,7 @@ func readJournalRecord(path string) (threadJournal, bool, error) {
 		// content failed validation, without trusting partially decoded JSON.
 		return journal, true, errors.New("corrupt journal contents")
 	}
+	journal.discardForeignTimerAnchors()
 	journal.ensureTree()
 	return journal, true, nil
 }
@@ -365,6 +370,9 @@ func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore
 			}
 		}
 		next := current.clone()
+		next.discardForeignTimerAnchors()
+		next.TimerOwner = journalTimerOwner
+		next.checkpointWorkTimers(time.Now())
 		if err := mutate(&next, exists); err != nil {
 			if errors.Is(err, errJournalUnchanged) {
 				if store == nil {
@@ -459,6 +467,7 @@ func (s *journalStore) initialize(ctx context.Context, store *mekugiReplayStore,
 		// A fork copies facts and task states, not authority over children of
 		// another parent. Historical bindings remain in the copied event log.
 		for i := range j.Items {
+			j.Items[i].WorkTimer.update(false, time.Now())
 			j.Items[i].Agent = ""
 			j.Items[i].RootEverReported = false
 		}
@@ -665,7 +674,7 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 				return errors.New("journal call changed its mutations")
 			}
 			ids = slices.Clone(receipt.IDs)
-			return nil
+			return errJournalUnchanged
 		}
 		j.ensureTree()
 		treeMutated := false

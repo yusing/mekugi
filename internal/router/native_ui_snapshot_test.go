@@ -67,7 +67,7 @@ func snapshotActivityView(now time.Time) *liveActivityView {
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{
 		{Name: "/root", Final: true, InputTokens: 1200, OutputTokens: 240, Cost: .02, CostKnown: true},
 		{Name: "/root/inventory", Role: "worker", Final: true},
-		{Name: "/root/review", Role: "review", Responding: true, Started: now.Add(-2 * time.Minute)},
+		{Name: "/root/review", Role: "review", Responding: true, Started: now.Add(-2 * time.Minute), WorkTimer: activeWorkTimer{Known: true, Since: now.Add(-2 * time.Minute)}},
 		{Name: "/root/review/probe", Role: "explorer"},
 	}, Entries: []activityPaneEntry{
 		{Seq: 1, Agent: "/root/inventory", Kind: "reply", message: &activityMessage{from: "/root/inventory", to: "/root", text: "Found uncovered output dialogs and native pickers."}, Observed: now},

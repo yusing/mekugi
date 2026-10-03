@@ -14,7 +14,7 @@ import (
 // Matches the supplied image transcription: one completed task and three long
 // notes, whose two-line previews made the completed report unnecessarily tall.
 func nativeJournalCompletedFixture() *nativeJournalCard {
-	task := journalItem{Path: "/1", Kind: "task", Title: "Remove Main reply pinning, update rendered coverage, and validate", State: "done",
+	task := journalItem{Path: "/1", Kind: "task", Title: "Remove Main reply pinning, update rendered coverage, and validate", State: "done", WorkTimer: activeWorkTimer{Known: true, ElapsedNS: int64(341 * time.Second)},
 		Started: &journalStamp{At: journalNoiseTime().Add(-341 * time.Second).Format(time.RFC3339Nano)}, Finished: &journalStamp{At: journalNoiseTime().Format(time.RFC3339Nano)}}
 	j := threadJournal{Items: []journalItem{task}, Events: []journalEvent{{Seq: 1, Op: "set", Path: task.Path, Fields: task.node()}}}
 	for i, title := range []string{"Removed Main reply pinning", "Rendered coverage passed", "Independent inspection completed"} {
