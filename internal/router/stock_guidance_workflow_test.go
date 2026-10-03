@@ -167,7 +167,12 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 				"Coordinator requests for implementation-completion reports also use the journal",
 				"Parents record integration decisions",
 				"Use task state changes for milestones",
-				"Three cases passed; restart coverage remains",
+				"Use ASD-STE100 Simplified Technical English for journal text.",
+				"Give each item a short, clear title or first line.",
+				"Put supporting details in the body; for `log`, put them after a newline.",
+				"Keep one topic per item.",
+				"when it connects parts of one topic.",
+				"Three cases passed",
 				"Now checking restart",
 			} {
 				if count := strings.Count(combined, rule); count != 1 {

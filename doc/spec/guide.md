@@ -105,6 +105,9 @@ Acceptance:
    sibling tools, and stock execution contracts remain unchanged.
 3. The execution-tool journal section and optional mutation field expose enough guidance to record concise
    tasks and facts, read retained subtrees, and finish naturally with an answer.
+   Journal writing guidance requires ASD-STE100, a short clear title or first line,
+   supporting details in the body, and one topic per item. Separate topics use
+   separate items; "and" can connect parts of one topic.
    Work turns finish with `Done.` or only the usable deliverable, usage explanation
    or needed decision beyond their separate work report, without another provider
    request. Coordinator implementation-completion reports use that work-report channel,
