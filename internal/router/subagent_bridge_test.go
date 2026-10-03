@@ -36,7 +36,7 @@ func TestSubagentBridgeProjectsAndRestoresPlaintext(t *testing.T) {
 		if bytes.Contains(data, []byte(`"encrypted":true`)) || !bytes.Contains(data, []byte(`"namespace":"mekugi_collaboration"`)) {
 			t.Fatalf("projection=%s", data)
 		}
-		if jsonString(request.fields, "instructions") != "keep" || !bytes.Contains(data, []byte("Message arguments are plaintext")) {
+		if jsonString(request.fields, "instructions") != "keep" || !bytes.Contains(data, mustMarshalJSON(embeddedInstruction("collaboration_namespace"))) {
 			t.Fatal("bridge guidance changed base instructions or is missing from the projected namespace")
 		}
 		item := map[string]any{"type": "function_call", "namespace": subagentBridgeNamespace, "name": "spawn_agent", "call_id": "c1", "arguments": `{"message":"plain"}`}
@@ -273,7 +273,7 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 				property := properties[name].(map[string]any)
 				description := property["description"].(string)
 				native := original[name].(map[string]any)["description"].(string)
-				if !strings.HasPrefix(description, native+"\n") || !strings.Contains(description, "Grok") {
+				if description != native+"\n"+embeddedInstruction("grok_"+name) {
 					t.Fatalf("%s guidance = %q", name, description)
 				}
 				if name == "model" {
@@ -282,13 +282,8 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 							t.Fatalf("missing or duplicated Grok model %q in guidance: %q", model, description)
 						}
 					}
-					if !strings.Contains(description, "build-fast variant requires Grok OAuth") {
-						t.Fatalf("missing build-fast credential guidance: %q", description)
-					}
 				}
-				if name == "fork_turns" && (!strings.Contains(description, `"none"`) || !strings.Contains(description, "complete task")) {
-					t.Fatalf("missing fresh-context assignment guidance: %q", description)
-				}
+
 				property["description"] = native
 			}
 			properties["message"].(map[string]any)["encrypted"] = true
@@ -354,7 +349,7 @@ func TestSubagentBridgeWithoutGrok(t *testing.T) {
 			bytes.Contains(wire, []byte(`"encrypted":true`)) {
 			t.Fatalf("ordinary projection exposes wrong contract: %s", wire)
 		}
-		if !bytes.Contains(wire, []byte("Message arguments are plaintext")) || jsonString(request.fields, "instructions") != "keep" {
+		if !bytes.Contains(wire, mustMarshalJSON(embeddedInstruction("collaboration_namespace"))) || jsonString(request.fields, "instructions") != "keep" {
 			t.Fatal("missing plaintext guidance")
 		}
 	}

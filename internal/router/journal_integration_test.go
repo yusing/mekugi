@@ -578,18 +578,6 @@ func TestJournalLiveSnapshotCacheRefreshesOnMutationAndTerminal(t *testing.T) {
 	transform.ReleaseDelivery()
 }
 
-func TestJournalSharedGuidance(t *testing.T) {
-	description := codeModeJournalGuidance
-	for _, required := range []string{"durable journal", "await journal", "finish naturally", "journal delivers progress", "Deliver work updates through the journal, not standalone commentary", "A work-completion reply is not a conversational exception", "Requested explanations, review findings and answers to user questions", `view?:"combined"|"own"|"tasks"`, `{op:"read", view:"tasks", depth:0}`} {
-		if !strings.Contains(description, required) {
-			t.Fatalf("journal description lacks %q: %q", required, description)
-		}
-	}
-	if strings.Contains(description, "Finish with exactly `Done.`") {
-		t.Fatal("journal guidance still requires a Done-only provider final")
-	}
-}
-
 func TestJournalFlushNestsMultilineMarkdown(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)

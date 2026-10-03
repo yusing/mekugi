@@ -87,7 +87,7 @@ func TestComposerSelectionOverBudgetIsExplicit(t *testing.T) {
 	}
 	d := u.takeDraft()
 	frames, ok := decodeFileAttachments(d.attachments[0])
-	if !ok || !strings.HasSuffix(frames[len(frames)-1], "CONTENT NOT ATTACHED (attachment budget exceeded). Ask the user to paste it if needed.") || d.attachmentNotice == "" {
+	if !ok || !strings.Contains(frames[len(frames)-1], "CONTENT NOT ATTACHED (attachment budget exceeded)") || d.attachmentNotice == "" {
 		t.Fatalf("omission missing: ok=%v notice=%q last=%q", ok, d.attachmentNotice, frames[len(frames)-1][:40])
 	}
 }

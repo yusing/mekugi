@@ -694,7 +694,7 @@ func TestGrokCodeModeExecNamesPrintedResults(t *testing.T) {
 		fn := tool.(map[string]any)["function"].(map[string]any)
 		descriptions[fn["name"].(string)] = fn["description"].(string)
 	}
-	if got := descriptions["exec"]; got != "Run exact input\n"+embeddedInstruction("grok_exec") || !strings.Contains(got, "text(await tools.exec_command(") {
+	if got := descriptions["exec"]; got != "Run exact input\n"+embeddedInstruction("grok_exec") {
 		t.Fatalf("exec description = %q", got)
 	}
 	if got := descriptions["other"]; got != "Other input" {

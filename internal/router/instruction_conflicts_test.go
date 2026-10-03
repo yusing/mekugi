@@ -33,7 +33,7 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := jsonString(request.fields, "instructions")
-	if !strings.Contains(base, "batch journal mutations") || !strings.Contains(base, "```text\n"+progress+"\n```") || !strings.Contains(base, ordinary) {
+	if strings.Count(base, progress) != 1 || !strings.Contains(base, "```text\n"+progress+"\n```") || !strings.Contains(base, ordinary) {
 		t.Fatalf("top-level rewrite changed unrelated or fenced text: %q", base)
 	}
 	var items []map[string]json.RawMessage
@@ -45,7 +45,9 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := jsonString(parts[0], "text")
-	if !strings.Contains(first, "Do not call the `request_user_input` tool in Default mode") || !strings.Contains(first, "batch journal mutations") || jsonString(parts[1], "image_url") != progress || jsonString(parts[2], "text") != "```\n"+planOnly+"\n```" {
+	planRule, _, _ := strings.Cut(first, "\n")
+	const restricted = "Do not call the `request_user_input` tool in Default mode, even if it is listed in the available tools for this turn."
+	if planRule != restricted || strings.Contains(first, planOnly) || strings.Contains(first, progress) || jsonString(parts[1], "image_url") != progress || jsonString(parts[2], "text") != "```\n"+planOnly+"\n```" {
 		t.Fatalf("developer multipart rewrite = %s", items[0]["content"])
 	}
 	for _, item := range items[1:] {
@@ -116,8 +118,12 @@ func TestPlanOnlyConflictRewriteFindsNestedAdditionalTool(t *testing.T) {
 	if err := rewriteRequestInstructionConflicts(&request); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(jsonString(request.fields, "instructions"), "Do not call") ||
-		!strings.Contains(string(request.fields["input"]), "Do not call") {
+	var items []map[string]json.RawMessage
+	if err := json.Unmarshal(request.fields["input"], &items); err != nil {
+		t.Fatal(err)
+	}
+	const want = "Do not call the `request_user_input` tool in Default mode, even if it is listed in the available tools for this turn."
+	if jsonString(request.fields, "instructions") != want || jsonString(items[1], "content") != want {
 		t.Fatalf("additional Plan-only tool was not honored: %s", mustMarshalJSON(request.fields))
 	}
 }

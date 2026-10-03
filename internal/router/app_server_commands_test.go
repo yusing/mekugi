@@ -15,7 +15,7 @@ func TestComposerCommandCatalog(t *testing.T) {
 		t.Fatalf("catalog = %+v, requests = %s", u.picker, wire.Bytes())
 	}
 	frame := ansi.Strip(strings.Join(u.renderPicker(80, 8), "\n"))
-	if !strings.Contains(frame, "/model") || !strings.Contains(frame, "Choose the model") {
+	if !strings.Contains(frame, "/model") || !strings.Contains(frame, u.picker.choices[0].description) {
 		t.Fatalf("missing command labels/descriptions: %s", frame)
 	}
 	appServerTestKeys(t, u, "\x1b[B\t")

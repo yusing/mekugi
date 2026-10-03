@@ -28,10 +28,8 @@ func TestQuestionBlockRendersFullAnswerAtNarrowWidthsInBothThemes(t *testing.T) 
 			if !strings.Contains(got, answer) {
 				t.Fatalf("theme=%v width=%d missing full answer %q in %q", theme, width, answer, got)
 			}
-			for _, want := range []string{"Asked", "answered", "launch", "update", "rollout", "schedule", "complete"} {
-				if !strings.Contains(got, want) {
-					t.Fatalf("theme=%v width=%d missing %q in %q", theme, width, want, got)
-				}
+			if !strings.Contains(got, question) {
+				t.Fatalf("theme=%v width=%d missing full question %q in %q", theme, width, question, got)
 			}
 		}
 	}

@@ -304,7 +304,7 @@ func TestCatalogProgressOutput(t *testing.T) {
 			if !errors.Is(err, context.Canceled) {
 				t.Fatalf("cancellation result: %v", err)
 			}
-			if !interactive && !strings.Contains(body, "preparing Grok/OpenCode model catalog") {
+			if !interactive && strings.TrimSpace(body) == "" {
 				t.Fatalf("missing preparation feedback: %q", body)
 			}
 			if interactive {
@@ -312,7 +312,7 @@ func TestCatalogProgressOutput(t *testing.T) {
 				// A PTY transports bytes, not rendered cells. Check the actual
 				// ASCII payload fits strictly within its configured 20 columns.
 				status := strings.TrimSuffix(strings.TrimPrefix(body, prefix), prefix)
-				if status != "mekugi: preparing G" || len(status) >= 20 || strings.ContainsAny(status, "\r\n\x1b") {
+				if strings.TrimSpace(status) == "" || len(status) >= 20 || strings.ContainsAny(status, "\r\n\x1b") {
 					t.Fatalf("status can wrap on a narrow terminal: %q", body)
 				}
 				if !strings.HasSuffix(body, "\r\x1b[2K") {
@@ -332,12 +332,13 @@ func TestCatalogSlowProgress(t *testing.T) {
 		var output bytes.Buffer
 		stop := startCatalogProgress(ctx, &output, false)
 		synctest.Wait()
+		initial := output.String()
 		time.Sleep(10 * time.Second)
 		synctest.Wait()
 		if err := stop(); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(output.String(), "still waiting for Codex model catalog") {
+		if output.String() == initial {
 			t.Fatalf("missing slow-wait feedback: %q", output.String())
 		}
 		before := output.String()

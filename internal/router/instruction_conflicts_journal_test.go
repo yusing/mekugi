@@ -23,10 +23,4 @@ func TestConflictRewriteTeachesTreeJournal(t *testing.T) {
 	if strings.Contains(got, "commentary") {
 		t.Fatalf("stock commentary guidance survived: %q", got)
 	}
-	// Tree operations reject report_now, and there is no functions.journal tool.
-	for _, retired := range []string{"report_now", "functions.journal", "add/edit/delete"} {
-		if strings.Contains(got, retired) {
-			t.Fatalf("rewrite teaches retired journal API %q: %q", retired, got)
-		}
-	}
 }

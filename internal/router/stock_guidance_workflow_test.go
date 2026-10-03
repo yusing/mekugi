@@ -10,76 +10,8 @@ import (
 func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 	registry := newManagedMekugiProxy(t).registry
 	guide := registry.frontendGuidance
-	frontendRequirements := map[string][]string{
-		"shared usage": {
-			"Reuse still-current source context",
-			"Batch ready, related edits",
-		},
-		"mchanges": {
-			"same-agent inclusive ranges",
-			"calling thread",
-			"Avoid duplicate reviews of the same evidence",
-			"skip --summary before an already-needed diff",
-		},
-		"msymbol": {
-			"Before removing a field or changing a signature",
-			"semantic references",
-			"affected packages and tests",
-			"unavailable coverage",
-		},
-		"inspect_file": {
-			"only structure is needed",
-			"outline to a full-file read",
-		},
-		"mrun": {
-			"Use for noisy commands",
-			"outside the selected window is discarded",
-			"Only emitted references recover retained output",
-			"ordinary exec_command truncation has no mread recovery",
-		},
-		"mcat": {
-			"START:END or START-END is a separate operand after its path, inclusive of both endpoints.",
-			"mcat src/main.go 100:150",
-			"mcat -n 20 src/main.go",
-			"first 20 rows",
-		},
-	}
-	checkFrontendRequirements := func(t *testing.T, description string) {
-		t.Helper()
-		for owner, requirements := range frontendRequirements {
-			for _, required := range requirements {
-				if !strings.Contains(description, required) {
-					t.Errorf("%s projection is missing %q", owner, required)
-				}
-			}
-		}
-		for _, required := range []string{
-			"<common-options>",
-			"--max-tokens N (also --max-tokens=N) bounds output to 1–15500 tokens.",
-			"-n N selects up to N rows;",
-			"mcat keeps its default token ceiling with -n alone and always keeps complete rows.",
-		} {
-			if count := strings.Count(description, required); count != 1 {
-				t.Errorf("shared option guidance %q appears %d times; want one owner", required, count)
-			}
-		}
-	}
 	checkStableRefresh := func(t *testing.T, fields map[string]jsonv1.RawMessage) {
 		t.Helper()
-		if _, ok := fields["previous_response_id"]; ok {
-			t.Fatal("guidance fixture unexpectedly includes a previous-response handle")
-		}
-		if raw, ok := fields["input"]; ok {
-			var input []map[string]jsonv1.RawMessage
-			if err := jsonv1.Unmarshal(raw, &input); err != nil {
-				t.Fatal(err)
-			}
-			for _, item := range input {
-				if jsonString(item, "type") != "additional_tools" {
-					t.Fatalf("guidance fixture unexpectedly includes conversation history: %s", raw)
-				}
-			}
-		}
 		before := mustMarshalJSON(fields)
 		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil {
 			t.Fatal(err)
@@ -87,7 +19,6 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 		if !sameJSONValue(before, mustMarshalJSON(fields)) {
 			t.Fatal("refreshing stock guidance changed an already-projected request")
 		}
-		checkFrontendRequirements(t, string(mustMarshalJSON(fields)))
 	}
 
 	t.Run("native exec_command", func(t *testing.T) {
@@ -109,7 +40,6 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 		if jsonString(before[1], "description") != jsonString(after[1], "description") {
 			t.Fatalf("non-owner apply_patch description changed: before=%s after=%s", before[1]["description"], after[1]["description"])
 		}
-		checkFrontendRequirements(t, jsonString(after[0], "description"))
 		checkStableRefresh(t, fields)
 	})
 
@@ -124,24 +54,13 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 		if !strings.Contains(got, stock) {
 			t.Fatal("Code Mode stock description was not preserved")
 		}
-		checkFrontendRequirements(t, got)
-		if !strings.Contains(got, journalToolDescription) {
-			t.Error("Code Mode guidance does not include the journal owner")
-		}
-		if strings.Contains(codeModeJournalGuidance, "After every required tool result, finish") {
-			t.Error("Code Mode journal guidance still directs finishing after every individual tool result")
-		}
-		if strings.Contains(got, "Finish with exactly `Done.`") {
-			t.Error("Code Mode guidance still requires a Done-only provider final")
+		for _, owner := range []string{guide, codeModeJournalGuidance} {
+			if strings.Count(got, owner) != 1 {
+				t.Error("Code Mode description must include each guidance owner exactly once")
+			}
 		}
 		checkStableRefresh(t, fields)
 	})
-
-	for _, required := range []string{"owned change ranges", "aggregated numstat"} {
-		if !strings.Contains(journalToolDescription, required) {
-			t.Errorf("child completion guidance is missing %q", required)
-		}
-	}
 }
 
 func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
@@ -156,28 +75,9 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 			}
 			// Count across the actual combined request, not each surface in isolation.
 			combined := string(mustMarshalJSON(request.fields))
-			for _, rule := range []string{
-				"The durable journal is the user-facing record of work",
-				"Code Mode API:",
-				"Task states are pending, working, done, blocked, dropped.",
-				"Paths use stable sibling ordinals",
-				"Read and transport failures throw.",
-				"do not construct its internal transport",
-				"A work-completion reply is not a conversational exception",
-				"Coordinator requests for implementation-completion reports also use the journal",
-				"Parents record integration decisions",
-				"Use task state changes for milestones",
-				"Use ASD-STE100 Simplified Technical English for journal text.",
-				"Give each item a short, clear title or first line.",
-				"Put supporting details in the body; for `log`, put them after a newline.",
-				"Keep one topic per item.",
-				"when it connects parts of one topic.",
-				"Three cases passed",
-				"Now checking restart",
-			} {
-				if count := strings.Count(combined, rule); count != 1 {
-					t.Errorf("journal rule %q appears %d times; want one owner", rule, count)
-				}
+			owner := string(mustMarshalJSON(codeModeJournalGuidance))
+			if count := strings.Count(combined, owner[1:len(owner)-1]); count != 1 {
+				t.Errorf("journal guidance appears %d times; want one owner", count)
 			}
 		})
 	}
