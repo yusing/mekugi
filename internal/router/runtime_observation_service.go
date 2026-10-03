@@ -156,7 +156,7 @@ func startObservationService(owner *nativeObservationOwner) (*ObservationService
 				} else {
 					err = s.journal.before(ctx, request.Call)
 				}
-			case "journal_batch", "journal_read":
+			case "journal_batch", "journal_read", "mchanges":
 				if s.journal == nil {
 					err = errors.New("companion journal is disabled")
 				} else {
@@ -177,6 +177,18 @@ func startObservationService(owner *nativeObservationOwner) (*ObservationService
 					if err == nil {
 						w.Header().Set("Content-Type", "application/json")
 						_ = json.MarshalWrite(w, map[string]string{"text": text})
+						return
+					}
+				}
+			case "journal_reset_check", "journal_reset", "journal_reset_installed":
+				if s.journal == nil {
+					err = errors.New("native journal is unavailable")
+				} else {
+					var result any
+					result, err = s.journal.resetSession(ctx, request.Operation, request.Binding)
+					if err == nil {
+						w.Header().Set("Content-Type", "application/json")
+						_ = json.MarshalWrite(w, result)
 						return
 					}
 				}

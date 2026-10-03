@@ -187,8 +187,8 @@ func newNativeDecisionsHarness(t *testing.T) *nativeDecisionsHarness {
 		t.Fatal(err)
 	}
 	version, err := exec.CommandContext(ctx, executable, "--version").Output()
-	if err != nil || strings.TrimSpace(string(version)) != "2.1.287 (Claude Code)" {
-		t.Fatal("live acceptance requires installed Claude CLI 2.1.287")
+	if err != nil || strings.TrimSpace(string(version)) != "2.1.288 (Claude Code)" {
+		t.Fatal("live acceptance requires installed Claude CLI 2.1.288")
 	}
 	for _, path := range []string{"bridge/package.json", "bridge/node_modules/@anthropic-ai/claude-agent-sdk/package.json"} {
 		data, err := os.ReadFile(path)
@@ -205,8 +205,8 @@ func newNativeDecisionsHarness(t *testing.T) *nativeDecisionsHarness {
 		if path == "bridge/package.json" {
 			pkg.Version = pkg.Dependencies["@anthropic-ai/claude-agent-sdk"]
 		}
-		if pkg.Version != "0.3.287" {
-			t.Fatal("live acceptance requires declared and installed SDK 0.3.287")
+		if pkg.Version != "0.3.288" {
+			t.Fatal("live acceptance requires declared and installed SDK 0.3.288")
 		}
 	}
 	node, err := exec.LookPath("node")
@@ -232,7 +232,7 @@ func newNativeDecisionsHarness(t *testing.T) *nativeDecisionsHarness {
 	t.Cleanup(func() { h.client.Close() })
 	for e := h.next(t); e.Kind != "ready"; e = h.next(t) {
 	}
-	t.Log("installed CLI 2.1.287; declared/installed SDK 0.3.287; isolated temporary project ask rules; native haiku model")
+	t.Log("installed CLI 2.1.288; declared/installed SDK 0.3.288; isolated temporary project ask rules; native haiku model")
 	return h
 }
 

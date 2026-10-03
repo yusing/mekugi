@@ -40,6 +40,12 @@ type nativeRuntimeSession struct {
 	tasks             map[string]session.Task
 	taskOrder         []string
 	stoppingTasks     map[string]bool
+	turn              string
+	continuation      *journalResetIntent
+	continueAt        time.Time
+	resetRequest      string
+	resetSource       ObservationBinding
+	restoredJournal   string
 }
 
 func newRuntimeUI(ctx context.Context, client session.Client, name, cwd string) *appServerUI {
@@ -98,9 +104,14 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 					u.dirty = true
 				case <-tick.C:
 					if s := u.runtime.observations; s != nil && s.journal != nil {
-						u.journal = s.journal.sink()
+						if sink := s.journal.sink(); sink != nil {
+							u.journal = sink
+						}
 					}
 					pending := u.runtimeJournalPending()
+					if err := u.tickRuntimeJournal(u.now()); err != nil {
+						u.setNotice("Journal continuation unavailable: "+err.Error(), true)
+					}
 					if err := u.shell.flushEscape(); err != nil {
 						return err
 					}
@@ -164,6 +175,9 @@ func (u *appServerUI) acknowledgeRuntimeJournal(items []nativeJournalPublication
 // single existing composer implementation below this boundary.
 func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 	r := u.runtime
+	if (r.continuation != nil || r.resetRequest != "") && key == 3 && u.escape == "" {
+		return true, false, u.cancelRuntimeContinuation(true)
+	}
 	// Enter on a native slash completion must dispatch through this backend,
 	// not fall through to Codex's command handlers after the picker closes.
 	if key == '\r' && u.escape == "" && u.picker.open && u.statusPanel == nil {
@@ -218,6 +232,26 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 			u.setNotice("Settings update pending · draft kept", false)
 			return true, false, nil
 		}
+		if strings.TrimSpace(text) == "/compact" && u.runtimeJournalOwner() != nil {
+			if _, ok := r.client.(session.ResetClient); ok {
+				if err := u.cancelRuntimeContinuation(false); err != nil {
+					return true, false, err
+				}
+				if err := u.requestRuntimeReset(); err != nil {
+					u.setNotice("Journal reset unavailable: "+err.Error(), true)
+					return true, false, nil
+				}
+				u.loadDraft(composerDraft{})
+				return true, false, nil
+			}
+		}
+		if err := u.cancelRuntimeContinuation(false); err != nil {
+			return true, false, err
+		}
+		if err := u.beginRuntimeJournalTurn(); err != nil {
+			u.setNotice("Journal turn unavailable: "+err.Error(), true)
+			return true, false, nil
+		}
 		if err := u.sendRuntimeInput(); err != nil {
 			u.setNotice("Input not sent: "+err.Error()+" · draft kept", true)
 			return true, false, nil
@@ -237,8 +271,7 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 			return false, false, nil
 		}
 		if r.busy {
-			u.status = "Interrupting…"
-			return true, false, r.client.Interrupt(u.ctx)
+			return true, false, u.keyboardInterrupt()
 		}
 		return true, true, nil
 	case 22:
@@ -289,6 +322,13 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		}
 	case "session":
 		u.thread, u.model = e.SessionID, e.Model
+	case "reset_ready":
+		return u.runtimeResetReady(e)
+	case "reset":
+		if u.runtime.observations != nil {
+			u.attachRuntimeObservation(u.runtime.observations)
+		}
+		u.setNotice("Context reset from journal · native session "+e.SessionID, false)
 	case "edit":
 		u.runtimePreview(e)
 	case "message", "tool", "tool_result":
@@ -317,6 +357,8 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		if e.Failed {
 			u.status = "Turn ended"
 			u.setNotice(e.Text, true)
+		} else if err := u.completedRuntimeJournal(); err != nil {
+			u.setNotice("Journal continuation unavailable: "+err.Error(), true)
 		}
 	case "prompt":
 		if e.Prompt == nil {

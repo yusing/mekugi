@@ -55,6 +55,14 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		return []session.Event{{Kind: "settings", Settings: &session.Settings{ID: frame.ID, Field: frame.Field, Value: frame.Value}, Failed: frame.Failed, Text: frame.Text}}, nil
 	case "task_control":
 		return []session.Event{{Kind: "task_control", ID: frame.ID, Failed: frame.Failed, Text: frame.Text}}, nil
+	case "reset":
+		if frame.Failed || frame.ID == "" || frame.SessionID == "" {
+			return nil, fmt.Errorf("validated native reset identity unavailable")
+		}
+		a.resumeSession = frame.SessionID
+		return []session.Event{{Kind: frame.Kind, ID: frame.ID, SessionID: frame.SessionID}}, nil
+	case "reset_ready":
+		return []session.Event{{Kind: frame.Kind, ID: frame.ID, Failed: frame.Failed, Text: frame.Text, SessionID: frame.SessionID}}, nil
 	case "history":
 		return historyEvents(frame.Event)
 	case "notice":

@@ -68,10 +68,11 @@ func TestRuntimeCompanionClaudeLive(t *testing.T) {
 	phase := 0
 	recoveries := 0
 	writes := make(map[string]bool)
+	implicitReads := make(map[string]bool)
 	var nativeSession string
 	var recoveryAnswer string
 	var childOutcome string
-	first := fmt.Sprintf("This is an authorized isolated companion acceptance. Use native Write exactly once to create %s with content exactly native-once followed by a newline. Then call mcp__mekugi__journal_batch once with journal [{op:add,kind:context,title:Native marker,body:Preserve MEKUGI_RECOVERY_CEDAR},{op:add,kind:task,title:Verify recovery,state:working}]. Call journal_read once. Run mcat native.txt through native Bash, then run mchanges with the explicit Write change ID from the companion hook and --summary. Finally run mchanges revert with that same explicit Write ID exactly once through Bash. Do not use Read, Edit, other commands or subagents. Do not repair or retry failing tools. Reply only ACCEPTED.", filepath.Join(binding.Workspace, "native.txt"))
+	first := fmt.Sprintf("This is an authorized isolated companion acceptance. Use native Write exactly once to create %s with content exactly native-once followed by a newline. Then call mcp__mekugi__journal_batch once with journal [{op:add,kind:context,title:Native marker,body:Preserve MEKUGI_RECOVERY_CEDAR},{op:add,kind:task,title:Verify recovery,state:working}]. Call journal_read once. Call mcp__mekugi__mchanges with args [\"--mine\",\"--summary\"] exactly once to review your own captured Write. Run mcat native.txt through native Bash, then run mchanges with the explicit Write change ID from the companion hook and --summary. Finally run mchanges revert with that same explicit Write ID exactly once through Bash. Do not use Read, Edit, other commands or subagents. Do not repair or retry failing tools. Reply only ACCEPTED.", filepath.Join(binding.Workspace, "native.txt"))
 	childrenSettled := func() bool {
 		service.owner.mu.Lock()
 		var bindings []ObservationBinding
@@ -125,6 +126,9 @@ func TestRuntimeCompanionClaudeLive(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "tool":
+				if e.Role == "mcp__mekugi__mchanges" {
+					implicitReads[e.ID] = true
+				}
 				if e.Role == "Write" {
 					writes[e.ID] = true
 				}
@@ -175,6 +179,9 @@ func TestRuntimeCompanionClaudeLive(t *testing.T) {
 	// The prompt already names the marker's prefix; CEDAR is the retained fact
 	// it does not supply. Native answers may return that value or the full ID.
 	answer := strings.TrimSpace(recoveryAnswer)
+	if len(implicitReads) != 1 {
+		t.Fatalf("native implicit read count = %d", len(implicitReads))
+	}
 	if len(writes) != 1 || recoveries != 1 || answer != "CEDAR" && answer != "MEKUGI_RECOVERY_CEDAR" {
 		t.Fatalf("acceptance incomplete: writes=%d recovery=%d answer=%q", len(writes), recoveries, answer)
 	}

@@ -89,3 +89,15 @@ test('native task start supplies exact spawning call for terminal updates withou
     {operation: 'task', task: {id: 'distinct-task', session: 'native-session', status: 'stopped'}},
   ]);
 });
+
+ test('mchanges receipt uses the same exact native MCP provenance', async t => {
+  const f = await fixture(t);
+  const input = {...f.base, hook_event_name: 'PreToolUse' as const, agent_id: 'child-a', tool_use_id: 'read-a', tool_name: 'mcp__mekugi__mchanges', tool_input: {args: ['--mine']}, mcp_server: {name: 'mekugi', source: 'sdk' as const}};
+  assert.deepEqual(await f.invoke(input, 'read-a'), {});
+  assert.equal(f.payloads.length, 1);
+  const call = f.payloads[0]!.call as {binding: {agent: string}; id: string; tool: string; input: string};
+  assert.equal(call.binding.agent, 'child-a');
+  assert.equal(call.id, 'read-a');
+  assert.equal(call.tool, input.tool_name);
+  assert.deepEqual(JSON.parse(call.input), input.tool_input);
+});

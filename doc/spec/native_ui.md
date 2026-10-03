@@ -10,7 +10,8 @@ keeps execution, permissions, authentication, configuration and native history.
 Shared utility, journal and observation adapters are invocation-local. Claude
 keeps its normal configuration and permission policy; Mekugi does not route inference.
 
-The initial bridge pins Agent SDK 0.3.287 and targets Claude Code 2.1.287. Its
+The bridge pins Agent SDK 0.3.288, whose package metadata targets Claude Code
+2.1.288. Its
 private JSON-lines frames are bounded to 8 MiB. Malformed or oversized transport
 frames fail the connection, not silently change native arguments or results.
 User input is held until initialization and history loading complete; input during

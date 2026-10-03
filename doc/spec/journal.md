@@ -3,7 +3,8 @@
 ## Claude backend
 
 `mekugi claude` supplies native MCP journal batches and reads, shared
-Journal/Main/plan-strip presentation and bounded classic compact recovery. It
+Journal/Main/plan-strip presentation, journal context reset, slice continuation
+and bounded classic compact recovery. It
 uses the same durable journal owners as Codex, without another activation flag.
 The adapter accepts the shared plan/add/set/log/remove operations; it does not
 expose Codex's piggybacking or finish marker. Native tool identity and matching
@@ -20,8 +21,41 @@ source context alone does not prove inherited journal authorization.
 Classic native compact recovery is additive and preserves the native summary.
 Mandatory constraints and open tasks must fit the 10,000 UTF-16-unit carrier in
 full; overflow, missing evidence or transport failure reports unavailable recovery
-without blocking native compaction. It does not skip native summary inference,
-replace context or activate the Codex reset/continuation behavior described below.
+without blocking native compaction. Classic recovery does not replace context
+or skip native summary inference.
+
+The shared native UI uses a journal-only reset for plain `/compact` and for
+completed slice boundaries. It initializes a fresh SDK query with a fresh native
+session UUID and the bounded journal packet as a recorded system-prompt append.
+It does not request a provider summary, edit native transcripts, replay tools or
+reuse a prior session UUID. `/compact` with extra instructions still requests
+classic native compaction. The prepared packet must retain mandatory constraints
+and open tasks in full or reset fails before retiring the usable query.
+
+The runtime must be idle, with no queued input, unresolved permissions, pending
+settings, live background tasks or unfinished observations. Native close drains
+the old query before a new one starts. Shared handle-scope and journal fork
+owners copy retained facts, change streams and output into the new independent
+scope. Child facts remain historical, not authority over old native processes.
+The source session stays independently resumable. A reset does not transfer live
+child identities to the new session.
+
+Command initialization alone is not a durable native session: the first new input
+establishes native identity. Until then, the UI says context is prepared, retains
+the displayed journal and keeps new user input. Only the matching native init
+records completed reset evidence. Native prompt snapshots retain the installed
+packet across fresh bridge resume. Closing before first input leaves no resumable
+new native conversation; resume the source and continue manually. Uncertain reset
+or turn dispatch is never replayed.
+
+The shared journal policy selects runnable work and stores continuation intent.
+The UI offers a three-second countdown after successful turns. Slice boundaries
+reset first; ordinary unfinished work continues without resetting. Draft input or
+questions cancel the countdown without stopping tasks. Escape and user interrupt
+retain a durable stop; later questions and restart cannot revive stopped work.
+Background work and settings delay dispatch. A prepared reset cannot automatically
+send a continuation over a draft entered during initialization. Restart may restore
+only a still-pending valid countdown, never an already-dispatched request.
 
 ## Native journal presentation
 

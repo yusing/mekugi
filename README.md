@@ -226,8 +226,11 @@ return explicit change IDs through companion hook context, without replacing the
 native tool result. Review those IDs with `mchanges`; apply/revert run only through
 native Bash and its permissions, and their actual effects become new captures.
 `mread` retrieves retained output without repeating execution. Bash does not expose
-a trustworthy per-agent caller binding: bare `mchanges`, `--mine`, and `--list`
-without explicit IDs are unavailable. The frontends cannot select another workspace.
+a trustworthy per-agent caller binding, so its `mchanges` frontend requires explicit
+change IDs. The read-only native MCP `mchanges` tool supports empty arguments,
+`--mine` and implicit `--list` using the authenticated caller's own retained changes.
+Neither interface can select another workspace; apply/revert remain native Bash
+operations with explicit IDs.
 
 Native MCP journal batches/reads feed the shared Journal pane (`Ctrl-B 5`),
 Main event cards and plan strip, without an additional activation flag.
@@ -237,11 +240,19 @@ agents without access to the companion MCP tools cannot author a journal.
 Child journals mount read-only only after native
 results establish ancestry. Turn completion leaves authored task states unchanged
 and preserves Claude's substantive answer. Resume restores retained journal state.
-After native compaction, an additive recovery packet preserves constraints and
-open tasks within Claude's 10,000-character carrier. Overflow or missing evidence
-leaves the native summary intact and reports recovery unavailable. This still uses
-native summary inference; it does not replace compaction or automatically continue
-unfinished tasks. The utility and journal integration is invocation-local.
+Plain `/compact` prepares a fresh native session from the bounded journal context,
+without asking Claude to summarize the conversation. The source conversation remains
+independently resumable. The new session becomes resumable after its first input;
+before that, the UI reports context preparation, not a completed reset.
+Completed journal slices use the same reset. Other runnable journal tasks continue
+after a three-second countdown without resetting context. Drafts and questions cancel
+the countdown; Escape or interruption stops automatic continuation. Native background
+work delays dispatch, and uncertain dispatch is never replayed after restart.
+
+`/compact` with extra instructions still uses native summarization followed by bounded
+additive journal recovery. Mandatory constraints and open tasks must fit the recovery
+packet in full. Overflow or missing evidence leaves the usable conversation intact
+and reports unavailable recovery. The utility and journal integration is invocation-local.
 
 Bash previews and agent messaging/switching are not connected yet.
 Commands advertised by the SDK are forwarded natively;

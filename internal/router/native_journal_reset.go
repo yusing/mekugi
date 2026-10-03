@@ -46,6 +46,9 @@ func (u *appServerUI) tickJournalReset(now time.Time) error {
 }
 
 func (u *appServerUI) journalResetStrip(width int) string {
+	if u.runtime != nil {
+		return ansi.Truncate(livediff.Safe(u.runtimeJournalLabel(u.now()), false), width, "…")
+	}
 	if !u.reset.active() {
 		return ""
 	}

@@ -4,6 +4,20 @@
 agent handoffs. It reports confirmed evidence and its limits, not the live Git
 working tree or a claim that unobserved effects did not occur.
 
+## Native Claude caller selection
+
+The read-only MCP `mchanges` adapter accepts an `args` array with the shared
+reader arguments. Native tool-use metadata must match an authenticated hook
+receipt, including exact arguments. Empty arguments, `--mine` and `--list`
+without IDs select only that caller's retained changes. Root and child calls
+remain isolated across concurrent hooks and fresh bridge resume. Missing caller
+proof rejects the read; it never falls back to root or the latest hook.
+
+Native Bash keeps explicit-ID reads, apply and revert through the same shared
+owners. Its invocation-wide PATH does not prove which agent invoked a command.
+Implicit selection therefore uses MCP, not an inherited environment principal.
+The MCP adapter rejects mutations and workspace changes before execution.
+
 ## REQ-CHANGES-001 — Durable review of stock edits and command effects
 
 Mekugi observes stock Codex `apply_patch` calls. Codex executes each call once;

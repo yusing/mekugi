@@ -55,6 +55,12 @@ type TaskClient interface {
 	StopTask(context.Context, string) error
 }
 
+// Reset prepares a fresh native query. reset_ready is not durable completion:
+// the first new input must establish native identity and emit reset.
+type ResetClient interface {
+	Reset(context.Context, string) error
+}
+
 type InputPart struct{ Text, ImagePath string }
 type InputClient interface {
 	SendInput(context.Context, []InputPart) error

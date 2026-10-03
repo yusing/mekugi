@@ -1,6 +1,8 @@
-import { query, getSessionInfo, getSessionMessages, type SDKUserMessage, type PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import { query, getSessionInfo, getSessionMessages, type SDKUserMessage, type PermissionResult, type Query } from '@anthropic-ai/claude-agent-sdk';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
+import { randomUUID } from 'node:crypto';
+import { companionRequest } from './companion_transport.js';
 import { realpath } from 'node:fs/promises';
 import { companion, type CompanionConfig } from './companion.js';
 import { journalServer } from './journal.js';
@@ -21,6 +23,18 @@ const inputs: SDKUserMessage[] = [];
 const permissions = new Map<string, (result: PermissionResult) => void>();
 let serial = 0;
 let controls = Promise.resolve();
+let epoch = 0;
+let pendingTurns = 0;
+let replacing = false;
+let resetCancelled = false;
+let pendingReset: {id: string; session: string} | undefined;
+let model = config.model;
+let effort: SettingsCommand | undefined;
+let background = new Set<string>();
+let running!: Query;
+let pump = Promise.resolve();
+let stopped!: () => void;
+const closed = new Promise<void>(resolve => { stopped = resolve; });
 
 // Bound frames without transforming native tool inputs/results. An oversized
 // event terminates this presentation connection rather than fabricating evidence.
@@ -29,24 +43,25 @@ async function emit(value: unknown): Promise<void> {
   if (Buffer.byteLength(frame) > limit) throw new Error('Claude event exceeds the 8 MiB bridge frame limit');
   if (!process.stdout.write(frame)) await once(process.stdout, 'drain');
 }
-async function* messages(): AsyncGenerator<SDKUserMessage> {
-  while (!stopping) {
+async function* messages(generation: number): AsyncGenerator<SDKUserMessage> {
+  while (!stopping && generation === epoch) {
     const message = inputs.shift();
     if (message) yield message;
     else await new Promise<void>(resolve => { wake = resolve; });
   }
 }
 const observer = endpoint ? companion(endpoint, config.cwd, text => emit({kind: 'notice', text})) : undefined;
-const journal = endpoint ? journalServer(endpoint) : undefined;
-const running = query({prompt: messages(), options: {
+function createQuery(fresh?: {session: string; context: string}): Query {
+  const journal = endpoint ? journalServer(endpoint) : undefined;
+  return query({prompt: messages(epoch), options: {
   cwd: config.cwd,
   pathToClaudeCodeExecutable: config.executable,
-  systemPrompt: {type: 'preset', preset: 'claude_code'},
+  systemPrompt: {type: 'preset', preset: 'claude_code', ...(fresh ? {append: fresh.context} : {})},
   settingSources: ['user', 'project', 'local'],
   includePartialMessages: true,
-  ...(config.resume ? {resume: config.resume} : {}),
-  ...(config.forkSession ? {forkSession: true} : {}),
-  ...(config.model ? {model: config.model} : {}),
+  ...(fresh ? {sessionId: fresh.session} : config.resume ? {resume: config.resume} : {}),
+  ...(!fresh && config.forkSession ? {forkSession: true} : {}),
+  ...(model ? {model} : {}),
   abortController,
   ...(observer ? {hooks: observer.hooks} : {}),
   ...(endpoint?.plugin ? {plugins: [{type: 'local' as const, path: endpoint.plugin}]} : {}),
@@ -72,6 +87,71 @@ const running = query({prompt: messages(), options: {
     });
   },
 }});
+}
+
+async function watch(query: Query): Promise<void> {
+  try {
+    for await (const event of query) {
+      if (event.type === 'result') pendingTurns = Math.max(0, pendingTurns - 1);
+      if (event.type === 'system' && event.subtype === 'background_tasks_changed') background = new Set(event.tasks.map(task => task.task_id));
+      await observer?.event(event);
+      if (pendingReset && event.type === 'system' && event.subtype === 'init') {
+        if (event.session_id !== pendingReset.session) throw new Error('Reset native session identity mismatch');
+        await companionRequest(endpoint!, {operation: 'journal_reset_installed', binding: {runtime: 'claude', workspace: config.cwd, session: event.session_id}});
+        await emit({kind: 'reset', id: pendingReset.id, sessionID: event.session_id});
+        pendingReset = undefined;
+      }
+      await emit({kind: 'event', event});
+    }
+    if (!stopping && !replacing) throw new Error('Native query ended unexpectedly');
+  } catch (error) {
+    if (!stopping && !replacing) { await emit({kind: 'error', text: String(error)}); stop(); }
+  }
+}
+
+async function reset(id: string): Promise<void> {
+  if (!endpoint || pendingTurns || inputs.length || permissions.size || background.size || replacing || pendingReset) {
+    await emit({kind: 'reset_ready', id, failed: true, text: 'Journal reset requires an idle query with no queued input, permissions or background tasks'});
+    return;
+  }
+  replacing = true;
+  resetCancelled = false;
+  let retired = false;
+  try {
+    // Validate mandatory recovery before retiring the usable query.
+    await companionRequest(endpoint, {operation: 'journal_reset_check'});
+    await emit({kind: 'notice', text: 'Journal recovery validated; retiring idle native query'});
+    if (stopping || resetCancelled) throw new Error('Journal reset cancelled');
+    epoch++;
+    running.close();
+    wake?.(); wake = undefined;
+    retired = true;
+    await pump;
+    await emit({kind: 'notice', text: 'Native query drained; preparing retained journal scope'});
+    if (stopping || resetCancelled) throw new Error('Journal reset cancelled after query shutdown; resume manually');
+    const session = randomUUID();
+    const packet = await companionRequest(endpoint, {operation: 'journal_reset', binding: {runtime: 'claude', workspace: config.cwd, session}}, undefined, 128 * 1024) as {text: string};
+    if (typeof packet.text !== 'string' || !packet.text || packet.text.length > 10000) throw new Error('Invalid journal reset packet');
+    if (stopping || resetCancelled) throw new Error('Journal reset cancelled before new query initialization; resume manually');
+    pendingReset = {id, session};
+    running = createQuery({session, context: packet.text});
+    pump = watch(running);
+    await running.supportedCommands();
+    if (effort) {
+      const receipt = await setSettings(running, effort);
+      if (receipt.failed) throw new Error(receipt.text);
+    }
+    replacing = false;
+    await emit({kind: 'reset_ready', id});
+  } catch (error) {
+    if (retired) {
+      await emit({kind: 'error', text: `Journal reset did not establish a new query; resume manually: ${String(error)}`});
+      stop();
+    } else {
+      await emit({kind: 'reset_ready', id, failed: true, text: String(error)});
+    }
+  } finally { replacing = false; }
+}
 
 function stop(): void {
   if (stopping) return;
@@ -79,6 +159,7 @@ function stop(): void {
   abortController.abort();
   for (const finish of permissions.values()) finish({behavior: 'deny', message: 'Client closed'});
   wake?.();
+  stopped();
 }
 const lines = createInterface({input: process.stdin, crlfDelay: Infinity});
 // Go also bounds outgoing frames. Reject oversized input before parsing.
@@ -88,7 +169,9 @@ lines.on('line', (line: string) => {
     const command = JSON.parse(line) as {kind: string; text?: string; content?: SDKUserMessage['message']['content']; id?: string; allow?: boolean; answers?: Record<string, string>};
     switch (command.kind) {
       case 'input':
-        if (inputs.length >= 16 || typeof command.text !== 'string' && !Array.isArray(command.content)) throw new Error('Invalid or excessive pending input');
+        if (replacing) throw new Error('Input arrived during journal reset');
+        if (pendingTurns >= 16 || typeof command.text !== 'string' && !Array.isArray(command.content)) throw new Error('Invalid or excessive pending input');
+        pendingTurns++;
         inputs.push({type: 'user', message: {role: 'user', content: command.content ?? command.text!}, parent_tool_use_id: null, origin: {kind: 'human'}});
         wake?.(); wake = undefined;
         break;
@@ -99,11 +182,23 @@ lines.on('line', (line: string) => {
           : {behavior: 'deny', message: 'Denied by the user'});
         break;
       }
+      case 'reset':
+        if (!command.id) throw new Error('Missing reset request ID');
+        controls = controls.then(() => reset(command.id!)).catch(stop);
+        break;
       case 'interrupt':
+        if (replacing) { resetCancelled = true; break; }
         void running.interrupt().catch(async error => { await emit({kind: 'notice', text: `Interrupt failed: ${String(error)}`}); });
         break;
       case 'settings':
-        controls = controls.then(async () => { await emit(await setSettings(running, command as SettingsCommand)); }).catch(stop);
+        controls = controls.then(async () => {
+          const receipt = await setSettings(running, command as SettingsCommand);
+          if (!receipt.failed) {
+            if (receipt.field === 'model') model = receipt.value === 'default' ? undefined : receipt.value;
+            else effort = command as SettingsCommand;
+          }
+          await emit(receipt);
+        }).catch(stop);
         break;
       case 'stop_task':
         if (!command.id) throw new Error('Missing native task ID');
@@ -136,20 +231,19 @@ try {
     }
     if (history.length > 2000) await emit({kind: 'notice', text: 'Transcript display limited to the first 2000 messages; native resume retains its own context'});
   }
+  running = createQuery();
+  pump = watch(running);
   const commands = await running.supportedCommands();
   const models = await running.supportedModels().catch(async error => {
     await emit({kind: 'notice', text: `Native model choices unavailable: ${String(error)}`});
     return [];
   });
   await emit({kind: 'ready', commandInfo: commands, models});
-  for await (const event of running) {
-    await observer?.event(event);
-    await emit({kind: 'event', event});
-  }
+  await closed;
 } catch (error) {
   if (!stopping) { await emit({kind: 'error', text: String(error)}); process.exitCode = 1; }
 } finally {
   stop();
-  running.close();
+  running?.close();
   lines.close();
 }

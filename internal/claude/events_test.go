@@ -32,6 +32,40 @@ func TestAdapterSessionAndTextStreaming(t *testing.T) {
 	assertDecode(t, &a, `{"kind":"event","event":{"type":"result","session_id":"session-1","is_error":false}}`, []session.Event{{Kind: "done", SessionID: "session-1"}})
 }
 
+func TestAdapterResumedSessionJournalReset(t *testing.T) {
+	var a adapter
+	assertDecode(t, &a, `{"kind":"session","sessionID":"old-session"}`, []session.Event{{Kind: "session", SessionID: "old-session"}})
+	assertDecode(t, &a, `{"kind":"event","event":{"type":"system","subtype":"init","session_id":"old-session"}}`, []session.Event{{Kind: "session", SessionID: "old-session"}})
+	assertDecode(t, &a, `{"kind":"reset_ready","id":"reset-1"}`, []session.Event{{Kind: "reset_ready", ID: "reset-1"}})
+	wrong := `{"kind":"event","event":{"type":"system","subtype":"init","session_id":"new-session"}}`
+	if _, err := a.decode([]byte(wrong)); err == nil {
+		t.Fatal("preparation authorized a new native identity")
+	}
+	for _, id := range []string{"new-session", "next-session"} {
+		assertDecode(t, &a, fmt.Sprintf(`{"kind":"reset","id":"reset-1","sessionID":%q}`, id), []session.Event{{Kind: "reset", ID: "reset-1", SessionID: id}})
+		assertDecode(t, &a, fmt.Sprintf(`{"kind":"event","event":{"type":"system","subtype":"init","session_id":%q}}`, id), []session.Event{{Kind: "session", SessionID: id}})
+		if _, err := a.decode([]byte(`{"kind":"event","event":{"type":"system","subtype":"init","session_id":"old-session"}}`)); err == nil {
+			t.Fatal("old identity remained authorized after reset")
+		}
+	}
+}
+
+func TestAdapterInvalidResetCannotChangeResumeIdentity(t *testing.T) {
+	for _, frame := range []string{
+		`{"kind":"reset","id":"reset-1","sessionID":"other","failed":true}`,
+		`{"kind":"reset","id":"reset-1"}`,
+		`{"kind":"reset","sessionID":"other"}`,
+	} {
+		a := adapter{resumeSession: "original"}
+		if _, err := a.decode([]byte(frame)); err == nil {
+			t.Fatal("invalid reset receipt accepted")
+		}
+		if a.resumeSession != "original" {
+			t.Fatal("invalid reset changed expected native identity")
+		}
+	}
+}
+
 func TestAdapterNativeSettingsDiscoveryAndReceipts(t *testing.T) {
 	var a adapter
 	assertDecode(t, &a, `{"kind":"ready","commandInfo":[{"name":"compact"}],"models":[{"value":"sonnet","resolvedModel":"claude-sonnet","displayName":"Sonnet","description":"Native","supportsEffort":true,"supportedEffortLevels":["low","high"]}]}`, []session.Event{{Kind: "ready", CommandInfo: []session.Command{{Name: "compact"}}, Models: []session.Model{{ID: "sonnet", Resolved: "claude-sonnet", Name: "Sonnet", Description: "Native", SupportsEffort: true, Efforts: []string{"low", "high"}}}}})

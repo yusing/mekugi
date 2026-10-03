@@ -180,6 +180,9 @@ func (c *Client) SetSettings(ctx context.Context, s session.Settings) error {
 func (c *Client) StopTask(ctx context.Context, id string) error {
 	return c.send(ctx, map[string]string{"kind": "stop_task", "id": id})
 }
+func (c *Client) Reset(ctx context.Context, id string) error {
+	return c.send(ctx, map[string]string{"kind": "reset", "id": id})
+}
 func (c *Client) Close() error {
 	c.closeOnce.Do(func() {
 		c.input.Close()

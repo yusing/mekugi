@@ -31,8 +31,8 @@ func TestNativeRuntimeJournalClaudePTYLive(t *testing.T) {
 	}
 	nativeAcceptanceSettingsUnchanged(t)
 	version, err := exec.Command("claude", "--version").Output()
-	if err != nil || strings.TrimSpace(string(version)) != "2.1.287 (Claude Code)" {
-		t.Fatal("native acceptance requires installed Claude 2.1.287")
+	if err != nil || strings.TrimSpace(string(version)) != "2.1.288 (Claude Code)" {
+		t.Fatal("native acceptance requires installed Claude 2.1.288")
 	}
 	bridge, err := filepath.Abs("../claude/bridge/dist/bridge.js")
 	if err != nil {
@@ -45,8 +45,8 @@ func TestNativeRuntimeJournalClaudePTYLive(t *testing.T) {
 	var sdk struct {
 		Version string `json:"version"`
 	}
-	if err != nil || json.Unmarshal(packageData, &sdk) != nil || sdk.Version != "0.3.287" {
-		t.Fatal("native acceptance requires built SDK 0.3.287")
+	if err != nil || json.Unmarshal(packageData, &sdk) != nil || sdk.Version != "0.3.288" {
+		t.Fatal("native acceptance requires built SDK 0.3.288")
 	}
 	workspace, state := t.TempDir(), t.TempDir()
 	first := startNativeJournalClaudePTY(t, workspace, state, bridge, "", "first")
@@ -63,8 +63,13 @@ func TestNativeRuntimeJournalClaudePTYLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	first.paste("This is an authorized isolated native companion acceptance. Invoke mcp__mekugi__journal_batch exactly once with these exact JSON arguments: " + string(args) + ". Native ToolSearch is permitted only if needed to discover this deferred MCP tool. Do not invoke journal_read or any other tool, command, skill, or subagent. Do not mark the task done or retry tools. Then reply only JPT_NATIVE_ANSWER. The authored task intentionally remains working.")
-	first.await("native completion without answer replacement", func(s string) bool {
-		return strings.Contains(s, "Ready") && strings.Contains(s, "JPT_NATIVE_ANSWER") && strings.Contains(s, "0/1 done")
+	// Preserve the intentionally working task without dispatching another turn
+	// while testing navigation. Enter the draft before completion: the native
+	// completion frame may already display the countdown instead of Ready.
+	first.keys("JPT_UNSENT_DRAFT")
+	first.await("native completion with user draft cancelling continuation", func(s string) bool {
+		return strings.Contains(s, "Ready") && strings.Contains(s, "JPT_NATIVE_ANSWER") && strings.Contains(s, "0/1 done") &&
+			strings.Contains(s, "JPT_UNSENT_DRAFT") && strings.Contains(s, "Journal continuation cancelled")
 	})
 	first.evidence("main-plan")
 	first.keys("\x02" + "5")
@@ -97,6 +102,7 @@ func TestNativeRuntimeJournalClaudePTYLive(t *testing.T) {
 		return strings.Contains(s, "┌ 1 Main") && strings.Contains(s, "┌ 5 Journal") && strings.Contains(nativeJournalPTYPane(s), "JPT_NOTE_")
 	})
 	first.evidence("journal-resized-wide")
+	first.keys("\x02" + "1" + "\x03") // Clear the unsent draft before /quit.
 	a := first.stopJournal()
 	assertNativeJournalPTYState(t, a)
 	if !nativeJournalPTYExecutionMatches(a) {
@@ -124,7 +130,7 @@ func TestNativeRuntimeJournalClaudePTYLive(t *testing.T) {
 	if b.Sequence != a.Sequence || b.Receipts != a.Receipts || b.TaskPath != a.TaskPath {
 		t.Fatalf("resume mutated authored journal or receipt identity: first=%+v resume=%+v", a, b)
 	}
-	t.Logf("CLI 2.1.287 / SDK 0.3.287: one real prompt; UI PIDs %d and %d; exact native journal batch persisted %d notes; fresh UI restored working task before any next prompt; zero resumed tools", first.cmd.Process.Pid, second.cmd.Process.Pid, a.Notes)
+	t.Logf("CLI 2.1.288 / SDK 0.3.288: one real prompt; UI PIDs %d and %d; exact native journal batch persisted %d notes; user draft cancelled continuation; fresh UI restored working task before any next prompt; zero resumed tools", first.cmd.Process.Pid, second.cmd.Process.Pid, a.Notes)
 }
 
 type nativeJournalPTYResult struct {

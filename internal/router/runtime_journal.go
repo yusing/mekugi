@@ -14,10 +14,12 @@ import (
 // Native receipts authorize one exact MCP invocation, not model-supplied scope.
 // Journal transactions and publication retain their shared owner and store.
 type runtimeJournalOwner struct {
-	capture  *nativeObservationOwner
-	journals *journalStore
-	mu       sync.Mutex
-	root     *nativeJournalSink
+	capture     *nativeObservationOwner
+	journals    *journalStore
+	mu          sync.Mutex
+	root        *nativeJournalSink
+	turn        string
+	pendingStop string
 }
 
 func (s *ObservationService) EnableJournal() {
@@ -67,6 +69,15 @@ func (o *runtimeJournalOwner) bind(ctx context.Context, b ObservationBinding) er
 			return err
 		}
 	}
+	if err := o.journals.beginJournalTurn(ctx, o.capture.store, b.Workspace, thread, o.turn); err != nil {
+		return err
+	}
+	if o.pendingStop != "" && o.pendingStop == o.turn {
+		if err := o.journals.stopJournalTurn(ctx, o.capture.store, b.Workspace, thread, o.turn); err != nil {
+			return err
+		}
+		o.pendingStop = ""
+	}
 	return nil
 }
 
@@ -76,7 +87,7 @@ func journalNativeReceiptID(root ObservationBinding, id string) string {
 }
 
 func (o *runtimeJournalOwner) before(ctx context.Context, call ObservationCall) error {
-	if call.Tool != "mcp__mekugi__journal_batch" && call.Tool != "mcp__mekugi__journal_read" && call.Tool != "Agent" && call.Tool != "Task" {
+	if call.Tool != "mcp__mekugi__journal_batch" && call.Tool != "mcp__mekugi__journal_read" && call.Tool != "mcp__mekugi__mchanges" && call.Tool != "Agent" && call.Tool != "Task" {
 		return errors.New("unsupported native journal tool")
 	}
 	// Authenticated native hook identity is evidence even if SubagentStart has
@@ -143,6 +154,27 @@ func (o *runtimeJournalOwner) invoke(ctx context.Context, operation, id, input s
 		return nil, err
 	}
 	thread := observationThread(call.Binding)
+	if operation == "mchanges" {
+		var args struct {
+			Args []string `json:"args"`
+		}
+		if err := json.Unmarshal([]byte(input), &args, json.RejectUnknownMembers(true)); err != nil {
+			return nil, err
+		}
+		options, err := parseChangeReadAt(args.Args, root.Workspace, root.Workspace)
+		if err != nil {
+			return nil, err
+		}
+		if options.view == "apply" || options.view == "revert" {
+			return nil, errors.New("MCP mchanges is read-only; use native Bash with explicit IDs for apply or revert")
+		}
+		if options.workspace != root.Workspace {
+			return nil, errors.New("workspace does not match the native caller workspace")
+		}
+		// Exact native receipt scope, never process environment or last hook.
+		result := executeParsedChanges(ctx, toolWorkerManifest{ReplayDirectory: o.capture.store.directory}, options)
+		return map[string]any{"stdout": result.Stdout, "stderr": result.Stderr, "exitCode": result.ExitCode}, nil
+	}
 	if operation == "journal_batch" {
 		var args struct {
 			Journal jsontext.Value `json:"journal"`

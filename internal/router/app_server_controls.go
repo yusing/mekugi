@@ -26,6 +26,9 @@ func (u *appServerUI) keyboardInterrupt() error {
 		if !u.runtime.busy {
 			return nil
 		}
+		if err := u.stopRuntimeJournalTurn(); err != nil {
+			u.setNotice("Journal stop receipt unavailable: "+err.Error(), true)
+		}
 		u.status = "Interrupting…"
 		return u.runtime.client.Interrupt(u.ctx)
 	}

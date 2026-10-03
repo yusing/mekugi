@@ -34,8 +34,8 @@ func TestNativeRuntimeClaudePTYLive(t *testing.T) {
 	}
 	nativeAcceptanceSettingsUnchanged(t)
 	version, err := exec.Command("claude", "--version").Output()
-	if err != nil || strings.TrimSpace(string(version)) != "2.1.287 (Claude Code)" {
-		t.Fatal("native acceptance requires installed Claude 2.1.287")
+	if err != nil || strings.TrimSpace(string(version)) != "2.1.288 (Claude Code)" {
+		t.Fatal("native acceptance requires installed Claude 2.1.288")
 	}
 	bridge, err := filepath.Abs("../claude/bridge/dist/bridge.js")
 	if err != nil {
@@ -48,8 +48,8 @@ func TestNativeRuntimeClaudePTYLive(t *testing.T) {
 	var sdk struct {
 		Version string `json:"version"`
 	}
-	if err != nil || json.Unmarshal(packageData, &sdk) != nil || sdk.Version != "0.3.287" {
-		t.Fatal("native acceptance requires built SDK 0.3.287")
+	if err != nil || json.Unmarshal(packageData, &sdk) != nil || sdk.Version != "0.3.288" {
+		t.Fatal("native acceptance requires built SDK 0.3.288")
 	}
 	workspace, state := t.TempDir(), t.TempDir()
 	var content strings.Builder
@@ -185,7 +185,7 @@ func TestNativeRuntimeClaudePTYLive(t *testing.T) {
 	if b.Change != a.Change || !b.SavedContent {
 		t.Error("fresh-process saved capture identity changed")
 	}
-	t.Logf("CLI 2.1.287 / SDK 0.3.287: two real prompts; UI PIDs %d and %d; %d partial edits; preview preceded native result by %s; saved capture %s restored before resumed prompt; no resumed tools", first.cmd.Process.Pid, second.cmd.Process.Pid, a.Partials, time.Duration(a.ResultAt-previewAt), a.Change)
+	t.Logf("CLI 2.1.288 / SDK 0.3.288: two real prompts; UI PIDs %d and %d; %d partial edits; preview preceded native result by %s; saved capture %s restored before resumed prompt; no resumed tools", first.cmd.Process.Pid, second.cmd.Process.Pid, a.Partials, time.Duration(a.ResultAt-previewAt), a.Change)
 }
 
 type nativeClaudePTYResult struct {

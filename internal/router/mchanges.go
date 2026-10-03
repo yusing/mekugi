@@ -625,6 +625,13 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments
 			return fail(errors.New("workspace does not match the runtime frontend workspace"))
 		}
 	}
+	return executeParsedChanges(ctx, manifest, options)
+}
+
+func executeParsedChanges(ctx context.Context, manifest toolWorkerManifest, options changeReadOptions) toolplugin.ExecutionOutput {
+	fail := func(err error) toolplugin.ExecutionOutput {
+		return toolplugin.ExecutionOutput{Stderr: fmt.Sprintf("mchanges: %v\n", err), ExitCode: 1}
+	}
 	// The authenticated manifest pins the router's store. Do not derive it from
 	// mutable child environment or create a store as a side effect of reading.
 	if manifest.ReplayDirectory == "" {

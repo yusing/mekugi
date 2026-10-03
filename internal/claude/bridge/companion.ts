@@ -45,7 +45,7 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
         await send({operation: 'journal_before', call: {binding: scope, id: input.tool_use_id, tool: input.tool_name, input: JSON.stringify(input.tool_input)}}, options.signal);
         return {};
       }
-      if (config.journalSchema && input.hook_event_name === 'PreToolUse' && ['mcp__mekugi__journal_batch', 'mcp__mekugi__journal_read'].includes(input.tool_name)) {
+      if (config.journalSchema && input.hook_event_name === 'PreToolUse' && ['mcp__mekugi__journal_batch', 'mcp__mekugi__journal_read', 'mcp__mekugi__mchanges'].includes(input.tool_name)) {
         if (input.mcp_server?.name !== 'mekugi' || input.mcp_server.source !== 'sdk') throw new Error('Companion MCP provenance mismatch');
         await send({operation: 'journal_before', call: {binding: scope, id: input.tool_use_id, tool: input.tool_name, input: JSON.stringify(input.tool_input)}}, options.signal);
         return {};
@@ -88,7 +88,7 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
         await send({operation: 'bind', binding: await binding({session_id: info.sessionId, cwd: info.cwd})});
       } catch (error) { void notice(`Companion capture unavailable: ${String(error)}`).catch(() => {}); }
     },
-    hooks: {SessionStart: [matcher], SubagentStart: [matcher], PreToolUse: [{...matcher, matcher: config.journalSchema ? 'Edit|Write|Bash|Agent|Task|mcp__mekugi__journal_batch|mcp__mekugi__journal_read' : 'Edit|Write|Bash'}],
+    hooks: {SessionStart: [matcher], SubagentStart: [matcher], PreToolUse: [{...matcher, matcher: config.journalSchema ? 'Edit|Write|Bash|Agent|Task|mcp__mekugi__journal_batch|mcp__mekugi__journal_read|mcp__mekugi__mchanges' : 'Edit|Write|Bash'}],
       PostToolUse: [{...matcher, matcher: 'Edit|Write|Bash'}], PostToolUseFailure: [{...matcher, matcher: 'Edit|Write|Bash'}]},
     event: async event => {
       try {

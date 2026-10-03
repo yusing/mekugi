@@ -141,14 +141,18 @@ func (s *journalStore) stopJournalTurn(ctx context.Context, store *mekugiReplayS
 		}
 		j.setWorkTimers(false, time.Now())
 		j.ResetHandledTurn, j.ResetIntent = turn, nil
-		j.StoppedTasks = make(map[string]string)
-		for _, item := range j.Items {
-			if item.Kind == "task" && (item.State == "pending" || item.State == "working") {
-				j.StoppedTasks[item.Path] = turn
-			}
-		}
+		j.pauseTasks(turn)
 		return nil
 	})
+}
+
+func (j *threadJournal) pauseTasks(marker string) {
+	j.StoppedTasks = make(map[string]string)
+	for _, item := range j.Items {
+		if item.Kind == "task" && (item.State == "pending" || item.State == "working") {
+			j.StoppedTasks[item.Path] = marker
+		}
+	}
 }
 
 func (s *journalStore) changeReset(ctx context.Context, store *mekugiReplayStore, workspace, thread, id string, mutate func(*threadJournal, *journalResetIntent) error) error {
