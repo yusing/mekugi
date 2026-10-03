@@ -43,6 +43,7 @@ func TestUnderlinePreservesStyledRows(t *testing.T) {
 func TestLiveActivityWrapPreservesTerminalStyles(t *testing.T) {
 	p := activityui.Painter{}
 	for name, text := range map[string]string{
+		"inline syntax":    p.Inline("**Run `echo $HOME && printf 42` next** tail"),
 		"receipt":          p.Label("Create", "`internal/router/live_activity_quote_test.go` +46 -0 · cat, python3"),
 		"combined":         "\x1b[38;5;114m\x1b[2mone two three four\x1b[22mfive six\x1b[39mseven",
 		"partial resets":   "\x1b[1;3;4;38;2;40;80;120mone two\x1b[23mthree four\x1b[24mfive six\x1b[0mseven eight",

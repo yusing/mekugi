@@ -1,0 +1,11 @@
+Run git commit -m
+'amend: parser'
+then echo "$HOME".
+
+ func main() { pr 
+ intln(42) }      
+
+ GIT_SEQUENCE_EDI 
+ TOR=: git rebase 
+  -i --autosquash 
+  HEAD~2          

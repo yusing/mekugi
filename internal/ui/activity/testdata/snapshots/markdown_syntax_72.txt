@@ -1,0 +1,5 @@
+Run git commit -m 'amend: parser' then echo "$HOME".
+
+ func main() { println(42) }                                            
+
+ GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash HEAD~2                
