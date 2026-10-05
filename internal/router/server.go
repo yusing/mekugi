@@ -48,7 +48,7 @@ type Session struct {
 	AXReadOutput           string
 	SkillsManagerAvailable bool
 	// StartAppUI starts the native app-server UI and returns its joined lifetime.
-	StartAppUI           func(context.Context, *exec.Cmd, *os.File, *os.File, string, []string) (func() error, error)
+	StartAppUI           func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error)
 	StartHeadless        func(context.Context, *exec.Cmd, io.Reader, io.Writer) (func() error, error)
 	FrontendDirectory    string
 	NativeTraceDirectory string
@@ -355,7 +355,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 				return startHeadlessAppServer(ctx, cmd, input, output, mekugiCalls)
 			}
 		}
-		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string) (func() error, error) {
+		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 			if mekugiCalls != nil && frontendDirectory != "" {
 				// Without the socket, command shells find no router and run
 				// their scripts untracked.
@@ -369,7 +369,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.paths[0])
 			}
-			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator)
+			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator, approvals)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory

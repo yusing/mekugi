@@ -81,7 +81,7 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 		u.resumeNotice = "Saved model settings unavailable; using Codex defaults and explicit flags"
 		u.setNotice(u.resumeNotice, true)
 	}
-	params := map[string]any{"threadId": thread, "approvalPolicy": "never", "sandbox": "danger-full-access", "config": config, "modelProvider": config["model_provider"]}
+	params := u.threadPermissions(map[string]any{"threadId": thread, "config": config, "modelProvider": config["model_provider"]})
 	u.resumePendingEffort = false
 	for field, value := range saved {
 		if _, explicit := config[field]; explicit {

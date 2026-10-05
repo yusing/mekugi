@@ -106,10 +106,28 @@ func runAppServerPreviewWithProxyAndHooks(t *testing.T, provider responseProvide
 	runAppServerPreviewWithEnvironment(t, provider, proxy, nil, beforePrompt, afterPrompt)
 }
 
+type appServerPreviewHook func(*testing.T, io.Writer, func(string), func(func(string) bool), *vt.Emulator)
+
+// appServerPreview configures a preview run beyond its provider and proxy.
+type appServerPreview struct {
+	environment               []string // Appended to Codex's isolated environment.
+	codexArgs                 []string // Appended to the app-server invocation.
+	approvals                 bool     // Run in approval mode rather than --yolo's policy.
+	noJournal                 bool     // Skip the native journal milestone and its receipt checks.
+	beforePrompt, afterPrompt appServerPreviewHook
+	duringTurn                appServerPreviewHook // Runs after the prompt is sent, before the turn must finish.
+}
+
 // runAppServerPreviewWithEnvironment appends environment to Codex's isolated
 // environment.
 func runAppServerPreviewWithEnvironment(t *testing.T, provider responseProvider, proxy *mekugiProxy, environment []string, beforePrompt, afterPrompt func(*testing.T, io.Writer, func(string), func(func(string) bool), *vt.Emulator)) {
 	t.Helper()
+	runAppServerPreviewWith(t, provider, proxy, appServerPreview{environment: environment, beforePrompt: beforePrompt, afterPrompt: afterPrompt})
+}
+
+func runAppServerPreviewWith(t *testing.T, provider responseProvider, proxy *mekugiProxy, options appServerPreview) {
+	t.Helper()
+	environment, beforePrompt, afterPrompt := options.environment, options.beforePrompt, options.afterPrompt
 	codex, err := exec.LookPath("codex")
 	if err != nil {
 		t.Fatal(err)
@@ -118,7 +136,8 @@ func runAppServerPreviewWithEnvironment(t *testing.T, provider responseProvider,
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")
+	args := []string{"app-server", "-c", `model_providers.preview={name="preview",base_url=` + strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false"}
+	cmd := exec.CommandContext(ctx, codex, append(args, options.codexArgs...)...)
 	cmd.Env = append(routerFaultCodexEnvironment(t), environment...)
 	cmd.Dir = t.TempDir()
 	outer, terminal, err := pty.Open()
@@ -134,7 +153,7 @@ func runAppServerPreviewWithEnvironment(t *testing.T, provider responseProvider,
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil)
+	wait, err := startAppServerUI(ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, options.approvals)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +211,7 @@ func runAppServerPreviewWithEnvironment(t *testing.T, provider responseProvider,
 		beforePrompt(t, outer, await, awaitFrame, screen)
 	}
 	var native *nativeJournalSink
-	if proxy != nil {
+	if proxy != nil && !options.noJournal {
 		proxy.journals.nativeMu.Lock()
 		for _, sink := range proxy.journals.native {
 			if sink.workspace == "" {
@@ -212,6 +231,9 @@ func runAppServerPreviewWithEnvironment(t *testing.T, provider responseProvider,
 		await("Native milestone")
 	}
 	io.WriteString(outer, "A deterministic preview prompt\r")
+	if options.duringTurn != nil {
+		options.duringTurn(t, outer, await, awaitFrame, screen)
+	}
 	await("Recovered after a retry.")
 	await("completed")
 	if afterPrompt != nil {

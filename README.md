@@ -129,16 +129,17 @@ Choose a mode and authenticate with the provider it uses:
 
 | Launch | Models | Authentication |
 | --- | --- | --- |
-| `mekugi --yolo` | Authenticated third-party providers, using `grok:` and `opencode*:` IDs | [Grok credentials](#grok-models) or [OpenCode API keys](#opencode-go-and-zen); no Codex login |
-| `mekugi grok --yolo` | Grok only, using plain IDs such as `grok-4.7` | [Grok credentials](#grok-models); no Codex login |
-| `mekugi codex --yolo` | Codex only, no third-party models | `codex login` with ChatGPT authentication |
+| `mekugi` | Authenticated third-party providers, using `grok:` and `opencode*:` IDs | [Grok credentials](#grok-models) or [OpenCode API keys](#opencode-go-and-zen); no Codex login |
+| `mekugi grok` | Grok only, using plain IDs such as `grok-4.7` | [Grok credentials](#grok-models); no Codex login |
+| `mekugi codex` | Codex only, no third-party models | `codex login` with ChatGPT authentication |
 
 Standalone mode fails at startup if no third-party provider has credentials.
 Its default uses [Grok's model selection](#grok-models) when authenticated,
 otherwise the first available OpenCode Go model, then Zen.
 
-Mekugi opens its native terminal workspace. Interactive launches currently require
-explicit `--yolo` (no approvals or sandbox).
+Mekugi opens its native terminal workspace. Codex's configured approval and
+sandbox policy applies; see
+[Approvals](#approvals). Add `--yolo` to run without approvals or sandbox.
 
 Mekugi flags go **before** `codex`, `grok`, or standalone Codex arguments.
 Interactive launches accept `--yolo`, model
@@ -171,6 +172,14 @@ options or replay offline. Noninteractive commands retain Codex's exit status.
   temporary directory with no disk cap; it is removed at shutdown, but a
   forced kill can leave it behind.
 
+### Approvals
+
+Without `--yolo`, Codex's command, edit, and permission approval requests open a
+dialog above Main's composer with the same choices as Codex's TUI. It opens by
+itself only over an empty composer; otherwise a banner waits until you press
+`Ctrl-B`, then `q`. Number keys or arrows choose, `Enter` confirms, and `Esc`
+hides the dialog without answering.
+
 ### Headless slice plans
 
 The `headless --yolo` subcommand reads one prompt from stdin and runs a new
@@ -183,7 +192,7 @@ mekugi --journal-compaction=slice headless --yolo < prompt.txt
 Use `off` to continue slices in one context, or `slice` to reset between them.
 Unlike the native UI, headless journal continuations have no countdown delay.
 It accepts model and `-c` options, not resume or positional prompts. Prompts must
-be nonempty and at most 16 MiB. Like the native UI, it requires explicit `--yolo`.
+be nonempty and at most 16 MiB. Unlike the native UI, it requires explicit `--yolo`.
 It does not answer approval or user-input questions: those end the run with an
 error rather than hanging or guessing. Ctrl-C stops the run.
 
@@ -210,7 +219,7 @@ exit means the run or its shutdown failed. Ordinary `codex exec` is unchanged.
 and capture still works.
 
 If a detached multiplexer hides your mosh connection, use
-`mekugi --ansi-faint=off codex --yolo` for readable dimmed text. The setting applies only
+`mekugi --ansi-faint=off codex` for readable dimmed text. The setting applies only
 to that invocation and does not modify terminal configuration.
 
 ### Grok models
@@ -219,8 +228,8 @@ Authenticate with `grok login --oauth`, or set `XAI_API_KEY` in the router's
 environment; an API key takes precedence. Codex credentials are never sent to Grok.
 
 ```sh
-mekugi grok --yolo -m grok-4.7
-mekugi --yolo -m grok:grok-4.7
+mekugi grok -m grok-4.7
+mekugi -m grok:grok-4.7
 ```
 
 The default follows `[models].default` in `~/.grok/config.toml`, falling back to
@@ -239,8 +248,8 @@ conversation to Grok isn't supported. See the [Grok requirements](doc/spec/grok.
 Set an API key here or in [Mekugi settings](#mekugi-settings):
 
 ```sh
-OPENCODE_GO_API_KEY='your-key' mekugi --yolo -m opencode-go:glm-5.3
-OPENCODE_ZEN_API_KEY='your-key' mekugi --yolo -m opencode-zen:kimi-k3
+OPENCODE_GO_API_KEY='your-key' mekugi -m opencode-go:glm-5.3
+OPENCODE_ZEN_API_KEY='your-key' mekugi -m opencode-zen:kimi-k3
 ```
 
 Models, reasoning controls, and prices refresh from an hourly cache. The model
@@ -617,7 +626,7 @@ The same sanitized metrics remain available through the local API:
 
 ```sh
 curl -sS "${MEKUGI_BASE_URL%/v1}/api/metrics"
-mekugi --capture-output capture.jsonl codex --yolo
+mekugi --capture-output capture.jsonl codex
 ```
 
 Launch metrics stay in memory unless captured with `--capture-output`;
@@ -626,7 +635,7 @@ credentials. Provider-reported usage is authoritative; local token estimates
 are not billing figures. Costs are API estimates, not subscription charges. See
 the [metrics reference](doc/spec/metrics.md).
 
-`mekugi --debug codex --yolo` writes a private `mekugi-debug-*` bundle under
+`mekugi --debug codex` writes a private `mekugi-debug-*` bundle under
 `$XDG_STATE_HOME/mekugi/debug` (default `~/.local/state/mekugi/debug`).
 Inactive bundles are removed after 14 days; copy a bundle elsewhere to keep it.
 Explicit external capture/read destinations are not removed. Existing temporary

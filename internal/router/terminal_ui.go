@@ -208,7 +208,7 @@ func (u *terminalUI) key(key byte) error {
 		case '1', '2', '3', '4', '5':
 			u.selectNativePane(int(key - '1'))
 		case 'q':
-			if u.main != nil {
+			if u.main != nil && !u.main.openApprovals() {
 				u.main.openQuestions()
 			}
 		case '!':
@@ -363,6 +363,9 @@ func (u *terminalUI) send(s string) error {
 	}
 
 	if s == "\x1b" && u.main != nil && u.focus == 0 && !u.main.paste {
+		if handled, err := u.main.approvalKey(s); handled {
+			return err
+		}
 		if handled, err := u.main.questionKey(s); handled {
 			return err
 		}

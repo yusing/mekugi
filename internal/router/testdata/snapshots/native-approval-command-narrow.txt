@@ -1,0 +1,20 @@
+Mekugi dev • codex
+
+
+
+
+
+
+
+  ! Run this command?
+  git push origin main
+  Reason: Publish the release
+  branch.
+  › 1. Yes, proceed               
+    2. No, and tell Codex what to…
+  1–2 choose · enter confirm · esc
+  hide
+
+╭─ approving · turn waiting ───────╮
+│ ❯                                │
+╰───── snapshot-model (high) • 0% ─╯

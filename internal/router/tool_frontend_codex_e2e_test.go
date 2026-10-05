@@ -70,6 +70,7 @@ type toolFrontendCodexProvider struct {
 	turns      int
 	callSent   bool
 	resultSeen bool
+	output     string // The tool call's output, as Codex returned it.
 }
 
 func (p *toolFrontendCodexProvider) forwardExecution(
@@ -113,6 +114,7 @@ text(JSON.stringify({output: result.output, exit_code: result.exit_code}));`
 				continue
 			}
 			output := string(input["output"])
+			p.output = output
 			if len(p.expected) == 0 {
 				p.resultSeen = strings.Contains(output, want) && strings.Contains(output, `\"exit_code\":0`)
 				continue

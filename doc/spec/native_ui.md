@@ -36,8 +36,10 @@ not replaced on a spawn. Temporary Activity visibility is not persisted as a pan
 preference; replay cannot revive pending child lifecycles.
 
 `mekugi codex` uses the native client of `codex app-server` for interactive
-terminal launches. Explicit `--yolo` remains required; without it startup rejects
-before launching Codex. There is no legacy UI selection or fallback. It maps explicit `--yolo`, model, config, and feature-toggle (`--enable` / `--disable`)
+terminal launches. Without `--yolo`, Codex's configured approval and sandbox
+policy applies and the native client answers approvals (see Approvals). `--yolo` passes `approval_policy="never"` and
+`sandbox_mode="danger-full-access"`, and thread requests repeat them. There is no
+legacy UI selection or fallback. It maps explicit `--yolo`, model, config, and feature-toggle (`--enable` / `--disable`)
 arguments plus `resume`, `resume THREAD_ID` or `resume --last`, and rejects other interactive arguments rather
 than ignoring them.
 Router readiness, provider catalogs, invocation overrides, native recovery hooks
@@ -218,8 +220,8 @@ state reports a presentation notice but cannot fail resume, submit a prompt or
 change execution. Simultaneous clients for the same workspace/thread use the
 last completed preference write; no process resources are restored.
 
-Approval controls and `/side` are deferred; pending server requests stay
-visible and are never auto-approved. Not in scope: Codex's TUI, PTY emulation
+`/side` is deferred; server requests the client cannot answer, such as MCP
+elicitations, stay visibly blocked and are never auto-approved. Not in scope: Codex's TUI, PTY emulation
 or screen scraping for Main; a second execution, permission or Code Mode control
 path; settings clones, onboarding, cloud tasks, voice; Git write actions or edit
 rollback; browser frontends or remote hosting; new auth flows; a second
@@ -1168,8 +1170,8 @@ noninteractive commands do not start the native UI.
 The native client publishes Codex-compatible terminal lifecycle titles so pane
 managers can recognize working and action-required states without parsing the
 transcript. The Main turn supplies the work spinner; pending questions (including
-hidden or resumed async questions) and unsupported server requests take priority
-with `Action Required`. Settled Main turns remove the spinner; child completion
+hidden or resumed async questions), pending approvals and unsupported server
+requests take priority with `Action Required`. Settled Main turns remove the spinner; child completion
 does not mark Main done. Herdr owns the distinction between unseen completion
 and seen idle, including its blue and green indicators. Titles are cleared when
 the native client exits or yields the terminal to an external editor.
@@ -1309,3 +1311,42 @@ and history exclusion, external commits, rejection, replay and supersession.
 Installed-Codex PTY acceptance answers an async question mid-turn and checks one
 provider envelope, then answers and resolves a sync request with
 `default_mode_request_user_input` enabled.
+
+### Approvals
+
+Without `--yolo`, the client answers `item/commandExecution/requestApproval`,
+`item/fileChange/requestApproval` and `item/permissions/requestApproval` from any
+thread. Approvals
+share the question dock's position above the composer and take precedence over
+it: opening one hides the question dock, and a pending question opens after the
+last approval ends. The oldest approval shows first; the header names a child
+agent's path and `1 of N` when more wait.
+
+Choices follow the stock TUI approval overlay
+(`codex-rs/tui/src/bottom_pane/approval_overlay.rs` @7135b303d). Command requests
+offer the request's `availableDecisions` in order, or else accept, the proposed
+exec-policy amendment and cancel; network requests use the host wording, and
+unrecognized decisions are omitted. A `writeStdin` request asks to send its
+quoted input to the named terminal. Edit requests offer accept,
+`acceptForSession` and cancel, naming the paths of the matching live
+`fileChange` item. Permission requests offer turn, turn with strict auto review,
+and session grants of the requested profile, or an empty grant. Each response
+returns the chosen decision unchanged, under the original request ID. A request
+with no choice the client can label stays visibly blocked.
+
+The dock shows the title, the command or summary, the directory when it is not
+the workspace root, the reason, and numbered choices; it occupies at most half of
+Main. Request text takes precedence over spacing and scrolls with PgUp/PgDn only
+when the unspaced dock cannot hold it. Digits, Up/Down and Ctrl-P/Ctrl-N select;
+Enter confirms. Escape hides the dock without answering; with it hidden, Escape
+keeps its usual interrupt behavior. Other keys and pastes are ignored rather than
+edit the parked draft; Ctrl-C keeps its clear/interrupt/quit meaning and Ctrl-B
+its pane commands. The dock
+opens by itself under the same empty-composer rule as questions; otherwise a
+one-row banner, `! N approvals pending · ctrl+b q review`, waits, and Ctrl+B Q
+opens approvals before questions. Keystrokes received before the dock is painted
+do not answer it. The open composer says `approving · turn waiting`.
+
+Each ending adds a Session transcript row with its outcome, subject and agent:
+the chosen outcome, `Resolved elsewhere` after `serverRequest/resolved`, or
+`Turn ended before an answer` when its turn completes. Headless runs still require `--yolo`.

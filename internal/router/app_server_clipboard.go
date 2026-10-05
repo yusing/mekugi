@@ -302,11 +302,13 @@ func (u *appServerUI) pasteByte(key byte) {
 	u.escape = ""
 	// Normalize terminal line endings only after finding the exact boundary.
 	u.pasted = pasteText(u.pasted)
-	switch u.picker.modal {
-	case "manage":
+	switch {
+	case u.approvals.open:
+		u.pasted = nil // An open approval must not edit the hidden draft.
+	case u.picker.modal == "manage":
 		u.picker.query += string(u.pasted)
 		u.pasted = nil
-	case "menu", "copy", "settings":
+	case u.picker.modal == "menu" || u.picker.modal == "copy" || u.picker.modal == "settings":
 		u.pasted = nil
 	default:
 		u.finishPaste()

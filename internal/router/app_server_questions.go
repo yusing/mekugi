@@ -117,13 +117,18 @@ func (u *appServerUI) openQuestions() {
 // Only an empty, idle composer yields to pending live questions. Explicitly
 // hiding the dock and history restoration leave manual reopening available.
 func (u *appServerUI) autoOpenQuestions() {
-	if !u.questions.autoOpen || u.questions.active != nil || u.draft != "" || len(u.images) > 0 || len(u.files) > 0 || len(u.skills) > 0 || len(u.selections) > 0 || u.paste || u.escape != "" || u.pickerVisible() || u.keybindings || u.statusPanel != nil || u.resumePicker != nil {
-		return
+	if u.questions.autoOpen && u.questions.active == nil && u.composerVacant() {
+		u.openQuestions()
 	}
-	if u.shell != nil && (u.shell.focus != 0 || u.shell.paste || u.shell.sequence != "") {
-		return
+}
+
+// composerVacant reports an empty, idle composer with no overlay, which a
+// pending dock may take over without capturing keys meant for a draft.
+func (u *appServerUI) composerVacant() bool {
+	if u.draft != "" || len(u.images) > 0 || len(u.files) > 0 || len(u.skills) > 0 || len(u.selections) > 0 || u.paste || u.escape != "" || u.pickerVisible() || u.keybindings || u.statusPanel != nil || u.resumePicker != nil || u.approvals.open {
+		return false
 	}
-	u.openQuestions()
+	return u.shell == nil || u.shell.focus == 0 && !u.shell.paste && u.shell.sequence == ""
 }
 func (u *appServerUI) openQuestionCall(c *nativeQuestionCall) {
 	if u.questions.active != nil {

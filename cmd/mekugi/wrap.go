@@ -61,15 +61,21 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	appUI := !headless && interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 	var resumeThread string
 	var resumeArgv []string
+	approvals := false
 	if appUI || headless {
 		var err error
-		args, resumeThread, err = appServerArgs(args)
+		var yolo bool
+		args, resumeThread, yolo, err = appServerArgs(args)
 		if err != nil {
 			return 2, err
+		}
+		if headless && !yolo {
+			return 2, errors.New("headless cannot answer approvals; it requires explicit --yolo")
 		}
 		if headless && resumeThread != "" {
 			return 2, errors.New("headless runs a new thread; resume is not supported")
 		}
+		approvals = appUI && !yolo
 		if appUI {
 			resumeArgv = appServerResumeArgv(os.Args[0], routerArgs, suppliedArgs)
 		}
@@ -190,9 +196,9 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			}
 		} else if appUI {
 			if session.StartAppUI != nil {
-				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv)
+				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
 			} else {
-				waitCodex, err = router.StartAppServerUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv)
+				waitCodex, err = router.StartAppServerUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
 			}
 		} else {
 			err = cmd.Start()

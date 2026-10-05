@@ -84,6 +84,8 @@ type appServerUI struct {
 	btwThreads                map[string]*appServerBTW
 	notifications             *nativeNotifications
 	questions                 nativeQuestionDock
+	approvals                 nativeApprovalDock
+	approvalMode              bool // Codex's configured policy applies, not --yolo's.
 	statusPanel               *appServerStatusReport
 	sessionCapture            *capturer.Recorder
 	resumePicker              *appServerResumePicker
@@ -163,12 +165,13 @@ type appServerUI struct {
 // StartAppServerUI starts the native terminal frontend without router observers.
 // Codex app-server owns execution; the launcher
 // still owns routing, environment, invocation-local configuration and cancellation.
-func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string) (func() error, error) {
+func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
-	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint, nil, nil, resumeArgv, "", nil)
+	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
 }
 
-func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionTitleGenerator) (func() error, error) {
+// Approval mode answers Codex's approval requests.
+func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionTitleGenerator, approvals bool) (func() error, error) {
 	var resumeCwd string
 	if resumeThread == "--last" || resumeThread == resumePickerStartup {
 		var err error
@@ -184,7 +187,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers}
+	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
 	if generator != nil {
 		u.titleGenerator = generator
 		u.titleUpdates = generator.updates
@@ -817,6 +820,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		return nil
 	}
 	u.resolveNotification(m)
+	if handled, err := u.approvalMessage(m); handled {
+		return err
+	}
 	if handled, err := u.questionMessage(m); handled {
 		return err
 	}
@@ -936,7 +942,13 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	if u.questions.active != nil && !u.questions.painted {
 		u.hideQuestions()
 	}
+	if u.approvals.open && !u.approvals.painted {
+		u.approvals.open = false
+	}
 	if u.escape == "" && key != 27 {
+		if handled, err := u.approvalKey(string([]byte{key})); handled {
+			return false, err
+		}
 		if handled, err := u.questionKey(string([]byte{key})); handled {
 			return false, err
 		}
@@ -981,6 +993,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		if key >= 0x40 && key <= 0x7e || len(u.escape) > 32 {
+			if handled, err := u.approvalKey(u.escape); handled {
+				u.escape = ""
+				return false, err
+			}
 			if handled, err := u.questionKey(u.escape); handled {
 				u.escape = ""
 				return false, err
@@ -1259,6 +1275,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 // the session state; the bottom border the model. dock rows are left blank
 // between the two, in the returned rectangle, for the live edit dock.
 func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, dockRect terminalRect) {
+	u.autoOpenApprovals()
 	u.autoOpenQuestions()
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalRect{}
@@ -1319,6 +1336,11 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		strip = ""
 	}
 	var pending []string
+	approvalRows := u.approvalRows(width, max(1, min(height/2, room)))
+	if len(approvalRows) > 0 {
+		dock = 0
+		room -= len(approvalRows)
+	}
 	questionRows := u.questionRows(width, max(1, min(height/2, room)))
 	if len(questionRows) > 0 {
 		dock = 0
@@ -1379,6 +1401,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	frame = append(frame, btwRows...)
 	u.questions.rect = terminalRect{0, len(frame), width, len(questionRows)}
 	frame = append(frame, questionRows...)
+	frame = append(frame, approvalRows...)
 	if strip != "" {
 		frame = append(frame, strip)
 	}
@@ -1386,12 +1409,15 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	if u.questions.active != nil {
 		u.questions.painted = true
 	}
+	if u.approvals.open {
+		u.approvals.painted = true
+	}
 	// Visual reference: Grok CLI PromptStyle / PromptWidget::draw, source
 	// crates/codegen/xai-grok-pager/src/views/prompt_widget/mod.rs:217:240,3007:3078
 	// @be7ce6e8cffe46d20bef9834b211616082ee866b. Keep continuation rows aligned.
 	// Colors: xai-grok-pager-render/src/theme/oscura.rs, same revision.
 	border := "\x1b[38;2;52;48;72m"
-	if u.currentQuestion() != nil {
+	if u.currentQuestion() != nil || u.approvals.open {
 		border = u.view.painter.Theme.Accent()
 	} else if u.shellMode() {
 		border = activityui.Red
@@ -1499,7 +1525,9 @@ func (u *appServerUI) expireNotice(now time.Time) bool {
 // stateLabel is the session state followed by any composer notice.
 func (u *appServerUI) stateLabel(now time.Time) string {
 	label := u.sessionLabel(now)
-	if u.questions.active != nil {
+	if u.approvals.open {
+		label = "approving · turn waiting"
+	} else if u.questions.active != nil {
 		label = "answering"
 		if u.currentQuestion().note {
 			label += " · note"

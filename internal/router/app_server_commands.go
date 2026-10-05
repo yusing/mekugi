@@ -51,7 +51,7 @@ func (u *appServerUI) sessionCommand(command string) error {
 	u.takeDraft()
 	u.replacement.clear()
 	u.status = "Starting new session…"
-	params := map[string]any{"sessionStartSource": "clear", "approvalPolicy": "never", "sandbox": "danger-full-access"}
+	params := u.threadPermissions(map[string]any{"sessionStartSource": "clear"})
 	if u.session.cwd != "" {
 		params["cwd"] = u.session.cwd
 	}
