@@ -38,7 +38,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Codex app-server RPC transport and process lifecycle | `./internal/appserver` and `./internal/router -run AppServer` |
 | Router behavior | `./internal/router` |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
-| Native terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the native UI without model requests |
+| Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
 | Shared Go tokenizer | `./internal/tokenizer`, `./capturer`, `./internal/router/toolplugin` |
 | Capture metrics and AX evidence | `./capturer` |
 | Portable core or `mekugi:core/v1` adapter | `./internal/router/toolplugin`, then `./...` and `bun test ./internal/router/toolplugin/tests/core.test.ts` |

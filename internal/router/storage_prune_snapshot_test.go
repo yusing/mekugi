@@ -40,7 +40,7 @@ func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
 		u.issues.addNotice("", "storage_cleanup_"+phase, message)
 		delivery := u.applyCriticalNotices()
 		if delivery == nil {
-			t.Fatal("cleanup notice did not reach native UI")
+			t.Fatal("cleanup notice did not reach UI")
 		}
 		name := "storage-cleanup-reclaimed"
 		if strings.Contains(message, "inspected") {

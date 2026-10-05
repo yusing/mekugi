@@ -33,7 +33,7 @@ func appServerResumeArgv(executable string, routerArgs, args []string) []string 
 // The native client deliberately rejects unmapped TUI flags. Passing them
 // through to a different subcommand would silently change their meaning.
 // Without --yolo, Codex's configured approval and sandbox policy applies and
-// the native UI answers its approval requests.
+// the UI answers its approval requests.
 func appServerArgs(args []string) ([]string, string, bool, error) {
 	out := []string{"app-server"}
 	yolo := false
@@ -43,7 +43,7 @@ func appServerArgs(args []string) ([]string, string, bool, error) {
 		switch arg := args[i]; arg {
 		case "resume":
 			if resumeCommand {
-				return nil, "", false, fmt.Errorf("native UI accepts only one resume command")
+				return nil, "", false, fmt.Errorf("UI accepts only one resume command")
 			}
 			resumeCommand = true
 		case "--last":
@@ -88,12 +88,12 @@ func appServerArgs(args []string) ([]string, string, bool, error) {
 			} else if resumeCommand && resume == "" && !strings.HasPrefix(arg, "-") && strings.TrimSpace(arg) != "" {
 				resume = arg
 			} else {
-				return nil, "", false, fmt.Errorf("native UI does not yet support %q; use --yolo, -m, -c, --enable, --disable, and resume [THREAD_ID | --last], and enter prompts in Main", arg)
+				return nil, "", false, fmt.Errorf("UI does not yet support %q; use --yolo, -m, -c, --enable, --disable, and resume [THREAD_ID | --last], and enter prompts in Main", arg)
 			}
 		}
 	}
 	if resumeCommand && resume == "" {
-		resume = "--pick" // The native UI opens its session picker.
+		resume = "--pick" // The UI opens its session picker.
 	}
 	if !yolo {
 		return out, resume, false, nil

@@ -123,7 +123,7 @@ type mekugiProxy struct {
 	usage              *threadUsage
 	autoLiveDiff       *autoLiveDiff
 	activity           *subagentActivity
-	execTrack          *execTrackHub // Set for the native UI when command shells are tracked.
+	execTrack          *execTrackHub // Set for the UI when command shells are tracked.
 	skillsManager      bool
 	execWindows        *execWindowRegistry
 	nativeTrace        *nativeToolTrace

@@ -142,7 +142,7 @@ Acceptance:
 
 ## REQ-EXECUTION-002 — Track each segment of a command list
 
-In the native app-server UI, a Bash command whose script is a top-level list
+In the UI, a Bash command whose script is a top-level list
 (`;`, newline, `&&`, `||`) reports each segment's own output, exit status,
 start/end timestamps and elapsed duration, so Activity can show every segment with
 its own state. Pipelines and compound commands are single segments. Command text, stdin, output bytes, exit status,
@@ -261,7 +261,7 @@ Acceptance:
 
 Interactive UI launches guard remote version-control writes by default,
 independently of Codex's approval policy, including with `--yolo`. Writes wait
-for the user's approval in the native UI. This covers Git, GitHub CLI, Mercurial,
+for the user's approval in the UI. This covers Git, GitHub CLI, Mercurial,
 Subversion and Jujutsu, without restricting the remote, ref or tag being written.
 The Mekugi flag `--vcs-guard=false`, placed before `codex` or standalone Codex
 arguments, disables only this guard, preserving Codex's approval policy and

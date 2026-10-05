@@ -339,7 +339,7 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 	from := f.Duration("from", 0, "start at this recorded offset, reconstructing earlier state")
 	until := f.Duration("until", 0, "stop at this recorded offset (default session end)")
 	f.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: mekugi replay-session --session ID [options]\nOffline native UI playback. Recorded item timing; simulated streaming, not a screen recording.")
+		fmt.Fprintln(stderr, "Usage: mekugi replay-session --session ID [options]\nOffline UI playback. Recorded item timing; simulated streaming, not a screen recording.")
 		f.PrintDefaults()
 	}
 	if err := f.Parse(args); err != nil {

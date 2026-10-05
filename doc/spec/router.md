@@ -145,7 +145,7 @@ failed cleanup reports an error and does not claim complete reclamation.
 Prune planning and index decoding do not hold the publication lock. Removal commits use
 bounded file batches, revalidate concurrent ownership and active/read leases, and release
 the lock between batches. One worker per store performs maintenance; router shutdown cancels
-and joins its worker, including a lazily opened failure-only store. Startup and native UI
+and joins its worker, including a lazily opened failure-only store. Startup and UI
 session handling do not wait for a full sweep.
 
 Change-index retirement preserves stream high-water counters so old IDs are never reused.
@@ -353,9 +353,9 @@ arguments and other private process data, so captures must remain private. Profi
 is separate from sanitized metrics and debug evidence. The
 [reader workflow](../../README.md#profile-live-sessions-and-replay) owns build and capture examples.
 
-### Native app-server UI
+### UI
 
-The [native UI contract](native_ui.md) owns interactive app-server presentation
+The [UI contract](native_ui.md) owns interactive app-server presentation
 and client behavior.
 
 ### Headless app-server frontend

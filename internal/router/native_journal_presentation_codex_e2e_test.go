@@ -85,7 +85,7 @@ func TestNativeJournalPresentationCodexE2E(t *testing.T) {
 				}
 			}
 			if err := u.message(m); err != nil {
-				t.Fatalf("native UI event %s: %v", m.Method, err)
+				t.Fatalf("UI event %s: %v", m.Method, err)
 			}
 			if u.reset != nil && u.reset.compactTurn != "" {
 				t.Fatal("slice reset driver dispatched a compaction instead of manual /compact")

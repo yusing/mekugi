@@ -69,5 +69,5 @@ Segment tracking (`REQ-EXECUTION-002`) has four owners:
   older item's helper report arrives late.
   Overlapping preview windows claiming the same thread/turn/script remain
   ambiguous; a report cannot be borrowed by both windows.
-- The native UI presents a report only after it ended with the host's exit
+- The UI presents a report only after it ended with the host's exit
   status, and otherwise presents the host's own result.

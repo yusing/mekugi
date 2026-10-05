@@ -25,10 +25,10 @@ type subagentActivity struct {
 	order   int
 	pane    *activityPane
 	// starts are forwarded requests whose provider streams untitled
-	// reasoning, awaiting the native UI's pre-delta thinking block.
+	// reasoning, awaiting the UI's pre-delta thinking block.
 	starts []activityRequestStart
 	// unreturned are nested commands whose Code Mode cell returned nothing,
-	// awaiting the native UI's note that the model never saw their output.
+	// awaiting the UI's note that the model never saw their output.
 	unreturned []activityToolRef
 	// usage is the canonical per-thread accounting the roster displays.
 	usage *threadUsage

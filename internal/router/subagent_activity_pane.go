@@ -7,7 +7,7 @@ import (
 	"github.com/yusing/mekugi/capturer"
 )
 
-// The only activity frontend is the native app-server UI.
+// The only activity frontend is the UI.
 type activityPane struct{ root string }
 
 type activityPaneEntry struct {
@@ -84,7 +84,7 @@ func (a *subagentActivity) attachNativePane(root string) {
 
 // beginResponse and endResponse track open provider responses for the roster.
 // A new response clears an earlier final-answer marker. A thinking response
-// comes from a provider that streams untitled reasoning; the native UI shows
+// comes from a provider that streams untitled reasoning; the UI shows
 // its thinking block from this request start, before the first delta.
 func (a *subagentActivity) beginResponse(thread string, thinking bool) {
 	if a == nil {

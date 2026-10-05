@@ -1,6 +1,6 @@
-# Native app-server UI
+# UI
 
-## REQ-NATIVE-UI-001 — Native app-server UI
+## REQ-NATIVE-UI-001 — UI
 
 An empty launch view welcomes the user with `mekugi-v<version> • codex v<version>`
 for a versioned release. The versions identify the running executable and backend.
@@ -17,7 +17,7 @@ Operation-row formatting and feed controls are specified by
 [native activity presentation](activity_display.md); shared classification belongs to
 [activity observation](activity.md), and router cost totals to [usage reporting](usage.md).
 
-### Native app-server UI
+### UI
 
 Journal shares the auxiliary column with Diff and Activity (`Ctrl-B 5`). No bare
 key opens it, so composer text that starts with any letter is typed. Its plan strip, tree navigation, transition rows and expandable
@@ -1019,14 +1019,14 @@ shades the target. Cumulative child journals display each answer ID once,
 preserving its original assignment across follow-ups. A successfully completed
 child turn without a final answer promotes only that same turn's last message.
 Codex V2 activity notifications carry no directed-message or assignment body.
-The native UI supplements them with the router's authenticated recipient-input
+The UI supplements them with the router's authenticated recipient-input
 observations, retaining plaintext message bodies and assignment identities
 exactly once. Native message display has a separate 64 KiB limit, with an explicit
 clipping marker above it. There is no inline commentary excerpt path.
 App-server still owns tool execution and agent lifecycle. Legacy
 received envelopes are not injected into either parent's or child's provider output.
 
-Native UI dimming uses ANSI faint when supported. `--ansi-faint=auto|on|off`
+UI dimming uses ANSI faint when supported. `--ansi-faint=auto|on|off`
 selects the terminal-local policy: `auto` disables faint when `mosh-server`
 appears in the process ancestry, otherwise enables it; explicit `on` or `off`
 overrides detection. Detached multiplexers can hide transport ancestry and
@@ -1067,7 +1067,7 @@ so resume can restore the names without reviving agents. History predating these
 snapshots cannot infer missing targets from the current roster. Storage failures
 report a notice without blocking the wait or its live display.
 The ordinary session retention policy bounds these auxiliary records and protects
-them while the native UI is active; restoration does not resume any host work.
+them while the UI is active; restoration does not resume any host work.
 An empty-stdin terminal poll replaces `Working` with `Still running` without
 adding a transcript row for every poll. Process completion, further agent
 activity, or turn termination clears it; ordinary input writes are not polls.
@@ -1168,7 +1168,7 @@ requests as app-server would, echoing each user message's client ID; an interrup
 remaining playback.
 
 The native client replaces the wrapped Codex terminal. Redirected and
-noninteractive commands do not start the native UI.
+noninteractive commands do not start the UI.
 
 ### Terminal notifications and lifecycle titles
 

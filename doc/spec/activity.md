@@ -2,7 +2,7 @@
 
 ## REQ-ACTIVITY-001 — Tool classification and observation
 
-The [native UI](native_ui.md) consumes app-server events for live activity and
+The [UI](native_ui.md) consumes app-server events for live activity and
 history. These shared classification rules describe operations, not generated
 conversation messages. [Activity presentation](activity_display.md) owns row
 layout; [session notices](notices.md) own actionable diagnostics. Journals own
@@ -27,7 +27,7 @@ so a script that fails before any nested tool call still shows. The complete err
 is retained separately for the shared content dialog. The result reaches the model
 unchanged, and failures from earlier requests are not shown again. Resumed
 history restores these rows from the retained rollout under
-[native UI resume](native_ui.md).
+[UI resume](native_ui.md).
 When a finished cell's result carries nothing beyond that header (and a failure's
 script error), the model saw none of its nested results. Each nested
 `exec_command` row with output then adds a muted `output not returned to the model`

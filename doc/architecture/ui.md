@@ -4,7 +4,7 @@
 
 Presentation consumes observations and user intent. It does not become an execution,
 capture, accounting, or replay authority. Observable terminal behavior belongs to the
-[native UI contract](../spec/native_ui.md); the session dialog consumes the
+[UI contract](../spec/native_ui.md); the session dialog consumes the
 [capture-owned metrics contract](metrics.md).
 
 - `internal/ui/activity` owns display blocks, journal-result layout, Markdown and

@@ -298,7 +298,7 @@ The [headless frontend](router.md#headless-app-server-frontend) uses the same po
 with no countdown delay and emits reset events instead of rendering a strip.
 
 With `slice` or `auto`, the frontend asks Codex to compact before continuing.
-The native UI describes that journal-driven operation as a context reset,
+The UI describes that journal-driven operation as a context reset,
 including its progress, completion, and restored event. Ordinary provider
 compactions retain their compaction wording even when reset mode is enabled.
 Only a router-answered, successfully completed compaction permits the automatic
@@ -486,7 +486,7 @@ Answers and their questions remain
 stored but are not echoed in the report. A blank final or a case-insensitive `done`
 with an optional period is an empty Outcome: no answer node is created for a tree
 journal. A meaningful report can replace a snapshot-only raw item or hide it in the
-native UI; streamed provider events remain unchanged and stay in the terminal snapshot.
+UI; streamed provider events remain unchanged and stay in the terminal snapshot.
 Otherwise the original final stays visible. The final message is
 still required. Retained v1 authoring without a turn card keeps such a final as its answer.
 

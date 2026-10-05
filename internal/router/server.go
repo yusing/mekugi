@@ -49,7 +49,7 @@ type Session struct {
 	OpenCode               OpenCodeConfig
 	AXReadOutput           string
 	SkillsManagerAvailable bool
-	// StartAppUI starts the native app-server UI and returns its joined lifetime.
+	// StartAppUI starts the UI and returns its joined lifetime.
 	// VCSGuard controls remote-write prompts independently of Codex policy.
 	StartAppUI           func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error)
 	StartHeadless        func(context.Context, *exec.Cmd, io.Reader, io.Writer) (func() error, error)

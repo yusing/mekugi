@@ -9,7 +9,7 @@ Codex. Codex keeps editing, execution, the sandbox, permissions, command
 sessions, and patch review. No fork, no config edits, no daemon.
 
 [Features](#features) · [Install](#install) · [Usage](#usage) ·
-[Native UI](#native-ui) · [Metrics](#metrics) · [Configuration](#configuration) ·
+[UI](#ui) · [Metrics](#metrics) · [Configuration](#configuration) ·
 [Documentation](#documentation)
 
 ## Features
@@ -34,7 +34,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Auto resume accidental stop.** Continue unfinished journal work when the agent
   stops, including after answering a follow-up. Explicit user stops, blockers, and
   pending questions are respected. See the [Journal pane](#journal-pane).
-- **Native terminal UI.** [Main, Diff, Activity, Journal, and Agents](#native-ui)
+- **Native terminal UI.** [Main, Diff, Activity, Journal, and Agents](#ui)
   share one terminal without an external pane manager.
 - **Task journal.** Plans, results, and blockers stay visible without extra model
   requests for status reports. Work established complete by the final tool result
@@ -137,7 +137,7 @@ Standalone mode fails at startup if no third-party provider has credentials.
 Its default uses [Grok's model selection](#grok-models) when authenticated,
 otherwise the first available OpenCode Go model, then Zen.
 
-Mekugi opens its native terminal workspace. Codex's configured approval and
+Mekugi opens its terminal workspace. Codex's configured approval and
 sandbox policy applies, and Mekugi also asks before remote repository writes; see
 [Approvals](#approvals). Add `--yolo` to disable Codex approvals and sandboxing;
 Mekugi's remote-write guard stays enabled. The guard requires unsandboxed command
@@ -148,7 +148,7 @@ approval and sandbox policy.
 Mekugi flags go **before** `codex`, `grok`, or standalone Codex arguments.
 Interactive launches accept `--yolo`, model
 and config options, and [`resume`, `resume THREAD_ID` or `resume --last`](#resume); enter
-prompts in the [native UI](#native-ui). Noninteractive commands keep their
+prompts in the [UI](#ui). Noninteractive commands keep their
 ordinary Codex arguments and output:
 
 ```sh
@@ -158,7 +158,7 @@ mekugi exec "Explain this repository"
 ### Launch behavior and limits
 
 Independent sessions can run side by side. Ctrl-C during startup cancels the
-launch. On native UI exit, Mekugi prints commands to resume with the original
+launch. On UI exit, Mekugi prints commands to resume with the original
 options or replay offline. Noninteractive commands retain Codex's exit status.
 
 - There is no standalone router or daemon. Fixed ports, custom provider endpoints,
@@ -179,7 +179,7 @@ options or replay offline. Noninteractive commands retain Codex's exit status.
 ### Approvals
 
 Without `--yolo`, Codex's command, edit, and permission approval requests open a
-dialog above Main's composer with the same choices as Codex's TUI. It opens by
+dialog above Main's composer with Codex's approval choices. It opens by
 itself only over an empty composer; otherwise a banner waits until you press
 `Ctrl-B`, then `q`. Number keys or arrows choose, `Enter` confirms, and `Esc`
 hides the dialog without answering.
@@ -252,9 +252,9 @@ mekugi --journal-compaction=slice headless --yolo < prompt.txt
 ```
 
 Use `off` to continue slices in one context, or `slice` to reset between them.
-Unlike the native UI, headless journal continuations have no countdown delay.
+Unlike the UI, headless journal continuations have no countdown delay.
 It accepts model and `-c` options, not resume or positional prompts. Prompts must
-be nonempty and at most 16 MiB. Unlike the native UI, it requires explicit `--yolo`.
+be nonempty and at most 16 MiB. Unlike the UI, it requires explicit `--yolo`.
 It does not answer approval or user-input questions: those end the run with an
 error rather than hanging or guessing. Ctrl-C stops the run.
 
@@ -323,7 +323,7 @@ picker updates on the next launch. See the [provider contract](doc/spec/opencode
 `OPENCODE_API_KEY` overrides both service keys from the settings file. Per-service
 variables override it and any file keys; an empty per-service value disables that service.
 
-## Native UI
+## UI
 
 Every interactive launch lays out Main, Diff, Activity, Journal,
 and Agents panes in one terminal without an external pane manager. Main holds the
@@ -366,18 +366,18 @@ not block the conversation. If Codex credentials or Luna are unavailable, automa
 naming is silently skipped, without switching to another model. Saved and inherited
 titles are reused on resume or fork.
 
-Terminal titles and desktop notifications work as in Codex and follow its
+Terminal titles and desktop notifications follow Codex's
 `tui.notifications` settings. Inside Herdr, its working, blocked, done, and
 idle indicators update even with notifications off.
 
-See the [native UI contract](doc/spec/native_ui.md).
+See the [UI contract](doc/spec/native_ui.md).
 
 ### Composer
 
-Use Codex's familiar input editing, file and skill pickers, steering, and
+Use input editing, file and skill pickers, steering, and
 queuing: Enter steers a running turn; Tab queues input. Type `?` in an empty
 composer for the full shortcut list. The
-Mekugi-specific controls and attachment behavior are described below.
+controls and attachment behavior are described below.
 
 Use `/lock` to prevent Esc or Ctrl-C from interrupting work and to disable
 Ctrl-C exit on an empty draft. `/unlock` restores those shortcuts. Draft clearing,
@@ -385,8 +385,6 @@ copying, and closing pickers still work while locked; `/quit` remains an explici
 exit when idle. A persistent Locked indicator shows the protection, which is
 restored with the session on resume. It does not block explicit commands or
 steering new input.
-
-Mekugi differs in these ways:
 
 - **Files and directory trees attach.** `@!` also finds ignored files; neither picker lists
   VCS metadata such as `.git`. Selected text files attach their contents when
@@ -476,7 +474,7 @@ drafts are not restored. Successfully applied settings survive a fresh launch,
 including priority and default selections made before the first turn. Storage
 failures are reported in Activity. If no saved model settings are available, a
 notice explains that Codex defaults and explicit flags apply instead. Main
-histories larger than 16 MiB cannot resume in the native UI. Older child activity loads on demand.
+histories larger than 16 MiB cannot resume in the UI. Older child activity loads on demand.
 In third-party modes, noninteractive `exec resume` and `exec fork` use the
 mode's default model rather than the saved one; pass `-m` to choose another.
 Codex does not save an empty conversation before its first turn.
@@ -742,7 +740,7 @@ Every section is optional. Settings are read at startup and never rewritten.
 - **Service tiers** replace the request's tier after model selection. The values
   are `auto`, `default`, `fast` (sent as
   `priority`), `priority`, and `flex`. The provider must support the tier you
-  choose. The native composer and `/status` show the effective tier, including
+  choose. The composer and `/status` show the effective tier, including
   this override, rather than only Codex's requested tier.
   `/tier` shows the effective current tier. Confirmed explicit choices, including
   `default`, override configured defaults for that thread and routed model during
@@ -770,7 +768,7 @@ Every section is optional. Settings are read at startup and never rewritten.
   history stay available through journal reads when needed, rather than filling
   the restored context.
   The default remains `off` pending comparative evaluation; this is not evidence
-  of improved model success or token savings. In the native UI, sliced plans show
+  of improved model success or token savings. In the UI, sliced plans show
   a countdown between successful turns; Esc cancels. `slice` and `auto` reset
   context before continuing, while `off` continues without resetting. An interrupted
   reset may require manual continuation. Resets appear once in the journal, not as
@@ -782,7 +780,7 @@ Every section is optional. Settings are read at startup and never rewritten.
   is omitted for the session; the files themselves are not changed. When
   `skills-mgr` is on the `PATH`, Mekugi turns off Codex's stock skill catalog
   for the session. Managed `$skill` selections attach their
-  instructions in the native composer; other Codex-selected skill injections
+  instructions in the composer; other Codex-selected skill injections
   remain compact name references. See [guidance behavior](doc/spec/guide.md).
 - **Issue reports:** start with `MEKUGI_DIAGNOSE=1` to give agents a
   `report_issue` tool. Each report runs the commands in `hooks.diagnose` of
@@ -842,7 +840,7 @@ source, and command output. See [session inspection](doc/spec/session.md) and
 
 ### Replay a session
 
-Review a retained session through the current native UI without running Codex,
+Review a retained session through the UI without running Codex,
 calling providers, executing commands, or answering questions:
 
 ```sh
@@ -942,7 +940,7 @@ runs. Pushing a `v*` tag also publishes the three archives and `SHA256SUMS` to a
 GitHub release, with the tag embedded as the welcome version. Rerunning a tag build
 replaces that release's matching assets.
 
-To review the native app-server UI without Codex or model requests, run
+To review the UI without Codex or model requests, run
 `make preview-native-ui` in a terminal. It plays a synthetic session through the
 real panes and renderer: streaming and long messages, journal edits, retraction
 and flush, agent summaries, and Main/agent communication. Scroll, resize, and

@@ -6,7 +6,7 @@
 It searches `sessions` and `archived_sessions` under `CODEX_HOME` (default
 `~/.codex`), using the exact first metadata ID to identify filename candidates.
 Missing or ambiguous sessions fail rather than choosing a rollout arbitrarily.
-It reconstructs native UI presentation from retained Codex rollout records.
+It reconstructs UI presentation from retained Codex rollout records.
 It creates no Codex process, provider transport,
 command executor, live observer, journal delivery, or replay-store writer.
 Playback keys control presentation only; recorded content cannot submit intent.
@@ -59,7 +59,7 @@ output; initial visibility and collapse timing are not guaranteed to match
 continuous playback. Interactive completion holds the final frame; headless
 completion exits. Cancellation and rendering failures propagate.
 
-The renderer is the native UI renderer, including its presentation caches and
+The renderer is the UI renderer, including its presentation caches and
 bounded output retention. The playback bar identifies simulated streaming at all
 times and exposes pause, speed, seek, restart, and quit controls. Rendered-output
 snapshots cover running, paused, completed, and narrow playback states.

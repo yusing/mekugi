@@ -68,7 +68,7 @@ requests complete through the real adapter with a local mock provider over HTTP
 and WebSocket. It checks one inference and credential separation without live
 provider usage.
 
-The third-party resume fixture uses the native UI and the real Grok adapter to
+The third-party resume fixture uses the UI and the real Grok adapter to
 verify saved model restoration after a fresh launch and in-session switching,
 plus explicit model overrides, in both namespaces. It checks inferred models
 and thread identity against a local provider, without live model usage.

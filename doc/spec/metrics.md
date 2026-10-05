@@ -17,7 +17,7 @@ attempt is an SSE fallback. Unknown transport markers remain visible. Empty and
 unavailable observations MUST have explicit presentation. The open dialog refreshes
 from a detached in-process snapshot; it requires no HTTP polling or separate
 listener. `GET /` no longer serves HTML. Navigation and lifecycle belong to the
-[native UI contract](native_ui.md#session-metrics).
+[UI contract](native_ui.md#session-metrics).
 
 The capturer MUST observe both the Codex-facing Responses handler and every provider-facing
 Responses or Chat Completions attempt made by that request. Correlation MUST remain process-private and MUST NOT add a

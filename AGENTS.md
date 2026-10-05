@@ -68,7 +68,7 @@ do not replace host results or missing runtime coverage. Controlled model compar
 
 - `.agents/skills/mekugi-owners/SKILL.md`: source/diagnostic/generation map and focused entry points.
   Main keeps affected owner pointers current.
-- `README.md`: reader-facing Features, Native UI, and contributor Development, not agent rules.
+- `README.md`: reader-facing Features, UI, and contributor Development, not agent rules.
 - `doc/spec/index.md`: interface requirements; `doc/architecture/index.md`: ownership contracts.
 - `~/projects/codex`: read-only source evidence; cloning a missing checkout needs permission.
 

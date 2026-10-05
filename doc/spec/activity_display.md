@@ -2,7 +2,7 @@
 
 ## REQ-ACTIVITY-DISPLAY-001 — Operation rows and agent feeds
 
-The [native UI](native_ui.md) owns app-server event intake, lifecycle, history
+The [UI](native_ui.md) owns app-server event intake, lifecycle, history
 hydration, and pane layout. This contract owns operation-row formatting and feed
 navigation; [activity observation](activity.md) owns tool classification.
 Activity is native presentation, not router-generated conversation commentary.
@@ -74,7 +74,7 @@ destination and underline only on their text, never on row padding or gutters. A
 compaction appears as an event in the feed and as the agent's latest roster
 activity; an attempted or failed compaction does not claim completion.
 Read line spans display as `L25–46`. Each `Run` operation is its own row. In
-the native app-server UI it reads `Running` from the host's command start, in
+the UI it reads `Running` from the host's command start, in
 Main and in the agent's feed and roster summary, and `Ran` once the host
 completes it. A yielded process stays `Running` across turns until it exits;
 replayed history never shows `Running`.

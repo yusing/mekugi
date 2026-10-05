@@ -36,7 +36,7 @@ is needed to display a notice.
 
 At most 256 session/category entries are retained until shutdown. Excess distinct
 entries become an overflow count. The launcher reports undelivered notices and repeat
-counts after Codex exits, including when no native UI was attached. Native display
+counts after Codex exits, including when no UI was attached. UI display
 never inserts notice IDs into model-visible history. Existing durable exact-ID replay
 cleanup still removes previously retained router-authored messages; it does not infer
 provenance from text or prefixes.

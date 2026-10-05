@@ -45,7 +45,7 @@ do not establish replacement. This presentation does not change host transcripts
 
 ## CTR-ACTIVITY-002 — Native child history pages
 
-The native UI owns request-local child pagination state, keyed by stable root
+The UI owns request-local child pagination state, keyed by stable root
 and child IDs. Codex owns visible lineage, including inherited fork items and
 archived descendants. Session switches retire response correlation and cursors;
 fresh resume rediscovers history instead of reviving continuation handles.
