@@ -67,8 +67,9 @@ semicolons and other executable syntax remain visible.
 Literal `printf` and `echo` section headings alongside other operations are
 omitted as display decoration, including colon-ended labels and bordered headings.
 Bare `printf` titles framed by leading and trailing newlines also qualify when
-they are capitalized, multi-word text containing only letters, spaces, hyphens,
-and slashes, without format arguments. Newline-terminated literal `printf`
+they are capitalized, multi-word text or an uppercase single-word section label,
+containing only letters, spaces, hyphens, and slashes, without format arguments.
+Newline-terminated literal `printf`
 confirmations ending in `checks passed.` or `evidence remains available.` also
 qualify when their capitalized text otherwise contains only letters, spaces,
 hyphens, and slashes. Other unframed text, values, and data-bearing formats

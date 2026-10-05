@@ -217,7 +217,7 @@ func toolActivityStatementDisplayEnd(script string, statement *syntax.Stmt) int 
 
 // Literal section headings alongside other operations are decoration.
 // Keep dynamic output, redirections, and headings-only scripts visible.
-var activityPlainHeading = regexp.MustCompile(`^[A-Z][A-Za-z/-]*( [A-Za-z][A-Za-z/-]*)+$`)
+var activityPlainHeading = regexp.MustCompile(`^([A-Z][A-Za-z/-]*( [A-Za-z][A-Za-z/-]*)+|[A-Z][A-Z/-]+)$`)
 var activitySuccessMarker = regexp.MustCompile(`^[A-Z][A-Za-z/-]*( [A-Za-z][A-Za-z/-]*)* (checks passed|evidence remains available)\.$`)
 
 func toolActivityReadSeparator(statement *syntax.Stmt) bool {
@@ -239,7 +239,8 @@ func toolActivityReadSeparator(statement *syntax.Stmt) bool {
 	case len(argv) != 2 || strings.Contains(heading, "%"):
 		return false
 	}
-	// A bare title must be a blank-line-framed, multi-word literal printf,
+	// A bare title must be a blank-line-framed literal printf, with either
+	// a capitalized multi-word title or one uppercase section label,
 	// not a format with data arguments or an arbitrary output value.
 	plainTitle := argv[0] == "printf" && len(argv) == 2 && strings.HasPrefix(heading, `\n`) && strings.HasSuffix(heading, `\n`)
 	// Literal check/evidence confirmations are display-only status markers,

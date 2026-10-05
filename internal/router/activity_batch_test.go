@@ -11,7 +11,8 @@ import (
 
 func TestActivityBatchDecorativeHeadings(t *testing.T) {
 	for _, heading := range []string{`printf '\nHerdr environment: '`, `printf '\nLocal instructions:\n'`, `echo 'Local instructions:'`, `printf '%s\n' 'Local instructions:'`, `echo '--- instructions ---'`,
-		`printf '\nToday session files\n'`, `printf '\nReplay-named owned paths\n'`, `printf '\nRole recovery\n'`, `printf '\nImmediate log/snapshot directory names\n'`} {
+		`printf '\nToday session files\n'`, `printf '\nReplay-named owned paths\n'`, `printf '\nRole recovery\n'`, `printf '\nImmediate log/snapshot directory names\n'`,
+		`printf '\nGUIDANCE\n'`, `printf '\nAPPROVAL\n'`} {
 		t.Run(heading, func(t *testing.T) {
 			command := heading + "; printenv HERDR_ENV; cat AGENTS.md"
 			text := toolActivityShell(command)
@@ -43,7 +44,9 @@ func TestActivityBatchDecorativeHeadings(t *testing.T) {
 	for _, command := range []string{`printf '\nLocal instructions:\n'`, `echo 'Local instructions:'`, `cat a; echo "$heading:"`, `cat a; echo 'heading:' > out`, `cat a; printf '\theading:\n'`, `cat a; echo -n 'heading:'`,
 		`printf 'Evidence-location metadata\n'`, `cat a; printf '%s\n' 'Evidence-location metadata'`, `cat a; printf 'Evidence-location metadata\n' > out`,
 		`cat a; printf "$heading\n"`, `cat a; printf 'Evidence-location metadata'`, `cat a; printf 'count=42\n'`, `cat a; printf '{"result":"ok"}\n'`,
-		`cat a; printf 'PASS\n'`, `cat a; printf '42\n'`, `cat a; printf '/tmp/session.log\n'`, `cat a; printf 'Evidence-location metadata\t\n'`} {
+		`cat a; printf 'PASS\n'`, `cat a; printf '42\n'`, `cat a; printf '/tmp/session.log\n'`, `cat a; printf 'Evidence-location metadata\t\n'`,
+		`printf '\nGUIDANCE\n'`, `cat a; printf 'GUIDANCE\n'`, `cat a; printf '\nAlice\n'`,
+		`cat a; printf '\n%s\n' GUIDANCE`, `cat a; printf '\nGUIDANCE\n' > out`} {
 		if text := toolActivityShell(command); !strings.Contains(text, "Run") {
 			t.Fatalf("meaningful command hidden: %s: %s", command, text)
 		}
@@ -53,9 +56,10 @@ func TestActivityBatchDecorativeHeadings(t *testing.T) {
 func TestUISnapshotActivityPlainPrintfHeadings(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	const heading = `printf '\nToday session files\n'`
+	const label = `printf '\nGUIDANCE\n'`
 	const data = `printf 'Alice Smith\n'`
 	const ambiguous = `printf 'Evidence-location metadata\n'`
-	const command = heading + `; ls .codex/sessions/2026/09/30; ` + data + `; ` + ambiguous + `; printf '%s\n' 'count=42'`
+	const command = heading + `; ` + label + `; ls .codex/sessions/2026/09/30; ` + data + `; ` + ambiguous + `; printf '%s\n' 'count=42'`
 	for _, state := range []string{"preview", "completed", "failed-heading"} {
 		t.Run(state, func(t *testing.T) {
 			entry := activityPaneEntry{Seq: 1, Agent: "/root/probe", Kind: "tool", Text: toolActivityShell(command), Observed: now,
@@ -63,6 +67,7 @@ func TestUISnapshotActivityPlainPrintfHeadings(t *testing.T) {
 			if state != "preview" {
 				entry.native.segments = []commandSegment{
 					{source: heading, text: execSegmentText(heading), tail: []string{"Today session files"}},
+					{source: label, text: execSegmentText(label), tail: []string{"GUIDANCE"}},
 					{source: "ls .codex/sessions/2026/09/30", text: execSegmentText("ls .codex/sessions/2026/09/30"), exit: 1,
 						tail: []string{"ls: cannot access '.codex/sessions/2026/09/30': No such file or directory"}},
 					{source: data, text: execSegmentText(data), tail: []string{"Alice Smith"}},
