@@ -393,9 +393,6 @@ func (s *journalStore) transactionWithTiming(ctx context.Context, store *mekugiR
 		}
 		if err := mutate(&next, exists); err != nil {
 			if errors.Is(err, errJournalUnchanged) {
-				if store == nil {
-					s.memory[key] = current
-				}
 				return nil
 			}
 			return err

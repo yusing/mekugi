@@ -43,6 +43,47 @@ func TestJournalAtomicMutationsAndReplay(t *testing.T) {
 	}
 }
 
+func TestJournalEarlyStatusDoesNotCreateState(t *testing.T) {
+	for _, durable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("durable=%v", durable), func(t *testing.T) {
+			store := newJournalStore()
+			var replay *mekugiReplayStore
+			if durable {
+				var err error
+				replay, err = openMekugiReplayStore(t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx := t.Context()
+			if err := store.observeWorkStatus(ctx, replay, "/workspace", "root", true); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.list(ctx, replay, "/workspace", "root"); err == nil {
+				t.Fatal("early status created an uninitialized journal")
+			}
+			if err := store.initialize(ctx, replay, "/workspace", "root", "/root", ""); err != nil {
+				t.Fatal(err)
+			}
+			mutations := []journalMutation{{Op: "add", Kind: "task", Title: new("Initialized work")}}
+			ids, err := store.apply(ctx, replay, "/workspace", "root", "call", mutations)
+			if err != nil || len(ids) != 1 || ids[0] != "/1" {
+				t.Fatalf("apply after initialization: %v %v", ids, err)
+			}
+			if durable {
+				store = newJournalStore()
+			}
+			if ids, err := store.apply(ctx, replay, "/workspace", "root", "call", mutations); err != nil || len(ids) != 1 || ids[0] != "/1" {
+				t.Fatalf("replay: %v %v", ids, err)
+			}
+			items, err := store.list(ctx, replay, "/workspace", "root")
+			if err != nil || len(items) != 1 || items[0].Title != "Initialized work" {
+				t.Fatalf("initialized journal: %+v %v", items, err)
+			}
+		})
+	}
+}
+
 func TestJournalRestartAndIndependentLatestFork(t *testing.T) {
 	ctx := t.Context()
 	replay, err := openMekugiReplayStore(t.TempDir())
