@@ -143,6 +143,7 @@ func (u *terminalUI) key(key byte) error {
 			}
 			if s == "\x1b[O" {
 				u.clearJournalHover() // No pointer report follows the pointer out of the window.
+				u.clearSkillsHover()
 			}
 			return nil
 		}
@@ -176,21 +177,8 @@ func (u *terminalUI) key(key byte) error {
 		}
 		return u.send(s)
 	}
-	if u.selection != nil && !u.selection.dragging {
-		switch key {
-		case 'r', 'R', 'c', 'C', 3:
-			if key == 3 {
-				key = 'c'
-			}
-			if key == 'R' {
-				key = 'r'
-			}
-			if key == 'C' {
-				key = 'c'
-			}
-			u.selectionAction(key)
-			return nil
-		}
+	if key != 27 && u.output == nil && u.selectionKey(string(key)) {
+		return nil
 	}
 	if key == 27 {
 		u.sequence = "\x1b"
@@ -345,7 +333,7 @@ func (u *terminalUI) send(s string) error {
 		u.outputKey(s)
 		return nil
 	}
-	if u.selection != nil && u.selection.scrollKey(s) {
+	if s != "\x1b" && u.selectionKey(s) {
 		return nil
 	}
 	if u.main != nil && u.focus == 0 && u.main.statusPanel != nil {
@@ -378,8 +366,7 @@ func (u *terminalUI) send(s string) error {
 		return nil
 	}
 	if u.main != nil && u.focus == 0 && !u.main.paste {
-		if s == "\x1b" && u.selection != nil {
-			u.selection = nil
+		if s == "\x1b" && u.selectionKey(s) {
 			return nil
 		}
 		if handled, err := u.main.btwKey(s); handled {
@@ -403,8 +390,7 @@ func (u *terminalUI) send(s string) error {
 		}
 	}
 	if u.selection != nil && !u.selection.dragging {
-		if s == "\x1b" {
-			u.selection = nil
+		if s == "\x1b" && u.selectionKey(s) {
 			return nil
 		}
 		// Editing or navigating dismisses the contextual actions.
@@ -473,6 +459,15 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	button, x, y := v[0], v[1]-1, v[2]-1
 	release := s[len(s)-1] == 'm'
+	if u.main != nil {
+		u.main.view.skillsHover = ""
+		if button == 35 && !release && u.output == nil && u.layout.mainSkills.contains(x, y) {
+			u.main.view.skillsHover = "Main"
+		}
+	}
+	if u.agents != nil && (u.output != nil || !u.layout.roster.contains(x, y)) {
+		u.agents.skillsHover = ""
+	}
 	if !u.layout.journal.contains(x, y) || u.output != nil {
 		u.clearJournalHover()
 	}
@@ -709,4 +704,13 @@ func (u *terminalUI) mouse(s string) error {
 
 func (u *terminalUI) applyDiff(ctx context.Context, event liveDiffEvent) {
 	u.applyNativeDiff(ctx, event)
+}
+
+func (u *terminalUI) clearSkillsHover() {
+	if u.main != nil {
+		u.main.view.skillsHover = ""
+	}
+	if u.agents != nil {
+		u.agents.skillsHover = ""
+	}
 }

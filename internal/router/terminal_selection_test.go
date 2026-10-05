@@ -43,7 +43,8 @@ func TestTerminalUISelectionDragText(t *testing.T) {
 		{"reverse", []string{"hello world"}, 4, 0, 0, 0, "hello"},
 		{"multiline", []string{"one two", "three four"}, 4, 0, 4, 1, "two\nthree"},
 		{"reverse multiline", []string{"one two", "three four"}, 4, 1, 4, 0, "two\nthree"},
-		{"wide styled", []string{"\x1b[31mA你好B\x1b[0m"}, 1, 0, 4, 0, "你好"},
+		{"wide styled", []string{"\x1b[31mA你好B\x1b[0m"}, 2, 0, 4, 0, "你好"},
+		{"combining", []string{"Ae\u0301Z"}, 1, 0, 2, 0, "e\u0301Z"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			u := selectionTestUI(tt.rows...)
@@ -87,54 +88,89 @@ func TestTerminalUISelectionSkipsFrames(t *testing.T) {
 	}
 }
 
-func TestTerminalUISelectionReferencePreservesDraftAndUndo(t *testing.T) {
-	u := selectionTestUI("hello world")
-	u.main.insertDraft("before after")
-	u.main.cursorBack = len("after")
-	u.focus = 2
-	selectionTestDrag(t, u, 0, 0, 4, 0)
-	if err := u.key('r'); err != nil {
-		t.Fatal(err)
-	}
-	if u.main.draft != "before [Selected message] after" || u.focus != 0 || u.selection != nil {
-		t.Fatalf("reference: draft=%q focus=%d selection=%v", u.main.draft, u.focus, u.selection)
-	}
-	if got := u.main.selections; len(got) != 1 || got[0].text != "hello" || u.main.draft[got[0].start:got[0].end] != "[Selected message]" {
-		t.Fatalf("reference token = %+v", got)
-	}
-	u.main.undoDraft(false)
-	if u.main.draft != "before after" || u.main.cursorBack != len("after") {
-		t.Fatalf("undo reference lost draft/cursor: %q, %d", u.main.draft, u.main.cursorBack)
-	}
-}
-
-func TestTerminalUISelectionCopyAndClear(t *testing.T) {
-	for _, action := range []byte{'c', 3, 27} {
-		t.Run(string(action), func(t *testing.T) {
-			u := selectionTestUI("hello world")
-			u.main.draft = "keep me"
-			selectionTestDrag(t, u, 0, 0, 4, 0)
-			if err := u.key(action); err != nil {
-				t.Fatal(err)
+func TestTerminalUISelectionActions(t *testing.T) {
+	for _, dialog := range []bool{false, true} {
+		for _, key := range []string{"r", "R", "c", "C", "\x03", "\x1b", "reference click", "copy click", "clear click", "separator", "question", "y"} {
+			if key == "y" && !dialog {
+				continue
 			}
-			if action == 27 {
-				// A lone Escape clears only after the parser has ruled out a CSI sequence.
-				if u.selection == nil {
-					t.Fatal("Escape cleared selection before sequence timeout")
+			t.Run(fmt.Sprintf("dialog=%v/%q", dialog, key), func(t *testing.T) {
+				u := selectionTestUI("hello world")
+				mention := "[Selected message]"
+				if dialog {
+					u, _ = outputSelectionFixture("hello world\n", false)
+					u.main, _ = newAppServerTestUI()
+					x, y := outputSelectionPoint(t, u, "hello")
+					outputSelectionDrag(u, x, y, x+4, y)
+					mention = "[Selected dialog]"
+				} else {
+					selectionTestDrag(t, u, 0, 0, 4, 0)
 				}
-				u.sequenceAt = time.Now().Add(-time.Second)
-				if err := u.flushEscape(); err != nil {
-					t.Fatal(err)
+				u.main.draft, u.main.cursorBack, u.focus = "before after", len("after"), 2
+				if key == "question" {
+					u.main.questions.active = &nativeQuestionCall{questions: []nativeQuestion{{}}}
 				}
-			}
-			want := ""
-			if action == 'c' || action == 3 {
-				want = "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("hello")) + "\x07"
-			}
-			if u.selection != nil || u.main.draft != "keep me" || u.clipboard != want {
-				t.Fatalf("action %q: selection=%v draft=%q clipboard=%q", action, u.selection, u.main.draft, u.clipboard)
-			}
-		})
+				selected := u.selection
+				action := key
+				if strings.Contains(key, "click") || key == "separator" {
+					x, y := map[string]int{"reference click": 1, "copy click": 15, "clear click": 28, "separator": 12}[key], u.height-1
+					if dialog {
+						x += u.output.rect.x + 3
+						y = u.output.rect.y + u.output.rect.h - 1
+					}
+					if err := u.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x+1, y+1)); err != nil {
+						t.Fatal(err)
+					}
+					action = map[string]string{"reference click": "r", "copy click": "c", "clear click": "\x1b", "separator": "separator"}[key]
+				} else {
+					if action == "question" {
+						action = "r"
+					}
+					if err := u.key(action[0]); err != nil {
+						t.Fatal(err)
+					}
+					if action == "\x1b" {
+						u.sequenceAt = time.Now().Add(-time.Second)
+						if err := u.flushEscape(); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				if action == "separator" {
+					if u.selection != selected {
+						t.Fatal("separator changed selection")
+					}
+					return
+				}
+				reference := action == "r" || action == "R"
+				if u.selection != nil || dialog && (u.output == nil) != reference {
+					t.Fatal("wrong selection or dialog lifetime")
+				}
+				if reference {
+					want := "before " + mention + " after"
+					if key == "question" {
+						want = "before > hello\n\nafter"
+					} else if len(u.main.selections) != 1 || u.main.selections[0].text != "hello" {
+						t.Fatal("reference lost quote")
+					}
+					if u.main.draft != want || u.focus != 0 {
+						t.Fatalf("reference draft=%q focus=%d", u.main.draft, u.focus)
+					}
+					u.main.undoDraft(false)
+					if u.main.draft != "before after" || u.main.cursorBack != len("after") {
+						t.Fatal("undo lost draft/caret")
+					}
+				} else {
+					want := ""
+					if action != "\x1b" {
+						want = "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("hello")) + "\x07"
+					}
+					if u.clipboard != want || u.main.draft != "before after" || u.focus != 2 {
+						t.Fatal("copy/clear changed draft, focus or clipboard")
+					}
+				}
+			})
+		}
 	}
 }
 

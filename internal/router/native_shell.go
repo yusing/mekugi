@@ -300,10 +300,13 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		} else {
 			l.codex = terminalRect{left.x + 1, left.y + 1, iw, ih}
 			detail := u.main.mainTitleDetail()
+			if set := u.main.view.activeSkills()["Main"]; set != nil && u.main.view.skillsHover == "Main" {
+				detail = strings.TrimSuffix(detail, set.label()) + activityui.Underline(set.label())
+			}
 			title := nativeTitle(1, "Main", detail, u.focus == 0)
 			// The skill count ends the title, after the frame corner and a space.
 			// A truncated title has no reliable target.
-			if set := u.main.view.activeSkills()["Main"]; set != nil && strings.HasSuffix(detail, set.label()) && ansi.StringWidth(title)+5 <= left.w {
+			if set := u.main.view.activeSkills()["Main"]; set != nil && strings.HasSuffix(ansi.Strip(detail), set.label()) && ansi.StringWidth(title)+5 <= left.w {
 				end := left.x + 2 + ansi.StringWidth(title)
 				l.mainSkills = terminalRect{end - ansi.StringWidth(set.label()), left.y, ansi.StringWidth(set.label()), 1}
 			}

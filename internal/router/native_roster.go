@@ -220,7 +220,11 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		}
 		line := item.prefix + liveActivityPad(v.agentState(item.row.agent, state), state)
 		if label != "" {
-			line += "  " + activityui.Dim + label + activityui.Undim
+			styled := label
+			if v.skillsHover == item.row.agent.Name {
+				styled = activityui.Underline(styled)
+			}
+			line += "  " + activityui.Dim + styled + activityui.Undim
 			v.hits = append(v.hits, liveActivityHit{row: len(lines) + 1, first: stateEnd - ansi.StringWidth(label) + 1, last: stateEnd, agent: item.row.agent.Name, skills: true})
 		}
 		if next < len(metrics) {

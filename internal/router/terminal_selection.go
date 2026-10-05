@@ -268,8 +268,43 @@ func (s *terminalSelection) row(y int) string {
 	return row
 }
 
+// selectionKey owns scrolling and action dispatch for both selection surfaces.
+// Callers retain navigation dismissal and their surrounding Escape priority.
+func (u *terminalUI) selectionKey(key string) bool {
+	s := u.selection
+	if s == nil {
+		return false
+	}
+	if s.scrollKey(key) {
+		if d := u.output; d != nil {
+			d.top, d.follow = s.top, false
+		}
+		return true
+	}
+	if u.output != nil && key == "y" {
+		key = "c"
+	}
+	var action byte
+	switch key {
+	case "\x1b":
+		action = 27
+	case "r", "R":
+		action = 'r'
+	case "c", "C", "\x03":
+		action = 'c'
+	default:
+		return false
+	}
+	if s.dragging && action != 27 && u.output == nil {
+		return false
+	}
+	u.selectionAction(action)
+	return true
+}
+
 func (u *terminalUI) selectionAction(action byte) {
-	if u.selection == nil {
+	s := u.selection
+	if s == nil || s.dragging && action != 27 {
 		return
 	}
 	switch action {
@@ -277,16 +312,18 @@ func (u *terminalUI) selectionAction(action byte) {
 		if u.main.currentQuestion() != nil {
 			// A question answer is plain text; it cannot carry a mention's quote.
 			u.main.run = runNone
-			u.main.insertDraft("> " + u.selection.text() + "\n\n")
+			u.main.insertDraft("> " + s.text() + "\n\n")
 		} else {
-			description, source := u.selection.mentionDescription()
-			u.main.insertSelection(description, u.selection.text(), source)
+			description, source := s.mentionDescription()
+			u.main.insertSelection(description, s.text(), source)
 		}
 		u.main.refreshPicker()
 		u.main.run = runNone
 		u.focus = 0
+		u.output = nil
 	case 'c':
-		u.copyText(u.selection.text())
+		u.copyText(s.text())
+	case 27:
 	default:
 		return
 	}
@@ -295,15 +332,29 @@ func (u *terminalUI) selectionAction(action byte) {
 
 func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	previous := u.selection
-	if s := u.selection; s != nil {
-		if s.mouse(button, x, y, release) {
+	d := u.output
+	body := terminalRect{}
+	footer := terminalRect{0, u.height - 1, u.width, 1}
+	mouseX, mouseY := x, y
+	if d != nil {
+		body = terminalRect{d.rect.x + 2, d.rect.y + d.chrome() - 1, d.rect.w - 4, d.rows}
+		mouseX, mouseY = x-body.x, y-body.y
+		footer = terminalRect{d.rect.x, d.rect.y + d.rect.h - 1, d.rect.w, 1}
+	}
+	if s := previous; s != nil {
+		if s.mouse(button, mouseX, mouseY, release) {
+			if d != nil {
+				d.top = s.top
+				if s.moved {
+					d.follow = false
+				}
+			}
 			if release {
-				s.dragging = false
 				if !s.moved {
 					u.selection = nil
-					if s.link != "" {
+					if d == nil && s.link != "" {
 						u.copyText(s.link)
-					} else {
+					} else if d == nil {
 						index := s.startY - s.rect.y
 						if index >= 0 && index < len(s.questions) && s.questions[index] != 0 {
 							if s.view == u.main.view && u.openActivityReply(s.questions[index]) {
@@ -323,20 +374,45 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 			}
 			return true
 		}
-		if !s.dragging && button == 0 && !release && y == u.height-1 {
-			switch selectionHints.actionAt(x, u.width) {
-			case 'r':
-				u.selectionAction('r')
-			case 'c':
-				u.selectionAction('c')
-			case 27:
-				u.selection = nil
+		if !s.dragging && button == 0 && !release && footer.contains(x, y) {
+			at, capacity := x, u.width
+			if d != nil {
+				at, capacity = x-d.rect.x-3, d.rect.w-6
+				if ansi.StringWidth(selectionHints.render()) > capacity {
+					capacity-- // The dialog renderer reserves its last cell for an ellipsis.
+				}
 			}
+			u.selectionAction(selectionHints.actionAt(at, capacity))
 			return true
 		}
-		if button&64 != 0 || button == 0 && !release {
+		dismiss := button&64 != 0 || button == 0 && !release
+		if d != nil {
+			pressed := button &^ 28
+			dismiss = !release && (pressed == 0 || pressed == 64 || pressed == 65)
+		}
+		if dismiss {
 			u.selection = nil
 		}
+	}
+	if d != nil {
+		if button&^28 != 0 || release || !body.contains(x, y) || len(d.body) == 0 {
+			return false
+		}
+		s := &terminalSelection{rect: terminalRect{0, 0, body.w, len(d.body)}, rows: d.body, contentLeft: d.indents, startX: mouseX, startY: mouseY, endX: mouseX, endY: mouseY, dragging: true, mention: "dialog"}
+		var lines []string
+		var indents []int
+		for i := range d.laid.Lines {
+			for _, row := range d.laid.Rows(i, body.w) {
+				lines = append(lines, d.highlight(row, d.laid.Indent(i), i == d.match))
+				indents = append(indents, d.laid.Indent(i))
+			}
+		}
+		s.document(lines, d.top, 0)
+		if s.screenRows != 0 {
+			s.contentLeft = indents
+		}
+		u.selection = s
+		return true
 	}
 	if button != 0 || release || u.drag != 0 || u.main == nil || u.main.keybindings {
 		return false
@@ -572,7 +648,7 @@ func (s *terminalSelection) mentionDescription() (string, string) {
 
 func (u *terminalUI) paintSelection(rows []string) {
 	s := u.selection
-	if s == nil {
+	if s == nil || u.output != nil {
 		return
 	}
 	if cmp.Or(s.screenRows, len(s.rows)) != len(rows) || u.paintedWidth != u.width || s.pane != u.layout.codex && s.pane != u.layout.agents && s.pane != u.layout.diff {

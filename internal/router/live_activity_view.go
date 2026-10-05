@@ -43,6 +43,7 @@ type liveActivityView struct {
 	rosterManual   bool
 	rosterSelected string
 	rosterEnd      int
+	skillsHover    string // Agent whose loaded-skill count is under the pointer.
 	skillsRequest  string // Agent whose active skills a roster click asked to open.
 	skills         *liveActivitySkills
 	retiredSkills  map[string]activeSkillSet // Loads in trimmed entries, still in their agent's context.
@@ -679,13 +680,17 @@ func (v *liveActivityView) snippetBlock(snippet liveActivitySnippet) (activityui
 
 // pointAgent highlights a hovered roster agent; a click filters the feed.
 func (v *liveActivityView) pointAgent(action byte, row, column int) bool {
-	previous := v.hovered
-	v.hovered = ""
+	previous, previousSkills := v.hovered, v.skillsHover
+	v.hovered, v.skillsHover = "", ""
 	for _, hit := range v.hits {
 		if hit.row == row && column >= hit.first && column <= hit.last {
-			v.hovered = hit.agent
+			if hit.skills {
+				v.skillsHover = hit.agent
+			} else {
+				v.hovered = hit.agent
+			}
 			if action == '\r' && hit.skills {
-				v.skillsRequest, v.hovered = hit.agent, ""
+				v.skillsRequest, v.skillsHover = hit.agent, ""
 				return true
 			}
 			if action == '\r' {
@@ -700,10 +705,10 @@ func (v *liveActivityView) pointAgent(action byte, row, column int) bool {
 				v.hovered = ""
 				v.follow()
 			}
-			return action == '\r' || previous != v.hovered
+			return action == '\r' || previous != v.hovered || previousSkills != v.skillsHover
 		}
 	}
-	return previous != ""
+	return previous != "" || previousSkills != ""
 }
 
 func (v *liveActivityView) follow() {

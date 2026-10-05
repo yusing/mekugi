@@ -212,9 +212,16 @@ next/previous matching lines. `y` copies the retained output of the current
 page, or source when there is no output. Dragging within the body selects visible
 text without line numbers, gutters, or frame padding. Selection uses a stable
 snapshot while live output continues to arrive; dragging pauses dialog follow.
-With a selection, `y`, `c`, or Ctrl-C copies just that text through the shared
-terminal clipboard path, and Esc clears it before closing the dialog. Scrolling,
-page navigation, or resizing clears the selection; End resumes live following.
+With a selection, the footer offers the shared [selection actions](native_ui.md):
+Reference (`r`/`R`), Copy (Ctrl-C, also `c`/`C` or `y`), and Clear (Esc), with
+bold keys and clickable hints matching the transcript. Only complete, visible
+action hints accept clicks. Reference closes the dialog, focuses the composer, and inserts
+the selected text as one undoable reference token at the caret, or as a plain-text
+quote for an active question. Copy and Clear keep the dialog open; Esc clears
+a selection before a later Esc closes the dialog. Wheel, arrow, page, and
+Home/End scrolling preserve the frozen selection, including off-screen rows.
+Changing pages, navigating search, or resizing clears it; End resumes live
+following when there is no selection. The footer offers no drag-selection hint.
 Output retention is separate from the animated display tail: each command has
 a 1 MiB budget including line slots, with lines capped at 16 KiB. Older lines
 are dropped with a visible count. The session has a 16 MiB retention budget,

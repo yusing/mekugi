@@ -22,9 +22,9 @@ func (s activeSkillSet) with(names ...string) activeSkillSet {
 
 func (s activeSkillSet) label() string {
 	if len(s) == 1 {
-		return "1 active skill"
+		return "1 loaded skill"
 	}
-	return fmt.Sprintf("%d active skills", len(s))
+	return fmt.Sprintf("%d loaded skills", len(s))
 }
 
 // The revision cache avoids rescanning unchanged Activity on every paint.

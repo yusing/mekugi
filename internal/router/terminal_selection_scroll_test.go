@@ -133,7 +133,7 @@ func TestOutputSelectionScrollBeyondViewport(t *testing.T) {
 	u, output := outputSelectionFixture(strings.Join(lines, "\n")+"\n", true)
 	x, y := outputSelectionPoint(t, u, "row 39")
 	u.outputMouse(0, x+5, y, false)
-	s := u.output.selection
+	s := u.selection
 	output.Write("new arrival\n")
 	for attempts := 0; s.top > 0 && attempts < 30; attempts++ {
 		u.outputMouse(64, x, y, false)
@@ -146,7 +146,7 @@ func TestOutputSelectionScrollBeyondViewport(t *testing.T) {
 		t.Fatalf("dialog copied = %q, want %q", got, want)
 	}
 	u.outputKey("\x1b[6~")
-	if u.output.selection != s || s.top == 0 || u.output.follow {
+	if u.selection != s || s.top == 0 || u.output.follow {
 		t.Fatal("dialog page scroll lost frozen selection")
 	}
 	u.outputKey("\x1b")
@@ -263,7 +263,7 @@ func TestOutputSelectionEdgeDragScrolls(t *testing.T) {
 	drawOutputDialog(u)
 	x, y := outputSelectionPoint(t, u, "row 00")
 	u.outputMouse(0, x, y, false)
-	s := u.output.selection
+	s := u.selection
 	bottom := u.output.rect.y + u.output.chrome() - 1 + u.output.rows
 	for range 50 {
 		u.outputMouse(32, u.output.rect.x+u.output.rect.w-3, bottom, false)

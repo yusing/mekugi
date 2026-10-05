@@ -32,7 +32,6 @@ type outputDialog struct {
 	body      []string // Last visible body, used as the drag snapshot.
 	indents   []int
 	tabs      []outputTab
-	selection *terminalSelection
 
 	typing bool   // The footer reads a search query.
 	draft  string // Query being typed.
@@ -471,25 +470,11 @@ func (d *outputDialog) find(step int) {
 // outputKey handles a key while the dialog is open; every key belongs to it.
 func (u *terminalUI) outputKey(key string) {
 	d := u.output
-	if s := d.selection; s != nil {
-		if s.scrollKey(key) {
-			d.top, d.follow = s.top, false
-			return
-		}
-		switch key {
-		case "\x1b":
-			d.selection = nil
-			return
-		case "y", "c", "\x03":
-			if !s.dragging {
-				u.copyText(s.text())
-				d.selection = nil
-			}
-			return
-		}
-		// Navigation clears the snapshot before moving the page.
-		d.selection = nil
+	if u.selectionKey(key) {
+		return
 	}
+	// Navigation clears the snapshot before moving the page.
+	u.selection = nil
 	if d.typing {
 		switch key {
 		case "\x1b", "\x03":
@@ -549,15 +534,7 @@ func (u *terminalUI) outputKey(key string) {
 // press outside closes it.
 func (u *terminalUI) outputMouse(button, x, y int, release bool) {
 	d := u.output
-	body := terminalRect{d.rect.x + 2, d.rect.y + d.chrome() - 1, d.rect.w - 4, d.rows}
-	if selected := d.selection; selected != nil && selected.mouse(button, x-body.x, y-body.y, release) {
-		d.top = selected.top
-		if selected.moved {
-			d.follow = false
-		}
-		if release && !selected.moved {
-			d.selection = nil
-		}
+	if u.selectionMouse(button, x, y, release) {
 		return
 	}
 	if release {
@@ -565,13 +542,10 @@ func (u *terminalUI) outputMouse(button, x, y int, release bool) {
 	}
 	switch button &^ 28 {
 	case 64:
-		d.selection = nil
 		d.scroll(-outputDialogWheelRows)
 	case 65:
-		d.selection = nil
 		d.scroll(outputDialogWheelRows)
 	case 0:
-		d.selection = nil
 		if len(d.pages) > 1 && y == d.rect.y+2 {
 			for _, tab := range d.tabs {
 				if x-d.rect.x-2 >= tab.from && x-d.rect.x-2 < tab.to {
@@ -582,20 +556,6 @@ func (u *terminalUI) outputMouse(button, x, y int, release bool) {
 		}
 		if !d.rect.contains(x, y) || y == d.rect.y && x >= d.rect.x+d.rect.w-activityui.DialogCloseWidth-3 && x < d.rect.x+d.rect.w-3 {
 			u.output = nil
-		} else if body.contains(x, y) && len(d.body) > 0 {
-			d.selection = &terminalSelection{rect: terminalRect{0, 0, body.w, len(d.body)}, rows: d.body, contentLeft: d.indents, startX: x - body.x, startY: y - body.y, endX: x - body.x, endY: y - body.y, dragging: true}
-			var lines []string
-			var indents []int
-			for i := range d.laid.Lines {
-				for _, row := range d.laid.Rows(i, body.w) {
-					lines = append(lines, d.highlight(row, d.laid.Indent(i), i == d.match))
-					indents = append(indents, d.laid.Indent(i))
-				}
-			}
-			d.selection.document(lines, d.top, 0)
-			if d.selection.screenRows != 0 {
-				d.selection.contentLeft = indents
-			}
 		}
 	}
 }
@@ -610,20 +570,20 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 		w, h = int(float64(width)*outputDialogShare), int(float64(height)*outputDialogShare)
 	}
 	if w < 12 || h < d.chrome()+1 {
-		d.rect, d.selection = terminalRect{}, nil
+		d.rect, u.selection = terminalRect{}, nil
 		return
 	}
-	if d.selection != nil && (d.rect.w != w || d.rect.h > h) {
-		d.selection = nil
+	if u.selection != nil && (d.rect.w != w || d.rect.h > h) {
+		u.selection = nil
 	}
-	if d.selection == nil {
+	if u.selection == nil {
 		d.layout(w - 4)
 	}
 	if width >= outputDialogFullWidth {
 		h = min(h, max(d.chrome()+3, d.chrome()+d.total()))
 	}
-	if d.selection != nil && d.rect != (terminalRect{(width - w) / 2, (height - h) / 2, w, h}) {
-		d.selection = nil
+	if u.selection != nil && d.rect != (terminalRect{(width - w) / 2, (height - h) / 2, w, h}) {
+		u.selection = nil
 	}
 	d.rows = h - d.chrome()
 	if d.pendingSegment > 0 && d.pendingSegment <= len(d.segmentLines) {
@@ -659,13 +619,16 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 		indents = append(indents, 0)
 	}
 	d.body, d.indents = body, indents
-	if selected := d.selection; selected != nil {
+	if selected := u.selection; selected != nil {
 		body = slices.Clone(body)
 		for i := range body {
 			body[i] = selected.row(selected.documentY(i))
 		}
 	}
 	frame := activityui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.laid, Paused: d.laid.Live && !d.follow, Rows: body, Top: d.top, Total: d.total(), Footer: d.footer(w)}
+	if u.selection != nil {
+		frame.Footer = selectionHints.render()
+	}
 	if len(d.pages) > 1 {
 		frame.Position = fmt.Sprintf("%d / %d", d.page+1, len(d.pages))
 	}
@@ -714,9 +677,6 @@ func (d *outputDialog) highlight(row string, indent int, current bool) string {
 // footer is the dialog's controls, or the search being typed.
 func (d *outputDialog) footer(width int) string {
 	dim, undim := activityui.Dim, activityui.Undim
-	if d.selection != nil {
-		return dim + "drag select · y / ctrl+c copy · esc clear" + undim
-	}
 	if d.typing {
 		return "/" + d.draft + "▏" + dim + "  enter find · esc cancel" + undim
 	}

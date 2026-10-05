@@ -383,12 +383,12 @@ hunks remain inspectable. Only the pointed edit row's text underlines
 on hover in Main and Activity, not its gutter, alignment gaps, stat bar, or other
 rows in the same capture. Click-through content (Edit, message excerpts, question links, and journal
 agent links) opens the shared content dialog above the existing panes. Its
-close button or Escape dismisses it without changing pane filters, scroll
+close button or Escape without a selection dismisses it without changing pane filters, scroll
 positions, or keyboard focus. New activity and captures remain available.
 Output-dialog text selection uses the shared drag and selection-scroll behavior.
 The selected document stays frozen while new output arrives; clearing or copying
 the selection releases it. Copy excludes the dialog's borders and gutters.
-Changing pages or resizing dismisses the selection.
+Changing pages, navigating search, or resizing dismisses the selection.
 Edit pages use the exact host invocation, including grouped shell captures,
 rather than matching nearby paths or edits. Roster picks remain explicit filters.
 
@@ -688,13 +688,16 @@ The enable/disable management view remains Codex-owned: managed catalog entries
 are selectable references, but are never sent to `skills/config/write` with an
 invented path. Their selection is configured through `skills-mgr`.
 
-Dragging across text in Main, the composer, Activity, a side-question dock, or the
-saved Diff selects the visible text and offers Reference (R), Copy (Ctrl+C, also C), and Clear (Escape) in
-the status bar. Selection actions and the existing pane shortcut bar share bold key
-labels and bullet separators. Composer selection excludes its prompt and borders;
+Dragging across text in Main, the composer, Activity, a side-question dock, the
+saved Diff, or a shared content dialog selects the visible text and offers
+Reference (r/R), Copy (Ctrl+C, also c/C), and Clear (Escape) in the status bar or
+dialog footer. Selection actions and the existing pane shortcut bar share bold key
+labels and bullet separators. Only complete, visible action hints accept clicks.
+Composer selection excludes its prompt and borders;
 Diff selection covers only the source column, excluding the file navigator, gutters,
-and line numbers, and keeps each row's `+`, `-`, or space marker. Markdown selections
-reconstruct only selected source fragments, balancing inline formatting and
+and line numbers, and keeps each row's `+`, `-`, or space marker. Dialog selections
+copy visible text. Other Markdown selections reconstruct only selected source
+fragments, balancing inline formatting and
 preserving code indentation, trailing whitespace, blank code rows, and hard breaks.
 Soft wraps rejoin logical lines rather than inserting display newlines. Selected
 table cells reconstruct Markdown independently of grid wrapping or narrow record
@@ -707,7 +710,7 @@ A press in the Diff still reaches the pane, so clicks keep their meaning.
 Reference inserts a concise mention at the composer caret without submitting:
 `[Selected message]` from Main, `[Selected activity]` from Activity,
 `[Selected text]` from the composer, `[Selected side answer]` from the side-question
-dock, `[Selected status]` from the status panel,
+dock, `[Selected status]` from the status panel, `[Selected dialog]` from a dialog,
 and `[Selected diff hunk @amber1:42-45]` from the Diff, naming the selected
 rows' change and gutter lines (`:42` for one line). Lines are new-file
 coordinates, or old-file ones when only deletions are selected. A composed file
@@ -725,8 +728,10 @@ label and, for Diff, the file path. A selection over 96 KiB is refused with a
 notice; one that exceeds the remaining envelope budget is replaced by an explicit
 omission frame, and the composer reports it. While a question is open, Reference
 inserts `> SELECTED_TEXT\n\n` instead, since an answer is plain text.
+Reference from a dialog closes it and focuses the composer. Copy and Clear keep
+the dialog open; `y` is also a dialog selection-copy shortcut.
 Copy requests the terminal clipboard via OSC 52, and Clear leaves the draft intact.
-Main, Activity, saved Diff and side-answer selections retain a frozen document,
+Main, Activity, saved Diff, side-answer and dialog selections retain a frozen document,
 including off-screen rows, until the selection is dismissed. Mouse-wheel scrolling
 during a held drag extends the range through that document; dragging above or
 below its scrollable viewport scrolls one row per motion event. Up/Down,
@@ -951,9 +956,9 @@ unknown count, including in session totals; detailed capture gaps remain in Diff
 Narrow child-agent roster rows retain context before other metrics;
 the composer's bottom border shows `model (effort) • used/window • percent%`
 as one right-aligned caption, shortening or omitting the model first when narrow.
-Main's title and child roster rows show unique active skill counts for each agent's current context, from successful reads or submitted skill attachments, not the catalog.
+Main's title and child roster rows show unique loaded skill counts for each agent's current context, from successful reads or submitted skill attachments, not the catalog. Labels use `1 loaded skill` or `N loaded skills`.
 Failed or declined read segments load nothing; independently confirmed successful segments still count after aggregate failure. Feed trimming retains names; compaction and journal reset clear them. Empty and unknown counts stay hidden.
-Clicking a count opens sorted skill names in the existing shared dialog without changing selection.
+Hover underlines only the count label, clearing on pointer leave or focus loss. Clicking a count opens sorted skill names in the existing shared dialog without changing selection.
 Exit/resume restores confirmed loads, including inherited history, independently of Activity under the [bounded restoration contract](../architecture/activity.md).
 
 Working roster rows show the latest operation or public summary, including its
