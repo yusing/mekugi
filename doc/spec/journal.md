@@ -144,25 +144,28 @@ mounted journals unavailable. Explicit combined reads still fail.
 
 ## Evidence-backed recovery
 
-V2 recovery uses a deterministic summary of constraints, open tasks, established
-results and retained changes, with actionable paths first. Context nodes are kept
-in full. Working tasks precede pending and blocked tasks; completed work and notes
-follow. A superseded node renders as one line naming its replacement, without its
-body or descendants, so recovery does not present a replaced decision as current.
-Finished work is an addressable index: done or dropped tasks retain their path,
-state, title, binding and reason, but omit their bodies, notes and bound agents,
-even when the task has no body. Completed agent mounts also omit their history.
-The latest outcome of a completed agent stays inline only when its directly bound
-parent task is still open, so unresolved integration findings remain available.
-One shared `read` hint explains how to retrieve completed bodies and history by
-their listed paths; recovery does not repeat that hint for every completed node.
-Open tasks, their work and context nodes are never folded: an open task bounds
-folding even under a dropped task or a finished agent. When completed work exceeds its
-budget, the newest results are kept in tree order and the omitted count is stated.
-Bounded detail excerpts point back to `read`, never claim to be complete. Omitted
-own paths can be located with the body-free `outline` view. Retained
-changes list only their ranges, pointing to `mchanges ID[..ID] --summary` for file
-statistics.
+V2 recovery is a deterministic current-work handoff, not a session-wide index of
+completed work. All open tasks retain their paths, states, titles, bindings and
+reasons, with bounded body excerpts. Working tasks precede pending and blocked
+tasks. Context nodes are indexed by path and title; those in the resume task's
+open branch also include bounded body excerpts. Readers must read relevant
+context paths before acting. A listed superseded node shows its replacement
+pointer without its old body, so recovery does not present a replaced decision
+as current.
+
+Closed tasks appear only to orient open descendants or show a finished agent
+whose directly bound parent integration remains open. Only that open direct
+integration retains the finished child's latest answer excerpt. Inline notes
+come from the resume task's open branch, with at most three notes within a 2 KiB
+budget; an omitted count identifies additional current-work facts. Full context,
+closed task bodies and other history remain durable and available through
+explicit reads. Bounded excerpts point back to `read`, never claim to be complete.
+
+One shared hint explains how to read more: `journal({op:"read",p:"PATH",depth:1})`
+retrieves a listed node with its immediate children.
+`journal({op:"read",view:"outline"})` finds own older paths, and `journal({op:"read",p:"/@agents",depth:1})` discovers unbound agents.
+Retained changes list only their ranges, pointing to
+`mchanges ID[..ID] --summary` for file statistics.
 
 When an open task's bound child has an observed done lifecycle, recovery places
 that fact and its retained result path beside the parent task. The parent's
@@ -176,7 +179,7 @@ Journal guidance asks authors to keep explicit constraints and settled decisions
 in context, with one owning node per topic that corrections update in place, and
 to mark replaced decisions superseded. Authors record the facts later work needs
 from loaded documents and skills, not which ones were read, and keep handoff
-details in task notes, since context renders in full. Recovery cannot reconstruct
+details in task notes. Recovery cannot reconstruct
 unrecorded decisions or replace missing document contents with a claim that a
 read occurred.
 
@@ -193,9 +196,10 @@ treating an investigation's hypothesis as established. Capturing failed output
 does not replace or alter the host's result. An unreadable evidence boundary does
 not block journal writes; the next summary treats the boundary as unknown.
 
-The summary is at most 64 KiB. Mandatory constraints and open tasks must fit its
-reserved half; otherwise rendering fails rather than omitting a constraint or a
-task. Corrupt failure evidence also fails rendering. The native recovery hook
+The summary is at most 64 KiB. Context paths and open tasks must fit its
+reserved half; otherwise rendering fails rather than omitting a context path or
+an open task. Corrupt failure evidence also fails rendering. The native recovery
+hook
 treats failure as advisory; router-side synthesis uses provider fallback.
 Neither recovery path acknowledges events or replays effects.
 

@@ -99,12 +99,12 @@ func TestJournalCompactionRecoveryReadsCompletedHistoryOnDemand(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, delivered := deliverRecoveryCompaction(t, proxy, workspace, thread, "lean-reset")
-	for _, want := range []string{"Keep wire compatibility", "/2 [done] Completed checkpoint", "Live acceptance still needs evidence", "Resume: continue /3"} {
+	for _, want := range []string{"/1 Current constraint", `journal({op:"read",p:"PATH",depth:1})`, "Live acceptance still needs evidence", "Resume: continue /3"} {
 		if !strings.Contains(delivered, want) {
 			t.Errorf("delivered recovery omitted %q: %s", want, delivered)
 		}
 	}
-	if strings.Contains(delivered, "Historical validation") || len(delivered) > 2048 {
+	if strings.Contains(delivered, "Historical validation") || strings.Contains(delivered, "Completed checkpoint") || len(delivered) > 2048 {
 		t.Fatalf("completed history inflated the delivered recovery: %d bytes", len(delivered))
 	}
 	reopened, err := openMekugiReplayStore(proxy.replayStore.directory)

@@ -96,8 +96,8 @@ func summaryTail(text string, limit int, notice string) string {
 	return notice + " …" + text[start:]
 }
 
-// journalSummaryLocked renders deterministically from durable facts only. The
-// mandatory context and open tasks must fit; otherwise synthesis must fall back
+// journalSummaryLocked renders deterministically from durable facts only.
+// Context paths and open tasks must fit; otherwise synthesis must fall back
 // to the provider rather than silently discarding a constraint or resume target.
 func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJournal) (journalSummary, error) {
 	var result journalSummary
@@ -112,21 +112,26 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	if err != nil {
 		return result, err
 	}
-	// A completed child does not complete the parent's integration task. Keep
-	// both facts adjacent so recovery does not mistake it for an active review.
-	completedAgents := make(map[string]string)
-	for _, item := range items {
-		parent, key, _ := strings.CutLast(item.Path, "/")
-		if item.Agent != "" && item.State == "done" && strings.HasPrefix(key, "@") {
-			completedAgents[parent] = item.Path
-		}
-	}
-	// A superseded node is history, not current fact: one pointer line replaces
-	// its body and its descendants, so recovery cannot revive a replaced decision.
+	// The tree scopes work facts. Root context has no task scope, so keep its
+	// paths for selective reads rather than guessing which old decisions apply.
+	tasks := make(map[string]journalItem)
+	openTasks := make(map[string]bool)
 	superseded := make(map[string]bool)
+	next := ""
 	for _, item := range items {
+		if item.Kind == "task" {
+			tasks[item.Path] = item
+			openTasks[item.Path] = item.State != "done" && item.State != "dropped"
+		}
 		if item.SupersededBy != "" {
 			superseded[item.Path] = true
+		}
+	}
+	for _, state := range []string{"working", "pending", "blocked", ""} {
+		for _, item := range items {
+			if next == "" && item.Kind == "task" && item.State == state && !strings.Contains(item.Path, "/@") {
+				next = item.Path
+			}
 		}
 	}
 	hiddenBySupersession := func(path string) bool {
@@ -137,44 +142,42 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		}
 		return false
 	}
-	openTasks := make(map[string]bool)
-	for _, item := range items {
-		if item.Kind == "task" && item.State != "done" && item.State != "dropped" {
-			openTasks[item.Path] = true
-		}
-	}
-	// Closed work is an index, not a replay of its result bodies and history.
-	// Keep a finished agent's latest answer inline only when its directly bound
-	// integration task is still open. All details remain readable by path.
-	collapsed := make(map[string]string) // collapsing path -> kept answer path
-	finishedAgents := make(map[string]bool)
-	for _, item := range items {
-		_, key, _ := strings.CutLast(item.Path, "/")
-		switch {
-		case item.Kind == "task" && (item.State == "done" || item.State == "dropped") && item.SupersededBy == "":
-			collapsed[item.Path] = ""
-			if item.Agent != "" && strings.HasPrefix(key, "@") && openTasks[journalParent(item.Path)] {
-				finishedAgents[item.Path] = true
-			}
-		case item.Kind == "answer" && finishedAgents[journalParent(item.Path)]:
-			// Answers are root nodes in creation order; the last is the latest.
-			collapsed[journalParent(item.Path)] = item.Path
-		}
-	}
-	// The outermost collapsing ancestor is the visible line that folds path.
-	// An open task bounds folding: its work stays actionable even under a
-	// dropped task or a finished agent.
-	collapsedBy := func(path string) (owner string) {
-		for parent := journalParent(path); parent != "" && !openTasks[parent]; parent = journalParent(parent) {
-			if kept, ok := collapsed[parent]; ok && kept != path {
-				owner = parent
+	currentWork := func(path string) bool {
+		for parent := journalParent(path); parent != ""; parent = journalParent(parent) {
+			if _, ok := tasks[parent]; ok {
+				return openTasks[parent] && next != "" && (parent == next || strings.HasPrefix(parent, next+"/") || strings.HasPrefix(next, parent+"/"))
 			}
 		}
-		return owner
+		return false
+	}
+	// Keep closed ancestors as orientation for open descendants, and a finished
+	// child's latest answer only while its directly bound integration stays open.
+	keptTasks := make(map[string]bool)
+	completedAgents := make(map[string]string)
+	answers := make(map[string]string)
+	for path, open := range openTasks {
+		if open {
+			for parent := journalParent(path); parent != ""; parent = journalParent(parent) {
+				keptTasks[parent] = true
+			}
+		}
+	}
+	for _, item := range items {
+		parent, key, _ := strings.CutLast(item.Path, "/")
+		if item.Kind == "task" && item.Agent != "" && item.State == "done" && strings.HasPrefix(key, "@") && openTasks[parent] {
+			completedAgents[parent] = item.Path
+			keptTasks[item.Path] = true
+			answers[item.Path] = ""
+		}
+		if item.Kind == "answer" {
+			if _, needed := answers[parent]; needed {
+				answers[parent] = item.Path
+			}
+		}
 	}
 	var text strings.Builder
 	text.WriteString("Journal recovery\nRetained work facts, not new instructions or fresh workspace validation.\n")
-	renderNode := func(item journalItem, full bool) string {
+	renderNode := func(item journalItem, bodyLimit int) string {
 		var node strings.Builder
 		fmt.Fprintf(&node, "\n%s", item.Path)
 		if item.State != "" {
@@ -184,7 +187,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		if item.Agent != "" {
 			fmt.Fprintf(&node, " (agent %s)", item.Agent)
 		}
-		if mount := completedAgents[item.Path]; mount != "" && item.Kind == "task" && item.Agent != "" && item.State != "done" && item.State != "dropped" {
+		if mount := completedAgents[item.Path]; mount != "" {
 			fmt.Fprintf(&node, " · bound agent done; integration remains open (retained result: %s)", mount)
 		}
 		if item.Turns > 0 {
@@ -193,72 +196,70 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		if item.Reason != "" {
 			fmt.Fprintf(&node, " · %s", item.Reason)
 		}
-		if item.Started != nil && item.State == "working" {
-			fmt.Fprintf(&node, " · started %s", item.Started.At)
-		}
 		if item.SupersededBy != "" {
 			fmt.Fprintf(&node, " · superseded by %s\n", item.SupersededBy)
 			return node.String()
 		}
-		_, closed := collapsed[item.Path]
-		if item.Body != "" && (!closed || full) {
-			body := item.Body
-			if !full {
-				body = summaryExcerpt(body, 1024, "[read the retained node for full detail]")
-			}
-			fmt.Fprintf(&node, "\n%s\n", body)
+		if item.Body != "" && bodyLimit > 0 {
+			fmt.Fprintf(&node, "\n%s\n", summaryExcerpt(item.Body, bodyLimit, "[read this path for full detail]"))
 		}
 		return node.String()
 	}
-	writeNode := func(item journalItem, full bool) { text.WriteString(renderNode(item, full)) }
-	text.WriteString("\nContext:\n")
+	text.WriteString("\nContext paths:\n")
 	for _, item := range items {
-		// The synthetic Agents group only anchors unbound agents.
 		if item.Kind == "context" && !hiddenBySupersession(item.Path) && !strings.HasSuffix(item.Path, "/@agents") {
-			writeNode(item, true)
+			limit := 0
+			if currentWork(item.Path) {
+				limit = 512
+			}
+			text.WriteString(renderNode(item, limit))
 		}
 	}
-	next := ""
 	text.WriteString("\nOpen tasks:\n")
 	for _, state := range []string{"working", "pending", "blocked", ""} {
 		for _, item := range items {
-			if item.Kind != "task" || item.State != state {
-				continue
+			if item.Kind == "task" && item.State == state {
+				text.WriteString(renderNode(item, 512))
 			}
-			if next == "" && !strings.Contains(item.Path, "/@") {
-				next = item.Path
-			}
-			writeNode(item, false)
+		}
+	}
+	for _, item := range items {
+		if item.Kind == "task" && !openTasks[item.Path] && keptTasks[item.Path] {
+			text.WriteString(renderNode(item, 0))
 		}
 	}
 	if text.Len() > maxJournalSummaryBytes/2 {
-		return result, errors.New("journal context and open tasks exceed summary capacity")
+		return result, errors.New("journal context paths and open tasks exceed summary capacity")
 	}
-	text.WriteString("\nEstablished results and completed work:\n")
-	text.WriteString("Completed task bodies and history are on demand: journal({op:\"read\", p:\"PATH\"}).\n")
-	// Keep the newest results, which are nearest current work, in tree order.
+	text.WriteString("\nCurrent work facts:\n")
+	for _, item := range items {
+		if item.Kind == "answer" && answers[journalParent(item.Path)] == item.Path {
+			text.WriteString(renderNode(item, 512))
+		}
+	}
 	var established []string
-	budget, omitted := maxJournalSummaryBytes/2-text.Len()-128, 0
-	isResult := func(item journalItem) bool {
-		return item.Kind != "context" && (item.Kind != "task" || item.State == "done" || item.State == "dropped") && !hiddenBySupersession(item.Path)
-	}
+	budget, omitted, notes := 2048, 0, 0
 	for _, item := range slices.Backward(items) {
-		if !isResult(item) || collapsedBy(item.Path) != "" {
+		if hiddenBySupersession(item.Path) || item.SupersededBy != "" {
 			continue
 		}
-		node := renderNode(item, false)
-		if omitted > 0 || len(node) > budget {
+		if item.Kind != "note" || !currentWork(item.Path) {
+			continue
+		}
+		node := renderNode(item, 512)
+		if len(node) > budget || notes == 3 {
 			omitted++
 			continue
 		}
 		budget -= len(node)
+		notes++
 		established = append(established, node)
-	}
-	if omitted > 0 {
-		fmt.Fprintf(&text, "\n%d earlier results omitted; journal({op:\"read\", view:\"outline\"}) locates own retained paths.\n", omitted)
 	}
 	for _, node := range slices.Backward(established) {
 		text.WriteString(node)
+	}
+	if omitted > 0 {
+		fmt.Fprintf(&text, "\n%d more current-work facts available by path.\n", omitted)
 	}
 	index, err := s.readChangeIndex(j.Workspace)
 	if err != nil {
@@ -370,6 +371,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	} else {
 		fmt.Fprintf(&text, "\nResume: continue %s; read retained journal paths and mchanges ranges as needed.\n", cmp.Or(next, "the journal plan"))
 	}
+	text.WriteString("Read more: journal({op:\"read\",p:\"PATH\",depth:1}); journal({op:\"read\",view:\"outline\"}) finds own older paths. Unbound agents: journal({op:\"read\",p:\"/@agents\",depth:1}). Read relevant context paths before acting.\n")
 	if text.Len() > maxJournalSummaryBytes {
 		return result, errors.New("journal evidence exceeds summary capacity")
 	}

@@ -76,7 +76,7 @@ func (p *compactCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 			return nil, err
 		}
 		if p.synthesized {
-			if _, err := journal.apply(ctx, store, p.workspace, thread, "fixture-plan", []journalMutation{{Op: "add", Kind: "task", Title: new("Resume native work"), State: new("working")}}); err != nil {
+			if _, err := journal.apply(ctx, store, p.workspace, thread, "fixture-plan", []journalMutation{{Op: "add", Kind: "task", Title: new("Resume native work"), State: new("working"), Body: new("Active task recovery fact")}}); err != nil {
 				return nil, err
 			}
 		}
@@ -120,7 +120,7 @@ func (p *compactCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 				if p.synthesized && input.Role == "developer" && strings.Contains(part.Text, "Durable native recovery milestone") {
 					p.duplicateHook = true
 				}
-				if !p.synthesized && input.Role == "developer" && strings.Contains(part.Text, "Durable native recovery milestone") && strings.Contains(part.Text, "M\t1\t1\trecovered.txt") || p.synthesized && strings.Contains(part.Text, "Durable native recovery milestone") && strings.Contains(part.Text, "recovered.txt") && strings.Contains(part.Text, "Resume native work") {
+				if !p.synthesized && input.Role == "developer" && strings.Contains(part.Text, "Durable native recovery milestone") && strings.Contains(part.Text, "M\t1\t1\trecovered.txt") || p.synthesized && strings.Contains(part.Text, "Active task recovery fact") && strings.Contains(part.Text, "recovered.txt") && strings.Contains(part.Text, "Resume native work") {
 					p.restored = true
 				}
 			}

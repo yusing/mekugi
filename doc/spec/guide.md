@@ -126,8 +126,9 @@ Acceptance:
 
 ## REQ-GUIDE-002 — Native post-compaction recovery
 
-Main threads recover useful durable facts after compaction without a model-driven
-journal/change lookup. It is on by default in mekugi mode; `--post-compact-recovery=false`
+Main threads receive a current-work handoff after compaction without a model-driven
+lookup to assemble it. Full detail remains available through selective journal/change
+reads. It is on by default in mekugi mode; `--post-compact-recovery=false`
 opts out. The wrapper registers a native Codex `SessionStart` command hook matching
 `compact`, using invocation-local configuration. Codex owns event timing, execution,
 context insertion, and hook-output history. Native
@@ -141,8 +142,12 @@ recovery. This check survives router restart and never acknowledges journal even
 
 The hook reads the retained journal and executing-thread-owned change evidence
 through their existing owners. V2 uses the [evidence-backed journal summary](journal.md#evidence-backed-recovery),
-including paths, task states, constraints and changes/failures captured after the
-last journal event. Retained v1 journals include IDs, authors, questions and delivery
+including open task paths and states, a context-path index, bounded current-work
+excerpts and changes/failures captured after the last journal event. Its short read
+hint directs readers to relevant context before acting and explains how to retrieve
+full detail, discover older own paths and find unbound agents. Closed work and
+history remain readable rather than being indexed in every handoff. Retained v1
+journals include IDs, authors, questions and delivery
 state. Both include retained change ranges, not full diffs. V2 adds aggregated numstat
 only for changes after the last journal event; v1 includes it for all retained changes. These are
 historical facts, not new authorization or proof of current workspace state. No

@@ -128,7 +128,7 @@ func TestJournalCompactionFallbackPreservesProviderRequest(t *testing.T) {
 				}
 			case "oversize-summary":
 				for range 4 {
-					if _, err := proxy.journals.apply(transform.ctx, proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "add", Kind: "context", Title: new("Constraint"), Body: new(strings.Repeat("x", 12000))}}); err != nil {
+					if _, err := proxy.journals.apply(transform.ctx, proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "add", Kind: "context", Title: new(strings.Repeat("Constraint ", 1200))}}); err != nil {
 						t.Fatal(err)
 					}
 				}
