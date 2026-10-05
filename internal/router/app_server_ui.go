@@ -918,7 +918,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		if p.Item.Type == "agentMessage" && m.Method == "item/completed" {
 			p.Item.replacesItems = u.proxy.commentaryReplacementItems(u.ctx, u.session.cwd, p.ThreadID, p.TurnID, p.ItemID)
 		}
-		u.view.applyAppServerItem(u.session.cwd, u.thread, p.ThreadID, p.TurnID, p.ItemID, m.Method, p.Delta, p.Item)
+		u.view.applyAppServerItem(true, u.session.cwd, u.thread, p.ThreadID, p.TurnID, p.ItemID, m.Method, p.Delta, p.Item)
 	}
 	return nil
 }

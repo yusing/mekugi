@@ -49,9 +49,9 @@ func TestResponseCopyChoices(t *testing.T) {
 func TestAppServerCopyPicker(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
-	u.view.applyAppServerItem("", "main", "main", "old", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Answer.\n\n```sh\nprintf '界'  \n```\n"})
-	u.view.applyAppServerItem("", "main", "child", "t", "child", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Not this"})
-	u.view.applyAppServerItem("", "main", "main", "new", "stream", "item/agentMessage/delta", "Partial", appServerItem{})
+	u.view.applyAppServerItem(true, "", "main", "main", "old", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Answer.\n\n```sh\nprintf '界'  \n```\n"})
+	u.view.applyAppServerItem(true, "", "main", "child", "t", "child", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Not this"})
+	u.view.applyAppServerItem(true, "", "main", "main", "new", "stream", "item/agentMessage/delta", "Partial", appServerItem{})
 	u.turn = "new"
 	appServerTestKeys(t, u, "/cop\r")
 	if u.picker.modal != "copy" || u.draft != "" || len(u.picker.choices) != 2 {
@@ -129,7 +129,7 @@ func TestTerminalClipboardSharedSelection(t *testing.T) {
 		}
 		selected := u.shell.clipboard
 		u.shell.clipboard = ""
-		u.view.applyAppServerItem("", "main", "main", "t", "a", "item/completed", "", appServerItem{Type: "agentMessage", Text: "same text"})
+		u.view.applyAppServerItem(true, "", "main", "main", "t", "a", "item/completed", "", appServerItem{Type: "agentMessage", Text: "same text"})
 		appServerTestKeys(t, u, "/copy\r\r")
 		if selected == "" || u.shell.clipboard != selected || u.turn != "active" || wire.Len() != 0 {
 			t.Fatalf("key=%d selected=%q copy=%q wire=%s", key, selected, u.shell.clipboard, wire.Bytes())

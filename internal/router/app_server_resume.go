@@ -363,6 +363,6 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 		if item.Type == "agentMessage" {
 			item.replacesItems = u.proxy.commentaryReplacementItems(u.ctx, u.session.cwd, u.thread, turn.ID, item.ID)
 		}
-		u.view.applyAppServerItem(u.session.cwd, u.thread, u.thread, turn.ID, item.ID, method, "", item)
+		u.view.applyAppServerItem(false, u.session.cwd, u.thread, u.thread, turn.ID, item.ID, method, "", item)
 	}
 }

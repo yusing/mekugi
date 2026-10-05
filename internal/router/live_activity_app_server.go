@@ -204,7 +204,7 @@ func (v *liveActivityView) entrySeq(entry activityPaneEntry) uint64 {
 	return 0
 }
 
-func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, method, delta string, item appServerItem) {
+func (v *liveActivityView) applyAppServerItem(live bool, cwd, main, thread, turn, id, method, delta string, item appServerItem) {
 	if item.Delivery == "async" && len(item.Questions) > 0 {
 		return
 	}
@@ -212,7 +212,7 @@ func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, metho
 		return
 	}
 	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "text", Text: item.Text, Observed: v.now(),
-		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, command: item.Command, status: item.Status, duration: appServerDuration(item), replacesItems: item.replacesItems}}
+		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, live: live, command: item.Command, status: item.Status, duration: appServerDuration(item), replacesItems: item.replacesItems}}
 	if thread != main {
 		entry.Agent = "Thread " + thread
 	}
@@ -289,7 +289,7 @@ func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, metho
 				entry.Agent = "Thread " + thread
 			}
 			entry.Seq, entry.Kind, entry.Text = v.lastSeq+1, "attachments", ""
-			entry.native = &liveActivityNativeItem{thread: thread, turn: turn, item: id + "/attachments", phase: method, attachments: blocks}
+			entry.native = &liveActivityNativeItem{thread: thread, turn: turn, item: id + "/attachments", phase: method, live: live, attachments: blocks}
 			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 		}
 	}

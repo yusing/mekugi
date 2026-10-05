@@ -246,7 +246,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 			u.shell.diffOpen = false
 			u.shell.journalOpen = false
 		}
-		view.applyAppServerItem("", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "hello [report](</tmp/my project/report.go:12>)"})
+		view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "hello [report](</tmp/my project/report.go:12>)"})
 		screen := vt.NewEmulator(120, 30)
 		defer screen.Close()
 		var wire bytes.Buffer

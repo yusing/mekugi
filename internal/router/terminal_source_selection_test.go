@@ -222,7 +222,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 					u.agents.agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 					u.shell.diffOpen, u.shell.journalOpen = false, false
 				}
-				view.applyAppServerItem("", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: source})
+				view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: source})
 				var wire bytes.Buffer
 				if err := u.paint(&wire, width, 50); err != nil {
 					t.Fatal(err)
@@ -265,7 +265,7 @@ func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.agents.agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 	u.shell.diffOpen, u.shell.journalOpen = false, false
-	u.agents.applyAppServerItem("", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
+	u.agents.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
 	var wire bytes.Buffer
 	if err := u.paint(&wire, 120, 40); err != nil {
 		t.Fatal(err)

@@ -54,7 +54,7 @@ func TestLiveActivityChildHostJournalPresentation(t *testing.T) {
 	v := sharedEventsView(true)
 	// Exercise the host message path, not applyJournal, which is Main-only.
 	text := "Journal\n- ● /1 Validate host delivery · done\n\n  Evidence retained."
-	v.applyAppServerItem("", "main", "child", "turn", "message", "item/completed", "", appServerItem{Type: "agentMessage", Text: text})
+	v.applyAppServerItem(true, "", "main", "child", "turn", "message", "item/completed", "", appServerItem{Type: "agentMessage", Text: text})
 	feed := v.renderFeed(80, 40)
 	plain := ansi.Strip(strings.Join(feed.lines, "\n"))
 	for _, want := range []string{"◆ journal", "12:34:56", "│", "Validate host delivery"} {
