@@ -93,7 +93,7 @@ func TestAutoWrapProcess(t *testing.T) {
 		os.Exit(0) // Keep the test runner's PASS line out of the RPC stream.
 	}
 	workspace := os.Getenv("MEKUGI_AUTO_WRAP_WORKSPACE")
-	body := `{"model":"gpt-test","input":[{"role":"user","content":"test"}],"tools":[{"type":"function","name":"exec_command","description":"run a command"},{"type":"custom","name":"apply_patch","description":"apply a patch"}],"tool_choice":"auto"}`
+	body := `{"model":"gpt-test","input":[{"role":"user","content":"test"}],"tools":[{"type":"custom","name":"exec","description":"Run JavaScript with tools.exec_command and tools.apply_patch"}],"tool_choice":"auto"}`
 	request, err := http.NewRequest("POST", os.Getenv("MEKUGI_BASE_URL")+"/responses", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)

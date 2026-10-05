@@ -7,7 +7,7 @@ import (
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
-// Use one label table for native calls and normalized Code Mode identifiers.
+// Use one label table for native calls and normalized exec identifiers.
 // Retain full arguments: auxiliary options are part of the observed operation too.
 func toolActivityBuiltinLabel(name string) string {
 	switch name {

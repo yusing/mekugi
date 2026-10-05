@@ -69,7 +69,7 @@ func TestLoweredCodeModeJournalListReturnsItems(t *testing.T) {
 	t.Parallel()
 	node, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("Node is required to execute lowered Code Mode")
+		t.Skip("Node is required to execute lowered exec")
 	}
 	transform, _ := newRuntimeCommentaryTransform(t)
 	lowered, changed, err := transform.lowerCodeModeCommentary("list-call", `const items = await journal({op:"list",agent:"/root/child"}); process.stdout.write(JSON.stringify(items));`)
@@ -100,8 +100,8 @@ const tools={exec_command:async ({cmd})=>{
 func TestJournalToolIsAbsentInBothModes(t *testing.T) {
 	t.Parallel()
 	_, _, codeMode, _ := newMekugiTestTransformWithProxy(t, newManagedMekugiProxy(t))
-	_, native := newNativeMekugiTestTransformWithProxy(t, newManagedMekugiProxy(t))
-	for name, request := range map[string]*parsedResponsesRequest{"code mode": codeMode, "native": native} {
+	_, native := newTopLevelMekugiTestTransformWithProxy(t, newManagedMekugiProxy(t))
+	for name, request := range map[string]*parsedResponsesRequest{"exec": codeMode, "native": native} {
 		t.Run(name, func(t *testing.T) {
 			var tools []struct {
 				Name string `json:"name"`
@@ -133,7 +133,7 @@ func TestCodeModeJournalCompletionAvoidsProviderContinuation(t *testing.T) {
 		calls    []any
 		requests int
 		flush    bool
-		hint     string // call ID whose result must carry the Code Mode hint
+		hint     string // call ID whose result must carry the exec hint
 		plain    string // call ID whose result must not carry it
 	}{
 		{name: "exec journal is host work", calls: []any{exec}, requests: 1},
@@ -142,7 +142,6 @@ func TestCodeModeJournalCompletionAvoidsProviderContinuation(t *testing.T) {
 		{name: "stray finish", calls: []any{journalCall("finish-call", `{"op":"finish","journal":[{"op":"add","text":"Validated milestone"}]}`)}, requests: 1, flush: true, hint: "finish-call"},
 		// A journal-only list result stays inspectable, so it continues.
 		{name: "list", calls: []any{journalCall("list-call", `{"op":"list"}`)}, requests: 2, plain: "list-call"},
-		{name: "native add", native: true, calls: []any{journalCall("add-call", `{"op":"add","text":"Validated milestone"}`)}, requests: 2, flush: true, plain: "add-call"},
 	} {
 		for _, stream := range []bool{false, true} {
 			t.Run(test.name+map[bool]string{false: "/json", true: "/sse"}[stream], func(t *testing.T) {
@@ -165,7 +164,7 @@ func TestCodeModeJournalCompletionAvoidsProviderContinuation(t *testing.T) {
 					fields["stream"] = stream
 					if test.native {
 						fields["input"] = []any{map[string]any{"role": "user", "content": "task"}}
-						fields["tools"] = testNativeResponsesTools()
+						fields["tools"] = testExecResponsesTools()
 					}
 				})
 				var output bytes.Buffer
@@ -205,7 +204,7 @@ func TestCodeModeJournalCompletionAvoidsProviderContinuation(t *testing.T) {
 				if test.hint != "" {
 					result := results[test.hint]
 					if string(result["ok"]) != "true" || jsonString(result, "hint") != codeModeJournalHint {
-						t.Fatalf("stray Code Mode journal result = %s, want applied with hint", mustMarshalJSON(result))
+						t.Fatalf("stray exec journal result = %s, want applied with hint", mustMarshalJSON(result))
 					}
 				}
 				if test.plain != "" {

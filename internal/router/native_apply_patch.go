@@ -203,7 +203,7 @@ func nativePatchesInCall(name, input, workspace string) []nativePatchObservation
 	return observations
 }
 
-// Inspect the entire Code Mode syntax tree rather than only transparent
+// Inspect the entire exec syntax tree rather than only transparent
 // one-call wrappers. This recognizes literal patch arguments in ordinary JS
 // sequencing and Promise batches, plus immutable top-level literal bindings
 // used by a top-level expression. It never evaluates JavaScript or takes over
@@ -384,7 +384,7 @@ func stockToolOutput(raw json.RawMessage) (text string, success *bool) {
 	return strings.Join(executionOutputTexts(raw), "\n"), nil
 }
 
-// Code Mode's outer completion does not prove a nested apply_patch succeeded:
+// exec's outer completion does not prove a nested apply_patch succeeded:
 // JavaScript can catch a rejected tool call and finish normally. Nor does a
 // yielded cell's first output finish the nested call. Only a terminal host
 // result may be reconciled with the observed workspace outcome.
@@ -470,7 +470,7 @@ func nativePatchDerivedCallID(callID string, index int) string {
 	return callID + ":apply:" + strconv.Itoa(index+1)
 }
 
-// Native patch baselines in a Code Mode cell share one observation window, not
+// Native patch baselines in a exec cell share one observation window, not
 // intermediate per-tool states. Assign each path's window evidence once, to its
 // first observation. A move with shared endpoints is recorded as independent
 // source/target effects: the window cannot establish an intermediate rename.
@@ -585,7 +585,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			},
 		}
 		if len(history.NativePatches) > 1 {
-			attempt.Report += "\nFile evidence spans the Code Mode cell; shared paths are recorded once at their first patch observation, not as per-patch effects."
+			attempt.Report += "\nFile evidence spans the exec cell; shared paths are recorded once at their first patch observation, not as per-patch effects."
 		}
 		if confirmed {
 			attempt.HostResults = []nativeToolResult{nested}

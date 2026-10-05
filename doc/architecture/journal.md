@@ -22,7 +22,7 @@ Cross-agent trees are derived views under the journal/replay locks, authorized b
 complete durable ancestry in one workspace. Records never contain child snapshots.
 Task creation and existing-task updates share the journal owner's binding validator
 and transaction; creation emits one event containing the binding, not an intermediate
-unbound task. Operation-specific native schemas and Code Mode input declarations
+unbound task. Operation-specific structured schemas and JavaScript input declarations
 project through the journal tool guidance owner. Reserved view paths keep foreign
 nodes distinct without changing local ordinals. Native
 sinks cache immutable composed views only. Child lifecycle comes from accepted
@@ -89,14 +89,12 @@ content-free counters at request preparation, mutation acceptance and answer obs
 runtime helper mutations completed between requests. Counter-only persistence
 failure is advisory and cannot replace a successful tool result or final answer.
 
-The router intercepts the dedicated journal tool and returns its result through
-the current response flow rather than a host executor. A valid direct finish
-can select terminal delivery when no client-dispatched work remains. Code Mode
+Retained dedicated journal calls remain replayable. Current journal helper
 mutations use a call-scoped authenticated publisher through a stock executable
 frontend; that publisher cannot complete a turn or acquire Codex execution
 authority. Its finish marker retains a receipt scoped to the originating host
 call and turn. The request pipeline selects local terminal delivery only after
-visible host results and, for Code Mode, native trace outcomes confirm completion.
+visible host results and native trace outcomes confirm completion.
 This restores v1's result-driven completion boundary without its old shell executor.
 Codex still owns the continuation request; no provider inference is admitted for
 that local response. Its mutation rejections are structured results for the helper, while

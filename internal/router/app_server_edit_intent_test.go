@@ -105,11 +105,11 @@ func TestCodeModeEditIntentBatchPreview(t *testing.T) {
 	source := "const r = await tools.exec_command({cmd:" + string(mustMarshalJSON(command)) + "}); text(r);"
 	calls, ok := toolActivityUnwrapExecCalls(source, true)
 	if !ok || len(calls) != 1 {
-		t.Fatalf("Code Mode call was not recognized: %+v", calls)
+		t.Fatalf("exec call was not recognized: %+v", calls)
 	}
 	var arguments map[string]string
 	if err := json.Unmarshal([]byte(jsonString(calls[0], "arguments")), &arguments); err != nil || arguments["cmd"] != command {
-		t.Fatalf("Code Mode call changed command: %+v, %v", arguments, err)
+		t.Fatalf("exec call changed command: %+v, %v", arguments, err)
 	}
 	got := toolActivityShell(command)
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: got})
@@ -117,7 +117,7 @@ func TestCodeModeEditIntentBatchPreview(t *testing.T) {
 		!strings.Contains(got, "Edit `a.go` · python3 (requested)") ||
 		!strings.Contains(got, "Edit `b.go` · python3 (requested)") ||
 		!strings.Contains(got, "go test ./internal/router") || strings.Contains(got, "PRIVATE_BATCH_SOURCE") {
-		t.Fatalf("Code Mode batch preview = %q, blocks %+v", got, blocks)
+		t.Fatalf("exec batch preview = %q, blocks %+v", got, blocks)
 	}
 }
 

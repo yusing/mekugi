@@ -54,7 +54,7 @@ func rolloutFailedCell(at int, call, message string) []map[string]any {
 	}
 }
 
-// Codex's resumed history omits Code Mode cell results and delivered
+// Codex's resumed history omits exec cell results and delivered
 // inter-agent messages; the rollout retains both. Restoration shows them where
 // live Activity did, in both audiences, without the router having seen them.
 func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
@@ -144,7 +144,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	want := []string{
 		"You|text|Review it",
 		"Main|tool",
-		"Main|error|Code Mode script failed: SyntaxError: Unexpected token '<<'",
+		"Main|error|exec script failed: SyntaxError: Unexpected token '<<'",
 		"Main|start|`gpt-6-luna` `high`|Inspect the change.",
 		"Main|reply|/root->/root/reviewer|Keep going.",
 		"/root/reviewer|reply|/root/reviewer->/root|I found a failure.",
@@ -171,7 +171,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	wantPane := []string{
 		"start|`gpt-6-luna` `high`|Inspect the change.",
 		"tool",
-		"error|Code Mode script failed: ReferenceError: tools is not defined",
+		"error|exec script failed: ReferenceError: tools is not defined",
 		"reply|/root->/root/reviewer|Keep going.",
 		"reply|/root/reviewer->/root|I found a failure.",
 		"final|Review complete.",
@@ -239,7 +239,7 @@ func TestAppServerResumeDefersHistoryButKeepsActiveTurn(t *testing.T) {
 	activity := newSubagentActivity()
 	u.proxy = &mekugiProxy{activity: activity}
 	activity.attachNativePane("saved")
-	activity.collect("saved", "late", "error", "Code Mode script failed: late")
+	activity.collect("saved", "late", "error", "exec script failed: late")
 	appServerTestMessage(t, u, `{"id":2,"result":{"data":[],"nextCursor":null}}`)
 	if len(u.view.entries) != 0 {
 		t.Fatalf("observed activity preceded resumed history: %+v", u.view.entries)
@@ -250,7 +250,7 @@ func TestAppServerResumeDefersHistoryButKeepsActiveTurn(t *testing.T) {
 	for _, entry := range u.view.entries {
 		texts = append(texts, entry.Text)
 	}
-	if !slices.Equal(texts, []string{"Still running", "Code Mode script failed: late"}) {
+	if !slices.Equal(texts, []string{"Still running", "exec script failed: late"}) {
 		t.Fatalf("Main order = %q", texts)
 	}
 }

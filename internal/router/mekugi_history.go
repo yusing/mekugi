@@ -75,7 +75,7 @@ func (h mekugiHistory) confirmsReport(raw json.RawMessage) bool {
 		return false
 	}
 	texts := executionOutputTexts(raw)
-	// Code Mode prepends its metadata as a separate content block before
+	// exec prepends its metadata as a separate content block before
 	// text(report). Native exec_command instead returns one combined block.
 	if len(texts) == 2 && h.CarrierName != nativeExecCommandToolName {
 		state, _, body := codeModeExecutionHeader(texts[0])
@@ -499,7 +499,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 	execGroups := make(map[string][]execCompletion)
 	for _, completed := range completedPatches {
 		// A yielded command owns its continuing process, not the completed
-		// patches in its Code Mode cell. Freeze those patches below before a
+		// patches in its exec cell. Freeze those patches below before a
 		// later call can edit their files; only command capture waits here.
 		if completed.history.nativeCell.pending() {
 			continue

@@ -78,11 +78,11 @@ the graceful-shutdown deadline can release a reader waiting on that consumer.
 The client replaces presentation, not projection policy. Codex remains the agent
 runtime and execution authority, and Mekugi's router stays in the model-request
 path; UI plumbing adds no model calls. The client connects to app-server, never
-to the Code Mode host, and submits intent rather than executing tools.
+to the JavaScript execution host, and submits intent rather than executing tools.
 
 | Concern | Owner |
 | --- | --- |
-| Tools, permissions, sandbox, native agents, Code Mode | Codex; the client submits intent and answers server requests. |
+| Tools, permissions, sandbox, native agents, JavaScript execution | Codex; the client submits intent and answers server requests. |
 | Thread, turn and item lifecycle and history | Codex app-server; never reconstructed from rendered text. |
 | Routing, projection, frontend PATH | The router and launcher, with invocation configuration carried into app-server. |
 | Changes and recovery references | The capturer and replay store; native displays reuse their scoped receipts and previews. |
@@ -171,7 +171,7 @@ messages, commands, edit descriptions and answers are presentation history;
 children are not resumed and historical unfinished turns never imply live work.
 Only completed collaboration items imply delivered assignments or messages;
 other attempts retain their recorded status without claiming delivery.
-Codex's history omits Code Mode cell results and delivered inter-agent
+Codex's history omits `exec` cell results and delivered inter-agent
 messages, so each thread's host-selected rollout supplies them when its session
 metadata names that thread: failed-cell rows and the tasks and messages the
 thread received, as live Activity observed them in its requests. Evidence
@@ -227,8 +227,7 @@ last completed preference write; no process resources are restored.
 
 `/side` is deferred; server requests the client cannot answer, such as MCP
 elicitations, stay visibly blocked and are never auto-approved. Not in scope: Codex's TUI, PTY emulation
-or screen scraping for Main; a second execution, permission or Code Mode control
-path; settings clones, onboarding, cloud tasks, voice; Git write actions or edit
+or screen scraping for Main; a second execution or permission control path; settings clones, onboarding, cloud tasks, voice; Git write actions or edit
 rollback; browser frontends or remote hosting; new auth flows; a second
 transcript store or cost calculator; model-visible UI commentary.
 
@@ -350,7 +349,7 @@ projections remain while another edit is streaming or until 1.5 seconds after
 the caller's last update. All of that caller's views then close together and
 its transcript returns. Other callers settle independently. Turn termination
 and explicit withdrawal remove only the affected previews; transient batches
-are not reconstructed by history replay. Shell or Code Mode projections first
+are not reconstructed by history replay. Shell or JavaScript projections first
 received at completion do not open a transient view; captured effects remain in
 their receipt and saved diff.
 Pending exec scope
@@ -359,7 +358,7 @@ without claiming exclusive attribution or successful command completion.
 A recognized literal edit finishes its live card once the observed files match
 the projected edit. A following test in the same shell command keeps its own
 running status, not the edit's dock; test-only work opens no edit card.
-Router previews of exec and Code Mode edits dock the same
+Router previews of nested command and patch edits dock the same
 way. All docks use the shared router preview owner, including its pre-execution
 source snapshots; app-server file-change notifications never reconstruct patches
 or re-read already edited files. A completed input stream remains explicitly
@@ -830,8 +829,8 @@ turning that draft into executable shell text. Acknowledgements do
 not claim command completion. Removing `!` returns to normal compose mode.
 
 The host's opt-in `instant_interrupt` feature lets new input preempt model
-responses and yield long-running Code Mode calls without terminating their
-cells. Native launches forward feature toggles unchanged, including on resume;
+responses and yield long-running `exec` calls without terminating their
+cells. Native launches forward the `instant_interrupt` toggle unchanged, including on resume;
 Codex owns validation, precedence, preemption, and continuation. The client uses
 the same `turn/steer` path for conversation input whether the feature is enabled
 or disabled and never implements instant steering by aborting a turn or replaying a tool.
@@ -1284,7 +1283,7 @@ Codex-owned:
 
 The existing submission path steers during an active turn, starts a turn when
 idle, or queues until input is accepted. Answers wait while a tool call's input
-is being generated, including file edits and Code Mode JavaScript, so instant
+is being generated, including file edits and JavaScript source, so instant
 interrupt cannot cut that input short. They become sendable when the input is
 complete, without waiting for a running command to finish. Ordinary prompts
 retain instant interruption and can pass deferred answers. Different calls are

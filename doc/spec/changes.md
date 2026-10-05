@@ -27,7 +27,7 @@ dependent review evidence as durable.
 
 Completed host results first visible in a compaction request are reconciled before
 either journal synthesis or provider forwarding can discard that input. This
-includes native patches, Code Mode patches and exec-observed writes. Observation
+includes stock patches and exec-observed writes. Observation
 does not project replay carriers or edit notices into the forwarded compaction
 payload. Missing workspace metadata may use only the unique retained workspace
 owned by that thread; ambiguity cannot establish capture scope.
@@ -46,7 +46,7 @@ show only their retained rows, never context borrowed from the current workspace
 or another invocation. Composed net views and apply/revert hunk grouping remain
 compact, so wider review context does not join independently replayable changes.
 
-Patches inside one Code Mode cell share a pre-cell/post-cell observation window.
+Patches inside one `exec` cell share a pre-cell/post-cell observation window.
 Literal complete inputs name their baselines before execution. Host tracing
 confirms individual outcomes and repeated literal call occurrences, without
 evaluating JavaScript or learning a before-state after execution. A cell whose
@@ -60,8 +60,8 @@ independently of sibling command processes that remain running.
 
 ### Command effects
 
-Mekugi records known edit sources in stock `exec_command` and literal Code Mode
-command calls. These include literal text/file redirections (`cat`, `printf`,
+Mekugi records known edit sources in literal stock `tools.exec_command`
+calls. These include literal text/file redirections (`cat`, `printf`,
 `echo`, `tee`), coreutils file operations including `mv` and `rm`, in-place `sed`
 and `perl`, formatters with individually named file targets, supported
 source-derived Python and JavaScript writes, local VCS
@@ -323,11 +323,11 @@ In an interactive terminal, Mekugi opens its integrated viewer on the
 first observed editing or execution call. The stream view shows concurrent
 main-agent and child calls. It streams edits only: provisional `apply_patch`
 diffs and the file effects of shell commands, before completion. Stock `cat`
-heredoc redirections are always streamed, including from a native
-`exec_command` or Code Mode `tools.exec_command` call whose arguments are
+heredoc redirections are always streamed, including from a nested
+`tools.exec_command` call whose arguments are
 still arriving. Literal `cp`, `mv`, `rm`, and `tee` heredoc commands are
 predicted from current file contents. A preview does not claim that Codex ran
-or accepted an edit. A Code Mode patch held in an immutable top-level literal
+or accepted an edit. A nested patch held in an immutable top-level literal
 binding is rendered as the patch preview.
 Literal Python `Path.write_text` and `open(..., "w").write` bodies and literal
 JavaScript `writeFileSync`/`writeFile` bodies can be predicted without evaluation.
@@ -419,7 +419,7 @@ the writer window opened, the card finishes after all recognized
 edit segments (including file copies and Go formatter writes) end or are skipped, independently
 of a following test or other non-edit segment. A uniquely matched native command
 completion also finishes its card when no segment report exists, without waiting
-for later commands in the same Code Mode cell. Its final frame uses observed
+for later commands in the same `exec` cell. Its final frame uses observed
 files, not predicted content; later edit segments keep it open. Ambiguous
 concurrent matches cannot retire each other's cards. Without tracking, a literal edit's card finishes when its
 captured targets match the fully projected edit. The completed card says
@@ -456,7 +456,7 @@ evidence remains available in Activity and the saved diff.
 
 The live batch header names the editing tool for its selected edit before the
 file count, such as `apply_patch`, `python`, or `cat`, including edits nested
-in Code Mode. The enclosing executor is not the editing tool. Unknown editing
+in `exec`. The enclosing executor is not the editing tool. Unknown editing
 tool identity is omitted. Following a new edit or pinning another edit switches
 the header to that edit's tool, not a sibling's.
 
@@ -486,7 +486,7 @@ than draining all line boundaries in a provider burst. A reveal held between
 target units counts the frames it waited, so it can cover several lines; idle
 time before a burst does not count. Bounded lag catch-up may skip ahead. After
 the call finishes, queued units keep distinct reveals for about one second; the
-remaining final input then appears at once. Shell/Code Mode input
+remaining final input then appears at once. Shell/JavaScript input
 that finishes before any target diff was published skips this catch-up and
 publishes its final projection without manufacturing an active stream.
 The reveal advances by whole decoded lines. An unfinished line stays
@@ -614,7 +614,7 @@ joined. Redirected sessions retain stock input/output and inline activity.
 
 Acceptance:
 
-1. Direct and Code Mode patch calls retain exact stock arguments and results.
+1. Nested stock patch calls retain exact arguments and results.
 2. A streaming preview appears before completion but does not create success
    evidence or a change ID before the host result.
 3. Successful, failed, no-op, and partial outcomes are distinguished by
@@ -628,7 +628,7 @@ Acceptance:
    never executes an edit again.
 6. Live `cat`, file-operation, and interpreter projections are presentation
    only and preserve stock PTY, yield, result, and `write_stdin` behavior.
-7. A declared native or literal Code Mode command produces a record with the
+7. A literal nested command produces a record with the
    actual command outcome and reviewable scoped effects. A nonzero exit is retained
    in debug history; saved edits still publish their change receipt.
 8. A yielded command is finalized only by its terminal continuation result.

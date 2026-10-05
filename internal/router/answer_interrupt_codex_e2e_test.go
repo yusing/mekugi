@@ -147,7 +147,7 @@ func (p *answerInterruptCodexProvider) forwardExecution(_, ctx context.Context, 
 				}
 			}
 		}
-		return nil, fmt.Errorf("answer did not yield the running Code Mode cell: %.2000s", body)
+		return nil, fmt.Errorf("answer did not yield the running exec cell: %.2000s", body)
 	}
 	if turn == 4 && p.mode == "exec" {
 		var request struct {
@@ -168,7 +168,7 @@ func (p *answerInterruptCodexProvider) forwardExecution(_, ctx context.Context, 
 			}
 		}
 		if !completed {
-			return nil, fmt.Errorf("wait did not complete the original Code Mode cell")
+			return nil, fmt.Errorf("wait did not complete the original exec cell")
 		}
 	}
 	if turn == 3 || turn == 4 && p.mode == "exec" {

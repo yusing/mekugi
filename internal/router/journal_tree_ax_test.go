@@ -79,11 +79,11 @@ func TestJournalRejectionsNameTheCorrection(t *testing.T) {
 }
 
 // A rejected mutation is the model's correction, not a transport failure, so it
-// must not abort the rest of the Code Mode program.
+// must not abort the rest of the exec program.
 func TestCodeModeJournalRejectionDoesNotAbortProgram(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("Node is required to execute lowered Code Mode")
+		t.Skip("Node is required to execute lowered exec")
 	}
 	proxy, workspace := treeTestJournal(t)
 	treeApply(t, proxy, workspace, journalMutation{Op: "add", Title: new("Root finding")})

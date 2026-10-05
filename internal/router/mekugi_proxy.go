@@ -337,7 +337,6 @@ type mekugiResponseTransform struct {
 	mekugiDeliveryState
 
 	codeModeToolName string
-	nativeTools      bool
 	// sessionShell runs stock commands that name no shell of their own.
 	sessionShell string
 }
@@ -474,7 +473,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		if err != nil {
 			return nil, err
 		}
-		if execution.codeMode == nil && !execution.native {
+		if execution == nil {
 			return nil, nil
 		}
 	}
@@ -510,8 +509,8 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	// Collaboration-only turns still need journal and commentary projection;
 	// absence of execution tools is not an incompatible Codex catalog.
 	codeModeToolName := ""
-	if execution.codeMode != nil {
-		codeModeToolName = execution.codeMode.name
+	if execution != nil {
+		codeModeToolName = execution.name
 	}
 	if p.registry.diagnoseEnabled {
 		if err := exposeReportIssueTool(request.fields, tools); err != nil {
@@ -617,7 +616,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		commentaryEmitted:         make(map[string]struct{}),
 		usageTracker:              p.usage.observation(threadID, metadata.ThreadID, request.model(), usageServiceTier(request.fields["service_tier"])),
 		codeModeToolName:          codeModeToolName,
-		nativeTools:               execution.native,
 		sessionShell:              requestSessionShell(request.fields["input"]),
 	}
 	author := metadata.AgentName

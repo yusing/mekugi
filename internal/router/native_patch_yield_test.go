@@ -91,7 +91,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	}
 	outer, found := lookup("first-cell")
 	if !found {
-		t.Fatal("Code Mode call missing while command is pending")
+		t.Fatal("exec call missing while command is pending")
 	}
 	notice, err := proxy.replayStore.agentEditNotice(transform.ctx, workspace, "first-cell", outer)
 	if err != nil || !strings.Contains(notice, first.ChangeID) {

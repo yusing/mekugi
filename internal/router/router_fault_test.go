@@ -56,21 +56,21 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "stream": true,
 		"input": []any{map[string]any{"role": "user", "content": "run a command"}},
-		"tools": testNativeResponsesTools(), "tool_choice": "auto",
+		"tools": testExecResponsesTools(), "tool_choice": "auto",
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	created := map[string]any{"type": "response.created", "response": map[string]any{"id": "router-fault-response", "status": "in_progress", "output": []any{}}}
 	added := map[string]any{"type": "response.output_item.added", "output_index": 0, "item": map[string]any{
-		"type": "function_call", "id": "router-fault-item", "call_id": "router-fault-call",
-		"name": nativeExecCommandToolName, "arguments": "{}", "status": "in_progress",
+		"type": "custom_tool_call", "id": "router-fault-item", "call_id": "router-fault-call",
+		"name": "exec", "input": "", "status": "in_progress",
 	}}
 	// The provider starts a stock command call and then changes the intercepted
 	// item identity. The real response transform rejects the malformed done event.
 	malformedDone := map[string]any{"type": "response.output_item.done", "output_index": 0, "item": map[string]any{
-		"type": "function_call", "id": "router-fault-item", "call_id": "router-fault-call",
-		"name": "changed_exec_command", "arguments": "{}", "status": "completed",
+		"type": "custom_tool_call", "id": "router-fault-item", "call_id": "router-fault-call",
+		"name": "changed_exec", "input": "", "status": "completed",
 	}}
 	upstream := serverHTTPResponse(routerFaultSSE(created, added, malformedDone))
 	upstream.Header.Set("Content-Type", "text/event-stream")

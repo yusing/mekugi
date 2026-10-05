@@ -285,7 +285,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
 	observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{previewOnly: true, directory: workspace})
 	if !ok || observation == nil || len(commands) != 2 || len(execPreviewExpected(t.Context(), *observation)) != 0 {
-		t.Fatal("fixture must capture two unprojectable edits in one Code Mode cell")
+		t.Fatal("fixture must capture two unprojectable edits in one exec cell")
 	}
 	auto, stop := newAutoLiveDiff(t.Context(), "")
 	defer stop()

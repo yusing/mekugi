@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func prepareNativeStockTransform(t *testing.T, proxy *mekugiProxy, workspace, session string) *mekugiResponseTransform {
@@ -21,7 +20,7 @@ func prepareNativeStockTransform(t *testing.T, proxy *mekugiProxy, workspace, se
 			}}},
 			map[string]any{"role": "user", "content": "task"},
 		},
-		"tools": testNativeResponsesTools(), "tool_choice": "auto",
+		"tools": testExecResponsesTools(), "tool_choice": "auto",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -36,50 +35,22 @@ func prepareNativeStockTransform(t *testing.T, proxy *mekugiProxy, workspace, se
 	return transform
 }
 
-func streamNativePatch(t *testing.T, transform *mekugiResponseTransform, patch string, broker *liveDiffBroker, subscriber *liveDiffSubscriber) {
+// Seed the saved baseline of an older patch without reviving its execution.
+func retainPatchObservation(t *testing.T, transform *mekugiResponseTransform, patch string) {
 	t.Helper()
-	added := mustMarshalJSON(map[string]any{
-		"type": "response.output_item.added", "output_index": 0,
-		"item": map[string]any{
-			"type": "custom_tool_call", "id": "patch-item", "call_id": "patch-call",
-			"name": applyPatchToolName, "input": "", "status": "in_progress",
-		},
-	})
-	delta := mustMarshalJSON(map[string]any{
-		"type": "response.custom_tool_call_input.delta", "item_id": "patch-item", "delta": patch,
-	})
-	done := mustMarshalJSON(map[string]any{
-		"type": "response.custom_tool_call_input.done", "item_id": "patch-item",
-		"call_id": "patch-call", "input": patch,
-	})
-	for _, event := range [][]byte{added, delta} {
-		visible, err := transform.TransformSSE(event)
-		if err != nil || len(visible) != 1 || string(visible[0]) != string(event) {
-			t.Fatalf("stock stream changed: visible=%q err=%v", visible, err)
-		}
-	}
-	if subscriber != nil {
-		preview := waitLiveDiffWorkerPreview(t, broker, subscriber, func(preview diffview.Preview) bool {
-			return len(preview.Files) == 1 && preview.Status == diffview.PreviewEdit && strings.Contains(preview.Files[0].Diff, "+new")
-		})
-		if preview.Input != "" || !strings.Contains(preview.Files[0].Diff, "+new") {
-			t.Fatalf("preview = %+v", preview)
-		}
-	}
-	visible, err := transform.TransformSSE(done)
-	if err != nil || len(visible) != 1 || string(visible[0]) != string(done) {
-		t.Fatalf("stock completion changed: visible=%q err=%v", visible, err)
-	}
-	history, found := transform.local["patch-call"]
-	if !found || len(history.NativePatches) != 1 {
-		t.Fatalf("stock apply_patch was not retained before exposure: found=%v history=%+v", found, history)
+	patches := nativePatchesInCall(applyPatchToolName, patch, transform.directory)
+	transform.openExecWindow("patch-call", nil, patches)
+	item := map[string]json.RawMessage{"type": mustMarshalJSON("custom_tool_call"), "call_id": mustMarshalJSON("patch-call"), "name": mustMarshalJSON(applyPatchToolName), "input": mustMarshalJSON(patch)}
+	transform.recordLocal("patch-call", &mekugiHistory{ToolName: applyPatchToolName, Script: patch, CarrierKind: codeModeCarrierCustom, CarrierName: applyPatchToolName, CarrierPayload: patch, ReplayCarrier: true, UpstreamItem: item, NativePatches: patches, ExecutingThread: transform.shellThreadID, Caller: transform.operationCaller()})
+	if err := transform.commitLocalCall("patch-call"); err != nil {
+		t.Fatal(err)
 	}
 }
 
 func reconcileNativePatchResult(t *testing.T, proxy *mekugiProxy, workspace, patch, output string) mekugiHistory {
 	t.Helper()
 	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
-		"model": "gpt-test", "tools": testNativeResponsesTools(), "tool_choice": "auto",
+		"model": "gpt-test", "tools": testExecResponsesTools(), "tool_choice": "auto",
 		"input": []any{
 			map[string]any{
 				"type": "custom_tool_call", "id": "patch-item", "call_id": "patch-call",
@@ -106,47 +77,6 @@ func reconcileNativePatchResult(t *testing.T, proxy *mekugiProxy, workspace, pat
 	return history
 }
 
-func TestNativeApplyPatchStreamsBeforeCompletionAndPersistsMChangesEvidence(t *testing.T) {
-	t.Parallel()
-	proxy := newManagedMekugiProxy(t)
-	attachTestReplayStore(t, proxy)
-	workspace := t.TempDir()
-	target := filepath.Join(workspace, "file.txt")
-	if err := os.WriteFile(target, []byte("old\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	patch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-old\n+new\n*** End Patch\n"
-	transform := prepareNativeStockTransform(t, proxy, workspace, "stock-session")
-	broker := newLiveDiffBroker(t.Context())
-	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"stock-thread": true}}})
-	subscriber := broker.subscribe()
-	<-subscriber.events
-	proxy.autoLiveDiff = &autoLiveDiff{
-		events: broker, requested: true,
-		scope: liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"stock-thread": true}}},
-	}
-	proxy.autoLiveDiff.enabled.Store(true)
-	streamNativePatch(t, transform, patch, broker, subscriber)
-
-	retained, found, err := proxy.replayStore.lookup(transform.ctx, workspace, "patch-call")
-	if err != nil || !found || retained.Script != patch || len(retained.NativePatches) != 1 {
-		t.Fatalf("pre-execution evidence = %+v, found=%v err=%v", retained, found, err)
-	}
-	if err := os.WriteFile(target, []byte("new\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	history := reconcileNativePatchResult(t, proxy, workspace, patch, "Success. Updated the following files:\nM file.txt\n")
-	if history.ChangeID == "" || len(history.ReviewFiles) != 1 {
-		t.Fatalf("completed evidence = %+v", history)
-	}
-	changes, err := proxy.replayStore.readChanges(transform.ctx, changeReadOptions{
-		workspace: workspace, ids: []string{history.ChangeID}, maxTokens: 4000,
-	})
-	if err != nil || !strings.Contains(changes, "-old") || !strings.Contains(changes, "+new") {
-		t.Fatalf("mchanges evidence = %q, %v", changes, err)
-	}
-}
-
 func TestNativeApplyPatchFailureNeverPublishesSuccessAndRetainsPartialOutcome(t *testing.T) {
 	for _, test := range []struct {
 		name, after string
@@ -165,7 +95,7 @@ func TestNativeApplyPatchFailureNeverPublishesSuccessAndRetainsPartialOutcome(t 
 			}
 			patch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-old\n+new\n*** End Patch\n"
 			transform := prepareNativeStockTransform(t, proxy, workspace, "stock-failure-session")
-			streamNativePatch(t, transform, patch, nil, nil)
+			retainPatchObservation(t, transform, patch)
 			if err := os.WriteFile(target, []byte(test.after), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -197,7 +127,7 @@ func TestCodeModeLiteralPatchObservationInOrdinaryJavaScript(t *testing.T) {
 	source := "const result = await Promise.allSettled([tools.exec_command({cmd: 'printf ready'}), tools.apply_patch(" + string(mustMarshalJSON(patch)) + ")]); text(result);"
 	observed := nativePatchesInCall("exec", source, t.TempDir())
 	if len(observed) != 1 || observed[0].Input != patch || len(observed[0].Files) != 1 {
-		t.Fatalf("ordinary Code Mode patch observation = %+v", observed)
+		t.Fatalf("ordinary exec patch observation = %+v", observed)
 	}
 	if got := stockLiteralPatchInputs("const patch = " + string(mustMarshalJSON(patch)) + "; await tools.apply_patch(patch);"); len(got) != 1 || got[0] != patch {
 		t.Fatalf("immutable literal binding was not recognized: %+v", got)

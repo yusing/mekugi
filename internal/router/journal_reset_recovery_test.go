@@ -129,7 +129,7 @@ func TestJournalSummaryUnconfirmedExecutionsUseRetainedOutcomes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Execution observations without retained completion:", "2 earlier observations omitted.", "not proof of a running process", "No continuation handle or Code Mode store value is restored"} {
+	for _, want := range []string{"Execution observations without retained completion:", "2 earlier observations omitted.", "not proof of a running process", "No continuation handle or exec store value is restored"} {
 		if !strings.Contains(summary.Text, want) {
 			t.Fatalf("missing %q: %s", want, summary.Text)
 		}
@@ -145,7 +145,7 @@ func TestJournalCodeModePromiseBatchRecovery(t *testing.T) {
 	t.Parallel()
 	node, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("Node is required to execute lowered Code Mode")
+		t.Skip("Node is required to execute lowered exec")
 	}
 	for _, failure := range []bool{false, true} {
 		t.Run(fmt.Sprint(failure), func(t *testing.T) {

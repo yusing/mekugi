@@ -128,24 +128,24 @@ func TestNativeBatchRetainsCompletedCall(t *testing.T) {
 
 func TestNativeBatchRetainsSequentialFilesInOneCall(t *testing.T) {
 	pane := PreviewPane{Retain: true}
-	pane.Update(batchTestPreview("code-mode", "/root", "src/a.go"))
+	pane.Update(batchTestPreview("exec", "/root", "src/a.go"))
 	batchTestRender(t, &pane, 31)
-	firstKey := previewFileKey{"code-mode", "/workspace/src/a.go"}
+	firstKey := previewFileKey{"exec", "/workspace/src/a.go"}
 	first := pane.batches["/root"].files[firstKey]
-	pane.Update(batchTestPreview("code-mode", "/root", "src/b.go"))
+	pane.Update(batchTestPreview("exec", "/root", "src/b.go"))
 	batchTestRender(t, &pane, 31)
 	batch := pane.batches["/root"]
-	if !slices.Equal(batch.order, []previewFileKey{firstKey, {"code-mode", "/workspace/src/b.go"}}) || batch.files[firstKey] != first {
+	if !slices.Equal(batch.order, []previewFileKey{firstKey, {"exec", "/workspace/src/b.go"}}) || batch.files[firstKey] != first {
 		t.Fatal("sequential file projection discarded the earlier file or its viewport")
 	}
-	completed := pane.Views["code-mode"].Current
+	completed := pane.Views["exec"].Current
 	completed.Complete = true
 	pane.Update(completed)
 	batchTestRender(t, &pane, 31)
-	if !first.Complete || !batch.files[previewFileKey{"code-mode", "/workspace/src/b.go"}].Complete {
+	if !first.Complete || !batch.files[previewFileKey{"exec", "/workspace/src/b.go"}].Complete {
 		t.Fatal("completion did not settle all projected files in the call")
 	}
-	pane.Update(Preview{ID: "code-mode", Workspace: "/workspace"})
+	pane.Update(Preview{ID: "exec", Workspace: "/workspace"})
 	if rows := batchTestRender(t, &pane, 31); len(rows) != 0 || len(batch.files) != 0 || len(batch.order) != 0 {
 		t.Fatal("explicit withdrawal retained a sequential file projection")
 	}

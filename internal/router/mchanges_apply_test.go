@@ -191,7 +191,7 @@ func TestMChangesRevertIsRecordedAndRevertable(t *testing.T) {
 		t.Helper()
 		transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session-"+callID)
 		arguments := string(mustMarshalJSON(map[string]any{"cmd": command, "workdir": workspace}))
-		streamNativeExecCommand(t, transform, callID, arguments)
+		retainCommandObservation(t, transform, callID, arguments)
 		observation := transform.local[callID].ExecObservation
 		if observation == nil || observation.Class != "declared" {
 			t.Fatalf("%q observation = %+v", command, observation)

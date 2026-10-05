@@ -23,7 +23,7 @@ func TestNativeExecForwardingWhileCaptureWorkersUnavailable(t *testing.T) {
 	transform := prepareNativeStockTransform(t, proxy, workspace, "deadline-session")
 	arguments := string(mustMarshalJSON(map[string]any{"cmd": "rm missing", "workdir": workspace}))
 	started := time.Now()
-	streamNativeExecCommand(t, transform, "deadline-call", arguments)
+	retainCommandObservation(t, transform, "deadline-call", arguments)
 	if elapsed := time.Since(started); elapsed > execCaptureHold+250*time.Millisecond {
 		t.Fatalf("host forwarding exceeded capture hold: %v", elapsed)
 	}

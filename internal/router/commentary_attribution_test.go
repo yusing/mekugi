@@ -83,7 +83,7 @@ func TestChildCommentaryAttributionJSONAndSSE(t *testing.T) {
 					t.Fatalf("replay: %s", replay.fields["input"])
 				}
 			}
-			// Code Mode captures the child author before execution and keeps it for live delivery.
+			// exec captures the child author before execution and keeps it for live delivery.
 			code := map[string]any{"type": "custom_tool_call", "name": second.codeModeToolName, "id": "code-item", "call_id": "code-call", "input": "await journal({op: 'add', text: 'Code work.'});"}
 			if _, err := second.TransformSSE(mustTestJSON(t, map[string]any{"type": "response.output_item.done", "item": code})); err != nil {
 				t.Fatal(err)
@@ -92,12 +92,12 @@ func TestChildCommentaryAttributionJSONAndSSE(t *testing.T) {
 			proxy.commentary.publish(codeToken, "Code work.", false)
 			publications := proxy.commentary.drain(codeToken)
 			if len(publications) != 1 {
-				t.Fatal("Code Mode publication missing")
+				t.Fatal("exec publication missing")
 			}
 			message := second.runtimeCommentaryMessage(publications[0])
 			// The publication stays in the child's own thread, which already names its author.
 			if message == nil || !bytes.Contains(message["content"], []byte("Code work.")) || bytes.Contains(message["content"], []byte("/root/")) {
-				t.Fatalf("Code Mode publication: %s", mustTestJSON(t, message))
+				t.Fatalf("exec publication: %s", mustTestJSON(t, message))
 			}
 			// A capability survives its creator and a later request with absent metadata.
 			token := testRuntimeCommentaryCall(t, first, "deferred-code-call")

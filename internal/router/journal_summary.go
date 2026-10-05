@@ -310,7 +310,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		}
 	}
 	if len(unconfirmed) > 0 {
-		text.WriteString("\nExecution observations without retained completion:\nPre-execution observations only, not proof of a running process. Check current host state before starting overlapping work. No continuation handle or Code Mode store value is restored.\n")
+		text.WriteString("\nExecution observations without retained completion:\nPre-execution observations only, not proof of a running process. Check current host state before starting overlapping work. No continuation handle or exec store value is restored.\n")
 		start := max(0, len(unconfirmed)-8)
 		if start > 0 {
 			fmt.Fprintf(&text, "%d earlier observations omitted.\n", start)

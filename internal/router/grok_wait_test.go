@@ -16,7 +16,7 @@ func TestGrokWaitWireAlias(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			definitions := []any{
-				map[string]any{"type": "function", "name": "wait", "description": "Wait for a running Code Mode cell.",
+				map[string]any{"type": "function", "name": "wait", "description": "Wait for a running exec cell.",
 					"parameters": map[string]any{"type": "object", "properties": map[string]any{"cell_id": map[string]string{"type": "string"}}}},
 				// A caller's literal alias-like name must not collide with wait.
 				map[string]any{"type": "function", "name": alias},

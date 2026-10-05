@@ -14,7 +14,7 @@ func TestExecExplicitSiblingsShareDurableRecord(t *testing.T) {
 	var items []any
 	for _, ref := range []string{"first", "second"} {
 		arguments := string(mustMarshalJSON(map[string]any{"cmd": "printf " + ref + " > generated", "workdir": workspace}))
-		streamNativeExecCommand(t, transform, ref, arguments)
+		retainCommandObservation(t, transform, ref, arguments)
 		items = append(items, map[string]any{"type": "function_call", "call_id": ref, "name": nativeExecCommandToolName, "arguments": arguments},
 			map[string]any{"type": "function_call_output", "call_id": ref, "output": nativeExecOutput("Process exited with code 0")})
 	}
@@ -48,8 +48,8 @@ func TestExecYieldedSiblingFinishesAfterOtherMemberWasSaved(t *testing.T) {
 	transform := prepareNativeStockTransform(t, proxy, workspace, "yielded-siblings")
 	firstArguments := string(mustMarshalJSON(map[string]any{"cmd": "printf first > first.txt", "workdir": workspace}))
 	secondArguments := string(mustMarshalJSON(map[string]any{"cmd": "printf second > second.txt", "workdir": workspace, "yield_time_ms": 1000}))
-	streamNativeExecCommand(t, transform, "first", firstArguments)
-	streamNativeExecCommand(t, transform, "second", secondArguments)
+	retainCommandObservation(t, transform, "first", firstArguments)
+	retainCommandObservation(t, transform, "second", secondArguments)
 	firstCall := map[string]any{"type": "function_call", "call_id": "first", "name": nativeExecCommandToolName, "arguments": firstArguments}
 	secondCall := map[string]any{"type": "function_call", "call_id": "second", "name": nativeExecCommandToolName, "arguments": secondArguments}
 	items := []any{

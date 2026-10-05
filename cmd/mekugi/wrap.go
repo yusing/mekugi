@@ -434,6 +434,21 @@ func watchStartupInterrupts(ctx context.Context, cancel context.CancelFunc, inte
 }
 
 func codexArgs(baseURL string, args []string, journal, skillsManagerAvailable, openAIAuth bool) []string {
+	if journal {
+		args = slices.Clone(args)
+		// Codex applies feature toggles after -c overrides. Normalize conflicting
+		// toggles too, without interpreting prompt operands after --.
+		for i := 0; i < len(args) && args[i] != "--"; i++ {
+			switch args[i] {
+			case "--disable":
+				if i+1 < len(args) && (args[i+1] == "code_mode" || args[i+1] == "code_mode_only") {
+					args[i] = "--enable"
+				}
+			case "--disable=code_mode", "--disable=code_mode_only":
+				args[i] = strings.Replace(args[i], "--disable=", "--enable=", 1)
+			}
+		}
+	}
 	// Keep overrides in the final command's config layer: Codex subcommands
 	// can replace pre-subcommand -c settings with their own. Never cross --.
 	index := slices.Index(args, "--")
@@ -441,8 +456,8 @@ func codexArgs(baseURL string, args []string, journal, skillsManagerAvailable, o
 		index = len(args)
 	}
 	if journal {
-		args = slices.Insert(slices.Clone(args), index, "-c", "tools.update_plan.enabled=false")
-		index += 2
+		args = slices.Insert(slices.Clone(args), index, "-c", "tools.update_plan.enabled=false", "-c", "features.code_mode=true", "-c", "features.code_mode_only=true")
+		index += 6
 	}
 	overrides := []string{
 		"--disable", "goals",

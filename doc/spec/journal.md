@@ -169,7 +169,7 @@ that fact and its retained result path beside the parent task. The parent's
 integration remains open; neither child prose nor a done lifecycle completes it.
 Pre-execution observations without a retained outcome are listed separately, with
 at most eight entries and an omitted count. These are not claims that processes
-are still running. Recovery restores neither continuation handles nor Code Mode
+are still running. Recovery restores neither continuation handles nor JavaScript
 store values; the host remains authoritative for live execution state.
 
 Journal guidance asks authors to keep explicit constraints and settled decisions
@@ -344,9 +344,9 @@ are retained; irreducible capacity failures reject atomically instead of losing 
 The managed record byte limit applies independently. Historical v1 timestamps are
 unknown rather than fabricated.
 
-Each mutation is `plan`, `add`, `set`, `log`, or `remove`. Native eligible non-strict
+Each mutation is `plan`, `add`, `set`, `log`, or `remove`. Eligible stock non-strict
 function tools accept an optional atomic `journal` array, applied before execution
-and removed from host arguments. Code Mode uses the exec-local `journal(...)` helper.
+and removed from host arguments. JavaScript `exec` uses the exec-local `journal(...)` helper.
 The helper returns a Promise: direct awaits and calls joined in an awaited
 `Promise.all` or `Promise.allSettled` preserve normal JavaScript concurrency and
 rejection handling. No dedicated journal tool is exposed. Operations are:
@@ -379,7 +379,7 @@ rejection handling. No dedicated journal tool is exposed. Operations are:
   fact to an unrelated task.
 - `remove {p}`: removes a mistaken subtree, retaining its removal event.
 - `finish`: a control marker with no operands or node, allowed only last in a
-  Code Mode helper batch or a native stock `exec_command`/`write_stdin` journal array.
+  JavaScript helper batch or a nested stock `exec_command`/`write_stdin` journal array.
   The preceding mutations and invocation-scoped receipt persist atomically; the marker
   contributes no returned path. A lone helper marker returns null. A rejected batch
   records no finish receipt. It does not stop or execute host work.
@@ -394,7 +394,7 @@ rejection handling. No dedicated journal tool is exposed. Operations are:
   and outline reads without an explicit agent require only the caller's record, so
   unavailable descendant journals cannot prevent local ID recovery.
 
-Model-facing native inputs are operation-specific closed schemas; Code Mode guidance
+Structured mutation inputs are operation-specific closed schemas; `exec` guidance
 includes discriminated TypeScript input declarations. They reject unsupported fields
 and restrict creation-time agent binding to explicit task creation. These are input
 shapes, not a new JavaScript execution or static-checking authority; callers can
@@ -410,7 +410,7 @@ and do not retain a success receipt.
 A rejected operation in a batch names its one-based position and op. Undecodable
 payloads name the offending member.
 Single mutations return their affected path; plans and batches return paths in order.
-Code Mode also displays the returned path array for a plan, an add, or a batch
+The helper also displays the returned path array for a plan, an add, or a batch
 containing either, without changing the helper's return value or performing another
 read. Other mutations address paths the caller already holds and display nothing.
 Receipt replay returns the original result without applying effects twice.
@@ -451,7 +451,7 @@ On Codex's subsequent continuation, matching successful host results and the ret
 thread/turn/call receipt select a local completed response and journal delivery without
 forwarding that request to the provider. Later user input, unrelated calls, missing
 receipts, failed results and unfinished work cannot select this path. Matching host
-continuations remain host-owned. Code Mode additionally requires its completed native
+continuations remain host-owned. Completion additionally requires the completed native
 trace and successful nested tool outcomes, not printed success prose. Restart can
 recover a receipt for the same thread and turn; forks and later turns cannot reuse it.
 When results require further provider interpretation or the user needs a substantive
@@ -583,7 +583,7 @@ validation, review status or remaining work. Requested explanations,
 review findings, answers to user questions and necessary questions remain substantive
 conversation, without a journal-specific length or format.
 
-Code Mode lowers the helper to authenticated `mjournal` through stock `exec_command`;
+The router lowers the helper to authenticated `mjournal` through stock `exec_command`;
 one cell-local helper serves all calls, including nested and concurrent calls,
 without repeating its transport implementation at each call site. It neither runs
 the surrounding program nor owns the host lifecycle. Read transport
@@ -597,7 +597,7 @@ publisher-unavailable failures throw. Read and transport errors name the operati
 and retain the underlying diagnostic; unresolved agents name the normalized
 selector and explain canonical addressing and local-read recovery. Missing read
 paths explain how to recover paths in the same agent and view. Credentials and
-authored source stay out of sanitized metrics, which count Code Mode rejections
+authored source stay out of sanitized metrics, which count helper rejections
 separately from acceptances.
 
 ### Delivery failures
@@ -618,7 +618,7 @@ still require their own terminal evidence.
 
 ### Acceptance
 
-1. Native and Code Mode mutations reach the same atomic owner; host input remains
+1. Structured journal fields and JavaScript helper mutations reach the same atomic owner; host input remains
    exact apart from removing the optional journal field. Retained replay is idempotent.
 2. Stable paths, nested planning, omission/drop rules, reasons and end-of-batch parent
    validation survive restart and independent forks.
@@ -632,7 +632,7 @@ still require their own terminal evidence.
 5. Child JSON/SSE results omit echoed questions and opaque aliases, deliver only new
    work after acknowledgement, and include only the corresponding owned evaluations.
 6. Instruction projection exposes one v2 API description, keeps stock tool authority,
-   removes update_plan, and directs mutations onto useful calls, work finals to a
+   uses invocation-local plan-tool disablement, and directs mutations onto useful calls, work finals to a
    concise Outcome, and ordinary replies to conversational answers.
 7. Installed Codex root JSON output receives a child live milestone while the child
    is still working, independently of the child's terminal result. Root visibility

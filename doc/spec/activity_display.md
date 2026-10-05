@@ -86,7 +86,7 @@ row is cut without one. Fenced multiline `Run` previews sit beside the verb with
 the code gutter. In Main a command or program preview keeps at most five wrapped rows, the
 last a muted `… +N lines` count (under the code gutter for a program), so a one-line
 command that wraps is bounded too; a click opens the whole source and retained
-output in the output dialog, without expanding the transcript. Tabs in previews expand to four spaces. `Run JavaScript` Code Mode previews always place source beneath
+output in the output dialog, without expanding the transcript. Tabs in previews expand to four spaces. `Run JavaScript` previews always place source beneath
 the heading with the same code gutter, whether the source has one line or many.
 A confirmed nonzero command exit makes the verb red and adds `· exit N` after
 the command, or on its own row when it does not fit or follows a multiline
@@ -160,7 +160,7 @@ Errors show a bounded first-line preview rather than an unbounded inline diagnos
 A details link and click target appear only when that preview omits retained content;
 a complete single-line diagnostic may wrap without gaining a redundant link.
 Clicking an elided error opens its complete retained text,
-including multiline Code Mode failures restored from history. `Ctrl-B !` opens
+including multiline JavaScript execution failures restored from history. `Ctrl-B !` opens
 the newest error in the focused Main or Activity transcript; Left/Right navigates
 its other retained errors, respecting the Activity agent filter. Error details
 render literally rather than as Markdown, and use the dialog's full-page copy
@@ -390,7 +390,7 @@ Explicitly reported zero input or output totals
 remain valid. While a response streams, output grows by an estimate of about four
 bytes of visible delta per token, refreshed every second; the provider's reported
 usage replaces the estimate when the response ends. Hidden reasoning is not
-estimated, and input changes only when usage is reported. A Code Mode batch shows its latest
+estimated, and input changes only when usage is reported. An `exec` batch shows its latest
 operation and the count of the others. When the separate roster is visible,
 the activity pane gives its whole body to the feed. The native layout contract owns narrow-terminal and compact-roster placement.
 Shared column widths derive from currently visible roster rows. Before hiding agents, cards compact to one row per agent, retaining

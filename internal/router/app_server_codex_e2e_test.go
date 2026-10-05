@@ -41,7 +41,7 @@ func TestAppServerPreviewCodeMode(t *testing.T) {
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
 	if provider.turns != 2 || !provider.resultSeen {
-		t.Fatalf("Code Mode did not complete exactly once: turns=%d result=%v", provider.turns, provider.resultSeen)
+		t.Fatalf("exec did not complete exactly once: turns=%d result=%v", provider.turns, provider.resultSeen)
 	}
 }
 

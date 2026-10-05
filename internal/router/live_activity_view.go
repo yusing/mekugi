@@ -393,10 +393,10 @@ func (v *liveActivityView) feedAgents() []liveActivityRosterRow {
 	return rows
 }
 
-// unreturnedOutputNote marks command output its Code Mode cell never returned.
+// unreturnedOutputNote marks command output its exec cell never returned.
 const unreturnedOutputNote = "output not returned to the model"
 
-// markUnreturned notes a command's output that its Code Mode cell never
+// markUnreturned notes a command's output that its exec cell never
 // returned, so the row does not imply the model saw it. A command with no
 // output has nothing to note. The note is a filter annotation, which a later
 // receipt for the same call keeps.

@@ -168,8 +168,10 @@ options or replay offline. Noninteractive commands retain Codex's exit status.
   replays a request.
 - Grok and OpenCode requests use HTTP and their own credentials. Third-party
   credentials do not enable those providers in `mekugi codex`.
-- Invocation-only overrides disable collaboration-mode instructions, route
-  `gpt-5.6-terra` to `gpt-6-sol`, and select standard cybersecurity safeguards
+- Mekugi-mode sessions require a model with Codex's JavaScript `exec` interface. Mekugi forces
+  that interface for the invocation; unsupported models fail before inference.
+- Invocation-only overrides disable the plan tool and collaboration-mode
+  instructions, route `gpt-5.6-terra` to `gpt-6-sol`, and select standard cybersecurity safeguards
   rather than Daybreak. No configuration files change.
 - Private [replay records](#replay-storage) include tool inputs and change
   evidence. Native Codex tracing also records prompts and responses in a
@@ -601,8 +603,8 @@ output, exit status, start/end timestamps and measured duration. Older history
 without timing evidence shows no per-command duration.
 Without retained output boundaries, the dialog labels the output as combined.
 Errors keep a short inline preview. Click **details**, or focus Main or Activity
-and press `Ctrl-B` then `!`, to read the full error, including restored Code Mode
-failures. The keyboard shortcut opens the newest error; Left/Right reaches the
+and press `Ctrl-B` then `!`, to read the full error, including restored
+JavaScript execution failures. The keyboard shortcut opens the newest error; Left/Right reaches the
 other retained errors in that transcript. Host-omitted text cannot be recovered.
 
 - Left/Right or a click switches tabs. `j`/`k`, `PgUp`/`PgDn`, and `g`/`G`

@@ -18,7 +18,7 @@ import (
 const restoredRolloutLimit = 64 << 20
 
 // restoredRollout is observational evidence that Codex's thread history
-// omits: Code Mode cell results and delivered inter-agent messages. Live
+// omits: exec cell results and delivered inter-agent messages. Live
 // Activity reads the same records from provider input, so restoration
 // projects them the same way instead of replaying any effect.
 type restoredRollout struct {

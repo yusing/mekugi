@@ -44,9 +44,9 @@ func TestResponseTranslationRetriesPersistenceAfterBackgroundCleanup(t *testing.
 				}
 				running, _ := retentionTestSession(t, store, "running", 0)
 				retentionTestPut(t, store, running, workspace, "running-call")
-				const arguments = `{"cmd":"printf evidence > authored.txt","shell":"bash"}`
-				item := map[string]any{"type": "function_call", "id": "item", "call_id": "new-call",
-					"name": nativeExecCommandToolName, "arguments": arguments, "status": "completed"}
+				const source = `text(await tools.exec_command({cmd:"printf evidence > authored.txt",shell:"bash"}))`
+				item := map[string]any{"type": "custom_tool_call", "id": "item", "call_id": "new-call",
+					"name": "exec", "input": source, "status": "completed"}
 				response := map[string]any{"id": "response", "status": "completed", "output": []any{item}}
 				upstream := serverHTTPResponse(string(mustTestJSON(t, response)))
 				if stream {
@@ -71,7 +71,7 @@ func TestResponseTranslationRetriesPersistenceAfterBackgroundCleanup(t *testing.
 				request := serverRequest(t, func(fields map[string]any) {
 					fields["stream"] = stream
 					fields["input"] = []any{map[string]any{"role": "user", "content": "task"}}
-					fields["tools"] = testNativeResponsesTools()
+					fields["tools"] = testExecResponsesTools()
 				})
 				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 				defer cancel()
@@ -90,7 +90,7 @@ func TestResponseTranslationRetriesPersistenceAfterBackgroundCleanup(t *testing.
 					t.Fatal(err)
 				}
 				history, found, err := reopened.lookup(t.Context(), workspace, "new-call")
-				if err != nil || !found || jsonString(history.UpstreamItem, "arguments") != arguments {
+				if err != nil || !found || jsonString(history.UpstreamItem, "input") != source {
 					t.Fatalf("completed evidence not durable: found=%v err=%v history=%+v", found, err, history)
 				}
 			})

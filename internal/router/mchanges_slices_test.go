@@ -156,7 +156,7 @@ func TestMChangesHistoryReportsSavedEffectsWithoutCommandResult(t *testing.T) {
 		ToolName: nativeExecCommandToolName,
 		Script:   "text(await tools.exec_command({cmd: 'touch file.txt'}));\n",
 		ExecOutcome: &execOutcome{
-			Status: "", Class: "Code Mode", Coverage: execCoverageExact,
+			Status: "", Class: "exec", Coverage: execCoverageExact,
 		},
 		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "before\n", "after\n")},
 	})
@@ -551,10 +551,10 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 	codeMode := f.reserve(t, f.thread, codeModeCorrelation)
 	f.publish(t, codeMode, codeModeCorrelation, "unconfirmed-codemode-call", mekugiHistory{
 		ToolName:        nativeExecCommandToolName,
-		Script:          "text(await tools.exec_command({cmd: 'touch code-mode.txt'}));\n",
+		Script:          "text(await tools.exec_command({cmd: 'touch exec.txt'}));\n",
 		ExecObservation: &execObservation{CodeMode: true},
 		ExecOutcome:     &execOutcome{Status: "", Coverage: execCoverageExact},
-		ReviewFiles:     []mekugi.ReviewFile{mekugi.RenderReviewFile("code-mode.txt", "code-mode.txt", "before\n", "after\n")},
+		ReviewFiles:     []mekugi.ReviewFile{mekugi.RenderReviewFile("exec.txt", "exec.txt", "before\n", "after\n")},
 	})
 	stdout, stderr, status := f.run(t, "mchanges --net "+codeMode)
 	if status != 0 || stderr != "" || strings.Contains(stdout, "composing observed effects") || !strings.Contains(stdout, "-before\n+after\n") {

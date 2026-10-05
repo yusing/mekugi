@@ -164,7 +164,7 @@ func TestCodeModeJournalPlanPathsAreVisibleAndReturned(t *testing.T) {
 	t.Parallel()
 	node, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("Node is required to execute lowered Code Mode")
+		t.Skip("Node is required to execute lowered exec")
 	}
 	for _, mutation := range []string{`{op:"plan",tasks:["One","Two","Three"]}`, `[{op:"plan",tasks:["One","Two","Three"]}]`} {
 		transform, _ := newRuntimeCommentaryTransform(t)

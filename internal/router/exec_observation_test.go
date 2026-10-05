@@ -290,7 +290,7 @@ func TestExecObservationSkipsNeutralCommands(t *testing.T) {
 		}
 	}
 	if _, observed := captureExecObservation([]execCommandInput{{Command: "rm a", Workdir: t.TempDir(), Shell: "bash"}}, true, true, execCaptureEnv{}); !observed {
-		t.Error("a dynamic Code Mode cell was not observed")
+		t.Error("a dynamic exec cell was not observed")
 	}
 }
 
@@ -351,7 +351,7 @@ func TestCodeModeExecLiteralCommandAndResultDependentPollStayDirect(t *testing.T
 	}
 	observation, observed := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
 	if !observed || observation == nil || observation.Class == execOpaque.String() || !observation.CodeMode {
-		t.Fatalf("Code Mode observation = %+v observed=%v; polling must not make the literal command opaque", observation, observed)
+		t.Fatalf("exec observation = %+v observed=%v; polling must not make the literal command opaque", observation, observed)
 	}
 	var baseline *execFileSnapshot
 	for i := range observation.Files {
@@ -397,27 +397,30 @@ func TestExecResultState(t *testing.T) {
 	}
 }
 
-func streamNativeExecCommand(t *testing.T, transform *mekugiResponseTransform, callID, arguments string) {
+// retainCommandObservation seeds an older saved command for replay tests.
+// New model calls use exec; retained host evidence keeps its original identity.
+func retainCommandObservation(t *testing.T, transform *mekugiResponseTransform, callID, arguments string) {
 	t.Helper()
-	item := map[string]any{"type": "function_call", "id": callID + "-item", "call_id": callID, "name": nativeExecCommandToolName, "arguments": arguments, "status": "completed"}
-	added := mustMarshalJSON(map[string]any{"type": "response.output_item.added", "output_index": 0, "item": map[string]any{
-		"type": "function_call", "id": callID + "-item", "call_id": callID, "name": nativeExecCommandToolName, "arguments": "", "status": "in_progress",
-	}})
-	delta := mustMarshalJSON(map[string]any{"type": "response.function_call_arguments.delta", "item_id": callID + "-item", "delta": arguments})
-	argumentsDone := mustMarshalJSON(map[string]any{"type": "response.function_call_arguments.done", "item_id": callID + "-item", "arguments": arguments})
-	done := mustMarshalJSON(map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item})
-	for _, event := range [][]byte{added, delta, argumentsDone, done} {
-		visible, err := transform.TransformSSE(event)
-		if err != nil || len(visible) != 1 || string(visible[0]) != string(event) {
-			t.Fatalf("stock exec_command stream changed: visible=%q err=%v", visible, err)
-		}
+	command, ok := execCommandArguments(arguments, transform.directory, transform.sessionShell)
+	if !ok {
+		t.Fatal("invalid retained command fixture")
+	}
+	observation, observed := transform.snapshotExecObservation(captureExecObservation([]execCommandInput{command}, false, false, transform.execCaptureEnvironment(nil)))
+	if !observed {
+		return
+	}
+	transform.openExecWindow(callID, observation, nil)
+	item := map[string]json.RawMessage{"type": mustMarshalJSON("function_call"), "call_id": mustMarshalJSON(callID), "name": mustMarshalJSON(nativeExecCommandToolName), "arguments": mustMarshalJSON(arguments)}
+	transform.recordLocal(callID, &mekugiHistory{ToolName: nativeExecCommandToolName, Script: arguments, CarrierKind: codeModeCarrierFunction, CarrierName: nativeExecCommandToolName, CarrierPayload: arguments, ReplayCarrier: true, UpstreamItem: item, ExecObservation: observation, ExecutingThread: transform.shellThreadID, Caller: transform.operationCaller()})
+	if err := transform.commitLocalCall(callID); err != nil {
+		t.Fatal(err)
 	}
 }
 
 func reconcileExecItems(t *testing.T, proxy *mekugiProxy, workspace string, items []any) *mekugiResponseTransform {
 	t.Helper()
 	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
-		"model": "gpt-test", "tools": testNativeResponsesTools(), "tool_choice": "auto",
+		"model": "gpt-test", "tools": testExecResponsesTools(), "tool_choice": "auto",
 		"input": append(items, map[string]any{"role": "user", "content": "continue"}),
 	}))
 	if err != nil {
@@ -457,7 +460,7 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 			writeTestFile(t, target, "gone\n")
 			transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session")
 			arguments := string(mustMarshalJSON(map[string]any{"cmd": "rm a.txt", "workdir": workspace, "yield_time_ms": 1000}))
-			streamNativeExecCommand(t, transform, "exec-call", arguments)
+			retainCommandObservation(t, transform, "exec-call", arguments)
 			if history := transform.local["exec-call"]; history.ExecObservation == nil || history.CarrierPayload != arguments {
 				t.Fatalf("stock exec_command was not retained before exposure: %+v", history)
 			}
@@ -526,7 +529,7 @@ func TestNativeExecCommandWithoutEffectAllocatesNoChange(t *testing.T) {
 	workspace := t.TempDir()
 	transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session")
 	arguments := string(mustMarshalJSON(map[string]any{"cmd": "rm -f missing.txt"}))
-	streamNativeExecCommand(t, transform, "exec-call", arguments)
+	retainCommandObservation(t, transform, "exec-call", arguments)
 	reconcileExecItems(t, proxy, workspace, []any{
 		map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments},
 		map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process exited with code 0")},
@@ -548,7 +551,7 @@ func TestReadCommandFormsAllocateNoChanges(t *testing.T) {
 		for _, codeMode := range []bool{false, true} {
 			mode := "native"
 			if codeMode {
-				mode = "code-mode"
+				mode = "exec"
 			}
 			t.Run(mode+"/"+command, func(t *testing.T) {
 				proxy := newManagedMekugiProxy(t)
@@ -573,13 +576,13 @@ func TestReadCommandFormsAllocateNoChanges(t *testing.T) {
 					}
 					index, err := proxy.replayStore.readChangeIndex(workspace)
 					if err != nil || len(index.Changes) != 0 {
-						t.Fatalf("read-only Code Mode command allocated changes: %+v, %v", index, err)
+						t.Fatalf("read-only exec command allocated changes: %+v, %v", index, err)
 					}
 				} else {
 					workspace := t.TempDir()
 					transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session")
 					arguments := string(mustMarshalJSON(map[string]string{"cmd": command}))
-					streamNativeExecCommand(t, transform, "exec-call", arguments)
+					retainCommandObservation(t, transform, "exec-call", arguments)
 					reconcileExecItems(t, proxy, workspace, []any{
 						map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments},
 						map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process exited with code 0")},
@@ -608,7 +611,7 @@ func TestCodeModeExecCommandRecordsUnconfirmedEffects(t *testing.T) {
 		t.Fatal(err)
 	}
 	if history := transform.local["code-call"]; history.ExecObservation == nil || !history.ExecObservation.CodeMode {
-		t.Fatalf("Code Mode command was not observed: %+v", history)
+		t.Fatalf("exec command was not observed: %+v", history)
 	}
 	writeTestFile(t, filepath.Join(workspace, "f"), "new\n")
 	request := parsedResponsesRequest{fields: map[string]json.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{
@@ -621,7 +624,7 @@ func TestCodeModeExecCommandRecordsUnconfirmedEffects(t *testing.T) {
 	}
 	history, found, err := proxy.replayStore.lookup(t.Context(), workspace, "code-call:effects")
 	if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
-		t.Fatalf("Code Mode record = %+v found=%v err=%v", history, found, err)
+		t.Fatalf("exec record = %+v found=%v err=%v", history, found, err)
 	}
 	if history.ExecOutcome == nil || history.ExecOutcome.Status != "" {
 		t.Fatalf("missing host exit must not claim a command result: %+v", history.ExecOutcome)

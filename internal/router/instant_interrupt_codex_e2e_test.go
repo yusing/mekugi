@@ -136,7 +136,7 @@ func (p *instantInterruptCodexProvider) forwardExecution(_ context.Context, resp
 			}
 		}
 		if p.cell == "" {
-			return nil, fmt.Errorf("steering did not yield the original Code Mode cell: %.2000s", body)
+			return nil, fmt.Errorf("steering did not yield the original exec cell: %.2000s", body)
 		}
 		return mchangesNestedCodexResponse(2, map[string]any{"type": "function_call", "id": "instant-wait-item", "call_id": "instant-wait", "name": "wait", "status": "completed", "arguments": string(mustMarshalJSON(map[string]any{"cell_id": p.cell, "yield_time_ms": 10000}))}), nil
 	case 3:

@@ -2,9 +2,9 @@
 
 ## CTR-EXECUTION-001 — Host-owned editing and process lifecycle
 
-Codex owns stock `apply_patch`, `exec_command`, Code Mode JavaScript, permissions,
+Codex owns stock `apply_patch`, `exec_command`, JavaScript tool execution, permissions,
 sandboxing, processes, and yielded-session continuation. Mekugi's request
-projection only adds journal guidance to the Code Mode tool description. It
+projection adds journal and session-helper guidance to the `exec` description. It
 does not replace the execution catalog or create a carrier for an unchanged
 stock call.
 
@@ -12,7 +12,7 @@ The response observer reads completed stock arguments once, captures bounded
 pre-edit source for named paths, and later reconciles the result with the
 workspace outcome. It does not authorize, parse for execution, or replay an
 edit. The command classifier derives a write scope from Bash syntax and
-literal Code Mode calls only; it never evaluates a program, expands a
+literal nested tool calls only; it never evaluates a program, expands a
 variable, or consults the router's environment. The interpreter is the call's
 own shell or the session shell named in the request. Destinations that depend
 on the filesystem, such as a copy into an existing directory, resolve when the
@@ -63,7 +63,7 @@ Segment tracking (`REQ-EXECUTION-002`) has four owners:
   thread/turn/script matches; they do not consume Activity's dirty flag or
   acquire ownership of command completion. Each preview retains at most one
   matched report per captured script until it closes, so Activity retirement
-  cannot erase an earlier member of a sequential Code Mode batch. Additional
+  cannot erase an earlier member of a sequential `exec` batch. Additional
   matches mark that script ambiguous without retaining more reports. Only host
   items started after the preview window opened are eligible, including when an
   older item's helper report arrives late.

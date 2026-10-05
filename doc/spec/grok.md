@@ -54,7 +54,7 @@ calls and their identities/results, parallel calls, structured output, reasoning
 Multipart text retains separate content parts so visible-output source identities do not merge.
 Empty text arrays retain empty-string content.
 Custom tool grammars remain explicit input instructions and are still validated by their existing
-router/executor owners. The Code Mode `exec` description also states that only `text(...)` output
+router/executor owners. The `exec` description also states that only `text(...)` output
 reaches the model, so a nested tool's result must be printed, and that its input is JavaScript,
 not shell; Codex models need neither note. The OpenCode route shares this translation.
 Provider-hosted OpenAI search is not offered on the Grok route; the model is
@@ -71,7 +71,7 @@ In particular, Codex's `wait` tool must not be sent under the bare name `wait`: 
 can finish with `tool_calls` while omitting that call. Catalog entries, explicit tool choice,
 and replayed calls use the same alias; Responses events retain Codex's original name and arguments.
 
-Code Mode `wait`'s `yield_time_ms` and `max_tokens` are advertised to Grok as integers,
+`wait`'s `yield_time_ms` and `max_tokens` are advertised to Grok as integers,
 matching Codex's native handler. This prevents the provider from serializing them as
 floating-point values that Codex rejects; submitted argument bytes are not rewritten.
 

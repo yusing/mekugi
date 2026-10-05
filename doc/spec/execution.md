@@ -32,9 +32,12 @@ and implicit command boundaries preserve command arguments.
 
 ## REQ-EXECUTION-001 — Preserve Codex's execution authority
 
-In Mekugi mode, the Codex request keeps its stock Code Mode JavaScript
-`functions.exec` tool or native `apply_patch` and `exec_command` tools. The
-router does not replace their names, schemas, arguments, results, or execution
+In Mekugi mode, launches require Codex's JavaScript `exec` interface. The wrapper
+forces invocation-local `features.code_mode=true` and `features.code_mode_only=true`
+after caller overrides. Models that advertise top-level `apply_patch` or
+`exec_command` instead receive an unsupported-interface error before inference.
+Stock `apply_patch` and `exec_command` execute through the nested tool catalog;
+the router does not replace their names, schemas, arguments, results, or execution
 path. The only exceptions are the in-shell segment tracking of
 [REQ-EXECUTION-002](#req-execution-002--track-each-segment-of-a-command-list), which
 keeps the result and the Codex-owned process lifecycle unchanged, and the remote
@@ -44,7 +47,7 @@ guarded command. When enabled, this guard uses Codex's native
 `PreToolUse.updatedInput` hook to instrument shell command text. This is a narrow
 exception to byte-identical command input: tool identity, all other arguments,
 selected shell, results, permissions, sandbox and continuations stay Codex-owned.
-Code Mode batching, including `Promise.allSettled`, remains available. Codex
+`exec` batching, including `Promise.allSettled`, remains available. Codex
 owns permissions, sandboxing, command processes, yielded sessions, and
 `write_stdin` continuation. Mekugi never reruns a stock call while observing,
 replaying, or displaying it.
@@ -65,7 +68,7 @@ them rather than leaving detached descendants. A dedicated Linux frontend also
 reaps resolver orphans after an explicit cleanup result; on other platforms,
 those descendants remain in the stock group until the command ends.
 
-A streaming `apply_patch` argument, including a decoded Code Mode string literal,
+A streaming `apply_patch` argument, including a decoded JavaScript string literal,
 produces a provisional live diff as patch text arrives, without waiting for the
 closing quote, call, or end marker. An unfinished argument or preview has no application
 status. After Codex returns a result and the workspace outcome is observable,
@@ -74,7 +77,7 @@ result is forwarded unchanged, including errors. A failed call may have a
 partial workspace effect, but it never publishes a successful edit receipt.
 
 Command observation under [REQ-CHANGES-001](changes.md) reads the completed
-`exec_command` arguments or literal Code Mode command text. The forwarded call
+`exec_command` arguments or literal nested command text. The forwarded call
 stays byte-identical through observation; the approval guard may subsequently
 instrument command text through the native hook described above. Pre-call capture
 is time-bounded so that an unreadable scope becomes incomplete evidence rather
@@ -86,7 +89,7 @@ durable; they do not replace original stock output.
 
 Wrapped Mekugi launches enable Codex's native rollout trace in a private,
 session-scoped temporary directory. Observation joins the executing thread,
-outer call and source, Code Mode cell, and individual tool results. It does not
+outer call and source, `exec` cell, and individual tool results. It does not
 wrap tools, change JavaScript, install execution hooks, or trust printed results.
 Shell success requires a terminal exit code of zero, not merely a completed
 dispatch. A yielded process stays unfinished until its native runtime result.
@@ -106,14 +109,14 @@ invoke configured hooks, preprocessors, filters, or monitors. Missing tools and
 provider timeouts reduce evidence coverage without replacing the stock result.
 
 Input completion flushes the authoritative final input through the preview worker,
-including Code Mode JavaScript and native command arguments. Final content and
+including JavaScript source and nested command arguments. Final content and
 the streaming-complete marker share one snapshot, so coalescing cannot leave a
 truncated last frame. This remains auxiliary projection, not tool completion or
 execution evidence; interrupted requests without completed input do not flush
 a fabricated final script.
 
 The live stream may also display stock `cat` heredoc writes, literal file
-operations, and interpreter programs extracted from `exec_command` or Code Mode. This projection is for
+operations, and interpreter programs extracted from nested `exec_command` calls. This projection is for
 visibility only: it does not execute the command, create change evidence by
 itself, or claim success before the host result. Commands continue to use
 Codex's normal PTY, yield timing, environment, workdir, and session IDs.
@@ -123,11 +126,11 @@ requires the terminal host result and post-result reconciliation.
 
 Acceptance:
 
-1. Direct native `apply_patch` and `exec_command` pass through with their
+1. Nested stock `apply_patch` and `exec_command` pass through with their
    original arguments and results, except for the eligible model-visible output
-   projection and native approval-guard command instrumentation above. The same
-   holds for Code Mode calls.
-2. A Code Mode cell can batch or parallelize stock tools, including a patch
+   projection and native approval-guard command instrumentation above.
+   Unsupported top-level execution catalogs fail before inference.
+2. An `exec` cell can batch or parallelize stock tools, including a patch
    alongside an independent command, without router-side serial execution.
 3. Streaming patch input produces an early provisional preview; incomplete
    calls produce no successful durable change.

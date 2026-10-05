@@ -100,7 +100,7 @@ type execOmission struct {
 }
 
 // execObservation is the durable pre-call capture of one observed call: a
-// native exec_command, or all literal commands of one Code Mode cell.
+// native exec_command, or all literal commands of one exec cell.
 type execObservation struct {
 	Commands []execCommandInput
 	// CommandClasses retain pre-call classification for repeated literal
@@ -125,7 +125,7 @@ type execObservation struct {
 	// final equality cannot prove those intermediate attempts had no effects.
 	RepeatedPaths bool `json:",omitzero"`
 	// LiteralClass preserves pre-captured scope independently of uncertainty
-	// about additional Code Mode calls whose arguments are not yet resolved.
+	// about additional exec calls whose arguments are not yet resolved.
 	LiteralClass string `json:",omitempty"`
 	// Inventory is the selected workspace before an opaque call. It is
 	// window evidence, separate from the explicit scope above.
@@ -370,8 +370,8 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 	}
 	if dynamic {
 		observation.LiteralClass = class.String()
-		class, observation.Reason = execOpaque, "Code Mode cell has a non-literal command"
-		observation.Programs = append(observation.Programs, execProgram{Label: "Code Mode command"})
+		class, observation.Reason = execOpaque, "exec cell has a non-literal command"
+		observation.Programs = append(observation.Programs, execProgram{Label: "exec command"})
 		if filepath.IsAbs(env.directory) {
 			observation.Roots = execAddRoot(observation.Roots, filepath.Clean(env.directory))
 		}
@@ -1270,7 +1270,7 @@ func boundExecReviews(reviews []mekugi.ReviewFile, complete bool) ([]mekugi.Revi
 	return reviews, complete
 }
 
-// execResultState reads a stock command or Code Mode result. A yielded native
+// execResultState reads a stock command or exec result. A yielded native
 // session or running cell returns the continuation key that later completes it.
 func execResultState(toolName string, raw json.RawMessage) (terminal bool, exit *int, completed bool, text, pending string) {
 	text, _ = stockToolOutput(raw)
@@ -1308,7 +1308,7 @@ func execDerivedCallID(callID string, codeMode bool) string {
 
 func execObservationScript(observation execObservation) string {
 	if len(observation.Commands) == 0 {
-		return "# Code Mode commands are not literal\n"
+		return "# exec commands are not literal\n"
 	}
 	if !observation.CodeMode && len(observation.Commands) == 1 {
 		return observation.Commands[0].Command
@@ -1617,7 +1617,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 }
 
 // stockLiteralExecCommands extracts literal tools.exec_command calls from a
-// Code Mode cell. Any other reference to the command tools, including
+// exec cell. Any other reference to the command tools, including
 // write_stdin input that can drive a started process, makes the cell dynamic.
 func stockLiteralExecCommands(source, directory, sessionShell string) (commands []execCommandInput, dynamic bool) {
 	if len(source) > maxMekugiScriptBytes || !strings.Contains(source, "tools") {

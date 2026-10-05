@@ -22,16 +22,36 @@ import (
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
+func TestCodexArgsForcesExecutionFeatureToggles(t *testing.T) {
+	// Codex folds feature toggles after -c overrides, with disables last.
+	// Source: codex-rs/cli/src/main.rs FeatureToggles::to_overrides.
+	for _, prefix := range [][]string{nil, {"exec"}, {"app-server"}, {"resume"}} {
+		input := append(slices.Clone(prefix), "--disable", "code_mode", "--disable=code_mode_only", "--disable", "unrelated", "--", "--disable=code_mode")
+		original := slices.Clone(input)
+		got := codexArgs("http://localhost/v1", input, true, false, true)
+		want := append(slices.Clone(prefix), "--enable", "code_mode", "--enable=code_mode_only", "--disable", "unrelated")
+		if !slices.Equal(got[:len(want)], want) || !slices.Equal(got[len(got)-2:], []string{"--", "--disable=code_mode"}) || !slices.Equal(input, original) {
+			t.Fatalf("execution overrides changed unrelated flags, prompt or caller input: %q", got)
+		}
+		passthrough := codexArgs("http://localhost/v1", input, false, false, true)
+		if !slices.Equal(passthrough[:len(want)], original[:len(want)]) {
+			t.Fatalf("passthrough feature flags changed: %q", passthrough)
+		}
+	}
+}
+
 func TestCodexArgsPreservesArguments(t *testing.T) {
 	forwarded := []string{"exec", "-c", "model=\"example\"", "--", "a prompt with spaces"}
 	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true, true)
 	index := slices.Index(forwarded, "--")
-	if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[index+14:], forwarded[index:]) {
+	if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[index+18:], forwarded[index:]) {
 		t.Fatalf("forwarded arguments changed: %q", args)
 	}
 	var config struct {
 		Features struct {
-			Goals *bool `toml:"goals"`
+			Goals    *bool `toml:"goals"`
+			Exec     *bool `toml:"code_mode"`
+			ExecOnly *bool `toml:"code_mode_only"`
 		} `toml:"features"`
 		IncludeCollaborationModeInstructions *bool `toml:"include_collaboration_mode_instructions"`
 		Skills                               struct {
@@ -46,11 +66,11 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 			Auth       bool   `toml:"requires_openai_auth"`
 		} `toml:"model_providers"`
 	}
-	if !slices.Equal(args[index+2:index+4], []string{"--disable", "goals"}) {
+	if !slices.Equal(args[index+6:index+8], []string{"--disable", "goals"}) {
 		t.Fatalf("goal feature toggle not disabled: %q", args)
 	}
 	var settings []string
-	for i := index; i < index+14; i += 2 {
+	for i := index; i < index+18; i += 2 {
 		if args[i] == "--disable" {
 			continue
 		}
@@ -67,6 +87,9 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 	}
 	if config.Skills.IncludeInstructions == nil || *config.Skills.IncludeInstructions {
 		t.Fatalf("skill instructions not disabled: %q", args)
+	}
+	if config.Features.Exec == nil || !*config.Features.Exec || config.Features.ExecOnly == nil || !*config.Features.ExecOnly {
+		t.Fatalf("exec interface not forced: %q", args)
 	}
 	if config.Features.Goals == nil || *config.Features.Goals {
 		t.Fatalf("goals not disabled: %q", args)

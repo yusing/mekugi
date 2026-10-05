@@ -799,7 +799,7 @@ func TestNewRequestDoesNotReadUnrelatedRetentionCatalog(t *testing.T) {
 	if _, err := store.readRetainedSession(name); err == nil {
 		t.Fatal("unrelated catalog was not invalid")
 	}
-	newNativeMekugiTestTransformWithProxy(t, proxy)
+	newTopLevelMekugiTestTransformWithProxy(t, proxy)
 }
 
 func TestBackgroundRetentionReportsUnrelatedCatalogFailure(t *testing.T) {

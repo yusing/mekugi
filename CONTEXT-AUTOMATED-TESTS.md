@@ -10,14 +10,14 @@ The fixtures are the `internal/router/*_codex_e2e_test.go` files. List them with
 `git grep -h '^func Test.*E2E' -- 'internal/router/*_codex_e2e_test.go'`.
 
 The frontend fixture invokes an authenticated configured command through
-stock Code Mode `tools.exec_command`, including cwd, environment, argv, stdin
+stock exec `tools.exec_command`, including cwd, environment, argv, stdin
 separation, and exit status. The mrun fixture checks Codex-owned PTY yield and
 `write_stdin` continuation. The journal fixture checks native child
 assignment, live milestones, terminal child result, and parent delivery without
 an extra final-answer provider request.
 
 The host-finish journal fixture carries the completion marker with useful stock
-execution inside Code Mode for both root and native child. It verifies terminal
+execution inside exec for both root and native child. It verifies terminal
 journal delivery without forwarding the tool-result continuation to the provider,
 and that no standalone journal tool is advertised. The ordinary journal fixture
 retains provider-authored substantive-final coverage.

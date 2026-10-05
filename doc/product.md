@@ -55,7 +55,7 @@ successful edits.
 
 ### Execute and resume work through Codex
 
-An agent uses stock `exec_command`, directly or in Code Mode JavaScript, and
+An agent uses stock `tools.exec_command` through JavaScript `exec` and
 can batch independent calls. Session IDs returned by Codex continue through
 `write_stdin`; Mekugi does not create a competing process handle.
 
@@ -78,7 +78,7 @@ Mekugi includes:
 - bounded UTF-8 source reads, symbol lookup, structural inspection, and
   retained output continuation through authenticated executable frontends;
 - observation of stock edits, change review, and provisional live previews;
-- stock Code Mode JavaScript and host-owned execution with batching and
+- stock JavaScript tool execution with batching and
   yielded-session continuation;
 - router-local executable plugin declarations;
 - durable replay, journals, session inspection, commentary, diagnostics, and

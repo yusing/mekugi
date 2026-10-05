@@ -13,14 +13,14 @@ layout; [session notices](notices.md) own actionable diagnostics. Journals own
 Codex app-server supplies command, edit, collaboration, web, image, and other tool
 items for Main and child Activity. Completed host items and turn events establish
 execution state. The router does not regenerate operation messages from provider
-Responses calls, interpret arbitrary Code Mode output as session evidence, or
+Responses calls, interpret arbitrary JavaScript output as session evidence, or
 reconstruct a parallel activity lifecycle from request history.
 
-Nested Code Mode tool activity follows the host's event stream. Independent
+Nested JavaScript tool activity follows the host's event stream. Independent
 `Promise.allSettled` calls remain parallel; presentation cannot serialize their
 execution. Static source recognition used for [execution previews](execution.md)
 and [change capture](changes.md) remains separate from native activity delivery.
-The host emits no item for a Code Mode cell itself. When a new cell result carries
+The host emits no item for an `exec` cell itself. When a new cell result carries
 the host's `Script failed` header, the router adds one error row to that agent's
 activity with a bounded first-line preview of the host's trailing script error,
 so a script that fails before any nested tool call still shows. The complete error
@@ -85,7 +85,7 @@ DIR. A command in the workspace, or with an unknown directory or workspace, has
 no directory label. Live and restored rows derive it from the same host item, and
 adjacent reads in different directories do not merge.
 Wait and input presentation follows typed host events and their command/item
-identity. The activity observer does not reconstruct process or Code Mode cell
+identity. The activity observer does not reconstruct process or `exec` cell
 state from request history, guess a command for an uncorrelated poll, or treat
 printed output as continuation evidence. When a turn ends without a wait item
 completion, its roster status becomes `Wait ended`, not `Waiting for agent`.
@@ -166,13 +166,13 @@ A successful command or segment does not confirm an edit: named intent remains
 requested until retained file evidence replaces it. Tracked failed and skipped
 edit segments keep their outcomes visible, even when sibling edits have a receipt.
 
-Stock `apply_patch`, including transparent Code Mode calls using immutable
+Stock `apply_patch`, including transparent nested tool calls using immutable
 literal patch bindings, does not emit a bare `Edit` label, a generic `Run`
 preview, or its patch body into child activity. After the host result and
 workspace outcome are recorded, authenticated successful edit receipts
 classify each changed path as
 `Create`, `Edit`, `Delete`, or `Move` with added and removed line counts and a
-bounded diff of the observed hunks. A completed transparent Code Mode cell
+bounded diff of the observed hunks. A completed transparent `exec` cell
 reports its complete observed workspace effect the same way, without claiming
 nested patch success.
 Classification uses the same review files as `mchanges`; it does not guess from
@@ -182,7 +182,7 @@ unfinished patches produce no successful edit summary, and repeated receipts
 are deduplicated. The live pane separately owns full provisional and completed
 diff display under [REQ-CHANGES-001](changes.md).
 Completed native file-change items can open their own host-supplied diffs before
-the containing Code Mode batch exits. Durable captured review remains preferred
+the containing `exec` batch exits. Durable captured review remains preferred
 when available; this immediate navigation neither snapshots the workspace nor
 publishes completed change evidence. Pending, failed, and declined host items
 do not supply a completed-diff navigation fallback.

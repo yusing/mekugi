@@ -128,7 +128,7 @@ func TestJournalCodeModeTreeReadReassemblesPages(t *testing.T) {
 	t.Parallel()
 	node, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("Node is required to execute lowered Code Mode")
+		t.Skip("Node is required to execute lowered exec")
 	}
 	transform, _ := newRuntimeCommentaryTransform(t)
 	lowered, changed, err := transform.lowerCodeModeCommentary("read-call", `const nodes = await journal({op:"read",p:"/1",depth:1,view:"tasks"}); process.stdout.write(JSON.stringify(nodes));`)

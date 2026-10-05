@@ -790,7 +790,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		if block.ExitCode != 0 && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)) {
 			exit = Red + fmt.Sprintf("(exit %d)", block.ExitCode) + Reset
 		}
-		// Keep Code Mode source below its long heading, regardless of source line count.
+		// Keep exec source below its long heading, regardless of source line count.
 		// Other single-line programs or arguments read best on the operation row.
 		if code != "" && !strings.Contains(code, "\n") && (label == "" || !block.Fenced) && !(block.Fenced && block.Verb == "Run JavaScript") {
 			inline := p.code(block.Verb, code)

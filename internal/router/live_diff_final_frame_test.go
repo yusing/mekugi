@@ -14,15 +14,10 @@ import (
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
-func newLiveDiffFinalFrameTransform(t *testing.T, native bool) (*mekugiResponseTransform, *liveDiffBroker, *liveDiffSubscriber) {
+func newLiveDiffFinalFrameTransform(t *testing.T) (*mekugiResponseTransform, *liveDiffBroker, *liveDiffSubscriber) {
 	t.Helper()
 	proxy := newManagedMekugiProxy(t)
-	var transform *mekugiResponseTransform
-	if native {
-		transform, _ = newNativeMekugiTestTransformWithProxy(t, proxy)
-	} else {
-		transform, _, _, _ = newMekugiTestTransformWithProxy(t, proxy)
-	}
+	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	workspace, thread := transform.directory, transform.threadID
 	broker := newLiveDiffBroker(t.Context())
 	scope := liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {thread: true}}}
@@ -42,7 +37,7 @@ func requireLiveDiffSSEUnchanged(t *testing.T, transform *mekugiResponseTransfor
 	}
 }
 
-// liveDiffCodeModeCat is Code Mode input whose literal cat writes lines.
+// liveDiffCodeModeCat is exec input whose literal cat writes lines.
 func liveDiffCodeModeCat(t *testing.T, path string, lines ...string) string {
 	t.Helper()
 	encoded, err := json.Marshal("cat > " + path + " <<'EOF'\n" + strings.Join(lines, "\n") + "\nEOF\n")
@@ -58,7 +53,7 @@ func liveDiffPreviewAdds(preview diffview.Preview, line string) bool {
 
 func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeEdit(t *testing.T) {
 	t.Parallel()
-	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
+	transform, broker, sub := newLiveDiffFinalFrameTransform(t)
 	workerCtx, cancel := context.WithCancel(transform.ctx)
 	transform.ctx = workerCtx
 	defer cancel()
@@ -77,7 +72,7 @@ func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeEdit(t *testing.T)
 	})
 	worker := transform.previews["exec-item"]
 	if worker == nil {
-		t.Fatal("Code Mode stream has no preview worker")
+		t.Fatal("exec stream has no preview worker")
 	}
 
 	// Queue one more partial delta immediately before done, without waiting for
@@ -126,7 +121,7 @@ func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeEdit(t *testing.T)
 
 func TestLiveDiffFinalFrameOutputItemDoneFallback(t *testing.T) {
 	t.Parallel()
-	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
+	transform, broker, sub := newLiveDiffFinalFrameTransform(t)
 	fullInput := liveDiffCodeModeCat(t, "fallback.txt", "first", "FALLBACK_FINAL")
 	delta := fullInput[:strings.Index(fullInput, "FALLBACK_FINAL")]
 	for _, event := range [][]byte{
@@ -147,35 +142,9 @@ func TestLiveDiffFinalFrameOutputItemDoneFallback(t *testing.T) {
 	})
 }
 
-func TestLiveDiffFinalFrameNativeExecArgumentsDoneUsesFullCommand(t *testing.T) {
-	t.Parallel()
-	transform, broker, sub := newLiveDiffFinalFrameTransform(t, true)
-	arguments := string(mustTestJSON(t, map[string]string{"cmd": "cat > native.txt <<'EOF'\nfirst\nFINAL_NATIVE\nEOF\n"}))
-	delta := arguments[:strings.Index(arguments, "FINAL_NATIVE")]
-	for _, event := range [][]byte{
-		mustTestJSON(t, map[string]any{"type": "response.output_item.added", "output_index": 0,
-			"item": map[string]any{"type": "function_call", "id": "native-item", "call_id": "native-call", "name": "exec_command", "arguments": "", "status": "in_progress"}}),
-		mustTestJSON(t, map[string]any{"type": "response.function_call_arguments.delta", "item_id": "native-item", "delta": delta}),
-	} {
-		requireLiveDiffSSEUnchanged(t, transform, event)
-	}
-	// Unfinished JSON arguments stream their literal cat write.
-	waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
-		return liveDiffPreviewAdds(preview, "first") && !preview.Complete
-	})
-	event := mustTestJSON(t, map[string]any{"type": "response.function_call_arguments.done", "item_id": "native-item", "arguments": arguments})
-	requireLiveDiffSSEUnchanged(t, transform, event)
-	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
-		return preview.Complete && liveDiffPreviewAdds(preview, "FINAL_NATIVE")
-	})
-	if complete.Input != "" {
-		t.Fatalf("native exec completion exposed command text: %+v", complete)
-	}
-}
-
 func TestLiveDiffCancellationBeforeDoneDiscardsActivePreview(t *testing.T) {
 	t.Parallel()
-	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
+	transform, broker, sub := newLiveDiffFinalFrameTransform(t)
 	requestCtx, cancel := context.WithCancel(transform.ctx)
 	transform.ctx = requestCtx
 	input := liveDiffCodeModeCat(t, "cancel.txt", "active", "later")
@@ -195,7 +164,7 @@ func TestLiveDiffCancellationBeforeDoneDiscardsActivePreview(t *testing.T) {
 	}
 	worker := transform.previews["cancel-item"]
 	if worker == nil {
-		t.Fatal("Code Mode stream has no preview worker")
+		t.Fatal("exec stream has no preview worker")
 	}
 
 	// The response stream can disappear without ever sending input.done. Allow
@@ -210,7 +179,7 @@ func TestLiveDiffCancellationBeforeDoneDiscardsActivePreview(t *testing.T) {
 
 func TestLiveDiffInputOverflowAfterPartialPreviewDiscardsActiveState(t *testing.T) {
 	t.Parallel()
-	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
+	transform, broker, sub := newLiveDiffFinalFrameTransform(t)
 	input := liveDiffCodeModeCat(t, "overflow.txt", "active", "later")
 	delta := input[:strings.Index(input, "later")]
 	for _, event := range [][]byte{
@@ -228,7 +197,7 @@ func TestLiveDiffInputOverflowAfterPartialPreviewDiscardsActiveState(t *testing.
 	}
 	worker := transform.previews["overflow-item"]
 	if worker == nil {
-		t.Fatal("Code Mode stream has no preview worker")
+		t.Fatal("exec stream has no preview worker")
 	}
 	worker.appendDelta(strings.Repeat("x", (256<<10)+1))
 	waitLiveDiffWorkerDone(t, worker)
@@ -239,51 +208,16 @@ func TestLiveDiffInputOverflowAfterPartialPreviewDiscardsActiveState(t *testing.
 	}
 }
 
-func TestLiveDiffFinalFrameNativeHeredocIncludesLastLineAfterContextCancellation(t *testing.T) {
-	transform, broker, sub := newLiveDiffFinalFrameTransform(t, true)
-	requestCtx, cancel := context.WithCancel(transform.ctx)
-	defer cancel()
-	transform.ctx = requestCtx
-	target := filepath.Join(transform.directory, "native-final.txt")
-	if err := os.WriteFile(target, []byte("before\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	command := "cat >native-final.txt <<'END'\nfirst\nFINAL_NATIVE_EDIT\nEND\n"
-	argumentsBytes, err := json.Marshal(map[string]string{"cmd": command})
-	if err != nil {
-		t.Fatal(err)
-	}
-	arguments := string(argumentsBytes)
-	delta := arguments[:strings.Index(arguments, "FINAL_NATIVE_EDIT")]
-	for _, event := range [][]byte{
-		mustTestJSON(t, map[string]any{"type": "response.output_item.added", "output_index": 0,
-			"item": map[string]any{"type": "function_call", "id": "native-final-item", "call_id": "native-final-call", "name": "exec_command", "arguments": "", "status": "in_progress"}}),
-		mustTestJSON(t, map[string]any{"type": "response.function_call_arguments.delta", "item_id": "native-final-item", "delta": delta}),
-	} {
-		requireLiveDiffSSEUnchanged(t, transform, event)
-	}
-	event := mustTestJSON(t, map[string]any{"type": "response.function_call_arguments.done", "item_id": "native-final-item", "arguments": arguments})
-	requireLiveDiffSSEUnchanged(t, transform, event)
-	cancel()
-
-	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
-		return preview.Complete && len(preview.Files) == 1 && strings.Contains(preview.Files[0].UnifiedDiff(), "FINAL_NATIVE_EDIT")
-	})
-	if !strings.Contains(complete.Files[0].UnifiedDiff(), "+FINAL_NATIVE_EDIT") {
-		t.Fatalf("native final diff lost the last heredoc line: %+v", complete.Files[0])
-	}
-}
-
 func TestLiveDiffFinalFrameCodeModeHeredocIncludesLastLineAfterContextCancellation(t *testing.T) {
-	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
+	transform, broker, sub := newLiveDiffFinalFrameTransform(t)
 	requestCtx, cancel := context.WithCancel(transform.ctx)
 	defer cancel()
 	transform.ctx = requestCtx
-	target := filepath.Join(transform.directory, "code-mode-final.txt")
+	target := filepath.Join(transform.directory, "exec-final.txt")
 	if err := os.WriteFile(target, []byte("before\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	command := "cat >code-mode-final.txt <<'END'\nfirst\nFINAL_CODEMODE_EDIT\nEND\n"
+	command := "cat >exec-final.txt <<'END'\nfirst\nFINAL_CODEMODE_EDIT\nEND\n"
 	encodedCommand, err := json.Marshal(command)
 	if err != nil {
 		t.Fatal(err)
@@ -296,15 +230,15 @@ func TestLiveDiffFinalFrameCodeModeHeredocIncludesLastLineAfterContextCancellati
 	delta := before
 	for _, event := range [][]byte{
 		mustTestJSON(t, map[string]any{"type": "response.output_item.added", "output_index": 0,
-			"item": map[string]any{"type": "custom_tool_call", "id": "code-mode-final-item", "call_id": "code-mode-final-call", "name": "exec", "input": "", "status": "in_progress"}}),
-		mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.delta", "item_id": "code-mode-final-item", "delta": delta}),
+			"item": map[string]any{"type": "custom_tool_call", "id": "exec-final-item", "call_id": "exec-final-call", "name": "exec", "input": "", "status": "in_progress"}}),
+		mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.delta", "item_id": "exec-final-item", "delta": delta}),
 	} {
 		requireLiveDiffSSEUnchanged(t, transform, event)
 	}
-	if transform.previews["code-mode-final-item"] == nil {
-		t.Fatal("Code Mode heredoc stream has no preview worker")
+	if transform.previews["exec-final-item"] == nil {
+		t.Fatal("exec heredoc stream has no preview worker")
 	}
-	event := mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "code-mode-final-item", "call_id": "code-mode-final-call", "input": fullInput})
+	event := mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "exec-final-item", "call_id": "exec-final-call", "input": fullInput})
 	requireLiveDiffSSEUnchanged(t, transform, event)
 	cancel()
 
@@ -312,7 +246,7 @@ func TestLiveDiffFinalFrameCodeModeHeredocIncludesLastLineAfterContextCancellati
 		return preview.Complete && len(preview.Files) == 1 && strings.Contains(preview.Files[0].UnifiedDiff(), "FINAL_CODEMODE_EDIT")
 	})
 	if !strings.Contains(complete.Files[0].UnifiedDiff(), "+FINAL_CODEMODE_EDIT") {
-		t.Fatalf("Code Mode final diff lost the last heredoc line: %+v", complete.Files[0])
+		t.Fatalf("exec final diff lost the last heredoc line: %+v", complete.Files[0])
 	}
 }
 
@@ -382,7 +316,7 @@ func TestLiveDiffFinalFramePTYShowsCompleteEditAfterTruncatedPreview(t *testing.
 
 func TestLiveDiffFinalFrameTransformCloseDoesNotDiscardFinalUpdate(t *testing.T) {
 	t.Parallel()
-	transform, broker, sub := newLiveDiffFinalFrameTransform(t, false)
+	transform, broker, sub := newLiveDiffFinalFrameTransform(t)
 	fullInput := liveDiffCodeModeCat(t, "close.txt", "first", "CLOSE_FINAL")
 	delta := fullInput[:strings.Index(fullInput, "CLOSE_FINAL")]
 	for _, event := range [][]byte{
@@ -397,7 +331,7 @@ func TestLiveDiffFinalFrameTransformCloseDoesNotDiscardFinalUpdate(t *testing.T)
 	})
 	worker := transform.previews["close-item"]
 	if worker == nil {
-		t.Fatal("Code Mode stream has no preview worker")
+		t.Fatal("exec stream has no preview worker")
 	}
 	event := mustTestJSON(t, map[string]any{"type": "response.custom_tool_call_input.done", "item_id": "close-item", "call_id": "close-call", "input": fullInput})
 	requireLiveDiffSSEUnchanged(t, transform, event)

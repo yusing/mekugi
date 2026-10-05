@@ -55,7 +55,7 @@ func runSnapshotExec(t *testing.T, proxy *mekugiProxy, workspace, callID, comman
 	t.Helper()
 	transform := prepareNativeStockTransform(t, proxy, workspace, "snapshot-"+callID)
 	arguments := string(mustMarshalJSON(map[string]any{"cmd": command, "workdir": workspace}))
-	streamNativeExecCommand(t, transform, callID, arguments)
+	retainCommandObservation(t, transform, callID, arguments)
 	effect()
 	next := reconcileExecItems(t, proxy, workspace, []any{
 		map[string]any{"type": "function_call", "call_id": callID, "name": nativeExecCommandToolName, "arguments": arguments},
@@ -129,7 +129,7 @@ func TestWorkspaceSnapshotRecordsUnnamedEditsWithinIgnoreRules(t *testing.T) {
 
 	// A later read-only command takes no checkpoint and records nothing.
 	transform := prepareNativeStockTransform(t, proxy, workspace, "snapshot-read")
-	streamNativeExecCommand(t, transform, "read", string(mustMarshalJSON(map[string]any{"cmd": "rg renamed", "workdir": workspace})))
+	retainCommandObservation(t, transform, "read", string(mustMarshalJSON(map[string]any{"cmd": "rg renamed", "workdir": workspace})))
 	if _, found := transform.local["read"]; found {
 		t.Fatal("a neutral reader was observed")
 	}

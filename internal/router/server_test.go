@@ -183,52 +183,6 @@ func TestExecuteRequestDoesNotRequireWorkspaceMetadata(t *testing.T) {
 	}
 }
 
-func TestExecuteRequestSupportsNativeToolsOnTheSameResponsesPath(t *testing.T) {
-	workspace := t.TempDir()
-	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(string(mustTestJSON(t, map[string]any{
-		"status": "completed",
-		"output": []any{map[string]any{
-			"type": "custom_tool_call", "id": "item-H", "call_id": "call-H",
-			"name": applyPatchToolName, "input": testTranslatedPatch, "status": "completed",
-		}},
-	})))}}}
-	request := serverRequest(t, func(request map[string]any) {
-		request["input"] = []any{map[string]any{"role": "user", "content": "task"}}
-		request["tools"] = testNativeResponsesTools()
-	})
-	var output bytes.Buffer
-	err := executeRequest(
-		t.Context(),
-		t.Context(),
-		request,
-		serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}),
-		"native-session",
-		provider,
-		&output,
-		nil,
-		newManagedMekugiProxy(t),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(provider.forwarded) != 1 || !bytes.Contains(provider.forwarded[0], []byte(`"name":"apply_patch"`)) ||
-		!bytes.Contains(provider.forwarded[0], []byte(`"name":"exec_command"`)) ||
-		bytes.Contains(provider.forwarded[0], []byte(`"name":"shell"`)) {
-		t.Fatalf("native forwarded request = %s", provider.forwarded)
-	}
-	var response struct {
-		Output []map[string]json.RawMessage `json:"output"`
-	}
-	if err := json.Unmarshal(output.Bytes(), &response); err != nil {
-		t.Fatal(err)
-	}
-	if len(response.Output) != 1 || jsonString(response.Output[0], "type") != "custom_tool_call" ||
-		jsonString(response.Output[0], "name") != applyPatchToolName ||
-		jsonString(response.Output[0], "input") != testTranslatedPatch {
-		t.Fatalf("native client response = %s", output.Bytes())
-	}
-}
-
 func TestExecuteRequestForwardsCompactionWithoutRouterRewrite(t *testing.T) {
 	repeated := strings.Repeat("exact compaction text with a reserved !V prefix and repeated content; ", 20)
 	parsed, err := parseResponsesRequest(mustTestJSON(t, map[string]any{

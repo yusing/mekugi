@@ -22,7 +22,7 @@ import (
 
 // This acceptance test uses the installed Codex consumer with a deterministic
 // local provider. Nested tool results are observed through Codex rollout trace,
-// never through Code Mode's printed output.
+// never through exec's printed output.
 type mchangesNestedCodexProvider struct {
 	mu                        sync.Mutex
 	program                   string
@@ -146,7 +146,7 @@ func (p *mchangesNestedCodexProvider) forwardExecution(
 		break
 	}
 	if !p.resultSeen {
-		return nil, fmt.Errorf("Codex did not return the completed Code Mode cell result: %.3000s", body)
+		return nil, fmt.Errorf("Codex did not return the completed exec cell result: %.3000s", body)
 	}
 	return mchangesNestedCodexResponse(p.turns, map[string]any{
 		"type": "message", "id": p.callID + "-final", "role": "assistant", "status": "completed",
@@ -233,7 +233,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !successProvider.resultSeen {
-		t.Fatal("Codex did not acknowledge the successful Code Mode cell")
+		t.Fatal("Codex did not acknowledge the successful exec cell")
 	}
 	for name, want := range map[string]string{"nested-patch.txt": "patch-result\n", "nested-command.txt": "command-result\n"} {
 		got, err := os.ReadFile(filepath.Join(workspace, name))
@@ -310,7 +310,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 		t.Fatalf("reviewer explicit-ID read lost nested edit evidence: stdout=%q stderr=%q status=%d", explicit.stdout, explicit.stderr, explicit.status)
 	}
 
-	// A second real cell catches both nested host failures. Its outer Code Mode
+	// A second real cell catches both nested host failures. Its outer exec
 	// result still completes, but neither nested change may become applied.
 	failureWorkspace, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -326,7 +326,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 	}
 	failureThread := runMChangesNestedCodexCell(t, codex, registry, store, failureWorkspace, failureProvider)
 	if !failureProvider.resultSeen {
-		t.Fatal("Codex did not complete the outer Code Mode cell after caught nested failures")
+		t.Fatal("Codex did not complete the outer exec cell after caught nested failures")
 	}
 	failureList := runMChangesNestedShell(t, registry, failureWorkspace, failureThread, "mchanges --mine --list")
 	if failureList.status != 0 || failureList.stderr != "" {
@@ -527,7 +527,7 @@ func runMChangesNestedCodexCell(
 		"-c", config, "-c", `model_provider="mchanges_fixture"`, "-c", "features.plugins=false",
 		"--model", "gpt-6-astra", "--sandbox", "danger-full-access", "--ask-for-approval", "never",
 		"exec", "--ignore-user-config", "--skip-git-repo-check", "--json", "--color", "never",
-		"-C", workspace, "Exercise the supplied literal Code Mode operations exactly once.",
+		"-C", workspace, "Exercise the supplied literal exec operations exactly once.",
 	)
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr
@@ -537,7 +537,7 @@ func runMChangesNestedCodexCell(
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
 	if !provider.resultSeen || !strings.Contains(stdout.String(), provider.finalMessage) || (!provider.expectPending && !provider.expectProcess && provider.turns != 2) || ((provider.expectPending || provider.expectProcess) && !provider.sawPending) {
-		t.Fatalf("nested Code Mode acceptance: turns=%d result=%t\nstdout: %.8000s\nstderr: %.8000s",
+		t.Fatalf("nested exec acceptance: turns=%d result=%t\nstdout: %.8000s\nstderr: %.8000s",
 			provider.turns, provider.resultSeen, stdout.String(), stderr.String())
 	}
 	cell := proxy.nativeTrace.readCell(provider.threadID, provider.callID, provider.program)

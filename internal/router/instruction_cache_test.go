@@ -21,7 +21,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 	proxy := newToolPluginTestProxy(t)
 	const conflictingProgress = "As you work, you send messages to the `commentary` channel."
 	base := []any{testCodeModeAdditionalTools(testCodeModeDescription), map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress}}
-	incoming := []any{base[0], map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd}}
+	incoming := []any{base[0], map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + "\n" + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd}}
 	ids := []string{"warm", "turn", "next", "astra", "astra-next"}
 	headers := codexAuthHeaders()
 	headers.Set(sessionIDHeader, "instruction-cache-session")
@@ -108,16 +108,16 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 // the prewarm return must not rewrite that prefix.
 func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 	const conflictingProgress = "As you work, you send messages to the `commentary` channel."
-	for _, native := range []bool{false, true} {
-		t.Run(map[bool]string{false: "Code Mode", true: "native"}[native], func(t *testing.T) {
+	for _, topLevel := range []bool{false, true} {
+		t.Run(map[bool]string{false: "additional tools", true: "top-level tools"}[topLevel], func(t *testing.T) {
 			proxy := newToolPluginTestProxy(t)
 			leading := []any{
-				map[string]any{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd},
+				map[string]any{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + "\n" + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd},
 				map[string]any{"type": "message", "role": "user", "content": "<environment_context>cwd</environment_context>"},
 			}
 			tools := []any{map[string]any{"type": "function", "name": "lookup", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}}
-			if native {
-				tools = append(testNativeResponsesTools(), tools...)
+			if topLevel {
+				tools = append(testExecResponsesTools(), tools...)
 			} else {
 				leading = append([]any{testCodeModeAdditionalTools(testCodeModeDescription)}, leading...)
 			}

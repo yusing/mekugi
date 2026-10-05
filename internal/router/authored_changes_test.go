@@ -23,7 +23,7 @@ func TestAuthoredChangesUnknownCommandsStayQuiet(t *testing.T) {
 		})
 	}
 	if observation, observed := captureExecObservation(nil, true, true, execCaptureEnv{directory: t.TempDir()}); observed || observation == nil || len(observation.Files) != 0 {
-		t.Fatalf("dynamic Code Mode call acquired named evidence or lost its classification: %+v", observation)
+		t.Fatalf("dynamic exec call acquired named evidence or lost its classification: %+v", observation)
 	}
 }
 

@@ -40,7 +40,7 @@ func TestSearchDisplayQueryAndTarget(t *testing.T) {
 			source := `text(await tools.exec_command({cmd:` + string(mustMarshalJSON(tc.source)) + `}));`
 			calls, ok := toolActivityUnwrapExecCalls(source, false)
 			if !ok || len(calls) != 1 || jsonString(calls[0], "arguments") != string(mustMarshalJSON(map[string]string{"cmd": tc.source})) {
-				t.Fatalf("Code Mode capture did not preserve command: %v", calls)
+				t.Fatalf("exec capture did not preserve command: %v", calls)
 			}
 		})
 	}

@@ -150,10 +150,10 @@ The following acceptance routes apply only when the requested change touches the
   rendered frames, not only broker events. Streaming must show input before
   completion, continued following, independent diff scrolling, resize, and
   preview removal. Missing terminal coverage must be reported explicitly.
-- **Stock edits:** check exact direct and Code Mode arguments/results, one
+- **Stock edits:** check exact nested stock-tool arguments/results, one
   host execution, streaming before completion, failed/partial outcomes,
   durable `mchanges` evidence, and dependent reads after persistence.
-- **Execution:** cover Code Mode batching/parallelism, interpreter display,
+- **Execution:** cover exec batching/parallelism, interpreter display,
   PTY/yield/`write_stdin`, bounded output, and `mread` recovery.
 - **Producer shapes:** cover Chat versus Responses and persisted rollout events
   at the consuming boundary. Recheck dated host observations after Codex

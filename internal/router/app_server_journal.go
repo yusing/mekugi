@@ -35,7 +35,7 @@ func (u *appServerUI) internalJournalCommand(thread string, item appServerItem) 
 }
 
 // lowersJournalCommand reports whether parts, a nativeJournalCommand match,
-// is a publication this translated Code Mode call issues. The opaque token
+// is a publication this translated exec call issues. The opaque token
 // alone is not provenance: the exact generated prefix must belong to the
 // durable carrier, including on resume.
 func (h *mekugiHistory) lowersJournalCommand(parts []string) bool {

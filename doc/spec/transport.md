@@ -50,12 +50,13 @@ later requests or fabricate provider usage for the metadata event.
 
 Execution-free turns pass through without Mekugi instruction or tool rewriting, regardless of their output schema. They require valid turn metadata and session
 and thread IDs. Catalogs may be empty or contain native helper tools and Codex's JavaScript
-Code Mode `exec` with optional `wait`, flat or namespaced. Nested clock and lookup declarations
+`exec` with optional `wait`, flat or namespaced. Nested clock and lookup declarations
 are allowed. Generic preamble examples mentioning `tools.exec_command` are not declarations.
 Admission depends on advertised tool declarations, not client preamble wording or request purpose.
 Malformed catalogs, duplicate tools, wrong-kind execution wrappers, and partial editing or
-process-execution catalogs do not qualify. Requests advertising native or nested editing or
-process-execution tools keep their stock execution catalog after validation.
+process-execution catalogs do not qualify. Requests advertising nested editing or
+process-execution tools keep their stock execution catalog after validation. Top-level `apply_patch` or `exec_command`
+catalogs fail as unsupported execution interfaces.
 
 Request preparation and response restoration retain stock tool identity,
 replay, and native execution behavior. Connection-local native history supplies ordinary
