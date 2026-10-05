@@ -109,9 +109,9 @@ func (u *threadUsage) loadLocked(thread string) {
 func mergeThreadUsageTotal(total, delta *threadUsageTotal) {
 	if delta.roundOutput.StartedUnixNano > 0 && delta.roundOutput.StartedUnixNano >= total.roundOutput.StartedUnixNano {
 		total.roundOutput.StartedUnixNano = delta.roundOutput.StartedUnixNano
+		total.outputEstimate = 0
 		if _, known := delta.roundOutput.Throughput.Rate(); known {
 			total.roundOutput.Throughput = delta.roundOutput.Throughput
-			total.outputEstimate = 0
 		}
 	}
 	total.priorUnknown = total.priorUnknown || delta.priorUnknown

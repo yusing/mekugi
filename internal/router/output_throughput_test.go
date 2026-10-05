@@ -386,3 +386,33 @@ func TestUISnapshotOutputThroughputRestoredRoster(t *testing.T) {
 		assertNativeUISnapshot(t, "output-throughput-restored-roster", u.agents.nativeRoster(120, 8, time.Now(), true))
 	})
 }
+
+func TestOutputThroughputEstimateClearsWithoutFinalUsage(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		usage := newThreadUsage()
+		t.Cleanup(usage.close)
+		prior := usage.observation("main", "main", "gpt-6-sol", "")
+		prior.begin()
+		time.Sleep(time.Second)
+		prior.observe(tokenCounts{TotalsKnown: true, OutputTokens: 40})
+		next := usage.observation("main", "main", "gpt-6-sol", "")
+		next.begin()
+		next.observeOutputEstimate(90)
+		next.finish()
+		report := requireRoundThroughput(t, usage, "main", 40, true)
+		if report.outputEstimate != 0 {
+			t.Fatalf("failed round retained estimate: %v", report.outputEstimate)
+		}
+		time.Sleep(time.Second)
+		active := usage.observation("main", "main", "gpt-6-sol", "")
+		active.begin()
+		active.observeOutputEstimate(70)
+		newer := usage.observation("main", "main", "gpt-6-sol", "")
+		time.Sleep(time.Second)
+		newer.begin()
+		report, _ = usage.snapshot("main")
+		if report.outputEstimate != 0 {
+			t.Fatalf("new round inherited estimate: %v", report.outputEstimate)
+		}
+	})
+}
