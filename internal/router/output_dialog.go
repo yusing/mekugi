@@ -100,7 +100,21 @@ func (u *terminalUI) openOutput(view *liveActivityView, snippet liveActivitySnip
 	}
 	pages := []activityui.Block{block}
 	if len(block.Members) > 0 {
-		pages = block.Members
+		pages = nil
+		seen := make(map[uint64]bool)
+		for _, member := range block.Members {
+			if member.EditSource != "" {
+				if seen[member.Source] {
+					continue
+				}
+				if edits, _ := u.activityEditPages(view, member.Source, ""); len(edits) > 0 {
+					pages = append(pages, edits...)
+					seen[member.Source] = true
+					continue
+				}
+			}
+			pages = append(pages, member)
+		}
 	}
 	u.openBlocks(view, pages)
 	u.output.refreshPages()

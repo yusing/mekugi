@@ -831,6 +831,8 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		return lines
 	case "compaction":
 		return []string{Amber + "◉ Context compacted" + Reset}
+	case "batch":
+		return p.batchRow(block, width)
 	case "filter":
 		return filterRows(block.Body, width, min(block.cell("Run"), width/2))
 	case "error":

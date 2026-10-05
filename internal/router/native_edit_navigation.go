@@ -11,6 +11,11 @@ import (
 
 // openActivityEdit resolves an exact host invocation, never a nearby edit or path.
 func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64, path string) bool {
+	pages, path := u.activityEditPages(view, seq, path)
+	return u.openEditPages(view, pages, path)
+}
+
+func (u *terminalUI) activityEditPages(view *liveActivityView, seq uint64, path string) ([]activityui.Block, string) {
 	for _, entry := range view.entries {
 		if entry.Seq != seq || entry.native == nil {
 			continue
@@ -39,16 +44,16 @@ func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64, path s
 				}
 				pages = append(pages, activityui.Block{Kind: "op", Verb: chunk.Review.Action().Title(), Path: display, Code: chunk.Review.UnifiedDiffForWorkspace(workspace), Lang: "diff", Fenced: true})
 			}
-			if u.openEditPages(view, pages, path) {
-				return true
+			if slices.ContainsFunc(pages, func(page activityui.Block) bool { return path == "" || page.Path == path }) {
+				return pages, path
 			}
 		}
 		// Codex can finish a nested edit while sibling commands keep its cell
 		// open. Its completed item already carries that invocation's diff;
 		// opening it must not wait for the outer cell's durable capture.
-		return u.openEditPages(view, entry.native.editPages, path)
+		return entry.native.editPages, path
 	}
-	return false
+	return nil, path
 }
 
 func (u *terminalUI) openEditPages(view *liveActivityView, pages []activityui.Block, path string) bool {

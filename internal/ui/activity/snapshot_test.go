@@ -39,6 +39,19 @@ func TestUISnapshotActivityBlocks(t *testing.T) {
 			}},
 		},
 		{
+			name: "collapsed_batch", width: 72,
+			block: func() Block {
+				batch, _ := CollapseBatch(GroupOperations([]Block{
+					{Kind: "reads", Verb: "Search", Reads: []Read{{Path: "zzz"}}},
+					{Kind: "reads", Verb: "Search", Reads: []Read{{Path: "bbb"}}},
+					{Kind: "op", Verb: "Run", Code: "foo", Lang: "bash", Fenced: true},
+					{Kind: "reads", Verb: "Read", Reads: []Read{{Path: "bar"}}},
+					{Kind: "op", Verb: "Edit", EditSource: "apply_patch"},
+				}))
+				return batch
+			}(),
+		},
+		{
 			name: "change_report", width: 80,
 			block: Block{Kind: "op", Verb: "Run", Code: "mchanges --summary", Changes: []ChangeRow{
 				{Verb: "Edited", Label: "internal/ui/activity/dialog_test.go", Added: 24, Removed: 3},

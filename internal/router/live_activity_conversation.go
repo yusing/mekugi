@@ -233,7 +233,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		if !run.colored {
 			feed.paints = append(feed.paints, liveActivityPaint{head, key, render})
 		}
-		// A sent message shrinking above a scrolled viewport keeps its rows still.
+		// A sent message or batch shrinking above a scrolled viewport keeps its rows still.
 		if full := key; !ok && key.excerpt && !v.following && head < v.offset {
 			full.excerpt = false
 			if shown, ok := v.runs[full]; ok {
@@ -258,8 +258,8 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			feed.heads = append(feed.heads, start)
 		}
 		feed.appendRows(run)
-		if v.sentMessage(it.first) {
-			feed.sent = append(feed.sent, liveActivitySent{v.entries[it.first].Seq, len(feed.lines)})
+		if v.sentMessage(it.first) || !key.excerpt && run.batch {
+			feed.passing = append(feed.passing, liveActivityPassing{v.entries[it.first].Seq, len(feed.lines)})
 		}
 	}
 	for _, entry := range v.entries {
@@ -411,6 +411,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	}
 	var out conversationLines
 	var laid []activityui.Block // Tool blocks, indexed by the snippets naming them.
+	batch := false
 	entryRows := make(map[uint64]int)
 	p := &v.painter
 	switch {
@@ -459,8 +460,13 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		}
 	case conversationTool(entry):
 		var group []activityui.Block
+		unconfirmed := false
+		restored := true
 		for k := first; k <= last; k++ {
 			if v.visible(v.entries[k].activityPaneEntry) {
+				n := v.entries[k].native
+				restored = restored && n != nil && !n.live
+				unconfirmed = unconfirmed || n.unconfirmed() && (n.output == nil || !n.output.View().Exited || n.output.View().Exit == 0)
 				for _, block := range v.shownBlocks(k) {
 					block.Source = v.entries[k].Seq
 					block.TailRows = v.tailRows()
@@ -475,6 +481,15 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		// Its connectors sit beneath the reasoning bullet. Keep invocation identities
 		// even when adjacent edits share a heading or edit the same path.
 		laid = activityui.AlignVerbs(activityui.GroupOperations(activityui.MergeLiveActivityReads(group)))
+		// A batch that has scrolled out of view keeps one row, which opens
+		// its operations in the output dialog. Failed exits stay visible in the
+		// summary; unconfirmed host items without an exit keep their rows.
+		// Restored groups start folded instead of losing their old viewport state.
+		if collapsed, ok := activityui.CollapseBatch(laid); ok && !unconfirmed && (restored || v.passed[entry.Seq]) {
+			laid = []activityui.Block{collapsed}
+		} else {
+			batch = ok && !unconfirmed
+		}
 		for index, block := range laid {
 			snippet := liveActivitySnippet{run: entry.Seq, block: index}
 			toggle := v.clickTarget(&block, snippet, width-2)
@@ -540,7 +555,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			}
 		}
 	}
-	return liveActivityRun{lines: out.lines, blocks: laid, snippets: out.snippets, questions: out.questions, entryRows: entryRows}
+	return liveActivityRun{lines: out.lines, blocks: laid, snippets: out.snippets, questions: out.questions, entryRows: entryRows, batch: batch}
 }
 
 // conversationHeading is one item heading: a glyph, a name, optional dim

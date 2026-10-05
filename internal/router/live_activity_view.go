@@ -71,8 +71,9 @@ type liveActivityView struct {
 	// opening names the snippet requested in the shared dialog.
 	snippet liveActivitySnippet // Hovered content target.
 	opening liveActivitySnippet
-	// passed holds Main's sent messages that have scrolled above the viewport,
-	// which then show as excerpts linking to Activity.
+	// passed holds Main's sent messages and operation batches that have
+	// scrolled above the viewport. Messages then show as excerpts linking to
+	// Activity, and batches as one row opening their operations.
 	passed map[uint64]bool
 
 	// Geometry of the last frame, used by scrolling keys and the pointer.
@@ -114,6 +115,7 @@ type liveActivityRun struct {
 	snippets  []liveActivitySnippet // Aligned with lines.
 	questions []uint64              // Clickable question targets, aligned with lines.
 	entryRows map[uint64]int        // Exact Activity entry starts within a grouped run.
+	batch     bool                  // Main operations that fold into one row once out of view.
 }
 
 // liveActivityEvent is an agent's latest standalone entry and when it arrived.
@@ -148,7 +150,7 @@ type liveActivityRunKey struct {
 	thread      conversationThread // Main transcript thread placement.
 	lead        uint64             // Main item a transcript tool group continues, or 0.
 	flash       uint64             // Flashed Activity entry in this run, or 0.
-	excerpt     bool               // Main sent message shown as a linked excerpt.
+	excerpt     bool               // Main sent message or batch shortened out of view.
 	tail        int                // Tail lines open output shows; 0 shows the whole tail.
 }
 
@@ -1332,7 +1334,7 @@ type liveActivityFeed struct {
 	heads     []int                 // Index of the heading that owns each line.
 	snippets  []liveActivitySnippet // Snippet that owns each line, if any.
 	questions []uint64
-	sent      []liveActivitySent
+	passing   []liveActivityPassing
 }
 
 type liveActivityPaint struct {
@@ -1365,8 +1367,9 @@ func (v *liveActivityView) paintBlock(start, limit int, render func() []string) 
 	return rows
 }
 
-// liveActivitySent is a Main sent message's entry and the feed row after it.
-type liveActivitySent struct {
+// liveActivityPassing is a Main item that shortens once it has scrolled out
+// of view: its first entry and the feed row after it.
+type liveActivityPassing struct {
 	seq uint64
 	end int
 }
@@ -1702,12 +1705,12 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 	if v.following {
 		v.unseen = 0
 	}
-	for _, sent := range feed.sent {
-		if sent.end <= v.offset {
+	for _, item := range feed.passing {
+		if item.end <= v.offset {
 			if v.passed == nil {
 				v.passed = make(map[uint64]bool)
 			}
-			v.passed[sent.seq] = true
+			v.passed[item.seq] = true
 		}
 	}
 	lines := make([]string, rows)

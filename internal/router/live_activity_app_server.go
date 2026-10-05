@@ -184,6 +184,13 @@ func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {
 	return other != nil && n.thread == other.thread && n.turn == other.turn && n.item == other.item
 }
 
+// unconfirmed reports a settled host item that did not complete, such as a
+// declined or failed command: it can end without an exit code, so its rows
+// alone read as successful.
+func (n *liveActivityNativeItem) unconfirmed() bool {
+	return n != nil && !n.running && n.status != "" && n.status != "completed"
+}
+
 func (n *liveActivityNativeItem) replacesItem(other *liveActivityNativeItem) bool {
 	return n != nil && len(n.replacesItems) != 0 && other != nil && n.thread == other.thread && n.turn == other.turn && slices.Contains(n.replacesItems, other.item)
 }

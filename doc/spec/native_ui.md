@@ -976,8 +976,15 @@ An unanswered assignment stays in full while in view. Once a spawn, follow-up
 or Main message has scrolled above the viewport, it becomes an excerpt in the
 reply format: the same row budget and a link (`↩ Open assignment`
 or `↩ Open message`) that counts the omitted rows and opens that
-exact entry. A message the excerpt would not shorten stays in full. Shrinking
-above a scrolled-up viewport does not move the visible rows.
+exact entry. A message the excerpt would not shorten stays in full. Likewise, a
+group of two or more of Main's settled operations becomes one row
+once it has scrolled above the viewport, counting each verb in its row color
+(`Searched 2 patterns • Read 1 file • Ran 1 command`); clicking it opens the
+operations and completed edit patches in the shared dialog. Failed exits add a
+visible failure count. Restored settled groups start collapsed on resume.
+Running, declined or skipped work, failed items without an exit code,
+unconfirmed edits and questions keep their rows. Shrinking above a scrolled-up
+viewport does not move the visible rows.
 Transcript blockquotes use a vertical rail rather than literal `>` markers,
 including on wrapped continuation rows, and retain inline Markdown styling.
 Child answers link (`↩ re:`) to their retained assignment, not to a

@@ -438,7 +438,7 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 	}
 	s := &u.session
 	entry := activityPaneEntry{Seq: s.next(), Agent: name, Observed: observed, CallID: item.ID,
-		native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", searchResults: appServerSearchResults(item)}}
+		native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", status: item.Status, searchResults: appServerSearchResults(item)}}
 	progressPhase := appServerHistoryProgressPhase(item, turn.Status)
 	item = u.waitItem(item, info.ID, turn.ID, item.ID, false)
 	if text, wait, handled := u.progress(item, progressPhase, info.ID, turn.ID); handled {
