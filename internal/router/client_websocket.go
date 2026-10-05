@@ -285,6 +285,12 @@ func (entry *providerWebSocket) next(ctx context.Context, lease *providerWebSock
 			return payload, nil
 		default:
 		}
+		// Cancellation retires the lease and closes done too. Keep the request
+		// cause when that branch wins, rather than reporting pool cleanup as an
+		// upstream failure. Already received messages still take priority above.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		entry.pool.mu.Lock()
 		err := entry.err
 		entry.pool.mu.Unlock()

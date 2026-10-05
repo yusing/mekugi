@@ -156,6 +156,9 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 			case "idle timeout": // Leave the provider connected but silent.
 			case "cancel":
 				cancel()
+				// Let the cancellation callback retire the lease before reading.
+				// Both its done channel and the request context can now wake Read.
+				<-response.Body.(*webSocketResponseBody).entry.receiverDone
 				close(release)
 			case "close during read":
 				readDone := make(chan error, 1)
@@ -174,8 +177,27 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 				close(release)
 			}
 			if scenario != "close during read" {
-				if _, err = io.ReadAll(response.Body); err == nil {
+				if scenario == "cancel" {
+					_, err = copyUpstreamBodyTransformed(io.Discard, response, true, nil, nil)
+				} else {
+					_, err = io.ReadAll(response.Body)
+				}
+				if err == nil {
 					t.Fatal("incomplete websocket stream succeeded")
+				}
+				if scenario == "cancel" {
+					if !errors.Is(err, context.Canceled) {
+						t.Fatalf("request cancellation lost its cause: %v", err)
+					}
+					issues := NewCriticalErrors()
+					f := &requestFinalization{}
+					f.classifyCopyError(err)
+					if finishErr := f.finish(responseCtx, err, &trackedResponseWriter{committed: true}, issues); finishErr != nil {
+						t.Fatal(finishErr)
+					}
+					if f.observation.outcome != requestOutcomeCanceledAfterResponse || len(issues.Pending()) != 0 {
+						t.Fatalf("host interruption reported as failure: outcome=%v notices=%v", f.observation.outcome, issues.Pending())
+					}
 				}
 				if scenario == "idle timeout" {
 					close(release)
