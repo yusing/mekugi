@@ -131,12 +131,15 @@ func TestLiveActivityCacheMainUpdateRemainsFresh(t *testing.T) {
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the result", Observed: now}}})
 	v.applyAppServerItem("", "main", "main", "turn", "reply", "item/agentMessage/delta", "Initial explanation", appServerItem{})
 	v.renderFeed(90, 24)
-	if len(v.runs) == 0 {
-		t.Fatal("Main fixture did not warm the run cache")
-	}
+	stableKey, stable := liveActivityCacheRun(t, v, 1)
+	changedKey, _ := liveActivityCacheRun(t, v, 2)
 	v.applyAppServerItem("", "main", "main", "turn", "reply", "item/agentMessage/delta", " with a continuation", appServerItem{})
-	if len(v.runs) != 0 {
-		t.Fatal("Main update kept cross-entry dependent cached runs")
+	if _, present := v.runs[changedKey]; present {
+		t.Fatal("Main update retained its stale run")
+	}
+	retained, present := v.runs[stableKey]
+	if !present || &retained.lines[0] != &stable.lines[0] {
+		t.Fatal("Main stream update discarded completed prefix storage")
 	}
 	assertLiveActivityCacheFresh(t, v)
 	if !strings.Contains(strings.Join(v.renderFeed(90, 24).lines, "\n"), "continuation") {
@@ -144,36 +147,87 @@ func TestLiveActivityCacheMainUpdateRemainsFresh(t *testing.T) {
 	}
 }
 
+func TestLiveActivityCacheMainInvalidatesLaterQuotes(t *testing.T) {
+	v := newLiveActivityView()
+	v.conversation = true
+	v.painter.Theme = livediff.DarkTheme
+	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	v.clock = func() time.Time { return now }
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
+		{Seq: 1, Agent: "Main", Kind: "text", Text: "Completed prefix", Observed: now},
+		{Seq: 2, Agent: "You", Kind: "text", Text: "Original prompt", Observed: now, native: &liveActivityNativeItem{thread: "main", turn: "turn", item: "prompt"}},
+		{Seq: 3, Agent: "/root/worker", Kind: "text", Text: "Intervening agent activity", Observed: now},
+		{Seq: 4, Agent: "Main", Kind: "text", Text: "Answer to the prompt", Observed: now, native: &liveActivityNativeItem{thread: "main", turn: "turn", item: "answer"}},
+	}})
+	v.renderFeed(90, 24)
+	stableKey, stable := liveActivityCacheRun(t, v, 1)
+	laterKey, later := liveActivityCacheRun(t, v, 4)
+	if !strings.Contains(strings.Join(later.lines, "\n"), "Original prompt") {
+		t.Fatal("fixture did not quote the earlier prompt")
+	}
+	entry := v.entries[1].activityPaneEntry
+	entry.Text = "Updated prompt"
+	v.replaceEntry(1, entry, parseLiveActivity(entry))
+	if _, present := v.runs[laterKey]; present {
+		t.Fatal("prompt update kept a later dependent quote")
+	}
+	retained, present := v.runs[stableKey]
+	if !present || &retained.lines[0] != &stable.lines[0] {
+		t.Fatal("prompt update discarded completed prefix storage")
+	}
+	assertLiveActivityCacheFresh(t, v)
+	_, updated := liveActivityCacheRun(t, v, 4)
+	if !strings.Contains(strings.Join(updated.lines, "\n"), "Updated prompt") {
+		t.Fatal("later reply retained the old quoted prompt")
+	}
+}
+
 func BenchmarkLiveActivityCacheCommandDelta(b *testing.B) {
-	for _, cold := range []bool{false, true} {
-		name := "cached"
-		if cold {
-			name = "full-invalidation"
+	for _, main := range []bool{false, true} {
+		mode := "activity"
+		if main {
+			mode = "main"
 		}
-		b.Run(name, func(b *testing.B) {
-			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
-			v := newLiveActivityView()
-			v.childrenOnly = true
-			v.painter.Theme = livediff.DarkTheme
-			v.clock = func() time.Time { return now }
-			for i := range 80 {
-				v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: uint64(i + 1), Agent: fmt.Sprintf("/root/agent%d", i), Kind: "text", Text: strings.Repeat("Completed analysis of the implementation.\n", 8), Observed: now}}})
-			}
-			entry := activityPaneEntry{Seq: 81, Agent: "/root/working", Kind: "tool", Text: "Run `go test ./...`", Observed: now,
-				native: &liveActivityNativeItem{thread: "child", turn: "turn", item: "command", phase: "item/commandExecution/outputDelta", running: true}, outputTail: []string{"package result 0"}}
-			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
-			v.renderFeed(90, 24)
-			b.ReportAllocs()
-			iteration := 0
-			for b.Loop() {
-				entry.Seq = v.lastSeq + 1
-				entry.outputTail = []string{fmt.Sprintf("package result %d", iteration%10)}
-				v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+		b.Run(mode, func(b *testing.B) {
+			for _, cold := range []bool{false, true} {
+				name := "cached"
 				if cold {
-					v.runs = nil
+					name = "full-invalidation"
 				}
-				v.renderFeed(90, 24)
-				iteration++
+				b.Run(name, func(b *testing.B) {
+					now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+					v := newLiveActivityView()
+					v.conversation, v.childrenOnly = main, !main
+					v.painter.Theme = livediff.DarkTheme
+					v.clock = func() time.Time { return now }
+					for i := range 80 {
+						agent := fmt.Sprintf("/root/agent%d", i)
+						if main {
+							agent = "Main"
+						}
+						v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: uint64(i + 1), Agent: agent, Kind: "text", Text: strings.Repeat("Completed analysis of the implementation.\n", 8), Observed: now}}})
+					}
+					agent := "/root/working"
+					if main {
+						agent = "Main"
+					}
+					entry := activityPaneEntry{Seq: 81, Agent: agent, Kind: "tool", Text: "Run `go test ./...`", Observed: now,
+						native: &liveActivityNativeItem{thread: "child", turn: "turn", item: "command", phase: "item/commandExecution/outputDelta", running: true}, outputTail: []string{"package result 0"}}
+					v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+					v.renderFeed(90, 24)
+					b.ReportAllocs()
+					iteration := 0
+					for b.Loop() {
+						entry.Seq = v.lastSeq + 1
+						entry.outputTail = []string{fmt.Sprintf("package result %d", iteration%10)}
+						v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+						if cold {
+							v.runs = nil
+						}
+						v.renderFeed(90, 24)
+						iteration++
+					}
+				})
 			}
 		})
 	}

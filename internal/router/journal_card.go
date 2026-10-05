@@ -16,7 +16,16 @@ const journalCardNoteLimit = 3
 const journalCardPreviewRows = 2
 
 func journalPreview(text string) string {
-	p := activityui.Painter{}
+	// Summary strips styles. Keep Markdown geometry without discarded syntax work.
+	p := activityui.Painter{LayoutOnly: true}
+	first, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	// Ordinary rows are independent of later content. Block constructs still
+	// need their full input, including table lookahead and quoted fences.
+	if _, fenced := activityui.FenceDelimiter(first); !fenced && !strings.HasPrefix(first, ">") && !strings.Contains(first, "|") {
+		if summary := p.Summary([]activityui.Block{{Kind: "final", Body: first}}, 80); summary != "" {
+			return summary
+		}
+	}
 	return p.Summary([]activityui.Block{{Kind: "final", Body: text}}, 80)
 }
 

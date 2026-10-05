@@ -45,9 +45,9 @@ func (v *liveActivityView) runRevision(from, to int) uint64 {
 	return revision
 }
 
-// invalidateEntry keeps unrelated Activity runs, including off-screen history,
-// warm while one item streams. Main's threaded layout also depends on earlier
-// assignments and reasoning, so its cross-entry cache is invalidated together.
+// invalidateEntry keeps unrelated completed runs warm while one item streams.
+// Main's later items can quote earlier assignments or continue reasoning, so
+// invalidate its suffix as well. Grouping keys account for later traffic.
 func (v *liveActivityView) invalidateEntry(seq uint64) {
 	if i := slices.IndexFunc(v.entries, func(record liveActivityRecord) bool { return record.Seq == seq }); i >= 0 {
 		v.reviseEntry(i)
@@ -63,12 +63,12 @@ func (v *liveActivityView) reviseEntry(index int) {
 }
 
 func (v *liveActivityView) invalidateRuns(seq uint64) {
-	if v.conversation || v.historyOrder {
+	if v.historyOrder {
 		v.runs = nil
 		return
 	}
 	for key := range v.runs {
-		if key.first <= seq && seq <= key.last {
+		if seq <= key.last && (v.conversation || key.first <= seq) {
 			delete(v.runs, key)
 		}
 	}

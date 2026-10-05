@@ -59,7 +59,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		lead        int    // Entry index of the Main item a tool group continues, or -1.
 		attached    bool   // Tools branching from the reasoning directly above, with no gap.
 	}
-	var items []item
+	items := make([]item, 0, len(v.runs))
 	for i := 0; i < len(v.entries); {
 		if !v.visible(v.entries[i].activityPaneEntry) {
 			i++
@@ -106,9 +106,21 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		}
 		i = j
 	}
-	var feed liveActivityFeed
+	// Warm runs already know the row count. Reserve the parallel row slices
+	// together instead of repeatedly copying the whole transcript as they grow.
+	rowCapacity := len(items) // Allow separators and a changing tail.
+	for _, run := range v.runs {
+		rowCapacity += len(run.lines)
+	}
+	feed := liveActivityFeed{
+		lines:     make([]string, 0, rowCapacity),
+		heads:     make([]int, 0, rowCapacity),
+		snippets:  make([]liveActivitySnippet, 0, rowCapacity),
+		questions: make([]uint64, 0, rowCapacity),
+		paints:    make([]liveActivityPaint, 0, len(items)),
+	}
 	v.questionRows = make(map[uint64]int)
-	used := make(map[liveActivityRunKey]liveActivityRun)
+	used := make(map[liveActivityRunKey]liveActivityRun, len(items))
 	continues := func(a, b int) bool {
 		return a >= 0 && b < len(items) && items[a].agent != "" && items[a].agent == items[b].agent
 	}
