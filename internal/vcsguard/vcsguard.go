@@ -3,7 +3,7 @@
 // router. The helper that intercepts these commands and the router that asks
 // the user share this package, so both agree on the wire format.
 //
-// The classification covers remote writes only: pushes of any ref or tag to
+// Write approval covers remote writes only: pushes of any ref or tag to
 // any remote, Subversion commits and repository-side operations, and hosting
 // mutations through gh. Local history edits such as commit, merge or rebase
 // are not remote writes. Commands that cannot be classified fail closed.
@@ -32,6 +32,12 @@ const Channel = "vcs-approval.sock"
 
 // Tools are the command names the guard intercepts.
 var Tools = []string{"git", "gh", "hg", "svn", "jj"}
+
+// IsTool identifies a version-control executable independently of whether
+// its invocation needs remote-write approval.
+func IsTool(name string) bool {
+	return slices.Contains(Tools, filepath.Base(name))
+}
 
 // Message asks the router to approve one remote write.
 type Message struct {
@@ -111,7 +117,7 @@ func scriptWrites(script string, lookup Lookup, depth int) bool {
 			return !found
 		}
 		at, _ := executableWord(call.Args)
-		if at < 0 || !slices.Contains(Tools, filepath.Base(literal(call.Args[at]))) {
+		if at < 0 || !IsTool(literal(call.Args[at])) {
 			return true
 		}
 		words := make([]string, len(call.Args)-at)
@@ -192,14 +198,14 @@ func dryRun(args []string) bool {
 	return dry
 }
 
-func gitWrites(args []string, lookup Lookup, depth int) bool {
-	var globals []string
+// gitInvocation shares global-option parsing between approval and observation.
+func gitInvocation(args []string) (globals []string, command string, rest []string) {
 	i := 0
 	for ; i < len(args); i++ {
 		arg := args[i]
 		if slices.Contains(gitValueGlobals, arg) {
 			if i+1 == len(args) {
-				return false
+				return globals, "", nil
 			}
 			globals = append(globals, arg, args[i+1])
 			i++
@@ -209,14 +215,21 @@ func gitWrites(args []string, lookup Lookup, depth int) bool {
 			break
 		}
 		if arg == "--help" || arg == "-h" || arg == "--version" || arg == "-v" || arg == "--exec-path" || arg == "--html-path" || arg == "--man-path" || arg == "--info-path" {
-			return false
+			return globals, "", nil
 		}
 		globals = append(globals, arg)
 	}
 	if i == len(args) {
+		return globals, "", nil
+	}
+	return globals, args[i], args[i+1:]
+}
+
+func gitWrites(args []string, lookup Lookup, depth int) bool {
+	globals, command, rest := gitInvocation(args)
+	if command == "" {
 		return false
 	}
-	command, rest := args[i], args[i+1:]
 	if command == dynamic {
 		return true
 	}
@@ -261,7 +274,7 @@ func gitWrites(args []string, lookup Lookup, depth int) bool {
 		if len(rest) > 1 && rest[0] == "run" {
 			words := rest[1:]
 			at, _ := commandWord(words)
-			return words[0] == dynamic || at >= 0 && slices.Contains(Tools, filepath.Base(words[at])) && writes(words[at:], lookup, depth+2)
+			return words[0] == dynamic || at >= 0 && IsTool(words[at]) && writes(words[at:], lookup, depth+2)
 		}
 		return false
 	}
@@ -506,12 +519,14 @@ var svnURLWrites = []string{
 	"propset", "pset", "ps", "propdel", "pdel", "pd", "propedit", "pedit", "pe",
 }
 
+var svnValueGlobals = []string{"--username", "--password", "--config-dir", "--config-option"}
+
 func svnWrites(args []string) bool {
 	command := ""
 	at := 0
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if slices.Contains([]string{"--username", "--password", "--config-dir", "--config-option"}, arg) {
+		if slices.Contains(svnValueGlobals, arg) {
 			i++
 			continue
 		}
@@ -578,4 +593,80 @@ func jjWrites(args []string) bool {
 		return len(words) > 1 && (words[1] == "upload" || words[1] == dynamic) && !slices.Contains(args, "--dry-run")
 	}
 	return !slices.Contains(jjCommands, words[0])
+}
+
+var gitReadOnlySubcommands = map[string]bool{
+	"status": true, "diff": true, "log": true, "show": true, "rev-parse": true, "ls-files": true,
+	"grep": true, "blame": true, "describe": true, "show-ref": true, "cat-file": true,
+	"merge-base": true, "rev-list": true, "shortlog": true, "ls-tree": true, "for-each-ref": true,
+	"name-rev": true, "whatchanged": true, "check-ignore": true, "check-attr": true, "var": true,
+	"help": true, "version": true, "count-objects": true, "cherry": true, "range-diff": true,
+}
+
+// GitReadOnlyCommand reports built-in readers with no worktree mutation.
+// Options that write output or run a pager need separate caller checks.
+func GitReadOnlyCommand(command string) bool { return gitReadOnlySubcommands[command] }
+
+// WorktreeWrites reports whether a VCS invocation may import, discard, or
+// write out repository content. Unknown commands remain possible writers. This is effect
+// attribution, independent of remote-write approval.
+func WorktreeWrites(argv []string) bool {
+	if len(argv) == 0 || !IsTool(argv[0]) {
+		return false
+	}
+	args := argv[1:]
+	switch filepath.Base(argv[0]) {
+	case "git":
+		_, command, rest := gitInvocation(args)
+		if slices.Contains([]string{"diff", "log", "show"}, command) && slices.ContainsFunc(rest, func(arg string) bool {
+			return strings.HasPrefix(arg, "-o") || arg == "--output" || strings.HasPrefix(arg, "--output=")
+		}) {
+			return true
+		}
+		return command != "" && !GitReadOnlyCommand(command)
+	case "gh":
+		words := positionals(args)
+		if len(words) > 1 && slices.Contains([]string{"checkout", "co", "clone"}, words[1]) {
+			return true
+		}
+		return ghWrites(args)
+	case "hg":
+		command, rest := commandAfterGlobals(args, hgValueGlobals)
+		if command == "cat" {
+			return slices.ContainsFunc(rest, func(arg string) bool {
+				return strings.HasPrefix(arg, "-o") || arg == "--output" || strings.HasPrefix(arg, "--output=")
+			})
+		}
+		if command == "branch" {
+			return len(rest) > 0
+		}
+		return command != "" && !slices.Contains([]string{"status", "st", "log", "diff", "annotate", "blame", "root", "id", "identify", "paths"}, command)
+	case "svn":
+		command, _ := commandAfterGlobals(args, svnValueGlobals)
+		return command != "" && !SVNReadOnlyCommand(command)
+	case "jj":
+		command, _ := commandAfterGlobals(args, jjValueGlobals)
+		return command != "" && !slices.Contains([]string{"log", "diff", "status", "st", "show", "root"}, command)
+	}
+	return true
+}
+
+// SVNReadOnlyCommand identifies Subversion's built-in readers and aliases.
+func SVNReadOnlyCommand(command string) bool {
+	return slices.Contains([]string{"status", "st", "stat", "info", "log", "diff", "di", "cat", "list", "ls", "blame", "praise", "annotate", "ann", "propget", "pg", "proplist", "pl", "help"}, command)
+}
+
+// commandAfterGlobals reads the subcommand without treating global option
+// values as command names. It never resolves or executes those values.
+func commandAfterGlobals(args, globals []string) (string, []string) {
+	for i := 0; i < len(args); i++ {
+		if slices.Contains(globals, args[i]) {
+			i++
+			continue
+		}
+		if !strings.HasPrefix(args[i], "-") {
+			return args[i], args[i+1:]
+		}
+	}
+	return "", nil
 }

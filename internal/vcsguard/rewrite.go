@@ -41,7 +41,7 @@ func Rewrite(script, helper, directory string) (string, error) {
 		word := call.Args[i]
 		value, static := staticWord(word)
 		name := filepath.Base(value)
-		tool := (static && slices.Contains(Tools, name)) || (!static && vcsPathSuffix(word))
+		tool := (static && IsTool(name)) || (!static && vcsPathSuffix(word))
 		shell := static && slices.Contains(Shells, name)
 		if tool || shell {
 			start, end := int(word.Pos().Offset()), int(word.End().Offset())
@@ -104,7 +104,7 @@ func vcsPathSuffix(word *syntax.Word) bool {
 		return false
 	}
 	last, ok := parts[len(parts)-1].(*syntax.Lit)
-	return ok && strings.Contains(last.Value, "/") && slices.Contains(Tools, filepath.Base(last.Value))
+	return ok && strings.Contains(last.Value, "/") && IsTool(last.Value)
 }
 
 // staticWord only unquotes literal text. In particular, expand must never see

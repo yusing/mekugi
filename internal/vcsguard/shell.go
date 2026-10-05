@@ -39,7 +39,7 @@ func KnownPaths(pathList string) []string {
 				continue
 			}
 			paths = append(paths, path)
-			if resolved, err := filepath.EvalSymlinks(path); err == nil && slices.Contains(Tools, filepath.Base(resolved)) {
+			if resolved, err := filepath.EvalSymlinks(path); err == nil && IsTool(resolved) {
 				paths = append(paths, resolved)
 			}
 		}
