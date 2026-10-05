@@ -499,12 +499,16 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	defer u.refreshPicker()
 	u.ensureJournalReset()
 	if u.reset != nil {
+		pendingCompletion := u.reset.pendingCompleted
 		handled, resetErr := u.reset.message(m)
 		if resetErr != nil {
 			u.setNotice("Journal slice: "+resetErr.Error(), true)
 		}
 		u.showResetNotice()
 		if handled {
+			if pendingCompletion != "" && pendingCompletion == u.reset.continuationTurn && !u.reset.active() && u.questionCount() == 0 {
+				u.notify("agent-turn-complete", "Agent turn complete")
+			}
 			return u.flushInput()
 		}
 	}
@@ -908,11 +912,13 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
 			if p.Turn.Status == "completed" && u.questionCount() == 0 {
-				u.notify("agent-turn-complete", "Agent turn complete")
 				if u.reset != nil && len(u.unsent) == 0 && len(u.queued) == 0 {
 					if err := u.reset.completed(p.Turn.ID); err != nil {
 						u.setNotice("Slice continuation: "+err.Error(), true)
 					}
+				}
+				if !u.reset.active() {
+					u.notify("agent-turn-complete", "Agent turn complete")
 				}
 			}
 			for _, c := range u.questions.calls {

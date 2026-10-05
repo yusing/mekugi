@@ -1191,6 +1191,8 @@ reads Codex's effective `tui.notifications`, `tui.notification_method`, and
 without editing configuration. Events are `agent-turn-complete`,
 `approval-requested`, `plan-mode-prompt` (synchronous input), and `async-question`.
 Only successful live Main completion notifies; pending questions take priority.
+Stops that the journal will automatically continue do not notify. The final
+completion still notifies when no automatic continuation remains.
 History restoration and duplicate question events do not notify again.
 
 Notifications default to enabled and unfocused-only; `always` also allows them
