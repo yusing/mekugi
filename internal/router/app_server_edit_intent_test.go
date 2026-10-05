@@ -50,7 +50,11 @@ func TestShellEditIntentClassification(t *testing.T) {
 		},
 		{
 			name: "python mutated filename remains unresolved", command: "python3 - <<'PY'\nfrom pathlib import Path\nname='a'\nname += '.txt'\n(Path('src') / name).write_text('new')\nPY",
-			wantVerbs: []string{"Edit"}, wantProgram: "python3", secret: "src/a",
+			wantVerbs: []string{"Run"}, wantProgram: "python3", secret: "src/a",
+		},
+		{
+			name: "python named and unresolved targets", command: "python3 - <<'PY'\nfrom pathlib import Path\nPath('known.go').write_text('x')\nPath(dynamic).write_text('y')\nPY",
+			wantVerbs: []string{"Edit", "Run"}, wantPaths: []string{"known.go"}, wantProgram: "python3",
 		},
 		{
 			name: "pathlib open", command: `python3 -c 'from pathlib import Path; p=Path("a.go"); p.open("w").write("PRIVATE_PATH_SOURCE")'`,
@@ -77,7 +81,7 @@ func TestShellEditIntentClassification(t *testing.T) {
 					t.Errorf("missing requested edit for %s: %q", path, got)
 				}
 			}
-			if strings.Contains(got, tc.secret) || strings.Contains(got, "+1") || strings.Contains(got, "-1") {
+			if tc.secret != "" && strings.Contains(got, tc.secret) || strings.Contains(got, "+1") || strings.Contains(got, "-1") {
 				t.Errorf("requested edit leaked source or implied applied stats: %q", got)
 			}
 		})

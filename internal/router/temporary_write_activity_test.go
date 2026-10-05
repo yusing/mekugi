@@ -26,55 +26,54 @@ func temporaryPlanCommand(setup, source string) string {
 func TestTemporaryWriteActivityIntent(t *testing.T) {
 	for _, tc := range []struct {
 		name, setup, source string
-		unknown, workspace  bool
+		workspace           bool
 	}{
 		{name: "confirmed temporary artifacts", setup: temporaryPlanSetup, source: temporaryPlanSource},
 		{name: "original failed log prefix", setup: temporaryPlanSetup + "gh run view 37104437662 --log-failed > \"$batch_plan_dir/ci-failure.log\"\n", source: temporaryPlanSource},
-		{name: "failed log prefix with unresolved edit", setup: temporaryPlanSetup + "gh run view 37104437662 --log-failed > \"$batch_plan_dir/ci-failure.log\"\n", source: temporaryPlanSource + "Path(dynamic).write_text('code')\n", unknown: true},
-		{name: "builtin log prefix rebinds environment", setup: temporaryPlanSetup + "read MEKUGI_BATCH_PLAN_DIR > \"$batch_plan_dir/ci-failure.log\"\n", source: temporaryPlanSource, unknown: true},
-		{name: "log prefix has expansion effects", setup: temporaryPlanSetup + "gh run view 37104437662 --log-failed > \"${MEKUGI_BATCH_PLAN_DIR:=.}/ci-failure.log\"\n", source: temporaryPlanSource, unknown: true},
-		{name: "log prefix allocates environment descriptor", setup: temporaryPlanSetup + "gh run view 37104437662 --log-failed {MEKUGI_BATCH_PLAN_DIR}> \"$batch_plan_dir/ci-failure.log\"\n", source: temporaryPlanSource, unknown: true},
+		{name: "failed log prefix with unresolved edit", setup: temporaryPlanSetup + "gh run view 37104437662 --log-failed > \"$batch_plan_dir/ci-failure.log\"\n", source: temporaryPlanSource + "Path(dynamic).write_text('code')\n"},
+		{name: "builtin log prefix rebinds environment", setup: temporaryPlanSetup + "read MEKUGI_BATCH_PLAN_DIR > \"$batch_plan_dir/ci-failure.log\"\n", source: temporaryPlanSource},
+		{name: "log prefix has expansion effects", setup: temporaryPlanSetup + "gh run view 37104437662 --log-failed > \"${MEKUGI_BATCH_PLAN_DIR:=.}/ci-failure.log\"\n", source: temporaryPlanSource},
+		{name: "log prefix allocates environment descriptor", setup: temporaryPlanSetup + "gh run view 37104437662 --log-failed {MEKUGI_BATCH_PLAN_DIR}> \"$batch_plan_dir/ci-failure.log\"\n", source: temporaryPlanSource},
 		{name: "other temporary names", setup: strings.ReplaceAll(temporaryPlanSetup, "mekugi-batches", "arbitrary"), source: strings.ReplaceAll(temporaryPlanSource, "plan.json", "code.go")},
 		{name: "unrelated exported value", setup: "export OTHER=literal\n", source: "from pathlib import Path\nPath('workspace.go', 'child').write_text('code')\n", workspace: true},
 		{name: "workspace and temporary", setup: temporaryPlanSetup, source: temporaryPlanSource + "Path('workspace.go').write_text('code')\n", workspace: true},
-		{name: "unresolved sibling", setup: temporaryPlanSetup, source: temporaryPlanSource + "Path(dynamic).write_text('code')\n", unknown: true},
-		{name: "no environment proof", source: temporaryPlanSource, unknown: true},
-		{name: "temporary looking workspace name", setup: "batch_plan_dir=plan.json\nexport MEKUGI_BATCH_PLAN_DIR=\"$batch_plan_dir\"\n", source: temporaryPlanSource, unknown: true},
-		{name: "unexported", setup: "MEKUGI_BATCH_PLAN_DIR=$(mktemp -d /tmp/artifacts.XXXXXX)\n", source: temporaryPlanSource, unknown: true},
-		{name: "non temporary mktemp directory", setup: strings.ReplaceAll(temporaryPlanSetup, "/tmp/mekugi-batches", "/workspace/mekugi-batches"), source: temporaryPlanSource, unknown: true},
-		{name: "reassigned shell root", setup: temporaryPlanSetup + "batch_plan_dir=workspace\nexport MEKUGI_BATCH_PLAN_DIR=\"$batch_plan_dir\"\n", source: temporaryPlanSource, unknown: true},
-		{name: "reassigned exported root", setup: temporaryPlanSetup + "MEKUGI_BATCH_PLAN_DIR=workspace\n", source: temporaryPlanSource, unknown: true},
-		{name: "arithmetic mutates shell root", setup: temporaryPlanSetup + "x=$((MEKUGI_BATCH_PLAN_DIR=1))\n", source: temporaryPlanSource, unknown: true},
-		{name: "shell function replaces mktemp", setup: "mktemp() { echo workspace; }\n" + temporaryPlanSetup, source: temporaryPlanSource, unknown: true},
-		{name: "source changes environment", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "root =", "os.environ['MEKUGI_BATCH_PLAN_DIR'] = 'workspace'\nroot ="), unknown: true},
-		{name: "parent traversal", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "plan.json", "../workspace.go"), unknown: true},
-		{name: "join parent traversal", setup: temporaryPlanSetup, source: "import os\nfrom pathlib import Path\nPath(os.path.join(os.environ['MEKUGI_BATCH_PLAN_DIR'], '../workspace.go')).write_text('code')\n", unknown: true},
-		{name: "rebound Path", setup: temporaryPlanSetup, source: "import os\nfrom pathlib import Path\nPath = get_path_constructor()\nPath(os.environ['MEKUGI_BATCH_PLAN_DIR']).write_text('code')\n", unknown: true},
-		{name: "environment alias mutation", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "root =", "environment = os.environ\nenvironment['MEKUGI_BATCH_PLAN_DIR'] = '.'\nroot ="), unknown: true},
-		{name: "module alias mutation", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "root =", "module = os\nmodule.environ['MEKUGI_BATCH_PLAN_DIR'] = '.'\nroot ="), unknown: true},
-		{name: "environment escapes as argument", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "root =", "update_environment(os.environ)\nroot ="), unknown: true},
-		{name: "module imported alias mutation", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "root =", "import os as module\nmodule.environ['MEKUGI_BATCH_PLAN_DIR'] = '.'\nroot ="), unknown: true},
-		{name: "environment imported alias mutation", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "root =", "from os import environ as environment\nenvironment['MEKUGI_BATCH_PLAN_DIR'] = '.'\nroot ="), unknown: true},
-		{name: "module escapes as argument", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "root =", "update_environment(os)\nroot ="), unknown: true},
-		{name: "rebound Path import alias", setup: temporaryPlanSetup, source: "import os\nfrom pathlib import Path as P\nP = get_path_constructor()\nP(os.environ['MEKUGI_BATCH_PLAN_DIR']).write_text('code')\n", unknown: true},
-		{name: "Path absolute segment override", setup: temporaryPlanSetup, source: "import os\nfrom pathlib import Path\nPath(os.environ['MEKUGI_BATCH_PLAN_DIR'], '/workspace/code.go').write_text('code')\n", unknown: true},
-		{name: "Path relative segment", setup: temporaryPlanSetup, source: "import os\nfrom pathlib import Path\nPath(os.environ['MEKUGI_BATCH_PLAN_DIR'], 'code.go').write_text('code')\n", unknown: true},
-		{name: "Path dynamic segment", setup: temporaryPlanSetup, source: "import os\nfrom pathlib import Path\nPath(os.environ['MEKUGI_BATCH_PLAN_DIR'], dynamic).write_text('code')\n", unknown: true},
+		{name: "unresolved sibling", setup: temporaryPlanSetup, source: temporaryPlanSource + "Path(dynamic).write_text('code')\n"},
+		{name: "no environment proof", source: temporaryPlanSource},
+		{name: "temporary looking workspace name", setup: "batch_plan_dir=plan.json\nexport MEKUGI_BATCH_PLAN_DIR=\"$batch_plan_dir\"\n", source: temporaryPlanSource},
+		{name: "unexported", setup: "MEKUGI_BATCH_PLAN_DIR=$(mktemp -d /tmp/artifacts.XXXXXX)\n", source: temporaryPlanSource},
+		{name: "non temporary mktemp directory", setup: strings.ReplaceAll(temporaryPlanSetup, "/tmp/mekugi-batches", "/workspace/mekugi-batches"), source: temporaryPlanSource},
+		{name: "reassigned shell root", setup: temporaryPlanSetup + "batch_plan_dir=workspace\nexport MEKUGI_BATCH_PLAN_DIR=\"$batch_plan_dir\"\n", source: temporaryPlanSource},
+		{name: "reassigned exported root", setup: temporaryPlanSetup + "MEKUGI_BATCH_PLAN_DIR=workspace\n", source: temporaryPlanSource},
+		{name: "arithmetic mutates shell root", setup: temporaryPlanSetup + "x=$((MEKUGI_BATCH_PLAN_DIR=1))\n", source: temporaryPlanSource},
+		{name: "shell function replaces mktemp", setup: "mktemp() { echo workspace; }\n" + temporaryPlanSetup, source: temporaryPlanSource},
+		{name: "source changes environment", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "root =", "os.environ['MEKUGI_BATCH_PLAN_DIR'] = 'workspace'\nroot =")},
+		{name: "parent traversal", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "plan.json", "../workspace.go")},
+		{name: "join parent traversal", setup: temporaryPlanSetup, source: "import os\nfrom pathlib import Path\nPath(os.path.join(os.environ['MEKUGI_BATCH_PLAN_DIR'], '../workspace.go')).write_text('code')\n"},
+		{name: "rebound Path", setup: temporaryPlanSetup, source: "import os\nfrom pathlib import Path\nPath = get_path_constructor()\nPath(os.environ['MEKUGI_BATCH_PLAN_DIR']).write_text('code')\n"},
+		{name: "environment alias mutation", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "root =", "environment = os.environ\nenvironment['MEKUGI_BATCH_PLAN_DIR'] = '.'\nroot =")},
+		{name: "module alias mutation", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "root =", "module = os\nmodule.environ['MEKUGI_BATCH_PLAN_DIR'] = '.'\nroot =")},
+		{name: "environment escapes as argument", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "root =", "update_environment(os.environ)\nroot =")},
+		{name: "module imported alias mutation", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "root =", "import os as module\nmodule.environ['MEKUGI_BATCH_PLAN_DIR'] = '.'\nroot =")},
+		{name: "environment imported alias mutation", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "root =", "from os import environ as environment\nenvironment['MEKUGI_BATCH_PLAN_DIR'] = '.'\nroot =")},
+		{name: "module escapes as argument", setup: temporaryPlanSetup, source: strings.ReplaceAll(temporaryPlanSource, "root =", "update_environment(os)\nroot =")},
+		{name: "rebound Path import alias", setup: temporaryPlanSetup, source: "import os\nfrom pathlib import Path as P\nP = get_path_constructor()\nP(os.environ['MEKUGI_BATCH_PLAN_DIR']).write_text('code')\n"},
+		{name: "Path absolute segment override", setup: temporaryPlanSetup, source: "import os\nfrom pathlib import Path\nPath(os.environ['MEKUGI_BATCH_PLAN_DIR'], '/workspace/code.go').write_text('code')\n"},
+		{name: "Path relative segment", setup: temporaryPlanSetup, source: "import os\nfrom pathlib import Path\nPath(os.environ['MEKUGI_BATCH_PLAN_DIR'], 'code.go').write_text('code')\n"},
+		{name: "Path dynamic segment", setup: temporaryPlanSetup, source: "import os\nfrom pathlib import Path\nPath(os.environ['MEKUGI_BATCH_PLAN_DIR'], dynamic).write_text('code')\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			command := temporaryPlanCommand(tc.setup, tc.source)
 			blocks := toolOperationBlocks(toolActivityShell(command))
-			var unknown, workspace, run bool
+			var workspace, run bool
 			for _, block := range blocks {
-				unknown = unknown || block.Verb == "Edit" && strings.HasPrefix(block.Label, "paths unavailable")
 				workspace = workspace || block.Verb == "Edit" && strings.Contains(block.Label, "workspace.go")
 				run = run || block.Verb == "Run"
 				if strings.ContainsRune(block.Label, '\x00') {
 					t.Fatalf("symbolic temporary path escaped into activity: %+v", block)
 				}
 			}
-			if unknown != tc.unknown || workspace != tc.workspace || (!tc.unknown && !tc.workspace && !run) {
-				t.Fatalf("unknown=%v workspace=%v run=%v; blocks=%+v", unknown, workspace, run, blocks)
+			if workspace != tc.workspace || !tc.workspace && !run {
+				t.Fatalf("workspace=%v run=%v; blocks=%+v", workspace, run, blocks)
 			}
 		})
 	}

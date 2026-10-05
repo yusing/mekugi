@@ -24,7 +24,7 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 		t.Run(filepath.Base(strings.Fields(edit)[0]), func(t *testing.T) {
 			shell := newExecTrackShell(t)
 			workspace := t.TempDir()
-			before, after, completedText := "before\n", "+after", "completed"
+			before, after, completedText := "before\n", "+after", "requested"
 			if filepath.Base(strings.Fields(edit)[0]) == "gofmt" {
 				before, after, completedText = "package p; var A=1\n", "+var A = 1", "Ran"
 			}
@@ -158,7 +158,7 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			case raw := <-frame:
 				_, _ = screen.Write([]byte(raw))
 				shown := screen.String()
-				if strings.Contains(shown, "requested") || strings.Contains(shown, "LIVE ·") || !strings.Contains(shown, completedText) || !strings.Contains(shown, "Running") {
+				if strings.Contains(shown, "requested") != (completedText == "requested") || strings.Contains(shown, "LIVE ·") || !strings.Contains(shown, completedText) || !strings.Contains(shown, "Running") {
 					t.Fatalf("terminal did not settle only the edit:\n%s", shown)
 				}
 			case <-ctx.Done():
@@ -421,7 +421,7 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 			reportOld := func() {
 				report := dialExecTrackReport(t, hub, script)
 				report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
-				awaitMain(t, u, "completed")
+				awaitMain(t, u, "requested")
 			}
 			if !lateReport {
 				reportOld()
@@ -528,7 +528,7 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)
 	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
-	awaitMain(t, u, "completed")
+	awaitMain(t, u, "requested")
 	// The first call edited one file; an unrelated change makes the sibling
 	// watch visible too. Neither can acquire completion from this report.
 	writeTestFile(t, filepath.Join(workspace, "one", "source.go"), "after\n")

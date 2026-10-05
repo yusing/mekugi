@@ -158,6 +158,14 @@ Literal, statically scoped `rm` commands show requested `Delete` intent.
 A receipt replaces edit intent without removing neighboring operations in a
 mixed script; combined host output remains attached to the final operation.
 
+Supported Python and JavaScript writes with source-named targets also show
+requested `Edit` intent. If no target can be resolved, the interpreter keeps its
+normal `Run` row and command source/output dialog. Partial target resolution
+keeps the named requested edits plus a `Run` source row for unresolved effects.
+A successful command or segment does not confirm an edit: named intent remains
+requested until retained file evidence replaces it. Tracked failed and skipped
+edit segments keep their outcomes visible, even when sibling edits have a receipt.
+
 Stock `apply_patch`, including transparent Code Mode calls using immutable
 literal patch bindings, does not emit a bare `Edit` label, a generic `Run`
 preview, or its patch body into child activity. After the host result and

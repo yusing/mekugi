@@ -100,9 +100,9 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 	if !scan.writes {
 		return "", false
 	}
-	if scan.temporaryWrites && len(scan.result.scope) == 0 && !scan.result.open {
-		// This is an ordinary invocation with temporary helper artifacts, not
-		// an unresolved workspace edit. Keep its Run card and stock output.
+	if len(scan.result.scope) == 0 {
+		// Unresolved targets have no edit to open. Keep the ordinary Run
+		// projection so its dialog retains the original command and output.
 		return "", false
 	}
 	suffix := " · " + shellInterpreterName(command) + " (requested)"
@@ -116,8 +116,8 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 			}
 		}
 	}
-	if len(displays) == 0 || scan.result.open {
-		displays = append(displays, "Edit"+suffix)
+	if scan.result.open {
+		displays = append(displays, "Run "+toolActivityCode(projection.Command)+"\n"+toolActivityFenced(projection.Language, projection.Source))
 	}
 	return strings.Join(displays, "\n\n"), true
 }
