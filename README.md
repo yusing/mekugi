@@ -673,8 +673,12 @@ usage-evidence coverage, average output tokens/sec, measured cache rate, capture
 health, and transport details. Average throughput is measured output tokens divided
 by the sum of their provider-request seconds, including request latency and automatic
 transport retries, not an average of individual rates or session wall time. Local
-preparation, tool execution, and idle time between requests are excluded. Requests
-without timing or authoritative token totals are excluded from both sums; measured
+preparation, tool execution, and idle time between requests are excluded. Measured
+rates and live estimates use provider-response receipt time, before local processing
+and delivery of already-read output. Unread transport buffering and backpressure
+still count, so these rates describe observed provider-request throughput, not
+provider-only generation speed. Requests without timing or authoritative token totals
+are excluded from both sums; measured
 request count and duration show the coverage. Output includes provider-counted
 reasoning tokens. A measured zero-output request has zero throughput; missing timing
 is unavailable.

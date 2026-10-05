@@ -440,7 +440,7 @@ func (a *requestAttempt) prepareResponse() error {
 		if a.usageTracker != nil && !a.usageTracker.started.IsZero() {
 			var meter capturer.StreamOutputMeter
 			a.hooks.onOutput = func(payload []byte) {
-				if rate := meter.Observe(payload, time.Since(a.usageTracker.started)); rate > 0 {
+				if rate := meter.Observe(payload, a.hooks.receivedAt.Sub(a.usageTracker.started)); rate > 0 {
 					a.usageTracker.observeOutputEstimate(rate)
 				}
 			}
@@ -462,6 +462,9 @@ func (a *requestAttempt) prepareResponse() error {
 	a.hooks.onUsage = func(counts tokenCounts) {
 		a.finalization.observation.usageCounts = counts
 		a.finalization.observation.usageObserved = true
+		if a.usageTracker != nil {
+			a.usageTracker.receivedAt = a.hooks.receivedAt
+		}
 		if a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices {
 			if a.mekugiTransform != nil {
 				a.mekugiTransform.observeResponseUsage(counts)
@@ -469,7 +472,7 @@ func (a *requestAttempt) prepareResponse() error {
 				a.usageTracker.observe(counts)
 			}
 		}
-		throughput := measureOutputThroughput(counts, a.providerStarted)
+		throughput := measureOutputThroughput(counts, a.providerStarted, a.hooks.receivedAt)
 		if a.usageTracker != nil {
 			throughput = a.usageTracker.throughput
 		}

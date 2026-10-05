@@ -1,6 +1,10 @@
 package router
 
-import "github.com/yusing/mekugi/internal/responses"
+import (
+	"time"
+
+	"github.com/yusing/mekugi/internal/responses"
+)
 
 // responseHooks observes the provider boundary before rewriting. It never emits
 // payloads or owns a transformer, transport, subscription, or background task.
@@ -10,6 +14,7 @@ type responseHooks struct {
 	streamDiagnostics   *streamDiagnostics
 	onUsage             func(tokenCounts)
 	onOutput            func([]byte)
+	receivedAt          time.Time // Body read time, before buffered events are transformed.
 	deliveredResponseID string
 	deliveredTerminal   bool
 }

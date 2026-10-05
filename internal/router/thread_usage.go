@@ -42,6 +42,7 @@ type threadUsageTotal struct {
 
 type threadUsageObservation struct {
 	started       time.Time
+	receivedAt    time.Time
 	throughput    capturer.OutputThroughput
 	once          sync.Once
 	totals        *threadUsage
@@ -72,7 +73,11 @@ func (o *threadUsageObservation) observe(counts tokenCounts) {
 		round := providerRoundOutput{}
 		if !o.started.IsZero() {
 			round.StartedUnixNano = o.started.UnixNano()
-			round.Throughput = measureOutputThroughput(counts, o.started)
+			at := o.receivedAt
+			if at.IsZero() {
+				at = time.Now()
+			}
+			round.Throughput = measureOutputThroughput(counts, o.started, at)
 		}
 		o.throughput = round.Throughput
 		o.totals.addRound(o, tier, counts, round)

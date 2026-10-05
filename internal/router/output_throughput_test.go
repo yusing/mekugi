@@ -133,7 +133,9 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 					terminal := `{"id":"tps-response","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":80,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":20}}}`
 					wire := terminal
 					if stream {
-						wire = "data: {\"type\":\"response.completed\",\"response\":" + terminal + "}\n\n"
+						wire = "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"custom_tool_call\",\"id\":\"tool\",\"call_id\":\"tool\",\"name\":\"unknown\",\"input\":\"" + strings.Repeat("inspect carefully ", 64) + "\"}}\n\n" +
+							"data: {\"type\":\"response.output_text.delta\",\"output_index\":1,\"delta\":\"additional output\"}\n\n" +
+							"data: {\"type\":\"response.completed\",\"response\":" + terminal + "}\n\n"
 					}
 					recorder, err := capturer.New(capturer.Config{Mode: "mekugi"})
 					if err != nil {
@@ -158,10 +160,16 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 					handler := recorder.Handler(http.HandlerFunc(responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, proxy)))
 					request := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, req.fields)))
 					request.Header = headers
-					out := httptest.NewRecorder()
+					out := &throughputSlowWriter{ResponseRecorder: httptest.NewRecorder()}
+					if recordThread {
+						out.usage = proxy.usage
+					}
 					handler.ServeHTTP(out, request)
 					if out.Code != http.StatusOK {
 						t.Fatalf("response=%d %s", out.Code, out.Body.String())
+					}
+					if recordThread && stream && (out.beforeDelay <= 0 || out.afterDelay != out.beforeDelay) {
+						t.Fatalf("buffered live estimate changed after delivery delay: %g -> %g", out.beforeDelay, out.afterDelay)
 					}
 					measurement := recorder.Snapshot().Usage.OutputThroughput
 					if rate, known := measurement.Rate(); !known || rate != 40 {
@@ -177,6 +185,28 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 			})
 		}
 	}
+}
+
+// Delivery work between buffered events must not extend provider receipt time.
+type throughputSlowWriter struct {
+	*httptest.ResponseRecorder
+	usage                   *threadUsage
+	beforeDelay, afterDelay float64
+}
+
+func (w *throughputSlowWriter) Write(payload []byte) (int, error) {
+	if bytes.Contains(payload, []byte("response.output_item.done")) {
+		if w.usage != nil {
+			report, _ := w.usage.snapshot("thread-1")
+			w.beforeDelay = report.outputEstimate
+		}
+		time.Sleep(time.Second)
+	}
+	if w.usage != nil && bytes.Contains(payload, []byte("response.output_text.delta")) {
+		report, _ := w.usage.snapshot("thread-1")
+		w.afterDelay = report.outputEstimate
+	}
+	return w.ResponseRecorder.Write(payload)
 }
 
 func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
@@ -348,13 +378,13 @@ func TestOutputThroughputMissingAndPartialEvidence(t *testing.T) {
 			{name: "inconsistent", counts: tokenCounts{TotalsKnown: true, OutputTokens: 80, Inconsistent: true}, time: started},
 			{name: "partial-categories-known-totals", counts: tokenCounts{TotalsKnown: true, OutputTokens: 80, Incomplete: true}, time: started, known: true, rate: 40},
 		} {
-			got := measureOutputThroughput(tc.counts, tc.time)
+			got := measureOutputThroughput(tc.counts, tc.time, time.Now())
 			rate, known := got.Rate()
 			if known != tc.known || rate != tc.rate {
 				t.Fatalf("%s rate=%g,%v want %g,%v", tc.name, rate, known, tc.rate, tc.known)
 			}
 		}
-		got := measureOutputThroughput(tokenCounts{TotalsKnown: true, OutputTokens: 80}, time.Now())
+		got := measureOutputThroughput(tokenCounts{TotalsKnown: true, OutputTokens: 80}, time.Now(), time.Now())
 		if _, known := got.Rate(); known {
 			t.Fatal("zero elapsed time was a measured rate")
 		}

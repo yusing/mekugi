@@ -546,6 +546,9 @@ func copyJSONTransformed(writer io.Writer, reader io.Reader, transformer respons
 	if len(body) > upstreamJSONBufferBytes {
 		return responseTerminalUnknown, fmt.Errorf("upstream JSON response exceeds the router buffer budget")
 	}
+	if hooks != nil {
+		hooks.receivedAt = time.Now()
+	}
 	if err := hooks.observe(body, false); err != nil {
 		return responseTerminalUnknown, fmt.Errorf("%w: %w", errResponseTransform, err)
 	}
@@ -570,8 +573,8 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 	if hooks != nil {
 		defer func() { hooks.streamDiagnostics.copyStopped(resultErr) }()
 	}
-	if hooks != nil && hooks.streamDiagnostics != nil {
-		reader = diagnosticStreamReader{reader: reader, diagnostics: hooks.streamDiagnostics}
+	if hooks != nil {
+		reader = diagnosticStreamReader{reader: reader, diagnostics: hooks.streamDiagnostics, receivedAt: &hooks.receivedAt}
 	}
 	buffered := bufio.NewReader(reader)
 

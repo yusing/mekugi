@@ -96,9 +96,15 @@ the recorder, never reconstructed from a previous launch.
 
 `output_throughput` pairs provider-authoritative `output_tokens` with
 `duration_ns` and `measured_requests`. The timer starts immediately before forwarding
-one provider request and stops at its first terminal usage observation, including
-request latency and automatic transport retries, excluding local preparation,
-post-response delivery, tools and idle time between requests. Output includes reasoning.
+one provider request and stops when the response bytes containing its first terminal
+usage observation are read, including request latency and automatic transport retries,
+excluding local preparation, post-response delivery, tools and idle time between
+requests. Measured throughput and live estimates use the receipt time of their
+corresponding response bytes:
+local transformation, capture, and downstream delivery of already-read output MUST NOT
+lengthen their durations. Unread transport buffering and backpressure remain part of
+the observed provider-request duration; this is not provider-only generation speed.
+Output includes reasoning.
 Missing or inconsistent token totals, absent timing and nonpositive elapsed time
 produce no measurement, not zero TPS. Explicit zero output with positive timing
 remains a measured zero rate. The session average is the sum of measured output tokens
