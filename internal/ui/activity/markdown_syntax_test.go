@@ -16,7 +16,18 @@ import (
 func TestMarkdownInlineSyntax(t *testing.T) {
 	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme, 0} {
 		p := Painter{Theme: theme}
-		for _, code := range []string{"git commit -m 'amend: parser'", "GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash HEAD~2", "echo \"$HOME\" && printf '%s' 42", "internal/ui/activity/paint.go", "a `literal` b", "猫👩‍💻"} {
+		for _, tc := range []struct{ code, lang string }{
+			{"package main", "go"},
+			{"func _ready(): print(42)", "gd"},
+			{"#!/bin/bash", "bash"},
+			{"notify:         notif.FromCtx(parent.Context()).Notify,", "text"},
+			{"FOO=bar command args...", "text"},
+			{"\"not := code\"", "text"},
+			{"internal/ui/activity/paint.go", "text"},
+			{"猫👩‍💻", "text"},
+			{"completed successfully", "text"},
+		} {
+			code := tc.code
 			t.Run(fmt.Sprint(theme)+"/"+code, func(t *testing.T) {
 				source := "**before ``" + code + "`` after** tail"
 				got := p.Inline(source)
@@ -28,18 +39,21 @@ func TestMarkdownInlineSyntax(t *testing.T) {
 				fmt.Fprint(screen, got)
 				expected := vt.NewEmulator(ansi.StringWidth(code)+1, 1)
 				defer expected.Close()
-				highlighted := strings.Join(p.Highlight("bash", code), "\n")
-				fmt.Fprint(expected, p.Theme.Accent()+strings.ReplaceAll(highlighted, "\x1b[39m", p.Theme.Accent()))
+				highlighted := code
+				if tc.lang != "text" {
+					highlighted = strings.Join(p.Highlight(tc.lang, code), "\n")
+				}
+				fmt.Fprint(expected, p.Theme.Accent()+strings.ReplaceAll(highlighted, "\x1b[39m", p.Theme.Accent())+p.Theme.Accent()+" ")
 				distinct := false
 				for x := range ansi.StringWidth(code) {
 					cell, want := screen.CellAt(7+x, 0), expected.CellAt(x, 0)
 					if cell.Content != want.Content || cell.Style.Fg != want.Style.Fg || (cell.Content != "" && cell.Style.Attrs&uv.AttrBold == 0) {
 						t.Fatalf("inline cell %d = %+v, expected syntax %+v with bold", x, cell, want)
 					}
-					distinct = distinct || cell.Style.Fg != expected.CellAt(ansi.StringWidth(code), 0).Style.Fg
+					distinct = distinct || (cell.Content != "" && cell.Style.Fg != expected.CellAt(ansi.StringWidth(code), 0).Style.Fg)
 				}
-				if strings.HasPrefix(code, "git ") && !distinct {
-					t.Fatal("shell code still has uniform color")
+				if (tc.lang != "text") != distinct && theme != 0 {
+					t.Fatalf("%s snippet has unexpected syntax colors", tc.lang)
 				}
 				if cell := screen.CellAt(7+ansi.StringWidth(code)+1, 0); cell.Style.Fg != nil || cell.Style.Attrs&uv.AttrBold == 0 {
 					t.Fatalf("syntax leaked into bold prose: %+v", cell.Style)

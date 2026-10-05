@@ -315,9 +315,12 @@ func (p *Painter) Inline(line string) string {
 			}
 		}
 		if code, end, ok := liveActivityCodeSpan(line, i); ok {
-			// Inline spans have no language tag. Use shell syntax, as for Run
-			// labels, retaining the accent for tokens without a syntax color.
-			highlighted := strings.Join(p.Highlight("bash", code), "\n")
+			// Inline spans have no language tag. Detect from their content,
+			// retaining the accent for plain text and uncolored tokens.
+			highlighted := code
+			if !p.LayoutOnly && len(code) <= outputAutoHighlightBytes {
+				highlighted = strings.Join(p.Highlight("", code), "\n")
+			}
 			out.WriteString(p.Theme.Accent() + strings.ReplaceAll(highlighted, "\x1b[39m", p.Theme.Accent()) + "\x1b[39m")
 			i = end
 			continue
