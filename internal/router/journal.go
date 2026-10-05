@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gofrs/flock"
+	"github.com/yusing/goutils/synk"
 	"github.com/yusing/mekugi/capturer"
 )
 
@@ -313,10 +314,19 @@ func readJournalRecord(path string) (threadJournal, bool, error) {
 		return threadJournal{}, false, err
 	}
 	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, maxReplayRecordBytes+1))
+	pool := synk.GetSizedBytesPool()
+	buffer := pool.GetBuffer(int(info.Size()) + bytes.MinRead)
+	defer func() {
+		// Journal content is private. Decoding owns its strings and slices;
+		// only this temporary read buffer returns to the shared pool.
+		clear(buffer.Bytes())
+		pool.PutBuffer(buffer)
+	}()
+	_, err = buffer.ReadFrom(io.LimitReader(file, maxReplayRecordBytes+1))
 	if err != nil {
 		return threadJournal{}, false, err
 	}
+	data := buffer.Bytes()
 	var journal threadJournal
 	if len(data) > maxReplayRecordBytes || json.Unmarshal(data, &journal) != nil ||
 		(journal.Version != 1 && journal.Version != 2) || journal.Thread == "" || filepath.Base(path) != journalFilename(journal.Workspace, journal.Thread) {
