@@ -218,6 +218,9 @@ func (p *mekugiProxy) Close() error {
 	p.mu.Lock()
 	p.closed = true
 	defer p.mu.Unlock()
+	if p.execTrack != nil {
+		p.execTrack.close()
+	}
 	var cleanupErr error
 	for _, release := range p.storageLeases {
 		release()

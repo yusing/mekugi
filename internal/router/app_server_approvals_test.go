@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 func approvalTestCommand(t *testing.T, u *appServerUI, id any, params map[string]any) {
@@ -181,6 +182,51 @@ func TestNativeApprovalWaitsForAnEmptyComposer(t *testing.T) {
 	}
 }
 
+func TestNativeApprovalGuardedWrite(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.session.start("main", "/work")
+	newRequest := func() *vcsApproval {
+		return &vcsApproval{thread: "main", cwd: "/work", argv: []string{"git", "push", "origin", "main"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})}
+	}
+	approved, denied, expired := newRequest(), newRequest(), newRequest()
+	for _, request := range []*vcsApproval{approved, denied, expired} {
+		u.addGuardApproval(request)
+	}
+	paint := ansi.Strip(questionTestPaint(t, u, 80))
+	for _, want := range []string{"Allow this remote write?", "git push origin main", "Denying fails only this command with exit status 1.", "1. Yes, run it", "2. No, fail this command"} {
+		if !strings.Contains(paint, want) {
+			t.Fatalf("dock lacks %q:\n%s", want, paint)
+		}
+	}
+	appServerTestKeys(t, u, "\r")
+	if reply := <-approved.reply; !reply.OK {
+		t.Fatalf("approval reply = %+v", reply)
+	}
+	questionTestPaint(t, u, 80)
+	appServerTestKeys(t, u, "2\r")
+	if reply := <-denied.reply; reply.OK || reply.Reason != "denied in Mekugi" {
+		t.Fatalf("denial reply = %+v", reply)
+	}
+	expired.outcome = "timed out"
+	close(expired.done)
+	questionTestPaint(t, u, 80)
+	appServerTestKeys(t, u, "\r") // The command has its answer; nothing is sent.
+	if len(expired.reply) != 0 || len(u.approvals.pending) != 0 {
+		t.Fatal("expired write was answered")
+	}
+	want := "Approved · git push origin main\nDenied · git push origin main\nDenied: no answer within 5 minutes · git push origin main"
+	if got := approvalTestTranscript(u); got != want {
+		t.Fatalf("transcript = %q", got)
+	}
+	withdrawn := newRequest()
+	u.addGuardApproval(withdrawn)
+	withdrawn.outcome = "withdrawn"
+	close(withdrawn.done)
+	if !u.expireApprovals() || !strings.HasSuffix(approvalTestTranscript(u), "Withdrawn: the command stopped · git push origin main") {
+		t.Fatalf("transcript = %q", approvalTestTranscript(u))
+	}
+}
+
 func TestNativeApprovalThreadPermissions(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	if got := u.threadPermissions(map[string]any{}); got["approvalPolicy"] != "never" || got["sandbox"] != "danger-full-access" {
@@ -204,6 +250,9 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 		}},
 		{"approval-command-narrow", 36, func(t *testing.T, u *appServerUI) {
 			approvalTestCommand(t, u, 1, map[string]any{"reason": "Publish the release branch."})
+		}},
+		{"approval-guarded-write", 80, func(t *testing.T, u *appServerUI) {
+			u.addGuardApproval(&vcsApproval{thread: "main", cwd: "/workspace", argv: []string{"gh", "pr", "merge", "12", "--squash"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})})
 		}},
 		{"approval-banner", 80, func(t *testing.T, u *appServerUI) {
 			u.draft = "Keep this draft."

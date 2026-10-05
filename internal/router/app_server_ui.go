@@ -24,6 +24,7 @@ import (
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/term"
 )
 
@@ -86,6 +87,7 @@ type appServerUI struct {
 	questions                 nativeQuestionDock
 	approvals                 nativeApprovalDock
 	approvalMode              bool // Codex's configured policy applies, not --yolo's.
+	guardHookCheck            approvalHookCheck
 	statusPanel               *appServerStatusReport
 	sessionCapture            *capturer.Recorder
 	resumePicker              *appServerResumePicker
@@ -170,8 +172,17 @@ func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
 }
 
-// Approval mode answers Codex's approval requests.
+// Codex approval policy and the invocation-local VCS guard are independent.
 func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionTitleGenerator, approvals bool) (func() error, error) {
+	guardCommand := ""
+	for _, entry := range cmd.Environ() {
+		if command, ok := strings.CutPrefix(entry, vcsguard.HookEnvironment+"="); ok {
+			guardCommand = command
+		}
+	}
+	if guardCommand != "" && (proxy == nil || proxy.execTrack == nil || proxy.execTrack.guardClose == nil) {
+		return nil, errors.New("VCS guard approval channel is unavailable")
+	}
 	var resumeCwd string
 	if resumeThread == "--last" || resumeThread == resumePickerStartup {
 		var err error
@@ -188,6 +199,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		return nil, err
 	}
 	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u.guardHookCheck.command = guardCommand
 	if generator != nil {
 		u.titleGenerator = generator
 		u.titleUpdates = generator.updates
@@ -296,6 +308,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						u.commandSegmentRetained(err)
 					case update := <-u.titleUpdates:
 						u.persistSessionTitle(update)
+					case request := <-u.guardRequests():
+						u.addGuardApproval(request)
+						u.dirty = true
 					case message, ok := <-c.Messages:
 						if !ok {
 							exited = true
@@ -332,7 +347,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						u.flushStreamOutput()
 						u.startCommitReads()
 						u.paneError(u.panes.save(u.shell, u.now(), false))
-						if u.expireNotice(u.now()) {
+						if u.expireNotice(u.now()) || u.expireApprovals() {
 							u.dirty = true
 						}
 						now := u.now()
@@ -622,6 +637,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				u.setNotice("Could not interrupt to send steer: "+m.Error.Message, true)
 			}
 			return nil
+		}
+		if method == "approval/hooks" {
+			return u.guardHookResponse(m)
 		}
 		if method == "thread/start" && u.replacement.pending() && m.Error != nil {
 			u.replacement.finish()

@@ -35,9 +35,16 @@ and implicit command boundaries preserve command arguments.
 In Mekugi mode, the Codex request keeps its stock Code Mode JavaScript
 `functions.exec` tool or native `apply_patch` and `exec_command` tools. The
 router does not replace their names, schemas, arguments, results, or execution
-path. The only exception is the in-shell segment tracking of
+path. The only exceptions are the in-shell segment tracking of
 [REQ-EXECUTION-002](#req-execution-002--track-each-segment-of-a-command-list), which
-keeps the result and the Codex-owned process lifecycle unchanged. Code Mode batching, including `Promise.allSettled`, remains available. Codex
+keeps the result and the Codex-owned process lifecycle unchanged, and the remote
+write guard of
+[REQ-EXECUTION-003](#req-execution-003--guard-remote-vcs-writes), which can fail one
+guarded command. When enabled, this guard uses Codex's native
+`PreToolUse.updatedInput` hook to instrument shell command text. This is a narrow
+exception to byte-identical command input: tool identity, all other arguments,
+selected shell, results, permissions, sandbox and continuations stay Codex-owned.
+Code Mode batching, including `Promise.allSettled`, remains available. Codex
 owns permissions, sandboxing, command processes, yielded sessions, and
 `write_stdin` continuation. Mekugi never reruns a stock call while observing,
 replaying, or displaying it.
@@ -68,8 +75,10 @@ partial workspace effect, but it never publishes a successful edit receipt.
 
 Command observation under [REQ-CHANGES-001](changes.md) reads the completed
 `exec_command` arguments or literal Code Mode command text. The forwarded call
-stays byte-identical, and its pre-call capture is time-bounded so that an
-unreadable scope becomes incomplete evidence rather than delaying Codex.
+stays byte-identical through observation; the approval guard may subsequently
+instrument command text through the native hook described above. Pre-call capture
+is time-bounded so that an unreadable scope becomes incomplete evidence rather
+than delaying Codex.
 Post-result comparisons read only known edit operands, never a workspace sweep.
 They do not wrap commands, inject environments, or alter yielded-session handling.
 Agent-visible change notices are appended only after the observed evidence is
@@ -116,7 +125,8 @@ Acceptance:
 
 1. Direct native `apply_patch` and `exec_command` pass through with their
    original arguments and results, except for the eligible model-visible output
-   projection above. The same holds for Code Mode calls.
+   projection and native approval-guard command instrumentation above. The same
+   holds for Code Mode calls.
 2. A Code Mode cell can batch or parallelize stock tools, including a patch
    alongside an independent command, without router-side serial execution.
 3. Streaming patch input produces an early provisional preview; incomplete
@@ -246,3 +256,117 @@ Acceptance:
    network access, reports each segment's stdout, stderr, exit and skipped state.
    Missing startup resources run the original script once; router cancellation
    after resource acquisition does not prevent accepted execution.
+
+## REQ-EXECUTION-003 — Guard remote VCS writes
+
+Interactive UI launches guard remote version-control writes by default,
+independently of Codex's approval policy, including with `--yolo`. Writes wait
+for the user's approval in the native UI. This covers Git, GitHub CLI, Mercurial,
+Subversion and Jujutsu, without restricting the remote, ref or tag being written.
+The Mekugi flag `--vcs-guard=false`, placed before `codex` or standalone Codex
+arguments, disables only this guard, preserving Codex's approval policy and
+command tracking. Headless and noninteractive commands have no guard.
+
+The guard requires unsandboxed command execution: configure
+`sandbox_mode="danger-full-access"` or use `--yolo`. The latter disables Codex
+approvals and sandboxing, not this guard. Sandboxed guard execution is unsupported.
+Mekugi does not silently change the user's configuration, approval policy or
+sandbox settings.
+
+The guard uses Codex's native command hook to instrument shell command text
+before execution. It leaves expansion and control flow to Codex's selected
+shell, including Bash, sh and zsh, rather than selecting Bash or running the
+whole script in a substitute interpreter. It preserves all other tool arguments,
+permissions, sandbox settings, process ownership and continuation semantics.
+A command asks only when execution reaches it, not for a skipped branch.
+Approved writes and non-writes run the selected real executable with its expanded
+arguments, output and exit status.
+
+Direct commands and supported wrappers (`env`, `command`, `exec`, `nohup`,
+`timeout`, `nice` and `xargs`) recognize guarded tools by name or executable
+path. Absolute and relative paths may contain spaces and need not be on PATH;
+expanded directory paths such as `"$tools/git"` are recognized by their tool-name
+suffix. Nested `sh`, `bash`, `dash`, `zsh` and `ksh` command-string invocations
+are instrumented after their `-c` payload expands. Bare tool and shell names
+retain shell-function lookup and use the command-local PATH; `command -p`
+retains its default-path lookup.
+
+The enabled guard requires Mekugi mode, the installed `mekugi-exec` sibling,
+Codex's native command-hook support and the approval channel. Before each new
+user turn, the UI verifies the workspace's effective hooks. A missing, disabled
+or untrusted guard, or a competing trusted synchronous shell hook, blocks the
+turn with an explanation and preserves the draft. Explicit CLI overrides of
+`hooks` or `hooks.PreToolUse` prevent a guarded launch. Interactive passthrough
+requires explicit `--vcs-guard=false`, rather than `--yolo`. Invocation-local hook
+setup preserves recovery-hook trust and leaves user configuration files unchanged.
+
+Denial, no answer within 5 minutes, or a blocked or unreachable approval channel
+prints `mekugi: remote write denied: REASON` to stderr and exits 1 without running the
+write. Only that command fails: a `;` list continues, and `&&`/`||` follow the
+selected shell's normal failure semantics, including its error-handling options.
+If the command exits while waiting, the request is withdrawn. Approval does not
+grant sandbox permissions.
+
+Writes are:
+
+- Git: `push`, `send-pack` and `send-email` unless the last dry-run option
+  enables a dry run, `subtree push`, `svn dcommit`, `p4 submit`, and `lfs push`,
+  `lock` and `unlock`. Git global options are skipped. Another subcommand outside
+  the known read and local-write set resolves through the real tool's
+  `alias.NAME` with the same global options; a shell alias's script is classified
+  with its arguments, and a non-alias, which is an external command that may push
+  through Git's exec-path, is a write.
+  Because Git puts its exec-path ahead of PATH, scripts that nested Git would run
+  unguarded (`submodule foreach`, `rebase -x`/`--exec`, `bisect run`) are
+  classified up front.
+- `gh`: commands outside a known read-only set, including unknown commands and
+  extension commands; `clone` reads only for `repo` and `gist`; `api` with a non-GET method, request fields or input, or a
+  GraphQL mutation or file-supplied query.
+- `hg push`, `email` and `phabsend` (including unambiguous prefixes); `svn`
+  `commit`, `import`, `lock`, `unlock`, revision-property changes and operations
+  on repository URLs; `jj git push`, `jj gerrit upload`, and unknown `jj`
+  commands, which may be aliases.
+
+Git alias and embedded command scripts are classified through `env`, `command`,
+`exec`, `nohup`, `time`, `timeout`, `xargs`, `nice` and `builtin` wrappers. A
+dynamic word in subcommand position, or a script that does not parse, counts as
+a write. Help and version invocations do not.
+
+The guard protects against accidental remote writes, not arbitrary process
+execution. Command-text instrumentation does not comprehensively cover fully
+computed executable words without a recognized tool-path suffix, `eval`,
+`env -S` split payloads, sourced files, script-file contents, or arbitrary
+programs that internally execute absolute VCS paths. Bash and zsh startup
+guards add PATH and known-absolute-path coverage inside scripts without changing
+user startup files; they do not remove these limits. Parsing failures reported
+by Mekugi's hook reject that tool call. Hook failures outside the handler follow
+Codex's host failure policy and need not fail closed.
+
+An approved command that runs another guarded write, such as `gh pr create`
+pushing a branch through a guarded Git lookup, asks again for the inner command.
+
+Acceptance:
+
+1. With push denied, `git add -A; git commit -m x; git push origin main; git log`
+   exits 0 with segment statuses 0, 0, 1, 0, and the `&&` form exits 1 with
+   0, 0, 1 and `git log` skipped. The real tool never runs the push.
+2. An approved write and every non-write run the real tool with unchanged
+   arguments, output and status.
+3. An unanswered request is denied after the timeout, whether or not the UI has
+   received it, and the UI records the outcome.
+4. Installed Codex with unsandboxed execution, including `--yolo`, runs the real
+   helper to the native dock; denial fails only the push, and approval runs it.
+   A blocked or unreachable connection denies the command.
+   The same holds in Bash, sh and zsh, by tool name and by direct or
+   supported-wrapper executable path,
+   including expanded paths and paths with spaces.
+5. A nested shell command string is checked after expansion. Command-local PATH,
+   shell functions, `command -p`, environment assignments and shell options
+   retain their native lookup and expansion behavior.
+6. A missing, disabled or untrusted effective guard, or a competing trusted
+   synchronous shell hook, blocks a new user turn without losing the draft or
+   modifying user configuration.
+7. The default guard remains enabled with `--yolo`. Explicit `--vcs-guard=false`
+   removes remote-write prompts while preserving command tracking and the chosen
+   Codex approval and sandbox policy. Interactive passthrough rejects an enabled
+   guard and accepts the explicit opt-out.

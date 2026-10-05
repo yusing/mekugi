@@ -13,23 +13,28 @@ import (
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/vcsguard"
 	"mvdan.cc/sh/v3/shell"
 )
 
-// nativeApprovalChoice is one answer to a host request.
+// nativeApprovalChoice is one answer. A host request receives response; a
+// guarded remote write receives approve.
 type nativeApprovalChoice struct {
 	label    string
 	response map[string]any
+	approve  bool
 	outcome  string // Transcript wording once chosen.
 }
 
-// nativeApproval is a pending Codex approval server request. Its options follow the stock
+// nativeApproval is a pending decision: a Codex approval server request, or
+// a remote VCS write held by the command guard. Its options follow the stock
 // TUI's approval overlay.
 // Source: codex-rs/tui/src/bottom_pane/approval_overlay.rs exec_options,
 // patch_options and permissions_options @7135b303d.
 type nativeApproval struct {
 	thread, turn string
-	request      jsontext.Value // Host server request.
+	request      jsontext.Value // Host server request; nil for a guarded write.
+	guard        *vcsApproval
 	title        string
 	subject      string   // Command or summary, for the dock and the transcript.
 	details      []string // Directory, reason and requested scope.
@@ -58,6 +63,14 @@ func (u *appServerUI) threadPermissions(params map[string]any) map[string]any {
 	return params
 }
 
+// guardRequests receives guarded remote writes; nil without command tracking.
+func (u *appServerUI) guardRequests() <-chan *vcsApproval {
+	if u.execTrack == nil {
+		return nil
+	}
+	return u.execTrack.approvals
+}
+
 func (u *appServerUI) approvalAgent(thread string) string {
 	path := u.session.paths[thread]
 	if path == "" || path == "/root" {
@@ -84,6 +97,25 @@ func (u *appServerUI) addApproval(a *nativeApproval) {
 		u.notify("approval-requested", "Approval requested")
 	}
 	u.autoOpenApprovals()
+}
+
+func (u *appServerUI) addGuardApproval(request *vcsApproval) {
+	if request.finished() {
+		return
+	}
+	details := u.approvalDirectory(request.cwd)
+	details = append(details, "Denying fails only this command with exit status 1.")
+	u.addApproval(&nativeApproval{
+		thread:  request.thread,
+		guard:   request,
+		title:   "Allow this remote write?",
+		subject: workerCommand(request.argv[0], request.argv[1:]),
+		details: details,
+		choices: []nativeApprovalChoice{
+			{label: "Yes, run it", approve: true, outcome: "Approved"},
+			{label: "No, fail this command", outcome: "Denied"},
+		},
+	})
 }
 
 // approvalMessage answers Codex's approval requests. Resolution and turn
@@ -360,6 +392,22 @@ func permissionSummary(value jsontext.Value) string {
 	return strings.Join(parts, "; ")
 }
 
+// expireApprovals withdraws guarded writes whose command stopped waiting.
+func (u *appServerUI) expireApprovals() bool {
+	changed := false
+	for _, a := range slices.Clone(u.approvals.pending) {
+		if a.guard != nil && a.guard.finished() {
+			outcome := "Denied: no answer within 5 minutes"
+			if a.guard.outcome == "withdrawn" {
+				outcome = "Withdrawn: the command stopped"
+			}
+			u.endApproval(a, outcome)
+			changed = true
+		}
+	}
+	return changed
+}
+
 // endApproval removes a pending approval and records how it ended.
 func (u *appServerUI) endApproval(a *nativeApproval, outcome string) {
 	index := slices.Index(u.approvals.pending, a)
@@ -381,7 +429,17 @@ func (u *appServerUI) endApproval(a *nativeApproval, outcome string) {
 }
 
 func (u *appServerUI) answerApproval(a *nativeApproval, choice nativeApprovalChoice) error {
-	if err := u.client.Respond(a.request, choice.response); err != nil {
+	if a.guard != nil {
+		if a.guard.finished() {
+			u.expireApprovals() // The command already has its answer.
+			return nil
+		}
+		reply := vcsguard.Reply{OK: choice.approve}
+		if !choice.approve {
+			reply.Reason = "denied in Mekugi"
+		}
+		a.guard.reply <- reply
+	} else if err := u.client.Respond(a.request, choice.response); err != nil {
 		return err
 	}
 	u.endApproval(a, choice.outcome)

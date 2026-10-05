@@ -145,6 +145,11 @@ func (u *appServerUI) flushInput() error {
 	if u.restoring != nil || !u.acceptsInput() {
 		return nil
 	}
+	if len(u.unsent)+len(u.queued) > 0 {
+		if ready, err := u.checkGuardHook(); !ready || err != nil {
+			return err
+		}
+	}
 	compactSteer := len(u.unsent) > 0 && u.unsent[0].text == "/compact" && !u.unsent[0].queueCompact
 	if u.waitingQuestion() && !compactSteer {
 		return nil
@@ -241,6 +246,9 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		delete(u.ownedImages, path)
 	}
 	u.appServerInputOperation.submit(s)
+	if !steer {
+		u.guardHookCheck.readyThread = ""
+	}
 	u.status, u.alert = "Sending…", false
 	if s.attachmentNotice != "" {
 		notice := s.attachmentNotice

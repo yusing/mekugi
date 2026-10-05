@@ -1,6 +1,7 @@
 package router
 
 import (
+	"io"
 	"slices"
 	"testing"
 )
@@ -9,6 +10,8 @@ func TestSplitCommand(t *testing.T) {
 	for _, prefix := range [][]string{
 		nil,
 		{"--debug"},
+		{"--vcs-guard"},
+		{"--vcs-guard=false"},
 		{"--ansi-faint=off"},
 		{"--ansi-faint", "on"},
 		{"--ansi-faint=auto"},
@@ -73,5 +76,32 @@ func TestHasModelOverridePreservesOperands(t *testing.T) {
 		if got := HasModelOverride(tc.args); got != tc.want {
 			t.Fatalf("HasModelOverride(%q) = %t, want %t", tc.args, got, tc.want)
 		}
+	}
+}
+
+func TestVCSGuardFlagAndStandaloneSplit(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		prefix []string
+		want   bool
+	}{
+		{name: "default", want: true},
+		{name: "enabled", prefix: []string{"--vcs-guard"}, want: true},
+		{name: "disabled", prefix: []string{"--vcs-guard=false"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			command := []string{"--yolo", "-m", "example"}
+			prefix, forwarded, err := SplitCommand(append(slices.Clone(tc.prefix), command...))
+			if err != nil || !slices.Equal(prefix, tc.prefix) || !slices.Equal(forwarded, command) {
+				t.Fatalf("split = %q, %q, %v", prefix, forwarded, err)
+			}
+			flags := newRouterFlags(io.Discard)
+			if err := flags.Parse(prefix); err != nil {
+				t.Fatal(err)
+			}
+			if *flags.vcsGuard != tc.want {
+				t.Fatalf("guard = %t, want %t", *flags.vcsGuard, tc.want)
+			}
+		})
 	}
 }

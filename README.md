@@ -138,8 +138,12 @@ Its default uses [Grok's model selection](#grok-models) when authenticated,
 otherwise the first available OpenCode Go model, then Zen.
 
 Mekugi opens its native terminal workspace. Codex's configured approval and
-sandbox policy applies; see
-[Approvals](#approvals). Add `--yolo` to run without approvals or sandbox.
+sandbox policy applies, and Mekugi also asks before remote repository writes; see
+[Approvals](#approvals). Add `--yolo` to disable Codex approvals and sandboxing;
+Mekugi's remote-write guard stays enabled. The guard requires unsandboxed command
+execution: configure `sandbox_mode="danger-full-access"` or use `--yolo`.
+Use `--vcs-guard=false` to disable the guard while retaining Codex's configured
+approval and sandbox policy.
 
 Mekugi flags go **before** `codex`, `grok`, or standalone Codex arguments.
 Interactive launches accept `--yolo`, model
@@ -180,6 +184,64 @@ itself only over an empty composer; otherwise a banner waits until you press
 `Ctrl-B`, then `q`. Number keys or arrows choose, `Enter` confirms, and `Esc`
 hides the dialog without answering.
 
+In interactive UI launches, Mekugi asks before remote repository writes reached
+through guarded shell commands by default, independently of Codex's approval
+policy, including with `--yolo`. Disable only this guard with
+`mekugi --vcs-guard=false codex` or `mekugi --vcs-guard=false` for standalone
+mode. Command tracking remains enabled. Headless and noninteractive commands
+have no guard. Guarded writes include:
+
+- `git push` to any remote, including tag and mirror pushes, plus `git send-email`,
+  `git svn dcommit`, `git p4 submit`, and Git LFS pushes and locks
+- `gh` commands that change GitHub state; unrecognized `gh` commands count as writes
+- `hg push` and `hg email`; `svn commit`, `import`, `lock`, and commands that change
+  a repository URL directly, such as `svn copy ^/trunk ^/tags/v1`
+- `jj git push` and `jj gerrit upload`; unrecognized `jj` commands, including
+  aliases, count as writes
+
+Git aliases, `git submodule foreach`, `rebase --exec`, and `bisect run` scripts
+are checked before they run. Read-only commands such as `git fetch` or `gh pr view`
+run without asking.
+
+If you deny it, don't answer within 5 minutes, or the approval connection is
+blocked or unreachable, only that command fails, with exit status 1; the shell
+continues as it would after any failure. If the command stops while waiting,
+its request is withdrawn. For example,
+`git add -A; git commit -m msg; git push origin main; git log` still runs
+`git log`, while the same list joined with `&&` stops at the push.
+
+Git subcommands that are neither built in nor aliases, such as `git subtree push`
+or a third-party `git-*` command, also ask, since they can push out of the guard's
+sight. A tool whose own write runs another guarded tool, such as `gh pr create`
+pushing your branch, asks again for that inner command.
+
+The guard needs the default `--mode mekugi`, `mekugi-exec` installed beside
+`mekugi`, Codex's native command-hook support, and unsandboxed command execution
+(`sandbox_mode="danger-full-access"` or `--yolo`). Sandboxed execution is
+unsupported. Mekugi never silently
+changes Codex's approval or sandbox policy. It keeps Codex's selected
+shell, including Bash, sh and zsh. Direct commands and supported wrappers such
+as `env`, `command`, `exec`, `xargs` and `timeout` are guarded by name or by
+absolute or relative executable path, including paths with spaces and expanded
+paths such as `"$tools/git"`. Nested shell `-c` commands are checked after their
+payload expands. Shell arguments, sandbox permissions and command sessions
+remain Codex-owned.
+
+Before each new user turn, Mekugi verifies that the guard hook is enabled and
+trusted. A missing guard or a competing trusted synchronous shell hook blocks
+the turn with an explanation and preserves your draft. Explicit CLI overrides
+of `hooks` or `hooks.PreToolUse` conflict with the enabled guard and prevent launch.
+User configuration files are unchanged.
+
+This is protection against accidental remote writes, not a process sandbox.
+It does not comprehensively intercept executable words computed entirely at
+runtime, `eval`, `env -S` payloads, sourced files, script files, or arbitrary
+programs that internally execute absolute VCS paths. Bash/zsh startup guards
+provide additional PATH and known-absolute-path coverage inside scripts, but
+these limits still apply. Hook failures outside Mekugi's handler follow Codex's
+failure policy and need not block execution. See the
+[execution contract](doc/spec/execution.md#req-execution-003--guard-remote-vcs-writes).
+
 ### Headless slice plans
 
 The `headless --yolo` subcommand reads one prompt from stdin and runs a new
@@ -207,6 +269,7 @@ exit means the run or its shutdown failed. Ordinary `codex exec` is unchanged.
 | --- | --- | --- |
 | `--ansi-faint` | `auto` | Dimming: `auto` detects mosh ancestry, `on` uses ANSI faint, `off` uses fixed muted colors |
 | `--mode` | `mekugi` | Use `passthrough` with `mekugi codex` to forward traffic without Mekugi tools or plugins |
+| `--vcs-guard` | `true` | Ask before remote VCS writes in the UI, even with `--yolo`; `false` disables only this guard |
 | `--post-compact-recovery` | `true` | Use `false` to skip the post-compaction context hook |
 | `--journal-compaction` | `off` | Experimental `auto` uses journal summaries without a provider request; `slice` resets only between planned slices |
 | `--grok-auth-file` | `~/.grok/auth.json` | Select a Grok OAuth credential store |
@@ -215,8 +278,10 @@ exit means the run or its shutdown failed. Ordinary `codex exec` is unchanged.
 | `--capture-output PATH` | Disabled | Append sanitized JSONL metrics |
 | `--debug` | Disabled | Record diagnostics, capture, metrics, forwarded instruction/tool snapshots, runtime reads, and an AX report; print a session diagnosis command on exit |
 
-`mekugi --mode passthrough codex --yolo` forwards traffic only. It doesn't need Node.js,
-and capture still works.
+`mekugi --mode passthrough --vcs-guard=false codex` forwards traffic only. It doesn't
+need Node.js, and capture still works. Interactive passthrough can't
+[guard remote writes](#approvals), so it requires `--vcs-guard=false` and retains
+Codex's configured approval and sandbox policy.
 
 If a detached multiplexer hides your mosh connection, use
 `mekugi --ansi-faint=off codex` for readable dimmed text. The setting applies only

@@ -2,6 +2,9 @@
 // started by the Bash hook from execsegment as the command shell's coprocess,
 // with the shell's original stdout and stderr on descriptors 3 and 4.
 //
+// Invoked under a guarded version-control name, it instead runs that command,
+// asking the router first when the command writes to a remote.
+//
 // It stays small so that it starts quickly: every tracked command pays for it.
 package main
 
@@ -10,15 +13,18 @@ import (
 	"bytes"
 	json "encoding/json/v2"
 	"errors"
+	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/yusing/mekugi/internal/execsegment"
+	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
@@ -33,6 +39,40 @@ const (
 )
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "--vcs-hook" {
+		helper, err := os.Executable()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		os.Exit(vcsguard.RunHook(helper, os.Args[2], os.Stdin, os.Stdout, os.Stderr))
+	}
+	if len(os.Args) >= 4 && (strings.TrimSuffix(os.Args[1], "-default") == "--vcs-command" || strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell") {
+		defaultPath := strings.HasSuffix(os.Args[1], "-default")
+		target := os.Args[3]
+		argv0 := target
+		if self, err := os.Executable(); err == nil && os.Args[0] != self {
+			argv0 = os.Args[0] // Preserve exec -a and env --argv0.
+		}
+		if strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell" {
+			os.Exit(guardShell(os.Args[2], target, argv0, defaultPath, os.Args[4:]))
+		}
+		name := filepath.Base(target)
+		if !slices.Contains(vcsguard.Tools, name) {
+			os.Exit(1)
+		}
+		explicit := ""
+		if strings.Contains(target, "/") {
+			explicit = target
+		}
+		os.Exit(guardCommand(os.Args[2], name, explicit, argv0, defaultPath, os.Args[4:]))
+	}
+	if name := filepath.Base(os.Args[0]); slices.Contains(vcsguard.Tools, name) {
+		os.Exit(guard(name, os.Args[1:]))
+	}
+	if name := filepath.Base(os.Args[0]); slices.Contains(vcsguard.Shells, name) {
+		os.Exit(guardShell("", name, os.Args[0], false, os.Args[1:]))
+	}
 	// The shell's process group may be signaled while its commands still
 	// write; the relay ends with their output, not with the signal.
 	signal.Ignore(syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGPIPE)
@@ -377,6 +417,9 @@ func readReply(fd int, timeout time.Duration) ([]byte, bool) {
 			return nil, false
 		}
 		read, err := unix.Read(fd, buffer)
+		if errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EINTR) {
+			continue // A nonblocking FIFO reader can poll ready spuriously.
+		}
 		if err != nil || read == 0 {
 			return nil, false
 		}

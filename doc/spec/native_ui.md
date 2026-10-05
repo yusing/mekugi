@@ -37,9 +37,14 @@ preference; replay cannot revive pending child lifecycles.
 
 `mekugi codex` uses the native client of `codex app-server` for interactive
 terminal launches. Without `--yolo`, Codex's configured approval and sandbox
-policy applies and the native client answers approvals (see Approvals). `--yolo` passes `approval_policy="never"` and
-`sandbox_mode="danger-full-access"`, and thread requests repeat them. There is no
-legacy UI selection or fallback. It maps explicit `--yolo`, model, config, and feature-toggle (`--enable` / `--disable`)
+policy applies and the native client answers Codex approvals (see Approvals).
+The independent VCS guard follows
+[REQ-EXECUTION-003](execution.md#req-execution-003--guard-remote-vcs-writes).
+`--yolo` passes `approval_policy="never"` and
+`sandbox_mode="danger-full-access"`, and thread requests repeat them.
+Mekugi never silently changes the user's configuration or
+sandbox policy. There is no legacy UI selection or fallback. It maps explicit
+`--yolo`, model, config, and feature-toggle (`--enable` / `--disable`)
 arguments plus `resume`, `resume THREAD_ID` or `resume --last`, and rejects other interactive arguments rather
 than ignoring them.
 Router readiness, provider catalogs, invocation overrides, native recovery hooks
@@ -1316,7 +1321,8 @@ provider envelope, then answers and resolves a sync request with
 
 Without `--yolo`, the client answers `item/commandExecution/requestApproval`,
 `item/fileChange/requestApproval` and `item/permissions/requestApproval` from any
-thread. Approvals
+thread. It also answers remote writes held by the
+[VCS guard](execution.md#req-execution-003--guard-remote-vcs-writes). Approvals
 share the question dock's position above the composer and take precedence over
 it: opening one hides the question dock, and a pending question opens after the
 last approval ends. The oldest approval shows first; the header names a child
@@ -1349,4 +1355,7 @@ do not answer it. The open composer says `approving · turn waiting`.
 
 Each ending adds a Session transcript row with its outcome, subject and agent:
 the chosen outcome, `Resolved elsewhere` after `serverRequest/resolved`, or
-`Turn ended before an answer` when its turn completes. Headless runs still require `--yolo`.
+`Turn ended before an answer` when its turn completes. A guarded write the user
+did not answer ends as `Denied: no answer within 5 minutes`, or
+`Withdrawn: the command stopped` when its command exited first; an answer chosen
+after either is not sent. Headless runs still require `--yolo`.

@@ -14,6 +14,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/sys/unix"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -45,9 +46,13 @@ type execTrackHub struct {
 	changed   chan struct{}      // Closed and replaced at command/segment lifecycle boundaries.
 	tracks    map[[3]string]*execTrack
 	previews  map[*execPreviewTrack]struct{} // Registered only for a live preview's lifetime.
-	sequence  uint64                         // Host starts within this router lifetime.
-	closed    bool
-	wg        sync.WaitGroup
+	// approvals carries guarded remote writes to the UI, which alone receives.
+	approvals       chan *vcsApproval
+	approvalTimeout time.Duration // Denies an unanswered write; tests shorten it.
+	guardClose      func()        // Closes the approval socket and removes its owned resources.
+	sequence        uint64        // Host starts within this router lifetime.
+	closed          bool
+	wg              sync.WaitGroup
 }
 
 type execTrackCommand struct {
@@ -99,7 +104,7 @@ func listenExecTrack(ctx context.Context, channel, directory string) (*execTrack
 	if err != nil {
 		return nil, err
 	}
-	h := &execTrackHub{requests: requests, directory: directory, changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack)}
+	h := &execTrackHub{requests: requests, directory: directory, changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack), approvals: make(chan *vcsApproval), approvalTimeout: vcsguard.Timeout}
 	h.wg.Go(func() {
 		reader := bufio.NewReader(requests)
 		for {
@@ -163,14 +168,14 @@ func (h *execTrackHub) close() {
 		return
 	}
 	h.mu.Lock()
-	if h.closed {
-		h.mu.Unlock()
-		return
-	}
 	h.closed = true
+	guard := h.guardClose
 	h.mu.Unlock()
 	if h.requests != nil {
 		h.requests.Close()
+	}
+	if guard != nil {
+		guard()
 	}
 }
 

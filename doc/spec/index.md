@@ -61,4 +61,5 @@ linked, not copied.
 - [`REQ-CHANGES-001`](changes.md): observed stock edits and command effects, durable change IDs, and bounded review reads
 - [`REQ-EXECUTION-001`](execution.md): stock editing, execution, and executable frontends
 - [`REQ-EXECUTION-002`](execution.md): per-segment tracking of Bash command lists
+- [`REQ-EXECUTION-003`](execution.md): approval guard for remote VCS writes
 - [`REQ-GUIDE-001`](guide.md): caller-preserving additive tool guidance

@@ -21,6 +21,7 @@ import (
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/persistence"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 const (
@@ -41,6 +42,7 @@ type Session struct {
 	BaseURL                string
 	JournalEnabled         bool
 	PostCompactRecovery    bool
+	VCSGuard               bool
 	GrokEnabled            bool
 	GrokUnprefixed         bool
 	ThirdPartyOnly         bool
@@ -48,6 +50,7 @@ type Session struct {
 	AXReadOutput           string
 	SkillsManagerAvailable bool
 	// StartAppUI starts the native app-server UI and returns its joined lifetime.
+	// VCSGuard controls remote-write prompts independently of Codex policy.
 	StartAppUI           func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error)
 	StartHeadless        func(context.Context, *exec.Cmd, io.Reader, io.Writer) (func() error, error)
 	FrontendDirectory    string
@@ -349,7 +352,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		serverError <- server.Serve(listener)
 	}()
 	if ready != nil && ctx.Err() == nil {
-		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, SkillsManagerAvailable: skillsManagerAvailable}
+		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, VCSGuard: *flags.vcsGuard, SkillsManagerAvailable: skillsManagerAvailable}
 		if mekugiCalls != nil {
 			session.StartHeadless = func(ctx context.Context, cmd *exec.Cmd, input io.Reader, output io.Writer) (func() error, error) {
 				return startHeadlessAppServer(ctx, cmd, input, output, mekugiCalls)
@@ -358,11 +361,21 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 			if mekugiCalls != nil && frontendDirectory != "" {
 				// Without the socket, command shells find no router and run
-				// their scripts untracked.
+				// their scripts untracked. Without the approval channel,
+				// guarded remote writes are denied, so guarded startup stops.
 				socket, directory := ExecTrackPaths(frontendDirectory)
-				if hub, err := listenExecTrack(ctx, socket, directory); err == nil {
+				hub, err := listenExecTrack(ctx, socket, directory)
+				if err == nil && session.VCSGuard {
+					_, channel := vcsguard.Paths(frontendDirectory)
+					if err = hub.listenVCSGuard(ctx, channel); err != nil {
+						hub.close()
+					}
+				}
+				if err == nil {
 					mekugiCalls.execTrack = hub
 					mekugiCalls.execWindows.tracker = hub
+				} else if session.VCSGuard {
+					return nil, fmt.Errorf("listen for guarded VCS writes: %w", err)
 				}
 			}
 			debugDirectory := ""

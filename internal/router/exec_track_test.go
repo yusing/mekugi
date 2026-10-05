@@ -83,7 +83,12 @@ type execTrackRun struct {
 
 func runExecTrackShell(t *testing.T, env []string, script string) execTrackRun {
 	t.Helper()
-	cmd := exec.Command("bash", "-lc", script)
+	return runShell(t, env, "bash", "-lc", script)
+}
+
+func runShell(t *testing.T, env []string, shell string, args ...string) execTrackRun {
+	t.Helper()
+	cmd := exec.Command(shell, args...)
 	cmd.Env, cmd.Dir = env, t.TempDir()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
