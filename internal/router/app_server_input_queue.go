@@ -159,6 +159,21 @@ func (u *appServerUI) flushInput() error {
 	steer := u.turn != ""
 	switch {
 	case len(u.unsent) > 0:
+		// Answers must not preempt an unfinished tool input. Once input is
+		// complete, steer normally, even if the host command is still running.
+		if steer && u.unsent[0].questionCall != nil && u.proxy.emittingToolInput(u.session.cwd, u.thread) {
+			// Explicit prompts retain instant interruption even when an answer
+			// ahead of them is waiting for generation to finish.
+			first := 0
+			for first < len(u.unsent) && u.unsent[first].questionCall != nil {
+				first++
+			}
+			if first == len(u.unsent) {
+				return nil
+			}
+			prompt, rest := questionSubmissionBatch(u.unsent[first:])
+			u.unsent = slices.Concat(prompt, u.unsent[:first], rest)
+		}
 		if steer && u.unsent[0].text == "/compact" {
 			if u.unsent[0].queueCompact {
 				return nil

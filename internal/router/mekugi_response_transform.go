@@ -128,6 +128,9 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if !ok {
 			return [][]byte{payload}, nil //nolint:nilerr // Unrelated output items pass through unchanged.
 		}
+		if item.Type == "function_call" || item.Type == "custom_tool_call" {
+			t.setToolInputEmission(item.ID, true)
+		}
 		name := item.Name
 		if t.codeModeToolName != "" && name == t.codeModeToolName ||
 			t.nativeTools && (item.Type == "custom_tool_call" && name == applyPatchToolName ||
@@ -180,6 +183,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.CustomInputDone:
+		t.setToolInputEmission(envelope.ItemID, false)
 		if addedFields, stockCall := t.nativeExecCalls[envelope.ItemID]; stockCall {
 			if jsonString(addedFields, "type") == "custom_tool_call" {
 				addedCallID := jsonString(addedFields, "call_id")
@@ -213,6 +217,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.FunctionArgumentsDone:
+		t.setToolInputEmission(envelope.ItemID, false)
 		if fields := t.nativeExecCalls[envelope.ItemID]; fields != nil && jsonString(fields, "name") == nativeExecCommandToolName {
 			t.finishPreview(envelope.ItemID, envelope.Arguments)
 			delete(t.previews, envelope.ItemID)
@@ -234,6 +239,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if !ok {
 			return [][]byte{payload}, nil //nolint:nilerr // Malformed unrelated output remains the upstream's responsibility.
 		}
+		t.setToolInputEmission(item.ID, false)
 		if _, delivered := t.local[item.CallID]; item.Status == "incomplete" && !delivered {
 			t.endPreview(item.ID)
 			// Item completion can report interrupted generation, not complete input.

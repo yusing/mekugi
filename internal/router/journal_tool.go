@@ -400,6 +400,7 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 			if id == "" {
 				return nil, true, errors.New("journal call has no item ID")
 			}
+			t.setToolInputEmission(id, true)
 			t.journalPending[id] = true
 			return nil, true, nil
 		}
@@ -408,11 +409,15 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 		}
 	case event.Type.FunctionArguments():
 		if t.journalPending[event.ItemID] {
+			if event.Type == responseevents.FunctionArgumentsDone {
+				t.setToolInputEmission(event.ItemID, false)
+			}
 			return [][]byte{[]byte(`{"type":"response.in_progress"}`)}, true, nil
 		}
 	case event.Type == responseevents.OutputItemDone:
 		t.journalProviderOutput = append(t.journalProviderOutput, event.Item)
 		if isRouterLocalCall(event.Item) {
+			t.setToolInputEmission(jsonString(event.Item, "id"), false)
 			delete(t.journalPending, jsonString(event.Item, "id"))
 			if jsonString(event.Item, "status") == "incomplete" {
 				return nil, true, nil

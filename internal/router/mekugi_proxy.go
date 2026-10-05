@@ -128,18 +128,19 @@ type mekugiProxy struct {
 	execWindows        *execWindowRegistry
 	nativeTrace        *nativeToolTrace
 
-	mu              sync.RWMutex
-	btwThreads      map[string]bool // Live ephemeral UI threads; never inherited or replayed.
-	replayStore     *mekugiReplayStore
-	sessions        map[string]*mekugiHistorySession
-	noticeSink      func(string, string, string, string)
-	storageTurns    map[string]uint64
-	storageSequence uint64
-	storageLeases   map[string]func()
-	activeSessions  map[string]int
-	historyBytes    int
-	sessionSequence uint64
-	closed          bool
+	mu                 sync.RWMutex
+	toolInputEmissions map[*mekugiResponseTransform]map[string]bool // Live generation only, never command execution or replay.
+	btwThreads         map[string]bool                              // Live ephemeral UI threads; never inherited or replayed.
+	replayStore        *mekugiReplayStore
+	sessions           map[string]*mekugiHistorySession
+	noticeSink         func(string, string, string, string)
+	storageTurns       map[string]uint64
+	storageSequence    uint64
+	storageLeases      map[string]func()
+	activeSessions     map[string]int
+	historyBytes       int
+	sessionSequence    uint64
+	closed             bool
 }
 
 func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *mekugiProxy {
@@ -342,6 +343,7 @@ func (t *mekugiResponseTransform) Close() {
 	if t == nil {
 		return
 	}
+	t.clearToolInputEmissions()
 	for itemID := range t.previews {
 		t.endPreview(itemID)
 	}

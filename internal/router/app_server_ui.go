@@ -312,6 +312,11 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						u.dirty = true
 					case <-tick.C:
+						if len(u.unsent) > 0 && u.unsent[0].questionCall != nil && !u.proxy.emittingToolInput(u.session.cwd, u.thread) {
+							if err := u.flushInput(); err != nil {
+								return err
+							}
+						}
 						u.refreshSessionMetrics(false)
 						u.startSkillHistory()
 						if err := u.tickJournalReset(u.now()); err != nil {

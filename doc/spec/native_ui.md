@@ -1269,8 +1269,12 @@ Codex-owned:
 ```
 
 The existing submission path steers during an active turn, starts a turn when
-idle, or queues until input is accepted. Different calls are never merged into
-one envelope; skipped questions send nothing. Reply envelopes do not enter prompt
+idle, or queues until input is accepted. Answers wait while a tool call's input
+is being generated, including file edits and Code Mode JavaScript, so instant
+interrupt cannot cut that input short. They become sendable when the input is
+complete, without waiting for a running command to finish. Ordinary prompts
+retain instant interruption and can pass deferred answers. Different calls are
+never merged into one envelope; skipped questions send nothing. Reply envelopes do not enter prompt
 history or create duplicate user-message bands. Answers appear only beneath their
 Asked record; pending-input previews show question submission progress without
 transport framing or repeated answers. Between submission and committed user-message observation the card reads
