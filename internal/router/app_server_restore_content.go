@@ -451,6 +451,12 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 		return
 	}
 	switch item.Type {
+	case "userMessage":
+		if blocks := appServerAttachmentBlocks(info.Cwd, item.Content); len(blocks) > 0 {
+			entry.Kind, entry.native.item = "attachments", item.ID+"/attachments"
+			entry.native.attachments = blocks
+			*entries = append(*entries, entry)
+		}
 	case "reasoning":
 		entry.native.collapsed = true
 		entry.Kind, entry.Text = "reasoning", strings.Join(item.Summary, "\n\n")

@@ -346,7 +346,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			text = appServerEditText(item, u.session.cwd)
 		}
 		entry := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, duration: appServerDuration(item), searchResults: appServerSearchResults(item), workdir: appServerCommandWorkdir(item, u.session.cwd)}}
+			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, status: item.Status, duration: appServerDuration(item), searchResults: appServerSearchResults(item), workdir: appServerCommandWorkdir(item, u.session.cwd)}}
 		if item.Type == "fileChange" {
 			entry.native.editPages = appServerEditPages(item, u.session.cwd, method)
 		}

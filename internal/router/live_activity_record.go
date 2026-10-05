@@ -34,7 +34,7 @@ func (v *liveActivityView) mutateEntry(index int, mutate func(*liveActivityRecor
 
 func (v *liveActivityView) removeEntries(from, to int) {
 	v.entries = slices.Delete(v.entries, from, to)
-	v.runs = nil
+	v.runs, v.skills = nil, nil
 }
 
 func (v *liveActivityView) runRevision(from, to int) uint64 {
@@ -81,5 +81,5 @@ func (v *liveActivityView) reorderEntries(indices []int) {
 	for i, old := range indices {
 		v.entries[i] = records[old]
 	}
-	v.runs = nil
+	v.runs, v.skills = nil, nil
 }

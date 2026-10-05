@@ -313,6 +313,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						u.dirty = true
 					case <-tick.C:
 						u.refreshSessionMetrics(false)
+						u.startSkillHistory()
 						if err := u.tickJournalReset(u.now()); err != nil {
 							u.setNotice(err.Error(), true)
 						}
@@ -532,6 +533,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return nil
 		}
 		delete(u.requests, string(m.ID))
+		if strings.HasPrefix(method, "activity-skills/") {
+			return u.skillHistoryResponse(strings.TrimPrefix(method, "activity-skills/"), m)
+		}
 		if strings.HasPrefix(method, "activity/") {
 			return u.childHistoryResponse(method, m)
 		}

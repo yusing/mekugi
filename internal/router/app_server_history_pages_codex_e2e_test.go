@@ -55,6 +55,9 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	write("event_msg", map[string]any{"type": "task_started", "turn_id": turn, "started_at": 100, "model_context_window": 100000, "collaboration_mode_kind": "default"})
 	write("response_item", map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{"type": "input_text", "text": "Measure restoration."}}})
 	write("event_msg", map[string]any{"type": "user_message", "message": "Measure restoration.", "kind": "plain", "local_images": []any{}, "text_elements": []any{}})
+	write("event_msg", map[string]any{"type": "item_completed", "thread_id": thread, "turn_id": turn, "item": map[string]any{
+		"type": "CommandExecution", "id": "skill", "command": []string{"skills-mgr", "get", "commit"}, "cwd": "file://" + workspace, "parsed_cmd": []any{}, "source": "agent", "status": "completed", "exit_code": 0,
+	}})
 	for i := range 2000 {
 		text := fmt.Sprintf("item %04d %s", i, strings.Repeat("x", 4096))
 		write("response_item", map[string]any{"type": "message", "id": fmt.Sprintf("item-%04d", i), "role": "assistant", "phase": "commentary", "content": []any{map[string]any{"type": "output_text", "text": text}}})
@@ -123,7 +126,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	if err := json.Unmarshal(full.Result, &read); err != nil {
 		t.Fatal(err)
 	}
-	if len(read.Thread.Turns) != 1 || len(read.Thread.Turns[0].Items) != 2001 || read.Thread.HistoryMode != "paginated" {
+	if len(read.Thread.Turns) != 1 || len(read.Thread.Turns[0].Items) != 2002 || read.Thread.HistoryMode != "paginated" {
 		t.Fatalf("measurement fixture not materialized: turns=%d items=%d mode=%s", len(read.Thread.Turns), len(read.Thread.Turns[0].Items), read.Thread.HistoryMode)
 	}
 	baseline, _ := newAppServerTestUI()
@@ -196,6 +199,31 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	}
 	if len(items.Data) != 100 || items.Data[0].Item.ID != "item-1899" || items.Data[99].Item.ID != "item-1800" {
 		t.Fatal("fork anchor ignored visible inherited history")
+	}
+	// A fresh host/controller reconstructs inherited skills without the old cache.
+	if err := client.Shutdown(); err != nil {
+		t.Fatal(err)
+	}
+	client = start()
+	t.Cleanup(client.Close)
+	fresh, _ := newAppServerTestUI()
+	fresh.client, fresh.ctx, fresh.agents = client, t.Context(), newLiveActivityView()
+	fresh.session.start("main", workspace)
+	fresh.session.registerThread(appServerThreadInfo{ID: forked.Thread.ID, AgentNickname: "worker", AgentRole: "worker"})
+	fresh.restoring = &appServerActivityRestore{root: appServerThreadInfo{ID: "main", Cwd: workspace}, order: []string{forked.Thread.ID}, listed: true, pane: make(map[string][]*restoredPlacement), itemAt: make(map[string]map[string]time.Time)}
+	if err := fresh.startChildHistory(forked.Thread); err != nil {
+		t.Fatal(err)
+	}
+	drainHistoryLoader(t, fresh)
+	fresh.startSkillHistory()
+	h := fresh.childHistory[forked.Thread.ID]
+	for h.skills.request != "" {
+		if err := fresh.message(awaitHistoryRPC(t, client, h.skills.request)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if set := fresh.agents.activeSkills()["/root/worker"]; len(set) != 1 || set[0] != "commit" || len(fresh.agents.entries) != 100 {
+		t.Fatalf("fresh inherited skills = %v; Activity entries=%d", set, len(fresh.agents.entries))
 	}
 	t.Logf("synthetic 2000-message restoration: full result + projection %d bytes / %s; metadata + recent100 %d bytes / %s (latency diagnostic, no timing threshold)", len(full.Result), fullDuration, pageBytes, pageDuration)
 }

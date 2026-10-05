@@ -43,6 +43,10 @@ type liveActivityView struct {
 	rosterManual   bool
 	rosterSelected string
 	rosterEnd      int
+	skillsRequest  string // Agent whose active skills a roster click asked to open.
+	skills         *liveActivitySkills
+	retiredSkills  map[string]activeSkillSet // Loads in trimmed entries, still in their agent's context.
+	skillHistory   map[string]bool           // Paginated owners: false until their current context is known.
 	unseen         int
 	status         string
 	historyHint    string // Intentionally unloaded child history, separate from missing evidence.
@@ -138,6 +142,7 @@ type liveActivityRosterRow struct {
 type liveActivityHit struct {
 	row, first, last int // One-based terminal coordinates, inclusive.
 	agent            string
+	skills           bool // Opens the agent's active skills rather than selecting it.
 }
 
 type liveActivityRunKey struct {
@@ -290,6 +295,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 		}
 	}
 	if extra := len(v.entries) - liveActivityFeedLimit; extra > 0 {
+		v.retireSkills(v.entries[:extra])
 		v.removeEntries(0, extra)
 		for seq := range v.passed {
 			if v.historyOrder && !slices.ContainsFunc(v.entries, func(entry liveActivityRecord) bool { return entry.Seq == seq }) || !v.historyOrder && seq < v.entries[0].Seq {
@@ -678,6 +684,10 @@ func (v *liveActivityView) pointAgent(action byte, row, column int) bool {
 	for _, hit := range v.hits {
 		if hit.row == row && column >= hit.first && column <= hit.last {
 			v.hovered = hit.agent
+			if action == '\r' && hit.skills {
+				v.skillsRequest, v.hovered = hit.agent, ""
+				return true
+			}
 			if action == '\r' {
 				if v.childrenOnly && hit.agent == "/root" {
 					// Main's activity lives in Main; picking it shows every child.
@@ -1205,7 +1215,7 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 			}
 		}
 		for hit := first; hit < len(lines)+2; hit++ {
-			v.hits = append(v.hits, liveActivityHit{hit, 1, width, row.agent.Name})
+			v.hits = append(v.hits, liveActivityHit{row: hit, first: 1, last: width, agent: row.agent.Name})
 		}
 	}
 	if end < len(rows) && len(lines) < limit {
@@ -1320,7 +1330,7 @@ func (v *liveActivityView) renderStrip(rows []liveActivityRosterRow, width int) 
 		}
 		part := v.glyph(row.agent) + " " + activityui.Color(row.agent.Name) + name + activityui.Reset
 		if last := min(width, column+ansi.StringWidth(part)-1); column <= last {
-			v.hits = append(v.hits, liveActivityHit{2, column, last, row.agent.Name})
+			v.hits = append(v.hits, liveActivityHit{row: 2, first: column, last: last, agent: row.agent.Name})
 		}
 		parts = append(parts, part)
 		column += ansi.StringWidth(part) + 2

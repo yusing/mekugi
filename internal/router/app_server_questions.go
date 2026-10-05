@@ -887,6 +887,16 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	return rows[:min(len(rows), height)]
 }
 
+// mainTitleDetail follows Main's pane name: unanswered questions, then the
+// skills loaded into Main's current context.
+func (u *appServerUI) mainTitleDetail() string {
+	details := []string{u.questionBadge()}
+	if set := u.view.activeSkills()["Main"]; set != nil {
+		details = append(details, set.label())
+	}
+	return strings.Join(slices.DeleteFunc(details, func(detail string) bool { return detail == "" }), activityui.Dim+" · "+activityui.Undim)
+}
+
 func (u *appServerUI) questionBadge() string {
 	if u.shell != nil && u.shell.focus != 0 {
 		if n := u.questionCount(); n > 0 {

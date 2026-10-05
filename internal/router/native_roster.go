@@ -193,6 +193,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		widest = max(widest, ansi.StringWidth(line.prefix))
 	}
 	metrics := nativeRosterColumns(parts, width-widest-24)
+	skills := v.activeSkills()
 	stateEnd := width - 1
 	if len(metrics) > 0 {
 		stateEnd -= ansi.StringWidth(metrics[0])
@@ -204,7 +205,24 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			continue
 		}
 		room := max(1, stateEnd-ansi.StringWidth(item.prefix))
-		line := item.prefix + liveActivityPad(v.agentState(item.row.agent, room), room)
+		// A child's skill count ends its state cell and opens those skills.
+		// Main's count is in Main's title.
+		label := ""
+		if set := skills[item.row.agent.Name]; set != nil && item.row.agent.Name != "/root" {
+			label = set.label()
+		}
+		if room-ansi.StringWidth(label)-2 < 8 {
+			label = ""
+		}
+		state := room
+		if label != "" {
+			state = room - ansi.StringWidth(label) - 2
+		}
+		line := item.prefix + liveActivityPad(v.agentState(item.row.agent, state), state)
+		if label != "" {
+			line += "  " + activityui.Dim + label + activityui.Undim
+			v.hits = append(v.hits, liveActivityHit{row: len(lines) + 1, first: stateEnd - ansi.StringWidth(label) + 1, last: stateEnd, agent: item.row.agent.Name, skills: true})
+		}
 		if next < len(metrics) {
 			line += metrics[next]
 		}
@@ -214,7 +232,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			line = v.selectRow(line, width)
 		}
 		lines = append(lines, line)
-		v.hits = append(v.hits, liveActivityHit{len(lines), 1, width, item.row.agent.Name})
+		v.hits = append(v.hits, liveActivityHit{row: len(lines), first: 1, last: width, agent: item.row.agent.Name})
 	}
 	if hidden := len(items) - end; hidden > 0 {
 		lines = append(lines, ansi.Truncate(activityui.Dim+fmt.Sprintf("   +%d more · ^B 4 shows all", hidden)+activityui.Undim, width, "…"))

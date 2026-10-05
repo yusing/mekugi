@@ -37,6 +37,7 @@ type appServerChildHistory struct {
 	method     string
 	params     map[string]any
 	pending    []appserver.Message
+	skills     *appServerSkillHistory
 }
 
 func (u *appServerUI) startChildHistory(info appServerThreadInfo) error {
@@ -53,6 +54,11 @@ func (u *appServerUI) startChildHistory(info appServerThreadInfo) error {
 		u.childHistory = make(map[string]*appServerChildHistory)
 	}
 	u.childHistory[info.ID], u.historyLoading = h, h
+	if u.agents.skillHistory == nil {
+		u.agents.skillHistory = make(map[string]bool)
+	}
+	u.agents.skillHistory[u.session.path(info.ID)] = false
+	u.agents.skills = nil
 	return u.requestChildHistory("thread/turns/list", map[string]any{"threadId": info.ID, "itemsView": "notLoaded", "sortDirection": "desc", "limit": appServerHistoryPageSize})
 }
 

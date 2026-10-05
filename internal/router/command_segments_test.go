@@ -196,7 +196,11 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 	}
 	u := newAppServerSessionTestUI(t, workspace)
 	u.execTrack = shell.hub
-	script := "printf 'first\\n'; printf 'second\\n' >&2; false && echo never"
+	path := filepath.Join(t.TempDir(), "SKILL.md")
+	if err := os.WriteFile(path, []byte("first\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	script := "cat " + quoteShellWord(path) + "; printf 'second\\n' >&2; false && echo never"
 	item := appServerItem{ID: "command", Type: "commandExecution", Command: "/usr/bin/bash -lc " + quoteShellWord(script), Status: "inProgress"}
 	key := [3]string{"main", "turn", item.ID}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
@@ -204,14 +208,14 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 	if result.stdout != "first\n" || result.stderr != "second\n" || result.code != 1 {
 		t.Fatalf("stock command changed: %+v", result)
 	}
-	if view := shell.awaitView(t, key); !view.complete {
-		t.Fatal("shell did not report real boundaries")
-	}
 	u.proxy = &mekugiProxy{replayStore: store}
 	item.Status, item.ExitCode, item.AggregatedOutput = "failed", new(1), new(result.stdout+result.stderr)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
 	awaitMain(t, u, "skipped")
 	awaitCommandSegments(t, u)
+	if names := u.view.activeSkills()["Main"]; len(names) != 1 || names[0] != filepath.Base(filepath.Dir(path)) {
+		t.Fatalf("successful skill segment lost after a failed command: %v", names)
+	}
 	// Reopen the durable owner and destroy the live report before restoring.
 	store, err = openMekugiReplayStore(storeDirectory)
 	if err != nil {
@@ -253,6 +257,9 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 			}
 			if segments[2].exit != 1 || !segments[3].skipped || segments[3].output != nil {
 				t.Fatal("failure/skipped state lost")
+			}
+			if names := view.activeSkills()[entry.Agent]; len(names) != 1 || names[0] != filepath.Base(filepath.Dir(path)) {
+				t.Fatalf("restored successful skill segment lost: %v", names)
 			}
 			pages := view.commandOutputPages(entry.Seq)
 			if len(pages) != 4 || pages[0].Output == pages[1].Output {

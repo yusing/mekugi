@@ -54,6 +54,7 @@ type terminalRect struct{ x, y, w, h int }
 
 type terminalLayout struct {
 	codex, diff, agents, roster, live, journal terminalRect
+	mainSkills                                 terminalRect // Main's active-skill count in its title.
 	vertical, horizontal, rosterHorizontal     int
 }
 
@@ -603,6 +604,11 @@ func (u *terminalUI) mouse(s string) error {
 		}
 		return nil
 	}
+	if button&^28 == 0 && !release && u.main != nil && u.layout.mainSkills.contains(x, y) {
+		u.focus = 0
+		u.openSkills(u.main.view, "Main")
+		return nil
+	}
 	pane := -1
 	var r terminalRect
 	switch {
@@ -685,6 +691,10 @@ func (u *terminalUI) mouse(s string) error {
 		} else {
 			only, selected := u.agents.only, u.agents.selected
 			u.agents.pointAgent(action, y-r.y+1, x-r.x+1)
+			if agent := u.agents.skillsRequest; agent != "" {
+				u.agents.skillsRequest = ""
+				u.openSkills(u.agents, agent)
+			}
 			u.showRosterPick(only, selected)
 		}
 	} else {

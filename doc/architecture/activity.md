@@ -66,6 +66,10 @@ out-of-scope items are errors, not end-of-history. A null `nextCursor` ends a tu
 then the next read selects the preceding turn. Pagination errors are never
 silently replaced by an unbounded read.
 
+Active skills reconstruct from Codex event history on exit/resume, without a new durable store; see the [display contract](../spec/native_ui.md#session-status).
+Paginated child skill scans are independent of lazy Activity reads: descending `thread/items/list` pages cover turns and inherited history, stopping at the latest completed compaction.
+Only one bounded scan runs at a time; incomplete or failed scans leave counts unknown with a notice. Live resets override scans; session switches retire correlation. Observation neither resumes children nor invokes a model.
+
 Unloaded history, loading, and failed reads have separate presentation states.
 Pending rollout placements stay with their child until their item/turn is
 loaded. Stable Activity entry IDs survive older-page insertion and continue
