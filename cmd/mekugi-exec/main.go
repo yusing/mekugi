@@ -45,7 +45,7 @@ func run(args []string) int {
 	if len(args) != 3 {
 		return 2
 	}
-	socket, directory, script := args[0], args[1], args[2]
+	channel, directory, script := args[0], args[1], args[2]
 	segments, ok := execsegment.Split(script)
 	if !ok {
 		return 0
@@ -55,26 +55,25 @@ func run(args []string) int {
 	for i, segment := range segments {
 		sources[i] = segment.Source
 	}
-	conn, err := dial(socket)
+	conn, answer, work, err := execsegment.OpenReport(channel, directory, replyTimeout)
 	if err != nil {
 		return 0
 	}
 	defer conn.Close()
+	defer answer.Close()
+	if err := conn.SetWriteDeadline(time.Now().Add(replyTimeout)); err != nil {
+		return 0
+	}
 	hello := execsegment.Message{Type: execsegment.Hello, Version: execsegment.Protocol, Thread: os.Getenv("CODEX_THREAD_ID"), Script: script, Segments: sources, Terminal: terminal}
 	if err := writeMessage(conn, hello); err != nil {
 		return 0
 	}
 	var reply execsegment.Reply
-	if line, ok := readReply(int(conn.Fd()), replyTimeout); !ok || json.Unmarshal(line, &reply) != nil || !reply.OK {
+	if line, ok := readReply(int(answer.Fd()), replyTimeout); !ok || json.Unmarshal(line, &reply) != nil || !reply.OK {
 		return 0
 	}
 
-	work, err := os.MkdirTemp(directory, "run-")
-	if err != nil {
-		return 0
-	}
-	defer os.RemoveAll(work)
-	if err := os.WriteFile(filepath.Join(work, "script"), []byte(execsegment.Rewrite(script, segments)), 0o600); err != nil {
+	if err := conn.SetWriteDeadline(time.Time{}); err != nil {
 		return 0
 	}
 	r := &relay{ack: 1, sinks: [2]int{3, 4}, readers: [2]int{-1, -1}, report: newReporter(conn)}
@@ -82,9 +81,6 @@ func run(args []string) int {
 	if !terminal {
 		for i, name := range []string{"out", "err"} {
 			path := filepath.Join(work, name)
-			if err := unix.Mkfifo(path, 0o600); err != nil {
-				return 0
-			}
 			// Opening without a writer must not block; the shell opens its end next.
 			fd, err := unix.Open(path, unix.O_RDONLY|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 			if err != nil {
@@ -362,20 +358,6 @@ func (r *reporter) close(timeout time.Duration) {
 }
 
 type byteWriter interface{ Write([]byte) (int, error) }
-
-// dial connects to the router without the net package, whose resolver would
-// link the helper dynamically and slow every tracked command's start.
-func dial(socket string) (*os.File, error) {
-	fd, err := newUnixSocket()
-	if err != nil {
-		return nil, err
-	}
-	if err := unix.Connect(fd, &unix.SockaddrUnix{Name: socket}); err != nil {
-		unix.Close(fd)
-		return nil, err
-	}
-	return os.NewFile(uintptr(fd), socket), nil
-}
 
 // readReply reads the router's one-line reply within timeout.
 func readReply(fd int, timeout time.Duration) ([]byte, bool) {

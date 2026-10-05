@@ -49,28 +49,44 @@ fi
 // in place of the script's first command, so error messages, line numbers,
 // and fatal errors behave as in the original. Split accepts only scripts
 // whose first command fires that trap before it has any effect.
-func Tracker(helper, socket, directory string) string {
+func Tracker(helper, channel, directory string) string {
 	return `exec {__mekugi_o}>&1 {__mekugi_x}>&2
-coproc __MEKUGI_EXEC { exec ` + shellsyntax.Quote(helper) + ` ` + shellsyntax.Quote(socket) + ` ` + shellsyntax.Quote(directory) + ` "$BASH_EXECUTION_STRING" 3>&"$__mekugi_o" 4>&"$__mekugi_x" 2>/dev/null; } 2>/dev/null
-exec {__mekugi_o}>&- {__mekugi_x}>&-
-__mekugi_c=${__MEKUGI_EXEC[1]-} __mekugi_a=${__MEKUGI_EXEC[0]-} __mekugi_m= __mekugi_d=
+coproc __MEKUGI_EXEC { exec ` + shellsyntax.Quote(helper) + ` ` + shellsyntax.Quote(channel) + ` ` + shellsyntax.Quote(directory) + ` "$BASH_EXECUTION_STRING" 3>&"$__mekugi_o" 4>&"$__mekugi_x" 2>/dev/null; } 2>/dev/null
+__mekugi_c=${__MEKUGI_EXEC[1]-} __mekugi_a=${__MEKUGI_EXEC[0]-} __mekugi_m= __mekugi_d= __mekugi_p= __mekugi_y= __mekugi_z=
 [ -n "$__mekugi_a" ] && IFS=' ' read -r __mekugi_m __mekugi_d <&"$__mekugi_a"
 case $__mekugi_m in
 relay|status)
-  if [ "$__mekugi_m" = relay ]; then
-    exec 1>"$__mekugi_d/out" 2>"$__mekugi_d/err"
+  if ! { __mekugi_p=$(<"$__mekugi_d/script") && [ -n "$__mekugi_p" ]; } 2>/dev/null; then
+    __mekugi_m=
+  elif [ "$__mekugi_m" = relay ]; then
+    if ! { exec {__mekugi_y}>"$__mekugi_d/out" {__mekugi_z}>"$__mekugi_d/err"; } 2>/dev/null ||
+       [ ! -p "/dev/fd/$__mekugi_y" ] || [ ! -p "/dev/fd/$__mekugi_z" ]; then
+      __mekugi_m=
+    else
+      exec 1>&"$__mekugi_y" 2>&"$__mekugi_z"
+    fi
   fi
+  ;;
+esac
+exec {__mekugi_o}>&- {__mekugi_x}>&-
+[ -n "$__mekugi_y" ] && exec {__mekugi_y}>&-
+[ -n "$__mekugi_z" ] && exec {__mekugi_z}>&-
+unset -v __mekugi_y __mekugi_z
+case $__mekugi_m in
+relay|status)
   unset -v __mekugi_o __mekugi_x __mekugi_m
   printf 'o\n' >&"$__mekugi_c"
   __mekugi_b() { local __mekugi_s=$? __mekugi_r; printf 'b %s\n' "$1" >&"$__mekugi_c"; IFS= read -r __mekugi_r <&"$__mekugi_a"; return "$__mekugi_s"; }
   __mekugi_e() { local __mekugi_s=$? __mekugi_r; printf 'e %s %s\n' "$1" "$__mekugi_s" >&"$__mekugi_c"; IFS= read -r __mekugi_r <&"$__mekugi_a"; return "$__mekugi_s"; }
   __mekugi_f() { local __mekugi_s=$? __mekugi_r; printf 'd %s\n' "$__mekugi_s" >&"$__mekugi_c"; IFS= read -r __mekugi_r <&"$__mekugi_a"; }
   trap __mekugi_f EXIT
-  trap 'trap - DEBUG; eval "$(<"$__mekugi_d/script")"; exit "$?"' DEBUG
+  trap 'trap - DEBUG; eval "$__mekugi_p"; exit "$?"' DEBUG
   ;;
 *)
+  [ -n "$__mekugi_c" ] && exec {__mekugi_c}>&-
+  [ -n "$__mekugi_a" ] && exec {__mekugi_a}<&-
   [ -n "${__MEKUGI_EXEC_PID-}" ] && wait "$__MEKUGI_EXEC_PID" 2>/dev/null
-  unset -v __mekugi_o __mekugi_x __mekugi_c __mekugi_a __mekugi_m __mekugi_d
+  unset -v __mekugi_o __mekugi_x __mekugi_c __mekugi_a __mekugi_m __mekugi_d __mekugi_p
   ;;
 esac
 `

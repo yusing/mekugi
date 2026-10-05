@@ -3,10 +3,10 @@ package router
 import (
 	"bufio"
 	"bytes"
+	"context"
 	json "encoding/json/v2"
 	"errors"
 	"io"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +19,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/execsegment"
+	"golang.org/x/sys/unix"
 )
 
 // Owned by TestMain, like the shared registry fixtures. Build once per test
@@ -43,6 +44,7 @@ type execTrackShell struct {
 	hub  *execTrackHub
 	env  []string
 	home string
+	root string // Holds the session's bin, request FIFO and per-command files.
 }
 
 func newExecTrackShell(t *testing.T) *execTrackShell {
@@ -71,7 +73,7 @@ func newExecTrackShell(t *testing.T) *execTrackShell {
 	}
 	home := t.TempDir()
 	env := []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "CODEX_THREAD_ID=thread", "BASH_ENV=" + startup}
-	return &execTrackShell{hub: hub, env: env, home: home}
+	return &execTrackShell{hub: hub, env: env, home: home, root: root}
 }
 
 type execTrackRun struct {
@@ -294,16 +296,16 @@ func quoteShellWord(value string) string {
 // execTrackReport plays a helper's report for one command.
 type execTrackReport struct {
 	t    *testing.T
-	conn net.Conn
+	conn *os.File
 }
 
 func dialExecTrackReport(t *testing.T, hub *execTrackHub, script string) *execTrackReport {
 	t.Helper()
-	conn, err := net.Dial("unix", hub.listener.Addr().String())
+	conn, answer, _, err := execsegment.OpenReport(hub.requests.Name(), hub.directory, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { conn.Close() })
+	t.Cleanup(func() { conn.Close(); answer.Close() })
 	segments, ok := execsegment.Split(script)
 	if !ok {
 		t.Fatalf("script %q is not tracked", script)
@@ -314,7 +316,18 @@ func dialExecTrackReport(t *testing.T, hub *execTrackHub, script string) *execTr
 	}
 	r := &execTrackReport{t: t, conn: conn}
 	r.send(execsegment.Message{Type: execsegment.Hello, Version: execsegment.Protocol, Thread: "main", Script: script, Segments: sources})
-	line, err := bufio.NewReader(conn).ReadBytes('\n')
+	deadline := time.Now().Add(time.Second)
+	for {
+		n, err := unix.Poll([]unix.PollFd{{Fd: int32(answer.Fd()), Events: unix.POLLIN}}, max(0, int(time.Until(deadline).Milliseconds())))
+		if errors.Is(err, unix.EINTR) && time.Now().Before(deadline) {
+			continue
+		}
+		if err != nil || n == 0 {
+			t.Fatalf("reply not ready: %d, %v", n, err)
+		}
+		break
+	}
+	line, err := bufio.NewReader(answer).ReadBytes('\n')
 	if err != nil || string(line) != "{\"ok\":true}\n" {
 		t.Fatalf("reply = %q, %v", line, err)
 	}
@@ -545,6 +558,124 @@ func TestAppServerTrackedMChangesShowsRichRows(t *testing.T) {
 			got := awaitMain(t, u, "━━━━━━━━")
 			if !strings.Contains(got, "amber1..amber5  +343 -658") || strings.Contains(got, "┆ amber") {
 				t.Fatalf("tracked listing not rendered as change rows:\n%s", got)
+			}
+		})
+	}
+}
+
+// Concurrent commands share only the atomic request FIFO. Each helper must
+// retain its own report, output and exit status, then release its private files.
+func TestExecTrackConcurrentReportsAreIsolated(t *testing.T) {
+	t.Parallel()
+	shell := newExecTrackShell(t)
+	for _, script := range []string{"echo FIRST; false", "echo SECOND; true"} {
+		key := [3]string{"thread", "turn", script}
+		shell.hub.start(key, "/usr/bin/bash -lc "+quoteShellWord(script))
+	}
+	for _, script := range []string{"echo FIRST; false", "echo SECOND; true"} {
+		t.Run(script, func(t *testing.T) {
+			t.Parallel()
+			got := runExecTrackShell(t, shell.env, script)
+			key := [3]string{"thread", "turn", script}
+			view := shell.awaitView(t, key)
+			if !view.complete || view.code != got.code || len(view.segments) != 2 {
+				t.Fatalf("report = %+v, command = %+v", view, got)
+			}
+			if want := strings.TrimSpace(got.stdout); !slices.Equal(view.segments[0].tail, []string{want}) {
+				t.Fatalf("segment output = %v, want %q", view.segments[0].tail, want)
+			}
+		})
+	}
+	t.Cleanup(func() {
+		shell.hub.close()
+		shell.hub.wg.Wait()
+		entries, err := os.ReadDir(shell.hub.directory)
+		if err != nil || len(entries) != 0 {
+			t.Errorf("private report files remain: %v, %v", entries, err)
+		}
+	})
+}
+
+func TestExecTrackUnavailableRouterRunsOriginalCommand(t *testing.T) {
+	t.Parallel()
+	shell := newExecTrackShell(t)
+	shell.hub.close() // The existing request FIFO now has no reader.
+	script := "echo ORIGINAL; echo STDERR >&2; false"
+	got := runExecTrackShell(t, shell.env, script)
+	if got.stdout != "ORIGINAL\n" || got.stderr != "STDERR\n" || got.code != 1 {
+		t.Fatalf("unavailable tracker changed command: %+v", got)
+	}
+}
+
+// Losing auxiliary tracking before or after startup acquisition must still
+// run the original command exactly once, with its output and exit status.
+func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
+	t.Parallel()
+	for _, phase := range []string{"before_acquisition", "before_output", "after_acquisition"} {
+		t.Run(phase, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			channel, directory := ExecTrackPaths(filepath.Join(root, "bin"))
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			hub, err := listenExecTrack(ctx, channel, directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			helper, err := execTrackHelper()
+			if err != nil {
+				t.Fatal(err)
+			}
+			marker, gate := filepath.Join(root, "ready"), filepath.Join(root, "gate")
+			tracker := execsegment.Tracker(helper, channel, directory)
+			pause := "touch " + quoteShellWord(marker) + "\nwhile [ ! -e " + quoteShellWord(gate) + " ]; do sleep 0.01; done\n"
+			at := "case $__mekugi_m in\n"
+			if phase == "before_output" {
+				at = "    if ! { exec {__mekugi_y}"
+			}
+			if phase == "after_acquisition" {
+				at = "  unset -v __mekugi_o"
+			}
+			if !strings.Contains(tracker, at) {
+				t.Fatal("startup pause point missing")
+			}
+			tracker = strings.Replace(tracker, at, pause+at, 1)
+			trackerPath, startup := filepath.Join(root, "tracker"), filepath.Join(root, "startup")
+			for path, source := range map[string]string{trackerPath: tracker, startup: execsegment.Hook(trackerPath)} {
+				if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			script := "echo FIRST; echo SECOND >&2; false"
+			hub.start([3]string{"thread", "turn", "item"}, "bash -lc "+quoteShellWord(script))
+			commandCtx, stop := context.WithTimeout(t.Context(), 5*time.Second)
+			defer stop()
+			cmd := exec.CommandContext(commandCtx, "bash", "-c", script)
+			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + root, "BASH_ENV=" + startup, "CODEX_THREAD_ID=thread"}
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout, cmd.Stderr = &stdout, &stderr
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.Now().Add(3 * time.Second)
+			for {
+				if _, err := os.Stat(marker); err == nil {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("shell did not accept tracking")
+				}
+				time.Sleep(time.Millisecond)
+			}
+			cancel()
+			hub.wg.Wait() // All router-created startup paths have been removed.
+			if err := os.WriteFile(gate, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			err = cmd.Wait()
+			exit, ok := errors.AsType[*exec.ExitError](err)
+			if !ok || exit.ExitCode() != 1 || stdout.String() != "FIRST\n" || stderr.String() != "SECOND\n" {
+				t.Fatalf("command = stdout %q, stderr %q, exit %v", stdout.String(), stderr.String(), err)
 			}
 		})
 	}

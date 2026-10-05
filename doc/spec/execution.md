@@ -146,12 +146,18 @@ startup, so profile functions and aliases remain available. It never evaluates
 the script or starts a second shell for it. The helper `mekugi-exec`, installed
 beside `mekugi`, splits the script with the router's own splitter and asks the
 router to match it to a live `commandExecution` item by thread and exact script.
-Only after a match does the shell run an instrumented copy in place of the
-script and exit. A one-time trap runs the copy before the script's first
-command, so Bash's own error messages, line numbers, and fatal errors are those
-of the original. The copy wraps each segment in hooks that preserve its status,
+Tracking uses existing FIFOs and router-created per-command resources, so it
+works under Codex's read-only and workspace-write sandboxes without network
+access or filesystem creation by the helper. Only after a match and acquisition
+of the script and output resources does the shell accept tracking and run an
+instrumented copy in place of the script and exit. A one-time trap runs the copy
+before the script's first command, so Bash's own error messages, line numbers,
+and fatal errors are those of the original. The copy wraps each segment in hooks that preserve its status,
 `$?`, and `set -e`. In every other case the hook returns before any segment runs
-and Bash runs the original script, so no script runs twice.
+and Bash runs the original script, so no script runs twice. Missing startup
+resources leave the original script to run once; after tracking is accepted,
+router cancellation cannot suppress its execution. Codex still owns command
+cancellation.
 
 A script stays untracked when:
 
@@ -166,7 +172,8 @@ A script stays untracked when:
   grace period and notification delivery, for example because Codex
   redacted a secret-like word in the displayed command;
 - multiple unmatched live items could own the same report;
-- the helper, socket, or router is unavailable.
+- the helper, tracking channel, router, or required startup resources are
+  unavailable.
 
 The helper relays the shell's output to Codex's original descriptors while it
 reports each segment's share. The shell waits for the helper to acknowledge
@@ -235,3 +242,7 @@ Acceptance:
    and inherited host history. Changed workspace, turn, item, command, aggregate
    or exit cannot borrow another invocation's report. Missing evidence cannot
    manufacture output boundaries.
+8. Installed Codex under its read-only and workspace-write sandboxes, without
+   network access, reports each segment's stdout, stderr, exit and skipped state.
+   Missing startup resources run the original script once; router cancellation
+   after resource acquisition does not prevent accepted execution.
