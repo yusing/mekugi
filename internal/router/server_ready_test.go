@@ -46,7 +46,8 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 	if _, port, err := net.SplitHostPort(address); err != nil || port == "0" {
 		t.Fatalf("ready URL = %q", baseURL)
 	}
-	client := &http.Client{Timeout: 5 * time.Second}
+	// This fixture owns its requests; do not leave connections in the shared pool.
+	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
 	response, err := client.Get(strings.TrimSuffix(baseURL, "/v1") + "/api/metrics")
 	if err != nil {
 		t.Fatal(err)
