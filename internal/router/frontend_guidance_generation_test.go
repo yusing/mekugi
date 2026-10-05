@@ -13,7 +13,7 @@ import (
 )
 
 // The checked-in Markdown is generated from the external layout and the
-// pinned TypeScript tool specifications.
+// native built-in tool specifications.
 func TestGeneratedFrontendGuidanceIsCurrent(t *testing.T) {
 	snapshot, err := toolplugin.Load(t.Context(), filepath.Join(t.TempDir(), "plugins"), t.TempDir())
 	if err != nil || len(snapshot.Diagnostics) != 0 {

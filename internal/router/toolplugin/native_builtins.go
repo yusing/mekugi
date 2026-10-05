@@ -1,6 +1,5 @@
 package toolplugin
 
-// Source: plugins/tools.ts and bundled specifications @[543de4f3].
 // Built-in descriptions and executors have one native owner.
 func builtinPlugin() Plugin {
 	return Plugin{ID: "builtin.frontends", Module: "builtin/native", Tools: []Tool{

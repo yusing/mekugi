@@ -1,9 +1,9 @@
 <!-- mekugi-frontends:start -->
 <mekugi-frontends>
 <usage>
-Codex owns stock editing and execution. The following session-private PATH commands run through exec_command (or tools.exec_command in Code Mode); use them when useful rather than replacing ordinary shell tools.
-Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution. Give required skill and instruction reads their own exec_command in the same batch, such as a parallel call or another tools.exec_command in the same Code Mode cell, rather than a later turn: Codex truncates one call's output past max_output_tokens without an mread reference.
-For parallel Code Mode commands, print labeled outputs without serializing result envelopes:
+Codex owns stock editing and execution. The following session-private PATH commands run through tools.exec_command; use them when useful rather than replacing ordinary shell tools.
+Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution. Give required skill and instruction reads their own exec_command in the same batch, such as a parallel call or another tools.exec_command in the same exec cell, rather than a later turn: Codex truncates one call's output past max_output_tokens without an mread reference.
+For parallel exec commands, print labeled outputs without serializing result envelopes:
 ```js
 const results = await Promise.allSettled([
   tools.exec_command({cmd: "mcat src/main.go 1:80", max_output_tokens: 2000}),
@@ -68,11 +68,11 @@ Review, revert, or reapply captured filesystem changes from stock apply_patch, s
 <instruction id="journal_tool">
 The durable journal is the user-facing record of work: plan, task states, new results, decisions, constraints and blockers. Deliver work updates through the journal, not standalone commentary. Attach mutations to the next useful exec with `await journal(...)` or a useful native tool's journal field; do not call a tool only to journal. Record established facts and explicit user direction: a call that first loads guidance, code or evidence for a new request needs no mutation. Create a task once evidence shows what the requested outcome needs, titled in the user's terms; add subtasks for separate work that evidence identified, not a generic inspect, implement and validate sequence. Do not state a cause, diagnosis or approach before the governing code and evidence establish it. Use task state changes for milestones such as investigation finished or validation started; use notes for new findings, decisions, measured progress, or blockers. Do not add a note merely to announce the next action or repeat a task state. Keep standing constraints in context once, rather than repeating unchanged assurances.
 
-Keep explicit user constraints and settled decisions needed after reset in context nodes, including review stop decisions. Each topic has one owning context node or task: a correction or added constraint on an existing topic updates that node with `set` rather than adding another beside it; only a new topic gets a new node. When later direction replaces a recorded decision or result, mark the earlier node superseded by the node that now owns the topic instead of leaving both current. Record the specific facts later work needs from loaded documents and skills, not which ones were read: a recorded read retains no contents, so after recovery read only missing guidance needed for the next operation. Handoff details such as agent names, evidence ranges and process state belong in notes under the task they serve, not in context. Record unfinished work as observations, not resumable handles or restored Code Mode store keys.
+Keep explicit user constraints and settled decisions needed after reset in context nodes, including review stop decisions. Each topic has one owning context node or task: a correction or added constraint on an existing topic updates that node with `set` rather than adding another beside it; only a new topic gets a new node. When later direction replaces a recorded decision or result, mark the earlier node superseded by the node that now owns the topic instead of leaving both current. Record the specific facts later work needs from loaded documents and skills, not which ones were read: a recorded read retains no contents, so after recovery read only missing guidance needed for the next operation. Handoff details such as agent names, evidence ranges and process state belong in notes under the task they serve, not in context. Record unfinished work as observations, not resumable handles or restored exec store keys.
 
 Use ASD-STE100 Simplified Technical English for journal text. Give each item a short, clear title or first line. Put supporting details in the body; for `log`, put them after a newline. Keep one topic per item. Create separate items for separate topics instead of joining them with "and". Use "and" when it connects parts of one topic.
 
-Code Mode API: `await journal(op)` or `await journal([op, ...])` applies an atomic batch. The helper returns a Promise and can also be joined with independent work in `Promise.allSettled`; await the enclosing batch before the cell ends. Paths use stable sibling ordinals (`/1`, `/1/2`) shared by tasks, notes and context, never titles or shifting array indices; use returned paths rather than counting. New router-owned Outcomes do not consume these ordinals. Only tasks accept children. A plan returns its created paths in order; other mutations return the affected path. Arrays return paths in operation order. Plans, adds and arrays containing them also print the returned paths through `text`.
+exec API: `await journal(op)` or `await journal([op, ...])` applies an atomic batch. The helper returns a Promise and can also be joined with independent work in `Promise.allSettled`; await the enclosing batch before the cell ends. Paths use stable sibling ordinals (`/1`, `/1/2`) shared by tasks, notes and context, never titles or shifting array indices; use returned paths rather than counting. New router-owned Outcomes do not consume these ordinals. Only tasks accept children. A plan returns its created paths in order; other mutations return the affected path. Arrays return paths in operation order. Plans, adds and arrays containing them also print the returned paths through `text`.
 
 - `{op:"plan", under?:path, tasks:["Title", {p?:existingChildPath,title,state?,body?,reason?,tasks?:[...]}], reset?:"slice"}` creates pending tasks or updates listed children. Unlisted pending children become dropped; working and finished children remain. With `reset:"slice"`, each listed task is a small, bounded step that advances the requested outcome: give it one concrete result and a completion check, sized for about 5-10 minutes of work. Split broad implementation, review, or validation work into separate result-bearing slices when needed; avoid one task for the whole delivery. If new evidence expands a slice, narrow it to the next checkable result and keep the remaining work as pending sibling slices under the same parent, not only as notes or subtasks inside the active slice. Record results as they become known. Mark the slice done only when its completion check passes, record what later slices need, and finish the turn before starting another slice; the frontend may then reset context and continue with the next pending slice from the journal.
 - `{op:"add", under?:path, kind?:"task"|"note"|"context", title, body?, state?, reason?, agent?:canonicalChild, before?:siblingPath}` adds one node. Only `kind:"task"` accepts state, reason and agent; creation and binding validate together. Default kind is note. Context nodes hold durable constraints.
@@ -118,7 +118,7 @@ Native agent operations use this projected namespace. Message arguments are plai
 OpenCode model overrides: %MODELS%. Use fork_turns="none" and a self-contained message; encrypted OpenAI history is unsupported. Omit reasoning_effort for provider defaults, or select an effort supported by the model catalog.
 </instruction>
 <instruction id="grok_model">
-Grok overrides from the Codex catalog: `grok:grok-4.5`, `grok:grok-4.6`, `grok:grok-4.7`, `grok:grok-4.7-build-fast`. The build-fast variant requires Grok OAuth.
+Grok overrides from the Codex catalog: %MODELS%. The build-fast variant requires Grok OAuth.
 </instruction>
 <instruction id="grok_fork_turns">
 For Grok overrides, explicitly use "none" and include the complete task in message.
@@ -134,4 +134,12 @@ Only what the script passes to `text(...)` reaches you. A nested tool's result i
 </instruction>
 <instruction id="grok_format_prefix">
 The input string must obey this tool format:
+</instruction>
+
+<instruction id="interruptible_wait">
+- Use completion notifications or interruptible waits; do not shorten waits solely to record progress.
+</instruction>
+
+<instruction id="journal_code_mode_hint">
+Use the exec-local journal helper for reads and mutations. Put a finish marker in the final useful execution when its result can establish completion; finish naturally when further interpretation or a substantive answer is needed.
 </instruction>

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -45,6 +46,8 @@ func standaloneFrontendDescription(name string) string {
 	return strings.TrimSpace(before)
 }
 
+var frontendFramingTag = regexp.MustCompile(`</?(?:tool|mekugi-frontends)[\t\r\n />]`)
+
 func frontendGuidanceFromRegistry(contributions []toolContribution) (string, error) {
 	var additions strings.Builder
 	for _, contribution := range contributions {
@@ -61,6 +64,10 @@ func frontendGuidanceFromRegistry(contributions []toolContribution) (string, err
 			strings.Contains(specification.Description, codeModeJournalStart) || strings.Contains(specification.Description, codeModeJournalEnd) {
 			return "", fmt.Errorf("session frontend %s description contains guidance marker", contribution.Name)
 		}
+		if frontendFramingTag.MatchString(specification.Description) {
+			return "", fmt.Errorf("session frontend %s description contains framing tag", contribution.Name)
+		}
+
 		if pinned := standaloneFrontendDescription(contribution.Name); pinned != "" {
 			if pinned != specification.Description {
 				return "", fmt.Errorf("generated frontend guidance is stale for %s", contribution.Name)

@@ -21,7 +21,7 @@ const journalHistoryTool = "__mekugi_journal"
 const codeModeJournalStart = "<!-- mekugi-journal:start -->"
 const codeModeJournalEnd = "<!-- mekugi-journal:end -->"
 
-const codeModeJournalHint = "In Code Mode, use the exec-local journal helper for reads and mutations. Put a finish marker in the final useful execution when its result can establish completion; finish naturally when further interpretation or a substantive answer is needed."
+var codeModeJournalHint = embeddedInstruction("journal_code_mode_hint")
 
 var journalToolDescription = embeddedInstruction("journal_tool")
 
@@ -45,7 +45,7 @@ type journalListItem struct {
 func journalMutationsSchema() json.RawMessage {
 	text := map[string]any{"type": "string"}
 	state := map[string]any{"type": "string", "enum": []string{"pending", "working", "done", "blocked", "dropped"}}
-	agent := map[string]any{"type": "string", "description": "Bind a direct child journal on task add or set; the mount is read-only and the binding immutable."}
+	agent := map[string]any{"type": "string"}
 	// This schema is projected under properties.journal in the host tool's
 	// parameters. Local references resolve against that complete input schema.
 	tasks := map[string]any{"type": "array", "maxItems": maxJournalItems, "items": map[string]any{

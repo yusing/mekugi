@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestConflictRewriteTeachesTreeJournal(t *testing.T) {
+func TestConflictRewriteRemovesProgressRulesKeepsQuestions(t *testing.T) {
 	stock := strings.Join([]string{
 		"Put this explanation in a short, separate paragraph at the end of both commentary and final, after any permission question.",
 		"Do NOT put a final response (e.g. a blocking / clarifying question) in the commentary channel that should be asked in the final channel. Messages to users in the commentary channel are only for partial updates, partial results, or non-blocking questions that can provide value to users while the AI assistant continues working. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users.",
@@ -20,7 +20,7 @@ func TestConflictRewriteTeachesTreeJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := jsonString(request.fields, "instructions")
-	if strings.Contains(got, "commentary") {
-		t.Fatalf("stock commentary guidance survived: %q", got)
+	if strings.TrimSpace(got) != "If asked mid-task, answer briefly in commentary, then continue." {
+		t.Fatalf("progress conflict remains or substantive question guidance changed: %q", got)
 	}
 }

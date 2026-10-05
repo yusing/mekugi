@@ -18,7 +18,7 @@ type subagentBridge struct {
 }
 
 func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled, grokUnprefixed bool, openCode ...string) (*subagentBridge, error) {
-	grokModelNote := embeddedInstruction("grok_model")
+	grokModelNote := strings.ReplaceAll(embeddedInstruction("grok_model"), "%MODELS%", "`grok:"+strings.Join(grokModels, "`, `grok:")+"`")
 	if grokUnprefixed {
 		grokModelNote = strings.ReplaceAll(grokModelNote, "grok:", "")
 	}
