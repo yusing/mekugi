@@ -77,13 +77,15 @@ func TestAppServerPreviewQuickSwitch(t *testing.T) {
 		write(t, outer, "/tier priority\r")
 		await("gpt-6-sol (low) · priority")
 		write(t, outer, "/tier fast\r")
-		await("Settings unchanged")
+		await("Service tier updated")
 		write(t, outer, "/tier default\r")
 		awaitFrame(func(frame string) bool {
 			return strings.Contains(frame, "gpt-6-sol (low)") && !strings.Contains(frame, "gpt-6-sol (low) · priority")
 		})
 		write(t, outer, "/reasoning low\r/model gpt-6-sol\r/tier default\r")
-		await("Settings unchanged")
+		// The final explicit tier choice records the invocation-local override,
+		// even when the confirmed Codex settings are already unchanged.
+		await("Service tier updated")
 	}
 	after := func(t *testing.T, outer io.Writer, await func(string), _ func(func(string) bool), screen *vt.Emulator) {
 		t.Helper()
