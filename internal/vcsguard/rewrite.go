@@ -15,16 +15,7 @@ import (
 // shell still expands arguments and owns control flow, redirections and status.
 // Parsing never executes expansions or reads scripts from the filesystem.
 func Rewrite(script, helper, directory string) (string, error) {
-	var tree *syntax.File
-	var err error
-	// The host hook exposes command text but no shell selector. Retain source
-	// bytes instead of printing an AST in a potentially different dialect.
-	for _, variant := range []syntax.LangVariant{syntax.LangBash, syntax.LangZsh} {
-		tree, err = syntax.NewParser(syntax.Variant(variant)).Parse(strings.NewReader(script), "")
-		if err == nil {
-			break
-		}
-	}
+	tree, err := parseScript(script)
 	if err != nil {
 		return "", fmt.Errorf("VCS guard: cannot parse command: %w", err)
 	}
@@ -48,7 +39,7 @@ func Rewrite(script, helper, directory string) (string, error) {
 			if i == 0 && static && value == name {
 				// Preserve aliases and shell functions. Only external lookup needs
 				// our PATH entry, after any command-local PATH assignment.
-				prefix := "PATH=" + shellsyntax.Quote(directory) + ":\"${PATH-/bin:/usr/bin}\" "
+				prefix := pathPrefix(directory)
 				if !strings.HasSuffix(script[int(call.Pos().Offset()):start], prefix) {
 					edits = append(edits, sourceEdit{start, start, prefix})
 				}
@@ -65,6 +56,28 @@ func Rewrite(script, helper, directory string) (string, error) {
 		}
 		return true
 	})
+	return editSource(script, edits)
+}
+
+func pathPrefix(directory string) string {
+	return "PATH=" + shellsyntax.Quote(directory) + ":\"${PATH-/bin:/usr/bin}\" "
+}
+
+func parseScript(script string) (*syntax.File, error) {
+	var tree *syntax.File
+	var err error
+	// The host hook exposes command text but no shell selector. Retain source
+	// bytes instead of printing an AST in a potentially different dialect.
+	for _, variant := range []syntax.LangVariant{syntax.LangBash, syntax.LangZsh} {
+		tree, err = syntax.NewParser(syntax.Variant(variant)).Parse(strings.NewReader(script), "")
+		if err == nil {
+			break
+		}
+	}
+	return tree, err
+}
+
+func editSource(script string, edits []sourceEdit) (string, error) {
 	if len(edits) == 0 {
 		return script, nil
 	}
