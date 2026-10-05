@@ -14,7 +14,7 @@ func TestCommentaryReplayFilteringRequiresExactRetainedID(t *testing.T) {
 	}
 	known := subagentCommentaryMessageID("known")
 	unknown := subagentCommentaryMessageID("unknown")
-	if err := store.putCommentary(t.Context(), "workspace", []string{known}); err != nil {
+	if err := store.putCommentaryReplacing(t.Context(), "workspace", []string{known}, nil); err != nil {
 		t.Fatal(err)
 	}
 

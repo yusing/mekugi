@@ -106,7 +106,7 @@ func TestJournalNativeHostFinishSkipsProviderOnlyAfterSuccess(t *testing.T) {
 				if host == nil || strings.Contains(jsonString(host, "arguments"), "journal") {
 					t.Fatalf("host arguments did not preserve stock execution: %s", first.Bytes())
 				}
-				before := proxy.usage.roundtrips("thread-1")
+				before, _ := proxy.usage.snapshot("thread-1")
 				continuation := serverRequest(t, func(fields map[string]any) {
 					fields["stream"] = stream
 					fields["tools"] = nativeTools
@@ -128,8 +128,8 @@ func TestJournalNativeHostFinishSkipsProviderOnlyAfterSuccess(t *testing.T) {
 				if test.local && (!strings.Contains(next.String(), "Final work requested") || strings.Contains(next.String(), "Done.")) {
 					t.Fatalf("local completion lost its report or added an acknowledgment: %s", next.Bytes())
 				}
-				if got := proxy.usage.roundtrips("thread-1"); got != before+uint64(want) {
-					t.Fatalf("local response counted as provider consumption: before=%d after=%d requests=%d", before, got, want)
+				if report, _ := proxy.usage.snapshot("thread-1"); report.roundtrips != before.roundtrips+uint64(want) {
+					t.Fatalf("local response counted as provider consumption: before=%d after=%d requests=%d", before.roundtrips, report.roundtrips, want)
 				}
 			})
 		}

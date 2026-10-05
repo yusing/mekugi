@@ -84,10 +84,6 @@ func (o *threadUsageObservation) finish() {
 	o.observe(tokenCounts{Incomplete: true})
 }
 
-func (u *threadUsage) add(thread, model, reasoning, serviceTier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
-	u.addRound(&threadUsageObservation{thread: thread, model: model, reasoning: reasoning, conflicted: conflicted, openCodePrice: price}, serviceTier, counts, providerRoundOutput{})
-}
-
 func (u *threadUsage) addRound(o *threadUsageObservation, serviceTier string, counts tokenCounts, round providerRoundOutput) {
 	thread, model, reasoning, conflicted, price := o.thread, o.model, o.reasoning, o.conflicted, o.openCodePrice
 	if u == nil || thread == "" || len(thread) > maxCommentaryPublicationBytes {
@@ -151,24 +147,6 @@ func (u *threadUsage) snapshot(thread string) (tokenUsageReport, bool) {
 		return report, observed
 	}
 	return tokenUsageReport{}, false
-}
-
-// roundtrips counts the thread's forwarded provider requests, which remain
-// countable after its token totals become incomplete.
-func (u *threadUsage) roundtrips(thread string) uint64 {
-	if u == nil {
-		return 0
-	}
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	if u.closed {
-		return 0
-	}
-	u.loadLocked(thread)
-	if u.threads[thread] == nil {
-		return 0
-	}
-	return u.threads[thread].roundtrips
 }
 
 func (u *threadUsage) close() {

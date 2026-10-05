@@ -168,7 +168,7 @@ func (a *subagentActivity) collectEventLocked(event activityEvent) {
 		node.seen[source] = struct{}{}
 		return
 	}
-	raw := text
+	var raw string
 	if kind == "error" {
 		event.errorDetail, raw = text, activityui.ErrorPreview(text)
 	} else {

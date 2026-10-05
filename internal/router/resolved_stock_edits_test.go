@@ -171,9 +171,6 @@ func TestResolvedRepeatedStockCallsRetainEveryOutcome(t *testing.T) {
 			observation, _ := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: f.workspace})
 			history := mekugiHistory{ToolName: "exec", ExecutingThread: f.thread,
 				NativePatches: nativePatchesInCall("exec", source, f.workspace), ExecObservation: observation}
-			if !literalLoop {
-				// Dynamic inputs do not acquire a workspace baseline.
-			}
 			if literalLoop {
 				if dynamic {
 					t.Fatal("literal loop must not request a dynamic inventory")

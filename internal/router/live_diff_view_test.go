@@ -28,55 +28,22 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 			Review: mekugi.ReviewFile{AfterPath: path, Diff: diff},
 		}}})
 	}
-	for focusFile := range files {
-		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90, focusFile, files[focusFile].Chunks[0])
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(render.Starts) != 2 || render.Starts[0] != 0 || render.Starts[1] <= 0 {
-			t.Fatalf("missing file boundaries: %v", render.Starts)
-		}
-		for i, name := range []string{"first", "second"} {
-			end := len(render.Lines)
-			if i+1 < len(files) {
-				end = render.Starts[i+1]
-			}
-			text := ansi.Strip(strings.Join(render.Lines[render.Starts[i]:end], "\n"))
-			if !strings.Contains(text, name+".txt") || !strings.Contains(text, name+" content") {
-				t.Fatalf("file %d not rendered in its own section: %q", i, text)
-			}
-			if i == focusFile && (render.FocusOffset < render.Starts[i] || render.FocusOffset >= end) {
-				t.Fatalf("same line number in another file stole focus: %+v", render)
-			}
-		}
-	}
-}
-
-func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
-	workspace := t.TempDir()
-	first := filepath.Join(workspace, "first.txt")
-	second := filepath.Join(workspace, "second.txt")
-	diff := "--- /dev/null\n+++ " + strconv.Quote(first) + "\n@@ -0,0 +1,40 @@\n" + strings.Repeat("+first content\n", 40)
-	files := []livediff.File{
-		{Path: first, Chunks: []livediff.Chunk{{
-			Review: mekugi.ReviewFile{AfterPath: first, Diff: diff}}}},
-		{Path: second}, // The latest file was fully reverted.
-	}
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90, 1, livediff.Chunk{})
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if render.FocusOffset != render.Starts[1] {
-		t.Fatalf("empty latest file lost focus: offset=%d starts=%v", render.FocusOffset, render.Starts)
+	if len(render.Starts) != 2 || render.Starts[0] != 0 || render.Starts[1] <= 0 {
+		t.Fatalf("missing file boundaries: %v", render.Starts)
 	}
-	const rows = 18
-	if len(render.Lines) <= rows {
-		t.Fatal("fixture must require scrolling")
-	}
-	offset := min(render.FocusOffset, len(render.Lines)-rows)
-	viewport := ansi.Strip(strings.Join(render.Lines[offset:offset+rows], "\n"))
-	if strings.Contains(viewport, "second.txt") || strings.Contains(viewport, "No visible changes") {
-		t.Fatalf("reverted file remained Visible: %q", viewport)
+	for i, name := range []string{"first", "second"} {
+		end := len(render.Lines)
+		if i+1 < len(files) {
+			end = render.Starts[i+1]
+		}
+		text := ansi.Strip(strings.Join(render.Lines[render.Starts[i]:end], "\n"))
+		if !strings.Contains(text, name+".txt") || !strings.Contains(text, name+" content") {
+			t.Fatalf("file %d not rendered in its own section: %q", i, text)
+		}
 	}
 }
 

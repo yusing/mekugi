@@ -70,5 +70,3 @@ func (k RequestKind) Known() bool { return k == Turn || k == Prewarm || k == Com
 func (k Kind) FunctionArguments() bool {
 	return k == FunctionArgumentsDelta || k == FunctionArgumentsDone
 }
-
-func (k Kind) ContentPart() bool { return k == ContentPartAdded || k == ContentPartDone }

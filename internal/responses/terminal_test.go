@@ -66,17 +66,17 @@ func TestEventFamilies(t *testing.T) {
 		}
 	}
 	for _, kind := range []Kind{OutputItemAdded, OutputItemDone} {
-		if !kind.ItemEvent() || kind.ContentPart() {
+		if !kind.ItemEvent() {
 			t.Fatal(kind)
 		}
 	}
 	for _, kind := range []Kind{ContentPartAdded, ContentPartDone} {
-		if !kind.ContentPart() || kind.ItemEvent() {
+		if kind.ItemEvent() {
 			t.Fatal(kind)
 		}
 	}
 	for _, kind := range []Kind{"response.function_call_arguments.future", "response.output_item.future", "response.content_part.future"} {
-		if kind.FunctionArguments() || kind.ItemEvent() || kind.ContentPart() {
+		if kind.FunctionArguments() || kind.ItemEvent() {
 			t.Fatal(kind)
 		}
 	}

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -155,13 +154,13 @@ func (r *Renderer) ColorSource(ctx context.Context, theme Theme, path, source st
 
 // Rendering consumes the engine's validated rows. File and hunk offsets are
 // recorded as rows are emitted, never recovered from a subprocess's output.
-func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, workspace string, width, focusFile int, focus Chunk) (Render, error) {
+func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, workspace string, width int) (Render, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
 		return Render{}, err
 	}
-	sourceBytes := len(focus.Review.Diff)
+	sourceBytes := 0
 	for _, file := range files {
 		sourceBytes += len(file.Path)
 		for _, chunk := range file.Chunks {
@@ -190,25 +189,6 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 		render.Sources = append(render.Sources, source)
 		return nil
 	}
-	focusHunks, err := focus.Review.Hunks()
-	if err != nil {
-		return Render{}, err
-	}
-	var bestKind, focusKind byte
-	focusLine, bestDistance := 0, int(^uint(0)>>1)
-	// Follow the final changed row, not the first row of a large replacement
-	// or creation. Context after the change must not move the anchor.
-	for _, hunk := range focusHunks {
-		line := hunk.AfterStart
-		for _, row := range hunk.Rows {
-			if row.Kind != ' ' {
-				focusLine, focusKind = line, row.Kind
-			}
-			if row.Kind != '-' {
-				line++
-			}
-		}
-	}
 	fileCount := 0
 	for _, file := range files {
 		if len(file.Chunks) > 0 {
@@ -218,9 +198,6 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 	fileNumber := 0
 	for i, file := range files {
 		render.Starts[i] = len(render.Lines)
-		if i == focusFile {
-			render.FocusOffset, render.FocusRow = len(render.Lines), len(render.Lines)
-		}
 		if len(file.Chunks) == 0 {
 			continue
 		}
@@ -302,12 +279,9 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 		if numberWidth > 0 {
 			continuationNumbers = Subtle + strings.Repeat(" ", digits) + "│" + SubtleReset
 		}
-		preferFocusKey := focus.Key != "" && slices.ContainsFunc(file.Chunks, func(chunk Chunk) bool { return chunk.Key == focus.Key })
-		preferHighlighted := i == focusFile && focus.Highlighted
 		for j, chunk := range file.Chunks {
 			review := chunk.Review
 			hunks := fileHunks[j]
-			chunkStart := len(render.Lines)
 			source = LineSource{Change: cmp.Or(chunk.Change, originChanges(file.Origins)), Path: file.Path, Content: gutterWidth}
 			if chunk.Status != "" {
 				label := chunk.Status
@@ -340,14 +314,11 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 			if review.BeforePath != "" && review.AfterPath == "" {
 				continue
 			}
-			for hunkIndex, hunk := range hunks {
-				hunkStart := len(render.Lines)
-				render.Hunks = append(render.Hunks, hunkStart)
-				if hunkIndex == 0 {
-					hunkStart = chunkStart // Keep prepared status visible when following.
-				}
+			for _, hunk := range hunks {
+				render.Hunks = append(render.Hunks, len(render.Lines))
 				var before, after []string
 				if !r.LayoutOnly {
+					var err error
 					before, after, err = r.ColorHunk(ctx, theme, review, hunk.Rows)
 					if err != nil {
 						return Render{}, err
@@ -362,18 +333,6 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 				oldLine, newLine := hunk.BeforeStart+1, hunk.AfterStart+1
 				oldIndex, newIndex := 0, 0
 				for _, row := range hunk.Rows {
-					// A composed hunk can span the entire new file or several
-					// adjacent updates. Follow the actual changed coordinate,
-					// not the start of that potentially very large hunk.
-					distance := max(newLine-1-focusLine, focusLine-(newLine-1))
-					isFocus := i == focusFile &&
-						(!preferFocusKey || chunk.Key == focus.Key) &&
-						(preferFocusKey || !preferHighlighted || chunk.Highlighted) &&
-						(distance < bestDistance ||
-							distance == bestDistance && row.Kind == focusKind && (bestKind != focusKind || focusKind == '-'))
-					if isFocus {
-						bestDistance, bestKind = distance, row.Kind
-					}
 					coordinate, text := 0, ""
 					if r.LayoutOnly {
 						text = Safe(strings.TrimSuffix(row.Text, "\n"), false)
@@ -410,10 +369,6 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 						if err := appendLine(line, chunk.Highlighted, n > 0); err != nil {
 							return Render{}, err
 						}
-					}
-					if isFocus {
-						render.FocusRow = len(render.Lines) - 1
-						render.FocusOffset = max(hunkStart, render.FocusRow-3)
 					}
 					source.Line, source.Deleted, source.Content = 0, false, gutterWidth
 					if !strings.HasSuffix(row.Text, "\n") {

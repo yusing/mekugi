@@ -121,10 +121,6 @@ func (p *execPlan) add(entry execScopeEntry) {
 	p.Scope = append(p.Scope, entry)
 }
 
-func classifyExecShellWithin(command, workdir, shell string, deadline time.Time, depth int, changes execChangeResolver) execPlan {
-	return classifyExecShellSource(command, workdir, shell, deadline, depth, changes, false)
-}
-
 func classifyExecShellSource(command, workdir, shell string, deadline time.Time, depth int, changes execChangeResolver, authoredOnly bool) execPlan {
 	plan := execPlan{}
 	switch shellsyntax.InterpreterIdentity(shell) {

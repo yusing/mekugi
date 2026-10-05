@@ -33,9 +33,8 @@ func assertViewportGeometry(t *testing.T, got, want Render) {
 		!reflect.DeepEqual(got.RowStarts, want.RowStarts) ||
 		!reflect.DeepEqual(got.Sources, want.Sources) ||
 		!reflect.DeepEqual(got.Counts, want.Counts) ||
-		got.FocusOffset != want.FocusOffset || got.FocusRow != want.FocusRow ||
 		len(got.Lines) != len(want.Lines) {
-		t.Fatal("viewport painting changed geometry, navigation, attribution, counts, or focus")
+		t.Fatal("viewport painting changed geometry, navigation, attribution, or counts")
 	}
 	for i := range got.Lines {
 		if ansi.Strip(got.Lines[i]) != ansi.Strip(want.Lines[i]) {
@@ -46,12 +45,11 @@ func assertViewportGeometry(t *testing.T, got, want Render) {
 
 func TestLiveDiffViewportSyntaxMatchesEager(t *testing.T) {
 	files := viewportSyntaxFiles(3, "go")
-	focus := files[1].Chunks[0]
 	var renderer Renderer
 	for _, theme := range []Theme{DarkTheme, LightTheme, TerminalTheme} {
 		for _, width := range []int{80, 22, 7, 1, 80} {
 			t.Run(fmt.Sprintf("theme-%d/width-%d", theme, width), func(t *testing.T) {
-				want, err := new(Renderer).Render(t.Context(), theme, files, "", width, 1, focus)
+				want, err := new(Renderer).Render(t.Context(), theme, files, "", width)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -59,7 +57,7 @@ func TestLiveDiffViewportSyntaxMatchesEager(t *testing.T) {
 					t.Fatal("fixture lost its no-newline marker")
 				}
 				renderer.LayoutOnly = true
-				got, err := renderer.Render(t.Context(), theme, files, "", width, 1, focus)
+				got, err := renderer.Render(t.Context(), theme, files, "", width)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -118,7 +116,7 @@ func TestLiveDiffViewportSyntaxOnlyTokenizesIntersectingHunks(t *testing.T) {
 	lexers.Register(lexer)
 	files := viewportSyntaxFiles(4, "viewportfixture")
 	renderer := Renderer{LayoutOnly: true}
-	render, err := renderer.Render(t.Context(), DarkTheme, files, "", 22, 1, files[1].Chunks[0])
+	render, err := renderer.Render(t.Context(), DarkTheme, files, "", 22)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +183,7 @@ func BenchmarkLiveDiffColdViewportSyntax(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				renderer := Renderer{LayoutOnly: layoutOnly}
-				render, err := renderer.Render(b.Context(), DarkTheme, files, "", 80, 0, files[0].Chunks[0])
+				render, err := renderer.Render(b.Context(), DarkTheme, files, "", 80)
 				if err != nil {
 					b.Fatal(err)
 				}

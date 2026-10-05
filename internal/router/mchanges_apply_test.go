@@ -246,7 +246,7 @@ func TestMChangesMutationClassification(t *testing.T) {
 		return []string{filepath.Join(workspace, "a.txt")}, nil
 	}
 	classify := func(command string, changes execChangeResolver) execPlan {
-		return classifyExecShellWithin(command, workspace, "bash", time.Now().Add(execProviderBudget), 0, changes)
+		return classifyExecShellSource(command, workspace, "bash", time.Now().Add(execProviderBudget), 0, changes, false)
 	}
 	if plan := classify("mchanges --list && mchanges amber1 --summary", resolver); plan.Class != execNeutral {
 		t.Fatalf("read plan = %+v", plan)

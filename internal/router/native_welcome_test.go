@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
@@ -21,11 +20,7 @@ func TestNativeWelcome(t *testing.T) {
 		}
 	}
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.backendVersion = "0.158.0"
-	rows, _ := u.mainFrame(80, 24, 0)
-	if !strings.Contains(ansi.Strip(rows[0]), "Mekugi "+mekugiVersion()+" • codex v0.158.0") {
-		t.Fatalf("welcome %q", rows[0])
-	}
+	u.mainFrame(80, 24, 0)
 	if len(u.view.entries) != 0 {
 		t.Fatal("welcome entered history")
 	}

@@ -22,11 +22,11 @@ func TestLiveDiffSyntaxCacheMatchesColdRender(t *testing.T) {
 				chunk.Highlighted = true
 				files := []File{{Path: path, Highlighted: true, Chunks: []Chunk{chunk}}}
 				for _, width := range []int{90, 22, 1, 7, 90} {
-					got, err := renderer.Render(t.Context(), theme, files, "", width, 0, chunk)
+					got, err := renderer.Render(t.Context(), theme, files, "", width)
 					if err != nil {
 						t.Fatal(err)
 					}
-					want, err := new(Renderer).Render(t.Context(), theme, files, "", width, 0, chunk)
+					want, err := new(Renderer).Render(t.Context(), theme, files, "", width)
 					if err != nil || !reflect.DeepEqual(got, want) {
 						t.Fatalf("cached render changed theme=%v path=%s source=%s width=%d: %v", theme, path, value, width, err)
 					}

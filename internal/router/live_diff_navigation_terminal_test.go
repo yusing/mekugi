@@ -159,7 +159,7 @@ func TestLiveDiffHunkNavigationAndFileMemory(t *testing.T) {
 	c.files = []livediff.File{{Path: "a.go", Chunks: []livediff.Chunk{{Key: "a", Review: mekugi.ReviewFile{BeforePath: "a.go", AfterPath: "a.go", Diff: "@@ -1 +1 @@\n-old\n+new\n@@ -20 +20 @@\n-before\n+after\n"}}}}, {Path: "b.go", Chunks: []livediff.Chunk{{Key: "b", Review: mekugi.RenderReviewFile("", "b.go", "", "second\n")}}}}
 	c.view.Files = c.files
 	var err error
-	c.rendering, err = c.renderer.Render(t.Context(), livediff.DarkTheme, c.files, "", 80, 0, livediff.Chunk{})
+	c.rendering, err = c.renderer.Render(t.Context(), livediff.DarkTheme, c.files, "", 80)
 	if err != nil {
 		t.Fatal(err)
 	}

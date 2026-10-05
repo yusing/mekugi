@@ -257,10 +257,6 @@ func (s *mekugiReplayStore) hasCommentary(ctx context.Context, workspace, id str
 	})
 	return
 }
-func (s *mekugiReplayStore) putCommentary(ctx context.Context, workspace string, ids []string) error {
-	return s.putCommentaryReplacing(ctx, workspace, ids, nil)
-}
-
 func (s *mekugiReplayStore) putCommentaryReplacing(ctx context.Context, workspace string, ids []string, replacement *commentaryReplacement) error {
 	if s == nil {
 		return nil

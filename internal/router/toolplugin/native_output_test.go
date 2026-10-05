@@ -183,7 +183,7 @@ func TestNativeOutputReadFramesAndSelection(t *testing.T) {
 
 func TestNativeOutputReadSharedStreamBudget(t *testing.T) {
 	request := nativeReadRequest{Stdout: "short output", Stderr: strings.Repeat("diagnostic ", 30)}
-	framed := regexp.MustCompile("\\[(stdout|stderr) bytes\\]\\n([\\s\\S]*?)\\n\\[/(?:stdout|stderr)\\]\\n")
+	framed := regexp.MustCompile(`\[(stdout|stderr) bytes\]\n([\s\S]*?)\n\[/(?:stdout|stderr)\]\n`)
 	var stdout, stderr strings.Builder
 	complete := false
 	for range 100 {

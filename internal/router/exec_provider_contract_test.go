@@ -50,7 +50,7 @@ func TestExecProviderAliasesRecursionAndPreviewPermissions(t *testing.T) {
 
 func TestExecProviderDeadlineAndDenoPermissionSet(t *testing.T) {
 	root := t.TempDir()
-	plan := classifyExecShellWithin(`python3 -c 'open("a","w")'`, root, "bash", time.Now().Add(-time.Second), 0, nil)
+	plan := classifyExecShellSource(`python3 -c 'open("a","w")'`, root, "bash", time.Now().Add(-time.Second), 0, nil, false)
 	if plan.Class != execOpaque || !strings.Contains(plan.Reason, "deadline") {
 		t.Fatalf("expired provider: %+v", plan)
 	}

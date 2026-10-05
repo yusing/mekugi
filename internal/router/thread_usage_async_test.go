@@ -86,17 +86,15 @@ func TestThreadUsageAsyncConsumersIgnoreStoreContention(t *testing.T) {
 	u.notice = func(string, error) { notices.Add(1) }
 	unlock := holdUsageStoreLock(t, store)
 	// An uncached retained identity must be readable even while another managed
-	// writer owns store.lock. Snapshot and roundtrip consumers also remain live.
+	// writer owns store.lock. Snapshot consumers also remain live.
 	requireUsageOperationPrompt(t, func() { u.restore("retained", true) })
 	requireUsageOperationPrompt(t, func() { u.snapshot("retained") })
-	requireUsageOperationPrompt(t, func() { u.roundtrips("retained") })
 	requireStoredUsage(t, u, "retained", 10, 1, 1, .00003)
 	u.markNew("live")
 	requireUsageOperationPrompt(t, func() {
 		u.observation("live", "live", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 20, UncachedInputTokens: 20, OutputTokens: 2})
 	})
 	requireUsageOperationPrompt(t, func() { u.snapshot("live") })
-	requireUsageOperationPrompt(t, func() { u.roundtrips("live") })
 	report := requireStoredUsage(t, u, "live", 20, 2, 1, .00006)
 	if report.priorUnknown {
 		t.Fatal("normal lock contention erased a proven new baseline")

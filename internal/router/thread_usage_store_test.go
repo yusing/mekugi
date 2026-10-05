@@ -26,8 +26,8 @@ func requireStoredUsage(t *testing.T, u *threadUsage, thread string, input, outp
 	t.Helper()
 	report, ok := u.snapshot(thread)
 	gotCost := report.cost.cachedInput + report.cost.uncachedInput + report.cost.output
-	if !ok || report.InputTokens != input || report.OutputTokens != output || u.roundtrips(thread) != trips || !report.cost.known || math.Abs(gotCost-cost) > 1e-10 {
-		t.Fatalf("%s: report=%+v trips=%d cost=%g; want input=%d output=%d trips=%d cost=%g", thread, report, u.roundtrips(thread), gotCost, input, output, trips, cost)
+	if !ok || report.InputTokens != input || report.OutputTokens != output || report.roundtrips != trips || !report.cost.known || math.Abs(gotCost-cost) > 1e-10 {
+		t.Fatalf("%s: report=%+v trips=%d cost=%g; want input=%d output=%d trips=%d cost=%g", thread, report, report.roundtrips, gotCost, input, output, trips, cost)
 	}
 	return report
 }
@@ -57,7 +57,7 @@ func TestThreadUsageStoreRestartFollowupAndIdentityIsolation(t *testing.T) {
 	requireStoredUsage(t, restored, "root", 10, 0, 1, .00002)
 	// A fork is another stable identity, not its parent's consumption record.
 	restored.restore("fork", false)
-	if _, ok := restored.snapshot("fork"); ok || restored.roundtrips("fork") != 0 {
+	if report, ok := restored.snapshot("fork"); ok || report.roundtrips != 0 {
 		t.Fatal("fresh fork borrowed ancestor totals")
 	}
 	restored.observation("fork", "fork", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 1, UncachedInputTokens: 1})
@@ -101,7 +101,7 @@ func TestThreadUsageStoreRetainsHistoricalUnknownAndUsageGaps(t *testing.T) {
 	restored := storedUsageFixture(usageStoreFixture(t, directory))
 	t.Cleanup(restored.close)
 	restored.restore("historical", false)
-	if report, ok := restored.snapshot("historical"); !ok || !report.priorUnknown || restored.roundtrips("historical") != 0 {
+	if report, ok := restored.snapshot("historical"); !ok || !report.priorUnknown || report.roundtrips != 0 {
 		t.Fatalf("historical unknown baseline lost: %+v valid=%v", report, ok)
 	}
 	restored.observation("historical", "historical", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 100, UncachedInputTokens: 100, OutputTokens: 10})
@@ -110,7 +110,7 @@ func TestThreadUsageStoreRetainsHistoricalUnknownAndUsageGaps(t *testing.T) {
 		t.Fatal("followup falsely completed historical consumption")
 	}
 	restored.restore("gap", true)
-	if report, ok := restored.snapshot("gap"); !ok || report.missingUsage != 1 || restored.roundtrips("gap") != 1 {
+	if report, ok := restored.snapshot("gap"); !ok || report.missingUsage != 1 || report.roundtrips != 1 {
 		t.Fatalf("retained request gap lost: %+v valid=%v", report, ok)
 	}
 	restored.observation("gap", "gap", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 100, UncachedInputTokens: 100, OutputTokens: 10})

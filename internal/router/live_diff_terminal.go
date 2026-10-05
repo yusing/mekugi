@@ -36,26 +36,24 @@ type liveDiffTerminalController struct {
 	view        livediff.View
 	previewPane diffview.PreviewPane
 
-	previewFrame      *time.Timer
-	previewFrameC     <-chan time.Time
-	previewFrameDue   time.Time
-	turnRevision      uint64
-	diffMode          bool
-	renderer          livediff.Renderer
-	rendering         livediff.Render
-	rendered          []livediff.File
-	renderedFocus     livediff.Chunk
-	renderedFocusFile int
-	renderedTheme     livediff.Theme
-	lastWidth         int
-	lastHeight        int
-	diffWidth         int
-	navigation        diffview.Navigation
-	navigationFile    string
-	help              bool
-	escapeTimer       *time.Timer
-	escapeC           <-chan time.Time
-	dirty             bool
+	previewFrame    *time.Timer
+	previewFrameC   <-chan time.Time
+	previewFrameDue time.Time
+	turnRevision    uint64
+	diffMode        bool
+	renderer        livediff.Renderer
+	rendering       livediff.Render
+	rendered        []livediff.File
+	renderedTheme   livediff.Theme
+	lastWidth       int
+	lastHeight      int
+	diffWidth       int
+	navigation      diffview.Navigation
+	navigationFile  string
+	help            bool
+	escapeTimer     *time.Timer
+	escapeC         <-chan time.Time
+	dirty           bool
 	// pinned reports a frame without a title row, where a mid-file viewport
 	// pins its file heading and scrolling reaches one row further.
 	pinned bool
@@ -100,9 +98,8 @@ func newLiveDiffTerminalController(store *mekugiReplayStore, workspace string, s
 		store: store, workspace: workspace, stdout: stdout,
 		size: func() (int, int, error) { return term.GetSize(int(stdout.Fd())) },
 		data: newLiveDiffData(), coverage: "CONNECTING",
-		view:              livediff.View{Scroll: make(map[string]int)},
-		previewFrame:      previewFrame,
-		renderedFocusFile: -1, dirty: true,
+		view:         livediff.View{Scroll: make(map[string]int)},
+		previewFrame: previewFrame, dirty: true,
 		theme: theme, renderedTheme: theme,
 	}
 }
@@ -121,15 +118,9 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	}
 	width, height = max(1, width), max(3, height)
 	files := make([]livediff.File, len(c.view.Files))
-	focusFile := -1
 	for i, file := range c.view.Files {
 		files[i] = c.view.Visible[file.Key()]
-		if slices.ContainsFunc(file.Chunks, func(chunk livediff.Chunk) bool { return chunk.Key == c.view.Latest }) {
-			focusFile = i
-		}
 	}
-	focus := c.view.LatestChunk()
-	focus.SnapshotOrder = 0 // Snapshot numbering does not change a capture's geometry.
 	navWidth := c.navigation.Width(width)
 	if inline := width < 100; inline != c.navigation.Changes.Inline {
 		c.navigation.Changes.Inline = inline
@@ -141,11 +132,11 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		diffWidth -= navWidth + 1
 	}
 	sameFiles := reflect.DeepEqual(c.rendered, files)
-	if !sameFiles || c.renderedFocus != focus || c.renderedFocusFile != focusFile || diffWidth != c.diffWidth || c.theme != c.renderedTheme {
+	if !sameFiles || diffWidth != c.diffWidth || c.theme != c.renderedTheme {
 		previous := c.rendering
 		c.renderer.Caller = diffview.CallerStyle(c.theme)
 		c.renderer.LayoutOnly = true
-		c.rendering, err = c.renderer.Render(ctx, c.theme, files, c.workspace, diffWidth, focusFile, focus)
+		c.rendering, err = c.renderer.Render(ctx, c.theme, files, c.workspace, diffWidth)
 		if err != nil {
 			return err
 		}
@@ -153,7 +144,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 			c.view.Reflow(previous, c.rendering)
 		}
 		c.renderedTheme = c.theme
-		c.rendered, c.renderedFocus, c.renderedFocusFile = files, focus, focusFile
+		c.rendered = files
 		c.dirty = true
 	}
 	resized := height != c.lastHeight || width != c.lastWidth
@@ -424,7 +415,6 @@ func (c *liveDiffTerminalController) resetScope() {
 	c.navigation = diffview.Navigation{Flat: c.navigation.Flat}
 	c.previewPane, c.back = diffview.PreviewPane{}, liveDiffBack{}
 	c.files, c.lines, c.offset, c.rendered = nil, nil, 0, nil
-	c.renderedFocus, c.renderedFocusFile = livediff.Chunk{}, -1
 	c.awaitingResync, c.dirty = true, true
 	c.refreshChanges()
 }

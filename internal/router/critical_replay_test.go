@@ -38,7 +38,7 @@ func TestPreviouslyGeneratedNoticeReplayUsesDurableExactProvenance(t *testing.T)
 		t.Fatal(err)
 	}
 	const legacyID = "router-owned-legacy-notice"
-	if err := store.putCommentary(t.Context(), workspace, []string{legacyID}); err != nil {
+	if err := store.putCommentaryReplacing(t.Context(), workspace, []string{legacyID}, nil); err != nil {
 		t.Fatal(err)
 	}
 	fresh := newManagedMekugiProxy(t)

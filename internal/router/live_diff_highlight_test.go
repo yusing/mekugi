@@ -116,7 +116,7 @@ func TestLiveDiffRenderHighlights(t *testing.T) {
 	recent.Highlighted = true
 	file := livediff.File{Path: path, Highlighted: true, Chunks: []livediff.Chunk{old, recent}}
 	for _, width := range []int{36, 90} {
-		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, width, 0, recent)
+		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, width)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -166,7 +166,7 @@ func TestLiveDiffHighlightPreservesSyntaxColors(t *testing.T) {
 		t.Helper()
 		chunk.Highlighted = highlighted
 		file := livediff.File{Path: path, Chunks: []livediff.Chunk{chunk}}
-		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90, 0, chunk)
+		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -212,7 +212,7 @@ func TestLiveDiffHeaders(t *testing.T) {
 				BeforePath: tc.before, AfterPath: tc.after, Diff: diff,
 			}}
 			file := livediff.File{Path: path, Chunks: []livediff.Chunk{chunk}}
-			render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90, 0, chunk)
+			render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -263,15 +263,14 @@ func TestLiveDiffHeaderCountsUseVisibleComposition(t *testing.T) {
 	snapshot[0].Chunks = append(snapshot[0].Chunks, second)
 	v.Merge(snapshot)
 	v.RefreshVisible()
-	for _, want := range []livediff.Counts{{Added: 2, Removed: 1}} {
-		file := v.Visible[v.Files[0].Key()]
-		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90, 0, second)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(render.Counts) != 1 || render.Counts[0] != want {
-			t.Fatalf("counts = %v, want visible net counts %v", render.Counts, want)
-		}
+	file := v.Visible[v.Files[0].Key()]
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := livediff.Counts{Added: 2, Removed: 1}
+	if len(render.Counts) != 1 || render.Counts[0] != want {
+		t.Fatalf("counts = %v, want visible net counts %v", render.Counts, want)
 	}
 }
 
@@ -287,7 +286,7 @@ func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
 	v := livediff.View{}
 	v.Merge([]livediff.File{{Path: oldPath, Chunks: []livediff.Chunk{chunk}}})
 	v.RefreshVisible()
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{v.Visible[v.Files[0].Key()]}, workspace, 90, 0, chunk)
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{v.Visible[v.Files[0].Key()]}, workspace, 90)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,10 +299,8 @@ func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
 			t.Fatalf("prepared rename lost %q:\n%s", want, text)
 		}
 	}
-	for _, label := range []string{"old.go → new.go"} {
-		if strings.Count(text, label) != 1 {
-			t.Fatalf("capture label repeated between hunks: %q\n%s", label, text)
-		}
+	if strings.Count(text, "old.go → new.go") != 1 {
+		t.Fatalf("capture label repeated between hunks:\n%s", text)
 	}
 }
 
@@ -351,7 +348,7 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 			t.Fatalf("fixture is not a composed new file: %#v", chunk)
 		}
 	}
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 100, 0, recent)
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,9 +362,6 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 		t.Fatalf("extra heading rows or lost blank source rows: rows=%d counts=%v\n%s",
 			len(render.Lines), render.Counts, text)
 	}
-	if render.FocusOffset != 337 {
-		t.Fatalf("follow offset = %d, want the latest source row 337", render.FocusOffset)
-	}
 	for i := 1; i <= len(rows); i++ {
 		plain := ansi.Strip(render.Lines[i])
 		if !strings.Contains(plain, strconv.Itoa(i)) {
@@ -379,7 +373,7 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 	}
 }
 
-func TestLiveDiffFollowLatestCombinedResult(t *testing.T) {
+func TestLiveDiffRenderLatestCombinedResult(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.txt")
 	old := liveDiffHighlightChunk("amber1", path, "@@ -20 +20 @@\n-before\n+FIRST20\n")
@@ -395,13 +389,9 @@ func TestLiveDiffFollowLatestCombinedResult(t *testing.T) {
 		!strings.Contains(text, "+LATEST20") || !strings.Contains(text, "+LATEST337") {
 		t.Fatalf("result contains intermediate patches instead of final changes: %s", text)
 	}
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 100, 0, v.LatestChunk())
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 100)
 	if err != nil {
 		t.Fatal(err)
-	}
-	focused := ansi.Strip(strings.Join(render.Lines[render.FocusOffset:], "\n"))
-	if !strings.Contains(focused, "LATEST337") || strings.Contains(focused, "LATEST20") {
-		t.Fatalf("follow selected an older capture or hunk: %q", focused)
 	}
 	text = ansi.Strip(strings.Join(render.Lines, "\n"))
 	if strings.Contains(text, "LATEST UPDATE") || render.Counts[0] != (livediff.Counts{Added: 2, Removed: 2}) {
@@ -428,7 +418,7 @@ func TestLiveDiffOnlyShowsFinalComposition(t *testing.T) {
 	v.Merge([]livediff.File{{Path: path, Chunks: []livediff.Chunk{first, second}}})
 	v.RefreshVisible()
 	file := v.Visible[v.Files[0].Key()]
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90, 0, second)
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +444,7 @@ func TestLiveDiffConflictingSavedEditsRemainReadable(t *testing.T) {
 	v.Merge([]livediff.File{{Path: path, Chunks: []livediff.Chunk{first, second}}})
 	v.RefreshVisible()
 	file := v.Visible[v.Files[0].Key()]
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90, 0, second)
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 90)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -474,7 +464,7 @@ func TestLiveDiffBlankSourceRows(t *testing.T) {
 	path := filepath.Join(workspace, "file.txt")
 	chunk := liveDiffHighlightChunk("edit", path, "@@ -1,4 +1,4 @@\n \n-old\n+new\n-\n+\n tail\n")
 	chunk.Status = ""
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: path, Chunks: []livediff.Chunk{chunk}}}, workspace, 90, 0, chunk)
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: path, Chunks: []livediff.Chunk{chunk}}}, workspace, 90)
 
 	if err != nil {
 		t.Fatal(err)
@@ -504,25 +494,14 @@ func TestLiveDiffPathOnlyChangesStayCompact(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			review := mekugi.ReviewFile{BeforePath: tc.before, AfterPath: tc.after,
 				Diff: tc.name + " " + strconv.Quote(tc.before) + " -> " + strconv.Quote(tc.after) + "\n"}
-			for _, status := range []string{"", ""} {
-				chunk := livediff.Chunk{Key: "change", Status: status, Review: review}
-				render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: path, Chunks: []livediff.Chunk{chunk}}}, workspace, 100, 0, chunk)
-
-				if err != nil {
-					t.Fatal(err)
-				}
-				wantRows := 1
-				if status != "" {
-					wantRows++
-				}
-				text := ansi.Strip(strings.Join(render.Lines, "\n"))
-				if len(render.Lines) != wantRows || strings.Count(text, tc.action) != 1 ||
-					render.FocusOffset >= len(render.Lines) || render.Counts[0] != (livediff.Counts{}) {
-					t.Fatalf("path-only action duplicated or lost: %+v\n%s", render, text)
-				}
-				if status != "" && strings.Count(text, status) != 1 {
-					t.Fatalf("path-only action lost application uncertainty:\n%s", text)
-				}
+			chunk := livediff.Chunk{Key: "change", Review: review}
+			render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: path, Chunks: []livediff.Chunk{chunk}}}, workspace, 100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := ansi.Strip(strings.Join(render.Lines, "\n"))
+			if len(render.Lines) != 1 || strings.Count(text, tc.action) != 1 || render.Counts[0] != (livediff.Counts{}) {
+				t.Fatalf("path-only action duplicated or lost: %+v\n%s", render, text)
 			}
 		})
 	}
@@ -544,7 +523,7 @@ func TestLiveDiffNarrowFileActions(t *testing.T) {
 				Diff: tc.name + " " + strconv.Quote(tc.before) + " -> " + strconv.Quote(tc.after) + "\n"}
 			file := livediff.File{Path: path, Highlighted: true, Chunks: []livediff.Chunk{{Review: review}}}
 			for _, width := range []int{40, 90} {
-				render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file, {Path: "next.txt", Chunks: []livediff.Chunk{{Status: "prepared"}}}}, workspace, width, 0, file.Chunks[0])
+				render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file, {Path: "next.txt", Chunks: []livediff.Chunk{{Status: "prepared"}}}}, workspace, width)
 
 				if err != nil {
 					t.Fatal(err)
@@ -561,8 +540,8 @@ func TestLiveDiffNarrowFileActions(t *testing.T) {
 						t.Fatalf("width %d: heading lost path %q:\n%s", width, name, text)
 					}
 				}
-				if render.FocusOffset != 0 || (width == 40 && len(lines) == 1) {
-					t.Fatalf("width %d: wrapped heading lost focus or its continuation: %+v", width, render)
+				if width == 40 && len(lines) == 1 {
+					t.Fatalf("width %d: wrapped heading lost its continuation: %+v", width, render)
 				}
 				for _, line := range lines {
 					if !utf8.ValidString(line) || ansi.StringWidth(line) > width-1 || !strings.Contains(line, "\x1b[1m") {

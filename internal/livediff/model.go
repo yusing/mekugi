@@ -457,18 +457,6 @@ type Render struct {
 	RowStarts     []int        // First display row of each logical row, including chrome.
 	Sources       []LineSource // Aligned with Lines.
 	Counts        []Counts
-	FocusOffset   int // Hunk/context anchor retained while locating the target.
-	FocusRow      int // Latest changed row to center in the viewport.
-}
-
-func (r Render) FollowOffset(rows int) int {
-	if rows <= 0 || len(r.Lines) == 0 {
-		return 0
-	}
-	// Let preceding file or hunk context remain visible: the target, rather
-	// than its file heading, owns the center of a continuous viewport. Near
-	// EOF, pull earlier content into view instead of leaving the bottom blank.
-	return max(0, min(r.FocusRow-rows/2, len(r.Lines)-rows))
 }
 
 // Keep the viewport anchored to a file and its local row when preceding files grow.
