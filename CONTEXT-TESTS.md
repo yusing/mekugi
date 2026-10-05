@@ -29,10 +29,7 @@ environment or working directory remain serial. Measure the default suite with
 separately from test execution.
 
 For router profiling, use a temporary output directory and pass `-cpuprofile`,
-`-blockprofile`, and `-o` paths through `TEST_FLAGS`. Exclude
-`TestSessionUIReplayCLI` with `-skip='^TestSessionUIReplayCLI$'` only in the profiling
-run: it tests its own CPU profiler, which cannot run alongside Go's test profiler.
-The normal validation run must still include it. Inspect both CPU and block
+`-blockprofile`, and `-o` paths through `TEST_FLAGS`. Inspect both CPU and block
 profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time.
 
 | Changed owner | Focused check |

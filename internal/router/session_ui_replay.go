@@ -9,7 +9,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"runtime/pprof"
 	"slices"
 	"strconv"
 	"strings"
@@ -326,8 +325,8 @@ func replaySpeedStep(speed float64, faster bool) float64 {
 }
 
 // RunSessionUIReplay is an offline entry point. It shares the native presenter,
-// but constructs no host, network connection, execution capability, or store.
-func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stderr *os.File) int {
+// but constructs no host, upstream connection, execution capability, or store.
+func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
 	f := flag.NewFlagSet("replay-session", flag.ContinueOnError)
 	f.SetOutput(stderr)
 	session := f.String("session", "", "Codex session ID (required; searches CODEX_HOME or ~/.codex)")
@@ -339,8 +338,6 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 	height := f.Int("height", 48, "headless terminal rows")
 	from := f.Duration("from", 0, "start at this recorded offset, reconstructing earlier state")
 	until := f.Duration("until", 0, "stop at this recorded offset (default session end)")
-	cpu := f.String("cpu-profile", "", "write CPU pprof to a new file")
-	heap := f.String("heap-profile", "", "write heap pprof to a new file")
 	f.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: mekugi replay-session --session ID [options]\nOffline native UI playback. Recorded item timing; simulated streaming, not a screen recording.")
 		f.PrintDefaults()
@@ -401,26 +398,15 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 	if err = p.seek(*from); err != nil {
 		return fail(err)
 	}
-	var cpuFile, heapFile *os.File
-	for _, entry := range []struct {
-		path string
-		dest **os.File
-	}{{*cpu, &cpuFile}, {*heap, &heapFile}} {
-		if entry.path == "" {
-			continue
-		}
-		file, err := os.OpenFile(entry.path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if err != nil {
-			return fail(err)
-		}
-		*entry.dest = file
-		defer file.Close()
+	stopProfiling, err := startProfiling(ctx, stderr)
+	if err != nil {
+		return fail(err)
 	}
-	if cpuFile != nil {
-		if err = pprof.StartCPUProfile(cpuFile); err != nil {
-			return fail(err)
+	defer func() {
+		if err := stopProfiling(); err != nil {
+			code = fail(err)
 		}
-	}
+	}()
 	started := time.Now()
 	run := func(keys <-chan byte, out io.Writer) error {
 		var input uiReplayInput
@@ -507,12 +493,6 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 		err = terminalui.WithRawPane(ctx, stdin, stdout, "\x1b[?1049h\x1b[?25l\x1b[?1000;1006h", "\x1b[?1000;1006l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error { return run(keys, stdout) })
 	}
 	elapsed := time.Since(started)
-	if cpuFile != nil {
-		pprof.StopCPUProfile()
-	}
-	if heapFile != nil {
-		err = errors.Join(err, pprof.WriteHeapProfile(heapFile))
-	}
 	if err != nil {
 		return fail(err)
 	}

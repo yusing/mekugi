@@ -1,6 +1,6 @@
 GO ?= go
 
-.PHONY: install uninstall preview-assets preview-native-ui test test-ui-snapshots update-ui-snapshots
+.PHONY: install uninstall mekugi-pprof preview-assets preview-native-ui test test-ui-snapshots update-ui-snapshots
 
 TEST_PACKAGES ?= ./...
 TEST_RUN ?= .
@@ -15,6 +15,11 @@ install: preview-assets
 
 uninstall:
 	$(GO) clean -i ./cmd/mekugi ./cmd/mekugi-exec
+
+# Diagnostic build, with symbols and the same optimized code as production.
+mekugi-pprof: preview-assets
+	$(GO) build -tags pprof -o bin/mekugi-pprof ./cmd/mekugi
+	$(GO) build -o bin/mekugi-exec ./cmd/mekugi-exec
 
 preview-assets:
 	go generate ./internal/router/toolplugin

@@ -798,11 +798,12 @@ Playback stops on its final frame until you quit.
 Use `--from 5m --until 6m` to review a recorded interval; earlier state is loaded
 first. The current terminal size controls layout.
 
-For profiling, use `--headless --width 160 --height 48` with `--cpu-profile` or
-`--heap-profile` pointing to a new file. Headless playback renders the UI but
-cannot measure terminal backpressure. Compare runs with the same inputs, seed,
-speed, and dimensions; use 1.0x for representative latency. Session contents
-remain local and may appear on screen. See the [replay reference](doc/spec/session_replay.md).
+For offline measurements, use `--headless --width 160 --height 48`; stdout is a
+JSON timing summary. Headless playback renders the UI but cannot measure terminal
+backpressure. Compare runs with the same inputs, seed, speed, and dimensions;
+use 1.0x for representative latency. Use the [profiling build](#profile-live-sessions-and-replay)
+to collect profiles from live sessions or replay. Session contents remain local
+and may appear on screen. See the [replay reference](doc/spec/session_replay.md).
 
 ### Older installations
 
@@ -819,6 +820,47 @@ authentication. Then choose a current [launch mode](#start-mekugi).
 - [Codex end-to-end checks](doc/codex-router-e2e.md)
 
 ## Development
+
+### Profile live sessions and replay
+
+From a checkout with the [source-build prerequisites](#build-from-source), run
+`make mekugi-pprof`. It regenerates the existing preview assets and builds
+`bin/mekugi-pprof` with optimized code, symbols, and the `pprof` build tag, plus
+its executable sibling `bin/mekugi-exec`. It does not install or replace `mekugi`.
+Use the diagnostic binary with your usual launch arguments, or replay offline:
+
+```sh
+bin/mekugi-pprof codex --yolo
+# Alternatively:
+bin/mekugi-pprof replay-session --session SESSION_ID --headless --width 160 --height 48 --seed 1 --speed 1
+```
+
+Before the UI takes over, stderr prints an invocation-specific URL:
+`mekugi-pprof: http://127.0.0.1:PORT/debug/pprof/`.
+While that session or replay is running, copy its URL into a second terminal:
+
+```sh
+umask 077
+MEKUGI_PPROF_URL='http://127.0.0.1:PORT/debug/pprof/'
+go tool pprof -seconds 30 bin/mekugi-pprof "${MEKUGI_PPROF_URL}profile"
+go tool pprof bin/mekugi-pprof "${MEKUGI_PPROF_URL}heap"
+```
+
+Replace `PORT` with the printed port. The index also offers allocs, goroutine,
+block, mutex, and execution-trace endpoints. CPU and trace collection start only
+on request; block sampling uses a 1 ms blocked-time rate and mutex sampling records
+one in ten contention events. Instrumentation can perturb performance. Profiles
+cover Mekugi's router, UI, and replay process; separate Codex, executor, and worker
+processes need their own measurements.
+
+The listener is private IPv4 loopback, with no additional authentication. Local
+callers can read command-line arguments and other private process data; keep
+captures private. Session or replay completion ends active captures and closes
+the listener. The normal build starts no profiling listener, and replay creates
+no automatic profile files. See the [profiling contract](doc/spec/router.md#performance-profiling)
+and [replay comparison limits](#replay-a-session).
+
+### Build and test
 
 The [build workflow](.github/workflows/release.yml) tests and packages both commands
 for Linux amd64/arm64 and macOS arm64 on pushes to `main`, pull requests, and manual

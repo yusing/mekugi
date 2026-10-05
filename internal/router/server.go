@@ -319,6 +319,11 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		}()
 	}
 
+	stopProfiling, err := startProfiling(ctx, os.Stderr)
+	if err != nil {
+		return err
+	}
+	defer func() { runErr = errors.Join(runErr, stopProfiling()) }()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))

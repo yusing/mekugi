@@ -39,6 +39,7 @@ behavioral contract. UI presentation packages and router session integration are
 | AX runtime evidence and offline measurements | `capturer/ax.go`; authenticated reader dispatch in `internal/router/tool_plugin_worker.go` |
 | Offline logical session inspection | `internal/router/session_inspect.go`, dispatched by `cmd/mekugi/main.go` |
 | Offline native UI replay and profiling | `internal/router/session_ui_replay.go`; interface in `doc/spec/session_replay.md`, usage under README's "Replay a session" |
+| Live session and offline replay performance profiling | `internal/router/profiling.go`, `internal/router/profiling_disabled.go`; diagnostic binary recipe in `Makefile` |
 | Observed review diffs, change IDs, and bounded reads | `review.go`, `internal/router/native_apply_patch.go`, `internal/router/mekugi_changes.go`, `internal/router/mchanges.go` |
 | Durable replay, request-visible history, and retained output | `internal/router/mekugi_store.go`, `internal/router/mekugi_history.go`, `internal/router/shell_output_read.go` |
 | Authenticated frontend registry, worker, and PATH | `internal/router/tool_registry.go`, `internal/router/tool_plugin_worker.go`, `internal/router/tool_wrapper.go`, `internal/runtimepath` |
@@ -63,8 +64,9 @@ independent user sessions. The logical inspection interface is in `doc/spec/sess
   Paginate remaining evidence with `--offset`. Select JSON fields for a smaller view rather
   than piping minified JSON through a line limit such as `head`.
 - For reproducible UI lag, the replay command accepts a literal session ID, not a rollout path:
-  `mekugi replay-session --session ID --headless --width 160 --height 48 --cpu-profile
-  /absolute/path/to/new-profile.pprof`. Keep inputs, speed and dimensions fixed for comparisons.
+  `bin/mekugi-pprof replay-session --session ID --headless --width 160 --height 48`.
+  Build with `make mekugi-pprof`; use the printed profiling URL with `go tool pprof`.
+  Keep inputs, speed and dimensions fixed for comparisons.
   Replay measures rendering, not terminal backpressure or live host/provider latency; use live
   profiling for those. The replay contract owns available selectors and limitations.
 
