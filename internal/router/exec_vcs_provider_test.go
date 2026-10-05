@@ -43,6 +43,11 @@ func TestGitDiscardProvidersCaptureExactBeforeBytes(t *testing.T) {
 
 			runExecVCSTestGit(t, repo, strings.Fields(test.command)[1:]...)
 			reviews := reconcileExecVCSTestExact(t, observation)
+			for _, file := range reviews {
+				if authoredReview(file) {
+					t.Fatal("VCS discard counted as an authored edit")
+				}
+			}
 			if len(reviews) != 1 || reviews[0].Action().Title() != "Edit" ||
 				!strings.Contains(reviews[0].Diff, "-worktree bytes") || !strings.Contains(reviews[0].Diff, "+committed bytes") {
 				t.Fatalf("%s evidence = %+v; want the discarded worktree bytes and committed bytes", test.name, reviews)
@@ -297,4 +302,58 @@ func reconcileExecVCSTestExact(t *testing.T, observation *execObservation) []mek
 		t.Fatalf("VCS review complete=%v coverage=%q reason=%q files=%+v; want exact", complete, coverage, reason, reviews)
 	}
 	return reviews
+}
+
+func TestVCSFallbackScopesKeepManagedProvenance(t *testing.T) {
+	for _, command := range []string{"git rm tracked.txt", "git mv tracked.txt moved.txt", "svn delete tracked.txt", "svn move tracked.txt moved.txt"} {
+		t.Run(command, func(t *testing.T) {
+			repo := newExecVCSTestRepo(t, map[string]string{"tracked.txt": "before\n"})
+			observation, captured := captureExecObservation([]execCommandInput{{Command: command, Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo})
+			if !captured {
+				t.Fatal("fallback VCS scope missing")
+			}
+			if err := os.Remove(filepath.Join(repo, "tracked.txt")); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(command, "mv") || strings.Contains(command, "move") {
+				writeTestFile(t, filepath.Join(repo, "moved.txt"), "before\n")
+			}
+			files := reconcileExecVCSTestExact(t, observation)
+			if len(files) == 0 {
+				t.Fatal("VCS evidence missing")
+			}
+			for _, file := range files {
+				if authoredReview(file) {
+					t.Fatalf("VCS counted as authored: %+v", file)
+				}
+			}
+		})
+	}
+}
+
+func TestVCSReadSiblingKeepsUnnamedInterpreterEdit(t *testing.T) {
+	workspace := newExecVCSTestRepo(t, map[string]string{"authored.txt": "before\n"})
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	command := "git -c core.fsmonitor=false status --short; python3 -c " + shellQuoteArgument("from pathlib import Path; name='authored'; name += '.txt'; Path(name).write_text('after\\n')")
+	history, ctx := runSnapshotExec(t, proxy, workspace, "vcs-read", command, func() { writeTestFile(t, filepath.Join(workspace, "authored.txt"), "after\n") })
+	list, err := proxy.replayStore.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}, view: "list"})
+	if err != nil || list != history.ChangeID+" +1 -1\n" {
+		t.Fatalf("read-only VCS hid interpreter edit: %q, %v", list, err)
+	}
+}
+
+func TestVCSOutputFilesStayOutOfAuthoredCounts(t *testing.T) {
+	workspace := newExecVCSTestRepo(t, map[string]string{"tracked.txt": "before\n"})
+	writeTestFile(t, filepath.Join(workspace, "tracked.txt"), "after\n")
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	history, ctx := runSnapshotExec(t, proxy, workspace, "vcs-output", "git diff --output=export.patch", func() { gitTestRun(t, workspace, "diff", "--output=export.patch") })
+	list, err := proxy.replayStore.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}, view: "list"})
+	if err != nil || list != "" {
+		t.Fatalf("VCS output counted as authored: %q, %v", list, err)
+	}
+	if len(history.ReviewFiles) != 1 || !strings.Contains(history.ReviewFiles[0].Diff, "+diff --git") {
+		t.Fatalf("VCS output history lost: %+v", history)
+	}
 }

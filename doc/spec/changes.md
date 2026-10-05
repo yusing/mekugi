@@ -149,6 +149,16 @@ records remain available through explicit `--history`, but are absent from
 authored diffs, counts, notices, saved Diff, and child handoffs. Admission uses
 retained provenance, not file classification.
 
+VCS commands that import, discard, or write out repository content retain their
+effects as diagnostic history, not agent-authored changes. These effects are
+excluded from authored counts, diffs, notices, saved Diff, and child handoffs.
+Command observation uses the shared VCS classification to distinguish possible
+writers from read-only commands. In a window containing both a VCS writer and an
+interpreter edit, source-named interpreter targets remain authored; unnamed
+effects cannot be separated from the VCS operation and remain diagnostic.
+Recognized read-only VCS siblings do not exclude unnamed interpreter changes. New captures
+persist this provenance for restart; existing retained provenance is not rewritten.
+
 Root and child agents share their inherited namespace; forks and side threads
 receive isolated visible records, and resume reads retained evidence after a
 fresh router process. Allocation survives restart and never reuses another
@@ -550,7 +560,7 @@ caller's first change; each row shows the change ID, source, file count, known
 line counts. A single-file change always shows its file: nested below it
 beside the diff, or in place of the count when the list is stacked with the
 diff or covers it, where it has no file rows to expand. Missing line counts use `?`, not a command-failure glyph. A file's
-section heading lists the changes it composes. Every saved capture participates
+section heading lists the changes it composes. Every saved authored capture participates
 in composition regardless of command exit status. If retained contents cannot
 form one coherent diff, the pane shows the individual captured edits with their
 IDs instead of hiding them behind a composition error or inventing a net diff.

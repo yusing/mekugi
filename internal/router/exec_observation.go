@@ -23,6 +23,7 @@ import (
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 const (
@@ -396,7 +397,8 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 	capture.scopeRoots = observation.Roots
 	for _, managed := range []bool{false, true} {
 		for _, entry := range scope {
-			if (entry.Origin != "") == managed && (env.previewOnly || entry.Origin == "") {
+			tool, _, _ := strings.Cut(entry.Origin, " ")
+			if (entry.Origin != "") == managed && (env.previewOnly || entry.Origin == "" || vcsguard.IsTool(tool)) {
 				capture.entry(entry)
 			}
 		}
@@ -1079,8 +1081,19 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 		}
 		return false
 	}
+	vcsOrigin := ""
+	for _, program := range observation.Programs {
+		if program.VCS {
+			vcsOrigin = program.Label
+			break
+		}
+	}
 	for _, snapshot := range env.snapshot {
 		if !claimed(snapshot.before.Path) {
+			// A mixed call has no per-write facts. Only source-named sibling
+			// edits can be separated from VCS effects; keep the rest in history.
+			snapshot.before.Origin = vcsOrigin
+			metadata[snapshot.before.Path] = snapshot.before
 			record(snapshot.before, snapshot.after)
 		}
 	}

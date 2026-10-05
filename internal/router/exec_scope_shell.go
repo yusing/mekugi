@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/vcsguard"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -97,6 +98,8 @@ type execProgram struct {
 	// interpreter programs, inline shell, and file operations with operands
 	// only known at run time. Other programs are tool-managed.
 	Direct bool `json:",omitzero"`
+	// VCS marks invocations that may import or discard working-tree content.
+	VCS bool `json:",omitzero"`
 }
 
 func (p *execPlan) raise(class execClass, reason string) {
@@ -819,6 +822,16 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 		w.loseDirectory()
 		return
 	}
+	if vcsguard.IsTool(identity) {
+		values, literal := literalArgs(args)
+		w.program.VCS = !literal || vcsguard.WorktreeWrites(append([]string{identity}, values...))
+		start := len(w.plan.Scope)
+		defer func() {
+			for i := start; i < len(w.plan.Scope); i++ {
+				w.plan.Scope[i].Origin = w.program.Label
+			}
+		}()
+	}
 	if identity == "find" && w.findProvider(args) {
 		return
 	}
@@ -858,13 +871,6 @@ func execProgramLabel(identity string, args []*syntax.Word) string {
 	return label.String()
 }
 
-// execDiscarding are VCS subcommands that overwrite or delete local work on
-// the paths the agent names; the discarded content is the agent's to review.
-var execDiscarding = map[string]bool{
-	"git restore": true, "git checkout": true, "git reset": true, "git clean": true, "git stash": true,
-	"git stash push": true, "git stash save": true, "git apply": true, "svn revert": true, "hg revert": true,
-}
-
 // execPackageSubcommands are the package-manager forms of bun and deno.
 var execPackageSubcommands = map[string]bool{
 	"install": true, "i": true, "add": true, "remove": true, "rm": true, "update": true, "upgrade": true,
@@ -886,15 +892,7 @@ func execProgramDirect(identity string, args []*syntax.Word) bool {
 			return strings.HasPrefix(value, "-") && !strings.HasPrefix(value, "--") && strings.Contains(value, "c")
 		})
 	}
-	label := execProgramLabel(identity, args)
-	if label == "git checkout" {
-		// Only the pathspec form discards work; a branch switch brings in history.
-		return slices.ContainsFunc(args, func(arg *syntax.Word) bool {
-			value, _ := shellCatLiteral(arg)
-			return value == "--"
-		})
-	}
-	return execDiscarding[label]
+	return false
 }
 
 // execFileOperations are the commands whose writes the classifier derives
@@ -2131,14 +2129,6 @@ func gitSubcommand(values []string) (subcommand string, rest []string, cwd []str
 	return "", nil, nil, false
 }
 
-var gitReadOnlySubcommands = map[string]bool{
-	"status": true, "diff": true, "log": true, "show": true, "rev-parse": true, "ls-files": true,
-	"grep": true, "blame": true, "describe": true, "show-ref": true, "cat-file": true,
-	"merge-base": true, "rev-list": true, "shortlog": true, "ls-tree": true, "for-each-ref": true,
-	"name-rev": true, "whatchanged": true, "check-ignore": true, "check-attr": true, "var": true,
-	"help": true, "version": true, "count-objects": true, "cherry": true, "range-diff": true,
-}
-
 func (w *execShellWalker) git(args []*syntax.Word) {
 	values, ok := literalArgs(args)
 	if !ok {
@@ -2164,11 +2154,9 @@ func (w *execShellWalker) git(args []*syntax.Word) {
 	restWords := args[len(args)-len(rest):]
 	switch subcommand {
 	case "diff", "log", "show", "format-patch":
-		for _, value := range rest {
-			if value == "-o" || strings.HasPrefix(value, "--output") || subcommand == "format-patch" {
-				w.opaque("git " + subcommand + " writes output files")
-				return
-			}
+		if len(rest) > 0 && vcsguard.WorktreeWrites(append([]string{"git", subcommand}, rest...)) {
+			w.opaque("git " + subcommand + " writes output files")
+			return
 		}
 		return
 	case "branch", "tag", "remote", "config", "stash", "worktree":
@@ -2273,7 +2261,7 @@ func (w *execShellWalker) git(args []*syntax.Word) {
 		w.plan.add(execScopeEntry{Kind: kind, Operands: operands})
 		return
 	}
-	if gitReadOnlySubcommands[subcommand] {
+	if vcsguard.GitReadOnlyCommand(subcommand) {
 		return
 	}
 	w.opaque("git " + subcommand + " may change worktree files")
@@ -2297,9 +2285,10 @@ func (w *execShellWalker) svn(args []*syntax.Word) {
 		return
 	}
 	subcommand := values[0]
-	switch subcommand {
-	case "status", "st", "stat", "info", "log", "diff", "di", "cat", "list", "ls", "blame", "praise", "annotate", "ann", "propget", "pg", "proplist", "pl", "help", "--version":
+	if vcsguard.SVNReadOnlyCommand(subcommand) || subcommand == "--version" {
 		return
+	}
+	switch subcommand {
 	case "delete", "del", "remove", "rm", "move", "mv", "rename", "ren":
 	default:
 		w.opaque("svn " + subcommand + " may change worktree files")
