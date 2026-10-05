@@ -364,9 +364,17 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		q.selected = (q.selected + step + len(q.choices) + 1) % (len(q.choices) + 1)
 		q.done = false
 	case "\x1b[D":
-		u.moveQuestion(-1)
+		if q.note || q.selected == len(q.choices) {
+			u.moveDraft(key)
+		} else {
+			u.moveQuestion(-1)
+		}
 	case "\x1b[C":
-		u.moveQuestion(1)
+		if q.note || q.selected == len(q.choices) {
+			u.moveDraft(key)
+		} else {
+			u.moveQuestion(1)
+		}
 	case "\x1b[5~":
 		q.textTop = max(0, q.textTop-1)
 	case "\x1b[6~":
@@ -807,11 +815,15 @@ func (u *appServerUI) questionRows(width, height int) []string {
 		rows = append(rows, "")
 	}
 	keys := [][2]string{{fmt.Sprintf("1–%d", min(9, len(q.choices)+1)), "choose"}, {"type", "answer"}}
+	arrows := "question"
+	if q.note || q.selected == len(q.choices) {
+		arrows = "move"
+	}
 	if len(c.request) > 0 {
 		keys = append(keys, [2]string{"tab", "note"})
 	}
 	if len(c.questions) > 1 {
-		keys = append(keys, [2]string{"enter", "next"}, [2]string{"←/→", "question"})
+		keys = append(keys, [2]string{"enter", "next"}, [2]string{"←/→", arrows})
 	}
 	keys = append(keys, [2]string{"ctrl+]", "skip"}, [2]string{"esc", "hide"})
 	hints := func(pairs [][2]string) []string {
@@ -825,7 +837,7 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	if len(foot) > max(2, height/3) {
 		compact := [][2]string{{"↑↓", "pick"}}
 		if len(c.questions) > 1 {
-			compact = append(compact, [2]string{"↵", "next"}, [2]string{"←→", "question"})
+			compact = append(compact, [2]string{"↵", "next"}, [2]string{"←→", arrows})
 		}
 		foot = hints(append(compact, [2]string{"^]", "skip"}, [2]string{"esc", "hide"}))
 	}

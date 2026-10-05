@@ -1212,7 +1212,9 @@ For a single question, omit the Enter-next and left/right question-navigation hi
 Up/Down and Ctrl-P/Ctrl-N wrap option selection. Digits choose options; other
 printable input selects Other and edits the answer. Tab on a sync option edits a
 note; async answers have no separate note. Enter records an answer and advances;
-on the last question it submits the call. Plain Left/Right navigate questions freely.
+on the last question it submits the call. Plain Left/Right move the caret while
+editing an Other answer or option note; while choosing options, they navigate
+questions.
 Ctrl+Left/Right, Alt/Option+Left/Right, and Option's Meta-b/f encodings use the
 normal composer's word boundaries to move within the answer without changing questions.
 Ctrl-] skips. A submission with gaps requires the inline confirmation

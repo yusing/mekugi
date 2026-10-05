@@ -3,6 +3,7 @@ package router
 import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -404,6 +405,9 @@ func TestNativeQuestionAnswerWordNavigation(t *testing.T) {
 					t.Fatal("word movement left the option note")
 				}
 				if mode == "async" {
+					// Choosing an option leaves answer editing, so bare arrows
+					// can still navigate questions without losing the draft.
+					send("\x10")
 					send("\x1b[C")
 					if u.questions.index != 1 || u.draft != "" {
 						t.Fatal("plain right did not navigate to the second question")
@@ -413,6 +417,55 @@ func TestNativeQuestionAnswerWordNavigation(t *testing.T) {
 						t.Fatal("plain left did not restore the first answer")
 					}
 				}
+			})
+		}
+	}
+}
+
+func TestNativeQuestionAnswerBareArrowNavigation(t *testing.T) {
+	for _, mode := range []string{"async", "sync", "note"} {
+		t.Run(mode, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			if mode == "async" {
+				questionTestAsync(t, u, "arrows", "First?", "Second?")
+			} else {
+				questionTestSync(t, u, "arrows", false)
+			}
+			questionTestPaint(t, u, 80)
+			u.ensureShell()
+			send := func(keys string) {
+				t.Helper()
+				for _, key := range []byte(keys) {
+					if err := u.shell.key(key); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if mode == "note" {
+				send("\t")
+			}
+			send("one two\x1b[D\x1b[DX\x1b[CY")
+			if u.draft != "one tXwYo" || u.questions.index != 0 || wire.Len() != 0 {
+				t.Fatalf("draft=%q question=%d requests=%s", u.draft, u.questions.index, wire.String())
+			}
+			if mode == "note" && !u.currentQuestion().note {
+				t.Fatal("caret movement left the option note")
+			}
+		})
+	}
+}
+
+func TestUISnapshotQuestionArrowHints(t *testing.T) {
+	for _, width := range []int{28, 80} {
+		for _, editing := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%d/%t", width, editing), func(t *testing.T) {
+				u, _ := newAppServerTestUI()
+				questionTestAsync(t, u, "arrows", "First?", "Second?")
+				questionTestPaint(t, u, width)
+				if editing {
+					appServerTestKeys(t, u, "answer")
+				}
+				assertNativeUISnapshot(t, fmt.Sprintf("question-arrow-hints-%d-%t", width, editing), u.questionRows(width, 10))
 			})
 		}
 	}
