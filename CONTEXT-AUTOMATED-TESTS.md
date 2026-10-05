@@ -6,21 +6,8 @@ credentials or live model usage. These tests require the `journal_e2e` build tag
 
 ## internal/router
 
-- `TestConfiguredToolFrontendNativeCodexE2E`
-- `TestMChangesNestedNativeCodexE2E`
-- `TestMRunNativeCodexYieldAndWriteStdinE2E`
-- `TestJournalNativeCodexSpawnE2E`
-- `TestJournalHostFinishNativeCodexSpawnE2E`
-- `TestPostCompactNativeCodexE2E`
-- `TestJournalCompactionNativeCodexE2E`
-- `TestNativeJournalPresentationCodexE2E`
-- `TestJournalSliceResetNativeCodexE2E`
-- `TestJournalHeadlessNativeCodexE2E`
-- `TestAppServerReasoningStreamNativeCodexE2E`
-- `TestRouterTransformFaultNativeCodexE2E`
-- `TestRetryablePrestream5xxStillRetriesInNativeCodexE2E`
-- `TestThirdPartyAuthenticationNativeCodexE2E`
-- `TestThirdPartyResumeModelNativeCodexE2E`
+The fixtures are the `internal/router/*_codex_e2e_test.go` files. List them with
+`git grep -h '^func Test.*E2E' -- 'internal/router/*_codex_e2e_test.go'`.
 
 The frontend fixture invokes an authenticated configured command through
 stock Code Mode `tools.exec_command`, including cwd, environment, argv, stdin
@@ -64,8 +51,7 @@ checks waiting before public text, two incremental public-summary updates before
 completion, elapsed-duration display, and folding after completion.
 It does not establish a real provider's public-summary delivery cadence.
 
-The fixtures are the `internal/router/*_codex_e2e_test.go` files. A tagged compile-only check is
-`go test -tags journal_e2e ./internal/router -run '^$'`.
+A tagged compile-only check is `go test -tags journal_e2e ./internal/router -run '^$'`.
 
 These deterministic tests do not prove live-model behavior or decrypt prior
 encrypted assignments. If a task needs real provider behavior, report that

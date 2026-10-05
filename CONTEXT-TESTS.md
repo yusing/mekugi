@@ -19,7 +19,6 @@ The default is `./...`. Unchanged successful tests can use Go's test cache; use
 repeat/isolation checks, or `TEST_FLAGS=-race` when checking concurrency. The recipe
 does not regenerate assets or install binaries. Prepare missing assets once with
 `make preview-assets`, and regenerate when their sources change as described below.
-Choose the narrowest affected owner; broaden only for changed contracts across its boundary.
 A focused pass does not cover unselected tests.
 
 `TEST_PARALLEL` defaults to 32 so independent process and PTY fixtures can overlap
@@ -109,8 +108,7 @@ sessions, the Agents roster, and responsive Activity layouts. Activity blocks an
 output dialogs live in `internal/ui/activity/testdata/snapshots/`; diff navigation,
 change graphs, and streaming previews live in `internal/ui/diffview/testdata/snapshots/`.
 Launcher debug handoffs live in `cmd/mekugi/testdata/snapshots/`.
-Other owners keep fixtures in their own `testdata/snapshots/` directories. Snapshot assertions replace
-layout/text checks, not independent state, interaction, parser, or color checks.
+Other owners keep fixtures in their own `testdata/snapshots/` directories.
 
 `internal/uisnapshot.Assert` strips ANSI sequences only: spacing, blank lines,
 wrapping, and borders remain exact. Tests fix time, theme, dimensions, and other
@@ -141,12 +139,10 @@ filesystem-lock contention. Keep subtests and parallel scheduling outside each
 Preserve real process-cleanup coverage and prove boundary coverage before
 shrinking large fixtures.
 
-The following acceptance routes apply only when the requested change touches their contract;
-they are not additional features or a mandatory matrix for every fix:
+The following acceptance routes apply only when the requested change touches their contract:
 
 - **Continuity:** for changed durable review/output/journal state, test restart with only the
   requesting thread and affected branch/switch/resume paths. Live ancestry is not retained identity.
-  Preserve existing scope; do not add persistence just to create a continuity test.
 - **Launcher handoff:** validate cancellation and rendering before and after
   Codex owns the terminal, including redirected output and delayed startup.
 - **Live diff:** test layout, viewport/follow state, and preview lifecycle
