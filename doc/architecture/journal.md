@@ -4,7 +4,9 @@
 
 The journal store owns per-thread task/note trees, ordinal paths, events, capacity, atomic mutation
 transactions, relationship binding, persistence, replay receipts, and delivery
-acknowledgements. Delivery leases are workspace-scoped and remain held through
+acknowledgements. New Outcomes have separate identities and do not consume task-tree
+ordinals. Existing retained paths stay unchanged, including earlier numeric Outcome paths.
+Delivery leases are workspace-scoped and remain held through
 downstream write confirmation, preserving ancestry and deletion ordering without
 blocking unrelated workspaces. State and replay transactions retain their shared
 serialization and session-retention owners.

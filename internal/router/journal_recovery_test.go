@@ -25,20 +25,20 @@ func TestJournalTaskRecoveryAfterOutcomeAndRestart(t *testing.T) {
 		jsontext.Value(`{"title":"Completed two","state":"done"}`),
 		jsontext.Value(`{"title":"Completed three","state":"done"}`),
 	}})
-	// The router-owned answer takes the next shared ordinal, not a task ID.
+	// Router-owned Outcomes do not consume task-tree ordinals.
 	treeApply(t, proxy, workspace, journalMutation{Op: "add", Text: new("Previous turn outcome"), Answer: new(true)})
 	paths := treeApply(t, proxy, workspace, journalMutation{Op: "plan", Tasks: []jsontext.Value{
 		jsontext.Value(`{"title":"Next one","body":"Long task evidence","tasks":["Nested"]}`),
 		jsontext.Value(`"Next two"`), jsontext.Value(`"Next three"`),
 	}})
-	if !reflect.DeepEqual(paths, []string{"/5", "/5/1", "/6", "/7"}) {
+	if !reflect.DeepEqual(paths, []string{"/4", "/4/1", "/5", "/6"}) {
 		t.Fatalf("plan lost actual path mapping: %v", paths)
 	}
 	before := treeSnapshot(t, proxy, workspace)
 	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "tree", "", []journalMutation{
-		{Op: "set", P: "/5", State: new("working")}, {Op: "set", P: "/4", State: new("working")},
+		{Op: "set", P: "/4", State: new("working")}, {Op: "set", P: "/outcome-amber", State: new("working")},
 	}); err == nil {
-		t.Fatal("guessed outcome ID was writable")
+		t.Fatal("router-owned Outcome was writable")
 	}
 	if after := treeSnapshot(t, proxy, workspace); !reflect.DeepEqual(before, after) {
 		t.Fatal("rejected batch changed the journal")
