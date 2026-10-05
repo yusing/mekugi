@@ -1,7 +1,10 @@
 package router
 
 import (
+	"path/filepath"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 // Use one label table for native calls and normalized Code Mode identifiers.
@@ -54,5 +57,15 @@ func toolActivityFenced(language, input string) string {
 }
 
 func toolActivityShell(script string) string {
-	return toolActivityShellLanguage(script, "bash")
+	return toolActivityShellLanguage(toolActivityShellSource(script), "bash")
+}
+
+func toolActivityShellSource(script string) string {
+	return vcsguard.DisplayScript(script, func(directory string) bool {
+		if !filepath.IsAbs(directory) || filepath.Base(directory) != vcsguard.Directory {
+			return false
+		}
+		_, ok := toolRegistryIDFromDirectory(filepath.Dir(directory))
+		return ok
+	})
 }

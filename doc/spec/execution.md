@@ -223,9 +223,10 @@ Old history without reports, missing or mismatched records, and incomplete
 reports keep the combined host result. Terminal and lossy reports retain their
 observed segment statuses but not separate output. If any segment's bounded
 output was truncated or released before persistence, restored output likewise
-stays combined rather than presenting a partial stream as complete. The combined
-output dialog hides only the literal host shell wrapper, using the same display
-rules as Activity; stored commands and executed arguments remain unchanged.
+stays combined rather than presenting a partial stream as complete. Activity and
+output dialogs hide literal host shell wrappers and generated VCS guard
+instrumentation, preserving user PATH assignments and other shell source.
+This display projection leaves guard execution and stored commands unchanged.
 The per-command overhead is one helper start and two acknowledgments per
 segment, plus managed storage of a completed report. Single commands start no
 helper.
