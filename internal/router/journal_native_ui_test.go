@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"testing"
 )
 
@@ -118,5 +119,29 @@ func TestNativeJournalFinalKeepsProviderAndAcknowledgesOnlyAfterDelivery(t *test
 	items, err = proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
 	if err != nil || !items[0].Reported || !items[0].Flushed {
 		t.Fatalf("answer delivery acknowledgement not persisted: %+v, %v", items, err)
+	}
+}
+
+func TestNativeJournalAnswerReceiptSurvivesDisconnect(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
+	sink := proxy.journals.attachNative(workspace, "thread-1")
+	defer proxy.journals.detachNative(sink)
+	ctx, cancel := context.WithCancel(transform.ctx)
+	defer cancel()
+	transform.ctx = ctx
+	output, err := transform.TransformJSON(regressionFinalResponse(t, "delivered-answer", "Completed work."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Codex can close the response as soon as it reads the terminal event,
+	// before the router records the confirmed downstream write.
+	cancel()
+	transform.Delivered(output)
+	transform.ReleaseDelivery()
+	items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
+	if err != nil || len(items) != 1 || !items[0].Reported || !items[0].Flushed {
+		t.Fatalf("delivered answer receipt after disconnect: %+v %v", items, err)
 	}
 }
