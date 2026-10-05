@@ -687,8 +687,10 @@ func (body *webSocketResponseBody) Close() error {
 	}
 	body.closed = true
 	body.stopCancellation()
-	complete := body.terminal && body.buffer.Len() == 0 && body.readErr == nil && body.ctx.Err() == nil
-	if !body.entry.release(body.lease, complete) {
+	// Cancellation after the terminal response was consumed retires the
+	// connection, but does not invalidate the bytes already captured.
+	complete := body.terminal && body.buffer.Len() == 0 && body.readErr == nil
+	if !body.entry.release(body.lease, complete && body.ctx.Err() == nil) {
 		// The receiver observes successful reads before delivering them. On
 		// early close/cancel it must finish that observation before we finalize
 		// capture, including a queued message and a blocked delivery reservation.
