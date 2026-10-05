@@ -321,7 +321,12 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 			u.status, u.model = "Ready", "gpt-6-sol"
 			rows, _ := u.mainFrame(width, 10, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-composer-%d", width), rows)
-			u.agents.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{*root, {Name: "/root/fast", OutputThroughput: capturer.OutputThroughput{OutputTokens: 120, DurationNanos: uint64(time.Second), MeasuredRequests: 1}, ContextKnown: true, ContextTokens: 1000, ContextWindow: 200000}, {Name: "/root/zero", OutputThroughput: capturer.OutputThroughput{DurationNanos: uint64(time.Second), MeasuredRequests: 1}}, {Name: "/root/absent"}}})
+			u.agents.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{*root,
+				{Name: "/root/fast", OutputThroughput: capturer.OutputThroughput{OutputTokens: 120, DurationNanos: uint64(time.Second), MeasuredRequests: 1}, ContextKnown: true, ContextTokens: 1000, ContextWindow: 200000},
+				{Name: "/root/live", OutputEstimate: 25},
+				{Name: "/root/zero", OutputThroughput: capturer.OutputThroughput{DurationNanos: uint64(time.Second), MeasuredRequests: 1}},
+				{Name: "/root/absent"},
+			}})
 			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-roster-%d", width), u.agents.nativeRoster(width, 6, now, true))
 		})
 	}

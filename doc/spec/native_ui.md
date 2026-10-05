@@ -924,7 +924,8 @@ beyond the retained window is not hydrated. Unexpected server requests stay
 visibly pending, never auto-approved.
 
 Activity shows only child agents; Main stays in the roster for status and usage.
-Main's context usage appears only in the composer, not its roster row.
+Main's context usage and output rate appear only in the composer, not its roster row.
+Child-agent roster rows retain output rates under the [metrics contract](metrics.md).
 The composer and child-agent roster rows show `used/window • percent%` from the latest
 Codex `tokenUsage.last.totalTokens` and `modelContextWindow`, independently of
 cumulative usage totals. Before the first usage report, show `0%` used, equivalent

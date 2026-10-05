@@ -107,8 +107,9 @@ of request rates or session wall-clock duration. Unmeasured requests contribute 
 neither sum. Coverage is the measured-request count and summed duration. Measurements
 are attached to the usage-bearing attempt and remain cumulative after detail eviction.
 
-Main's composer and each agent's roster display the latest started forwarded
-provider request's updates, not the user/app-server turn's rate. The last valid
+Main's composer and child-agent roster rows display the latest started forwarded
+provider request's updates, not the user/app-server turn's rate. Main's output
+rate MUST appear only in its composer, never in its roster row. The last valid
 rate MUST remain visible across new requests and missing terminal measurements.
 Live estimates MUST carry a `~` prefix. They estimate emitted message text,
 function-call arguments, custom-tool input, and visible reasoning over elapsed

@@ -50,8 +50,9 @@ sessions, and patch review. No fork, no config edits, no daemon.
   without a separate agent read; unreadable or oversized attachments have explicit notices.
 - **Composer additions.** Mention selected messages or diffs, and ask
   [`/btw` side questions](#composer) without interrupting Main.
-- **Usage, throughput and cost.** See per-thread usage, output tokens/sec and
-  estimated API costs in Agents, plus launch-wide average throughput, usage
+- **Usage, throughput and cost.** See per-thread usage and estimated API costs
+  in Agents, with output tokens/sec in Main's composer and child-agent rows,
+  plus launch-wide average throughput, usage
   coverage, retries, and diagnostics in [`/session`](#metrics).
 - **Other providers and tiers.** Use [Grok](#grok-models) or
   [OpenCode Go and Zen](#opencode-go-and-zen), and choose [service tiers](#mekugi-settings).
@@ -495,8 +496,8 @@ including for completed agents. Missing consumption is not zero: `≥` marks kno
 lower bounds (including restored totals), and unavailable metrics stay blank.
 Older sessions without retained accounting cannot recover usage from context
 counts. Elapsed timers exclude idle gaps and freeze when work stops; the separate
-last-response age continues counting. Output throughput also appears beside context
-in Main's composer.
+last-response age continues counting. Main's output throughput appears only beside
+context in its composer, not in its roster row.
 Live rates use a `~` prefix until provider usage arrives. The last valid rate
 stays visible between requests. Measured rates survive resume; live estimates
 do not. See [Metrics](#metrics) for launch-wide totals.
