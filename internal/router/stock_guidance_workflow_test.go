@@ -79,6 +79,18 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 			if count := strings.Count(combined, owner[1:len(owner)-1]); count != 1 {
 				t.Errorf("journal guidance appears %d times; want one owner", count)
 			}
+			for _, rule := range []string{
+				"one concrete result and a completion check",
+				"sized for about 5-10 minutes of work",
+				"pending sibling slices under the same parent",
+				"Record results as they become known",
+				"finish the turn before starting another slice",
+				"reset context and continue with the next pending slice",
+			} {
+				if !strings.Contains(combined, rule) {
+					t.Errorf("prepared request lacks slice guidance: %s", rule)
+				}
+			}
 		})
 	}
 }
