@@ -48,6 +48,9 @@ func (u *appServerUI) applyCapturedEdits() {
 // whether the retained receipt or the app-server item arrived first. A grouped
 // capture is shown once, never attributed separately to each nested command.
 func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
+	if len(data.order) == 0 {
+		return
+	}
 	entries := make(map[[2]string]int)
 	for i, entry := range v.entries {
 		if entry.Kind == "tool" && entry.native != nil {
@@ -68,6 +71,11 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 				continue
 			}
 			entry := v.entries[i].activityPaneEntry
+			// Host refreshes replace the native item; unchanged projections already
+			// carry this immutable receipt and need no shell classification.
+			if entry.native.capturedEdit == receipt {
+				continue
+			}
 			exit := 0
 			var batch *activityui.Block
 			for _, block := range v.entries[i].blocks {
