@@ -271,7 +271,7 @@ func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now t
 		parts[6], parts[7] = "↑"+input, "↓"+output
 	}
 	parts[8], parts[9] = liveActivityCost(agent), ansi.Strip(liveActivityTurns(agent))
-	parts[10] = outputThroughputLabel(agent.OutputThroughput)
+	parts[10] = outputRateLabel(agent.OutputThroughput, agent.OutputEstimate)
 	return parts
 }
 

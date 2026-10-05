@@ -437,6 +437,14 @@ func (a *requestAttempt) forward() error {
 func (a *requestAttempt) prepareResponse() error {
 	a.hooks.upstreamStatus = a.response.StatusCode
 	if a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices {
+		if a.usageTracker != nil && !a.usageTracker.started.IsZero() {
+			var meter capturer.StreamOutputMeter
+			a.hooks.onOutput = func(payload []byte) {
+				if rate := meter.Observe(payload, time.Since(a.usageTracker.started)); rate > 0 {
+					a.usageTracker.observeOutputEstimate(rate)
+				}
+			}
+		}
 		if a.bridge != nil {
 			a.responseTransform = composeResponseTransformers(a.responseTransform, a.bridge)
 		}

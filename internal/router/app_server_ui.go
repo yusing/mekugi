@@ -1436,7 +1436,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		context := contextWindowLabel(activityPaneAgent{})
 		if agent := u.session.agent("/root"); agent != nil {
 			context = contextWindowLabel(*agent)
-			if throughput := outputThroughputLabel(agent.OutputThroughput); throughput != "" {
+			if throughput := outputRateLabel(agent.OutputThroughput, agent.OutputEstimate); throughput != "" {
 				context += " • " + throughput
 			}
 		}

@@ -50,6 +50,7 @@ type activityPaneAgent struct {
 	InputTokens       uint64                    `json:",omitzero"`
 	OutputTokens      uint64                    `json:",omitzero"`
 	OutputThroughput  capturer.OutputThroughput `json:",omitzero"`
+	OutputEstimate    float64                   `json:",omitzero"`
 	TokensKnown       bool                      `json:",omitzero"`
 	UsagePartial      bool                      `json:",omitzero"`
 	RoundtripsPartial bool                      `json:",omitzero"`

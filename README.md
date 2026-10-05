@@ -484,7 +484,7 @@ totals when work resumes.
 
 The **Activity** pane streams child activity, messages, and replies, including
 while Main waits. The **Agents** roster below the main columns shows children
-with their active elapsed time, provider round trips, current-round output tokens/sec,
+with their active elapsed time, provider round trips, output tokens/sec,
 and cumulative edited lines as
 `+N -N`. The roster header's `+N -N` reports the final composed outcome
 across agents, so superseded edits and files created then deleted do not inflate it.
@@ -497,10 +497,9 @@ Older sessions without retained accounting cannot recover usage from context
 counts. Elapsed timers exclude idle gaps and freeze when work stops; the separate
 last-response age continues counting. Output throughput also appears beside context
 in Main's composer.
-A round is one forwarded provider request, not a user turn. Its measured rate
-appears when provider usage arrives and clears when the next request starts;
-no streamed token estimates are shown. Retained last-round measurements survive
-resume, but missing timing stays blank. See [Metrics](#metrics) for launch-wide totals.
+Live rates use a `~` prefix until provider usage arrives. The last valid rate
+stays visible between requests. Measured rates survive resume; live estimates
+do not. See [Metrics](#metrics) for launch-wide totals.
 
 - Click an agent to inspect its activity; reply links address that agent.
 - In Activity or Agents, `a` toggles selected-agent filtering. The hint reads

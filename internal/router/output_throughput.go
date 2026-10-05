@@ -9,7 +9,7 @@ import (
 
 // The current round is the latest started forwarded provider request, not an
 // app-server turn. Persist its start ordering so late older responses cannot
-// overwrite it. A new live round hides the previous round until usage arrives.
+// overwrite it. Keep the last valid rate visible until a newer sample arrives.
 type providerRoundOutput struct {
 	StartedUnixNano int64
 	Throughput      capturer.OutputThroughput
@@ -47,4 +47,11 @@ func outputThroughputLabel(throughput capturer.OutputThroughput) string {
 		return fmt.Sprintf("%.1f tok/s", rate)
 	}
 	return ""
+}
+
+func outputRateLabel(throughput capturer.OutputThroughput, estimate float64) string {
+	if estimate > 0 {
+		return fmt.Sprintf("~%.1f tok/s", estimate)
+	}
+	return outputThroughputLabel(throughput)
 }

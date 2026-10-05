@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -43,7 +45,7 @@ func TestOutputThroughputCurrentRound(t *testing.T) {
 		time.Sleep(time.Minute)
 		zero := usage.observation("main", "main", "gpt-6-luna", "")
 		zero.begin()
-		requireRoundThroughput(t, usage, "main", 0, false)
+		requireRoundThroughput(t, usage, "main", 40, true)
 		time.Sleep(time.Second)
 		zero.observe(tokenCounts{TotalsKnown: true})
 		requireRoundThroughput(t, usage, "main", 0, true)
@@ -52,7 +54,7 @@ func TestOutputThroughputCurrentRound(t *testing.T) {
 		gap.begin()
 		time.Sleep(time.Second)
 		gap.finish()
-		requireRoundThroughput(t, usage, "main", 0, false)
+		requireRoundThroughput(t, usage, "main", 0, true)
 	})
 }
 
@@ -99,8 +101,6 @@ func TestOutputThroughputRestoredThreadIsolation(t *testing.T) {
 		if outputThroughputLabel(child.OutputThroughput) != "50.0 tok/s" {
 			t.Fatal(child)
 		}
-		// Resume of an interrupted new request must not restore the older rate
-		// or revive a stopwatch. Only retained evidence is replayed.
 		time.Sleep(time.Second)
 		interrupted := restored.observation("child", "child", "gpt-6-sol", "")
 		interrupted.begin()
@@ -108,7 +108,8 @@ func TestOutputThroughputRestoredThreadIsolation(t *testing.T) {
 		again := storedUsageFixture(store)
 		t.Cleanup(again.close)
 		again.restore("child", true)
-		requireRoundThroughput(t, again, "child", 0, false)
+		// Resume keeps the last measurement, without reviving a stopwatch.
+		requireRoundThroughput(t, again, "child", 50, true)
 		next := again.observation("child", "child", "gpt-6-sol", "")
 		next.begin()
 		time.Sleep(time.Second)
@@ -178,7 +179,7 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 	}
 }
 
-func TestOutputThroughputUIRefreshClearsPreviousRound(t *testing.T) {
+func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.session.start(u.thread, "")
@@ -197,8 +198,110 @@ func TestOutputThroughputUIRefreshClearsPreviousRound(t *testing.T) {
 		next := usage.observation(u.thread, u.thread, "gpt-6-sol", "")
 		next.begin()
 		u.applyObservedActivity()
-		if _, known := u.session.agent("/root").OutputThroughput.Rate(); known {
-			t.Fatal("previous round remained visible")
+		if got := outputThroughputLabel(u.session.agent("/root").OutputThroughput); got != "30.0 tok/s" {
+			t.Fatalf("previous rate disappeared: %s", got)
+		}
+	})
+}
+
+func TestUISnapshotOutputThroughputLiveProviderEmission(t *testing.T) {
+	for _, kind := range []string{"response.output_text.delta", "response.function_call_arguments.delta", "response.custom_tool_call_input.delta", "response.reasoning_summary_text.delta", "response.reasoning_text.delta"} {
+		t.Run(kind, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				proxy := newManagedMekugiProxy(t)
+				u, _ := newAppServerTestUI()
+				u.thread, u.proxy = "thread-1", proxy
+				u.session.start(u.thread, "")
+				u.ensureShell()
+				r, w := io.Pipe()
+				defer r.Close()
+				defer w.Close()
+				provider := serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+					response := serverHTTPResponse("")
+					response.Header.Set("Content-Type", "text/event-stream")
+					response.Body = r
+					return response, nil
+				})
+				request := serverRequest(t, func(f map[string]any) { f["stream"] = true; f["model"] = "gpt-6-sol" })
+				out := httptest.NewRecorder()
+				httpRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, request.fields)))
+				httpRequest.Header = serverMetadataHeaders(t, "turn", nil)
+				httpRequest.Header.Set(sessionIDHeader, "transport-session")
+				done := make(chan struct{})
+				go func() {
+					responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, proxy)(out, httpRequest)
+					close(done)
+				}()
+				synctest.Wait()
+				time.Sleep(2 * time.Second)
+				event := mustTestJSON(t, map[string]any{"type": kind, "output_index": 0, "delta": strings.Repeat("inspect the implementation carefully ", 64)})
+				if _, err := fmt.Fprintf(w, "data: %s\n\n", event); err != nil {
+					t.Fatal(err)
+				}
+				synctest.Wait()
+				u.applyObservedActivity()
+				root := u.session.agent("/root")
+				if root.OutputEstimate <= 0 || root.OutputTokens != 0 {
+					t.Fatalf("live estimate missing or mixed into usage: %+v", root)
+				}
+				if !strings.HasPrefix(outputRateLabel(root.OutputThroughput, root.OutputEstimate), "~") {
+					t.Fatal("estimate not distinguished")
+				}
+				u.agents.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{*root}})
+				rows, _ := u.mainFrame(80, 10, 0)
+				assertNativeUISnapshot(t, "output-throughput-live-composer", rows)
+				assertNativeUISnapshot(t, "output-throughput-live-roster", u.agents.nativeRoster(80, 4, time.Now(), true))
+				time.Sleep(time.Second)
+				terminal := `data: {"type":"response.completed","response":{"id":"rate","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":90,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":20}}}}` + "\n\n"
+				if _, err := io.WriteString(w, terminal); err != nil {
+					t.Fatal(err)
+				}
+				_ = w.Close()
+				<-done
+				u.applyObservedActivity()
+				if root.OutputEstimate != 0 || root.OutputTokens != 90 {
+					t.Fatalf("terminal usage did not replace estimate: %+v", root)
+				}
+				requireRoundThroughput(t, proxy.usage, u.thread, 30, true)
+				if out.Code != http.StatusOK || !strings.Contains(out.Body.String(), string(event)) {
+					t.Fatalf("emission delivery changed: %d %s", out.Code, out.Body.String())
+				}
+			})
+		})
+	}
+}
+
+func TestOutputThroughputEstimatePublicationAndOrdering(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		store := usageStoreFixture(t, t.TempDir())
+		usage := storedUsageFixture(store)
+		t.Cleanup(usage.close)
+		old := usage.observation("child", "child", "gpt-6-sol", "")
+		old.begin()
+		time.Sleep(time.Second)
+		old.observe(tokenCounts{TotalsKnown: true, OutputTokens: 30})
+		time.Sleep(time.Second)
+		next := usage.observation("child", "child", "gpt-6-sol", "")
+		next.begin()
+		next.observeOutputEstimate(60)
+		old.observeOutputEstimate(999)
+		if err := usage.flush(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		report, _ := usage.snapshot("child")
+		if report.outputEstimate != 60 || report.OutputTokens != 30 {
+			t.Fatalf("publication or old emission replaced the live sample: %+v", report)
+		}
+		restored := storedUsageFixture(store)
+		t.Cleanup(restored.close)
+		report, _ = restored.snapshot("child")
+		if report.outputEstimate != 0 {
+			t.Fatal("estimate restored as measured evidence")
+		}
+		requireRoundThroughput(t, restored, "child", 30, true)
+		fork, _ := usage.snapshot("fork")
+		if fork.outputEstimate != 0 {
+			t.Fatal("estimate leaked to another thread")
 		}
 	})
 }

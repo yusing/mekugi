@@ -108,12 +108,23 @@ neither sum. Coverage is the measured-request count and summed duration. Measure
 are attached to the usage-bearing attempt and remain cumulative after detail eviction.
 
 Main's composer and each agent's roster display the latest started forwarded
-provider request's rate, not the user/app-server turn or a streamed token estimate.
-A newly started request clears the old rate until terminal usage arrives. Late
-responses from older requests cannot replace the newest round. Retained last-round
-measurements restore by stable thread identity through the existing usage record;
-restoration never revives an in-flight stopwatch. Old records without timing leave
-throughput absent. `/session` retains its existing all-threads-in-this-launch scope.
+provider request's updates, not the user/app-server turn's rate. The last valid
+rate MUST remain visible across new requests and missing terminal measurements.
+Live estimates MUST carry a `~` prefix. They estimate emitted message text,
+function-call arguments, custom-tool input, and visible reasoning over elapsed
+provider-request time, including request latency. Reasoning-only estimates MUST
+wait until the request has lasted at least one second and emitted at least 32
+estimated tokens. Hidden reasoning cannot be estimated from visible text.
+Authoritative terminal usage MUST replace the estimate and includes provider-counted
+reasoning. Estimates MUST NOT contribute to provider usage, cost estimates, or
+session averages. Late emissions or terminal measurements from older requests
+MUST NOT replace the newest-started request's display updates.
+
+Only authoritative paired token-and-duration measurements restore by stable
+thread identity through the existing usage record. Live estimates MUST NOT be
+persisted or restored; restoration never revives an in-flight stopwatch. Old
+records without timing leave throughput absent. `/session` retains its existing
+all-threads-in-this-launch scope and authoritative average calculation.
 
 
 Metrics v7 removes v6's previous-input-length cache attribution. It does not
