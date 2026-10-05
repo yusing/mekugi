@@ -257,5 +257,5 @@ func (p *Painter) copyTableCell(rows []string, copies [][]CopyFragment, row, col
 	if copies == nil {
 		return rows
 	}
-	return p.copyWrapped(rows, copies[row][column], 0)
+	return p.CopyWrapped(rows, copies[row][column], 0)
 }

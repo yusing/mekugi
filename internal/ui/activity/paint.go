@@ -386,7 +386,7 @@ func (p *Painter) markdown(text string, width int, reasoning bool) []string {
 		f := copyInline(source)
 		f.ID = copyID(strconv.Itoa(index), identity)
 		f.Prefix = prefix
-		return p.copyWrapped(rows, f, gutter)
+		return p.CopyWrapped(rows, f, gutter)
 	}
 	annotateHang := func(rows []string, source, prefix string, gutter, index int) []string {
 		if !copying {
@@ -528,7 +528,7 @@ func (p *Painter) fenced(lang, source string, width int, identity uint64) []stri
 	for index, line := range p.Highlight(lang, livediff.Safe(source, false)) {
 		parts := Wrap(line, width-2, true)
 		if len(sources) > 0 {
-			parts = p.copyWrapped(parts, copyCode(sources[index], copyID(strconv.Itoa(index), identity)), 0)
+			parts = p.CopyWrapped(parts, copyCode(sources[index], copyID(strconv.Itoa(index), identity)), 0)
 		}
 		for _, part := range parts {
 			if ink != "" {
