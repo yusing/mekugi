@@ -34,6 +34,7 @@ type mekugiReplayStore struct {
 	liveDiff           func([]liveDiffChange)
 	maxCommentaryBytes int64
 	snapshots          *workspaceSnapshots
+	admission          *storageAdmission
 }
 type replayRecord struct {
 	Version      int
@@ -124,7 +125,7 @@ func openMekugiReplayStoreContext(ctx context.Context, directory string) (*mekug
 	if err := ensurePrivateStateDirectory(directory); err != nil {
 		return nil, err
 	}
-	s := &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, snapshots: newWorkspaceSnapshots(directory)}
+	s := &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, snapshots: newWorkspaceSnapshots(directory), admission: new(storageAdmission)}
 	if err := s.locked(ctx, func() error { return nil }); err != nil {
 		return nil, err
 	}
@@ -165,6 +166,12 @@ func (s *mekugiReplayStore) locked(ctx context.Context, fn func() error) (err er
 		return ctx.Err()
 	}
 	defer func() { err = errors.Join(err, lock.Unlock()) }()
+	if s.admission != nil {
+		// The file lock owns cross-process serialization. This mutex also
+		// establishes memory synchronization for the shared local snapshot.
+		s.admission.mu.Lock()
+		defer s.admission.mu.Unlock()
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -415,10 +422,29 @@ func (s *mekugiReplayStore) writeFile(name, pattern string, data []byte) error {
 			}
 		}
 	}
+	var files map[string]int64
+	if s.admission != nil {
+		revision, err := s.storageRevision()
+		if err != nil {
+			return err
+		}
+		if revision == s.admission.revision {
+			files = s.admission.files
+		}
+	}
 	if err := s.advanceStorageRevision(); err != nil {
 		return err
 	}
-	return persistence.AtomicFile(path, pattern, data, s.writes)
+	if err := persistence.AtomicFile(path, pattern, data, s.writes); err != nil {
+		return err
+	}
+	if files != nil {
+		if retainedDataName(name) || storageCatalogName(name) {
+			files[name] = int64(len(data))
+		}
+		s.admission.files = files
+	}
+	return nil
 }
 
 func ensurePrivateStateDirectory(directory string) error {

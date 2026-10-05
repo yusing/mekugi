@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -224,14 +225,17 @@ func TestShellOutputStoreQuotaAndPermissions(t *testing.T) {
 		t.Fatalf("record permissions: %v, %v", info, err)
 	}
 	// A sparse fixture exercises the separate quota without large allocations.
-	file, err := os.Create(filepath.Join(store.directory, scopedOutputName("", "maple")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := file.Truncate(maxShellOutputStoreBytes); err != nil {
-		t.Fatal(err)
-	}
-	if err := file.Close(); err != nil {
+	// Like managed publishers, invalidate admission before changing store files.
+	if err := store.locked(t.Context(), func() error {
+		if err := store.advanceStorageRevision(); err != nil {
+			return err
+		}
+		file, err := os.Create(filepath.Join(store.directory, scopedOutputName("", "maple")))
+		if err != nil {
+			return err
+		}
+		return errors.Join(file.Truncate(maxShellOutputStoreBytes), file.Close())
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.putShellOutput(t.Context(), "next", "", 0); err == nil {

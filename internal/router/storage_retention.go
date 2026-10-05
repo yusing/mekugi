@@ -12,11 +12,10 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofrs/flock"
-
-	"github.com/yusing/mekugi/internal/persistence"
 )
 
 const sessionRetention = 14 * 24 * time.Hour
@@ -797,10 +796,33 @@ func (s *mekugiReplayStore) storageFileSizes() (map[string]int64, error) {
 	return files, nil
 }
 
+// Scoped stores share this snapshot. Access is serialized by store.lock;
+// the existing revision invalidates publications and cleanup from other owners.
+type storageAdmission struct {
+	mu       sync.Mutex
+	revision string
+	files    map[string]int64
+}
+
+func (s *mekugiReplayStore) admissionFileSizes() (map[string]int64, error) {
+	revision, err := s.storageRevision()
+	if err != nil {
+		return nil, err
+	}
+	if s.admission != nil && s.admission.files != nil && s.admission.revision == revision {
+		return s.admission.files, nil
+	}
+	files, err := s.storageFileSizes()
+	if err == nil && s.admission != nil {
+		s.admission.revision, s.admission.files = revision, files
+	}
+	return files, err
+}
+
 // Admission runs under store.lock but never prunes. Background maintenance
 // owns reclamation; a capacity failure cannot expose unfinished durable evidence.
 func (s *mekugiReplayStore) maintainStorage(replacement string, size int64) error {
-	files, err := s.storageFileSizes()
+	files, err := s.admissionFileSizes()
 	if err != nil {
 		return storageIOError(err)
 	}
@@ -856,13 +878,8 @@ func (s *mekugiReplayStore) writeManagedFiles(record managedFile, dependencies [
 }
 
 func (s *mekugiReplayStore) writeDependencies(files []managedFile) error {
-	if len(files) > 0 {
-		if err := s.advanceStorageRevision(); err != nil {
-			return err
-		}
-	}
 	for _, file := range files {
-		if err := persistence.AtomicFile(filepath.Join(s.directory, file.name), file.pattern, file.data, s.writes); err != nil {
+		if err := s.writeFile(file.name, file.pattern, file.data); err != nil {
 			return err
 		}
 	}
