@@ -51,6 +51,14 @@ checks waiting before public text, two incremental public-summary updates before
 completion, elapsed-duration display, and folding after completion.
 It does not establish a real provider's public-summary delivery cadence.
 
+The segment-report fixtures in `app_server_exec_track_codex_e2e_test.go` check
+installed Codex execution and measured reports under read-only and workspace-write
+sandboxes. Run the affected acceptance without changing the host policy:
+
+```sh
+make test TEST_PACKAGES=./internal/router TEST_RUN='^TestAppServerExecTrackNativeCodex(Sandbox)?$' TEST_FLAGS='-tags journal_e2e -count=1'
+```
+
 A tagged compile-only check is `go test -tags journal_e2e ./internal/router -run '^$'`.
 
 These deterministic tests do not prove live-model behavior or decrypt prior

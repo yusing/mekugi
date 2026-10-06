@@ -5,6 +5,9 @@ tradeoffs within the requested change. Codex remains the execution authority.
 
 ## Scope
 
+Mekugi has one interactive UI and one stock JavaScript execution interface. Preserve host
+and internal identifiers without presenting them as extra user-facing modes.
+
 Do not create report/summary Markdown unless requested. Observed Mekugi friction may go in
 `FIXME.md` with impact and a concrete next step. Distinguish current failures from fixed history
 and do not equate investigation time with waste.
@@ -42,7 +45,8 @@ acceptance cases, not a blanket request to implement every listed concern.
 - **Presentation:** reuse stock/shared UI and path formatting. Derive list widths from visible rows;
   unknown state gets no label. Format workspace paths with `internal/pathdisplay.ForWorkspace`,
   preserving external and operational paths. If genuinely new UI lacks a stock counterpart,
-  settle its shape with the user.
+  settle its shape with the user. See [UI](doc/spec/native_ui.md),
+  [activity display](doc/spec/activity_display.md), and [UI ownership](doc/architecture/ui.md).
 - **Ownership:** reuse authenticated snapshots, portable core, managed stores, classifiers, and
   capturers rather than duplicate policy in adapters. Validate registry exposure at its owner.
   Journal guidance belongs to its tool projection and frontend guidance to the authenticated

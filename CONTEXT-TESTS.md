@@ -94,6 +94,15 @@ and output formatting are compiled Go and require no generated JavaScript assets
 npm dependencies. Bun is needed only for the remaining plugin-host/shared-core tests.
 Use a fresh temporary Bun transpiler cache when test discovery appears stale.
 
+Journal/frontend prose has a separate generated consumer. Edit
+`guidance/frontend_guidance.md.tmpl` or the executable helper's description owner,
+then regenerate and check the prepared-request projection:
+
+```sh
+env MEKUGI_UPDATE_FRONTEND_GUIDANCE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestGeneratedFrontendGuidanceIsCurrent$'
+make test TEST_PACKAGES=./internal/router TEST_RUN='GeneratedFrontendGuidance|ProjectedStockGuidance|JournalRulesHaveOneOwner|JournalGuidanceUsesRequestRole|Instruction|ConflictRewrite|WebSocketPrewarmToolGuidance'
+```
+
 ## Terminal UI snapshots
 
 `make test-ui-snapshots` runs offline rendered-output regression tests without Codex
@@ -133,6 +142,9 @@ isolating mutable thread, workspace, and process state. Startup and shutdown
 tests still need their own owners. Disposable Git fixtures must isolate system
 and global configuration so setup does not invoke personal signing programs or
 hooks; keep repository-local settings for filter and worktree boundary tests.
+Resolve fixture shells with `execTrackShellExecutable` in `internal/router/exec_track_test.go`:
+`exec.Command` resolves names before `Cmd.Env` is set, so an isolated environment alone
+can still select the live session's approval guard. Keep fixture tools first for nested shells.
 Use controlled time for in-process lifetimes, including retention retries and
 filesystem-lock contention. Keep subtests and parallel scheduling outside each
 `synctest` bubble, and create and clean up its workers inside it.
