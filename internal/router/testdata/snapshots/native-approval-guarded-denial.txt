@@ -8,13 +8,13 @@ Mekugi dev • codex
 
 
   ! Allow this remote write?
-  gh pr merge 12 --squash
+  git push
   Denying fails only this command with exit status 1.
-  › 1. Yes, run it                                                            
+    1. Yes, run it
     2. Yes, for this exact command and workdir this session
-    3. No, fail this command
+  › 3. No, fail this command                                                  
   1–3 choose · type deny with reason · enter confirm · esc hide
 
 ╭─ approving · turn waiting ───────────────────────────────────────────────────╮
-│ ❯                                                                            │
+│ ❯ do not publish yet                                                         │
 ╰───────────────────────────────────────────────── snapshot-model (high) • 0% ─╯

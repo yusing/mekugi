@@ -184,10 +184,21 @@ options or replay offline. Noninteractive commands retain Codex's exit status.
 ### Approvals
 
 Without `--yolo`, Codex's command, edit, and permission approval requests open a
-dialog above Main's composer with Codex's approval choices. It opens by
+dialog above Main's composer with Codex's offered approval scopes, including
+session, command-prefix, or permission grants when available. It opens by
 itself only over an empty composer; otherwise a banner waits until you press
-`Ctrl-B`, then `q`. Number keys or arrows choose, `Enter` confirms, and `Esc`
+`Ctrl-B`, then `q`. Number keys choose while the reason is empty; arrows choose,
+`Enter` confirms, and `Esc`
 hides the dialog without answering.
+
+For command approvals in Mekugi mode, typing or pasting selects denial and edits
+an optional reason; `Enter` confirms. Your composer draft and attachments stay
+parked and return when the dialog closes. Hiding and reopening keeps the reason.
+Questions and approvals share the dock, so only one is open at a time.
+The model receives the native command rejection and your feedback in the current
+turn, without a new prompt or turn. Edit and permission choices stay unchanged.
+Proxy-free direct UI and passthrough retain Codex's original decisions without
+typed denial reasons.
 
 In interactive UI launches, Mekugi asks before remote repository writes reached
 through guarded shell commands by default, independently of Codex's approval
@@ -208,9 +219,19 @@ Git aliases, `git submodule foreach`, `rebase --exec`, and `bisect run` scripts
 are checked before they run. Read-only commands such as `git fetch` or `gh pr view`
 run without asking.
 
+The guard offers approval once, approval for this exact command and workdir for
+the UI session, or denial with an optional typed or pasted reason. Session
+approval matches the expanded argument list, workdir, and resolved executable;
+it also releases identical requests already waiting. It grants no command-prefix
+permission and expires when the UI closes, including before a resumed launch.
+
 If you deny it, don't answer within 5 minutes, or the approval connection is
 blocked or unreachable, only that command fails, with exit status 1; the shell
-continues as it would after any failure. If the command stops while waiting,
+continues as it would after any failure. A user denial reports your supplied
+reason, or that no reason was given, on stderr. The denied command never runs.
+This shell exit status belongs to the guard; native Codex approval denial remains
+a tool rejection.
+If the command stops while waiting,
 its request is withdrawn. For example,
 `git add -A; git commit -m msg; git push origin main; git log` still runs
 `git log`, while the same list joined with `&&` stops at the push.

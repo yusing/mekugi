@@ -1,12 +1,19 @@
 package router
 
 import (
+	"context"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
+	"fmt"
+	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/vcsguard"
@@ -14,6 +21,9 @@ import (
 
 func approvalTestCommand(t *testing.T, u *appServerUI, id any, params map[string]any) {
 	t.Helper()
+	if u.proxy == nil {
+		u.proxy = &mekugiProxy{}
+	}
 	request := map[string]any{"threadId": "main", "turnId": "turn", "itemId": "cmd", "command": "git push origin main"}
 	for key, value := range params {
 		request[key] = value
@@ -58,7 +68,7 @@ func TestNativeApprovalCommandReturnsTheOfferedDecision(t *testing.T) {
 		"Yes, proceed",
 		"Yes, and don't ask again for this command in this session",
 		"Yes, and don't ask again for commands that start with `git push`",
-		"No, and tell Codex what to do differently",
+		"No, continue without running it",
 	}) {
 		t.Fatalf("open=%v choices=%q", u.approvals.open, approvalTestChoices(u))
 	}
@@ -91,7 +101,7 @@ func TestNativeApprovalCommandDefaultDecisions(t *testing.T) {
 	}
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "\x0e\x0e\r")
-	if !strings.Contains(input.String(), `"decision":"cancel"`) {
+	if !strings.Contains(input.String(), `"decision":"decline"`) {
 		t.Fatalf("response = %s", input.String())
 	}
 }
@@ -189,7 +199,7 @@ func TestNativeApprovalWaitsForAnEmptyComposer(t *testing.T) {
 	u.openApprovals()
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "x\x7f\x17\t\x1b[200~pasted\x1b[201~2\r")
-	if u.draft != "draft1" || !strings.Contains(input.String(), `"decision":"cancel"`) {
+	if u.draft != "draft1" || !strings.Contains(input.String(), `"decision":"decline"`) {
 		t.Fatalf("draft=%q response=%s", u.draft, input.String())
 	}
 }
@@ -205,7 +215,7 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 		u.addGuardApproval(request)
 	}
 	paint := ansi.Strip(questionTestPaint(t, u, 80))
-	for _, want := range []string{"Allow this remote write?", "git push origin main", "Denying fails only this command with exit status 1.", "1. Yes, run it", "2. No, fail this command"} {
+	for _, want := range []string{"Allow this remote write?", "git push origin main", "Denying fails only this command with exit status 1.", "1. Yes, run it", "2. Yes, for this exact command", "3. No, fail this command"} {
 		if !strings.Contains(paint, want) {
 			t.Fatalf("dock lacks %q:\n%s", want, paint)
 		}
@@ -215,8 +225,8 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 		t.Fatalf("approval reply = %+v", reply)
 	}
 	questionTestPaint(t, u, 80)
-	appServerTestKeys(t, u, "2\r")
-	if reply := <-denied.reply; reply.OK || reply.Reason != "denied in Mekugi" {
+	appServerTestKeys(t, u, "3\r")
+	if reply := <-denied.reply; reply.OK || reply.Reason != "user denied this command without a reason" {
 		t.Fatalf("denial reply = %+v", reply)
 	}
 	expired.outcome = "timed out"
@@ -251,6 +261,227 @@ func TestNativeApprovalThreadPermissions(t *testing.T) {
 	}
 }
 
+func TestNativeApprovalGuardSessionMatchesExactCommandAndWorkdir(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	request := func(cwd string, argv ...string) *vcsApproval {
+		return &vcsApproval{cwd: cwd, executable: "/bin/git", argv: argv, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})}
+	}
+	first, queued := request("/work", "git", "push", "origin", "main"), request("/work", "git", "push", "origin", "main")
+	u.addGuardApproval(first)
+	u.addGuardApproval(queued)
+	questionTestPaint(t, u, 80)
+	appServerTestKeys(t, u, "2\r")
+	for _, r := range []*vcsApproval{first, queued, request("/work", "git", "push", "origin", "main")} {
+		if r != first && r != queued {
+			u.addGuardApproval(r)
+		}
+		if len(r.reply) != 1 || !(<-r.reply).OK || len(u.approvals.pending) != 0 {
+			t.Fatal("exact session approval was not reused")
+		}
+	}
+	otherExecutable := request("/work", "git", "push", "origin", "main")
+	otherExecutable.executable = "/other/git"
+	for _, r := range []*vcsApproval{request("/other", "git", "push", "origin", "main"), request("/work", "git", "push", "origin", "other"), request("/work", "git", "push", "origin main"), otherExecutable} {
+		u.addGuardApproval(r)
+		if len(r.reply) != 0 {
+			t.Fatal("session approval broadened to another command or workdir")
+		}
+	}
+	fresh, _ := newAppServerTestUI()
+	fresh.addGuardApproval(request("/work", "git", "push", "origin", "main"))
+	if len(fresh.approvals.pending) != 1 {
+		t.Fatal("approval survived a new UI session")
+	}
+}
+
+func TestNativeApprovalTypedDenialReachesCommand(t *testing.T) {
+	for _, keys := range []string{"3", "!do not publish\x7f\x1b[200~h yet\x1b[201~"} {
+		t.Run(keys, func(t *testing.T) {
+			shell := newVCSGuardShell(t)
+			result := make(chan execTrackRun, 1)
+			go func() { result <- runExecTrackShell(t, shell.env, "git push origin main") }()
+			u, _ := newAppServerTestUI()
+			u.insertDraft("kept draft")
+			image := answerImageFixture(t)
+			u.attachImage(image)
+			kept := u.draft
+			request := <-shell.hub.approvals
+			if request.executable != shell.real+"/git" {
+				t.Fatalf("resolved executable = %q", request.executable)
+			}
+			u.addGuardApproval(request)
+			u.openApprovals()
+			questionTestPaint(t, u, 80)
+			appServerTestKeys(t, u, keys)
+			if u.approvals.pending[0].selected != 2 || u.shellMode() || u.picker.open {
+				t.Fatal("typing did not select plain-text denial")
+			}
+			u.hideApprovals()
+			if u.draft != kept {
+				t.Fatal("approval changed parked draft")
+			}
+			if _, err := os.Stat(image); err != nil {
+				t.Fatal("approval reclaimed parked image", err)
+			}
+			u.openApprovals()
+			questionTestPaint(t, u, 80)
+			appServerTestKeys(t, u, "\r")
+			run := <-result
+			want := "user denied this command without a reason"
+			if keys != "3" {
+				want = "user denied this command with a reason: !do not publish yet"
+			}
+			if run.code != 1 || run.stderr != "mekugi: remote write denied: "+want+"\n" || len(shell.invoked(t)) != 0 || u.draft != kept || len(u.images) != 1 {
+				t.Fatalf("result=%+v draft=%q", run, u.draft)
+			}
+		})
+	}
+}
+
+func TestNativeApprovalDenialProjectsFeedbackInSameTurn(t *testing.T) {
+	for _, tc := range [][2]string{{"main", "cancel"}, {"child", "decline"}} {
+		thread, decision := tc[0], tc[1]
+		t.Run(thread+"/"+decision, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			u.turn = "turn"
+			approvalTestCommand(t, u, 7, map[string]any{"threadId": thread, "availableDecisions": []string{"accept", decision}})
+			questionTestPaint(t, u, 80)
+			appServerTestKeys(t, u, "wait for review\r")
+			if strings.Count(strings.TrimSpace(wire.String()), "\n") != 0 || !strings.Contains(wire.String(), `"decision":"decline"`) {
+				t.Fatalf("denial steered or started a turn: %s", wire.String())
+			}
+			for _, scope := range [][2]string{{thread, "other"}, {"other", "turn"}, {thread, "turn"}, {thread, "turn"}} {
+				request := &parsedResponsesRequest{fields: map[string]jsontext.Value{"input": jsontext.Value(`[{"type":"custom_tool_call_output","call_id":"call","output":"exec command rejected by user"}]`)}}
+				if err := u.proxy.projectApprovalFeedback(request, scope[0], scope[1]); err != nil {
+					t.Fatal(err)
+				}
+				got := string(request.fields["input"])
+				want := scope == [2]string{thread, "turn"}
+				if strings.Contains(got, "user denied this command with a reason: wait for review") != want || !strings.Contains(got, "exec command rejected by user") {
+					t.Fatalf("feedback scope %v: %s", scope, got)
+				}
+			}
+			questionTestMessage(t, u, nil, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "turn", "status": "completed"}})
+			if len(u.proxy.approvalFeedback) != 0 {
+				t.Fatal("completed-turn feedback retained")
+			}
+		})
+	}
+}
+
+func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.session.start("main", t.TempDir())
+	u.turn = "turn"
+	approvalTestCommand(t, u, 7, nil)
+	questionTestPaint(t, u, 80)
+	appServerTestKeys(t, u, "wait for review")
+	questionTestSync(t, u, "question", false)
+	questionTestPaint(t, u, 80)
+	u.ensureShell()
+	defer u.shell.diffScreen.Close()
+	u.shell.layout.codex = terminalRect{0, 0, 80, 28}
+	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.questions.rect.x+1, u.questions.rect.y+1)); err != nil {
+		t.Fatal(err)
+	}
+	if u.approvals.open || u.currentQuestion() == nil || u.draft != "" {
+		t.Fatal("question and approval share the composer")
+	}
+	questionTestPaint(t, u, 80)
+	appServerTestKeys(t, u, "answer to question\r")
+	if !strings.Contains(wire.String(), "answer to question") || strings.Contains(wire.String(), `"id":7`) {
+		t.Fatalf("question answer sent to approval: %s", wire.String())
+	}
+	u.openApprovals()
+	if u.draft != "wait for review" {
+		t.Fatalf("approval reason lost: %q", u.draft)
+	}
+	questionTestPaint(t, u, 80)
+	appServerTestKeys(t, u, "\r")
+	feedback := strings.Join(u.proxy.approvalFeedback[[2]string{"main", "turn"}], "\n")
+	if !strings.Contains(feedback, "wait for review") || strings.Contains(feedback, "answer to question") {
+		t.Fatalf("wrong denial reason: %s", feedback)
+	}
+}
+
+func TestNativeApprovalWithoutProxyKeepsHostDecisions(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	questionTestMessage(t, u, 7, "item/commandExecution/requestApproval", map[string]any{
+		"threadId": "main", "turnId": "turn", "itemId": "cmd", "command": "echo example",
+	})
+	if strings.Contains(questionTestPaint(t, u, 80), "deny with reason") {
+		t.Fatal("proxy-free UI offers unavailable feedback")
+	}
+	appServerTestKeys(t, u, "ignored reason2\r")
+	if !strings.Contains(wire.String(), `"decision":"cancel"`) || len(u.approvals.pending) != 0 || u.draft != "" {
+		t.Fatalf("proxy-free native denial did not complete: %s", wire.String())
+	}
+}
+
+func TestNativeApprovalFeedbackWebSocketContinuation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	proxy := newManagedMekugiProxy(t)
+	const feedback = "user denied this command with a reason: keep the existing result"
+	if err := proxy.answerWithApprovalFeedback("thread-1", "turn", feedback, func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	headers := codexAuthHeaders()
+	headers.Set(sessionIDHeader, "approval-session")
+	headers.Set(threadIDHeader, "thread-1")
+	headers.Set(codexTurnMetadataHeader, string(mustMarshalJSON(codexTurnMetadata{
+		RequestKind: "turn", TurnID: "turn", Directories: map[string]jsontext.Value{t.TempDir(): nil},
+	})))
+	conn := testResponsesSocket(t, ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstream, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer upstream.CloseNow()
+		for _, id := range []string{"first", "second", "third"} {
+			request, err := providerSocketRead(ctx, upstream)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			// Provider projections are not native WebSocket history. The next
+			// request must rebase, retaining exactly one denial and feedback.
+			var input []map[string]jsontext.Value
+			if err := json.Unmarshal(request["input"], &input); err != nil {
+				t.Error(err)
+				return
+			}
+			denials, reasons := 0, 0
+			for _, item := range input {
+				if jsonString(item, "call_id") == "denied" && jsonString(item, "output") == "exec command rejected by user" {
+					denials++
+				}
+				if jsonString(item, "role") == "user" && strings.Contains(string(item["content"]), feedback) {
+					reasons++
+				}
+			}
+			if denials != 1 || reasons != 1 || jsonString(request, "previous_response_id") != "" {
+				t.Errorf("%s: denial=%d feedback=%d parent=%s", id, denials, reasons, request["previous_response_id"])
+			}
+			if err := providerSocketWrite(ctx, upstream, socketEvent("response.completed", id)); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	}), proxy, headers)
+	input := []any{map[string]any{"type": "custom_tool_call_output", "call_id": "denied", "output": "exec command rejected by user"}}
+	for _, parent := range []string{"", "first", "second"} {
+		socketWrite(t, ctx, conn, map[string]any{
+			"type": "response.create", "model": "gpt-test", "tools": testExecResponsesTools(), "input": input, "previous_response_id": parent,
+		})
+		if got := socketRead(t, ctx, conn); jsonString(got, "type") != "response.completed" {
+			t.Fatalf("continuation failed: %s", mustMarshalJSON(got))
+		}
+		input = []any{map[string]string{"role": "user", "content": "continue"}}
+	}
+}
+
 func TestUISnapshotNativeApprovalDock(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -266,6 +497,11 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 		}},
 		{"approval-guarded-write", 80, func(t *testing.T, u *appServerUI) {
 			u.addGuardApproval(&vcsApproval{thread: "main", cwd: "/workspace", argv: []string{"gh", "pr", "merge", "12", "--squash"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})})
+		}},
+		{"approval-guarded-denial", 80, func(t *testing.T, u *appServerUI) {
+			u.addGuardApproval(&vcsApproval{cwd: "/workspace", argv: []string{"git", "push"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})})
+			questionTestPaint(t, u, 80)
+			appServerTestKeys(t, u, "do not publish yet")
 		}},
 		{"approval-banner", 80, func(t *testing.T, u *appServerUI) {
 			u.draft = "Keep this draft."
@@ -298,7 +534,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 		{name: "native-approved", outcome: "Approved"},
 		{name: "native-denied", outcome: "Declined", early: true, choice: 1},
 		{name: "guard-approved", outcome: "Approved", guard: true},
-		{name: "guard-denied-child", outcome: "Denied", guard: true, child: true, choice: 1},
+		{name: "guard-denied-child", outcome: "Denied", guard: true, child: true, choice: 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, "/workspace")
@@ -356,7 +592,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			feed := view.renderFeed(48, 30)
 			rows := feed.lines
 			color, label := activityui.Green, "Approved"
-			if tc.choice == 1 {
+			if tc.choice != 0 {
 				color, label = activityui.Red, "Denied"
 			}
 			if !strings.Contains(strings.Join(rows, "\n"), color+label+activityui.Reset) || entry.Agent == "Session" {

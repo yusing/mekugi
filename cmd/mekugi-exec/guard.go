@@ -53,7 +53,7 @@ func guardCommand(directory, name, explicit, argv0 string, defaultPath bool, arg
 		return strings.TrimSuffix(string(output), "\n"), true
 	}
 	if vcsguard.Writes(argv, lookup) {
-		if ok, reason := approve(directory, argv); !ok {
+		if ok, reason := approve(directory, real, argv); !ok {
 			fmt.Fprintf(os.Stderr, "mekugi: remote write denied: %s\n", reason)
 			return 1
 		}
@@ -129,7 +129,7 @@ func guardPaths(name, explicit string, defaultPath bool) (directory, real string
 }
 
 // approve uses one local connection per command. Sandboxed execution is unsupported.
-func approve(directory string, argv []string) (bool, string) {
+func approve(directory, executable string, argv []string) (bool, string) {
 	const unavailable = "Mekugi approval is unavailable"
 	if directory == "" {
 		return false, unavailable
@@ -150,7 +150,7 @@ func approve(directory string, argv []string) (bool, string) {
 		return false, unavailable
 	}
 	cwd, _ := os.Getwd()
-	message := vcsguard.Message{Thread: os.Getenv("CODEX_THREAD_ID"), Cwd: cwd, Argv: argv}
+	message := vcsguard.Message{Thread: os.Getenv("CODEX_THREAD_ID"), Cwd: cwd, Argv: argv, Executable: executable}
 	data, err := json.Marshal(&message)
 	if err != nil || len(data) > vcsguard.MaxMessage {
 		return false, "invalid approval request"

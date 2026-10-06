@@ -23,12 +23,14 @@ type nativeApprovalChoice struct {
 	label    string
 	response map[string]any
 	approve  bool
+	session  bool
+	deny     bool
 	outcome  string // Command outcome once chosen.
 }
 
 // nativeApproval is a pending decision: a Codex approval server request, or
-// a remote VCS write held by the command guard. Its options follow the stock
-// TUI's approval overlay.
+// a remote VCS write held by the command guard. Approval scopes follow the stock
+// TUI's overlay; command denial continues the turn for the user's feedback.
 // Source: codex-rs/tui/src/bottom_pane/approval_overlay.rs exec_options,
 // patch_options and permissions_options @7135b303d.
 type nativeApproval struct {
@@ -42,6 +44,7 @@ type nativeApproval struct {
 	choices      []nativeApprovalChoice
 	selected     int
 	textTop      int
+	editor       questionEditor // Optional denial reason.
 }
 
 // nativeApprovalDock shows the oldest pending approval above the composer.
@@ -53,6 +56,19 @@ type nativeApprovalDock struct {
 	autoOpen bool
 	painted  bool
 	patches  map[string][]string // Live fileChange item paths, for edit approvals.
+	parked   questionEditor
+	allowed  map[guardApprovalKey]bool
+}
+
+func (a *nativeApproval) denialChoice() int {
+	return slices.IndexFunc(a.choices, func(c nativeApprovalChoice) bool { return c.deny })
+}
+
+type guardApprovalKey struct{ cwd, executable, command string }
+
+func guardApprovalIdentity(request *vcsApproval) guardApprovalKey {
+	command, _ := json.Marshal(request.argv)
+	return guardApprovalKey{request.cwd, request.executable, string(command)}
 }
 
 // threadPermissions keeps --yolo's policy on thread requests. Approval mode
@@ -104,6 +120,10 @@ func (u *appServerUI) addGuardApproval(request *vcsApproval) {
 	if request.finished() {
 		return
 	}
+	if u.approvals.allowed[guardApprovalIdentity(request)] {
+		request.reply <- vcsguard.Reply{OK: true}
+		return
+	}
 	details := u.approvalDirectory(request.cwd)
 	details = append(details, "Denying fails only this command with exit status 1.")
 	u.addApproval(&nativeApproval{
@@ -114,7 +134,8 @@ func (u *appServerUI) addGuardApproval(request *vcsApproval) {
 		details: details,
 		choices: []nativeApprovalChoice{
 			{label: "Yes, run it", approve: true, outcome: "Approved"},
-			{label: "No, fail this command", outcome: "Denied"},
+			{label: "Yes, for this exact command and workdir this session", approve: true, session: true, outcome: "Approved for this session"},
+			{label: "No, fail this command", deny: true, outcome: "Denied"},
 		},
 	})
 }
@@ -147,6 +168,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 					u.endApproval(a, "Turn ended before an answer")
 				}
 			}
+			u.proxy.clearApprovalFeedback(p.ThreadID, p.Turn.ID)
 		}
 		return false, nil
 	case "item/started", "item/completed":
@@ -225,7 +247,18 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 		}
 		for _, decision := range decisions {
 			if choice, ok := commandApprovalChoice(decision, p.NetworkContext != nil, len(p.Additional) > 0 && string(p.Additional) != "null"); ok {
-				a.choices = append(a.choices, choice)
+				if u.proxy == nil && choice.deny {
+					// Proxy-free UI cannot attach feedback to provider requests.
+					// Keep native decisions and omit the reason editor there.
+					choice.deny = false
+					choice.response = map[string]any{"decision": decision}
+					if string(decision) == `"cancel"` {
+						choice.label = "No, and tell Codex what to do differently"
+					}
+				}
+				if !choice.deny || !slices.ContainsFunc(a.choices, func(c nativeApprovalChoice) bool { return c.deny && c.label == choice.label }) {
+					a.choices = append(a.choices, choice)
+				}
 			}
 		}
 	case "item/fileChange/requestApproval":
@@ -272,8 +305,8 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 	return true, nil
 }
 
-// commandApprovalChoice labels one of the host's offered decisions, which is
-// returned unchanged.
+// commandApprovalChoice keeps the host's approval scopes. Command rejection uses
+// native decline instead of aborting before denial feedback reaches the provider.
 func commandApprovalChoice(decision jsontext.Value, network, permissions bool) (nativeApprovalChoice, bool) {
 	choice := nativeApprovalChoice{response: map[string]any{"decision": decision}}
 	var name string
@@ -292,9 +325,14 @@ func commandApprovalChoice(decision jsontext.Value, network, permissions bool) (
 				choice.label = "Yes, and allow these permissions for this session"
 			}
 		case "decline":
+			choice.deny = true
 			choice.label, choice.outcome = "No, continue without running it", "Declined"
 		case "cancel":
-			choice.label, choice.outcome = "No, and tell Codex what to do differently", "Declined"
+			choice.deny = true
+			// Native decline rejects the command without aborting the turn,
+			// so its denial and feedback reach the same provider continuation.
+			choice.response = map[string]any{"decision": "decline"}
+			choice.label, choice.outcome = "No, continue without running it", "Declined"
 		default:
 			return choice, false
 		}
@@ -321,6 +359,7 @@ func commandApprovalChoice(decision jsontext.Value, network, permissions bool) (
 			choice.outcome = "Approved commands starting with " + prefix
 		case name == "applyNetworkPolicyAmendment" && value.Network != nil:
 			if value.Network.Action == "deny" {
+				choice.deny = true
 				choice.label, choice.outcome = "No, and block this host in the future", "Blocked "+value.Network.Host
 			} else {
 				choice.label, choice.outcome = "Yes, and allow this host in the future", "Allowed "+value.Network.Host
@@ -415,9 +454,13 @@ func (u *appServerUI) endApproval(a *nativeApproval, outcome string) {
 	if index < 0 {
 		return
 	}
+	wasOpen := u.approvals.open && index == 0
+	if wasOpen {
+		u.hideApprovals()
+	}
 	u.approvals.pending = slices.Delete(u.approvals.pending, index, index+1)
-	if len(u.approvals.pending) == 0 {
-		u.approvals.open = false
+	if wasOpen {
+		u.openApprovals()
 	}
 	if a.request != nil && u.notifications != nil {
 		delete(u.notifications.blocked, string(a.request))
@@ -441,6 +484,18 @@ func (u *appServerUI) endApproval(a *nativeApproval, outcome string) {
 }
 
 func (u *appServerUI) answerApproval(a *nativeApproval, choice nativeApprovalChoice) error {
+	reason := a.editor.snapshot.text
+	if u.approvals.open && u.approvals.pending[0] == a && a.denialChoice() >= 0 {
+		reason = u.draft
+	}
+	reason = strings.TrimSpace(reason)
+	feedback := "user denied this command without a reason"
+	if reason != "" {
+		feedback = "user denied this command with a reason: " + reason
+	}
+	if choice.deny && reason != "" {
+		choice.outcome += ": " + reason
+	}
 	if a.guard != nil {
 		if a.guard.finished() {
 			u.expireApprovals() // The command already has its answer.
@@ -448,13 +503,34 @@ func (u *appServerUI) answerApproval(a *nativeApproval, choice nativeApprovalCho
 		}
 		reply := vcsguard.Reply{OK: choice.approve}
 		if !choice.approve {
-			reply.Reason = "denied in Mekugi"
+			reply.Reason = feedback
+		} else if choice.session {
+			if u.approvals.allowed == nil {
+				u.approvals.allowed = make(map[guardApprovalKey]bool)
+			}
+			u.approvals.allowed[guardApprovalIdentity(a.guard)] = true
 		}
 		a.guard.reply <- reply
-	} else if err := u.client.Respond(a.request, choice.response); err != nil {
-		return err
+	} else {
+		answer := func() error { return u.client.Respond(a.request, choice.response) }
+		if choice.deny && (u.proxy != nil || reason != "") {
+			if err := u.proxy.answerWithApprovalFeedback(a.thread, a.turn, "Command: "+a.subject+"\n"+feedback, answer); err != nil {
+				return err
+			}
+		} else if err := answer(); err != nil {
+			return err
+		}
 	}
 	u.endApproval(a, choice.outcome)
+	if a.guard != nil && choice.approve && choice.session {
+		for _, pending := range slices.Clone(u.approvals.pending) {
+			if pending.guard != nil && guardApprovalIdentity(pending.guard) == guardApprovalIdentity(a.guard) {
+				if err := u.answerApproval(pending, nativeApprovalChoice{approve: true, outcome: "Approved for this session"}); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -470,7 +546,14 @@ func (u *appServerUI) openApprovals() bool {
 	if len(u.approvals.pending) == 0 {
 		return false
 	}
+	if u.approvals.open {
+		return true
+	}
 	u.hideQuestions()
+	if a := u.approvals.pending[0]; a.denialChoice() >= 0 {
+		u.approvals.parked = u.saveQuestionEditor()
+		u.loadQuestionEditor(a.editor)
+	}
 	u.approvals.open, u.approvals.painted = true, false
 	u.picker.open, u.keybindings = false, false
 	u.cancelPickerScan()
@@ -481,6 +564,16 @@ func (u *appServerUI) openApprovals() bool {
 	return true
 }
 
+func (u *appServerUI) hideApprovals() {
+	if u.approvals.open && len(u.approvals.pending) > 0 {
+		if a := u.approvals.pending[0]; a.denialChoice() >= 0 {
+			a.editor = u.saveQuestionEditor()
+			u.loadQuestionEditor(u.approvals.parked)
+		}
+	}
+	u.approvals.open = false
+}
+
 func (u *appServerUI) approvalKey(key string) (bool, error) {
 	if !u.approvals.open || len(u.approvals.pending) == 0 {
 		return false, nil
@@ -488,7 +581,8 @@ func (u *appServerUI) approvalKey(key string) (bool, error) {
 	a := u.approvals.pending[0]
 	switch key {
 	case "\x1b":
-		u.approvals.open, u.approvals.autoOpen = false, false
+		u.hideApprovals()
+		u.approvals.autoOpen = false
 	case "\x1b[A", "\x10":
 		a.selected = (a.selected - 1 + len(a.choices)) % len(a.choices)
 	case "\x1b[B", "\x0e":
@@ -499,12 +593,26 @@ func (u *appServerUI) approvalKey(key string) (bool, error) {
 		a.textTop++
 	case "\r":
 		return true, u.answerApproval(a, a.choices[a.selected])
+	case "\t":
+		if deny := a.denialChoice(); deny >= 0 {
+			a.selected = deny
+		}
 	default:
-		if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
+		if len(key) == 1 && key[0] >= '1' && key[0] <= '9' && (a.denialChoice() < 0 || u.draft == "") {
 			if index := int(key[0] - '1'); index < len(a.choices) {
 				a.selected = index
 			}
 			return true, nil
+		}
+		if deny := a.denialChoice(); deny >= 0 {
+			if len(key) == 1 && key[0] >= 32 && key[0] != 127 {
+				a.selected = deny
+				return false, nil
+			}
+			switch key {
+			case "\x7f", "\x08", "\x17", "\x0b", "\x1a", "\x19", "\n", "\x1b[D", "\x1b[C", "\x1b[H", "\x1b[F", "\x1b[3~":
+				return false, nil
+			}
 		}
 		// No key may edit the hidden draft or answer by accident. Ctrl-C keeps
 		// its meaning, Ctrl-B its pane commands, and other sequences, such as
@@ -546,6 +654,9 @@ func (u *appServerUI) approvalRows(width, height int) []string {
 	}
 	rows := []string{ansi.Truncate(header, inner, "")}
 	foot := pickerWrap(accent+fmt.Sprintf("1–%d", len(a.choices))+reset+dim+" choose · "+reset+accent+"enter"+reset+dim+" confirm · "+reset+accent+"esc"+reset+dim+" hide"+reset, inner)
+	if a.denialChoice() >= 0 {
+		foot = pickerWrap(accent+fmt.Sprintf("1–%d", len(a.choices))+reset+dim+" choose · "+reset+accent+"type"+reset+dim+" deny with reason · "+reset+accent+"enter"+reset+dim+" confirm · "+reset+accent+"esc"+reset+dim+" hide"+reset, inner)
+	}
 	var text []string
 	for _, line := range strings.Split(a.subject, "\n") {
 		text = append(text, pickerWrap(livediff.Safe(line, false), inner)...)

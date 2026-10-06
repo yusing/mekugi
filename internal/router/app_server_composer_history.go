@@ -131,6 +131,10 @@ func (u *appServerUI) pruneDraftImages() {
 		e := u.questions.parked
 		stacks = append(stacks, e.undo, e.redo, []composerUndo{e.snapshot})
 	}
+	if u.approvals.open && u.approvals.pending[0].denialChoice() >= 0 {
+		e := u.approvals.parked
+		stacks = append(stacks, e.undo, e.redo, []composerUndo{e.snapshot})
+	}
 	for _, stack := range stacks {
 		for _, snapshot := range stack {
 			for _, draft := range []composerDraft{snapshot.composerDraft, snapshot.historyDraft} {

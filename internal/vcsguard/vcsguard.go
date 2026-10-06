@@ -41,9 +41,10 @@ func IsTool(name string) bool {
 
 // Message asks the router to approve one remote write.
 type Message struct {
-	Thread string   `json:"thread,omitempty"`
-	Cwd    string   `json:"cwd,omitempty"`
-	Argv   []string `json:"argv"`
+	Thread     string   `json:"thread,omitempty"`
+	Cwd        string   `json:"cwd,omitempty"`
+	Argv       []string `json:"argv"`
+	Executable string   `json:"executable"` // Resolved tool, separate from its display name.
 }
 
 // Reply answers a Message. Reason explains a denial to the command's stderr.

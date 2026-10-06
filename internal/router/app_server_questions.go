@@ -134,6 +134,7 @@ func (u *appServerUI) openQuestionCall(c *nativeQuestionCall) {
 	if u.questions.active != nil {
 		return
 	}
+	u.hideApprovals()
 	u.questions.painted = false
 	u.questions.parked = u.saveQuestionEditor()
 	u.questions.active, u.questions.index, u.questions.confirm = c, 0, false

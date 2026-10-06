@@ -304,7 +304,12 @@ func (u *appServerUI) pasteByte(key byte) {
 	u.pasted = pasteText(u.pasted)
 	switch {
 	case u.approvals.open:
-		u.pasted = nil // An open approval must not edit the hidden draft.
+		if a := u.approvals.pending[0]; a.denialChoice() >= 0 && len(u.pasted) > 0 {
+			a.selected = a.denialChoice()
+			u.insertDraft(string(u.pasted))
+			u.run = runNone
+		}
+		u.pasted = nil
 	case u.picker.modal == "manage":
 		u.picker.query += string(u.pasted)
 		u.pasted = nil

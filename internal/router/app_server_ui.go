@@ -447,6 +447,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		u.finishCommandSegments()
 		err = errors.Join(err, u.finishJournalAcknowledgements(true))
 		u.hideQuestions()
+		u.hideApprovals()
 		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
 			fmt.Fprintln(stdout, "Unsent draft:\n"+livediff.Safe(unsent.text, false))
 		}
@@ -967,7 +968,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.hideQuestions()
 	}
 	if u.approvals.open && !u.approvals.painted {
-		u.approvals.open = false
+		u.hideApprovals()
 	}
 	if u.escape == "" && key != 27 {
 		if handled, err := u.approvalKey(string([]byte{key})); handled {
@@ -1005,7 +1006,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.escape = ""
 	}
 	if u.escape == "" {
-		if u.currentQuestion() == nil && key == '?' && u.draft == "" && (u.shell == nil || u.shell.focus == 0) {
+		if u.currentQuestion() == nil && !u.approvals.open && key == '?' && u.draft == "" && (u.shell == nil || u.shell.focus == 0) {
 			u.keybindings = !u.keybindings
 			return false, nil
 		}

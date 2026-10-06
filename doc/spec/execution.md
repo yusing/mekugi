@@ -56,6 +56,17 @@ Completed edit observations may append a separate
 agent-visible change-ID and summary text part as specified in
 [applied changes](changes.md), preserving the original result content.
 
+Native command approvals retain Codex's offered session, command-prefix and
+permission scopes. In the proxied UI, command denial uses native decline so
+the turn continues without running the command. The original native tool
+rejection remains intact, with no synthetic shell exit code. Companion user
+feedback reports denial with or without the optional reason in the existing
+provider continuation for the same thread, turn and tool roundtrip; it neither
+steers the host nor starts a new turn. File-change and permission approval
+choices remain unchanged. Proxy-free direct UI and passthrough preserve the
+original host decisions and do not offer typed denial reasons. Dock editing and
+draft preservation are specified under [native UI approvals](native_ui.md#approvals).
+
 The wrapped Codex `PATH` includes only this session's authenticated executable
 frontends. `mcat`, `mrun`, `mread`, `mchanges`, `msymbol`, `inspect_file`, and
 configured plugin tools are invoked through stock `exec_command`. The pinned
@@ -142,6 +153,11 @@ Acceptance:
    arguments pass through without router-imposed floors.
 6. Configured and built-in frontends use one authenticated snapshot and the
    Codex-owned executor, with no alternate tool carrier or MCP layer.
+7. Native command denial preserves the host tool rejection and delivers optional
+   user feedback only to the matching provider continuation, without a synthetic
+   exit code, steering or a new turn. Host-offered approval scopes, file-change
+   and permission choices remain available; proxy-free clients retain original
+   host decisions without reason editing.
 
 ## REQ-EXECUTION-002 — Track each segment of a command list
 
@@ -302,6 +318,13 @@ A command asks only when execution reaches it, not for a skipped branch.
 Approved writes and non-writes run the selected real executable with its expanded
 arguments, output and exit status.
 
+The guard offers approval once, approval for the exact expanded argument list,
+workdir and resolved executable for the current UI session, or denial. Session
+approval also resolves queued requests with the same identity; another argument,
+workdir or executable asks again. These grants have no command-prefix scope and
+expire with the UI, rather than persisting across resume. They are separate from
+Codex's native approval scopes.
+
 Direct commands and supported wrappers (`env`, `command`, `exec`, `nohup`,
 `timeout`, `nice` and `xargs`) recognize guarded tools by name or executable
 path. Absolute and relative paths may contain spaces and need not be on PATH;
@@ -326,6 +349,13 @@ write. Only that command fails: a `;` list continues, and `&&`/`||` follow the
 selected shell's normal failure semantics, including its error-handling options.
 If the command exits while waiting, the request is withdrawn. Approval does not
 grant sandbox permissions.
+
+A user denial without a reason prints
+`mekugi: remote write denied: user denied this command without a reason`.
+With a reason it prints
+`mekugi: remote write denied: user denied this command with a reason: <reason>`.
+Both exit 1 before invoking the real denied command. This is a shell-command
+failure, unlike the native tool rejection of a Codex command approval.
 
 Writes are:
 
@@ -390,3 +420,8 @@ Acceptance:
    removes remote-write prompts while preserving command tracking and the chosen
    Codex approval and sandbox policy. Interactive passthrough rejects an enabled
    guard and accepts the explicit opt-out.
+8. Session approval releases exact queued duplicates and subsequent matching
+   commands only within the same UI session. Changed arguments, workdir or
+   resolved executable require another decision; closing and resuming clears
+   the grant. Denial with or without a reason emits the specified stderr and
+   exits 1 without running the real command.

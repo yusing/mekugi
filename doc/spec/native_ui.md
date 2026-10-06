@@ -1345,18 +1345,34 @@ unrecognized decisions are omitted. A `writeStdin` request asks to send its
 quoted input to the named terminal. Edit requests offer accept,
 `acceptForSession` and cancel, naming the paths of the matching live
 `fileChange` item. Permission requests offer turn, turn with strict auto review,
-and session grants of the requested profile, or an empty grant. Each response
-returns the chosen decision unchanged, under the original request ID. A request
+and session grants of the requested profile, or an empty grant. Responses
+retain the original request ID and offered approval scopes. In the proxied UI,
+command denial uses native decline to continue without running the command,
+with optional user feedback in the matching provider continuation as specified
+in [execution](execution.md#req-execution-001--preserve-codexs-execution-authority).
+Edit and permission decisions remain unchanged. Proxy-free direct UI and
+passthrough retain original host decisions without typed denial reasons. A request
 with no choice the client can label stays visibly blocked.
+
+Guard requests instead offer approval once, approval for the exact command and
+workdir for this UI session, or denial. The matching scope and lifetime are
+defined by the [VCS guard](execution.md#req-execution-003--guard-remote-vcs-writes),
+not Codex's session or command-prefix grants.
 
 The dock shows the title, the command or summary, the directory when it is not
 the workspace root, the reason, and numbered choices; it occupies at most half of
 Main. Request text takes precedence over spacing and scrolls with PgUp/PgDn only
 when the unspaced dock cannot hold it. Digits, Up/Down and Ctrl-P/Ctrl-N select;
 Enter confirms. Escape hides the dock without answering; with it hidden, Escape
-keeps its usual interrupt behavior. Other keys and pastes are ignored rather than
-edit the parked draft; Ctrl-C keeps its clear/interrupt/quit meaning and Ctrl-B
-its pane commands. The dock
+keeps its usual interrupt behavior. For supported command denials, typing or
+pasting selects denial and edits an optional reason in the composer; Enter
+confirms the selected choice. Digits select choices while the reason is empty.
+Opening parks the complete main editor, including attachments; hiding or
+answering restores it. Each approval retains its reason editor across hide/reopen
+and question-dock switching, without merging the reason into the main draft.
+Opening a question hides approvals, and opening approvals hides questions.
+Other approval types ignore text and pastes rather than edit the draft.
+Ctrl-C keeps its clear/interrupt/quit meaning and Ctrl-B its pane commands. The dock
 opens by itself under the same empty-composer rule as questions; otherwise a
 one-row banner, `! N approvals pending · ctrl+b q review`, waits, and Ctrl+B Q
 opens approvals before questions. Keystrokes received before the dock is painted

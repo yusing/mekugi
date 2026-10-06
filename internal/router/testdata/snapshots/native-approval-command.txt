@@ -12,8 +12,8 @@ Mekugi dev • codex
   Reason: Publish the release branch.
   › 1. Yes, proceed                                                           
     2. Yes, and don't ask again for commands that start with `git push`
-    3. No, and tell Codex what to do differently
-  1–3 choose · enter confirm · esc hide
+    3. No, continue without running it
+  1–3 choose · type deny with reason · enter confirm · esc hide
 
 ╭─ approving · turn waiting ───────────────────────────────────────────────────╮
 │ ❯                                                                            │

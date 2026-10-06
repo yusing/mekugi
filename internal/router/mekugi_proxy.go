@@ -3,7 +3,8 @@ package router
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	jsonv1 "encoding/json"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"log"
@@ -24,9 +25,9 @@ const (
 	maxMekugiPendingCalls = 128
 )
 
-func nativeSpawnRoles(raw json.RawMessage, parentAuthor string, ignoredCallIDs ...map[string]bool) map[string]journalSpawnRole {
+func nativeSpawnRoles(raw jsonv1.RawMessage, parentAuthor string, ignoredCallIDs ...map[string]bool) map[string]journalSpawnRole {
 	var input []responsesItem
-	if json.Unmarshal(raw, &input) != nil {
+	if jsonv1.Unmarshal(raw, &input) != nil {
 		return nil
 	}
 	type spawnCall struct {
@@ -45,7 +46,7 @@ func nativeSpawnRoles(raw json.RawMessage, parentAuthor string, ignoredCallIDs .
 		var arguments struct {
 			AgentType string `json:"agent_type"`
 		}
-		if json.Unmarshal([]byte(*item.Arguments), &arguments) != nil || strings.TrimSpace(arguments.AgentType) == "" {
+		if jsonv1.Unmarshal([]byte(*item.Arguments), &arguments) != nil || strings.TrimSpace(arguments.AgentType) == "" {
 			continue
 		}
 		call, found := calls[item.CallID]
@@ -72,7 +73,7 @@ func nativeSpawnRoles(raw json.RawMessage, parentAuthor string, ignoredCallIDs .
 		var result struct {
 			TaskName string `json:"task_name"`
 		}
-		if json.Unmarshal([]byte(output), &result) != nil || !directChildAuthor(parentAuthor, result.TaskName) {
+		if jsonv1.Unmarshal([]byte(output), &result) != nil || !directChildAuthor(parentAuthor, result.TaskName) {
 			continue
 		}
 		evidence := journalSpawnRole{Role: call.role, Conflicted: call.conflicted}
@@ -84,9 +85,9 @@ func nativeSpawnRoles(raw json.RawMessage, parentAuthor string, ignoredCallIDs .
 	return roles
 }
 
-func nativeSpawnCallIDs(raw json.RawMessage) map[string]bool {
+func nativeSpawnCallIDs(raw jsonv1.RawMessage) map[string]bool {
 	var input []responsesItem
-	if json.Unmarshal(raw, &input) != nil {
+	if jsonv1.Unmarshal(raw, &input) != nil {
 		return nil
 	}
 	callIDs := make(map[string]bool)
@@ -127,6 +128,8 @@ type mekugiProxy struct {
 	skillsManager      bool
 	execWindows        *execWindowRegistry
 	nativeTrace        *nativeToolTrace
+	approvalMu         sync.Mutex
+	approvalFeedback   map[[2]string][]string // Live thread/turn feedback; no host steering.
 
 	mu                 sync.RWMutex
 	toolInputEmissions map[*mekugiResponseTransform]map[string]bool // Live generation only, never command execution or replay.
@@ -249,7 +252,7 @@ type mekugiPendingCall struct {
 type mekugiTranslationState struct {
 	pending         map[string]mekugiPendingCall
 	previews        map[string]*liveDiffPreviewWorker
-	nativeExecCalls map[string]map[string]json.RawMessage
+	nativeExecCalls map[string]map[string]jsonv1.RawMessage
 	local           map[string]mekugiHistory
 
 	// localSequence orders the calls translated during this turn, so a
@@ -274,7 +277,7 @@ type mekugiJournalState struct {
 	journalAnswerDelivery   *journalDelivery // Raw Main answer receipt, independent of its work report.
 	journalDeliveries       map[string]journalDelivery
 	journalAnswerStarted    bool
-	journalEarlyReports     []map[string]json.RawMessage // Prepared before the answer; acknowledged only at terminal.
+	journalEarlyReports     []map[string]jsonv1.RawMessage // Prepared before the answer; acknowledged only at terminal.
 	liveDiffCompletionReady bool
 	journalQuietFile        os.FileInfo
 	journalRootQuietFile    os.FileInfo
@@ -289,10 +292,10 @@ type mekugiJournalState struct {
 	journalAvailable        bool
 	journalActive           bool
 	journalPending          map[string]bool
-	journalCalls            map[string]map[string]json.RawMessage
-	journalResults          []map[string]json.RawMessage
-	journalClientOutput     []map[string]json.RawMessage
-	journalProviderOutput   []map[string]json.RawMessage
+	journalCalls            map[string]map[string]jsonv1.RawMessage
+	journalResults          []map[string]jsonv1.RawMessage
+	journalClientOutput     []map[string]jsonv1.RawMessage
+	journalProviderOutput   []map[string]jsonv1.RawMessage
 	journalClientCalls      bool
 	journalDeferredFinish   map[string]bool
 	journalTerminal         bool
@@ -322,9 +325,9 @@ type mekugiResponseTransform struct {
 	sessionActive    bool
 	threadID         string
 
-	originalTools             json.RawMessage
+	originalTools             jsonv1.RawMessage
 	originalToolsPresent      bool
-	originalToolChoice        json.RawMessage
+	originalToolChoice        jsonv1.RawMessage
 	originalToolChoicePresent bool
 	directory                 string
 	mekugiTranslationState
@@ -384,7 +387,7 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 		Phase          string `json:"phase"`
 		Strategy       string `json:"strategy"`
 	}
-	if err := json.Unmarshal(metadata.Compaction, &compaction); err != nil || slices.ContainsFunc(
+	if err := jsonv1.Unmarshal(metadata.Compaction, &compaction); err != nil || slices.ContainsFunc(
 		[]string{compaction.Trigger, compaction.Reason, compaction.Implementation, compaction.Phase, compaction.Strategy},
 		func(value string) bool { return strings.TrimSpace(value) == "" },
 	) {
@@ -394,9 +397,9 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 		return errors.New("mekugi compaction bypass requires a streaming request")
 	}
 
-	var tools []json.RawMessage
+	var tools []jsonv1.RawMessage
 	if rawTools, exists := request.fields["tools"]; exists {
-		if err := json.Unmarshal(rawTools, &tools); err != nil {
+		if err := jsonv1.Unmarshal(rawTools, &tools); err != nil {
 			return fmt.Errorf("decode compaction tools: %w", err)
 		}
 	}
@@ -404,23 +407,23 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 		return errors.New("mekugi compaction request cannot expose tools")
 	}
 
-	var items []json.RawMessage
-	if err := json.Unmarshal(request.fields["input"], &items); err != nil {
+	var items []jsonv1.RawMessage
+	if err := jsonv1.Unmarshal(request.fields["input"], &items); err != nil {
 		return fmt.Errorf("decode compaction input: %w", err)
 	}
 	if len(items) == 0 {
 		return errors.New("mekugi compaction request requires nonempty input")
 	}
 	for _, rawItem := range items {
-		var item map[string]json.RawMessage
-		if err := json.Unmarshal(rawItem, &item); err != nil || item == nil {
+		var item map[string]jsonv1.RawMessage
+		if err := jsonv1.Unmarshal(rawItem, &item); err != nil || item == nil {
 			return errors.New("mekugi compaction request contains a malformed input item")
 		}
 		if jsonString(item, "type") != "additional_tools" {
 			continue
 		}
-		var additionalTools []json.RawMessage
-		if err := json.Unmarshal(item["tools"], &additionalTools); err != nil {
+		var additionalTools []jsonv1.RawMessage
+		if err := jsonv1.Unmarshal(item["tools"], &additionalTools); err != nil {
 			return fmt.Errorf("decode compaction additional tools: %w", err)
 		}
 		if len(additionalTools) != 0 {
@@ -429,11 +432,11 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 	}
 
 	var toolChoice string
-	if json.Unmarshal(request.fields["tool_choice"], &toolChoice) != nil || toolChoice != "auto" {
+	if jsonv1.Unmarshal(request.fields["tool_choice"], &toolChoice) != nil || toolChoice != "auto" {
 		return errors.New("mekugi compaction request requires automatic tool choice")
 	}
 	var parallelToolCalls bool
-	if err := json.Unmarshal(request.fields["parallel_tool_calls"], &parallelToolCalls); err != nil || parallelToolCalls {
+	if err := jsonv1.Unmarshal(request.fields["parallel_tool_calls"], &parallelToolCalls); err != nil || parallelToolCalls {
 		return errors.New("mekugi compaction request requires disabled parallel tool calls")
 	}
 	return nil
@@ -610,7 +613,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		originalToolChoicePresent: originalToolChoicePresent,
 		directory:                 directory,
 		pending:                   make(map[string]mekugiPendingCall),
-		nativeExecCalls:           make(map[string]map[string]json.RawMessage),
+		nativeExecCalls:           make(map[string]map[string]jsonv1.RawMessage),
 		local:                     make(map[string]mekugiHistory),
 		commentaryAuthor:          metadata.commentaryAuthor(),
 		commentaryTools:           commentaryTools,
@@ -678,14 +681,62 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	transform.journalQuestion = journalQuestionFromInput(request.fields["input"], metadata.commentaryAuthor())
 	transform.journalActive = true
 	transform.journalPending = make(map[string]bool)
-	transform.journalCalls = make(map[string]map[string]json.RawMessage)
+	transform.journalCalls = make(map[string]map[string]jsonv1.RawMessage)
 	p.observeCodeModeFailures(activityThreadID, codeModeToolName, request, visible)
 	// Continuation advice is appended to the output the model will see.
 	projectExecutionContinuations(request, tools, codeModeToolName, visible)
+	if err := p.projectApprovalFeedback(request, threadID, metadata.TurnID); err != nil {
+		transform.Close()
+		return nil, err
+	}
 	return transform, nil
 }
 
-func mustMarshalJSON(value any) json.RawMessage {
+// Publish the native denial and its feedback together. A provider continuation
+// cannot observe the denial without the user reply already being available.
+func (p *mekugiProxy) answerWithApprovalFeedback(thread, turn, text string, answer func() error) error {
+	if p == nil {
+		return errors.New("native denial feedback requires the provider proxy")
+	}
+	p.approvalMu.Lock()
+	defer p.approvalMu.Unlock()
+	if err := answer(); err != nil {
+		return err
+	}
+	if p.approvalFeedback == nil {
+		p.approvalFeedback = make(map[[2]string][]string)
+	}
+	key := [2]string{thread, turn}
+	p.approvalFeedback[key] = append(p.approvalFeedback[key], text)
+	return nil
+}
+
+func (p *mekugiProxy) clearApprovalFeedback(thread, turn string) {
+	if p == nil {
+		return
+	}
+	p.approvalMu.Lock()
+	defer p.approvalMu.Unlock()
+	delete(p.approvalFeedback, [2]string{thread, turn})
+}
+
+func (p *mekugiProxy) projectApprovalFeedback(request *parsedResponsesRequest, thread, turn string) error {
+	p.approvalMu.Lock()
+	defer p.approvalMu.Unlock()
+	feedback := p.approvalFeedback[[2]string{thread, turn}]
+	if len(feedback) == 0 {
+		return nil
+	}
+	var input []jsonv1.RawMessage
+	if err := json.Unmarshal(request.fields["input"], &input); err != nil {
+		return fmt.Errorf("read input for denial feedback: %w", err)
+	}
+	input = append(input, mustMarshalJSON(map[string]any{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": strings.Join(feedback, "\n\n")}}}))
+	request.setInput(mustMarshalJSON(input))
+	return nil
+}
+
+func mustMarshalJSON(value any) jsonv1.RawMessage {
 	encoded, err := marshalProtocolJSON(value)
 	if err != nil {
 		panic(err)
@@ -693,8 +744,8 @@ func mustMarshalJSON(value any) json.RawMessage {
 	return encoded
 }
 
-func jsonString(object map[string]json.RawMessage, name string) string {
+func jsonString(object map[string]jsonv1.RawMessage, name string) string {
 	var value string
-	_ = json.Unmarshal(object[name], &value)
+	_ = jsonv1.Unmarshal(object[name], &value)
 	return value
 }

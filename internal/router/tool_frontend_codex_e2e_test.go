@@ -62,27 +62,33 @@ func init() {
 }
 
 type toolFrontendCodexProvider struct {
-	mu         sync.Mutex
-	workspace  string
-	program    string
-	expected   []string
-	finalText  string
-	turns      int
-	callSent   bool
-	resultSeen bool
-	output     string // The tool call's output, as Codex returned it.
+	mu             sync.Mutex
+	workspace      string
+	program        string
+	expected       []string
+	finalText      string
+	turns          int
+	callSent       bool
+	resultSeen     bool
+	output         string                          // The tool call's output, as Codex returned it.
+	observeRequest func([]byte, http.Header) error // Optional consuming-boundary assertion.
 }
 
 func (p *toolFrontendCodexProvider) forwardExecution(
 	_ context.Context,
 	_ context.Context,
 	body []byte,
-	_ http.Header,
+	headers http.Header,
 	_ string,
 ) (*http.Response, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.turns++
+	if p.observeRequest != nil {
+		if err := p.observeRequest(body, headers); err != nil {
+			return nil, err
+		}
+	}
 	var item map[string]any
 	switch {
 	case !p.callSent:

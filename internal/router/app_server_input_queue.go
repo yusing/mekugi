@@ -100,6 +100,12 @@ func (u *appServerUI) takeDraft() composerDraft {
 // restoreDrafts returns input to the composer ahead of the current draft.
 func (u *appServerUI) restoreDrafts(parts ...composerDraft) {
 	parts = u.rejectQuestionParts(parts)
+	if u.approvals.open && u.approvals.pending[0].denialChoice() >= 0 {
+		u.hideApprovals()
+		u.restoreDrafts(parts...)
+		u.openApprovals()
+		return
+	}
 	if u.questions.active != nil {
 		c, index := u.questions.active, u.questions.index
 		u.hideQuestions()
