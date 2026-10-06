@@ -1779,7 +1779,7 @@ func (v *liveActivityView) standalone(entry activityPaneEntry) bool {
 	return !(entry.native != nil && entry.native.wait != nil) && !(entry.Kind == "tool" && entry.Text == "")
 }
 
-// settleActivity collapses completed reasoning and successful command output once its agent's
+// settleActivity collapses successful command output once its agent's
 // next standalone event has been followed by a pause. Entries are shared
 // between views, so each view replaces rather than modifies native state.
 func settleActivity(now time.Time, views ...*liveActivityView) bool {

@@ -1,4 +1,4 @@
 ● worker                                                                08:00:00
-│ • Checking tests for 2s
+│ • Finalizing execution journal
 │ 
-│ • Next step
+│ • Preparing final renderings for 2s

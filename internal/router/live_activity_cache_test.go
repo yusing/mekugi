@@ -91,7 +91,7 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 				case "output delta":
 					update.outputTail = []string{"hello", "second output line"}
 				case "reasoning":
-					update.Text = "**Checking the result**\nUpdated public summary"
+					update.Text = "**Checking the updated result**\nUpdated public summary"
 				case "exit":
 					update.Kind, update.Text, update.native = "exit", "1", nil
 				case "receipt":

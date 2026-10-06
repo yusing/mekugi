@@ -1,6 +1,0 @@
-• Inspecting order for 2s
-  First checkpoint.
-  Second checkpoint.
-
-● main                                                                  08:00:02
-┃ Answer after reasoning.

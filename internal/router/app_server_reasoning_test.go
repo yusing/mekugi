@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
@@ -48,13 +47,13 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 	u.agents.only, u.agents.selected = false, "/root/worker"
 	main = ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
 	child = ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n"))
-	if strings.Count(main, "Final public main.") != 1 || strings.Count(child, "Final public child.") != 1 || strings.Contains(main+child, "PRIVATE") || strings.Contains(main+child, "Public main summary") {
+	if strings.Count(main, "• Complete") != 1 || strings.Count(child, "• Complete") != 1 || strings.Contains(main+child, "Final public") || strings.Contains(main+child, "PRIVATE") || strings.Contains(main+child, "Public main summary") {
 		t.Fatalf("completed summaries: main=%q, child=%q", main, child)
 	}
 	// A reused item ID in a new turn must not replace earlier summaries.
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "next", "itemId": "same-id", "delta": "Next public summary."})
 	main = ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
-	if !strings.Contains(main, "Final public main.") || !strings.Contains(main, "Next public summary.") {
+	if !strings.Contains(main, "• Complete") || !strings.Contains(main, "Next public summary.") || u.view.entries[0].Text != "**Complete**\n\nFinal public main." {
 		t.Fatalf("turn identity lost: %q", main)
 	}
 }
@@ -219,19 +218,18 @@ func TestAppServerProviderThinking(t *testing.T) {
 	// A route without a replayable summary completes with an empty one.
 	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "r1", "type": "reasoning", "summary": []string{}}})
 	// A sub-second block names no duration rather than "0s".
-	if got := feed(); !strings.Contains(got, "• Thought") || strings.Contains(got, "Thought for") || !strings.Contains(got, "First thought.") || strings.Contains(got, "Thinking…") {
+	if got := feed(); !strings.Contains(got, "• Thought") || strings.Contains(got, "Thought for") || strings.Contains(got, "First thought.") || strings.Contains(got, "Thinking…") {
 		t.Fatalf("completed thinking: %q", got)
 	}
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r2", "delta": "Interrupted thought."})
 	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "t", "status": "interrupted"}})
-	settleActivity(time.Now().Add(activityui.OutputDebounce), u.agents)
 	if got := feed(); strings.Contains(got, "Thinking…") || strings.Count(got, "• Thought") != 1 || strings.Count(got, "• Interrupted thought.") != 1 {
 		t.Fatalf("turn end left thinking live: %q", got)
 	}
 }
 
-// Finished long reasoning waits for a later event and the output debounce in
-// Main and Activity; a click opens it in the shared dialog.
+// Finished long reasoning folds immediately in Main and Activity;
+// a click opens it in the shared dialog.
 func TestAppServerThinkingFolds(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
@@ -246,17 +244,6 @@ func TestAppServerThinkingFolds(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			render := func() liveActivityFeed { return view.renderFeed(90, 40) }
 			plain := func(feed liveActivityFeed) string { return ansi.Strip(strings.Join(feed.lines, "\n")) }
-			if settleActivity(time.Now().Add(time.Hour), view) {
-				t.Fatal("reasoning collapsed before the next event")
-			}
-			thread := "main"
-			if view == u.agents {
-				thread = "child"
-			}
-			nextEvent(t, u, thread)
-			if settleActivity(time.Now(), view) || !settleActivity(time.Now().Add(activityui.OutputDebounce), view) {
-				t.Fatal("reasoning did not share output's delayed collapse")
-			}
 			feed := render()
 			if got := plain(feed); !strings.Contains(got, "• Reviewing") || strings.Contains(got, "Alpha.") {
 				t.Fatalf("finished thinking did not fold: %q", got)
@@ -400,12 +387,12 @@ func TestAppServerStartedSummarySettlesWithoutDelta(t *testing.T) {
 					reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
 				}
 				feed := view.renderFeed(90, 40)
-				if got := ansi.Strip(strings.Join(feed.lines, "\n")); strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Checking") || !strings.Contains(got, "Started public body.") {
+				if got := ansi.Strip(strings.Join(feed.lines, "\n")); strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Checking") || strings.Contains(got, "Started public body.") {
 					t.Fatalf("started summary did not settle: %s", got)
 				}
 				row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
-				if row >= 0 {
-					t.Fatal("fully shown started summary has a redundant detail target")
+				if row < 0 {
+					t.Fatal("folded started summary has no detail target")
 				}
 			}
 		})
@@ -452,6 +439,7 @@ func TestUISnapshotAppServerReasoningLifecycle(t *testing.T) {
 			{"heading", "**Checking tests**\n\n"},
 			{"hash-heading", "# Checking tests\n<!-- -->"},
 			{"long", "**Checking tests**\n\nFirst checkpoint.\n\nSecond checkpoint.\n\nThird checkpoint.\n\nFourth checkpoint."},
+			{"sections", "**Finalizing execution journal**\n\nFirst retained paragraph.\n\n**Preparing final renderings**\n\nLast retained paragraph."},
 		} {
 			t.Run(thread+"_"+tc.name, func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
@@ -481,9 +469,6 @@ func TestUISnapshotAppServerReasoningLifecycle(t *testing.T) {
 				snapshot("done")
 				reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "completed"}})
 				nextEvent(t, u, thread)
-				at = at.Add(activityui.OutputDebounce)
-				settleActivity(at, view)
-				snapshot("settled")
 				if len(u.session.thinking) != 0 || len(u.session.summaries) != 0 || len(view.entries) != 2 {
 					t.Fatalf("reasoning completion retained live state or duplicated entries: %+v", view.entries)
 				}

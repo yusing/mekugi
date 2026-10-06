@@ -31,7 +31,7 @@ func TestUISnapshotLiveActivitySharedEvents(t *testing.T) {
 				}
 				entries := []activityPaneEntry{
 					{Kind: "text", Text: "Journal\n- ◐ /1 Inspect shared rendering · working\n\n  Reviewing the same event presentation."},
-					{Kind: "reasoning", Text: "Checking final changes", native: &liveActivityNativeItem{collapsed: true}},
+					{Kind: "reasoning", Text: "Checking final changes"},
 					{Kind: "error", Text: "Provider request failed"},
 					{Kind: "error", Text: "Provider request failed", ErrorDetail: "Provider request failed\nThe server returned a distinct diagnostic."},
 					{Kind: "text", Text: "The same narrative event is now timestamped."},
@@ -243,7 +243,7 @@ func TestLiveActivityTruncatedReasoningHeading(t *testing.T) {
 							break
 						}
 					}
-					if hidden := !strings.Contains(ansi.Strip(strings.Join(feed.lines, "\n")), "UNIQUE_HIDDEN_SUFFIX"); hidden != (target.run != 0) {
+					if hidden := !live || !strings.Contains(ansi.Strip(strings.Join(feed.lines, "\n")), "UNIQUE_HIDDEN_SUFFIX"); hidden != (target.run != 0) {
 						t.Fatalf("heading elision=%t, detail target=%+v", hidden, target)
 					}
 					if target.run != 0 {

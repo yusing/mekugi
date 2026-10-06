@@ -397,7 +397,6 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				s.startThinking(key, native, now)
 			}
 			if m.Method == "item/completed" {
-				native.settled = now
 				if pending, ok := s.pendingThinking[p.ThreadID]; ok && s.thinking[key].IsZero() && strings.TrimSpace(text) != "" {
 					// A summary delivered only at completion still takes over the block.
 					delete(s.pendingThinking, p.ThreadID)
@@ -602,7 +601,7 @@ func (s *appServerSession) endThinking(thread string, now time.Time) []activityP
 			phase = "discarded"
 		}
 		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(thread), Kind: "reasoning", Text: text, CallID: key[2], Observed: now,
-			native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], phase: phase, thought: now.Sub(s.thinking[key]), settled: now, live: true}})
+			native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], phase: phase, thought: now.Sub(s.thinking[key]), live: true}})
 		delete(s.thinking, key)
 	}
 	return entries

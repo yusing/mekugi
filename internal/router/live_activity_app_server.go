@@ -169,7 +169,7 @@ type liveActivityNativeItem struct {
 	settled            time.Time              // Successful output stays open from then until its agent's next event.
 	changes            []activityui.ChangeRow // Change rows read from a successful change history, VCS read, or commit.
 	commit             gitCommitKey           // The commit object whose files complete changes.
-	collapsed          bool                   // A completed reasoning block, settled output, or restored block.
+	collapsed          bool                   // Settled output or a restored block.
 	spans              []activityui.TextSpan  // Attachment spans, not text resembling image labels.
 	question           uint64                 // Original user entry, retained even for a live journal publication.
 	thought            time.Duration          // Reasoning time from its start to completion.
@@ -230,7 +230,6 @@ func (v *liveActivityView) applyAppServerItem(live bool, cwd, main, thread, turn
 	} else {
 		switch item.Type {
 		case "reasoning":
-			entry.native.collapsed = method == "item/completed"
 			entry.Kind, entry.CallID, entry.Text = "reasoning", id, strings.Join(item.Summary, "\n\n")
 			if strings.TrimSpace(entry.Text) == "" {
 				return

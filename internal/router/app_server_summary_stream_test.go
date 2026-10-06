@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/livediff"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
@@ -57,18 +56,6 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			if len(u.session.summaries) != 0 || len(view.entries[0].blocks) != 2 || view.entries[0].blocks[0].Live || view.entries[0].blocks[1].Live || view.entries[0].blocks[0].Elapsed != "" || view.entries[0].blocks[1].Elapsed != "2s" {
 				t.Fatalf("section completion or item duration lost: %+v", view.entries)
 			}
-			if settleActivity(at.Add(time.Hour), view) {
-				t.Fatal("summary collapsed before a later event")
-			}
-			nextEvent(t, u, thread)
-			if settleActivity(at, view) {
-				t.Fatal("summary collapsed before events paused")
-			}
-			at = at.Add(activityui.OutputDebounce)
-			if !settleActivity(at, view) {
-				t.Fatal("summary did not collapse with the output debounce")
-			}
-			snapshot("collapsed")
 			// Each title opens only its own retained section, not the whole item.
 			feed := view.renderFeed(80, 40)
 			for i := range 2 {

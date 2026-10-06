@@ -144,7 +144,8 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 			if kind != "reasoning" && reading != -1 {
 				t.Fatalf("wait leaked into transcript:\n%s", text)
 			}
-			if end < 0 || kind == "reasoning" && (reading < end || strings.HasPrefix(plain[reading], "│")) {
+			waiting := slices.IndexFunc(plain, func(row string) bool { return strings.Contains(row, "Waiting on review") })
+			if end < 0 || kind == "reasoning" && (waiting < end || reading >= 0 || strings.HasPrefix(plain[waiting], "│")) {
 				t.Fatalf("reasoning is not after the thread:\n%s", text)
 			}
 			for i, row := range plain[:end+1] {
@@ -225,7 +226,7 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 		}
 		for i, body := range []string{"**First**\n\nOld body", "**Second**\n\nSecond body", "Latest body"} {
 			entry := activityPaneEntry{Seq: uint64(i + 1), Agent: agent, Kind: "reasoning", Text: body,
-				native: &liveActivityNativeItem{thread: "thread", turn: "turn", item: body, phase: "item/completed", collapsed: true, thought: 12 * time.Second}}
+				native: &liveActivityNativeItem{thread: "thread", turn: "turn", item: body, phase: "item/completed", thought: 12 * time.Second}}
 			v.appendEntry(entry, parseLiveActivity(entry))
 		}
 		feed := v.renderFeed(80, 40)

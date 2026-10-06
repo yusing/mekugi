@@ -160,13 +160,13 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		for i := range blocks {
 			block := &blocks[i]
 			if entry.native != nil {
-				block.Live = entry.native.phase == "summary" || entry.native.phase == "item/started"
-				block.Collapsed = entry.native.collapsed && block.Collapsible()
+				block.Live = i == len(blocks)-1 && (entry.native.phase == "summary" || entry.native.phase == "item/started")
 				// Duration belongs to the item, not to each detected section.
 				if i == len(blocks)-1 && entry.native.thought >= time.Second {
 					block.Elapsed = liveActivityAge(entry.native.thought)
 				}
 			}
+			block.Collapsed = block.Collapsible()
 		}
 		return blocks
 	case "native_journal":

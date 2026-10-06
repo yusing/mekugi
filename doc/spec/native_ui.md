@@ -1123,10 +1123,9 @@ streaming and collapsed header. Untitled longer summaries use `• Thinking…`
 while streaming and `• Thought` after completion. The latest three body rows
 remain visible, with `· +N lines` counting the rows above them.
 Summary bursts roll through at the command-output cadence, retaining their
-original Markdown. Completion waits until queued text has been shown, then
-keeps the body open until the same agent's next standalone event and the shared
-output debounce. Eligible summaries and command outputs collapse together when
-events pause. An observed item duration is shown on its last section only,
+original Markdown. Earlier sections fold as soon as the next section starts.
+Item completion folds the final section immediately after queued text has been
+shown. An observed item duration is shown on its last section only,
 not attributed separately to each section. Each forwarded request to a provider
 that streams untitled reasoning shows `• Thinking…` from the request start, so the wait for the
 first delta is not silent; the request's first reasoning item takes over that block.
@@ -1147,9 +1146,9 @@ Late deltas cannot reopen completed items. Text appears only when
 the host supplies a public summary; raw and encrypted reasoning are not a
 substitute for summaries delivered late or only at completion.
 
-Successful output eligible to fold shares one debounce deadline across Main and Activity,
+Successful command output eligible to fold shares one debounce deadline across Main and Activity,
 including late completions, so it collapses in a single screen update rather than
-one result at a time. An agent's latest output remains open until later activity.
+one result at a time. An agent's latest command output remains open until later activity.
 
 Main and Activity follow new transcript content until manual scrollback or an
 explicit jump to earlier content. Opening or closing Live/Diff, resizing, and
