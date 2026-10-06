@@ -22,6 +22,9 @@ func fixtureShell(name string) (string, error) {
 			return "", err
 		}
 		if path, err := exec.LookPath(candidate); err == nil {
+			if resolved, err := filepath.EvalSymlinks(path); err == nil && filepath.Base(resolved) == "mise" {
+				continue
+			}
 			return path, nil
 		}
 	}

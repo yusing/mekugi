@@ -45,8 +45,11 @@ func guardCommand(directory, name, explicit, argv0 string, defaultPath bool, arg
 		return 127
 	}
 	argv := append([]string{name}, args...)
+	environment := guardEnvironment(real)
 	lookup := func(globals []string, alias string) (string, bool) {
-		output, err := exec.Command(real, slices.Concat(globals, []string{"config", "--get", "alias." + alias})...).Output()
+		cmd := exec.Command(real, slices.Concat(globals, []string{"config", "--get", "alias." + alias})...)
+		cmd.Env = environment
+		output, err := cmd.Output()
 		if err != nil {
 			return "", false
 		}
@@ -58,9 +61,46 @@ func guardCommand(directory, name, explicit, argv0 string, defaultPath bool, arg
 			return 1
 		}
 	}
-	err = unix.Exec(real, append([]string{argv0}, args...), os.Environ())
+	err = unix.Exec(real, append([]string{argv0}, args...), environment)
 	fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
 	return 126
+}
+
+// Mise's system fallback must skip the guard that dispatched its shim, not
+// dispatch back to it. Its active-shim identity excludes that executable while
+// preserving the guarded PATH for the real command and its children.
+func guardEnvironment(real string) []string {
+	environment := os.Environ()
+	resolved, err := filepath.EvalSymlinks(real)
+	if err != nil || resolved == real || filepath.Base(resolved) != "mise" {
+		return environment
+	}
+	helper, err := os.Executable()
+	if err != nil {
+		return environment
+	}
+	const key = "__MISE_SHIM_PATH="
+	// An inherited guard can use a different helper binary. Mise can exclude
+	// one executable identity, so keep this session's guard and remove only
+	// other guard directories from the shim's invocation-local PATH.
+	self, err := os.Stat(helper)
+	if err != nil {
+		return environment
+	}
+	for i, entry := range environment {
+		if path, ok := strings.CutPrefix(entry, "PATH="); ok {
+			paths := slices.DeleteFunc(filepath.SplitList(path), func(directory string) bool {
+				if filepath.Base(directory) != vcsguard.Directory {
+					return false
+				}
+				info, err := os.Stat(filepath.Join(directory, filepath.Base(real)))
+				return err == nil && !os.SameFile(info, self)
+			})
+			environment[i] = "PATH=" + strings.Join(paths, string(os.PathListSeparator))
+		}
+	}
+	environment = slices.DeleteFunc(environment, func(entry string) bool { return strings.HasPrefix(entry, key) })
+	return append(environment, key+helper)
 }
 
 // guardPaths finds the guard directory, which holds this executable under

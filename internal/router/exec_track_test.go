@@ -68,6 +68,11 @@ func execTrackShellExecutable(t *testing.T, name string) string {
 			t.Fatal(err)
 		}
 		if path, err := exec.LookPath(candidate); err == nil {
+			// These fixtures need the native interpreter. A mise shim can
+			// redispatch through the fixture's guard and rewrite its script.
+			if resolved, err := filepath.EvalSymlinks(path); err == nil && filepath.Base(resolved) == "mise" {
+				continue
+			}
 			return path
 		}
 	}

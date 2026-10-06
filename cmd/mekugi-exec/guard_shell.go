@@ -61,7 +61,7 @@ func guardShell(directory, target, argv0 string, defaultPath bool, args []string
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := unix.Exec(real, append([]string{argv0}, args...), os.Environ()); err != nil {
+	if err := unix.Exec(real, append([]string{argv0}, args...), guardEnvironment(real)); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}
 	return 126

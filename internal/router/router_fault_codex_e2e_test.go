@@ -17,6 +17,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 type routerFaultCodexProvider struct {
@@ -137,8 +139,11 @@ func routerFaultCodexEnvironment(t *testing.T) []string {
 	environment := make([]string, 0, len(os.Environ())+2)
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if key == "CODEX_HOME" || key == "XDG_CONFIG_HOME" || key == "BASH_ENV" {
+		if key == "CODEX_HOME" || key == "XDG_CONFIG_HOME" || key == "BASH_ENV" || key == vcsguard.HookEnvironment {
 			continue
+		}
+		if key == "PATH" {
+			entry = "PATH=" + execTrackPath()
 		}
 		environment = append(environment, entry)
 	}

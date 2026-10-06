@@ -405,7 +405,8 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			defer proxy.execWindows.close("cell")
 			item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
-			cmd := exec.CommandContext(t.Context(), "env", "-u", "BASH_ENV", "bash", "-c", script)
+			cmd := exec.CommandContext(t.Context(), execTrackShellExecutable(t, "bash"), "-c", script)
+			cmd.Env = append(os.Environ(), "PATH="+execTrackPath(), "BASH_ENV=")
 			cmd.Dir = workspace
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("edit failed: %v: %s", err, out)
