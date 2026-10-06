@@ -55,10 +55,11 @@ strip counts only the presented journal's own tasks.
 
 Native Main and Activity use the same rich journal event and work-report rendering,
 while retaining independent pane navigation and the shared detail/copy dialog.
-Native Main receives event rows after persistence. Adjacent rows share one `journal`
-item: a state glyph colored by state, the dim path, the title and the change, one node
-per row, wrapped under the title. A row's time shows only where it differs from the
-row above. A row with a body opens it on click. Notes are rows only while the
+Native Main receives flat event rows after persistence, without a journal heading
+or nested rail. Task rows retain their colored state glyph, dim path, title and
+change; notes retain their diamond-led content. Wrapped rows align under the content.
+A row's time shows only where it differs from the row above and fits the width.
+A row with a body opens its full details on click. Notes are rows only while the
 Journal pane is hidden; blocked task rows remain visible. Successful terminal delivery
 publishes a separate work-report card only when non-answer events remain unacknowledged
 or mounted-journal diagnostics need to be shown. Captured answers and unchanged open
@@ -81,7 +82,10 @@ identity. Substantive answers and their reply context use the ordinary conversat
 renderer, independently of the card. The Journal pane restores its
 current tree from durable storage independently of provider requests.
 
-Retained v1 publications retain their milestone and grouped-answer presentation.
+Retained v1 Main milestones are diamond-led content without a separate journal
+heading or rail; grouped answers retain their presentation. Child journal previews
+use the normal agent group described in [activity presentation](activity_display.md),
+while retaining the full source for details and copying.
 The authenticated mutation path publishes native Main milestones after persistence,
 including those without `report_now`, even without an open provider response.
 The frontend applies pending milestones before later host events and preserves

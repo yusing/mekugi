@@ -346,7 +346,7 @@ func trafficAgent(entry activityPaneEntry, block activityui.Block) string {
 		agent = block.To
 	case block.Kind == "message":
 		agent = block.From
-	case block.Kind == "final" || block.Kind == "error":
+	case block.Kind == "final" || block.Kind == "error" || block.Kind == "journal":
 	default:
 		return ""
 	}
@@ -415,11 +415,11 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	entryRows := make(map[uint64]int)
 	p := &v.painter
 	switch {
-	case len(blocks) == 1 && blocks[0].Kind == "journal":
+	case entry.Agent == "Main" && len(blocks) == 1 && blocks[0].Kind == "journal":
 		laid = blocks
 		entryRows[entry.Seq] = 0
-		v.milestoneItem(&out, entry, []string{blocks[0].Body}, width)
-		for i := 1; i < len(out.lines); i++ {
+		v.milestoneItem(&out, entry, []string{journalActivityBody(blocks[0].Body, false)}, width)
+		for i := 0; i < len(out.lines); i++ {
 			for state, glyph := range journalGlyphs {
 				out.lines[i] = strings.ReplaceAll(out.lines[i], glyph+" ", journalStateColor(p.Theme, state)+glyph+activityui.Reset+" ")
 			}
@@ -574,27 +574,12 @@ func mainGutter(p *activityui.Painter) string {
 	return p.Theme.Accent() + "┃" + activityui.Reset + " "
 }
 
-// milestoneItem labels journal milestones as such, under the accent gutter,
-// so progress notes cannot be mistaken for Main's replies.
+// milestoneItem shows journal milestones as flat diamond-led content.
 func (v *liveActivityView) milestoneItem(out *conversationLines, entry activityPaneEntry, milestones []string, width int) {
-	accent := v.painter.Theme.Accent()
-	detail := ""
-	if entry.Agent != "Main" {
-		detail = v.painter.Agent(entry.Agent)
-	}
-	out.add(0, conversationHeading(accent+"◆"+activityui.Reset, "\x1b[1m"+accent+"journal"+activityui.Reset, detail, entry, width))
-	gutter := accent + "│" + activityui.Reset + " "
+	lead := v.painter.Theme.Accent() + "◆" + activityui.Reset + " "
 	for _, text := range milestones {
-		body := width - 4
-		if len(milestones) == 1 {
-			body = width - 2
-		}
-		rows := v.paintBlock(len(out.lines), 0, func() []string { return v.painter.Markdown(text, body) })
-		if len(milestones) == 1 {
-			out.hang(gutter, gutter, rows)
-			continue
-		}
-		out.hang(gutter+"• ", gutter+"  ", rows)
+		rows := v.paintBlock(len(out.lines), 0, func() []string { return v.painter.Markdown(text, max(1, width-2)) })
+		out.hang(lead, "  ", rows)
 	}
 }
 
@@ -726,6 +711,14 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 	}
 	body := width - 2
 	switch {
+	case block.Kind == "journal":
+		rows := v.paintBlock(len(out.lines), 0, func() []string { return p.Markdown(journalActivityBody(block.Body, true), body) })
+		out.hang(gutter, gutter, rows)
+		if block.Body != journalActivityBody(block.Body, true) {
+			for i := len(out.lines) - len(rows); i < len(out.lines); i++ {
+				out.snippets[i] = liveActivitySnippet{run: entry.Seq, block: 0}
+			}
+		}
 	case !v.conversation && block.Kind == "final":
 		block.Flash = v.flashQuestion == entry.Seq && v.now().Before(v.flashUntil)
 		out.hang(gutter, gutter, v.paintBlock(len(out.lines), 5, func() []string { return p.Event(block, body) }))

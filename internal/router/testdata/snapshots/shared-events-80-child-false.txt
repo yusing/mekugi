@@ -1,7 +1,5 @@
-◆ journal                                                               12:34:56
-│ • ◐ /1 Inspect shared rendering · working
-│ 
-│   Reviewing the same event presentation.
+◆ ◐ /1 Inspect shared rendering · working
+  Reviewing the same event presentation.
 
 • Checking final changes
 

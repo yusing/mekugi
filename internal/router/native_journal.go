@@ -1047,19 +1047,15 @@ func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, 
 	return rows, journalCardFacts(changed, open, expand)
 }
 
-// journalEventsItem shows adjacent journal changes as one journal item: a
-// heading, then each task change or note on its own row under the journal
-// gutter. A row's time shows only where it differs from the row above.
+// journalEventsItem shows adjacent journal changes as flat rows.
+// A row's time shows only where it differs from the row above.
 func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last, width int) ([]activityui.Block, map[uint64]int) {
 	p := &v.painter
-	accent := p.Theme.Accent()
 	head := v.entries[first].activityPaneEntry
-	out.add(0, conversationHeading(accent+"◆"+activityui.Reset, "\x1b[1m"+accent+"journal"+activityui.Reset, "", head, width))
-	gutter := accent + "│" + activityui.Reset + " "
-	body := max(1, width-2)
+	body := max(1, width)
 	var laid []activityui.Block
 	entryRows := make(map[uint64]int)
-	stamp := head.Observed.Local().Format("15:04")
+	stamp := ""
 	for k := first; k <= last; k++ {
 		entry := v.entries[k].activityPaneEntry
 		if !v.visible(entry) || entry.Kind != "journal_event" {
@@ -1097,7 +1093,7 @@ func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last
 			if entry.native != nil && entry.native.recovery != "" && v.snippet == snippet {
 				line = activityui.Underline(line)
 			}
-			out.add(0, gutter+line)
+			out.add(0, line)
 			out.snippets[len(out.snippets)-1] = snippet
 		}
 	}

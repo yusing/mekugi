@@ -1,7 +1,7 @@
 ┌ 1 Main ────────────────────────────────────────────────────────────┐┌ 5 Journal · workspace · ◐ 1 ───────────────────────────────────────┐
-│◆ journal                                                  08:00:01 ││ ▾ ◐ /1 Scoped parent                                        08:00  │
-││ ◐ /1 Scoped parent · started                                      ││   ▾ ⎇ bound · finished                                      08:00  │
-││ ◐ /1 Unscoped parent · started                                    ││     ▾ ◐ /1 Scoped bound task                                08:00  │
+│◐ /1 Scoped parent · started                                  08:00 ││ ▾ ◐ /1 Scoped parent                                        08:00  │
+│◐ /1 Unscoped parent · started                                      ││   ▾ ⎇ bound · finished                                      08:00  │
+│                                                                    ││     ▾ ◐ /1 Scoped bound task                                08:00  │
 │                                                                    ││       └ · Scoped bound outcome                              08:00  │
 │                                                                    ││ ▾ ⎇ Agents                                                         │
 │                                                                    ││   ▾ ⎇ unbound · finished                                    08:00  │

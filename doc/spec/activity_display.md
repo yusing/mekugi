@@ -402,9 +402,14 @@ The viewport moves only when selection leaves it, not to recenter each selection
 The separate roster header omits feed follow state; the feed header is `ACTIVITY`
 with its filter and follow state. Feed-only controls do not offer clicking agents.
 Narrative events use Main’s shared colored event headings, timestamps, and rails;
-child journal messages use the same accent diamond and journal rail. Available
-timestamps show only where they fit, and unknown timestamps stay absent. Consecutive
-operations and reasoning still group by agent under a colored heading. Narrative
+available timestamps show only where they fit, and unknown timestamps stay absent.
+Child journal updates join adjacent operations and reasoning under the normal
+colored agent heading, without a separate journal heading or nested journal rail.
+Their previews remove the generated outer list indentation once. A task body
+replaces its state/path/title summary; without a body, the preview retains the state
+and title but omits the path. Authored lists and code retain their formatting.
+The original message remains the detail and copy source, including omitted task
+summaries. Consecutive operations and reasoning still group by agent. Narrative
 previews keep up to five body rows below their heading, including in single-agent
 mode; longer content ends with a hidden-row hint.
 Operation source and output each keep up to five rows without clipping their status. Hovering a clipped

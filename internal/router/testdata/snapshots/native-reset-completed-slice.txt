@@ -1,10 +1,10 @@
-◆ journal                                                                                  20:00:00
-│ ◐ /1 First · started
-│ ○ /2 Second · added
-│ ● /1 First · done · 0s
-│ ◆ ↻ Context reset from journal · 0 provider tokens ›
+◐ /1 First · started                                                                          20:00
+○ /2 Second · added
+● /1 First · done · 0s
+◆ ↻ Context reset from journal · 0 provider tokens ›
 
 • Context compacted
+
 
 
 

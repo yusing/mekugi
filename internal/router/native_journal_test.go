@@ -528,16 +528,16 @@ func TestNativeJournalTranscriptGroupsAdjacentChanges(t *testing.T) {
 		}
 	}
 	text := strings.Join(plain, "\n")
-	if strings.Count(text, "◆ journal") != 1 || strings.Contains(text, "\n\n") {
+	if strings.Contains(text, "journal") || strings.Contains(text, "\n\n") {
 		t.Fatalf("adjacent changes did not share one compact item:\n%s", text)
 	}
-	for _, want := range []string{"│ ◐ /3 activity-dialogs · started", "│ ○ /7 Integrate batches and validate · added", "│ ⚠ /4 shell-boundaries · blocked", "│ ◆ Change-records"} {
+	for _, want := range []string{"◐ /3 activity-dialogs · started", "○ /7 Integrate batches and validate · added", "⚠ /4 shell-boundaries · blocked", "◆ Change-records"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q:\n%s", want, text)
 		}
 	}
 	noteRow := slices.IndexFunc(plain, func(row string) bool { return strings.Contains(row, "◆ Change-records") })
-	if next := plain[noteRow+1]; !strings.HasPrefix(next, "│   ") {
+	if next := plain[noteRow+1]; !strings.HasPrefix(next, "  ") {
 		t.Fatalf("wrapped note did not hang under its text: %q", next)
 	}
 	snippet := feed.snippets[noteRow]

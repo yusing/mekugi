@@ -59,6 +59,39 @@ func commandTimingIsCompound(blocks []activityui.Block, entry activityPaneEntry)
 	return compound
 }
 
+// journalActivityBody removes the generated list wrapper from journal updates.
+// A child's task body replaces its summary row; a body-free update keeps its
+// title and state. The original block remains the detail and copy source.
+func journalActivityBody(body string, child bool) string {
+	var items []string
+	for _, item := range strings.Split(strings.TrimPrefix(body, "- "), "\n- ") {
+		title, detail, _ := strings.Cut(item, "\n")
+		rows := strings.Split(detail, "\n")
+		for i := range rows {
+			rows[i] = strings.TrimPrefix(rows[i], "  ")
+		}
+		detail = strings.Trim(strings.Join(rows, "\n"), "\n")
+		parts := strings.SplitN(title, " ", 3)
+		if child && len(parts) == 3 && strings.HasPrefix(parts[1], "/") {
+			for _, glyph := range journalGlyphs {
+				if parts[0] == glyph {
+					if strings.TrimSpace(detail) != "" {
+						title = ""
+					} else {
+						title = parts[0] + " " + parts[2]
+					}
+					break
+				}
+			}
+		}
+		if title != "" && detail != "" {
+			title += "\n"
+		}
+		items = append(items, title+detail)
+	}
+	return strings.Join(items, "\n\n")
+}
+
 func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 	defer func() {
 		// An unsupported batch has one host clock, not a clock per classified

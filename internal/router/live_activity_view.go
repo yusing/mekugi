@@ -1606,13 +1606,16 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		// Native Activity joins consecutive operations into one tree.
 		tree := v.childrenOnly && operation(block) && !continued(block)
 		toggle := v.clickTarget(&block, liveActivitySnippet{run: first, block: index}, width-2)
+		if block.Kind == "journal" && journalActivityBody(block.Body, true) != block.Body {
+			toggle = true // The omitted task row remains available in the dialog.
+		}
 		if operation(block) {
 			block.SourceRows = 5
 			if block.TailRows == 0 || block.TailRows > 5 {
 				block.TailRows = 5
 			}
 		}
-		message := slices.Contains([]string{"text", "message", "final", "summary", "start"}, block.Kind)
+		message := slices.Contains([]string{"text", "message", "final", "summary", "start", "journal"}, block.Kind)
 		// Reasoning heads the operations after it, so no gap parts them.
 		headed := previousSummary && operation(block)
 		gap := len(run.lines) > 1 && (message || previousMessage) && !headed
@@ -1626,6 +1629,8 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		} // Source and output have separate budgets.
 		part := v.paintBlock(start, limit, func() []string {
 			switch {
+			case block.Kind == "journal":
+				return v.painter.Flash(block, v.painter.Markdown(journalActivityBody(block.Body, true), width-2))
 			case tree:
 				return v.painter.Event(block, width-4)
 			case v.childrenOnly:
