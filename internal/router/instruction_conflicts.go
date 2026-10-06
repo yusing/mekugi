@@ -2,10 +2,15 @@ package router
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
-// One exact-phrase rewrite handles current stock-prompt conflicts in the
+// Match Codex's uninstalled-plugin advertisement, not caller-authored plugin
+// policy. Names and IDs come from the host's current recommendation list.
+var stockRecommendedPlugins = regexp.MustCompile(`(?m)^<recommended_plugins>\r?\nHere is a list of plugins that are available but not installed\.\r?\n\r?\n(?:- [^\r\n<>]+ \([^\r\n<>]+\)\r?\n)+</recommended_plugins>(\r?)$`)
+
+// Exact stock-fragment rewrites handle current stock-prompt conflicts in the
 // request's instruction carriers, excluding fenced examples. Frontend
 // descriptions remain registry-owned.
 func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
@@ -32,6 +37,20 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 	for i := range pairs {
 		pairs[i] = "\n" + pairs[i] + "\n"
 	}
+	// These stock paragraphs mix useful policy with a commentary directive.
+	// Match the complete paragraph so caller-added qualifications remain intact.
+	for _, paragraph := range []struct{ source, remove string }{
+		{
+			"The user gets very frustrated when you stop and ask for confirmation or permission, so make sure to explicitly explain why you need the confirmation (for example, a SKILL.md, AGENTS.md, memory, or approval auto-review block) and where it came from. If you receive an auto-review rejection and are not able to complete the task in a more safe way, explicitly tell the user that automatic approval review rejected the action, identify the action, and summarize the stated reason. Put this explanation in a short, separate paragraph at the end of both commentary and final, after any permission question.",
+			" Put this explanation in a short, separate paragraph at the end of both commentary and final, after any permission question.",
+		},
+		{
+			"The user may send a new message while you are still working. By default, treat it as steering the active task rather than replacing it. Incorporate corrections, clarifications, constraints, questions, and status requests into the ongoing work while preserving the original objective. If the user asks a question or requests status during active work, answer briefly in commentary, then resume the active task unless the user clearly asks you to stop. Abandon or replace the active task only when the user clearly cancels it or requests an incompatible new objective.",
+			" in commentary",
+		},
+	} {
+		pairs = append(pairs, "\n"+paragraph.source+"\n", "\n"+strings.ReplaceAll(paragraph.source, paragraph.remove, "")+"\n")
+	}
 	// Rewrite the pinned wait conflict without changing caller-added
 	// qualifications. Newlines restrict these replacements to whole physical lines.
 	for _, pair := range [][2]string{
@@ -41,6 +60,7 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 	}
 	// Remove complete stock progress lines, preserving caller qualifications.
 	for _, line := range []string{
+		"<multi_agent_mode>Any earlier instruction enabling proactive multi-agent delegation no longer applies. Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask for sub-agents, delegation, or parallel agent work.</multi_agent_mode>",
 		"- You yield back to the user and end your turn by sending a final message to the `final` channel.",
 		"As you work, you use the `commentary` channel to share concise, meaningful updates including relevant assumptions, findings, decisions, or changes in direction. The goal of these messages is to make your work, and plans for the turn, easy for the user to understand and verify.",
 		"As you work, you send messages to the `commentary` channel. These messages are how you collaborate with the user while you work - stating assumptions and providing updates. These messages should be concise and quickly scannable. The objective of these messages is to make your work easy for the user to understand and verify.",
@@ -55,6 +75,11 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 	replacer := strings.NewReplacer(pairs...)
 	rewriteText := func(source string) string {
 		var output strings.Builder
+		var plain strings.Builder
+		flushPlain := func() {
+			output.WriteString(stockRecommendedPlugins.ReplaceAllString(plain.String(), "$1"))
+			plain.Reset()
+		}
 		var fence byte
 		var fenceWidth int
 		for line := range strings.SplitAfterSeq(source, "\n") {
@@ -79,13 +104,15 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 				fence = 0
 			}
 			if fenced {
+				flushPlain()
 				output.WriteString(line)
 				continue
 			}
 			framed := replacer.Replace("\n" + content + "\n")
-			output.WriteString(strings.TrimSuffix(strings.TrimPrefix(framed, "\n"), "\n"))
-			output.WriteString(line[len(content):])
+			plain.WriteString(strings.TrimSuffix(strings.TrimPrefix(framed, "\n"), "\n"))
+			plain.WriteString(line[len(content):])
 		}
+		flushPlain()
 		return output.String()
 	}
 	if original, ok := decodeJSONString(request.fields["instructions"]); ok {

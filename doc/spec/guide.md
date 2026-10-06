@@ -9,11 +9,14 @@ inspect `model_instructions_file`, or create or modify instruction files. It doe
 retired shell carrier, HPATCH, hash-target editing, or CTP instructions.
 
 Exact inherited stock progress conflicts are deleted, and the pinned wait conflict is
-rewritten in top-level instructions and developer text parts. Unrelated policy,
+rewritten in top-level instructions and developer text parts. Pinned stock paragraphs lose
+their commentary directives while retaining permission and task-steering policy. The exact
+stock explicit-request-only delegation restriction and complete stock uninstalled-plugin
+advertisements are removed; custom delegation and plugin policy remain intact. Unrelated policy,
 system messages, user content, non-text parts, and fenced examples remain unchanged. Rewriting is
 idempotent and model-independent. Execution-free requests retain their native guidance.
 The pinned short-wait fragment yields to completion notifications or interruptible waits.
-These changes match complete lines and preserve caller-added qualifications. Planning
+Stock line and paragraph matches preserve caller-added qualifications. Planning
 guidance is not rewritten: invocation-local Codex flags disable the plan tool and
 collaboration-mode instructions.
 

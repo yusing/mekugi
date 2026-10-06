@@ -9,6 +9,56 @@ import (
 	"testing"
 )
 
+// Excerpts from codex-ab-j4Wjye's retained stock instruction records.
+func recordedInstructionCleanup(t *testing.T) (string, string) {
+	t.Helper()
+	read := func(name string) string {
+		t.Helper()
+		text, err := os.ReadFile(filepath.Join("testdata", "instruction-cleanup", name+".txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(text)
+	}
+	// Removed blocks leave three additional line separators after the policy.
+	return read("stock"), read("projected") + "\n\n\n"
+}
+
+func TestRecordedInstructionCleanupBoundaries(t *testing.T) {
+	stock, projected := recordedInstructionCleanup(t)
+	for _, newline := range []string{"\n", "\r\n"} {
+		source, want := strings.ReplaceAll(stock, "\n", newline), strings.ReplaceAll(projected, "\n", newline)
+		// Keep qualifications, malformed wrappers, and quoted examples intact.
+		var preserved strings.Builder
+		paragraphs, plugins, _ := strings.Cut(stock, "\n\n<recommended_plugins>")
+		for _, fragment := range append(strings.Split(paragraphs, "\n\n"), "<recommended_plugins>"+plugins) {
+			preserved.WriteString(newline + strings.ReplaceAll(fragment, "\n", newline) + " Caller qualification." + newline)
+		}
+		preserved.WriteString("<multi_agent_mode>Follow project delegation policy.</multi_agent_mode>" + newline + "<recommended_plugins>" + newline + "Caller plugin policy" + newline + "</recommended_plugins>" + newline)
+		preserved.WriteString("~~~text" + newline + source + newline + "~~~" + newline + "<recommended_plugins>" + newline + "custom policy")
+		source += preserved.String()
+		want += preserved.String()
+		request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+			"instructions": mustMarshalJSON(source),
+			"input": mustMarshalJSON([]any{
+				map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": source}}},
+			}),
+		}}
+		if err := rewriteRequestInstructionConflicts(&request); err != nil {
+			t.Fatal(err)
+		}
+		if got := jsonString(request.fields, "instructions"); got != want {
+			t.Fatalf("instruction cleanup differs from recorded projection for newline %q", newline)
+		}
+		wantInput := mustMarshalJSON([]any{
+			map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": want}}},
+		})
+		if !sameJSONValue(request.fields["input"], wantInput) {
+			t.Fatal("developer cleanup changed retained policy")
+		}
+	}
+}
+
 func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 	const progress = "As you work, you send messages to the `commentary` channel."
 	const planOnly = "Use the `request_user_input` tool only when it is listed in the available tools for this turn."
