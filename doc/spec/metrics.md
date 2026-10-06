@@ -99,8 +99,7 @@ the recorder, never reconstructed from a previous launch.
 one provider request and stops when the response bytes containing its first terminal
 usage observation are read, including request latency and automatic transport retries,
 excluding local preparation, post-response delivery, tools and idle time between
-requests. Measured throughput and live estimates use the receipt time of their
-corresponding response bytes:
+requests. Measured throughput uses the receipt time of those response bytes:
 local transformation, capture, and downstream delivery of already-read output MUST NOT
 lengthen their durations. Unread transport buffering and backpressure remain part of
 the observed provider-request duration; this is not provider-only generation speed.
@@ -113,24 +112,21 @@ of request rates or session wall-clock duration. Unmeasured requests contribute 
 neither sum. Coverage is the measured-request count and summed duration. Measurements
 are attached to the usage-bearing attempt and remain cumulative after detail eviction.
 
-Main's composer and child-agent roster rows display the latest started forwarded
-provider request's updates, not the user/app-server turn's rate. Main's output
+Main's composer and child-agent roster rows display provider-measured total output
+throughput for forwarded requests, not the user/app-server turn's rate. Main's output
 rate MUST appear only in its composer, never in its roster row. The last valid
-rate MUST remain visible across new requests and missing terminal measurements.
-Live estimates MUST carry a `~` prefix. They estimate emitted message text,
-function-call arguments, custom-tool input, and visible reasoning over elapsed
-provider-request time, including request latency. Reasoning-only estimates MUST
-wait until the request has lasted at least one second and emitted at least 32
-estimated tokens. Hidden reasoning cannot be estimated from visible text.
-Authoritative terminal usage MUST replace the estimate and includes provider-counted
-reasoning. Estimates MUST NOT contribute to provider usage, cost estimates, or
-session averages. Late emissions or terminal measurements from older requests
-MUST NOT replace the newest-started request's display updates.
+rate MUST remain visible while streaming, across new requests and missing terminal
+measurements, until a newer valid terminal measurement arrives. Throughput MUST
+remain absent before the first valid measurement. Local visible-output TPS estimates
+MUST NOT be displayed: visible streaming excludes hidden reasoning and cannot stand
+in for provider-counted total output. Authoritative terminal usage includes
+provider-counted reasoning. Terminal measurements from older requests MUST NOT
+replace the newest-started request's display updates.
 
 Only authoritative paired token-and-duration measurements restore by stable
-thread identity through the existing usage record. Live estimates MUST NOT be
-persisted or restored; restoration never revives an in-flight stopwatch. Old
-records without timing leave throughput absent. `/session` retains its existing
+thread identity through the existing usage record; restoration never revives an
+in-flight stopwatch. Old records without timing leave throughput absent.
+`/session` retains its existing
 all-threads-in-this-launch scope and authoritative average calculation.
 
 

@@ -35,7 +35,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Per-thread token/cost reports and final-answer stream ordering | `internal/router/thread_usage.go`, `internal/router/token_cost.go`, `internal/router/final_answer_stream.go` |
 | Codex-facing WebSocket sessions, incremental history, and steering | `internal/router/server_websocket.go` |
 | Codex authentication and upstream Responses transport | `internal/router/client.go`, `internal/router/client_websocket.go` |
-| Live output estimates and response-byte receipt timing | `internal/router/output_throughput.go`, `internal/router/thread_usage_store.go`, `internal/router/stream_diagnostics.go`; capture snapshots remain in `capturer` |
+| Provider-measured output throughput and response-byte receipt timing | `internal/router/output_throughput.go`, `internal/router/thread_usage_store.go`, `internal/router/stream_diagnostics.go`; capture snapshots remain in `capturer` |
 | Stock tool preservation and response observation | `internal/router/mekugi_proxy.go`, `internal/router/mekugi_response_transform.go`, `internal/router/native_apply_patch.go` |
 | Model-visible duplicate output references | `internal/router/output_dedupe.go`; content matching in `internal/outputdedupe`; provider-prefix reuse in `internal/router/provider_history.go` |
 | Shell segment reports and measured command timing | `internal/execsegment`, `cmd/mekugi-exec`, `internal/router/exec_track.go`; isolated shell fixtures in `internal/router/exec_track_test.go`, sandbox acceptance in `internal/router/app_server_exec_track_codex_e2e_test.go` |

@@ -1,6 +1,5 @@
-─ 4 Agents · 5 ─────────────────────
+─ 4 Agents · 4 ─────────────────────
  ✓ main      done                  
  ● ├ fast    idle                   
- ● ├ live    idle                  
  ● ├ zero    idle                  
  ● └ absent  idle                  

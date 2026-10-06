@@ -29,15 +29,14 @@ type threadUsage struct {
 }
 
 type threadUsageTotal struct {
-	outputEstimate float64 // Live display only, never provider usage or retained accounting.
-	roundOutput    providerRoundOutput
-	cost           tokenCost
-	counts         tokenCounts
-	complete       bool
-	missingUsage   uint64
-	roundtrips     uint64
-	models         []string
-	priorUnknown   bool
+	roundOutput  providerRoundOutput
+	cost         tokenCost
+	counts       tokenCounts
+	complete     bool
+	missingUsage uint64
+	roundtrips   uint64
+	models       []string
+	priorUnknown bool
 }
 
 type threadUsageObservation struct {
@@ -136,21 +135,9 @@ func usageTotalReport(total *threadUsageTotal) (tokenUsageReport, bool) {
 		return tokenUsageReport{}, false
 	}
 	if !total.complete {
-		return tokenUsageReport{roundtrips: total.roundtrips, priorUnknown: total.priorUnknown, roundOutput: total.roundOutput, outputEstimate: total.outputEstimate}, false
+		return tokenUsageReport{roundtrips: total.roundtrips, priorUnknown: total.priorUnknown, roundOutput: total.roundOutput}, false
 	}
-	return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage, priorUnknown: total.priorUnknown, roundtrips: total.roundtrips, roundOutput: total.roundOutput, outputEstimate: total.outputEstimate}, true
-}
-
-func (o *threadUsageObservation) observeOutputEstimate(rate float64) {
-	if o == nil || o.totals == nil || rate <= 0 {
-		return
-	}
-	u := o.totals
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	if total := u.threads[o.thread]; !u.closed && total != nil && total.roundOutput.StartedUnixNano == o.started.UnixNano() {
-		total.outputEstimate = rate
-	}
+	return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage, priorUnknown: total.priorUnknown, roundtrips: total.roundtrips, roundOutput: total.roundOutput}, true
 }
 
 func (u *threadUsage) snapshot(thread string) (tokenUsageReport, bool) {

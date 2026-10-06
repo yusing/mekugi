@@ -109,7 +109,6 @@ func (u *threadUsage) loadLocked(thread string) {
 func mergeThreadUsageTotal(total, delta *threadUsageTotal) {
 	if delta.roundOutput.StartedUnixNano > 0 && delta.roundOutput.StartedUnixNano >= total.roundOutput.StartedUnixNano {
 		total.roundOutput.StartedUnixNano = delta.roundOutput.StartedUnixNano
-		total.outputEstimate = 0
 		if _, known := delta.roundOutput.Throughput.Rate(); known {
 			total.roundOutput.Throughput = delta.roundOutput.Throughput
 		}
@@ -272,9 +271,6 @@ func (u *threadUsage) runWriter(ctx context.Context) {
 				pending.baseline = *retained
 				pending.baseline.models = slices.Clone(retained.models)
 				mergeThreadUsageTotal(retained, pending.delta)
-			}
-			if live := u.threads[thread]; live != nil && live.roundOutput.StartedUnixNano == retained.roundOutput.StartedUnixNano {
-				retained.outputEstimate = live.outputEstimate
 			}
 			u.threads[thread] = retained
 		}

@@ -602,9 +602,11 @@ Older sessions without retained accounting cannot recover usage from context
 counts. Elapsed timers exclude idle gaps and freeze when work stops; the separate
 last-response age continues counting. Main's output throughput appears only beside
 context in its composer, not in its roster row.
-Live rates use a `~` prefix until provider usage arrives. The last valid rate
-stays visible between requests. Measured rates survive resume; live estimates
-do not. See [Metrics](#metrics) for launch-wide totals.
+The last valid provider-measured rate stays visible while streaming and between
+requests until a newer valid terminal measurement arrives. Throughput stays blank
+before the first valid measurement. Visible streaming omits hidden reasoning, so
+it is not used to estimate total output throughput. Measured rates survive resume.
+See [Metrics](#metrics) for launch-wide totals.
 
 - Click an agent to inspect its activity; reply links address that agent.
 - In Activity or Agents, `a` toggles selected-agent filtering. The hint reads
@@ -719,7 +721,7 @@ health, and transport details. Average throughput is measured output tokens divi
 by the sum of their provider-request seconds, including request latency and automatic
 transport retries, not an average of individual rates or session wall time. Local
 preparation, tool execution, and idle time between requests are excluded. Measured
-rates and live estimates use provider-response receipt time, before local processing
+rates use provider-response receipt time, before local processing
 and delivery of already-read output. Unread transport buffering and backpressure
 still count, so these rates describe observed provider-request throughput, not
 provider-only generation speed. Requests without timing or authoritative token totals

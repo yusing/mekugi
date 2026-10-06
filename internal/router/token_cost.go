@@ -15,7 +15,6 @@ type tokenCost struct {
 }
 
 type tokenUsageReport struct {
-	outputEstimate float64
 	tokenCounts
 	cost         tokenCost
 	model        string

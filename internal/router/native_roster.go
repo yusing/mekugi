@@ -257,7 +257,7 @@ func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now t
 	var parts [nativeMetricParts]string
 	if agent.Name != "/root" {
 		// Main's context and output rate belong to the composer.
-		parts[10] = outputRateLabel(agent.OutputThroughput, agent.OutputEstimate)
+		parts[10] = outputThroughputLabel(agent.OutputThroughput)
 		context := contextWindowLabel(agent)
 		if used, percent, ok := strings.Cut(context, " • "); ok {
 			parts[0], parts[1] = used, percent

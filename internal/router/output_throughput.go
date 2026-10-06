@@ -48,10 +48,3 @@ func outputThroughputLabel(throughput capturer.OutputThroughput) string {
 	}
 	return ""
 }
-
-func outputRateLabel(throughput capturer.OutputThroughput, estimate float64) string {
-	if estimate > 0 {
-		return fmt.Sprintf("~%.1f tok/s", estimate)
-	}
-	return outputThroughputLabel(throughput)
-}

@@ -13,7 +13,6 @@ type responseHooks struct {
 	upstreamStatus      int
 	streamDiagnostics   *streamDiagnostics
 	onUsage             func(tokenCounts)
-	onOutput            func([]byte)
 	receivedAt          time.Time // Body read time, before buffered events are transformed.
 	deliveredResponseID string
 	deliveredTerminal   bool
@@ -25,9 +24,6 @@ func (h *responseHooks) observe(payload []byte, stream bool) error {
 	}
 	if stream {
 		h.streamDiagnostics.observe(payload)
-		if h.onOutput != nil {
-			h.onOutput(payload)
-		}
 	}
 	if h.onProviderFailure != nil &&
 		(!stream && h.upstreamStatus >= 400 || responses.ObserveTerminal(payload, stream) == responses.TerminalFailed) {
