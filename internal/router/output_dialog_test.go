@@ -458,6 +458,30 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 
 }
 
+func TestOutputDialogSingleObservedCommandWithoutTail(t *testing.T) {
+	output := new(activityui.Retention).New()
+	view := newLiveActivityView()
+	entry := activityPaneEntry{Seq: 10, Agent: "Main", Kind: "tool", Text: "Read `main.go`", native: &liveActivityNativeItem{command: "cat main.go", output: output, running: true, segments: []commandSegment{{source: "cat main.go", text: "Read `main.go`", running: true}}}}
+	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+	finishPacing(view)
+	feed := view.renderFeed(90, 30)
+	for _, snippet := range feed.snippets {
+		if snippet.run == 0 {
+			continue
+		}
+		block, ok := view.snippetBlock(snippet)
+		if !ok || !view.clickTarget(&block, snippet, 90) {
+			t.Fatal("empty command output is not clickable")
+		}
+		u := &terminalUI{}
+		if !u.openOutput(view, snippet) || len(u.output.pages) != 1 || u.output.pages[0].Output != output {
+			t.Fatal("single command lost its retained output")
+		}
+		return
+	}
+	t.Fatal("single command lost its row")
+}
+
 func TestOutputDialogMergedTrackedReadsKeepAllInvocations(t *testing.T) {
 	view := newLiveActivityView()
 	retention := new(activityui.Retention)

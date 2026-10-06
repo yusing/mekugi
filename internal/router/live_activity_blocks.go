@@ -406,7 +406,8 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 		last.Changes = commitChanges(segment.changes, segment.commit)
 		blocks = append(blocks, operations...)
 	}
-	hasCombinedOutput := len(entry.outputTail) > 0 || entry.outputOmit > 0
+	singleOutput := len(entry.native.segments) == 1 && entry.native.segments[0].output == nil && entry.native.output != nil
+	hasCombinedOutput := singleOutput || len(entry.outputTail) > 0 || entry.outputOmit > 0
 	if len(blocks) == 0 && entry.native.output != nil {
 		output := entry.native.output.View()
 		hasCombinedOutput = hasCombinedOutput || len(output.Lines) > 0 || output.Dropped > 0 || output.Released

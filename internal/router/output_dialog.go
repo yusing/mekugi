@@ -190,9 +190,9 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 			continue
 		}
 		// PTY, restored and lossy reports have no trustworthy output split.
-		separate := len(entry.native.segments) > 0 && len(entry.outputTail) == 0
+		separate := len(entry.native.segments) == 1 || len(entry.native.segments) > 1 && len(entry.outputTail) == 0
 		for _, segment := range entry.native.segments {
-			if !segment.skipped && segment.output == nil {
+			if len(entry.native.segments) > 1 && !segment.skipped && segment.output == nil {
 				separate = false
 			}
 		}
