@@ -986,6 +986,9 @@ runs. Pushing a `v*` tag also publishes the three archives and `SHA256SUMS` to a
 GitHub release, with the tag embedded as the welcome version. Rerunning a tag build
 replaces that release's matching assets.
 
+Before packaging, Linux amd64 runs the fresh full offline Go suite and `make lint`
+with pinned lint tools. Other platforms run command and welcome/version checks.
+
 To review the UI without Codex or model requests, run
 `make preview-native-ui` in a terminal. It plays a synthetic session through the
 real panes and renderer: streaming and long messages, journal edits, retraction
@@ -1003,15 +1006,22 @@ rerun the check. Omitting `SNAPSHOT` updates all matching cases. See
 [terminal UI snapshot testing](CONTEXT-TESTS.md#terminal-ui-snapshots) for fixture
 locations and coverage limits.
 
-Built-in frontends are native Go. Go regenerates the optional plugin shared core;
-Bun is needed only to run the JavaScript plugin-host and shared-core tests:
+The full offline Go suite includes configured-plugin fixtures and requires
+**Node.js 24+** and **ripgrep** on `PATH`, even when using built-in frontends.
+`make lint` requires **golangci-lint** and **deadcode** on `PATH`; it does not
+install them. It runs the [configured Go linters](.golangci.yml) and deadcode
+analysis including test executables. Lint findings, deadcode findings, and tool
+failures all fail the command.
 
 ```sh
-go generate ./internal/router/toolplugin
-bun test ./internal/router/toolplugin/tests
+make preview-assets
 make test
-go vet ./...
+make lint
 ```
+
+Built-in frontends are native Go. Go regenerates the optional plugin shared core;
+Bun is needed only for the separately invoked JavaScript plugin-host and
+shared-core tests: `bun test ./internal/router/toolplugin/tests`.
 
 While implementing, select the affected Go packages and tests, for example
 `make test TEST_PACKAGES=./internal/router TEST_RUN='^TestShellRunnerMRun'`.

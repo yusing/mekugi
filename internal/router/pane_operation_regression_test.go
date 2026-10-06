@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestPaneOperationRegressionMCatReadLabels(t *testing.T) {
@@ -170,13 +169,6 @@ func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
 			}
 			ui.quit(t)
 		})
-	}
-}
-
-func assertProvisionalPatchPreview(t *testing.T, preview diffview.Preview) {
-	t.Helper()
-	if preview.Status != diffview.PreviewEdit || preview.Complete || len(preview.Files) == 0 && !preview.DiffText {
-		t.Fatalf("patch fragment was not displayed as a provisional diff: %+v", preview)
 	}
 }
 

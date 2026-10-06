@@ -68,16 +68,13 @@ func TestStreamOutputMeterReasoningThreshold(t *testing.T) {
 func TestStreamOutputMeterFramingAndBounds(t *testing.T) {
 	text := strings.Repeat("日本語の output ", 4000)
 	var whole, fragmented StreamOutputMeter
-	want := whole.Observe(streamMeterEvent(t, "response.function_call_arguments.delta", text), 2*time.Second)
-	var got float64
+	whole.Observe(streamMeterEvent(t, "response.function_call_arguments.delta", text), 2*time.Second)
 	for _, fragment := range strings.SplitAfter(text, " ") {
-		if sample := fragmented.Observe(streamMeterEvent(t, "response.function_call_arguments.delta", fragment), 2*time.Second); sample > 0 {
-			got = sample
-		}
+		fragmented.Observe(streamMeterEvent(t, "response.function_call_arguments.delta", fragment), 2*time.Second)
 	}
 	// Flush the sampled tail after the sampling interval.
-	got = fragmented.Observe(streamMeterEvent(t, "response.function_call_arguments.delta", " end"), 3*time.Second)
-	want = whole.Observe(streamMeterEvent(t, "response.function_call_arguments.delta", " end"), 3*time.Second)
+	got := fragmented.Observe(streamMeterEvent(t, "response.function_call_arguments.delta", " end"), 3*time.Second)
+	want := whole.Observe(streamMeterEvent(t, "response.function_call_arguments.delta", " end"), 3*time.Second)
 	if got != want || got <= 0 || len(fragmented.pending) >= streamTokenWindow {
 		t.Fatalf("fragmented=%g whole=%g pending=%d", got, want, len(fragmented.pending))
 	}

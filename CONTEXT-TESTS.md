@@ -21,6 +21,12 @@ does not regenerate assets or install binaries. Prepare missing assets once with
 `make preview-assets`, and regenerate when their sources change as described below.
 A focused pass does not cover unselected tests.
 
+The release workflow runs the full fresh offline Go suite on Linux amd64;
+other platforms retain command and welcome/version checks. Tagged Codex and
+Bun plugin-host checks remain separate acceptance routes below.
+The full suite includes configured-plugin fixtures, so it requires Node.js 24+
+and ripgrep even when the tested application uses only built-in frontends.
+
 `TEST_PARALLEL` defaults to 32 so independent process and PTY fixtures can overlap
 their waits; override it for a constrained machine. Tests that change process-wide
 environment or working directory remain serial. Measure the default suite with
@@ -102,6 +108,12 @@ then regenerate and check the prepared-request projection:
 env MEKUGI_UPDATE_FRONTEND_GUIDANCE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestGeneratedFrontendGuidanceIsCurrent$'
 make test TEST_PACKAGES=./internal/router TEST_RUN='GeneratedFrontendGuidance|ProjectedStockGuidance|JournalRulesHaveOneOwner|JournalGuidanceUsesRequestRole|Instruction|ConflictRewrite|WebSocketPrewarmToolGuidance'
 ```
+
+## Static checks
+
+Run `make lint` with `golangci-lint` and `deadcode` on PATH. It uses `.golangci.yml`
+and includes test executables in deadcode analysis. Tool errors and reported findings
+fail the target. Linux amd64 CI installs the versions pinned in the release workflow.
 
 ## Terminal UI snapshots
 
