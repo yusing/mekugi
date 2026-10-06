@@ -76,9 +76,10 @@ func durableHistory(h mekugiHistory) mekugiHistory {
 		observation.WindowStart = observation.WindowStart.UTC()
 		observation.Files = slices.Clone(observation.Files)
 		for i := range observation.Files {
-			// The live-preview stamp is intentionally not serialized. Keep the
-			// request's copy while comparing against the persisted capture.
+			// Live-preview state is not serialized. Keep the request's copy
+			// while comparing against the persisted capture.
 			observation.Files[i].watchStamp = ""
+			observation.Files[i].watchMoveOnly = false
 		}
 		observation.Listings = slices.Clone(observation.Listings)
 		for i := range observation.Listings {
