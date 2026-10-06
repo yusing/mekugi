@@ -1,2 +1,3 @@
-└ Committed docs(ui): describe content-detected inline highlighting · git
+└ Committed docs(ui): describe content-detected inline highlighting · git (timeout 90s)
+            · 500ms
             e9085377 on main · 2 files +6 -4

@@ -105,6 +105,13 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 			}
 			blocks = append(blocks, batch)
 		}
+		if n := entry.native; n != nil && n.commandTimeout != "" {
+			for i := range blocks {
+				if !slices.Contains(blocks[i].Timeouts, n.commandTimeout) {
+					blocks[i].Timeouts = append(slices.Clone(blocks[i].Timeouts), n.commandTimeout)
+				}
+			}
+		}
 		setCommandTiming(blocks, entry)
 		if entry.native != nil && len(blocks) > 0 {
 			blocks[0].Approval = entry.native.approval

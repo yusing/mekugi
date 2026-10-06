@@ -56,6 +56,7 @@ type nativeTraceTool struct {
 	session       string
 	terminal      bool
 	stdinPoll     bool
+	timeoutMS     *uint64 // Original invocation input, never persisted.
 }
 
 type nativeTraceRef struct {
@@ -217,12 +218,20 @@ func (b *nativeTraceBundle) event(directory string, event nativeTraceEvent) erro
 				Workdir       string         `json:"workdir"`
 				Shell         string         `json:"shell"`
 				EnvironmentID jsontext.Value `json:"environment_id"`
+				TimeoutMS     jsontext.Value `json:"timeout_ms"`
 			}
 			if err := json.Unmarshal([]byte(invocation.Payload.Arguments), &args); err != nil {
 				return err
 			}
 			tool.command = execCommandInput{Command: args.Command, Workdir: args.Workdir, Shell: args.Shell}
 			tool.environmentID = args.EnvironmentID
+			// Optional display metadata must not invalidate execution evidence.
+			if len(args.TimeoutMS) > 0 {
+				var timeout *uint64
+				if json.Unmarshal(args.TimeoutMS, &timeout) == nil {
+					tool.timeoutMS = timeout
+				}
+			}
 		}
 		if tool.Tool == "write_stdin" {
 			var args struct {
@@ -323,6 +332,30 @@ func (t *nativeToolTrace) readCell(thread, callID, source string) *nativeTraceCe
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	var found *nativeTraceCell
+	for _, b := range t.readBundles() {
+		for _, cell := range b.cells {
+			if cell.thread != thread || cell.callID != callID || cell.source != nativeTraceSource(source) {
+				continue
+			}
+			if found != nil {
+				return nil
+			}
+			copy := *cell
+			copy.tools = nil
+			for _, tool := range cell.tools {
+				clone := *tool
+				clone.environmentID = append(jsontext.Value(nil), tool.environmentID...)
+				copy.tools = append(copy.tools, &clone)
+			}
+			found = &copy
+		}
+	}
+	return found
+}
+
+// readBundles refreshes the existing bounded inventory with the trace lock held.
+func (t *nativeToolTrace) readBundles() []*nativeTraceBundle {
 	if t.disabled {
 		return nil
 	}
@@ -338,7 +371,7 @@ func (t *nativeToolTrace) readCell(thread, callID, source string) *nativeTraceCe
 	if t.bundles == nil {
 		t.bundles = make(map[string]*nativeTraceBundle)
 	}
-	var found *nativeTraceCell
+	var bundles []*nativeTraceBundle
 	bytes := 0
 	for _, entry := range entries {
 		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "trace-") {
@@ -359,24 +392,32 @@ func (t *nativeToolTrace) readCell(thread, callID, source string) *nativeTraceCe
 		if b.err != nil {
 			continue
 		}
-		for _, cell := range b.cells {
-			if cell.thread != thread || cell.callID != callID || cell.source != nativeTraceSource(source) {
-				continue
-			}
+		bundles = append(bundles, b)
+	}
+	return bundles
+}
+
+// commandTimeout reads the original input by exact native thread/call identity.
+// Missing or ambiguous input has no timeout label, including after fresh resume.
+func (t *nativeToolTrace) commandTimeout(thread, call string) (uint64, bool) {
+	if t == nil || thread == "" || call == "" {
+		return 0, false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var found *nativeTraceTool
+	for _, b := range t.readBundles() {
+		if tool := b.calls[thread+"\x00"+call]; tool != nil {
 			if found != nil {
-				return nil
+				return 0, false
 			}
-			copy := *cell
-			copy.tools = nil
-			for _, tool := range cell.tools {
-				clone := *tool
-				clone.environmentID = append(jsontext.Value(nil), tool.environmentID...)
-				copy.tools = append(copy.tools, &clone)
-			}
-			found = &copy
+			found = tool
 		}
 	}
-	return found
+	if found == nil || found.Tool != "exec_command" || found.timeoutMS == nil {
+		return 0, false
+	}
+	return *found.timeoutMS, true
 }
 
 // patchCall selects one occurrence, so repeated identical inputs retain their

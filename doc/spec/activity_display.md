@@ -163,6 +163,16 @@ time or completed duration and owns the combined output. The combined-output
 dialog shows that same invocation duration; the total is never copied onto
 individual command rows.
 
+After a command runs for at least 500 ms, its row shows a muted
+`(timeout DURATION)` suffix for a supported literal shell `timeout` prefix or
+an explicit `exec_command.timeout_ms` input. Shell durations keep their original
+spelling; parameter durations use seconds, with a fractional part when needed.
+Fast or skipped commands and rows without individual timing omit the suffix.
+Parameter-derived suffixes appear only while the original invocation input is
+available, so fresh resume omits them. Shell-derived suffixes remain available
+from the saved command when its timing is known. `yield_time_ms` does not produce
+a timeout suffix. A suffix that does not fit wraps beneath its operation row.
+
 The shared content dialog captures keys and pointer events above both panes.
 Clicking a recognized Markdown file link in Main, Activity, or Markdown dialog
 content opens an existing regular local file in this dialog. Relative paths

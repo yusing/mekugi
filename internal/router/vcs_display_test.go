@@ -303,8 +303,8 @@ func TestVCSTrackedCommitShowsItsRows(t *testing.T) {
 func TestVCSCommandClassification(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
 		{"git commit -m 'fix: bound it' -m body", "Commit `fix: bound it` · git"},
-		{"timeout 90s git commit -F - <<'EOF'\ndocs(ui): describe content-detected inline highlighting\nEOF", "Commit `docs(ui): describe content-detected inline highlighting` · git"},
-		{"timeout 1.5m git commit -m 'fix: bounded'", "Commit `fix: bounded` · git"},
+		{"timeout 90s git commit -F - <<'EOF'\ndocs(ui): describe content-detected inline highlighting\nEOF", "Commit `docs(ui): describe content-detected inline highlighting` · git (timeout 90s)"},
+		{"timeout 1.5m git commit -m 'fix: bounded'", "Commit `fix: bounded` · git (timeout 1.5m)"},
 		{"git commit -am 'fix: all'", "Commit `fix: all` · git"},
 		{"git commit -qm'fix: attached'", "Commit `fix: attached` · git"},
 		{"git commit --message='feat: `code` in subject'", "Commit `` feat: `code` in subject `` · git"},
@@ -331,7 +331,7 @@ func TestVCSCommandClassification(t *testing.T) {
 		{"svn diff -c 4812", "Diff `r4812` · svn"},
 		{"svn di -r100:HEAD --summarize trunk", "Diff `r100:HEAD` in `trunk` · svn --summarize"},
 		{"svn st -q", "Status `working copy` · svn"},
-		{"timeout 90s mchanges", "Diff `mine` · mchanges"},
+		{"timeout 90s mchanges", "Diff `mine` · mchanges (timeout 90s)"},
 		{"mchanges amber1..amber4", "Diff `amber1..amber4` · mchanges"},
 		{"mchanges --net -- a.go", "Diff `mine` in `a.go` · mchanges --net"},
 		{"/tmp/bin/mchanges amber2 --summary", "Diff `amber2` · mchanges --summary"},

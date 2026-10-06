@@ -121,7 +121,7 @@ func TestUISnapshotGuardedHeredocCommit(t *testing.T) {
 	u := vcsCommandUI(t, "")
 	u.view.painter.Theme = livediff.DarkTheme
 	u.restoreHistory([]appServerHistoryTurn{{ID: "past", Status: "completed", Items: []appServerItem{{
-		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(0),
+		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(0), DurationMS: new(int64(500)),
 	}}}})
 	if entry := u.view.entries[0]; entry.native.command != command {
 		t.Fatal("host command changed")

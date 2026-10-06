@@ -20,16 +20,17 @@ type Block struct {
 	Duration           time.Duration // Host or measured segment duration; zero means unavailable.
 	NotificationTiming bool          // Timestamps are UI notification observations, not host execution boundaries; Duration is host elapsed.
 	Questions          []Question
-	Source             uint64 // Activity entry identity for exact cross-pane navigation.
-	Section            int    // Reasoning section ordinal within that entry, retained by dialogs.
-	Kind               string // op, reads, message, start, error, text
-	Verb               string // Operation verb, or a message headline.
-	Label              string // Markdown remainder of the operation label.
-	Path               string // Literal operation target, rendered with shared path styling.
-	SyntaxPath         string // File identity when Path is a compressed display label.
-	Workdir            string // Display path of a command directory other than the workspace; set on every row it applies to.
-	ShowWorkdir        bool   // The invocation's first row labels Workdir.
-	Code               string // Inline code or fenced program under the label.
+	Source             uint64   // Activity entry identity for exact cross-pane navigation.
+	Section            int      // Reasoning section ordinal within that entry, retained by dialogs.
+	Kind               string   // op, reads, message, start, error, text
+	Verb               string   // Operation verb, or a message headline.
+	Label              string   // Markdown remainder of the operation label.
+	Path               string   // Literal operation target, rendered with shared path styling.
+	SyntaxPath         string   // File identity when Path is a compressed display label.
+	Workdir            string   // Display path of a command directory other than the workspace; set on every row it applies to.
+	ShowWorkdir        bool     // The invocation's first row labels Workdir.
+	Timeouts           []string // Explicit execution bounds, as displayed.
+	Code               string   // Inline code or fenced program under the label.
 	Lang               string
 	Fenced             bool
 	From, To           string
@@ -417,6 +418,15 @@ func Paragraphs(text string) []string {
 func ParseOperation(paragraph string) Block {
 	lines := strings.Split(paragraph, "\n")
 	label := lines[0]
+	var timeouts []string
+	for strings.HasSuffix(label, ")") {
+		at := strings.LastIndex(label, " (timeout ")
+		if at < 0 {
+			break
+		}
+		timeouts = append([]string{label[at+len(" (timeout ") : len(label)-1]}, timeouts...)
+		label = label[:at]
+	}
 	cut := len(label)
 	if i := strings.IndexByte(label, '`'); i >= 0 {
 		cut = i
@@ -424,7 +434,7 @@ func ParseOperation(paragraph string) Block {
 	if i := strings.Index(label, " · "); i >= 0 && i < cut {
 		cut = i
 	}
-	block := Block{Kind: "op", Verb: strings.TrimSuffix(strings.TrimSpace(label[:cut]), ":"), Label: strings.TrimSpace(label[cut:])}
+	block := Block{Kind: "op", Verb: strings.TrimSuffix(strings.TrimSpace(label[:cut]), ":"), Label: strings.TrimSpace(label[cut:]), Timeouts: timeouts}
 	if rest := lines[1:]; len(rest) > 0 {
 		joined := strings.Join(rest, "\n")
 		if delimiter, ok := FenceDelimiter(rest[0]); ok {
@@ -526,6 +536,26 @@ func mergesReads(last, next Block) bool {
 			(len(b.Tail) == 0 && b.TailOmitted == 0 || b.readContent())
 	}
 	return last.Verb == next.Verb && last.Workdir == next.Workdir && joins(last) && joins(next)
+}
+
+// AddTimeouts carries presentation metadata outside command and operand spans.
+func AddTimeouts(text string, timeouts []string) string {
+	paragraphs := Paragraphs(text)
+	for i, paragraph := range paragraphs {
+		known := ParseOperation(paragraph).Timeouts
+		heading, body, multiline := strings.Cut(paragraph, "\n")
+		for _, timeout := range timeouts {
+			if !slices.Contains(known, timeout) {
+				heading += " (timeout " + timeout + ")"
+				known = append(known, timeout)
+			}
+		}
+		paragraphs[i] = heading
+		if multiline {
+			paragraphs[i] += "\n" + body
+		}
+	}
+	return strings.Join(paragraphs, "\n\n")
 }
 
 // readContent reports collapsed content that one target's row can count.

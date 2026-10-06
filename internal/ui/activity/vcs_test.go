@@ -3,6 +3,7 @@ package activity
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -149,5 +150,31 @@ func TestDialogColorsVCSPatches(t *testing.T) {
 	}
 	if page.Lines[3].Text == lines[3] {
 		t.Error("patch colors missing")
+	}
+}
+
+func TestTimeoutSuffixIsMuted(t *testing.T) {
+	now := time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)
+	p := Painter{Clock: func() time.Time { return now }}
+	for _, tc := range []struct {
+		name  string
+		block Block
+		want  bool
+	}{
+		{"live before threshold", Block{Running: true, Started: now.Add(-499 * time.Millisecond)}, false},
+		{"live at threshold", Block{Running: true, Started: now.Add(-500 * time.Millisecond)}, true},
+		{"fast completion", Block{Duration: 499 * time.Millisecond}, false},
+		{"slow completion", Block{Duration: 500 * time.Millisecond}, true},
+		{"unavailable timing", Block{}, false},
+		{"skipped", Block{Skipped: true, Duration: time.Second}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			block := ParseOperation("Skill `skill` (timeout 123)")
+			block.Running, block.Started, block.Duration, block.Skipped = tc.block.Running, tc.block.Started, tc.block.Duration, tc.block.Skipped
+			raw := strings.Join(p.Block(block, 80), "\n")
+			if got := strings.Contains(raw, Dim+"(timeout 123)"+Undim); got != tc.want {
+				t.Fatalf("muted timeout shown = %v, want %v: %q", got, tc.want, raw)
+			}
+		})
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -17,18 +18,18 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 		{`sed -n '1,2p' "$(project-root)/file.go"`, "Read `\"$(project-root)/file.go\" 1:2`"},
 		{"cat /home/yusing/projects/codex/codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs | sed -n '45,150p'", "Read `/home/yusing/projects/codex/codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs 45:150`"},
 		{"inspect_file app.go; mcat app.go 1:20; rg -n needle src | head -30", "Inspect `app.go`\n\nRead `app.go 1:20`\n\nSearch `needle` in `src`"},
-		{"timeout 123 cat file.go | head -20", "Read `file.go`"},
-		{"timeout 123 cat file.go | sed -n '1,20p'", "Read `file.go 1:20`"},
-		{"timeout 123 nl -ba file.go | sed -n '1,20p'", "Read `file.go 1:20`"},
-		{"cat file.go | timeout 123 head -20", "Read `file.go`"},
-		{`timeout 123 cat file.go | head -n "$count"`, "Run\n" + toolActivityFenced("bash", `timeout 123 cat file.go | head -n "$count"`)},
-		{"timeout 123 skills-mgr get skill", "Skill `skill`"},
-		{"timeout 123 skills-mgr run skill/script --flag", "Skill `run skill/script --flag`"},
-		{`timeout 123 cat "$HOME/file"`, "Read `\"$HOME/file\"`"},
+		{"timeout 123 cat file.go | head -20", "Read `file.go` (timeout 123)"},
+		{"timeout 123 cat file.go | sed -n '1,20p'", "Read `file.go 1:20` (timeout 123)"},
+		{"timeout 123 nl -ba file.go | sed -n '1,20p'", "Read `file.go 1:20` (timeout 123)"},
+		{"cat file.go | timeout 123 head -20", "Read `file.go` (timeout 123)"},
+		{`timeout 123 cat file.go | head -n "$count"`, "Run (timeout 123)\n" + toolActivityFenced("bash", `timeout 123 cat file.go | head -n "$count"`)},
+		{"timeout 123 skills-mgr get skill", "Skill `skill` (timeout 123)"},
+		{"timeout 123 skills-mgr run skill/script --flag", "Skill `run skill/script --flag` (timeout 123)"},
+		{`timeout 123 cat "$HOME/file"`, "Read `\"$HOME/file\"` (timeout 123)"},
 		{`timeout --help skills-mgr get skill`, "Run\n" + toolActivityFenced("bash", `timeout --help skills-mgr get skill`)},
 		{`timeout "$duration" skills-mgr get skill`, "Run\n" + toolActivityFenced("bash", `timeout "$duration" skills-mgr get skill`)},
-		{`timeout 123 skills-mgr get skill > out`, "Run\n" + toolActivityFenced("bash", `timeout 123 skills-mgr get skill > out`)},
-		{`timeout 123 unknown arg`, "Run\n" + toolActivityFenced("bash", `timeout 123 unknown arg`)},
+		{`timeout 123 skills-mgr get skill > out`, "Run (timeout 123)\n" + toolActivityFenced("bash", `timeout 123 skills-mgr get skill > out`)},
+		{`timeout 123 unknown arg`, "Run (timeout 123)\n" + toolActivityFenced("bash", `timeout 123 unknown arg`)},
 		{"skills-mgr get js-ts-best-practices; skills-mgr get user-experience", "Skill `js-ts-best-practices`\n\nSkill `user-experience`"},
 		{"skills-mgr run use-modern-go/scripts/run-tool.sh list --go-version 1.27", "Skill `run use-modern-go/scripts/run-tool.sh list --go-version 1.27`"},
 		{"mcat app.go 1:20; go test ./...", "Read `app.go 1:20`\n\nRun `go test ./...`"},
@@ -157,9 +158,55 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 	}
 }
 
+func TestAppServerCommandTimeoutInput(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	f := newNativeTraceFixture(t)
+	u.proxy = &mekugiProxy{nativeTrace: &nativeToolTrace{directory: f.root}}
+	for _, thread := range []string{"main", "child"} {
+		f.start(thread, thread, "outer", "source")
+		timeoutMS, wantTimeout := 12500, "12.5s"
+		if thread == "child" {
+			timeoutMS, wantTimeout = 90000, "90s"
+		}
+		for _, tc := range []struct {
+			id, args, want string
+		}{
+			{"timed", fmt.Sprintf(`{"cmd":"skills-mgr get skill","timeout_ms":%d}`, timeoutMS), wantTimeout},
+			{"yielded", `{"cmd":"skills-mgr get skill","yield_time_ms":12500}`, ""},
+			{"unknown", "", ""},
+		} {
+			if tc.args != "" {
+				f.tool(thread, thread, tc.id, "exec_command", tc.args)
+			}
+			item := appServerItem{ID: tc.id, Type: "commandExecution", Command: "skills-mgr get skill"}
+			for _, method := range []string{"item/started", "item/completed"} {
+				appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": item})
+				view := u.view
+				if thread != "main" {
+					view = u.agents
+				}
+				entry := view.entries[len(view.entries)-1]
+				if entry.native.command != item.Command || entry.native.commandTimeout != tc.want {
+					t.Fatalf("%s/%s timeout = %q, want %q", thread, tc.id, entry.native.commandTimeout, tc.want)
+				}
+				blocks := parseLiveActivity(entry.activityPaneEntry)
+				if got := strings.Join(blocks[0].Timeouts, " "); got != tc.want {
+					t.Fatalf("%s/%s displayed timeout = %q", thread, tc.id, got)
+				}
+			}
+		}
+	}
+	restored := newAppServerSessionTestUI(t, t.TempDir())
+	restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{{ID: "timed", Type: "commandExecution", Command: "skills-mgr get skill"}}}})
+	if len(restored.view.entries[0].blocks[0].Timeouts) != 0 {
+		t.Fatal("restored a timeout without original invocation input")
+	}
+}
+
 func TestUISnapshotTimeoutSkill(t *testing.T) {
 	p := activityui.Painter{Theme: livediff.DarkTheme}
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell("timeout 123 skills-mgr get skill")})
+	blocks[0].Duration = 500 * time.Millisecond
 	assertNativeUISnapshot(t, "timeout-skill", p.Block(blocks[0], 90))
 }
 
@@ -259,5 +306,21 @@ func TestActivityReadsKeepWorkdirsApart(t *testing.T) {
 	}
 	if merged := activityui.MergeLiveActivityReads([]activityui.Block{read("/other"), read("/other")}); len(merged) != 1 {
 		t.Fatalf("reads in one directory did not merge: %+v", merged)
+	}
+}
+
+func TestAppServerHeredocTimeoutSuffix(t *testing.T) {
+	command := "timeout 10 bash <<'EOF'\nsleep 1\nEOF"
+	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command, DurationMS: new(int64(500))}
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	entry := u.view.entries[0]
+	blocks := parseLiveActivity(entry.activityPaneEntry)
+	var p activityui.Painter
+	if got := strings.Join(p.Block(blocks[0], 90), "\n"); !strings.Contains(got, "(timeout 10)") {
+		t.Fatalf("missing timeout suffix: %s", got)
+	}
+	if entry.native.command != command || blocks[0].Code != command {
+		t.Fatalf("heredoc source changed: %+v", blocks[0])
 	}
 }

@@ -590,6 +590,18 @@ func liveActivityIndent(lines []string, prefix string) []string {
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
 	lines := p.blockRows(block, width)
+	if len(block.Timeouts) > 0 && !block.Skipped && runDuration(block, p.now()) >= 500*time.Millisecond && len(lines) > 0 {
+		var labels []string
+		for _, timeout := range block.Timeouts {
+			labels = append(labels, "(timeout "+timeout+")")
+		}
+		suffix := Dim + strings.Join(labels, " ") + Undim
+		if ansi.StringWidth(lines[0])+1+ansi.StringWidth(suffix) <= width {
+			lines[0] += " " + suffix
+		} else {
+			lines = slices.Insert(lines, 1, liveActivityHang(strings.Repeat(" ", block.cell(RowVerb(block))), suffix, width)...)
+		}
+	}
 	if outcome := approvalLabel(block.Approval); outcome != "" && len(lines) > 0 {
 		suffix := Dim + " · " + Undim + outcome
 		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
@@ -1794,12 +1806,16 @@ func ResultCount(count *int) string {
 	return Dim + fmt.Sprintf(" (%d results)", *count) + Undim
 }
 
+func runDuration(block Block, now time.Time) time.Duration {
+	if block.Running && !block.Started.IsZero() {
+		return now.Sub(block.Started)
+	}
+	return block.Duration
+}
+
 // RunElapsed shares the compact duration grammar used by native status timers.
 func RunElapsed(block Block, now time.Time) string {
-	elapsed := block.Duration
-	if block.Running && !block.Started.IsZero() {
-		elapsed = now.Sub(block.Started)
-	}
+	elapsed := runDuration(block, now)
 	if elapsed <= 3*time.Millisecond {
 		return ""
 	}

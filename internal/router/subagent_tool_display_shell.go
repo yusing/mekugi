@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/shellsyntax"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -130,18 +131,22 @@ func toolActivityReads(script string) (string, bool) {
 	}
 	if hasHeredoc && !hasEdit {
 		var source strings.Builder
+		var timeouts []string
 		offset := 0
 		for _, statement := range program.Stmts {
-			if display, ok := toolActivityStatement(script, statement); ok && display == "" {
-				source.WriteString(script[offset:int(statement.Pos().Offset())])
-				offset = int(statement.End().Offset())
+			if display, ok := toolActivityStatement(script, statement); ok {
+				timeouts = append(timeouts, activityui.ParseOperation(display).Timeouts...)
+				if display == "" {
+					source.WriteString(script[offset:int(statement.Pos().Offset())])
+					offset = int(statement.End().Offset())
+				}
 			}
 		}
-		if offset == 0 {
+		if offset == 0 && len(timeouts) == 0 {
 			return "", false
 		}
 		source.WriteString(script[offset:])
-		return "Run\n" + toolActivityFenced("bash", strings.Trim(source.String(), "\r\n")), true
+		return activityui.AddTimeouts("Run\n"+toolActivityFenced("bash", strings.Trim(source.String(), "\r\n")), timeouts), true
 	}
 	type statementDisplay struct {
 		display   string
@@ -298,7 +303,23 @@ func toolActivityUnwrapTimeout(statement *syntax.Stmt) *syntax.Stmt {
 // Recognize only transparent search bounds and executable lookups. Keep their
 // complete source, including redirections and guards, rather than implying that
 // a pipeline's stages are independent operations.
-func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool) {
+func toolActivityStatement(script string, statement *syntax.Stmt) (result string, recognized bool) {
+	original := statement
+	timeouts := toolActivityTimeouts(statement)
+	if binary, ok := statement.Cmd.(*syntax.BinaryCmd); ok && binary.Op == syntax.Pipe {
+		timeouts = append(toolActivityTimeouts(binary.X), toolActivityTimeouts(binary.Y)...)
+	}
+	defer func() {
+		if len(timeouts) == 0 {
+			return
+		}
+		if !recognized {
+			source := toolActivityStatementSource(script, original)
+			result = "Run\n" + toolActivityFenced("bash", source)
+			recognized = true
+		}
+		result = activityui.AddTimeouts(result, timeouts)
+	}()
 	statement = toolActivityUnwrapTimeout(statement)
 	if statement.Background || statement.Negated || statement.Coprocess || statement.Disown {
 		return "", false
@@ -402,6 +423,21 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 	}
 	display, ok := toolActivityReadCommand(script, call)
 	return display, ok
+}
+
+func toolActivityTimeouts(statement *syntax.Stmt) []string {
+	unwrapped := toolActivityUnwrapTimeout(statement)
+	if unwrapped == statement {
+		return nil
+	}
+	args := statement.Cmd.(*syntax.CallExpr).Args
+	inner := unwrapped.Cmd.(*syntax.CallExpr).Args
+	var timeouts []string
+	for i := 1; i < len(args)-len(inner); i += 2 {
+		value, _ := shellCatLiteral(args[i])
+		timeouts = append(timeouts, value)
+	}
+	return timeouts
 }
 
 // A single-file cat or nl -ba preserves source line positions through a bounded

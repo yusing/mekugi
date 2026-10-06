@@ -427,6 +427,15 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			if u.internalJournalCommand(p.ThreadID, item) {
 				break
 			}
+			if item.Type == "commandExecution" && u.proxy != nil {
+				if ms, known := u.proxy.nativeTrace.commandTimeout(p.ThreadID, id); known {
+					native.commandTimeout = strconv.FormatUint(ms/1000, 10)
+					if fraction := ms % 1000; fraction != 0 {
+						native.commandTimeout += "." + strings.TrimRight(fmt.Sprintf("%03d", fraction), "0")
+					}
+					native.commandTimeout += "s"
+				}
+			}
 			native.searchResults = appServerSearchResults(item)
 			entry := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerToolText(item, s.cwd), CallID: id, Observed: now, native: native}
 			key := [3]string{p.ThreadID, p.TurnID, id}
@@ -439,6 +448,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 					} else {
 						native.output = run.entry.native.output
 						native.commandStarted = run.entry.native.commandStarted
+						native.commandTimeout = cmp.Or(native.commandTimeout, run.entry.native.commandTimeout)
 					}
 				}
 				entries = append(entries, entry)
@@ -448,6 +458,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				native.commandEnded = now
 				if run := s.commands[key]; run != nil {
 					native.commandStarted = run.entry.native.commandStarted
+					native.commandTimeout = cmp.Or(native.commandTimeout, run.entry.native.commandTimeout)
 				}
 			}
 			s.retainOutput(native, item)
