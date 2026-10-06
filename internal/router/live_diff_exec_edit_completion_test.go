@@ -3,6 +3,7 @@ package router
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -15,6 +16,76 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
+
+func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	writeTestFile(t, filepath.Join(workspace, "command-timing.txt.new"), "Review @src\n\nAttached src (3 lines)\n")
+	script := "mv command-timing.txt.new command-timing.txt; git status --short"
+	source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q}); await tools.exec_command({cmd:'read -r answer',workdir:%q});", script, workspace, workspace)
+	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
+	observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
+	if !ok || observation == nil || len(observation.Files) == 0 {
+		t.Fatal("move lost its retained capture")
+	}
+	auto, stop := newAutoLiveDiff(t.Context(), "")
+	defer stop()
+	auto.enabled.Store(true)
+	auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+	sub := auto.events.subscribe()
+	proxy := &mekugiProxy{autoLiveDiff: auto, execWindows: &execWindowRegistry{}}
+	transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
+	transform.openExecWindow("cell", observation, nil)
+	defer proxy.execWindows.close("cell")
+	if proxy.execWindows.find("cell").previewCancel != nil {
+		t.Fatal("move opened a polling preview while the enclosing cell could keep waiting")
+	}
+	// The inner move completes while the enclosing cell remains open.
+	if err := os.Rename(filepath.Join(workspace, "command-timing.txt.new"), filepath.Join(workspace, "command-timing.txt")); err != nil {
+		t.Fatal(err)
+	}
+	u := nativeBatchFixture(t)
+	for _, event := range auto.events.takePreviews(sub) {
+		if event.Preview != nil {
+			u.shell.preview(*event.Preview)
+		}
+	}
+	revealNativeDock(u.shell)
+	if len(u.shell.liveDock.Order) != 0 || !proxy.execWindows.find("cell").closed.IsZero() {
+		t.Fatal("move replaced the transcript or closed the host-owned cell")
+	}
+	screen := vt.NewEmulator(100, 28)
+	defer screen.Close()
+	if err := u.paint(screen, 100, 28); err != nil {
+		t.Fatal(err)
+	}
+	assertNativeUISnapshot(t, "native-dock-before-reveal", strings.Split(screen.String(), "\n"))
+}
+
+func TestLiveDiffMoveOperandStillShowsSourceWrite(t *testing.T) {
+	t.Parallel()
+	for _, script := range []string{"mv old.txt source.txt; printf new > source.txt", "printf new > source.txt; mv old.txt source.txt"} {
+		workspace := t.TempDir()
+		writeTestFile(t, filepath.Join(workspace, "old.txt"), "old\n")
+		observation, ok := captureExecObservation([]execCommandInput{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
+		if !ok || observation == nil {
+			t.Fatal("missing mixed-write capture")
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		broker := newLiveDiffBroker(ctx)
+		broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+		registry := &execWindowRegistry{}
+		registry.open(&execWindow{ref: "mixed", thread: "main", roots: []string{workspace}})
+		registry.preview("mixed", *observation, broker, workspace, "main", "/root")
+		writeTestFile(t, filepath.Join(workspace, "source.txt"), "new\n")
+		preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool { return len(preview.Files) == 1 })
+		cancel()
+		registry.close("mixed")
+		if preview.Tool != "printf" || !strings.Contains(preview.Files[0].Diff, "+new") {
+			t.Fatalf("source write shared with a move did not stream: %+v", preview)
+		}
+	}
+}
 
 func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
 	t.Parallel()

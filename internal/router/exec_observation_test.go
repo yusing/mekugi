@@ -661,6 +661,29 @@ func TestLiveDiffShellFileOperationPreviews(t *testing.T) {
 	}
 }
 
+func TestLiveDiffMoveInputPreservesSiblingStreams(t *testing.T) {
+	workspace := t.TempDir()
+	writeTestFile(t, filepath.Join(workspace, "a.txt"), "a\n")
+	worker := liveDiffPreviewWorker{ctx: t.Context(), kind: nativeExecCommandToolName}
+	for _, test := range []struct {
+		command string
+		want    []string
+	}{
+		{"mv a.txt b.txt\n", nil},
+		{"mv a.txt b.txt\ncat > sibling.txt <<'EOF'\nnew content\nEOF\n", []string{"Create sibling.txt"}},
+		{"cat > sibling.txt <<'EOF'\nnew content\nEOF\nmv a.txt b.txt\n", []string{"Create sibling.txt"}},
+	} {
+		preview, _ := worker.project(string(mustMarshalJSON(map[string]string{"cmd": test.command})), workspace, false)
+		if got := reviewSummary(workspace, preview.Files); !slices.Equal(got, test.want) {
+			t.Fatalf("%q stream = %q, want %q", test.command, got, test.want)
+		}
+	}
+	files, _, err := worker.projectShell("mv a.txt b.txt\ncat > b.txt <<'EOF'\nnew content\nEOF\n", workspace, false)
+	if len(files) != 0 || err == nil {
+		t.Fatal("a dependent write borrowed the pre-move baseline")
+	}
+}
+
 func mustShellStatement(t *testing.T, command string) *syntax.Stmt {
 	t.Helper()
 	statements, _, _, parsed := liveDiffShellStatements(command, "/")

@@ -85,6 +85,8 @@ type execFileSnapshot struct {
 	// watchStamp is the live preview's capture-time metadata baseline. It is
 	// not durable evidence and must not replace content comparison.
 	watchStamp string
+	// Move-only operands have retained evidence, but no arriving source to stream.
+	watchMoveOnly bool
 	// CopyOf names the source a copy command writes into this path.
 	CopyOf string `json:",omitempty"`
 }
@@ -486,6 +488,7 @@ type execListing struct {
 
 type execCapture struct {
 	origin       string
+	moveOnly     bool
 	deadline     time.Time
 	seen         map[string]bool
 	files        []execFileSnapshot
@@ -528,17 +531,17 @@ func (c *execCapture) add(path string) {
 func (c *execCapture) addCopy(path, source string) {
 	path = filepath.Clean(path)
 	if c.seen[path] {
-		if c.origin != "" {
-			for i := range c.files {
-				if c.files[i].Path == path && c.files[i].Origin == "" {
-					// A direct path may fall in several managed scopes.
-					file := &c.files[i]
-					if !slices.Contains(strings.Split(file.AlsoManaged, ", "), c.origin) {
-						file.AlsoManaged = strings.TrimPrefix(file.AlsoManaged+", "+c.origin, ", ")
-					}
-					break
-				}
+		for i := range c.files {
+			file := &c.files[i]
+			if file.Path != path {
+				continue
 			}
+			file.watchMoveOnly = file.watchMoveOnly && c.moveOnly
+			// A direct path may fall in several managed scopes.
+			if c.origin != "" && file.Origin == "" && !slices.Contains(strings.Split(file.AlsoManaged, ", "), c.origin) {
+				file.AlsoManaged = strings.TrimPrefix(file.AlsoManaged+", "+c.origin, ", ")
+			}
+			break
 		}
 		return
 	}
@@ -561,6 +564,7 @@ func (c *execCapture) addCopy(path, source string) {
 	snapshot := snapshotExecFile(path, &c.budget)
 	snapshot.CopyOf = source
 	snapshot.Origin = c.origin
+	snapshot.watchMoveOnly = c.moveOnly
 	c.files = append(c.files, snapshot)
 }
 
@@ -679,6 +683,7 @@ func (c *execCapture) expand(operand execOperand) ([]string, bool) {
 
 func (c *execCapture) entry(entry execScopeEntry) {
 	c.origin = entry.Origin
+	c.moveOnly = entry.Kind == execScopeInto && entry.Sources
 	var sources []string
 	for _, operand := range entry.Operands {
 		matches, ok := c.expand(operand)

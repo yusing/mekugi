@@ -24,6 +24,7 @@ var execRunningPreviewSlots = make(chan struct{}, 16)
 const execRunningPreviewBytes = 1 << 20
 
 func (r *execWindowRegistry) preview(ref string, observation execObservation, broker *liveDiffBroker, workspace, thread, caller string) {
+	observation.Files = slices.DeleteFunc(slices.Clone(observation.Files), func(file execFileSnapshot) bool { return file.watchMoveOnly })
 	if r == nil || broker == nil || len(observation.Files) == 0 && execPendingScope(observation) == "" {
 		return
 	}
@@ -51,6 +52,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 // Reuse captured program attribution, not the enclosing stock executor.
 // A missing program label is unknown, not evidence that a shell edited it.
 func execPreviewTool(observation execObservation) string {
+	observation.Labels = slices.DeleteFunc(slices.Clone(observation.Labels), func(label string) bool { return label == "mv" || label == "git mv" })
 	// The classifier's opaque-statement fallback is scope uncertainty,
 	// not an evidenced executable. Keep it out of display attribution.
 	observation.Programs = slices.DeleteFunc(slices.Clone(observation.Programs), func(program execProgram) bool {

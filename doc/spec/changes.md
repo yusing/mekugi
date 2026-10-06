@@ -325,8 +325,11 @@ main-agent and child calls. It streams edits only: provisional `apply_patch`
 diffs and the file effects of shell commands, before completion. Stock `cat`
 heredoc redirections are always streamed, including from a nested
 `tools.exec_command` call whose arguments are
-still arriving. Literal `cp`, `mv`, `rm`, and `tee` heredoc commands are
-predicted from current file contents. A preview does not claim that Codex ran
+still arriving. Literal `cp`, `rm`, and `tee` heredoc commands are
+predicted from current file contents. Moves do not open live source cards:
+they have no arriving source content. Their completed evidence remains in
+Activity and the saved diff. Independent source writes in the same call still
+stream. A preview does not claim that Codex ran
 or accepted an edit. A nested patch held in an immutable top-level literal
 binding is rendered as the patch preview.
 Literal Python `Path.write_text` and `open(..., "w").write` bodies and literal
