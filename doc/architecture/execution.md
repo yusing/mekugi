@@ -8,6 +8,29 @@ projection adds journal and session-helper guidance to the `exec` description. I
 does not replace the execution catalog or create a carrier for an unchanged
 stock call.
 
+The final request projection may replace eligible repeated model-visible output
+with references under the
+[duplicate-output contract](../spec/execution.md#duplicate-output-projection).
+`internal/router/output_dedupe.go` owns host-part selection, preserved headers,
+exclusions, and labels; `internal/outputdedupe` owns request-local verbatim
+matching. All observers, retention, and continuation advice consume original
+host output before this projection. Neither owner changes the host result,
+rollout, retained replay evidence, or UI, or restores matcher state across views.
+
+The matcher streams line boundaries and retains sparse numeric seed metadata.
+It reuses large text and metadata buffers through `goutils/synk`; sub-2 KiB
+buffers remain exact-sized to avoid a full pool tier for each tiny visible tail.
+The router closes the request-local index after projection. Eviction and close
+clear tool text before returning borrowed buffers. Pool reuse is best-effort,
+so this reduces allocation pressure without guaranteeing zero allocation or GC.
+
+The 256 KiB matching window bounds retained indexed text, not total heap or
+allocation. Both depend on the workload and buffer capacities; pool capacity
+can raise retained heap even when total allocation falls. Benchmark workloads
+are defined in
+[`internal/outputdedupe/benchmark_test.go`](../../internal/outputdedupe/benchmark_test.go).
+Production projection leaves GC to the runtime.
+
 The response observer reads completed stock arguments once, captures bounded
 pre-edit source for named paths, and later reconciles the result with the
 workspace outcome. It does not authorize, parse for execution, or replay an

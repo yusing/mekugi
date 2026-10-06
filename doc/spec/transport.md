@@ -72,6 +72,11 @@ missing router-owned result followed by new user input. Changed or shortened pre
 or unavailable confirmation, cause explicit continuations to send full projected
 history without `previous_response_id`. This includes instruction changes,
 prewarm-to-turn and model-workflow transitions. No reconciliation reruns tools.
+The [duplicate-output projection](execution.md#duplicate-output-projection)
+is the final model-input projection. A fresh pass over growing original host
+input preserves earlier projected items and therefore the confirmed prefix.
+Changing the launch option or projection rules may change earlier bytes and
+require a full-history rebase; it never changes native history or retained evidence.
 Accepted steering is not resent against the same parent. An automatic successor
 fails if its prepared history differs from what has already been admitted; it cannot
 pretend an unsent rewrite or additional result took effect.

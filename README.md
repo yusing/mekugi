@@ -22,6 +22,10 @@ sessions, and patch review. No fork, no config edits, no daemon.
   and review, revert, or reapply captured edits by ID. Gaps in coverage are labeled.
 - **Leaner instructions.** [Omit marked instruction blocks](#troubleshooting-and-integrations)
   for the session without changing instruction files or unmarked policy.
+- **Duplicate-output references.** Repeated tool-output text in model input uses
+  references to earlier visible output by default in Mekugi mode. Disable with
+  `--duplicate-output=false`. Full host results, retained evidence, and the UI stay intact;
+  see the [projection contract](doc/spec/execution.md#duplicate-output-projection).
 - **Task journal.** Record plans, results, constraints, and blockers as durable
   work state, rather than repeating status summaries in conversation.
 - **Session continuity.** Retained journal and change evidence survives resume,
@@ -298,6 +302,7 @@ exit means the run or its shutdown failed. Ordinary `codex exec` is unchanged.
 | `--vcs-guard` | `true` | Ask before remote VCS writes in the UI, even with `--yolo`; `false` disables only this guard |
 | `--post-compact-recovery` | `true` | Use `false` to skip the post-compaction context hook |
 | `--journal-compaction` | `off` | Experimental `auto` uses journal summaries without a provider request; `slice` resets only between planned slices |
+| `--duplicate-output` | `true` | Use duplicate-output references in model input; `--duplicate-output=false` disables them; full results and evidence stay intact; no effect in passthrough |
 | `--grok-auth-file` | `~/.grok/auth.json` | Select a Grok OAuth credential store |
 | `--timeout` | `10m` | Wait for the upstream response to start |
 | `--stream-idle-timeout` | `4m` | Limit gaps between provider messages during an active response, or HTTP response bytes |

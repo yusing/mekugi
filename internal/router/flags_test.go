@@ -12,6 +12,8 @@ func TestSplitCommand(t *testing.T) {
 		{"--debug"},
 		{"--vcs-guard"},
 		{"--vcs-guard=false"},
+		{"--duplicate-output"},
+		{"--duplicate-output=false"},
 		{"--ansi-faint=off"},
 		{"--ansi-faint", "on"},
 		{"--ansi-faint=auto"},
@@ -27,6 +29,16 @@ func TestSplitCommand(t *testing.T) {
 		if err != nil || !slices.Equal(gotPrefix, prefix) || !slices.Equal(gotCommand, command) {
 			t.Errorf("SplitCommand(%q) = %q, %q, %v", args, gotPrefix, gotCommand, err)
 		}
+	}
+}
+
+func TestDuplicateOutputFlagDefaultsOn(t *testing.T) {
+	flags := newRouterFlags(io.Discard)
+	if !*flags.duplicateOutput {
+		t.Fatal("duplicate output projection must default on")
+	}
+	if err := flags.Parse([]string{"--duplicate-output=false"}); err != nil || *flags.duplicateOutput {
+		t.Fatalf("opt-out = %v, %v", *flags.duplicateOutput, err)
 	}
 }
 

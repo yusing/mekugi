@@ -254,6 +254,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		mekugiCalls = newMekugiProxy(registry, titles)
 		provider.titleGenerator.usage = mekugiCalls.usage
 		mekugiCalls.journalCompaction = *flags.journalCompaction
+		mekugiCalls.duplicateOutput = *flags.duplicateOutput
 		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
 		if traceErr == nil {
 			mekugiCalls.nativeTrace = &nativeToolTrace{directory: traceDirectory}

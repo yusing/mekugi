@@ -37,6 +37,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Codex authentication and upstream Responses transport | `internal/router/client.go`, `internal/router/client_websocket.go` |
 | Live output estimates and response-byte receipt timing | `internal/router/output_throughput.go`, `internal/router/thread_usage_store.go`, `internal/router/stream_diagnostics.go`; capture snapshots remain in `capturer` |
 | Stock tool preservation and response observation | `internal/router/mekugi_proxy.go`, `internal/router/mekugi_response_transform.go`, `internal/router/native_apply_patch.go` |
+| Model-visible duplicate output references | `internal/router/output_dedupe.go`; content matching in `internal/outputdedupe`; provider-prefix reuse in `internal/router/provider_history.go` |
 | Shell segment reports and measured command timing | `internal/execsegment`, `cmd/mekugi-exec`, `internal/router/exec_track.go`; isolated shell fixtures in `internal/router/exec_track_test.go`, sandbox acceptance in `internal/router/app_server_exec_track_codex_e2e_test.go` |
 | Journal state, router-owned CRUD, terminal delivery, and replay | `internal/router/journal.go`, `internal/router/journal_tool.go`, `internal/router/journal_delivery.go` |
 | Journal continuation/reset and recovery text | `internal/router/journal_reset_driver.go`, `internal/router/journal_compaction.go`, `internal/router/journal_summary.go` |

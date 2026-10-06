@@ -29,6 +29,12 @@ Provider-selection arguments are rejected. Mekugi flags precede `codex`; subsequ
 noninteractive arguments remain intact, including subcommands and `--` delimiters.
 Interactive terminal arguments follow the native client mapping below.
 
+The Mekugi flag `--duplicate-output` defaults to `true`. Use
+`--duplicate-output=false` to disable the
+[model-visible duplicate-output projection](execution.md#duplicate-output-projection)
+without changing host results, retained evidence, or the UI. It has no effect in
+passthrough mode.
+
 For interactive sessions, after `codex`, `--low`, `--medium`, `--high`, `--xhigh`, `--max`, and `--ultra`
 expand to invocation-local `model_reasoning_effort` config overrides. They may
 also follow `headless`. Option values and arguments after `--` remain literal;

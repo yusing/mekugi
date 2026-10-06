@@ -64,7 +64,11 @@ byte growth, never a thread view or host continuation.
 The live-diff renderer consumes provisional inputs and completed review files
 without owning workspace effects or replay locks. Commentary and capture are
 auxiliary consumers of observed facts; they cannot replace a stock result or
-provider response. Caller-owned base instructions pass through except for
+provider response. The
+[duplicate-output projection](../spec/execution.md#duplicate-output-projection)
+is a model-input-only exception: it runs after all evidence consumers and leaves
+the original request input, host result, rollout, replay evidence, and UI intact.
+Caller-owned base instructions pass through except for
 explicit omission blocks and pinned inherited conflicts. Additive journal
 guidance belongs to the journal tool projection. XML-framed session-helper guidance is
 embedded from a checked-in standalone Markdown file generated from tool-source descriptions and

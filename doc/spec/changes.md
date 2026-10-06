@@ -8,8 +8,11 @@ working tree or a claim that unobserved effects did not occur.
 
 Mekugi observes stock Codex `apply_patch` calls. Codex executes each call once;
 Mekugi does not replace the tool, run a hook, apply a second patch, or alter the
-argument or result. A complete argument may be projected as a provisional live
-diff while streaming. Only the actual host result and resulting workspace
+argument or host result. The
+[duplicate-output projection](execution.md#duplicate-output-projection) may
+reference repeated model-visible output only after observation and retention
+have consumed the original text. A complete argument may be projected as a
+provisional live diff while streaming. Only the actual host result and resulting workspace
 state determine a completed change record. A yielded call remains unfinished
 until its host continuation is terminal. Saved file differences are applied
 changes: a later command or test failure does not undo bytes already written.
@@ -262,6 +265,8 @@ not substituted tool results. After persistence, the
 agent-visible completed tool response also receives a separate text part with
 the change ID and `mchanges ID --summary` statistics. This bounded notice does
 not replace the original host result or alter the user-facing edit display.
+The separate duplicate-output projection may reference repeated host text in
+model input; it leaves the appended change notice intact.
 No-effect and unfinished calls receive no notice; partial edits report only
 retained evidence. Continuations receive the notice when they finish the edit.
 
@@ -438,7 +443,9 @@ polling.
 
 Query-based Mercurial scoping and literal `sed`/`perl` substitution prediction are
 outside this delivery. Original stock result content remains unchanged alongside
-the agent-visible change notice.
+the agent-visible change notice, except for the model-visible
+duplicate-output projection. Retained evidence and the user-facing display
+keep the full result.
 Patch previews show projected source changes with the affected file's language
 highlighting, not the `apply_patch` instruction envelope. If source matching
 cannot establish that projection, the viewer must not fabricate a diff. A
@@ -617,7 +624,8 @@ joined. Redirected sessions retain stock input/output and inline activity.
 
 Acceptance:
 
-1. Nested stock patch calls retain exact arguments and results.
+1. Nested stock patch calls retain exact arguments and host results; only eligible
+   model-visible text may use the duplicate-output projection.
 2. A streaming preview appears before completion but does not create success
    evidence or a change ID before the host result.
 3. Successful, failed, no-op, and partial outcomes are distinguished by
@@ -630,7 +638,8 @@ Acceptance:
 5. Child handoff and resume use durable ownership, not a live process; replay
    never executes an edit again.
 6. Live `cat`, file-operation, and interpreter projections are presentation
-   only and preserve stock PTY, yield, result, and `write_stdin` behavior.
+   only and preserve stock PTY, yield, host result, and `write_stdin` behavior.
+   The separate duplicate-output projection changes only eligible model input.
 7. A literal nested command produces a record with the
    actual command outcome and reviewable scoped effects. A nonzero exit is retained
    in debug history; saved edits still publish their change receipt.

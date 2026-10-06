@@ -37,8 +37,10 @@ forces invocation-local `features.code_mode=true` and `features.code_mode_only=t
 after caller overrides. Models that advertise top-level `apply_patch` or
 `exec_command` instead receive an unsupported-interface error before inference.
 Stock `apply_patch` and `exec_command` execute through the nested tool catalog;
-the router does not replace their names, schemas, arguments, results, or execution
-path. The only exceptions are the in-shell segment tracking of
+the router does not replace their names, schemas, arguments, host results, or execution
+path. Model-visible output uses the
+[duplicate-output projection](#duplicate-output-projection) below. The execution
+exceptions are the in-shell segment tracking of
 [REQ-EXECUTION-002](#req-execution-002--track-each-segment-of-a-command-list), which
 keeps the result and the Codex-owned process lifecycle unchanged, and the remote
 write guard of
@@ -54,7 +56,7 @@ replaying, or displaying it.
 
 Completed edit observations may append a separate
 agent-visible change-ID and summary text part as specified in
-[applied changes](changes.md), preserving the original result content.
+[applied changes](changes.md), preserving the original host result content.
 
 Native command approvals retain Codex's offered session, command-prefix and
 permission scopes. In the proxied UI, command denial uses native decline so
@@ -84,7 +86,8 @@ produces a provisional live diff as patch text arrives, without waiting for the
 closing quote, call, or end marker. An unfinished argument or preview has no application
 status. After Codex returns a result and the workspace outcome is observable,
 Mekugi records evidence under [REQ-CHANGES-001](changes.md). The stock tool
-result is forwarded unchanged, including errors. A failed call may have a
+result is forwarded unchanged, including errors, except for the model-visible
+duplicate-output projection. A failed call may have a
 partial workspace effect, but it never publishes a successful edit receipt.
 
 Command observation under [REQ-CHANGES-001](changes.md) reads the completed
@@ -96,7 +99,8 @@ than delaying Codex.
 Post-result comparisons read only known edit operands, never a workspace sweep.
 They do not wrap commands, inject environments, or alter yielded-session handling.
 Agent-visible change notices are appended only after the observed evidence is
-durable; they do not replace original stock output.
+durable; they do not replace original stock output. The separate duplicate-output
+projection may reference repeated host text, but leaves these notices intact.
 
 Wrapped Mekugi launches enable Codex's native rollout trace in a private,
 session-scoped temporary directory. Observation joins the executing thread,
@@ -139,7 +143,8 @@ Acceptance:
 
 1. Nested stock `apply_patch` and `exec_command` pass through with their
    original arguments and results, except for the eligible model-visible output
-   projection and native approval-guard command instrumentation above.
+   [projection](#duplicate-output-projection) and native approval-guard command
+   instrumentation above.
    Unsupported top-level execution catalogs fail before inference.
 2. An `exec` cell can batch or parallelize stock tools, including a patch
    alongside an independent command, without router-side serial execution.
@@ -158,6 +163,44 @@ Acceptance:
    exit code, steering or a new turn. Host-offered approval scopes, file-change
    and permission choices remain available; proxy-free clients retain original
    host decisions without reason editing.
+
+### Duplicate-output projection
+
+Duplicate-output projection is enabled by default in Mekugi mode. Disable it
+with the launch option `--duplicate-output=false`. It changes only eligible output
+in the model-visible request input. Passthrough is unchanged. The original request
+input, host result, Codex rollout, retained replay and change evidence, and UI
+keep the full text. Every evidence consumer, including command and patch
+observation, result confirmation, failure observation, retention, and continuation
+advice, reads the original output before this final projection.
+
+A unit is one host-produced text part of a `function_call_output` or
+`custom_tool_call_output`; a string output is one part. Execution headers remain
+verbatim. Router-appended parts, including journal IDs, warnings, edit notices,
+and continuation advice, remain intact. Outputs without a call ID and native
+live-session JSON envelopes are excluded.
+
+Verbatim runs aligned to logical lines and covering at least 192 bytes may be
+replaced with a reference to earlier output still visible in the same request.
+Matching is content-based, without line-ending or line-number normalization.
+The bounded matching window covers the last 256 KiB of indexed verbatim text;
+below-threshold units are neither replaced nor indexed. The longest matching run
+wins, with ties resolved in favor of the most recent source.
+
+References have the form ``[same as `git diff -- review.go`]`` or
+``[same as `mchanges amber1` L40-112]``; a single row uses `L40`. The row range is
+omitted for an entire earlier unit. Rows count the earlier unit as delivered,
+with each generated marker counting as one row. Labels use the source cell's
+single literal nested command when available, otherwise the source unit's first
+line, shortened to 60 characters. References always target visible verbatim
+text, never generated markers or replaced spans, so they need no second hop.
+Literal host text resembling a marker remains host text.
+
+Each projection is a fresh forward pass over the current original input, with
+no persistent matcher state. Compacted, forked, and resumed views can reference
+only their own current input. Fresh projections of the same original host input
+are byte-identical, and extending that input preserves earlier projected items.
+The [transport contract](transport.md) owns provider-history reconciliation.
 
 ## REQ-EXECUTION-002 — Track each segment of a command list
 

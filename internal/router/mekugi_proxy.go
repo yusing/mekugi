@@ -121,6 +121,7 @@ type mekugiProxy struct {
 	commentaryEndpoint string
 	journals           *journalStore
 	journalCompaction  string
+	duplicateOutput    bool
 	usage              *threadUsage
 	autoLiveDiff       *autoLiveDiff
 	activity           *subagentActivity
@@ -469,6 +470,10 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		return nil, nil
 	}
 	journalGuidance := codeModeJournalGuidance
+	var hostParts map[string][]int
+	if p.duplicateOutput && !prewarm {
+		hostParts = duplicateOutputHostParts(request.fields["input"])
+	}
 	if metadata.SubagentKind != "" {
 		journalGuidance = codeModeSubagentJournalGuidance
 	}
@@ -688,6 +693,9 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	if err := p.projectApprovalFeedback(request, threadID, metadata.TurnID); err != nil {
 		transform.Close()
 		return nil, err
+	}
+	if p.duplicateOutput {
+		projectDuplicateOutputs(request, hostParts, codeModeToolName)
 	}
 	return transform, nil
 }
