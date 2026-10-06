@@ -242,10 +242,10 @@ pending reports and a 30-second storage-lock wait. Each pending report keeps its
 original workspace and thread ownership even if the user switches sessions.
 Normal exit drains accepted writes; cancellation cancels their lock waits.
 Storage failure or a full pending-report bound leaves live presentation available
-without promising restoration. The owning thread receives a native Main error
-entry with the host turn/item identity and complete underlying error, wrapped in
-the transcript rather than truncated into the composer. Distinct causes remain
-separate, and notices not painted before exit remain available to the launcher.
+without promising restoration. The owning thread receives composer error feedback
+with the host turn/item identity and complete underlying error. Distinct causes
+remain separate; the [notice contract](notices.md) owns access to full details,
+dismissal, delivery and launcher recovery.
 
 The same matching, host-exit validation, retention and history restoration apply
 to single-command reports. Old history without reports, missing or mismatched

@@ -238,8 +238,9 @@ summaries, turn events drive each agent's state, and
 `thread/tokenUsage/updated` supplies token counts. Cost stays with the router's
 usage accounting. The client binds Main's thread in the router's activity collector for scoped
 assignment/message and filter observations. Tool and lifecycle activity comes from
-app-server, never generated commentary. [Router notices](notices.md) render directly
-in Main and leave provider responses unchanged.
+app-server, never generated commentary. [Router errors](notices.md) render as user-only
+composer feedback and leave the transcript and provider responses unchanged.
+Cleanup planning and reclaimed-storage progress remain transcript content.
 
 Run cards omit literal Bash, Zsh, or Sh `-c`/`-lc` launch wrappers and PowerShell
 `-Command`/`-c` wrappers (optionally preceded by `-NoLogo`/`-NoProfile`), matching
@@ -925,10 +926,14 @@ to the composer unless it is part of Escape's expedited delivery.
 Submissions settle after their in-flight acknowledgement, so
 restoration cannot reorder or duplicate input. On exit, stacked input is
 printed with the unsent draft, and unresolved or uncommitted submissions as
-outcome unknown, never resent. Composer notices (command, paste, editor and
-Ctrl-C feedback) follow the turn state on the composer border without replacing
+outcome unknown, never resent. Composer notices (router errors, command, paste,
+editor and Ctrl-C feedback) follow the turn state on the composer border without replacing
 it. Non-error feedback clears after three seconds or the next draft edit;
-actionable errors remain until editing. Only
+actionable errors remain until editing or clicking the check button (`[✓]`).
+An ellipsis marks omitted error details; clicking a truncated composer error opens
+its complete text, including the full router-error batch, in the shared error dialog.
+Composer feedback stays user-only; model-visible error evidence
+keeps its red transcript display and details dialog. Only
 `/quit` is a command, and only while idle;
 unknown commands are reported, never sent as prompts. The
 composer border carries turn state, the model, and Main's context usage; Main's title bar carries the

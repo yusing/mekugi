@@ -542,6 +542,9 @@ func (u *terminalUI) mouse(s string) error {
 	if u.selectionMouse(button, x, y, release) {
 		return nil
 	}
+	if u.selection == nil && u.drag == 0 && u.main != nil && u.main.composerNoticeMouse(button, x-u.layout.codex.x, y-u.layout.codex.y, release) {
+		return nil
+	}
 	if u.main != nil && u.main.btw != nil && !release && button&64 != 0 {
 		r := u.main.btw.rect
 		r.x += u.layout.codex.x

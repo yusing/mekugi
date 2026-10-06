@@ -27,10 +27,11 @@ func TestUISnapshotCommandSegmentRetentionNotice(t *testing.T) {
 			u.commandSegmentPending = 1
 			u.commandSegmentRetained(commandSegmentWrite{key: [3]string{"main", "turn", "command"}, err: tc.err})
 			delivery := u.applyCriticalNotices()
-			if delivery == nil || !strings.Contains(u.view.entries[0].Text, tc.err.Error()) {
-				t.Fatal("transcript omitted the underlying error")
+			if delivery == nil || !strings.Contains(u.notice, tc.err.Error()) {
+				t.Fatal("composer omitted the underlying error")
 			}
-			assertNativeUISnapshot(t, tc.name, u.view.renderFeed(80, 24).lines)
+			rows, _ := u.mainFrame(80, 12, 0)
+			assertNativeUISnapshot(t, "command-segments-storage-failure", rows)
 			delivery.finish(true)
 		})
 	}

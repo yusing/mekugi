@@ -1,6 +1,7 @@
 package router
 
 import (
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +48,9 @@ func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
 			name = "storage-cleanup-planning"
 		}
 		assertNativeUISnapshot(t, name, u.view.renderFeed(80, 24).lines)
+		if err := u.paint(io.Discard, 100, 30); err != nil {
+			t.Fatal(err)
+		}
 		delivery.finish(true)
 	}
 	if err := store.cleanupSessions(t.Context()); err != nil {

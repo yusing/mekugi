@@ -3,10 +3,6 @@ Mekugi dev • codex
 
 
 
-
-
-
-
-╭─ ✗ Command segment history could not be retained for item command (… ── [✓] ─╮
+╭─ Ready · ✗ File contents omitted: setup.sh (attachment budget excee… ── [✓] ─╮
 │ ❯                                                                            │
 ╰───────────────────────────────────────────────────────────────────────── 0% ─╯

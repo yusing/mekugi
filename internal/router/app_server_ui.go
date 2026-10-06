@@ -130,7 +130,9 @@ type appServerUI struct {
 	notice                    string     // Composer feedback; errors persist until the next draft edit.
 	noticeAlert               bool
 	noticeUntil               time.Time
-	turnStarted               time.Time // Shown as elapsed time while a turn runs.
+	noticeDetails             terminalRect // Truncated composer error, relative to Main.
+	noticeDismiss             terminalRect // Check button, relative to Main.
+	turnStarted               time.Time    // Shown as elapsed time while a turn runs.
 	model, reasoningEffort    string
 	serviceTier               string
 	serviceTiers              *serviceTierSettings // Invocation defaults and confirmed thread/model choices.
@@ -405,7 +407,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 								notices.finish(false)
 								return err
 							}
-							notices.finish(u.mainContentPainted)
+							notices.finish(true)
 							for sink, items := range journalPending {
 								if !u.mainContentPainted {
 									if !u.journalPanePresents(sink) {
@@ -1304,6 +1306,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	u.autoOpenQuestions()
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalRect{}
+	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
 	u.questions.rect = terminalRect{}
 	if u.statusPanel != nil {
 		return u.statusPanelFrame(width, height), terminalRect{}
@@ -1340,6 +1343,8 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
 			dockRect.y++
 			u.composerRect.y++
+			u.noticeDetails.y++
+			u.noticeDismiss.y++
 			if u.btw != nil && u.btw.rect.h > 0 {
 				u.btw.rect.y++
 			}
@@ -1450,7 +1455,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	const inputColor = "\x1b[39m"
 	focused := u.shell == nil || u.shell.focus == 0
 	if boxed {
-		frame = append(frame, composerBorder("╭", "╮", u.stateLabel(u.now()), "", width, border))
+		frame = append(frame, u.composerNoticeBorder(width, len(frame), border))
 	}
 	textX := min(2, inset)
 	if boxed {
@@ -1517,7 +1522,7 @@ func composerBorder(open, close, left, right string, width int, color string) st
 	}
 	inner := width - 2
 	l, r := segment(left), segment(right)
-	if inner-ansi.StringWidth(l)-ansi.StringWidth(r)-2 < 1 {
+	if inner-ansi.StringWidth(l)-ansi.StringWidth(r)-2 < 0 {
 		r = ""
 	}
 	if room := inner - ansi.StringWidth(r) - 2; ansi.StringWidth(l) > room {
@@ -1530,58 +1535,6 @@ func composerBorder(open, close, left, right string, width int, color string) st
 	return color + open + "─" + l + strings.Repeat("─", fill) + r + "─" + close + activityui.Reset
 }
 
-// Successful feedback is transient; actionable errors remain until editing.
-func (u *appServerUI) setNotice(text string, alert bool) {
-	u.notice, u.noticeAlert = text, alert
-	u.noticeUntil = time.Time{}
-	if text != "" && !alert {
-		u.noticeUntil = u.now().Add(3 * time.Second)
-	}
-}
-
-func (u *appServerUI) expireNotice(now time.Time) bool {
-	if u.noticeUntil.IsZero() || now.Before(u.noticeUntil) {
-		return false
-	}
-	u.setNotice("", false)
-	return true
-}
-
-// stateLabel is the session state followed by any composer notice.
-func (u *appServerUI) stateLabel(now time.Time) string {
-	label := u.sessionLabel(now)
-	if u.approvals.open {
-		label = "approving · turn waiting"
-	} else if u.questions.active != nil {
-		label = "answering"
-		if u.currentQuestion().note {
-			label += " · note"
-		}
-		if len(u.questions.active.request) > 0 {
-			label += " · turn waiting"
-		}
-		if u.questions.parked.snapshot.text != "" {
-			label += " · draft kept"
-		}
-	}
-	if u.shellMode() {
-		label = activityui.Red + "Shell Mode" + activityui.Reset + " · " + label
-	}
-	notice := strings.ReplaceAll(livediff.Safe(u.notice, false), "\n", " ")
-	switch {
-	case notice == "":
-		return label
-	case u.noticeAlert:
-		notice = activityui.Red + "✗ " + notice + activityui.Reset
-	default:
-		notice = "\x1b[39m" + notice + activityui.Reset
-	}
-	if label == "" {
-		return notice
-	}
-	return label + activityui.Dim + " · " + activityui.Undim + notice
-}
-
 func (u *appServerUI) sessionAnimating() bool {
 	return u.btw != nil && (u.btw.busy || u.btw.starting) || !u.alert && (u.turn != "" || u.starting() || u.submission.text != "" || u.restoring != nil || u.thread == "")
 }
@@ -1592,7 +1545,7 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 	case status == "":
 		return ""
 	case u.alert:
-		return activityui.Red + "✗ " + status + activityui.Reset
+		return activityui.Red + "✗ " + activityui.ErrorPreview(u.status) + activityui.Reset
 	case u.turn != "":
 		label := "\x1b[39m◐ " + activityui.StatusPulse(status, now, u.view.painter.Colors) + activityui.Reset
 		if status == "Working" {
@@ -1754,43 +1707,4 @@ func (u *appServerUI) interruptTurn() error {
 		return err
 	}
 	return u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
-}
-
-// applyCriticalNotices presents router diagnostics without creating assistant
-// messages. The caller acknowledges the reserved batch only after terminal paint.
-func (u *appServerUI) applyCriticalNotices() *criticalNoticeDelivery {
-	var activity *subagentActivity
-	if u.proxy != nil {
-		activity = u.proxy.activity
-	}
-	delivery := u.issues.takeNative(u.thread, activity)
-	if delivery == nil {
-		return nil
-	}
-	if u.noticeEntries == nil {
-		u.noticeEntries = make(map[string]bool)
-	}
-	for _, notice := range delivery.snapshots {
-		if u.noticeEntries[notice.id] {
-			continue
-		}
-		text := noticeText(&notice)
-		kind := "error"
-		if notice.category == "storage_cleanup_planning" || notice.category == "storage_cleanup_reclaimed" {
-			kind = "progress"
-		}
-		if notice.thread != "" && notice.thread != u.thread && activity != nil {
-			activity.mu.Lock()
-			if node := activity.threads[notice.thread]; node != nil {
-				text = node.name + ": " + text
-			}
-			activity.mu.Unlock()
-		}
-		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
-			Seq: u.view.lastSeq + 1, Agent: "Main", Kind: kind, Text: text, Observed: u.now(),
-		}}})
-		u.noticeEntries[notice.id] = true
-	}
-	u.dirty = true
-	return delivery
 }

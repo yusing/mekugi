@@ -130,8 +130,9 @@ func TestUISnapshotJournalCompactionFallback(t *testing.T) {
 	attempt.journalCompactionFallback(fmt.Errorf("session storage lease is not a regular file"))
 	delivery := u.applyCriticalNotices()
 	if delivery == nil {
-		t.Fatal("fallback cause did not reach the native transcript")
+		t.Fatal("fallback cause did not reach the composer")
 	}
-	assertNativeUISnapshot(t, "journal-compaction-fallback", u.view.renderFeed(80, 24).lines)
+	rows, _ := u.mainFrame(80, 12, 0)
+	assertNativeUISnapshot(t, "journal-compaction-fallback", rows)
 	delivery.finish(true)
 }

@@ -165,19 +165,21 @@ func TestCommandSegmentsRetentionErrorsStayWithOriginalThreadAndCause(t *testing
 	}
 	u.thread = "main"
 	delivery := u.applyCriticalNotices()
-	if delivery == nil || len(u.view.entries) != 2 {
-		t.Fatalf("distinct causes collapsed or failed to reach the transcript: %+v", u.view.entries)
+
+	if delivery == nil || len(u.view.entries) != 0 || !u.noticeAlert {
+		t.Fatal("retention errors missed the composer")
 	}
-	for i, cause := range []error{first, second} {
-		entry := u.view.entries[i].activityPaneEntry
-		if entry.Kind != "error" || !strings.Contains(entry.Text, cause.Error()) || !strings.Contains(entry.Text, "item item (turn turn)") {
-			t.Fatalf("transcript omitted complete error or identity: %+v", entry)
+	for _, cause := range []error{first, second} {
+		if !strings.Contains(u.notice, cause.Error()) || !strings.Contains(u.notice, "item item (turn turn)") {
+			t.Fatal("composer omitted complete error or identity")
 		}
 	}
+	before := u.notice
 	delivery.finish(false)
-	if retry := u.applyCriticalNotices(); retry == nil || len(u.view.entries) != 2 {
+	if retry := u.applyCriticalNotices(); retry == nil || u.notice != before || len(u.view.entries) != 0 {
 		t.Fatal("unpainted error was lost or duplicated")
 	} else {
+		u.mainFrame(100, 12, 0)
 		retry.finish(true)
 	}
 	if len(u.issues.Pending()) != 0 {
