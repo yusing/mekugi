@@ -377,7 +377,19 @@ func execSegmentEdits(source string) bool {
 				return false
 			}
 			if call, ok := node.(*syntax.CallExpr); ok {
-				if words, literal := literalArgs(call.Args); literal && len(words) > 0 {
+				args := call.Args
+				for len(args) > 0 {
+					name, literal := shellCatLiteral(args[0])
+					if !literal || filepath.Base(name) != "env" {
+						break
+					}
+					var reason string
+					args, reason = execEnvArgs(args[1:])
+					if reason != "" {
+						break
+					}
+				}
+				if words, literal := literalArgs(args); literal && len(words) > 0 {
 					name := filepath.Base(words[0])
 					writes = writes || name == "cp" || name == "install" || execGoFormatterWrites(name, words[1:])
 				}

@@ -370,8 +370,15 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 
 func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 	t.Parallel()
-	for _, script := range []string{"gofmt -w source.go", "sed -i 's/A/B/' source.go", "cp", "install"} {
-		t.Run(strings.Fields(script)[0], func(t *testing.T) {
+	for _, tc := range []struct{ script, shell string }{
+		{"gofmt -w source.go", "bash"},
+		{"sed -i 's/A/B/' source.go", "bash"},
+		{"cp", "bash"},
+		{"install", "bash"},
+		{"env -u BASH_ENV gofmt -w source.go; printf formatted", "sh"},
+	} {
+		t.Run(tc.shell+"/"+strings.Fields(tc.script)[0], func(t *testing.T) {
+			script, shell := tc.script, tc.shell
 			u, hub := newTrackedAppServerUI(t)
 			workspace := t.TempDir()
 			path := filepath.Join(workspace, "source.go")
@@ -386,10 +393,10 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			} else {
 				writeTestFile(t, path, "package p; var A=1\n")
 			}
-			// Two nested calls in one cell. The edit is a single command, so
-			// there is no shell segment report. The sibling test stays pending.
-			source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q}); await tools.exec_command({cmd:'go test ./...',workdir:%q});", script, workspace, workspace)
-			commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
+			// Two nested calls in one cell with no shell segment report.
+			// Native completion ends only the edit; the sibling test stays pending.
+			source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q,shell:%q,login:false}); await tools.exec_command({cmd:'go test ./...',workdir:%q});", script, workspace, "/bin/"+shell, workspace)
+			commands, dynamic := stockLiteralExecCommands(source, workspace, shell)
 			observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{previewOnly: true, directory: workspace})
 			if !ok || observation == nil || len(commands) != 2 {
 				t.Fatal("missing grouped edit observation")
@@ -403,13 +410,21 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 			transform.openExecWindow("cell", observation, nil)
 			defer proxy.execWindows.close("cell")
-			item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
+			item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/tmp/vcs-guard/" + shell + " -c " + quoteShellWord(script), "status": "inProgress"}
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
-			cmd := exec.CommandContext(t.Context(), execTrackShellExecutable(t, "bash"), "-c", script)
+			cmd := exec.CommandContext(t.Context(), execTrackShellExecutable(t, shell), "-c", script)
 			cmd.Env = append(os.Environ(), "PATH="+execTrackPath(), "BASH_ENV=")
 			cmd.Dir = workspace
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("edit failed: %v: %s", err, out)
+			}
+			if shell == "sh" {
+				preview := waitExecScopePreview(t, auto.events, func(p diffview.Preview) bool { return len(p.Files) > 0 && !p.Complete })
+				u.shell.preview(preview)
+				revealNativeDock(u.shell)
+				if u.shell.liveDock.Live() == 0 {
+					t.Fatal("formatter preview did not open before native completion")
+				}
 			}
 			item["status"], item["exitCode"] = "completed", 0
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
@@ -429,6 +444,16 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 							}
 							if !proxy.execWindows.find("cell").closed.IsZero() || u.session.commands[[3]string{"main", "turn", "test"}] == nil {
 								t.Fatal("edit completion ended enclosing cell or sibling test")
+							}
+							u.shell.preview(*event.Preview)
+							u.shell.animating(time.Now().Add(nativeDockMinimum + time.Millisecond))
+							screen := vt.NewEmulator(100, 30)
+							defer screen.Close()
+							if err := u.paint(screen, 100, 30); err != nil {
+								t.Fatal(err)
+							}
+							if len(u.shell.liveDock.Order) != 0 || strings.Contains(screen.String(), "LIVE ·") {
+								t.Fatal("completed native command retained the live dock")
 							}
 							return
 						}

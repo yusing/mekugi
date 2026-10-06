@@ -841,7 +841,7 @@ func appServerDisplayCommand(command string) string {
 	return command
 }
 
-// appServerShellScript is the script of a host Bash command, exactly as the
+// appServerShellScript is the script of a host Bash or sh command, exactly as the
 // shell receives it with -c or -lc.
 func appServerShellScript(command string) (string, bool) {
 	args, ok := appServerCommandArgs(command)
@@ -849,7 +849,8 @@ func appServerShellScript(command string) (string, bool) {
 		return "", false
 	}
 	name := filepath.Base(args[0])
-	return args[2], strings.TrimSuffix(name, filepath.Ext(name)) == "bash"
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+	return args[2], name == "bash" || name == "sh"
 }
 
 // appServerCommandArgs unquotes a host command made only of literal words.

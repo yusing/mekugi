@@ -425,9 +425,10 @@ return to their captured state. When a live segment report uniquely matches the
 writer's thread, turn and exact script, and the host invocation started after
 the writer window opened, the card finishes after all recognized
 edit segments (including file copies and Go formatter writes) end or are skipped, independently
-of a following test or other non-edit segment. A uniquely matched native command
-completion also finishes its card when no segment report exists, without waiting
-for later commands in the same `exec` cell. Its final frame uses observed
+of a following test or other non-edit segment. A uniquely matched native Bash or
+`sh` command completion also finishes its card when no segment report exists,
+including commands with supported literal `env` prefixes, without waiting for
+later commands in the same `exec` cell. Its final frame uses observed
 files, not predicted content; later edit segments keep it open. Ambiguous
 concurrent matches cannot retire each other's cards. Without tracking, a literal edit's card finishes when its
 captured targets match the fully projected edit. The completed card says

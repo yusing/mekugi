@@ -664,6 +664,39 @@ func literalArgs(words []*syntax.Word) ([]string, bool) {
 	return values, true
 }
 
+// execEnvArgs unwraps only literal environment changes that preserve command resolution.
+func execEnvArgs(args []*syntax.Word) ([]*syntax.Word, string) {
+	for len(args) != 0 {
+		next, ok := shellCatLiteral(args[0])
+		if ok && (next == "-u" || next == "--unset" || strings.HasPrefix(next, "--unset=")) {
+			variable, inline := strings.CutPrefix(next, "--unset=")
+			count := 1
+			if !inline && len(args) > 1 {
+				variable, ok = shellCatLiteral(args[1])
+				count = 2
+			} else if !inline {
+				ok = false
+			}
+			if !ok || variable == "" || variable == "PATH" {
+				return nil, "env unset changes command resolution or is not literal"
+			}
+			args = args[count:]
+			continue
+		}
+		if !ok || strings.HasPrefix(next, "-") {
+			return nil, "env options are not parsed"
+		}
+		if !strings.Contains(next, "=") {
+			break
+		}
+		if variable, _, _ := strings.Cut(next, "="); variable == "PATH" {
+			return nil, "command resolution changes"
+		}
+		args = args[1:]
+	}
+	return args, ""
+}
+
 func (w *execShellWalker) call(call *syntax.CallExpr) {
 	for _, assign := range call.Assigns {
 		if assign.Value != nil && !execWordStatic(assign.Value) || assign.Array != nil {
@@ -764,36 +797,11 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 			name, args = next, args[1:]
 			continue
 		case "env":
-			for len(args) != 0 {
-				next, ok := shellCatLiteral(args[0])
-				if ok && (next == "-u" || next == "--unset" || strings.HasPrefix(next, "--unset=")) {
-					variable, inline := strings.CutPrefix(next, "--unset=")
-					count := 1
-					if !inline && len(args) > 1 {
-						variable, ok = shellCatLiteral(args[1])
-						count = 2
-					} else if !inline {
-						ok = false
-					}
-					if !ok || variable == "" || variable == "PATH" {
-						w.opaque("env unset changes command resolution or is not literal")
-						return
-					}
-					args = args[count:]
-					continue
-				}
-				if !ok || strings.HasPrefix(next, "-") {
-					w.opaque("env options are not parsed")
-					return
-				}
-				if !strings.Contains(next, "=") {
-					break
-				}
-				if variable, _, _ := strings.Cut(next, "="); variable == "PATH" {
-					w.opaque("command resolution changes")
-					return
-				}
-				args = args[1:]
+			var reason string
+			args, reason = execEnvArgs(args)
+			if reason != "" {
+				w.opaque(reason)
+				return
 			}
 			if len(args) == 0 {
 				return
