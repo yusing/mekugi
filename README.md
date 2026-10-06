@@ -46,6 +46,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
   click an Edit event to open its captured file and hunk.
 - **Readable command output.** Open [searchable retained output](#output-dialog).
   With `mekugi-exec`, command lists show each command's output, exit status, and timing.
+  Markdown file links open local source in the same dialog.
 - **File, directory and skill attachments.** [Send selected contents or a bounded directory tree directly](#composer)
   without a separate agent read; unreadable or oversized attachments have explicit notices.
 - **Composer additions.** Mention selected messages or diffs, and ask
@@ -606,6 +607,20 @@ Errors keep a short inline preview. Click **details**, or focus Main or Activity
 and press `Ctrl-B` then `!`, to read the full error, including restored
 JavaScript execution failures. The keyboard shortcut opens the newest error; Left/Right reaches the
 other retained errors in that transcript. Host-omitted text cannot be recovered.
+
+Click a Markdown link to an existing local file in Main, Activity, or a dialog
+to read its current contents. Relative paths resolve against the session workspace;
+absolute paths and local `file:///` links also work. A `:line` suffix scrolls to
+that source line when it exists. The path row uses workspace-relative display
+inside the workspace and stays absolute outside it. Drag to select the path or
+visible content, then `y`, `c`, or Ctrl-C copies it; `y` without a selection copies
+the original file contents.
+Files must be UTF-8 text no larger than 8 MiB. Read failures, oversized files,
+and binary/non-UTF-8 files show red, copyable errors. Terminal controls are
+sanitized for display. Reopening reads the file again; an open dialog does not
+monitor changes. HTTP(S) links still copy their destinations in Main and Activity;
+clicking them inside a dialog still does nothing. Missing or unrecognized file
+links keep their prior behavior.
 
 - Left/Right or a click switches tabs. `j`/`k`, `PgUp`/`PgDn`, and `g`/`G`
   scroll; live output follows its tail until you scroll up.

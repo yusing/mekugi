@@ -739,10 +739,12 @@ Scrolling after releasing the drag leaves the selected range unchanged. Newly
 exposed rows retain source-aware Markdown copying and their original click targets;
 saved Diff rows retain their gutters and change attribution. Static selections
 retain their existing dismissal behavior. Resizing or resuming editing dismisses
-the selection. Clicking a Markdown absolute local
-path or HTTP(S) link copies its destination (a local path retains literal spaces
-and its line suffix), rather than opening it. Clipboard availability is controlled
-by the user's terminal.
+the selection. Recognized Markdown file links in Main, Activity, and shared
+dialogs open local source with the path, content, and read errors copyable, as
+specified by [activity display](activity_display.md). HTTP(S) links still copy
+their destinations in Main and Activity; clicking them inside a dialog still
+does nothing. Missing or unrecognized file links retain their prior click behavior.
+Clipboard availability is controlled by the user's terminal.
 Arrow keys move the insertion caret across graphemes and displayed
 rows. At the first/last displayed row, Up/Down recalls older/newer submitted
 input, restoring the draft and caret after the newest entry. History is bounded

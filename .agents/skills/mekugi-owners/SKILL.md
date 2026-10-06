@@ -22,7 +22,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Session/composer controller and host-event reconciliation | `internal/router/app_server_ui.go`; input paths in `internal/router/app_server_input.go` |
 | Native approval dialog, Codex approval responses, and approval-mode thread policy | `internal/router/app_server_approvals.go`; question dock in `internal/router/app_server_questions.go` |
 | Remote VCS write guard: classification, command instrumentation, and approval hand-off | `internal/vcsguard` (hook protocol in `hook.go`, source instrumentation in `rewrite.go`, startup setup in `shell.go`), `cmd/mekugi-exec/guard*.go`, `internal/router/vcs_guard.go`; session hook registration in `cmd/mekugi/vcs_guard_hook.go`, effective-hook checks in `internal/router/app_server_guard_hook.go`, shell environment in `cmd/mekugi/wrap.go`; contract in `doc/spec/execution.md` REQ-EXECUTION-003 |
-| Dialog integration and background fading | `internal/router/output_dialog.go`, `internal/ui/activity/dialog.go`, `internal/ui/activity/faint.go` |
+| Dialog integration, Markdown file links, and background fading | `internal/router/output_dialog.go`, `internal/router/markdown_file_dialog.go`, `internal/ui/activity/dialog.go`, `internal/ui/activity/faint.go` |
 | Shared Markdown and activity painting | `internal/ui/activity/paint.go`; rendering coverage in `internal/ui/activity/*snapshot_test.go` |
 | Submitted file attachments | `internal/router/composer_file_attachment.go`; shared path formatting in `internal/pathdisplay` |
 | Journal cards and agent roster presentation | `internal/router/native_journal.go`, `internal/router/journal_card.go`, `internal/router/native_roster.go`; durable journal state remains separate |

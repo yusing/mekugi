@@ -33,11 +33,14 @@ type outputDialog struct {
 	indents   []int
 	tabs      []outputTab
 
-	typing bool   // The footer reads a search query.
-	draft  string // Query being typed.
-	query  string // Confirmed query, lowercased.
-	match  int    // Line of the current match, or -1.
-	missed bool   // The confirmed query matched nothing.
+	typing      bool   // The footer reads a search query.
+	draft       string // Query being typed.
+	query       string // Confirmed query, lowercased.
+	match       int    // Line of the current match, or -1.
+	missed      bool   // The confirmed query matched nothing.
+	filePath    string // Copyable path for a Markdown file link.
+	fileText    string // Original file bytes for explicit whole-source copying.
+	pendingLine int    // Source line to reveal after the first layout.
 
 	// Layout of the last frame, rebuilt when its page, width, theme or output changes.
 	laid    activityui.DialogPage
@@ -379,6 +382,12 @@ func (d *outputDialog) layout(width int) {
 		return
 	}
 	d.laid, d.laidKey = d.view.painter.DialogPage(block, width), key
+	if d.filePath != "" {
+		d.laid.Lines = append([]activityui.DialogLine{{Text: activityui.Path(livediff.Safe(d.filePath, false)), Wrap: true}, {}}, d.laid.Lines...)
+		if block.Kind != "error" {
+			d.laid.Text = d.fileText
+		}
+	}
 	if len(d.segments) > 0 {
 		flashed := slices.IndexFunc(d.segmentLines, func(lines [2]int) bool {
 			return lines[0] == d.flashFrom && lines[1] == d.flashTo
@@ -594,6 +603,15 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 		u.selection = nil
 	}
 	d.rows = h - d.chrome()
+	if d.pendingLine > 0 {
+		for i, line := range d.laid.Lines {
+			if line.Number == d.pendingLine {
+				d.navigate(i, i+1, false)
+				break
+			}
+		}
+		d.pendingLine = 0
+	}
 	if d.pendingSegment > 0 && d.pendingSegment <= len(d.segmentLines) {
 		target := d.segmentLines[d.pendingSegment-1]
 		d.navigate(target[0], target[1], d.pendingFlash)

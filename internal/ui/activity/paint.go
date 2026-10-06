@@ -344,8 +344,8 @@ func (p *Painter) Inline(line string) string {
 	return out.String()
 }
 
-// Absolute local paths and HTTP(S) URLs become terminal links. Relative or malformed
-// Markdown remains visible verbatim rather than guessing a filesystem target.
+// Local paths, file URLs and HTTP(S) URLs become terminal links. File existence
+// and workspace-relative resolution belong to the click handler.
 func liveActivityLink(s string) (label, target string, end int, ok bool) {
 	close := strings.Index(s, "](")
 	if close < 2 || s[0] != '[' {
@@ -359,7 +359,21 @@ func liveActivityLink(s string) (label, target string, end int, ok bool) {
 	} else if i := strings.IndexByte(rest, ')'); i >= 0 {
 		target, end = rest[:i], close+2+i+1
 	}
-	if end == 0 || !(strings.HasPrefix(target, "/") || strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "http://")) || strings.ContainsAny(target, "\x00\x1b\r\n") {
+	if end == 0 || strings.ContainsAny(target, "\x00\x1b\r\n") {
+		return "", "", 0, false
+	}
+	if strings.HasPrefix(target, "/") || strings.HasPrefix(target, "file://") || strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "http://") {
+		return s[1:close], target, end, true
+	}
+	path := target
+	if colon := strings.LastIndexByte(path, ':'); colon >= 0 {
+		if line, err := strconv.Atoi(path[colon+1:]); err == nil && line > 0 {
+			path = path[:colon]
+		}
+	}
+	// Raw relative operands keep literal URL punctuation. Only an initial
+	// fragment or URI scheme is non-file syntax.
+	if path == "" || strings.HasPrefix(path, "#") || strings.HasPrefix(path, "?") || strings.Contains(strings.SplitN(path, "/", 2)[0], ":") {
 		return "", "", 0, false
 	}
 	return s[1:close], target, end, true

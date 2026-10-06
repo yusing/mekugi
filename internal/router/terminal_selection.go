@@ -352,8 +352,18 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 			if release {
 				if !s.moved {
 					u.selection = nil
-					if d == nil && s.link != "" {
-						u.copyText(s.link)
+					if s.link != "" {
+						view := s.view
+						if d != nil {
+							view = d.view
+						}
+						if !u.openMarkdownFile(view, s.link) && d == nil {
+							link := s.link
+							if parsed, err := url.Parse(link); err == nil && parsed.Scheme == "file" {
+								link = parsed.Path
+							}
+							u.copyText(link)
+						}
 					} else if d == nil {
 						index := s.startY - s.rect.y
 						if index >= 0 && index < len(s.questions) && s.questions[index] != 0 {
@@ -399,6 +409,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 			return false
 		}
 		s := &terminalSelection{rect: terminalRect{0, 0, body.w, len(d.body)}, rows: d.body, contentLeft: d.indents, startX: mouseX, startY: mouseY, endX: mouseX, endY: mouseY, dragging: true, mention: "dialog"}
+		_, s.link = u.selectionScreen(d.body, mouseX, mouseY)
 		var lines []string
 		var indents []int
 		for i := range d.laid.Lines {
@@ -544,9 +555,6 @@ func (u *terminalUI) selectionScreen(source []string, x, y int) ([]string, strin
 	link := ""
 	if cell := screen.CellAt(x, y); cell != nil {
 		link = cell.Link.URL
-	}
-	if parsed, err := url.Parse(link); err == nil && parsed.Scheme == "file" {
-		link = parsed.Path
 	}
 	return strings.Split(screen.Render(), "\n"), link
 }

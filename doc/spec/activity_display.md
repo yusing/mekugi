@@ -76,7 +76,7 @@ Read and Search, they appear one at a time, 80 ms apart, in Main, Activity and t
 roster summary; restored history shows at once. Child text is sanitized before layout, so it cannot emit terminal
 controls. Inline Markdown code uses shell syntax colors with an accent for plain
 tokens; fenced code retains language-specific highlighting. Decoration must not
-change code text, wrapping, or source-aware copying. Local absolute-path Markdown links show their label as a terminal
+change code text, wrapping, or source-aware copying. Recognized local-file Markdown links show their label as a terminal
 hyperlink rather than exposing the raw destination syntax. Wrapped links retain their
 destination and underline only on their text, never on row padding or gutters. A completed child
 compaction appears as an event in the feed and as the agent's latest roster
@@ -164,6 +164,21 @@ dialog shows that same invocation duration; the total is never copied onto
 individual command rows.
 
 The shared content dialog captures keys and pointer events above both panes.
+Clicking a recognized Markdown file link in Main, Activity, or Markdown dialog
+content opens an existing regular local file in this dialog. Relative paths
+require the current session's workspace metadata; absolute paths and local
+`file:///` URLs are also supported. A `:line` suffix reveals that source line
+when it exists. Paths inside the workspace use shared workspace-relative display;
+external paths stay absolute. The body includes a selectable path row and source
+content, with file-type syntax colors under the existing highlighting limit.
+Terminal controls are sanitized for display; whole-page `y` copies the original
+source bytes; dragging selects the visible path or content for selection copying. Reads
+accept UTF-8 text up to 8 MiB; oversized, binary/non-UTF-8, or unreadable files
+show red, copyable errors. Each opening reads current contents, without ongoing
+file monitoring. Missing or unrecognized destinations retain their prior click
+behavior. HTTP(S) links still copy their destinations in Main and Activity;
+clicking them inside a dialog still does nothing.
+
 Errors show a bounded first-line preview rather than an unbounded inline diagnostic.
 A details link and click target appear only when that preview omits retained content;
 a complete single-line diagnostic may wrap without gaining a redundant link.
