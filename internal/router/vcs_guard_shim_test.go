@@ -85,9 +85,22 @@ exit 127
 					t.Fatal("second command did not reach its approval")
 				}
 				outputs := new(activityui.Retention)
-				live, _ := shell.hub.view(key, false, execSegmentText, outputs)
-				if len(live.segments) != 2 || live.complete || live.segments[0].running || !live.segments[1].running {
-					t.Fatalf("commands did not stream separately: %+v", live)
+				var live execTrackView
+				// Approval and segment reports use separate transports. Wait
+				// for the observed boundary, not only the approval request.
+				for {
+					shell.hub.mu.Lock()
+					changed := shell.hub.changed
+					shell.hub.mu.Unlock()
+					live, _ = shell.hub.view(key, false, execSegmentText, outputs)
+					if len(live.segments) == 2 && !live.complete && !live.segments[0].running && live.segments[1].running {
+						break
+					}
+					select {
+					case <-changed:
+					case <-ctx.Done():
+						t.Fatalf("commands did not stream separately: %+v", live)
+					}
 				}
 				first, second := live.segments[0], live.segments[1]
 				if first.timing.ElapsedNS < int64(20*time.Millisecond) || second.timing.Started.IsZero() || first.output == nil || second.output == nil || first.output == second.output {
