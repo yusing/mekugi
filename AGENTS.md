@@ -9,6 +9,10 @@ Do not create report/summary Markdown unless requested. Observed Mekugi friction
 `FIXME.md` with impact and a concrete next step. Distinguish current failures from fixed history
 and do not equate investigation time with waste.
 
+Model-visible text must be agent-friendly and tokenizer-friendly. Use the lowest-token
+representation that preserves meaning; if one token suffices, use it. Omit decorative glyphs
+and human-oriented formatting that adds no value for the agent.
+
 ## Affected contracts
 
 Load the linked contract when the change crosses that boundary; the contracts own details and
