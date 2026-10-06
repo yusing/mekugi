@@ -161,6 +161,7 @@ type liveActivityNativeItem struct {
 	recovery           string            // Exact retained model-visible reset message, or an unavailable notice.
 	replacesItems      []string          // Exact provider items contained in this retained child result.
 	command, status    string
+	approval           string // UI decision, independent of the host execution result.
 	workdir            string // Display form of a command's directory outside the shown workspace.
 	searchResults      *int
 	running            bool                   // Started live and not yet completed; replay never sets it.
@@ -384,7 +385,20 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 		if !entry.native.sameItem(previous.native) {
 			continue
 		}
-		if previous.native.phase == "item/completed" || entry.native.phase == "item/started" || previous.native.phase == "turn/completed" && entry.native.phase != "item/completed" {
+		if entry.native.phase == "approval/ended" {
+			native := *previous.native
+			native.approval = entry.native.approval
+			current := previous.activityPaneEntry
+			current.native = &native
+			blocks := slices.Clone(previous.blocks)
+			if len(blocks) > 0 {
+				blocks[0].Approval = native.approval
+			}
+			v.replaceEntry(i, current, blocks)
+			return true
+		}
+		entry.native.approval = previous.native.approval
+		if previous.native.phase == "item/completed" || entry.native.phase == "item/started" && previous.native.phase != "approval/ended" || previous.native.phase == "turn/completed" && entry.native.phase != "item/completed" {
 			return true
 		}
 		if entry.native.phase == "item/agentMessage/delta" {

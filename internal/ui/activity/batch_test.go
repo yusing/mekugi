@@ -9,6 +9,7 @@ func TestCollapseBatchKeepsUnsettledOrSingleWork(t *testing.T) {
 		"single":         {read, {Kind: "filter"}},
 		"running":        {read, func() Block { b := run; b.Running = true; return b }()},
 		"skipped":        {read, func() Block { b := run; b.Skipped = true; return b }()},
+		"approval":       {read, func() Block { b := run; b.Approval = "Approved"; return b }()},
 		"requested edit": {read, {Kind: "op", Verb: "Edit", EditSource: "cat (requested)"}},
 		"question":       {read, {Kind: "op", Verb: "Asked", Questions: []Question{{Text: "Continue?"}}}},
 		"message":        {read, {Kind: "text", Body: "note"}},

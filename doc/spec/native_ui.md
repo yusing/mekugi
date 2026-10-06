@@ -1359,9 +1359,13 @@ one-row banner, `! N approvals pending · ctrl+b q review`, waits, and Ctrl+B Q
 opens approvals before questions. Keystrokes received before the dock is painted
 do not answer it. The open composer says `approving · turn waiting`.
 
-Each ending adds a Session transcript row with its outcome, subject and agent:
-the chosen outcome, `Resolved elsewhere` after `serverRequest/resolved`, or
-`Turn ended before an answer` when its turn completes. A guarded write the user
-did not answer ends as `Denied: no answer within 5 minutes`, or
-`Withdrawn: the command stopped` when its command exited first; an answer chosen
-after either is not sent. Headless runs still require `--yolo`.
+Outcomes appear beside the associated native item, without an extra Session row.
+A VCS guard outcome names the guarded command under its caller rather than
+claiming a decision for the outer shell invocation. `Approved` is green and
+`Denied` is red, independently of execution success; command dialogs show the
+decision and its full scope or reason. External resolution shows `Resolved
+elsewhere`, and a turn ending before an answer shows `Turn ended before an
+answer`, without claiming approval or denial. A guarded write the user did not
+answer ends as `Denied: no answer within 5 minutes`, or `Withdrawn: the command
+stopped` when its command exited first; an answer chosen after either is not
+sent. Headless runs still require `--yolo`.

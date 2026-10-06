@@ -40,6 +40,7 @@ type Block struct {
 	WaitTargets        []WaitTarget // Canonical identity and observed status, not parsed display text.
 	Results            *int
 	ExitCode           int    // Nonzero command exit; zero means no failure label.
+	Approval           string // Approval outcome, distinct from execution status and exit.
 	BatchExit          bool   // This row owns an invocation-wide exit, not an individual operation's.
 	EditSource         string // Editing source shared by this invocation's file rows.
 	EditOutcome        string // Live segment outcome, distinct from captured file evidence.
@@ -513,7 +514,7 @@ func MergeLiveActivityReads(blocks []Block) []Block {
 // mergesReads reports whether next joins the read row last.
 func mergesReads(last, next Block) bool {
 	joins := func(b Block) bool {
-		return b.Kind == "reads" && b.Results == nil && b.ExitCode == 0 && b.Started.IsZero() && b.Duration == 0 &&
+		return b.Kind == "reads" && b.Approval == "" && b.Results == nil && b.ExitCode == 0 && b.Started.IsZero() && b.Duration == 0 &&
 			(len(b.Tail) == 0 && b.TailOmitted == 0 || b.readContent())
 	}
 	return last.Verb == next.Verb && last.Workdir == next.Workdir && joins(last) && joins(next)

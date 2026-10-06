@@ -74,6 +74,7 @@ type outputDialogKey struct {
 	output               *activityui.Output
 	theme                livediff.Theme
 	body                 string
+	approval             string
 	live                 bool
 }
 
@@ -199,6 +200,7 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 			}
 			pages := []activityui.Block{{Source: source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: toolActivityShellSource(appServerDisplayCommand(entry.native.command)), Lang: "bash", Output: entry.native.output, Tail: entry.outputTail, TailOmitted: entry.outputOmit, Running: entry.native.running, Body: "Per-command output boundaries were not retained for this invocation."}}
 			setCommandTiming(pages, entry.activityPaneEntry)
+			pages[0].Approval = entry.native.approval
 			return pages
 		}
 		var pages []activityui.Block
@@ -209,6 +211,9 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 			}
 		}
 		setCommandTiming(pages, entry.activityPaneEntry)
+		if len(pages) > 0 {
+			pages[0].Approval = entry.native.approval
+		}
 		return pages
 	}
 	return nil
@@ -311,6 +316,9 @@ func (d *outputDialog) refreshPages() {
 					if entry.Seq != origin.Source {
 						continue
 					}
+					if entry.native != nil {
+						origin.Approval = entry.native.approval
+					}
 					if origin.Verb == "Run" && entry.native != nil {
 						timed := []activityui.Block{origin}
 						setCommandTiming(timed, entry.activityPaneEntry)
@@ -362,7 +370,7 @@ func (d *outputDialog) refreshPages() {
 func (d *outputDialog) layout(width int) {
 	d.refreshPages()
 	block := d.pages[d.page]
-	key := outputDialogKey{page: d.page, width: width, output: block.Output, theme: d.view.painter.Theme, body: block.Body, live: block.Live}
+	key := outputDialogKey{page: d.page, width: width, output: block.Output, theme: d.view.painter.Theme, body: block.Body, approval: block.Approval, live: block.Live}
 	if block.Output != nil {
 		key.version = block.Output.Version()
 	}

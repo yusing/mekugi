@@ -79,6 +79,12 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 			page.digits = max(page.digits, len(strconv.Itoa(line.Number)))
 		}
 	}
+	if block.Approval != "" {
+		add(DialogLine{Text: Dim + "Approval: " + Undim + approvalLabel(block.Approval)})
+		if ansi.Strip(approvalLabel(block.Approval)) != block.Approval {
+			add(DialogLine{Text: Dim + livediff.Safe(block.Approval, false) + Undim, Wrap: true})
+		}
+	}
 	gap := func() {
 		if len(page.Lines) > 0 {
 			add(DialogLine{})
@@ -513,6 +519,9 @@ func (p *Painter) DialogPageTitle(block Block, now time.Time, width int) string 
 	title := VerbColor(block.Verb) + "\x1b[1m" + verb + Reset
 	if target := dialogTarget(p, block); target != "" {
 		title += Dim + " · " + Undim + target
+	}
+	if outcome := approvalLabel(block.Approval); outcome != "" {
+		title += Dim + " · " + Undim + outcome
 	}
 	if elapsed := RunElapsed(block, now); elapsed != "" {
 		title += Dim + " · " + elapsed + Undim

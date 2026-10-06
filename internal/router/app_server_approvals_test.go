@@ -4,9 +4,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
@@ -30,8 +32,18 @@ func approvalTestChoices(u *appServerUI) []string {
 	return labels
 }
 
-func approvalTestTranscript(u *appServerUI) string {
-	return strings.Join(entryTexts(u.view), "\n")
+func approvalTestTranscript(t *testing.T, u *appServerUI) string {
+	t.Helper()
+	var rows []string
+	for _, entry := range u.view.entries {
+		if entry.Agent == "Session" {
+			t.Fatal("approval added a Session entry")
+		}
+		for _, block := range entry.blocks {
+			rows = append(rows, u.view.painter.Block(block, 100)...)
+		}
+	}
+	return ansi.Strip(strings.Join(rows, "\n"))
 }
 
 func TestNativeApprovalCommandReturnsTheOfferedDecision(t *testing.T) {
@@ -63,7 +75,7 @@ func TestNativeApprovalCommandReturnsTheOfferedDecision(t *testing.T) {
 	if len(u.approvals.pending) != 0 || u.approvals.open {
 		t.Fatal("answered approval remains")
 	}
-	if got := approvalTestTranscript(u); got != "Approved commands starting with git push · git push origin main" {
+	if got := approvalTestTranscript(t, u); !strings.Contains(got, "git push origin main · Approved") || len(u.view.entries) != 1 {
 		t.Fatalf("transcript = %q", got)
 	}
 }
@@ -145,7 +157,7 @@ func TestNativeApprovalEndsWhenResolvedElsewhere(t *testing.T) {
 	if strings.Contains(input.String(), `"decision"`) {
 		t.Fatalf("ended approval was answered: %s", input.String())
 	}
-	if got := approvalTestTranscript(u); got != "Resolved elsewhere · git push origin main\nTurn ended before an answer · git push origin main" {
+	if got := approvalTestTranscript(t, u); !strings.Contains(got, "git push origin main · Turn ended before an answer") || len(u.view.entries) != 1 {
 		t.Fatalf("transcript = %q", got)
 	}
 }
@@ -214,16 +226,17 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 	if len(expired.reply) != 0 || len(u.approvals.pending) != 0 {
 		t.Fatal("expired write was answered")
 	}
-	want := "Approved · git push origin main\nDenied · git push origin main\nDenied: no answer within 5 minutes · git push origin main"
-	if got := approvalTestTranscript(u); got != want {
-		t.Fatalf("transcript = %q", got)
+	for i, want := range []string{"Approved", "Denied", "Denied: no answer within 5 minutes"} {
+		if len(u.view.entries) != 3 || u.view.entries[i].blocks[0].Approval != want {
+			t.Fatalf("approval %d = %+v", i, u.view.entries)
+		}
 	}
 	withdrawn := newRequest()
 	u.addGuardApproval(withdrawn)
 	withdrawn.outcome = "withdrawn"
 	close(withdrawn.done)
-	if !u.expireApprovals() || !strings.HasSuffix(approvalTestTranscript(u), "Withdrawn: the command stopped · git push origin main") {
-		t.Fatalf("transcript = %q", approvalTestTranscript(u))
+	if !u.expireApprovals() || !strings.Contains(approvalTestTranscript(t, u), "git push origin main · Withdrawn: the command stopped") {
+		t.Fatalf("transcript = %q", approvalTestTranscript(t, u))
 	}
 }
 
@@ -269,6 +282,100 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 			tc.setup(t, u)
 			rows, _ := u.mainFrame(tc.width, 20, 0)
 			assertNativeUISnapshot(t, "native-"+tc.name, rows)
+		})
+	}
+}
+
+func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
+	previous := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() { time.Local = previous })
+	for _, tc := range []struct {
+		name, outcome       string
+		guard, early, child bool
+		choice              int
+	}{
+		{name: "native-approved", outcome: "Approved"},
+		{name: "native-denied", outcome: "Declined", early: true, choice: 1},
+		{name: "guard-approved", outcome: "Approved", guard: true},
+		{name: "guard-denied-child", outcome: "Denied", guard: true, child: true, choice: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, "/workspace")
+			u.clock = func() time.Time { return time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC) }
+			u.view.clock, u.agents.clock = u.clock, u.clock
+			u.view.painter.Theme, u.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
+			u.turn = "turn"
+			thread, view := "main", u.view
+			if tc.child {
+				u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
+				thread, view = "child", u.agents
+			}
+			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "git push origin main", Status: "inProgress"}
+			notify := func(method string) {
+				appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "turn", "item": item})
+			}
+			if !tc.early {
+				notify("item/started")
+				u.shell.openEntry(view, view.entries[len(view.entries)-1].Seq)
+				u.shell.paintOutput(make([]string, 18), 80, 18)
+			}
+			if tc.guard {
+				u.addGuardApproval(&vcsApproval{thread: thread, argv: []string{"git", "push", "origin", "main"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})})
+			} else {
+				approvalTestCommand(t, u, 7, map[string]any{"threadId": thread, "availableDecisions": []string{"accept", "decline"}})
+			}
+			a := u.approvals.pending[0]
+			if err := u.answerApproval(a, a.choices[tc.choice]); err != nil {
+				t.Fatal(err)
+			}
+			if !tc.guard && !tc.early {
+				if frame := drawOutputDialog(u.shell); !strings.Contains(frame, "Approval: Approved") {
+					t.Fatalf("painted dialog did not refresh before host output: %s", frame)
+				}
+			}
+			if tc.early {
+				notify("item/started")
+			}
+			item.Status, item.ExitCode = "completed", new(1) // Approval does not mean execution succeeded.
+			if tc.choice == 1 && !tc.guard {
+				item.Status, item.ExitCode = "declined", nil
+			}
+			notify("item/completed")
+			count := 1
+			if tc.guard {
+				count = 2 // The guard names its argv, not an outer host item.
+				if view.entries[0].native.approval != "" {
+					t.Fatal("guard decision changed the outer host command")
+				}
+			}
+			if len(view.entries) != count || view.entries[count-1].native.approval != tc.outcome {
+				t.Fatalf("entries = %+v", view.entries)
+			}
+			entry := view.entries[count-1]
+			feed := view.renderFeed(48, 30)
+			rows := feed.lines
+			color, label := activityui.Green, "Approved"
+			if tc.choice == 1 {
+				color, label = activityui.Red, "Denied"
+			}
+			if !strings.Contains(strings.Join(rows, "\n"), color+label+activityui.Reset) || entry.Agent == "Session" {
+				t.Fatalf("approval rows = %q", rows)
+			}
+			assertNativeUISnapshot(t, "approval-outcome-"+tc.name, rows)
+			row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool {
+				block, ok := view.snippetBlock(s)
+				return ok && block.Source == entry.Seq
+			})
+			if row < 0 || !u.shell.openOutput(view, feed.snippets[row]) {
+				t.Fatal("approval command has no clickable output dialog")
+			}
+			rows = make([]string, 18)
+			u.shell.paintOutput(rows, 80, len(rows))
+			if !strings.Contains(u.shell.output.laid.Title, color+label+activityui.Reset) {
+				t.Fatalf("dialog lost the decision: %q", rows)
+			}
+			assertNativeUISnapshot(t, "approval-dialog-"+tc.name, rows)
 		})
 	}
 }

@@ -576,6 +576,14 @@ func liveActivityIndent(lines []string, prefix string) []string {
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
 	lines := p.blockRows(block, width)
+	if outcome := approvalLabel(block.Approval); outcome != "" && len(lines) > 0 {
+		suffix := Dim + " · " + Undim + outcome
+		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
+			lines[0] += suffix
+		} else {
+			lines = slices.Insert(lines, 1, liveActivityHang(strings.Repeat(" ", block.cell(RowVerb(block))), outcome, width)...)
+		}
+	}
 	if block.ShowWorkdir && block.Workdir != "" && block.Verb != "Run" && len(lines) > 0 {
 		// Run rows carry it in their label, ahead of the exit and elapsed time.
 		if suffix := " " + workdirLabel(block.Workdir); ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
@@ -610,6 +618,20 @@ func (p *Painter) Block(block Block, width int) []string {
 		block.Tail = p.tailColors(block)
 	}
 	return outputRows(block, lines, width)
+}
+
+// approvalLabel keeps the decision separate from whether a command ran or
+// succeeded. Withdrawal and external resolution do not imply a decision.
+func approvalLabel(outcome string) string {
+	switch {
+	case strings.HasPrefix(outcome, "Approved"), strings.HasPrefix(outcome, "Granted"), strings.HasPrefix(outcome, "Allowed"):
+		return Green + "Approved" + Reset
+	case strings.HasPrefix(outcome, "Denied"), strings.HasPrefix(outcome, "Declined"), strings.HasPrefix(outcome, "Blocked"):
+		return Red + "Denied" + Reset
+	case outcome != "":
+		return Dim + livediff.Safe(outcome, false) + Undim
+	}
+	return ""
 }
 
 // workdirLabel names the directory a command ran in when it is not the

@@ -23,7 +23,7 @@ type nativeApprovalChoice struct {
 	label    string
 	response map[string]any
 	approve  bool
-	outcome  string // Transcript wording once chosen.
+	outcome  string // Command outcome once chosen.
 }
 
 // nativeApproval is a pending decision: a Codex approval server request, or
@@ -33,10 +33,11 @@ type nativeApprovalChoice struct {
 // patch_options and permissions_options @7135b303d.
 type nativeApproval struct {
 	thread, turn string
+	item         string
 	request      jsontext.Value // Host server request; nil for a guarded write.
 	guard        *vcsApproval
 	title        string
-	subject      string   // Command or summary, for the dock and the transcript.
+	subject      string   // Command or summary, for the dock and activity.
 	details      []string // Directory, reason and requested scope.
 	choices      []nativeApprovalChoice
 	selected     int
@@ -194,7 +195,7 @@ func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 	if err := json.Unmarshal(m.Params, &p); err != nil {
 		return true, fmt.Errorf("%s: %w", m.Method, err)
 	}
-	a := &nativeApproval{thread: p.ThreadID, turn: p.TurnID, request: slices.Clone(m.ID), details: u.approvalDirectory(p.Cwd)}
+	a := &nativeApproval{thread: p.ThreadID, turn: p.TurnID, item: p.ItemID, request: slices.Clone(m.ID), details: u.approvalDirectory(p.Cwd)}
 	switch m.Method {
 	case "item/commandExecution/requestApproval":
 		a.title, a.subject = "Run this command?", appServerDisplayCommand(p.Command)
@@ -421,11 +422,22 @@ func (u *appServerUI) endApproval(a *nativeApproval, outcome string) {
 	if a.request != nil && u.notifications != nil {
 		delete(u.notifications.blocked, string(a.request))
 	}
-	text := outcome + " · " + a.subject
-	if agent := u.approvalAgent(a.thread); agent != "" {
-		text += " · " + agent
+	// Native requests name their exact host item. A guard request names the
+	// guarded argv, not an outer host item; keep that command separate rather
+	// than attributing its decision to an unrelated or concurrent invocation.
+	item := a.item
+	if item == "" {
+		item = fmt.Sprintf("approval/%d", u.session.next())
 	}
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Session", Kind: "text", Text: text, Observed: u.now()}}})
+	entry := activityPaneEntry{Seq: u.session.next(), Kind: "approval", Text: a.subject, Observed: u.now(),
+		native: &liveActivityNativeItem{thread: a.thread, turn: a.turn, item: item, phase: "approval/ended", approval: outcome}}
+	if u.agents != nil {
+		entry.Agent = u.session.path(a.thread)
+		u.applyActivity([]activityPaneEntry{entry}, nil)
+	} else {
+		entry.Seq, entry.Agent = u.view.lastSeq+1, "Main"
+		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+	}
 }
 
 func (u *appServerUI) answerApproval(a *nativeApproval, choice nativeApprovalChoice) error {

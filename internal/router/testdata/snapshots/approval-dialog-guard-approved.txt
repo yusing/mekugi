@@ -1,0 +1,18 @@
+
+
+
+
+
+╭─ Approval · git push origin main · Approved ─────────────────── [×] ─╮
+│                                                                      │
+├──────────────────────────────────────────────────────────────────────┤
+│ Approval: Approved                                                   │
+│                                                                      │
+│                                                                      │
+╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ────────────────────╯
+
+
+
+
+
+

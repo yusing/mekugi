@@ -106,6 +106,9 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 			blocks = append(blocks, batch)
 		}
 		setCommandTiming(blocks, entry)
+		if entry.native != nil && len(blocks) > 0 {
+			blocks[0].Approval = entry.native.approval
+		}
 		if entry.Kind == "tool" && entry.native != nil && entry.native.workdir != "" && len(blocks) > 0 {
 			// Every row keeps the directory for merging; one label per invocation.
 			for i := range blocks {
@@ -117,6 +120,8 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 	text := livediff.Safe(entry.Text, false)
 	source := activityui.MarkdownSource(entry.Text)
 	switch entry.Kind {
+	case "approval":
+		return []activityui.Block{{Kind: "op", Verb: "Approval", Code: text, Lang: "bash", Fenced: true}}
 	case "journal_card":
 		return []activityui.Block{{Kind: "summary", Label: "Journal", Body: text, Collapsed: true}}
 	case "journal_event":
