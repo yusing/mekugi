@@ -87,6 +87,9 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 				snapshot := "unresolved-edit-command"
 				if partial {
 					snapshot = "partial-edit-command"
+					if tracked {
+						snapshot += "-ran"
+					}
 				}
 				assertNativeUISnapshot(t, snapshot, feed.lines)
 			})

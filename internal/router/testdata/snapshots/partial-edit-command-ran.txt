@@ -1,0 +1,7 @@
+├ Edit known.go via python3 · ran
+└ Ran  python3 -
+       │ from pathlib import Path
+       │ Path('known.go').write_text('x')
+       │ name='a'
+       │ name += '.txt'
+       │ (Path('src') / name).write_text('new')

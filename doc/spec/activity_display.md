@@ -28,7 +28,11 @@ as a trailing file label; each comma-separated source uses its own Bash syntax
 highlighting, including shell commands such as `git stash push`, rather than
 Markdown styling. Requested edit intent keeps the requested verb, such as `Edit`,
 in amber and never reads `Edited`; the first row ends with `· requested`, and its
-`(requested)` marker is not shown as source text. A started patch that has not
+`(requested)` marker is not shown as source text. A successful tracked edit segment
+instead shows `Edit PATH via TOOL · ran` as soon as its writer command completes,
+even before following commands end. This includes successful no-ops and reports
+command completion, not confirmed file changes or counts. Running and untracked
+edit intent keeps `· requested`. A started patch that has not
 completed, including one awaiting approval, ends with `· pending`; a `failed` or
 `declined` patch uses a red verb and ends with `· failed` or `· declined`, named
 once for the group rather than on every row. A different source or outcome
@@ -37,7 +41,7 @@ take their own row in the verb column.
 File rows' line counts share one column within a group of more than one row when
 the row fits, and zero counts are omitted. In an `Edited` group of more than one
 row, an eight-cell bar after the counts scales each row's changed lines against
-the group's largest. Confirmed capture counts replace successful requested edit
+the group's largest. Confirmed capture counts and past-tense verbs replace successful edit intent
 rows even when the shell invocation has tracked segments. A grouped capture
 appears once on its owning invocation, not once per segment; neighboring command
 output, failed/skipped edits, and per-command exit statuses remain visible.
@@ -442,7 +446,7 @@ Acceptance:
 
 1. Main and child feeds render typed app-server activity without inserting generated
    operation commentary into model responses. Restored activity cannot revive work.
-2. Requested, pending, failed, and confirmed edits remain visually distinct; display
+2. Requested, ran, pending, failed, and confirmed edits remain visually distinct; display
    grouping preserves source, outcome, paths, and observed counts.
 3. Command output tails remain bounded, reflect host completion, and preserve the
    difference between unknown and nonzero exits.

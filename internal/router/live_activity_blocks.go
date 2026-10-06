@@ -374,10 +374,14 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 		}
 		for i := range operations {
 			operations[i].Running, operations[i].Skipped = segment.running, segment.skipped
-			if block := &operations[i]; !segment.running && (segment.skipped || segment.exit != 0) && strings.HasSuffix(block.EditSource, " (requested)") {
-				status := "failed"
+			if block := &operations[i]; !segment.running && strings.HasSuffix(block.EditSource, " (requested)") {
+				// A segment boundary confirms execution, not a file change.
+				// Captured evidence alone replaces intent with applied counts.
+				status := "ran"
 				if segment.skipped {
 					status = "skipped"
+				} else if segment.exit != 0 {
+					status = "failed"
 				}
 				block.EditSource = strings.TrimSuffix(block.EditSource, " (requested)")
 				block.Label = strings.TrimSuffix(block.Label, " (requested)")

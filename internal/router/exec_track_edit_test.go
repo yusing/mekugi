@@ -15,18 +15,22 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/execsegment"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 	t.Parallel()
-	for _, edit := range []string{"gofmt -w source.go", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go"} {
+	for _, edit := range []string{"gofmt -w source.go", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go", "python3 - <<'PY'\nfrom pathlib import Path\nPath('source.go').write_text('package p; var A=1\\n')\nPY\ngofmt -w source.go"} {
 		t.Run(filepath.Base(strings.Fields(edit)[0]), func(t *testing.T) {
 			shell := newExecTrackShell(t)
 			workspace := t.TempDir()
-			before, after, completedText := "before\n", "+after", "requested"
+			before, after, completedText := "before\n", "+after", "via "+filepath.Base(strings.Fields(edit)[0])+" · ran"
 			if filepath.Base(strings.Fields(edit)[0]) == "gofmt" {
 				before, after, completedText = "package p; var A=1\n", "+var A = 1", "Ran"
+			}
+			if strings.HasPrefix(edit, "python3") {
+				after = "+var A = 1"
 			}
 			binaryCopy := strings.HasPrefix(edit, "cp ")
 			if binaryCopy {
@@ -62,7 +66,7 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			u.shell.preview(diffview.Preview{ID: "running:edit", Workspace: workspace, Thread: "main", Caller: "/root", Status: diffview.PreviewRunning, Input: "observing edit"})
 			cmd := exec.CommandContext(ctx, execTrackShellExecutable(t, "bash"), "-lc", script)
 			cmd.Dir, cmd.Env = workspace, shell.env
-			if strings.HasPrefix(edit, "gofmt") {
+			if strings.Contains(edit, "gofmt") {
 				cmd.Args[1] = "-c" // The isolated HOME has no mise configuration.
 				goRoot, err := exec.CommandContext(ctx, "go", "env", "GOROOT").Output()
 				if err != nil || strings.TrimSpace(string(goRoot)) == "" {
@@ -158,7 +162,7 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			case raw := <-frame:
 				_, _ = screen.Write([]byte(raw))
 				shown := screen.String()
-				if strings.Contains(shown, "requested") != (completedText == "requested") || strings.Contains(shown, "LIVE ·") || !strings.Contains(shown, completedText) || !strings.Contains(shown, "Running") {
+				if strings.Contains(shown, "requested") || strings.Contains(shown, "LIVE ·") || !strings.Contains(shown, completedText) || !strings.Contains(shown, "Running") {
 					t.Fatalf("terminal did not settle only the edit:\n%s", shown)
 				}
 			case <-ctx.Done():
@@ -171,6 +175,32 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestAppServerTrackedEditCommandOutcomeBeforeHostExit(t *testing.T) {
+	t.Parallel()
+	u, hub := newTrackedAppServerUI(t)
+	script := "sed -i 's/absent/after/' source.go; go test ./..."
+	item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+	report := dialExecTrackReport(t, hub, script)
+	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0})
+	awaitMain(t, u, "via sed · requested")
+	report.send(execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
+	awaitMain(t, u, "via sed · ran")
+	shown := awaitMain(t, u, "Running go test")
+	if strings.Contains(shown, "requested") || !strings.Contains(shown, "via sed · ran") || u.session.commands[[3]string{"main", "turn", "edit"}] == nil {
+		t.Fatalf("segment completion changed host lifecycle:\n%s", shown)
+	}
+	// A zero exit also describes a no-op. Without file evidence, show the
+	// command outcome but do not invent a confirmed edit or applied counts.
+	for _, block := range u.view.entries[0].blocks {
+		if block.Verb == "Edit" {
+			if _, _, _, _, counts := activityui.EditStat(block.Label); counts || block.GroupHeader == "Edited" || block.EditOutcome != "ran" {
+				t.Fatalf("command completion confirmed a file change: %+v", block)
+			}
+		}
 	}
 }
 

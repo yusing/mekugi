@@ -119,7 +119,7 @@ func TestAppServerTrackedEditReceiptExactAnchor(t *testing.T) {
 		t.Fatalf("grouped sibling duplicated aggregate: %+v", view.entries[0].blocks)
 	}
 	for _, i := range []int{1, 2} {
-		if len(view.entries[i].blocks) != 1 || view.entries[i].blocks[0].EditOutcome != "" || !strings.HasSuffix(view.entries[i].blocks[0].EditSource, " (requested)") {
+		if len(view.entries[i].blocks) != 1 || view.entries[i].blocks[0].EditOutcome != "ran" {
 			t.Fatalf("receipt changed unrelated thread/item: %+v", view.entries[i].blocks)
 		}
 		if _, _, _, _, ok := activityui.EditStat(view.entries[i].blocks[0].Label); ok {

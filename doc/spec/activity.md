@@ -162,9 +162,12 @@ Supported Python and JavaScript writes with source-named targets also show
 requested `Edit` intent. If no target can be resolved, the interpreter keeps its
 normal `Run` row and command source/output dialog. Partial target resolution
 keeps the named requested edits plus a `Run` source row for unresolved effects.
-A successful command or segment does not confirm an edit: named intent remains
-requested until retained file evidence replaces it. Tracked failed and skipped
-edit segments keep their outcomes visible, even when sibling edits have a receipt.
+A successful tracked edit segment reports that its writer command ran, including
+successful no-ops, as soon as the segment completes, even while following commands
+are running. This does not confirm a file change or supply counts. Running and
+untracked edit intent remains requested. Retained file evidence later replaces
+successful intent with observed changes. Tracked failed and skipped edit segments
+keep their outcomes visible, even when sibling edits have a receipt.
 
 Stock `apply_patch`, including transparent nested tool calls using immutable
 literal patch bindings, does not emit a bare `Edit` label, a generic `Run`
