@@ -17,6 +17,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/yusing/mekugi/internal/execsegment"
 )
 
 // Replay uses retained semantic items, never shell execution or provider calls.
@@ -278,7 +280,7 @@ func replayJournalTransport(store *mekugiReplayStore, workspace, thread string, 
 	if item.Type != "commandExecution" {
 		return false, false
 	}
-	parts := nativeJournalCommand.FindStringSubmatch(appServerDisplayCommand(item.Command))
+	parts := nativeJournalCommand.FindStringSubmatch(execsegment.ShOriginal(appServerDisplayCommand(item.Command)))
 	if parts == nil {
 		return false, false
 	}

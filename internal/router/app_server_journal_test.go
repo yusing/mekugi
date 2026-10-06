@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
@@ -75,7 +76,7 @@ func TestNativeJournalTransportHiddenWithDurableProvenance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	command = workerCommand("/bin/bash", []string{"-c", command})
+	command = workerCommand("/bin/bash", []string{"-c", execsegment.ShScript("/private/exec-track.sh", command)})
 	for _, method := range []string{"item/started", "item/completed"} {
 		appServerTestNotify(t, u, method, map[string]any{"threadId": u.thread, "turnId": "turn", "item": map[string]any{"id": "internal", "type": "commandExecution", "command": command}})
 	}
@@ -143,8 +144,10 @@ func TestNativeJournalChildHistoryHidesOnlyProvenTransport(t *testing.T) {
 		}{
 			{name: "proven", thread: child, command: command, hidden: true},
 			{name: "wrapped proven", thread: child, command: workerCommand("/bin/bash", []string{"-c", command}), hidden: true},
+			{name: "tracked proven", thread: child, command: execsegment.ShScript("/private/exec-track.sh", command), hidden: true},
 			{name: "other thread", thread: "unrelated", command: command},
 			{name: "extra command", thread: child, command: command + "; echo visible"},
+			{name: "tracked extra command", thread: child, command: execsegment.ShScript("/private/exec-track.sh", command+"; echo visible")},
 			{name: "ordinary mention", thread: child, command: "echo mjournal"},
 		} {
 			t.Run(fmt.Sprintf("older=%t/%s", older, test.name), func(t *testing.T) {
@@ -162,6 +165,7 @@ func TestNativeJournalChildHistoryHidesOnlyProvenTransport(t *testing.T) {
 
 func TestUISnapshotNativeJournalChildHistoryTransport(t *testing.T) {
 	u, child, command := nativeChildJournalHistoryFixture(t)
+	command = execsegment.ShScript("/private/exec-track.sh", command)
 	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return now }
 	u.agents.clock = u.clock

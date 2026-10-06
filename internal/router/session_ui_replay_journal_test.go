@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
@@ -58,7 +59,7 @@ func replayJournalTestSource(t *testing.T) *sessionUIReplay {
 	epoch := time.Date(2026, 9, 30, 8, 0, 0, 0, time.Local).UnixMilli()
 	path := replayTestWrite(t, t.TempDir(), "root.jsonl", meta,
 		replayTestRecord("event_msg", epoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
-		replayTestItem("root", "turn", epoch+100, epoch+500, map[string]any{"id": "transport", "type": "CommandExecution", "command": []string{"bash", "-lc", command}, "aggregated_output": `{"ok":true,"items":[]}`, "status": "completed", "exit_code": 0}),
+		replayTestItem("root", "turn", epoch+100, epoch+500, map[string]any{"id": "transport", "type": "CommandExecution", "command": []string{"bash", "-lc", execsegment.ShScript("/private/exec-track.sh", command)}, "aggregated_output": `{"ok":true,"items":[]}`, "status": "completed", "exit_code": 0}),
 		replayTestItem("root", "turn", epoch+600, epoch+1000, map[string]any{"id": "journal-message", "type": "AgentMessage", "text": "Journal: Checked the implementation."}),
 		replayTestItem("root", "turn", epoch+1100, epoch+1500, map[string]any{"id": "ordinary-command", "type": "CommandExecution", "command": []string{"sh", "-c", "mjournal --help"}, "aggregated_output": "Journal command help", "status": "completed", "exit_code": 0}),
 		replayTestRecord("event_msg", epoch+2000, map[string]any{"type": "task_complete", "turn_id": "turn"}))
@@ -123,13 +124,16 @@ func TestUISnapshotSessionUIReplayJournal(t *testing.T) {
 }
 
 func TestSessionUIReplayJournalRequiresExactProvenance(t *testing.T) {
-	for _, tc := range []string{"verified", "paged", "empty-workspace", "foreign-thread", "foreign-workspace", "untranslated", "changed-endpoint", "compound", "ordinary", "missing", "corrupt"} {
+	for _, tc := range []string{"verified", "tracked", "paged", "empty-workspace", "foreign-thread", "foreign-workspace", "untranslated", "changed-endpoint", "compound", "tracked compound", "ordinary", "missing", "corrupt"} {
 		t.Run(tc, func(t *testing.T) {
 			store, workspace, command, history := replayJournalTestEvidence(t)
 			scope := workspace
 			wantHidden, wantCandidate := false, true
 			switch tc {
 			case "verified":
+				wantHidden = true
+			case "tracked":
+				command = execsegment.ShScript("/private/exec-track.sh", command)
 				wantHidden = true
 			case "paged":
 				command += " 2 " + strings.Repeat("a", 64)
@@ -146,6 +150,9 @@ func TestSessionUIReplayJournalRequiresExactProvenance(t *testing.T) {
 				command = strings.Replace(command, "1234", "5678", 1)
 			case "compound":
 				command += "; echo visible"
+				wantCandidate = false
+			case "tracked compound":
+				command = execsegment.ShScript("/private/exec-track.sh", command+"; echo visible")
 				wantCandidate = false
 			case "ordinary":
 				command = "mjournal --help"
