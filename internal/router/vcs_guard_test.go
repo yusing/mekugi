@@ -3,7 +3,6 @@ package router
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -66,6 +65,9 @@ func newVCSGuardShell(t *testing.T, timeout ...time.Duration) *vcsGuardShell {
 	if err := vcsguard.WriteZshStartup(zdotdir, vcsguard.ZshPath(guard, real)+vcsguard.Functions("zsh", guard, nil)); err != nil {
 		t.Fatal(err)
 	}
+	// Plain sh has no startup hook. Its nested commands must also find only
+	// this fixture's guard and fake tools before the isolated host PATH.
+	shell.env[0] = "PATH=" + guard + string(os.PathListSeparator) + real + string(os.PathListSeparator) + execTrackPath()
 	shell.env = append(shell.env, "ZDOTDIR="+zdotdir)
 	return &vcsGuardShell{execTrackShell: shell, log: log, real: real}
 }
@@ -302,9 +304,7 @@ func TestVCSGuardAbsolutePathBash(t *testing.T) {
 // in login and plain shells alike.
 func TestVCSGuardZsh(t *testing.T) {
 	t.Parallel()
-	if _, err := exec.LookPath("zsh"); err != nil {
-		t.Skip("zsh unavailable")
-	}
+	execTrackShellExecutable(t, "zsh")
 	shell := newVCSGuardShell(t)
 	asked := shell.answer(t, false)
 	// The user's files put the real tools first, as a profile adding a

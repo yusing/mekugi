@@ -104,8 +104,25 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 	}
 }
 
+// Discover installed native shells without live session guards.
+func frontendFixtureShell(name string) (string, error) {
+	for _, directory := range filepath.SplitList(os.Getenv("PATH")) {
+		if filepath.Base(directory) == vcsguard.Directory {
+			continue
+		}
+		candidate, err := filepath.Abs(filepath.Join(directory, name))
+		if err != nil {
+			return "", err
+		}
+		if path, err := exec.LookPath(candidate); err == nil {
+			return path, nil
+		}
+	}
+	return "", exec.ErrNotFound
+}
+
 func TestFrontendPathSurvivesLoginBash(t *testing.T) {
-	bash, err := exec.LookPath("bash")
+	bash, err := frontendFixtureShell("bash")
 	if err != nil {
 		t.Skip("bash unavailable")
 	}
@@ -184,7 +201,7 @@ func TestFrontendShellEnvironmentGuardsBashAndZsh(t *testing.T) {
 	if !slices.Contains(nested, vcsguard.UserZdotdirEnvironment+"="+user) || !slices.Contains(nested, "ZDOTDIR="+filepath.Join(filepath.Dir(inner), "zsh")) {
 		t.Fatalf("nested environment = %q", nested)
 	}
-	if zsh, err := exec.LookPath("zsh"); err == nil {
+	if zsh, err := frontendFixtureShell("zsh"); err == nil {
 		if err := os.WriteFile(filepath.Join(user, ".zshenv"), []byte("print -n user\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -805,7 +822,7 @@ func TestStartupInterruptHandoffLeavesChildSignalAlone(t *testing.T) {
 }
 
 func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
-	bash, err := exec.LookPath("bash")
+	bash, err := frontendFixtureShell("bash")
 	if err != nil {
 		t.Skip("bash unavailable")
 	}

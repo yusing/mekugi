@@ -19,6 +19,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/execsegment"
+	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/sys/unix"
 )
 
@@ -47,11 +48,36 @@ type execTrackShell struct {
 	root string // Holds the session's bin, request FIFO and per-command files.
 }
 
+// A test can run inside a guarded Mekugi session. Do not inherit its shell
+// instrumenters, which carry the live session's approval channel.
+func execTrackPath() string {
+	entries := filepath.SplitList(os.Getenv("PATH"))
+	entries = slices.DeleteFunc(entries, func(entry string) bool {
+		return filepath.Base(entry) == vcsguard.Directory
+	})
+	return strings.Join(entries, string(os.PathListSeparator))
+}
+
+// exec.Command resolves a bare name before cmd.Env is set. Resolve fixture
+// shells from the isolated PATH instead, without changing process-wide state.
+func execTrackShellExecutable(t *testing.T, name string) string {
+	t.Helper()
+	for _, directory := range filepath.SplitList(execTrackPath()) {
+		candidate, err := filepath.Abs(filepath.Join(directory, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if path, err := exec.LookPath(candidate); err == nil {
+			return path
+		}
+	}
+	t.Skipf("%s unavailable", name)
+	return ""
+}
+
 func newExecTrackShell(t *testing.T) *execTrackShell {
 	t.Helper()
-	if _, err := exec.LookPath("bash"); err != nil {
-		t.Skip("bash unavailable")
-	}
+	execTrackShellExecutable(t, "bash")
 	helper, err := execTrackHelper()
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +98,7 @@ func newExecTrackShell(t *testing.T) *execTrackShell {
 		t.Fatal(err)
 	}
 	home := t.TempDir()
-	env := []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "CODEX_THREAD_ID=thread", "BASH_ENV=" + startup}
+	env := []string{"PATH=" + execTrackPath(), "HOME=" + home, "CODEX_THREAD_ID=thread", "BASH_ENV=" + startup}
 	return &execTrackShell{hub: hub, env: env, home: home, root: root}
 }
 
@@ -88,7 +114,7 @@ func runExecTrackShell(t *testing.T, env []string, script string) execTrackRun {
 
 func runShell(t *testing.T, env []string, shell string, args ...string) execTrackRun {
 	t.Helper()
-	cmd := exec.Command(shell, args...)
+	cmd := exec.Command(execTrackShellExecutable(t, shell), args...)
 	cmd.Env, cmd.Dir = env, t.TempDir()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -247,7 +273,7 @@ func TestExecTrackMatchesDelayedHostStart(t *testing.T) {
 	shell := newExecTrackShell(t)
 	script := "echo first; false && echo never; echo last"
 	key := [3]string{"thread", "turn", "delayed"}
-	cmd := exec.CommandContext(t.Context(), "bash", "-lc", script)
+	cmd := exec.CommandContext(t.Context(), execTrackShellExecutable(t, "bash"), "-lc", script)
 	cmd.Env, cmd.Dir = shell.env, t.TempDir()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -495,10 +521,7 @@ func newTrackedAppServerUI(t *testing.T) (*appServerUI, *execTrackHub) {
 func TestExecTrackTracksTheCommandInsideCodexSnapshotWrapper(t *testing.T) {
 	t.Parallel()
 	shell := newExecTrackShell(t)
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skip("bash unavailable")
-	}
+	bash := execTrackShellExecutable(t, "bash")
 	script := "echo one; echo two"
 	key := [3]string{"thread", "turn", "snapshot"}
 	shell.hub.start(key, bash+" -lc "+quoteShellWord(script))
@@ -527,7 +550,7 @@ func TestExecTrackReportsTerminalCommandStatusOnly(t *testing.T) {
 	script := "test -t 1 && echo tty; false"
 	key := [3]string{"thread", "turn", "tty"}
 	shell.hub.start(key, "/usr/bin/bash -lc "+quoteShellWord(script))
-	cmd := exec.Command("bash", "-lc", script)
+	cmd := exec.Command(execTrackShellExecutable(t, "bash"), "-lc", script)
 	cmd.Env = shell.env
 	terminal, err := pty.Start(cmd)
 	if err != nil {
@@ -655,8 +678,8 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 			hub.start([3]string{"thread", "turn", "item"}, "bash -lc "+quoteShellWord(script))
 			commandCtx, stop := context.WithTimeout(t.Context(), 5*time.Second)
 			defer stop()
-			cmd := exec.CommandContext(commandCtx, "bash", "-c", script)
-			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + root, "BASH_ENV=" + startup, "CODEX_THREAD_ID=thread"}
+			cmd := exec.CommandContext(commandCtx, execTrackShellExecutable(t, "bash"), "-c", script)
+			cmd.Env = []string{"PATH=" + execTrackPath(), "HOME=" + root, "BASH_ENV=" + startup, "CODEX_THREAD_ID=thread"}
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr
 			if err := cmd.Start(); err != nil {

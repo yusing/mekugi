@@ -10,10 +10,28 @@ import (
 	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
+// Discover installed native shells without an inherited session's guards.
+// exec.Command resolves its executable before the fixture Env is assigned.
+func fixtureShell(name string) (string, error) {
+	for _, directory := range filepath.SplitList(os.Getenv("PATH")) {
+		if filepath.Base(directory) == Directory {
+			continue
+		}
+		candidate, err := filepath.Abs(filepath.Join(directory, name))
+		if err != nil {
+			return "", err
+		}
+		if path, err := exec.LookPath(candidate); err == nil {
+			return path, nil
+		}
+	}
+	return "", exec.ErrNotFound
+}
+
 func TestFunctionsPreserveRuntimeDirectory(t *testing.T) {
 	for _, shell := range []string{"bash", "zsh"} {
 		t.Run(shell, func(t *testing.T) {
-			executable, err := exec.LookPath(shell)
+			executable, err := fixtureShell(shell)
 			if err != nil {
 				t.Skipf("%s unavailable", shell)
 			}
@@ -46,7 +64,7 @@ func TestFunctionsPreserveRuntimeDirectory(t *testing.T) {
 }
 
 func TestZshStartupPreservesLogout(t *testing.T) {
-	zsh, err := exec.LookPath("zsh")
+	zsh, err := fixtureShell("zsh")
 	if err != nil {
 		t.Skip("zsh unavailable")
 	}

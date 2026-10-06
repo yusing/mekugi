@@ -1,23 +1,43 @@
 package router
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
+
+// Run a guarded-write fixture inside another guarded session. Any escaped
+// request reaches this test's channel, never a live user's approval dialog.
+func TestVCSGuardFixturesIsolateInheritedSession(t *testing.T) {
+	t.Parallel()
+	outer := newVCSGuardShell(t)
+	asked := outer.answer(t, false)
+	guard, _ := vcsguard.Paths(filepath.Join(outer.root, "bin"))
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestVCSGuardApprovedWriteRunsUnchanged$", "-test.count=1")
+	cmd.Env = append(os.Environ(), "PATH="+guard+string(os.PathListSeparator)+os.Getenv("PATH"), "BASH_ENV="+filepath.Join(outer.root, "bash-env"))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("fixtures in guarded session: %v\n%s", err, output)
+	}
+	if len(asked) != 0 {
+		t.Fatalf("fixtures sent %d requests to the inherited session", len(asked))
+	}
+}
 
 func TestVCSGuardInstrumentedNativeShells(t *testing.T) {
 	for _, name := range []string{"bash", "sh", "zsh"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := exec.LookPath(name); err != nil {
-				t.Skipf("%s unavailable", name)
-			}
+			execTrackShellExecutable(t, name)
 			shell := newVCSGuardShell(t)
 			asked := shell.answer(t, false)
 			path := filepath.Join(t.TempDir(), "unlisted tools")
@@ -154,10 +174,7 @@ func TestVCSGuardNestedShellMissingPayload(t *testing.T) {
 func TestVCSGuardInstrumentedExecArgv0(t *testing.T) {
 	t.Parallel()
 	shell := newVCSGuardShell(t)
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skip("bash unavailable")
-	}
+	bash := execTrackShellExecutable(t, "bash")
 	data, err := os.ReadFile(bash)
 	if err != nil {
 		t.Fatal(err)

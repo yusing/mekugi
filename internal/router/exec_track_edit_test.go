@@ -60,7 +60,7 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			// Seed the same running dock before execution so completion must
 			// actively retire it, rather than simply avoid opening a new card.
 			u.shell.preview(diffview.Preview{ID: "running:edit", Workspace: workspace, Thread: "main", Caller: "/root", Status: diffview.PreviewRunning, Input: "observing edit"})
-			cmd := exec.CommandContext(ctx, "bash", "-lc", script)
+			cmd := exec.CommandContext(ctx, execTrackShellExecutable(t, "bash"), "-lc", script)
 			cmd.Dir, cmd.Env = workspace, shell.env
 			if strings.HasPrefix(edit, "gofmt") {
 				cmd.Args[1] = "-c" // The isolated HOME has no mise configuration.
