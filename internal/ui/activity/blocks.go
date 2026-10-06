@@ -310,6 +310,14 @@ func EditPath(block Block) string {
 	return path
 }
 
+var directoryDeletionPattern = regexp.MustCompile(`^ • [0-9]+ files?(?: · .*)?$`)
+
+// DirectoryDeletion reports a captured directory removal summary.
+func (b Block) DirectoryDeletion() bool {
+	_, end, ok := liveActivityCodeSpan(b.Label, 0)
+	return b.Verb == "Delete" && ok && directoryDeletionPattern.MatchString(b.Label[end:])
+}
+
 // EditStat reads a file row label as a path, line counts, and a trailing status.
 func EditStat(label string) (path string, added, removed int, tail string, ok bool) {
 	path, end, ok := liveActivityCodeSpan(label, 0)

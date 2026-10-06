@@ -68,8 +68,50 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 	var summaries []string
 	reasons := make(map[string]int)
 	budget := maxEditReceiptDiffBytes
+	directories := make(map[string]int)
+	var roots []string
+	if exec != nil {
+		roots = exec.DeletedDirectories
+		for _, root := range exec.DeletedDirectories {
+			count, complete := 0, true
+			for _, file := range history.ReviewFiles {
+				if !execPathWithin(file.BeforePath, root) {
+					continue
+				}
+				if file.Incomplete != "" || file.AfterPath != "" || !authoredReview(file) {
+					complete = false
+				}
+				if !file.Directory {
+					count++
+				}
+			}
+			if count > 0 && complete {
+				directories[root] = count
+			}
+		}
+	}
 	for _, file := range history.ReviewFiles {
 		if !authoredReview(file) {
+			continue
+		}
+		grouped := false
+		for _, root := range roots {
+			count, compact := directories[root]
+			if !compact || !execPathWithin(file.BeforePath, root) {
+				continue
+			}
+			if count > 0 {
+				noun := "files"
+				if count == 1 {
+					noun = "file"
+				}
+				summaries = append(summaries, fmt.Sprintf("Delete %s • %d %s · %s", commentaryCode(strings.TrimSuffix(pathdisplay.ForWorkspace(workspace, root), "/")+"/"), count, noun, strings.Join(exec.Labels, ", ")))
+				directories[root] = 0
+			}
+			grouped = true
+			break
+		}
+		if grouped {
 			continue
 		}
 		action := file.Action().Title()

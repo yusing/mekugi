@@ -45,6 +45,10 @@ the group's largest. Confirmed capture counts and past-tense verbs replace succe
 rows even when the shell invocation has tracked segments. A grouped capture
 appears once on its owning invocation, not once per segment; neighboring command
 output, failed/skipped edits, and per-command exit statuses remain visible.
+A confirmed whole-directory removal with complete captured file evidence shows
+one `Deleted PATH/ • N files` row, using `file` for one, instead of descendant file
+rows. Clicking it opens the invocation's retained file changes, starting within
+that directory. Detailed captured evidence remains available through `mchanges`.
 A path too wide for its row gives way before the row's other parts: it drops
 whole leading directories behind `…/`, keeping its nearest directories and file
 name, or elides the middle of the name itself when that alone is too wide; below

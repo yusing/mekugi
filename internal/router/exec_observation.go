@@ -137,13 +137,14 @@ type execObservation struct {
 
 // execOutcome is the finalized status of an observed exec record.
 type execOutcome struct {
-	OutputRef string `json:",omitempty"` // Router-retained failed host result, readable with mread.
-	Status    string
-	Exit      *int `json:",omitempty"`
-	Class     string
-	Labels    []string `json:",omitempty"`
-	Coverage  string
-	CodeMode  bool `json:",omitzero"`
+	DeletedDirectories []string `json:",omitempty"` // Captured directory roots absent after the call.
+	OutputRef          string   `json:",omitempty"` // Router-retained failed host result, readable with mread.
+	Status             string
+	Exit               *int `json:",omitempty"`
+	Class              string
+	Labels             []string `json:",omitempty"`
+	Coverage           string
+	CodeMode           bool `json:",omitzero"`
 	// Scope lists the captured paths, the only paths the record compares
 	// exactly.
 	Scope       []string `json:",omitempty"`
@@ -1495,6 +1496,14 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		CodeMode:    observation.CodeMode, Overlaps: view.overlaps, Background: background,
 	}
 	outcome.Scope = observation.scopePaths()
+	for _, listing := range observation.Listings {
+		if listing.Entries == nil {
+			continue
+		}
+		if _, err := os.Lstat(listing.Root); errors.Is(err, os.ErrNotExist) {
+			outcome.DeletedDirectories = execAddRoot(outcome.DeletedDirectories, listing.Root)
+		}
+	}
 	if snapshotErr != "" {
 		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; workspace snapshot unavailable: "+snapshotErr, "; ")
 	}

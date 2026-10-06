@@ -44,6 +44,15 @@ func (u *terminalUI) activityEditPages(view *liveActivityView, seq uint64, path 
 				}
 				pages = append(pages, activityui.Block{Kind: "op", Verb: chunk.Review.Action().Title(), Path: display, Code: chunk.Review.UnifiedDiffForWorkspace(workspace), Lang: "diff", Fenced: true})
 			}
+			for _, block := range entry.blocks {
+				if block.DirectoryDeletion() && activityui.EditPath(block) == path {
+					for _, page := range pages {
+						if strings.HasPrefix(page.Path, strings.TrimSuffix(path, "/")+"/") {
+							return pages, page.Path
+						}
+					}
+				}
+			}
 			if slices.ContainsFunc(pages, func(page activityui.Block) bool { return path == "" || page.Path == path }) {
 				return pages, path
 			}

@@ -903,7 +903,7 @@ func (p *Painter) editGroupRow(block Block, width int) []string {
 		row = p.Label(block.Verb, block.Label)
 	}
 	var trailer []string
-	if start {
+	if start && !block.DirectoryDeletion() {
 		trailer = p.groupSource(block)
 		if status != "" {
 			trailer = append(trailer, Dim+"· "+Undim+color+status+Reset)
