@@ -141,6 +141,21 @@ func (s *execTrackShell) awaitView(t *testing.T, key [3]string) execTrackView {
 	}
 }
 
+func TestExecTrackKeepsSingleCommandShellObservations(t *testing.T) {
+	t.Parallel()
+	shell := newExecTrackShell(t)
+	for _, tc := range []struct{ script, output string }{
+		{`printf '<%s>\n' "$!"`, "<>\n"},
+		{`printf '<%s>\n' "$_"`, "<MEKUGI_EXEC_TRACK=1>\n"},
+		{`printf '<%s>\n' "${_}"`, "<MEKUGI_EXEC_TRACK=1>\n"},
+	} {
+		got := runShell(t, shell.env, "bash", "--noprofile", "--norc", "-c", tc.script)
+		if got.stdout != tc.output || got.stderr != "" || got.code != 0 {
+			t.Fatalf("%s: %+v", tc.script, got)
+		}
+	}
+}
+
 func TestExecTrackReportsEachSegmentWithoutChangingTheCommand(t *testing.T) {
 	t.Parallel()
 	shell := newExecTrackShell(t)

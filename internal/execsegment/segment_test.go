@@ -10,6 +10,9 @@ func TestSplitTopLevelLists(t *testing.T) {
 		script  string
 		sources []string
 	}{
+		{"echo single", []string{"echo single"}},
+		{"a | b", []string{"a | b"}},
+		{"time make", []string{"time make"}},
 		{"pwd && ls && cat a b", []string{"pwd", "ls", "cat a b"}},
 		{"cd x; make test 2>&1 | tail -20", []string{"cd x", "make test 2>&1 | tail -20"}},
 		{"a || b && ! c\nd", []string{"a", "b", "! c", "d"}},
@@ -35,8 +38,6 @@ func TestSplitTopLevelLists(t *testing.T) {
 
 func TestSplitDeclinesUntrackableScripts(t *testing.T) {
 	for _, script := range []string{
-		"echo single",
-		"a | b",
 		"sleep 1 & wait",
 		"a; wait",
 		"trap 'echo x' EXIT; a",

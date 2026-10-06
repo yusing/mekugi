@@ -142,20 +142,19 @@ narrow for it shortens the path rather than the count. Restored history shows ze
 already collapsed. Output arriving after completion is ignored.
 Command rows and their dialog titles append elapsed time only above 3 ms,
 using milliseconds below a second and compact whole-second units thereafter
-(`4ms`, `1s`, `1m10s`, `1h`). For tracked batch commands, the shell helper records
+(`4ms`, `1s`, `1m10s`, `1h`). For tracked commands, the shell helper records
 each command's start and end at its control boundaries and measures duration with
 its monotonic clock. The elapsed suffix counts from that command's observed start while running and freezes
-at its measured duration when complete. Its output dialog shows the start and end
-timestamps in local time, with date, milliseconds and timezone, and the measured
-duration without rounding. Timed commands retain their individual rows rather
+at its measured duration when complete. Supported single commands, including
+timed commands and pipelines, use begin/EXIT duration rather than the host's
+invocation duration, as specified in [REQ-EXECUTION-002](execution.md).
+The dialog keeps the same elapsed suffix without extra timing metadata rows.
+Timed commands retain their individual rows rather
 than merging reads or folding staging into a commit. An EXIT boundary also
 ends the active command when `exit` or `errexit` bypasses its normal end hook.
 Completed observations retain timestamps and duration across resume and forks;
 skipped commands have neither. A disconnected report supplies no invented end.
-Untracked invocations use the host duration when complete. Their dialog labels UI
-notification receipt timestamps as `Observed start` and `Observed end`, separately
-from `Host elapsed`: their span is not the host's execution duration. Replay never
-reconstructs missing notification timestamps.
+Untracked invocations use the host duration when complete.
 Older per-command observations without timing omit it rather than borrowing the
 invocation total. For batches without per-command boundaries, available host
 timing appears once on an explicit `shell batch` row, which shows the live elapsed

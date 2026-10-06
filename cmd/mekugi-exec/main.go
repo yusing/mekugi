@@ -118,7 +118,9 @@ func run(args []string) int {
 	}
 	r := &relay{ack: 1, sinks: [2]int{3, 4}, readers: [2]int{-1, -1}, report: newReporter(conn)}
 	mode := "status"
-	if !terminal {
+	if len(segments) == 1 {
+		mode = "observe"
+	} else if !terminal {
 		for i, name := range []string{"out", "err"} {
 			path := filepath.Join(work, name)
 			// Opening without a writer must not block; the shell opens its end next.

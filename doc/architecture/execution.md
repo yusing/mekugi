@@ -51,11 +51,12 @@ executor under the same worker authentication.
 
 Segment tracking (`REQ-EXECUTION-002`) has four owners:
 
-- `internal/execsegment` owns the split, the instrumented rewrite, the Bash
-  hook, and the report protocol. The helper and the router share it, so they
+- `internal/execsegment` owns the split, the list rewrite, single-command
+  observation, the Bash hook, and the report protocol. The helper and the router share it, so they
   always agree on segment indices.
 - `mekugi-exec` runs inside the Codex-started shell as its coprocess. It owns
-  only the relay of that shell's output and the report; it never starts,
+  only the list's output relay and boundary reports. Single-command observation
+  leaves the shell's output descriptors unchanged. The helper never starts,
   signals, or continues a command.
 - The router's report hub matches each report to a live host item and bounds
   what it retains. Matching is session-scoped and process-local. Writer previews

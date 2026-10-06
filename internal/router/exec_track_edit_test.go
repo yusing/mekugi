@@ -451,7 +451,7 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 			reportOld := func() {
 				report := dialExecTrackReport(t, hub, script)
 				report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
-				awaitMain(t, u, "requested")
+				awaitMain(t, u, "Running go test ./...")
 			}
 			if !lateReport {
 				reportOld()

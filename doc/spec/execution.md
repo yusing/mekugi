@@ -148,7 +148,9 @@ Acceptance:
 In the UI, a Bash command whose script is a top-level list
 (`;`, newline, `&&`, `||`) reports each segment's own output, exit status,
 start/end timestamps and elapsed duration, so Activity can show every segment with
-its own state. Pipelines and compound commands are single segments. Command text, stdin, output bytes, exit status,
+its own state. Supported single commands, including timed commands and pipelines,
+report their own elapsed duration without rewriting the script or redirecting
+stdout or stderr. Pipelines and compound commands are single segments. Command text, stdin, output bytes, exit status,
 PTY/yield behavior, and `write_stdin` continuation stay those of the stock
 command. Codex's startup, cancellation, sandbox, and process group apply
 unchanged.
@@ -162,8 +164,10 @@ router to match it to a live `commandExecution` item by thread and exact script.
 Tracking uses existing FIFOs and router-created per-command resources, so it
 works under Codex's read-only and workspace-write sandboxes without network
 access or filesystem creation by the helper. Only after a match and acquisition
-of the script and output resources does the shell accept tracking and run an
-instrumented copy in place of the script and exit. A one-time trap runs the copy
+of the required resources does the shell accept tracking. A single command runs
+in place with begin and EXIT observations, leaving its original output descriptors
+untouched. For a list, the shell runs an instrumented copy in place of the script
+and exits. A one-time trap runs the copy
 before the script's first command, so Bash's own error messages, line numbers,
 and fatal errors are those of the original. The copy wraps each segment in hooks that preserve its status,
 `$?`, and `set -e`. In every other case the hook returns before any segment runs
@@ -174,8 +178,8 @@ cancellation.
 
 A script stays untracked when:
 
-- it is a single command;
-- it starts with a subshell or a timed command, which would run before the trap;
+- it is a list that starts with a subshell or a timed command, which would run
+  before the trap;
 - it uses job control, traps, `coproc`, a top-level `return`, `exec` with a
   program, command tracing, or variables that name the running command;
 - it is a Codex shell-snapshot script or wrapper (the wrapper's inner shell is
@@ -188,12 +192,17 @@ A script stays untracked when:
 - the helper, tracking channel, router, or required startup resources are
   unavailable.
 
-The helper relays the shell's output to Codex's original descriptors while it
-reports each segment's share. The shell waits for the helper to acknowledge
+Scripts that inspect instrumentation-sensitive shell variables are skipped before
+helper startup.
+
+For a nonterminal list, the helper relays the shell's output to Codex's original
+descriptors while it reports each segment's share. The shell waits for the helper to acknowledge
 each segment's begin and end, so output cannot precede its segment identity or
 spill across a completed segment boundary. At these control boundaries the helper
 records wall-clock timestamps and measures elapsed time with its monotonic clock,
-before draining end-of-command output. The shell's EXIT boundary closes the active
+after setup and matching, before draining end-of-command output. For a single
+command, elapsed time spans its begin and EXIT observations, including the small
+boundary and acknowledgment overhead. The shell's EXIT boundary closes the active
 segment if its ordinary end hook was bypassed. Missing boundaries never borrow
 invocation duration. Protocol version 3 carries this timing with boundary reports.
 Output a background descendant writes later is attributed to the segment that
@@ -222,17 +231,19 @@ entry with the host turn/item identity and complete underlying error, wrapped in
 the transcript rather than truncated into the composer. Distinct causes remain
 separate, and notices not painted before exit remain available to the launcher.
 
-Old history without reports, missing or mismatched records, and incomplete
-reports keep the combined host result. Terminal and lossy reports retain their
-observed segment statuses but not separate output. If any segment's bounded
+The same matching, host-exit validation, retention and history restoration apply
+to single-command reports. Old history without reports, missing or mismatched
+records, and incomplete reports keep the host timing and combined result.
+Single-command reports retain host output unchanged. Terminal and lossy reports
+retain their observed segment statuses but not separate output. If any segment's bounded
 output was truncated or released before persistence, restored output likewise
 stays combined rather than presenting a partial stream as complete. Activity and
 output dialogs hide literal host shell wrappers and generated VCS guard
 instrumentation, preserving user PATH assignments and other shell source.
 This display projection leaves guard execution and stored commands unchanged.
 The per-command overhead is one helper start and two acknowledgments per
-segment, plus managed storage of a completed report. Single commands start no
-helper.
+segment, plus managed storage of a completed report. A supported single command
+uses one helper start and begin/EXIT acknowledgments.
 
 Acceptance:
 
@@ -260,6 +271,11 @@ Acceptance:
    network access, reports each segment's stdout, stderr, exit and skipped state.
    Missing startup resources run the original script once; router cancellation
    after resource acquisition does not prevent accepted execution.
+9. Supported single commands, including `time skills-mgr get user-experience`
+   and pipelines, run in place with unchanged output descriptors and host exit
+   status. Their elapsed suffix uses observed begin/EXIT duration, excluding
+   setup and matching. Unsupported or missing observations retain host timing
+   and output fallback; no extra timing metadata rows appear in the dialog.
 
 ## REQ-EXECUTION-003 — Guard remote VCS writes
 

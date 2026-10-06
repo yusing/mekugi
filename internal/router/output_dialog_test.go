@@ -302,7 +302,7 @@ func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	key := [3]string{"main", "t", "cmd"}
 	retention := new(activityui.Retention)
 	hub := &execTrackHub{tracks: map[[3]string]*execTrack{key: {
-		segments: []execTrackSegment{{source: "echo one", began: true, fresh: []byte("initial\n")}}, dirty: true,
+		segments: []execTrackSegment{{source: "echo one", began: true, fresh: []byte("initial\n")}, {source: "echo two"}}, dirty: true,
 	}}}
 	view, _ := hub.view(key, false, func(string) string { return "Run `echo one`" }, retention)
 	if !view.output || len(view.segments) != 1 || view.segments[0].output == nil {
@@ -319,7 +319,7 @@ func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	}
 
 	other := [3]string{"main", "t", "overflow"}
-	hub.tracks[other] = &execTrack{segments: []execTrackSegment{{source: "echo huge", began: true, fresh: []byte("prior\n")}}}
+	hub.tracks[other] = &execTrack{segments: []execTrackSegment{{source: "echo huge", began: true, fresh: []byte("prior\n")}, {source: "echo done"}}}
 	first, _ := hub.view(other, false, func(string) string { return "Run `echo huge`" }, retention)
 	previous := first.segments[0].output
 	if previous == nil {
@@ -337,7 +337,7 @@ func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 
 func TestOutputDialogLossyMessageReleasesLiveSegment(t *testing.T) {
 	key := [3]string{"main", "t", "lossy"}
-	track := &execTrack{segments: []execTrackSegment{{source: "echo text", began: true, fresh: []byte("partial")}}}
+	track := &execTrack{segments: []execTrackSegment{{source: "echo text", began: true, fresh: []byte("partial")}, {source: "echo done"}}}
 	hub := &execTrackHub{tracks: map[[3]string]*execTrack{key: track}}
 	var retention activityui.Retention
 	view, _ := hub.view(key, false, execSegmentText, &retention)
@@ -380,7 +380,7 @@ func TestOutputDialogTerminalKeyDecoderOwnsPrefixAndPaging(t *testing.T) {
 
 func TestOutputDialogTrackedViewDrainsRetainedOutput(t *testing.T) {
 	key := [3]string{"thread", "turn", "item"}
-	track := &execTrack{segments: []execTrackSegment{{source: "echo text", began: true, fresh: []byte("first\n")}}}
+	track := &execTrack{segments: []execTrackSegment{{source: "echo text", began: true, fresh: []byte("first\n")}, {source: "sleep 1"}}}
 	hub := &execTrackHub{tracks: map[[3]string]*execTrack{key: track}}
 	var retention activityui.Retention
 	view, _ := hub.view(key, false, execSegmentText, &retention)

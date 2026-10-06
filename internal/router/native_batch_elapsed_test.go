@@ -7,9 +7,18 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
+
+func TestUISnapshotNativeSingleCommandElapsed(t *testing.T) {
+	start := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
+	entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{command: "time skills-mgr get user-experience", duration: 100 * time.Millisecond,
+		segments: []commandSegment{{source: "time skills-mgr get user-experience", text: "Run `time skills-mgr get user-experience`", timing: execsegment.Timing{Started: start, Ended: start.Add(20 * time.Millisecond), ElapsedNS: int64(20 * time.Millisecond)}}}}}
+	var p activityui.Painter
+	uisnapshot.Assert(t, "testdata/snapshots/native-single-command-elapsed.txt", strings.Join(p.Block(parseLiveActivity(entry)[0], 80), "\n")+"\n")
+}
 
 func TestUISnapshotNativeBatchElapsed(t *testing.T) {
 	for _, running := range []bool{true, false} {

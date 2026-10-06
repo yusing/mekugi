@@ -47,6 +47,8 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Readable command output.** Open [searchable retained output](#output-dialog).
   With `mekugi-exec`, command lists show each command's output, exit status, and timing.
   Markdown file links open local source in the same dialog.
+  Supported single commands, including timed commands and pipelines, show measured
+  command time excluding startup and matching.
 - **File, directory and skill attachments.** [Send selected contents or a bounded directory tree directly](#composer)
   without a separate agent read; unreadable or oversized attachments have explicit notices.
 - **Composer additions.** Mention selected messages or diffs, and ask
@@ -599,9 +601,10 @@ the transcript. Read source and unified diffs use syntax colors. Untyped command
 output above 8 KiB stays uncolored for responsiveness; its text remains available
 for reading, searching, and copying. File-specific and diff highlighting retain
 their 256 KiB limit. When `mekugi-exec` recorded a command list, each command gets
-its own tab with its
-output, exit status, start/end timestamps and measured duration. Older history
-without timing evidence shows no per-command duration.
+its own tab with its output, exit status, and measured elapsed suffix. Supported
+single commands use measured command time in the same suffix, leaving output
+unchanged. See [command tracking](doc/spec/execution.md) for limits and overhead.
+Older history without timing evidence shows no per-command duration.
 Without retained output boundaries, the dialog labels the output as combined.
 Errors keep a short inline preview. Click **details**, or focus Main or Activity
 and press `Ctrl-B` then `!`, to read the full error, including restored

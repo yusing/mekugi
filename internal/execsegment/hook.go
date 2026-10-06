@@ -19,16 +19,17 @@ const Guard = "MEKUGI_EXEC_TRACK"
 //
 // Codex's own snapshot scripts, including the wrapper that re-executes the
 // command shell, pass through without setting the guard: the snapshot would
-// otherwise record it for every later command. Scripts without a list
-// operator or newline are single commands and never start the helper.
+// otherwise record it for every later command.
 func Hook(tracker string) string {
 	return `if [ -n "${BASH_EXECUTION_STRING+x}" ] && [ -z "${` + Guard + `+x}" ]; then
   case $BASH_EXECUTION_STRING in
   *__codex_snapshot*|*__CODEX_SNAPSHOT*|"if . '"*) ;;
   *)
     export ` + Guard + `=1
+    # Starting the coprocess changes these observations even if it declines.
     case $BASH_EXECUTION_STRING in
-    *[\;\&\|]*|*$'\n'*) . ` + shellsyntax.Quote(tracker) + ` ;;
+    *'$!'*|*'${!'*|*'$_'*|*'${_'*|*'PIPESTATUS'*|*'LINENO'*|*'BASH_COMMAND'*|*'BASH_SOURCE'*|*'FUNCNAME'*|*'BASH_EXECUTION_STRING'*) ;;
+    *) . ` + shellsyntax.Quote(tracker) + ` ;;
     esac ;;
   esac
 fi
@@ -55,6 +56,7 @@ coproc __MEKUGI_EXEC { exec ` + shellsyntax.Quote(helper) + ` ` + shellsyntax.Qu
 __mekugi_c=${__MEKUGI_EXEC[1]-} __mekugi_a=${__MEKUGI_EXEC[0]-} __mekugi_m= __mekugi_d= __mekugi_p= __mekugi_y= __mekugi_z=
 [ -n "$__mekugi_a" ] && IFS=' ' read -r __mekugi_m __mekugi_d <&"$__mekugi_a"
 case $__mekugi_m in
+observe) ;;
 relay|status)
   if ! { __mekugi_p=$(<"$__mekugi_d/script") && [ -n "$__mekugi_p" ]; } 2>/dev/null; then
     __mekugi_m=
@@ -73,14 +75,20 @@ exec {__mekugi_o}>&- {__mekugi_x}>&-
 [ -n "$__mekugi_z" ] && exec {__mekugi_z}>&-
 unset -v __mekugi_y __mekugi_z
 case $__mekugi_m in
-relay|status)
+observe|relay|status)
   unset -v __mekugi_o __mekugi_x __mekugi_m
   printf 'o\n' >&"$__mekugi_c"
   __mekugi_b() { local __mekugi_s=$? __mekugi_r; printf 'b %s\n' "$1" >&"$__mekugi_c"; IFS= read -r __mekugi_r <&"$__mekugi_a"; return "$__mekugi_s"; }
   __mekugi_e() { local __mekugi_s=$? __mekugi_r; printf 'e %s %s\n' "$1" "$__mekugi_s" >&"$__mekugi_c"; IFS= read -r __mekugi_r <&"$__mekugi_a"; return "$__mekugi_s"; }
   __mekugi_f() { local __mekugi_s=$? __mekugi_r; printf 'd %s\n' "$__mekugi_s" >&"$__mekugi_c"; IFS= read -r __mekugi_r <&"$__mekugi_a"; }
   trap __mekugi_f EXIT
-  trap 'trap - DEBUG; eval "$__mekugi_p"; exit "$?"' DEBUG
+  if [ -n "$__mekugi_p" ]; then
+    trap 'trap - DEBUG; eval "$__mekugi_p"; exit "$?"' DEBUG
+  else
+    # A single command runs unchanged after startup. Its EXIT boundary
+    # reports timing only; stdout and stderr keep their original descriptors.
+    __mekugi_b 0
+  fi
   ;;
 *)
   [ -n "$__mekugi_c" ] && exec {__mekugi_c}>&-

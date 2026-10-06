@@ -302,7 +302,7 @@ func (h *execTrackHub) serve(ctx context.Context, report, reply *os.File, work s
 	if line, err := reader.ReadBytes('\n'); err != nil || json.Unmarshal(line, &hello) != nil {
 		return
 	}
-	if hello.Type != execsegment.Hello || hello.Version != execsegment.Protocol || len(hello.Segments) < 2 {
+	if hello.Type != execsegment.Hello || hello.Version != execsegment.Protocol || len(hello.Segments) == 0 {
 		return
 	}
 	// The segments must be those of the script this router would split, or
@@ -318,8 +318,10 @@ func (h *execTrackHub) serve(ctx context.Context, report, reply *os.File, work s
 			return
 		}
 	}
-	if err := os.WriteFile(filepath.Join(work, "script"), []byte(execsegment.Rewrite(hello.Script, segments)), 0o600); err != nil {
-		return
+	if len(segments) > 1 {
+		if err := os.WriteFile(filepath.Join(work, "script"), []byte(execsegment.Rewrite(hello.Script, segments)), 0o600); err != nil {
+			return
+		}
 	}
 	key, track, ok := h.claim(ctx, hello)
 	if err := writeExecTrackReply(reply, ok); err != nil || !ok {
@@ -627,7 +629,7 @@ func (h *execTrackHub) view(key [3]string, final bool, text func(string) string,
 		return execTrackView{}, false
 	}
 	changed := track.dirty
-	view := execTrackView{output: !track.terminal && !track.lossy && !(track.ended && !track.done), ended: track.ended, complete: track.ended && track.done, code: track.code}
+	view := execTrackView{output: !track.terminal && len(track.segments) != 1 && !track.lossy && !(track.ended && !track.done), ended: track.ended, complete: track.ended && track.done, code: track.code}
 	last := track.lastStarted()
 	for i := range track.segments {
 		segment := &track.segments[i]

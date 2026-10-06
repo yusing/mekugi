@@ -1,11 +1,69 @@
 package router
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/yusing/mekugi/internal/execsegment"
 )
+
+func TestActivitySingleCommandActualTime(t *testing.T) {
+	t.Parallel()
+	for _, script := range []string{"sleep .02", "time sleep .02", "bash -c 'sleep .02; printf ok; exit 7'", "printf ok | cat"} {
+		t.Run(script, func(t *testing.T) {
+			shell := newExecTrackShell(t)
+			key := [3]string{"thread", "turn", "single"}
+			timed := strings.HasPrefix(script, "time ")
+			if timed {
+				// Registration is outside the command clock, even when slow.
+				timer := time.AfterFunc(100*time.Millisecond, func() { shell.hub.start(key, "bash -lc "+quoteShellWord(script)) })
+				t.Cleanup(func() { timer.Stop() })
+			} else {
+				shell.hub.start(key, "bash -lc "+quoteShellWord(script))
+			}
+			got := runExecTrackShell(t, append(shell.env, "TIMEFORMAT=%R"), script)
+			plain := runExecTrackShell(t, append(shell.env, "MEKUGI_EXEC_TRACK=1", "TIMEFORMAT=%R"), script)
+			view := shell.awaitView(t, key)
+			if !view.complete || view.output || len(view.segments) != 1 || got.code != plain.code || got.stdout != plain.stdout {
+				t.Fatalf("host result changed: tracked=%+v plain=%+v view=%+v", got, plain, view)
+			}
+			elapsed := time.Duration(view.segments[0].timing.ElapsedNS)
+			if timed {
+				seconds, err := strconv.ParseFloat(strings.TrimSpace(got.stderr), 64)
+				if err != nil || elapsed < 15*time.Millisecond || elapsed > time.Duration(seconds*float64(time.Second))+50*time.Millisecond {
+					t.Fatalf("command=%s shell time=%q err=%v", elapsed, got.stderr, err)
+				}
+			} else if got.stderr != plain.stderr {
+				t.Fatalf("stderr changed: %q vs %q", got.stderr, plain.stderr)
+			}
+			entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], command: script, duration: time.Second, segments: view.segments}, outputTail: []string{got.stdout}}
+			blocks := parseLiveActivity(entry)
+			if elapsed <= 0 || len(blocks) != 1 || blocks[0].Duration != elapsed || blocks[0].NotificationTiming || blocks[0].ExitCode != got.code {
+				t.Fatalf("command timing replaced by host time: %+v", blocks)
+			}
+			if !timed {
+				return
+			}
+			store, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			u.proxy = &mekugiProxy{replayStore: store}
+			item := appServerItem{ID: key[2], Type: "commandExecution", Command: "bash -lc " + quoteShellWord(script), ExitCode: new(got.code), AggregatedOutput: new(got.stdout + got.stderr)}
+			u.retainCommandSegments(entry, item, view)
+			u.finishCommandSegments()
+			entry.native.segments = nil
+			u.restoreCommandSegments(&entry, item, u.session.cwd)
+			blocks = parseLiveActivity(entry)
+			if len(blocks) != 1 || blocks[0].Duration != elapsed || blocks[0].Running {
+				t.Fatalf("single command timing lost on restore: %+v", blocks)
+			}
+		})
+	}
+}
 
 func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 	t.Parallel()
