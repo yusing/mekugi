@@ -365,3 +365,26 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 		}
 	}
 }
+
+func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/workspace")
+	item := appServerItem{ID: "cmd", Type: "commandExecution", Cwd: "/command-dir", Command: "mcat /command-dir/read.go; rg '/command-dir/query' /command-dir/src; printf new > /command-dir/edit.go", Status: "completed", ExitCode: new(0)}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	data := newLiveDiffData()
+	data.order = []string{"receipt"}
+	data.attempts["receipt"] = liveDiffAttempt{receipt: &capturedActivityEdit{thread: "main", calls: []string{"cmd"}, text: "Edit `edit.go` +1 -1"}}
+	check := func(view *liveActivityView) {
+		t.Helper()
+		entry := view.entries[0]
+		if !strings.Contains(entry.Text, "Read `read.go`") || !strings.Contains(entry.Text, "Search `/command-dir/query` in `src`") || !strings.Contains(entry.Text, "Edit `edit.go` +1 -1") || entry.native.command != item.Command {
+			t.Fatalf("receipt changed neighboring paths, query or source: %q", entry.Text)
+		}
+	}
+	u.shell.diff.data = data
+	u.applyCapturedEdits()
+	check(u.view)
+	restored := newAppServerSessionTestUI(t, u.session.cwd)
+	restored.shell.diff.data = data
+	restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+	check(restored.view)
+}

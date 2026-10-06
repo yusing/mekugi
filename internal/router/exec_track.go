@@ -710,7 +710,11 @@ func (h *execTrackHub) view(key [3]string, final bool, text func(string) string,
 // execSegmentText is a segment's display operations, using the same shell
 // classifier as an untracked command.
 func execSegmentText(source string) string {
-	if text := toolActivityShell(source); strings.TrimSpace(text) != "" {
+	return execSegmentTextInDirectory(source, "")
+}
+
+func execSegmentTextInDirectory(source, cwd string) string {
+	if text := toolActivityShellInDirectory(source, cwd); strings.TrimSpace(text) != "" {
 		return text
 	}
 	return toolActivityUnclassifiedShell(source)
@@ -722,7 +726,7 @@ func execSegmentText(source string) string {
 func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRun) ([]activityPaneEntry, bool) {
 	s := &u.session
 	if run.completion != nil {
-		view, _ := u.execTrack.view(key, false, execSegmentText, &s.outputs)
+		view, _ := u.execTrack.view(key, false, func(source string) string { return execSegmentTextInDirectory(source, run.entry.native.commandCwd) }, &s.outputs)
 		if !view.ended && time.Since(run.completedAt) < execTrackCompletionWait {
 			return nil, true
 		}
@@ -734,7 +738,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 		u.execTrack.finish(key)
 		return done, true
 	}
-	view, changed := u.execTrack.view(key, false, execSegmentText, &s.outputs)
+	view, changed := u.execTrack.view(key, false, func(source string) string { return execSegmentTextInDirectory(source, run.entry.native.commandCwd) }, &s.outputs)
 	if !u.execTrack.tracking(key) {
 		return nil, false
 	}
@@ -767,7 +771,9 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 // command falls back to the host's combined result.
 func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry, item appServerItem) []activityPaneEntry {
 	now := time.Now()
-	view, _ := u.execTrack.view(key, true, execSegmentText, &u.session.outputs)
+	view, _ := u.execTrack.view(key, true, func(source string) string {
+		return execSegmentTextInDirectory(source, appServerCommandDirectory(item, u.session.cwd))
+	}, &u.session.outputs)
 	if !view.complete || item.ExitCode == nil || view.code != *item.ExitCode || len(view.segments) == 0 {
 		return u.session.commandDone(entry, item, now)
 	}

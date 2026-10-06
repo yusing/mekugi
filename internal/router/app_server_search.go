@@ -61,7 +61,7 @@ func appServerSearchResults(item appServerItem) *int {
 	if argv[0] != "rg" && argv[0] != "grep" {
 		return nil
 	}
-	display, ok := toolActivitySearch(argv)
+	display, ok := toolActivitySearch(argv, "")
 	if !ok || !strings.HasPrefix(display, "Search ") {
 		return nil
 	}

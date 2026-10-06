@@ -91,7 +91,7 @@ func TestGuardCommandDisplayPreservesUserSource(t *testing.T) {
 		prefix + "git 'unfinished",
 		quoteShellWord(displayGuardHelper) + " --other-mode " + quoteShellWord(displayGuardDirectory) + " git status",
 	} {
-		if got, want := toolActivityShell(source), toolActivityShellLanguage(source, "bash"); got != want {
+		if got, want := toolActivityShell(source), toolActivityShellLanguage(source, "bash", ""); got != want {
 			t.Fatalf("user source changed: %q; display = %q, want %q", source, got, want)
 		}
 	}

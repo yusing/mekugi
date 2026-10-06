@@ -210,6 +210,21 @@ func TestUISnapshotTimeoutSkill(t *testing.T) {
 	assertNativeUISnapshot(t, "timeout-skill", p.Block(blocks[0], 90))
 }
 
+func TestUISnapshotClassifiedCommandPaths(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/workspace")
+	u.view.painter.Theme = livediff.DarkTheme
+	for i, command := range []string{
+		"mcat /workspace/internal/router/app.go 1:3",
+		"inspect_file /workspace/app.go /external/other.go",
+		"rg '/workspace/literal' /workspace/src /external",
+	} {
+		item := appServerItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, Cwd: "/workspace", Status: "completed", ExitCode: new(0), DurationMS: new(int64(20))}
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	}
+	finishPacing(u.view)
+	assertNativeUISnapshot(t, "classified-command-paths", u.view.renderFeed(100, 30).lines)
+}
+
 func TestLiveActivitySkillRendering(t *testing.T) {
 	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
 		p := activityui.Painter{Theme: theme}
@@ -242,6 +257,10 @@ func TestAppServerCommandWorkdirDisplay(t *testing.T) {
 		{name: "outside", cwd: other, workdir: other, command: "go test ./...", text: "Run\n```bash\ngo test ./...\n```"},
 		{name: "subdirectory", cwd: filepath.Join(workspace, "sub"), workdir: "sub", command: "cat a.go",
 			actions: []appServerCommandAction{{Type: "read", Command: "cat a.go", Path: filepath.Join(workspace, "sub", "a.go")}}, text: "Read `a.go`"},
+		{name: "frontend read", cwd: workspace, command: "mcat " + quoteShellWord(workspace+"/a.go") + " 1:3", text: "Read `a.go 1:3`"},
+		{name: "inspect other directory", cwd: other, workdir: other, command: "inspect_file " + quoteShellWord(other+"/a.go") + " " + quoteShellWord(workspace+"/b.go"), text: "Inspect `a.go`\n\nInspect `" + workspace + "/b.go`"},
+		{name: "search path and literal query", cwd: workspace, command: "rg " + quoteShellWord(workspace+"/literal") + " " + quoteShellWord(workspace+"/src") + " " + quoteShellWord(other), text: "Search `" + workspace + "/literal` in `src` `" + other + "`"},
+		{name: "piped read", cwd: workspace, command: "nl -ba " + quoteShellWord(workspace+"/a.go") + " | sed -n '2,4p'", text: "Read `a.go 2:4`"},
 		{name: "list", cwd: other, workdir: other, command: "ls src",
 			actions: []appServerCommandAction{{Type: "listFiles", Command: "ls src", Path: "src"}}, text: "List `src`"},
 	} {
@@ -254,6 +273,9 @@ func TestAppServerCommandWorkdirDisplay(t *testing.T) {
 				t.Helper()
 				if len(u.view.entries) != 1 || u.view.entries[0].Text != tc.text || u.view.entries[0].native.workdir != tc.workdir {
 					t.Fatalf("entries = %+v; want text %q in %q", u.view.entries, tc.text, tc.workdir)
+				}
+				if u.view.entries[0].native.command != tc.command {
+					t.Fatal("retained command source changed")
 				}
 				blocks := parseLiveActivity(u.view.entries[0].activityPaneEntry)
 				if len(blocks) == 0 || blocks[0].Workdir != tc.workdir {

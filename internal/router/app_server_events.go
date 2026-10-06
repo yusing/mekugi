@@ -437,6 +437,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 					native.commandTimeout += "s"
 				}
 			}
+			native.commandCwd = appServerCommandDirectory(item, s.cwd)
 			native.searchResults = appServerSearchResults(item)
 			entry := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerToolText(item, s.cwd), CallID: id, Observed: now, native: native}
 			key := [3]string{p.ThreadID, p.TurnID, id}
@@ -736,15 +737,20 @@ func appServerCommandWorkdir(item appServerItem, workspace string) string {
 	return pathdisplay.ForWorkspace(workspace, filepath.Clean(item.Cwd))
 }
 
+func appServerCommandDirectory(item appServerItem, workspace string) string {
+	if filepath.IsAbs(item.Cwd) {
+		return item.Cwd
+	}
+	return workspace
+}
+
 // appServerCommandText uses Codex's typed classification, then the shared
 // display classifier for frontends that Codex does not recognize. Neither
 // classification changes the executed command or retained host item. Paths
 // display relative to the directory the command ran in, which
 // appServerCommandWorkdir labels when it differs from the workspace.
 func appServerCommandText(item appServerItem, cwd string) string {
-	if appServerCommandWorkdir(item, cwd) != "" {
-		cwd = item.Cwd
-	}
+	cwd = appServerCommandDirectory(item, cwd)
 	var parts []string
 	for _, action := range item.CommandActions {
 		switch action.Type {
@@ -766,7 +772,7 @@ func appServerCommandText(item appServerItem, cwd string) string {
 		}
 	}
 	if len(parts) == 0 {
-		return toolActivityShell(appServerDisplayCommand(item.Command))
+		return toolActivityShellInDirectory(appServerDisplayCommand(item.Command), cwd)
 	}
 	return strings.Join(parts, "\n\n")
 }

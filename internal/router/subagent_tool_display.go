@@ -58,7 +58,11 @@ func toolActivityFenced(language, input string) string {
 }
 
 func toolActivityShell(script string) string {
-	return toolActivityShellLanguage(toolActivityShellSource(script), "bash")
+	return toolActivityShellInDirectory(script, "")
+}
+
+func toolActivityShellInDirectory(script, cwd string) string {
+	return toolActivityShellLanguage(toolActivityShellSource(script), "bash", cwd)
 }
 
 func toolActivityShellSource(script string) string {

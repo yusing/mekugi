@@ -361,7 +361,7 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 	if script, ok := appServerShellScript(command); ok {
 		command = script
 	}
-	_, classified := toolActivityReads(command)
+	_, classified := toolActivityReads(command, "")
 	for _, segment := range entry.native.segments {
 		if classified && !segment.skipped && segment.exit == 0 {
 			if program, err := syntax.NewParser().Parse(strings.NewReader(segment.source), ""); err == nil && len(program.Stmts) == 1 && toolActivityReadSeparator(program.Stmts[0]) {

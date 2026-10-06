@@ -459,6 +459,48 @@ func TestAppServerTrackedCommandShowsEachSegment(t *testing.T) {
 	}
 }
 
+func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
+	t.Parallel()
+	u, hub := newTrackedAppServerUI(t)
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.proxy = &mekugiProxy{replayStore: store}
+	cwd := t.TempDir()
+	script := "mcat " + quoteShellWord(cwd+"/a.go") + "; rg needle " + quoteShellWord(cwd+"/src")
+	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc " + quoteShellWord(script), Cwd: cwd, Status: "inProgress"}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	report := dialExecTrackReport(t, hub, script)
+	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0})
+	if rows := awaitMain(t, u, "Read a.go"); strings.Contains(rows, cwd+"/a.go") {
+		t.Fatal("live read path stayed absolute")
+	}
+	report.send(execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1}, execsegment.Message{Type: execsegment.End, Index: 1, Code: new(0)}, execsegment.Message{Type: execsegment.Done, Code: new(0)})
+	report.conn.Close()
+	item.Status, item.ExitCode, item.AggregatedOutput = "completed", new(0), new("")
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	awaitMain(t, u, "Search needle in src")
+	awaitCommandSegments(t, u)
+	restored := newAppServerSessionTestUI(t, u.session.cwd)
+	restored.proxy = &mekugiProxy{replayStore: store}
+	restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+	segments := restored.view.entries[0].native.segments
+	if len(segments) != 2 || segments[0].text != "Read `a.go`" || segments[1].text != "Search `needle` in `src`" || segments[0].source != "mcat "+quoteShellWord(cwd+"/a.go") {
+		t.Fatalf("restored paths or source changed: %+v", segments)
+	}
+	// Child history can omit command cwd while retaining its own workspace.
+	item.Cwd = ""
+	child := newAppServerSessionTestUI(t, u.session.cwd)
+	child.proxy = &mekugiProxy{replayStore: store}
+	child.session.path("child")
+	child.restoreActivityThread(appServerThreadInfo{ID: "child", Cwd: cwd, Turns: []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}}})
+	parts := child.agents.entries[0].native.segments
+	if len(parts) != 2 || parts[0].text != "Read `a.go`" || parts[1].text != "Search `needle` in `src`" {
+		t.Fatalf("restored child paths used main workspace: %+v", parts)
+	}
+}
+
 func TestAppServerTrackedCommandShowsSkippedSegments(t *testing.T) {
 	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)

@@ -8,12 +8,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/internal/pathdisplay"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"mvdan.cc/sh/v3/syntax"
 )
 
-func toolActivityShellLanguage(script, language string) string {
+func toolActivityShellLanguage(script, language, cwd string) string {
 	if shellsyntax.IsBatch(script) {
 		programs, err := shellsyntax.Split(script)
 		if err != nil {
@@ -22,7 +23,7 @@ func toolActivityShellLanguage(script, language string) string {
 		if len(programs) > 1 {
 			displays := make([]string, 0, len(programs))
 			for _, program := range programs {
-				if display := toolActivityShellLanguage(program, language); display != "" {
+				if display := toolActivityShellLanguage(program, language, cwd); display != "" {
 					displays = append(displays, display)
 				}
 			}
@@ -32,7 +33,7 @@ func toolActivityShellLanguage(script, language string) string {
 	parsed, err := shellsyntax.Parse(script)
 	if err == nil && len(parsed.Interpreter) == 1 &&
 		(parsed.Interpreter[0] == "bash" || parsed.Interpreter[0] == "sh") {
-		if summary, ok := toolActivityReads(parsed.Body); ok {
+		if summary, ok := toolActivityReads(parsed.Body, cwd); ok {
 			return summary
 		}
 	}
@@ -102,7 +103,7 @@ func toolActivityLanguage(interpreter string) string {
 	return language
 }
 
-func toolActivityReads(script string) (string, bool) {
+func toolActivityReads(script, cwd string) (string, bool) {
 	program, err := syntax.NewParser().Parse(strings.NewReader(script), "")
 	if err != nil || len(program.Stmts) == 0 {
 		return "", false
@@ -134,7 +135,7 @@ func toolActivityReads(script string) (string, bool) {
 		var timeouts []string
 		offset := 0
 		for _, statement := range program.Stmts {
-			if display, ok := toolActivityStatement(script, statement); ok {
+			if display, ok := toolActivityStatement(script, statement, cwd); ok {
 				timeouts = append(timeouts, activityui.ParseOperation(display).Timeouts...)
 				if display == "" {
 					source.WriteString(script[offset:int(statement.Pos().Offset())])
@@ -155,7 +156,7 @@ func toolActivityReads(script string) (string, bool) {
 	}
 	statements := make([]statementDisplay, len(program.Stmts))
 	for index, statement := range program.Stmts {
-		statements[index].display, statements[index].ok = toolActivityStatement(script, statement)
+		statements[index].display, statements[index].ok = toolActivityStatement(script, statement, cwd)
 		statements[index].separator = toolActivityReadSeparator(statement)
 	}
 	var displays []string
@@ -303,7 +304,7 @@ func toolActivityUnwrapTimeout(statement *syntax.Stmt) *syntax.Stmt {
 // Recognize only transparent search bounds and executable lookups. Keep their
 // complete source, including redirections and guards, rather than implying that
 // a pipeline's stages are independent operations.
-func toolActivityStatement(script string, statement *syntax.Stmt) (result string, recognized bool) {
+func toolActivityStatement(script string, statement *syntax.Stmt, cwd string) (result string, recognized bool) {
 	original := statement
 	timeouts := toolActivityTimeouts(statement)
 	if binary, ok := statement.Cmd.(*syntax.BinaryCmd); ok && binary.Op == syntax.Pipe {
@@ -332,8 +333,8 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (result string
 	}
 	if binary, ok := statement.Cmd.(*syntax.BinaryCmd); ok {
 		if binary.Op == syntax.AndStmt && len(statement.Redirs) == 0 {
-			left, leftOK := toolActivityStatement(script, binary.X)
-			right, rightOK := toolActivityStatement(script, binary.Y)
+			left, leftOK := toolActivityStatement(script, binary.X, cwd)
+			right, rightOK := toolActivityStatement(script, binary.Y, cwd)
 			if leftOK || rightOK || toolActivityReadSeparator(binary.X) != toolActivityReadSeparator(binary.Y) {
 				if !leftOK && !toolActivityReadSeparator(binary.X) {
 					left = toolActivityUnclassifiedShell(toolActivityStatementSource(script, binary.X))
@@ -344,7 +345,7 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (result string
 				return strings.Trim(strings.Join([]string{left, right}, "\n\n"), "\n"), true
 			}
 		}
-		if display, ok := toolActivityPipedRead(script, statement, binary); ok {
+		if display, ok := toolActivityPipedRead(script, statement, binary, cwd); ok {
 			return display, true
 		}
 		right, ok := toolActivityUnwrapTimeout(binary.Y).Cmd.(*syntax.CallExpr)
@@ -363,13 +364,13 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (result string
 			}
 			argv = append(argv, value)
 		}
-		left, ok := toolActivityStatement(script, binary.X)
+		left, ok := toolActivityStatement(script, binary.X, cwd)
 		if !ok {
 			return "", false
 		}
 		label := ""
 		if binary.Op == syntax.Pipe && len(statement.Redirs) == 0 && (strings.HasPrefix(left, "Search ") || strings.HasPrefix(left, "Search\n") || strings.HasPrefix(left, "List ")) {
-			filter, search := toolActivityStatement(script, binary.Y)
+			filter, search := toolActivityStatement(script, binary.Y, cwd)
 			if toolActivitySearchFilter(argv) {
 				return left, true
 			}
@@ -421,7 +422,7 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (result string
 			}
 		}
 	}
-	display, ok := toolActivityReadCommand(script, call)
+	display, ok := toolActivityReadCommand(script, call, cwd)
 	return display, ok
 }
 
@@ -443,7 +444,7 @@ func toolActivityTimeouts(statement *syntax.Stmt) []string {
 // A single-file cat or nl -ba preserves source line positions through a bounded
 // sed print. Multiple inputs, other numbering modes, and arbitrary sed programs
 // cannot be represented as the same source ranges.
-func toolActivityPipedRead(script string, statement *syntax.Stmt, binary *syntax.BinaryCmd) (string, bool) {
+func toolActivityPipedRead(script string, statement *syntax.Stmt, binary *syntax.BinaryCmd, cwd string) (string, bool) {
 	if binary.Op != syntax.Pipe || len(statement.Redirs) != 0 {
 		return "", false
 	}
@@ -467,7 +468,7 @@ func toolActivityPipedRead(script string, statement *syntax.Stmt, binary *syntax
 	if !ok {
 		return "", false
 	}
-	return "Read " + toolActivityCode(path+" "+strings.Join(spans, " ")), true
+	return "Read " + toolActivityCode(pathdisplay.ForWorkspace(cwd, path)+" "+strings.Join(spans, " ")), true
 }
 
 func toolActivityLiteralCall(statement *syntax.Stmt) ([]string, bool) {
@@ -575,7 +576,7 @@ func toolActivityPatternWord(word *syntax.Word) bool {
 	return valid
 }
 
-func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool) {
+func toolActivityReadCommand(script string, call *syntax.CallExpr, cwd string) (string, bool) {
 	var operations []struct{ label, detail string }
 	add := func(label, detail string) {
 		operations = append(operations, struct{ label, detail string }{label, detail})
@@ -615,7 +616,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 			if path == "" || strings.HasPrefix(path, "-") {
 				return "", false
 			}
-			label, value := "Read", path
+			label, value := "Read", pathdisplay.ForWorkspace(cwd, path)
 			if filepath.Base(path) == "SKILL.md" && filepath.Dir(path) != "." {
 				label, value = "Skill", filepath.Base(filepath.Dir(path))
 			}
@@ -627,7 +628,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 			return "", false
 		}
 		for _, spec := range specs {
-			label, value := "Read", spec.path
+			label, value := "Read", pathdisplay.ForWorkspace(cwd, spec.path)
 			if filepath.Base(spec.path) == "SKILL.md" && filepath.Dir(spec.path) != "." {
 				label, value = "Skill", filepath.Base(filepath.Dir(spec.path))
 			}
@@ -640,7 +641,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 		if len(argv) != 3 || argv[1] != "-ba" || argv[2] == "" || strings.HasPrefix(argv[2], "-") {
 			return "", false
 		}
-		add("Read", argv[2])
+		add("Read", pathdisplay.ForWorkspace(cwd, argv[2]))
 	case "sed":
 		// Only a literal, bounded print is a read preview, not arbitrary
 		// sed programs, in-place edits, or input from stdin.
@@ -651,7 +652,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 		if !ok {
 			return "", false
 		}
-		add("Read", argv[3]+" "+strings.Join(spans, " "))
+		add("Read", pathdisplay.ForWorkspace(cwd, argv[3])+" "+strings.Join(spans, " "))
 	case "inspect_file":
 		options := true
 		seen := make(map[string]bool)
@@ -688,7 +689,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 			if arg == "" || strings.ContainsRune(arg, '\x00') {
 				return "", false
 			}
-			add("Inspect", arg)
+			add("Inspect", pathdisplay.ForWorkspace(cwd, arg))
 		}
 		if len(operations) == 0 {
 			return "", false
@@ -790,7 +791,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr) (string, bool
 		}
 		add("Search", script[int(call.Args[1].Pos().Offset()):int(call.End().Offset())])
 	case "rg", "grep":
-		return toolActivitySearch(argv)
+		return toolActivitySearch(argv, cwd)
 	case "skills-mgr":
 		if len(argv) >= 3 && argv[1] == "run" {
 			add("Skill", script[int(call.Args[1].Pos().Offset()):int(call.End().Offset())])

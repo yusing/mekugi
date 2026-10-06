@@ -92,7 +92,7 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 			if index == 0 && entry.native.command != "" {
 				// Rebuild from the host command so repeated reconciliation never
 				// duplicates receipts or drops neighboring operations.
-				original := toolActivityShell(appServerDisplayCommand(entry.native.command))
+				original := toolActivityShellInDirectory(appServerDisplayCommand(entry.native.command), entry.native.commandCwd)
 				paragraphs := activityui.Paragraphs(original)
 				if len(paragraphs) > 1 {
 					var parts []string
