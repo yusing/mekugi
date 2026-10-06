@@ -1,0 +1,110 @@
+== visible Main ==
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+
+├ Running go test ./...
+└ Running make build
+== visible Activity ==
+● worker                                                     12:00:00
+│ FIRST_TRANSCRIPT_ROW
+│ Earlier transcript
+│ Earlier transcript
+│ Earlier transcript
+│ … +8 lines
+
+● worker                                                     12:00:00
+│ ├ Running go test ./...
+│ └ Running make build
+== following Main ==
+├ Running go test ./...
+└ Running make build
+┃ Later transcript
+┃ Later transcript
+┃ Later transcript
+┃ Later transcript
+┃ Later transcript
+┃ Later transcript
+┃ Later transcript
+┃ Last row
+== following Activity ==
+● worker                                                     12:00:00
+│ ├ Running go test ./...
+│ └ Running make build
+
+● worker                                                     12:00:00
+│ Later transcript
+│ Later transcript
+│ Later transcript
+│ Later transcript
+│ … +9 lines
+== paused before commands Main ==
+├ Running go test ./...
+└ Running make build
+● main                                                       12:00:00
+┃ FIRST_TRANSCRIPT_ROW
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+                       ↓ Back to bottom · esc
+== paused before commands Activity ==
+● worker                                                     12:00:00
+│ ├ Running go test ./...
+│ └ Running make build
+● worker                                                     12:00:00
+│ FIRST_TRANSCRIPT_ROW
+│ Earlier transcript
+│ Earlier transcript
+│ Earlier transcript
+│ … +8 lines
+                       ↓ Back to bottom · esc
+== one complete Main ==
+└ Running make build
+● main                                                       12:00:00
+┃ FIRST_TRANSCRIPT_ROW
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+                       ↓ Back to bottom · esc
+== one complete Activity ==
+● worker                                                     12:00:00
+│ └ Running make build
+● worker                                                     12:00:00
+│ FIRST_TRANSCRIPT_ROW
+│ Earlier transcript
+│ Earlier transcript
+│ Earlier transcript
+│ … +8 lines
+
+                       ↓ Back to bottom · esc
+== finished Main ==
+● main                                                       12:00:00
+┃ FIRST_TRANSCRIPT_ROW
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+┃ Earlier transcript
+                       ↓ Back to bottom · esc
+== finished Activity ==
+● worker                                                     12:00:00
+│ FIRST_TRANSCRIPT_ROW
+│ Earlier transcript
+│ Earlier transcript
+│ Earlier transcript
+│ … +8 lines
+
+● worker                                                     12:00:00
+│ ├ Ran go test ./...
+                       ↓ Back to bottom · esc

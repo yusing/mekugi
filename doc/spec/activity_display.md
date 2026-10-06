@@ -438,6 +438,16 @@ The roster mouse wheel scrolls its viewport without changing selection, filterin
 or feed follow state.
 Hover underlines only the name; selection shades the row. Feed scrolling follows the same
 line/page/home/end/follow contract as the [live diff](changes.md#live-terminal-view).
+When a live running command's header would scroll away, it stays pinned above
+the transcript until native completion. Main pins its own commands; Activity
+pins only child commands matching its current agent filter, with existing agent
+headings where space allows. Pins reserve their own rows and retain the command's
+existing output-dialog click targets. Transcript scrolling, hover and click
+targets, and cross-pane navigation remain aligned with the visible rows.
+Where possible, at least one transcript row remains; a single-row pane instead
+keeps one command header. If parallel command headers exceed the available
+space, visible pins are limited in feed order. Pinning adds no controls or
+persistent running state; replay cannot revive it.
 Roster status symbols are
 observed facts only:
 `◐` an open provider response, `!` a latest error event, `✓` a plaintext
@@ -456,3 +466,5 @@ Acceptance:
    difference between unknown and nonzero exits.
 4. Roster selection and scrolling preserve feed state; off-screen rows do not change
    shared column widths. Missing evidence never becomes a completion or cost claim.
+5. Off-screen running command headers remain pinned within pane space and scope,
+   preserve navigation and dialog targets, and release on native completion.

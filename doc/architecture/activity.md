@@ -73,7 +73,11 @@ Only one bounded scan runs at a time; incomplete or failed scans leave counts un
 Unloaded history, loading, and failed reads have separate presentation states.
 Pending rollout placements stay with their child until their item/turn is
 loaded. Stable Activity entry IDs survive older-page insertion and continue
-to own output and Main links. Existing transcript retention remains bounded.
+to own output and Main links. Transcript retention retires completed records
+before live running commands, which survive until completion. A feed may
+temporarily exceed its normal retained-record limit when all retained commands
+are live; [running-header pinning](../spec/activity_display.md#agents-roster-and-navigation)
+does not revive running state on replay.
 While an older page is pending, same-child lifecycle notifications reconcile
 after the page; deltas are not retained, and buffer saturation cancels the
 observational read before applying live events. Cancellation retires only
