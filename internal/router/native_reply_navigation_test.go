@@ -249,7 +249,14 @@ func TestNativeRepliesShareHeaderQuoteAnswerLayout(t *testing.T) {
 						t.Fatalf("context row %d lost navigation", i)
 					}
 				}
-				if !strings.Contains(ansi.Strip(run.lines[1]), "↩ re:") || strings.Contains(ansi.Strip(run.lines[1]), "Original") || !strings.HasSuffix(ansi.Strip(run.lines[2]), "▎ Original request.") || !strings.HasSuffix(ansi.Strip(run.lines[3]), "▎ Second detail.…") || !strings.HasSuffix(ansi.Strip(run.lines[4]), "Answer body.") {
+				answerRow := 4
+				if kind == "main raw" {
+					answerRow++
+					if run.questions[4] != 0 {
+						t.Fatal("Main's reply boundary gained a navigation target")
+					}
+				}
+				if !strings.Contains(ansi.Strip(run.lines[1]), "↩ re:") || strings.Contains(ansi.Strip(run.lines[1]), "Original") || !strings.HasSuffix(ansi.Strip(run.lines[2]), "▎ Original request.") || !strings.HasSuffix(ansi.Strip(run.lines[3]), "▎ Second detail.…") || !strings.HasSuffix(ansi.Strip(run.lines[answerRow]), "Answer body.") {
 					t.Fatalf("expected header, quoted excerpt, answer: %q", run.lines)
 				}
 			})

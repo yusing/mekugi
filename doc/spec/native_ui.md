@@ -1008,7 +1008,9 @@ Child answers link (`↩ re:`) to their retained assignment, not to a
 previous answer or similar text. An answer to its thread's latest assignment
 omits the link, since that assignment is directly above; an answer to an earlier
 assignment in the same thread keeps it. Main's ordinary replies link to the user input
-in their own turn. Only the first reply to an input quotes it; a later reply to the
+in their own turn. A blank row separates the user excerpt from Main's answer,
+so an answer that starts with a blockquote remains distinct. Only the first reply
+to an input quotes it; a later reply to the
 same input quotes it again only when another message sits between them. Main's own
 tools, reasoning and progress do not separate replies. Main's replies remain in
 the scrollable transcript without a pinned copy. The journal's current task strip

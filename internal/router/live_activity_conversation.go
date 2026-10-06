@@ -548,6 +548,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			for _, question := range v.entries[:first] {
 				if question.Seq == entry.native.question {
 					v.replyContext(&out, question.activityPaneEntry, gutter, width-2)
+					out.add(0, gutter) // End the user excerpt before Main's own Markdown.
 					break
 				}
 			}

@@ -5,6 +5,7 @@ SCREENSHOT REPLY, 100 COLUMNS
 ● main                                                                                      08:16:39
 ┃ ↩ re: your message 08:16:39
 ┃ ▎ What was the journal issue?
+┃ 
 ┃ I tried to bind an agent to a journal note, but agent bindings belong to tasks. The whole batch
 ┃ was rejected, with no partial updates.
 ┃ 
@@ -16,6 +17,7 @@ STATUS REPLY WITH UNCHANGED OPEN TASKS, 100 COLUMNS
 ● main                                                                                      08:16:39
 ┃ ↩ re: your message 08:16:39
 ┃ ▎ Is the work still running?
+┃ 
 ┃ Yes. The parser task is still running.
 
 REPLY WITH JOURNAL ROWS, 100 COLUMNS
@@ -30,6 +32,7 @@ REPLY WITH JOURNAL ROWS, 100 COLUMNS
 ● main                                                                                      08:16:39
 ┃ ↩ re: your message 08:16:39
 ┃ ▎ Journal UI improvements
+┃ 
 ┃ Ordinary replies stay conversational. Work reports appear separately.
 
 SAME REPLY, 60 COLUMNS
@@ -44,6 +47,7 @@ SAME REPLY, 60 COLUMNS
 ● main                                              08:16:39
 ┃ ↩ re: your message 08:16:39
 ┃ ▎ Journal UI improvements
+┃ 
 ┃ Ordinary replies stay conversational. Work reports appear
 ┃ separately.
 
