@@ -207,7 +207,7 @@ func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
 		if err := json.Unmarshal(fields["tools"], &before); err != nil {
 			t.Fatal(err)
 		}
-		execution, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide)
+		execution, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, codeModeJournalGuidance)
 		if err != nil || execution == nil {
 			t.Fatalf("execution = %+v, %v", execution, err)
 		}
@@ -227,7 +227,7 @@ func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
 	t.Run("unsupported execution", func(t *testing.T) {
 		fields := map[string]json.RawMessage{"tools": mustMarshalJSON([]any{map[string]any{"type": "function", "name": "exec_command"}})}
 		before := mustMarshalJSON(fields)
-		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err == nil || !strings.Contains(err.Error(), "required exec interface") {
+		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, codeModeJournalGuidance); err == nil || !strings.Contains(err.Error(), "required exec interface") {
 			t.Fatalf("unsupported model accepted: %v", err)
 		}
 		if !sameJSONValue(before, mustMarshalJSON(fields)) {
@@ -252,7 +252,7 @@ func TestStockExecutionNamespacesUseOneInterface(t *testing.T) {
 			if additional {
 				fields = map[string]json.RawMessage{"input": mustMarshalJSON([]any{map[string]any{"type": "additional_tools", "role": "developer", "tools": definitions}})}
 			}
-			owner, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide)
+			owner, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, codeModeJournalGuidance)
 			if name != "exec" {
 				if err == nil || !strings.Contains(err.Error(), "required exec interface") {
 					t.Fatalf("additional=%v %s accepted: %v", additional, name, err)
@@ -263,7 +263,7 @@ func TestStockExecutionNamespacesUseOneInterface(t *testing.T) {
 				t.Fatalf("additional=%v exec guidance missing: %v", additional, err)
 			}
 			before := mustMarshalJSON(fields)
-			if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil || !sameJSONValue(before, mustMarshalJSON(fields)) {
+			if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, codeModeJournalGuidance); err != nil || !sameJSONValue(before, mustMarshalJSON(fields)) {
 				t.Fatalf("namespace refresh changed stock catalog: %v", err)
 			}
 		}
@@ -277,7 +277,7 @@ func TestStockExecutionAllowsHostSelectedToolSubset(t *testing.T) {
 		{map[string]any{"type": "function", "name": "collaboration.wait_agent"}},
 	} {
 		fields := map[string]json.RawMessage{"tools": mustMarshalJSON(tools)}
-		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil {
+		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, codeModeJournalGuidance); err != nil {
 			t.Fatalf("stock subset %s: %v", fields["tools"], err)
 		}
 	}
@@ -286,13 +286,13 @@ func TestStockExecutionAllowsHostSelectedToolSubset(t *testing.T) {
 		"tools": mustMarshalJSON([]any{}),
 		"input": mustMarshalJSON([]any{testCodeModeAdditionalTools(description)}),
 	}
-	if result, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil || result == nil {
+	if result, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, codeModeJournalGuidance); err != nil || result == nil {
 		t.Fatalf("exec subset = %+v, %v", result, err)
 	}
 	fields = map[string]json.RawMessage{
 		"input": mustMarshalJSON([]any{testCodeModeAdditionalTools("Run JS with tools.apply_patch.\n" + guide)}),
 	}
-	if result, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil || result == nil {
+	if result, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, codeModeJournalGuidance); err != nil || result == nil {
 		t.Fatalf("patch-only exec subset = %+v, %v", result, err)
 	}
 	if strings.Contains(string(fields["input"]), "mekugi-frontends:start") || !strings.Contains(string(fields["input"]), "mekugi-journal:start") {
@@ -308,7 +308,7 @@ func TestCodeModeRejectsOverlappingGuidanceSections(t *testing.T) {
 	} {
 		fields := map[string]json.RawMessage{"input": mustMarshalJSON([]any{testCodeModeAdditionalTools(description)})}
 		before := append(json.RawMessage(nil), fields["input"]...)
-		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err == nil {
+		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, codeModeJournalGuidance); err == nil {
 			t.Fatalf("accepted overlapping guidance: %q", description)
 		}
 		if !sameJSONValue(before, fields["input"]) {

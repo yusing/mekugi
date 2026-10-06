@@ -23,15 +23,19 @@ const codeModeJournalEnd = "<!-- mekugi-journal:end -->"
 
 var codeModeJournalHint = embeddedInstruction("journal_code_mode_hint")
 
-var journalToolDescription = embeddedInstruction("journal_tool")
-
 //go:embed journal_input.d.ts
 var journalInputTypes string
 
-var codeModeJournalGuidance = strings.NewReplacer(
-	"<journal-tool-description />", journalToolDescription,
-	"<journal-input-types />", strings.TrimSpace(journalInputTypes),
-).Replace(embeddedInstruction("journal_code_mode"))
+var codeModeJournalGuidance = codeModeJournalGuide("journal_main")
+var codeModeSubagentJournalGuidance = codeModeJournalGuide("journal_subagent")
+
+func codeModeJournalGuide(role string) string {
+	return strings.NewReplacer(
+		"<journal-role-guidance />", embeddedInstruction(role),
+		"<journal-api />", embeddedInstruction("journal_api"),
+		"<journal-input-types />", strings.TrimSpace(journalInputTypes),
+	).Replace(embeddedInstruction("journal_code_mode"))
+}
 
 type journalListItem struct {
 	ID       string `json:"id"`
@@ -87,8 +91,8 @@ func journalMutationsSchema() json.RawMessage {
 	})
 }
 
-func injectCodeModeJournalGuidance(description string) (string, error) {
-	return refreshMarkedToolGuidance(description, codeModeJournalStart, codeModeJournalEnd, codeModeJournalGuidance)
+func injectCodeModeJournalGuidance(description, guidance string) (string, error) {
+	return refreshMarkedToolGuidance(description, codeModeJournalStart, codeModeJournalEnd, guidance)
 }
 
 func isJournalCall(item map[string]json.RawMessage) bool {

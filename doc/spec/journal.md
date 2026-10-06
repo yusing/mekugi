@@ -187,7 +187,7 @@ at most eight entries and an omitted count. These are not claims that processes
 are still running. Recovery restores neither continuation handles nor JavaScript
 store values; the host remains authoritative for live execution state.
 
-Journal guidance asks authors to keep explicit constraints and settled decisions
+Main journal guidance asks authors to keep explicit constraints and settled decisions
 in context, with one owning node per topic that corrections update in place, and
 to mark replaced decisions superseded. Authors record the facts later work needs
 from loaded documents and skills, not which ones were read, and keep handoff
@@ -585,17 +585,15 @@ stock tool catalog and prompt.
 
 ### Runtime authoring
 
-Tasks express intentions. Work updates and newly established facts go into the
+Tasks express intentions. Main work updates and newly established facts go into the
 journal, attached to the next useful tool call rather than standalone commentary
 or a journal-only request. Notes lead with the result or decision, then supporting
 evidence. Task state changes convey milestones such as investigation finished or
 validation started; notes record new findings, decisions, measured progress and
 blockers. Announcing the next action or repeating a task state or unchanged fact
 is not a new note. Standing constraints belong in context once. Parents record
-integration decisions, not copies of child journals. Coordinator requests for implementation-completion reports
-use the same journal channel, including commit IDs, checks, review outcomes and
-limitations. They do not make that evidence a separate conversational deliverable.
-Work completion uses the finish marker in the final useful execution when its
+integration decisions, not copies of child journals.
+Main work completion uses the finish marker in the final useful execution when its
 result can establish completion. It adds neither a standalone finalization tool
 call nor a follow-up `Done.` provider acknowledgment. Required result interpretation
 is not skipped. A usable deliverable, usage explanation or decision beyond the work
@@ -603,6 +601,14 @@ report instead uses a natural final answer. That Outcome does not repeat progres
 validation, review status or remaining work. Requested explanations,
 review findings, answers to user questions and necessary questions remain substantive
 conversation, without a journal-specific length or format.
+
+Subagent guidance is proportional to the assignment. Brief work needs no task or
+plan; tasks track separate steps and name outcomes rather than roles. Useful
+interim findings, blockers, decisions and recovery facts may be recorded alongside
+useful tool work. The final report appears once, in the journal with a finish
+marker when host results establish completion, or as a direct final answer. A
+clean review needs one no-defect result, not repeated task and note entries. The
+API, mutation validation and automatic child-result evidence remain shared.
 
 The router lowers the helper to authenticated `mjournal` through stock `exec_command`;
 one cell-local helper serves all calls, including nested and concurrent calls,

@@ -465,11 +465,15 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		}
 		return nil, nil
 	}
+	journalGuidance := codeModeJournalGuidance
+	if metadata.SubagentKind != "" {
+		journalGuidance = codeModeSubagentJournalGuidance
+	}
 	// Discover an execution owner before projecting tools: a native
 	// handshake may not yet carry the instruction or tool catalog of a turn.
 	if prewarm {
 		tools := request.responseTools()
-		execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance)
+		execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance, journalGuidance)
 		if err != nil {
 			return nil, err
 		}
@@ -502,7 +506,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	if err := stripStockPlanTools(request.fields, tools); err != nil {
 		return nil, err
 	}
-	execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance)
+	execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance, journalGuidance)
 	if err != nil {
 		return nil, err
 	}

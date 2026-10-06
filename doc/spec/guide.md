@@ -47,21 +47,27 @@ The journal owner supplies the additive durable-work guidance once per request: 
 `exec` in one marked Journal section. No dedicated
 `functions.journal` tool is exposed. Eligible
 structured tools receive the optional atomic `journal` mutation field.
-The shared description owns planning, task states, established facts and constraints,
-the complete JavaScript helper API (including read, required fields, stable paths and
-failures), batching, and Outcome-only natural completion. Work updates belong in
-the journal; requested answers and necessary questions remain conversational.
-Work completion is not an exception allowing a second validation or progress recap.
-It identifies `journal(...)` as a router-provided source helper outside `tools`
+Main guidance owns planning, task states, established facts, constraints and
+work-report completion. Subagent guidance is shorter: brief assignments need no
+task or plan, task titles describe outcomes rather than roles, and completion
+reports each result once. Both versions include the same JavaScript helper API
+(including read, required fields, stable paths and failures) and batching contract. Main work updates belong in the journal; requested answers
+and necessary questions remain conversational. Subagents record useful interim facts and may deliver their
+final report directly. A result already recorded in the journal is not repeated
+as a second completion report.
+The section identifies `journal(...)` as a router-provided source helper outside `tools`
 and `ALL_TOOLS`, and the generated `mjournal` invocation as internal transport rather than an
 agent-authored command. Projection preserves the caller's stock execution contracts. A
 previously marked section is refreshed in place. Duplicate, incomplete, or reversed markers
 reject before forwarding instead of creating ambiguous guidance.
 
-Journal projection is rebuilt from the current request's authenticated tool catalog. It does not
-depend on a routing-session ID, a live parent, an earlier prompt rewrite, or a particular model.
-Ordinary turns, forks, side threads, subagents, model switches, compaction continuations, and resumed
-threads therefore receive the same current guidance when they expose the applicable tool owner.
+Journal projection is rebuilt from the current request's authenticated tool catalog
+and Codex turn metadata. Subagent turns receive the shorter policy, including
+nested and unnamed subagents; other turns receive Main policy. Selection does not
+depend on a routing-session ID, a live parent, an earlier prompt rewrite, or a
+particular model. Ordinary turns, forks, side threads, model switches, compaction
+continuations and resumed threads receive current role-appropriate guidance when
+they expose the applicable tool owner.
 Execution-free and prewarm requests retain their existing lifecycle rules.
 
 Before provider forwarding, the router strips blocks enclosed by the exact HTML comments
@@ -103,20 +109,24 @@ Acceptance:
    sibling tools, and stock execution contracts remain unchanged.
 3. The execution-tool journal section and optional mutation field expose enough guidance to record concise
    tasks and facts, read retained subtrees, and finish naturally with an answer.
-   Journal writing guidance requires ASD-STE100, a short clear title or first line,
+   Main journal writing guidance requires ASD-STE100, a short clear title or first line,
    supporting details in the body, and one topic per item. Separate topics use
    separate items; "and" can connect parts of one topic.
-   Work turns use the finish marker in the final useful execution when host results
+   Main work turns use the finish marker in the final useful execution when host results
    establish completion, without a follow-up `Done.` acknowledgment or another
    provider request. A usable deliverable, usage explanation or needed decision
-   beyond the work report uses a natural final answer. Coordinator implementation-completion
-   reports use that work-report channel,
-   not a second final recap. Requested explanations, review findings and actual
-   questions remain conversational. Guidance directs mutations
+   beyond the work report uses a natural final answer. Subagents may return a final
+   report without creating a journal task.
+   Short assignments omit plans, role-restating tasks and duplicate clean-review
+   results. When their final report is already in the journal, they use the finish
+   marker when host results establish completion. Requested explanations, review
+   findings and actual questions remain conversational. Guidance directs mutations
    onto useful calls rather than standalone journal calls; `exec` exposes only the exec-local helper for both read and mutations.
 4. Ordinary, fork, side-thread, subagent, model-switch, compaction, and resume consumers derive
    guidance from their current tool catalog and authenticated registry rather than invisible ancestry
-   or live router state. Each helper has one description owner; the built-in section of the
+   or live router state. Prewarm and generating requests select the same role policy;
+   refresh replaces stale opposite-role policy without changing shared API types
+   or stock execution. Each helper has one description owner; the built-in section of the
    checked-in generated Markdown matches the built-in projection, and the session copy matches
    the complete projected frontend section.
 5. Omission filtering preserves unmatched markers and all bytes outside complete owned blocks.

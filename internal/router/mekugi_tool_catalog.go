@@ -20,7 +20,7 @@ type executionOwner struct {
 // adds session-helper guidance to the owning execution description. It never
 // removes, replaces, or rewrites apply_patch, exec_command, or the JavaScript
 // execution contract.
-func prepareStockExecution(fields map[string]json.RawMessage, catalog *responsesToolCatalog, frontendGuidance string) (*executionOwner, error) {
+func prepareStockExecution(fields map[string]json.RawMessage, catalog *responsesToolCatalog, frontendGuidance, journalGuidance string) (*executionOwner, error) {
 	if catalog.top.present && catalog.top.err != nil {
 		return nil, fmt.Errorf("decode responses tools: %w", catalog.top.err)
 	}
@@ -93,7 +93,7 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *responses
 	}
 	if result != nil {
 		owner := result
-		description, err := injectCodeModeJournalGuidance(owner.section.tools[owner.toolIndex].Description)
+		description, err := injectCodeModeJournalGuidance(owner.section.tools[owner.toolIndex].Description, journalGuidance)
 		if err != nil {
 			return nil, err
 		}
