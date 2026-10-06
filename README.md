@@ -353,8 +353,9 @@ variables override it and any file keys; an empty per-service value disables tha
 
 Every interactive launch lays out Main, Diff, Activity, Journal,
 and Agents panes in one terminal without an external pane manager. Main holds the
-conversation and composer. Inline Markdown code uses shell syntax colors; fenced
-code uses its language tag. Markdown tables render as aligned grids that switch
+conversation and composer. Inline Markdown code uses content-detected syntax
+colors; unrecognized spans stay plain with an accent. Fenced code uses its
+language tag. Markdown tables render as aligned grids that switch
 to a record layout in narrow panes. Completed Mermaid flowchart fences render as
 terminal diagrams with labeled solid/dashed edges and `&` fan-in/fan-out groups.
 Unsupported syntax (including subgraphs), incomplete fences, and diagrams too

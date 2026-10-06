@@ -74,8 +74,9 @@ other detail-bearing operations remain distinct. When one live invocation
 reports several operations at once, such as a shell call classified as Skill,
 Read and Search, they appear one at a time, 80 ms apart, in Main, Activity and the
 roster summary; restored history shows at once. Child text is sanitized before layout, so it cannot emit terminal
-controls. Inline Markdown code uses shell syntax colors with an accent for plain
-tokens; fenced code retains language-specific highlighting. Decoration must not
+controls. Inline Markdown code uses content-detected syntax colors; unrecognized
+spans stay plain with the existing accent, which also colors plain tokens in detected
+code. Fenced code retains language-specific highlighting. Decoration must not
 change code text, wrapping, or source-aware copying. Recognized local-file Markdown links show their label as a terminal
 hyperlink rather than exposing the raw destination syntax. Wrapped links retain their
 destination and underline only on their text, never on row padding or gutters. A completed child
