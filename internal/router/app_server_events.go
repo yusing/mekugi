@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"mvdan.cc/sh/v3/expand"
@@ -850,7 +851,7 @@ func appServerShellScript(command string) (string, bool) {
 	}
 	name := filepath.Base(args[0])
 	name = strings.TrimSuffix(name, filepath.Ext(name))
-	return args[2], name == "bash" || name == "sh"
+	return execsegment.ShOriginal(args[2]), name == "bash" || name == "sh" || name == "dash"
 }
 
 // appServerCommandArgs unquotes a host command made only of literal words.

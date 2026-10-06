@@ -32,17 +32,32 @@ func OpenReport(channel, directory string, timeout time.Duration) (report, reply
 	}
 	id := hex.EncodeToString(random[:])
 	work, _ = ReportDirectory(directory, id)
+	if err = RequestReport(channel, id); err != nil {
+		return nil, nil, "", err
+	}
+	return OpenPreparedReport(work, time.Until(deadline))
+}
+
+// RequestReport asks the router to create one invocation's existing resources.
+func RequestReport(channel, id string) error {
 	fd, err := unix.Open(channel, unix.O_WRONLY|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if err != nil {
-		return nil, nil, "", err
+		return err
 	}
 	// The 33-byte line is below POSIX PIPE_BUF. A full or absent reader
 	// declines tracking instead of blocking the command's startup.
 	n, err := unix.Write(fd, []byte(id+"\n"))
 	unix.Close(fd)
 	if err != nil || n != len(id)+1 {
-		return nil, nil, "", errors.Join(err, errors.New("tracking request not sent"))
+		return errors.Join(err, errors.New("tracking request not sent"))
 	}
+	return nil
+}
+
+// OpenPreparedReport opens router-created resources requested earlier by dash.
+func OpenPreparedReport(work string, timeout time.Duration) (report, reply *os.File, directory string, err error) {
+	deadline := time.Now().Add(timeout)
+	var fd int
 	for {
 		fd, err = unix.Open(filepath.Join(work, "report"), unix.O_WRONLY|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 		if err == nil {

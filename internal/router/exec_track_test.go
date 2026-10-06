@@ -659,7 +659,7 @@ func TestExecTrackUnavailableRouterRunsOriginalCommand(t *testing.T) {
 // run the original command exactly once, with its output and exit status.
 func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 	t.Parallel()
-	for _, phase := range []string{"before_acquisition", "before_output", "after_acquisition"} {
+	for _, phase := range []string{"before_acquisition", "before_output", "after_acquisition", "sh_before_output", "sh_after_acquisition"} {
 		t.Run(phase, func(t *testing.T) {
 			t.Parallel()
 			root := t.TempDir()
@@ -676,6 +676,7 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 			}
 			marker, gate := filepath.Join(root, "ready"), filepath.Join(root, "gate")
 			tracker := execsegment.Tracker(helper, channel, directory)
+			name := "bash"
 			pause := "touch " + quoteShellWord(marker) + "\nwhile [ ! -e " + quoteShellWord(gate) + " ]; do sleep 0.01; done\n"
 			at := "case $__mekugi_m in\n"
 			if phase == "before_output" {
@@ -684,10 +685,22 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 			if phase == "after_acquisition" {
 				at = "  unset -v __mekugi_o"
 			}
+			if strings.HasPrefix(phase, "sh_") {
+				name = "sh"
+				tracker = execsegment.ShTracker(helper, channel, directory)
+				at = "      relay)"
+				if phase == "sh_after_acquisition" {
+					at = "        printf 'o\\n'"
+				}
+			}
 			if !strings.Contains(tracker, at) {
 				t.Fatal("startup pause point missing")
 			}
-			tracker = strings.Replace(tracker, at, pause+at, 1)
+			replacement := pause + at
+			if phase == "sh_before_output" {
+				replacement = at + "\n" + pause
+			}
+			tracker = strings.Replace(tracker, at, replacement, 1)
 			trackerPath, startup := filepath.Join(root, "tracker"), filepath.Join(root, "startup")
 			for path, source := range map[string]string{trackerPath: tracker, startup: execsegment.Hook(trackerPath)} {
 				if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
@@ -695,10 +708,14 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 				}
 			}
 			script := "echo FIRST; echo SECOND >&2; false"
-			hub.start([3]string{"thread", "turn", "item"}, "bash -lc "+quoteShellWord(script))
+			command := script
+			if name == "sh" {
+				command = execsegment.ShScript(trackerPath, script)
+			}
+			hub.start([3]string{"thread", "turn", "item"}, name+" -c "+quoteShellWord(command))
 			commandCtx, stop := context.WithTimeout(t.Context(), 5*time.Second)
 			defer stop()
-			cmd := exec.CommandContext(commandCtx, execTrackShellExecutable(t, "bash"), "-c", script)
+			cmd := exec.CommandContext(commandCtx, execTrackShellExecutable(t, name), "-c", command)
 			cmd.Env = []string{"PATH=" + execTrackPath(), "HOME=" + root, "BASH_ENV=" + startup, "CODEX_THREAD_ID=thread"}
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr

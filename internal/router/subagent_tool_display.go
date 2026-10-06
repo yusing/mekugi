@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
@@ -61,7 +62,7 @@ func toolActivityShell(script string) string {
 }
 
 func toolActivityShellSource(script string) string {
-	return vcsguard.DisplayScript(script, func(directory string) bool {
+	return vcsguard.DisplayScript(execsegment.ShOriginal(script), func(directory string) bool {
 		if !filepath.IsAbs(directory) || filepath.Base(directory) != vcsguard.Directory {
 			return false
 		}

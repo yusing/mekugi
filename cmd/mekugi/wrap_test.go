@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
@@ -840,12 +841,15 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 		t.Fatal(err)
 	}
 	userZsh := t.TempDir()
-	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "ZDOTDIR=" + userZsh, "MEKUGI_TEST_TRACK_LOG=" + log}, frontend, helper, false)
+	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "ZDOTDIR=" + userZsh, "MEKUGI_TEST_TRACK_LOG=" + log, execsegment.Guard + "=1", execsegment.ShTrackerEnvironment + "=/outer/exec-track.sh"}, frontend, helper, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Contains(environment, "PATH="+frontend+":"+os.Getenv("PATH")) || !slices.Contains(environment, "ZDOTDIR="+userZsh) {
 		t.Fatalf("unguarded environment = %q", environment)
+	}
+	if slices.Contains(environment, execsegment.Guard+"=1") || !slices.Contains(environment, execsegment.ShTrackerEnvironment+"="+filepath.Join(root, "exec-track.sh")) {
+		t.Fatalf("new session inherited shell tracking state: %q", environment)
 	}
 	guard, _ := vcsguard.Paths(frontend)
 	if _, err := os.Stat(guard); !os.IsNotExist(err) {

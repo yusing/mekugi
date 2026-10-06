@@ -45,7 +45,7 @@ exceptions are the in-shell segment tracking of
 keeps the result and the Codex-owned process lifecycle unchanged, and the remote
 write guard of
 [REQ-EXECUTION-003](#req-execution-003--guard-remote-vcs-writes), which can fail one
-guarded command. When enabled, this guard uses Codex's native
+guarded command. Dash-backed sh tracking and the enabled guard use Codex's native
 `PreToolUse.updatedInput` hook to instrument shell command text. This is a narrow
 exception to byte-identical command input: tool identity, all other arguments,
 selected shell, results, permissions, sandbox and continuations stay Codex-owned.
@@ -92,8 +92,8 @@ partial workspace effect, but it never publishes a successful edit receipt.
 
 Command observation under [REQ-CHANGES-001](changes.md) reads the completed
 `exec_command` arguments or literal nested command text. The forwarded call
-stays byte-identical through observation; the approval guard may subsequently
-instrument command text through the native hook described above. Pre-call capture
+stays byte-identical through observation; command tracking or the approval guard
+may subsequently instrument command text through the native hook described above. Pre-call capture
 is time-bounded so that an unreadable scope becomes incomplete evidence rather
 than delaying Codex.
 Post-result comparisons read only known edit operands, never a workspace sweep.
@@ -143,8 +143,8 @@ Acceptance:
 
 1. Nested stock `apply_patch` and `exec_command` pass through with their
    original arguments and results, except for the eligible model-visible output
-   [projection](#duplicate-output-projection) and native approval-guard command
-   instrumentation above.
+   [projection](#duplicate-output-projection) and native command instrumentation
+   above.
    Unsupported top-level execution catalogs fail before inference.
 2. An `exec` cell can batch or parallelize stock tools, including a patch
    alongside an independent command, without router-side serial execution.
@@ -204,17 +204,20 @@ The [transport contract](transport.md) owns provider-history reconciliation.
 
 ## REQ-EXECUTION-002 — Track each segment of a command list
 
-In the UI, a Bash command whose script is a top-level list
-(`;`, newline, `&&`, `||`) reports each segment's own output, exit status,
+In the UI, a supported Bash command or Linux `/bin/sh` command backed by dash
+whose script is a top-level list (`;`, newline, `&&`, `||`) reports each segment's
+own output, exit status,
 start/end timestamps and elapsed duration, so Activity can show every segment with
-its own state. Supported single commands, including timed commands and pipelines,
-report their own elapsed duration without rewriting the script or redirecting
-stdout or stderr. Pipelines and compound commands are single segments. Command text, stdin, output bytes, exit status,
+its own state and stream live output. Clicking a segment opens only its retained
+stdout and stderr in the shared output dialog. Supported single commands,
+including pipelines, report their own elapsed duration without redirecting
+stdout or stderr. Bash also supports timed single commands. Pipelines and compound
+commands are single segments. Authored command text, stdin, output bytes, exit status,
 PTY/yield behavior, and `write_stdin` continuation stay those of the stock
 command. Codex's startup, cancellation, sandbox, and process group apply
 unchanged.
 
-The launcher adds a hook to the Bash startup file that the frontend PATH
+For Bash, the launcher adds a hook to the startup file that the frontend PATH
 already uses. The hook runs in the command shell Codex started, after login
 startup, so profile functions and aliases remain available. It never evaluates
 the script or starts a second shell for it. The helper `mekugi-exec`, installed
@@ -235,15 +238,27 @@ resources leave the original script to run once; after tracking is accepted,
 router cancellation cannot suppress its execution. Codex still owns command
 cancellation.
 
+For dash-backed sh, Codex's native `PreToolUse` command hook adds inline
+instrumentation to supported POSIX scripts. It runs in Codex's selected shell,
+without launching a substitute interpreter, and uses the same segment reports,
+measured timing, output retention and UI as Bash. Bash keeps its startup path.
+The native hook is registered for tracking even with `--vcs-guard=false`.
+With the VCS guard disabled, explicit caller `PreToolUse` conflicts leave caller
+settings intact and sh untracked; an enabled guard rejects a conflicting launch.
+Missing or incompatible hook resources leave commands running once
+with aggregate host output. This support is limited to Linux dash-backed sh;
+other sh implementations are not promised segment tracking.
+
 A script stays untracked when:
 
-- it is a list that starts with a subshell or a timed command, which would run
-  before the trap;
+- it is a list that starts with a subshell or a timed command;
 - it uses job control, traps, `coproc`, a top-level `return`, `exec` with a
   program, command tracing, or variables that name the running command;
 - it is a Codex shell-snapshot script or wrapper (the wrapper's inner shell is
   tracked instead);
 - it runs in a nested shell started by a command;
+- for sh, it uses transport descriptors 7 or 8, computed descriptor duplicates,
+  or inherits an open descriptor 3, 4, 7 or 8;
 - it does not match a live item within 350 ms, allowing for Codex's early-exit
   grace period and notification delivery, for example because Codex
   redacted a secret-like word in the displayed command;
@@ -300,16 +315,18 @@ stays combined rather than presenting a partial stream as complete. Activity and
 output dialogs hide literal host shell wrappers and generated VCS guard
 instrumentation, preserving user PATH assignments and other shell source.
 This display projection leaves guard execution and stored commands unchanged.
-The per-command overhead is one helper start and two acknowledgments per
-segment, plus managed storage of a completed report. A supported single command
-uses one helper start and begin/EXIT acknowledgments.
+The per-command overhead is one reporting helper start and two acknowledgments
+per segment, plus managed storage of a completed report. A supported single
+command uses begin/EXIT acknowledgments. Dash-backed sh adds a startup helper
+call before the reporting helper; measured command time excludes this setup.
 
 Acceptance:
 
 1. Tracked and untracked runs of the same list produce byte-identical stdout
    and stderr and the same exit status. Covered cases: `$?` across segments,
    `cd`, `exit N`, `set -e` with `||` and `!`, heredocs, short-circuited
-   `&&`/`||`, Bash error messages, and fatal expansion errors.
+   `&&`/`||`, native shell error messages, and fatal expansion errors, in both
+   Bash and dash-backed sh.
 2. Each segment's report carries only its own output and status. A
    short-circuited segment is reported as never run once a later segment starts
    or the shell finishes, and a shell that exits

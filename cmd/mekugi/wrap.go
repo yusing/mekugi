@@ -183,14 +183,21 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			cancel()
 			return 1, errors.Join(err, <-routerDone)
 		}
-		if guard {
-			guard, _ := vcsguard.Paths(session.FrontendDirectory)
-			cmd.Args, err = vcsGuardHookArgs(cmd.Args, helper, guard)
-			if err != nil {
-				cancel()
-				return 1, errors.Join(err, <-routerDone)
+		if helper != "" {
+			guardDirectory := ""
+			if guard {
+				guardDirectory, _ = vcsguard.Paths(session.FrontendDirectory)
 			}
-			cmd.Env = append(cmd.Env, vcsguard.HookEnvironment+"="+vcsguard.HookCommand(helper, guard))
+			cmd.Args, err = vcsGuardHookArgs(cmd.Args, helper, guardDirectory)
+			if err != nil {
+				if guard {
+					cancel()
+					return 1, errors.Join(err, <-routerDone)
+				}
+				fmt.Fprintln(os.Stderr, "mekugi: sh segment tracking unavailable:", err)
+			} else if guard {
+				cmd.Env = append(cmd.Env, vcsguard.HookEnvironment+"="+vcsguard.HookCommand(helper, guardDirectory))
+			}
 		}
 	}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -393,7 +400,7 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 		zsh = append(zsh, "ZDOTDIR="+zdotdir)
 	}
 	environment = slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
-		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") ||
+		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, execsegment.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, execsegment.Guard+"=") ||
 			((guard || restoreZsh) && (strings.HasPrefix(entry, "ZDOTDIR=") || strings.HasPrefix(entry, vcsguard.UserZdotdirEnvironment+"=")))
 	})
 	if helper != "" {
@@ -403,6 +410,11 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 			return nil, fmt.Errorf("prepare command tracking: %w", err)
 		}
 		startup += execsegment.Hook(tracker)
+		shTracker := filepath.Join(filepath.Dir(directory), "exec-track.sh")
+		if err := os.WriteFile(shTracker, []byte(execsegment.ShTracker(helper, socket, trackDirectory)), 0o600); err != nil {
+			return nil, fmt.Errorf("prepare sh command tracking: %w", err)
+		}
+		environment = append(environment, execsegment.ShTrackerEnvironment+"="+shTracker)
 	}
 	path := filepath.Join(filepath.Dir(directory), "frontend-bash-env")
 	if err := os.WriteFile(path, []byte(startup), 0o600); err != nil {

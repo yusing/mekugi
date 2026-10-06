@@ -2,9 +2,11 @@
 
 ## Focused checks
 
-Inside an active Mekugi shell, run tests with invocation-local `env -u BASH_ENV`.
+Inside an active Mekugi shell, run tests with invocation-local
+`env -u BASH_ENV -u MEKUGI_EXEC_TRACK`.
 The session's Bash startup hook can otherwise prepend live frontends ahead of a test's
 isolated frontend PATH, sending fixture reads to the wrong retained-output store.
+The inherited tracking guard also makes isolated command shells skip reporting.
 
 `make test` applies that isolation and clears snapshot-update mode. Select packages
 and tests while iterating, for example:

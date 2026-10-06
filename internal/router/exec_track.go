@@ -134,7 +134,7 @@ func (h *execTrackHub) acceptReport(ctx context.Context, work string) {
 		return
 	}
 	defer os.RemoveAll(work)
-	for _, name := range []string{"report", "reply", "out", "err"} {
+	for _, name := range []string{"report", "reply", "out", "err", "control", "ack"} {
 		if err := unix.Mkfifo(filepath.Join(work, name), 0o600); err != nil {
 			return
 		}

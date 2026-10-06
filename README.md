@@ -49,9 +49,10 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Live diffs.** [Inspect streaming previews and saved edits](#live-diff-pane);
   click an Edit event to open its captured file and hunk.
 - **Readable command output.** Open [searchable retained output](#output-dialog).
-  With `mekugi-exec`, command lists show each command's output, exit status, and timing.
+  With `mekugi-exec`, supported Bash and Linux dash-backed sh command lists show
+  each command's streamed output, exit status, and timing.
   Markdown file links open local source in the same dialog.
-  Supported single commands, including timed commands and pipelines, show measured
+  Supported single commands and pipelines, including Bash timed commands, show measured
   command time excluding startup and matching.
 - **File, directory and skill attachments.** [Send selected contents or a bounded directory tree directly](#composer)
   without a separate agent read; unreadable or oversized attachments have explicit notices.
@@ -629,10 +630,13 @@ open its full content in the shared dialog above the panes, without expanding
 the transcript. Read source and unified diffs use syntax colors. Untyped command
 output above 8 KiB stays uncolored for responsiveness; its text remains available
 for reading, searching, and copying. File-specific and diff highlighting retain
-their 256 KiB limit. When `mekugi-exec` recorded a command list, each command gets
-its own tab with its output, exit status, and measured elapsed suffix. Supported
-single commands use measured command time in the same suffix, leaving output
-unchanged. See [command tracking](doc/spec/execution.md) for limits and overhead.
+their 256 KiB limit. Supported Bash commands and Linux `/bin/sh` commands backed
+by dash use the same command tracking. Each segment of a command list streams
+its own output and shows its state and measured elapsed suffix; clicking it opens
+that segment's tab with its retained output and exit status in the shared dialog.
+Supported single commands use measured command time in the same suffix, leaving
+output unchanged.
+See [command tracking](doc/spec/execution.md) for limits and overhead.
 Older history without timing evidence shows no per-command duration.
 Without retained output boundaries, the dialog labels the output as combined.
 Errors keep a short inline preview. Click **details**, or focus Main or Activity

@@ -7,7 +7,7 @@ import (
 )
 
 // Guard marks a shell that already decided whether to track its command, so
-// nested Bash commands started by that command are never tracked.
+// nested command shells started by that command are never tracked.
 const Guard = "MEKUGI_EXEC_TRACK"
 
 // Hook is Bash startup source, read from BASH_ENV, that tracks the command

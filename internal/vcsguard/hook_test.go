@@ -7,9 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/execsegment"
 )
 
 func TestRunHookNativeUpdatedInput(t *testing.T) {
+	t.Setenv(execsegment.ShTrackerEnvironment, "")
 	marker := filepath.Join(t.TempDir(), "must-not-execute")
 	command := `git push "$(touch '` + marker + `')"; printf '%s' "$HOME"`
 	request, err := json.Marshal(map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": map[string]any{"command": command, "workdir": "/workspace"}})
@@ -48,6 +51,7 @@ func TestRunHookNativeUpdatedInput(t *testing.T) {
 }
 
 func TestRunHookNoChangeAndInvalidInput(t *testing.T) {
+	t.Setenv(execsegment.ShTrackerEnvironment, "")
 	for _, tt := range []struct {
 		name, input string
 		code        int

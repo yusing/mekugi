@@ -55,8 +55,12 @@ func TestVCSGuardHookArgsRejectsExplicitConflicts(t *testing.T) {
 	} {
 		for _, args := range [][]string{{"exec", "-c", setting}, {"exec", "--config=" + setting}, {"exec", "-c" + setting}} {
 			original := slices.Clone(args)
-			if _, err := vcsGuardHookArgs(args, "/mekugi", "/guard"); err == nil {
+			fallback, err := vcsGuardHookArgs(args, "/mekugi", "")
+			if err == nil {
 				t.Errorf("accepted conflicting config: %q", args)
+			}
+			if !slices.Equal(fallback, original) {
+				t.Fatalf("fallback lost launch arguments: %q", fallback)
 			}
 			if !slices.Equal(args, original) {
 				t.Fatalf("conflict mutated caller: %q", args)

@@ -39,6 +39,12 @@ const (
 )
 
 func main() {
+	if len(os.Args) == 4 && os.Args[1] == "--sh-open" {
+		if work := shOpen(os.Args[2], os.Args[3]); work != "" {
+			fmt.Println(work)
+		}
+		return
+	}
 	if len(os.Args) == 3 && os.Args[1] == "--vcs-hook" {
 		helper, err := os.Executable()
 		if err != nil {
@@ -82,10 +88,23 @@ func main() {
 // run declines by exiting before replying; the shell then runs the original
 // script itself.
 func run(args []string) int {
+	prepared := ""
+	if len(args) == 4 && args[0] == "--sh-run" {
+		script, ok := dashScript()
+		if !ok {
+			return 1
+		}
+		prepared = args[3]
+		if work, ok := execsegment.ReportDirectory(args[2], strings.TrimPrefix(filepath.Base(prepared), "run-")); !ok || work != prepared {
+			return 1
+		}
+		args = []string{args[1], args[2], script}
+		defer fmt.Println("decline") // Also unblock dash when startup declines.
+	}
 	if len(args) != 3 {
 		return 2
 	}
-	channel, directory, script := args[0], args[1], args[2]
+	channel, directory, script := args[0], args[1], execsegment.ShOriginal(args[2])
 	segments, ok := execsegment.Split(script)
 	if !ok {
 		return 0
@@ -95,7 +114,14 @@ func run(args []string) int {
 	for i, segment := range segments {
 		sources[i] = segment.Source
 	}
-	conn, answer, work, err := execsegment.OpenReport(channel, directory, replyTimeout)
+	var conn, answer *os.File
+	var work string
+	var err error
+	if prepared != "" {
+		conn, answer, work, err = execsegment.OpenPreparedReport(prepared, replyTimeout)
+	} else {
+		conn, answer, work, err = execsegment.OpenReport(channel, directory, replyTimeout)
+	}
 	if err != nil {
 		return 0
 	}

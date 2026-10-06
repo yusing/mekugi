@@ -6,8 +6,10 @@ import (
 	json "encoding/json/v2"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 
+	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
@@ -57,9 +59,18 @@ func RunHook(helper, directory string, input io.Reader, output, diagnostics io.W
 	if request.Event != "PreToolUse" || request.Tool != "Bash" || request.Input.Command == nil {
 		return fail(fmt.Errorf("unexpected hook input"))
 	}
-	changed, err := Rewrite(*request.Input.Command, helper, directory)
-	if err != nil {
-		return fail(err)
+	changed := *request.Input.Command
+	if directory != "" {
+		var err error
+		changed, err = Rewrite(changed, helper, directory)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	if tracker := os.Getenv(execsegment.ShTrackerEnvironment); tracker != "" {
+		if info, err := os.Stat(tracker); err == nil && info.Mode().IsRegular() {
+			changed = execsegment.ShScript(tracker, changed)
+		}
 	}
 	var response any = map[string]any{}
 	if changed != *request.Input.Command {
