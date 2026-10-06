@@ -7,12 +7,12 @@
 │ validation.                              ▌
 │                                          ▌
 │ Context paths:                           ▌
-│                                          │
+│                                          ▌
 │ /3 Preserve host authority               │
 │ Open tasks:                              │
 │                                          │
 │ /2 [pending] Second                      │
 │ /4 [pending] Continue validation         │
-│ Current work facts:                      │
-│                                          │
+│ Retained changes:                        │
+│ No recorded changes.                     │
 ╰─ ↑↓ scroll · / find · y copy · esc ──────╯

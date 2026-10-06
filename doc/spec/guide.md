@@ -145,7 +145,9 @@ through their existing owners. V2 uses the [evidence-backed journal summary](jou
 including open task paths and states, a context-path index, bounded current-work
 excerpts and changes/failures captured after the last journal event. Its short read
 hint directs readers to relevant context before acting and explains how to retrieve
-full detail, discover older own paths and find unbound agents. Closed work and
+full detail, discover older own paths and find older agents. Child content is
+grouped once under a readable agent heading with child-local paths, which readers
+can select through `agent` and `view:"own"`. Closed work and
 history remain readable rather than being indexed in every handoff. Retained v1
 journals include IDs, authors, questions and delivery
 state. Both include retained change ranges, not full diffs. V2 adds aggregated numstat

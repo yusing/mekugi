@@ -23,7 +23,7 @@ func TestJournalSummarySeparatesCompletedAgentFromOpenIntegration(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"/1 [working] Inspect changes", "bound agent done; integration remains open (retained result: /1/@child)", "/1/@child [done]", "Resume: continue /1"} {
+	for _, want := range []string{"/1 [working] Inspect changes", "child done; integration remains open", "Agent child [done]; parent task /1", "Resume: continue /1"} {
 		if !strings.Contains(summary.Text, want) {
 			t.Fatalf("missing %q: %s", want, summary.Text)
 		}
@@ -134,7 +134,10 @@ func TestJournalSummaryUnconfirmedExecutionsUseRetainedOutcomes(t *testing.T) {
 			t.Fatalf("missing %q: %s", want, summary.Text)
 		}
 	}
-	if strings.Count(summary.Text, ": test pending-") != 8 || strings.Contains(summary.Text, "already finished") || strings.Contains(summary.Text, "foreign") {
+	if strings.Contains(summary.Text, "\npending-") {
+		t.Fatalf("recovery exposed observation call IDs: %s", summary.Text)
+	}
+	if strings.Count(summary.Text, "Observed: test pending-") != 8 || strings.Contains(summary.Text, "already finished") || strings.Contains(summary.Text, "foreign") {
 		t.Fatalf("incorrect pending scope/outcomes: %s", summary.Text)
 	}
 }
@@ -212,7 +215,7 @@ func TestJournalSummaryDoesNotPromoteDescendantTaskState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(summary.Text, "bound agent done") {
+	if strings.Contains(summary.Text, "child done; integration remains open") {
 		t.Fatalf("descendant task overrode child lifecycle: %s", summary.Text)
 	}
 }
@@ -270,7 +273,7 @@ func TestJournalSummaryOmitsFinishedWorkForOnDemandReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"/1 [done] Delegate tests", "Still-open child task", `journal({op:"read",view:"outline"})`, `journal({op:"read",p:"/@agents",depth:1})`, "Resume: continue /2",
+		"/1 [done] Delegate tests", "Still-open child task", `journal({op:"read",view:"outline"})`, `journal({op:"read",depth:1})`, "Resume: continue /2",
 	} {
 		if !strings.Contains(summary.Text, want) {
 			t.Errorf("summary missing %q:\n%s", want, summary.Text)
@@ -286,7 +289,7 @@ func TestJournalSummaryOmitsFinishedWorkForOnDemandReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	proxy.replayStore, proxy.journals = store, newJournalStore()
-	agentIndex, err := proxy.journals.readTree(t.Context(), store, workspace, "tree", "", "/@agents", new(1), "combined")
+	agentIndex, err := proxy.journals.readTree(t.Context(), store, workspace, "tree", "", "", new(1), "combined")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,12 +324,60 @@ func TestJournalSummaryOpenSubtaskBoundsFolding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"OPEN-SUB-PROGRESS", "retained result: /1/1/@child", "/1 [dropped] Original approach · Approach replaced"} {
+	for _, want := range []string{"OPEN-SUB-PROGRESS", "Agent child [done]; parent task /1/1", "/1 [dropped] Original approach; Approach replaced"} {
 		if !strings.Contains(summary.Text, want) {
 			t.Errorf("summary missing %q:\n%s", want, summary.Text)
 		}
 	}
 	if strings.Contains(summary.Text, "DROPPED-DETAIL") || strings.Contains(summary.Text, "Superseded plan") || strings.Contains(summary.Text, "CHILD-NOTE") {
 		t.Errorf("dropped task kept its own folded note:\n%s", summary.Text)
+	}
+}
+
+func TestJournalSummaryAgentSelectorsUseLocalPaths(t *testing.T) {
+	proxy, workspace := mountFixture(t)
+	ctx, store := t.Context(), proxy.replayStore
+	if err := proxy.journals.initialize(ctx, store, workspace, "nested-child", "/root/child/child", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := proxy.journals.bindIdentity(ctx, store, workspace, "nested-child", "child", "/root/child/child", true); err != nil {
+		t.Fatal(err)
+	}
+	treeApply(t, proxy, workspace, journalMutation{Op: "add", Kind: "task", Title: new("Main integration"), State: new("working"), Agent: "/root/child"})
+	for _, target := range []struct{ thread, agent, title, delegate string }{
+		{"child", "child", "Child work", "/root/child/child"},
+		{"nested-child", "child/child", "Nested work", ""},
+	} {
+		if _, err := proxy.journals.apply(ctx, store, workspace, target.thread, "", []journalMutation{{Op: "add", Kind: "task", Title: &target.title, State: new("working"), Agent: target.delegate, Body: new("Retain 日本語 verbatim")}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := proxy.journals.observeLifecycle(ctx, store, workspace, target.thread, "working", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reopened, err := openMekugiReplayStore(store.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary, err := summaryForTest(t, ctx, reopened, workspace, "tree")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(summary.Text, "Retain 日本語 verbatim") {
+		t.Fatal("recovery changed authored Unicode content")
+	}
+	for _, forbidden := range []string{"/root/", "/@", "·", "…", "**"} {
+		if strings.Contains(summary.Text, forbidden) {
+			t.Errorf("recovery exposes formatting noise %q", forbidden)
+		}
+	}
+	for _, target := range []struct{ agent, title string }{{"child", "Child work"}, {"child/child", "Nested work"}} {
+		if strings.Count(summary.Text, "Agent "+target.agent+" [working]") != 1 || !strings.Contains(summary.Text, "/1 [working] "+target.title) {
+			t.Fatalf("agent heading/local path missing or repeated: %s", summary.Text)
+		}
+		nodes, err := newJournalStore().readTree(ctx, reopened, workspace, "tree", target.agent, "/1", new(0), "own")
+		if err != nil || len(nodes) != 1 || nodes[0].Title != target.title || nodes[0].Body != "Retain 日本語 verbatim" {
+			t.Fatalf("agent/local-path hint did not read its owner: %+v %v", nodes, err)
+		}
 	}
 }

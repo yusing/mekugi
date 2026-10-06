@@ -162,7 +162,7 @@ func TestJournalSummaryListsFailureWithoutRetainedOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.Failures != 1 || !strings.Contains(summary.Text, "Exit: 1 · output not retained\nFAIL parser") {
+	if summary.Failures != 1 || !strings.Contains(summary.Text, "Exit: 1; output not retained\nFAIL parser") {
 		t.Fatalf("unretained output was not reported as unavailable: %s", summary.Text)
 	}
 }

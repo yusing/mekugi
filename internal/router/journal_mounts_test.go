@@ -477,7 +477,7 @@ func TestJournalMountTurnCountSurvivesRestartAndRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(summary.Text, "/1/@child /root/child (agent /root/child) · 3 turns") {
+	if !strings.Contains(summary.Text, "Agent child; 3 turns; parent task /1") {
 		t.Fatalf("recovery omitted the child's turn count: %s", summary.Text)
 	}
 }

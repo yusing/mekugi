@@ -163,13 +163,21 @@ explicit reads. Bounded excerpts point back to `read`, never claim to be complet
 
 One shared hint explains how to read more: `journal({op:"read",p:"PATH",depth:1})`
 retrieves a listed node with its immediate children.
-`journal({op:"read",view:"outline"})` finds own older paths, and `journal({op:"read",p:"/@agents",depth:1})` discovers unbound agents.
+`journal({op:"read",view:"outline"})` finds own older paths, and
+`journal({op:"read",depth:1})` discovers older agents.
+Each child's content appears once under `Agent NAME [state]`, using its readable
+name without `/root/`, including nested names such as `child/worker`. Rows in that
+group use child-local paths. To read a child row, use
+`journal({op:"read",agent:"NAME",p:"PATH",view:"own"})` with its heading name and
+local path. Own-path reads remain unchanged, and combined read addresses remain
+supported; recovery keeps agent UUID mount addresses internal.
 Retained changes list only their ranges, pointing to
 `mchanges ID[..ID] --summary` for file statistics.
 
-When an open task's bound child has an observed done lifecycle, recovery places
-that fact and its retained result path beside the parent task. The parent's
-integration remains open; neither child prose nor a done lifecycle completes it.
+When an open task's bound child has an observed done lifecycle, the parent row
+states child completion and open integration. Retained result paths appear in the
+child's group. Neither child prose nor a done lifecycle completes the parent's
+integration.
 Pre-execution observations without a retained outcome are listed separately, with
 at most eight entries and an omitted count. These are not claims that processes
 are still running. Recovery restores neither continuation handles nor JavaScript
@@ -195,6 +203,11 @@ rather than requiring every retained change or output to be read before work or
 treating an investigation's hypothesis as established. Capturing failed output
 does not replace or alter the host's result. An unreadable evidence boundary does
 not block journal writes; the next summary treats the boundary as unknown.
+
+Generated recovery headings are plain text and metadata uses ASCII punctuation.
+Change labels have no bold markup, and execution observations omit full call IDs.
+Authored bodies and retained output remain verbatim within their excerpt bounds;
+presentation does not change durable execution correlation.
 
 The summary is at most 64 KiB. Context paths and open tasks must fit its
 reserved half; otherwise rendering fails rather than omitting a context path or

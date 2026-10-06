@@ -8,11 +8,11 @@
 │ Context paths:                                                                ▌
 │                                                                               ▌
 │ /1 Preserve host authority                                                    ▌
-│ Open tasks:                                                                   │
-│                                                                               │
+│ Open tasks:                                                                   ▌
+│                                                                               ▌
 │ /2 [pending] Continue validation                                              │
-│ Current work facts:                                                           │
-│                                                                               │
 │ Retained changes:                                                             │
+│ No recorded changes.                                                          │
+│                                                                               │
 ╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ─────────────────────────────╯
 

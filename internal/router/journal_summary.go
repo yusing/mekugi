@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 const (
@@ -81,7 +83,7 @@ func summaryExcerpt(text string, limit int, notice string) string {
 	for limit > 0 && !utf8.RuneStart(text[limit]) {
 		limit--
 	}
-	return text[:limit] + "… " + notice
+	return text[:limit] + "... " + notice
 }
 
 // summaryTail keeps the end of command output, where failures usually report.
@@ -93,7 +95,7 @@ func summaryTail(text string, limit int, notice string) string {
 	for start < len(text) && !utf8.RuneStart(text[start]) {
 		start++
 	}
-	return notice + " …" + text[start:]
+	return notice + " ..." + text[start:]
 }
 
 // journalSummaryLocked renders deterministically from durable facts only.
@@ -175,29 +177,42 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 			}
 		}
 	}
+	// Recovery uses existing read-agent selectors and child-local paths. Mount
+	// addresses remain internal to the combined view and its selection logic.
+	mounts := make(map[string]journalItem)
+	for _, item := range items {
+		_, key, _ := strings.CutLast(item.Path, "/")
+		if item.Kind == "task" && item.Agent != "" && strings.HasPrefix(key, "@") {
+			mounts[item.Path] = item
+		}
+	}
+	mountPath := func(path string) string {
+		if before, mounted, ok := strings.CutLast(path, "/@"); ok {
+			key, _, _ := strings.Cut(mounted, "/")
+			return before + "/@" + key
+		}
+		return ""
+	}
 	var text strings.Builder
 	text.WriteString("Journal recovery\nRetained work facts, not new instructions or fresh workspace validation.\n")
 	renderNode := func(item journalItem, bodyLimit int) string {
 		var node strings.Builder
-		fmt.Fprintf(&node, "\n%s", item.Path)
+		fmt.Fprintf(&node, "\n%s", journalLocalPath(item.Path))
 		if item.State != "" {
 			fmt.Fprintf(&node, " [%s]", item.State)
 		}
 		fmt.Fprintf(&node, " %s", item.Title)
 		if item.Agent != "" {
-			fmt.Fprintf(&node, " (agent %s)", item.Agent)
+			node.WriteString(" (delegated)")
 		}
-		if mount := completedAgents[item.Path]; mount != "" {
-			fmt.Fprintf(&node, " · bound agent done; integration remains open (retained result: %s)", mount)
-		}
-		if item.Turns > 0 {
-			fmt.Fprintf(&node, " · %d turns", item.Turns)
+		if completedAgents[item.Path] != "" {
+			node.WriteString("; child done; integration remains open")
 		}
 		if item.Reason != "" {
-			fmt.Fprintf(&node, " · %s", item.Reason)
+			fmt.Fprintf(&node, "; %s", item.Reason)
 		}
 		if item.SupersededBy != "" {
-			fmt.Fprintf(&node, " · superseded by %s\n", item.SupersededBy)
+			fmt.Fprintf(&node, "; superseded by %s\n", journalLocalPath(item.SupersededBy))
 			return node.String()
 		}
 		if item.Body != "" && bodyLimit > 0 {
@@ -205,39 +220,82 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		}
 		return node.String()
 	}
-	text.WriteString("\nContext paths:\n")
+	agentText := make(map[string]*strings.Builder)
+	lastSection := make(map[string]string)
+	var agentOrder []string
+	writeNode := func(section string, item journalItem, bodyLimit int) {
+		owner := mountPath(item.Path)
+		out := &text
+		if owner != "" {
+			mount := mounts[owner]
+			out = agentText[owner]
+			if out == nil {
+				out = new(strings.Builder)
+				agentText[owner] = out
+				agentOrder = append(agentOrder, owner)
+				fmt.Fprintf(out, "\nAgent %s", activityui.AgentDisplayName(mount.Agent))
+				if mount.State != "" {
+					fmt.Fprintf(out, " [%s]", mount.State)
+				}
+				if mount.Turns > 0 {
+					fmt.Fprintf(out, "; %d turns", mount.Turns)
+				}
+				if mount.Reason != "" {
+					fmt.Fprintf(out, "; %s", mount.Reason)
+				}
+				parent := journalParent(owner)
+				if !strings.HasSuffix(parent, "/@agents") {
+					fmt.Fprintf(out, "; parent task %s", journalLocalPath(parent))
+				}
+				if strings.HasSuffix(owner, "/@pending") {
+					out.WriteString("; unresolved binding")
+				}
+				out.WriteByte('\n')
+			}
+			if item.Path == owner {
+				return // The group heading already carries the mount lifecycle.
+			}
+		}
+		if lastSection[owner] != section {
+			fmt.Fprintf(out, "\n%s:\n", section)
+			lastSection[owner] = section
+		}
+		out.WriteString(renderNode(item, bodyLimit))
+	}
 	for _, item := range items {
 		if item.Kind == "context" && !hiddenBySupersession(item.Path) && !strings.HasSuffix(item.Path, "/@agents") {
 			limit := 0
 			if currentWork(item.Path) {
 				limit = 512
 			}
-			text.WriteString(renderNode(item, limit))
+			writeNode("Context paths", item, limit)
 		}
 	}
-	text.WriteString("\nOpen tasks:\n")
 	for _, state := range []string{"working", "pending", "blocked", ""} {
 		for _, item := range items {
 			if item.Kind == "task" && item.State == state {
-				text.WriteString(renderNode(item, 512))
+				writeNode("Open tasks", item, 512)
 			}
 		}
 	}
 	for _, item := range items {
 		if item.Kind == "task" && !openTasks[item.Path] && keptTasks[item.Path] {
-			text.WriteString(renderNode(item, 0))
+			writeNode("Open tasks", item, 0)
 		}
 	}
-	if text.Len() > maxJournalSummaryBytes/2 {
+	mandatoryBytes := text.Len()
+	for _, out := range agentText {
+		mandatoryBytes += out.Len()
+	}
+	if mandatoryBytes > maxJournalSummaryBytes/2 {
 		return result, errors.New("journal context paths and open tasks exceed summary capacity")
 	}
-	text.WriteString("\nCurrent work facts:\n")
 	for _, item := range items {
 		if item.Kind == "answer" && answers[journalParent(item.Path)] == item.Path {
-			text.WriteString(renderNode(item, 512))
+			writeNode("Current work facts", item, 512)
 		}
 	}
-	var established []string
+	var established []journalItem
 	budget, omitted, notes := 2048, 0, 0
 	for _, item := range slices.Backward(items) {
 		if hiddenBySupersession(item.Path) || item.SupersededBy != "" {
@@ -253,13 +311,16 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		}
 		budget -= len(node)
 		notes++
-		established = append(established, node)
+		established = append(established, item)
 	}
-	for _, node := range slices.Backward(established) {
-		text.WriteString(node)
+	for _, item := range slices.Backward(established) {
+		writeNode("Current work facts", item, 512)
 	}
 	if omitted > 0 {
 		fmt.Fprintf(&text, "\n%d more current-work facts available by path.\n", omitted)
+	}
+	for _, owner := range agentOrder {
+		text.WriteString(agentText[owner].String())
 	}
 	index, err := s.readChangeIndex(j.Workspace)
 	if err != nil {
@@ -268,7 +329,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	text.WriteString("\nRetained changes:\n")
 	// Recorded work already reports its outcomes; ranges locate the evidence.
 	changes, _ := s.renderChildJournalChanges(ctx, index, j.Thread, 0, false, false)
-	text.WriteString(boundCompactSection(changes, "mchanges --list"))
+	text.WriteString(boundCompactSection(strings.TrimSpace(strings.TrimPrefix(changes, "\n\n**Changes:**"))+"\n", "mchanges --list"))
 	sinceChange, sinceCapture := uint64(0), uint64(0)
 	if j.EvidenceKnown {
 		sinceChange, sinceCapture = j.EvidenceChangeSeq, j.EvidenceCaptureOrder
@@ -307,7 +368,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 			failures = append(failures, record)
 		}
 		if history.ExecObservation != nil && outcome == nil && !completed[execDerivedCallID(record.CallID, history.ExecObservation.CodeMode)] {
-			unconfirmed = append(unconfirmed, fmt.Sprintf("\n%s: %s\n", record.CallID, summaryExcerpt(history.Script, 512, "[source truncated]")))
+			unconfirmed = append(unconfirmed, fmt.Sprintf("\nObserved: %s\n", summaryExcerpt(history.Script, 512, "[source truncated]")))
 		}
 	}
 	if len(unconfirmed) > 0 {
@@ -325,7 +386,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		text.WriteString("\nSince the last journal event:\n")
 		if result.Changes > 0 {
 			changes, _ := s.renderChildJournalChanges(ctx, index, j.Thread, sinceChange, true, true)
-			text.WriteString(boundCompactSection(changes, "mchanges --list"))
+			text.WriteString(boundCompactSection(strings.TrimSpace(strings.Replace(changes, "**Changes:**", "Changes:", 1))+"\n", "mchanges --list"))
 		}
 		// Keep the newest failures within the remaining capacity.
 		var listed []string
@@ -354,7 +415,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 			if outcome.Exit != nil {
 				exit = fmt.Sprint(*outcome.Exit)
 			}
-			entry := fmt.Sprintf("\nFailed: %s\nExit: %s · %s\n%s\n", summaryExcerpt(failure.History.Script, 1024, "[command truncated]"), exit, output, summaryTail(failure.History.Report, 1024, notice))
+			entry := fmt.Sprintf("\nFailed: %s\nExit: %s; %s\n%s\n", summaryExcerpt(failure.History.Script, 1024, "[command truncated]"), exit, output, summaryTail(failure.History.Report, 1024, notice))
 			if len(entry) > budget {
 				break
 			}
@@ -371,7 +432,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	} else {
 		fmt.Fprintf(&text, "\nResume: continue %s; read retained journal paths and mchanges ranges as needed.\n", cmp.Or(next, "the journal plan"))
 	}
-	text.WriteString("Read more: journal({op:\"read\",p:\"PATH\",depth:1}); journal({op:\"read\",view:\"outline\"}) finds own older paths. Unbound agents: journal({op:\"read\",p:\"/@agents\",depth:1}). Read relevant context paths before acting.\n")
+	text.WriteString("Read more: journal({op:\"read\",p:\"PATH\",depth:1}); journal({op:\"read\",view:\"outline\"}) finds own older paths. For an agent, add agent:\"NAME\",view:\"own\" using its heading. Discover older agents with journal({op:\"read\",depth:1}). Read relevant context paths before acting.\n")
 	if text.Len() > maxJournalSummaryBytes {
 		return result, errors.New("journal evidence exceeds summary capacity")
 	}

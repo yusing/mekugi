@@ -76,7 +76,7 @@ func TestJournalCompactionRetainedCommandSegmentsAfterRestart(t *testing.T) {
 			if len(provider.forwarded) != 0 {
 				t.Fatal("retained command segments forced provider compaction")
 			}
-			for _, fact := range []string{"Repair parser compatibility", "Failed: go test ./parser", "Exit: 1 · output not retained", report, "response.completed"} {
+			for _, fact := range []string{"Repair parser compatibility", "Failed: go test ./parser", "Exit: 1; output not retained", report, "response.completed"} {
 				if !strings.Contains(output.String(), fact) {
 					t.Errorf("local summary omitted durable fact %q: %s", fact, &output)
 				}
