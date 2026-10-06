@@ -73,6 +73,9 @@ func RunPostCompactHook(ctx context.Context, args []string, stdin io.Reader, std
 	if content == "" {
 		return 0
 	}
+	if event.Transcript != "" {
+		content += fmt.Sprintf("\nFor missing details, search transcript: %q\n", event.Transcript)
+	}
 	returnValue := struct {
 		Output struct {
 			Event   string `json:"hookEventName"`

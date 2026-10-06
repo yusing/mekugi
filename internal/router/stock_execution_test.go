@@ -219,7 +219,8 @@ func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
 			t.Fatalf("unrelated stock tool changed: before=%s after=%s", mustMarshalJSON(before), mustMarshalJSON(after))
 		}
 		if !strings.Contains(string(fields["input"]), "mekugi-journal:start") ||
-			!strings.Contains(string(fields["input"]), frontendGuidanceStart) {
+			!strings.Contains(string(fields["input"]), frontendGuidanceStart) ||
+			!strings.Contains(string(fields["input"]), "redirect to a file only when the task needs that artifact, not for display preference") {
 			t.Fatalf("exec contract or additive journal guidance missing: %s", fields["input"])
 		}
 	})

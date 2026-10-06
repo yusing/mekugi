@@ -219,6 +219,9 @@ func TestConflictRewriteRestoresWaitGuidance(t *testing.T) {
 func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	registry := newManagedMekugiProxy(t).registry
 	guide := registry.frontendGuidance
+	if !strings.Contains(guide, "redirect to a file only when the task needs that artifact, not for display preference") {
+		t.Fatal("projected frontend guidance lacks output artifact rule")
+	}
 	generated, err := os.ReadFile(filepath.Join(registry.SnapshotDir, "frontend_guidance.md"))
 	if err != nil || string(generated) != guide || strings.Contains(guide, "{{") || strings.Contains(guide, "<instruction id=") {
 		t.Fatalf("standalone generated frontend guidance differs from projection: %v", err)
