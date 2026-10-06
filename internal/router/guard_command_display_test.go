@@ -16,6 +16,7 @@ const displayGuardHelper = "/opt/mekugi/bin/mekugi-exec"
 func TestGuardCommandDisplayProjection(t *testing.T) {
 	for _, source := range []string{
 		"git log -1 --format='%H%n%s'",
+		"git commit -F - <<'EOF'\nfix: quoted message\n\nKeep `$PATH`, \"quotes\", and \\ escapes literal.\nEOF",
 		"git status --porcelain",
 		`git cat-file commit HEAD | awk '/^gpgsig / {print "signature_present"; exit}'`,
 		`PATH='/user tools' TOKEN="$token" git status; printf '%s' 'git status'`,
@@ -107,6 +108,25 @@ func TestGuardCommandDisplayCustomRuntimeDirectory(t *testing.T) {
 			t.Fatalf("display = %q, want %q", got, want)
 		}
 	}
+}
+
+func TestUISnapshotGuardedHeredocCommit(t *testing.T) {
+	source := "timeout 90s git commit -F - <<'EOF'\ndocs(ui): describe content-detected inline highlighting\nEOF"
+	guarded, err := vcsguard.Rewrite(source, displayGuardHelper, displayGuardDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := workerCommand("/bin/bash", []string{"-lc", guarded})
+	output := "[main e9085377] docs(ui): describe content-detected inline highlighting\n 2 files changed, 6 insertions(+), 4 deletions(-)\n"
+	u := vcsCommandUI(t, "")
+	u.view.painter.Theme = livediff.DarkTheme
+	u.restoreHistory([]appServerHistoryTurn{{ID: "past", Status: "completed", Items: []appServerItem{{
+		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(0),
+	}}}})
+	if entry := u.view.entries[0]; entry.native.command != command {
+		t.Fatal("host command changed")
+	}
+	assertNativeUISnapshot(t, "guarded-heredoc-commit", strings.Split(mainFeed(u, 90), "\n"))
 }
 
 func TestUISnapshotGuardCommandDisplay(t *testing.T) {

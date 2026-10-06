@@ -62,6 +62,9 @@ an abbreviated long option that may consume the next word remains `Run`. Discard
 stderr (`2>/dev/null`) is transparent to `find`, `rg`, `grep`, and `ls`. Unknown or
 effectful pipeline stages retain the original `Run` preview. Shell execution
 still receives the exact original command, including flags and pipes.
+A plain literal `timeout DURATION` prefix preserves the operation label. The duration
+may be a decimal number with an optional `s`, `m`, `h`, or `d` unit; timeout
+options and dynamic durations remain `Run`. Execution keeps the original prefix.
 Per-command `Run` excerpts omit statement-terminating semicolons; quoted
 semicolons and other executable syntax remain visible.
 Literal `printf` and `echo` section headings alongside other operations are

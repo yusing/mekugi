@@ -1,0 +1,2 @@
+└ Committed docs(ui): describe content-detected inline highlighting · git
+            e9085377 on main · 2 files +6 -4

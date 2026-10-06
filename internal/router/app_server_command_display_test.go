@@ -17,6 +17,18 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 		{`sed -n '1,2p' "$(project-root)/file.go"`, "Read `\"$(project-root)/file.go\" 1:2`"},
 		{"cat /home/yusing/projects/codex/codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs | sed -n '45,150p'", "Read `/home/yusing/projects/codex/codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs 45:150`"},
 		{"inspect_file app.go; mcat app.go 1:20; rg -n needle src | head -30", "Inspect `app.go`\n\nRead `app.go 1:20`\n\nSearch `needle` in `src`"},
+		{"timeout 123 cat file.go | head -20", "Read `file.go`"},
+		{"timeout 123 cat file.go | sed -n '1,20p'", "Read `file.go 1:20`"},
+		{"timeout 123 nl -ba file.go | sed -n '1,20p'", "Read `file.go 1:20`"},
+		{"cat file.go | timeout 123 head -20", "Read `file.go`"},
+		{`timeout 123 cat file.go | head -n "$count"`, "Run\n" + toolActivityFenced("bash", `timeout 123 cat file.go | head -n "$count"`)},
+		{"timeout 123 skills-mgr get skill", "Skill `skill`"},
+		{"timeout 123 skills-mgr run skill/script --flag", "Skill `run skill/script --flag`"},
+		{`timeout 123 cat "$HOME/file"`, "Read `\"$HOME/file\"`"},
+		{`timeout --help skills-mgr get skill`, "Run\n" + toolActivityFenced("bash", `timeout --help skills-mgr get skill`)},
+		{`timeout "$duration" skills-mgr get skill`, "Run\n" + toolActivityFenced("bash", `timeout "$duration" skills-mgr get skill`)},
+		{`timeout 123 skills-mgr get skill > out`, "Run\n" + toolActivityFenced("bash", `timeout 123 skills-mgr get skill > out`)},
+		{`timeout 123 unknown arg`, "Run\n" + toolActivityFenced("bash", `timeout 123 unknown arg`)},
 		{"skills-mgr get js-ts-best-practices; skills-mgr get user-experience", "Skill `js-ts-best-practices`\n\nSkill `user-experience`"},
 		{"skills-mgr run use-modern-go/scripts/run-tool.sh list --go-version 1.27", "Skill `run use-modern-go/scripts/run-tool.sh list --go-version 1.27`"},
 		{"mcat app.go 1:20; go test ./...", "Read `app.go 1:20`\n\nRun `go test ./...`"},
@@ -33,7 +45,7 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 				for _, method := range []string{"item/started", "item/completed"} {
 					appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
 				}
-				if len(u.view.entries) != 1 || u.view.entries[0].Text != tc.want {
+				if len(u.view.entries) != 1 || u.view.entries[0].Text != tc.want || u.view.entries[0].native.command != command {
 					t.Fatalf("classified live entries: %+v; want %q", u.view.entries, tc.want)
 				}
 				restored := newAppServerSessionTestUI(t, t.TempDir())
@@ -143,6 +155,12 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 			check(restored.view)
 		}
 	}
+}
+
+func TestUISnapshotTimeoutSkill(t *testing.T) {
+	p := activityui.Painter{Theme: livediff.DarkTheme}
+	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell("timeout 123 skills-mgr get skill")})
+	assertNativeUISnapshot(t, "timeout-skill", p.Block(blocks[0], 90))
 }
 
 func TestLiveActivitySkillRendering(t *testing.T) {

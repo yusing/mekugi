@@ -49,6 +49,7 @@ const (
 // from a quoted heredoc or here-string on stdin; discarded or merged stderr
 // is transparent; any other redirection keeps the Run preview.
 func vcsStatement(statement *syntax.Stmt) (vcsCall, bool) {
+	statement = toolActivityUnwrapTimeout(statement)
 	if statement == nil || statement.Background || statement.Negated || statement.Coprocess || statement.Disown {
 		return vcsCall{}, false
 	}
@@ -659,7 +660,7 @@ func vcsChain(statement *syntax.Stmt) []*syntax.Stmt {
 
 // vcsSegment reports a tracked segment whose output vcsOutputRows reads.
 func vcsSegment(source string) bool {
-	program, err := syntax.NewParser().Parse(strings.NewReader(source), "")
+	program, err := syntax.NewParser().Parse(strings.NewReader(toolActivityShellSource(source)), "")
 	if err != nil || len(program.Stmts) != 1 {
 		return false
 	}
@@ -686,7 +687,7 @@ func commandOutputRows(item appServerItem) ([]activityui.ChangeRow, gitCommitKey
 // output; other lists interleave output, so they keep the plain tail, as do
 // commands without a recognized row.
 func vcsOutputRows(command, cwd, output string) ([]activityui.ChangeRow, gitCommitKey) {
-	program, err := syntax.NewParser().Parse(strings.NewReader(appServerDisplayCommand(command)), "")
+	program, err := syntax.NewParser().Parse(strings.NewReader(toolActivityShellSource(appServerDisplayCommand(command))), "")
 	if err != nil || len(program.Stmts) != 1 {
 		return nil, gitCommitKey{}
 	}
@@ -822,7 +823,7 @@ func vcsSegmentCwd(cwd string, prior []commandSegment) string {
 		if segment.skipped {
 			continue
 		}
-		program, err := syntax.NewParser().Parse(strings.NewReader(segment.source), "")
+		program, err := syntax.NewParser().Parse(strings.NewReader(toolActivityShellSource(segment.source)), "")
 		if err != nil || len(program.Stmts) != 1 {
 			return ""
 		}

@@ -119,7 +119,7 @@ func toolActivityReads(script string) (string, bool) {
 	if hasHeredoc {
 		syntax.Walk(program, func(node syntax.Node) bool {
 			if statement, ok := node.(*syntax.Stmt); ok && !hasEdit {
-				_, hasEdit = toolActivityEditStatement(script, statement)
+				_, hasEdit = toolActivityEditStatement(script, toolActivityUnwrapTimeout(statement))
 				if !hasEdit {
 					// A commit's heredoc is its message, not a program.
 					_, hasEdit = vcsStatement(statement)
@@ -261,10 +261,45 @@ func toolActivityReadSeparator(statement *syntax.Stmt) bool {
 	return strings.HasSuffix(heading, ":") && strings.TrimSpace(strings.TrimSuffix(heading, ":")) != ""
 }
 
+// A plain timeout changes the execution bound, not the displayed operation.
+var toolActivityTimeoutDuration = regexp.MustCompile(`^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)[smhd]?$`)
+
+// Unwrap only a display copy. Keep argument positions, redirections, and all
+// host-owned source bytes; unsupported options and dynamic durations stay Run.
+func toolActivityUnwrapTimeout(statement *syntax.Stmt) *syntax.Stmt {
+	if statement == nil {
+		return statement
+	}
+	call, ok := statement.Cmd.(*syntax.CallExpr)
+	if !ok || len(call.Assigns) != 0 {
+		return statement
+	}
+	args := call.Args
+	for len(args) >= 3 {
+		name, literal := shellCatLiteral(args[0])
+		if !literal || filepath.Base(name) != "timeout" {
+			break
+		}
+		duration, literal := shellCatLiteral(args[1])
+		if !literal || !toolActivityTimeoutDuration.MatchString(duration) {
+			return statement
+		}
+		args = args[2:]
+	}
+	if len(args) == len(call.Args) {
+		return statement
+	}
+	innerCall, innerStatement := *call, *statement
+	innerCall.Args = args
+	innerStatement.Cmd = &innerCall
+	return &innerStatement
+}
+
 // Recognize only transparent search bounds and executable lookups. Keep their
 // complete source, including redirections and guards, rather than implying that
 // a pipeline's stages are independent operations.
 func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool) {
+	statement = toolActivityUnwrapTimeout(statement)
 	if statement.Background || statement.Negated || statement.Coprocess || statement.Disown {
 		return "", false
 	}
@@ -291,7 +326,7 @@ func toolActivityStatement(script string, statement *syntax.Stmt) (string, bool)
 		if display, ok := toolActivityPipedRead(script, statement, binary); ok {
 			return display, true
 		}
-		right, ok := binary.Y.Cmd.(*syntax.CallExpr)
+		right, ok := toolActivityUnwrapTimeout(binary.Y).Cmd.(*syntax.CallExpr)
 		if !ok || len(right.Assigns) != 0 || len(binary.Y.Redirs) != 0 ||
 			binary.Y.Background || binary.Y.Negated || binary.Y.Coprocess || binary.Y.Disown {
 			return "", false
@@ -405,6 +440,7 @@ func toolActivityLiteralCall(statement *syntax.Stmt) ([]string, bool) {
 
 // Preserve patterns as source, without expansion or executable substitutions.
 func toolActivityPatternCall(script string, statement *syntax.Stmt) ([]string, bool) {
+	statement = toolActivityUnwrapTimeout(statement)
 	if statement == nil || len(statement.Redirs) != 0 || statement.Background || statement.Negated ||
 		statement.Coprocess || statement.Disown {
 		return nil, false
