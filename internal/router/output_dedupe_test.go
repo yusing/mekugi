@@ -50,11 +50,11 @@ func duplicateTestItems(t *testing.T, request *parsedResponsesRequest) []map[str
 func TestDuplicateOutputPreparedMatching(t *testing.T) {
 	a, b, c := strings.Repeat("alpha", 42)+"\n", strings.Repeat("bravo", 42)+"\n", strings.Repeat("charlie", 30)+"\n"
 	for _, tc := range []struct{ name, command, before, after, want string }{
-		{"contained", "a; b; c", a + b + c, b, "[same as `a; b; c` L2]\n"},
-		{"container", "b", b, a + b + c, a + "[same as `b`]\n" + c},
-		{"changed batch", "a; b; c", a + b + c, "CCC2\n" + b, "CCC2\n[same as `a; b; c` L2]\n"},
-		{"diff headers", "mchanges amber1", "file.go\n@@ old @@\n" + a + b, "diff --git a/file.go b/file.go\nindex abc..def\n@@ new @@\n" + a + b, "diff --git a/file.go b/file.go\nindex abc..def\n@@ new @@\n[same as `mchanges amber1` L3-4]\n"},
-		{"small edit", "cat f.go", a + b + c, a + "changed region\n" + c, "[same as `cat f.go` L1]\nchanged region\n[same as `cat f.go` L3]\n"},
+		{"contained", "a; b; c", a + b + c, b, "[same as O1 L2]\n"},
+		{"container", "b", b, a + b + c, "[O2]\n" + a + "[same as O1]\n" + c},
+		{"changed batch", "a; b; c", a + b + c, "CCC2\n" + b, "[O2]\nCCC2\n[same as O1 L2]\n"},
+		{"diff headers", "mchanges amber1", "file.go\n@@ old @@\n" + a + b, "diff --git a/file.go b/file.go\nindex abc..def\n@@ new @@\n" + a + b, "[O2]\ndiff --git a/file.go b/file.go\nindex abc..def\n@@ new @@\n[same as O1 L3-4]\n"},
+		{"small edit", "cat f.go", a + b + c, a + "changed region\n" + c, "[O2]\n[same as O1 L1]\nchanged region\n[same as O1 L3]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
@@ -65,8 +65,8 @@ func TestDuplicateOutputPreparedMatching(t *testing.T) {
 			if got := jsonString(items[3], "output"); got != duplicateTestHeader+tc.want {
 				t.Fatalf("output = %q, want %q", got, duplicateTestHeader+tc.want)
 			}
-			if got := jsonString(items[1], "output"); got != duplicateTestHeader+tc.before {
-				t.Fatal("source output changed")
+			if got := jsonString(items[1], "output"); got != duplicateTestHeader+"[O1]\n"+tc.before {
+				t.Fatal("source anchor or verbatim body changed")
 			}
 			if !sameJSONValue(request.originalFields["input"], mustMarshalJSON(input)) {
 				t.Fatal("original host input changed")
@@ -105,7 +105,7 @@ func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 		items[at]["output"] = appended
 	}
 	request.setInput(mustMarshalJSON(items))
-	projectDuplicateOutputs(request, counts, "exec")
+	projectDuplicateOutputs(request, counts)
 	got := duplicateTestItems(t, request)
 	for _, at := range []int{1, 2, 3} {
 		texts := executionOutputTexts(got[at]["output"])
@@ -113,10 +113,10 @@ func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 			t.Fatal("router append changed")
 		}
 	}
-	if texts := executionOutputTexts(got[2]["output"]); texts[0] != duplicateTestHeader || texts[1] != "[same as `cat file`]\n" {
+	if texts := executionOutputTexts(got[2]["output"]); texts[0] != duplicateTestHeader || texts[1] != "[same as O1]\n" {
 		t.Fatalf("multipart output = %q", texts)
 	}
-	if text := executionOutputTexts(got[3]["output"])[0]; text != "Chunk ID: xyz\nWall time: 0.2 seconds\nProcess exited with code 1\nFinal output:\n[same as `cat file`]\n" {
+	if text := executionOutputTexts(got[3]["output"])[0]; text != "Chunk ID: xyz\nWall time: 0.2 seconds\nProcess exited with code 1\nFinal output:\n[same as O1]\n" {
 		t.Fatalf("native header changed: %q", text)
 	}
 	for at := 4; at < len(got); at++ {
@@ -175,8 +175,11 @@ func TestDuplicateOutputPreparedContinuationAndScope(t *testing.T) {
 				t.Fatalf("continuation advice lost: %q", texts)
 			}
 			want := "Script running with cell ID live-42\nWall time 0.1 seconds\nOutput:\n" + body
+			if scope == "compacted" {
+				want = "Script running with cell ID live-42\nWall time 0.1 seconds\nOutput:\n[O1]\n" + body
+			}
 			if scope == "ordinary" || scope == "fork" {
-				want = "Script running with cell ID live-42\nWall time 0.1 seconds\nOutput:\n[same as `earlier`]\n"
+				want = "Script running with cell ID live-42\nWall time 0.1 seconds\nOutput:\n[same as O1]\n"
 			}
 			if texts[0] != want {
 				t.Fatalf("scoped output = %q", texts[0])
@@ -193,7 +196,8 @@ func TestDuplicateOutputProviderPrefix(t *testing.T) {
 		proxy.duplicateOutput = true
 		return duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
 	}
-	first := project(input)
+	// The source must already have its anchor before the first repeat arrives.
+	first := project(input[:2])
 	var original []jsonv1.RawMessage
 	if err := json.Unmarshal(first.fields["input"], &original); err != nil {
 		t.Fatal(err)
@@ -206,7 +210,7 @@ func TestDuplicateOutputProviderPrefix(t *testing.T) {
 	// A later occurrence with a different part count must not change the prefix.
 	grown := project(append(grownInput, continuationTestOutput("b", duplicateTestHeader, body)))
 	items := duplicateTestItems(t, grown)
-	if got := executionOutputTexts(items[len(items)-1]["output"]); len(got) != 2 || got[0] != duplicateTestHeader || got[1] != "[same as `cat file`]\n" {
+	if got := executionOutputTexts(items[len(items)-1]["output"]); len(got) != 2 || got[0] != duplicateTestHeader || got[1] != "[same as O1]\n" {
 		t.Fatalf("repeated output identity used the wrong part boundary: %q", got)
 	}
 	exchange := &webSocketExchange{parentID: "parent", history: &webSocketHistory{parent: &webSocketHistory{providerHistory: state}}}
@@ -219,18 +223,35 @@ func TestDuplicateOutputProviderPrefix(t *testing.T) {
 	}
 }
 
-func TestDuplicateOutputLabels(t *testing.T) {
-	input := duplicateTestInput("first", "a", strings.Repeat("output text\n", 25))
-	call := input[0].(map[string]jsonv1.RawMessage)
-	call["input"] = mustMarshalJSON(`text((await tools.exec_command({cmd:"first"})).output); text((await tools.exec_command({cmd:"second"})).output)`)
-	if command := duplicateOutputCommand(call, "exec"); command != "" {
-		t.Fatal("batch acquired a single-command label")
+func TestDuplicateOutputSourceIDs(t *testing.T) {
+	a := "package router\n" + strings.Repeat("alpha source body\n", 20)
+	b := "package router\n" + strings.Repeat("bravo source body\n", 20)
+	c := "package router\n" + strings.Repeat("charlie source body\n", 20)
+	frame := frameComposerFile("/missing/source.go", a)[0]
+	header, _, _ := strings.Cut(frame, "\n")
+	input := []any{
+		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": encodeFileAttachments([]string{frame})}}},
+		continuationTestOutput("batch", duplicateTestHeader, b, c),
+		continuationTestOutput("repeat", a, b, c),
 	}
-	if label := duplicateOutputLabel("", "batch: exit_code=0\nrest"); label != "batch: exit_code=0" {
-		t.Fatal(label)
+	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustMarshalJSON(input)}}
+	projectDuplicateOutputs(request, duplicateOutputHostParts(request.fields["input"]))
+	items := duplicateTestItems(t, request)
+	var parts []struct {
+		Text string `json:"text"`
 	}
-	if label := duplicateOutputLabel("cat `file`\n"+strings.Repeat("long", 30), ""); len([]rune(label)) != 60 || strings.ContainsAny(label, "`\n") {
-		t.Fatal(label)
+	if err := json.Unmarshal(items[0]["content"], &parts); err != nil {
+		t.Fatal(err)
+	}
+	frames, ok := decodeFileAttachments(parts[0].Text)
+	if !ok || len(frames) != 1 || frames[0] != header+"\n[O1]\n"+a {
+		t.Fatalf("attachment source = %q", frames)
+	}
+	if got, want := executionOutputTexts(items[1]["output"]), []string{duplicateTestHeader, "[O2]\n" + b, "[O3]\n" + c}; !slices.Equal(got, want) {
+		t.Fatalf("sources with the same first line = %q, want %q", got, want)
+	}
+	if got, want := executionOutputTexts(items[2]["output"]), []string{"[same as O1]\n", "[same as O2]\n", "[same as O3]\n"}; !slices.Equal(got, want) {
+		t.Fatalf("multipart references = %q, want %q", got, want)
 	}
 }
 
@@ -249,17 +270,17 @@ func TestDuplicateOutputMarkersPointToVerbatim(t *testing.T) {
 	input = append(input, duplicateTestInput("literal again", "g", literal)...)
 	original := mustMarshalJSON(input)
 	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": original}}
-	projectDuplicateOutputs(request, duplicateOutputHostParts(request.fields["input"]), "exec")
+	projectDuplicateOutputs(request, duplicateOutputHostParts(request.fields["input"]))
 	first := bytes.Clone(request.fields["input"])
 	items := duplicateTestItems(t, request)
 	if jsonString(items[7], "output") != jsonString(items[9], "output") || strings.Contains(jsonString(items[9], "output"), "combined") {
 		t.Fatal("new markers referenced a marker-only unit")
 	}
-	if jsonString(items[11], "output") != duplicateTestHeader+literal || jsonString(items[13], "output") != duplicateTestHeader+"[same as `literal`]\n" {
+	if jsonString(items[11], "output") != duplicateTestHeader+"[O4]\n"+literal || jsonString(items[13], "output") != duplicateTestHeader+"[same as O4]\n" {
 		t.Fatal("literal host marker text did not remain a verbatim source")
 	}
 	request.setInput(original)
-	projectDuplicateOutputs(request, duplicateOutputHostParts(original), "exec")
+	projectDuplicateOutputs(request, duplicateOutputHostParts(original))
 	if !bytes.Equal(first, request.fields["input"]) {
 		t.Fatal("same original input projected differently")
 	}
@@ -316,11 +337,12 @@ func TestDuplicateOutputAttachmentsAndWirePrefix(t *testing.T) {
 					}
 					return parts[0].Text
 				}
-				want := frame
+				source, want := frame, frame
 				if enabled {
-					want = header + "[same as `" + duplicateOutputLabel(header, "") + "`]\n"
+					source = header + "[O1]\n" + body
+					want = header + "[same as O1]\n"
 				}
-				if texts(items[0]) != frame || texts(items[1]) != body || texts(items[2]) != want {
+				if texts(items[0]) != source || texts(items[1]) != body || texts(items[2]) != want {
 					t.Fatalf("wire content changed incorrectly: %s", request.fields["input"])
 				}
 				if !sameJSONValue(request.originalFields["input"], mustMarshalJSON(input)) {
@@ -374,16 +396,20 @@ func TestDuplicateOutputAttachmentEligibility(t *testing.T) {
 	}
 	input = append(input, duplicateTestInput("read file", "output", body)...)
 	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustMarshalJSON(input)}}
-	projectDuplicateOutputs(request, duplicateOutputHostParts(request.fields["input"]), "exec")
+	projectDuplicateOutputs(request, duplicateOutputHostParts(request.fields["input"]))
 	items := duplicateTestItems(t, request)
-	for at := range 6 {
+	for at := range 5 {
 		if !sameJSONValue(mustMarshalJSON(items[at]), mustMarshalJSON(input[at])) {
-			t.Fatalf("ineligible item %d changed, or the first eligible source was hidden", at)
+			t.Fatalf("ineligible item %d changed", at)
 		}
 	}
 	header, _, _ := strings.Cut(frame, "\n")
 	header += "\n"
-	if got := jsonString(items[7], "output"); got != duplicateTestHeader+"[same as `"+duplicateOutputLabel(header, "")+"`]\n" {
+	source := user([]any{map[string]any{"type": "input_text", "text": encodeFileAttachments([]string{header + "[O1]\n" + body})}})
+	if !sameJSONValue(mustMarshalJSON(items[5]), mustMarshalJSON(source)) {
+		t.Fatal("eligible attachment source lost its anchor or verbatim body")
+	}
+	if got := jsonString(items[7], "output"); got != duplicateTestHeader+"[same as O1]\n" {
 		t.Fatalf("tool did not reference the visible attachment: %q", got)
 	}
 }

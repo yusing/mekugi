@@ -704,7 +704,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		return nil, err
 	}
 	if p.duplicateOutput {
-		projectDuplicateOutputs(request, hostParts, codeModeToolName)
+		projectDuplicateOutputs(request, hostParts)
 	}
 	return transform, nil
 }

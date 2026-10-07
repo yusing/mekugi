@@ -11,33 +11,36 @@ import (
 
 // This is the last request projection. All evidence consumers must have already
 // read the original host output. Its index belongs only to this input view.
-func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[string][]int, execName string) {
+func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[string][]int) {
 	var items []jsonv1.RawMessage
 	if json.Unmarshal(request.fields["input"], &items) != nil {
 		return
 	}
 	index := outputdedupe.New()
 	defer index.Close()
-	commands := make(map[string]string)
-	var labels []string
+	sources := 0
 	changed := false
-	projectBody := func(header, body, label string) string {
+	projectBody := func(header, body string) string {
 		if len(body) < outputdedupe.Threshold {
 			return header + body
 		}
 		projection := index.Project(body)
-		source := len(labels)
-		labels = append(labels, label)
-		index.Add(source, projection)
-		if len(projection.Spans) == 0 {
-			return header + body
+		verbatim := len(body)
+		for _, span := range projection.Spans {
+			verbatim -= span.End - span.Start
 		}
 		var result strings.Builder
 		result.WriteString(header)
+		if verbatim > 0 {
+			sources++
+			index.Add(sources, projection)
+			// Anchor sources before any later repeat to keep growing prefixes stable.
+			fmt.Fprintf(&result, "[O%d]\n", sources)
+		}
 		start := 0
 		for _, span := range projection.Spans {
 			result.WriteString(body[start:span.Start])
-			fmt.Fprintf(&result, "[same as `%s`", labels[span.Source])
+			fmt.Fprintf(&result, "[same as O%d", span.Source)
 			if !span.Whole {
 				if span.FirstLine == span.LastLine {
 					fmt.Fprintf(&result, " L%d", span.FirstLine)
@@ -59,7 +62,7 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 		if !ok {
 			return text
 		}
-		return projectBody(header, body, duplicateOutputLabel(header, ""))
+		return projectBody(header, body)
 	}
 	projectAttachment := func(text string) string {
 		frames, ok := decodeFileAttachments(text)
@@ -82,9 +85,6 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 			continue
 		}
 		id := jsonString(item, "call_id")
-		if jsonString(item, "type") == "custom_tool_call" {
-			commands[id] = duplicateOutputCommand(item, execName)
-		}
 		if jsonString(item, "role") == "user" {
 			var metadata struct {
 				Kinds []string `json:"content_item_kinds"`
@@ -110,7 +110,7 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 			if nativeJSONSession(body) != 0 {
 				return text
 			}
-			return projectBody(header, body, duplicateOutputLabel(commands[id], body))
+			return projectBody(header, body)
 		}
 		if output, ok := projectDuplicateTextParts(item["output"], count, false, nil, projectText); ok {
 			item["output"] = output
@@ -230,31 +230,4 @@ func duplicateOutputBody(text string) (header, body string) {
 		body = payload
 	}
 	return text[:len(text)-len(body)], body
-}
-
-func duplicateOutputCommand(item map[string]jsonv1.RawMessage, execName string) string {
-	if jsonString(item, "type") != "custom_tool_call" || execName == "" ||
-		strings.TrimPrefix(jsonString(item, "name"), "functions.") != strings.TrimPrefix(execName, "functions.") {
-		return ""
-	}
-	if namespace := jsonString(item, "namespace"); namespace != "" && namespace != "functions" {
-		return ""
-	}
-	if calls := codeModeShellFragments(jsonString(item, "input")); len(calls) == 1 {
-		return calls[0].cmd
-	}
-	return ""
-}
-
-func duplicateOutputLabel(command, body string) string {
-	if command == "" {
-		command, _, _ = strings.Cut(body, "\n")
-	}
-	// Keep the reference on one line with one inline-code label.
-	label := strings.ReplaceAll(strings.Join(strings.Fields(command), " "), "`", "'")
-	runes := []rune(label)
-	if len(runes) > 60 {
-		label = string(runes[:57]) + "..."
-	}
-	return label
 }

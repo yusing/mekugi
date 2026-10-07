@@ -195,14 +195,18 @@ The bounded matching window covers the last 256 KiB of indexed verbatim text;
 below-threshold units are neither replaced nor indexed. The longest matching run
 wins, with ties resolved in favor of the most recent source.
 
-References have the form ``[same as `git diff -- review.go`]`` or
-``[same as `mchanges amber1` L40-112]``; a single row uses `L40`. The row range is
-omitted for an entire earlier unit. Rows count the earlier unit as delivered,
-with each generated marker counting as one row. Labels use the source cell's
-single literal nested command when available, the attachment header for a frame,
-or the source output's first line, shortened to 60 characters. References always
-target visible verbatim
-text, never generated markers or replaced spans, so they need no second hop.
+References have the form `[same as O3]` or `[same as O3 L40-112]`; a single row
+uses `L40`. Each eligible unit with remaining verbatim text gets a source anchor
+such as `[O3]`, on its own line after the preserved execution or attachment header.
+IDs are assigned in forward order in one request-local sequence across tool text
+parts and attachment frames. Fully replaced units get no anchor. Sources get their
+anchors immediately, even before a later repeat, so extending the input preserves
+earlier projected items.
+
+The row range is omitted for an entire earlier body. Rows start at 1 after the
+anchor and count the earlier body as delivered, with each generated reference
+counting as one row. References always target visible verbatim text, never anchors,
+generated references or replaced spans, so they need no second hop.
 Literal host text resembling a marker remains host text.
 
 Each projection is a fresh forward pass over the current original input, with
