@@ -257,19 +257,19 @@ type nativeEvent struct {
 		Description string `json:"description"`
 		Error       string `json:"error"`
 	} `json:"patch"`
-	Content   string   `json:"content"`
-	UUID      string   `json:"uuid"`
-	Type      string   `json:"type"`
-	Subtype   string   `json:"subtype"`
-	SessionID string   `json:"session_id"`
-	Model     string   `json:"model"`
-	Parent    string   `json:"parent_tool_use_id"`
-	IsError   bool     `json:"is_error"`
-	Errors    []string `json:"errors"`
-	Message   struct {
-		ID      string         `json:"id"`
-		Content jsontext.Value `json:"content"`
-	} `json:"message"`
+	Content           string   `json:"content"`
+	UUID              string   `json:"uuid"`
+	Type              string   `json:"type"`
+	Subtype           string   `json:"subtype"`
+	SessionID         string   `json:"session_id"`
+	Model             string   `json:"model"`
+	Parent            string   `json:"parent_tool_use_id"`
+	IsError           bool     `json:"is_error"`
+	Errors            []string `json:"errors"`
+	PermissionDenials []struct {
+		ToolUseID string `json:"tool_use_id"`
+	} `json:"permission_denials"`
+	Message    jsontext.Value `json:"message"`
 	ToolResult jsontext.Value `json:"tool_use_result"`
 	Event      struct {
 		Type    string `json:"type"`
@@ -284,4 +284,18 @@ type nativeEvent struct {
 			PartialJSON string `json:"partial_json"`
 		} `json:"delta"`
 	} `json:"event"`
+}
+
+type nativeMessage struct {
+	ID      string         `json:"id"`
+	Content jsontext.Value `json:"content"`
+}
+
+func (e nativeEvent) message() (nativeMessage, error) {
+	var message nativeMessage
+	if len(e.Message) == 0 {
+		return message, nil
+	}
+	err := json.Unmarshal(e.Message, &message)
+	return message, err
 }

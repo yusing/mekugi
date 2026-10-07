@@ -1,4 +1,4 @@
-import { query, getSessionInfo, renameSession, type SDKSessionInfo, type SDKUserMessage, type PermissionResult, type Query, type EffortLevel } from '@anthropic-ai/claude-agent-sdk';
+import { query, getSessionInfo, renameSession, type SDKSessionInfo, type SDKUserMessage, type Query, type EffortLevel } from '@anthropic-ai/claude-agent-sdk';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
@@ -15,6 +15,7 @@ import {sessionHistory, type HistorySelection} from './session_history.js';
 import {SideQueries} from './side_query.js';
 import {AgentMessages, type AgentMessage} from './agent_messages.js';
 import {UserShell, type NativeInput} from './user_shell.js';
+import {PermissionRequests} from './permissions.js';
 
 const limit = 8 * 1024 * 1024;
 const config = JSON.parse(process.argv[2]) as {cwd: string; executable: string; resume?: string; forkSession?: boolean; model?: string; companionFD?: number};
@@ -27,8 +28,7 @@ const abortController = new AbortController();
 let stopping = false;
 let wake: (() => void) | undefined;
 const inputs: NativeInput[] = [];
-const permissions = new Map<string, (result: PermissionResult) => void>();
-let serial = 0;
+const permissions = new PermissionRequests(emit, stop);
 let controls = Promise.resolve();
 let epoch = 0;
 let pendingTurns = 0;
@@ -100,25 +100,7 @@ async function createQuery(fresh?: {session: string; context: string}): Promise<
     ...(endpoint.frontendDirectory ? {PATH: `${endpoint.frontendDirectory}:${process.env.PATH ?? ''}`} : {}),
     ...(endpoint.bashEnv ? {BASH_ENV: endpoint.bashEnv} : {})}} : {}),
   ...(journal ? {mcpServers: {mekugi: journal}} : {}),
-  canUseTool: async (tool, input, options) => {
-    const id = String(++serial);
-    return new Promise<PermissionResult>((resolve) => {
-      const finish = (result: PermissionResult): void => {
-        permissions.delete(id);
-        options.signal.removeEventListener('abort', cancelled);
-        resolve(result);
-      };
-      const cancelled = (): void => {
-        finish({behavior: 'deny', message: 'Native permission request cancelled'});
-        void emit({kind: 'permission_cancelled', id}).catch(stop);
-      };
-      permissions.set(id, result => finish(result.behavior === 'allow' && result.updatedInput ? {...result, updatedInput: {...input, ...result.updatedInput}} : result));
-      options.signal.addEventListener('abort', cancelled, {once: true});
-      if (options.signal.aborted) { cancelled(); return; }
-      void emit({kind: 'permission', id, tool, input, toolUseID: options.toolUseID,
-        description: options.description ?? options.title ?? ''}).catch(stop);
-    });
-  },
+  canUseTool: permissions.canUseTool,
 }});
 }
 
@@ -129,6 +111,14 @@ async function watch(query: Query): Promise<void> {
   const output = taskOutput(query, emit, text => emit({kind: 'notice', text}));
   try {
     for await (const event of query) {
+      if (event.type === 'tool_progress' || event.type === 'system' && event.subtype === 'task_started') {
+        if (event.tool_use_id) permissions.settle(event.tool_use_id);
+      }
+      if (event.type === 'user' && Array.isArray(event.message.content)) {
+        for (const block of event.message.content) {
+          if (block.type === 'tool_result') permissions.settle(block.tool_use_id);
+        }
+      }
       if (await queryShell?.event(event)) continue;
       if (event.type === 'system' && event.subtype === 'init') activeSession = event.session_id;
       if (event.type === 'result') pendingTurns = Math.max(0, pendingTurns - 1);
@@ -158,7 +148,7 @@ async function watch(query: Query): Promise<void> {
   } catch (error) {
     queryShell?.queryEnded(error);
     if (!stopping && !replacing) { await emit({kind: 'error', text: String(error)}); stop(); }
-  } finally {output.close(); await queryAgents?.close();}
+  } finally {output.close(); permissions.close(); await queryAgents?.close();}
 }
 
 async function reset(id: string): Promise<void> {
@@ -318,7 +308,7 @@ function stop(): void {
   if (stopping) return;
   stopping = true;
   abortController.abort();
-  for (const finish of permissions.values()) finish({behavior: 'deny', message: 'Client closed'});
+  permissions.close();
   wake?.();
   stopped();
 }
@@ -367,9 +357,7 @@ lines.on('line', (line: string) => {
         wake?.(); wake = undefined;
         break;
       case 'decision': {
-        const finish = permissions.get(command.id ?? '');
-        if (!finish) break; // A native cancellation can race the user's decision.
-        finish(command.allow ? {behavior: 'allow', ...(command.answers ? {updatedInput: {answers: command.answers}} : {})}
+        permissions.respond(command.id ?? '', command.allow ? {behavior: 'allow', ...(command.answers ? {updatedInput: {answers: command.answers}} : {})}
           : {behavior: 'deny', message: 'Denied by the user'});
         break;
       }

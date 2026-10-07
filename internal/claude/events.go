@@ -35,6 +35,8 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		Cursor      string                 `json:"cursor"`
 		ID          string                 `json:"id"`
 		Tool        string                 `json:"tool"`
+		ToolUseID   string                 `json:"toolUseID"`
+		Allow       bool                   `json:"allow"`
 		Text        string                 `json:"text"`
 		Description string                 `json:"description"`
 		Caller      string                 `json:"caller"`
@@ -164,8 +166,10 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		return []session.Event{{Kind: "error", Text: frame.Text}}, nil
 	case "permission_cancelled":
 		return []session.Event{{Kind: "dismiss", ID: frame.ID}}, nil
+	case "permission_decision":
+		return []session.Event{{Kind: frame.Kind, ID: frame.ToolUseID, Failed: !frame.Allow}}, nil
 	case "permission":
-		prompt := &session.Prompt{ID: frame.ID, Tool: frame.Tool, Description: frame.Description}
+		prompt := &session.Prompt{ID: frame.ID, ToolID: frame.ToolUseID, Caller: frame.AgentID, Tool: frame.Tool, Description: frame.Description}
 		if frame.Tool == "AskUserQuestion" {
 			var input struct {
 				Questions []struct {
@@ -197,12 +201,28 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		return nil, nil
 	}
 	e := frame.Event
+	var message nativeMessage
+	if e.Type == "assistant" || e.Type == "user" {
+		var err error
+		message, err = e.message()
+		if err != nil {
+			return nil, err
+		}
+	}
 	switch e.Type {
+	case "tool_progress":
+		return []session.Event{{Kind: "tool_running", ID: e.ToolUseID}}, nil
 	case "rate_limit_event":
 		if e.Limit != nil {
 			return []session.Event{{Kind: "limit", Limit: e.Limit}}, nil
 		}
 	case "system":
+		if e.Subtype == "permission_denied" {
+			if e.Message.Kind() != '"' {
+				return nil, fmt.Errorf("invalid native permission denial message")
+			}
+			return []session.Event{{Kind: "permission_denied", ID: e.ToolUseID, Caller: e.Parent}}, nil
+		}
 		if e.Subtype == "compact_boundary" {
 			return []session.Event{{Kind: "context", ID: e.UUID, Text: "Context compacted"}}, nil
 		}
@@ -286,22 +306,22 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		}
 	case "assistant":
 		var blocks []content
-		if err := json.Unmarshal(e.Message.Content, &blocks); err != nil {
+		if err := json.Unmarshal(message.Content, &blocks); err != nil {
 			return nil, err
 		}
 		var result []session.Event
 		for _, block := range blocks {
 			switch block.Type {
 			case "text":
-				message := a.message(e.Message.ID)
-				index := len(message.blocks)
-				for i, old := range message.blocks {
+				textMessage := a.message(message.ID)
+				index := len(textMessage.blocks)
+				for i, old := range textMessage.blocks {
 					if old != nil && !old.final {
 						index = i
 						break
 					}
 				}
-				text, err := message.set(index, block.Text, true)
+				text, err := textMessage.set(index, block.Text, true)
 				if err != nil {
 					return nil, err
 				}
@@ -310,7 +330,7 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 				if len(result) > 0 && result[len(result)-1].Kind == "message" {
 					result[len(result)-1].Text = text
 				} else {
-					result = append(result, session.Event{Kind: "message", ID: e.Message.ID, Role: "Claude", Text: text})
+					result = append(result, session.Event{Kind: "message", ID: message.ID, Role: "Claude", Text: text})
 				}
 			case "tool_use":
 				result = append(result, session.Event{Kind: "tool", ID: block.ID, Role: block.Name, Text: string(block.Input)})
@@ -324,11 +344,11 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		}
 		return result, nil
 	case "user":
-		if len(e.Message.Content) == 0 || e.Message.Content.Kind() == '"' {
+		if len(message.Content) == 0 || message.Content.Kind() == '"' {
 			return nil, nil
 		}
 		var blocks []content
-		if err := json.Unmarshal(e.Message.Content, &blocks); err != nil {
+		if err := json.Unmarshal(message.Content, &blocks); err != nil {
 			return nil, err
 		}
 		var result []session.Event
@@ -359,7 +379,11 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		clear(a.tools)
 		clear(a.text)
 		clear(a.streams)
-		result := []session.Event{{Kind: "done", ID: e.UUID, Failed: e.IsError, Text: strings.Join(e.Errors, "\n"), SessionID: e.SessionID}}
+		var result []session.Event
+		for _, denied := range e.PermissionDenials {
+			result = append(result, session.Event{Kind: "permission_denied", ID: denied.ToolUseID})
+		}
+		result = append(result, session.Event{Kind: "done", ID: e.UUID, Failed: e.IsError, Text: strings.Join(e.Errors, "\n"), SessionID: e.SessionID})
 		if e.StartupFailure == "" && (!e.IsError || len(e.Usage.Models) > 0) && (len(e.Usage.Models) > 0 || e.Usage.CostUSD != nil) {
 			result = append(result, session.Event{Kind: "usage", Usage: &e.Usage})
 		}

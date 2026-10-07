@@ -13,7 +13,8 @@ import (
 
 // Exercise the real JSON-lines client/decoder and shared renderer without
 // inference or native effects. The fixture only forwards supplied SDK frames.
-func TestUISnapshotNativeRuntimeConfirmedSkills(t *testing.T) {
+func runtimeDecodedFrames(t *testing.T, u *appServerUI) func(string) {
+	t.Helper()
 	dir := t.TempDir()
 	bridge := filepath.Join(dir, "frames.mjs")
 	if err := os.WriteFile(bridge, []byte(`import {createInterface} from 'node:readline';
@@ -33,8 +34,7 @@ for await (const line of createInterface({input: process.stdin})) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { client.Close() })
-	u, _ := runtimeTestUI(t)
-	feed := func(frame string) {
+	return func(frame string) {
 		t.Helper()
 		if err := client.Send(t.Context(), frame); err != nil {
 			t.Fatal(err)
@@ -49,6 +49,11 @@ for await (const line of createInterface({input: process.stdin})) {
 		}
 		t.Fatal("fixture ended before decoding its frame")
 	}
+}
+
+func TestUISnapshotNativeRuntimeConfirmedSkills(t *testing.T) {
+	u, _ := runtimeTestUI(t)
+	feed := runtimeDecodedFrames(t, u)
 	tool := func(id, caller, name, input string) {
 		feed(fmt.Sprintf(`{"kind":"event","event":{"type":"assistant","parent_tool_use_id":%q,"message":{"content":[{"type":"tool_use","id":%q,"name":%q,"input":%s}]}}}`, caller, id, name, input))
 	}

@@ -1,0 +1,32 @@
+├ Running printf permission
+├ Asked  1 question · answered
+│   
+│   {"command":"printf permission"}
+│   └ Allow once
+└ Ran     printf permission · failed · Approved
+          ┆ exit 1
+
+● child                                                                 12:00:00
+│ •  · running
+
+● child                                                                 12:00:00
+│ Asked  1 question · declined
+│   
+│   {"command":"printf permission"}
+
+● child                                                                 12:00:00
+│ Ran    printf permission · failed · Denied
+│        ┆ Native denial or cancellation
+
+├ Ran   printf permission · failed · Cancelled
+│       ┆ Native denial or cancellation
+└ Asked  1 question · cancelled
+    
+    {"command":"printf permission"}
+
+● child                                                                 12:00:00
+│ Ran    printf permission · failed · Auto Denied
+│        ┆ Native denial or cancellation
+
+└ Ran printf permission · failed · Auto Denied
+      ┆ Native denial or cancellation

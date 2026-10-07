@@ -1,0 +1,6 @@
+├ Running printf permission
+├ Asked  1 question · waiting
+│   
+│   {"command":"printf permission"}
+│   Allow once · Deny
+└ Running printf permission · Pending Approval

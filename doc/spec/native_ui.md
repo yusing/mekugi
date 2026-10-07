@@ -55,6 +55,11 @@ take a new snapshot. Native startup errors restore the unsent side draft.
 Native permission requests use explicit allow-once/deny decisions. Question
 requests support single choice, multiple choices and free text through the same
 question dock. Native cancellation retires its prompt without a fabricated answer.
+The matching command row and output dialog show pending permission, the confirmed
+choice, cancellation or native automatic denial. Exact native tool identity keeps
+Main and child decisions separate; a failed command alone does not imply denial.
+A submitted choice remains pending until matching native execution or tool-result
+evidence confirms it.
 Historical transcript rows cannot recreate pending permissions or tools. Resume
 validates the selected workspace against SDK session metadata before accepting
 new input; at most 2,000 messages are read for display, with longer history noted.

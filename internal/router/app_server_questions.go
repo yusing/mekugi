@@ -810,6 +810,9 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 			continue
 		}
 		entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "question", Text: text, Observed: u.now(), native: &liveActivityNativeItem{thread: c.thread, turn: c.turn, item: id, phase: "question", questions: records}}
+		if u.runtime != nil && c.prompt != nil && c.prompt.Caller != "" {
+			entry.Agent = runtimeTaskLane(c.prompt.Caller)
+		}
 		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	}
 }

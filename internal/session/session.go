@@ -180,6 +180,7 @@ type Question struct {
 }
 type Prompt struct {
 	ID, Tool, Description string
+	ToolID, Caller        string // Exact native tool call and optional child identity.
 	Questions             []Question
 }
 type Decision struct {

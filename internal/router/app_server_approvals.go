@@ -538,7 +538,7 @@ func (u *appServerUI) recordApproval(a *nativeApproval, outcome string) {
 		return
 	}
 	if (a.subject == "" || a.guard != nil) && u.approvalItem(a.thread, a.turn, a.item) == nil {
-		if a.guard != nil {
+		if a.guard != nil || u.runtime != nil {
 			a.outcome = outcome
 			if !slices.Contains(u.approvals.unbound, a) {
 				u.approvals.unbound = append(u.approvals.unbound, a)
@@ -553,6 +553,14 @@ func (u *appServerUI) recordApproval(a *nativeApproval, outcome string) {
 	}
 	entry := activityPaneEntry{Seq: u.session.next(), Kind: "tool", Text: toolActivityShell(a.subject), Observed: u.now(),
 		native: &liveActivityNativeItem{thread: a.thread, turn: a.turn, item: a.item, phase: "approval/updated", approval: outcome}}
+	if u.runtime != nil {
+		// Native caller lanes are not app-server thread paths. Update only an
+		// existing exact item through the shared approval merge owner.
+		for _, view := range []*liveActivityView{u.view, u.agents} {
+			view.mergeNative(entry)
+		}
+		return
+	}
 	if u.agents != nil {
 		entry.Agent = u.session.path(a.thread)
 		u.applyActivity([]activityPaneEntry{entry}, nil)

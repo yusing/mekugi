@@ -47,7 +47,11 @@ func (a *adapter) shellHistory(e nativeEvent) ([]session.Event, bool) {
 	if e.Type != "user" || e.Parent != "" {
 		return nil, false
 	}
-	text := contentText(e.Message.Content)
+	message, err := e.message()
+	if err != nil {
+		return nil, false
+	}
+	text := contentText(message.Content)
 	// Native transcript-only appends can coalesce into one user entry whose
 	// UUID belongs to the last append. Restore the pair from that native record.
 	if input, output, ok := strings.Cut(text, "</bash-input>\n"); ok {

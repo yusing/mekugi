@@ -654,6 +654,8 @@ func approvalLabel(outcome string) string {
 		return Amber + "Pending Approval" + Reset
 	case strings.HasPrefix(outcome, "Auto Denied"):
 		return Red + "Auto Denied" + Reset
+	case outcome == "Cancelled":
+		return Dim + "Cancelled" + Reset
 	case strings.HasPrefix(outcome, "Approved"), strings.HasPrefix(outcome, "Granted"), strings.HasPrefix(outcome, "Allowed"):
 		return Green + "Approved" + Reset
 	case strings.HasPrefix(outcome, "Denied"), strings.HasPrefix(outcome, "Declined"), strings.HasPrefix(outcome, "Blocked"):

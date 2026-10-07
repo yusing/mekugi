@@ -11,21 +11,25 @@ func historyEvents(e nativeEvent) ([]session.Event, error) {
 	if e.Type != "assistant" && e.Type != "user" {
 		return nil, nil
 	}
+	message, err := e.message()
+	if err != nil {
+		return nil, err
+	}
 	role := "Claude"
 	if e.Type == "user" {
 		role = "You"
 	}
 	id := "history/" + e.UUID
-	if e.Message.Content.Kind() == '"' {
-		text := contentText(e.Message.Content)
+	if message.Content.Kind() == '"' {
+		text := contentText(message.Content)
 		return []session.Event{{Kind: "message", ID: id, Role: role, Text: text, Historical: true}}, nil
 	}
 	var blocks []content
-	if err := json.Unmarshal(e.Message.Content, &blocks); err != nil {
+	if err := json.Unmarshal(message.Content, &blocks); err != nil {
 		return nil, err
 	}
 	var result []session.Event
-	if text := contentText(e.Message.Content); text != "" {
+	if text := contentText(message.Content); text != "" {
 		result = append(result, session.Event{Kind: "message", ID: id, Role: role, Text: text, Historical: true})
 	}
 	for _, b := range blocks {

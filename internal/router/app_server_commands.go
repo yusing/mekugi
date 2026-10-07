@@ -145,6 +145,9 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.journalView = nativeJournalView{}
 	u.hideQuestions()
 	u.questions = nativeQuestionDock{}
+	if u.runtime != nil {
+		u.approvals.unbound = slices.DeleteFunc(u.approvals.unbound, func(a *nativeApproval) bool { return a.guard == nil })
+	}
 	if u.notifications != nil {
 		clear(u.notifications.blocked)
 	}

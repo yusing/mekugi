@@ -54,6 +54,7 @@ type nativeRuntimeSession struct {
 	changeRequest     string
 	resetSource       ObservationBinding
 	restoredJournal   string
+	permissionChoices map[string]string
 }
 
 func newRuntimeUI(ctx context.Context, client session.Client, name, cwd string) *appServerUI {
@@ -420,6 +421,11 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		}
 	case "task":
 		u.runtimeTask(e)
+		if !e.Historical && e.Task != nil && e.Task.Status == "running" {
+			u.confirmRuntimePermission(e.Task.ToolID)
+		}
+	case "tool_running":
+		u.confirmRuntimePermission(e.ID)
 	case "agent_message":
 		u.runtimeMessageReceipt(e)
 	case "shell_started", "shell_done":
@@ -474,7 +480,11 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		u.runtimeCommandPreview(e)
 	case "message", "tool", "tool_result":
 		u.runtimeEntry(e)
+		u.flushApprovalUpdates()
 		if e.Kind == "tool_result" {
+			if !e.Historical {
+				u.confirmRuntimePermission(e.ID)
+			}
 			u.finishRuntimeCommandPreview(e.ID)
 			u.settleRuntimePreview(e.ID, e.Failed)
 			if e.Historical {
@@ -518,7 +528,10 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 			return nil
 		}
 		p := e.Prompt
-		c := &nativeQuestionCall{thread: u.thread, item: p.ID, prompt: p}
+		c := &nativeQuestionCall{thread: u.thread, item: "permission/" + p.ID, prompt: p}
+		if len(p.Questions) == 0 {
+			u.recordApproval(&nativeApproval{thread: u.thread, item: p.ToolID}, "Pending Approval")
+		}
 		for i, q := range p.Questions {
 			n := nativeQuestion{ID: fmt.Sprint(i), Header: q.Header, Question: q.Text, multiple: q.Multiple}
 			for _, o := range q.Options {
@@ -534,9 +547,45 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		if u.questions.active == nil {
 			u.openQuestionCall(c)
 		}
+	case "permission_decision":
+		if e.ID == "" {
+			return nil
+		}
+		outcome := "Approved"
+		if e.Failed {
+			outcome = "Declined"
+		}
+		if u.runtime.permissionChoices == nil {
+			u.runtime.permissionChoices = make(map[string]string)
+		}
+		u.runtime.permissionChoices[e.ID] = outcome
+		if owner := u.approvalItem(u.thread, "", e.ID); owner != nil && !owner.commandEnded.IsZero() {
+			u.confirmRuntimePermission(e.ID)
+		}
+	case "permission_denied":
+		if u.runtime.permissionChoices[e.ID] == "Declined" {
+			u.confirmRuntimePermission(e.ID)
+			return nil
+		}
+		owner := u.approvalItem(u.thread, "", e.ID)
+		if owner == nil || owner.approval != "Declined" && owner.approval != "Cancelled" {
+			u.recordApproval(&nativeApproval{thread: u.thread, item: e.ID}, "Auto Denied")
+		}
 	case "dismiss":
 		for _, c := range u.questions.calls {
-			if c.prompt != nil && c.prompt.ID == e.ID {
+			if c.prompt != nil && c.prompt.ID == e.ID && c.questions[0].outcome != "cancelled" {
+				delete(u.runtime.permissionChoices, c.prompt.ToolID)
+				u.recordApproval(&nativeApproval{thread: u.thread, item: c.prompt.ToolID}, "Cancelled")
+				// A sent choice can lose the native cancellation race. Submission
+				// is not confirmation that the engine consumed that choice.
+				sent := c.sent
+				c.resolved, c.sent = false, false
+				for i := range c.questions {
+					c.questions[i].outcome = ""
+					if sent {
+						c.questions[i].answer = nil
+					}
+				}
 				u.resolveQuestionCall(c, "cancelled")
 			}
 		}
