@@ -28,10 +28,11 @@ type DialogPage struct {
 // DialogLine is one numbered source/output line, a logical unnumbered error
 // line, or a pre-laid-out row such as a note or rendered Markdown.
 type DialogLine struct {
-	Wrap   bool   // Keep an unnumbered logical line intact for search; wrap only for display.
-	Number int    // Zero leaves the number column blank.
-	Gutter string // "│" before source, "┆" before output, empty for other rows.
-	Text   string // Styled.
+	Wrap        bool   // Keep an unnumbered logical line intact for search; wrap only for display.
+	Number      int    // Zero leaves the number column blank.
+	Gutter      string // "│" before source, "┆" before output, empty for other rows.
+	GutterStyle string // Optional number style, including wrapped rows and their left padding.
+	Text        string // Styled.
 }
 
 // dialogHighlightBytes bounds the content the dialog colors; larger content
@@ -319,7 +320,13 @@ func (d DialogPage) Rows(i, width int) []string {
 		if k == 0 && line.Number > 0 {
 			number = strconv.Itoa(line.Number)
 		}
-		rows[k] = Dim + strings.Repeat(" ", d.digits-len(number)) + number + " " + line.Gutter + Undim + " " + part
+		style, end := Dim, Undim
+		gutter := line.Gutter
+		if line.GutterStyle != "" {
+			style, end = line.GutterStyle, Reset
+			gutter = "\x1b[49m" + gutter
+		}
+		rows[k] = style + strings.Repeat(" ", d.digits-len(number)) + number + " " + gutter + end + " " + part
 	}
 	return rows
 }
@@ -342,14 +349,15 @@ func (d DialogPage) MatchRow(i, width int, query string) (int, bool) {
 
 // DialogFrame is one frame of the output dialog, before layout.
 type DialogFrame struct {
-	Tabs     string // Styled command selector, empty for a single result.
-	Page     DialogPage
-	Position string   // Page position among a merged row's invocations, such as "2 / 4".
-	Paused   bool     // Live output the reader scrolled away from.
-	Rows     []string // Visible body rows.
-	Top      int      // Index of the first visible body row, for the scroll thumb.
-	Total    int      // Body rows in all.
-	Footer   string   // Styled controls.
+	Tabs         string // Styled command selector, empty for a single result.
+	Page         DialogPage
+	Position     string   // Page position among a merged row's invocations, such as "2 / 4".
+	Paused       bool     // Live output the reader scrolled away from.
+	Rows         []string // Visible body rows.
+	GutterStyles []string // Optional styles for visible rows' left padding.
+	Top          int      // Index of the first visible body row, for the scroll thumb.
+	Total        int      // Body rows in all.
+	Footer       string   // Styled controls.
 }
 
 // Backdrop fades a screen row the dialog is drawn over: its colors and
@@ -405,18 +413,18 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 	title := ansi.Truncate(f.Page.Title, room, "…") + Reset
 	fill := max(0, width-6-ansi.StringWidth(title)-ansi.StringWidth(right))
 	lines := []string{edge("╭─ ") + title + " " + edge(strings.Repeat("─", fill)) + right + edge("─╮")}
-	row := func(text string, thumb bool) string {
+	row := func(text string, thumb bool, gutterStyle string) string {
 		text = ansi.Truncate(text, inner, "…")
 		closing := edge("│")
 		if thumb {
 			closing = p.Theme.Accent() + "▌" + Reset
 		}
-		return edge("│") + " " + text + Reset + strings.Repeat(" ", max(0, inner-ansi.StringWidth(text))) + " " + closing
+		return edge("│") + gutterStyle + " " + Reset + text + Reset + strings.Repeat(" ", max(0, inner-ansi.StringWidth(text))) + " " + closing
 	}
-	lines = append(lines, row(f.Page.Detail, false))
+	lines = append(lines, row(f.Page.Detail, false, ""))
 	body := height - DialogChrome
 	if f.Tabs != "" {
-		lines = append(lines, row(f.Tabs, false))
+		lines = append(lines, row(f.Tabs, false, ""))
 		body--
 	}
 	lines = append(lines, edge("├"+strings.Repeat("─", width-2)+"┤"))
@@ -428,10 +436,14 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 	}
 	for i := range body {
 		text := ""
+		gutterStyle := ""
 		if i < len(f.Rows) {
 			text = f.Rows[i]
 		}
-		lines = append(lines, row(text, i >= thumbFrom && i <= thumbTo))
+		if i < len(f.GutterStyles) {
+			gutterStyle = f.GutterStyles[i]
+		}
+		lines = append(lines, row(text, i >= thumbFrom && i <= thumbTo, gutterStyle))
 	}
 	footer := ansi.Truncate(f.Footer, max(0, width-6), "…")
 	lines = append(lines, edge("╰─ ")+footer+Reset+" "+edge(strings.Repeat("─", max(0, width-5-ansi.StringWidth(footer)))+"╯"))

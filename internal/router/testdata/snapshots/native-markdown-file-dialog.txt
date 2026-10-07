@@ -1,15 +1,15 @@
 
 
 
-
-    ╭─ Read · sample.go ───────────────────────────────────────────── [×] ─╮
+    ╭─ Read · sample.go:1-3 ───────────────────────────────────────── [×] ─╮
     │ 4 lines                                                              │
     ├──────────────────────────────────────────────────────────────────────┤
     │ sample.go                                                            │
     │                                                                      │
     │ 1 │ package sample                                                   │
     │ 2 │                                                                  │
-    │ 3 │ // Copy this source.                                             │
+    │ 3 │ // Copy this source. more source more source more source more so │
+    │   │ urce more source more source more source more source             │
     │ 4 │                                                                  │
     ╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ────────────────────╯
 

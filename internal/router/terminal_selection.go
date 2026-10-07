@@ -260,10 +260,10 @@ func (s *terminalSelection) move(x, y int, release bool) {
 }
 
 // row paints the selection without retaining highlight escapes in its snapshot.
-func (s *terminalSelection) row(y int) string {
+func (s *terminalSelection) row(y int, theme livediff.Theme) string {
 	row := s.rows[y]
 	if left, right := s.bounds(y); s.moved && right > left {
-		return ansi.Cut(row, 0, left) + "\x1b[7m" + ansi.Strip(ansi.Cut(row, left, right)) + "\x1b[27m" + ansi.Cut(row, right, ansi.StringWidth(row))
+		return ansi.Cut(row, 0, left) + activityui.TextSelection(ansi.Cut(row, left, right), theme) + ansi.Cut(row, right, ansi.StringWidth(row))
 	}
 	return row
 }
@@ -664,7 +664,7 @@ func (u *terminalUI) paintSelection(rows []string) {
 		return
 	}
 	for y := s.rect.y; y < s.rect.y+s.rect.h; y++ {
-		line := ansi.Cut(s.row(s.documentY(y)), s.rect.x, s.rect.x+s.rect.w)
+		line := ansi.Cut(s.row(s.documentY(y), u.main.view.painter.Theme), s.rect.x, s.rect.x+s.rect.w)
 		line += strings.Repeat(" ", max(0, s.rect.w-ansi.StringWidth(line)))
 		rows[y] += fmt.Sprintf("\x1b[%dG\x1b[0m%s\x1b[0m", s.rect.x+1, line)
 	}

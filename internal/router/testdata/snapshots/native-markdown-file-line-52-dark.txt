@@ -1,0 +1,18 @@
+
+    ╭─ Read · sample.go:52-53 ─────────────────────────────────────── [×] ─╮
+    │ 55 lines                                                             │
+    ├──────────────────────────────────────────────────────────────────────┤
+    │ 46 │ // previous line                                                │
+    │ 47 │ // previous line                                                │
+    │ 48 │ // previous line                                                │
+    │ 49 │ // previous line                                                │
+    │ 50 │ // previous line                                                │
+    │ 51 │ // before                                                       │
+    │ 52 │ var text = "green" // wrapped source wrapped source wrapped sou │
+    │    │ rce wrapped source wrapped source wrapped source wrapped source │
+    │    │  wrapped source                                                 │
+    │ 53 │ // selected too                                                 │
+    │ 54 │ // after                                                        ▌
+    │ 55 │                                                                 ▌
+    ╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ────────────────────╯
+

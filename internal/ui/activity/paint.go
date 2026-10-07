@@ -1459,6 +1459,25 @@ func (p *Painter) Event(block Block, width int) []string {
 	return p.Flash(block, p.Block(block, width))
 }
 
+// TextSelection replaces backgrounds while retaining syntax colors. Clear
+// reverse-video carets and restore the fill after resets and code/diff fills.
+func TextSelection(text string, theme livediff.Theme) string {
+	fill := theme.SelectionBackground() + "\x1b[27m"
+	var out strings.Builder
+	out.WriteString(fill)
+	var state byte
+	for text != "" {
+		seq, _, n, next := ansi.DecodeSequence(text, state, nil)
+		out.WriteString(seq)
+		if strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
+			out.WriteString(fill)
+		}
+		text, state = text[n:], next
+	}
+	out.WriteString("\x1b[49m")
+	return out.String()
+}
+
 // Flash highlights the text of a flashed block's rows, leaving padding and
 // frames plain.
 func (p *Painter) Flash(block Block, rows []string) []string {

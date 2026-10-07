@@ -5,11 +5,15 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func selectionTestUI(rows ...string) *terminalUI {
@@ -29,6 +33,92 @@ func selectionTestDrag(t *testing.T, u *terminalUI, x1, y1, x2, y2 int) {
 	}
 	if u.selection == nil || u.selection.dragging || !u.selection.moved {
 		t.Fatal("release did not retain a completed selection")
+	}
+}
+
+func TestTerminalSelectionSyntaxColors(t *testing.T) {
+	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+		for _, dialog := range []bool{false, true} {
+			t.Run(fmt.Sprintf("theme=%d/dialog=%v", theme, dialog), func(t *testing.T) {
+				const source = `var text = "green"`
+				p := &activityui.Painter{Theme: theme}
+				u := selectionTestUI(p.Inline("`" + source + "` outside"))
+				u.main.view.painter.Theme = theme
+				x, y := 0, 0
+				if dialog {
+					u.width, u.height = 80, 18
+					u.openBlocks(u.main.view, []activityui.Block{{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "sample.go"}}, Tail: []string{source + " // outside"}}})
+					drawOutputDialog(u)
+					x, y = outputSelectionPoint(t, u, source)
+				}
+				paint := func() *vt.Emulator {
+					rows := slices.Clone(u.paintedRows)
+					if dialog {
+						rows = make([]string, u.height)
+						u.paintOutput(rows, u.width, u.height)
+					} else {
+						u.paintSelection(rows)
+					}
+					screen := vt.NewEmulator(u.width, u.height)
+					t.Cleanup(func() { screen.Close() })
+					for y, row := range rows {
+						fmt.Fprintf(screen, "\x1b[%d;1H%s", y+1, row)
+					}
+					return screen
+				}
+				before := paint()
+				if dialog {
+					outputSelectionDrag(u, x, y, x+len(source)-1, y)
+				} else {
+					selectionTestDrag(t, u, x, y, x+len(source)-1, y)
+				}
+				after := paint()
+				for at := x; at < x+len(source); at++ {
+					old, got := before.CellAt(at, y).Style, after.CellAt(at, y).Style
+					if got.Fg != old.Fg || got.Bg == nil || got.Bg == old.Bg || got.Attrs&uv.AttrReverse != 0 || got.Bg != after.CellAt(x, y).Style.Bg {
+						t.Fatalf("selection changed syntax or lost fill at %d: before=%+v after=%+v", at, old, got)
+					}
+				}
+				if before.CellAt(x+len(source)+1, y).Style != after.CellAt(x+len(source)+1, y).Style || u.selection.text() != source {
+					t.Fatal("selection changed adjacent styles or copied text")
+				}
+				if dialog {
+					u.selection = nil
+					u.output.query, u.output.match = "green", 0
+					searched := paint()
+					at := x + strings.Index(source, "green")
+					if searched.CellAt(at, y).Style.Fg != before.CellAt(at, y).Style.Fg || searched.CellAt(at, y).Style.Bg != after.CellAt(at, y).Style.Bg {
+						t.Fatal("search match lost syntax colors or selection fill")
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestTerminalSelectionComposerCaretStyles(t *testing.T) {
+	for _, back := range []int{0, 3} {
+		main, _ := newAppServerTestUI()
+		main.draft, main.cursorBack = "abcdef", back
+		frame, _ := main.mainFrame(40, 12, 0)
+		u := &terminalUI{main: main, width: 40, height: len(frame), paintedWidth: 40, paintedRows: frame, layout: terminalLayout{codex: terminalRect{0, 0, 40, len(frame)}}}
+		x, y := main.composerRect.x, main.composerRect.y
+		selectionTestDrag(t, u, x, y, x+5, y)
+		u.paintSelection(frame)
+		screen := vt.NewEmulator(40, len(frame))
+		defer screen.Close()
+		for y, row := range frame {
+			fmt.Fprintf(screen, "\x1b[%d;1H%s", y+1, row)
+		}
+		for at := x; at < x+6; at++ {
+			style := screen.CellAt(at, y).Style
+			if style.Attrs&uv.AttrReverse != 0 || style.Bg != screen.CellAt(x, y).Style.Bg {
+				t.Fatalf("selected composer caret breaks fill: %+v", style)
+			}
+		}
+		if back == 0 && screen.CellAt(x+6, y).Style.Attrs&uv.AttrReverse == 0 {
+			t.Fatal("selection cleared the unselected caret")
+		}
 	}
 }
 

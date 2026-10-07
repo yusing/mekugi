@@ -33,14 +33,15 @@ type outputDialog struct {
 	indents   []int
 	tabs      []outputTab
 
-	typing      bool   // The footer reads a search query.
-	draft       string // Query being typed.
-	query       string // Confirmed query, lowercased.
-	match       int    // Line of the current match, or -1.
-	missed      bool   // The confirmed query matched nothing.
-	filePath    string // Copyable path for a Markdown file link.
-	fileText    string // Original file bytes for explicit whole-source copying.
-	pendingLine int    // Source line to reveal after the first layout.
+	typing              bool   // The footer reads a search query.
+	draft               string // Query being typed.
+	query               string // Confirmed query, lowercased.
+	match               int    // Line of the current match, or -1.
+	missed              bool   // The confirmed query matched nothing.
+	filePath            string // Copyable path for a Markdown file link.
+	fileText            string // Original file bytes for explicit whole-source copying.
+	pendingLine         int    // Source line to reveal after the first layout.
+	fileFirst, fileLast int    // Included Markdown link source range, inclusive.
 
 	// Layout of the last frame, rebuilt when its page, width, theme or output changes.
 	laid    activityui.DialogPage
@@ -386,6 +387,12 @@ func (d *outputDialog) layout(width int) {
 		d.laid.Lines = append([]activityui.DialogLine{{Text: activityui.Path(livediff.Safe(d.filePath, false)), Wrap: true}, {}}, d.laid.Lines...)
 		if block.Kind != "error" {
 			d.laid.Text = d.fileText
+			for i := range d.laid.Lines {
+				line := &d.laid.Lines[i]
+				if line.Number > 0 && line.Number >= d.fileFirst && line.Number <= d.fileLast {
+					line.GutterStyle = d.view.painter.Theme.Accent() + d.view.painter.Theme.SelectionBackground()
+				}
+			}
 		}
 	}
 	if len(d.segments) > 0 {
@@ -623,6 +630,7 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 	d.top = max(0, min(d.top, d.bottom()))
 	var body []string
 	var indents []int
+	var gutterStyles []string
 	for i := sort.SearchInts(d.starts[1:], d.top+1); i < len(d.laid.Lines) && len(body) < d.rows; i++ {
 		lines := d.laid.Rows(i, w-4)
 		if skip := d.top - d.starts[i]; skip > 0 {
@@ -636,6 +644,7 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 			}
 			body = append(body, line)
 			indents = append(indents, d.laid.Indent(i))
+			gutterStyles = append(gutterStyles, d.laid.Lines[i].GutterStyle)
 		}
 	}
 	body = body[:min(len(body), d.rows)]
@@ -648,10 +657,10 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 	if selected := u.selection; selected != nil {
 		body = slices.Clone(body)
 		for i := range body {
-			body[i] = selected.row(selected.documentY(i))
+			body[i] = selected.row(selected.documentY(i), d.view.painter.Theme)
 		}
 	}
-	frame := activityui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.laid, Paused: d.laid.Live && !d.follow, Rows: body, Top: d.top, Total: d.total(), Footer: d.footer(w)}
+	frame := activityui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.laid, Paused: d.laid.Live && !d.follow, Rows: body, GutterStyles: gutterStyles, Top: d.top, Total: d.total(), Footer: d.footer(w)}
 	if u.selection != nil {
 		frame.Footer = selectionHints.render()
 	}
@@ -679,9 +688,6 @@ func (d *outputDialog) highlight(row string, indent int, current bool) string {
 	text := ansi.Cut(row, indent, ansi.StringWidth(row))
 	plain := strings.ToLower(ansi.Strip(text))
 	mark, unmark := "\x1b[4m", "\x1b[24m"
-	if current {
-		mark, unmark = "\x1b[7m", "\x1b[27m"
-	}
 	out := ansi.Cut(row, 0, indent)
 	cell := 0 // Cells of text copied so far.
 	for offset := 0; ; {
@@ -691,7 +697,13 @@ func (d *outputDialog) highlight(row string, indent int, current bool) string {
 		}
 		from := ansi.StringWidth(plain[:offset+i])
 		to := from + ansi.StringWidth(d.query)
-		out += ansi.Cut(text, cell, from) + mark + ansi.Strip(ansi.Cut(text, from, to)) + unmark
+		match := ansi.Cut(text, from, to)
+		if current {
+			match = activityui.TextSelection(match, d.view.painter.Theme)
+		} else {
+			match = mark + strings.ReplaceAll(match, activityui.Reset, activityui.Reset+mark) + unmark
+		}
+		out += ansi.Cut(text, cell, from) + match
 		cell, offset = to, offset+i+len(d.query)
 	}
 	if cell == 0 {

@@ -177,8 +177,12 @@ The shared content dialog captures keys and pointer events above both panes.
 Clicking a recognized Markdown file link in Main, Activity, or Markdown dialog
 content opens an existing regular local file in this dialog. Relative paths
 require the current session's workspace metadata; absolute paths and local
-`file:///` URLs are also supported. A `:line` suffix reveals that source line
-when it exists. Paths inside the workspace use shared workspace-relative display;
+`file:///` URLs are also supported. A `:line` or `:first-last` suffix appears
+in the title, reveals the first source line when it exists, and
+highlights the included line numbers with a fill that includes their left padding
+and stops before the gutter divider. The numbers and source stay in place.
+Paths inside the workspace use shared
+workspace-relative display;
 external paths stay absolute. The body includes a selectable path row and source
 content, with file-type syntax colors under the existing highlighting limit.
 Terminal controls are sanitized for display; whole-page `y` copies the original

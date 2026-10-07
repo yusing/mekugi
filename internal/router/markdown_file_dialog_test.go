@@ -9,8 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -25,7 +27,7 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 		t.Fatal(err)
 	}
 	fileURL := (&url.URL{Scheme: "file", Path: path}).String()
-	for _, target := range []string{"src/source #1?%.go", path + ":26", fileURL + ":26"} {
+	for _, target := range []string{"src/source #1?%.go", path + ":26", fileURL + ":26", "src/source #1?%.go:26-27", fileURL + ":26-27"} {
 		t.Run(target, func(t *testing.T) {
 			row := (&activityui.Painter{}).Inline("[source](<" + target + ">)")
 			u := selectionTestUI(row)
@@ -37,10 +39,13 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 			}
 			u.width, u.height = 80, 18
 			frame := drawOutputDialog(u)
-			if u.output.filePath != "src/source #1?%.go" || strings.HasSuffix(target, ":26") && (u.output.top == 0 || !strings.Contains(frame, "package target")) {
+			if u.output.filePath != "src/source #1?%.go" || u.output.fileFirst > 0 && (u.output.top == 0 || !strings.Contains(frame, "package target")) {
 				t.Fatalf("path or line destination lost: %q", frame)
 			}
-			if strings.HasSuffix(target, ":26") {
+			if u.output.fileFirst > 0 {
+				if !strings.Contains(ansi.Strip(u.output.laid.Title), target[strings.LastIndexByte(target, ':'):]) {
+					t.Fatal("title lost the original location")
+				}
 				return // Copy and drag share one path after destination resolution.
 			}
 			u.outputKey("y")
@@ -111,7 +116,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	if u.selection == nil || u.selection.text() != "sample.go" {
 		t.Fatal("displayed path is not selectable")
 	}
-	for _, target := range []string{"missing.go", workspace, "file://remote" + workspace + "/sample.go", "https://example.com", "#section"} {
+	for _, target := range []string{"missing.go", "sample.go:0", "sample.go:2-1", "sample.go:1-", workspace, "file://remote" + workspace + "/sample.go", "https://example.com", "#section"} {
 		if u.openMarkdownFile(main.view, target) {
 			t.Fatalf("opened non-file destination %q", target)
 		}
@@ -124,25 +129,37 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	if !u.openMarkdownFile(main.view, path) || u.output.filePath != path {
 		t.Fatal("external absolute path was shortened")
 	}
+	path += ":1-2"
+	if err := os.WriteFile(path, []byte("literal file name\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if !u.openMarkdownFile(main.view, path) || u.output.filePath != path || u.output.fileFirst != 0 {
+		t.Fatal("location parsing took precedence over an exact file name")
+	}
 }
 
 func TestUISnapshotMarkdownFileDialog(t *testing.T) {
-	for _, failure := range []bool{false, true} {
-		t.Run(fmt.Sprint(failure), func(t *testing.T) {
+	for _, test := range []struct {
+		name, content, location string
+		theme                   livediff.Theme
+	}{
+		{"native-markdown-file-dialog", "package sample\n\n// Copy this source. " + strings.Repeat("more source ", 8) + "\n", ":1-3", livediff.TerminalTheme},
+		{"native-markdown-file-error", "\xff", ":1-3", livediff.TerminalTheme},
+		{"native-markdown-file-line-52-dark", strings.Repeat("// previous line\n", 50) + "// before\nvar text = \"green\" // " + strings.Repeat("wrapped source ", 8) + "\n// selected too\n// after\n", ":52-53", livediff.DarkTheme},
+		{"native-markdown-file-line-52-light", strings.Repeat("// previous line\n", 50) + "// before\nvar text = \"green\" // " + strings.Repeat("wrapped source ", 8) + "\n// selected too\n// after\n", ":52-53", livediff.LightTheme},
+	} {
+		t.Run(test.name, func(t *testing.T) {
 			workspace := t.TempDir()
 			path := filepath.Join(workspace, "sample.go")
-			content := []byte("package sample\n\n// Copy this source.\n")
-			name := "native-markdown-file-dialog"
-			if failure {
-				content, name = []byte{0xff}, "native-markdown-file-error"
-			}
-			if err := os.WriteFile(path, content, 0600); err != nil {
+			failure := test.content == "\xff"
+			if err := os.WriteFile(path, []byte(test.content), 0600); err != nil {
 				t.Fatal(err)
 			}
 			main, _ := newAppServerTestUI()
 			main.session.cwd = workspace
+			main.view.painter.Theme = test.theme
 			u := &terminalUI{main: main, width: 80, height: 18}
-			if !u.openMarkdownFile(main.view, path) {
+			if !u.openMarkdownFile(main.view, path+test.location) {
 				t.Fatal("existing file did not open")
 			}
 			rows := make([]string, u.height)
@@ -152,7 +169,29 @@ func TestUISnapshotMarkdownFileDialog(t *testing.T) {
 			for y, row := range rows {
 				fmt.Fprintf(screen, "\x1b[%d;1H%s", y+1, row)
 			}
-			assertNativeUISnapshot(t, name, strings.Split(screen.String(), "\n"))
+			assertNativeUISnapshot(t, test.name, strings.Split(screen.String(), "\n"))
+			if !failure {
+				for i, line := range u.output.laid.Lines {
+					for wrap := range u.output.laid.Rows(i, u.output.rect.w-4) {
+						y := u.output.rect.y + 3 + u.output.starts[i] + wrap - u.output.top
+						if y < u.output.rect.y+3 || y >= u.output.rect.y+3+u.output.rows || line.Number == 0 {
+							continue
+						}
+						gutter := screen.CellAt(u.output.rect.x+u.output.laid.Indent(i), y).Style
+						text := screen.CellAt(u.output.rect.x+2+u.output.laid.Indent(i), y).Style
+						linked := line.Number >= u.output.fileFirst && line.Number <= u.output.fileLast
+						if gutter.Bg != text.Bg {
+							t.Fatalf("fill covers the divider on line %d wrap %d", line.Number, wrap)
+						}
+						for x := u.output.rect.x + 1; x < u.output.rect.x+u.output.laid.Indent(i); x++ {
+							style := screen.CellAt(x, y).Style
+							if (style.Bg != text.Bg) != linked || linked && (style.Attrs&uv.AttrFaint != 0 || style.Fg != gutter.Fg) {
+								t.Fatalf("fill boundary or number color lost at %d,%d: %+v", x, y, style)
+							}
+						}
+					}
+				}
+			}
 			if failure {
 				x, y := outputSelectionPoint(t, u, "file is not")
 				if screen.CellAt(x, y).Style.Fg != ansi.IndexedColor(203) || ansi.Strip(u.output.laid.Lines[2].Text) != "file is not UTF-8 text" {

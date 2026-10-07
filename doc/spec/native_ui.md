@@ -693,6 +693,8 @@ saved Diff, or a shared content dialog selects the visible text and offers
 Reference (r/R), Copy (Ctrl+C, also c/C), and Clear (Escape) in the status bar or
 dialog footer. Selection actions and the existing pane shortcut bar share bold key
 labels and bullet separators. Only complete, visible action hints accept clicks.
+Text selection uses an opaque, theme-aware background and preserves syntax
+foreground colors.
 Composer selection excludes its prompt and borders;
 Diff selection covers only the source column, excluding the file navigator, gutters,
 and line numbers, and keeps each row's `+`, `-`, or space marker. Dialog selections

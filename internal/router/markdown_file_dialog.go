@@ -27,12 +27,7 @@ func (u *terminalUI) openMarkdownFile(view *liveActivityView, target string) boo
 		}
 		path = parsed.Path
 	} else {
-		candidate := target
-		if colon := strings.LastIndexByte(candidate, ':'); colon >= 0 {
-			if n, err := strconv.Atoi(candidate[colon+1:]); err == nil && n > 0 {
-				candidate = candidate[:colon]
-			}
-		}
+		candidate, _, _, _ := markdownFileLocation(target)
 		if !filepath.IsAbs(candidate) && (candidate == "" || strings.HasPrefix(candidate, "#") || strings.HasPrefix(candidate, "?") || strings.Contains(strings.SplitN(candidate, "/", 2)[0], ":")) {
 			return false
 		}
@@ -51,20 +46,19 @@ func (u *terminalUI) openMarkdownFile(view *liveActivityView, target string) boo
 		path = filepath.Join(workspace, path)
 	}
 	info, err := os.Stat(path)
-	line := 0
+	first, last := 0, 0
+	location := ""
 	if os.IsNotExist(err) {
-		if colon := strings.LastIndexByte(path, ':'); colon >= 0 {
-			if n, parseErr := strconv.Atoi(path[colon+1:]); parseErr == nil && n > 0 {
-				path, line = path[:colon], n
-				info, err = os.Stat(path)
-			}
+		path, location, first, last = markdownFileLocation(path)
+		if first > 0 {
+			info, err = os.Stat(path)
 		}
 	}
 	if err != nil || !info.Mode().IsRegular() {
 		return false
 	}
 	display := pathdisplay.ForWorkspace(workspace, path)
-	block := activityui.Block{Kind: "reads", Verb: "Read", Path: display, SyntaxPath: path, Reads: []activityui.Read{{Path: display}}}
+	block := activityui.Block{Kind: "reads", Verb: "Read", Path: display + location, SyntaxPath: path, Reads: []activityui.Read{{Path: display + location}}}
 	data, err := readMarkdownFile(path)
 	if err != nil {
 		block.Kind, block.Verb, block.Body = "error", "", err.Error()
@@ -72,9 +66,32 @@ func (u *terminalUI) openMarkdownFile(view *liveActivityView, target string) boo
 		block.Tail = strings.Split(livediff.Safe(string(data), false), "\n")
 	}
 	u.openBlocks(view, []activityui.Block{block})
-	u.output.filePath, u.output.pendingLine = display, line
+	u.output.filePath, u.output.pendingLine = display, first
+	u.output.fileFirst, u.output.fileLast = first, last
 	u.output.fileText = string(data)
 	return true
+}
+
+// A location is optional. Exact existing file names are checked before it is
+// removed, so files whose names end in a colon and digits still open normally.
+func markdownFileLocation(path string) (base, location string, first, last int) {
+	colon := strings.LastIndexByte(path, ':')
+	if colon < 0 {
+		return path, "", 0, 0
+	}
+	from, to, ranged := strings.Cut(path[colon+1:], "-")
+	first, err := strconv.Atoi(from)
+	if err != nil || first <= 0 {
+		return path, "", 0, 0
+	}
+	last = first
+	if ranged {
+		last, err = strconv.Atoi(to)
+		if err != nil || last < first {
+			return path, "", 0, 0
+		}
+	}
+	return path[:colon], path[colon:], first, last
 }
 
 // Keep this auxiliary read bounded without applying the composer's attachment

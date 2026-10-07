@@ -79,9 +79,9 @@ func (theme Theme) RowBackground(kind byte) string {
 // SelectionBackground is a neutral fill that marks a selected row in place.
 func (theme Theme) SelectionBackground() string {
 	if theme == LightTheme {
-		return "\x1b[48;2;226;232;240m"
+		return "\x1b[48;2;198;212;231m"
 	}
-	return "\x1b[48;2;42;48;58m"
+	return "\x1b[48;2;62;72;86m"
 }
 
 func (theme Theme) Accent() string {
