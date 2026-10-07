@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/session"
@@ -35,6 +36,7 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		Description string                 `json:"description"`
 		Caller      string                 `json:"caller"`
 		TaskID      string                 `json:"taskID"`
+		OutputFile  string                 `json:"outputFile"`
 		Truncated   bool                   `json:"truncated"`
 		Done        bool                   `json:"done"`
 		Input       jsontext.Value         `json:"input"`
@@ -94,7 +96,10 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		if frame.ID == "" || frame.TaskID == "" || len(frame.Text) > 16<<10 {
 			return nil, fmt.Errorf("invalid native command output snapshot")
 		}
-		return []session.Event{{Kind: "command_output", ID: frame.ID, Caller: frame.Caller, Text: frame.Text, Failed: frame.Failed, Output: &session.CommandOutput{TaskID: frame.TaskID, Truncated: frame.Truncated, Done: frame.Done}}}, nil
+		if frame.OutputFile != "" && (!frame.Done || frame.Text != "" || !filepath.IsAbs(frame.OutputFile)) {
+			return nil, fmt.Errorf("invalid native command output file")
+		}
+		return []session.Event{{Kind: "command_output", ID: frame.ID, Caller: frame.Caller, Text: frame.Text, Failed: frame.Failed, Output: &session.CommandOutput{TaskID: frame.TaskID, OutputFile: frame.OutputFile, Truncated: frame.Truncated, Done: frame.Done}}}, nil
 	case "error":
 		return []session.Event{{Kind: "error", Text: frame.Text}}, nil
 	case "permission_cancelled":

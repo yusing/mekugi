@@ -346,6 +346,10 @@ func (s *mekugiReplayStore) changeDependencyNames(workspace string, ids []string
 }
 
 func (s *mekugiReplayStore) readDependencyNames(record shellOutputRecord) ([]string, error) {
+	return s.walkReadDependencies(record, nil)
+}
+
+func (s *mekugiReplayStore) walkReadDependencies(record shellOutputRecord, visit func(shellOutputRecord) error) ([]string, error) {
 	var names []string
 	seen := make(map[string]bool)
 	for {
@@ -353,6 +357,11 @@ func (s *mekugiReplayStore) readDependencyNames(record shellOutputRecord) ([]str
 			return nil, errors.New("cyclic read recovery reference")
 		}
 		seen[record.ID] = true
+		if visit != nil {
+			if err := visit(record); err != nil {
+				return nil, err
+			}
+		}
 		owner, err := s.handleOwner(record.ID)
 		if err != nil {
 			return nil, err

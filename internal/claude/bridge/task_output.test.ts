@@ -53,6 +53,27 @@ test('background snapshots replace truncated tails and settle at the actual nati
   assert.deepEqual(frames.at(-1), {kind: 'command_output', id: 'tool-background', caller: '', taskID: 'background', text: 'final\n', truncated: true, done: true, failed: true});
 });
 
+test('background terminal spool arrives after task settlement and supersedes the tail', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  const frames: OutputFrame[] = [];
+  const observer = taskOutput({getTaskOutput: async () => ({output: 'tail\n', total_bytes: 22041, truncated: true})} as unknown as Query,
+    async frame => {frames.push(frame);}, async text => {assert.fail(text);});
+  t.after(observer.close);
+  await observer.event(started('late', true));
+  await observer.event({type: 'system', subtype: 'task_updated', task_id: 'late', patch: {status: 'completed'}} as SDKMessage);
+  assert.equal(frames.at(-1)?.done, true);
+  const event = {type: 'system', subtype: 'task_notification', task_id: 'late', tool_use_id: 'tool-late', status: 'completed', output_file: '/native/path with spaces.output'} as SDKMessage;
+  const before = JSON.stringify(event);
+  await observer.event(event);
+  assert.deepEqual(frames.at(-1), {kind: 'command_output', id: 'tool-late', caller: '', taskID: 'late', text: '',
+    truncated: false, done: true, failed: false, outputFile: '/native/path with spaces.output'});
+  assert.equal(JSON.stringify(event), before);
+  const count = frames.length;
+  await observer.event(event);
+  t.mock.timers.tick(1000); await flush();
+  assert.equal(frames.length, count, 'retired task cannot reread or emit the spool');
+});
+
 test('output polling is bounded and gives every live task a slot', async t => {
   t.mock.timers.enable({apis: ['setTimeout']});
   const reads: string[] = [];

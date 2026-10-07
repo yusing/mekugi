@@ -60,6 +60,8 @@ type TitleClient interface {
 // CommandOutput is a native tail snapshot, not an append-only byte stream.
 type CommandOutput struct {
 	TaskID          string
+	OutputFile      string // Native terminal aggregate, never a model-supplied operand.
+	Reference       string // Presentation-owned immutable full-output continuation.
 	Truncated, Done bool
 }
 

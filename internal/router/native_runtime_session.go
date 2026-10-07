@@ -402,6 +402,9 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		u.runtimeEntry(e)
 		if e.Kind == "tool_result" {
 			u.settleRuntimePreview(e.ID, e.Failed)
+			if e.Historical {
+				u.restoreRuntimeCommandOutput(e.ID)
+			}
 		}
 	case "notice":
 		u.setNotice(e.Text, false)

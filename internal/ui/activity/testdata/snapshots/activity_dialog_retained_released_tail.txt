@@ -1,0 +1,12 @@
+╭─ Ran · bash output.sh ───────────── [×] ─╮
+│ 1 line                                   │
+├──────────────────────────────────────────┤
+│ Display output was released; its last    │
+│ available lines follow.                  │
+│ Complete output: mread cedar2            │
+│ 1 ┆ readable native tail                 │
+│                                          │
+│                                          │
+│                                          │
+│                                          │
+╰─ esc close · ↑↓ scroll · c copy ─────────╯

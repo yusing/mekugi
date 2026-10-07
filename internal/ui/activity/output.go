@@ -14,10 +14,11 @@ import (
 type Output struct {
 	outputLineBuffer
 	lines         []string
-	bytes         int  // Retained line bytes, charged to the retention.
-	dropped       int  // Lines before lines.
-	truncated     bool // At least one completed line exceeded OutputLineBytes.
-	prefixOmitted bool // The host supplies only a tail with an unknown number of earlier lines.
+	bytes         int    // Retained line bytes, charged to the retention.
+	dropped       int    // Lines before lines.
+	truncated     bool   // At least one completed line exceeded OutputLineBytes.
+	prefixOmitted bool   // The host supplies only a tail with an unknown number of earlier lines.
+	reference     string // Managed full-output evidence, apart from display retention.
 	released      bool
 	done          bool
 	exited        bool // The host reported an exit status.
@@ -144,6 +145,25 @@ func (o *Output) Finish(aggregate *string, exit *int) {
 	}
 }
 
+// Reconcile replaces a settled tail when the host later supplies its complete
+// terminal aggregate. Open dialogs keep the same output identity. Ordinary
+// streaming still ignores settled outputs through Write and Snapshot.
+func (o *Output) Reconcile(aggregate string) {
+	if o.released {
+		return
+	}
+	o.done = false
+	o.Finish(&aggregate, nil)
+}
+
+// RetainReference keeps omitted evidence accessible from this command's dialog.
+func (o *Output) RetainReference(reference string) {
+	if o.reference != reference {
+		o.reference = reference
+		o.version++
+	}
+}
+
 // Release ends output retention when segment attribution becomes unavailable.
 // It belongs to the UI goroutine, like Write and Finish.
 func (o *Output) Release() {
@@ -166,6 +186,7 @@ type OutputView struct {
 	Exited        bool // Exit is the host's reported status.
 	Exit          int
 	PrefixOmitted bool // Earlier host bytes are absent; their line count is unknown.
+	Reference     string
 }
 
 // Version changes whenever the output's view does.
@@ -187,5 +208,5 @@ func (o *Output) View() OutputView {
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
 	}
-	return OutputView{Lines: lines, Dropped: o.dropped, Truncated: o.truncated || len(o.line) > OutputLineBytes, Released: o.released, Done: o.done, Exited: o.exited, Exit: o.exit, PrefixOmitted: o.prefixOmitted}
+	return OutputView{Lines: lines, Dropped: o.dropped, Truncated: o.truncated || len(o.line) > OutputLineBytes, Released: o.released, Done: o.done, Exited: o.exited, Exit: o.exit, PrefixOmitted: o.prefixOmitted, Reference: o.reference}
 }

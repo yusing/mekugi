@@ -59,6 +59,16 @@ func TestUISnapshotActivityOutputDialog(t *testing.T) {
 	previous := time.Local
 	time.Local = time.UTC
 	t.Cleanup(func() { time.Local = previous })
+	var retained Retention
+	longOutput := retained.New()
+	longOutput.Finish(new(strings.Repeat("row ", (32<<10)/4)), nil)
+	longOutput.RetainReference("cedar1")
+	releasedTail := retained.New()
+	releasedTail.Snapshot("readable native tail\n", true)
+	releasedTail.Finish(nil, nil)
+	releasedTail.Release()
+	releasedTail.Reconcile("late complete aggregate")
+	releasedTail.RetainReference("cedar2")
 	for _, tc := range []struct {
 		name     string
 		width    int
@@ -68,6 +78,14 @@ func TestUISnapshotActivityOutputDialog(t *testing.T) {
 		paused   bool
 		top      int
 	}{
+		{
+			name: "retained_released_tail", width: 44, height: 12,
+			block: Block{Kind: "op", Verb: "Run", Code: "bash output.sh", Output: releasedTail, Tail: []string{"readable native tail"}},
+		},
+		{
+			name: "retained_line_bounds", width: 44, height: 12,
+			block: Block{Kind: "op", Verb: "Run", Code: "printf long-output", Output: longOutput},
+		},
 		{
 			name: "notification_timing", width: 80, height: 15,
 			block: Block{Kind: "op", Verb: "Run", Label: "combined output", Code: "pwd; rg --files", NotificationTiming: true,

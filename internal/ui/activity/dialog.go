@@ -139,12 +139,19 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	var notes []string
 	switch {
 	case view.Released:
-		notes = append(notes, "Full output was released; its last available lines follow.")
+		note := "Full output was released; its last available lines follow."
+		if view.Reference != "" {
+			note = "Display output was released; its last available lines follow."
+		}
+		notes = append(notes, note)
 	case view.Dropped > 0:
 		notes = append(notes, Elision{Hidden: view.Dropped, Form: ElisionEarlier}.Text()+" not retained")
 	}
-	if view.PrefixOmitted {
+	if view.PrefixOmitted && view.Reference == "" {
 		notes = append(notes, "The host supplied only the output tail; earlier output is unavailable.")
+	}
+	if view.Reference != "" && (view.Released || view.Dropped > 0 || view.Truncated || view.PrefixOmitted) {
+		notes = append(notes, "Complete output: mread "+view.Reference)
 	}
 	if len(view.Lines) == 0 {
 		switch {

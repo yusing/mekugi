@@ -22,10 +22,11 @@ func assertDecode(t *testing.T, a *adapter, frame string, want []session.Event) 
 func TestAdapterCommandOutputAndBackgroundLaunch(t *testing.T) {
 	var a adapter
 	assertDecode(t, &a, `{"kind":"command_output","id":"call","caller":"parent","taskID":"shell","text":"tail\n","truncated":true,"done":false}`, []session.Event{{Kind: "command_output", ID: "call", Caller: "parent", Text: "tail\n", Output: &session.CommandOutput{TaskID: "shell", Truncated: true}}})
+	assertDecode(t, &a, `{"kind":"command_output","id":"call","taskID":"shell","text":"","done":true,"outputFile":"/native/path with spaces.output"}`, []session.Event{{Kind: "command_output", ID: "call", Output: &session.CommandOutput{TaskID: "shell", OutputFile: "/native/path with spaces.output", Done: true}}})
 	assertDecode(t, &a, `{"kind":"event","event":{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"call","content":"Native launch"}]},"tool_use_result":{"backgroundTaskId":"shell"}}}`, []session.Event{{Kind: "tool_result", ID: "call", Text: "Native launch", Output: &session.CommandOutput{TaskID: "shell"}}})
 	assertDecode(t, &a, `{"kind":"event","event":{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"failed","content":"Native failure","is_error":true}]},"tool_use_result":"Native failure"}}`, []session.Event{{Kind: "tool_result", ID: "failed", Text: "Native failure", Failed: true}})
 	assertDecode(t, &a, `{"kind":"event","event":{"type":"system","subtype":"task_notification","task_id":"shell","tool_use_id":"call","status":"completed","output_file":"/native/shell.output"}}`, []session.Event{{Kind: "task", Role: "task_notification", Task: &session.Task{ID: "shell", ToolID: "call", Status: "completed"}}})
-	for _, frame := range []string{`{"kind":"command_output","taskID":"shell"}`, `{"kind":"command_output","id":"call"}`} {
+	for _, frame := range []string{`{"kind":"command_output","taskID":"shell"}`, `{"kind":"command_output","id":"call"}`, `{"kind":"command_output","id":"call","taskID":"shell","outputFile":"relative","done":true}`, `{"kind":"command_output","id":"call","taskID":"shell","outputFile":"/native/output","done":false}`} {
 		if _, err := a.decode([]byte(frame)); err == nil {
 			t.Fatal("invalid snapshot admitted")
 		}

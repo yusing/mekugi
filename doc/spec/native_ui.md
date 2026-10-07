@@ -80,8 +80,14 @@ identify tail-only evidence without inventing omitted line counts. Native task
 registration waits at least two seconds before exposing foreground tasks; short
 commands may supply only their final aggregate. The native foreground aggregate
 remains authoritative. Background launch and root-turn completion do not settle
-live output; matching terminal task evidence does. Missing output remains unavailable rather than reconstructed.
-Complete background-output parity is not established.
+live output; matching terminal task evidence does. The typed terminal notification's
+native output file supplies the complete background aggregate, including a late
+aggregate after task settlement. Its immutable UTF-8 chunks use the shared managed
+output store and remain readable on fresh resume without the native spool or tool
+reexecution. The shared dialog keeps its normal display bounds. When byte or line
+limits omit content, that command's dialog exposes its saved `mread` continuation,
+including after resume and later activity. Storage capacity or unreadable output is reported as
+unavailable, preserving the readable tail rather than claiming complete evidence.
 
 Successful command output follows the shared timed-collapse lifecycle; failure
 details stay expanded. Command output and task events open the shared dialog

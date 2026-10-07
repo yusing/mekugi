@@ -244,7 +244,13 @@ Unsegmented foreground and background commands update the dialog with native
 last-8-KiB tail snapshots, not a lossless output stream; the dialog labels this
 limitation. Native task registration has a two-second grace period, so short
 commands may show only their final aggregate. The final native foreground result
-remains authoritative; complete background-output parity is not established.
+remains authoritative. Background completion replaces the tail with the native
+output file's complete UTF-8 aggregate and saves it for resume. Command dialogs
+keep their normal display bounds; when bytes or lines are omitted, the dialog
+shows an `mread` reference for the complete saved output. It remains attached to
+that command after later activity and resume, without repeating execution.
+Unreadable output or storage failure preserves the available tail and reports
+the missing complete evidence.
 Capture warnings remain
 readable in the transcript when they do not fit in the status line.
 

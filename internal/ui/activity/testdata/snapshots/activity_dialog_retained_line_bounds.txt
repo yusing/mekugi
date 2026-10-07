@@ -1,0 +1,12 @@
+╭─ Ran · printf long-output ───────── [×] ─╮
+│ 1 line                                   │
+├──────────────────────────────────────────┤
+│ Complete output: mread cedar1            ▌
+│ 1 ┆ row row row row row row row row row  │
+│   ┆ row row row row row row row row row  │
+│   ┆ row row row row row row row row row  │
+│   ┆ row row row row row row row row row  │
+│   ┆ row row row row row row row row row  │
+│   ┆ row row row row row row row row row  │
+│   ┆ row row row row row row row row row  │
+╰─ esc close · ↑↓ scroll · c copy ─────────╯

@@ -71,6 +71,17 @@ func (u *appServerUI) runtimeCommandOutput(e session.Event) {
 	if e.Output == nil || e.ID == "" {
 		return
 	}
+	if e.Output.OutputFile != "" {
+		text, reference, err := u.retainRuntimeCommandOutput(e)
+		if err != nil {
+			u.setNotice("Complete native command output unavailable: "+err.Error(), true)
+			return
+		}
+		e.Text = text
+		metadata := *e.Output
+		metadata.Reference = reference
+		e.Output = &metadata
+	}
 	var output *activityui.Output
 	for _, v := range []*liveActivityView{u.view, u.agents} {
 		for i, old := range v.entries {
@@ -84,22 +95,31 @@ func (u *appServerUI) runtimeCommandOutput(e session.Event) {
 				native.output = u.session.outputs.New()
 			}
 			if output == nil {
-				if native.output.View().Done {
+				if native.output.View().Done && e.Output.OutputFile == "" && !e.Historical {
 					break
 				}
 				output = native.output
-				output.Snapshot(e.Text, e.Output.Truncated)
+				if e.Output.OutputFile != "" || e.Historical {
+					output.Reconcile(e.Text)
+				} else {
+					output.Snapshot(e.Text, e.Output.Truncated)
+				}
 				if e.Output.Done {
 					output.Finish(nil, nil)
+				}
+				if e.Output.Reference != "" {
+					output.RetainReference(e.Output.Reference)
 				}
 			}
 			native.output = output
 			native.running = !e.Output.Done
 			if e.Output.Done {
-				native.commandEnded = u.now()
+				if !e.Historical && native.commandEnded.IsZero() {
+					native.commandEnded = u.now()
+				}
 				if e.Failed {
 					native.status = "failed"
-				} else {
+				} else if !e.Historical && native.settled.IsZero() {
 					native.settled = u.now()
 				}
 			}

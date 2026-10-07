@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"encoding/json/v2"
 	"github.com/charmbracelet/x/vt"
@@ -43,7 +44,9 @@ func nativeRuntimeOutputClaudePTY(t *testing.T, background bool) {
 	t.Setenv("ANTHROPIC_API_KEY", "native-output-fixture")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
-	service, binding, _ := observationHTTPFixture(t)
+	binding := ObservationBinding{Runtime: "claude", Workspace: t.TempDir()}
+	storeDirectory := t.TempDir()
+	service, _, closeObservation := observationIsolationService(t, storeDirectory, binding)
 	presentation, err := service.PrepareCompanion(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -55,6 +58,29 @@ func nativeRuntimeOutputClaudePTY(t *testing.T, background bool) {
 	if err := os.WriteFile(filepath.Join(binding.Workspace, "output-gates.sh"), []byte(script), 0600); err != nil {
 		t.Fatal(err)
 	}
+	expected := first + "\n" + second + "\n"
+	if background {
+		// Large enough to exceed the native 8 KiB tail, with multibyte boundaries.
+		var bulk strings.Builder
+		for i := range 400 {
+			fmt.Fprintf(&bulk, "完整輸出_%03d_🌲_café_abcdefghijklmnopqrstuvwxyz\n", i)
+		}
+		data := bulk.String()
+		if err := os.WriteFile(filepath.Join(binding.Workspace, "output-bulk.txt"), []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+		script = strings.Replace(script, "printf '%s\\n' "+last, "cat output-bulk.txt\nprintf '%s\\n' "+last, 1)
+		if err := os.WriteFile(filepath.Join(binding.Workspace, "output-gates.sh"), []byte(script), 0600); err != nil {
+			t.Fatal(err)
+		}
+		expected += data
+	}
+	expected += last + "\n"
+	if background {
+		// Native Claude appends its terminal receipt to the owned spool.
+		expected += "\n[exited with code 0]\n"
+	}
+	var nativeSession, spool string
 	var mu sync.Mutex
 	workRequests := 0
 	tools := map[string]bool{}
@@ -119,6 +145,12 @@ func nativeRuntimeOutputClaudePTY(t *testing.T, background bool) {
 					return
 				}
 				mu.Lock()
+				if event.SessionID != "" {
+					nativeSession = event.SessionID
+				}
+				if event.ID == "output-command-once" && event.Output != nil && event.Output.OutputFile != "" {
+					spool = event.Output.OutputFile
+				}
 				if event.Kind == "tool" && event.Role == "Bash" {
 					tools[event.ID] = true
 				}
@@ -137,7 +169,8 @@ func nativeRuntimeOutputClaudePTY(t *testing.T, background bool) {
 			}
 		}
 	}()
-	terminal, stopTerminal := startNativeRuntimePTY(t, ctx, observed, binding.Workspace, service)
+	terminal, stop := startNativeRuntimePTY(t, ctx, observed, binding.Workspace, service)
+	stopTerminal := sync.OnceFunc(stop)
 	t.Cleanup(func() {
 		// Release only this fixture's processes if an assertion fails at a gate.
 		_ = os.WriteFile(filepath.Join(binding.Workspace, "output-second.gate"), nil, 0600)
@@ -163,12 +196,14 @@ func nativeRuntimeOutputClaudePTY(t *testing.T, background bool) {
 		for y, row := range strings.Split(terminal.screen.String(), "\n") {
 			search := row
 			prefix := ""
+			runes := []rune(row)
 			if activityClick {
-				runes := []rune(row)
 				if len(runes) <= 60 {
 					continue
 				}
 				prefix, search = string(runes[:60]), string(runes[60:])
+			} else if len(runes) > 60 {
+				search = string(runes[:60])
 			}
 			if at := strings.Index(search, text); at >= 0 {
 				x := len([]rune(prefix+search[:at])) + 1
@@ -203,7 +238,19 @@ func nativeRuntimeOutputClaudePTY(t *testing.T, background bool) {
 		return strings.Contains(s, "2 ┆ "+second) && strings.Contains(s, "y copy · esc")
 	})
 	gate("output-finish.gate")
-	await("settled terminal output", func(s string) bool { return strings.Contains(s, "3 ┆ "+last) && !strings.Contains(s, "● live") })
+	await("settled terminal output", func(s string) bool {
+		marker := last
+		if !background {
+			marker = "3 ┆ " + last
+		}
+		return strings.Contains(s, marker) && !strings.Contains(s, "● live")
+	})
+	if background {
+		terminal.keys("g")
+		await("complete terminal prefix", func(s string) bool {
+			return strings.Contains(s, "1 ┆ "+first) && strings.Contains(s, "完整輸出_000_🌲_café") && !strings.Contains(s, "�")
+		})
+	}
 	terminal.keys("\x1b")
 	await("Activity task completion", func(s string) bool {
 		return strings.Contains(s, "Output PTY gates · completed") && !strings.Contains(s, "y copy · esc")
@@ -222,23 +269,104 @@ func nativeRuntimeOutputClaudePTY(t *testing.T, background bool) {
 		return strings.Contains(s, "Output PTY gates · completed") && strings.Contains(s, "y copy · esc")
 	})
 	mu.Lock()
+	savedSession, savedSpool := nativeSession, spool
+	mu.Unlock()
+	if background {
+		assertAggregate := func(s *ObservationService) {
+			t.Helper()
+			call := ObservationCall{Binding: ObservationBinding{Runtime: "claude", Workspace: binding.Workspace, Session: savedSession}, ID: "output-command-once", Tool: "Bash"}
+			s.owner.mu.Lock()
+			outputContext, err := s.owner.callContext(ctx, call)
+			s.owner.mu.Unlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+			history, found, err := s.owner.store.lookup(ctx, binding.Workspace, observationKey(call)+"/output")
+			if err != nil || !found || history.NativeOutput == nil {
+				t.Fatalf("complete native output not retained: found=%v err=%v", found, err)
+			}
+			text, err := s.owner.store.readOutputChunks(outputContext, history.NativeOutput.Reference)
+			if err != nil || text != expected || !utf8.ValidString(text) || strings.Contains(text, "�") {
+				t.Fatalf("retained aggregate differs: got=%d want=%d UTF8=%v err=%v", len(text), len(expected), utf8.ValidString(text), err)
+			}
+		}
+		assertAggregate(service)
+		stopTerminal()
+		if err := client.Close(); err != nil {
+			t.Fatal(err)
+		}
+		<-joined
+		closeObservation()
+		// Move only the spool identified by this native command, retaining recovery.
+		if savedSession == "" || !filepath.IsAbs(savedSpool) {
+			t.Fatalf("missing native session/spool identity: session=%q spool=%q", savedSession, savedSpool)
+		}
+		backup := filepath.Join(t.TempDir(), "native-output-spool")
+		if err := os.Rename(savedSpool, backup); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := os.Rename(backup, savedSpool); err != nil {
+				t.Error(err)
+			}
+		})
+		fresh, _, _ := observationIsolationService(t, storeDirectory, binding)
+		freshPresentation, err := fresh.PrepareCompanion(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		freshEndpoint := fresh.Endpoint()
+		mu.Lock()
+		requestsBeforeResume := workRequests
+		mu.Unlock()
+		freshClient, err := claude.Start(ctx, "node", bridge, claude.Config{Cwd: binding.Workspace, Executable: executable, Model: "haiku", Resume: savedSession, Companion: &claude.ObservationEndpoint{Socket: freshEndpoint.Socket, Token: freshEndpoint.Token, Plugin: freshPresentation.Plugin, FrontendDirectory: freshPresentation.FrontendDirectory, JournalSchema: freshPresentation.JournalSchema}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer freshClient.Close()
+		terminal, stop = startNativeRuntimePTY(t, ctx, freshClient, binding.Workspace, fresh)
+		stopTerminal = sync.OnceFunc(stop)
+		await("restored native command", func(s string) bool {
+			return strings.Contains(s, "Ran bash ./output-gates.sh") && strings.Contains(s, "┆ … +")
+		})
+		click("… +")
+		await("restored settled dialog", func(s string) bool { return strings.Contains(s, "y copy · esc") && !strings.Contains(s, "● live") })
+		terminal.keys("G")
+		await("restored final output", func(s string) bool { return strings.Contains(s, last) })
+		terminal.keys("g")
+		await("restored complete prefix", func(s string) bool {
+			return strings.Contains(s, "1 ┆ "+first) && strings.Contains(s, "完整輸出_000_🌲_café") && !strings.Contains(s, "�")
+		})
+		assertAggregate(fresh)
+		mu.Lock()
+		requestsAfterResume := workRequests
+		mu.Unlock()
+		if requestsAfterResume != requestsBeforeResume {
+			t.Fatalf("resume replayed provider work: before=%d after=%d", requestsBeforeResume, requestsAfterResume)
+		}
+	}
+	mu.Lock()
 	defer mu.Unlock()
 	if len(tools) != 1 || !tools["output-command-once"] {
 		t.Fatalf("native command identities: %v", tools)
 	}
-	var incremental, final bool
+	var incremental, final, truncatedTail bool
 	for _, event := range snapshots {
 		if event.Output == nil || event.ID != "output-command-once" {
 			t.Fatalf("output lost native identity: %+v", event)
 		}
 		incremental = incremental || strings.Contains(event.Text, first) && !event.Output.Done
 		final = final || strings.Contains(event.Text, last) && event.Output.Done
+		truncatedTail = truncatedTail || event.Output.Done && event.Output.Truncated && !strings.Contains(event.Text, first)
 	}
 	if !background {
 		final = aggregate
 	}
 	if !incremental || !final {
 		t.Fatalf("native snapshots did not stream and settle: incremental=%v final=%v", incremental, final)
+	}
+	if background && !truncatedTail {
+		t.Fatal("background fixture did not exceed the native terminal tail")
 	}
 	count, err := os.ReadFile(filepath.Join(binding.Workspace, "output-executions.txt"))
 	if err != nil || string(count) != "once\n" {

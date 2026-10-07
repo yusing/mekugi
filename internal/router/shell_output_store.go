@@ -382,6 +382,45 @@ func (s *mekugiReplayStore) readShellOutput(ctx context.Context, id string) (she
 	return record, err
 }
 
+// readOutputChunks collects and retains an immutable chunk chain in one pass.
+// It uses the same scope, validation and dependency owner as ordinary mread.
+func (s *mekugiReplayStore) readOutputChunks(ctx context.Context, id string) (string, error) {
+	s = s.scoped(ctx)
+	var text strings.Builder
+	err := s.locked(ctx, func() error {
+		name, err := s.outputName(id)
+		if err != nil {
+			return err
+		}
+		data, err := readManagedOutputFile(filepath.Join(s.directory, name))
+		if err != nil {
+			return err
+		}
+		record, err := decodeShellOutputRecord(data, id)
+		if err != nil {
+			return err
+		}
+		names, err := s.walkReadDependencies(record, func(chunk shellOutputRecord) error {
+			if chunk.Source != "" || chunk.Changes != nil || chunk.Stderr != "" {
+				return errors.New("invalid immutable output chunk")
+			}
+			if text.Len()+len(chunk.Stdout) > maxShellOutputStoreBytes {
+				return errors.New("output exceeds managed storage capacity")
+			}
+			text.WriteString(chunk.Stdout)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		return s.retainFiles(names...)
+	})
+	if err != nil {
+		return "", err
+	}
+	return text.String(), nil
+}
+
 func retainExecutionOutput(ctx context.Context, manifest toolWorkerManifest, execution toolplugin.ExecutionOutput) (toolplugin.ExecutionOutput, error) {
 	if execution.OmittedOutput == nil {
 		return execution, nil

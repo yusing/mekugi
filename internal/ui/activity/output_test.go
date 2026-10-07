@@ -78,6 +78,16 @@ func TestOutputFinishAggregateReplacement(t *testing.T) {
 	if o.Version() != version || !slices.Equal(o.View().Lines, view.Lines) {
 		t.Fatal("settled output changed")
 	}
+	o.Reconcile("late native aggregate\n界cedar")
+	view = o.View()
+	if !view.Done || !view.Exited || view.Exit != 7 || !slices.Equal(view.Lines, []string{"late native aggregate", "界cedar"}) || r.bytes != o.bytes+len(o.line) {
+		t.Fatalf("terminal reconciliation lost output, exit or retention: %+v", view)
+	}
+	o.Release()
+	o.Reconcile("cannot revive released evidence")
+	if !o.View().Released || len(o.View().Lines) != 0 {
+		t.Fatal("reconciliation revived released output")
+	}
 	empty := r.New()
 	empty.Write("discard")
 	empty.Finish(new(""), nil)
