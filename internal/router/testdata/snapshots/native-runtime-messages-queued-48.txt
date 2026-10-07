@@ -1,0 +1,36 @@
+┌ 1 Main ──────────────────────────────────────┐
+│● review                             12:00:00 │
+││ • Review implementation · running           │
+│                                              │
+│• Native Bash job · running                   │
+│                                              │
+│← You via Mekugi                     12:00:00 │
+││ Please review the implementation.           │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│╭─ Ready · Native child message queued · /… ─╮│
+││ ❯                                          ││
+│╰──────────────────────────── claude-sonnet ─╯│
+└──────────────────────────────────────────────┘
+─ 4 Agents · 3 · 1 working ─────────────────────
+ ● main  idle
+ ◐ ├ review  running
+ ● └ saved-chi…  saved
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4

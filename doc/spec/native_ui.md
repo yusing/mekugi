@@ -73,7 +73,17 @@ buffers. Complete paths and operands are required; partial content is marked as
 an incoming prefix, never removal of an unseen suffix. Full arguments remain
 provisional until a native tool result, and result arrival still does not make a
 saved capture. Preview filesystem reads use the existing bounded reader. Bash
-edit previews and direct user-to-agent messaging remain unavailable. Saved change evidence,
+edit previews remain unavailable. Claude `/to <agent> <message>` uses the shared
+composer and agent-argument autocomplete with the official invocation-local native mod session.send carrier.
+Tab or Enter inserts a roster target; submitting a complete command sends its
+plain-text message to that child without changing Main input or roster filters.
+A failed send retains the draft. Images and file-picker attachments are rejected
+with an explicit notice rather than dropped. The native live roster or saved
+transcript metadata must establish the recipient as a child of the current session. Delivery
+means queued, not read or completed. The native engine records plugin provenance,
+continues the same child context and keeps its permission policy. Saved source-child
+rows inherited by a fork do not authorize writes to that source conversation.
+The mod API does not expose native terminal foreground selection. Saved change evidence,
 durable journals, native model/effort controls and task status/stop use the shared
 UI and their native adapters.
 
@@ -175,9 +185,13 @@ session-control PTY and live-model acceptance remain outstanding.
 Installed-native child-viewing PTY acceptance proves child text before settlement,
 keyboard and mouse roster filtering, Main isolation, shared live output dialogs,
 native model-tool SendMessage context retention and native child stop with
-exactly-once effects. It uses a local provider and does not establish direct user
-messaging, execution switching or fresh-process child viewing.
-Direct user-to-agent messaging/execution switching,
+exactly-once effects. The same PTY fixture proves `/to` target completion, busy-child
+direct queue delivery, directed shared Activity, retained native child context and
+unknown-target draft retention. Installed-native API acceptance adds completed-child
+continuation, fresh-parent resume, foreign/fork-source rejection and permission denial.
+These cases use a local provider without inference; fresh-process PTY child viewing
+and native terminal foreground switching remain unverified.
+Native terminal foreground switching,
 the user shell shortcut and full rich-preview continuity remain unfinished;
 this backend does not claim full Codex parity.
 

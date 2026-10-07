@@ -1,0 +1,36 @@
+┌ 1 Main ──────────────────────────────────────────────────┐┌ 5 Journal ───────────────────── space expand · d details ┐
+│● review                                         12:00:00 ││ No journal entries.                                      │
+││ • Review implementation · running                       ││                                                          │
+│                                                          ││                                                          │
+│• Native Bash job · running                               ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│› /root/review       reviewer Review implementation runni…││                                                          │
+│  /root/saved-child  saved                                ││                                                          │
+│                                                          ││                                                          │
+│  enter insert · esc close                                ││                                                          │
+│╭─ Ready ────────────────────────────────────────────────╮││                                                          │
+││ ❯ /to                                                  │││                                                          │
+│╰──────────────────────────────────────── claude-sonnet ─╯││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+─ 4 Agents · 3 · 1 working ─────────────────────────────────────────────────────────────────────────────────────────────
+ ● main  idle
+ ◐ ├ review  running
+ ● └ saved-child  saved
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents¹   ^B 1-5 panes

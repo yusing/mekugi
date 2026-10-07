@@ -86,7 +86,7 @@ func (u *appServerUI) refreshRuntimePicker() {
 		return
 	}
 	target := u.completionTarget()
-	if target.kind != '/' && target.kind != '@' || target == p.dismissed {
+	if target.kind != '/' && target.kind != '@' && target.kind != 't' || target == p.dismissed {
 		p.open = false
 		u.cancelPickerScan()
 		return
@@ -96,6 +96,11 @@ func (u *appServerUI) refreshRuntimePicker() {
 		p.resolved = composerTarget{}
 	}
 	p.open = true
+	if target.kind == 't' {
+		u.cancelPickerScan()
+		u.runtimeAgentChoices(target.query)
+		return
+	}
 	if target.kind == '/' {
 		u.cancelPickerScan()
 		u.runtimeCommandChoices(target.query)
@@ -140,6 +145,9 @@ func (u *appServerUI) runtimeCommandChoices(query string) {
 	}
 	if _, ok := u.runtime.client.(session.SideClient); ok {
 		choices["btw"] = composerChoice{name: "/btw", description: "Ask a side question without interrupting Main"}
+	}
+	if _, ok := u.runtime.client.(session.AgentMessageClient); ok {
+		choices["to"] = composerChoice{name: "/to", description: "Message a native child: <agent> <message>"}
 	}
 	if _, ok := u.runtime.client.(session.SessionChangeClient); ok {
 		choices["clear"] = composerChoice{name: "/clear", description: "Clear the transcript and start a new session"}

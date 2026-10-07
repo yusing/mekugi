@@ -93,7 +93,7 @@ func (u *appServerUI) submitCompact(queue bool) error {
 func (u *appServerUI) sessionBusy() bool {
 	if u.runtime != nil {
 		r := u.runtime
-		return r.busy || !r.ready || r.settings != nil || r.changeRequest != "" || r.resetRequest != "" || u.questionCount() != 0 || u.runtimeBackgroundWork()
+		return r.busy || !r.ready || r.settings != nil || r.changeRequest != "" || r.resetRequest != "" || r.message != nil || u.questionCount() != 0 || u.runtimeBackgroundWork()
 	}
 	return u.busy() || u.reset.active()
 }

@@ -27,6 +27,7 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		Failed      bool                   `json:"failed"`
 		Kind        string                 `json:"kind"`
 		SessionID   string                 `json:"sessionID"`
+		AgentID     string                 `json:"agentID"`
 		Title       string                 `json:"title"`
 		Cwd         string                 `json:"cwd"`
 		Sessions    []session.SavedSession `json:"sessions"`
@@ -36,6 +37,7 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		Text        string                 `json:"text"`
 		Description string                 `json:"description"`
 		Caller      string                 `json:"caller"`
+		Callers     []string               `json:"callers"`
 		TaskID      string                 `json:"taskID"`
 		OutputFile  string                 `json:"outputFile"`
 		Truncated   bool                   `json:"truncated"`
@@ -117,6 +119,10 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		return []session.Event{{Kind: frame.Kind, Change: &session.SessionChange{ID: frame.ID, SessionID: frame.SessionID, Title: frame.Title, Cwd: frame.Cwd}, Failed: frame.Failed, Text: frame.Text}}, nil
 	case "task_control":
 		return []session.Event{{Kind: "task_control", ID: frame.ID, Failed: frame.Failed, Text: frame.Text}}, nil
+	case "agent_message":
+		return []session.Event{{Kind: frame.Kind, AgentMessage: &session.AgentMessage{ID: frame.ID, SessionID: frame.SessionID, AgentID: frame.AgentID, Text: frame.Text}, Failed: frame.Failed}}, nil
+	case "saved_agent":
+		return []session.Event{{Kind: "task", Historical: true, Callers: frame.Callers, Task: &session.Task{ID: frame.ID, Kind: "local_agent", Status: "saved"}}}, nil
 	case "reset":
 		if frame.Failed || frame.ID == "" || frame.SessionID == "" {
 			return nil, fmt.Errorf("validated native reset identity unavailable")

@@ -239,7 +239,14 @@ charges; these views do not make token-count requests or show router traffic.
 Main and native child agents appear in the shared Agents roster. Child conversation
 text is forwarded into the shared Activity pane while native work continues.
 Ctrl-B 4 focuses Agents; j/k select a child and `a` toggles its Activity filter.
-Roster selection changes the view; composer input still goes to Main.
+Roster selection changes the view; ordinary composer input still goes to Main.
+Use `/to <agent> <message>` to send a plain-text message directly to a child.
+Type `/to ` to autocomplete roster targets, then Tab or Enter to insert one.
+You can use its native ID or `/root/ID`. Busy children queue the message; finished
+children continue their saved native context. Delivery confirmation means queued,
+not completed. Claude records the sender as the invocation-local Mekugi message
+plugin. Native permission decisions still apply. Failed sends keep the draft;
+images and file-picker attachments need an ordinary Main or side-question input.
 Background Bash jobs stay in the conversation as task progress, not extra agents.
 Select a live child in Agents and press `x` to request its native stop; only a terminal runtime
 event settles its row. Root-turn completion does not complete background tasks.
@@ -341,7 +348,7 @@ packet in full. Overflow or missing evidence leaves the native summary intact,
 reports unavailable recovery facts, and still supplies current workflow guidance.
 The utility and journal integration is invocation-local.
 
-Bash edit previews, direct user-to-agent messaging/execution switching, the user shell
+Bash edit previews, native terminal foreground switching, the user shell
 shortcut and full rich-preview continuity remain unfinished. Command
 segments and session controls do not imply full shared-controller parity.
 Commands advertised by the SDK are forwarded natively;

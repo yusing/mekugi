@@ -13,6 +13,7 @@ import { taskOutput } from './task_output.js';
 import {sessionPage} from './session_controls.js';
 import {sessionHistory, type HistorySelection} from './session_history.js';
 import {SideQueries} from './side_query.js';
+import {AgentMessages, type AgentMessage} from './agent_messages.js';
 
 const limit = 8 * 1024 * 1024;
 const config = JSON.parse(process.argv[2]) as {cwd: string; executable: string; resume?: string; forkSession?: boolean; model?: string; companionFD?: number};
@@ -42,6 +43,8 @@ let forkHistory: {source: string; children: HistorySelection[]} | undefined;
 let effort: SettingsCommand | undefined;
 let background = new Set<string>();
 let running!: Query;
+let agents: AgentMessages | undefined;
+let pendingAgentMessages = 0;
 let pump = Promise.resolve();
 let stopped!: () => void;
 const closed = new Promise<void>(resolve => { stopped = resolve; });
@@ -62,7 +65,8 @@ async function* messages(generation: number): AsyncGenerator<SDKUserMessage> {
   }
 }
 let observer: ReturnType<typeof companion> | undefined;
-function createQuery(fresh?: {session: string; context: string}): Query {
+async function createQuery(fresh?: {session: string; context: string}): Promise<Query> {
+  agents = await AgentMessages.create();
   const guidance = endpoint ? companionGuidance(endpoint) : '';
   const frontendChunks = endpoint ? companionFrontendGuidance(endpoint) : [];
   const frontends = frontendChunks.join('');
@@ -84,7 +88,7 @@ function createQuery(fresh?: {session: string; context: string}): Query {
   ...(model ? {model} : {}),
   abortController,
   ...(observer ? {hooks: fresh ? {...observer.hooks, UserPromptSubmit: []} : observer.hooks} : {}),
-  ...(endpoint?.plugin ? {plugins: [{type: 'local' as const, path: endpoint.plugin}]} : {}),
+  plugins: [ ...(endpoint?.plugin ? [{type: 'local' as const, path: endpoint.plugin}] : []), {type: 'local', path: agents.plugin}],
   ...(endpoint?.frontendDirectory || endpoint?.bashEnv ? {env: {...process.env,
     ...(endpoint.frontendDirectory ? {PATH: `${endpoint.frontendDirectory}:${process.env.PATH ?? ''}`} : {}),
     ...(endpoint.bashEnv ? {BASH_ENV: endpoint.bashEnv} : {})}} : {}),
@@ -113,6 +117,7 @@ function createQuery(fresh?: {session: string; context: string}): Query {
 
 async function watch(query: Query): Promise<void> {
   const queryObserver = observer;
+  const queryAgents = agents;
   const output = taskOutput(query, emit, text => emit({kind: 'notice', text}));
   try {
     for await (const event of query) {
@@ -142,11 +147,11 @@ async function watch(query: Query): Promise<void> {
     if (!stopping && !replacing) throw new Error('Native query ended unexpectedly');
   } catch (error) {
     if (!stopping && !replacing) { await emit({kind: 'error', text: String(error)}); stop(); }
-  } finally {output.close();}
+  } finally {output.close(); await queryAgents?.close();}
 }
 
 async function reset(id: string): Promise<void> {
-  if (!endpoint || pendingTurns || inputs.length || permissions.size || background.size || replacing || pendingReset) {
+  if (!endpoint || pendingTurns || inputs.length || permissions.size || background.size || pendingAgentMessages || replacing || pendingReset) {
     await emit({kind: 'reset_ready', id, failed: true, text: 'Journal reset requires an idle query with no queued input, permissions or background tasks'});
     return;
   }
@@ -172,7 +177,7 @@ async function reset(id: string): Promise<void> {
     if (stopping || resetCancelled) throw new Error('Journal reset cancelled before new query initialization; resume manually');
     pendingReset = {id, session};
     activeSession = session;
-    running = createQuery({session, context: packet.text});
+    running = await createQuery({session, context: packet.text});
     pump = watch(running);
     await running.supportedCommands();
     if (effort) {
@@ -192,7 +197,7 @@ async function reset(id: string): Promise<void> {
 }
 
 async function changeSession(id: string, target?: string, workspaceHint?: string): Promise<void> {
-  if (pendingTurns || inputs.length || permissions.size || background.size || replacing || pendingReset) {
+  if (pendingTurns || inputs.length || permissions.size || background.size || pendingAgentMessages || replacing || pendingReset) {
     await emit({kind: 'session_ready', id, failed: true, text: 'Session switching requires idle native work and no queued input, permissions or background tasks'});
     return;
   }
@@ -202,7 +207,7 @@ async function changeSession(id: string, target?: string, workspaceHint?: string
   try {
     const info = target ? await resumeInfo(target, workspaceHint) : undefined;
     const workspace = info?.cwd ?? cwd;
-    const history = target ? await sessionHistory(target, workspace, endpoint) : {messages: [], notices: []};
+    const history = target ? await sessionHistory(target, workspace, endpoint) : {messages: [], notices: [], agents: []};
     const next = target ?? randomUUID();
     const source = {runtime: 'claude', workspace: cwd, session: activeSession};
     const binding = {...source, workspace, session: next};
@@ -223,8 +228,9 @@ async function changeSession(id: string, target?: string, workspaceHint?: string
     resume = target;
     forkSession = false;
     activeSession = next;
-    running = createQuery(target ? undefined : {session: next, context: ''});
+    running = await createQuery(target ? undefined : {session: next, context: ''});
     await emit({kind: 'session_change', id, sessionID: target ?? '', cwd, title: info?.customTitle ?? info?.summary ?? ''});
+    for (const agent of history.agents) await emit({kind: 'saved_agent', ...agent});
     for (const message of history.messages) await emit({kind: 'history', event: message});
     for (const text of history.notices) await emit({kind: 'notice', text});
     pump = watch(running);
@@ -274,8 +280,17 @@ const lines = createInterface({input: process.stdin, crlfDelay: Infinity});
 lines.on('line', (line: string) => {
   if (Buffer.byteLength(line) > limit) { stop(); return; }
   try {
-    const command = JSON.parse(line) as {kind: string; text?: string; content?: SDKUserMessage['message']['content']; id?: string; allow?: boolean; answers?: Record<string, string>; sessionID?: string; title?: string; cwd?: string; cursor?: string; limit?: number};
+    const command = JSON.parse(line) as {kind: string; text?: string; content?: SDKUserMessage['message']['content']; id?: string; agentID?: string; allow?: boolean; answers?: Record<string, string>; sessionID?: string; title?: string; cwd?: string; cursor?: string; limit?: number};
     switch (command.kind) {
+      case 'agent_message': {
+        const message: AgentMessage = {id: command.id ?? '', sessionID: command.sessionID ?? '', agentID: command.agentID ?? '', text: command.text ?? ''};
+        if (replacing || !agents) {void emit({...message, kind: 'agent_message', failed: true, text: 'Native session is not ready'}).catch(stop); break;}
+        pendingAgentMessages++;
+        void agents.send(message, cwd, activeSession)
+          .catch(error => ({...message, kind: 'agent_message' as const, failed: true, text: String(error)}))
+          .then(emit).catch(stop).finally(() => {pendingAgentMessages--;});
+        break;
+      }
       case 'side_input':
         controls = controls.then(async () => {
           if (replacing || !activeSession || command.sessionID !== activeSession) {
@@ -379,12 +394,13 @@ try {
     }
     const history = await sessionHistory(config.resume, cwd, endpoint);
     if (config.forkSession) forkHistory = {source: config.resume, children: history.children};
+    for (const agent of history.agents) await emit({kind: 'saved_agent', ...agent});
     for (const message of history.messages) {
       await emit({kind: 'history', event: message});
     }
     for (const text of history.notices) await emit({kind: 'notice', text});
   }
-  running = createQuery();
+  running = await createQuery();
   pump = watch(running);
   const commands = await running.supportedCommands();
   const models = await running.supportedModels().catch(async error => {
@@ -399,5 +415,6 @@ try {
   stop();
   await sides.closeAll();
   running?.close();
+  await agents?.close();
   lines.close();
 }

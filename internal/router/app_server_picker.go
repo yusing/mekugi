@@ -82,6 +82,9 @@ type composerPicker struct {
 }
 
 func (u *appServerUI) completionTarget() composerTarget {
+	if target := u.runtimeAgentTarget(); target.kind != 0 {
+		return target
+	}
 	if u.shellMode() {
 		return composerTarget{}
 	}

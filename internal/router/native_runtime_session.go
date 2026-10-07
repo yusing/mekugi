@@ -37,6 +37,9 @@ type nativeRuntimeSession struct {
 	usagePanel        *appServerStatusReport
 	tasks             map[string]session.Task
 	taskOrder         []string
+	taskCallers       map[string]string
+	message           *session.AgentMessage
+	messageDraft      composerDraft
 	stoppingTasks     map[string]bool
 	turn              string
 	continuation      *journalResetIntent
@@ -217,6 +220,9 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 	switch key {
 	case '\r', '\t':
 		text := u.draft
+		if u.runtimeMessageCommand(text) {
+			return true, false, nil
+		}
 		if handled, err := u.controlsCommand(strings.TrimSpace(text)); handled {
 			return true, false, err
 		}
@@ -387,6 +393,8 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		}
 	case "task":
 		u.runtimeTask(e)
+	case "agent_message":
+		u.runtimeMessageReceipt(e)
 	case "command_output":
 		u.runtimeCommandOutput(e)
 	case "task_control":
@@ -544,7 +552,7 @@ func (u *appServerUI) runtimeEntry(e session.Event) {
 				entry.Agent = runtimeTaskLane(strings.TrimPrefix(e.Caller, "task/"))
 			}
 			for _, id := range u.runtime.taskOrder {
-				if task := u.runtime.tasks[id]; task.ToolID == e.Caller {
+				if task := u.runtime.tasks[id]; task.ToolID == e.Caller || u.runtime.taskCallers[e.Caller] == id {
 					if task.Kind == "local_bash" {
 						entry.Agent = "Main"
 					} else {

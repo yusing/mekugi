@@ -191,6 +191,9 @@ func (c *Client) SetSettings(ctx context.Context, s session.Settings) error {
 func (c *Client) StopTask(ctx context.Context, id string) error {
 	return c.send(ctx, map[string]string{"kind": "stop_task", "id": id})
 }
+func (c *Client) SendAgentMessage(ctx context.Context, message session.AgentMessage) error {
+	return c.send(ctx, map[string]string{"kind": "agent_message", "id": message.ID, "sessionID": message.SessionID, "agentID": message.AgentID, "text": message.Text})
+}
 func (c *Client) Reset(ctx context.Context, id string) error {
 	return c.send(ctx, map[string]string{"kind": "reset", "id": id})
 }

@@ -2,16 +2,18 @@ import {getSessionMessages, getSubagentMessages, listSubagents, type SessionMess
 import {companionRequest, type CompanionConfig} from './companion_transport.js';
 
 export interface HistorySelection {sessionID: string; agentID: string; messageIDs: string[]}
+export interface SavedAgent {id: string; callers: string[]}
 
 // Native transcripts select completed display rows. Child reads do not create
 // tasks, bind agents, or supply execution authority to historical callers.
-export async function sessionHistory(sessionID: string, cwd: string, endpoint?: CompanionConfig): Promise<{messages: SessionMessage[]; notices: string[]; children: HistorySelection[]}> {
+export async function sessionHistory(sessionID: string, cwd: string, endpoint?: CompanionConfig): Promise<{messages: SessionMessage[]; notices: string[]; children: HistorySelection[]; agents: SavedAgent[]}> {
   const root = await getSessionMessages(sessionID, {dir: cwd, limit: 2001});
   if (!root.length) throw new Error('Native resume history is unavailable');
   const messages = root.slice(0, 2000);
   const notices: string[] = [];
   let limited = root.length > 2000;
   const selected: HistorySelection[] = [];
+  const agents: SavedAgent[] = [];
   let inherited: HistorySelection[] = [];
   if (endpoint) {
     try {
@@ -38,6 +40,7 @@ export async function sessionHistory(sessionID: string, cwd: string, endpoint?: 
       const eligible = allowed ? history.filter(message => allowed.has(message.uuid)) : history;
       const shown = eligible.slice(0, remaining);
       messages.push(...shown);
+      if (shown.length) agents.push({id: child.agentID, callers: [...new Set(shown.map(message => message.parent_tool_use_id).filter((caller): caller is string => Boolean(caller)))]});
       if (shown.length) selected.push({sessionID: child.sessionID, agentID: child.agentID, messageIDs: shown.map(message => message.uuid)});
       if (allowed && eligible.length !== allowed.size) notices.push(`Saved native child history ${child.agentID} is incomplete`);
       limited ||= eligible.length > remaining;
@@ -46,5 +49,5 @@ export async function sessionHistory(sessionID: string, cwd: string, endpoint?: 
     }
   }
   if (limited) notices.push('Transcript display limited to 2000 messages and 128 children; native resume retains its own context');
-  return {messages, notices, children: selected};
+  return {messages, notices, children: selected, agents};
 }

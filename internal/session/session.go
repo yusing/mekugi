@@ -5,29 +5,31 @@ package session
 import "context"
 
 type Event struct {
-	CommandInfo []Command
-	Kind        string
-	ID          string
-	Role        string
-	Text        string
-	SessionID   string
-	Cwd         string
-	Model       string
-	Failed      bool
-	Prompt      *Prompt
-	Edit        *Edit
-	Historical  bool
-	Caller      string
-	Models      []Model
-	Settings    *Settings
-	Usage       *Usage
-	Limit       *RateLimit
-	Task        *Task
-	Output      *CommandOutput
-	Title       *SessionTitle
-	Sessions    *SessionPage
-	Change      *SessionChange
-	SideID      string
+	CommandInfo  []Command
+	Kind         string
+	ID           string
+	Role         string
+	Text         string
+	SessionID    string
+	Cwd          string
+	Model        string
+	Failed       bool
+	Prompt       *Prompt
+	Edit         *Edit
+	Historical   bool
+	Caller       string
+	Callers      []string
+	Models       []Model
+	Settings     *Settings
+	Usage        *Usage
+	Limit        *RateLimit
+	Task         *Task
+	Output       *CommandOutput
+	Title        *SessionTitle
+	Sessions     *SessionPage
+	Change       *SessionChange
+	SideID       string
+	AgentMessage *AgentMessage
 }
 
 type SavedSession struct {
@@ -95,6 +97,13 @@ type Task struct {
 }
 type TaskClient interface {
 	StopTask(context.Context, string) error
+}
+
+// AgentID is checked by the native runtime against its own session metadata.
+// A successful receipt confirms queue delivery, not child completion.
+type AgentMessage struct{ ID, SessionID, AgentID, Text string }
+type AgentMessageClient interface {
+	SendAgentMessage(context.Context, AgentMessage) error
 }
 
 // Reset prepares a fresh native query. reset_ready is not durable completion:

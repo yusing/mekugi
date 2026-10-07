@@ -50,14 +50,16 @@ func TestNativeRuntimeAgentsClaudePTY(t *testing.T) {
 	const root = "AGENTS_ROOT_CEDAR"
 	const child = "AGENTS_CHILD_CONTEXT_BIRCH"
 	const follow = "AGENTS_FOLLOW_MAPLE"
+	const direct = "AGENTS_DIRECT_WILLOW"
+	const directed = "CHILD_ORIGINAL_CONTEXT_DIRECT"
 	const initial = "CHILD_PUBLIC_BEFORE_SETTLEMENT"
 	const followed = "CHILD_ORIGINAL_CONTEXT_FOLLOWUP"
 	const main = "MAIN_IS_NOT_CHILD_TEXT"
 	command := "printf 'once\\n' >> child-effects.txt; printf 'CHILD_BASH_LIVE\\n'; while [ ! -f child-release.gate ]; do sleep 0.05; done"
 	var mu sync.Mutex
 	var events []session.Event
-	requests, childRequests := 0, 0
-	var followPacket string
+	requests, childRequests, mainRequests := 0, 0, 0
+	var followPacket, directPacket string
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/messages" {
 			w.WriteHeader(401)
@@ -88,6 +90,10 @@ func TestNativeRuntimeAgentsClaudePTY(t *testing.T) {
 		if len(tools) > 0 {
 			switch {
 			case strings.Contains(text, root):
+				mainRequests++
+				if strings.Contains(text, direct) || strings.Contains(text, "Keep_unknown_draft") {
+					t.Error("direct child command steered Main's provider context")
+				}
 				if strings.Contains(text, follow) && !strings.Contains(text, "agents-message") {
 					tool("agents-message", "SendMessage", map[string]any{"to": nativeAgentsTaskID(events), "summary": "Continue original child", "message": follow})
 				} else if !strings.Contains(text, "agents-spawn") {
@@ -103,6 +109,9 @@ func TestNativeRuntimeAgentsClaudePTY(t *testing.T) {
 					} else {
 						content = []any{map[string]any{"type": "text", "text": "CHILD_FOLLOW_SETTLED"}}
 					}
+				} else if strings.Contains(text, direct) {
+					directPacket = text
+					content = []any{map[string]any{"type": "text", "text": directed}}
 				} else if childRequests == 1 {
 					tool("agents-child-bash", "Bash", map[string]any{"command": command, "description": "Child gated effect"})
 					content = append([]any{map[string]any{"type": "text", "text": initial}}, content...)
@@ -249,13 +258,57 @@ func TestNativeRuntimeAgentsClaudePTY(t *testing.T) {
 	await("mouse child filter", func(s string) bool {
 		return strings.Contains(nativeAgentsActivity(s), initial) && !strings.Contains(nativeAgentsActivity(s), main)
 	})
-	// Model-tool SendMessage is the supported native follow-up path.
+	// Direct composer controls deliver to the busy native child without a Main
+	// prompt. Completion inserts the roster's original native identity.
 	terminal.keys("\x02" + "1")
-	terminal.paste(follow)
-	await("native model-tool message receipt", func(s string) bool { return strings.Contains(s, "Ready") && strings.Contains(s, "SendMessage") })
+	mu.Lock()
+	beforeDirect := mainRequests
+	mu.Unlock()
+	terminal.keys("/to\t")
+	await("native child target completion", func(s string) bool {
+		return strings.Contains(s, "/root/"+childTask) && strings.Contains(s, "/to ")
+	})
+	t.Logf("direct target completion frame:\n%s", terminal.screen.String())
+	terminal.keys("\t")
+	await("native child target inserted", func(s string) bool { return strings.Contains(s, "/to /root/"+childTask+" ") })
+	terminal.keys(direct + "\r")
+	await("busy child direct queue receipt", func(s string) bool {
+		return strings.Contains(s, "Native child message queued") && strings.Contains(s, "Ready") && strings.Contains(s, "running")
+	})
+	t.Logf("busy direct delivery frame:\n%s", terminal.screen.String())
+	mu.Lock()
+	if mainRequests != beforeDirect || directPacket != "" {
+		t.Errorf("queued busy-child message steered Main or passed the Bash gate: main=%d want=%d child=%q", mainRequests, beforeDirect, directPacket)
+	}
+	mu.Unlock()
+	terminal.keys("\x02" + "4")
+	await("directed child Activity receipt", func(s string) bool {
+		return strings.Contains(s, "Activity · "+childTask) && strings.Contains(nativeAgentsActivity(s), "You via Mekugi") && strings.Contains(nativeAgentsActivity(s), direct)
+	})
 	if err := os.WriteFile(filepath.Join(binding.Workspace, "child-release.gate"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
+	await("same child direct continuation", func(s string) bool {
+		return strings.Contains(s, "Activity · "+childTask) && strings.Contains(nativeAgentsActivity(s), directed)
+	})
+	t.Logf("direct child continuation frame:\n%s", terminal.screen.String())
+	mu.Lock()
+	directContext := strings.Contains(directPacket, child) && strings.Contains(directPacket, initial) && strings.Contains(directPacket, "agents-child-bash")
+	if !directContext {
+		t.Error("direct continuation lost original child context")
+	}
+	mu.Unlock()
+	terminal.keys("\x02" + "1")
+	const rejectedDraft = "/to missing-native-child Keep_unknown_draft"
+	terminal.paste(rejectedDraft)
+	await("unknown native target draft retained", func(s string) bool {
+		return strings.Contains(s, "Native child message unavailable") && strings.Contains(s, "/to missing-native-child Keep_unknown_draft")
+	})
+	t.Logf("rejected target draft frame:\n%s", terminal.screen.String())
+	// Clear only the failed draft, then retain ordinary Main/model-tool delivery.
+	terminal.keys(strings.Repeat("\x7f", len(rejectedDraft)))
+	terminal.paste(follow)
+	await("native model-tool message receipt", func(s string) bool { return strings.Contains(s, "Ready") && strings.Contains(s, "SendMessage") })
 	terminal.keys("\x02" + "4")
 	await("same child follow-up text", func(s string) bool {
 		return strings.Contains(s, "Activity · "+childTask) && strings.Contains(nativeAgentsActivity(s), followed) && strings.Contains(s, "Child follow-up gated stop")
@@ -263,7 +316,7 @@ func TestNativeRuntimeAgentsClaudePTY(t *testing.T) {
 	terminal.keys("x")
 	await("native child stop receipt", func(s string) bool { return strings.Contains(s, "stopped") || strings.Contains(s, "killed") })
 	mu.Lock()
-	settled, followText := false, false
+	settled, followText, directText := false, false, false
 	terminalStatus := ""
 	for _, e := range events {
 		if e.Kind == "task" && e.Task != nil && e.Task.ID == childTask && (e.Task.Status == "stopped" || e.Task.Status == "killed") {
@@ -272,6 +325,9 @@ func TestNativeRuntimeAgentsClaudePTY(t *testing.T) {
 		}
 		if e.Kind == "message" && e.Caller == "agents-spawn" && strings.Contains(e.Text, followed) {
 			followText = true
+		}
+		if e.Kind == "message" && e.Caller == "agents-spawn" && strings.Contains(e.Text, directed) {
+			directText = true
 		}
 	}
 	contextSeen := strings.Contains(followPacket, child) && strings.Contains(followPacket, initial) && strings.Contains(followPacket, "agents-child-bash")
@@ -282,11 +338,14 @@ func TestNativeRuntimeAgentsClaudePTY(t *testing.T) {
 	if !contextSeen || !followText {
 		t.Fatal("native SendMessage did not preserve original child context")
 	}
+	if !directText {
+		t.Fatal("direct child response lost original native caller identity")
+	}
 	effect, err := os.ReadFile(filepath.Join(binding.Workspace, "child-effects.txt"))
 	if err != nil || string(effect) != "once\n" {
 		t.Fatalf("child effect: %q %v", effect, err)
 	}
-	t.Logf("native child=%s caller=agents-spawn status=%s; initial/follow-up text, original context and exactly-once Bash effect verified", childTask, terminalStatus)
+	t.Logf("native child=%s caller=agents-spawn status=%s; direct autocomplete/queue/context, rejected draft, model-tool follow-up and exactly-once Bash effect verified", childTask, terminalStatus)
 }
 
 func nativeAgentsTaskID(events []session.Event) string {

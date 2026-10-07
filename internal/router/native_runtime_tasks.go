@@ -9,7 +9,7 @@ import (
 
 func runtimeTaskLane(id string) string { return "/root/" + id }
 func runtimeTaskTerminal(status string) bool {
-	return status == "completed" || status == "failed" || status == "stopped" || status == "killed"
+	return status == "completed" || status == "failed" || status == "stopped" || status == "killed" || status == "saved"
 }
 
 // Task IDs are native presentation identities, not invented agent principals.
@@ -30,6 +30,11 @@ func (u *appServerUI) runtimeTask(e session.Event) {
 			if retired < 0 {
 				u.setNotice("Native task display limit reached", false)
 				return
+			}
+			for caller, id := range r.taskCallers {
+				if id == r.taskOrder[retired] {
+					delete(r.taskCallers, caller)
+				}
 			}
 			delete(r.tasks, r.taskOrder[retired])
 			r.taskOrder = slices.Delete(r.taskOrder, retired, retired+1)
@@ -59,10 +64,20 @@ func (u *appServerUI) runtimeTask(e session.Event) {
 		t.Status = old.Status
 	}
 	r.tasks[t.ID] = t
+	if t.Kind != "local_bash" {
+		if r.taskCallers == nil {
+			r.taskCallers = make(map[string]string)
+		}
+		for _, caller := range append(slices.Clone(e.Callers), t.ToolID) {
+			if caller != "" {
+				r.taskCallers[caller] = t.ID
+			}
+		}
+	}
 	if t.Kind == "local_bash" && runtimeTaskTerminal(t.Status) {
 		u.runtimeFinishCommand(t.ToolID, t.Status == "failed")
 	}
-	if !t.Ambient {
+	if !t.Ambient && !e.Historical {
 		caller := "task/" + t.ID
 		if t.Kind == "local_bash" {
 			caller = ""

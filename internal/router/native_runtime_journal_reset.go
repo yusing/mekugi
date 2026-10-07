@@ -98,7 +98,7 @@ func (u *appServerUI) runtimeBackgroundWork() bool {
 func (u *appServerUI) requestRuntimeReset() error {
 	r := u.runtime
 	client, ok := r.client.(session.ResetClient)
-	if !ok || r.busy || !r.ready || r.resetRequest != "" || r.settings != nil || u.questionCount() != 0 || u.runtimeBackgroundWork() {
+	if !ok || r.busy || !r.ready || r.resetRequest != "" || r.settings != nil || r.message != nil || u.questionCount() != 0 || u.runtimeBackgroundWork() {
 		return errors.New("reset waits for idle native work, permissions and settings")
 	}
 	id := "native-reset-" + rand.Text()
