@@ -50,7 +50,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			if !bytes.Equal(original, request.fields["input"]) {
 				t.Fatal("stock host evidence changed")
 			}
-			full := "Code Mode script failed: " + detail
+			full := "exec script failed: " + detail
 			if len(view.entries) != 1 || view.entries[0].ErrorDetail != full || view.entries[0].Text != activityui.ErrorPreview(full) {
 				t.Fatal("full evidence or bounded preview lost, or repeated failure duplicated")
 			}
@@ -122,7 +122,7 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 				restoreContentReply(t, u, 2, map[string]any{"thread": map[string]any{"id": "child", "turns": []any{map[string]any{"id": "t", "status": "failed", "items": []any{}}}}})
 				view = u.agents
 			}
-			full := "Code Mode script failed: " + detail
+			full := "exec script failed: " + detail
 			index := slices.IndexFunc(view.entries, func(e liveActivityRecord) bool { return e.Kind == "error" && e.CallID == "rejected" })
 			if index < 0 || view.entries[index].ErrorDetail != full || view.entries[index].Text != activityui.ErrorPreview(full) {
 				t.Fatal("restoration clipped the full host error")
@@ -235,6 +235,6 @@ func TestUISnapshotErrorDetailsConversation(t *testing.T) {
 	view.conversation = true
 	view.clock = func() time.Time { return time.Date(2026, 10, 2, 12, 40, 21, 0, time.Local) }
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "error", Observed: view.now(),
-		Text: "Code Mode script failed", ErrorDetail: "Code Mode script failed: exec_command failed: CreateProcess { message: Rejected(\"" + strings.Repeat("escaped command ", 30) + "\") }\nrejected: forced cleanup is not permitted"}}})
+		Text: "exec script failed", ErrorDetail: "exec script failed: exec_command failed: CreateProcess { message: Rejected(\"" + strings.Repeat("escaped command ", 30) + "\") }\nrejected: forced cleanup is not permitted"}}})
 	assertNativeUISnapshot(t, "error-details-conversation", view.renderFeed(80, 20).lines)
 }

@@ -478,7 +478,7 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 		if i == 1 {
 			input = "next"
 		}
-		socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": []any{map[string]string{"role": "user", "content": input}}, "previous_response_id": parent, "tools": testNativeResponsesTools(), "client_metadata": turnMetadata})
+		socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": []any{map[string]string{"role": "user", "content": input}}, "previous_response_id": parent, "tools": testExecResponsesTools(), "client_metadata": turnMetadata})
 		if got := socketRead(t, ctx, conn); jsonString(got, "type") != "response.completed" {
 			t.Fatalf("turn produced a warning: %s", mustMarshalJSON(got))
 		}

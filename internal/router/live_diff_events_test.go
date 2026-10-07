@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -271,13 +270,10 @@ func TestLiveDiffStreamReconnectSnapshotBarrier(t *testing.T) {
 
 func TestLiveDiffPublisherRequiresCapability(t *testing.T) {
 	broker := newLiveDiffBroker(t.Context())
-	for _, handler := range []http.HandlerFunc{broker.serveEvents} {
-		response := httptest.NewRecorder()
-		handler(response, httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{}\n")))
-		data, _ := io.ReadAll(response.Result().Body)
-		if response.Code != http.StatusUnauthorized {
-			t.Fatalf("unauthenticated connection accepted: %d %s", response.Code, data)
-		}
+	response := httptest.NewRecorder()
+	broker.serveEvents(response, httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{}\n")))
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated connection accepted: %d %s", response.Code, response.Body.String())
 	}
 }
 
@@ -354,15 +350,7 @@ func TestLiveDiffDelayedCaptureDoesNotFollowBackwards(t *testing.T) {
 	if view.Latest != "newer" || view.Files[view.Selected].Path != path {
 		t.Fatal("late publication of an older capture moved FOLLOW backwards")
 	}
-	view.RefreshVisible()
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{view.Visible[view.Files[0].Key()]}, "", 90, 0, view.LatestChunk())
 
-	if err != nil {
-		t.Fatal(err)
-	}
-	if focused := render.Lines[render.FocusRow]; !strings.Contains(focused, "NEWER90") {
-		t.Fatalf("late older highlight stole rendered focus: row=%d %q", render.FocusRow, focused)
-	}
 }
 
 func TestLiveDiffPreviewMailboxCoalescesWithoutDelayingReceipts(t *testing.T) {

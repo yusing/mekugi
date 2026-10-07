@@ -8,21 +8,25 @@ It does not detect stock prompt shapes, replace editing sections, select model-s
 inspect `model_instructions_file`, or create or modify instruction files. It does not restore the
 retired shell carrier, HPATCH, hash-target editing, or CTP instructions.
 
-Exact inherited stock fragments that conflict with the current journal, planning, or wait
-workflow are rewritten in top-level instructions and developer text parts. Unrelated policy,
+Exact inherited stock progress conflicts are deleted, and the pinned wait conflict is
+rewritten in top-level instructions and developer text parts. Pinned stock paragraphs lose
+their commentary directives while retaining permission and task-steering policy. The exact
+stock explicit-request-only delegation restriction and complete stock uninstalled-plugin
+advertisements are removed; custom delegation and plugin policy remain intact. Unrelated policy,
 system messages, user content, non-text parts, and fenced examples remain unchanged. Rewriting is
 idempotent and model-independent. Execution-free requests retain their native guidance.
-Pinned planning fragments require decision completeness rather than a quota of questions;
-the pinned short-wait fragment yields to completion notifications or interruptible waits.
-These replacements match complete lines and preserve caller-added qualifications.
+The pinned short-wait fragment yields to completion notifications or interruptible waits.
+Stock line and paragraph matches preserve caller-added qualifications. Planning
+guidance is not rewritten: invocation-local Codex flags disable the plan tool and
+collaboration-mode instructions.
 
 Each executable helper's tool source owns its description. A template outside router produces a
 checked-in standalone Markdown file with XML-framed built-in frontends and named guidance used by
 router tools. Router embeds the generated file without keeping instruction prose in Go. Configured
 plugin descriptions come from the authenticated registry and are appended to the frontend section
 as XML-framed entries. That session frontend section is also written into the pinned registry
-snapshot and appended to the authoritative Code Mode
-`exec` description when it exposes `tools.exec_command`, or to native `exec_command`. It does not publish a second catalog or
+snapshot and appended to the authoritative `exec` description when it exposes
+`tools.exec_command`. It does not publish a second catalog or
 change stock tool names, schemas, inputs, results, or execution authority. Refresh replaces the
 marked section in place; malformed or duplicate markers reject before forwarding. The session guide
 combines the embedded generated built-in section with current pinned plugin descriptions, not a
@@ -31,38 +35,43 @@ model-specific prompt file or routing-session ID.
 The projected helper guidance explains when the tools reduce work, not just their syntax:
 structural outlines for navigation, semantic references for caller-impacting edits, bounded
 command windows and retained-output recovery, and explicit captured-change ranges for reviewers.
+It also notes that frontend commands support ordinary shell pipes.
 CLI help includes concrete invocation examples and consequential option interactions, including
 inclusive file ranges and line limits within those ranges. A smaller window is incomplete
 evidence, not coverage of the full requested range.
 Default token budgets are 6000 for file reads (`mcat`), 8000 for retained-output continuation
 (`mread`), and 4000 for symbol queries and structural outlines. Explicit token limits override
-these defaults up to 15500; line-only reads retain their existing no-token-limit behavior.
+these defaults up to 15500; `mcat -n` retains its default token ceiling.
 It preserves context reuse and batching of ready related edits without replacing the stock editor.
 Review handoffs include the requested scope and explicit IDs or same-agent inclusive ranges;
 the recipient's own change listing cannot discover another agent's IDs. Historical edit evidence
 does not assert the current workspace state or cover shell-generated changes.
 
 The journal owner supplies the additive durable-work guidance once per request: on the
-Code Mode `exec` or native `exec_command` in one marked Journal section. No dedicated
+`exec` in one marked Journal section. No dedicated
 `functions.journal` tool is exposed. Eligible
 structured tools receive the optional atomic `journal` mutation field.
-The shared description owns planning, task states, established facts and constraints,
-the complete Code Mode helper API (including read, required fields, stable paths and
-failures), batching, and Outcome-only natural completion. Work updates belong in
-the journal; requested answers and necessary questions remain conversational.
-Work completion is not an exception allowing a second validation or progress recap.
-It identifies `journal(...)` as a router-provided source helper outside `tools`
+Main guidance owns planning, task states, established facts, constraints and
+work-report completion. Subagent guidance is shorter: brief assignments need no
+task or plan, task titles describe outcomes rather than roles, and completion
+reports each result once. Both versions include the same JavaScript helper API
+(including read, required fields, stable paths and failures) and batching contract. Main work updates belong in the journal; requested answers
+and necessary questions remain conversational. Subagents record useful interim facts and may deliver their
+final report directly. A result already recorded in the journal is not repeated
+as a second completion report.
+The section identifies `journal(...)` as a router-provided source helper outside `tools`
 and `ALL_TOOLS`, and the generated `mjournal` invocation as internal transport rather than an
 agent-authored command. Projection preserves the caller's stock execution contracts. A
 previously marked section is refreshed in place. Duplicate, incomplete, or reversed markers
 reject before forwarding instead of creating ambiguous guidance.
 
-Journal projection is rebuilt from the current request's authenticated tool catalog. It does not
-depend on a routing-session ID, a live parent, an earlier prompt rewrite, or a particular model.
-Ordinary turns, forks, side threads, subagents, model switches, compaction continuations, and resumed
-threads therefore receive the same current guidance when they expose the applicable tool owner.
-Native tool requests receive the journal description and session-helper guidance on
-`exec_command`, without changing their other stock tools.
+Journal projection is rebuilt from the current request's authenticated tool catalog
+and Codex turn metadata. Subagent turns receive the shorter policy, including
+nested and unnamed subagents; other turns receive Main policy. Selection does not
+depend on a routing-session ID, a live parent, an earlier prompt rewrite, or a
+particular model. Ordinary turns, forks, side threads, model switches, compaction
+continuations and resumed threads receive current role-appropriate guidance when
+they expose the applicable tool owner.
 Execution-free and prewarm requests retain their existing lifecycle rules.
 
 Before provider forwarding, the router strips blocks enclosed by the exact HTML comments
@@ -98,25 +107,30 @@ Acceptance:
 1. Stock, custom, missing, null, top-level, and developer-carried base instructions are forwarded
    unchanged except for complete explicit omission blocks and exact inherited conflict fragments.
    Fenced examples and non-instruction content are not rewritten.
-2. Code Mode receives exactly one current marked Journal section and, when it exposes command
+2. `exec` receives exactly one current marked Journal section and, when it exposes command
    execution, one registry-derived frontend section in its authoritative `exec` description.
-   Native `exec_command` receives the frontend
-   section. Refresh is idempotent, malformed markers fail closed, and unrelated descriptions,
+   Refresh is idempotent, malformed markers fail closed, and unrelated descriptions,
    sibling tools, and stock execution contracts remain unchanged.
 3. The execution-tool journal section and optional mutation field expose enough guidance to record concise
    tasks and facts, read retained subtrees, and finish naturally with an answer.
-   Journal writing guidance requires ASD-STE100, a short clear title or first line,
+   Main journal writing guidance requires ASD-STE100, a short clear title or first line,
    supporting details in the body, and one topic per item. Separate topics use
    separate items; "and" can connect parts of one topic.
-   Work turns finish with `Done.` or only the usable deliverable, usage explanation
-   or needed decision beyond their separate work report, without another provider
-   request. Coordinator implementation-completion reports use that work-report channel,
-   not a second final recap. Requested explanations, review findings and actual
-   questions remain conversational. Guidance directs mutations
-   onto useful calls rather than standalone journal calls; Code Mode exposes only the exec-local helper for both read and mutations.
+   Main work turns use the finish marker in the final useful execution when host results
+   establish completion, without a follow-up `Done.` acknowledgment or another
+   provider request. A usable deliverable, usage explanation or needed decision
+   beyond the work report uses a natural final answer. Subagents may return a final
+   report without creating a journal task.
+   Short assignments omit plans, role-restating tasks and duplicate clean-review
+   results. When their final report is already in the journal, they use the finish
+   marker when host results establish completion. Requested explanations, review
+   findings and actual questions remain conversational. Guidance directs mutations
+   onto useful calls rather than standalone journal calls; `exec` exposes only the exec-local helper for both read and mutations.
 4. Ordinary, fork, side-thread, subagent, model-switch, compaction, and resume consumers derive
    guidance from their current tool catalog and authenticated registry rather than invisible ancestry
-   or live router state. Each helper has one description owner; the built-in section of the
+   or live router state. Prewarm and generating requests select the same role policy;
+   refresh replaces stale opposite-role policy without changing shared API types
+   or stock execution. Each helper has one description owner; the built-in section of the
    checked-in generated Markdown matches the built-in projection, and the session copy matches
    the complete projected frontend section.
 5. Omission filtering preserves unmatched markers and all bytes outside complete owned blocks.
@@ -126,8 +140,9 @@ Acceptance:
 
 ## REQ-GUIDE-002 — Native post-compaction recovery
 
-Main threads recover useful durable facts after compaction without a model-driven
-journal/change lookup. It is on by default in mekugi mode; `--post-compact-recovery=false`
+Main threads receive a current-work handoff after compaction without a model-driven
+lookup to assemble it. Full detail remains available through selective journal/change
+reads. It is on by default in mekugi mode; `--post-compact-recovery=false`
 opts out. The wrapper registers a native Codex `SessionStart` command hook matching
 `compact`, using invocation-local configuration. Codex owns event timing, execution,
 context insertion, and hook-output history. Native
@@ -141,8 +156,14 @@ recovery. This check survives router restart and never acknowledges journal even
 
 The hook reads the retained journal and executing-thread-owned change evidence
 through their existing owners. V2 uses the [evidence-backed journal summary](journal.md#evidence-backed-recovery),
-including paths, task states, constraints and changes/failures captured after the
-last journal event. Retained v1 journals include IDs, authors, questions and delivery
+including open task paths and states, a context-path index, bounded current-work
+excerpts and changes/failures captured after the last journal event. Its short read
+hint directs readers to relevant context before acting and explains how to retrieve
+full detail, discover older own paths and find older agents. Child content is
+grouped once under a readable agent heading with child-local paths, which readers
+can select through `agent` and `view:"own"`. Closed work and
+history remain readable rather than being indexed in every handoff. Retained v1
+journals include IDs, authors, questions and delivery
 state. Both include retained change ranges, not full diffs. V2 adds aggregated numstat
 only for changes after the last journal event; v1 includes it for all retained changes. These are
 historical facts, not new authorization or proof of current workspace state. No

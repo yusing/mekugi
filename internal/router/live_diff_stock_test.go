@@ -459,11 +459,11 @@ func TestLiveDiffCodeModeConstPatchDoesNotLeakScript(t *testing.T) {
 	case <-sub.previewReady:
 		for _, event := range broker.takePreviews(sub) {
 			if event.Preview != nil && strings.Contains(event.Preview.Input, "*** Begin Patch") && !event.Preview.DiffText {
-				t.Fatalf("partial Code Mode patch leaked as script: %+v", event.Preview)
+				t.Fatalf("partial exec patch leaked as script: %+v", event.Preview)
 			}
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("partial Code Mode patch did not update its live preview")
+		t.Fatal("partial exec patch did not update its live preview")
 	}
 
 	worker.appendDelta(source[marker+len("*** Begin Patch"):])
@@ -471,7 +471,7 @@ func TestLiveDiffCodeModeConstPatchDoesNotLeakScript(t *testing.T) {
 		return preview.Status == diffview.PreviewEdit && len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+content")
 	})
 	if preview.Input != "" || preview.Files[0].BeforePath != "" || strings.Contains(preview.Files[0].Diff, "const patch") {
-		t.Fatalf("Code Mode patch preview leaked script encoding: %+v", preview)
+		t.Fatalf("exec patch preview leaked script encoding: %+v", preview)
 	}
 }
 
@@ -500,12 +500,12 @@ func TestLiveDiffCodeModeEscapedPatchMarkerDoesNotLeakScript(t *testing.T) {
 					continue
 				}
 				if strings.Contains(event.Preview.Input, "const") {
-					t.Fatalf("escaped Code Mode patch leaked as script: %+v", event.Preview)
+					t.Fatalf("escaped exec patch leaked as script: %+v", event.Preview)
 				}
 				revealed = revealed || event.Preview.Workspace == "" || len(event.Preview.Files) != 0
 			}
 		case <-time.After(5 * time.Second):
-			t.Fatal("escaped Code Mode patch did not update its live preview")
+			t.Fatal("escaped exec patch did not update its live preview")
 		}
 	}
 	worker.appendDelta(source[closingQuote:])
@@ -513,7 +513,7 @@ func TestLiveDiffCodeModeEscapedPatchMarkerDoesNotLeakScript(t *testing.T) {
 		return preview.Status == diffview.PreviewEdit && len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+content")
 	})
 	if preview.Input != "" || !strings.Contains(preview.Files[0].Diff, "+content") {
-		t.Fatalf("escaped Code Mode patch was not decoded as a patch preview: %+v", preview)
+		t.Fatalf("escaped exec patch was not decoded as a patch preview: %+v", preview)
 	}
 }
 

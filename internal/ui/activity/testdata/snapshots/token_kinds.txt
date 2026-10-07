@@ -1,0 +1,4 @@
+"before \x1b[35;1m[Image 1]\x1b[m after        "
+"before \x1b[38;5;114;1mpath.go\x1b[m after          "
+"before \x1b[38;5;214;1m$review\x1b[m after          "
+"plain after tokens            "

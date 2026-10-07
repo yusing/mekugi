@@ -32,6 +32,7 @@ type ObservationEndpoint struct {
 }
 
 type Config struct {
+	Environment []string             `json:"-"`
 	Companion   *ObservationEndpoint `json:"companion,omitempty"`
 	Cwd         string               `json:"cwd"`
 	Executable  string               `json:"executable"`
@@ -85,10 +86,14 @@ func Start(ctx context.Context, node, bridge string, config Config) (*Client, er
 	ctx, cancel := context.WithCancel(ctx)
 	cmd := exec.CommandContext(ctx, node, bridge, string(payload))
 	cmd.Dir = config.Cwd
+	cmd.Env = config.Environment
 	if config.Companion != nil && config.Companion.BashEnv != "" {
 		// A fresh native launch owns a new observer. Do not inherit the calling
 		// command's nested-shell guard; its own command shells set it normally.
-		cmd.Env = slices.DeleteFunc(os.Environ(), func(value string) bool {
+		if cmd.Env == nil {
+			cmd.Env = os.Environ()
+		}
+		cmd.Env = slices.DeleteFunc(slices.Clone(cmd.Env), func(value string) bool {
 			return strings.HasPrefix(value, execsegment.Guard+"=")
 		})
 	}

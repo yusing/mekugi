@@ -10,7 +10,7 @@ import (
 
 // Intent is not a receipt. Keep edit source out of Run cards before capture,
 // without reading target files or claiming the requested writes succeeded.
-func toolActivityEditStatement(statement *syntax.Stmt) (string, bool) {
+func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, bool) {
 	call, ok := statement.Cmd.(*syntax.CallExpr)
 	if !ok || statement.Background || statement.Negated || statement.Coprocess || statement.Disown || len(call.Assigns) != 0 || len(call.Args) == 0 {
 		return "", false
@@ -95,8 +95,14 @@ func toolActivityEditStatement(statement *syntax.Stmt) (string, bool) {
 	}
 	scan := execSourceScope{input: execProviderInput{deadline: deadline}, source: data, python: python, intentOnly: true,
 		vars: make(map[string][]string), texts: make(map[string]bool), assigned: make(map[string]int), aliases: make(map[string]string)}
+	scan.temporaryEnv = toolActivityTemporaryEnv(script, statement)
 	scan.walk(tree.RootNode())
 	if !scan.writes {
+		return "", false
+	}
+	if len(scan.result.scope) == 0 {
+		// Unresolved targets have no edit to open. Keep the ordinary Run
+		// projection so its dialog retains the original command and output.
 		return "", false
 	}
 	suffix := " · " + shellInterpreterName(command) + " (requested)"
@@ -110,8 +116,8 @@ func toolActivityEditStatement(statement *syntax.Stmt) (string, bool) {
 			}
 		}
 	}
-	if len(displays) == 0 || scan.result.open {
-		displays = append(displays, "Edit"+suffix)
+	if scan.result.open {
+		displays = append(displays, "Run "+toolActivityCode(projection.Command)+"\n"+toolActivityFenced(projection.Language, projection.Source))
 	}
 	return strings.Join(displays, "\n\n"), true
 }

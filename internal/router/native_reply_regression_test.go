@@ -4,10 +4,29 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/livediff"
 )
+
+func TestUISnapshotNativeMainQuotedReplyBoundary(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.conversation = true
+	u.view.painter.Theme = livediff.DarkTheme
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn",
+		"item": map[string]any{"id": "prompt", "type": "userMessage", "content": []map[string]string{{"type": "text", "text": "Show me how the new transcript search instruction looks like"}}}})
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn",
+		"item": map[string]any{"id": "answer", "type": "agentMessage", "text": "> After selective journal/retained-output reads, search the transcript only for missing exact historical details."}})
+	for i := range u.view.entries {
+		u.view.entries[i].Observed = time.Date(2026, 10, 6, 11, 50, 6+i*6, 0, time.Local)
+	}
+	for _, width := range []int{100, 32} {
+		feed := u.view.renderFeed(width, 60)
+		assertNativeJournalSnapshot(t, fmt.Sprintf("main-quoted-reply-boundary-%d", width), feed.lines)
+	}
+}
 
 func TestNativeActivityKeepsAttachedRootFamilyIsolated(t *testing.T) {
 	a := newSubagentActivity()

@@ -46,8 +46,8 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 	if _, port, err := net.SplitHostPort(address); err != nil || port == "0" {
 		t.Fatalf("ready URL = %q", baseURL)
 	}
-	client := &http.Client{Timeout: 5 * time.Second, Transport: new(http.Transport)}
-	t.Cleanup(client.CloseIdleConnections)
+	// This fixture owns its requests; do not leave connections in the shared pool.
+	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
 	response, err := client.Get(strings.TrimSuffix(baseURL, "/v1") + "/api/metrics")
 	if err != nil {
 		t.Fatal(err)
@@ -148,5 +148,32 @@ func TestRunSessionPassthroughIgnoresInvalidReplayStorage(t *testing.T) {
 	err := RunSession(ctx, []string{"--mode", "passthrough"}, nil, func(Session) { notified = true; cancel() }, nil)
 	if err != nil || !notified {
 		t.Fatalf("passthrough ready=%v error=%v", notified, err)
+	}
+}
+
+func TestRunSessionPropagatesVCSGuard(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		flags []string
+		want  bool
+	}{
+		{name: "default", want: true},
+		{name: "disabled", flags: []string{"--vcs-guard=false"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			notified := false
+			err := RunSession(ctx, append([]string{"--mode", "passthrough"}, tc.flags...), nil, func(session Session) {
+				notified = true
+				if session.VCSGuard != tc.want {
+					t.Errorf("session guard = %t, want %t", session.VCSGuard, tc.want)
+				}
+				cancel()
+			}, nil)
+			if err != nil || !notified {
+				t.Fatalf("ready=%t error=%v", notified, err)
+			}
+		})
 	}
 }

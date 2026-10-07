@@ -1,1 +1,2 @@
-❯ $batch-agent-sessions @FIXME.md non-deferred items                    12:00:00
+"\x1b[38;2;196;167;231;48;2;34;32;42m❯\x1b[39m \x1b[38;5;214;1m$batch-agent-sessions\x1b[39;22m \x1b[38;5;114;1m@FIXME.md\x1b[39;22m non-deferred items                    \x1b[2m12:00:00\x1b[m"
+"plain after attachments                                                         "

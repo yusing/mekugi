@@ -477,7 +477,130 @@ func TestJournalMountTurnCountSurvivesRestartAndRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(summary.Text, "/1/@child /root/child (agent /root/child) · 3 turns") {
+	if !strings.Contains(summary.Text, "Agent child; 3 turns; parent task /1") {
 		t.Fatalf("recovery omitted the child's turn count: %s", summary.Text)
+	}
+}
+
+func TestJournalMountCompletedChildPreservesOpenOwnedTasks(t *testing.T) {
+	for _, state := range []string{"pending", "working", "blocked"} {
+		t.Run(state, func(t *testing.T) {
+			proxy, workspace := mountFixture(t)
+			treeApply(t, proxy, workspace,
+				journalMutation{Op: "add", Kind: "task", Title: new("Integrate child result"), State: new("working"), Agent: "/root/child"},
+				journalMutation{Op: "add", Under: "/1", Kind: "task", Title: new("Check integration"), State: new("working")})
+			applyChildDeltaItems(t, proxy, workspace, journalMutation{Op: "add", Kind: "task", Title: new("Unfinished child work"), State: &state, Reason: new("Needs follow-up")})
+			childBefore, _, err := readThreadJournal(proxy.replayStore, workspace, "child")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := proxy.journals.observeLifecycle(t.Context(), proxy.replayStore, workspace, "child", "done", ""); err != nil {
+				t.Fatal(err)
+			}
+			// Host completion must neither close child tasks nor integrate parent work.
+			if got := treeSnapshot(t, proxy, workspace); got.Items[0].State != "working" || got.Items[1].State != "working" {
+				t.Fatalf("host completion changed parent tasks: %+v", got.Items)
+			}
+			proxy.journals = newJournalStore()
+			proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
+			transform, _ := prepareActivityTest(t, proxy, "final", "tree", "", "/root", nil)
+			defer transform.Close()
+			transform.shellTurnID = "integration-turn"
+			token := testRuntimeCommentaryCall(t, transform, "final-integration")
+			transform.ReleaseDelivery()
+			body, err := json.Marshal(map[string]any{"journal": []journalMutation{
+				{Op: "set", P: "/1", State: new("done")},
+				{Op: "set", P: "/1/1", State: new("done")},
+				{Op: "log", Text: new("Integrated child result; unfinished work remains with child")},
+				{Op: "finish"},
+			}, "id": "integration-result"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := httptest.NewRequest(http.MethodPost, commentaryPublisherPath, bytes.NewReader(body))
+			request.Header.Set("Authorization", "Bearer "+token)
+			response := httptest.NewRecorder()
+			proxy.commentary.serveHTTP(response, request)
+			var outcome struct {
+				OK bool `json:"ok"`
+			}
+			if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &outcome) != nil || !outcome.OK {
+				t.Fatalf("final batch rejected: %d %s", response.Code, response.Body)
+			}
+			parent := treeSnapshot(t, proxy, workspace)
+			if parent.Items[0].State != "done" || parent.Items[1].State != "done" {
+				t.Fatalf("final batch did not commit: %+v", parent.Items)
+			}
+			if _, ok := parent.Receipts["runtime:"+journalHostFinishReceipt(transform.shellTurnID, "final-integration")]; !ok {
+				t.Fatal("final batch lost finish receipt")
+			}
+			childAfter, _, err := readThreadJournal(proxy.replayStore, workspace, "child")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(childBefore.Events, childAfter.Events) || len(childBefore.Items) != len(childAfter.Items) {
+				t.Fatal("parent completion changed child events or removed tasks")
+			}
+			for i, item := range childBefore.Items {
+				beforeNode, afterNode := item.node(), childAfter.Items[i].node()
+				// Lifecycle timers and delivery flags are not authored task state.
+				beforeNode.WorkTimer, afterNode.WorkTimer = activeWorkTimer{}, activeWorkTimer{}
+				if !reflect.DeepEqual(beforeNode, afterNode) {
+					t.Fatalf("parent completion changed child task %s", item.Path)
+				}
+			}
+			if node, ok := mountFind(mountRead(t, proxy, workspace, "tree", "", ""), "/1/@child/1"); !ok || node.State != state {
+				t.Fatalf("child open state lost in combined read: %+v", node)
+			}
+		})
+	}
+}
+
+func TestJournalMountOpenLifecycleRejectsFinalBatchAtomically(t *testing.T) {
+	for _, state := range []string{"unknown", "working", "blocked", "unresolved", "nested working", "owned descendant"} {
+		t.Run(state, func(t *testing.T) {
+			proxy, workspace := mountFixture(t)
+			agent := "/root/child"
+			if state == "unresolved" {
+				agent = "/root/missing"
+			}
+			treeApply(t, proxy, workspace, journalMutation{Op: "add", Kind: "task", Title: new("Integrate"), State: new("working"), Agent: agent})
+			switch state {
+			case "working", "blocked":
+				if err := proxy.journals.observeLifecycle(t.Context(), proxy.replayStore, workspace, "child", state, "Host not complete"); err != nil {
+					t.Fatal(err)
+				}
+			case "nested working":
+				if err := proxy.journals.initialize(t.Context(), proxy.replayStore, workspace, "grandchild", "/root/child/grandchild", ""); err != nil {
+					t.Fatal(err)
+				}
+				if err := proxy.journals.bindIdentity(t.Context(), proxy.replayStore, workspace, "grandchild", "child", "/root/child/grandchild", true); err != nil {
+					t.Fatal(err)
+				}
+				applyChildDeltaItems(t, proxy, workspace, journalMutation{Op: "add", Kind: "task", Title: new("Nested delegation"), Agent: "/root/child/grandchild"})
+				if err := proxy.journals.observeLifecycle(t.Context(), proxy.replayStore, workspace, "grandchild", "working", ""); err != nil {
+					t.Fatal(err)
+				}
+				fallthrough
+			case "owned descendant":
+				if err := proxy.journals.observeLifecycle(t.Context(), proxy.replayStore, workspace, "child", "done", ""); err != nil {
+					t.Fatal(err)
+				}
+				if state == "owned descendant" {
+					treeApply(t, proxy, workspace, journalMutation{Op: "add", Under: "/1", Kind: "task", Title: new("Owned open work"), State: new("working")})
+				}
+			}
+			before := treeSnapshot(t, proxy, workspace)
+			_, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "tree", "", []journalMutation{
+				{Op: "log", Text: new("Must roll back")}, {Op: "set", P: "/1", State: new("done")},
+			})
+			if err == nil {
+				t.Fatal("accepted completion with open descendant")
+			}
+			after := treeSnapshot(t, proxy, workspace)
+			if !reflect.DeepEqual(before, after) {
+				t.Fatal("rejected batch changed durable parent state")
+			}
+		})
 	}
 }

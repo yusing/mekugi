@@ -111,7 +111,7 @@ func TestJournalProjectedInputsTypeCheck(t *testing.T) {
 		t.Skip("TypeScript is required to check projected journal declarations")
 	}
 	fields := map[string]jsonv1.RawMessage{"input": mustMarshalJSON([]any{testCodeModeAdditionalTools(testCodeModeDescription)})}
-	if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), ""); err != nil {
+	if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), "", codeModeJournalGuidance); err != nil {
 		t.Fatal(err)
 	}
 	description := decodeResponsesToolCatalog(fields).additional[0].tools.tools[0].nested.tools[0].Description
@@ -120,6 +120,9 @@ func TestJournalProjectedInputsTypeCheck(t *testing.T) {
 	declarations, _, closed := strings.Cut(after, "\n```")
 	if !hasJournal || !ok || !closed {
 		t.Fatal("projected exec description has no journal declarations")
+	}
+	if !strings.Contains(codeModeSubagentJournalGuidance, "```ts\n"+declarations+"\n```") {
+		t.Fatal("subagent projection changed the shared journal types")
 	}
 	const checks = `
 async function checks() {

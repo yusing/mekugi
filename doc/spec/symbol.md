@@ -130,8 +130,8 @@ Acceptance:
    symlinks, missing resolvers, source changes, malformed protocol results, and
    uneditable definitions fail without suppressing unrelated tuples' stdout.
 6. The stock executable frontend preserves cwd, environment, resolver cleanup,
-   bounded output recovery, AX observation, and `Read`/`Search` activity across
-   direct and Code Mode invocation.
+   bounded output recovery, AX observation, and `Read`/`Search` activity through
+   JavaScript `exec` invocation.
 7. Explicit workspace selection determines input resolution and resolver cwd
    without changing shell state. Results remain confined to that root and use
    unambiguous absolute paths. Missing prerequisites are actionable without

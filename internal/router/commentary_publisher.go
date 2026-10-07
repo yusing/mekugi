@@ -518,7 +518,7 @@ func publishCommentaryOnce(ctx context.Context, writer io.Writer, arguments []st
 
 // A rejected mutation applied nothing and is the model's to correct. It is a
 // result, not a transport failure, so the helper can report it without
-// aborting the rest of the Code Mode program.
+// aborting the rest of the exec program.
 func writeJournalRejection(writer http.ResponseWriter, debug *debugOutput, thread, callID string, err error) {
 	trace := featureUsageTrace{debug: debug, threadID: thread}
 	trace.record("journal", "code_mode", "mutation", "rejected", callID, "")

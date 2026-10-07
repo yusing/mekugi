@@ -2,7 +2,7 @@
 
 ## REQ-ACTIVITY-DISPLAY-001 — Operation rows and agent feeds
 
-The [native UI](native_ui.md) owns app-server event intake, lifecycle, history
+The [UI](native_ui.md) owns app-server event intake, lifecycle, history
 hydration, and pane layout. This contract owns operation-row formatting and feed
 navigation; [activity observation](activity.md) owns tool classification.
 Activity is native presentation, not router-generated conversation commentary.
@@ -28,7 +28,11 @@ as a trailing file label; each comma-separated source uses its own Bash syntax
 highlighting, including shell commands such as `git stash push`, rather than
 Markdown styling. Requested edit intent keeps the requested verb, such as `Edit`,
 in amber and never reads `Edited`; the first row ends with `· requested`, and its
-`(requested)` marker is not shown as source text. A started patch that has not
+`(requested)` marker is not shown as source text. A successful tracked edit segment
+instead shows `Edit PATH via TOOL · ran` as soon as its writer command completes,
+even before following commands end. This includes successful no-ops and reports
+command completion, not confirmed file changes or counts. Running and untracked
+edit intent keeps `· requested`. A started patch that has not
 completed, including one awaiting approval, ends with `· pending`; a `failed` or
 `declined` patch uses a red verb and ends with `· failed` or `· declined`, named
 once for the group rather than on every row. A different source or outcome
@@ -37,10 +41,14 @@ take their own row in the verb column.
 File rows' line counts share one column within a group of more than one row when
 the row fits, and zero counts are omitted. In an `Edited` group of more than one
 row, an eight-cell bar after the counts scales each row's changed lines against
-the group's largest. Confirmed capture counts replace successful requested edit
+the group's largest. Confirmed capture counts and past-tense verbs replace successful edit intent
 rows even when the shell invocation has tracked segments. A grouped capture
 appears once on its owning invocation, not once per segment; neighboring command
 output, failed/skipped edits, and per-command exit statuses remain visible.
+A confirmed whole-directory removal with complete captured file evidence shows
+one `Deleted PATH/ • N files` row, using `file` for one, instead of descendant file
+rows. Clicking it opens the invocation's retained file changes, starting within
+that directory. Detailed captured evidence remains available through `mchanges`.
 A path too wide for its row gives way before the row's other parts: it drops
 whole leading directories behind `…/`, keeping its nearest directories and file
 name, or elides the middle of the name itself when that alone is too wide; below
@@ -66,15 +74,16 @@ other detail-bearing operations remain distinct. When one live invocation
 reports several operations at once, such as a shell call classified as Skill,
 Read and Search, they appear one at a time, 80 ms apart, in Main, Activity and the
 roster summary; restored history shows at once. Child text is sanitized before layout, so it cannot emit terminal
-controls. Inline Markdown code uses shell syntax colors with an accent for plain
-tokens; fenced code retains language-specific highlighting. Decoration must not
-change code text, wrapping, or source-aware copying. Local absolute-path Markdown links show their label as a terminal
+controls. Inline Markdown code uses content-detected syntax colors; unrecognized
+spans stay plain with the existing accent, which also colors plain tokens in detected
+code. Fenced code retains language-specific highlighting. Decoration must not
+change code text, wrapping, or source-aware copying. Recognized local-file Markdown links show their label as a terminal
 hyperlink rather than exposing the raw destination syntax. Wrapped links retain their
 destination and underline only on their text, never on row padding or gutters. A completed child
 compaction appears as an event in the feed and as the agent's latest roster
 activity; an attempted or failed compaction does not claim completion.
 Read line spans display as `L25–46`. Each `Run` operation is its own row. In
-the native app-server UI it reads `Running` from the host's command start, in
+the UI it reads `Running` from the host's command start, in
 Main and in the agent's feed and roster summary, and `Ran` once the host
 completes it. A yielded process stays `Running` across turns until it exits;
 replayed history never shows `Running`.
@@ -86,7 +95,7 @@ row is cut without one. Fenced multiline `Run` previews sit beside the verb with
 the code gutter. In Main a command or program preview keeps at most five wrapped rows, the
 last a muted `… +N lines` count (under the code gutter for a program), so a one-line
 command that wraps is bounded too; a click opens the whole source and retained
-output in the output dialog, without expanding the transcript. Tabs in previews expand to four spaces. `Run JavaScript` Code Mode previews always place source beneath
+output in the output dialog, without expanding the transcript. Tabs in previews expand to four spaces. `Run JavaScript` previews always place source beneath
 the heading with the same code gutter, whether the source has one line or many.
 A confirmed nonzero command exit makes the verb red and adds `· exit N` after
 the command, or on its own row when it does not fit or follows a multiline
@@ -134,20 +143,19 @@ narrow for it shortens the path rather than the count. Restored history shows ze
 already collapsed. Output arriving after completion is ignored.
 Command rows and their dialog titles append elapsed time only above 3 ms,
 using milliseconds below a second and compact whole-second units thereafter
-(`4ms`, `1s`, `1m10s`, `1h`). For tracked batch commands, the shell helper records
+(`4ms`, `1s`, `1m10s`, `1h`). For tracked commands, the shell helper records
 each command's start and end at its control boundaries and measures duration with
 its monotonic clock. The elapsed suffix counts from that command's observed start while running and freezes
-at its measured duration when complete. Its output dialog shows the start and end
-timestamps in local time, with date, milliseconds and timezone, and the measured
-duration without rounding. Timed commands retain their individual rows rather
+at its measured duration when complete. Supported single commands, including
+timed commands and pipelines, use begin/EXIT duration rather than the host's
+invocation duration, as specified in [REQ-EXECUTION-002](execution.md).
+The dialog keeps the same elapsed suffix without extra timing metadata rows.
+Timed commands retain their individual rows rather
 than merging reads or folding staging into a commit. An EXIT boundary also
 ends the active command when `exit` or `errexit` bypasses its normal end hook.
 Completed observations retain timestamps and duration across resume and forks;
 skipped commands have neither. A disconnected report supplies no invented end.
-Untracked invocations use the host duration when complete. Their dialog labels UI
-notification receipt timestamps as `Observed start` and `Observed end`, separately
-from `Host elapsed`: their span is not the host's execution duration. Replay never
-reconstructs missing notification timestamps.
+Untracked invocations use the host duration when complete.
 Older per-command observations without timing omit it rather than borrowing the
 invocation total. For batches without per-command boundaries, available host
 timing appears once on an explicit `shell batch` row, which shows the live elapsed
@@ -155,12 +163,46 @@ time or completed duration and owns the combined output. The combined-output
 dialog shows that same invocation duration; the total is never copied onto
 individual command rows.
 
+After a command runs for at least 500 ms, its row shows a muted
+`(timeout DURATION)` suffix for a supported literal shell `timeout` prefix or
+an explicit `exec_command.timeout_ms` input. Shell durations keep their original
+spelling; parameter durations use seconds, with a fractional part when needed.
+Fast or skipped commands and rows without individual timing omit the suffix.
+Parameter-derived suffixes appear only while the original invocation input is
+available, so fresh resume omits them. Shell-derived suffixes remain available
+from the saved command when its timing is known. `yield_time_ms` does not produce
+a timeout suffix. A suffix that does not fit wraps beneath its operation row.
+
 The shared content dialog captures keys and pointer events above both panes.
+Clicking a recognized Markdown file link in Main, Activity, or Markdown dialog
+content opens an existing regular local file in this dialog. Relative paths
+require the current session's workspace metadata; absolute paths and local
+`file:///` URLs are also supported. A `:line` or `:first-last` suffix appears
+in the title, reveals the first source line in File view when it exists, and
+highlights the included line numbers with a fill that includes their left padding
+and stops before the gutter divider. The numbers and source stay in place.
+Markdown files open in rendered
+Markdown view by default, with Markdown and File tabs selectable by click or
+Left/Right. File view retains numbered, syntax-colored source. Each view keeps
+its own scroll and search state; whole-page copy in either view copies the original
+file bytes. Other file types and read errors retain their single File view.
+Paths inside the workspace use shared
+workspace-relative display;
+external paths stay absolute. The body includes a selectable path row and source
+content, with file-type syntax colors under the existing highlighting limit.
+Terminal controls are sanitized for display; whole-page `y` copies the original
+source bytes; dragging selects the visible path or content for selection copying. Reads
+accept UTF-8 text up to 8 MiB; oversized, binary/non-UTF-8, or unreadable files
+show red, copyable errors. Each opening reads current contents, without ongoing
+file monitoring. Missing or unrecognized destinations retain their prior click
+behavior. HTTP(S) links still copy their destinations in Main and Activity;
+clicking them inside a dialog still does nothing.
+
 Errors show a bounded first-line preview rather than an unbounded inline diagnostic.
 A details link and click target appear only when that preview omits retained content;
 a complete single-line diagnostic may wrap without gaining a redundant link.
 Clicking an elided error opens its complete retained text,
-including multiline Code Mode failures restored from history. `Ctrl-B !` opens
+including multiline JavaScript execution failures restored from history. `Ctrl-B !` opens
 the newest error in the focused Main or Activity transcript; Left/Right navigates
 its other retained errors, respecting the Activity agent filter. Error details
 render literally rather than as Markdown, and use the dialog's full-page copy
@@ -175,7 +217,12 @@ uses the file's syntax colors; numbered search matches color the path, line
 number and matched source separately. Search titles retain pattern/path colors.
 When per-command boundaries were not retained (including restored history,
 terminal-only or lossy reports), the dialog labels the host buffer as combined
-output instead of attributing it to the last command. It never guesses boundaries. It takes
+output instead of attributing it to the last command. It never guesses boundaries.
+It shows recognized edits with the same operation classification as the feed, rather than
+showing their source as a Run script. Unresolved source stays visible, and the
+combined buffer and invocation outcome remain separate from those requested edits.
+Source-derived Run rows remain requested intent when execution was not observed.
+The dialog takes
 at most 90% of each dimension, or the available screen below 60 columns, over
 the panes faded to faint uncolored text. A theme-aware filled surface and
 accent-colored frame separate the dialog from those panes; syntax, diff, and
@@ -212,9 +259,16 @@ next/previous matching lines. `y` copies the retained output of the current
 page, or source when there is no output. Dragging within the body selects visible
 text without line numbers, gutters, or frame padding. Selection uses a stable
 snapshot while live output continues to arrive; dragging pauses dialog follow.
-With a selection, `y`, `c`, or Ctrl-C copies just that text through the shared
-terminal clipboard path, and Esc clears it before closing the dialog. Scrolling,
-page navigation, or resizing clears the selection; End resumes live following.
+With a selection, the footer offers the shared [selection actions](native_ui.md):
+Reference (`r`/`R`), Copy (Ctrl-C, also `c`/`C` or `y`), and Clear (Esc), with
+bold keys and clickable hints matching the transcript. Only complete, visible
+action hints accept clicks. Reference closes the dialog, focuses the composer, and inserts
+the selected text as one undoable reference token at the caret, or as a plain-text
+quote for an active question. Copy and Clear keep the dialog open; Esc clears
+a selection before a later Esc closes the dialog. Wheel, arrow, page, and
+Home/End scrolling preserve the frozen selection, including off-screen rows.
+Changing pages, navigating search, or resizing clears it; End resumes live
+following when there is no selection. The footer offers no drag-selection hint.
 Output retention is separate from the animated display tail: each command has
 a 1 MiB budget including line slots, with lines capped at 16 KiB. Older lines
 are dropped with a visible count. The session has a 16 MiB retention budget,
@@ -283,7 +337,11 @@ authored Markdown. Blank lines opening or closing a message, as some providers s
 add no rows. Main completion previews retain the response excerpt and show
 the linked assignment excerpt below its timestamp on separate, wrapped quote rows.
 Each excerpt shows up to two content rows with an ellipsis when truncated;
-Activity retains the complete response.
+Activity retains the complete response. When a retained child result contains
+provider answers, exact replacement provenance combines their cards into one
+complete enriched reply in Main and Activity. The assignment link and full reply
+remain available. Host messages stay unchanged; missing replacement evidence keeps
+the messages separate rather than guessing from matching text.
 
 Authored Markdown tables render as compact bordered grids with emphasized headers,
 column alignment, inline styles and links, and wrapped cells rather than clipped
@@ -379,7 +437,7 @@ Explicitly reported zero input or output totals
 remain valid. While a response streams, output grows by an estimate of about four
 bytes of visible delta per token, refreshed every second; the provider's reported
 usage replaces the estimate when the response ends. Hidden reasoning is not
-estimated, and input changes only when usage is reported. A Code Mode batch shows its latest
+estimated, and input changes only when usage is reported. An `exec` batch shows its latest
 operation and the count of the others. When the separate roster is visible,
 the activity pane gives its whole body to the feed. The native layout contract owns narrow-terminal and compact-roster placement.
 Shared column widths derive from currently visible roster rows. Before hiding agents, cards compact to one row per agent, retaining
@@ -391,9 +449,14 @@ The viewport moves only when selection leaves it, not to recenter each selection
 The separate roster header omits feed follow state; the feed header is `ACTIVITY`
 with its filter and follow state. Feed-only controls do not offer clicking agents.
 Narrative events use Main’s shared colored event headings, timestamps, and rails;
-child journal messages use the same accent diamond and journal rail. Available
-timestamps show only where they fit, and unknown timestamps stay absent. Consecutive
-operations and reasoning still group by agent under a colored heading. Narrative
+available timestamps show only where they fit, and unknown timestamps stay absent.
+Child journal updates join adjacent operations and reasoning under the normal
+colored agent heading, without a separate journal heading or nested journal rail.
+Their previews remove the generated outer list indentation once. A task body
+replaces its state/path/title summary; without a body, the preview retains the state
+and title but omits the path. Authored lists and code retain their formatting.
+The original message remains the detail and copy source, including omitted task
+summaries. Consecutive operations and reasoning still group by agent. Narrative
 previews keep up to five body rows below their heading, including in single-agent
 mode; longer content ends with a hidden-row hint.
 Operation source and output each keep up to five rows without clipping their status. Hovering a clipped
@@ -414,6 +477,16 @@ The roster mouse wheel scrolls its viewport without changing selection, filterin
 or feed follow state.
 Hover underlines only the name; selection shades the row. Feed scrolling follows the same
 line/page/home/end/follow contract as the [live diff](changes.md#live-terminal-view).
+When a live running command's header would scroll away, it stays pinned above
+the transcript until native completion. Main pins its own commands; Activity
+pins only child commands matching its current agent filter, with existing agent
+headings where space allows. Pins reserve their own rows and retain the command's
+existing output-dialog click targets. Transcript scrolling, hover and click
+targets, and cross-pane navigation remain aligned with the visible rows.
+Where possible, at least one transcript row remains; a single-row pane instead
+keeps one command header. If parallel command headers exceed the available
+space, visible pins are limited in feed order. Pinning adds no controls or
+persistent running state; replay cannot revive it.
 Roster status symbols are
 observed facts only:
 `◐` an open provider response, `!` a latest error event, `✓` a plaintext
@@ -426,9 +499,11 @@ Acceptance:
 
 1. Main and child feeds render typed app-server activity without inserting generated
    operation commentary into model responses. Restored activity cannot revive work.
-2. Requested, pending, failed, and confirmed edits remain visually distinct; display
+2. Requested, ran, pending, failed, and confirmed edits remain visually distinct; display
    grouping preserves source, outcome, paths, and observed counts.
 3. Command output tails remain bounded, reflect host completion, and preserve the
    difference between unknown and nonzero exits.
 4. Roster selection and scrolling preserve feed state; off-screen rows do not change
    shared column widths. Missing evidence never becomes a completion or cost claim.
+5. Off-screen running command headers remain pinned within pane space and scope,
+   preserve navigation and dialog targets, and release on native completion.

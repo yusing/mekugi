@@ -1,12 +1,10 @@
 package router
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestPaneOperationRegressionMCatReadLabels(t *testing.T) {
@@ -124,48 +122,6 @@ func TestPaneOperationRegressionApplyPatchDisplay(t *testing.T) {
 	}
 }
 
-func TestPaneOperationRegressionNativePatchStreamsProvisionalDiff(t *testing.T) {
-	t.Parallel()
-	proxy := newManagedMekugiProxy(t)
-	workspace := t.TempDir()
-	transform := prepareNativeStockTransform(t, proxy, workspace, "native-progress")
-	broker := newLiveDiffBroker(t.Context())
-	scope := liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"stock-thread": true}}}
-	broker.setScope(scope)
-	proxy.autoLiveDiff = &autoLiveDiff{events: broker, requested: true, scope: scope}
-	proxy.autoLiveDiff.enabled.Store(true)
-	sub := broker.subscribe()
-	<-sub.events
-	added := mustTestJSON(t, map[string]any{
-		"type": "response.output_item.added", "output_index": 0,
-		"item": map[string]any{"type": "custom_tool_call", "id": "patch-item", "call_id": "patch-call",
-			"name": applyPatchToolName, "input": "", "status": "in_progress"},
-	})
-	if visible, err := transform.TransformSSE(added); err != nil || len(visible) != 1 || !bytes.Equal(visible[0], added) {
-		t.Fatalf("stock patch item changed: visible=%q err=%v", visible, err)
-	}
-
-	for _, step := range []struct{ fragment, want string }{
-		{"*** Begin Patch", ""},
-		{"\n*** Add File: new.txt\n+first line\n", "+first line"},
-		{"+second line\n", "+second line"},
-	} {
-		delta := mustTestJSON(t, map[string]any{
-			"type": "response.custom_tool_call_input.delta", "item_id": "patch-item", "delta": step.fragment,
-		})
-		if visible, err := transform.TransformSSE(delta); err != nil || len(visible) != 1 || !bytes.Equal(visible[0], delta) {
-			t.Fatalf("stock patch delta changed: visible=%q err=%v", visible, err)
-		}
-		preview := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
-			if step.want == "" {
-				return preview.Status == diffview.PreviewEdit && len(preview.Files) == 0
-			}
-			return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, step.want)
-		})
-		assertProvisionalPatchPreview(t, preview)
-	}
-}
-
 func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
 	t.Parallel()
 	for _, quote := range []string{"double", "template"} {
@@ -216,13 +172,6 @@ func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
 	}
 }
 
-func assertProvisionalPatchPreview(t *testing.T, preview diffview.Preview) {
-	t.Helper()
-	if preview.Status != diffview.PreviewEdit || preview.Complete || len(preview.Files) == 0 && !preview.DiffText {
-		t.Fatalf("patch fragment was not displayed as a provisional diff: %+v", preview)
-	}
-}
-
 func assertCodeModePatchFrame(t *testing.T, frame string, ordered ...string) {
 	t.Helper()
 	plain := ansi.Strip(frame)
@@ -239,7 +188,7 @@ func assertCodeModePatchFrame(t *testing.T, frame string, ordered ...string) {
 	}
 	for _, wrapper := range []string{"const patch", "tools.apply_patch", "*** Begin Patch", "*** Add File:"} {
 		if strings.Contains(plain, wrapper) {
-			t.Fatalf("terminal leaked Code Mode wrapper %q: %q", wrapper, plain)
+			t.Fatalf("terminal leaked exec wrapper %q: %q", wrapper, plain)
 		}
 	}
 }

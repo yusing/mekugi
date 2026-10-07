@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -318,7 +319,9 @@ func (p *mekugiProxy) commentaryMessageIDs(sessionID string) map[string]struct{}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	result := make(map[string]struct{})
-	maps.Copy(result, p.memoryCommentary[sessionID])
+	for id := range p.memoryCommentary[sessionID] {
+		result[id] = struct{}{}
+	}
 	if session := p.sessions[sessionID]; session != nil {
 		for _, history := range session.calls {
 			for _, messageID := range history.CommentaryMessageIDs {
@@ -403,22 +406,30 @@ func commentaryCode(value string) string {
 // retainCommentary is called only at router-authored message construction sites.
 // A provider's use of a reserved-looking ID is not proof of router provenance.
 func (t *mekugiResponseTransform) retainCommentary(messages ...map[string]json.RawMessage) []map[string]json.RawMessage {
+	return t.retainCommentaryReplacing(nil, messages...)
+}
+
+func (t *mekugiResponseTransform) retainCommentaryReplacing(replacement *commentaryReplacement, messages ...map[string]json.RawMessage) []map[string]json.RawMessage {
 	if t.proxy.replayStore == nil {
 		t.proxy.mu.Lock()
 		defer t.proxy.mu.Unlock()
 		if t.proxy.memoryCommentary == nil {
-			t.proxy.memoryCommentary = make(map[string]map[string]struct{})
+			t.proxy.memoryCommentary = make(map[string]map[string]*commentaryReplacement)
 		}
 		retained := t.proxy.memoryCommentary[t.historySessionID]
-		newIDs := make(map[string]struct{})
+		newIDs := make(map[string]*commentaryReplacement)
 		for _, message := range messages {
 			id := jsonString(message, "id")
-			if _, exists := retained[id]; id != "" && !exists {
-				newIDs[id] = struct{}{}
+			previous, exists := retained[id]
+			if previous != nil && replacement != nil && (previous.Thread != replacement.Thread || previous.Turn != replacement.Turn || !slices.Equal(previous.Items, replacement.Items)) {
+				return nil
+			}
+			if id != "" && (!exists || previous == nil && replacement != nil) {
+				newIDs[id] = replacement
 			}
 		}
 		if retained == nil {
-			retained = make(map[string]struct{})
+			retained = make(map[string]*commentaryReplacement)
 			t.proxy.memoryCommentary[t.historySessionID] = retained
 		}
 		maps.Copy(retained, newIDs)
@@ -431,10 +442,39 @@ func (t *mekugiResponseTransform) retainCommentary(messages ...map[string]json.R
 		}
 	}
 	if len(ids) != 0 {
-		if err := t.proxy.replayStore.putCommentary(t.ctx, t.directory, ids); err != nil {
+		if err := t.proxy.replayStore.putCommentaryReplacing(t.ctx, t.directory, ids, replacement); err != nil {
 			t.proxy.notice(t.sessionID, t.shellThreadID, "commentary_storage", "Mekugi could not retain progress-message provenance. New auxiliary progress messages were suppressed; tool execution and provider answers are unchanged. Check session storage space and permissions.")
 			return nil
 		}
 	}
 	return messages
+}
+
+// Missing provenance keeps provider content. Neither a reserved-looking ID nor
+// identical text proves that a child result contains another host message.
+func (p *mekugiProxy) commentaryReplacementItems(ctx context.Context, workspace, thread, turn, item string) []string {
+	// Generated child results use this prefix. It only avoids a lookup for
+	// ordinary provider IDs; the retained record still proves replacement.
+	if p == nil || thread == "" || turn == "" || !strings.HasPrefix(item, commentaryid.OperationPrefix) {
+		return nil
+	}
+	var replacement *commentaryReplacement
+	if p.replayStore == nil {
+		p.mu.RLock()
+		replacement = p.memoryCommentary[workspace+"\x00"+thread][item]
+		p.mu.RUnlock()
+	} else {
+		err := p.replayStore.locked(ctx, func() error {
+			record, _, err := p.replayStore.read(workspace, item, true)
+			replacement = record.Replacement
+			return err
+		})
+		if err != nil {
+			return nil
+		}
+	}
+	if replacement == nil || replacement.Thread != thread || replacement.Turn != turn {
+		return nil
+	}
+	return slices.Clone(replacement.Items)
 }

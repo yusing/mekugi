@@ -29,6 +29,12 @@ Provider-selection arguments are rejected. Mekugi flags precede `codex`; subsequ
 noninteractive arguments remain intact, including subcommands and `--` delimiters.
 Interactive terminal arguments follow the native client mapping below.
 
+The Mekugi flag `--duplicate-output` defaults to `false`. Use
+`--duplicate-output` to enable the
+[model-visible duplicate-output projection](execution.md#duplicate-output-projection)
+without changing host results, retained evidence, or the UI. It has no effect in
+passthrough mode.
+
 For interactive sessions, after `codex`, `--low`, `--medium`, `--high`, `--xhigh`, `--max`, and `--ultra`
 expand to invocation-local `model_reasoning_effort` config overrides. They may
 also follow `headless`. Option values and arguments after `--` remain literal;
@@ -68,7 +74,7 @@ and cancellation clean up owned runtime resources. Ordinary exit status is
 preserved; signal exits use `128 + signal`. Unexpected router termination also
 terminates Codex rather than leaving a dead provider connection.
 
-Launch does not announce a browser URL. The local metrics API and `/session`
+Normal launches do not announce a browser URL. The local metrics API and `/session`
 native dialog expose invocation-owned metrics, which expire on shutdown.
 
 Interactive launches use Mekugi-owned terminal splits, including a
@@ -107,7 +113,8 @@ maintenance cannot free enough space, stops making progress, or does not complet
 wait. Cancellation interrupts the wait. Retrying persistence must not rerun the host operation
 or upstream request. Background work notices pressure promptly without waiting for the next age sweep.
 An age-sweep failure does not fail an
-unrelated request and is reported as a router-wide notice.
+unrelated request and is reported as a router-wide notice with the failed cleanup
+phase and underlying error.
 The policy never deletes Codex transcripts, workspace files, explicitly selected external
 capture/read outputs, or exported copies of debug bundles. Generated debug bundles under
 the state root have independent age retention, not the replay-data byte budget.
@@ -145,7 +152,7 @@ failed cleanup reports an error and does not claim complete reclamation.
 Prune planning and index decoding do not hold the publication lock. Removal commits use
 bounded file batches, revalidate concurrent ownership and active/read leases, and release
 the lock between batches. One worker per store performs maintenance; router shutdown cancels
-and joins its worker, including a lazily opened failure-only store. Startup and native UI
+and joins its worker, including a lazily opened failure-only store. Startup and UI
 session handling do not wait for a full sweep.
 
 Change-index retirement preserves stream high-water counters so old IDs are never reused.
@@ -328,9 +335,34 @@ close reasons, error text, and headers are not exported. An EOF does not establi
 successful completion. These observations are request-local and debug-only and do
 not change translation, execution, cancellation, or retry behavior.
 
-### Native app-server UI
+### Performance profiling
 
-The [native UI contract](native_ui.md) owns interactive app-server presentation
+`make mekugi-pprof` builds a separate optimized diagnostic executable with symbols
+and the `pprof` build tag, plus its sibling executor, without installing or replacing
+the normal command. Existing launch arguments, worker dispatch, and hooks retain
+their behavior. The default build starts no profiling listener.
+
+Live router sessions and [offline replay](session_replay.md) share one profiling
+lifetime. Each diagnostic invocation binds a separate OS-assigned IPv4 loopback
+port and prints `mekugi-pprof: http://127.0.0.1:PORT/debug/pprof/` to stderr before
+UI handoff. Workers and hooks do not start profiling listeners. Completion cancels
+active captures and closes the listener; concurrent invocations have independent
+URLs and cleanup.
+
+The standard HTTP pprof routes expose CPU, heap, allocs, goroutine, block, mutex,
+and execution-trace data. CPU and trace collection begin only on request. Block
+sampling uses a 1 ms blocked-time rate; mutex sampling records one in ten contention
+events. Profiling may perturb performance. Measurements describe the Mekugi process,
+including router, UI, and replay work, not separate Codex, executor, or worker processes.
+
+These routes have no additional authentication. Loopback callers can access command-line
+arguments and other private process data, so captures must remain private. Profiling
+is separate from sanitized metrics and debug evidence. The
+[reader workflow](../../README.md#profile-live-sessions-and-replay) owns build and capture examples.
+
+### UI
+
+The [UI contract](native_ui.md) owns interactive app-server presentation
 and client behavior.
 
 ### Headless app-server frontend

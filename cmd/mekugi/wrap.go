@@ -18,6 +18,7 @@ import (
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/router"
 	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/term"
 )
 
@@ -61,15 +62,21 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	appUI := !headless && interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 	var resumeThread string
 	var resumeArgv []string
+	approvals := false
 	if appUI || headless {
 		var err error
-		args, resumeThread, err = appServerArgs(args)
+		var yolo bool
+		args, resumeThread, yolo, err = appServerArgs(args)
 		if err != nil {
 			return 2, err
+		}
+		if headless && !yolo {
+			return 2, errors.New("headless cannot answer approvals; it requires explicit --yolo")
 		}
 		if headless && resumeThread != "" {
 			return 2, errors.New("headless runs a new thread; resume is not supported")
 		}
+		approvals = appUI && !yolo
 		if appUI {
 			resumeArgv = appServerResumeArgv(os.Args[0], routerArgs, suppliedArgs)
 		}
@@ -152,22 +159,45 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		}
 	}
 	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.JournalEnabled, session.SkillsManagerAvailable, !session.ThirdPartyOnly)...)
-	cmd.Env = append(os.Environ(), "MEKUGI_BASE_URL="+session.BaseURL)
+	cmd.Env = append(slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		return strings.HasPrefix(entry, vcsguard.HookEnvironment+"=")
+	}), "MEKUGI_BASE_URL="+session.BaseURL)
 	if session.NativeTraceDirectory != "" {
 		cmd.Env = append(cmd.Env, "CODEX_ROLLOUT_TRACE_ROOT="+session.NativeTraceDirectory)
 	}
 	if session.AXReadOutput != "" {
 		cmd.Env = append(cmd.Env, capturer.AXReadOutputEnvironment+"="+session.AXReadOutput)
 	}
+	guard := appUI && session.VCSGuard
+	if guard && session.FrontendDirectory == "" {
+		cancel()
+		return 1, errors.Join(errors.New("VCS guard requires Mekugi mode; use --vcs-guard=false to disable it"), <-routerDone)
+	}
 	if session.FrontendDirectory != "" {
 		helper := ""
 		if appUI {
 			helper = execTrackHelper()
 		}
-		cmd.Env, err = frontendShellEnvironment(cmd.Env, session.FrontendDirectory, helper)
+		cmd.Env, err = frontendShellEnvironment(cmd.Env, session.FrontendDirectory, helper, guard)
 		if err != nil {
 			cancel()
 			return 1, errors.Join(err, <-routerDone)
+		}
+		if helper != "" {
+			guardDirectory := ""
+			if guard {
+				guardDirectory, _ = vcsguard.Paths(session.FrontendDirectory)
+			}
+			cmd.Args, err = vcsGuardHookArgs(cmd.Args, helper, guardDirectory)
+			if err != nil {
+				if guard {
+					cancel()
+					return 1, errors.Join(err, <-routerDone)
+				}
+				fmt.Fprintln(os.Stderr, "mekugi: sh segment tracking unavailable:", err)
+			} else if guard {
+				cmd.Env = append(cmd.Env, vcsguard.HookEnvironment+"="+vcsguard.HookCommand(helper, guardDirectory))
+			}
 		}
 	}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -190,9 +220,9 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			}
 		} else if appUI {
 			if session.StartAppUI != nil {
-				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv)
+				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
 			} else {
-				waitCodex, err = router.StartAppServerUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv)
+				waitCodex, err = router.StartAppServerUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
 			}
 		} else {
 			err = cmd.Start()
@@ -219,7 +249,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	}
 	if exitErr, ok := errors.AsType[*exec.ExitError](codexErr); ok {
 		if appUI || headless {
-			// Native UI failures carry context (for example a lost app-server)
+			// UI failures carry context (for example a lost app-server)
 			// around the process status. Do not discard that diagnostic merely
 			// because we can preserve the child's exit code.
 			routerErr = errors.Join(codexErr, routerErr)
@@ -279,13 +309,84 @@ func execTrackHelper() string {
 	return helper
 }
 
-// frontendShellEnvironment restores the frontend PATH in Codex's Bash command
-// shells and, with a helper, reports each command's segments to the router.
-func frontendShellEnvironment(environment []string, directory, helper string) ([]string, error) {
-	// Login Bash may replace inherited PATH while reading /etc/profile. Its
-	// noninteractive startup file runs afterward, including for `bash -lc`.
+const userBashEnvEnvironment = "MEKUGI_USER_BASH_ENV"
+const frontendBashEnvMarker = "# Mekugi frontend shell startup\n"
+
+// restoreInheritedShellEnvironment removes only proven outer launch setup.
+// Both native backends keep the caller's own startup and unrelated PATH entries.
+// Source: cmd/mekugi/wrap.go:320:368@[de3acf5938a28429dd38ebd778144632b78c9775] frontendShellEnvironment
+func restoreInheritedShellEnvironment(environment []string) []string {
 	previous := ""
 	basePath := ""
+	userBashEnv, userBashEnvSet := "", false
+	zdotdir, zdotdirSet := "", false
+	userZdotdir, userZdotdirSet := "", false
+	for _, entry := range environment {
+		if value, ok := strings.CutPrefix(entry, "BASH_ENV="); ok {
+			previous = value
+		}
+		if value, ok := strings.CutPrefix(entry, userBashEnvEnvironment+"="); ok {
+			userBashEnv, userBashEnvSet = value, true
+		}
+		if value, ok := strings.CutPrefix(entry, "PATH="); ok {
+			basePath = value
+		}
+		if value, ok := strings.CutPrefix(entry, "ZDOTDIR="); ok {
+			zdotdir, zdotdirSet = value, true
+		}
+		if value, ok := strings.CutPrefix(entry, vcsguard.UserZdotdirEnvironment+"="); ok {
+			userZdotdir, userZdotdirSet = value, true
+		}
+	}
+	var inheritedGuards []string
+	restoreBash := false
+	if userBashEnvSet && filepath.Base(previous) == "frontend-bash-env" {
+		if data, err := os.ReadFile(previous); err == nil && strings.HasPrefix(string(data), frontendBashEnvMarker) {
+			inheritedGuards = append(inheritedGuards, filepath.Join(filepath.Dir(previous), vcsguard.Directory))
+			previous = userBashEnv
+			restoreBash = true
+		}
+	}
+	restoreZsh := zdotdirSet && vcsguard.IsZshStartup(zdotdir)
+	if restoreZsh {
+		inheritedGuards = append(inheritedGuards, filepath.Join(filepath.Dir(zdotdir), vcsguard.Directory))
+		// A nested session: the user's files are those the outer one ran.
+		zdotdir, zdotdirSet = userZdotdir, userZdotdirSet
+	}
+	if len(inheritedGuards) == 0 {
+		return slices.Clone(environment)
+	}
+	paths := filepath.SplitList(basePath)
+	paths = slices.DeleteFunc(paths, func(path string) bool {
+		return slices.Contains(inheritedGuards, filepath.Clean(path))
+	})
+	basePath = strings.Join(paths, string(os.PathListSeparator))
+	environment = slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
+		return strings.HasPrefix(entry, "PATH=") ||
+			restoreBash && (strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=")) ||
+			restoreZsh && (strings.HasPrefix(entry, "ZDOTDIR=") || strings.HasPrefix(entry, vcsguard.UserZdotdirEnvironment+"="))
+	})
+	environment = append(environment, "PATH="+basePath)
+	if restoreBash {
+		environment = append(environment, "BASH_ENV="+previous)
+	}
+	if restoreZsh && zdotdirSet {
+		environment = append(environment, "ZDOTDIR="+zdotdir)
+	}
+	return environment
+}
+
+// frontendShellEnvironment restores the frontend PATH in Codex's Bash command
+// shells and, with a helper, reports each command's segments to the router.
+// A guard puts the helper ahead of the version-control tools, and defines a
+// function for each absolute path to one, in Bash and zsh, so remote writes
+// wait for the user's approval.
+func frontendShellEnvironment(environment []string, directory, helper string, guard bool) ([]string, error) {
+	// Login Bash may replace inherited PATH while reading /etc/profile. Its
+	// noninteractive startup file runs afterward, including for `bash -lc`.
+	environment = restoreInheritedShellEnvironment(environment)
+	previous, basePath := "", ""
+	zdotdir, zdotdirSet := "", false
 	for _, entry := range environment {
 		if value, ok := strings.CutPrefix(entry, "BASH_ENV="); ok {
 			previous = value
@@ -293,12 +394,51 @@ func frontendShellEnvironment(environment []string, directory, helper string) ([
 		if value, ok := strings.CutPrefix(entry, "PATH="); ok {
 			basePath = value
 		}
+		if value, ok := strings.CutPrefix(entry, "ZDOTDIR="); ok {
+			zdotdir, zdotdirSet = value, true
+		}
 	}
-	startup := ""
+	startup := frontendBashEnvMarker
 	if previous != "" {
-		startup = ". " + shellsyntax.Quote(previous) + "\n"
+		startup += ". " + shellsyntax.Quote(previous) + "\n"
 	}
-	startup += "PATH=" + shellsyntax.Quote(directory) + ":\"$PATH\"; export PATH\n"
+	front := directory
+	if guard {
+		if helper == "" {
+			return nil, errors.New("VCS guard requires mekugi-exec beside mekugi; install both or use --vcs-guard=false")
+		}
+		guardDirectory, _ := vcsguard.Paths(directory)
+		if err := os.MkdirAll(guardDirectory, 0o700); err != nil {
+			return nil, fmt.Errorf("prepare VCS write guard: %w", err)
+		}
+		for _, tool := range slices.Concat(vcsguard.Tools, vcsguard.Shells) {
+			if err := os.Symlink(helper, filepath.Join(guardDirectory, tool)); err != nil && !errors.Is(err, os.ErrExist) {
+				return nil, fmt.Errorf("prepare VCS write guard: %w", err)
+			}
+		}
+		front = guardDirectory + string(os.PathListSeparator) + directory
+	}
+	startup += "PATH=" + shellsyntax.Quote(front) + ":\"$PATH\"; export PATH\n"
+	var zsh []string
+	if guard {
+		guardDirectory, _ := vcsguard.Paths(directory)
+		known := vcsguard.KnownPaths(basePath)
+		startup += vcsguard.Functions("bash", guardDirectory, known)
+		// Zsh reads no BASH_ENV; its startup files, which ZDOTDIR locates,
+		// run the user's own and then the same setup.
+		zshDirectory := filepath.Join(filepath.Dir(directory), "zsh")
+		if err := vcsguard.WriteZshStartup(zshDirectory, vcsguard.ZshPath(guardDirectory, directory)+vcsguard.Functions("zsh", guardDirectory, known)); err != nil {
+			return nil, fmt.Errorf("prepare VCS write guard: %w", err)
+		}
+		zsh = append(zsh, "ZDOTDIR="+zshDirectory)
+		if zdotdirSet {
+			zsh = append(zsh, vcsguard.UserZdotdirEnvironment+"="+zdotdir)
+		}
+	}
+	environment = slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
+		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, execsegment.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, execsegment.Guard+"=") ||
+			(guard && (strings.HasPrefix(entry, "ZDOTDIR=") || strings.HasPrefix(entry, vcsguard.UserZdotdirEnvironment+"=")))
+	})
 	if helper != "" {
 		socket, trackDirectory := router.ExecTrackPaths(directory)
 		tracker := filepath.Join(filepath.Dir(directory), "exec-track.bash")
@@ -306,14 +446,19 @@ func frontendShellEnvironment(environment []string, directory, helper string) ([
 			return nil, fmt.Errorf("prepare command tracking: %w", err)
 		}
 		startup += execsegment.Hook(tracker)
+		shTracker := filepath.Join(filepath.Dir(directory), "exec-track.sh")
+		if err := os.WriteFile(shTracker, []byte(execsegment.ShTracker(helper, socket, trackDirectory)), 0o600); err != nil {
+			return nil, fmt.Errorf("prepare sh command tracking: %w", err)
+		}
+		environment = append(environment, execsegment.ShTrackerEnvironment+"="+shTracker)
 	}
 	path := filepath.Join(filepath.Dir(directory), "frontend-bash-env")
 	if err := os.WriteFile(path, []byte(startup), 0o600); err != nil {
 		return nil, fmt.Errorf("prepare frontend shell environment: %w", err)
 	}
-	return append(environment,
-		"PATH="+directory+string(os.PathListSeparator)+basePath,
-		"BASH_ENV="+path), nil
+	return append(append(environment,
+		"PATH="+front+string(os.PathListSeparator)+basePath,
+		"BASH_ENV="+path, userBashEnvEnvironment+"="+previous), zsh...), nil
 }
 
 // Joining the startup receiver before launch ensures an interrupt it has already
@@ -337,6 +482,21 @@ func watchStartupInterrupts(ctx context.Context, cancel context.CancelFunc, inte
 }
 
 func codexArgs(baseURL string, args []string, journal, skillsManagerAvailable, openAIAuth bool) []string {
+	if journal {
+		args = slices.Clone(args)
+		// Codex applies feature toggles after -c overrides. Normalize conflicting
+		// toggles too, without interpreting prompt operands after --.
+		for i := 0; i < len(args) && args[i] != "--"; i++ {
+			switch args[i] {
+			case "--disable":
+				if i+1 < len(args) && (args[i+1] == "code_mode" || args[i+1] == "code_mode_only") {
+					args[i] = "--enable"
+				}
+			case "--disable=code_mode", "--disable=code_mode_only":
+				args[i] = strings.Replace(args[i], "--disable=", "--enable=", 1)
+			}
+		}
+	}
 	// Keep overrides in the final command's config layer: Codex subcommands
 	// can replace pre-subcommand -c settings with their own. Never cross --.
 	index := slices.Index(args, "--")
@@ -344,8 +504,8 @@ func codexArgs(baseURL string, args []string, journal, skillsManagerAvailable, o
 		index = len(args)
 	}
 	if journal {
-		args = slices.Insert(slices.Clone(args), index, "-c", "tools.update_plan.enabled=false")
-		index += 2
+		args = slices.Insert(slices.Clone(args), index, "-c", "tools.update_plan.enabled=false", "-c", "features.code_mode=true", "-c", "features.code_mode_only=true")
+		index += 6
 	}
 	overrides := []string{
 		"--disable", "goals",

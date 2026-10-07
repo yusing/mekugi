@@ -13,7 +13,7 @@ func TestClaudeWrapperKeepsNativeSetupAndCwdWrite(t *testing.T) {
 		suffix := " < /dev/null && pwd -P >| '/tmp/claude-ab12-cwd'"
 		wrapper := prefix + shellsyntax.Quote(script) + suffix
 		got, rewritten, segments, ok := ClaudeWrapper(wrapper)
-		if !ok || got != script || len(segments) < 2 || rewritten != prefix+shellsyntax.Quote(Rewrite(script, segments))+suffix {
+		if !ok || got != script || len(segments) == 0 || rewritten != prefix+shellsyntax.Quote(Rewrite(script, segments))+suffix {
 			t.Fatalf("wrapper = %q, %q, %+v, %v", got, rewritten, segments, ok)
 		}
 	}
@@ -35,7 +35,6 @@ func TestClaudeWrapperDeclinesUnprovenOperands(t *testing.T) {
 		`eval 'printf one; printf two' < /tmp/input && pwd -P >| /tmp/claude-ab12-cwd`,
 		`eval 'printf one; printf two' && pwd -P > /tmp/claude-ab12-cwd`,
 		`eval 'printf one; printf two' && pwd -P >| /tmp/claude-ab12-cwd; printf suffix`,
-		`eval 'printf one' && pwd -P >| /tmp/claude-ab12-cwd`,
 		`eval 'trap echo EXIT; printf two' && pwd -P >| /tmp/claude-ab12-cwd`,
 	} {
 		if _, _, _, ok := ClaudeWrapper(wrapper); ok {

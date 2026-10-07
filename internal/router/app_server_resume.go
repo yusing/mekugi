@@ -81,7 +81,7 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 		u.resumeNotice = "Saved model settings unavailable; using Codex defaults and explicit flags"
 		u.setNotice(u.resumeNotice, true)
 	}
-	params := map[string]any{"threadId": thread, "approvalPolicy": "never", "sandbox": "danger-full-access", "config": config, "modelProvider": config["model_provider"]}
+	params := u.threadPermissions(map[string]any{"threadId": thread, "config": config, "modelProvider": config["model_provider"]})
 	u.resumePendingEffort = false
 	for field, value := range saved {
 		if _, explicit := config[field]; explicit {
@@ -346,7 +346,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			text = appServerEditText(item, u.session.cwd)
 		}
 		entry := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, duration: appServerDuration(item), searchResults: appServerSearchResults(item), workdir: appServerCommandWorkdir(item, u.session.cwd)}}
+			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, commandCwd: appServerCommandDirectory(item, u.session.cwd), status: item.Status, duration: appServerDuration(item), searchResults: appServerSearchResults(item), workdir: appServerCommandWorkdir(item, u.session.cwd)}}
 		if item.Type == "fileChange" {
 			entry.native.editPages = appServerEditPages(item, u.session.cwd, method)
 		}
@@ -360,6 +360,9 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{exit}})
 		}
 	default:
-		u.view.applyAppServerItem(u.session.cwd, u.thread, u.thread, turn.ID, item.ID, method, "", item)
+		if item.Type == "agentMessage" {
+			item.replacesItems = u.proxy.commentaryReplacementItems(u.ctx, u.session.cwd, u.thread, turn.ID, item.ID)
+		}
+		u.view.applyAppServerItem(false, u.session.cwd, u.thread, u.thread, turn.ID, item.ID, method, "", item)
 	}
 }

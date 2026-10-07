@@ -19,9 +19,6 @@ type suffixFormat struct {
 }
 
 var formats = []suffixFormat{
-	{suffix: ".d.mts", format: code("typescript", false, "typescript", false)},
-	{suffix: ".d.cts", format: code("typescript", false, "typescript", false)},
-	{suffix: ".d.ts", format: code("typescript", false, "typescript", true)},
 	{suffix: ".tsx", format: code("typescript", true, "typescript", false)},
 	{suffix: ".mts", format: code("typescript", false, "typescript", false)},
 	{suffix: ".cts", format: code("typescript", false, "typescript", false)},

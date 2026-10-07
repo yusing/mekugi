@@ -31,7 +31,7 @@ func summaryForTest(t *testing.T, ctx context.Context, store *mekugiReplayStore,
 	return summary, err
 }
 
-func TestJournalSummaryOrdersOpenTasksAndPreservesContext(t *testing.T) {
+func TestJournalSummaryOrdersOpenTasksAndIndexesContext(t *testing.T) {
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	thread := transform.shellThreadID
 	_, err := proxy.journals.apply(transform.ctx, proxy.replayStore, workspace, thread, "", []journalMutation{
@@ -47,7 +47,7 @@ func TestJournalSummaryOrdersOpenTasksAndPreservesContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, fact := range []string{"Keep protocol v1 stable", "No new dependencies", "Awaiting API decision", "Resume: continue /4"} {
+	for _, fact := range []string{"Keep protocol v1 stable", "Read relevant context paths before acting", "Awaiting API decision", "Resume: continue /4"} {
 		if !strings.Contains(summary.Text, fact) {
 			t.Errorf("summary omitted %q: %s", fact, summary.Text)
 		}
@@ -162,7 +162,7 @@ func TestJournalSummaryListsFailureWithoutRetainedOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.Failures != 1 || !strings.Contains(summary.Text, "Exit: 1 · output not retained\nFAIL parser") {
+	if summary.Failures != 1 || !strings.Contains(summary.Text, "Exit: 1; output not retained\nFAIL parser") {
 		t.Fatalf("unretained output was not reported as unavailable: %s", summary.Text)
 	}
 }
@@ -240,11 +240,48 @@ func TestJournalSummaryBoundsFailuresKeepingNewest(t *testing.T) {
 	}
 }
 
-func TestJournalSummaryKeepsNewestEstablishedResults(t *testing.T) {
+func TestJournalSummaryLimitsFactsToCurrentWork(t *testing.T) {
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	store, thread, ctx := proxy.replayStore, transform.shellThreadID, transform.ctx
+	mutations := []journalMutation{
+		{Op: "add", Kind: "task", Title: new("Current task"), State: new("working")},
+		{Op: "add", Under: "/1", Kind: "context", Title: new("Current constraint"), Body: new("Preserve the active wire contract")},
+		{Op: "add", Kind: "task", Title: new("Later task")},
+		{Op: "log", P: "/2", Text: new("Unrelated pending-task result")},
+	}
 	for i := range 40 {
-		if _, err := proxy.journals.apply(ctx, store, workspace, thread, "", []journalMutation{{Op: "add", Kind: "note", Title: new(fmt.Sprintf("Result %02d", i)), Body: new(strings.Repeat("x", 1500))}}); err != nil {
+		mutations = append(mutations,
+			journalMutation{Op: "add", Under: "/1", Kind: "note", Title: new(fmt.Sprintf("Result %02d", i)), Body: new(strings.Repeat("x", 1500))},
+			journalMutation{Op: "add", Kind: "task", Title: new(fmt.Sprintf("Unrelated completed task %02d", i)), State: new("done")},
+			journalMutation{Op: "add", Kind: "note", Title: new("Unrelated root result"), Body: new(strings.Repeat("y", 1500))},
+		)
+	}
+	if _, err := proxy.journals.apply(ctx, store, workspace, thread, "", mutations); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := summaryForTest(t, ctx, store, workspace, thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(summary.Text, "Result 36") || strings.Contains(summary.Text, "Unrelated") || len(summary.Text) > 4096 {
+		t.Fatalf("session history inflated recovery: %d bytes; unrelated history=%t", len(summary.Text), strings.Contains(summary.Text, "Unrelated"))
+	}
+	for _, want := range []string{"Preserve the active wire contract", "Result 37", "Result 38", "Result 39", "37 more current-work facts available by path", `journal({op:"read",view:"outline"})`} {
+		if !strings.Contains(summary.Text, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Index(summary.Text, "Result 38") > strings.Index(summary.Text, "Result 39") {
+		t.Fatal("kept results lost tree order")
+	}
+}
+
+func TestJournalSummaryIndexesLargeContextForOnDemandReads(t *testing.T) {
+	transform, proxy, _, workspace := newDurableTreeTransform(t)
+	store, thread, ctx := proxy.replayStore, transform.shellThreadID, transform.ctx
+	body := strings.Repeat("Retained constraint detail. ", 500)
+	for range 4 {
+		if _, err := proxy.journals.apply(ctx, store, workspace, thread, "", []journalMutation{{Op: "add", Kind: "context", Title: new("Constraint"), Body: &body}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -252,25 +289,12 @@ func TestJournalSummaryKeepsNewestEstablishedResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(summary.Text, "Result 39") || strings.Contains(summary.Text, "Result 00") || !strings.Contains(summary.Text, "earlier results omitted") {
-		t.Fatalf("truncation did not keep the newest results: %s", summary.Text)
+	if !strings.Contains(summary.Text, "/4 Constraint") || strings.Contains(summary.Text, "Retained constraint detail") || len(summary.Text) > 1024 {
+		t.Fatalf("root context bodies inflated recovery: %s", summary.Text)
 	}
-	if strings.Index(summary.Text, "Result 38") > strings.Index(summary.Text, "Result 39") {
-		t.Fatal("kept results lost tree order")
-	}
-}
-
-func TestJournalSummaryRejectsOversizeMandatoryContext(t *testing.T) {
-	transform, proxy, _, workspace := newDurableTreeTransform(t)
-	store, thread, ctx := proxy.replayStore, transform.shellThreadID, transform.ctx
-	for i := range 4 {
-		_, err := proxy.journals.apply(ctx, store, workspace, thread, "", []journalMutation{{Op: "add", Kind: "context", Title: new("Mandatory constraint"), Body: new(strings.Repeat(string(rune('A'+i)), 12000))}})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := summaryForTest(t, ctx, store, workspace, thread); err == nil {
-		t.Fatal("oversize mandatory context was silently truncated")
+	nodes, err := proxy.journals.readTree(ctx, store, workspace, thread, "", "/4", nil, "own")
+	if err != nil || len(nodes) != 1 || nodes[0].Body != body {
+		t.Fatalf("on-demand read lost context: %+v %v", nodes, err)
 	}
 }
 

@@ -7,6 +7,6 @@ Mekugi dev • codex
 
 
 
-╭─ Ready · ✗ Saved model settings unavailable; using Codex defaults and explicit flags ────────────╮
+╭─ Ready · ✗ Saved model settings unavailable; using Codex defaults and explicit flags ────── [✓] ─╮
 │ ❯                                                                                                │
 ╰───────────────────────────────────────────────────────────────────────────── default-model • 0% ─╯

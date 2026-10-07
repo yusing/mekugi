@@ -59,7 +59,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		lead        int    // Entry index of the Main item a tool group continues, or -1.
 		attached    bool   // Tools branching from the reasoning directly above, with no gap.
 	}
-	var items []item
+	items := make([]item, 0, len(v.runs))
 	for i := 0; i < len(v.entries); {
 		if !v.visible(v.entries[i].activityPaneEntry) {
 			i++
@@ -106,9 +106,21 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		}
 		i = j
 	}
-	var feed liveActivityFeed
+	// Warm runs already know the row count. Reserve the parallel row slices
+	// together instead of repeatedly copying the whole transcript as they grow.
+	rowCapacity := len(items) // Allow separators and a changing tail.
+	for _, run := range v.runs {
+		rowCapacity += len(run.lines)
+	}
+	feed := liveActivityFeed{
+		lines:     make([]string, 0, rowCapacity),
+		heads:     make([]int, 0, rowCapacity),
+		snippets:  make([]liveActivitySnippet, 0, rowCapacity),
+		questions: make([]uint64, 0, rowCapacity),
+		paints:    make([]liveActivityPaint, 0, len(items)),
+	}
 	v.questionRows = make(map[uint64]int)
-	used := make(map[liveActivityRunKey]liveActivityRun)
+	used := make(map[liveActivityRunKey]liveActivityRun, len(items))
 	continues := func(a, b int) bool {
 		return a >= 0 && b < len(items) && items[a].agent != "" && items[a].agent == items[b].agent
 	}
@@ -206,6 +218,9 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 				for seq, row := range run.entryRows {
 					run.entryRows[seq] = row + 1
 				}
+				for i := range run.running {
+					run.running[i]++
+				}
 			}
 			return run
 		}
@@ -221,7 +236,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		if !run.colored {
 			feed.paints = append(feed.paints, liveActivityPaint{head, key, render})
 		}
-		// A sent message shrinking above a scrolled viewport keeps its rows still.
+		// A sent message or batch shrinking above a scrolled viewport keeps its rows still.
 		if full := key; !ok && key.excerpt && !v.following && head < v.offset {
 			full.excerpt = false
 			if shown, ok := v.runs[full]; ok {
@@ -246,8 +261,8 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			feed.heads = append(feed.heads, start)
 		}
 		feed.appendRows(run)
-		if v.sentMessage(it.first) {
-			feed.sent = append(feed.sent, liveActivitySent{v.entries[it.first].Seq, len(feed.lines)})
+		if v.sentMessage(it.first) || !key.excerpt && run.batch {
+			feed.passing = append(feed.passing, liveActivityPassing{v.entries[it.first].Seq, len(feed.lines)})
 		}
 	}
 	for _, entry := range v.entries {
@@ -334,7 +349,7 @@ func trafficAgent(entry activityPaneEntry, block activityui.Block) string {
 		agent = block.To
 	case block.Kind == "message":
 		agent = block.From
-	case block.Kind == "final" || block.Kind == "error":
+	case block.Kind == "final" || block.Kind == "error" || block.Kind == "journal":
 	default:
 		return ""
 	}
@@ -399,14 +414,16 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	}
 	var out conversationLines
 	var laid []activityui.Block // Tool blocks, indexed by the snippets naming them.
+	var running []int
+	batch := false
 	entryRows := make(map[uint64]int)
 	p := &v.painter
 	switch {
-	case len(blocks) == 1 && blocks[0].Kind == "journal":
+	case entry.Agent == "Main" && len(blocks) == 1 && blocks[0].Kind == "journal":
 		laid = blocks
 		entryRows[entry.Seq] = 0
-		v.milestoneItem(&out, entry, []string{blocks[0].Body}, width)
-		for i := 1; i < len(out.lines); i++ {
+		v.milestoneItem(&out, entry, []string{journalActivityBody(blocks[0].Body, false)}, width)
+		for i := 0; i < len(out.lines); i++ {
 			for state, glyph := range journalGlyphs {
 				out.lines[i] = strings.ReplaceAll(out.lines[i], glyph+" ", journalStateColor(p.Theme, state)+glyph+activityui.Reset+" ")
 			}
@@ -447,8 +464,13 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		}
 	case conversationTool(entry):
 		var group []activityui.Block
+		unconfirmed := false
+		restored := true
 		for k := first; k <= last; k++ {
 			if v.visible(v.entries[k].activityPaneEntry) {
+				n := v.entries[k].native
+				restored = restored && n != nil && !n.live
+				unconfirmed = unconfirmed || n.unconfirmed() && (n.output == nil || !n.output.View().Exited || n.output.View().Exit == 0)
 				for _, block := range v.shownBlocks(k) {
 					block.Source = v.entries[k].Seq
 					block.TailRows = v.tailRows()
@@ -463,6 +485,15 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		// Its connectors sit beneath the reasoning bullet. Keep invocation identities
 		// even when adjacent edits share a heading or edit the same path.
 		laid = activityui.AlignVerbs(activityui.GroupOperations(activityui.MergeLiveActivityReads(group)))
+		// A batch that has scrolled out of view keeps one row, which opens
+		// its operations in the output dialog. Failed exits stay visible in the
+		// summary; unconfirmed host items without an exit keep their rows.
+		// Restored groups start folded instead of losing their old viewport state.
+		if collapsed, ok := activityui.CollapseBatch(laid); ok && !unconfirmed && (restored || v.passed[entry.Seq]) {
+			laid = []activityui.Block{collapsed}
+		} else {
+			batch = ok && !unconfirmed
+		}
 		for index, block := range laid {
 			snippet := liveActivitySnippet{run: entry.Seq, block: index}
 			toggle := v.clickTarget(&block, snippet, width-2)
@@ -477,6 +508,9 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 				target = snippet
 			}
 			rows := v.paintBlock(len(toggles), 0, func() []string { return p.Block(block, width-2) })
+			if block.Running && len(rows) > 0 {
+				running = append(running, len(out.lines)+len(toggles))
+			}
 			if len(block.Questions) > 0 {
 				entryRows[block.Source] = len(toggles)
 			}
@@ -514,6 +548,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			for _, question := range v.entries[:first] {
 				if question.Seq == entry.native.question {
 					v.replyContext(&out, question.activityPaneEntry, gutter, width-2)
+					out.add(0, gutter) // End the user excerpt before Main's own Markdown.
 					break
 				}
 			}
@@ -534,7 +569,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			}
 		}
 	}
-	return liveActivityRun{lines: out.lines, blocks: laid, snippets: out.snippets, questions: out.questions, entryRows: entryRows}
+	return liveActivityRun{lines: out.lines, blocks: laid, snippets: out.snippets, questions: out.questions, entryRows: entryRows, batch: batch, running: running}
 }
 
 // conversationHeading is one item heading: a glyph, a name, optional dim
@@ -553,27 +588,12 @@ func mainGutter(p *activityui.Painter) string {
 	return p.Theme.Accent() + "┃" + activityui.Reset + " "
 }
 
-// milestoneItem labels journal milestones as such, under the accent gutter,
-// so progress notes cannot be mistaken for Main's replies.
+// milestoneItem shows journal milestones as flat diamond-led content.
 func (v *liveActivityView) milestoneItem(out *conversationLines, entry activityPaneEntry, milestones []string, width int) {
-	accent := v.painter.Theme.Accent()
-	detail := ""
-	if entry.Agent != "Main" {
-		detail = v.painter.Agent(entry.Agent)
-	}
-	out.add(0, conversationHeading(accent+"◆"+activityui.Reset, "\x1b[1m"+accent+"journal"+activityui.Reset, detail, entry, width))
-	gutter := accent + "│" + activityui.Reset + " "
+	lead := v.painter.Theme.Accent() + "◆" + activityui.Reset + " "
 	for _, text := range milestones {
-		body := width - 4
-		if len(milestones) == 1 {
-			body = width - 2
-		}
-		rows := v.paintBlock(len(out.lines), 0, func() []string { return v.painter.Markdown(text, body) })
-		if len(milestones) == 1 {
-			out.hang(gutter, gutter, rows)
-			continue
-		}
-		out.hang(gutter+"• ", gutter+"  ", rows)
+		rows := v.paintBlock(len(out.lines), 0, func() []string { return v.painter.Markdown(text, max(1, width-2)) })
+		out.hang(lead, "  ", rows)
 	}
 }
 
@@ -705,6 +725,14 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 	}
 	body := width - 2
 	switch {
+	case block.Kind == "journal":
+		rows := v.paintBlock(len(out.lines), 0, func() []string { return p.Markdown(journalActivityBody(block.Body, true), body) })
+		out.hang(gutter, gutter, rows)
+		if block.Body != journalActivityBody(block.Body, true) {
+			for i := len(out.lines) - len(rows); i < len(out.lines); i++ {
+				out.snippets[i] = liveActivitySnippet{run: entry.Seq, block: 0}
+			}
+		}
 	case !v.conversation && block.Kind == "final":
 		block.Flash = v.flashQuestion == entry.Seq && v.now().Before(v.flashUntil)
 		out.hang(gutter, gutter, v.paintBlock(len(out.lines), 5, func() []string { return p.Event(block, body) }))

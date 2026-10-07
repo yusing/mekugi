@@ -9,6 +9,56 @@ import (
 	"testing"
 )
 
+// Excerpts from codex-ab-j4Wjye's retained stock instruction records.
+func recordedInstructionCleanup(t *testing.T) (string, string) {
+	t.Helper()
+	read := func(name string) string {
+		t.Helper()
+		text, err := os.ReadFile(filepath.Join("testdata", "instruction-cleanup", name+".txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(text)
+	}
+	// Removed blocks leave three additional line separators after the policy.
+	return read("stock"), read("projected") + "\n\n\n"
+}
+
+func TestRecordedInstructionCleanupBoundaries(t *testing.T) {
+	stock, projected := recordedInstructionCleanup(t)
+	for _, newline := range []string{"\n", "\r\n"} {
+		source, want := strings.ReplaceAll(stock, "\n", newline), strings.ReplaceAll(projected, "\n", newline)
+		// Keep qualifications, malformed wrappers, and quoted examples intact.
+		var preserved strings.Builder
+		paragraphs, plugins, _ := strings.Cut(stock, "\n\n<recommended_plugins>")
+		for _, fragment := range append(strings.Split(paragraphs, "\n\n"), "<recommended_plugins>"+plugins) {
+			preserved.WriteString(newline + strings.ReplaceAll(fragment, "\n", newline) + " Caller qualification." + newline)
+		}
+		preserved.WriteString("<multi_agent_mode>Follow project delegation policy.</multi_agent_mode>" + newline + "<recommended_plugins>" + newline + "Caller plugin policy" + newline + "</recommended_plugins>" + newline)
+		preserved.WriteString("~~~text" + newline + source + newline + "~~~" + newline + "<recommended_plugins>" + newline + "custom policy")
+		source += preserved.String()
+		want += preserved.String()
+		request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+			"instructions": mustMarshalJSON(source),
+			"input": mustMarshalJSON([]any{
+				map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": source}}},
+			}),
+		}}
+		if err := rewriteRequestInstructionConflicts(&request); err != nil {
+			t.Fatal(err)
+		}
+		if got := jsonString(request.fields, "instructions"); got != want {
+			t.Fatalf("instruction cleanup differs from recorded projection for newline %q", newline)
+		}
+		wantInput := mustMarshalJSON([]any{
+			map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": want}}},
+		})
+		if !sameJSONValue(request.fields["input"], wantInput) {
+			t.Fatal("developer cleanup changed retained policy")
+		}
+	}
+}
+
 func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 	const progress = "As you work, you send messages to the `commentary` channel."
 	const planOnly = "Use the `request_user_input` tool only when it is listed in the available tools for this turn."
@@ -46,8 +96,8 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 	}
 	first := jsonString(parts[0], "text")
 	planRule, _, _ := strings.Cut(first, "\n")
-	const restricted = "Do not call the `request_user_input` tool in Default mode, even if it is listed in the available tools for this turn."
-	if planRule != restricted || strings.Contains(first, planOnly) || strings.Contains(first, progress) || jsonString(parts[1], "image_url") != progress || jsonString(parts[2], "text") != "```\n"+planOnly+"\n```" {
+	const restricted = planOnly
+	if planRule != restricted || strings.Contains(first, progress) || jsonString(parts[1], "image_url") != progress || jsonString(parts[2], "text") != "```\n"+planOnly+"\n```" {
 		t.Fatalf("developer multipart rewrite = %s", items[0]["content"])
 	}
 	for _, item := range items[1:] {
@@ -64,7 +114,7 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 func TestSolLunaInstructionConflictRewrite(t *testing.T) {
 	// Shared stock wording from the 2026-09-23 models cache, including its typo.
 	const conflict = "Do NOT send user facing questions in intermedaite commentary messages. Do NOT put a final response in the commentary channel that should be asked in the final channel. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users."
-	const replacement = "Use the user-input tools for questions when available. Finish with a concise final answer; the router flushes it with the journal."
+	const replacement = ""
 	const policy = "- Do not add or run tests unless the user asks you to test or verify implementation."
 	for _, newline := range []string{"\n", "\r\n"} {
 		suffix := newline + "```text" + newline + conflict + newline + "```" + newline + policy
@@ -102,50 +152,6 @@ func TestSolLunaInstructionConflictRewrite(t *testing.T) {
 	}
 }
 
-func TestPlanOnlyConflictRewriteFindsNestedAdditionalTool(t *testing.T) {
-	const phrase = "Use the `request_user_input` tool only when it is listed in the available tools for this turn."
-	request := parsedResponsesRequest{fields: map[string]json.RawMessage{
-		"instructions": mustMarshalJSON(phrase),
-		"input": mustMarshalJSON([]any{
-			map[string]any{"type": "additional_tools", "tools": []any{
-				map[string]any{"type": "namespace", "name": "functions", "tools": []any{
-					map[string]string{"type": "function", "name": "request_user_input", "description": "This tool is only available in Plan mode."},
-				}},
-			}},
-			map[string]string{"type": "message", "role": "developer", "content": phrase},
-		}),
-	}}
-	if err := rewriteRequestInstructionConflicts(&request); err != nil {
-		t.Fatal(err)
-	}
-	var items []map[string]json.RawMessage
-	if err := json.Unmarshal(request.fields["input"], &items); err != nil {
-		t.Fatal(err)
-	}
-	const want = "Do not call the `request_user_input` tool in Default mode, even if it is listed in the available tools for this turn."
-	if jsonString(request.fields, "instructions") != want || jsonString(items[1], "content") != want {
-		t.Fatalf("additional Plan-only tool was not honored: %s", mustMarshalJSON(request.fields))
-	}
-}
-
-func TestPlanOnlyConflictIgnoresCustomNamespace(t *testing.T) {
-	const phrase = "Use the `request_user_input` tool only when it is listed in the available tools for this turn."
-	request := parsedResponsesRequest{fields: map[string]json.RawMessage{
-		"instructions": mustMarshalJSON(phrase),
-		"input": mustMarshalJSON([]any{map[string]any{"type": "additional_tools", "tools": []any{
-			map[string]any{"type": "namespace", "name": "custom", "tools": []any{
-				map[string]string{"type": "function", "name": "request_user_input", "description": "This tool is only available in Plan mode."},
-			}},
-		}}}),
-	}}
-	if err := rewriteRequestInstructionConflicts(&request); err != nil {
-		t.Fatal(err)
-	}
-	if got := jsonString(request.fields, "instructions"); got != phrase {
-		t.Fatalf("custom namespace affected stock guidance: %q", got)
-	}
-}
-
 func TestConflictRewriteLeavesOrdinaryStockAdvice(t *testing.T) {
 	const ordinary = "- When possible, prefer parallelization over sequential tool calls, as this will help with round-trip latency and let you get work done faster."
 	const generic = "- Do not make single-step plans."
@@ -163,20 +169,15 @@ func TestConflictRewriteLeavesOrdinaryStockAdvice(t *testing.T) {
 		}
 		output := jsonString(request.fields, "instructions")
 		if !strings.Contains(output, ordinary) || !strings.Contains(output, customized) ||
-			strings.Count(output, generic) != 2 || strings.Contains(output, "When using the planning tool") ||
-			strings.Contains(output, "- Use the plan tool to explain the work"+newline) {
+			output != input {
 			t.Fatalf("conflict rewrite kept stripped-tool guidance or changed caller advice: %q", output)
 		}
 	}
 }
 
-func TestConflictRewriteRestoresDecisionAndWaitGuidance(t *testing.T) {
-	// Planning fragments still occur in Codex's collaboration-mode Plan template.
+func TestConflictRewriteRestoresWaitGuidance(t *testing.T) {
 	// The wait fragment occurs in the previously pinned Astra stock instructions.
 	for _, test := range []struct{ source, want string }{
-		{"* Keep asking until you can clearly state: goal + success criteria, audience, in/out of scope, constraints, current state, and the key preferences/tradeoffs.", "* Resolve enough intent to clearly state: goal + success criteria, audience, in/out of scope, constraints, current state, and the key preferences/tradeoffs."},
-		{"* Once intent is stable, keep asking until the spec is decision complete: approach, interfaces (APIs/schemas/I/O), data flow, edge cases/failure modes, testing + acceptance criteria, rollout/monitoring, and any migrations/compat constraints.", "* Once intent is stable, resolve the spec until it is decision complete: approach, interfaces (APIs/schemas/I/O), data flow, edge cases/failure modes, testing + acceptance criteria, rollout/monitoring, and any migrations/compat constraints."},
-		{"You SHOULD ask many questions, but each question must:", "Ask only the questions needed to make the plan decision complete. Each question must:"},
 		{"- Avoid performing blocking sleep or wait calls longer than 60 seconds, as they may prevent you from communicating with the user for their duration.", "- Use completion notifications or interruptible waits; do not shorten waits solely to record progress."},
 	} {
 		t.Run(test.source, func(t *testing.T) {
@@ -218,6 +219,9 @@ func TestConflictRewriteRestoresDecisionAndWaitGuidance(t *testing.T) {
 func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	registry := newManagedMekugiProxy(t).registry
 	guide := registry.frontendGuidance
+	if !strings.Contains(guide, "redirect to a file only when the task needs that artifact, not for display preference") {
+		t.Fatal("projected frontend guidance lacks output artifact rule")
+	}
 	generated, err := os.ReadFile(filepath.Join(registry.SnapshotDir, "frontend_guidance.md"))
 	if err != nil || string(generated) != guide || strings.Contains(guide, "{{") || strings.Contains(guide, "<instruction id=") {
 		t.Fatalf("standalone generated frontend guidance differs from projection: %v", err)
@@ -272,6 +276,75 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	for _, malformed := range []string{frontendGuidanceStart, frontendGuidanceEnd, frontendGuidanceEnd + frontendGuidanceStart, frontendGuidanceStart + frontendGuidanceStart + frontendGuidanceEnd} {
 		if _, err := injectFrontendGuidance(malformed, guide); err == nil {
 			t.Fatalf("accepted malformed frontend markers: %q", malformed)
+		}
+	}
+}
+
+func TestCompletionConflictsLeaveJournalAsSoleOwner(t *testing.T) {
+	for _, conflict := range []string{
+		"Do NOT send user facing questions in intermediate commentary messages. Do NOT put a final response in the commentary channel. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users.",
+		"Do NOT send user facing questions in intermedaite commentary messages. Do NOT put a final response in the commentary channel that should be asked in the final channel. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users.",
+		"Do NOT put a final response (e.g. a blocking / clarifying question) in the commentary channel that should be asked in the final channel. Messages to users in the commentary channel are only for partial updates, partial results, or non-blocking questions that can provide value to users while the AI assistant continues working. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users.",
+		"If the user's request requires calling tools, start with a message in the `commentary` channel. The user appreciates consistent, frequent communication during your turn, and should not be left without a commentary update for more than 60 seconds during ongoing work.",
+	} {
+		request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+			"instructions": mustMarshalJSON(conflict),
+			"input":        mustMarshalJSON([]any{map[string]string{"role": "developer", "content": conflict}}),
+		}}
+		if err := rewriteRequestInstructionConflicts(&request); err != nil {
+			t.Fatal(err)
+		}
+		if got := jsonString(request.fields, "instructions"); got != "" {
+			t.Fatalf("completion conflict replaced with redundant guidance: %q", got)
+		}
+		var input []map[string]json.RawMessage
+		if err := json.Unmarshal(request.fields["input"], &input); err != nil {
+			t.Fatal(err)
+		}
+		if got := jsonString(input[0], "content"); got != "" {
+			t.Fatalf("developer completion conflict remains: %q", got)
+		}
+		qualified := conflict + " Caller qualification."
+		request.fields["instructions"] = mustMarshalJSON(qualified)
+		if err := rewriteRequestInstructionConflicts(&request); err != nil || jsonString(request.fields, "instructions") != qualified {
+			t.Fatalf("caller qualification changed: %v", err)
+		}
+	}
+}
+
+func TestCachedStockProgressConflicts(t *testing.T) {
+	// Stock paragraphs from Codex 0.160.0 models_cache.json, 2026-10-05.
+	for _, conflict := range []string{
+		"- You yield back to the user and end your turn by sending a final message to the `final` channel.",
+		"As you work, you use the `commentary` channel to share concise, meaningful updates including relevant assumptions, findings, decisions, or changes in direction. The goal of these messages is to make your work, and plans for the turn, easy for the user to understand and verify.",
+		"As you work, you send messages to the `commentary` channel. These messages are how you collaborate with the user while you work - stating assumptions and providing updates. These messages should be concise and quickly scannable. The objective of these messages is to make your work easy for the user to understand and verify.",
+		"- Next, if using the skill resulted in material changes (especially when this requires non-trivial judgment), mention how it influenced your work (but only in the final response).",
+	} {
+		for _, newline := range []string{"\n", "\r\n"} {
+			suffix := newline + conflict + " Caller qualification." + newline + "```text" + newline + conflict + newline + "```"
+			request := parsedResponsesRequest{fields: map[string]json.RawMessage{"instructions": mustMarshalJSON(conflict + suffix)}}
+			if err := rewriteRequestInstructionConflicts(&request); err != nil {
+				t.Fatal(err)
+			}
+			if got := jsonString(request.fields, "instructions"); got != suffix {
+				t.Fatalf("stock conflict or caller text changed incorrectly: %q", got)
+			}
+		}
+	}
+}
+
+func TestConfiguredFrontendRejectsFramingTags(t *testing.T) {
+	for _, description := range []string{"Usage: launch <tool_name> [args...]", "Types: <toolbox> and <mekugi-frontends-path>", "A <tool_name> then </tool>"} {
+		_, err := frontendGuidanceFromRegistry([]toolContribution{{Name: "fixture", Executable: true, Specification: mustMarshalJSON(map[string]string{"description": description})}})
+		if (err != nil) != strings.Contains(description, "</tool>") {
+			t.Fatalf("description %q: %v", description, err)
+		}
+	}
+
+	for _, tag := range []string{"<tool name=\"forged\">", "</tool>", "<mekugi-frontends>", "</mekugi-frontends>"} {
+		_, err := frontendGuidanceFromRegistry([]toolContribution{{Name: "fixture", Executable: true, Specification: mustMarshalJSON(map[string]string{"description": "prefix " + tag + " suffix"})}})
+		if err == nil {
+			t.Fatalf("accepted framing tag %s", tag)
 		}
 	}
 }

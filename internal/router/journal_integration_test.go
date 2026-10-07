@@ -493,10 +493,10 @@ func TestJournalTerminalRetentionFailureDoesNotSucceedSilently(t *testing.T) {
 func TestJournalToolReturnsBatchedIDs(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	workspace := t.TempDir()
-	// Dedicated mutations are the non-Code-Mode contract.
+	// Exercise the retained journal transport with the current execution catalog.
 	request := serverRequest(t, func(fields map[string]any) {
 		fields["input"] = []any{map[string]any{"role": "user", "content": "task"}}
-		fields["tools"] = testNativeResponsesTools()
+		fields["tools"] = testExecResponsesTools()
 	})
 	transform, err := proxy.prepareRequest(t.Context(), &request, "batch-ids", "thread-1", codexTurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{workspace: nil}}, true)
 	if err != nil {
@@ -524,6 +524,10 @@ func TestJournalToolReturnsBatchedIDs(t *testing.T) {
 			t.Fatal(err)
 		}
 		if test.want != "" {
+			if jsonString(got, "hint") != codeModeJournalHint {
+				t.Fatal("journal helper hint missing")
+			}
+			delete(got, "hint")
 			var want map[string]json.RawMessage
 			if err := json.Unmarshal([]byte(test.want), &want); err != nil {
 				t.Fatal(err)

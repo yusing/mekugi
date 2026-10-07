@@ -32,6 +32,8 @@ func TestClaudeExecTrackMatchesNativeWrapperEffects(t *testing.T) {
 		"set -e; printf 'first\\n'; false; printf 'native eval continuation\\n'",
 		"printf 'first\\n'; printf '%s' \"${MISSING_NATIVE:?native failure}\"; printf never",
 		"cat <<'EOF'; snapshot_echo; cd sub\nheredoc body\nEOF\n",
+		"printf 'single\\n'",
+		"false",
 	} {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
 			service, binding, _ := observationHTTPFixture(t)
@@ -59,7 +61,7 @@ func TestClaudeExecTrackMatchesNativeWrapperEffects(t *testing.T) {
 			cwd := filepath.Join(t.TempDir(), "claude-ab12-cwd")
 			wrapper := "source " + shellsyntax.Quote(snapshot) + " 2>/dev/null || true && export NATIVE_SETUP=kept && eval " + shellsyntax.Quote(script) + " < /dev/null && pwd -P >| " + shellsyntax.Quote(cwd)
 			run := func(environment []string) (execTrackRun, string) {
-				command := exec.Command("bash", "-lc", wrapper)
+				command := exec.Command(execTrackShellExecutable(t, "bash"), "-lc", wrapper)
 				command.Dir, command.Env = binding.Workspace, environment
 				var stdout, stderr bytes.Buffer
 				command.Stdout, command.Stderr = &stdout, &stderr
@@ -77,7 +79,7 @@ func TestClaudeExecTrackMatchesNativeWrapperEffects(t *testing.T) {
 				}
 				return execTrackRun{stdout.String(), stderr.String(), code}, string(directory)
 			}
-			env := []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir(), "BASH_ENV=" + prior}
+			env := []string{"PATH=" + execTrackPath(), "HOME=" + t.TempDir(), "BASH_ENV=" + prior}
 			plain, plainCwd := run(env)
 			if err := service.owner.bind(t.Context(), binding); err != nil {
 				t.Fatal(err)
@@ -97,7 +99,8 @@ func TestClaudeExecTrackMatchesNativeWrapperEffects(t *testing.T) {
 			key := [3]string{binding.Session, binding.Agent, call.ID}
 			shell := &execTrackShell{hub: service.owner.execTrack}
 			view := shell.awaitView(t, key)
-			if !view.complete || view.code != tracked.code || len(view.segments) < 2 || !view.output {
+			parts, _ := execsegment.Split(script)
+			if !view.complete || view.code != tracked.code || len(view.segments) != len(parts) || len(parts) > 1 && !view.output {
 				t.Fatalf("missing shell evidence: %+v", view)
 			}
 			if i == 0 {

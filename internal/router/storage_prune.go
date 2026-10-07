@@ -53,10 +53,20 @@ func (s *mekugiReplayStore) storageRevision() (string, error) {
 }
 
 func (s *mekugiReplayStore) advanceStorageRevision() error {
+	if s.admission != nil {
+		s.admission.files = nil
+	}
 	if _, err := s.storageRevision(); err != nil {
 		return err
 	}
-	return persistence.AtomicFile(filepath.Join(s.directory, "storage-revision"), "revision-pending-", []byte(rand.Text()+"\n"), s.writes)
+	revision := rand.Text() + "\n"
+	if err := persistence.AtomicFile(filepath.Join(s.directory, "storage-revision"), "revision-pending-", []byte(revision), s.writes); err != nil {
+		return err
+	}
+	if s.admission != nil {
+		s.admission.revision = revision
+	}
+	return nil
 }
 
 func (s *mekugiReplayStore) requestStoragePrune(request storagePressureRequest) error {

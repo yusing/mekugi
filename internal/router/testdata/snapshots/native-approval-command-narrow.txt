@@ -1,0 +1,20 @@
+└ Run git push origin main
+      Pending Approval
+
+
+
+
+
+  ! Run this command?
+  git push origin main
+  Reason: Publish the release
+  branch.
+  › 1. Yes, proceed               
+    2. No, continue without runni…
+  1–2 choose · type deny with
+  reason · enter confirm · esc
+  hide
+
+╭─ approving · turn waiting ───────╮
+│ ❯                                │
+╰───── snapshot-model (high) • 0% ─╯

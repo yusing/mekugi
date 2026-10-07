@@ -59,6 +59,38 @@ func TestSnapshotStorageErrors(t *testing.T) {
 	}
 }
 
+func TestSnapshotTerminalCells(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "styles.txt")
+	rows := []string{"\x1b[1;31m猫é\x1b[0m", "plain"}
+	want := terminalFrame(t, rows, 8)
+	if err := check(path, want, true); err != nil {
+		t.Fatal(err)
+	}
+	// Separate SGR commands and a short reset have the same terminal effect.
+	equivalent := []string{"\x1b[31m\x1b[1m猫é\x1b[m", "plain"}
+	AssertTerminal(t, path, equivalent, 8)
+	for _, changed := range [][]string{
+		{"\x1b[1;32m猫é\x1b[0m", "plain"},    // foreground only
+		{"\x1b[1;31;44m猫é\x1b[0m", "plain"}, // background only
+		{"\x1b[31m猫é\x1b[0m", "plain"},      // emphasis only
+		{"\x1b[1;31m猫é", "plain"},           // missing reset leaks to the next row
+		{"\x1b]8;;https://example.com\x1b\\\x1b[1;31m猫é\x1b[0m\x1b]8;;\x1b\\", "plain"},
+	} {
+		got := terminalFrame(t, changed, 8)
+		if err := check(path, got, false); err == nil {
+			t.Fatalf("terminal change passed: %q", changed)
+		}
+		assertFile(t, path, want)
+		assertFile(t, path+".new", got)
+	}
+	// Quoting keeps controls inert and full-width padding reviewable.
+	if strings.ContainsAny(want, "\x1b\r") || !strings.Contains(want, `"plain   "`) || !strings.Contains(want, "猫é") {
+		t.Fatalf("terminal fixture lost quoting, padding, or Unicode: %q", want)
+	}
+	AssertTerminal(t, path, equivalent, 8)
+	assertNoCandidate(t, path)
+}
+
 func assertFile(t *testing.T, path, want string) {
 	t.Helper()
 	got, err := os.ReadFile(path)

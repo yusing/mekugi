@@ -1,2 +1,1 @@
-◆ journal                                                               12:00:00
-│ Validation passed with the same rich journal rendering in both panes.
+◆ Validation passed with the same rich journal rendering in both panes.

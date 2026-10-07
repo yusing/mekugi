@@ -45,18 +45,30 @@ func TestMekugiReplayStoreRestartAndConflict(t *testing.T) {
 }
 
 func TestMekugiReplayStoreIgnoresLivePreviewStampOnRetry(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "source"), []byte("old"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	observation, observed := captureExecObservation([]execCommandInput{{
+		Command: "mv source target", Workdir: workspace, Shell: "bash",
+	}}, false, true, execCaptureEnv{directory: workspace})
+	if !observed || observation == nil || len(observation.Files) == 0 {
+		t.Fatal("move operands were not captured")
+	}
+	stamp := observation.Files[0].watchStamp
+	if stamp == "" || !observation.Files[0].watchMoveOnly {
+		t.Fatal("move capture lacks live-preview state")
+	}
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	history := mekugiHistory{
-		ToolName: "exec", Script: "write file", CarrierPayload: "write file",
-		ExecObservation: &execObservation{Files: []execFileSnapshot{{
-			Path: "/workspace/file", Kind: execFileText, Content: "old", watchStamp: "live-only-stamp",
-		}}},
+		ToolName: "exec", Script: "mv source target", CarrierPayload: "mv source target",
+		ExecObservation: observation,
 	}
 	put := func() error {
-		return store.put(t.Context(), "/workspace", map[string]mekugiHistory{"call": history})
+		return store.put(t.Context(), workspace, map[string]mekugiHistory{"call": history})
 	}
 	if err := put(); err != nil {
 		t.Fatal(err)
@@ -64,7 +76,7 @@ func TestMekugiReplayStoreIgnoresLivePreviewStampOnRetry(t *testing.T) {
 	if err := put(); err != nil {
 		t.Fatalf("unchanged completed call conflicted after serialization: %v", err)
 	}
-	if history.ExecObservation.Files[0].watchStamp != "live-only-stamp" {
+	if history.ExecObservation.Files[0].watchStamp != stamp || !history.ExecObservation.Files[0].watchMoveOnly {
 		t.Fatal("durable projection changed the active live-preview baseline")
 	}
 	history.ExecObservation.Files[0].Content = "changed"
@@ -150,7 +162,7 @@ func TestMekugiReplayStoreQuotaAndCommentary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.putCommentary(t.Context(), "/w", []string{"id"}); err != nil {
+	if err := s.putCommentaryReplacing(t.Context(), "/w", []string{"id"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := s.hasCommentary(t.Context(), "/w", "id"); err != nil || !ok {
@@ -315,14 +327,14 @@ func TestMekugiReplayStoreCommentaryCannotConsumeCallQuota(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.maxBytes = int64(len(encoded))
-	if err := s.putCommentary(t.Context(), "/w", []string{"commentary"}); err != nil {
+	if err := s.putCommentaryReplacing(t.Context(), "/w", []string{"commentary"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": {Script: "x"}}); err != nil {
 		t.Fatalf("commentary displaced replay: %v", err)
 	}
 	s.maxCommentaryBytes = 1
-	if err := s.putCommentary(t.Context(), "/w", []string{"another"}); err == nil {
+	if err := s.putCommentaryReplacing(t.Context(), "/w", []string{"another"}, nil); err == nil {
 		t.Fatal("accepted commentary capacity overflow")
 	}
 	if _, ok, err := s.lookup(t.Context(), "/w", "c"); err != nil || !ok {

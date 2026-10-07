@@ -3,6 +3,7 @@
 package router
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
@@ -19,6 +20,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 )
 
 // The installed Codex, not the router, owns both preemption and the live Code
@@ -32,6 +35,47 @@ type instantInterruptCodexProvider struct {
 	requests chan []byte
 	turn     int
 	cell     string
+}
+
+func (p *instantInterruptCodexProvider) serve(w http.ResponseWriter, r *http.Request) {
+	conn, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.CloseNow()
+	conn.SetReadLimit(responsesRequestBufferBytes)
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	// Keep detecting peer cancellation while the model response is gated.
+	messages := readResponsesWebSocket(ctx, conn, cancel)
+	for {
+		var message webSocketMessage
+		select {
+		case message = <-messages:
+		case <-ctx.Done():
+			return
+		}
+		if webSocketMessageReadError(ctx, message) != nil {
+			return
+		}
+		response, err := p.forwardExecution(ctx, ctx, message.body, r.Header, "")
+		if err != nil {
+			return
+		}
+		scanner := bufio.NewScanner(response.Body)
+		for scanner.Scan() {
+			if payload, ok := strings.CutPrefix(scanner.Text(), "data: "); ok {
+				if err := conn.Write(ctx, websocket.MessageText, []byte(payload)); err != nil {
+					response.Body.Close()
+					return
+				}
+			}
+		}
+		response.Body.Close()
+		if scanner.Err() != nil {
+			return
+		}
+	}
 }
 
 func (p *instantInterruptCodexProvider) forwardExecution(_ context.Context, responseCtx context.Context, body []byte, _ http.Header, _ string) (_ *http.Response, resultErr error) {
@@ -92,7 +136,7 @@ func (p *instantInterruptCodexProvider) forwardExecution(_ context.Context, resp
 			}
 		}
 		if p.cell == "" {
-			return nil, fmt.Errorf("steering did not yield the original Code Mode cell: %.2000s", body)
+			return nil, fmt.Errorf("steering did not yield the original exec cell: %.2000s", body)
 		}
 		return mchangesNestedCodexResponse(2, map[string]any{"type": "function_call", "id": "instant-wait-item", "call_id": "instant-wait", "name": "wait", "status": "completed", "arguments": string(mustMarshalJSON(map[string]any{"cell_id": p.cell, "yield_time_ms": 10000}))}), nil
 	case 3:
@@ -115,6 +159,24 @@ func instantInterruptAnswer(answer string) map[string]any {
 	return map[string]any{"type": "message", "id": "instant-answer", "role": "assistant", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": answer}}}
 }
 
+type instantInterruptResponseWriter struct {
+	http.ResponseWriter
+	created chan struct{}
+}
+
+func (w *instantInterruptResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *instantInterruptResponseWriter) Write(body []byte) (int, error) {
+	n, err := w.ResponseWriter.Write(body)
+	if err == nil && bytes.Contains(body[:n], []byte(`"type":"response.created"`)) {
+		select {
+		case w.created <- struct{}{}:
+		default:
+		}
+	}
+	return n, err
+}
+
 func TestInstantInterruptNativeCodexE2E(t *testing.T) {
 	codex, err := exec.LookPath("codex")
 	if err != nil {
@@ -132,7 +194,21 @@ func TestInstantInterruptNativeCodexE2E(t *testing.T) {
 			provider.program = "// @exec: {\"yield_time_ms\": 60000}\nconst result = await tools.exec_command({cmd: " + string(mustMarshalJSON(shell)) + ", workdir: " + string(mustMarshalJSON(workspace)) + ", yield_time_ms: 30000}); text(result.output);"
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
-			server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy))
+			upstream := httptest.NewServer(http.HandlerFunc(provider.serve))
+			defer upstream.Close()
+			client := newProviderClient(upstream.URL, upstream.Client())
+			client.enableWebSockets(t.Context())
+			defer client.websockets.close()
+			issues := NewCriticalErrors()
+			created := make(chan struct{}, 1)
+			handler := responsesHandler(t.Context(), time.Minute, client, issues, proxy)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Fixture credentials terminate at the local mock provider.
+				for key, values := range codexAuthHeaders() {
+					r.Header[key] = values
+				}
+				handler(&instantInterruptResponseWriter{ResponseWriter: w, created: created}, r)
+			}))
 			defer server.Close()
 			defer close(provider.gate)
 			environment := routerFaultCodexEnvironment(t)
@@ -147,7 +223,14 @@ func TestInstantInterruptNativeCodexE2E(t *testing.T) {
 			select {
 			case <-provider.requests:
 			case <-terminal.ctx.Done():
-				t.Fatal("first provider request missing")
+				t.Fatalf("first provider request missing: notices=%v\n%s", issues.Pending(), terminal.screen.String())
+			}
+			// Steer only after response copying has delivered the first event,
+			// rather than racing provider admission or startup inspection.
+			select {
+			case <-created:
+			case <-terminal.ctx.Done():
+				t.Fatalf("response.created was not delivered: %v", issues.Pending())
 			}
 			if mode == "code" {
 				deadline := time.After(10 * time.Second)
@@ -190,6 +273,9 @@ func TestInstantInterruptNativeCodexE2E(t *testing.T) {
 			}
 			terminal.await("completed")
 			terminal.quit()
+			if pending := issues.Pending(); len(pending) != 0 {
+				t.Fatalf("instant interruption produced router failures: %v", pending)
+			}
 		})
 	}
 }

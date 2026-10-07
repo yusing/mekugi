@@ -9,7 +9,7 @@ import (
 
 // The current round is the latest started forwarded provider request, not an
 // app-server turn. Persist its start ordering so late older responses cannot
-// overwrite it. A new live round hides the previous round until usage arrives.
+// overwrite it. Keep the last valid rate visible until a newer sample arrives.
 type providerRoundOutput struct {
 	StartedUnixNano int64
 	Throughput      capturer.OutputThroughput
@@ -32,11 +32,11 @@ func (o *threadUsageObservation) begin() {
 	u.updateLocked(o.thread, delta)
 }
 
-func measureOutputThroughput(counts tokenCounts, started time.Time) capturer.OutputThroughput {
+func measureOutputThroughput(counts tokenCounts, started, receivedAt time.Time) capturer.OutputThroughput {
 	if started.IsZero() || !counts.TotalsKnown || counts.Inconsistent {
 		return capturer.OutputThroughput{}
 	}
-	if elapsed := time.Since(started); elapsed > 0 {
+	if elapsed := receivedAt.Sub(started); elapsed > 0 {
 		return capturer.OutputThroughput{OutputTokens: counts.OutputTokens, DurationNanos: uint64(elapsed), MeasuredRequests: 1}
 	}
 	return capturer.OutputThroughput{}

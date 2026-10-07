@@ -15,8 +15,6 @@ import (
 const testCodeModeDescription = "Run JavaScript. All nested tools are available on the global `tools` object, including `tools.exec_command` and `tools.apply_patch`.\n\n### `exec_command`\nRun a command.\n\nexec tool declaration:\n```ts\ndeclare const tools: { exec_command(args: { cmd: string }): Promise<unknown>; };\n```\n\n### `apply_patch`\nApply a patch.\n\nexec tool declaration:\n```ts\ndeclare const tools: { apply_patch(input: string): Promise<unknown>; };\n```"
 const testBaseInstructions = "caller-owned base instructions\n"
 
-const testTranslatedPatch = "*** Begin Patch\n*** Add File: created.txt\n+payload\n*** End Patch\n"
-
 const testToolPluginDeclaration = `export default {
   apiVersion: "mekugi-tool-plugin/v1",
   id: "proxy.test",
@@ -62,10 +60,9 @@ func testFlatCodeModeAdditionalTools(description string) map[string]any {
 	}
 }
 
-func testNativeResponsesTools() []any {
+func testExecResponsesTools() []any {
 	return []any{
-		map[string]any{"type": "function", "name": nativeExecCommandToolName, "description": "run a command"},
-		map[string]any{"type": "custom", "name": applyPatchToolName, "description": "apply a patch"},
+		map[string]any{"type": "custom", "name": "exec", "description": testCodeModeDescription},
 	}
 }
 
@@ -117,12 +114,12 @@ func newMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*mekugiR
 	return transform, proxy, &request, workspace
 }
 
-func newNativeMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*mekugiResponseTransform, *parsedResponsesRequest) {
+func newTopLevelMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*mekugiResponseTransform, *parsedResponsesRequest) {
 	t.Helper()
 	workspace := t.TempDir()
 	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "input": []any{map[string]any{"role": "user", "content": "task"}},
-		"tools": testNativeResponsesTools(), "tool_choice": "auto",
+		"tools": testExecResponsesTools(), "tool_choice": "auto",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -159,7 +156,7 @@ func runtimeCommentaryToken(t *testing.T, transform *mekugiResponseTransform) st
 	return transform.commentarySubscriptions[0].token
 }
 
-// testRuntimeCommentaryCall creates the retained Code Mode call and hands its
+// testRuntimeCommentaryCall creates the retained exec call and hands its
 // authenticated progress subscription to the host before returning the token.
 func testRuntimeCommentaryCall(t *testing.T, transform *mekugiResponseTransform, callID string) string {
 	t.Helper()
@@ -176,14 +173,14 @@ func testRuntimeCommentaryCall(t *testing.T, transform *mekugiResponseTransform,
 		transform.Delivered(event)
 	}
 	if _, found := transform.proxy.history(transform.historySessionID, callID); !found {
-		t.Fatalf("Code Mode call %q was not retained", callID)
+		t.Fatalf("exec call %q was not retained", callID)
 	}
 	for _, subscription := range transform.commentarySubscriptions {
 		if subscription.callID == callID && subscription.token != "" {
 			return subscription.token
 		}
 	}
-	t.Fatalf("Code Mode call %q has no handed-off commentary subscription", callID)
+	t.Fatalf("exec call %q has no handed-off commentary subscription", callID)
 	return ""
 }
 

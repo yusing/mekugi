@@ -1,4 +1,4 @@
-# Native runtime UI
+# UI
 
 ## REQ-NATIVE-UI-002 — Claude presentation backend
 
@@ -110,9 +110,11 @@ UI and their native adapters.
 Supported native Bash literal eval/cwd wrappers use the shared command-segment
 instrumentation and original shared rows, with actual per-segment exits, skips,
 output and dialogs. Observation preserves native command input, shell setup,
-permissions, execution and working-directory updates. Existing `BASH_ENV` remains
-sourced; only a new tracked bridge launch isolates an inherited observer guard,
-without changing its parent environment. Unsupported wrapper or script shapes,
+permissions, execution and working-directory updates. Single-command wrappers
+use the same native payload boundary. A native launch uses the shared shell
+environment owner to restore caller startup without borrowing its parent's
+command tracker or remote-write approval channel. The parent environment stays
+unchanged. Unsupported wrapper or script shapes,
 and ambiguous identical concurrent inputs, execute unchanged with aggregate
 output rather than guessed segment attribution. Background launch and root-turn
 completion cannot finalize segment rows; matching native terminal evidence is
@@ -231,7 +233,7 @@ child rendering. These cases use no inference.
 Native terminal foreground switching remains unavailable through the selected carrier;
 this backend does not claim full Codex parity.
 
-## REQ-NATIVE-UI-001 — Native app-server UI
+## REQ-NATIVE-UI-001 — UI
 
 An empty launch view welcomes the user with `mekugi-v<version> • codex v<version>`
 for a versioned release. The versions identify the running executable and backend.
@@ -248,7 +250,7 @@ Operation-row formatting and feed controls are specified by
 [native activity presentation](activity_display.md); shared classification belongs to
 [activity observation](activity.md), and router cost totals to [usage reporting](usage.md).
 
-### Native app-server UI
+### UI
 
 Journal shares the auxiliary column with Diff and Activity (`Ctrl-B 5`). No bare
 key opens it, so composer text that starts with any letter is typed. Its plan strip, tree navigation, transition rows and expandable
@@ -267,8 +269,15 @@ not replaced on a spawn. Temporary Activity visibility is not persisted as a pan
 preference; replay cannot revive pending child lifecycles.
 
 `mekugi codex` uses the native client of `codex app-server` for interactive
-terminal launches. Explicit `--yolo` remains required; without it startup rejects
-before launching Codex. There is no legacy UI selection or fallback. It maps explicit `--yolo`, model, config, and feature-toggle (`--enable` / `--disable`)
+terminal launches. Without `--yolo`, Codex's configured approval and sandbox
+policy applies and the native client answers Codex approvals (see Approvals).
+The independent VCS guard follows
+[REQ-EXECUTION-003](execution.md#req-execution-003--guard-remote-vcs-writes).
+`--yolo` passes `approval_policy="never"` and
+`sandbox_mode="danger-full-access"`, and thread requests repeat them.
+Mekugi never silently changes the user's configuration or
+sandbox policy. There is no legacy UI selection or fallback. It maps explicit
+`--yolo`, model, config, and feature-toggle (`--enable` / `--disable`)
 arguments plus `resume`, `resume THREAD_ID` or `resume --last`, and rejects other interactive arguments rather
 than ignoring them.
 Router readiness, provider catalogs, invocation overrides, native recovery hooks
@@ -302,11 +311,11 @@ the graceful-shutdown deadline can release a reader waiting on that consumer.
 The client replaces presentation, not projection policy. Codex remains the agent
 runtime and execution authority, and Mekugi's router stays in the model-request
 path; UI plumbing adds no model calls. The client connects to app-server, never
-to the Code Mode host, and submits intent rather than executing tools.
+to the JavaScript execution host, and submits intent rather than executing tools.
 
 | Concern | Owner |
 | --- | --- |
-| Tools, permissions, sandbox, native agents, Code Mode | Codex; the client submits intent and answers server requests. |
+| Tools, permissions, sandbox, native agents, JavaScript execution | Codex; the client submits intent and answers server requests. |
 | Thread, turn and item lifecycle and history | Codex app-server; never reconstructed from rendered text. |
 | Routing, projection, frontend PATH | The router and launcher, with invocation configuration carried into app-server. |
 | Changes and recovery references | The capturer and replay store; native displays reuse their scoped receipts and previews. |
@@ -395,7 +404,7 @@ messages, commands, edit descriptions and answers are presentation history;
 children are not resumed and historical unfinished turns never imply live work.
 Only completed collaboration items imply delivered assignments or messages;
 other attempts retain their recorded status without claiming delivery.
-Codex's history omits Code Mode cell results and delivered inter-agent
+Codex's history omits `exec` cell results and delivered inter-agent
 messages, so each thread's host-selected rollout supplies them when its session
 metadata names that thread: failed-cell rows and the tasks and messages the
 thread received, as live Activity observed them in its requests. Evidence
@@ -449,10 +458,9 @@ state reports a presentation notice but cannot fail resume, submit a prompt or
 change execution. Simultaneous clients for the same workspace/thread use the
 last completed preference write; no process resources are restored.
 
-Approval controls and `/side` are deferred; pending server requests stay
-visible and are never auto-approved. Not in scope: Codex's TUI, PTY emulation
-or screen scraping for Main; a second execution, permission or Code Mode control
-path; settings clones, onboarding, cloud tasks, voice; Git write actions or edit
+`/side` is deferred; server requests the client cannot answer, such as MCP
+elicitations, stay visibly blocked and are never auto-approved. Not in scope: Codex's TUI, PTY emulation
+or screen scraping for Main; a second execution or permission control path; settings clones, onboarding, cloud tasks, voice; Git write actions or edit
 rollback; browser frontends or remote hosting; new auth flows; a second
 transcript store or cost calculator; model-visible UI commentary.
 
@@ -463,8 +471,9 @@ summaries, turn events drive each agent's state, and
 `thread/tokenUsage/updated` supplies token counts. Cost stays with the router's
 usage accounting. The client binds Main's thread in the router's activity collector for scoped
 assignment/message and filter observations. Tool and lifecycle activity comes from
-app-server, never generated commentary. [Router notices](notices.md) render directly
-in Main and leave provider responses unchanged.
+app-server, never generated commentary. [Router errors](notices.md) render as user-only
+composer feedback and leave the transcript and provider responses unchanged.
+Cleanup planning and reclaimed-storage progress remain transcript content.
 
 Run cards omit literal Bash, Zsh, or Sh `-c`/`-lc` launch wrappers and PowerShell
 `-Command`/`-c` wrappers (optionally preceded by `-NoLogo`/`-NoProfile`), matching
@@ -483,8 +492,8 @@ the shared edit receipt formatter. Non-`apply_patch` receipts include a subdued
 `cat`, `python3`, or other captured source label, separated by a middle dot.
 Wrapped continuation rows preserve foreground colors and emphasis, including subdued source labels.
 For tracked command lists, each edit intent changes from `requested` to
-`completed`, `failed`, or `skipped` using its own segment outcome, without waiting
-for later tests. `completed` reports command completion, not captured file counts
+`ran`, `failed`, or `skipped` using its own segment outcome, without waiting
+for later tests. `ran` reports command completion, not captured file counts
 or success of the enclosing command. Untracked commands without captured effects
 retain their requested intent or ordinary Run classification. A grouped capture is displayed once rather than
 claiming per-command attribution. Successful sibling edit rows are omitted once
@@ -532,7 +541,10 @@ when valid Codex credentials and a provider are present. Otherwise naming is
 silently skipped without a request. There is no fallback to the session's model
 and no separate availability probe. An unavailable service or model, rejected
 credentials, or another unsuccessful naming response also silently skips naming.
-Only the first user request text is used, not instructions, tools, or later history.
+Naming uses the first user request text and its submitted file or directory
+snapshots within the naming input bound, not skill instructions, tools, or later
+history. Snapshots supply content, not just inline filenames, without reopening
+files. Attachment contents remain excluded from journal question text.
 Prewarm, compaction, unsuccessful responses, children, and side questions do not
 start naming. Naming uses separate request identity and does not block or change
 the original response. Its tokens are included in router usage totals.
@@ -574,7 +586,7 @@ projections remain while another edit is streaming or until 1.5 seconds after
 the caller's last update. All of that caller's views then close together and
 its transcript returns. Other callers settle independently. Turn termination
 and explicit withdrawal remove only the affected previews; transient batches
-are not reconstructed by history replay. Shell or Code Mode projections first
+are not reconstructed by history replay. Shell or JavaScript projections first
 received at completion do not open a transient view; captured effects remain in
 their receipt and saved diff.
 Pending exec scope
@@ -583,7 +595,7 @@ without claiming exclusive attribution or successful command completion.
 A recognized literal edit finishes its live card once the observed files match
 the projected edit. A following test in the same shell command keeps its own
 running status, not the edit's dock; test-only work opens no edit card.
-Router previews of exec and Code Mode edits dock the same
+Router previews of nested command and patch edits dock the same
 way. All docks use the shared router preview owner, including its pre-execution
 source snapshots; app-server file-change notifications never reconstruct patches
 or re-read already edited files. A completed input stream remains explicitly
@@ -591,8 +603,13 @@ labelled as a preview, never a green success check; host item status and capture
 effects establish the outcome. A new
 saved diff never replaces Activity; the Diff tab shows an unseen badge instead,
 and the saved diff lists its files or changes above the content when the pane is
-narrow; focusing that list (Tab, s) enlarges it without covering the diff, and s
-again hides it. A roster pick that changes Activity's agent filter shows
+narrow; `s` shows and focuses that list, enlarging it without covering the diff,
+and `s` again hides it. The navigator and diff content have separate keyboard
+focus: arrows act on the focused region, clicking a list row keeps list focus,
+and clicking diff content focuses the diff. Enter opens a selected file and
+focuses the diff; Esc returns from that opened diff to the list. Incoming saved
+edits refresh content without moving the chosen file or scroll position. Saved
+Diff has no follow mode; streaming-preview following is unchanged. A roster pick that changes Activity's agent filter shows
 Activity in place of the saved diff.
 
 Clicking a compact Edit event opens the shared dialog at the clicked file’s
@@ -602,8 +619,12 @@ hunks remain inspectable. Only the pointed edit row's text underlines
 on hover in Main and Activity, not its gutter, alignment gaps, stat bar, or other
 rows in the same capture. Click-through content (Edit, message excerpts, question links, and journal
 agent links) opens the shared content dialog above the existing panes. Its
-close button or Escape dismisses it without changing pane filters, scroll
+close button or Escape without a selection dismisses it without changing pane filters, scroll
 positions, or keyboard focus. New activity and captures remain available.
+Output-dialog text selection uses the shared drag and selection-scroll behavior.
+The selected document stays frozen while new output arrives; clearing or copying
+the selection releases it. Copy excludes the dialog's borders and gutters.
+Changing pages, navigating search, or resizing dismisses the selection.
 Edit pages use the exact host invocation, including grouped shell captures,
 rather than matching nearby paths or edits. Roster picks remain explicit filters.
 
@@ -779,7 +800,7 @@ notice. Bare `/btw` explains the required question rather than submitting input.
 When Codex requires compaction for a side turn, the request is rejected before
 either a provider summary or journal summary runs. Its pending question and
 attachments return ahead of any newer composer draft. Main remains untouched.
-The user can compact Main, close the side panel, and retry on a new snapshot;
+The user can run `/compact` on Main, close the side panel, and retry on a new snapshot;
 the rejected side conversation cannot accept a follow-up. Admission uses Codex's
 actual compaction decision, not an estimate from the displayed context meter.
 
@@ -811,7 +832,8 @@ WebSocket support remains unchanged. No warmup response is fabricated or discard
 The question and visible answer are selectable through the shared Reference, Copy,
 and Clear actions, excluding the dock border, status and hints. Selected answer
 content uses the same source-aware Markdown copying as Main and Activity.
-PgUp/PgDn scroll the side answer while the dock is open, dismissing a selection.
+PgUp/PgDn scroll the side answer while the dock is open. During selection,
+the question stays pinned while the frozen answer scrolls.
 Esc first clears a selection. After dismissing active questions or command menus,
 it closes the dock without changing the main
 draft or canceling Main. It cancels only a running side turn and unsubscribes its
@@ -902,13 +924,18 @@ The enable/disable management view remains Codex-owned: managed catalog entries
 are selectable references, but are never sent to `skills/config/write` with an
 invented path. Their selection is configured through `skills-mgr`.
 
-Dragging across text in Main, the composer, Activity, a side-question dock, or the
-saved Diff selects the visible text and offers Reference (R), Copy (Ctrl+C, also C), and Clear (Escape) in
-the status bar. Selection actions and the existing pane shortcut bar share bold key
-labels and bullet separators. Composer selection excludes its prompt and borders;
+Dragging across text in Main, the composer, Activity, a side-question dock, the
+saved Diff, or a shared content dialog selects the visible text and offers
+Reference (r/R), Copy (Ctrl+C, also c/C), and Clear (Escape) in the status bar or
+dialog footer. Selection actions and the existing pane shortcut bar share bold key
+labels and bullet separators. Only complete, visible action hints accept clicks.
+Text selection uses an opaque, theme-aware background and preserves syntax
+foreground colors.
+Composer selection excludes its prompt and borders;
 Diff selection covers only the source column, excluding the file navigator, gutters,
-and line numbers, and keeps each row's `+`, `-`, or space marker. Markdown selections
-reconstruct only selected source fragments, balancing inline formatting and
+and line numbers, and keeps each row's `+`, `-`, or space marker. Dialog selections
+copy visible text. Other Markdown selections reconstruct only selected source
+fragments, balancing inline formatting and
 preserving code indentation, trailing whitespace, blank code rows, and hard breaks.
 Soft wraps rejoin logical lines rather than inserting display newlines. Selected
 table cells reconstruct Markdown independently of grid wrapping or narrow record
@@ -921,7 +948,7 @@ A press in the Diff still reaches the pane, so clicks keep their meaning.
 Reference inserts a concise mention at the composer caret without submitting:
 `[Selected message]` from Main, `[Selected activity]` from Activity,
 `[Selected text]` from the composer, `[Selected side answer]` from the side-question
-dock, `[Selected status]` from the status panel,
+dock, `[Selected status]` from the status panel, `[Selected dialog]` from a dialog,
 and `[Selected diff hunk @amber1:42-45]` from the Diff, naming the selected
 rows' change and gutter lines (`:42` for one line). Lines are new-file
 coordinates, or old-file ones when only deletions are selected. A composed file
@@ -939,12 +966,24 @@ label and, for Diff, the file path. A selection over 96 KiB is refused with a
 notice; one that exceeds the remaining envelope budget is replaced by an explicit
 omission frame, and the composer reports it. While a question is open, Reference
 inserts `> SELECTED_TEXT\n\n` instead, since an answer is plain text.
+Reference from a dialog closes it and focuses the composer. Copy and Clear keep
+the dialog open; `y` is also a dialog selection-copy shortcut.
 Copy requests the terminal clipboard via OSC 52, and Clear leaves the draft intact.
-The selected viewport stays stable while the selection is active; resizing,
-scrolling, or resuming editing dismisses it. Clicking a Markdown absolute local
-path or HTTP(S) link copies its destination (a local path retains literal spaces
-and its line suffix), rather than opening it. Clipboard availability is controlled
-by the user's terminal.
+Main, Activity, saved Diff, side-answer and dialog selections retain a frozen document,
+including off-screen rows, until the selection is dismissed. Mouse-wheel scrolling
+during a held drag extends the range through that document; dragging above or
+below its scrollable viewport scrolls one row per motion event. Up/Down,
+PgUp/PgDn and Home/End scroll an active scrollable selection without clearing it.
+Scrolling after releasing the drag leaves the selected range unchanged. Newly
+exposed rows retain source-aware Markdown copying and their original click targets;
+saved Diff rows retain their gutters and change attribution. Static selections
+retain their existing dismissal behavior. Resizing or resuming editing dismisses
+the selection. Recognized Markdown file links in Main, Activity, and shared
+dialogs open local source with the path, content, and read errors copyable, as
+specified by [activity display](activity_display.md). HTTP(S) links still copy
+their destinations in Main and Activity; clicking them inside a dialog still
+does nothing. Missing or unrecognized file links retain their prior click behavior.
+Clipboard availability is controlled by the user's terminal.
 Arrow keys move the insertion caret across graphemes and displayed
 rows. At the first/last displayed row, Up/Down recalls older/newer submitted
 input, restoring the draft and caret after the newest entry. History is bounded
@@ -962,9 +1001,9 @@ The current confirmed value is initially selected when advertised. Loading and
 unavailable choices remain in the picker. Commands and choice lists never enter
 the transcript or submit a prompt.
 `/tier default` clears the requested service tier. Codex validates explicit values.
-When a per-model Mekugi service-tier override applies, `/tier` identifies the
-override and labels the current selection as Codex's setting. Picker selections
-still update Codex's requested tier; they do not change the Mekugi override.
+`/tier` initially selects the effective current tier. Confirmed explicit choices,
+including `default`, override configured per-model defaults for that thread and
+routed model during this invocation without changing persistent user configuration.
 The native app-server invocation enables Codex's `step_model_switching` and
 `reasoning_effort_override` features without writing user configuration.
 The client submits `thread/settings/update` and waits for the scoped
@@ -1031,15 +1070,19 @@ turning that draft into executable shell text. Acknowledgements do
 not claim command completion. Removing `!` returns to normal compose mode.
 
 The host's opt-in `instant_interrupt` feature lets new input preempt model
-responses and yield long-running Code Mode calls without terminating their
-cells. Native launches forward feature toggles unchanged, including on resume;
+responses and yield long-running `exec` calls without terminating their
+cells. Native launches forward the `instant_interrupt` toggle unchanged, including on resume;
 Codex owns validation, precedence, preemption, and continuation. The client uses
 the same `turn/steer` path for conversation input whether the feature is enabled
 or disabled and never implements instant steering by aborting a turn or replaying a tool.
+Explicit composer Escape delivery is separate: it interrupts through Codex and
+resubmits uncommitted steers as a new turn, without replaying tools.
 
 `/compact` asks Codex to replace the current conversation context. In journal
-`auto` mode its description and live progress identify an attempted journal reset
-with provider fallback; other modes describe ordinary compaction. Enter interrupts
+`auto` mode, the default, its description, live progress, queued-command,
+cancellation and continuation text say context reset, with no provider fallback.
+Unavailable recovery stops with a visible error. Other modes describe ordinary
+compaction outside planned slice resets. Enter interrupts
 the active turn through the host, then waits for both interruption acknowledgement
 and turn completion before starting compaction. This explicit command does not
 depend on `instant_interrupt`, which controls conversation steering rather than
@@ -1086,9 +1129,19 @@ Consecutive user items in one turn appear as one prompt in the transcript,
 with each item's own navigation target retained.
 Stacked image files stay owned until sent.
 
-Escape in the focused composer interrupts an active turn without clearing its draft
-and never quits. Dismissing a picker, help, or selection and returning a paused
-transcript to the bottom take precedence.
+While a turn is active, Escape in the focused composer expedites pending or
+locally unsent steers rather than retracting them into the editor. It requests
+host `turn/interrupt`, waits for
+the interruption acknowledgement, turn completion, and unresolved steer
+acknowledgements to settle, then resubmits only uncommitted steers through
+`turn/start`. A rejected interrupt does not resubmit input. The current draft
+stays unchanged when steers are resent, and separately Tab-queued input stays
+queued. If all pending steers commit before interruption completes, nothing is
+resent and normal restoration of queued input applies. Committed user input is
+never resent. During a starting turn, or with no pending steers, Escape retains normal
+interrupt-and-restore behavior without automatic resubmission. It never quits.
+Dismissing a picker, help, or selection and returning a paused transcript to the
+bottom take precedence.
 
 `/lock` protects against keyboard interruption: composer Escape and Ctrl-C cannot
 interrupt active or starting work or discard waiting input, and Ctrl-C cannot exit
@@ -1100,7 +1153,8 @@ lifecycle events and an already-requested interrupt are unaffected.
 
 Ctrl-C first clears a non-empty draft (Ctrl+Z restores it), then interrupts the
 active or starting turn, and exits like `/quit` only when no input is waiting.
-Interrupt restores uncommitted submissions, locally stacked steers, and queued
+Outside Escape's expedited steer delivery, interrupt restores uncommitted
+submissions, locally stacked steers, and queued
 entries ahead of the current draft, preserving attachments and typed order;
 nothing is automatically resent. A committed user message stays in the transcript.
 An interrupted start that Codex has not committed removes its provisional
@@ -1108,13 +1162,18 @@ transcript entry. If it was the first message, Main returns to an empty transcri
 and Ready composer with that draft restored. An interrupt requested before the
 host supplies the turn ID waits for that ID rather than inventing one.
 A rejected steer, or a steer whose turn ended without committing it, also returns
-to the composer. Submissions settle after their in-flight acknowledgement, so
+to the composer unless it is part of Escape's expedited delivery.
+Submissions settle after their in-flight acknowledgement, so
 restoration cannot reorder or duplicate input. On exit, stacked input is
 printed with the unsent draft, and unresolved or uncommitted submissions as
-outcome unknown, never resent. Composer notices (command, paste, editor and
-Ctrl-C feedback) follow the turn state on the composer border without replacing
+outcome unknown, never resent. Composer notices (router errors, command, paste,
+editor and Ctrl-C feedback) follow the turn state on the composer border without replacing
 it. Non-error feedback clears after three seconds or the next draft edit;
-actionable errors remain until editing. Only
+actionable errors remain until editing or clicking the check button (`[✓]`).
+An ellipsis marks omitted error details; clicking a truncated composer error opens
+its complete text, including the full router-error batch, in the shared error dialog.
+Composer feedback stays user-only; model-visible error evidence
+keeps its red transcript display and details dialog. Only
 `/quit` is a command, and only while idle;
 unknown commands are reported, never sent as prompts. The
 composer border carries turn state, the model, and Main's context usage; Main's title bar carries the
@@ -1123,7 +1182,8 @@ beyond the retained window is not hydrated. Unexpected server requests stay
 visibly pending, never auto-approved.
 
 Activity shows only child agents; Main stays in the roster for status and usage.
-Main's context usage appears only in the composer, not its roster row.
+Main's context usage and output rate appear only in the composer, not its roster row.
+Child-agent roster rows retain output rates under the [metrics contract](metrics.md).
 The composer and child-agent roster rows show `used/window • percent%` from the latest
 Codex `tokenUsage.last.totalTokens` and `modelContextWindow`, independently of
 cumulative usage totals. Before the first usage report, show `0%` used, equivalent
@@ -1142,6 +1202,11 @@ unknown count, including in session totals; detailed capture gaps remain in Diff
 Narrow child-agent roster rows retain context before other metrics;
 the composer's bottom border shows `model (effort) • used/window • percent%`
 as one right-aligned caption, shortening or omitting the model first when narrow.
+Main's title and child roster rows show unique loaded skill counts for each agent's current context, from successful reads or submitted skill attachments, not the catalog. Labels use `1 loaded skill` or `N loaded skills`.
+Failed or declined read segments load nothing; independently confirmed successful segments still count after aggregate failure. Feed trimming retains names; compaction and journal reset clear them. Empty and unknown counts stay hidden.
+Hover underlines only the count label, clearing on pointer leave or focus loss. Clicking a count opens sorted skill names in the existing shared dialog without changing selection.
+Exit/resume restores confirmed loads, including inherited history, independently of Activity under the [bounded restoration contract](../architecture/activity.md).
+
 Working roster rows show the latest operation or public summary, including its
 target, rather than a generic running/working label. Child names use their canonical
 spawn paths and roles use Codex metadata even when no `thread/started` notification
@@ -1175,15 +1240,24 @@ An unanswered assignment stays in full while in view. Once a spawn, follow-up
 or Main message has scrolled above the viewport, it becomes an excerpt in the
 reply format: the same row budget and a link (`↩ Open assignment`
 or `↩ Open message`) that counts the omitted rows and opens that
-exact entry. A message the excerpt would not shorten stays in full. Shrinking
-above a scrolled-up viewport does not move the visible rows.
+exact entry. A message the excerpt would not shorten stays in full. Likewise, a
+group of two or more of Main's settled operations becomes one row
+once it has scrolled above the viewport, counting each verb in its row color
+(`Searched 2 patterns • Read 1 file • Ran 1 command`); clicking it opens the
+operations and completed edit patches in the shared dialog. Failed exits add a
+visible failure count. Restored settled groups start collapsed on resume.
+Running, declined or skipped work, failed items without an exit code,
+unconfirmed edits and questions keep their rows. Shrinking above a scrolled-up
+viewport does not move the visible rows.
 Transcript blockquotes use a vertical rail rather than literal `>` markers,
 including on wrapped continuation rows, and retain inline Markdown styling.
 Child answers link (`↩ re:`) to their retained assignment, not to a
 previous answer or similar text. An answer to its thread's latest assignment
 omits the link, since that assignment is directly above; an answer to an earlier
 assignment in the same thread keeps it. Main's ordinary replies link to the user input
-in their own turn. Only the first reply to an input quotes it; a later reply to the
+in their own turn. A blank row separates the user excerpt from Main's answer,
+so an answer that starts with a blockquote remains distinct. Only the first reply
+to an input quotes it; a later reply to the
 same input quotes it again only when another message sits between them. Main's own
 tools, reasoning and progress do not separate replies. Main's replies remain in
 the scrollable transcript without a pinned copy. The journal's current task strip
@@ -1198,14 +1272,14 @@ shades the target. Cumulative child journals display each answer ID once,
 preserving its original assignment across follow-ups. A successfully completed
 child turn without a final answer promotes only that same turn's last message.
 Codex V2 activity notifications carry no directed-message or assignment body.
-The native UI supplements them with the router's authenticated recipient-input
+The UI supplements them with the router's authenticated recipient-input
 observations, retaining plaintext message bodies and assignment identities
 exactly once. Native message display has a separate 64 KiB limit, with an explicit
 clipping marker above it. There is no inline commentary excerpt path.
 App-server still owns tool execution and agent lifecycle. Legacy
 received envelopes are not injected into either parent's or child's provider output.
 
-Native UI dimming uses ANSI faint when supported. `--ansi-faint=auto|on|off`
+UI dimming uses ANSI faint when supported. `--ansi-faint=auto|on|off`
 selects the terminal-local policy: `auto` disables faint when `mosh-server`
 appears in the process ancestry, otherwise enables it; explicit `on` or `off`
 overrides detection. Detached multiplexers can hide transport ancestry and
@@ -1224,8 +1298,11 @@ cancels an undispatched continuation rather than competing with it.
 
 Host progress has one presentation mapping for live events and restored history.
 Compaction start replaces Main’s `Working` label with mode-aware progress;
-completion restores ordinary turn status and adds a `Context compacted` event
-for host compaction. When exact retained journal answer evidence identifies the
+completion restores ordinary turn status and adds a generic `Context reset` event
+in `auto`, or `Context compacted` for ordinary provider compaction in `off` and
+`slice`. Auto also uses the generic label for older provider or ambiguous history;
+it does not imply journal provenance, recovery disclosure or zero provider tokens.
+When exact retained journal answer evidence identifies the
 completed item, a single clickable `Context reset from journal` row belongs to
 the journal instead, with no duplicate progress commentary. Slice resets use their
 durable journal note. Neither adds a reply-context
@@ -1246,7 +1323,7 @@ so resume can restore the names without reviving agents. History predating these
 snapshots cannot infer missing targets from the current roster. Storage failures
 report a notice without blocking the wait or its live display.
 The ordinary session retention policy bounds these auxiliary records and protects
-them while the native UI is active; restoration does not resume any host work.
+them while the UI is active; restoration does not resume any host work.
 An empty-stdin terminal poll replaces `Working` with `Still running` without
 adding a transcript row for every poll. Process completion, further agent
 activity, or turn termination clears it; ordinary input writes are not polls.
@@ -1298,10 +1375,9 @@ streaming and collapsed header. Untitled longer summaries use `• Thinking…`
 while streaming and `• Thought` after completion. The latest three body rows
 remain visible, with `· +N lines` counting the rows above them.
 Summary bursts roll through at the command-output cadence, retaining their
-original Markdown. Completion waits until queued text has been shown, then
-keeps the body open until the same agent's next standalone event and the shared
-output debounce. Eligible summaries and command outputs collapse together when
-events pause. An observed item duration is shown on its last section only,
+original Markdown. Earlier sections fold as soon as the next section starts.
+Item completion folds the final section immediately after queued text has been
+shown. An observed item duration is shown on its last section only,
 not attributed separately to each section. Each forwarded request to a provider
 that streams untitled reasoning shows `• Thinking…` from the request start, so the wait for the
 first delta is not silent; the request's first reasoning item takes over that block.
@@ -1322,9 +1398,9 @@ Late deltas cannot reopen completed items. Text appears only when
 the host supplies a public summary; raw and encrypted reasoning are not a
 substitute for summaries delivered late or only at completion.
 
-Successful output eligible to fold shares one debounce deadline across Main and Activity,
+Successful command output eligible to fold shares one debounce deadline across Main and Activity,
 including late completions, so it collapses in a single screen update rather than
-one result at a time. An agent's latest output remains open until later activity.
+one result at a time. An agent's latest command output remains open until later activity.
 
 Main and Activity follow new transcript content until manual scrollback or an
 explicit jump to earlier content. Opening or closing Live/Diff, resizing, and
@@ -1347,15 +1423,15 @@ requests as app-server would, echoing each user message's client ID; an interrup
 remaining playback.
 
 The native client replaces the wrapped Codex terminal. Redirected and
-noninteractive commands do not start the native UI.
+noninteractive commands do not start the UI.
 
 ### Terminal notifications and lifecycle titles
 
 The native client publishes Codex-compatible terminal lifecycle titles so pane
 managers can recognize working and action-required states without parsing the
 transcript. The Main turn supplies the work spinner; pending questions (including
-hidden or resumed async questions) and unsupported server requests take priority
-with `Action Required`. Settled Main turns remove the spinner; child completion
+hidden or resumed async questions), pending approvals and unsupported server
+requests take priority with `Action Required`. Settled Main turns remove the spinner; child completion
 does not mark Main done. Herdr owns the distinction between unseen completion
 and seen idle, including its blue and green indicators. Titles are cleared when
 the native client exits or yields the terminal to an external editor.
@@ -1366,6 +1442,8 @@ reads Codex's effective `tui.notifications`, `tui.notification_method`, and
 without editing configuration. Events are `agent-turn-complete`,
 `approval-requested`, `plan-mode-prompt` (synchronous input), and `async-question`.
 Only successful live Main completion notifies; pending questions take priority.
+Stops that the journal will automatically continue do not notify. The final
+completion still notifies when no automatic continuation remains.
 History restoration and duplicate question events do not notify again.
 
 Notifications default to enabled and unfocused-only; `always` also allows them
@@ -1398,7 +1476,9 @@ For a single question, omit the Enter-next and left/right question-navigation hi
 Up/Down and Ctrl-P/Ctrl-N wrap option selection. Digits choose options; other
 printable input selects Other and edits the answer. Tab on a sync option edits a
 note; async answers have no separate note. Enter records an answer and advances;
-on the last question it submits the call. Plain Left/Right navigate questions freely.
+on the last question it submits the call. Plain Left/Right move the caret while
+editing an Other answer or option note; while choosing options, they navigate
+questions.
 Ctrl+Left/Right, Alt/Option+Left/Right, and Option's Meta-b/f encodings use the
 normal composer's word boundaries to move within the answer without changing questions.
 Ctrl-] skips. A submission with gaps requires the inline confirmation
@@ -1455,8 +1535,12 @@ Codex-owned:
 ```
 
 The existing submission path steers during an active turn, starts a turn when
-idle, or queues until input is accepted. Different calls are never merged into
-one envelope; skipped questions send nothing. Reply envelopes do not enter prompt
+idle, or queues until input is accepted. Answers wait while a tool call's input
+is being generated, including file edits and JavaScript source, so instant
+interrupt cannot cut that input short. They become sendable when the input is
+complete, without waiting for a running command to finish. Ordinary prompts
+retain instant interruption and can pass deferred answers. Different calls are
+never merged into one envelope; skipped questions send nothing. Reply envelopes do not enter prompt
 history or create duplicate user-message bands. Answers appear only beneath their
 Asked record; pending-input previews show question submission progress without
 transport framing or repeated answers. Between submission and committed user-message observation the card reads
@@ -1489,3 +1573,72 @@ and history exclusion, external commits, rejection, replay and supersession.
 Installed-Codex PTY acceptance answers an async question mid-turn and checks one
 provider envelope, then answers and resolves a sync request with
 `default_mode_request_user_input` enabled.
+
+### Approvals
+
+Without `--yolo`, the client answers `item/commandExecution/requestApproval`,
+`item/fileChange/requestApproval` and `item/permissions/requestApproval` from any
+thread. It also answers remote writes held by the
+[VCS guard](execution.md#req-execution-003--guard-remote-vcs-writes). Approvals
+share the question dock's position above the composer and take precedence over
+it: opening one hides the question dock, and a pending question opens after the
+last approval ends. The oldest approval shows first; the header names a child
+agent's path and `1 of N` when more wait.
+
+Choices follow the stock TUI approval overlay
+(`codex-rs/tui/src/bottom_pane/approval_overlay.rs` @7135b303d). Command requests
+offer the request's `availableDecisions` in order, or else accept, the proposed
+exec-policy amendment and cancel; network requests use the host wording, and
+unrecognized decisions are omitted. A `writeStdin` request asks to send its
+quoted input to the named terminal. Edit requests offer accept,
+`acceptForSession` and cancel, naming the paths of the matching live
+`fileChange` item. Permission requests offer turn, turn with strict auto review,
+and session grants of the requested profile, or an empty grant. Responses
+retain the original request ID and offered approval scopes. In the proxied UI,
+command denial uses native decline to continue without running the command,
+with optional user feedback in the matching provider continuation as specified
+in [execution](execution.md#req-execution-001--preserve-codexs-execution-authority).
+Edit and permission decisions remain unchanged. Proxy-free direct UI and
+passthrough retain original host decisions without typed denial reasons. A request
+with no choice the client can label stays visibly blocked.
+
+Guard requests instead offer approval once, approval for the exact command and
+workdir for this UI session, or denial. The matching scope and lifetime are
+defined by the [VCS guard](execution.md#req-execution-003--guard-remote-vcs-writes),
+not Codex's session or command-prefix grants.
+
+The dock shows the title, the command or summary, the directory when it is not
+the workspace root, the reason, and numbered choices; it occupies at most half of
+Main. Request text takes precedence over spacing and scrolls with PgUp/PgDn only
+when the unspaced dock cannot hold it. Digits, Up/Down and Ctrl-P/Ctrl-N select;
+Enter confirms. Escape hides the dock without answering; with it hidden, Escape
+keeps its usual interrupt behavior. For supported command denials, typing or
+pasting selects denial and edits an optional reason in the composer; Enter
+confirms the selected choice. Digits select choices while the reason is empty.
+Opening parks the complete main editor, including attachments; hiding or
+answering restores it. Each approval retains its reason editor across hide/reopen
+and question-dock switching, without merging the reason into the main draft.
+Opening a question hides approvals, and opening approvals hides questions.
+Other approval types ignore text and pastes rather than edit the draft.
+Ctrl-C keeps its clear/interrupt/quit meaning and Ctrl-B its pane commands. The dock
+opens by itself under the same empty-composer rule as questions; otherwise a
+one-row banner, `! N approvals pending · ctrl+b q review`, waits, and Ctrl+B Q
+opens approvals before questions. Keystrokes received before the dock is painted
+do not answer it. The open composer says `approving · turn waiting`.
+
+Approval state appears beside the associated native item, without an extra
+`Approval` event or Session row. A request shows yellow `Pending Approval` until
+it settles. A VCS guard state updates its existing host command row; the dialog retains the
+guarded command with the decision. Compound invocations show their state on the
+aggregate shell-batch row, not an unrelated classified subcommand. `Approved` is
+green; `Denied` and `Auto Denied` are red, independently of execution success.
+Command dialogs show the decision and its full scope or reason. External resolution and a turn ending
+before an answer clear the pending state. Their dialog details show `Resolved
+elsewhere` or `Turn ended before an answer`, without claiming approval or denial.
+A guarded write the user did not answer ends as `Auto Denied: no answer within
+5 minutes`, or `Withdrawn: the command
+stopped` when its command exited first; an answer chosen after either is not
+sent. Codex auto-review notifications update their exact target item: pending
+review shows `Pending Approval`, approval shows `Approved`, and denial or review
+timeout shows `Auto Denied`. A review with no target item does not assign its
+decision to an unrelated command. Headless runs still require `--yolo`.

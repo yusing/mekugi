@@ -33,6 +33,15 @@ func TestSubagentBridgeProjectsAndRestoresPlaintext(t *testing.T) {
 			t.Fatal(err)
 		}
 		data := mustMarshalJSON(request.fields)
+		for _, model := range grokModels {
+			if !bytes.Contains(data, []byte("grok:"+model)) {
+				t.Fatalf("model missing from projected override guidance: %s", model)
+			}
+		}
+		if bytes.Contains(data, []byte("%MODELS%")) {
+			t.Fatal("unexpanded Grok model catalog")
+		}
+
 		if bytes.Contains(data, []byte(`"encrypted":true`)) || !bytes.Contains(data, []byte(`"namespace":"mekugi_collaboration"`)) {
 			t.Fatalf("projection=%s", data)
 		}
@@ -273,7 +282,7 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 				property := properties[name].(map[string]any)
 				description := property["description"].(string)
 				native := original[name].(map[string]any)["description"].(string)
-				if description != native+"\n"+embeddedInstruction("grok_"+name) {
+				if name != "model" && description != native+"\n"+embeddedInstruction("grok_"+name) {
 					t.Fatalf("%s guidance = %q", name, description)
 				}
 				if name == "model" {

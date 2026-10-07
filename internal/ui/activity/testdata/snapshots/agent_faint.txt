@@ -1,0 +1,2 @@
+"\x1b[2m• Waiting · \x1b[38;5;170magent1\x1b[m                                                              "
+"plain after wait                                                                "

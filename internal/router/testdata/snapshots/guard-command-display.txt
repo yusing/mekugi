@@ -1,0 +1,7 @@
+├ Ran    git log -1 --format='%H%n%s' · 8ms
+│        ┆ 9a9860a81d8a73a8d36981d3854ab11edac5cdaf
+│        ┆ fix(ui): align loaded skills links and dialog selection
+├ Status working tree · git · 17ms
+└ Ran    git cat-file commit HEAD | awk '/^gpgsig / {print "signature_present"; exit}'
+         · 6ms
+         ┆ signature_present

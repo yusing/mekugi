@@ -128,10 +128,11 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if !ok {
 			return [][]byte{payload}, nil //nolint:nilerr // Unrelated output items pass through unchanged.
 		}
+		if item.Type == "function_call" || item.Type == "custom_tool_call" {
+			t.setToolInputEmission(item.ID, true)
+		}
 		name := item.Name
-		if t.codeModeToolName != "" && name == t.codeModeToolName ||
-			t.nativeTools && (item.Type == "custom_tool_call" && name == applyPatchToolName ||
-				item.Type == "function_call" && name == nativeExecCommandToolName) {
+		if t.codeModeToolName != "" && name == t.codeModeToolName {
 			if item.Type == "custom_tool_call" && item.ID != "" {
 				t.nativeExecCalls[item.ID] = item.cloneFields()
 				if item.Input != nil {
@@ -174,17 +175,15 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if pending, ok := t.pending[envelope.ItemID]; ok && pending.structured {
 			return [][]byte{[]byte(`{"type":"response.in_progress"}`)}, nil
 		}
-		if fields := t.nativeExecCalls[envelope.ItemID]; fields != nil && jsonString(fields, "name") == nativeExecCommandToolName {
-			t.previewStockDelta(envelope.ItemID, nativeExecCommandToolName, envelope.Delta)
-		}
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.CustomInputDone:
+		t.setToolInputEmission(envelope.ItemID, false)
 		if addedFields, stockCall := t.nativeExecCalls[envelope.ItemID]; stockCall {
 			if jsonString(addedFields, "type") == "custom_tool_call" {
 				addedCallID := jsonString(addedFields, "call_id")
 				if addedCallID != "" && envelope.CallID != "" && addedCallID != envelope.CallID {
-					return nil, staticCriticalDiagnostic("changed_code_mode_call", "the upstream changed a Code Mode call identity")
+					return nil, staticCriticalDiagnostic("changed_code_mode_call", "the upstream changed a exec call identity")
 				}
 				callID := cmp.Or(addedCallID, envelope.CallID)
 				t.finishPreview(envelope.ItemID, envelope.Input)
@@ -213,11 +212,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.FunctionArgumentsDone:
-		if fields := t.nativeExecCalls[envelope.ItemID]; fields != nil && jsonString(fields, "name") == nativeExecCommandToolName {
-			t.finishPreview(envelope.ItemID, envelope.Arguments)
-			delete(t.previews, envelope.ItemID)
-			return [][]byte{payload}, nil
-		}
+		t.setToolInputEmission(envelope.ItemID, false)
 		pending, ok := t.pending[envelope.ItemID]
 		if !ok {
 			return [][]byte{payload}, nil
@@ -234,6 +229,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if !ok {
 			return [][]byte{payload}, nil //nolint:nilerr // Malformed unrelated output remains the upstream's responsibility.
 		}
+		t.setToolInputEmission(item.ID, false)
 		if _, delivered := t.local[item.CallID]; item.Status == "incomplete" && !delivered {
 			t.endPreview(item.ID)
 			// Item completion can report interrupted generation, not complete input.
@@ -588,7 +584,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		item.Type == "custom_tool_call" {
 		callID := item.CallID
 		if callID == "" {
-			return false, staticCriticalDiagnostic("code_mode_call_missing_id", "the upstream Code Mode call had no call ID")
+			return false, staticCriticalDiagnostic("code_mode_call_missing_id", "the upstream exec call had no call ID")
 		}
 		var originalInput string
 		if item.Input != nil {
@@ -596,8 +592,8 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		}
 		if retained, exists := t.local[callID]; exists && retained.ToolName == name {
 			if retained.Script != originalInput {
-				return false, criticalDiagnostic(fmt.Errorf("code Mode call %q changed input", callID),
-					"code_mode_call_input_changed", "the completed Code Mode call changed its earlier input", true)
+				return false, criticalDiagnostic(fmt.Errorf("exec call %q changed input", callID),
+					"code_mode_call_input_changed", "the completed exec call changed its earlier input", true)
 			}
 			retained.UpstreamItem = item.cloneFields()
 			t.local[callID] = retained
@@ -606,7 +602,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		}
 		input, changed, err := t.lowerCodeModeCommentary(callID, originalInput)
 		if err != nil {
-			return false, criticalDiagnostic(err, "code_mode_call_lowering", "Mekugi could not lower a Code Mode call", true)
+			return false, criticalDiagnostic(err, "code_mode_call_lowering", "Mekugi could not lower a exec call", true)
 		}
 		patches := nativePatchesInCall(name, originalInput, t.directory)
 		t.primePreviewSources(item.ID, patches)
@@ -647,92 +643,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		}
 		return changed, nil
 	}
-	if t.nativeTools && name == nativeExecCommandToolName && item.Type == "function_call" {
-		return false, criticalDiagnostic(t.observeStockExecCommand(item), "stock_exec_observation",
-			"Mekugi could not observe a stock exec_command call", true)
-	}
-	if !t.nativeTools || name != applyPatchToolName || item.Type != "custom_tool_call" {
-		return false, nil
-	}
-	callID := item.CallID
-	if callID == "" || item.Input == nil {
-		return false, staticCriticalDiagnostic("stock_patch_call_malformed", "the upstream stock apply_patch call was malformed")
-	}
-	input := *item.Input
-	if retained, exists := t.local[callID]; exists {
-		if retained.ToolName != name || retained.Script != input {
-			return false, criticalDiagnostic(fmt.Errorf("stock apply_patch call %q changed input", callID),
-				"stock_patch_call_input_changed", "the completed stock apply_patch call changed its earlier input", true)
-		}
-		retained.UpstreamItem = item.cloneFields()
-		t.local[callID] = retained
-		return false, nil
-	}
-	patches := nativePatchesInCall(name, input, t.directory)
-	t.primePreviewSources(item.ID, patches)
-	if len(patches) == 0 {
-		return false, nil
-	}
-	t.openExecWindow(callID, nil, patches)
-	history := mekugiHistory{
-		ToolName: name, Script: input,
-		CarrierKind: codeModeCarrierCustom, CarrierName: name, CarrierPayload: input,
-		ReplayCarrier: true, UpstreamItem: item.cloneFields(), NativePatches: patches,
-		ExecutingThread: t.shellThreadID, Caller: t.operationCaller(),
-	}
-	t.recordLocal(callID, &history)
 	return false, nil
-}
-
-// observeStockExecCommand captures a stock command's declared scope before
-// Codex receives the call. The forwarded arguments stay byte-identical.
-func (t *mekugiResponseTransform) observeStockExecCommand(item *responsesItem) error {
-	callID := item.CallID
-	if callID == "" || item.Arguments == nil {
-		return errors.New("upstream emitted malformed stock exec_command call")
-	}
-	arguments := *item.Arguments
-	retained, exists := t.local[callID]
-	if exists && retained.ExecObservation != nil {
-		if retained.CarrierPayload != arguments {
-			return fmt.Errorf("stock exec_command call %q changed arguments", callID)
-		}
-		// Observation sees stripped host arguments; replay keeps the exact
-		// provider input, including its original JSON string encoding.
-		providerArguments := retained.UpstreamItem["arguments"]
-		retained.UpstreamItem = item.cloneFields()
-		retained.UpstreamItem["arguments"] = providerArguments
-		t.local[callID] = retained
-		return nil
-	}
-	command, ok := execCommandArguments(arguments, t.directory, t.sessionShell)
-	if !ok {
-		return nil
-	}
-	observation, observed := t.snapshotExecObservation(captureExecObservation([]execCommandInput{command}, false, false, t.execCaptureEnvironment(nil)))
-	previewOpened := t.openStockExecWindow(callID, observation, nil, []execCommandInput{command}, false, false)
-	if !observed && !previewOpened {
-		return nil
-	}
-	if observation == nil {
-		observation = &execObservation{Commands: []execCommandInput{command}, Class: execNeutral.String()}
-	}
-	if exists {
-		// Journal commentary already retained this call with its stripped
-		// arguments; the observation joins that record.
-		retained.ExecObservation = observation
-		retained.ExecutingThread = cmp.Or(retained.ExecutingThread, t.shellThreadID)
-		retained.Caller = cmp.Or(retained.Caller, t.operationCaller())
-		t.local[callID] = retained
-		return nil
-	}
-	t.recordLocal(callID, &mekugiHistory{
-		ToolName: nativeExecCommandToolName, Script: arguments,
-		CarrierKind: codeModeCarrierFunction, CarrierName: nativeExecCommandToolName, CarrierPayload: arguments,
-		ReplayCarrier: true, UpstreamItem: item.cloneFields(), ExecObservation: observation,
-		ExecutingThread: t.shellThreadID, Caller: t.operationCaller(),
-	})
-	return nil
 }
 
 // snapshotExecObservation checkpoints the workspace before a call that may

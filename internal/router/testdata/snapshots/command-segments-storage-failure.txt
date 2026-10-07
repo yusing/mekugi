@@ -1,5 +1,12 @@
-✗ Main                                                                  12:00:00
-│ Command segment history could not be retained for item command (turn turn).
-│ Live output remains available, but this report cannot be restored after
-│ restart. Error: open /workspace/replay/call-record.json: permission denied
-│ details · ctrl+b !
+Mekugi dev • codex
+
+
+
+
+
+
+
+
+╭─ ✗ Command segment history could not be retained for item command (… ── [✓] ─╮
+│ ❯                                                                            │
+╰───────────────────────────────────────────────────────────────────────── 0% ─╯

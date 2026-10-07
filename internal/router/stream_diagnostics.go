@@ -91,13 +91,18 @@ func (d *streamDiagnostics) responseStarted(response *http.Response) {
 type diagnosticStreamReader struct {
 	reader      io.Reader
 	diagnostics *streamDiagnostics
+	receivedAt  *time.Time
 }
 
 func (r diagnosticStreamReader) Read(buffer []byte) (int, error) {
 	n, err := r.reader.Read(buffer)
 	if n > 0 {
-		r.diagnostics.BodyBytes += uint64(n)
-		r.diagnostics.LastByteAt = time.Now().UTC()
+		at := time.Now()
+		*r.receivedAt = at
+		if r.diagnostics != nil {
+			r.diagnostics.BodyBytes += uint64(n)
+			r.diagnostics.LastByteAt = at.UTC()
+		}
 	}
 	r.diagnostics.readEnded(err)
 	return n, err

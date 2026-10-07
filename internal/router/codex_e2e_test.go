@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const codexE2EPrompt = `Use stock Code Mode tools.exec_command and tools.apply_patch for operations. Use the executable Mekugi frontends from PATH for focused reads and validation.
+const codexE2EPrompt = `Use stock exec tools.exec_command and tools.apply_patch for operations. Use the executable Mekugi frontends from PATH for focused reads and validation.
 
 Work through these requests in order:
 

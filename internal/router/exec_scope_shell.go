@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/vcsguard"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -97,6 +98,8 @@ type execProgram struct {
 	// interpreter programs, inline shell, and file operations with operands
 	// only known at run time. Other programs are tool-managed.
 	Direct bool `json:",omitzero"`
+	// VCS marks invocations that may import or discard working-tree content.
+	VCS bool `json:",omitzero"`
 }
 
 func (p *execPlan) raise(class execClass, reason string) {
@@ -119,10 +122,6 @@ func (p *execPlan) label(name string) {
 
 func (p *execPlan) add(entry execScopeEntry) {
 	p.Scope = append(p.Scope, entry)
-}
-
-func classifyExecShellWithin(command, workdir, shell string, deadline time.Time, depth int, changes execChangeResolver) execPlan {
-	return classifyExecShellSource(command, workdir, shell, deadline, depth, changes, false)
 }
 
 func classifyExecShellSource(command, workdir, shell string, deadline time.Time, depth int, changes execChangeResolver, authoredOnly bool) execPlan {
@@ -171,11 +170,14 @@ type execShellWalker struct {
 	authoredOnly bool
 	// A pipe from an unsupported process is output, not authored text.
 	generatedInput bool
-	depth          int
-	deadline       time.Time
-	stdin          string
-	cwd            string
-	plan           *execPlan
+	// generatedOrigin retains a recognized VCS producer through a pipeline.
+	generatedOrigin string
+	vcsOrigin       string
+	depth           int
+	deadline        time.Time
+	stdin           string
+	cwd             string
+	plan            *execPlan
 	// moves counts cd commands walked, so a list can tell that the directory
 	// may have changed even when it returns to the same path.
 	moves int
@@ -251,6 +253,14 @@ func execGuardedCd(stmt *syntax.Stmt) bool {
 
 func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 	w.program = execProgram{}
+	previousOrigin := w.vcsOrigin
+	w.vcsOrigin = ""
+	// Each statement owns its scope, while compound output retains all producers.
+	defer func() {
+		if previousOrigin != "" {
+			w.vcsOrigin = previousOrigin
+		}
+	}()
 	w.stdin = ""
 	for _, redirect := range stmt.Redirs {
 		if body, ok := liveDiffShellHeredoc(redirect, false); ok {
@@ -274,6 +284,18 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 			w.redirect(redirect)
 		}
 	}
+	redirects := len(w.plan.Scope)
+	defer func() {
+		origin := w.vcsOrigin
+		if origin == "" && w.stdin == "" && !authoredShellRedirection(stmt, w.generatedInput) {
+			origin = w.generatedOrigin
+		}
+		if origin != "" {
+			for i := writes; i < redirects; i++ {
+				w.plan.Scope[i].Origin = origin
+			}
+		}
+	}()
 	if len(w.plan.Scope) != writes {
 		label := "shell"
 		if call, ok := stmt.Cmd.(*syntax.CallExpr); ok && len(call.Args) != 0 {
@@ -295,10 +317,14 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 				return
 			}
 			// Pipeline sides run in subshells, so a cd there does not leak.
-			w.subshell(func(inner *execShellWalker) { inner.stmt(command.X) })
+			origin := w.subshell(func(inner *execShellWalker) { inner.stmt(command.X) })
 			generated := !authoredPipeOutput(command.X, w.generatedInput)
-			w.subshell(func(inner *execShellWalker) {
+			w.vcsOrigin = w.subshell(func(inner *execShellWalker) {
 				inner.generatedInput = generated
+				inner.generatedOrigin = ""
+				if generated {
+					inner.generatedOrigin = origin
+				}
 				inner.stmt(command.Y)
 			})
 		case syntax.AndStmt:
@@ -324,7 +350,7 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 	case *syntax.Block:
 		w.stmts(command.Stmts)
 	case *syntax.Subshell:
-		w.subshell(func(inner *execShellWalker) { inner.stmts(command.Stmts) })
+		w.vcsOrigin = w.subshell(func(inner *execShellWalker) { inner.stmts(command.Stmts) })
 	case *syntax.IfClause:
 		// Every branch may run; the scope is a superset, never a prediction.
 		// Conditions of later clauses run after earlier ones failed.
@@ -334,6 +360,9 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 			conditions.stmts(clause.Cond)
 			branch := conditions
 			branch.stmts(clause.Then)
+			if w.vcsOrigin == "" {
+				w.vcsOrigin = branch.vcsOrigin
+			}
 			moves = max(moves, branch.moves)
 		}
 		if moves != w.moves {
@@ -358,6 +387,9 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 		for _, item := range command.Items {
 			branch := *w
 			branch.stmts(item.Stmts)
+			if w.vcsOrigin == "" {
+				w.vcsOrigin = branch.vcsOrigin
+			}
 			moves = max(moves, branch.moves)
 		}
 		if moves != w.moves {
@@ -465,9 +497,13 @@ func execResolutionVariable(assign *syntax.Assign) bool {
 	return assign.Name != nil && (assign.Name.Value == "PATH" || assign.Name.Value == "BASH_ENV" || assign.Name.Value == "ENV")
 }
 
-func (w *execShellWalker) subshell(walk func(*execShellWalker)) {
-	inner := execShellWalker{authoredOnly: w.authoredOnly, generatedInput: w.generatedInput, cwd: w.cwd, plan: w.plan, functions: w.functions, deadline: w.deadline, depth: w.depth, changes: w.changes}
+func (w *execShellWalker) subshell(walk func(*execShellWalker)) string {
+	inner := execShellWalker{authoredOnly: w.authoredOnly, generatedInput: w.generatedInput, generatedOrigin: w.generatedOrigin, cwd: w.cwd, plan: w.plan, functions: w.functions, deadline: w.deadline, depth: w.depth, changes: w.changes}
 	walk(&inner)
+	if inner.vcsOrigin != "" {
+		return inner.vcsOrigin
+	}
+	return inner.generatedOrigin
 }
 
 func (w *execShellWalker) redirect(redirect *syntax.Redirect) {
@@ -665,6 +701,39 @@ func literalArgs(words []*syntax.Word) ([]string, bool) {
 	return values, true
 }
 
+// execEnvArgs unwraps only literal environment changes that preserve command resolution.
+func execEnvArgs(args []*syntax.Word) ([]*syntax.Word, string) {
+	for len(args) != 0 {
+		next, ok := shellCatLiteral(args[0])
+		if ok && (next == "-u" || next == "--unset" || strings.HasPrefix(next, "--unset=")) {
+			variable, inline := strings.CutPrefix(next, "--unset=")
+			count := 1
+			if !inline && len(args) > 1 {
+				variable, ok = shellCatLiteral(args[1])
+				count = 2
+			} else if !inline {
+				ok = false
+			}
+			if !ok || variable == "" || variable == "PATH" {
+				return nil, "env unset changes command resolution or is not literal"
+			}
+			args = args[count:]
+			continue
+		}
+		if !ok || strings.HasPrefix(next, "-") {
+			return nil, "env options are not parsed"
+		}
+		if !strings.Contains(next, "=") {
+			break
+		}
+		if variable, _, _ := strings.Cut(next, "="); variable == "PATH" {
+			return nil, "command resolution changes"
+		}
+		args = args[1:]
+	}
+	return args, ""
+}
+
 func (w *execShellWalker) call(call *syntax.CallExpr) {
 	for _, assign := range call.Assigns {
 		if assign.Value != nil && !execWordStatic(assign.Value) || assign.Array != nil {
@@ -765,36 +834,11 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 			name, args = next, args[1:]
 			continue
 		case "env":
-			for len(args) != 0 {
-				next, ok := shellCatLiteral(args[0])
-				if ok && (next == "-u" || next == "--unset" || strings.HasPrefix(next, "--unset=")) {
-					variable, inline := strings.CutPrefix(next, "--unset=")
-					count := 1
-					if !inline && len(args) > 1 {
-						variable, ok = shellCatLiteral(args[1])
-						count = 2
-					} else if !inline {
-						ok = false
-					}
-					if !ok || variable == "" || variable == "PATH" {
-						w.opaque("env unset changes command resolution or is not literal")
-						return
-					}
-					args = args[count:]
-					continue
-				}
-				if !ok || strings.HasPrefix(next, "-") {
-					w.opaque("env options are not parsed")
-					return
-				}
-				if !strings.Contains(next, "=") {
-					break
-				}
-				if variable, _, _ := strings.Cut(next, "="); variable == "PATH" {
-					w.opaque("command resolution changes")
-					return
-				}
-				args = args[1:]
+			var reason string
+			args, reason = execEnvArgs(args)
+			if reason != "" {
+				w.opaque(reason)
+				return
 			}
 			if len(args) == 0 {
 				return
@@ -822,6 +866,17 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 		w.opaque("shell function")
 		w.loseDirectory()
 		return
+	}
+	if vcsguard.IsTool(identity) {
+		w.vcsOrigin = w.program.Label
+		values, literal := literalArgs(args)
+		w.program.VCS = !literal || vcsguard.WorktreeWrites(append([]string{identity}, values...))
+		start := len(w.plan.Scope)
+		defer func() {
+			for i := start; i < len(w.plan.Scope); i++ {
+				w.plan.Scope[i].Origin = w.program.Label
+			}
+		}()
 	}
 	if identity == "find" && w.findProvider(args) {
 		return
@@ -862,13 +917,6 @@ func execProgramLabel(identity string, args []*syntax.Word) string {
 	return label.String()
 }
 
-// execDiscarding are VCS subcommands that overwrite or delete local work on
-// the paths the agent names; the discarded content is the agent's to review.
-var execDiscarding = map[string]bool{
-	"git restore": true, "git checkout": true, "git reset": true, "git clean": true, "git stash": true,
-	"git stash push": true, "git stash save": true, "git apply": true, "svn revert": true, "hg revert": true,
-}
-
 // execPackageSubcommands are the package-manager forms of bun and deno.
 var execPackageSubcommands = map[string]bool{
 	"install": true, "i": true, "add": true, "remove": true, "rm": true, "update": true, "upgrade": true,
@@ -890,15 +938,7 @@ func execProgramDirect(identity string, args []*syntax.Word) bool {
 			return strings.HasPrefix(value, "-") && !strings.HasPrefix(value, "--") && strings.Contains(value, "c")
 		})
 	}
-	label := execProgramLabel(identity, args)
-	if label == "git checkout" {
-		// Only the pathspec form discards work; a branch switch brings in history.
-		return slices.ContainsFunc(args, func(arg *syntax.Word) bool {
-			value, _ := shellCatLiteral(arg)
-			return value == "--"
-		})
-	}
-	return execDiscarding[label]
+	return false
 }
 
 // execFileOperations are the commands whose writes the classifier derives
@@ -928,7 +968,13 @@ func (w *execShellWalker) command(identity, name string, args []*syntax.Word) {
 		if w.authoredOnly && identity == "tee" && w.generatedInput && w.stdin == "" {
 			return
 		}
+		start := len(w.plan.Scope)
 		w.fileOperands(identity, args)
+		if identity == "tee" && w.generatedOrigin != "" && w.stdin == "" {
+			for i := start; i < len(w.plan.Scope); i++ {
+				w.plan.Scope[i].Origin = w.generatedOrigin
+			}
+		}
 	case "sed":
 		w.sed(args)
 	case "perl":
@@ -2135,14 +2181,6 @@ func gitSubcommand(values []string) (subcommand string, rest []string, cwd []str
 	return "", nil, nil, false
 }
 
-var gitReadOnlySubcommands = map[string]bool{
-	"status": true, "diff": true, "log": true, "show": true, "rev-parse": true, "ls-files": true,
-	"grep": true, "blame": true, "describe": true, "show-ref": true, "cat-file": true,
-	"merge-base": true, "rev-list": true, "shortlog": true, "ls-tree": true, "for-each-ref": true,
-	"name-rev": true, "whatchanged": true, "check-ignore": true, "check-attr": true, "var": true,
-	"help": true, "version": true, "count-objects": true, "cherry": true, "range-diff": true,
-}
-
 func (w *execShellWalker) git(args []*syntax.Word) {
 	values, ok := literalArgs(args)
 	if !ok {
@@ -2168,11 +2206,9 @@ func (w *execShellWalker) git(args []*syntax.Word) {
 	restWords := args[len(args)-len(rest):]
 	switch subcommand {
 	case "diff", "log", "show", "format-patch":
-		for _, value := range rest {
-			if value == "-o" || strings.HasPrefix(value, "--output") || subcommand == "format-patch" {
-				w.opaque("git " + subcommand + " writes output files")
-				return
-			}
+		if len(rest) > 0 && vcsguard.WorktreeWrites(append([]string{"git", subcommand}, rest...)) {
+			w.opaque("git " + subcommand + " writes output files")
+			return
 		}
 		return
 	case "branch", "tag", "remote", "config", "stash", "worktree":
@@ -2277,7 +2313,7 @@ func (w *execShellWalker) git(args []*syntax.Word) {
 		w.plan.add(execScopeEntry{Kind: kind, Operands: operands})
 		return
 	}
-	if gitReadOnlySubcommands[subcommand] {
+	if vcsguard.GitReadOnlyCommand(subcommand) {
 		return
 	}
 	w.opaque("git " + subcommand + " may change worktree files")
@@ -2301,9 +2337,10 @@ func (w *execShellWalker) svn(args []*syntax.Word) {
 		return
 	}
 	subcommand := values[0]
-	switch subcommand {
-	case "status", "st", "stat", "info", "log", "diff", "di", "cat", "list", "ls", "blame", "praise", "annotate", "ann", "propget", "pg", "proplist", "pl", "help", "--version":
+	if vcsguard.SVNReadOnlyCommand(subcommand) || subcommand == "--version" {
 		return
+	}
+	switch subcommand {
 	case "delete", "del", "remove", "rm", "move", "mv", "rename", "ren":
 	default:
 		w.opaque("svn " + subcommand + " may change worktree files")

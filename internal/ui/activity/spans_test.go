@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func TestLayoutSpans(t *testing.T) {
@@ -41,16 +42,18 @@ func TestLayoutSpanLookalikeIsLiteral(t *testing.T) {
 	}
 }
 
-func TestTokenKindsUseDistinctColors(t *testing.T) {
-	seen := make(map[string]bool)
-	for _, kind := range []TokenKind{ImageToken, FileToken, SkillToken} {
-		rows, _ := LayoutSpans("x", []TextSpan{{Start: 0, End: 1, Kind: kind}}, 10)
-		style, _, _ := strings.Cut(rows[0], "x")
-		if style == "" || seen[style] || strings.Contains(style, "[34m") || strings.Contains(style, "[1;34m") {
-			t.Fatalf("missing, duplicate, or blue token style: %q", style)
-		}
-		seen[style] = true
+func TestUISnapshotTokenKinds(t *testing.T) {
+	var rows []string
+	for _, tc := range []struct {
+		text string
+		kind TokenKind
+	}{{"[Image 1]", ImageToken}, {"path.go", FileToken}, {"$review", SkillToken}} {
+		text := "before " + tc.text + " after"
+		rendered, _ := LayoutSpans(text, []TextSpan{{Start: 7, End: 7 + len(tc.text), Kind: tc.kind}}, 30)
+		rows = append(rows, rendered...)
 	}
+	rows = append(rows, "plain after tokens")
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/token_kinds.txt", rows, 30)
 }
 
 func TestAttachmentPathUsesSharedFormatting(t *testing.T) {

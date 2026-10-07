@@ -315,9 +315,12 @@ func (p *Painter) Inline(line string) string {
 			}
 		}
 		if code, end, ok := liveActivityCodeSpan(line, i); ok {
-			// Inline spans have no language tag. Use shell syntax, as for Run
-			// labels, retaining the accent for tokens without a syntax color.
-			highlighted := strings.Join(p.Highlight("bash", code), "\n")
+			// Inline spans have no language tag. Detect from their content,
+			// retaining the accent for plain text and uncolored tokens.
+			highlighted := code
+			if !p.LayoutOnly && len(code) <= outputAutoHighlightBytes {
+				highlighted = strings.Join(p.Highlight("", code), "\n")
+			}
 			out.WriteString(p.Theme.Accent() + strings.ReplaceAll(highlighted, "\x1b[39m", p.Theme.Accent()) + "\x1b[39m")
 			i = end
 			continue
@@ -341,8 +344,8 @@ func (p *Painter) Inline(line string) string {
 	return out.String()
 }
 
-// Absolute local paths and HTTP(S) URLs become terminal links. Relative or malformed
-// Markdown remains visible verbatim rather than guessing a filesystem target.
+// Local paths, file URLs and HTTP(S) URLs become terminal links. File existence
+// and workspace-relative resolution belong to the click handler.
 func liveActivityLink(s string) (label, target string, end int, ok bool) {
 	close := strings.Index(s, "](")
 	if close < 2 || s[0] != '[' {
@@ -356,7 +359,21 @@ func liveActivityLink(s string) (label, target string, end int, ok bool) {
 	} else if i := strings.IndexByte(rest, ')'); i >= 0 {
 		target, end = rest[:i], close+2+i+1
 	}
-	if end == 0 || !(strings.HasPrefix(target, "/") || strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "http://")) || strings.ContainsAny(target, "\x00\x1b\r\n") {
+	if end == 0 || strings.ContainsAny(target, "\x00\x1b\r\n") {
+		return "", "", 0, false
+	}
+	if strings.HasPrefix(target, "/") || strings.HasPrefix(target, "file://") || strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "http://") {
+		return s[1:close], target, end, true
+	}
+	path := target
+	if colon := strings.LastIndexByte(path, ':'); colon >= 0 {
+		if line, err := strconv.Atoi(path[colon+1:]); err == nil && line > 0 {
+			path = path[:colon]
+		}
+	}
+	// Raw relative operands keep literal URL punctuation. Only an initial
+	// fragment or URI scheme is non-file syntax.
+	if path == "" || strings.HasPrefix(path, "#") || strings.HasPrefix(path, "?") || strings.Contains(strings.SplitN(path, "/", 2)[0], ":") {
 		return "", "", 0, false
 	}
 	return s[1:close], target, end, true
@@ -383,7 +400,7 @@ func (p *Painter) markdown(text string, width int, reasoning bool) []string {
 		f := copyInline(source)
 		f.ID = copyID(strconv.Itoa(index), identity)
 		f.Prefix = prefix
-		return p.copyWrapped(rows, f, gutter)
+		return p.CopyWrapped(rows, f, gutter)
 	}
 	annotateHang := func(rows []string, source, prefix string, gutter, index int) []string {
 		if !copying {
@@ -525,7 +542,7 @@ func (p *Painter) fenced(lang, source string, width int, identity uint64) []stri
 	for index, line := range p.Highlight(lang, livediff.Safe(source, false)) {
 		parts := Wrap(line, width-2, true)
 		if len(sources) > 0 {
-			parts = p.copyWrapped(parts, copyCode(sources[index], copyID(strconv.Itoa(index), identity)), 0)
+			parts = p.CopyWrapped(parts, copyCode(sources[index], copyID(strconv.Itoa(index), identity)), 0)
 		}
 		for _, part := range parts {
 			if ink != "" {
@@ -573,6 +590,26 @@ func liveActivityIndent(lines []string, prefix string) []string {
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
 	lines := p.blockRows(block, width)
+	if len(block.Timeouts) > 0 && !block.Skipped && runDuration(block, p.now()) >= 500*time.Millisecond && len(lines) > 0 {
+		var labels []string
+		for _, timeout := range block.Timeouts {
+			labels = append(labels, "(timeout "+timeout+")")
+		}
+		suffix := Dim + strings.Join(labels, " ") + Undim
+		if ansi.StringWidth(lines[0])+1+ansi.StringWidth(suffix) <= width {
+			lines[0] += " " + suffix
+		} else {
+			lines = slices.Insert(lines, 1, liveActivityHang(strings.Repeat(" ", block.cell(RowVerb(block))), suffix, width)...)
+		}
+	}
+	if outcome := approvalLabel(block.Approval); outcome != "" && len(lines) > 0 {
+		suffix := Dim + " · " + Undim + outcome
+		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
+			lines[0] += suffix
+		} else {
+			lines = slices.Insert(lines, 1, liveActivityHang(strings.Repeat(" ", block.cell(RowVerb(block))), outcome, width)...)
+		}
+	}
 	if block.ShowWorkdir && block.Workdir != "" && block.Verb != "Run" && len(lines) > 0 {
 		// Run rows carry it in their label, ahead of the exit and elapsed time.
 		if suffix := " " + workdirLabel(block.Workdir); ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
@@ -607,6 +644,22 @@ func (p *Painter) Block(block Block, width int) []string {
 		block.Tail = p.tailColors(block)
 	}
 	return outputRows(block, lines, width)
+}
+
+// approvalLabel keeps the decision separate from whether a command ran or
+// succeeded. Withdrawal and external resolution do not imply a decision.
+func approvalLabel(outcome string) string {
+	switch {
+	case strings.HasPrefix(outcome, "Pending Approval"):
+		return Amber + "Pending Approval" + Reset
+	case strings.HasPrefix(outcome, "Auto Denied"):
+		return Red + "Auto Denied" + Reset
+	case strings.HasPrefix(outcome, "Approved"), strings.HasPrefix(outcome, "Granted"), strings.HasPrefix(outcome, "Allowed"):
+		return Green + "Approved" + Reset
+	case strings.HasPrefix(outcome, "Denied"), strings.HasPrefix(outcome, "Declined"), strings.HasPrefix(outcome, "Blocked"):
+		return Red + "Denied" + Reset
+	}
+	return ""
 }
 
 // workdirLabel names the directory a command ran in when it is not the
@@ -787,7 +840,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		if block.ExitCode != 0 && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)) {
 			exit = Red + fmt.Sprintf("(exit %d)", block.ExitCode) + Reset
 		}
-		// Keep Code Mode source below its long heading, regardless of source line count.
+		// Keep exec source below its long heading, regardless of source line count.
 		// Other single-line programs or arguments read best on the operation row.
 		if code != "" && !strings.Contains(code, "\n") && (label == "" || !block.Fenced) && !(block.Fenced && block.Verb == "Run JavaScript") {
 			inline := p.code(block.Verb, code)
@@ -828,6 +881,8 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		return lines
 	case "compaction":
 		return []string{Amber + "◉ Context compacted" + Reset}
+	case "batch":
+		return p.batchRow(block, width)
 	case "filter":
 		return filterRows(block.Body, width, min(block.cell("Run"), width/2))
 	case "error":
@@ -876,7 +931,7 @@ func (p *Painter) editGroupRow(block Block, width int) []string {
 		row = p.Label(block.Verb, block.Label)
 	}
 	var trailer []string
-	if start {
+	if start && !block.DirectoryDeletion() {
 		trailer = p.groupSource(block)
 		if status != "" {
 			trailer = append(trailer, Dim+"· "+Undim+color+status+Reset)
@@ -1406,6 +1461,25 @@ func (p *Painter) Event(block Block, width int) []string {
 	return p.Flash(block, p.Block(block, width))
 }
 
+// TextSelection replaces backgrounds while retaining syntax colors. Clear
+// reverse-video carets and restore the fill after resets and code/diff fills.
+func TextSelection(text string, theme livediff.Theme) string {
+	fill := theme.SelectionBackground() + "\x1b[27m"
+	var out strings.Builder
+	out.WriteString(fill)
+	var state byte
+	for text != "" {
+		seq, _, n, next := ansi.DecodeSequence(text, state, nil)
+		out.WriteString(seq)
+		if strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "m") {
+			out.WriteString(fill)
+		}
+		text, state = text[n:], next
+	}
+	out.WriteString("\x1b[49m")
+	return out.String()
+}
+
 // Flash highlights the text of a flashed block's rows, leaving padding and
 // frames plain.
 func (p *Painter) Flash(block Block, rows []string) []string {
@@ -1753,12 +1827,16 @@ func ResultCount(count *int) string {
 	return Dim + fmt.Sprintf(" (%d results)", *count) + Undim
 }
 
+func runDuration(block Block, now time.Time) time.Duration {
+	if block.Running && !block.Started.IsZero() {
+		return now.Sub(block.Started)
+	}
+	return block.Duration
+}
+
 // RunElapsed shares the compact duration grammar used by native status timers.
 func RunElapsed(block Block, now time.Time) string {
-	elapsed := block.Duration
-	if block.Running && !block.Started.IsZero() {
-		elapsed = now.Sub(block.Started)
-	}
+	elapsed := runDuration(block, now)
 	if elapsed <= 3*time.Millisecond {
 		return ""
 	}

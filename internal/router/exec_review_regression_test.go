@@ -184,7 +184,7 @@ func TestNativeExecResultFinalizesAfterReplayProxyReconstruction(t *testing.T) {
 	transform := prepareNativeStockTransform(t, firstProxy, workspace, "exec-before-terminal")
 	command := "printf 'run\\n' >> host-run-count && rm a.txt"
 	arguments := string(mustMarshalJSON(map[string]any{"cmd": command, "workdir": workspace, "yield_time_ms": 1000}))
-	streamNativeExecCommand(t, transform, "exec-call", arguments)
+	retainCommandObservation(t, transform, "exec-call", arguments)
 	if history, found, err := store.lookup(t.Context(), workspace, "exec-call"); err != nil || !found || history.ExecObservation == nil {
 		t.Fatalf("native call was not durably captured before terminal result: history=%+v found=%v err=%v", history, found, err)
 	}

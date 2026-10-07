@@ -49,6 +49,14 @@ func TestAppServerBTWCompactionRejectsBeforeSynthesisOrProvider(t *testing.T) {
 				t.Fatalf("HTTP rejection: %d %s", recorder.Code, recorder.Body.String())
 			}
 			// A separate Main thread follows normal policy even while a side is registered.
+			if mode == "auto" {
+				if err := proxy.journals.initialize(t.Context(), proxy.replayStore, workspace, "main", "/root", ""); err != nil {
+					t.Fatal(err)
+				}
+				if err := proxy.journals.bindIdentity(t.Context(), proxy.replayStore, workspace, "main", "", "/root", true); err != nil {
+					t.Fatal(err)
+				}
+			}
 			mainRequest, mainHeaders := journalCompactionRequest(t, workspace, "main")
 			mainWire, err := journalCompactionSSE("main-compact", "gpt-test", "Main summary")
 			if err != nil {
@@ -59,8 +67,8 @@ func TestAppServerBTWCompactionRejectsBeforeSynthesisOrProvider(t *testing.T) {
 			if err := executeRequest(t.Context(), t.Context(), mainRequest, mainHeaders, "main", provider, io.Discard, nil, proxy); err != nil {
 				t.Fatal(err)
 			}
-			if len(provider.forwarded) != 1 {
-				t.Fatalf("Main compaction blocked: requests=%d", len(provider.forwarded))
+			if want := map[string]int{"off": 1, "slice": 1, "auto": 0}[mode]; len(provider.forwarded) != want {
+				t.Fatalf("Main compaction requests=%d want=%d", len(provider.forwarded), want)
 			}
 		})
 	}

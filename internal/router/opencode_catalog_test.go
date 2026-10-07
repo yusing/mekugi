@@ -164,7 +164,9 @@ func TestOpenCodeOnlineCatalogRefresh(t *testing.T) {
 	}
 	usage := newThreadUsage()
 	price := catalog.current().Models["opencode-go"]["brand-new"].Cost
-	usage.add("thread", "opencode-go:brand-new", "", "", counts, false, &price)
+	observation := usage.observation("thread", "thread", "opencode-go:brand-new", "")
+	observation.openCodePrice = &price
+	observation.observe(counts)
 	report, ok := usage.snapshot("thread")
 	if !ok || report.cost != cost {
 		t.Fatal("online prices not used by thread totals")

@@ -1,6 +1,6 @@
 ✗ Main                                                                  12:40:21
-│ Code Mode script failed: exec_command failed: CreateProcess { message:
+│ exec script failed: exec_command failed: CreateProcess { message:
 │ Rejected("escaped command escaped command escaped command escaped command
 │ escaped command escaped command escaped command escaped command escaped
-│ command escaped command…
+│ command escaped command esca…
 │ details · ctrl+b !

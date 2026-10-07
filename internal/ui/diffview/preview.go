@@ -618,14 +618,7 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 		if digits > 0 && width-3 >= digits+4 {
 			numbers = fmt.Sprintf(livediff.Subtle+"%*d│"+livediff.SubtleReset, digits, row.Number)
 		}
-		carry := ""
-		for n, fragment := range strings.Split(ansi.Hardwrap(text, sourceWidth, true), "\n") {
-			fragment = carry + fragment
-			if at := strings.LastIndex(fragment, "\x1b["); at >= 0 {
-				if end := strings.IndexByte(fragment[at:], 'm'); end >= 0 {
-					carry = fragment[at : at+end+1]
-				}
-			}
+		for n, fragment := range livediff.WrapSource(text, sourceWidth) {
 			if i == start && n < skip {
 				continue
 			}

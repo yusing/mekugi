@@ -21,17 +21,21 @@ const journalHistoryTool = "__mekugi_journal"
 const codeModeJournalStart = "<!-- mekugi-journal:start -->"
 const codeModeJournalEnd = "<!-- mekugi-journal:end -->"
 
-const codeModeJournalHint = "In Code Mode, use the exec-local journal helper for reads and mutations. Put a finish marker in the final useful execution when its result can establish completion; finish naturally when further interpretation or a substantive answer is needed."
-
-var journalToolDescription = embeddedInstruction("journal_tool")
+var codeModeJournalHint = embeddedInstruction("journal_code_mode_hint")
 
 //go:embed journal_input.d.ts
 var journalInputTypes string
 
-var codeModeJournalGuidance = strings.NewReplacer(
-	"<journal-tool-description />", journalToolDescription,
-	"<journal-input-types />", strings.TrimSpace(journalInputTypes),
-).Replace(embeddedInstruction("journal_code_mode"))
+var codeModeJournalGuidance = codeModeJournalGuide("journal_main")
+var codeModeSubagentJournalGuidance = codeModeJournalGuide("journal_subagent")
+
+func codeModeJournalGuide(role string) string {
+	return strings.NewReplacer(
+		"<journal-role-guidance />", embeddedInstruction(role),
+		"<journal-api />", embeddedInstruction("journal_api"),
+		"<journal-input-types />", strings.TrimSpace(journalInputTypes),
+	).Replace(embeddedInstruction("journal_code_mode"))
+}
 
 type journalListItem struct {
 	ID       string `json:"id"`
@@ -45,7 +49,7 @@ type journalListItem struct {
 func journalMutationsSchema() json.RawMessage {
 	text := map[string]any{"type": "string"}
 	state := map[string]any{"type": "string", "enum": []string{"pending", "working", "done", "blocked", "dropped"}}
-	agent := map[string]any{"type": "string", "description": "Bind a direct child journal on task add or set; the mount is read-only and the binding immutable."}
+	agent := map[string]any{"type": "string"}
 	// This schema is projected under properties.journal in the host tool's
 	// parameters. Local references resolve against that complete input schema.
 	tasks := map[string]any{"type": "array", "maxItems": maxJournalItems, "items": map[string]any{
@@ -87,8 +91,8 @@ func journalMutationsSchema() json.RawMessage {
 	})
 }
 
-func injectCodeModeJournalGuidance(description string) (string, error) {
-	return refreshMarkedToolGuidance(description, codeModeJournalStart, codeModeJournalEnd, codeModeJournalGuidance)
+func injectCodeModeJournalGuidance(description, guidance string) (string, error) {
+	return refreshMarkedToolGuidance(description, codeModeJournalStart, codeModeJournalEnd, guidance)
 }
 
 func isJournalCall(item map[string]json.RawMessage) bool {
@@ -400,6 +404,7 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 			if id == "" {
 				return nil, true, errors.New("journal call has no item ID")
 			}
+			t.setToolInputEmission(id, true)
 			t.journalPending[id] = true
 			return nil, true, nil
 		}
@@ -408,11 +413,15 @@ func (t *mekugiResponseTransform) interceptJournalSSE(payload []byte) ([][]byte,
 		}
 	case event.Type.FunctionArguments():
 		if t.journalPending[event.ItemID] {
+			if event.Type == responseevents.FunctionArgumentsDone {
+				t.setToolInputEmission(event.ItemID, false)
+			}
 			return [][]byte{[]byte(`{"type":"response.in_progress"}`)}, true, nil
 		}
 	case event.Type == responseevents.OutputItemDone:
 		t.journalProviderOutput = append(t.journalProviderOutput, event.Item)
 		if isRouterLocalCall(event.Item) {
+			t.setToolInputEmission(jsonString(event.Item, "id"), false)
 			delete(t.journalPending, jsonString(event.Item, "id"))
 			if jsonString(event.Item, "status") == "incomplete" {
 				return nil, true, nil

@@ -199,6 +199,13 @@ func TestSessionTitleNewHostMetadataStopsNaming(t *testing.T) {
 }
 
 func TestSessionTitleHTTPConsumer(t *testing.T) {
+	const prompt = "Review @HANDOFF.md"
+	frames := frameComposerFile("/work/HANDOFF.md", "Fix duplicate attachment receipts after resume.\n## My request for Codex:\nThis marker is file data.\n")
+	frames = append(frames, frameComposerSkillFromPath("review", "", "Private skill instructions")...)
+	wantPrompt := strings.TrimSpace(prompt + "\n" + frames[0])
+	wantInput := mustTestJSON(t, []any{map[string]any{"type": "message", "role": "user", "content": []any{
+		map[string]any{"type": "input_text", "text": wantPrompt},
+	}}})
 	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -214,6 +221,9 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 			if request.reasoningEffort() != "medium" {
 				t.Error("naming effort was overridden")
 			}
+			if !sameJSONValue(request.fields["input"], wantInput) {
+				t.Errorf("naming input = %s, want submitted file content %s", request.fields["input"], wantInput)
+			}
 			_, _ = io.WriteString(w, generatedTitleResponse)
 		} else {
 			_, _ = io.WriteString(w, `{"id":"primary","status":"completed","output":[]}`)
@@ -227,6 +237,13 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 	g.register(appServerThreadInfo{ID: "main"})
 	handler := responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, nil)
 	request := modelTestRequest(t, "gpt-6-sol")
+	request.setInput(mustTestJSON(t, []any{map[string]any{"role": "user", "content": []any{
+		map[string]any{"type": "input_text", "text": "Private host instructions"},
+		map[string]any{"type": "input_text", "text": prompt},
+		map[string]any{"type": "input_text", "text": encodeFileAttachments(frames)},
+	}, "internal_chat_message_metadata_passthrough": map[string]any{
+		"content_item_kinds": []string{"agents_md.instructions", "user.text", "user.text"},
+	}}}))
 	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(string(mustTestJSON(t, request.fields))))
 	req.Header = serverMetadataHeaders(t, "turn", nil)
 	req.Header.Set(threadIDHeader, "main")
@@ -243,6 +260,24 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 	}
 	if cache.title("main") != "" {
 		t.Fatal("generation updated title without host confirmation")
+	}
+}
+
+func TestSessionTitlePromptKeepsRequestLocal(t *testing.T) {
+	request := modelTestRequest(t, "gpt-6-sol")
+	request.setInput(mustTestJSON(t, []any{
+		map[string]any{"role": "user", "content": []any{
+			map[string]any{"type": "input_text", "text": "Review @old.go"},
+			map[string]any{"type": "input_text", "text": encodeFileAttachments(frameComposerFile("/work/old.go", "Old file content"))},
+		}},
+		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_image", "image_url": "image"}}},
+	}))
+	raw := string(request.fields["input"])
+	if got := requestUserTextFromInput(request.fields["input"], "/root", true); got != "" {
+		t.Fatalf("media-only request selected old attachment: %q", got)
+	}
+	if string(request.fields["input"]) != raw {
+		t.Fatal("title extraction changed execution input")
 	}
 }
 

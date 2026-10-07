@@ -136,9 +136,22 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 		t.Fatal("Escape closed dock before selection")
 	}
 	selectionTestDrag(t, u.shell, x, y, x+10, y)
-	u.shell.selectionAction('c')
+	if err := u.shell.key(3); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(u.shell.clipboard, base64.StdEncoding.EncodeToString([]byte("**side answer**"))) {
 		t.Fatal("btw clipboard missing")
+	}
+	if u.btw == nil || u.shell.selection != nil {
+		t.Fatal("copy closed the dock or retained selection")
+	}
+	u.draft, u.cursorBack = "before after", len("after")
+	selectionTestDrag(t, u.shell, x, y, x+10, y)
+	if err := u.shell.key('r'); err != nil {
+		t.Fatal(err)
+	}
+	if u.btw == nil || u.shell.selection != nil || u.shell.focus != 0 || u.draft != "before [Selected side answer] after" || len(u.selections) != 1 || u.selections[0].text != "**side answer**" {
+		t.Fatalf("btw reference: draft=%q selections=%+v dock=%v", u.draft, u.selections, u.btw != nil)
 	}
 }
 
@@ -222,7 +235,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 					u.agents.agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 					u.shell.diffOpen, u.shell.journalOpen = false, false
 				}
-				view.applyAppServerItem("", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: source})
+				view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: source})
 				var wire bytes.Buffer
 				if err := u.paint(&wire, width, 50); err != nil {
 					t.Fatal(err)
@@ -265,7 +278,7 @@ func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.agents.agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 	u.shell.diffOpen, u.shell.journalOpen = false, false
-	u.agents.applyAppServerItem("", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
+	u.agents.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
 	var wire bytes.Buffer
 	if err := u.paint(&wire, 120, 40); err != nil {
 		t.Fatal(err)

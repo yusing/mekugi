@@ -2,16 +2,44 @@ package router
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
+
+func TestUISnapshotCombinedEditOutput(t *testing.T) {
+	command, err := os.ReadFile("testdata/python-rewrite-command.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{string(command), execsegment.ShScript("/private/exec-track.sh", string(command))} {
+		output := new(activityui.Retention).New()
+		output.Write("build failed\n")
+		output.Finish(nil, new(2))
+		view := newLiveActivityView()
+		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+			Seq: 1, Agent: "Main", Kind: "tool", Text: toolActivityShell(command),
+			native: &liveActivityNativeItem{command: command, output: output},
+		}}})
+		u := &terminalUI{}
+		if !u.openEntry(view, 1) || len(u.output.pages) != 1 {
+			t.Fatal("missing combined output page")
+		}
+		rows := make([]string, 24)
+		u.paintOutput(rows, 100, len(rows))
+		if u.output.laid.Text != "build failed" {
+			t.Fatalf("combined output lost host text: %q", u.output.laid.Text)
+		}
+		assertNativeUISnapshot(t, "combined-edit-output", rows)
+	}
+}
 
 func dialogForOutput(output *activityui.Output) *terminalUI {
 	view := newLiveActivityView()
@@ -219,7 +247,7 @@ func TestOutputDialogTrackedSegmentKeepsOwnRetention(t *testing.T) {
 	}
 }
 
-func TestOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
+func TestUISnapshotOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
 	for _, width := range []int{100, 50} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			output := new(activityui.Retention).New()
@@ -232,28 +260,15 @@ func TestOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
 				rows[i] = "background"
 			}
 			u.paintOutput(rows, width, height)
+			// paintOutput overlays with cursor addressing, so snapshot its final VT rows.
 			screen := vt.NewEmulator(width, height)
 			defer screen.Close()
-			for i, row := range rows {
-				if _, err := screen.WriteString(fmt.Sprintf("\x1b[%d;1H%s", i+1, row)); err != nil {
+			for y, row := range rows {
+				if _, err := fmt.Fprintf(screen, "\x1b[%d;1H%s", y+1, row); err != nil {
 					t.Fatal(err)
 				}
 			}
-			frame := ansi.Strip(screen.String())
-			border := screen.CellAt(u.output.rect.x, u.output.rect.y).Style
-			if border.Bg == nil || border.Attrs&uv.AttrFaint != 0 {
-				t.Fatalf("dialog inherited backdrop or lost surface: %+v", border)
-			}
-			if width >= outputDialogFullWidth {
-				background := screen.CellAt(0, 0).Style
-				if background.Bg != nil || background.Attrs&uv.AttrFaint == 0 {
-					t.Fatalf("backdrop lost isolation: %+v", background)
-				}
-			}
-			t.Logf("dialog frame:\n%s", frame)
-			if !strings.Contains(frame, "modal content") || width >= outputDialogFullWidth && !strings.Contains(frame, "background") {
-				t.Fatalf("VT overlay lost dialog or background: %q", frame)
-			}
+			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-output-dialog-%d.txt", width), strings.Split(screen.Render(), "\n"), width)
 			if width < outputDialogFullWidth {
 				if u.output.rect.x != 0 || u.output.rect.y != 0 || u.output.rect.w != width || u.output.rect.h != height {
 					t.Fatalf("narrow dialog did not take screen width: %+v", u.output.rect)
@@ -302,7 +317,7 @@ func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	key := [3]string{"main", "t", "cmd"}
 	retention := new(activityui.Retention)
 	hub := &execTrackHub{tracks: map[[3]string]*execTrack{key: {
-		segments: []execTrackSegment{{source: "echo one", began: true, fresh: []byte("initial\n")}}, dirty: true,
+		segments: []execTrackSegment{{source: "echo one", began: true, fresh: []byte("initial\n")}, {source: "echo two"}}, dirty: true,
 	}}}
 	view, _ := hub.view(key, false, func(string) string { return "Run `echo one`" }, retention)
 	if !view.output || len(view.segments) != 1 || view.segments[0].output == nil {
@@ -319,7 +334,7 @@ func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	}
 
 	other := [3]string{"main", "t", "overflow"}
-	hub.tracks[other] = &execTrack{segments: []execTrackSegment{{source: "echo huge", began: true, fresh: []byte("prior\n")}}}
+	hub.tracks[other] = &execTrack{segments: []execTrackSegment{{source: "echo huge", began: true, fresh: []byte("prior\n")}, {source: "echo done"}}}
 	first, _ := hub.view(other, false, func(string) string { return "Run `echo huge`" }, retention)
 	previous := first.segments[0].output
 	if previous == nil {
@@ -337,7 +352,7 @@ func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 
 func TestOutputDialogLossyMessageReleasesLiveSegment(t *testing.T) {
 	key := [3]string{"main", "t", "lossy"}
-	track := &execTrack{segments: []execTrackSegment{{source: "echo text", began: true, fresh: []byte("partial")}}}
+	track := &execTrack{segments: []execTrackSegment{{source: "echo text", began: true, fresh: []byte("partial")}, {source: "echo done"}}}
 	hub := &execTrackHub{tracks: map[[3]string]*execTrack{key: track}}
 	var retention activityui.Retention
 	view, _ := hub.view(key, false, execSegmentText, &retention)
@@ -380,7 +395,7 @@ func TestOutputDialogTerminalKeyDecoderOwnsPrefixAndPaging(t *testing.T) {
 
 func TestOutputDialogTrackedViewDrainsRetainedOutput(t *testing.T) {
 	key := [3]string{"thread", "turn", "item"}
-	track := &execTrack{segments: []execTrackSegment{{source: "echo text", began: true, fresh: []byte("first\n")}}}
+	track := &execTrack{segments: []execTrackSegment{{source: "echo text", began: true, fresh: []byte("first\n")}, {source: "sleep 1"}}}
 	hub := &execTrackHub{tracks: map[[3]string]*execTrack{key: track}}
 	var retention activityui.Retention
 	view, _ := hub.view(key, false, execSegmentText, &retention)
@@ -456,6 +471,30 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 		t.Fatalf("lossy report falsely attributed combined output: %s", frame)
 	}
 
+}
+
+func TestOutputDialogSingleObservedCommandWithoutTail(t *testing.T) {
+	output := new(activityui.Retention).New()
+	view := newLiveActivityView()
+	entry := activityPaneEntry{Seq: 10, Agent: "Main", Kind: "tool", Text: "Read `main.go`", native: &liveActivityNativeItem{command: "cat main.go", output: output, running: true, segments: []commandSegment{{source: "cat main.go", text: "Read `main.go`", running: true}}}}
+	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+	finishPacing(view)
+	feed := view.renderFeed(90, 30)
+	for _, snippet := range feed.snippets {
+		if snippet.run == 0 {
+			continue
+		}
+		block, ok := view.snippetBlock(snippet)
+		if !ok || !view.clickTarget(&block, snippet, 90) {
+			t.Fatal("empty command output is not clickable")
+		}
+		u := &terminalUI{}
+		if !u.openOutput(view, snippet) || len(u.output.pages) != 1 || u.output.pages[0].Output != output {
+			t.Fatal("single command lost its retained output")
+		}
+		return
+	}
+	t.Fatal("single command lost its row")
 }
 
 func TestOutputDialogMergedTrackedReadsKeepAllInvocations(t *testing.T) {
@@ -536,7 +575,7 @@ func TestCommandDurationRestoresAndStopsInDialog(t *testing.T) {
 	v := newLiveActivityView()
 	duration := int64(70000)
 	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "echo ok", DurationMS: &duration, Status: "completed"}
-	v.applyAppServerItem("/w", "main", "main", "turn", "cmd", "item/completed", "", item)
+	v.applyAppServerItem(true, "/w", "main", "main", "turn", "cmd", "item/completed", "", item)
 	b := v.entries[0].blocks[0]
 	if b.Duration != 70*time.Second || b.Running {
 		t.Fatalf("restored timing %+v", b)

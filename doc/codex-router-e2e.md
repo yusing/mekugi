@@ -9,7 +9,7 @@ changing routing assumptions.
 
 Installed Codex CLI 0.156.1 was exercised with a deterministic local provider by
 `TestMChangesNestedNativeCodexE2E`. Native rollout tracing linked outer calls to
-Code Mode cells and individual nested tool results without printing those results
+`exec` cells and individual nested tool results without printing those results
 or modifying execution. Patch success and shell exit zero produced durable
 confirmed captures; a caught patch failure and shell exit 7 remained failed
 despite outer-cell completion. A failed patch without file effects allocated no
@@ -75,7 +75,7 @@ that response channel opens again.
 
 Codex CLI 0.160.0 accepted `TestJournalHostFinishNativeCodexSpawnE2E` with
 a deterministic local provider. Root and native child carried the finish marker
-inside useful stock Code Mode execution. Their matching successful results
+inside useful stock JavaScript execution. Their matching successful results
 selected local terminal journal delivery without another provider request or
 a provider-generated acknowledgment. No standalone journal tool was advertised.
 The ordinary `TestJournalNativeCodexSpawnE2E` also passed, preserving substantive

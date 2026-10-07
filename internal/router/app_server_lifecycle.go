@@ -46,7 +46,7 @@ func (h *appServerLifecycle) compactResponse(failed bool) {
 // reset retain their own owners and are checked by the UI before this gate.
 func (h *appServerLifecycle) acceptsInput() bool {
 	return h.thread != "" && !h.replacement.pending() && !h.starting() &&
-		!h.appServerInputOperation.pending() && !h.compaction.pending() &&
+		!h.appServerInputOperation.pending() && !h.steerInterruptAckPending && !h.compaction.pending() &&
 		!h.settings.blocksInput() && !h.shellCommand.blocksInput(h.turn) &&
 		(h.turn == "" || h.turn != h.interruption.target)
 }
@@ -54,7 +54,8 @@ func (h *appServerLifecycle) acceptsInput() bool {
 func (h *appServerLifecycle) acceptsShell() bool {
 	return !h.replacement.pending() && h.shellCommand.pending.text == "" &&
 		h.shellCommand.origin == nil && !h.starting() &&
-		!h.appServerInputOperation.pending() && h.interruption.target == ""
+		!h.appServerInputOperation.pending() && h.interruption.target == "" &&
+		!h.steerInterruptAckPending
 }
 
 func (h *appServerLifecycle) busy() bool {
@@ -98,11 +99,13 @@ func (o *appServerResumeOperation) takeEvents() []appserver.Message {
 }
 
 type appServerInputOperation struct {
-	submission     composerSubmission // RPC acknowledgement outstanding.
-	pendingStart   composerSubmission // Committed user message outstanding.
-	steers         []composerSubmission
-	unsent, queued []composerDraft
-	awaitingTurn   bool
+	submission               composerSubmission // RPC acknowledgement outstanding.
+	pendingStart             composerSubmission // Committed user message outstanding.
+	steers                   []composerSubmission
+	unsent, queued           []composerDraft
+	awaitingTurn             bool
+	sendSteersAfterInterrupt bool // Escape expedites uncommitted steers; Ctrl-C restores them.
+	steerInterruptAckPending bool // Delivery waits for the host's interrupt acknowledgement too.
 }
 
 func (o *appServerInputOperation) pending() bool { return o.submission.text != "" }

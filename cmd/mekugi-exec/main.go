@@ -2,6 +2,9 @@
 // started by the Bash hook from execsegment as the command shell's coprocess,
 // with the shell's original stdout and stderr on descriptors 3 and 4.
 //
+// Invoked under a guarded version-control name, it instead runs that command,
+// asking the router first when the command writes to a remote.
+//
 // It stays small so that it starts quickly: every tracked command pays for it.
 package main
 
@@ -10,15 +13,18 @@ import (
 	"bytes"
 	json "encoding/json/v2"
 	"errors"
+	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/yusing/mekugi/internal/execsegment"
+	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
@@ -33,6 +39,53 @@ const (
 )
 
 func main() {
+	if len(os.Args) == 4 && os.Args[1] == "--sh-open" {
+		if work := shOpen(os.Args[2], os.Args[3]); work != "" {
+			fmt.Println(work)
+		}
+		return
+	}
+	if len(os.Args) == 3 && os.Args[1] == "--vcs-hook" {
+		helper, err := os.Executable()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		os.Exit(vcsguard.RunHook(helper, os.Args[2], os.Stdin, os.Stdout, os.Stderr))
+	}
+	if len(os.Args) >= 4 && (strings.TrimSuffix(os.Args[1], "-default") == "--vcs-command" || strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell") {
+		if os.Args[3] == vcsguard.ItemFlag && len(os.Args) >= 6 {
+			if err := os.Setenv(vcsguard.ItemEnvironment, os.Args[4]); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			os.Args = append(os.Args[:3], os.Args[5:]...)
+		}
+		defaultPath := strings.HasSuffix(os.Args[1], "-default")
+		target := os.Args[3]
+		argv0 := target
+		if self, err := os.Executable(); err == nil && os.Args[0] != self {
+			argv0 = os.Args[0] // Preserve exec -a and env --argv0.
+		}
+		if strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell" {
+			os.Exit(guardShell(os.Args[2], target, argv0, defaultPath, os.Args[4:]))
+		}
+		name := filepath.Base(target)
+		if !slices.Contains(vcsguard.Tools, name) {
+			os.Exit(1)
+		}
+		explicit := ""
+		if strings.Contains(target, "/") {
+			explicit = target
+		}
+		os.Exit(guardCommand(os.Args[2], name, explicit, argv0, defaultPath, os.Args[4:]))
+	}
+	if name := filepath.Base(os.Args[0]); slices.Contains(vcsguard.Tools, name) {
+		os.Exit(guard(name, os.Args[1:]))
+	}
+	if name := filepath.Base(os.Args[0]); slices.Contains(vcsguard.Shells, name) {
+		os.Exit(guardShell("", name, os.Args[0], false, os.Args[1:]))
+	}
 	// The shell's process group may be signaled while its commands still
 	// write; the relay ends with their output, not with the signal.
 	signal.Ignore(syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGPIPE)
@@ -42,22 +95,32 @@ func main() {
 // run declines by exiting before replying; the shell then runs the original
 // script itself.
 func run(args []string) int {
+	prepared := ""
+	if len(args) == 4 && args[0] == "--sh-run" {
+		script, ok := dashScript()
+		if !ok {
+			return 1
+		}
+		prepared = args[3]
+		if work, ok := execsegment.ReportDirectory(args[2], strings.TrimPrefix(filepath.Base(prepared), "run-")); !ok || work != prepared {
+			return 1
+		}
+		args = []string{args[1], args[2], script}
+		defer fmt.Println("decline")
+	}
 	if len(args) != 3 && (len(args) != 4 || args[3] != "claude") {
 		return 2
 	}
-	socket, directory, script := args[0], args[1], args[2]
+	channel, directory, script := args[0], args[1], args[2]
+	thread, wrapper := os.Getenv("CODEX_THREAD_ID"), ""
 	var segments []execsegment.Segment
 	var ok bool
-	rewritten := ""
-	thread := os.Getenv("CODEX_THREAD_ID")
 	if len(args) == 4 {
-		script, rewritten, segments, ok = execsegment.ClaudeWrapper(script)
-		thread = "" // The invocation can contain native children, not a Codex thread.
+		wrapper, thread = script, ""
+		script, _, segments, ok = execsegment.ClaudeWrapper(wrapper)
 	} else {
+		script = execsegment.ShOriginal(script)
 		segments, ok = execsegment.Split(script)
-		if ok {
-			rewritten = execsegment.Rewrite(script, segments)
-		}
 	}
 	if !ok {
 		return 0
@@ -67,36 +130,41 @@ func run(args []string) int {
 	for i, segment := range segments {
 		sources[i] = segment.Source
 	}
-	conn, err := dial(socket)
+	var conn, answer *os.File
+	var work string
+	var err error
+	if prepared != "" {
+		conn, answer, work, err = execsegment.OpenPreparedReport(prepared, replyTimeout)
+	} else {
+		conn, answer, work, err = execsegment.OpenReport(channel, directory, replyTimeout)
+	}
 	if err != nil {
 		return 0
 	}
 	defer conn.Close()
-	hello := execsegment.Message{Type: execsegment.Hello, Version: execsegment.Protocol, Thread: thread, Script: script, Segments: sources, Terminal: terminal}
+	defer answer.Close()
+	if err := conn.SetWriteDeadline(time.Now().Add(replyTimeout)); err != nil {
+		return 0
+	}
+	hello := execsegment.Message{Type: execsegment.Hello, Version: execsegment.Protocol, Thread: thread, Wrapper: wrapper, Script: script, Segments: sources, Terminal: terminal}
 	if err := writeMessage(conn, hello); err != nil {
 		return 0
 	}
 	var reply execsegment.Reply
-	if line, ok := readReply(int(conn.Fd()), replyTimeout); !ok || json.Unmarshal(line, &reply) != nil || !reply.OK {
+	if line, ok := readReply(int(answer.Fd()), replyTimeout); !ok || json.Unmarshal(line, &reply) != nil || !reply.OK {
 		return 0
 	}
 
-	work, err := os.MkdirTemp(directory, "run-")
-	if err != nil {
-		return 0
-	}
-	defer os.RemoveAll(work)
-	if err := os.WriteFile(filepath.Join(work, "script"), []byte(rewritten), 0o600); err != nil {
+	if err := conn.SetWriteDeadline(time.Time{}); err != nil {
 		return 0
 	}
 	r := &relay{ack: 1, sinks: [2]int{3, 4}, readers: [2]int{-1, -1}, report: newReporter(conn)}
 	mode := "status"
-	if !terminal {
+	if len(segments) == 1 && wrapper == "" {
+		mode = "observe"
+	} else if !terminal {
 		for i, name := range []string{"out", "err"} {
 			path := filepath.Join(work, name)
-			if err := unix.Mkfifo(path, 0o600); err != nil {
-				return 0
-			}
 			// Opening without a writer must not block; the shell opens its end next.
 			fd, err := unix.Open(path, unix.O_RDONLY|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 			if err != nil {
@@ -375,20 +443,6 @@ func (r *reporter) close(timeout time.Duration) {
 
 type byteWriter interface{ Write([]byte) (int, error) }
 
-// dial connects to the router without the net package, whose resolver would
-// link the helper dynamically and slow every tracked command's start.
-func dial(socket string) (*os.File, error) {
-	fd, err := newUnixSocket()
-	if err != nil {
-		return nil, err
-	}
-	if err := unix.Connect(fd, &unix.SockaddrUnix{Name: socket}); err != nil {
-		unix.Close(fd)
-		return nil, err
-	}
-	return os.NewFile(uintptr(fd), socket), nil
-}
-
 // readReply reads the router's one-line reply within timeout.
 func readReply(fd int, timeout time.Duration) ([]byte, bool) {
 	deadline := time.Now().Add(timeout)
@@ -407,6 +461,9 @@ func readReply(fd int, timeout time.Duration) ([]byte, bool) {
 			return nil, false
 		}
 		read, err := unix.Read(fd, buffer)
+		if errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EINTR) {
+			continue // A nonblocking FIFO reader can poll ready spuriously.
+		}
 		if err != nil || read == 0 {
 			return nil, false
 		}

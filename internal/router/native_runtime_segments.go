@@ -120,7 +120,7 @@ func (u *appServerUI) restoreRuntimeCommandSegments(id string) {
 	entry.native = &copy
 	// Keep the native aggregate when any segment lacks complete output.
 	aggregate := strings.Join(entry.outputTail, "\n")
-	u.restoreRetainedCommandSegments(&entry, appServerItem{Command: native.command, Cwd: u.session.cwd, AggregatedOutput: &aggregate}, record)
+	u.restoreRetainedCommandSegments(&entry, appServerItem{Command: native.command, Cwd: u.session.cwd, AggregatedOutput: &aggregate}, record, u.session.cwd)
 	for _, part := range record.Parts {
 		if !part.Skipped && part.Output == nil {
 			entry.outputTail, entry.outputOmit = original.outputTail, original.outputOmit

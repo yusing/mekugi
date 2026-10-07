@@ -277,9 +277,6 @@ func execGitScope(input execProviderInput) execProviderResult {
 		}
 	}
 	entry := execProviderFiles(paths, true)
-	if slices.Contains([]string{"switch", "merge", "cherry-pick", "revert"}, command) || command == "checkout" && len(operands) == 0 || command == "stash" && len(input.args) > 1 && (input.args[1] == "pop" || input.args[1] == "apply") {
-		entry.Origin = "git " + command
-	}
 	result := execProviderResult{scope: []execScopeEntry{entry}, open: open}
 	if open {
 		result.reason = "conflict resolution may write additional paths"
@@ -425,6 +422,5 @@ func execJJScope(input execProviderInput) execProviderResult {
 		}
 	}
 	entry := execProviderFiles(paths, true)
-	entry.Origin = "jj restore"
 	return execProviderResult{scope: []execScopeEntry{entry}, open: true, reason: "Jujutsu snapshots worktree state; no read-only query"}
 }

@@ -3,7 +3,6 @@
 package router
 
 import (
-	"os"
 	"strings"
 	"syscall"
 	"time"
@@ -28,12 +27,4 @@ func execRemoteFilesystem(path string) bool {
 	}
 	name := unix.ByteSliceToString(stat.Fstypename[:])
 	return name == "nfs" || name == "smbfs" || name == "afpfs" || name == "webdav" || strings.Contains(name, "fuse")
-}
-
-func execInfoChangeTime(info os.FileInfo) (time.Time, bool) {
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return time.Time{}, false
-	}
-	return time.Unix(stat.Ctimespec.Sec, stat.Ctimespec.Nsec), true
 }

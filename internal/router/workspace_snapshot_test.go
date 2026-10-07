@@ -55,7 +55,7 @@ func runSnapshotExec(t *testing.T, proxy *mekugiProxy, workspace, callID, comman
 	t.Helper()
 	transform := prepareNativeStockTransform(t, proxy, workspace, "snapshot-"+callID)
 	arguments := string(mustMarshalJSON(map[string]any{"cmd": command, "workdir": workspace}))
-	streamNativeExecCommand(t, transform, callID, arguments)
+	retainCommandObservation(t, transform, callID, arguments)
 	effect()
 	next := reconcileExecItems(t, proxy, workspace, []any{
 		map[string]any{"type": "function_call", "call_id": callID, "name": nativeExecCommandToolName, "arguments": arguments},
@@ -129,7 +129,7 @@ func TestWorkspaceSnapshotRecordsUnnamedEditsWithinIgnoreRules(t *testing.T) {
 
 	// A later read-only command takes no checkpoint and records nothing.
 	transform := prepareNativeStockTransform(t, proxy, workspace, "snapshot-read")
-	streamNativeExecCommand(t, transform, "read", string(mustMarshalJSON(map[string]any{"cmd": "rg renamed", "workdir": workspace})))
+	retainCommandObservation(t, transform, "read", string(mustMarshalJSON(map[string]any{"cmd": "rg renamed", "workdir": workspace})))
 	if _, found := transform.local["read"]; found {
 		t.Fatal("a neutral reader was observed")
 	}
@@ -343,5 +343,64 @@ func TestWorkspaceSnapshotRetriesAFailedWarmup(t *testing.T) {
 	<-ready
 	if snapshots.checkpoint(t.Context(), workspace) == "" {
 		t.Fatal("a failed warmup was never retried")
+	}
+}
+
+func TestWorkspaceSnapshotVCSChangesStayOutOfAuthoredTotals(t *testing.T) {
+	for _, mixed := range []bool{false, true} {
+		t.Run(fmt.Sprint(mixed), func(t *testing.T) {
+			isolateSnapshotGit(t)
+			workspace := gitTestWorkspace(t)
+			writeTestFile(t, filepath.Join(workspace, "authored.txt"), "before\n")
+			gitTestCommit(t, workspace)
+			base := strings.TrimSpace(string(runExecVCSTestGit(t, workspace, "branch", "--show-current")))
+			gitTestRun(t, workspace, "switch", "-c", "incoming")
+			writeTestFile(t, filepath.Join(workspace, "imported.txt"), "imported\n")
+			gitTestCommit(t, workspace)
+			gitTestRun(t, workspace, "switch", base)
+			proxy := newManagedMekugiProxy(t)
+			attachTestReplayStore(t, proxy)
+			// Global options force snapshot coverage, outside the Git scope provider.
+			command := "git -c core.fsmonitor=false cherry-pick incoming"
+			if mixed {
+				command = "env -u BASH_ENV rtk proxy git switch incoming; python3 -c " + shellQuoteArgument("from pathlib import Path; Path('authored.txt').write_text('after\\n')")
+			}
+			history, ctx := runSnapshotExec(t, proxy, workspace, "vcs", command, func() {
+				if mixed {
+					gitTestRun(t, workspace, "switch", "incoming")
+					writeTestFile(t, filepath.Join(workspace, "authored.txt"), "after\n")
+				} else {
+					gitTestRun(t, workspace, "-c", "core.fsmonitor=false", "cherry-pick", "incoming")
+				}
+			})
+			if history.ChangeID == "" || len(history.ReviewFiles) != map[bool]int{false: 1, true: 2}[mixed] {
+				t.Fatalf("VCS history lost evidence: %+v", history)
+			}
+			// A new store reads durable provenance, without command re-execution.
+			resumed, err := openMekugiReplayStore(proxy.replayStore.directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(resumed.snapshots.close)
+			list, err := resumed.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}, view: "list"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mixed {
+				if list != history.ChangeID+" +1 -1\n" {
+					t.Fatalf("mixed authored counts: %q", list)
+				}
+			} else if list != "" {
+				t.Fatalf("VCS counted as authored: %q", list)
+			}
+			data, err := resumed.liveDiffSnapshot(ctx, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {history.ExecutingThread: true}}})
+			if err != nil || len(data.files()) != map[bool]int{false: 0, true: 1}[mixed] {
+				t.Fatalf("saved Diff: %+v, %v", data, err)
+			}
+			diagnostic, err := resumed.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}, view: "history"})
+			if err != nil || !strings.Contains(diagnostic, "+imported") {
+				t.Fatalf("VCS history missing: %q, %v", diagnostic, err)
+			}
+		})
 	}
 }

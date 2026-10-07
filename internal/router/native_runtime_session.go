@@ -122,6 +122,9 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 					}
 					u.dirty = true
 				case <-tick.C:
+					if u.expireNotice(u.now()) {
+						u.dirty = true
+					}
 					u.reapRuntimeCommandPreviews()
 					u.flushRuntimeCommandSegments()
 					if settleActivity(u.now(), u.view, u.agents) {
@@ -151,7 +154,7 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 							notices.finish(false)
 							return err
 						}
-						notices.finish(u.mainContentPainted)
+						notices.finish(true)
 						if err := u.acknowledgeRuntimeJournal(pending); err != nil {
 							u.setNotice("Journal paint receipt unavailable: "+err.Error(), true)
 						}

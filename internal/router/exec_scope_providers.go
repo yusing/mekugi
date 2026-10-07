@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/internal/vcsguard"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -82,7 +83,7 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 			}
 		}
 	}
-	if provider == nil || w.authoredOnly && !w.program.Direct && key != "git" && key != "svn" && key != "hg" && key != "jj" {
+	if provider == nil || w.authoredOnly && !w.program.Direct && !vcsguard.IsTool(key) {
 		return false
 	}
 	if w.depth >= 3 {

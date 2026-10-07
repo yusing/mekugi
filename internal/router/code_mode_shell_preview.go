@@ -10,14 +10,14 @@ import (
 )
 
 // codeModeShellCall is a literal exec_command argument object read from an
-// unfinished Code Mode stream. DynamicWorkdir marks a workdir that is present
+// unfinished exec stream. DynamicWorkdir marks a workdir that is present
 // but not yet a complete literal, so relative targets are not resolvable.
 type codeModeShellCall struct {
 	cmd, workdir   string
 	dynamicWorkdir bool
 }
 
-// Read literal cmd strings from an unfinished Code Mode stream for display
+// Read literal cmd strings from an unfinished exec stream for display
 // only. This scanner does not validate or execute JS; completed calls still
 // use the syntax-tree recognizer for operation evidence.
 func codeModeShellFragments(source string) []codeModeShellCall {

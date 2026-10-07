@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"slices"
 	"strings"
-	"time"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
@@ -51,7 +50,7 @@ func (u *appServerUI) queueSummaries(entries []activityPaneEntry) []activityPane
 			run.done = &done
 		}
 		native := *entry.native
-		native.phase, native.settled, native.thought = "summary", time.Time{}, 0
+		native.phase, native.thought = "summary", 0
 		// The first queued delta may have taken over a provider's waiting row.
 		if native.replaces == "" && run.entry.native != nil {
 			native.replaces = run.entry.native.replaces
@@ -94,9 +93,7 @@ func (u *appServerUI) flushSummaryOutput() {
 		entries = append(entries, entry)
 		if run.done != nil && run.output.Pending() == 0 {
 			done := *run.done
-			native := *done.native
-			native.settled = u.now()
-			done.native, done.Agent = &native, entry.Agent
+			done.Agent = entry.Agent
 			entries = append(entries, done)
 			delete(u.session.summaries, key)
 		}

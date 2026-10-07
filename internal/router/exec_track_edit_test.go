@@ -15,18 +15,23 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/execsegment"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 	t.Parallel()
-	for _, edit := range []string{"gofmt -w source.go", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go"} {
+	for _, edit := range []string{"gofmt -w source.go", "gofmt -w source.go; git --version >/dev/null", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go", "python3 - <<'PY'\nfrom pathlib import Path\nPath('source.go').write_text('package p; var A=1\\n')\nPY\ngofmt -w source.go"} {
 		t.Run(filepath.Base(strings.Fields(edit)[0]), func(t *testing.T) {
 			shell := newExecTrackShell(t)
 			workspace := t.TempDir()
-			before, after, completedText := "before\n", "+after", "completed"
+			before, after, completedText := "before\n", "+after", "via "+filepath.Base(strings.Fields(edit)[0])+" · ran"
 			if filepath.Base(strings.Fields(edit)[0]) == "gofmt" {
 				before, after, completedText = "package p; var A=1\n", "+var A = 1", "Ran"
+			}
+			if strings.HasPrefix(edit, "python3") {
+				after = "+var A = 1"
 			}
 			binaryCopy := strings.HasPrefix(edit, "cp ")
 			if binaryCopy {
@@ -40,6 +45,13 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			observation, ok := captureExecObservation([]execCommandInput{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
 			if !ok || observation == nil || len(observation.Files) == 0 {
 				t.Fatal("missing edit capture")
+			}
+			if strings.Contains(edit, "git --version") {
+				var err error
+				script, err = vcsguard.Rewrite(script, "/private/mekugi-exec", filepath.Join(filepath.Dir(shell.hub.directory), vcsguard.Directory))
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			u := newAppServerSessionTestUI(t, workspace)
 			u.execTrack = shell.hub
@@ -60,9 +72,9 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			// Seed the same running dock before execution so completion must
 			// actively retire it, rather than simply avoid opening a new card.
 			u.shell.preview(diffview.Preview{ID: "running:edit", Workspace: workspace, Thread: "main", Caller: "/root", Status: diffview.PreviewRunning, Input: "observing edit"})
-			cmd := exec.CommandContext(ctx, "bash", "-lc", script)
+			cmd := exec.CommandContext(ctx, execTrackShellExecutable(t, "bash"), "-lc", script)
 			cmd.Dir, cmd.Env = workspace, shell.env
-			if strings.HasPrefix(edit, "gofmt") {
+			if strings.Contains(edit, "gofmt") {
 				cmd.Args[1] = "-c" // The isolated HOME has no mise configuration.
 				goRoot, err := exec.CommandContext(ctx, "go", "env", "GOROOT").Output()
 				if err != nil || strings.TrimSpace(string(goRoot)) == "" {
@@ -174,6 +186,32 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 	}
 }
 
+func TestAppServerTrackedEditCommandOutcomeBeforeHostExit(t *testing.T) {
+	t.Parallel()
+	u, hub := newTrackedAppServerUI(t)
+	script := "sed -i 's/absent/after/' source.go; go test ./..."
+	item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+	report := dialExecTrackReport(t, hub, script)
+	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0})
+	awaitMain(t, u, "via sed · requested")
+	report.send(execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
+	awaitMain(t, u, "via sed · ran")
+	shown := awaitMain(t, u, "Running go test")
+	if strings.Contains(shown, "requested") || !strings.Contains(shown, "via sed · ran") || u.session.commands[[3]string{"main", "turn", "edit"}] == nil {
+		t.Fatalf("segment completion changed host lifecycle:\n%s", shown)
+	}
+	// A zero exit also describes a no-op. Without file evidence, show the
+	// command outcome but do not invent a confirmed edit or applied counts.
+	for _, block := range u.view.entries[0].blocks {
+		if block.Verb == "Edit" {
+			if _, _, _, _, counts := activityui.EditStat(block.Label); counts || block.GroupHeader == "Edited" || block.EditOutcome != "ran" {
+				t.Fatalf("command completion confirmed a file change: %+v", block)
+			}
+		}
+	}
+}
+
 func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
 	t.Parallel()
 	const script = "sed -i 's/a/b/' a; go test ./...; sed -i 's/b/c/' a"
@@ -210,6 +248,46 @@ func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
 			tracked, settled, _ := tracking.state()
 			if tracked != tc.wantTracked || settled != tc.wantSettled {
 				t.Fatalf("state = %v, %v", tracked, settled)
+			}
+		})
+	}
+}
+
+func TestExecPreviewTrackGuardIdentity(t *testing.T) {
+	const original = "gofmt -w source.go; git --version"
+	const guard = "/private/session/vcs-guard"
+	for _, scenario := range []string{"current", "captured guarded", "foreign", "pending duplicate", "lookalike helper"} {
+		t.Run(scenario, func(t *testing.T) {
+			hub := &execTrackHub{directory: "/private/session/exec", changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack)}
+			script, directory := original, guard
+			if scenario == "foreign" {
+				directory = "/private/other/vcs-guard"
+			}
+			if scenario == "lookalike helper" {
+				script = "gofmt -w source.go; /usr/bin/git --version"
+			}
+			wrapped, err := vcsguard.Rewrite(script, "/unrelated/mekugi-exec", directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			commands := []execCommandInput{{Command: script}}
+			if scenario == "captured guarded" {
+				commands[0].Command = wrapped
+			}
+			p := newExecPreviewTrack(hub, "main", "turn", commands)
+			defer p.close()
+			key := [3]string{"main", "turn", "command"}
+			hub.start(key, "/bin/bash -lc "+quoteShellWord(wrapped))
+			if _, _, ok := hub.claim(t.Context(), execsegment.Message{Thread: "main", Script: wrapped}); !ok {
+				t.Fatal("raw report ownership failed")
+			}
+			hub.completed(key)
+			if scenario == "pending duplicate" {
+				hub.start([3]string{"main", "turn", "pending"}, "/bin/bash -lc "+quoteShellWord(original))
+			}
+			_, settled, _ := p.state()
+			if settled != (scenario == "current" || scenario == "captured guarded") {
+				t.Fatalf("preview settled = %v", settled)
 			}
 		})
 	}
@@ -285,7 +363,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
 	observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{previewOnly: true, directory: workspace})
 	if !ok || observation == nil || len(commands) != 2 || len(execPreviewExpected(t.Context(), *observation)) != 0 {
-		t.Fatal("fixture must capture two unprojectable edits in one Code Mode cell")
+		t.Fatal("fixture must capture two unprojectable edits in one exec cell")
 	}
 	auto, stop := newAutoLiveDiff(t.Context(), "")
 	defer stop()
@@ -340,8 +418,15 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 
 func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 	t.Parallel()
-	for _, script := range []string{"gofmt -w source.go", "sed -i 's/A/B/' source.go", "cp", "install"} {
-		t.Run(strings.Fields(script)[0], func(t *testing.T) {
+	for _, tc := range []struct{ script, shell string }{
+		{"gofmt -w source.go", "bash"},
+		{"sed -i 's/A/B/' source.go", "bash"},
+		{"cp", "bash"},
+		{"install", "bash"},
+		{"env -u BASH_ENV gofmt -w source.go; printf formatted", "sh"},
+	} {
+		t.Run(tc.shell+"/"+strings.Fields(tc.script)[0], func(t *testing.T) {
+			script, shell := tc.script, tc.shell
 			u, hub := newTrackedAppServerUI(t)
 			workspace := t.TempDir()
 			path := filepath.Join(workspace, "source.go")
@@ -356,10 +441,10 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			} else {
 				writeTestFile(t, path, "package p; var A=1\n")
 			}
-			// Two nested calls in one cell. The edit is a single command, so
-			// there is no shell segment report. The sibling test stays pending.
-			source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q}); await tools.exec_command({cmd:'go test ./...',workdir:%q});", script, workspace, workspace)
-			commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
+			// Two nested calls in one cell with no shell segment report.
+			// Native completion ends only the edit; the sibling test stays pending.
+			source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q,shell:%q,login:false}); await tools.exec_command({cmd:'go test ./...',workdir:%q});", script, workspace, "/bin/"+shell, workspace)
+			commands, dynamic := stockLiteralExecCommands(source, workspace, shell)
 			observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{previewOnly: true, directory: workspace})
 			if !ok || observation == nil || len(commands) != 2 {
 				t.Fatal("missing grouped edit observation")
@@ -373,12 +458,21 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 			transform.openExecWindow("cell", observation, nil)
 			defer proxy.execWindows.close("cell")
-			item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
+			item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/tmp/vcs-guard/" + shell + " -c " + quoteShellWord(script), "status": "inProgress"}
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
-			cmd := exec.CommandContext(t.Context(), "env", "-u", "BASH_ENV", "bash", "-c", script)
+			cmd := exec.CommandContext(t.Context(), execTrackShellExecutable(t, shell), "-c", script)
+			cmd.Env = append(os.Environ(), "PATH="+execTrackPath(), "BASH_ENV=")
 			cmd.Dir = workspace
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("edit failed: %v: %s", err, out)
+			}
+			if shell == "sh" {
+				preview := waitExecScopePreview(t, auto.events, func(p diffview.Preview) bool { return len(p.Files) > 0 && !p.Complete })
+				u.shell.preview(preview)
+				revealNativeDock(u.shell)
+				if u.shell.liveDock.Live() == 0 {
+					t.Fatal("formatter preview did not open before native completion")
+				}
 			}
 			item["status"], item["exitCode"] = "completed", 0
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
@@ -398,6 +492,16 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 							}
 							if !proxy.execWindows.find("cell").closed.IsZero() || u.session.commands[[3]string{"main", "turn", "test"}] == nil {
 								t.Fatal("edit completion ended enclosing cell or sibling test")
+							}
+							u.shell.preview(*event.Preview)
+							u.shell.animating(time.Now().Add(nativeDockMinimum + time.Millisecond))
+							screen := vt.NewEmulator(100, 30)
+							defer screen.Close()
+							if err := u.paint(screen, 100, 30); err != nil {
+								t.Fatal(err)
+							}
+							if len(u.shell.liveDock.Order) != 0 || strings.Contains(screen.String(), "LIVE ·") {
+								t.Fatal("completed native command retained the live dock")
 							}
 							return
 						}
@@ -421,7 +525,7 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 			reportOld := func() {
 				report := dialExecTrackReport(t, hub, script)
 				report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
-				awaitMain(t, u, "completed")
+				awaitMain(t, u, "Running go test ./...")
 			}
 			if !lateReport {
 				reportOld()
@@ -528,7 +632,7 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)
 	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
-	awaitMain(t, u, "completed")
+	awaitMain(t, u, "requested")
 	// The first call edited one file; an unrelated change makes the sibling
 	// watch visible too. Neither can acquire completion from this report.
 	writeTestFile(t, filepath.Join(workspace, "one", "source.go"), "after\n")

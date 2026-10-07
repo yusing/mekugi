@@ -4,7 +4,7 @@
 
 Presentation consumes observations and user intent. It does not become an execution,
 capture, accounting, or replay authority. Observable terminal behavior belongs to the
-[native UI contract](../spec/native_ui.md); the session dialog consumes the
+[UI contract](../spec/native_ui.md); the session dialog consumes the
 [capture-owned metrics contract](metrics.md).
 
 - `internal/ui/activity` owns display blocks, journal-result layout, Markdown and
@@ -15,7 +15,8 @@ capture, accounting, or replay authority. Observable terminal behavior belongs t
   their viewport and reveal animation. It consumes shared `internal/livediff` models
   and router-produced preview snapshots. Rendering a preview cannot finalize evidence.
 - `internal/ui/terminal` owns raw-terminal restoration, cancellable input reading,
-  mouse decoding, and shared scrolling primitives. Callers retain pane composition,
+  mouse decoding, and shared scrolling primitives. Input cancellation preserves
+  caller descriptors and their shared file-status flags. Callers retain pane composition,
   focus, follow policy, and the enclosing session lifetime.
 - Router-native `/session` presentation consumes a detached capturer snapshot.
   It owns only view, scroll and retained-exchange selection, never a metric store.
@@ -29,8 +30,14 @@ scoped replay/change observations, accounting, and journal publications into dis
 values. Shared Markdown annotations travel with rendered fragments through wrapping,
 record layouts, gutters and viewport clipping. The router resolves them against the
 composed visible frame and removes their private transport before terminal delivery.
-A selection snapshots those annotations with its rows, so later streaming cannot
-change the selected source. Atomic submitted tokens consume the same bound composer
+A selection snapshots those annotations with its rows. A scrollable selection
+retains the full rendered document and keeps its own
+viewport, so later streaming cannot change selected or newly exposed source rows.
+The snapshot retains Markdown annotations, original click targets, pinned rows,
+and saved Diff gutters and change attribution. Main, Activity, saved Diff,
+side-answer docks and output dialogs share the selection mouse and scroll model;
+the caller retains composition and dismissal policy. Output dialogs defer live
+content refresh while their selection is active. Atomic submitted tokens consume the same bound composer
 spans through Codex text elements, rather than recognizing lookalike prompt text.
 Journal acknowledgements remain with their owner and occur only after the
 terminal write succeeds. Preview workers and brokers remain with router observation,

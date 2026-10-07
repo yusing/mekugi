@@ -243,12 +243,9 @@ func pythonCorpusIntent(source string) string {
 			case callee == "open":
 				// A read-only open cannot mutate a file, but computed modes remain unknown.
 				_, args := sourceCall(n)
-				if len(args) < 2 { /* default read mode */
-				} else {
+				if len(args) >= 2 {
 					mode := strings.ReplaceAll(text(args[1]), " ", "")
-					if strings.HasPrefix(mode, "mode=") {
-						mode = strings.TrimPrefix(mode, "mode=")
-					}
+					mode = strings.TrimPrefix(mode, "mode=")
 					if len(mode) > 1 && (mode[0] == '\'' || mode[0] == '"') {
 						if strings.ContainsAny(mode, "wax+") {
 							write = true

@@ -96,11 +96,18 @@ func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
 				u.retainAppliedSettings()
 			}
 			u.setNotice("Settings unchanged", false)
+			if _, explicit := change["serviceTier"]; explicit {
+				u.chooseServiceTier()
+				u.setNotice("Service tier updated", false)
+			}
 			return true, nil
 		}
 		params["turnId"] = u.turn
 		if err := u.request("turn/settings/update", params); err != nil {
 			return false, err
+		}
+		if _, explicit := change["serviceTier"]; explicit {
+			u.chooseServiceTier()
 		}
 		u.settings.beginLive()
 		u.setNotice("Updating active turn…", false)
@@ -341,6 +348,9 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		u.session.cwd = event.Settings.Cwd
 	}
 	u.model, u.reasoningEffort, u.serviceTier = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
+	if _, explicit := u.settings.change["serviceTier"]; explicit {
+		u.chooseServiceTier()
+	}
 	if _, explicit := u.settings.change["effort"]; explicit || u.reasoningEffort == "" {
 		u.settings.restoredEffort()
 	}
@@ -390,9 +400,12 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 			}
 		}
 	case "/tier":
-		current = u.serviceTier
+		current = u.displayServiceTier()
 		if current == "" {
 			current = "default"
+		}
+		if !slices.Contains(choices, current) {
+			choices = append(choices, current)
 		}
 	}
 	if p.loading {
@@ -419,9 +432,6 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 			if u.runtime != nil && command != "/model" {
 				choice.description = "Requested"
 			}
-			if command == "/tier" && effectiveServiceTier(u.model, "", u.serviceTiers) != "" {
-				choice.description = "Current in Codex"
-			}
 			p.selected = len(p.choices)
 		}
 		p.choices = append(p.choices, choice)
@@ -429,6 +439,17 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 	if len(p.choices) == 0 {
 		p.problem = "No advertised choices · Esc to close; use an explicit VALUE"
 	}
+}
+
+func (u *appServerUI) chooseServiceTier() {
+	if u.serviceTiers == nil {
+		u.serviceTiers = new(serviceTierSettings)
+	}
+	tier := u.serviceTier
+	if tier == "" {
+		tier = "default"
+	}
+	u.serviceTiers.choices.Store([2]string{u.thread, serviceTierModel(u.model)}, tier)
 }
 
 func (u *appServerUI) settingsPickerKey(key string) bool {

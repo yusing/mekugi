@@ -106,7 +106,7 @@ Acceptance:
 2. Workspace inference, turn-level workspace changes, overrides, missing metadata,
    corrupt or mismatched records, output-only calls, and workspace isolation preserve
    the documented result and failure behavior.
-3. Direct native and Code Mode calls retain their observed identities without
+3. Historical top-level and nested tool calls retain their observed identities without
    decoding or executing source.
 4. Text selection, UTF-8 bounds, pagination, duplicates, and invalid input follow
    the documented schema.
@@ -138,7 +138,7 @@ The `mekugi.sessions.v1` JSON report contains per-rollout evidence, absolute pat
 call IDs and original line numbers, with no source bodies. Counts are per rollout;
 fork-inherited calls are not summed into a global workload. Each session distinguishes
 matched from unavailable replay. Empty-poll evidence requires an empty-input call and explicitly empty native output
-for the same session; transparent Code Mode projections are recognized, but printed
+for the same session; transparent JavaScript projections are recognized, but printed
 lookalikes are not. This is offline analysis and does not change continuation behavior.
 Truncation/reread findings are explicitly static candidates: adjacent selected calls
 must have an `mread` omission receipt, the same workspace, and overlapping

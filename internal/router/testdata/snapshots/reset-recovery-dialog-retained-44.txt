@@ -6,13 +6,13 @@
 │ instructions or fresh workspace          ▌
 │ validation.                              ▌
 │                                          ▌
-│ Context:                                 ▌
+│ Context paths:                           ▌
 │                                          ▌
 │ /1 Preserve host authority               │
-│ Use retained observations, not revived   │
-│ continuation handles.                    │
-│                                          │
 │ Open tasks:                              │
 │                                          │
 │ /2 [pending] Continue validation         │
+│ Retained changes:                        │
+│ No recorded changes.                     │
+│                                          │
 ╰─ ↑↓ scroll · / find · y copy · esc ──────╯

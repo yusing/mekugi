@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -43,7 +45,7 @@ func TestOutputThroughputCurrentRound(t *testing.T) {
 		time.Sleep(time.Minute)
 		zero := usage.observation("main", "main", "gpt-6-luna", "")
 		zero.begin()
-		requireRoundThroughput(t, usage, "main", 0, false)
+		requireRoundThroughput(t, usage, "main", 40, true)
 		time.Sleep(time.Second)
 		zero.observe(tokenCounts{TotalsKnown: true})
 		requireRoundThroughput(t, usage, "main", 0, true)
@@ -52,7 +54,7 @@ func TestOutputThroughputCurrentRound(t *testing.T) {
 		gap.begin()
 		time.Sleep(time.Second)
 		gap.finish()
-		requireRoundThroughput(t, usage, "main", 0, false)
+		requireRoundThroughput(t, usage, "main", 0, true)
 	})
 }
 
@@ -99,8 +101,6 @@ func TestOutputThroughputRestoredThreadIsolation(t *testing.T) {
 		if outputThroughputLabel(child.OutputThroughput) != "50.0 tok/s" {
 			t.Fatal(child)
 		}
-		// Resume of an interrupted new request must not restore the older rate
-		// or revive a stopwatch. Only retained evidence is replayed.
 		time.Sleep(time.Second)
 		interrupted := restored.observation("child", "child", "gpt-6-sol", "")
 		interrupted.begin()
@@ -108,7 +108,8 @@ func TestOutputThroughputRestoredThreadIsolation(t *testing.T) {
 		again := storedUsageFixture(store)
 		t.Cleanup(again.close)
 		again.restore("child", true)
-		requireRoundThroughput(t, again, "child", 0, false)
+		// Resume keeps the last measurement, without reviving a stopwatch.
+		requireRoundThroughput(t, again, "child", 50, true)
 		next := again.observation("child", "child", "gpt-6-sol", "")
 		next.begin()
 		time.Sleep(time.Second)
@@ -132,7 +133,9 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 					terminal := `{"id":"tps-response","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":80,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":20}}}`
 					wire := terminal
 					if stream {
-						wire = "data: {\"type\":\"response.completed\",\"response\":" + terminal + "}\n\n"
+						wire = "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"custom_tool_call\",\"id\":\"tool\",\"call_id\":\"tool\",\"name\":\"unknown\",\"input\":\"" + strings.Repeat("inspect carefully ", 64) + "\"}}\n\n" +
+							"data: {\"type\":\"response.output_text.delta\",\"output_index\":1,\"delta\":\"additional output\"}\n\n" +
+							"data: {\"type\":\"response.completed\",\"response\":" + terminal + "}\n\n"
 					}
 					recorder, err := capturer.New(capturer.Config{Mode: "mekugi"})
 					if err != nil {
@@ -157,7 +160,7 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 					handler := recorder.Handler(http.HandlerFunc(responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, proxy)))
 					request := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, req.fields)))
 					request.Header = headers
-					out := httptest.NewRecorder()
+					out := &throughputSlowWriter{ResponseRecorder: httptest.NewRecorder()}
 					handler.ServeHTTP(out, request)
 					if out.Code != http.StatusOK {
 						t.Fatalf("response=%d %s", out.Code, out.Body.String())
@@ -178,7 +181,19 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 	}
 }
 
-func TestOutputThroughputUIRefreshClearsPreviousRound(t *testing.T) {
+// Delivery work between buffered events must not extend provider receipt time.
+type throughputSlowWriter struct {
+	*httptest.ResponseRecorder
+}
+
+func (w *throughputSlowWriter) Write(payload []byte) (int, error) {
+	if bytes.Contains(payload, []byte("response.output_item.done")) {
+		time.Sleep(time.Second)
+	}
+	return w.ResponseRecorder.Write(payload)
+}
+
+func TestOutputThroughputUIRefreshRetainsPreviousRound(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.session.start(u.thread, "")
@@ -197,10 +212,90 @@ func TestOutputThroughputUIRefreshClearsPreviousRound(t *testing.T) {
 		next := usage.observation(u.thread, u.thread, "gpt-6-sol", "")
 		next.begin()
 		u.applyObservedActivity()
-		if _, known := u.session.agent("/root").OutputThroughput.Rate(); known {
-			t.Fatal("previous round remained visible")
+		if got := outputThroughputLabel(u.session.agent("/root").OutputThroughput); got != "30.0 tok/s" {
+			t.Fatalf("previous rate disappeared: %s", got)
 		}
 	})
+}
+
+func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
+	for _, prior := range []bool{false, true} {
+		t.Run(fmt.Sprintf("prior=%v", prior), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				proxy := newManagedMekugiProxy(t)
+				u, _ := newAppServerTestUI()
+				u.thread, u.proxy = "thread-1", proxy
+				u.session.start(u.thread, "")
+				u.ensureShell()
+				var previous capturer.OutputThroughput
+				if prior {
+					observation := proxy.usage.observation(u.thread, "", "gpt-6.1-sol", "")
+					observation.begin()
+					// Actual reported response: 620 of 883 output tokens were hidden reasoning.
+					time.Sleep(20125689348 * time.Nanosecond)
+					observation.observe(tokenCounts{TotalsKnown: true, OutputTokens: 883, ReasoningTokens: 620})
+					previous = observation.throughput
+				}
+				r, w := io.Pipe()
+				defer r.Close()
+				defer w.Close()
+				provider := serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+					response := serverHTTPResponse("")
+					response.Header.Set("Content-Type", "text/event-stream")
+					response.Body = r
+					return response, nil
+				})
+				request := serverRequest(t, func(f map[string]any) { f["stream"] = true; f["model"] = "gpt-6.1-sol" })
+				out := httptest.NewRecorder()
+				httpRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, request.fields)))
+				httpRequest.Header = serverMetadataHeaders(t, "turn", nil)
+				httpRequest.Header.Set(sessionIDHeader, "transport-session")
+				done := make(chan struct{})
+				go func() {
+					responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, proxy)(out, httpRequest)
+					close(done)
+				}()
+				synctest.Wait()
+				time.Sleep(2 * time.Second)
+				for index, kind := range []string{"response.output_text.delta", "response.function_call_arguments.delta", "response.custom_tool_call_input.delta", "response.reasoning_summary_text.delta", "response.reasoning_text.delta"} {
+					event := mustTestJSON(t, map[string]any{"type": kind, "output_index": index, "delta": strings.Repeat("inspect carefully ", 64)})
+					// Buffered deltas and streamed deltas must both leave the measured rate intact.
+					if _, err := fmt.Fprintf(w, "data: %s\n\ndata: %s\n\n", event, event); err != nil {
+						t.Fatal(err)
+					}
+					synctest.Wait()
+					u.applyObservedActivity()
+					if got := u.session.agent("/root").OutputThroughput; got != previous {
+						t.Fatalf("%s replaced measured rate: %+v, want %+v", kind, got, previous)
+					}
+					time.Sleep(250 * time.Millisecond)
+				}
+				root := u.session.agent("/root")
+				u.agents.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{*root}})
+				rows, _ := u.mainFrame(80, 10, 0)
+				if prior {
+					assertNativeUISnapshot(t, "output-throughput-live-composer", rows)
+					assertNativeUISnapshot(t, "output-throughput-live-roster", u.agents.nativeRoster(80, 4, time.Now(), true))
+				} else if strings.Contains(strings.Join(rows, "\n"), "tok/s") {
+					t.Fatal("first response displayed TPS before provider usage")
+				}
+				terminal := `data: {"type":"response.completed","response":{"id":"rate","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":130,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":100}}}}` + "\n\n"
+				if _, err := io.WriteString(w, terminal); err != nil {
+					t.Fatal(err)
+				}
+				_ = w.Close()
+				<-done
+				u.applyObservedActivity()
+				requireRoundThroughput(t, proxy.usage, u.thread, 40, true)
+				if root.OutputThroughput.OutputTokens != 130 || out.Code != http.StatusOK {
+					t.Fatalf("terminal measurement or delivery changed: %+v, %d", root.OutputThroughput, out.Code)
+				}
+				if state, err := copySSETransformed(io.Discard, strings.NewReader(out.Body.String()), nil, nil); err != nil || !isResponseTerminal(state) {
+					t.Fatalf("downstream terminal missing: %v, %v", state, err)
+				}
+			})
+		})
+	}
 }
 
 func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
@@ -218,7 +313,11 @@ func TestUISnapshotOutputThroughputComposerAndRoster(t *testing.T) {
 			u.status, u.model = "Ready", "gpt-6-sol"
 			rows, _ := u.mainFrame(width, 10, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-composer-%d", width), rows)
-			u.agents.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{*root, {Name: "/root/fast", OutputThroughput: capturer.OutputThroughput{OutputTokens: 120, DurationNanos: uint64(time.Second), MeasuredRequests: 1}, ContextKnown: true, ContextTokens: 1000, ContextWindow: 200000}, {Name: "/root/zero", OutputThroughput: capturer.OutputThroughput{DurationNanos: uint64(time.Second), MeasuredRequests: 1}}, {Name: "/root/absent"}}})
+			u.agents.apply(activityPaneEvent{Kind: "agents", Agents: []activityPaneAgent{*root,
+				{Name: "/root/fast", OutputThroughput: capturer.OutputThroughput{OutputTokens: 120, DurationNanos: uint64(time.Second), MeasuredRequests: 1}, ContextKnown: true, ContextTokens: 1000, ContextWindow: 200000},
+				{Name: "/root/zero", OutputThroughput: capturer.OutputThroughput{DurationNanos: uint64(time.Second), MeasuredRequests: 1}},
+				{Name: "/root/absent"},
+			}})
 			assertNativeUISnapshot(t, fmt.Sprintf("output-throughput-roster-%d", width), u.agents.nativeRoster(width, 6, now, true))
 		})
 	}
@@ -240,13 +339,13 @@ func TestOutputThroughputMissingAndPartialEvidence(t *testing.T) {
 			{name: "inconsistent", counts: tokenCounts{TotalsKnown: true, OutputTokens: 80, Inconsistent: true}, time: started},
 			{name: "partial-categories-known-totals", counts: tokenCounts{TotalsKnown: true, OutputTokens: 80, Incomplete: true}, time: started, known: true, rate: 40},
 		} {
-			got := measureOutputThroughput(tc.counts, tc.time)
+			got := measureOutputThroughput(tc.counts, tc.time, time.Now())
 			rate, known := got.Rate()
 			if known != tc.known || rate != tc.rate {
 				t.Fatalf("%s rate=%g,%v want %g,%v", tc.name, rate, known, tc.rate, tc.known)
 			}
 		}
-		got := measureOutputThroughput(tokenCounts{TotalsKnown: true, OutputTokens: 80}, time.Now())
+		got := measureOutputThroughput(tokenCounts{TotalsKnown: true, OutputTokens: 80}, time.Now(), time.Now())
 		if _, known := got.Rate(); known {
 			t.Fatal("zero elapsed time was a measured rate")
 		}

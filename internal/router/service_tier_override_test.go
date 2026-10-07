@@ -40,7 +40,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 	}
 	u := newAppServerSessionTestUI(t, directory)
 	u.proxy = newManagedMekugiProxy(t)
-	u.serviceTiers = config.ServiceTiers
+	u.serviceTiers = &serviceTierSettings{configured: config.ServiceTiers}
 	u.status = "Ready"
 	u.view.painter.Theme = livediff.DarkTheme
 	for _, tc := range []struct{ model, requested, want string }{
@@ -76,7 +76,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 			}
 			request := serverRequest(t, func(fields map[string]any) { fields["model"], fields["service_tier"] = tc.model, tc.requested })
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, serviceTiers: config.ServiceTiers}
+			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, serviceTiers: &serviceTierSettings{configured: config.ServiceTiers}}
 			if err := executor.execute(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "tier"); err != nil {
 				t.Fatal(err)
 			}
@@ -130,7 +130,8 @@ func newServiceTierPickerTestUI(t *testing.T, model, tier string, overrides map[
 	t.Helper()
 	u, input := newAppServerTestUI()
 	u.ctx = t.Context()
-	u.model, u.serviceTier, u.serviceTiers = model, tier, overrides
+	u.model, u.serviceTier = model, tier
+	u.serviceTiers = &serviceTierSettings{configured: overrides}
 	u.view.painter.Theme = livediff.DarkTheme
 	if err := json.Unmarshal([]byte(`[{"model":"gpt-6.1-sol","serviceTiers":[{"id":"priority"},{"id":"flex"}]},{"model":"gpt-5.6-terra","serviceTiers":[{"id":"priority"},{"id":"flex"}]},{"model":"unconfigured","serviceTiers":[{"id":"priority"},{"id":"flex"}]}]`), &u.models); err != nil {
 		t.Fatal(err)
@@ -144,17 +145,17 @@ func TestUISnapshotNativeTierPicker(t *testing.T) {
 		overrides             map[string]string
 		selected              int
 	}{
-		{"configured", "gpt-6.1-sol", "", map[string]string{"gpt-6.1-sol": "fast"}, 0},
+		{"configured", "gpt-6.1-sol", "", map[string]string{"gpt-6.1-sol": "fast"}, 1},
 		{"unconfigured", "unconfigured", "priority", nil, 1},
-		{"legacy-terra", "gpt-5.6-terra", "flex", map[string]string{"gpt-6-sol": "fast"}, 2},
-		{"configured-flex", "gpt-6.1-sol", "default", map[string]string{"gpt-6.1-sol": "flex"}, 0},
+		{"legacy-terra", "gpt-5.6-terra", "flex", map[string]string{"gpt-6-sol": "fast"}, 1},
+		{"configured-flex", "gpt-6.1-sol", "default", map[string]string{"gpt-6.1-sol": "flex"}, 2},
 	} {
 		for _, width := range []int{36, 100} {
 			t.Run(fmt.Sprintf("%s/%d", tc.name, width), func(t *testing.T) {
 				u, input := newServiceTierPickerTestUI(t, tc.model, tc.hostTier, tc.overrides)
 				appServerTestKeys(t, u, "/tier\r")
 				if !u.picker.open || u.settingsChoices != "/tier" || u.picker.selected != tc.selected {
-					t.Fatalf("picker did not preserve host tier selection: %+v", u.picker)
+					t.Fatalf("picker did not select effective tier: %+v", u.picker)
 				}
 				if input.Len() != 0 || u.serviceTier != tc.hostTier || u.model != tc.model {
 					t.Fatal("opening picker changed host settings")
@@ -199,25 +200,49 @@ func TestUISnapshotNativeTierPickerCatalogStates(t *testing.T) {
 	}
 }
 
-func TestServiceTierPickerSelectionUpdatesHostOnly(t *testing.T) {
+func TestServiceTierPickerSelectionUpdatesEffectiveTier(t *testing.T) {
 	for _, tc := range []struct {
 		name, initial, keys string
 		want                any
 		applied             string
 	}{
-		{"flex", "", "\x1b[B\x1b[B\r", "flex", "flex"},
+		{"flex", "", "\x1b[F\r", "flex", "flex"},
 		{"default", "flex", "\x1b[H\r", nil, ""},
+		{"default-noop", "", "\x1b[H\r", nil, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, input := newServiceTierPickerTestUI(t, "gpt-6.1-sol", tc.initial, map[string]string{"gpt-6.1-sol": "fast"})
 			appServerTestKeys(t, u, "/tier\r"+tc.keys)
-			assertAppServerSettingsRequest(t, input, "thread/settings/update", map[string]any{"threadId": "main", "serviceTier": tc.want})
-			if u.picker.open || !u.settings.pending() || u.serviceTier != tc.initial || u.serviceTiers["gpt-6.1-sol"] != "fast" {
-				t.Fatal("selection replaced host settings before confirmation or mutated override")
+			if tc.initial != tc.applied {
+				assertAppServerSettingsRequest(t, input, "thread/settings/update", map[string]any{"threadId": "main", "serviceTier": tc.want})
+				if u.picker.open || !u.settings.pending() || u.serviceTier != tc.initial {
+					t.Fatal("selection replaced host settings before confirmation")
+				}
+				appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": "gpt-6.1-sol", "effort": "high", "serviceTier": tc.want}})
+			} else if input.Len() != 0 || u.settings.pending() {
+				t.Fatal("unchanged host value waited for a notification")
 			}
-			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": "gpt-6.1-sol", "effort": "high", "serviceTier": tc.want}})
-			if u.serviceTier != tc.applied || effectiveServiceTier(u.model, u.serviceTier, u.serviceTiers) != "priority" || u.serviceTiers["gpt-6.1-sol"] != "fast" {
-				t.Fatal("host confirmation changed effective override")
+			want := tc.applied
+			if want == "" {
+				want = "default"
+			}
+			if u.displayServiceTier() != want || u.serviceTiers.configured[u.model] != "fast" {
+				t.Fatal("selection did not replace effective tier or changed configuration")
+			}
+			request := serverRequest(t, func(fields map[string]any) { fields["model"], fields["service_tier"] = u.model, u.serviceTier })
+			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
+			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, serviceTiers: u.serviceTiers}
+			headers := serverMetadataHeaders(t, "turn", nil)
+			headers.Set(threadIDHeader, u.thread)
+			if err := executor.execute(t.Context(), t.Context(), request, headers, "tier"); err != nil {
+				t.Fatal(err)
+			}
+			forwarded, err := parseResponsesRequest(provider.forwarded[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := jsonString(forwarded.fields, "service_tier"); got != want {
+				t.Fatalf("provider tier=%s want=%s", got, want)
 			}
 		})
 	}
@@ -267,7 +292,7 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 			}))
 			defer upstream.Close()
 			client := newProviderClient(upstream.URL, upstream.Client())
-			client.serviceTiers = map[string]string{"gpt-6-astra": "priority"}
+			client.serviceTiers = &serviceTierSettings{configured: map[string]string{"gpt-6-astra": "priority"}}
 			request := serverRequest(t, func(fields map[string]any) {
 				fields["model"], fields["service_tier"], fields["stream"] = "gpt-6-astra", "default", transport != "http"
 			})
@@ -315,7 +340,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 			request := serverRequest(t, func(fields map[string]any) { fields["model"], fields["service_tier"] = model, "flex" })
 			headers := serverMetadataHeaders(t, "turn", nil)
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
-			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, mekugiCalls: proxy, serviceTiers: map[string]string{"gpt-6-sol": "fast"}}
+			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, mekugiCalls: proxy, serviceTiers: &serviceTierSettings{configured: map[string]string{"gpt-6-sol": "fast"}}}
 			if err := executor.execute(t.Context(), t.Context(), request, headers, "tier"); err != nil {
 				t.Fatal(err)
 			}
@@ -418,7 +443,7 @@ func TestServiceTierJournalContinuationAndRootNotice(t *testing.T) {
 	}
 	executor := requestExecutor{
 		provider: provider, output: &bytes.Buffer{}, mekugiCalls: proxy,
-		serviceTiers: map[string]string{"gpt-5.6-sol": "fast"},
+		serviceTiers: &serviceTierSettings{configured: map[string]string{"gpt-5.6-sol": "fast"}},
 	}
 	if err := executor.execute(t.Context(), t.Context(), request, headers, "child-session"); err != nil {
 		t.Fatal(err)

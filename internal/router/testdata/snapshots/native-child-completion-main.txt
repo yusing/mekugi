@@ -1,0 +1,6 @@
+✓ worker finished                                                                           12:00:00
+│ The complete provider answer.
+│ • First finding
+│ • Second finding
+│  verify()                                                                                        …
+╰─↩ Open reply · +2 lines

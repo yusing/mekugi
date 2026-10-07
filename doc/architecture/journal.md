@@ -4,7 +4,9 @@
 
 The journal store owns per-thread task/note trees, ordinal paths, events, capacity, atomic mutation
 transactions, relationship binding, persistence, replay receipts, and delivery
-acknowledgements. Delivery leases are workspace-scoped and remain held through
+acknowledgements. New Outcomes have separate identities and do not consume task-tree
+ordinals. Existing retained paths stay unchanged, including earlier numeric Outcome paths.
+Delivery leases are workspace-scoped and remain held through
 downstream write confirmation, preserving ancestry and deletion ordering without
 blocking unrelated workspaces. State and replay transactions retain their shared
 serialization and session-retention owners.
@@ -20,12 +22,15 @@ Cross-agent trees are derived views under the journal/replay locks, authorized b
 complete durable ancestry in one workspace. Records never contain child snapshots.
 Task creation and existing-task updates share the journal owner's binding validator
 and transaction; creation emits one event containing the binding, not an intermediate
-unbound task. Operation-specific native schemas and Code Mode input declarations
+unbound task. Operation-specific structured schemas and JavaScript input declarations
 project through the journal tool guidance owner. Reserved view paths keep foreign
 nodes distinct without changing local ordinals. Native
 sinks cache immutable composed views only. Child lifecycle comes from accepted
 requests and host turn observations, never provider final-answer text. A child's
 publication refreshes ancestor views without mutating ancestor event logs or cursors.
+Parent completion validates mounted host lifecycles, not child-authored task states.
+The child result exposes unchanged open tasks alongside its event delta; only the
+child can change those states, and the parent retains the integration decision.
 
 Journal transactions checkpoint the change owner's sequence and durable capture
 order when they append events. These counters are separate from journal sequence;
@@ -34,6 +39,8 @@ observations share the capture-order owner and retain bounded host output throug
 the managed read store. Summaries read journal, change and failure evidence under
 one replay lock, scoped by durable thread/workspace identity. The same renderer
 serves v2 hook recovery and compaction synthesis; summary text is not usage evidence.
+Codex recovery uses compact current-work paths and excerpts. Claude's bounded carrier
+keeps complete mandatory constraints and open-task bodies.
 
 Claude's native MCP adapter uses this same store without a router request or
 dummy proxy. A launcher-authenticated hook persists the native tool-use receipt,
@@ -54,8 +61,12 @@ complete; optional evidence sections are admitted atomically with retained
 recovery references. Mandatory overflow produces no packet. This is additive
 SessionStart context, not a replacement preparation or installation receipt.
 
-The request executor selects local compaction after protocol validation, before
-provider preparation. Local responses reuse terminal delivery and cancellation,
+The Codex request executor selects journal context reset after protocol validation,
+before provider preparation. `auto` is the default for manual and context-full
+requests, including children; unavailable identity, evidence, storage or rendering
+stops the request before provider preparation. `off` restores provider compaction,
+and `slice` retains provider handling outside armed slice resets and on reset
+failure. Local responses reuse terminal delivery and cancellation,
 not tool execution or a second request path. The replay store retains the latest
 synthesis identity per workspace/thread, before response publication. Session
 leases protect evidence through delivery. The post-compaction hook compares that
@@ -66,6 +77,13 @@ attempt, rather than interpreting synthetic envelope usage as provider usage.
 For native compaction's missing workspace metadata, the session ownership catalog
 proves the unique prior selected workspace from exact thread-owned records. This
 lookup remains valid after restart and rejects multiple historical workspaces.
+
+The proxy owns a per-thread context-pressure reminder derived from the latest host
+context-usage snapshot and model window, not cumulative usage. At 70% or more it
+adds a split-slice reminder to the next request's journal tool guidance. Successful
+host context-compaction completion clears it; native host-selected context facts
+restore it on resume. This observation neither dispatches a reset nor changes
+journal continuation intent.
 
 Continuation state belongs to the journal record: turn-start sequence, handled
 turn ID and one intent bound to the completed turn. The intent distinguishes
@@ -93,8 +111,9 @@ is one JSON object per line: host `appserver.Message` objects plus
 idle, not a task state. Content is not sanitized. Errors use stderr and nonzero
 exit; successful task completion does not mask a later host-shutdown error.
 
-Journal counters persist with the owning thread, separate from event and delivery
-cursors. Mutation counters share accepted-batch receipt deduplication. Public
+Journal counters persist with the owning thread without changing task or timer
+fields, separate from event and delivery cursors. Mutation counters share
+accepted-batch receipt deduplication. Public
 read carriers and provider-final observation add measurements without work events;
 a bounded window of recent read-call and final-response identities deduplicates
 repeated observation without joining the permanent call receipts. Metrics snapshot these
@@ -102,14 +121,12 @@ content-free counters at request preparation, mutation acceptance and answer obs
 runtime helper mutations completed between requests. Counter-only persistence
 failure is advisory and cannot replace a successful tool result or final answer.
 
-The router intercepts the dedicated journal tool and returns its result through
-the current response flow rather than a host executor. A valid direct finish
-can select terminal delivery when no client-dispatched work remains. Code Mode
+Retained dedicated journal calls remain replayable. Current journal helper
 mutations use a call-scoped authenticated publisher through a stock executable
 frontend; that publisher cannot complete a turn or acquire Codex execution
 authority. Its finish marker retains a receipt scoped to the originating host
 call and turn. The request pipeline selects local terminal delivery only after
-visible host results and, for Code Mode, native trace outcomes confirm completion.
+visible host results and native trace outcomes confirm completion.
 This restores v1's result-driven completion boundary without its old shell executor.
 Codex still owns the continuation request; no provider inference is admitted for
 that local response. Its mutation rejections are structured results for the helper, while

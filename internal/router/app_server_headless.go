@@ -194,7 +194,7 @@ func (h *headlessAppServer) message(m appserver.Message) error {
 		}
 		return nil
 	}
-	if m.Method != "turn/started" && m.Method != "turn/completed" && m.Method != "thread/status/changed" {
+	if m.Method != "turn/started" && m.Method != "turn/completed" && m.Method != "thread/status/changed" && m.Method != "thread/tokenUsage/updated" && m.Method != "item/completed" {
 		return nil
 	}
 	var p appServerEvent
@@ -212,7 +212,7 @@ func (h *headlessAppServer) message(m appserver.Message) error {
 			return noticeErr
 		}
 	}
-	if p.ThreadID != h.thread || m.Method == "thread/status/changed" {
+	if p.ThreadID != h.thread || (m.Method != "turn/started" && m.Method != "turn/completed") {
 		return nil
 	}
 	if m.Method == "turn/started" {

@@ -50,12 +50,13 @@ later requests or fabricate provider usage for the metadata event.
 
 Execution-free turns pass through without Mekugi instruction or tool rewriting, regardless of their output schema. They require valid turn metadata and session
 and thread IDs. Catalogs may be empty or contain native helper tools and Codex's JavaScript
-Code Mode `exec` with optional `wait`, flat or namespaced. Nested clock and lookup declarations
+`exec` with optional `wait`, flat or namespaced. Nested clock and lookup declarations
 are allowed. Generic preamble examples mentioning `tools.exec_command` are not declarations.
 Admission depends on advertised tool declarations, not client preamble wording or request purpose.
 Malformed catalogs, duplicate tools, wrong-kind execution wrappers, and partial editing or
-process-execution catalogs do not qualify. Requests advertising native or nested editing or
-process-execution tools keep their stock execution catalog after validation.
+process-execution catalogs do not qualify. Requests advertising nested editing or
+process-execution tools keep their stock execution catalog after validation. Top-level `apply_patch` or `exec_command`
+catalogs fail as unsupported execution interfaces.
 
 Request preparation and response restoration retain stock tool identity,
 replay, and native execution behavior. Connection-local native history supplies ordinary
@@ -71,6 +72,11 @@ missing router-owned result followed by new user input. Changed or shortened pre
 or unavailable confirmation, cause explicit continuations to send full projected
 history without `previous_response_id`. This includes instruction changes,
 prewarm-to-turn and model-workflow transitions. No reconciliation reruns tools.
+The [duplicate-output projection](execution.md#duplicate-output-projection)
+is the final model-input projection. A fresh pass over growing original host
+input preserves earlier projected items and therefore the confirmed prefix.
+Changing the launch option or projection rules may change earlier bytes and
+require a full-history rebase; it never changes native history or retained evidence.
 Accepted steering is not resent against the same parent. An automatic successor
 fails if its prepared history differs from what has already been admitted; it cannot
 pretend an unsent rewrite or additional result took effect.

@@ -2,7 +2,7 @@
 
 ## REQ-ACTIVITY-001 — Tool classification and observation
 
-The [native UI](native_ui.md) consumes app-server events for live activity and
+The [UI](native_ui.md) consumes app-server events for live activity and
 history. These shared classification rules describe operations, not generated
 conversation messages. [Activity presentation](activity_display.md) owns row
 layout; [session notices](notices.md) own actionable diagnostics. Journals own
@@ -13,21 +13,21 @@ layout; [session notices](notices.md) own actionable diagnostics. Journals own
 Codex app-server supplies command, edit, collaboration, web, image, and other tool
 items for Main and child Activity. Completed host items and turn events establish
 execution state. The router does not regenerate operation messages from provider
-Responses calls, interpret arbitrary Code Mode output as session evidence, or
+Responses calls, interpret arbitrary JavaScript output as session evidence, or
 reconstruct a parallel activity lifecycle from request history.
 
-Nested Code Mode tool activity follows the host's event stream. Independent
+Nested JavaScript tool activity follows the host's event stream. Independent
 `Promise.allSettled` calls remain parallel; presentation cannot serialize their
 execution. Static source recognition used for [execution previews](execution.md)
 and [change capture](changes.md) remains separate from native activity delivery.
-The host emits no item for a Code Mode cell itself. When a new cell result carries
+The host emits no item for an `exec` cell itself. When a new cell result carries
 the host's `Script failed` header, the router adds one error row to that agent's
 activity with a bounded first-line preview of the host's trailing script error,
 so a script that fails before any nested tool call still shows. The complete error
 is retained separately for the shared content dialog. The result reaches the model
 unchanged, and failures from earlier requests are not shown again. Resumed
 history restores these rows from the retained rollout under
-[native UI resume](native_ui.md).
+[UI resume](native_ui.md).
 When a finished cell's result carries nothing beyond that header (and a failure's
 script error), the model saw none of its nested results. Each nested
 `exec_command` row with output then adds a muted `output not returned to the model`
@@ -62,13 +62,17 @@ an abbreviated long option that may consume the next word remains `Run`. Discard
 stderr (`2>/dev/null`) is transparent to `find`, `rg`, `grep`, and `ls`. Unknown or
 effectful pipeline stages retain the original `Run` preview. Shell execution
 still receives the exact original command, including flags and pipes.
+A plain literal `timeout DURATION` prefix preserves the operation label. The duration
+may be a decimal number with an optional `s`, `m`, `h`, or `d` unit; timeout
+options and dynamic durations remain `Run`. Execution keeps the original prefix.
 Per-command `Run` excerpts omit statement-terminating semicolons; quoted
 semicolons and other executable syntax remain visible.
 Literal `printf` and `echo` section headings alongside other operations are
 omitted as display decoration, including colon-ended labels and bordered headings.
 Bare `printf` titles framed by leading and trailing newlines also qualify when
-they are capitalized, multi-word text containing only letters, spaces, hyphens,
-and slashes, without format arguments. Newline-terminated literal `printf`
+they are capitalized, multi-word text or an uppercase single-word section label,
+containing only letters, spaces, hyphens, and slashes, without format arguments.
+Newline-terminated literal `printf`
 confirmations ending in `checks passed.` or `evidence remains available.` also
 qualify when their capitalized text otherwise contains only letters, spaces,
 hyphens, and slashes. Other unframed text, values, and data-bearing formats
@@ -84,7 +88,7 @@ DIR. A command in the workspace, or with an unknown directory or workspace, has
 no directory label. Live and restored rows derive it from the same host item, and
 adjacent reads in different directories do not merge.
 Wait and input presentation follows typed host events and their command/item
-identity. The activity observer does not reconstruct process or Code Mode cell
+identity. The activity observer does not reconstruct process or `exec` cell
 state from request history, guess a command for an uncorrelated poll, or treat
 printed output as continuation evidence. When a turn ends without a wait item
 completion, its roster status becomes `Wait ended`, not `Waiting for agent`.
@@ -157,13 +161,24 @@ Literal, statically scoped `rm` commands show requested `Delete` intent.
 A receipt replaces edit intent without removing neighboring operations in a
 mixed script; combined host output remains attached to the final operation.
 
-Stock `apply_patch`, including transparent Code Mode calls using immutable
+Supported Python and JavaScript writes with source-named targets also show
+requested `Edit` intent. If no target can be resolved, the interpreter keeps its
+normal `Run` row and command source/output dialog. Partial target resolution
+keeps the named requested edits plus a `Run` source row for unresolved effects.
+A successful tracked edit segment reports that its writer command ran, including
+successful no-ops, as soon as the segment completes, even while following commands
+are running. This does not confirm a file change or supply counts. Running and
+untracked edit intent remains requested. Retained file evidence later replaces
+successful intent with observed changes. Tracked failed and skipped edit segments
+keep their outcomes visible, even when sibling edits have a receipt.
+
+Stock `apply_patch`, including transparent nested tool calls using immutable
 literal patch bindings, does not emit a bare `Edit` label, a generic `Run`
 preview, or its patch body into child activity. After the host result and
 workspace outcome are recorded, authenticated successful edit receipts
 classify each changed path as
 `Create`, `Edit`, `Delete`, or `Move` with added and removed line counts and a
-bounded diff of the observed hunks. A completed transparent Code Mode cell
+bounded diff of the observed hunks. A completed transparent `exec` cell
 reports its complete observed workspace effect the same way, without claiming
 nested patch success.
 Classification uses the same review files as `mchanges`; it does not guess from
@@ -173,7 +188,7 @@ unfinished patches produce no successful edit summary, and repeated receipts
 are deduplicated. The live pane separately owns full provisional and completed
 diff display under [REQ-CHANGES-001](changes.md).
 Completed native file-change items can open their own host-supplied diffs before
-the containing Code Mode batch exits. Durable captured review remains preferred
+the containing `exec` batch exits. Durable captured review remains preferred
 when available; this immediate navigation neither snapshots the workspace nor
 publishes completed change evidence. Pending, failed, and declined host items
 do not supply a completed-diff navigation fallback.

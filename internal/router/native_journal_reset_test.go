@@ -69,7 +69,7 @@ func TestNativeJournalResetRequiresSuccessfulHostCompletion(t *testing.T) {
 func TestNativeJournalAutoContinueUsesClientProvenance(t *testing.T) {
 	for _, id := range []string{"ordinary", journalContinuationPrefix + "fixture"} {
 		view := newLiveActivityView()
-		view.applyAppServerItem("", "main", "main", "turn", "item", "item/completed", "", appServerItem{
+		view.applyAppServerItem(true, "", "main", "main", "turn", "item", "item/completed", "", appServerItem{
 			Type: "userMessage", ClientID: id, Content: []byte(`[{"type":"text","text":"Continue the journal plan: /2 Second."}]`),
 		})
 		if len(view.entries) != 1 {

@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -30,6 +31,7 @@ type claudeLaunchReport struct {
 	Socket            string        `json:"socket"`
 	Plugin            string        `json:"plugin"`
 	FrontendDirectory string        `json:"frontendDirectory"`
+	ShellOutput       string        `json:"shellOutput,omitempty"`
 }
 
 // The test binary supplies both Node's transport and the terminal process. No
@@ -132,7 +134,19 @@ func TestClaudeLaunchPTYProcess(t *testing.T) {
 		if response.StatusCode != http.StatusOK {
 			t.Fatal("default observation endpoint rejected native binding")
 		}
-		report, err := json.Marshal(claudeLaunchReport{Config: launch.Config, Socket: endpoint.Socket, Plugin: endpoint.Plugin, FrontendDirectory: endpoint.FrontendDirectory})
+		shellOutput := ""
+		if os.Getenv("MEKUGI_TEST_CLAUDE_PARENT_GUARD") == "1" {
+			command := exec.Command("/bin/bash", "-c", "git push; printf ' %s' \"$USER_STARTUP\"")
+			if endpoint.BashEnv != "" {
+				command.Env = append(os.Environ(), "BASH_ENV="+endpoint.BashEnv)
+			}
+			output, err := command.CombinedOutput()
+			if err != nil {
+				t.Fatal(err)
+			}
+			shellOutput = string(output)
+		}
+		report, err := json.Marshal(claudeLaunchReport{Config: launch.Config, Socket: endpoint.Socket, Plugin: endpoint.Plugin, FrontendDirectory: endpoint.FrontendDirectory, ShellOutput: shellOutput})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -190,6 +204,28 @@ func TestClaudeDefaultLaunchPTY(t *testing.T) {
 			command.Env = append(os.Environ(), "MEKUGI_TEST_CLAUDE_LAUNCH_PROCESS=ui", "MEKUGI_TEST_CLAUDE_LAUNCH_REPORT="+reportPath,
 				"PATH="+directory+string(os.PathListSeparator)+os.Getenv("PATH"), "XDG_STATE_HOME="+filepath.Join(directory, "state"),
 				"XDG_CONFIG_HOME="+filepath.Join(directory, "config"), "MEKUGI_RUNTIME_DIR="+filepath.Join(directory, "runtime"), "TERM=xterm-256color")
+			if controls {
+				outer := filepath.Join(directory, "parent", "bin")
+				if err := os.MkdirAll(outer, 0700); err != nil {
+					t.Fatal(err)
+				}
+				helper, startup := filepath.Join(directory, "parent-helper"), filepath.Join(directory, "user-startup")
+				for path, script := range map[string]string{
+					helper:                          "#!/bin/sh\nprintf BORROWED_PARENT_GUARD\n",
+					filepath.Join(directory, "git"): "#!/bin/sh\nprintf REAL_GIT\n",
+					startup:                         "export USER_STARTUP=native_kept\n",
+				} {
+					if err := os.WriteFile(path, []byte(script), 0700); err != nil {
+						t.Fatal(err)
+					}
+				}
+				command.Env = append(command.Env, "BASH_ENV="+startup, "MEKUGI_TEST_CLAUDE_PARENT_GUARD=1")
+				environment, err := frontendShellEnvironment(command.Env, outer, helper, true)
+				if err != nil {
+					t.Fatal(err)
+				}
+				command.Env = environment
+			}
 			master, err := pty.StartWithSize(command, &pty.Winsize{Cols: 120, Rows: 30})
 			if err != nil {
 				t.Fatal(err)
@@ -272,8 +308,11 @@ func TestClaudeDefaultLaunchPTY(t *testing.T) {
 				want.ForkSession = true
 				want.Model = "native-model"
 			}
-			if report.Config != want {
+			if !reflect.DeepEqual(report.Config, want) {
 				t.Fatal("native CLI controls or workspace changed at bridge boundary")
+			}
+			if controls && report.ShellOutput != "REAL_GIT native_kept" {
+				t.Fatalf("native launch borrowed its parent guard or lost caller startup: %q", report.ShellOutput)
 			}
 			for _, path := range []string{report.Socket, report.Plugin, filepath.Join(report.FrontendDirectory, "mchanges")} {
 				if path == "" {

@@ -42,6 +42,9 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 	switch {
 	case block.ReadOutput() && len(block.Reads) == 1:
 		path = block.Reads[0].Path
+		if block.SyntaxPath != "" {
+			path = block.SyntaxPath
+		}
 	case block.Verb == "Diff" && block.VCS():
 		return selectRows(p.Highlight("diff", content))
 	case strings.Contains(content, "\n+++ ") && strings.Contains(content, "\n@@ "):

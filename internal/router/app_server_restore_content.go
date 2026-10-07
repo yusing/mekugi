@@ -308,6 +308,7 @@ func historyTime(seconds int64) time.Time {
 
 func (u *appServerUI) applyRestoredActivity(entries []activityPaneEntry) {
 	for i := range entries {
+		u.annotateChildCompletion(&entries[i])
 		entries[i].Agent = paneActivityAgent(entries[i])
 	}
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: entries, Agents: slices.Clone(u.session.agents)})
@@ -353,7 +354,7 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 	s := &u.session
 	name := s.paths[info.ID]
 	agent := s.agent(name)
-	restoreContextUsage(agent, info)
+	u.restoreContextUsage(agent, info)
 	u.restoreUsage(info)
 	agent.Started, agent.LastResponse = restoredAgentTimes(info)
 	agent.WorkTimer = restoredAgentWork(info)
@@ -437,7 +438,7 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 	}
 	s := &u.session
 	entry := activityPaneEntry{Seq: s.next(), Agent: name, Observed: observed, CallID: item.ID,
-		native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", searchResults: appServerSearchResults(item)}}
+		native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", status: item.Status, searchResults: appServerSearchResults(item)}}
 	progressPhase := appServerHistoryProgressPhase(item, turn.Status)
 	item = u.waitItem(item, info.ID, turn.ID, item.ID, false)
 	if text, wait, handled := u.progress(item, progressPhase, info.ID, turn.ID); handled {
@@ -450,8 +451,13 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 		return
 	}
 	switch item.Type {
+	case "userMessage":
+		if blocks := appServerAttachmentBlocks(info.Cwd, item.Content); len(blocks) > 0 {
+			entry.Kind, entry.native.item = "attachments", item.ID+"/attachments"
+			entry.native.attachments = blocks
+			*entries = append(*entries, entry)
+		}
 	case "reasoning":
-		entry.native.collapsed = true
 		entry.Kind, entry.Text = "reasoning", strings.Join(item.Summary, "\n\n")
 		if strings.TrimSpace(entry.Text) != "" {
 			*entries = append(*entries, entry)
@@ -462,6 +468,7 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 	case "commandExecution", "fileChange", "webSearch":
 		entry.Kind, entry.Text = "tool", appServerToolText(item, info.Cwd)
 		entry.native.command, entry.native.duration = item.Command, appServerDuration(item)
+		entry.native.commandCwd = appServerCommandDirectory(item, info.Cwd)
 		entry.native.workdir = appServerCommandWorkdir(item, info.Cwd)
 		if item.Type == "fileChange" {
 			entry.Text = appServerEditText(item, info.Cwd)

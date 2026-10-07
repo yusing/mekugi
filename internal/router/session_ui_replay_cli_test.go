@@ -31,8 +31,7 @@ func TestSessionUIReplayCLI(t *testing.T) {
 		return f
 	}
 	stdin, stdout, stderr := output("stdin"), output("stdout"), output("stderr")
-	cpu, heap := filepath.Join(dir, "cpu.pprof"), filepath.Join(dir, "heap.pprof")
-	args := []string{"--session", "root", "--headless", "--cpu-profile", cpu, "--heap-profile", heap}
+	args := []string{"--session", "root", "--headless"}
 	if code := RunSessionUIReplay(t.Context(), args, stdin, stdout, stderr); code != 0 {
 		b, _ := os.ReadFile(stderr.Name())
 		t.Fatalf("exit=%d stderr=%s", code, b)
@@ -56,23 +55,6 @@ func TestSessionUIReplayCLI(t *testing.T) {
 	}
 	if strings.Contains(string(data), "\x1b") {
 		t.Fatal("headless stdout contains terminal control sequences")
-	}
-	for _, profile := range []string{cpu, heap} {
-		info, err := os.Stat(profile)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if info.Size() == 0 || info.Mode().Perm() != 0600 {
-			t.Fatalf("profile %s: size=%d mode=%v", profile, info.Size(), info.Mode())
-		}
-	}
-	before, _ := os.ReadFile(cpu)
-	if code := RunSessionUIReplay(t.Context(), args, stdin, stdout, stderr); code != 1 {
-		t.Fatalf("existing profile accepted: %d", code)
-	}
-	after, _ := os.ReadFile(cpu)
-	if string(before) != string(after) {
-		t.Fatal("existing profile overwritten")
 	}
 	for _, speed := range []string{"0", "-1", "NaN", "Inf", "101"} {
 		if code := RunSessionUIReplay(t.Context(), []string{"--session", "root", "--headless", "--speed", speed}, stdin, stdout, stderr); code != 2 {

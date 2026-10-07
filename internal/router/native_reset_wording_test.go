@@ -155,7 +155,7 @@ func TestUISnapshotNativeResetRestored(t *testing.T) {
 }
 
 func TestUISnapshotNativeResetProviderFallback(t *testing.T) {
-	for _, mode := range []string{"slice", "auto"} {
+	for _, mode := range []string{"slice"} {
 		t.Run(mode, func(t *testing.T) {
 			d, _ := resetDriverFixture(t, mode)
 			if err := d.tick(d.deadline); err != nil {
@@ -199,7 +199,12 @@ func TestUISnapshotNativeAutoCompactionWording(t *testing.T) {
 			assertNativeUISnapshot(t, "native-auto-compaction-working", []string{u.sessionLabel(now)})
 		}
 		d.compactTurn = turn
+		if turn == "provider-fallback" {
+			// An older provider answer remains readable after opting into auto.
+			proxy.journalCompaction = "off"
+		}
 		resetWordingCompaction(t, d, turn == "provider-fallback")
+		proxy.journalCompaction = "auto"
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": d.thread, "turnId": turn, "item": item})
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": d.thread, "turnId": "auto-first", "item": appServerItem{ID: "same-turn-provider", Type: "contextCompaction"}})
@@ -266,7 +271,7 @@ func TestNativeAutoCompactionDelayedNotification(t *testing.T) {
 	if text, _, _ := u.progress(item, "item/completed", d.thread, d.compactTurn); text != "Context reset from journal" {
 		t.Fatalf("late host item lost journal-reset presentation: %q", text)
 	}
-	if text, _, _ := u.progress(appServerItem{ID: "other", Type: "contextCompaction"}, "item/completed", d.thread, d.compactTurn); text != "Context compacted" {
+	if text, _, _ := u.progress(appServerItem{ID: "other", Type: "contextCompaction"}, "item/completed", d.thread, d.compactTurn); text != "Context reset" {
 		t.Fatalf("standalone receipt relabeled another host item: %q", text)
 	}
 }
@@ -297,7 +302,7 @@ func TestNativeAutomaticCompactionBufferedPreviousItem(t *testing.T) {
 	if len(provider.forwarded) != 0 {
 		t.Fatal("expected router journal answer")
 	}
-	if text, _, _ := u.progress(old, "item/completed", u.thread, d.compactTurn); text != "Context compacted" {
+	if text, _, _ := u.progress(old, "item/completed", u.thread, d.compactTurn); text != "Context reset" {
 		t.Fatalf("prior provider item incorrectly relabeled after a later journal answer: %q", text)
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": u.thread, "turnId": d.compactTurn, "item": old})
@@ -316,7 +321,7 @@ func TestNativeAutomaticCompactionBufferedPreviousItem(t *testing.T) {
 	restored.restoreHistory([]appServerHistoryTurn{{ID: d.compactTurn, Status: "completed", Items: []appServerItem{old, next}}})
 	for _, view := range []*appServerUI{u, restored} {
 		for _, item := range []appServerItem{old, next} {
-			if text, _, _ := view.progress(item, "item/completed", u.thread, d.compactTurn); text != "Context compacted" {
+			if text, _, _ := view.progress(item, "item/completed", u.thread, d.compactTurn); text != "Context reset" {
 				t.Fatalf("ambiguous automatic item %s relabeled: %q", item.ID, text)
 			}
 		}

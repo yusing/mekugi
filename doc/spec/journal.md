@@ -89,8 +89,12 @@ app-server requests without workspace metadata. Only notes from the presented na
 are suppressed in Main or acknowledged via the pane. Router stamps display in local time
 at the row's right edge when the pane is wide enough.
 Only tasks show state; blocked tasks retain their reason and dropped tasks are dimmed.
+Authored item titles and reason previews use the shared inline Markdown painter,
+including bold text, code spans and links. Pane rows remain one visual row and
+clip after painting; full bodies use the shared Markdown renderer in details.
 A superseded node is dimmed with a `superseded by PATH` suffix, in the pane and in
-journal event rows; its pane subtree starts collapsed.
+journal event rows; its pane subtree starts collapsed. Dimmed pane rows retain
+their link targets while foreground colors and emphasis yield to dim presentation.
 A plan strip above the composer shows current owned work: working tasks precede
 blocked tasks, then pending tasks. Within a state, the most recently updated task
 wins. Adding pending work cannot displace working work. The strip uses the same
@@ -114,10 +118,11 @@ strip counts only the presented journal's own tasks.
 
 Native Main and Activity use the same rich journal event and work-report rendering,
 while retaining independent pane navigation and the shared detail/copy dialog.
-Native Main receives event rows after persistence. Adjacent rows share one `journal`
-item: a state glyph colored by state, the dim path, the title and the change, one node
-per row, wrapped under the title. A row's time shows only where it differs from the
-row above. A row with a body opens it on click. Notes are rows only while the
+Native Main receives flat event rows after persistence, without a journal heading
+or nested rail. Task rows retain their colored state glyph, dim path, title and
+change; notes retain their diamond-led content. Wrapped rows align under the content.
+A row's time shows only where it differs from the row above and fits the width.
+A row with a body opens its full details on click. Notes are rows only while the
 Journal pane is hidden; blocked task rows remain visible. Successful terminal delivery
 publishes a separate work-report card only when non-answer events remain unacknowledged
 or mounted-journal diagnostics need to be shown. Captured answers and unchanged open
@@ -128,6 +133,8 @@ toward the title's open total. Captured answers are excluded. Collapsed node row
 use at most two visual rows, with short blocker explanations. The newest three
 changed notes show result-first previews, in chronological order, with an
 older-note disclosure when needed. Changed context remains visible independently.
+Inline Markdown remains styled in event rows, compact card previews and plan
+strips. Wrapping and preview limits apply to painted text, not markup delimiters.
 Once no owned tasks remain open, a preview exceeding eight rendered body rows
 collapses to a disclosure with task and note counts. Wrapping at the current width
 counts toward that budget, not task count; smaller cards stay readable inline.
@@ -140,7 +147,10 @@ identity. Substantive answers and their reply context use the ordinary conversat
 renderer, independently of the card. The Journal pane restores its
 current tree from durable storage independently of provider requests.
 
-Retained v1 publications retain their milestone and grouped-answer presentation.
+Retained v1 Main milestones are diamond-led content without a separate journal
+heading or rail; grouped answers retain their presentation. Child journal previews
+use the normal agent group described in [activity presentation](activity_display.md),
+while retaining the full source for details and copying.
 The authenticated mutation path publishes native Main milestones after persistence,
 including those without `report_now`, even without an open provider response.
 The frontend applies pending milestones before later host events and preserves
@@ -188,7 +198,9 @@ increments the child's durable turn count, including its initial assignment; mou
 reads and journal recovery show it, so delegation limits survive compaction. Provider response
 completion alone is not child completion. Frontends without host completion
 evidence retain the last observed state. A parent cannot become done while any
-mounted descendant remains open, including an unresolved mount. The check applies
+mounted host lifecycle remains open, including nested or unresolved mounts. Child-authored
+task states do not gate parent completion: they remain unchanged and visible at the
+completion handoff, where the parent owns the integration decision. The check applies
 to tasks a batch completes or rebinds; a child resumed under an already done task
 does not block the parent's other writes. Reading and restarting do not revive
 child processes.
@@ -201,39 +213,50 @@ mounted journals unavailable. Explicit combined reads still fail.
 
 ## Evidence-backed recovery
 
-V2 recovery uses a deterministic summary of constraints, open tasks, established
-results and retained changes, with actionable paths first. Context nodes are kept
-in full. Working tasks precede pending and blocked tasks; completed work and notes
-follow. A superseded node renders as one line naming its replacement, without its
-body or descendants, so recovery does not present a replaced decision as current.
-Finished work is an addressable index: done or dropped tasks retain their path,
-state, title, binding and reason, but omit their bodies, notes and bound agents,
-even when the task has no body. Completed agent mounts also omit their history.
-The latest outcome of a completed agent stays inline only when its directly bound
-parent task is still open, so unresolved integration findings remain available.
-One shared `read` hint explains how to retrieve completed bodies and history by
-their listed paths; recovery does not repeat that hint for every completed node.
-Open tasks, their work and context nodes are never folded: an open task bounds
-folding even under a dropped task or a finished agent. When completed work exceeds its
-budget, the newest results are kept in tree order and the omitted count is stated.
-Bounded detail excerpts point back to `read`, never claim to be complete. Omitted
-own paths can be located with the body-free `outline` view. Retained
-changes list only their ranges, pointing to `mchanges ID[..ID] --summary` for file
-statistics.
+V2 recovery is a deterministic current-work handoff, not a session-wide index of
+completed work. All open tasks retain their paths, states, titles, bindings and
+reasons, with bounded body excerpts. Working tasks precede pending and blocked
+tasks. Context nodes are indexed by path and title; those in the resume task's
+open branch also include bounded body excerpts. Readers must read relevant
+context paths before acting. A listed superseded node shows its replacement
+pointer without its old body, so recovery does not present a replaced decision
+as current.
 
-When an open task's bound child has an observed done lifecycle, recovery places
-that fact and its retained result path beside the parent task. The parent's
-integration remains open; neither child prose nor a done lifecycle completes it.
+Closed tasks appear only to orient open descendants or show a finished agent
+whose directly bound parent integration remains open. Only that open direct
+integration retains the finished child's latest answer excerpt. Inline notes
+come from the resume task's open branch, with at most three notes within a 2 KiB
+budget; an omitted count identifies additional current-work facts. Full context,
+closed task bodies and other history remain durable and available through
+explicit reads. Bounded excerpts point back to `read`, never claim to be complete.
+
+One shared hint explains how to read more: `journal({op:"read",p:"PATH",depth:1})`
+retrieves a listed node with its immediate children.
+`journal({op:"read",view:"outline"})` finds own older paths, and
+`journal({op:"read",depth:1})` discovers older agents.
+Each child's content appears once under `Agent NAME [state]`, using its readable
+name without `/root/`, including nested names such as `child/worker`. Rows in that
+group use child-local paths. To read a child row, use
+`journal({op:"read",agent:"NAME",p:"PATH",view:"own"})` with its heading name and
+local path. Own-path reads remain unchanged, and combined read addresses remain
+supported; recovery keeps agent UUID mount addresses internal.
+Retained changes list only their ranges, pointing to
+`mchanges ID[..ID] --summary` for file statistics.
+
+When an open task's bound child has an observed done lifecycle, the parent row
+states child completion and open integration. Retained result paths appear in the
+child's group. Neither child prose nor a done lifecycle completes the parent's
+integration.
 Pre-execution observations without a retained outcome are listed separately, with
 at most eight entries and an omitted count. These are not claims that processes
-are still running. Recovery restores neither continuation handles nor Code Mode
+are still running. Recovery restores neither continuation handles nor JavaScript
 store values; the host remains authoritative for live execution state.
 
-Journal guidance asks authors to keep explicit constraints and settled decisions
+Main journal guidance asks authors to keep explicit constraints and settled decisions
 in context, with one owning node per topic that corrections update in place, and
 to mark replaced decisions superseded. Authors record the facts later work needs
 from loaded documents and skills, not which ones were read, and keep handoff
-details in task notes, since context renders in full. Recovery cannot reconstruct
+details in task notes. Recovery cannot reconstruct
 unrecorded decisions or replace missing document contents with a claim that a
 read occurred.
 
@@ -250,34 +273,42 @@ treating an investigation's hypothesis as established. Capturing failed output
 does not replace or alter the host's result. An unreadable evidence boundary does
 not block journal writes; the next summary treats the boundary as unknown.
 
-The summary is at most 64 KiB. Mandatory constraints and open tasks must fit its
-reserved half; otherwise rendering fails rather than omitting a constraint or a
-task. Corrupt failure evidence also fails rendering. The native recovery hook
-treats failure as advisory; router-side synthesis uses provider fallback.
+Generated recovery headings are plain text and metadata uses ASCII punctuation.
+Change labels have no bold markup, and execution observations omit full call IDs.
+Authored bodies and retained output remain verbatim within their excerpt bounds;
+presentation does not change durable execution correlation.
+
+The summary is at most 64 KiB. Context paths and open tasks must fit its
+reserved half; otherwise rendering fails rather than omitting a context path or
+an open task. Corrupt failure evidence also fails rendering. The native recovery
+hook
+treats failure as advisory; router-side reset failure stops `auto` without a
+provider request. `slice` retains provider fallback.
 Neither recovery path acknowledges events or replays effects.
 
 ## Router-answered compaction
 
-`--journal-compaction=auto` opts into journal summaries for validated local Codex
-compaction requests, including child threads. The default remains `off` until the
-offline harness and separately authorized paid evaluation establish the proposed
-success, redo and token-cost gate. `slice` is reset-only, with ordinary compactions
-forwarded to the provider.
+`--journal-compaction=auto` is the default. Manual `/compact` and context-full
+requests use journal context reset, including child threads, without provider
+compaction. `off` opts out and restores provider compaction. `slice` resets only at
+planned slice boundaries; ordinary compactions still go to the provider.
+Passthrough implies `off` unless explicitly configured; explicit `auto` or `slice`
+is rejected.
 
-Synthesis requires one selected workspace, an unambiguous requesting thread and
-durable journal or executing-thread-owned change evidence. Conflicted identities,
-missing evidence, rendering failures and persistence failures forward the request
-without journal/tool projection. Existing model aliases and service-tier policy
-still apply. Invalid compaction protocol requests retain the existing validation
-errors. A summary is never empty. A downstream delivery failure is reported, not
-retried as a second provider request.
-Fallback notices include the local failure cause, including storage-lease failures;
-distinct causes remain separately visible. Intentional slice-mode bypasses are silent.
+Reset requires one selected workspace, an unambiguous requesting thread and
+durable journal or executing-thread-owned change evidence. Unavailable or
+ambiguous identity, evidence or storage, rendering failures and persistence
+failures stop `auto` with a visible error and no provider request. There is no
+provider fallback in `auto`. Invalid compaction protocol requests retain the
+existing validation errors. A summary is never empty. A downstream delivery
+failure is reported, not retried as a second provider request. In `slice`, local
+reset failures retain provider fallback with the local cause visible; distinct
+causes remain separately visible. Intentional slice-mode bypasses are silent.
 
-Native local compaction may omit workspace metadata. Only a unique workspace
-already selected in that requesting thread's durable journal/execution records
-can substitute for it. Conflicting historical workspaces fall back to the provider;
-router cwd and another thread's records never supply a directory.
+Native local reset may omit workspace metadata. Only a unique workspace already
+selected in that requesting thread's durable journal/execution records can
+substitute for it. Conflicting historical workspaces stop `auto`; router cwd and
+another thread's records never supply a directory.
 
 Codex retains execution and history authority. The router supplies a completed
 assistant summary through the same streamed Responses delivery path, persisting
@@ -286,18 +317,18 @@ made, and no model usage is fabricated. Metrics distinguish router answers from
 provider answers and report zero provider attempts/tokens for router answers.
 Summary bytes and evidence counts are measurements, never savings estimates.
 
-In `auto`, `/compact` describes an attempted journal context reset, including
-provider fallback, rather than promising a journal answer. Live progress follows
-that intent. Completion and restored history show one journal reset row, without
-duplicate native progress commentary, only
-for the exact thread, turn and item retained in a router-answer receipt, or the
-standalone turn identified by a slice-reset event. Provider answers keep “Context
-compacted”, regardless of configured mode.
-Receipts retain answered-item provenance across later compactions; older receipts
-without it keep host wording rather than guessing from the current setting.
+In `auto`, `/compact`, live progress, queued commands, cancellation and
+continuation text describe context reset. Generic completion and restored history
+use “Context reset”, including older provider or ambiguous records. This label
+alone claims neither a journal answer nor zero provider tokens.
+Only exact retained thread, turn and item provenance in a router-answer receipt,
+or a standalone slice-reset event, identifies “Context reset from journal” and
+its zero-provider-token claim. These rows appear once without duplicate native
+progress commentary. Receipts retain answered-item provenance across later resets.
 Buffered manual standalone notifications bind their retained answer to the unique
-host item. Ordinary automatic compactions keep host wording because several can
-share one turn, and buffered UI observations do not identify the HTTP request's item.
+host item; ordinary automatic compactions can share a turn and cannot be identified
+from buffered UI observations alone. In `off` and `slice`, ordinary provider rows
+keep “Context compacted”.
 
 The journal's “Context reset from journal” row opens the shared scrollable dialog
 with the exact model-visible recovery message retained for that response. The
@@ -313,6 +344,17 @@ compacted transcript record identifies that persisted response. Missing or
 unreadable transcript evidence, older host records without response IDs, and
 provider-written summaries keep normal hook recovery. Failed or interrupted local
 responses cannot suppress recovery for another compaction.
+
+### Context-pressure reminder
+
+When the latest host-reported context use reaches at least 70% of the model context
+window, the next model request's journal tool guidance reminds the agent to split
+work into slices. The threshold
+uses the last context snapshot and model window, not cumulative token usage.
+Successful host context-compaction completion clears the reminder. Native resume
+restores it from host-selected context facts; missing or unknown context does not
+invent a threshold crossing. The reminder does not itself reset context or force a
+slice boundary.
 
 ### Journal continuation
 
@@ -355,11 +397,13 @@ The [headless frontend](router.md#headless-app-server-frontend) uses the same po
 with no countdown delay and emits reset events instead of rendering a strip.
 
 With `slice` or `auto`, the frontend asks Codex to compact before continuing.
-The native UI describes that journal-driven operation as a context reset,
+The UI describes that journal-driven operation as a context reset,
 including its progress, completion, and restored event. Ordinary provider
-compactions retain their compaction wording even when reset mode is enabled.
+compactions in `slice` retain their compaction wording; `auto` uses context-reset
+wording for all compaction-related presentation.
 Only a router-answered, successfully completed compaction permits the automatic
-continuation. Provider fallback leaves the plan available for manual continuation.
+continuation. A failed reset leaves the plan available for manual continuation.
+In `slice`, provider fallback also leaves continuation manual.
 With `off`, the same countdown continues the plan without resetting context.
 This keeps the continuing-context comparison separate from compaction policy.
 
@@ -381,7 +425,7 @@ are never renumbered or reused after successful removal. Titles are display text
 not addresses. Notes and context nodes have no state. Only tasks have `pending`,
 `working`, `done`, `blocked`, or `dropped` state. Answers remain router-owned.
 
-Nodes contain a one-line nonblank title, optional Markdown body, author, creation
+Nodes contain a one-line nonblank Markdown title, optional Markdown body, author, creation
 and update stamps (`seq`, RFC 3339 `at`), children, and an optional `superseded_by`
 path naming the node that replaced them. Tasks can additionally contain
 a reason, their first working stamp and their latest completion/drop stamp.
@@ -401,9 +445,9 @@ are retained; irreducible capacity failures reject atomically instead of losing 
 The managed record byte limit applies independently. Historical v1 timestamps are
 unknown rather than fabricated.
 
-Each mutation is `plan`, `add`, `set`, `log`, or `remove`. Native eligible non-strict
+Each mutation is `plan`, `add`, `set`, `log`, or `remove`. Eligible stock non-strict
 function tools accept an optional atomic `journal` array, applied before execution
-and removed from host arguments. Code Mode uses the exec-local `journal(...)` helper.
+and removed from host arguments. JavaScript `exec` uses the exec-local `journal(...)` helper.
 The helper returns a Promise: direct awaits and calls joined in an awaited
 `Promise.all` or `Promise.allSettled` preserve normal JavaScript concurrency and
 rejection handling. No dedicated journal tool is exposed. Operations are:
@@ -436,7 +480,7 @@ rejection handling. No dedicated journal tool is exposed. Operations are:
   fact to an unrelated task.
 - `remove {p}`: removes a mistaken subtree, retaining its removal event.
 - `finish`: a control marker with no operands or node, allowed only last in a
-  Code Mode helper batch or a native stock `exec_command`/`write_stdin` journal array.
+  JavaScript helper batch or a nested stock `exec_command`/`write_stdin` journal array.
   The preceding mutations and invocation-scoped receipt persist atomically; the marker
   contributes no returned path. A lone helper marker returns null. A rejected batch
   records no finish receipt. It does not stop or execute host work.
@@ -451,7 +495,7 @@ rejection handling. No dedicated journal tool is exposed. Operations are:
   and outline reads without an explicit agent require only the caller's record, so
   unavailable descendant journals cannot prevent local ID recovery.
 
-Model-facing native inputs are operation-specific closed schemas; Code Mode guidance
+Structured mutation inputs are operation-specific closed schemas; `exec` guidance
 includes discriminated TypeScript input declarations. They reject unsupported fields
 and restrict creation-time agent binding to explicit task creation. These are input
 shapes, not a new JavaScript execution or static-checking authority; callers can
@@ -459,14 +503,15 @@ type-check against the declarations before submitting. Runtime validation still
 checks identity, task kind, uniqueness and immutable binding. Planned task objects
 do not accept agent; bind an existing planned task with `set`.
 
-Mutation batches validate at the end. A done task cannot retain open descendant
-tasks. Rejection lists those paths and rolls back all nodes, ordinals and events. Invalid
-bindings, including duplicate child mounts, likewise leave the entire batch unchanged
+Mutation batches validate at the end. A done task cannot retain open owned descendant
+tasks or open mounted host lifecycles. Rejection lists those paths and rolls back all
+nodes, ordinals and events. Invalid bindings, including duplicate child mounts,
+likewise leave the entire batch unchanged
 and do not retain a success receipt.
 A rejected operation in a batch names its one-based position and op. Undecodable
 payloads name the offending member.
 Single mutations return their affected path; plans and batches return paths in order.
-Code Mode also displays the returned path array for a plan, an add, or a batch
+The helper also displays the returned path array for a plan, an add, or a batch
 containing either, without changing the helper's return value or performing another
 read. Other mutations address paths the caller already holds and display nothing.
 Receipt replay returns the original result without applying effects twice.
@@ -507,7 +552,7 @@ On Codex's subsequent continuation, matching successful host results and the ret
 thread/turn/call receipt select a local completed response and journal delivery without
 forwarding that request to the provider. Later user input, unrelated calls, missing
 receipts, failed results and unfinished work cannot select this path. Matching host
-continuations remain host-owned. Code Mode additionally requires its completed native
+continuations remain host-owned. Completion additionally requires the completed native
 trace and successful nested tool outcomes, not printed success prose. Restart can
 recover a receipt for the same thread and turn; forks and later turns cannot reuse it.
 When results require further provider interpretation or the user needs a substantive
@@ -542,7 +587,7 @@ Answers and their questions remain
 stored but are not echoed in the report. A blank final or a case-insensitive `done`
 with an optional period is an empty Outcome: no answer node is created for a tree
 journal. A meaningful report can replace a snapshot-only raw item or hide it in the
-native UI; streamed provider events remain unchanged and stay in the terminal snapshot.
+UI; streamed provider events remain unchanged and stay in the terminal snapshot.
 Otherwise the original final stays visible. The final message is
 still required. Retained v1 authoring without a turn card keeps such a final as its answer.
 
@@ -556,15 +601,18 @@ acknowledgement deferred until successful terminal delivery. Journal changes aft
 that preparation remain pending rather than adding commentary after the answer. Failed,
 incomplete and interrupted responses never terminal-flush.
 Retained v1 authoring keeps its legacy presentation and delivery receipts during replay.
-A child completes without flushing and emits a result containing only
-revisions newer than its durable `resultSeq` cursor. The result has no author
-heading: Codex names the child on its completion notification and inter-agent
+A child completes without flushing and emits a result containing
+revisions newer than its durable `resultSeq` cursor, followed by a Remaining section
+for unchanged open owned tasks. Changed open tasks appear only in the revision delta.
+Completion does not mark these tasks done or discard blocked or unfinished work.
+The result has no author heading: Codex names the child on its completion notification and inter-agent
 result. Activity recognizes the result by its closing change report, and still
 recognizes retained results that lead with `Journal result`, painting the report
 as per-file rows with the totals in the answer title. Agent recipients see neither
 the echoed assignment nor opaque item IDs. Notes are Markdown bullets and answers
 are standalone Markdown; stored questions and the complete journal remain available
-through reads, Activity, replay and forks. An empty delta says `No new journal entries.`
+through reads, Activity, replay and forks. An empty delta with no open tasks says
+`No new journal entries.`
 The cursor advances only after successful downstream terminal response delivery.
 Failure leaves the previous window available for retry. Result acknowledgement
 does not consume Main live or terminal delivery state.
@@ -617,17 +665,26 @@ stock tool catalog and prompt.
 
 ### Runtime authoring
 
-Tasks express intentions. Work updates and newly established facts go into the
-journal, attached to the next useful tool call rather than standalone commentary
-or a journal-only request. Notes lead with the result or decision, then supporting
-evidence. Task state changes convey milestones such as investigation finished or
+Tasks express concrete outcomes in task workflow order for authorized changes:
+exploration with the specification and affected reader documents, implementation
+with verification, review when warranted, then delivery. Bounded work uses the
+confirmed request and existing records without empty phase tasks. Exploration
+records accepted behavior, scope, non-goals, decisions, testing seams and acceptance
+checks; affected documents are updated before implementation. Ordinary questions,
+explanations and read-only reviews keep their conversational flow. Main work updates
+and newly established facts go into the journal, attached to the next useful tool
+call rather than standalone commentary or a journal-only request. Notes lead with the result or decision, then supporting
+evidence. Each item has a short, clear title or first line with no trailing
+punctuation, preferably an action-subject clause with a bold action, such as
+"**Completed** the task". This item format is shared by main and subagent guidance.
+Task state changes convey milestones such as investigation finished or
 validation started; notes record new findings, decisions, measured progress and
 blockers. Announcing the next action or repeating a task state or unchanged fact
-is not a new note. Standing constraints belong in context once. Parents record
-integration decisions, not copies of child journals. Coordinator requests for implementation-completion reports
-use the same journal channel, including commit IDs, checks, review outcomes and
-limitations. They do not make that evidence a separate conversational deliverable.
-Work completion uses the finish marker in the final useful execution when its
+is not a new note. Standing constraints belong in context once. Changed decisions
+update their existing contract record and affected documents. Parents record
+integration decisions, not copies of child journals.
+Delivery checks agreement between the contract, documents and verified outcome.
+Main work completion uses the finish marker in the final useful execution when its
 result can establish completion. It adds neither a standalone finalization tool
 call nor a follow-up `Done.` provider acknowledgment. Required result interpretation
 is not skipped. A usable deliverable, usage explanation or decision beyond the work
@@ -636,7 +693,15 @@ validation, review status or remaining work. Requested explanations,
 review findings, answers to user questions and necessary questions remain substantive
 conversation, without a journal-specific length or format.
 
-Code Mode lowers the helper to authenticated `mjournal` through stock `exec_command`;
+Subagent guidance is proportional to the assignment. Brief work needs no task or
+plan; tasks track separate steps and name outcomes rather than roles. Useful
+interim findings, blockers, decisions and recovery facts may be recorded alongside
+useful tool work. The final report appears once, in the journal with a finish
+marker when host results establish completion, or as a direct final answer. A
+clean review needs one no-defect result, not repeated task and note entries. The
+API, mutation validation and automatic child-result evidence remain shared.
+
+The router lowers the helper to authenticated `mjournal` through stock `exec_command`;
 one cell-local helper serves all calls, including nested and concurrent calls,
 without repeating its transport implementation at each call site. It neither runs
 the surrounding program nor owns the host lifecycle. Read transport
@@ -650,7 +715,7 @@ publisher-unavailable failures throw. Read and transport errors name the operati
 and retain the underlying diagnostic; unresolved agents name the normalized
 selector and explain canonical addressing and local-read recovery. Missing read
 paths explain how to recover paths in the same agent and view. Credentials and
-authored source stay out of sanitized metrics, which count Code Mode rejections
+authored source stay out of sanitized metrics, which count helper rejections
 separately from acceptances.
 
 ### Delivery failures
@@ -671,7 +736,7 @@ still require their own terminal evidence.
 
 ### Acceptance
 
-1. Native and Code Mode mutations reach the same atomic owner; host input remains
+1. Structured journal fields and JavaScript helper mutations reach the same atomic owner; host input remains
    exact apart from removing the optional journal field. Retained replay is idempotent.
 2. Stable paths, nested planning, omission/drop rules, reasons and end-of-batch parent
    validation survive restart and independent forks.
@@ -685,7 +750,7 @@ still require their own terminal evidence.
 5. Child JSON/SSE results omit echoed questions and opaque aliases, deliver only new
    work after acknowledgement, and include only the corresponding owned evaluations.
 6. Instruction projection exposes one v2 API description, keeps stock tool authority,
-   removes update_plan, and directs mutations onto useful calls, work finals to a
+   uses invocation-local plan-tool disablement, and directs mutations onto useful calls, work finals to a
    concise Outcome, and ordinary replies to conversational answers.
 7. Installed Codex root JSON output receives a child live milestone while the child
    is still working, independently of the child's terminal result. Root visibility

@@ -5,10 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func TestFaintFallbackRestoresStyles(t *testing.T) {
@@ -31,17 +30,9 @@ func TestFaintFallbackRestoresStyles(t *testing.T) {
 	}
 }
 
-func TestAgentFaintRetainsNormalColor(t *testing.T) {
+func TestUISnapshotAgentFaintRetainsNormalColor(t *testing.T) {
 	p := activityui.Painter{}
 	b := activityui.Block{Kind: "progress", Body: "Waiting", WaitTargets: []activityui.WaitTarget{{Name: "/root/agent1"}}}
-	frame := strings.Join(p.Block(b, 80), "\n")
-	screen := vt.NewEmulator(80, 1)
-	defer screen.Close()
-	fmt.Fprint(screen, frame)
-	plain := ansi.Strip(frame)
-	x := ansi.StringWidth(plain[:strings.Index(plain, "agent1")])
-	cell := screen.CellAt(x, 0)
-	if cell.Content != "a" || cell.Style.Attrs&uv.AttrFaint == 0 || cell.Style.Fg != ansi.IndexedColor(170) {
-		t.Fatalf("normal faint agent: %+v", cell)
-	}
+	rows := append(p.Block(b, 80), "plain after wait")
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/agent_faint.txt", rows, 80)
 }

@@ -1,12 +1,14 @@
 package activity_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func TestLiveActivityMarkdownQuotes(t *testing.T) {
@@ -42,42 +44,27 @@ func TestLiveActivityMarkdownQuotes(t *testing.T) {
 			}
 		}
 	}
-	if got := strings.Join(p.Markdown("> **bold**", 30), "\n"); !strings.Contains(got, "\x1b[1mbold") {
-		t.Fatalf("quote lost inline styling: %q", got)
-	}
 }
 
-func TestLiveActivityMarkdownCodeFill(t *testing.T) {
-	for _, p := range []activityui.Painter{
-		{}, // Undetected theme, as behind mosh.
-		{Theme: livediff.DarkTheme},
-		{Theme: livediff.LightTheme},
-		{Theme: livediff.DarkTheme, Colors: activityui.Colors{Background: livediff.RGB{R: 40, G: 44, B: 52}, HasBackground: true}},
+func TestUISnapshotMarkdownCodeFill(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		painter activityui.Painter
+	}{
+		{"terminal", activityui.Painter{}}, // Undetected theme, as behind mosh.
+		{"dark", activityui.Painter{Theme: livediff.DarkTheme}},
+		{"light", activityui.Painter{Theme: livediff.LightTheme}},
+		{"reported_background", activityui.Painter{Theme: livediff.DarkTheme, Colors: activityui.Colors{Background: livediff.RGB{R: 40, G: 44, B: 52}, HasBackground: true}}},
 	} {
-		rows := p.Markdown("```diff\n+added\n\n-removed that must wrap\n```", 12)
-		if len(rows) != 5 {
-			t.Fatalf("code rows: %q", rows)
-		}
-		for _, row := range rows {
-			if !strings.HasPrefix(row, "\x1b[48;2;") || ansi.StringWidth(row) != 12 || strings.Contains(ansi.Strip(row), "▎") {
-				t.Fatalf("code row lost its fill or width: %q", row)
-			}
-			// Highlight resets must not end the fill before the row does.
-			if _, after, ok := strings.Cut(row, activityui.Reset); ok && !strings.HasPrefix(after, "\x1b[48;2;") {
-				t.Fatalf("reset cleared code fill: %q", row)
-			}
-		}
-	}
-	if got := (&activityui.Painter{Colors: activityui.Colors{Background: livediff.RGB{R: 40, G: 44, B: 52}, HasBackground: true}, Theme: livediff.DarkTheme}).Markdown("```\nx\n```", 8)[0]; !strings.HasPrefix(got, "\x1b[48;2;55;59;66m") {
-		t.Fatalf("fill does not follow the reported background: %q", got)
-	}
-	// Without a detected theme the block carries its own foreground, so plain
-	// text stays readable on the dark fill in a light terminal.
-	const ink = "\x1b[38;2;230;237;243m"
-	for _, row := range (&activityui.Painter{}).Markdown("```go\nfmt.Println(x)\n```", 30) {
-		if !strings.HasPrefix(row, "\x1b[48;2;32;35;40m"+ink) || strings.Contains(strings.TrimSuffix(row, "\x1b[39m"), "\x1b[39m") || !strings.HasSuffix(row, "\x1b[49m\x1b[39m") {
-			t.Fatalf("undetected theme code row lost its fill or foreground: %q", row)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			p := tc.painter
+			rows := p.Markdown("```diff\n+added\n\n-removed that must wrap\n```", 12)
+			rows = append(rows, p.Markdown("```\nx\n```", 8)...)
+			rows = append(rows, p.Markdown("```go\nfmt.Println(x)\n```", 30)...)
+			rows = append(rows, p.Markdown("> **bold**", 30)...)
+			rows = append(rows, "plain after code")
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown_code_fill_"+tc.name+".txt", rows, 30)
+		})
 	}
 }
 
@@ -89,26 +76,20 @@ func plainLines(lines []string) []string {
 	return plain
 }
 
-func TestFlashedAnswerCardGlowsAndLightsText(t *testing.T) {
-	p := activityui.Painter{Theme: livediff.DarkTheme}
-	block := activityui.Block{Kind: "final", Body: "The answer text."}
-	plain := p.Event(block, 40)
-	block.Flash = true
-	lines := p.Event(block, 40)
-	fill := p.Theme.SelectionBackground()
-	if len(lines) != 3 || len(plain) != 3 {
-		t.Fatalf("card rows: %q", lines)
-	}
-	if strings.Contains(lines[0], fill) || !strings.Contains(lines[1], fill) || strings.Contains(lines[2], fill) {
-		t.Fatalf("flash must light the answer text only: %q", lines)
-	}
-	for k := range lines {
-		if ansi.Strip(lines[k]) != ansi.Strip(plain[k]) || lines[k] == plain[k] {
-			t.Fatalf("row %d did not glow in place: %q, plain %q", k, lines[k], plain[k])
-		}
-	}
-	if !strings.HasPrefix(ansi.Strip(lines[1]), "│ The answer text.") {
-		t.Fatalf("answer text moved: %q", ansi.Strip(lines[1]))
+func TestUISnapshotFlashedAnswerCard(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		theme livediff.Theme
+	}{{"terminal", livediff.TerminalTheme}, {"dark", livediff.DarkTheme}, {"light", livediff.LightTheme}} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := activityui.Painter{Theme: tc.theme}
+			block := activityui.Block{Kind: "final", Body: "The answer text."}
+			rows := p.Event(block, 40)
+			block.Flash = true
+			rows = append(rows, p.Event(block, 40)...)
+			rows = append(rows, "plain after flash")
+			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/answer_flash_%s.txt", tc.name), rows, 40)
+		})
 	}
 }
 

@@ -6,7 +6,7 @@
 It searches `sessions` and `archived_sessions` under `CODEX_HOME` (default
 `~/.codex`), using the exact first metadata ID to identify filename candidates.
 Missing or ambiguous sessions fail rather than choosing a rollout arbitrarily.
-It reconstructs native UI presentation from retained Codex rollout records.
+It reconstructs UI presentation from retained Codex rollout records.
 It creates no Codex process, provider transport,
 command executor, live observer, journal delivery, or replay-store writer.
 Playback keys control presentation only; recorded content cannot submit intent.
@@ -59,7 +59,7 @@ output; initial visibility and collapse timing are not guaranteed to match
 continuous playback. Interactive completion holds the final frame; headless
 completion exits. Cancellation and rendering failures propagate.
 
-The renderer is the native UI renderer, including its presentation caches and
+The renderer is the UI renderer, including its presentation caches and
 bounded output retention. The playback bar identifies simulated streaming at all
 times and exposes pause, speed, seek, restart, and quit controls. Rendered-output
 snapshots cover running, paused, completed, and narrow playback states.
@@ -77,13 +77,18 @@ Other wheel reports scroll Main; unsupported mouse/navigation reports cannot
 become playback commands. These presentation controls never submit host intent. Mouse reporting
 is enabled only during interactive playback and disabled on exit.
 
-`--cpu-profile` and `--heap-profile` create new mode-0600 files and reject existing
-destinations. CPU sampling covers playback, not initial reading or pre-interval
-state reconstruction, but includes cold first-frame rendering after a seek.
+Profiling uses the shared [diagnostic-build listener](router.md#performance-profiling)
+through `bin/mekugi-pprof replay-session`. Captures are requested over HTTP while
+playback is running; replay creates no automatic profile files and accepts no
+`--cpu-profile` or `--heap-profile` flags. The normal command remains offline with
+no profiling listener.
+See the [shared profiling workflow](../../README.md#profile-live-sessions-and-replay).
+
 Frame timings include output pacing, layout, and writes;
 write time is also measured separately. Headless writes cannot establish terminal
 latency. Accelerated playback preserves event times but changes batching and is
-not evidence of original wall-time frame latency.
+not evidence of original wall-time frame latency. Compare the same inputs, seed,
+speed, and dimensions; use 1.0x for representative latency.
 
 Exit status is 0 for successful playback/quit/help, 2 for invalid CLI arguments,
 and 1 for input, profiling, cancellation, or rendering failures.

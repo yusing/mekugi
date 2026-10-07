@@ -43,6 +43,11 @@ type liveActivityView struct {
 	rosterManual   bool
 	rosterSelected string
 	rosterEnd      int
+	skillsHover    string // Agent whose loaded-skill count is under the pointer.
+	skillsRequest  string // Agent whose active skills a roster click asked to open.
+	skills         *liveActivitySkills
+	retiredSkills  map[string]activeSkillSet // Loads in trimmed entries, still in their agent's context.
+	skillHistory   map[string]bool           // Paginated owners: false until their current context is known.
 	unseen         int
 	status         string
 	historyHint    string // Intentionally unloaded child history, separate from missing evidence.
@@ -71,8 +76,9 @@ type liveActivityView struct {
 	// opening names the snippet requested in the shared dialog.
 	snippet liveActivitySnippet // Hovered content target.
 	opening liveActivitySnippet
-	// passed holds Main's sent messages that have scrolled above the viewport,
-	// which then show as excerpts linking to Activity.
+	// passed holds Main's sent messages and operation batches that have
+	// scrolled above the viewport. Messages then show as excerpts linking to
+	// Activity, and batches as one row opening their operations.
 	passed map[uint64]bool
 
 	// Geometry of the last frame, used by scrolling keys and the pointer.
@@ -84,7 +90,7 @@ type liveActivityView struct {
 	copyRows            [][]activityui.CopySpan
 	questionRows        map[uint64]int
 	pendingTarget       uint64 // Cross-pane jump resolved after the destination layout is rendered.
-	// questionHover is the pointed feed line plus one; zero points at none.
+	// questionHover is the pointed viewport row plus one; zero points at none.
 	questionHover                        int
 	editHover                            int // Pointed viewport row plus one, not the whole capture.
 	flashQuestion                        uint64
@@ -114,6 +120,8 @@ type liveActivityRun struct {
 	snippets  []liveActivitySnippet // Aligned with lines.
 	questions []uint64              // Clickable question targets, aligned with lines.
 	entryRows map[uint64]int        // Exact Activity entry starts within a grouped run.
+	batch     bool                  // Main operations that fold into one row once out of view.
+	running   []int                 // First row of each running command block.
 }
 
 // liveActivityEvent is an agent's latest standalone entry and when it arrived.
@@ -136,6 +144,7 @@ type liveActivityRosterRow struct {
 type liveActivityHit struct {
 	row, first, last int // One-based terminal coordinates, inclusive.
 	agent            string
+	skills           bool // Opens the agent's active skills rather than selecting it.
 }
 
 type liveActivityRunKey struct {
@@ -148,7 +157,7 @@ type liveActivityRunKey struct {
 	thread      conversationThread // Main transcript thread placement.
 	lead        uint64             // Main item a transcript tool group continues, or 0.
 	flash       uint64             // Flashed Activity entry in this run, or 0.
-	excerpt     bool               // Main sent message shown as a linked excerpt.
+	excerpt     bool               // Main sent message or batch shortened out of view.
 	tail        int                // Tail lines open output shows; 0 shows the whole tail.
 }
 
@@ -283,7 +292,16 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 		}
 	}
 	if extra := len(v.entries) - liveActivityFeedLimit; extra > 0 {
-		v.removeEntries(0, extra)
+		for i := 0; extra > 0 && i < len(v.entries); {
+			if n := v.entries[i].native; n != nil && n.running {
+				i++
+				continue
+			}
+			v.retireSkills(v.entries[i : i+1])
+			delete(v.passed, v.entries[i].Seq)
+			v.removeEntries(i, i+1)
+			extra--
+		}
 		for seq := range v.passed {
 			if v.historyOrder && !slices.ContainsFunc(v.entries, func(entry liveActivityRecord) bool { return entry.Seq == seq }) || !v.historyOrder && seq < v.entries[0].Seq {
 				delete(v.passed, seq)
@@ -379,10 +397,10 @@ func (v *liveActivityView) feedAgents() []liveActivityRosterRow {
 	return rows
 }
 
-// unreturnedOutputNote marks command output its Code Mode cell never returned.
+// unreturnedOutputNote marks command output its exec cell never returned.
 const unreturnedOutputNote = "output not returned to the model"
 
-// markUnreturned notes a command's output that its Code Mode cell never
+// markUnreturned notes a command's output that its exec cell never
 // returned, so the row does not imply the model saw it. A command with no
 // output has nothing to note. The note is a filter annotation, which a later
 // receipt for the same call keeps.
@@ -586,7 +604,7 @@ func (v *liveActivityView) handleMouse(action byte, row, column int) bool {
 func (v *liveActivityView) pointQuestion(row, column int) bool {
 	hover := 0
 	if index := row - v.feedTop; index >= 0 && index < len(v.feedQuestions) && v.feedQuestions[index] != 0 && column >= v.feedLeft && column <= v.feedRight {
-		hover = v.offset + index + 1
+		hover = index + 1
 	}
 	previous := v.questionHover
 	v.questionHover = hover
@@ -668,11 +686,19 @@ func (v *liveActivityView) snippetBlock(snippet liveActivitySnippet) (activityui
 
 // pointAgent highlights a hovered roster agent; a click filters the feed.
 func (v *liveActivityView) pointAgent(action byte, row, column int) bool {
-	previous := v.hovered
-	v.hovered = ""
+	previous, previousSkills := v.hovered, v.skillsHover
+	v.hovered, v.skillsHover = "", ""
 	for _, hit := range v.hits {
 		if hit.row == row && column >= hit.first && column <= hit.last {
-			v.hovered = hit.agent
+			if hit.skills {
+				v.skillsHover = hit.agent
+			} else {
+				v.hovered = hit.agent
+			}
+			if action == '\r' && hit.skills {
+				v.skillsRequest, v.skillsHover = hit.agent, ""
+				return true
+			}
 			if action == '\r' {
 				if v.childrenOnly && hit.agent == "/root" {
 					// Main's activity lives in Main; picking it shows every child.
@@ -685,10 +711,10 @@ func (v *liveActivityView) pointAgent(action byte, row, column int) bool {
 				v.hovered = ""
 				v.follow()
 			}
-			return action == '\r' || previous != v.hovered
+			return action == '\r' || previous != v.hovered || previousSkills != v.skillsHover
 		}
 	}
-	return previous != ""
+	return previous != "" || previousSkills != ""
 }
 
 func (v *liveActivityView) follow() {
@@ -1200,7 +1226,7 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 			}
 		}
 		for hit := first; hit < len(lines)+2; hit++ {
-			v.hits = append(v.hits, liveActivityHit{hit, 1, width, row.agent.Name})
+			v.hits = append(v.hits, liveActivityHit{row: hit, first: 1, last: width, agent: row.agent.Name})
 		}
 	}
 	if end < len(rows) && len(lines) < limit {
@@ -1315,7 +1341,7 @@ func (v *liveActivityView) renderStrip(rows []liveActivityRosterRow, width int) 
 		}
 		part := v.glyph(row.agent) + " " + activityui.Color(row.agent.Name) + name + activityui.Reset
 		if last := min(width, column+ansi.StringWidth(part)-1); column <= last {
-			v.hits = append(v.hits, liveActivityHit{2, column, last, row.agent.Name})
+			v.hits = append(v.hits, liveActivityHit{row: 2, first: column, last: last, agent: row.agent.Name})
 		}
 		parts = append(parts, part)
 		column += ansi.StringWidth(part) + 2
@@ -1329,7 +1355,8 @@ type liveActivityFeed struct {
 	heads     []int                 // Index of the heading that owns each line.
 	snippets  []liveActivitySnippet // Snippet that owns each line, if any.
 	questions []uint64
-	sent      []liveActivitySent
+	passing   []liveActivityPassing
+	running   []int // Command headers to keep visible until host completion.
 }
 
 type liveActivityPaint struct {
@@ -1362,8 +1389,9 @@ func (v *liveActivityView) paintBlock(start, limit int, render func() []string) 
 	return rows
 }
 
-// liveActivitySent is a Main sent message's entry and the feed row after it.
-type liveActivitySent struct {
+// liveActivityPassing is a Main item that shortens once it has scrolled out
+// of view: its first entry and the feed row after it.
+type liveActivityPassing struct {
 	seq uint64
 	end int
 }
@@ -1377,6 +1405,9 @@ func (feed *liveActivityFeed) separator() {
 
 // appendRows keeps row content and metadata aligned; each renderer owns heads.
 func (feed *liveActivityFeed) appendRows(run liveActivityRun) {
+	for _, row := range run.running {
+		feed.running = append(feed.running, len(feed.lines)+row)
+	}
 	feed.lines = append(feed.lines, run.lines...)
 	feed.snippets = append(feed.snippets, run.snippets...)
 	feed.questions = append(feed.questions, run.questions...)
@@ -1389,29 +1420,36 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 	v.painter.LayoutOnly = true
 	feed := v.layoutFeed(width, rows)
 	v.painter.LayoutOnly = false
-	offset, _ := v.viewportPosition(feed, rows)
+	offset, _, pins := v.pinnedViewport(feed, rows)
 	for _, paint := range feed.paints {
 		old := v.runs[paint.key]
-		first, last := max(0, offset-paint.start), min(len(old.lines), offset+rows-paint.start)
-		if first >= last {
-			continue
+		decorate := func(first, last int) {
+			if first >= last {
+				return
+			}
+			if old.painted == nil {
+				old.painted = make([]bool, len(old.lines))
+			}
+			if !slices.Contains(old.painted[first:last], false) {
+				return
+			}
+			v.syntaxWindow = &liveActivitySyntaxWindow{first, last}
+			run := paint.render()
+			v.syntaxWindow = nil
+			copy(old.lines[first:last], run.lines[first:last])
+			for i := first; i < last; i++ {
+				old.painted[i] = true
+			}
+			copy(feed.lines[paint.start+first:paint.start+last], run.lines[first:last])
 		}
-		if old.painted == nil {
-			old.painted = make([]bool, len(old.lines))
+		decorate(max(0, offset-paint.start), min(len(old.lines), offset+rows-len(pins)-paint.start))
+		for _, pin := range pins {
+			if row := pin - paint.start; row >= 0 && row < len(old.lines) {
+				decorate(row, row+1)
+			}
 		}
-		if !slices.Contains(old.painted[first:last], false) {
-			continue
-		}
-		v.syntaxWindow = &liveActivitySyntaxWindow{first, last}
-		run := paint.render()
-		v.syntaxWindow = nil
-		copy(old.lines[first:last], run.lines[first:last])
-		for i := first; i < last; i++ {
-			old.painted[i] = true
-		}
-		old.colored = !slices.Contains(old.painted, false)
+		old.colored = old.painted != nil && !slices.Contains(old.painted, false)
 		v.runs[paint.key] = old
-		copy(feed.lines[paint.start+first:paint.start+last], run.lines[first:last])
 	}
 	feed.paints = nil
 	return feed
@@ -1585,13 +1623,16 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		// Native Activity joins consecutive operations into one tree.
 		tree := v.childrenOnly && operation(block) && !continued(block)
 		toggle := v.clickTarget(&block, liveActivitySnippet{run: first, block: index}, width-2)
+		if block.Kind == "journal" && journalActivityBody(block.Body, true) != block.Body {
+			toggle = true // The omitted task row remains available in the dialog.
+		}
 		if operation(block) {
 			block.SourceRows = 5
 			if block.TailRows == 0 || block.TailRows > 5 {
 				block.TailRows = 5
 			}
 		}
-		message := slices.Contains([]string{"text", "message", "final", "summary", "start"}, block.Kind)
+		message := slices.Contains([]string{"text", "message", "final", "summary", "start", "journal"}, block.Kind)
 		// Reasoning heads the operations after it, so no gap parts them.
 		headed := previousSummary && operation(block)
 		gap := len(run.lines) > 1 && (message || previousMessage) && !headed
@@ -1605,6 +1646,8 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		} // Source and output have separate budgets.
 		part := v.paintBlock(start, limit, func() []string {
 			switch {
+			case block.Kind == "journal":
+				return v.painter.Flash(block, v.painter.Markdown(journalActivityBody(block.Body, true), width-2))
 			case tree:
 				return v.painter.Event(block, width-4)
 			case v.childrenOnly:
@@ -1620,6 +1663,9 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			run.lines = append(run.lines, gutter)
 			run.snippets = append(run.snippets, liveActivitySnippet{})
 			run.questions = append(run.questions, 0)
+		}
+		if block.Running {
+			run.running = append(run.running, len(run.lines))
 		}
 		previousMessage, previousSummary = message, block.Kind == "summary"
 		// A merged read row stands for each entry it merged.
@@ -1689,49 +1735,103 @@ func (v *liveActivityView) viewportPosition(feed liveActivityFeed, rows int) (in
 	return max(0, min(offset, len(feed.lines)-rows)), following
 }
 
+// pinnedViewport reserves rows for off-screen running headers before resolving
+// scrolling. Transcript offsets remain source-row coordinates, including Home
+// and navigation targets. Narrowing the body can expose more headers to pin.
+func (v *liveActivityView) pinnedViewport(feed liveActivityFeed, rows int) (int, bool, []int) {
+	limit := max(0, rows-1)
+	if rows == 1 {
+		limit = 1
+	}
+	reserved := 0
+	for {
+		body := max(0, rows-reserved)
+		offset, following := v.viewportPosition(feed, body)
+		var pins []int
+		for _, row := range feed.running {
+			if len(pins) >= limit {
+				break
+			}
+			if row >= offset && row < offset+body {
+				continue
+			}
+			if !v.conversation {
+				head := feed.heads[row]
+				if !slices.Contains(pins, head) && len(pins)+1 < limit {
+					pins = append(pins, head)
+				}
+			}
+			pins = append(pins, row)
+		}
+		// Activity's current agent heading also needs its own row: replacing
+		// the body's first row could erase a naturally visible command header.
+		if !v.conversation && len(feed.running) > 0 && offset < len(feed.heads) && len(pins) < limit {
+			head := feed.heads[offset]
+			// Keep a reserved heading row if following crosses a group boundary;
+			// dropping it would widen the body and move back across the boundary.
+			if len(pins) < reserved || head != offset && (len(pins) == 0 || feed.heads[pins[len(pins)-1]] != head) {
+				pins = append(pins, head)
+			}
+		}
+		if len(pins) == reserved {
+			return offset, following, pins
+		}
+		reserved = len(pins)
+	}
+}
+
 // viewport returns exactly rows lines. When scrolled into a run, that run's
 // heading stays pinned on the first row.
 func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 	rows = max(0, rows)
-	v.offset, v.following = v.viewportPosition(feed, rows)
+	var pins []int
+	v.offset, v.following, pins = v.pinnedViewport(feed, rows)
 	v.pendingTarget = 0
-	v.feedLines, v.feedRows = len(feed.lines), rows
+	v.feedLines, v.feedRows = len(feed.lines), max(1, rows-len(pins))
 	if v.following {
 		v.unseen = 0
 	}
-	for _, sent := range feed.sent {
-		if sent.end <= v.offset {
+	for _, item := range feed.passing {
+		if item.end <= v.offset {
 			if v.passed == nil {
 				v.passed = make(map[uint64]bool)
 			}
-			v.passed[sent.seq] = true
+			v.passed[item.seq] = true
 		}
 	}
 	lines := make([]string, rows)
 	v.feedSnippets = make([]liveActivitySnippet, rows)
 	v.feedQuestions = make([]uint64, rows)
 	for row := range rows {
-		if index := v.offset + row; index < len(feed.lines) {
+		index := v.offset + row - len(pins)
+		if row < len(pins) {
+			index = pins[row]
+		}
+		if index < len(feed.lines) {
 			lines[row], v.feedSnippets[row] = feed.lines[index], feed.snippets[index]
 			v.feedQuestions[row] = feed.questions[index]
 			if target := feed.snippets[index]; row == v.editHover-1 && target.block == editNavigationSnippet && target == v.snippet {
 				lines[row] = activityui.UnderlineEdit(lines[row])
 			}
-			if index == v.questionHover-1 && feed.questions[index] != 0 {
+			if row == v.questionHover-1 && feed.questions[index] != 0 {
 				lines[row] = underlineLink(lines[row])
 			}
 		}
 	}
 	// Pin only when the run keeps a visible line under its heading. Main's
 	// transcript items do not always start with a heading, so it never pins.
-	if !v.conversation && rows > 1 && v.offset+1 < len(feed.heads) && feed.heads[v.offset] != v.offset && feed.heads[v.offset+1] == feed.heads[v.offset] {
+	if len(feed.running) == 0 && !v.conversation && rows > 1 && v.offset+1 < len(feed.heads) && feed.heads[v.offset] != v.offset && feed.heads[v.offset+1] == feed.heads[v.offset] {
 		lines[0], v.feedSnippets[0] = feed.lines[feed.heads[v.offset]], liveActivitySnippet{}
 		v.feedQuestions[0] = 0
 	}
 	// Activity's painter flashes its own entries; Main flashes whole items.
 	if target, ok := v.questionRows[v.flashQuestion]; ok && v.conversation && v.now().Before(v.flashUntil) {
 		for row := range lines {
-			if index := v.offset + row; index < len(feed.heads) && feed.heads[index] == target {
+			index := v.offset + row - len(pins)
+			if row < len(pins) {
+				index = pins[row]
+			}
+			if index < len(feed.heads) && feed.heads[index] == target {
 				lines[row] = v.selectRow(lines[row], ansi.StringWidth(lines[row]))
 			}
 		}
@@ -1764,7 +1864,7 @@ func (v *liveActivityView) observeStandalone(entry activityPaneEntry) {
 	v.events[entry.Agent] = liveActivityEvent{entry.Seq, cmp.Or(entry.Observed, v.now())}
 }
 
-// settleActivity collapses completed reasoning and successful command output once its agent's
+// settleActivity collapses successful command output once its agent's
 // next standalone event has been followed by a pause. Entries are shared
 // between views, so each view replaces rather than modifies native state.
 func settleActivity(now time.Time, views ...*liveActivityView) bool {

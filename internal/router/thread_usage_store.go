@@ -108,7 +108,10 @@ func (u *threadUsage) loadLocked(thread string) {
 // growing with every response while storage is busy.
 func mergeThreadUsageTotal(total, delta *threadUsageTotal) {
 	if delta.roundOutput.StartedUnixNano > 0 && delta.roundOutput.StartedUnixNano >= total.roundOutput.StartedUnixNano {
-		total.roundOutput = delta.roundOutput
+		total.roundOutput.StartedUnixNano = delta.roundOutput.StartedUnixNano
+		if _, known := delta.roundOutput.Throughput.Rate(); known {
+			total.roundOutput.Throughput = delta.roundOutput.Throughput
+		}
 	}
 	total.priorUnknown = total.priorUnknown || delta.priorUnknown
 	for _, model := range delta.models {

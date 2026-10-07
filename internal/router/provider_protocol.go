@@ -40,7 +40,7 @@ func providerToolName(namespace, name string) string {
 	return "_mekugi_" + hex.EncodeToString(sum[:16])
 }
 
-// Codex advertises Code Mode wait's integer fields as "number", but its native
+// Codex advertises exec wait's integer fields as "number", but its native
 // handler decodes them as unsigned integers. Grok's proxy serializes "number"
 // values as floats (30000.0), which that handler rejects. Correct only this
 // known host shape on the provider wire; leave argument bytes untouched.

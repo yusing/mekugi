@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,7 +18,7 @@ func (s *mekugiReplayStore) storageSnapshot() (storageSnapshot, error) {
 	return s.storageSnapshotContext(context.Background())
 }
 
-func (s *mekugiReplayStore) runRetentionSweeps(ctx context.Context, notice func()) {
+func (s *mekugiReplayStore) runRetentionSweeps(ctx context.Context, notice func(error)) {
 	runStorageRetention(ctx, func() *mekugiReplayStore { return s }, notice)
 }
 
@@ -799,7 +800,7 @@ func TestNewRequestDoesNotReadUnrelatedRetentionCatalog(t *testing.T) {
 	if _, err := store.readRetainedSession(name); err == nil {
 		t.Fatal("unrelated catalog was not invalid")
 	}
-	newNativeMekugiTestTransformWithProxy(t, proxy)
+	newTopLevelMekugiTestTransformWithProxy(t, proxy)
 }
 
 func TestBackgroundRetentionReportsUnrelatedCatalogFailure(t *testing.T) {
@@ -818,19 +819,47 @@ func TestBackgroundRetentionReportsUnrelatedCatalogFailure(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
-	notified := make(chan struct{}, 1)
+	notified := make(chan error, 1)
 	go func() {
 		defer close(done)
-		store.runRetentionSweeps(ctx, func() { notified <- struct{}{} })
+		store.runRetentionSweeps(ctx, func(err error) { notified <- err })
 	}()
 	defer func() {
 		cancel()
 		<-done
 	}()
 	select {
-	case <-notified:
+	case err := <-notified:
+		if !strings.Contains(err.Error(), "session cleanup:") || !strings.Contains(err.Error(), "invalid session retention file identity") {
+			t.Fatalf("cleanup notice lost the phase or cause: %v", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("background retention did not report the catalog failure")
+	}
+}
+
+func TestBackgroundRetentionReportsDebugCleanupFailure(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	root, err := debugStorageDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(root), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(root, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	var reported error
+	runStorageRetention(ctx, func() *mekugiReplayStore { return nil }, func(err error) {
+		reported = err
+		cancel()
+	})
+	cause, ok := errors.AsType[*os.PathError](reported)
+	if !ok || cause.Path != root || !strings.Contains(reported.Error(), "debug bundle cleanup:") {
+		t.Fatalf("cleanup notice lost the phase or cause: %v", reported)
 	}
 }
 

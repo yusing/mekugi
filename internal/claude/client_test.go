@@ -68,7 +68,7 @@ readline.createInterface({input: process.stdin}).on('line', line => {
 	if err := json.Unmarshal([]byte(nextEvent(t, client).Text), &startup); err != nil {
 		t.Fatal(err)
 	}
-	if startup.Config != config || startup.Cwd != config.Cwd {
+	if !reflect.DeepEqual(startup.Config, config) || startup.Cwd != config.Cwd {
 		t.Fatalf("startup = %#v, want config %#v and matching working directory", startup, config)
 	}
 	text := "line one\nline two\t\"quotes\" \\ $HOME `command` $(command) 日本語"
@@ -134,8 +134,11 @@ func TestClientIsolatesOnlyFreshCommandTrackingGuard(t *testing.T) {
 	for _, tracking := range []bool{false, true} {
 		t.Run(fmt.Sprint(tracking), func(t *testing.T) {
 			config := Config{Cwd: t.TempDir()}
+			wantParent := "preserved"
 			if tracking {
 				config.Companion = &ObservationEndpoint{BashEnv: "/launch/private/bash-env"}
+				config.Environment = append(os.Environ(), "MEKUGI_NATIVE_PARENT_VALUE=invocation")
+				wantParent = "invocation"
 			}
 			client := startMockBridge(t, t.Context(), `
 console.log(JSON.stringify({kind:'notice', text:JSON.stringify({guard:process.env.MEKUGI_EXEC_TRACK ?? null, parent:process.env.MEKUGI_NATIVE_PARENT_VALUE})}));
@@ -148,7 +151,7 @@ process.stdin.resume();
 			if err := json.Unmarshal([]byte(nextEvent(t, client).Text), &environment); err != nil {
 				t.Fatal(err)
 			}
-			if environment.Parent != "preserved" || tracking && environment.Guard != nil || !tracking && (environment.Guard == nil || *environment.Guard != "1") {
+			if environment.Parent != wantParent || tracking && environment.Guard != nil || !tracking && (environment.Guard == nil || *environment.Guard != "1") {
 				t.Fatalf("wrong native launch environment: %+v", environment)
 			}
 			if os.Getenv(execsegment.Guard) != "1" || os.Getenv("MEKUGI_NATIVE_PARENT_VALUE") != "preserved" {

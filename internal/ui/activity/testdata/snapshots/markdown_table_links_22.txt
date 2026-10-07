@@ -1,0 +1,6 @@
+"\x1b[2m┌─────────────┬──────┐\x1b[m"
+"\x1b[2m│\x1b[m \x1b[1mLink\x1b[m        \x1b[2m│\x1b[m \x1b[1mFlag\x1b[m \x1b[2m│\x1b[m"
+"\x1b[2m├─────────────┼──────┤\x1b[m"
+"\x1b[2m│\x1b[m \x1b[36;4m\x1b]8;;https://example.com\aabcdefghijk\x1b[m\x1b]8;;\a \x1b[2m│\x1b[m \x1b[1mYES\x1b[m  \x1b[2m│\x1b[m"
+"\x1b[2m└─────────────┴──────┘\x1b[m"
+"plain after           "

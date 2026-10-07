@@ -133,7 +133,7 @@ func TestJournalSummaryBoundedPreservesAllMandatoryNodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(legacy.Text, "Complete task body 0: "+strings.Repeat("x", 1200)) || !strings.Contains(legacy.Text, "[read the retained node for full detail]") {
+	if strings.Contains(legacy.Text, "Complete task body 0: "+strings.Repeat("x", 1200)) || !strings.Contains(legacy.Text, "[read this path for full detail]") {
 		t.Fatal("legacy open-task body excerpt policy changed")
 	}
 	if _, err := proxy.journals.apply(ctx, store, workspace, thread, "", []journalMutation{{Op: "add", Kind: "task", Title: new("Mandatory overflow"), Body: new(strings.Repeat("界", 4500))}}); err != nil {
@@ -158,7 +158,7 @@ func TestJournalSummaryBoundedOptionalResultsRecoverable(t *testing.T) {
 	ctx, store, thread := transform.ctx, proxy.replayStore, transform.shellThreadID
 	mutations := []journalMutation{{Op: "add", Kind: "task", Title: new("Keep mandatory task"), State: new("working"), Body: new(strings.Repeat("m", 6500))}}
 	for i := range 30 {
-		mutations = append(mutations, journalMutation{Op: "add", Kind: "note", Title: new(fmt.Sprintf("Optional result %02d", i)), Body: new(strings.Repeat("界🚀", 900))})
+		mutations = append(mutations, journalMutation{Op: "add", Under: "/1", Kind: "note", Title: new(fmt.Sprintf("Optional result %02d", i)), Body: new(strings.Repeat("界🚀", 900))})
 	}
 	if _, err := proxy.journals.apply(ctx, store, workspace, thread, "", mutations); err != nil {
 		t.Fatal(err)
@@ -232,7 +232,7 @@ func TestJournalSummaryBoundedFailuresAndObservations(t *testing.T) {
 	if summary.Failures != 14 || summary.Changes != 1 {
 		t.Fatalf("omission changed evidence counts: %+v", summary)
 	}
-	for _, fact := range []string{"omitted", "mread", "mchanges", "unconfirmed command", "not proof of a running process", "No continuation handle or Code Mode store value is restored"} {
+	for _, fact := range []string{"omitted", "mread", "mchanges", "unconfirmed command", "not proof of a running process", "No continuation handle or exec store value is restored"} {
 		if !strings.Contains(summary.Text, fact) {
 			t.Errorf("missing recovery fact %q: %s", fact, summary.Text)
 		}
@@ -360,6 +360,34 @@ func TestJournalSummaryBoundedFailureWithoutOutput(t *testing.T) {
 	}
 }
 
+func TestJournalSummaryBoundedChildAnswerOmission(t *testing.T) {
+	proxy, workspace := mountFixture(t)
+	treeApply(t, proxy, workspace, journalMutation{Op: "add", Kind: "task", Title: new("Integrate"), State: new("working"), Agent: "/root/child"})
+	if err := proxy.journals.observeLifecycle(t.Context(), proxy.replayStore, workspace, "child", "done", ""); err != nil {
+		t.Fatal(err)
+	}
+	base, err := boundedSummaryForTest(t, t.Context(), proxy.replayStore, workspace, "tree", 10000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, _, err := readThreadJournal(proxy.replayStore, workspace, "child")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Repeat("A", 512)
+	child.Items = append(child.Items, journalItem{ID: "/1", Path: "/1", Kind: "answer", Title: "Outcome", Body: body, Author: child.Author})
+	if err := writeThreadJournal(proxy.replayStore, child); err != nil {
+		t.Fatal(err)
+	}
+	result, err := boundedSummaryForTest(t, t.Context(), proxy.replayStore, workspace, "tree", boundedSummaryUnits(base.Text)+160)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(result.Text, body) || !strings.Contains(result.Text, "Optional evidence omitted") {
+		t.Fatalf("omitted child answer lost atomic admission or recovery notice: %s", result.Text)
+	}
+}
+
 // Empty optional headings and a no-change view are not omitted evidence. They
 // must yield their space to mandatory content, including at the exact boundary.
 func TestJournalSummaryBoundedMandatoryOnlyExactCap(t *testing.T) {
@@ -379,7 +407,7 @@ func TestJournalSummaryBoundedMandatoryOnlyExactCap(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			optionalStart := strings.Index(full.Text, "\nEstablished results and completed work:")
+			optionalStart := strings.Index(full.Text, "\nRetained changes:")
 			footerStart := strings.Index(full.Text, "\nResume:")
 			if optionalStart < 0 || footerStart < optionalStart {
 				t.Fatal("missing summary section boundaries")

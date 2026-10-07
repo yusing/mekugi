@@ -29,7 +29,7 @@ func TestLiveDiffCodeModeStreamsCatEditBeforeCompletion(t *testing.T) {
 		return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+first")
 	})
 	if first.Complete || first.Input != "" || first.Status != diffview.PreviewEdit {
-		t.Fatalf("partial Code Mode cat was not a provisional edit: %+v", first)
+		t.Fatalf("partial exec cat was not a provisional edit: %+v", first)
 	}
 	if !strings.Contains(first.Files[0].Diff, "-old") {
 		t.Fatalf("partial cat did not predict truncation: %q", first.Files[0].Diff)
@@ -38,7 +38,7 @@ func TestLiveDiffCodeModeStreamsCatEditBeforeCompletion(t *testing.T) {
 	worker.finish(input)
 	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool { return preview.Complete })
 	if len(complete.Files) != 1 || !strings.Contains(complete.Files[0].Diff, "+second") {
-		t.Fatalf("completed Code Mode cat lost its diff: %+v", complete)
+		t.Fatalf("completed exec cat lost its diff: %+v", complete)
 	}
 }
 
@@ -210,7 +210,7 @@ func TestLiveDiffCodeModeSSEStreamsEditWithoutChangingEvents(t *testing.T) {
 		return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+streamed")
 	})
 	if preview.Input != "" || preview.Complete {
-		t.Fatalf("Code Mode stream exposed script text or claimed completion: %+v", preview)
+		t.Fatalf("exec stream exposed script text or claimed completion: %+v", preview)
 	}
 }
 

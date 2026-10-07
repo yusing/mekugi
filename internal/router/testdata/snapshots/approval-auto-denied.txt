@@ -1,0 +1,3 @@
+"\x1b[38;5;37m●\x1b[m \x1b[38;5;37;1mworker\x1b[m                                \x1b[2m00:00:00\x1b[m"
+"\x1b[38;5;37m│\x1b[m \x1b[2m└ \x1b[38;5;203;22;1mRan\x1b[m \x1b[38;2;210;168;255mgit\x1b[m push \x1b[2m· \x1b[38;5;203;22mexit 1\x1b[39;2m · \x1b[38;5;203;22mAuto Denied\x1b[m         "
+"plain after approval                            "

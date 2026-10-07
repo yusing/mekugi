@@ -1363,8 +1363,7 @@ func (s *execSourceScope) pythonGuard(node *sitter.Node) bool {
 			return false
 		}
 	}
-	var branch func(*sitter.Node) bool
-	branch = func(clause *sitter.Node) bool {
+	branch := func(clause *sitter.Node) bool {
 		if condition := clause.ChildByFieldName("condition"); condition != nil && !s.pythonPure(condition, 0) {
 			return false
 		}

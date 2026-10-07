@@ -2,9 +2,11 @@
 
 ## Focused checks
 
-Inside an active Mekugi shell, run tests with invocation-local `env -u BASH_ENV`.
+Inside an active Mekugi shell, run tests with invocation-local
+`env -u BASH_ENV -u MEKUGI_EXEC_TRACK`.
 The session's Bash startup hook can otherwise prepend live frontends ahead of a test's
 isolated frontend PATH, sending fixture reads to the wrong retained-output store.
+The inherited tracking guard also makes isolated command shells skip reporting.
 
 `make test` applies that isolation and clears snapshot-update mode. Select packages
 and tests while iterating, for example:
@@ -19,8 +21,13 @@ The default is `./...`. Unchanged successful tests can use Go's test cache; use
 repeat/isolation checks, or `TEST_FLAGS=-race` when checking concurrency. The recipe
 does not regenerate assets or install binaries. Prepare missing assets once with
 `make preview-assets`, and regenerate when their sources change as described below.
-Choose the narrowest affected owner from the table, then broaden only for effects
-that cross its boundary. A focused pass is not evidence for unselected tests.
+A focused pass does not cover unselected tests.
+
+The release workflow runs the full fresh offline Go suite on Linux amd64;
+other platforms retain command and welcome/version checks. Tagged Codex and
+Bun plugin-host checks remain separate acceptance routes below.
+The full suite includes configured-plugin fixtures, so it requires Node.js 24+
+and ripgrep even when the tested application uses only built-in frontends.
 
 `TEST_PARALLEL` defaults to 32 so independent process and PTY fixtures can overlap
 their waits; override it for a constrained machine. Tests that change process-wide
@@ -29,10 +36,7 @@ environment or working directory remain serial. Measure the default suite with
 separately from test execution.
 
 For router profiling, use a temporary output directory and pass `-cpuprofile`,
-`-blockprofile`, and `-o` paths through `TEST_FLAGS`. Exclude
-`TestSessionUIReplayCLI` with `-skip='^TestSessionUIReplayCLI$'` only in the profiling
-run: it tests its own CPU profiler, which cannot run alongside Go's test profiler.
-The normal validation run must still include it. Inspect both CPU and block
+`-blockprofile`, and `-o` paths through `TEST_FLAGS`. Inspect both CPU and block
 profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time.
 
 | Changed owner | Focused check |
@@ -42,7 +46,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Codex app-server RPC transport and process lifecycle | `./internal/appserver` and `./internal/router -run AppServer` |
 | Router behavior | `./internal/router` |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
-| Native terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the native UI without model requests |
+| Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
 | Shared Go tokenizer | `./internal/tokenizer`, `./capturer`, `./internal/router/toolplugin` |
 | Capture metrics and AX evidence | `./capturer` |
 | Portable core or `mekugi:core/v1` adapter | `./internal/router/toolplugin`, then `./...` and `bun test ./internal/router/toolplugin/tests/core.test.ts` |
@@ -123,6 +127,21 @@ and output formatting are compiled Go and require no generated JavaScript assets
 npm dependencies. Bun is needed only for the remaining plugin-host/shared-core tests.
 Use a fresh temporary Bun transpiler cache when test discovery appears stale.
 
+Journal/frontend prose has a separate generated consumer. Edit
+`guidance/frontend_guidance.md.tmpl` or the executable helper's description owner,
+then regenerate and check the prepared-request projection:
+
+```sh
+env MEKUGI_UPDATE_FRONTEND_GUIDANCE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestGeneratedFrontendGuidanceIsCurrent$'
+make test TEST_PACKAGES=./internal/router TEST_RUN='GeneratedFrontendGuidance|ProjectedStockGuidance|JournalRulesHaveOneOwner|JournalGuidanceUsesRequestRole|Instruction|ConflictRewrite|WebSocketPrewarmToolGuidance'
+```
+
+## Static checks
+
+Run `make lint` with `golangci-lint` and `deadcode` on PATH. It uses `.golangci.yml`
+and includes test executables in deadcode analysis. Tool errors and reported findings
+fail the target. Linux amd64 CI installs the versions pinned in the release workflow.
+
 ## Terminal UI snapshots
 
 `make test-ui-snapshots` runs offline rendered-output regression tests without Codex
@@ -137,13 +156,24 @@ sessions, the Agents roster, and responsive Activity layouts. Activity blocks an
 output dialogs live in `internal/ui/activity/testdata/snapshots/`; diff navigation,
 change graphs, and streaming previews live in `internal/ui/diffview/testdata/snapshots/`.
 Launcher debug handoffs live in `cmd/mekugi/testdata/snapshots/`.
-Other owners keep fixtures in their own `testdata/snapshots/` directories. Snapshot assertions replace
-layout/text checks, not independent state, interaction, parser, or color checks.
+Shared Diff syntax and row styles live in `internal/livediff/testdata/snapshots/`.
+Other owners keep fixtures in their own `testdata/snapshots/` directories.
 
 `internal/uisnapshot.Assert` strips ANSI sequences only: spacing, blank lines,
 wrapping, and borders remain exact. Tests fix time, theme, dimensions, and other
 nondeterministic inputs before invoking the actual renderer. Text snapshots do
-not establish color/style correctness or replace interaction and PTY acceptance.
+not establish color/style correctness. `internal/uisnapshot.AssertTerminal`
+paints actual renderer rows into the shared VT emulator at a fixed width, then
+stores its canonical ANSI output as quoted rows. These fixtures cover terminal
+cell colors, emphasis, links, padding, and style restoration without depending on
+the renderer's choice of equivalent escape sequences. Include a following plain
+row when checking that a style does not leak. Activity code fills, tables,
+reasoning, wait targets, and answer flashes, shared Diff syntax and row fills,
+and native dialog, attachment, keybinding, and roster surfaces extend the
+terminal-style coverage. Theme-sensitive cases cover terminal, dark, and light
+themes; code fills also cover a reported background.
+Both snapshot forms use the same review/update commands and preserve separate
+copy, state, bounds, interaction, and PTY acceptance.
 Repository Git attributes suppress trailing-space and final-blank-row warnings
 only for these text fixtures; `git diff --check` still checks ordinary sources.
 
@@ -163,17 +193,19 @@ isolating mutable thread, workspace, and process state. Startup and shutdown
 tests still need their own owners. Disposable Git fixtures must isolate system
 and global configuration so setup does not invoke personal signing programs or
 hooks; keep repository-local settings for filter and worktree boundary tests.
+Resolve fixture shells with `execTrackShellExecutable` in `internal/router/exec_track_test.go`:
+`exec.Command` resolves names before `Cmd.Env` is set, so an isolated environment alone
+can still select the live session's approval guard. Keep fixture tools first for nested shells.
 Use controlled time for in-process lifetimes, including retention retries and
 filesystem-lock contention. Keep subtests and parallel scheduling outside each
 `synctest` bubble, and create and clean up its workers inside it.
 Preserve real process-cleanup coverage and prove boundary coverage before
 shrinking large fixtures.
 
-Choose acceptance cases at the changed consumer:
+The following acceptance routes apply only when the requested change touches their contract:
 
-- **Continuity:** test durable review/output/journal access after restart with
-  only the requesting thread. Include affected fork, side-thread, agent-switch,
-  model-switch, and resume paths. Live ancestry is not retained identity.
+- **Continuity:** for changed durable review/output/journal state, test restart with only the
+  requesting thread and affected branch/switch/resume paths. Live ancestry is not retained identity.
 - **Launcher handoff:** validate cancellation and rendering before and after
   Codex owns the terminal, including redirected output and delayed startup.
 - **Live diff:** test layout, viewport/follow state, and preview lifecycle
@@ -181,10 +213,10 @@ Choose acceptance cases at the changed consumer:
   rendered frames, not only broker events. Streaming must show input before
   completion, continued following, independent diff scrolling, resize, and
   preview removal. Missing terminal coverage must be reported explicitly.
-- **Stock edits:** check exact direct and Code Mode arguments/results, one
+- **Stock edits:** check exact nested stock-tool arguments/results, one
   host execution, streaming before completion, failed/partial outcomes,
   durable `mchanges` evidence, and dependent reads after persistence.
-- **Execution:** cover Code Mode batching/parallelism, interpreter display,
+- **Execution:** cover exec batching/parallelism, interpreter display,
   PTY/yield/`write_stdin`, bounded output, and `mread` recovery.
 - **Producer shapes:** cover Chat versus Responses and persisted rollout events
   at the consuming boundary. Recheck dated host observations after Codex

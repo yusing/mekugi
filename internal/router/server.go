@@ -21,6 +21,7 @@ import (
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/persistence"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 const (
@@ -41,14 +42,16 @@ type Session struct {
 	BaseURL                string
 	JournalEnabled         bool
 	PostCompactRecovery    bool
+	VCSGuard               bool
 	GrokEnabled            bool
 	GrokUnprefixed         bool
 	ThirdPartyOnly         bool
 	OpenCode               OpenCodeConfig
 	AXReadOutput           string
 	SkillsManagerAvailable bool
-	// StartAppUI starts the native app-server UI and returns its joined lifetime.
-	StartAppUI           func(context.Context, *exec.Cmd, *os.File, *os.File, string, []string) (func() error, error)
+	// StartAppUI starts the UI and returns its joined lifetime.
+	// VCSGuard controls remote-write prompts independently of Codex policy.
+	StartAppUI           func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error)
 	StartHeadless        func(context.Context, *exec.Cmd, io.Reader, io.Writer) (func() error, error)
 	FrontendDirectory    string
 	NativeTraceDirectory string
@@ -75,8 +78,17 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if value := *flags.journalCompaction; value != "auto" && value != "slice" && value != "off" {
 		return errors.New("--journal-compaction must be auto, slice, or off")
 	}
-	if *flags.mode == "passthrough" && *flags.journalCompaction != "off" {
-		return errors.New("--journal-compaction requires --mode mekugi")
+	if *flags.mode == "passthrough" {
+		journalCompactionSet := false
+		flags.Visit(func(item *flag.Flag) {
+			if item.Name == "journal-compaction" {
+				journalCompactionSet = true
+			}
+		})
+		if journalCompactionSet && *flags.journalCompaction != "off" {
+			return errors.New("--journal-compaction requires --mode mekugi")
+		}
+		*flags.journalCompaction = "off"
 	}
 	faint, err := terminalui.SupportsFaint(ctx, *flags.ansiFaint)
 	if err != nil {
@@ -198,7 +210,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			log.Printf("OpenCode catalog: refresh/cache update unavailable; retaining last usable metadata")
 		}
 	}
-	provider.serviceTiers = config.ServiceTiers
+	provider.serviceTiers = &serviceTierSettings{configured: config.ServiceTiers}
 	provider.opencode = make(map[string]*grokClient)
 	for _, service := range openCode.services() {
 		client := withDialTimeout(nil)
@@ -251,6 +263,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		mekugiCalls = newMekugiProxy(registry, titles)
 		provider.titleGenerator.usage = mekugiCalls.usage
 		mekugiCalls.journalCompaction = *flags.journalCompaction
+		mekugiCalls.duplicateOutput = *flags.duplicateOutput
 		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
 		if traceErr == nil {
 			mekugiCalls.nativeTrace = &nativeToolTrace{directory: traceDirectory}
@@ -309,8 +322,8 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 				issues.mu.Lock()
 				defer issues.mu.Unlock()
 				return issues.failureStore
-			}, func() {
-				issues.addNotice("", "storage_cleanup_failure", "Mekugi could not complete background storage cleanup. Session requests continue unless storage reaches its limit.")
+			}, func(err error) {
+				issues.addNotice("", "storage_cleanup_failure", fmt.Sprintf("Mekugi could not complete background storage cleanup: %v. Session requests continue unless storage reaches its limit.", err))
 			})
 		}()
 		defer func() {
@@ -319,6 +332,11 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		}()
 	}
 
+	stopProfiling, err := startProfiling(ctx, os.Stderr)
+	if err != nil {
+		return err
+	}
+	defer func() { runErr = errors.Join(runErr, stopProfiling()) }()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
@@ -344,27 +362,37 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		serverError <- server.Serve(listener)
 	}()
 	if ready != nil && ctx.Err() == nil {
-		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, SkillsManagerAvailable: skillsManagerAvailable}
+		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, VCSGuard: *flags.vcsGuard, SkillsManagerAvailable: skillsManagerAvailable}
 		if mekugiCalls != nil {
 			session.StartHeadless = func(ctx context.Context, cmd *exec.Cmd, input io.Reader, output io.Writer) (func() error, error) {
 				return startHeadlessAppServer(ctx, cmd, input, output, mekugiCalls)
 			}
 		}
-		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string) (func() error, error) {
+		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 			if mekugiCalls != nil && frontendDirectory != "" {
 				// Without the socket, command shells find no router and run
-				// their scripts untracked.
+				// their scripts untracked. Without the approval channel,
+				// guarded remote writes are denied, so guarded startup stops.
 				socket, directory := ExecTrackPaths(frontendDirectory)
-				if hub, err := listenExecTrack(ctx, socket, directory); err == nil {
+				hub, err := listenExecTrack(ctx, socket, directory)
+				if err == nil && session.VCSGuard {
+					_, channel := vcsguard.Paths(frontendDirectory)
+					if err = hub.listenVCSGuard(ctx, channel); err != nil {
+						hub.close()
+					}
+				}
+				if err == nil {
 					mekugiCalls.execTrack = hub
 					mekugiCalls.execWindows.tracker = hub
+				} else if session.VCSGuard {
+					return nil, fmt.Errorf("listen for guarded VCS writes: %w", err)
 				}
 			}
 			debugDirectory := ""
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.paths[0])
 			}
-			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator)
+			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator, approvals)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory
@@ -514,7 +542,7 @@ func responsesHandler(
 	issues *CriticalErrors,
 	mekugiCalls *mekugiProxy,
 ) http.HandlerFunc {
-	var serviceTiers map[string]string
+	var serviceTiers *serviceTierSettings
 	var titleGenerator *sessionTitleGenerator
 	if client, ok := provider.(*providerClient); ok {
 		serviceTiers = client.serviceTiers

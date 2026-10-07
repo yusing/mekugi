@@ -421,14 +421,14 @@ func startNativeRuntimePTY(t *testing.T, parent context.Context, client session.
 	}()
 	stop := func() {
 		cancel()
-		slave.Close()
-		master.Close()
-		<-readerDone
 		select {
 		case <-uiDone:
 		case <-time.After(3 * time.Second):
 			t.Error("native terminal UI did not stop")
 		}
+		slave.Close()
+		master.Close()
+		<-readerDone
 		terminal.screen.Close()
 	}
 	return terminal, stop

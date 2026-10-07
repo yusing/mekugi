@@ -1,7 +1,7 @@
-  Mekugi override: priority · choose Codex tier
+  Choose tier
   default
-  priority
-› flex      Current in Codex                                                                        
+› priority  Current                                                                                 
+  flex
 
-  Choices change Codex's tier only
+
   ↑/↓ navigate · enter apply · esc cancel

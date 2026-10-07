@@ -412,7 +412,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			if history.ExecOutcome != nil && history.ExecOutcome.Coverage != "" && history.ExecOutcome.Coverage != execCoverageExact {
 				status = "incomplete captured scope"
 				if options.view == "summary" || options.view == "" {
-					fmt.Fprintf(&output, "%s incomplete captured scope; use --history for diagnostics\n", id)
+					fmt.Fprintf(&output, "%s incomplete captured scope\n", id)
 				}
 			}
 			if slices.ContainsFunc(history.ReviewFiles, authoredReview) {

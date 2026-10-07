@@ -14,6 +14,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 // gitFixture is a repository whose commands ignore the user's git config.
@@ -76,7 +77,12 @@ func vcsCommandUI(t *testing.T, workspace string) *appServerUI {
 func TestVCSCommitShowsTheRecordedCommit(t *testing.T) {
 	g, output := vcsCommitFixture(t, "amend! feat(router): pin latest reply")
 	hash := gitCommitHead.FindStringSubmatch(strings.Split(output, "\n")[0])[2]
-	script := "git diff --check && git add a.go b.go gone.txt && git commit -F - <<'EOF'\namend! feat(router): pin latest reply\n\nbody\nEOF"
+	script := "git diff --check && git add a.go b.go gone.txt && timeout 90s git commit -F - <<'EOF'\namend! feat(router): pin latest reply\n\nbody\nEOF"
+	var err error
+	script, err = vcsguard.Rewrite(script, displayGuardHelper, displayGuardDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
 	u := vcsCommandUI(t, g.dir)
 	now := time.Date(2026, 10, 2, 8, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return now }
@@ -269,7 +275,10 @@ func TestVCSTrackedCommitShowsItsRows(t *testing.T) {
 	g, output := vcsCommitFixture(t, "feat: tracked")
 	u, hub := newTrackedAppServerUI(t)
 	u.session.cwd = g.dir
-	script := "git add a.go b.go && git commit -m 'feat: tracked'"
+	script, err := vcsguard.Rewrite("git add a.go b.go && timeout 90s git commit -F - <<'EOF'\nfeat: tracked\n\nbody\nEOF", displayGuardHelper, displayGuardDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "cwd": g.dir, "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	report := dialExecTrackReport(t, hub, script)
@@ -294,6 +303,8 @@ func TestVCSTrackedCommitShowsItsRows(t *testing.T) {
 func TestVCSCommandClassification(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
 		{"git commit -m 'fix: bound it' -m body", "Commit `fix: bound it` · git"},
+		{"timeout 90s git commit -F - <<'EOF'\ndocs(ui): describe content-detected inline highlighting\nEOF", "Commit `docs(ui): describe content-detected inline highlighting` · git (timeout 90s)"},
+		{"timeout 1.5m git commit -m 'fix: bounded'", "Commit `fix: bounded` · git (timeout 1.5m)"},
 		{"git commit -am 'fix: all'", "Commit `fix: all` · git"},
 		{"git commit -qm'fix: attached'", "Commit `fix: attached` · git"},
 		{"git commit --message='feat: `code` in subject'", "Commit `` feat: `code` in subject `` · git"},
@@ -320,6 +331,7 @@ func TestVCSCommandClassification(t *testing.T) {
 		{"svn diff -c 4812", "Diff `r4812` · svn"},
 		{"svn di -r100:HEAD --summarize trunk", "Diff `r100:HEAD` in `trunk` · svn --summarize"},
 		{"svn st -q", "Status `working copy` · svn"},
+		{"timeout 90s mchanges", "Diff `mine` · mchanges (timeout 90s)"},
 		{"mchanges amber1..amber4", "Diff `amber1..amber4` · mchanges"},
 		{"mchanges --net -- a.go", "Diff `mine` in `a.go` · mchanges --net"},
 		{"/tmp/bin/mchanges amber2 --summary", "Diff `amber2` · mchanges --summary"},
@@ -331,6 +343,8 @@ func TestVCSCommandClassification(t *testing.T) {
 	}
 	// Forms whose effect or message the display cannot read stay Run.
 	for _, source := range []string{
+		"timeout invalid git commit -m x",
+		"timeout 90s git commit -m \"$msg\"",
 		"git commit -m \"$msg\"",
 		"git add *.go",
 		"git diff ~/other",

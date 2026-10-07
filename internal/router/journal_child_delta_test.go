@@ -4,6 +4,7 @@ import (
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
 	"github.com/yusing/mekugi"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -162,5 +163,77 @@ func TestChildJournalChangesDeltaRecovery(t *testing.T) {
 	if strings.Contains(result, "first.txt") || !strings.Contains(result, "second.txt") || !strings.Contains(result, id) ||
 		!strings.Contains(result, "Cumulative: 2 recorded evaluations across 1 retained changes.") {
 		t.Fatalf("incorrect recovery evaluation window: %s", result)
+	}
+}
+
+func TestChildJournalRemainingSurvivesDeliveredCursorAndRestart(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(map[bool]string{false: "json", true: "sse"}[stream], func(t *testing.T) {
+			proxy := newManagedMekugiProxy(t)
+			attachTestReplayStore(t, proxy)
+			first, _ := prepareActivityTest(t, proxy, "first", "child", "root", "/root/child", nil)
+			workspace := first.directory
+			applyChildDeltaItems(t, proxy, workspace,
+				journalMutation{Op: "add", Kind: "task", Title: new("Pending verification"), State: new("pending")},
+				journalMutation{Op: "add", Kind: "task", Title: new("Working verification"), State: new("working")},
+				journalMutation{Op: "add", Kind: "task", Title: new("Blocked verification"), State: new("blocked"), Reason: new("Dependency unavailable")},
+				journalMutation{Op: "add", Kind: "task", Title: new("Completed verification"), State: new("done")},
+				journalMutation{Op: "add", Kind: "task", Title: new("Dropped verification"), State: new("dropped"), Reason: new("Not required")},
+				journalMutation{Op: "add", Kind: "task", Title: new("Changed verification"), State: new("working")})
+			before, _, err := readThreadJournal(proxy.replayStore, workspace, "child")
+			if err != nil {
+				t.Fatal(err)
+			}
+			firstResult := childDeltaResult(t, first, stream, true, "first-result")
+			if strings.Contains(firstResult, "**Remaining**") {
+				t.Fatalf("tasks already in delta duplicated in Remaining: %s", firstResult)
+			}
+			first.Close()
+			proxy.journals = newJournalStore()
+			proxy.activity = newSubagentActivity()
+			proxy.replayStore, err = openMekugiReplayStore(proxy.replayStore.directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			restored, _, err := readThreadJournal(proxy.replayStore, workspace, "child")
+			if err != nil || restored.ResultSeq != before.Sequence {
+				t.Fatalf("delivery cursor lost: seq=%d want=%d err=%v", restored.ResultSeq, before.Sequence, err)
+			}
+			if !reflect.DeepEqual(before.Events, restored.Events) || len(before.Items) != len(restored.Items) {
+				t.Fatal("child finish or restart rewrote owned events or removed tasks")
+			}
+			for i, item := range before.Items {
+				beforeNode, afterNode := item.node(), restored.Items[i].node()
+				// Host lifecycle updates elapsed work time, not the authored task.
+				beforeNode.WorkTimer, afterNode.WorkTimer = activeWorkTimer{}, activeWorkTimer{}
+				if !reflect.DeepEqual(beforeNode, afterNode) {
+					t.Fatalf("child finish rewrote task %s: before=%+v after=%+v", item.Path, item.node(), restored.Items[i].node())
+				}
+			}
+			applyChildDeltaItems(t, proxy, workspace,
+				journalMutation{Op: "set", P: "/6", Title: new("Changed follow-up verification")},
+				journalMutation{Op: "log", Text: new("Follow-up evidence")})
+			followup, _ := prepareActivityTest(t, proxy, "followup", "child", "root", "/root/child", nil)
+			defer followup.Close()
+			result := childDeltaResult(t, followup, stream, true, "followup-result")
+			delta, remaining, ok := strings.Cut(result, "**Remaining**")
+			if !ok {
+				t.Fatalf("unchanged open work omitted: %s", result)
+			}
+			for _, title := range []string{"Pending verification", "Working verification", "Blocked verification"} {
+				if strings.Contains(delta, title) || strings.Count(remaining, title) != 1 {
+					t.Fatalf("unchanged task not shown once in Remaining: %s", result)
+				}
+			}
+			if !strings.Contains(remaining, "Dependency unavailable") {
+				t.Fatalf("blocked reason omitted: %s", result)
+			}
+			if strings.Contains(result, "Completed verification") || strings.Contains(result, "Dropped verification") {
+				t.Fatalf("closed tasks replayed: %s", result)
+			}
+			if strings.Count(delta, "Changed follow-up verification") != 1 || strings.Contains(remaining, "Changed follow-up verification") || !strings.Contains(delta, "Follow-up evidence") {
+				t.Fatalf("changed task or new evidence lost/duplicated: %s", result)
+			}
+		})
 	}
 }

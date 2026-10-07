@@ -1,6 +1,7 @@
 package router
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -145,17 +146,18 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 	if record == nil {
 		return
 	}
-	u.restoreRetainedCommandSegments(entry, item, record)
+	u.restoreRetainedCommandSegments(entry, item, record, workspace)
 }
 
-func (u *appServerUI) restoreRetainedCommandSegments(entry *activityPaneEntry, item appServerItem, record *retainedCommandSegments) {
+func (u *appServerUI) restoreRetainedCommandSegments(entry *activityPaneEntry, item appServerItem, record *retainedCommandSegments, workspace string) {
 	entry.native.segments = nil
 	separate := true
 	for _, part := range record.Parts {
 		separate = separate && (part.Skipped || part.Output != nil)
 	}
+	cwd := cmp.Or(entry.native.commandCwd, appServerCommandDirectory(item, workspace))
 	for _, part := range record.Parts {
-		segment := commandSegment{timing: part.Timing, source: part.Source, text: execSegmentText(part.Source), skipped: part.Skipped, exit: part.Exit}
+		segment := commandSegment{timing: part.Timing, source: part.Source, text: execSegmentTextInDirectory(part.Source, cwd), skipped: part.Skipped, exit: part.Exit}
 		if separate && !part.Skipped {
 			segment.output = u.session.outputs.New()
 			segment.output.Finish(part.Output, &part.Exit)

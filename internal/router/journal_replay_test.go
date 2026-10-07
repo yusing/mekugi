@@ -191,7 +191,7 @@ func TestUISnapshotSessionUIReplayRestoredJournal(t *testing.T) {
 func TestJournalReplayInlineReportsAreNotDuplicated(t *testing.T) {
 	proxy, workspace, _, turns, _ := journalReplayFixture(t)
 	const id = "retained-inline-report"
-	if err := proxy.replayStore.putCommentary(t.Context(), workspace, []string{id}); err != nil {
+	if err := proxy.replayStore.putCommentaryReplacing(t.Context(), workspace, []string{id}, nil); err != nil {
 		t.Fatal(err)
 	}
 	turns[0].Items = []appServerItem{{ID: id, Type: "agentMessage", Text: "Journal\n- First check passed"}}

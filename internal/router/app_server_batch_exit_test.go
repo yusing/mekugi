@@ -30,7 +30,15 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 			}
 			finishPacing(u.view, u.agents)
 			got := mainFeed(&appServerUI{view: view}, 140)
-			if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "Ran   shell batch · exit 1") || !strings.Contains(got, "┆ conflict") {
+			if mode == "resume" {
+				feed := view.renderFeed(140, 10)
+				if !strings.Contains(got, "1 failed command") || !u.shell.openOutput(view, feed.snippets[0]) || len(u.shell.output.pages) != 1 {
+					t.Fatalf("resumed batch lost its summary or aggregate output: %s", got)
+				}
+				if output := u.shell.output.pages[0].Output; output == nil || !output.View().Exited || output.View().Exit != 1 || !strings.Contains(strings.Join(output.View().Lines, "\n"), "conflict") {
+					t.Fatal("resumed batch lost its failed command output")
+				}
+			} else if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "Ran   shell batch · exit 1") || !strings.Contains(got, "┆ conflict") {
 				t.Fatalf("missing unique batch result:\n%s", got)
 			}
 			for _, record := range view.entries {

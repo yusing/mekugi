@@ -263,7 +263,7 @@ func (u *appServerUI) resumeSessionFailed(message string) error {
 
 func (u *appServerUI) startThread() error {
 	u.status = "Starting thread…"
-	return u.request("thread/start", map[string]any{"approvalPolicy": "never", "sandbox": "danger-full-access"})
+	return u.request("thread/start", u.threadPermissions(map[string]any{}))
 }
 
 // resumePickerKey handles every key while the picker is open.

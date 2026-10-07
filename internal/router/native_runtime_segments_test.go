@@ -164,10 +164,21 @@ func TestNativeRuntimeSavedSegmentsStorageFailureVisible(t *testing.T) {
 		t.Fatal("shutdown hid a failed pending write")
 	}
 	notices := u.applyCriticalNotices()
-	if notices == nil || len(u.view.entries[0].native.segments) != 3 || !strings.Contains(runtimeFrame(t, u, 120, 40), "could not be retained") {
+	runtimeFrame(t, u, 120, 40)
+	if notices == nil || len(u.view.entries[0].native.segments) != 3 || u.noticeDetails.w == 0 {
 		t.Fatal("storage failure hid the coverage gap or discarded live segments")
 	}
-	notices.finish(u.mainContentPainted)
+	u.composerNoticeMouse(0, u.noticeDetails.x, u.noticeDetails.y, false)
+	if u.shell.output == nil {
+		t.Fatal("storage failure details did not open")
+	}
+	drawOutputDialog(u.shell)
+	if !strings.Contains(u.shell.output.laid.Text, "could not be retained") {
+		t.Fatal("storage failure details lost the coverage gap")
+	}
+	u.shell.outputKey("q")
+	runtimeFrame(t, u, 120, 40)
+	notices.finish(true)
 	fallback.Reset()
 	u.finishRuntimeCommandSegments(&fallback)
 	if fallback.Len() != 0 {

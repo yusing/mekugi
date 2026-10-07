@@ -156,6 +156,9 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 			case "idle timeout": // Leave the provider connected but silent.
 			case "cancel":
 				cancel()
+				// Let the cancellation callback retire the lease before reading.
+				// Both its done channel and the request context can now wake Read.
+				<-response.Body.(*webSocketResponseBody).entry.receiverDone
 				close(release)
 			case "close during read":
 				readDone := make(chan error, 1)
@@ -174,8 +177,27 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 				close(release)
 			}
 			if scenario != "close during read" {
-				if _, err = io.ReadAll(response.Body); err == nil {
+				if scenario == "cancel" {
+					_, err = copyUpstreamBodyTransformed(io.Discard, response, true, nil, nil)
+				} else {
+					_, err = io.ReadAll(response.Body)
+				}
+				if err == nil {
 					t.Fatal("incomplete websocket stream succeeded")
+				}
+				if scenario == "cancel" {
+					if !errors.Is(err, context.Canceled) {
+						t.Fatalf("request cancellation lost its cause: %v", err)
+					}
+					issues := NewCriticalErrors()
+					f := &requestFinalization{}
+					f.classifyCopyError(err)
+					if finishErr := f.finish(responseCtx, err, &trackedResponseWriter{committed: true}, issues); finishErr != nil {
+						t.Fatal(finishErr)
+					}
+					if f.observation.outcome != requestOutcomeCanceledAfterResponse || len(issues.Pending()) != 0 {
+						t.Fatalf("host interruption reported as failure: outcome=%v notices=%v", f.observation.outcome, issues.Pending())
+					}
 				}
 				if scenario == "idle timeout" {
 					close(release)
@@ -608,6 +630,67 @@ func TestWebSocketRequestPreservesRichBodyMetadata(t *testing.T) {
 	}
 	if sent.Metadata[codexTurnMetadataHeader] != "full body metadata" || sent.Metadata["custom"] != "preserved" || sent.Metadata["x-codex-turn-state"] != "current state" || handshake.Get(codexTurnMetadataHeader) != "" || handshake.Get("x-codex-turn-state") != "" {
 		t.Fatal("body metadata overwritten or per-turn metadata retained in handshake")
+	}
+}
+
+func TestWebSocketCapturePreservesCompletedResponseAfterCancellation(t *testing.T) {
+	terminal := []byte(`{"type":"response.completed","response":{"status":"completed","output":[],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":2},"output_tokens":3}}}`)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.CloseNow()
+		if _, _, err := conn.Read(r.Context()); err != nil {
+			return
+		}
+		_ = conn.Write(r.Context(), websocket.MessageText, terminal)
+		_, _, _ = conn.Read(r.Context())
+	}))
+	defer upstream.Close()
+	capture, err := capturer.New(capturer.Config{Mode: "passthrough"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer capture.Close()
+	client := newProviderClient(upstream.URL, upstream.Client())
+	client.enableWebSockets(t.Context())
+	defer client.websockets.close()
+	handler := capture.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithCancel(r.Context())
+		defer cancel()
+		payload := []byte(`{"model":"model","stream":true,"input":[]}`)
+		capturer.ObserveProjectedRequest(ctx, payload)
+		response, err := client.forwardExecution(ctx, ctx, payload, codexAuthHeaders(), "session")
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		data, err := io.ReadAll(response.Body)
+		if err != nil {
+			t.Error(err)
+		}
+		// The caller can end the request after consuming its terminal response
+		// but before the deferred body close finalizes provider capture.
+		cancel()
+		_ = response.Body.Close()
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write(data)
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"model","stream":true,"input":[]}`)))
+	metrics := httptest.NewRecorder()
+	capture.ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/api/metrics", nil))
+	var snapshot struct {
+		Capture struct {
+			Errors     uint64 `json:"capture_errors"`
+			Incomplete uint64 `json:"incomplete_records"`
+		} `json:"capture"`
+	}
+	if err := json.Unmarshal(metrics.Body.Bytes(), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Capture.Errors != 0 || snapshot.Capture.Incomplete != 0 {
+		t.Fatalf("completed response became a failed capture after cancellation: %+v", snapshot.Capture)
 	}
 }
 

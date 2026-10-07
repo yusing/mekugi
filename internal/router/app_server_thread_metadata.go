@@ -89,6 +89,7 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 			view.rosterSelected = name
 		}
 		view.runs = nil
+		view.renameRetiredSkills(old, name)
 	}
 	for thread, entry := range u.session.messages {
 		if entry.Agent == old {

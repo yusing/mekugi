@@ -17,7 +17,7 @@ import (
 func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.turn = "main-turn"
-	u.view.applyAppServerItem("", "main", "main", u.turn, "progress", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Checking the requested reply."})
+	u.view.applyAppServerItem(true, "", "main", "main", u.turn, "progress", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Checking the requested reply."})
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	message := "The requested reply.\n\n" + strings.Repeat("More detail about this reply.\n", 16) + "End of requested reply."
 	send := func(id, body string) {
@@ -249,7 +249,14 @@ func TestNativeRepliesShareHeaderQuoteAnswerLayout(t *testing.T) {
 						t.Fatalf("context row %d lost navigation", i)
 					}
 				}
-				if !strings.Contains(ansi.Strip(run.lines[1]), "↩ re:") || strings.Contains(ansi.Strip(run.lines[1]), "Original") || !strings.HasSuffix(ansi.Strip(run.lines[2]), "▎ Original request.") || !strings.HasSuffix(ansi.Strip(run.lines[3]), "▎ Second detail.…") || !strings.HasSuffix(ansi.Strip(run.lines[4]), "Answer body.") {
+				answerRow := 4
+				if kind == "main raw" {
+					answerRow++
+					if run.questions[4] != 0 {
+						t.Fatal("Main's reply boundary gained a navigation target")
+					}
+				}
+				if !strings.Contains(ansi.Strip(run.lines[1]), "↩ re:") || strings.Contains(ansi.Strip(run.lines[1]), "Original") || !strings.HasSuffix(ansi.Strip(run.lines[2]), "▎ Original request.") || !strings.HasSuffix(ansi.Strip(run.lines[3]), "▎ Second detail.…") || !strings.HasSuffix(ansi.Strip(run.lines[answerRow]), "Answer body.") {
 					t.Fatalf("expected header, quoted excerpt, answer: %q", run.lines)
 				}
 			})

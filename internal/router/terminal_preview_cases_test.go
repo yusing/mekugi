@@ -73,7 +73,7 @@ func previewBoundaryCases() []previewBoundaryCase {
 			Final: "*** Begin Patch\n*** Add File: boundary.js\n+const readyJS = true;\n+const boundaryJS = `first; not a boundary\n+second quoted line; still inside\n+last quoted line`;\n*** End Patch\n",
 		},
 		{
-			Name: "TypeScript: Code Mode patch holds an open array",
+			Name: "TypeScript: exec patch holds an open array",
 			Path: "boundary.ts",
 			Kind: "exec",
 			Steps: []previewBoundaryStep{

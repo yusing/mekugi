@@ -148,7 +148,7 @@ func TestThirdPartyDefaultsKeepUserResumeProvenance(t *testing.T) {
 				userArgs = append(userArgs, "-m", "grok-4.5")
 			}
 			resumeArgv := appServerResumeArgv("mekugi", []string{mode}, userArgs)
-			args, _, err := appServerArgs(userArgs)
+			args, _, _, err := appServerArgs(userArgs)
 			if err != nil {
 				t.Fatal(err)
 			}

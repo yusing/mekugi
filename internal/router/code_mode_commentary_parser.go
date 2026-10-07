@@ -16,7 +16,7 @@ func findCodeModeCommentaryCalls(source string) ([]codeModeCommentaryCall, error
 		return nil, err
 	}
 	if tree == nil {
-		return nil, errors.New("parse Code Mode commentary program")
+		return nil, errors.New("parse exec commentary program")
 	}
 	defer tree.Close()
 	root := tree.RootNode()

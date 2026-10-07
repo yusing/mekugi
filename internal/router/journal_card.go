@@ -15,23 +15,47 @@ import (
 const journalCardNoteLimit = 3
 const journalCardPreviewRows = 2
 
+// Single-line previews retain inline styles; block summaries keep their existing geometry.
+func journalInlinePreview(p *activityui.Painter, text string) string {
+	first, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	plain := journalPreview(text)
+	styled := p.Inline(first)
+	if strings.TrimSpace(ansi.Strip(styled)) == plain {
+		return styled
+	}
+	return plain
+}
+
 func journalPreview(text string) string {
-	p := activityui.Painter{}
+	// Summary strips styles. Keep Markdown geometry without discarded syntax work.
+	p := activityui.Painter{LayoutOnly: true}
+	first, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	// Ordinary rows are independent of later content. Block constructs still
+	// need their full input, including table lookahead and quoted fences.
+	if _, fenced := activityui.FenceDelimiter(first); !fenced && !strings.HasPrefix(first, ">") && !strings.Contains(first, "|") {
+		if summary := p.Summary([]activityui.Block{{Kind: "final", Body: first}}, 80); summary != "" {
+			return summary
+		}
+	}
 	return p.Summary([]activityui.Block{{Kind: "final", Body: text}}, 80)
 }
 
 // Compact presentation never changes the retained node or its full details.
 func journalCompactNode(node journalNode) journalNode {
+	return journalCompactNodePreview(node, journalPreview)
+}
+
+func journalCompactNodePreview(node journalNode, preview func(string) string) journalNode {
 	if node.Reason != "" {
-		node.Reason = ansi.Truncate(journalPreview(node.Reason), 80, "…")
+		node.Reason = ansi.Truncate(preview(node.Reason), 80, "…")
 	}
 	if node.Kind == "note" || node.Kind == "context" || node.Kind == "task" && node.Body != "" {
 		if node.Title == "Note" && node.Body != "" {
-			node.Title = journalPreview(node.Body)
+			node.Title = preview(node.Body)
 		} else {
-			node.Title = journalPreview(node.Title)
+			node.Title = preview(node.Title)
 			if node.Body != "" {
-				node.Title += ": " + journalPreview(node.Body)
+				node.Title += ": " + preview(node.Body)
 			}
 		}
 	}
@@ -173,7 +197,17 @@ func journalTurnCard(j threadJournal, since uint64, child bool) string {
 		entries++
 		text.WriteString("\n- " + strings.TrimPrefix(indentJournalText(journalEventText(event), "  "), "  "))
 	}
-	if entries == 0 {
+	// The event delta can omit tasks from an earlier turn. Surface their
+	// current state at handoff without changing child-owned work or replaying
+	// old events. Changed open tasks already appear in the delta above.
+	_, remaining, _ := journalCardEntries(j, since)
+	if len(remaining) > 0 {
+		text.WriteString("\n\n**Remaining**")
+		for _, node := range remaining {
+			text.WriteString("\n- " + strings.TrimPrefix(indentJournalText(journalEventText(journalEvent{Fields: node}), "  "), "  "))
+		}
+	}
+	if entries == 0 && len(remaining) == 0 {
 		return "No new journal entries."
 	}
 	return strings.TrimLeft(text.String(), "\n")

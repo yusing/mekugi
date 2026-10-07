@@ -3,7 +3,7 @@ NPM ?= npm
 CLAUDE_BRIDGE_DIR ?= bin/claude-bridge
 INSTALL_BIN = $(shell $(GO) env GOBIN GOPATH | awk 'NR == 1 {dir = $$0} NR == 2 {print dir == "" ? $$0 "/bin" : dir}')
 
-.PHONY: install uninstall preview-assets preview-native-ui test test-ui-snapshots update-ui-snapshots
+.PHONY: install uninstall mekugi-pprof preview-assets preview-native-ui test lint test-ui-snapshots update-ui-snapshots
 
 TEST_PACKAGES ?= ./...
 TEST_RUN ?= .
@@ -11,7 +11,7 @@ TEST_FLAGS ?=
 # Process/PTY fixtures spend most of their time waiting, not using a CPU.
 TEST_PARALLEL ?= 32
 SNAPSHOT ?= ^TestUISnapshot
-SNAPSHOT_PACKAGES ?= ./internal/ui/... ./internal/router ./cmd/mekugi
+SNAPSHOT_PACKAGES ?= ./internal/ui/... ./internal/livediff ./internal/router ./cmd/mekugi
 
 install: preview-assets
 	$(MAKE) build-claude-bridge CLAUDE_BRIDGE_DIR="$(INSTALL_BIN)/claude-bridge"
@@ -20,6 +20,11 @@ install: preview-assets
 uninstall:
 	$(GO) clean -i ./cmd/mekugi ./cmd/mekugi-exec
 	rm -rf "$(INSTALL_BIN)/claude-bridge"
+
+# Diagnostic build, with symbols and the same optimized code as production.
+mekugi-pprof: preview-assets
+	$(GO) build -tags pprof -o bin/mekugi-pprof ./cmd/mekugi
+	$(GO) build -o bin/mekugi-exec ./cmd/mekugi-exec
 
 preview-assets:
 	go generate ./internal/router/toolplugin
@@ -32,7 +37,12 @@ preview-native-ui:
 
 # Select the changed owner without rebuilding assets or disabling Go's test cache.
 test:
-	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(TEST_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
+	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(TEST_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
+
+lint:
+	env -u BASH_ENV golangci-lint run
+	@set -e; findings="$$(env -u BASH_ENV deadcode -test ./...)"; \
+	if [ -n "$$findings" ]; then printf '%s\n' "$$findings"; exit 1; fi
 
 # Offline rendered-output regression checks. Mismatches leave .txt.new candidates.
 test-ui-snapshots:

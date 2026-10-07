@@ -121,18 +121,24 @@ func (u *appServerUI) openQuestions() {
 // Only an empty, idle composer yields to pending live questions. Explicitly
 // hiding the dock and history restoration leave manual reopening available.
 func (u *appServerUI) autoOpenQuestions() {
-	if !u.questions.autoOpen || u.questions.active != nil || u.draft != "" || len(u.images) > 0 || len(u.files) > 0 || len(u.skills) > 0 || len(u.selections) > 0 || u.paste || u.escape != "" || u.pickerVisible() || u.keybindings || u.statusPanel != nil || u.resumePicker != nil {
-		return
+	if u.questions.autoOpen && u.questions.active == nil && u.composerVacant() {
+		u.openQuestions()
 	}
-	if u.shell != nil && (u.shell.focus != 0 || u.shell.paste || u.shell.sequence != "") {
-		return
+}
+
+// composerVacant reports an empty, idle composer with no overlay, which a
+// pending dock may take over without capturing keys meant for a draft.
+func (u *appServerUI) composerVacant() bool {
+	if u.draft != "" || len(u.images) > 0 || len(u.files) > 0 || len(u.skills) > 0 || len(u.selections) > 0 || u.paste || u.escape != "" || u.pickerVisible() || u.keybindings || u.statusPanel != nil || u.resumePicker != nil || u.approvals.open {
+		return false
 	}
-	u.openQuestions()
+	return u.shell == nil || u.shell.focus == 0 && !u.shell.paste && u.shell.sequence == ""
 }
 func (u *appServerUI) openQuestionCall(c *nativeQuestionCall) {
 	if u.questions.active != nil {
 		return
 	}
+	u.hideApprovals()
 	u.questions.painted = false
 	u.questions.parked = u.saveQuestionEditor()
 	u.questions.active, u.questions.index, u.questions.confirm = c, 0, false
@@ -376,9 +382,17 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		q.selected = (q.selected + step + len(q.choices) + 1) % (len(q.choices) + 1)
 		q.done = false
 	case "\x1b[D":
-		u.moveQuestion(-1)
+		if q.note || q.selected == len(q.choices) {
+			u.moveDraft(key)
+		} else {
+			u.moveQuestion(-1)
+		}
 	case "\x1b[C":
-		u.moveQuestion(1)
+		if q.note || q.selected == len(q.choices) {
+			u.moveDraft(key)
+		} else {
+			u.moveQuestion(1)
+		}
 	case "\x1b[5~":
 		q.textTop = max(0, q.textTop-1)
 	case "\x1b[6~":
@@ -837,11 +851,15 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	if q.multiple {
 		keys = append(keys, [2]string{"space", "toggle"})
 	}
+	arrows := "question"
+	if q.note || q.selected == len(q.choices) {
+		arrows = "move"
+	}
 	if len(c.request) > 0 {
 		keys = append(keys, [2]string{"tab", "note"})
 	}
 	if len(c.questions) > 1 {
-		keys = append(keys, [2]string{"enter", "next"}, [2]string{"←/→", "question"})
+		keys = append(keys, [2]string{"enter", "next"}, [2]string{"←/→", arrows})
 	}
 	keys = append(keys, [2]string{"ctrl+]", "skip"}, [2]string{"esc", "hide"})
 	hints := func(pairs [][2]string) []string {
@@ -855,7 +873,7 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	if len(foot) > max(2, height/3) {
 		compact := [][2]string{{"↑↓", "pick"}}
 		if len(c.questions) > 1 {
-			compact = append(compact, [2]string{"↵", "next"}, [2]string{"←→", "question"})
+			compact = append(compact, [2]string{"↵", "next"}, [2]string{"←→", arrows})
 		}
 		foot = hints(append(compact, [2]string{"^]", "skip"}, [2]string{"esc", "hide"}))
 	}
@@ -927,6 +945,16 @@ func (u *appServerUI) questionRows(width, height int) []string {
 		rows[i] = strings.Repeat(" ", padding) + rows[i]
 	}
 	return rows[:min(len(rows), height)]
+}
+
+// mainTitleDetail follows Main's pane name: unanswered questions, then the
+// skills loaded into Main's current context.
+func (u *appServerUI) mainTitleDetail() string {
+	details := []string{u.questionBadge()}
+	if set := u.view.activeSkills()["Main"]; set != nil {
+		details = append(details, set.label())
+	}
+	return strings.Join(slices.DeleteFunc(details, func(detail string) bool { return detail == "" }), activityui.Dim+" · "+activityui.Undim)
 }
 
 func (u *appServerUI) questionBadge() string {

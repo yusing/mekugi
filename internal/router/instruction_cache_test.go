@@ -20,8 +20,9 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 	defer cancel()
 	proxy := newToolPluginTestProxy(t)
 	const conflictingProgress = "As you work, you send messages to the `commentary` channel."
-	base := []any{testCodeModeAdditionalTools(testCodeModeDescription), map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress}}
-	incoming := []any{base[0], map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd}}
+	stock, _ := recordedInstructionCleanup(t)
+	base := []any{testCodeModeAdditionalTools(testCodeModeDescription), map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + "\n" + stock}}
+	incoming := []any{base[0], map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + "\n" + stock + "\n" + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd}}
 	ids := []string{"warm", "turn", "next", "astra", "astra-next"}
 	headers := codexAuthHeaders()
 	headers.Set(sessionIDHeader, "instruction-cache-session")
@@ -41,7 +42,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			if bytes.Contains(request["input"], []byte("omitted-rtk-policy")) || bytes.Contains(request["input"], []byte("mekugi:omit")) || bytes.Contains(request["input"], []byte(conflictingProgress)) {
+			if bytes.Contains(request["input"], []byte("omitted-rtk-policy")) || bytes.Contains(request["input"], []byte("mekugi:omit")) || bytes.Contains(request["input"], []byte(conflictingProgress)) || bytes.Contains(request["input"], []byte("recommended_plugins")) || bytes.Contains(request["input"], []byte("multi_agent_mode")) {
 				t.Error("provider received omitted or conflicting instructions")
 			}
 			var input []json.RawMessage
@@ -108,22 +109,23 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 // the prewarm return must not rewrite that prefix.
 func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 	const conflictingProgress = "As you work, you send messages to the `commentary` channel."
-	for _, native := range []bool{false, true} {
-		t.Run(map[bool]string{false: "Code Mode", true: "native"}[native], func(t *testing.T) {
+	stock, projected := recordedInstructionCleanup(t)
+	for _, topLevel := range []bool{false, true} {
+		t.Run(map[bool]string{false: "additional tools", true: "top-level tools"}[topLevel], func(t *testing.T) {
 			proxy := newToolPluginTestProxy(t)
 			leading := []any{
-				map[string]any{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd},
+				map[string]any{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + "\n" + stock + "\n" + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd},
 				map[string]any{"type": "message", "role": "user", "content": "<environment_context>cwd</environment_context>"},
 			}
 			tools := []any{map[string]any{"type": "function", "name": "lookup", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}}
-			if native {
-				tools = append(testNativeResponsesTools(), tools...)
+			if topLevel {
+				tools = append(testExecResponsesTools(), tools...)
 			} else {
 				leading = append([]any{testCodeModeAdditionalTools(testCodeModeDescription)}, leading...)
 			}
 			fields := func(input []any) map[string]any {
 				return map[string]any{
-					"model": "gpt-test", "instructions": testBaseInstructions, "tools": tools, "tool_choice": "auto",
+					"model": "gpt-test", "instructions": testBaseInstructions + "\n" + stock, "tools": tools, "tool_choice": "auto",
 					"parallel_tool_calls": true, "reasoning": map[string]any{"effort": "high"}, "input": input,
 				}
 			}
@@ -176,6 +178,16 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 					t.Errorf("first turn changed prewarmed input item %d:\nprewarm: %s\nturn:    %s", index, warmInput[index], turnInput[index])
 				}
 			}
+			if got := jsonString(warm.fields, "instructions"); got != testBaseInstructions+"\n"+projected {
+				t.Fatalf("effective instruction cleanup = %q", got)
+			}
+			for _, raw := range warmInput {
+				var item map[string]json.RawMessage
+				_ = json.Unmarshal(raw, &item)
+				if jsonString(item, "type") == "message" && jsonString(item, "role") == "developer" && jsonString(item, "content") != "Follow the task.\n\n"+projected+"\n"+instructionOmitStart+"omitted-rtk-policy"+instructionOmitEnd {
+					t.Fatal("effective developer cleanup differs from recorded projection")
+				}
+			}
 			// The comparison is meaningful only if the prewarm was projected.
 			if bytes.Contains(warm.fields["input"], []byte(conflictingProgress)) || !bytes.Contains(warm.fields["tools"], []byte(`"journal"`)) {
 				t.Fatalf("prewarm skipped Mekugi projection: %s", mustMarshalJSON(warm.fields))
@@ -195,7 +207,8 @@ func TestInstructionCacheAutomaticSuccessorCannotSilentlyDropChanges(t *testing.
 
 func TestPrewarmUnsupportedCatalogRemainsNative(t *testing.T) {
 	proxy := newToolPluginTestProxy(t)
-	request, err := parseResponsesRequest([]byte(`{"model":"gpt-test","generate":false,"instructions":"native instructions","tools":[{"type":"web_search"}],"input":[]}`))
+	stock, _ := recordedInstructionCleanup(t)
+	request, err := parseResponsesRequest(mustMarshalJSON(map[string]any{"model": "gpt-test", "generate": false, "instructions": stock, "tools": []any{map[string]string{"type": "web_search"}}, "input": []any{}}))
 	if err != nil {
 		t.Fatal(err)
 	}

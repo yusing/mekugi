@@ -112,10 +112,10 @@ func copyTag(f CopyFragment) string {
 	return copyEnvelope + base64.RawStdEncoding.EncodeToString(data) + "\x1b\\"
 }
 
-// copyWrapped projects the already-rendered fragments onto one logical source.
+// CopyWrapped projects the already-rendered fragments onto one logical source.
 // The renderer's known content gutter is excluded; wrapping gaps stay attached
 // to the continuation but are copied only when both fragments are selected.
-func (p *Painter) copyWrapped(rows []string, source CopyFragment, gutter int) []string {
+func (p *Painter) CopyWrapped(rows []string, source CopyFragment, gutter int) []string {
 	if !p.CopySource || p.LayoutOnly {
 		return rows
 	}

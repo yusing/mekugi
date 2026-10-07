@@ -159,7 +159,11 @@ type liveActivityNativeItem struct {
 	phase              string
 	wait               *activityui.Block // Structured wait progress is roster-only.
 	recovery           string            // Exact retained model-visible reset message, or an unavailable notice.
+	replacesItems      []string          // Exact provider items contained in this retained child result.
 	command, status    string
+	commandCwd         string // Metadata-owned directory for classified paths and receipt refreshes.
+	commandTimeout     string // Explicit timeout from available invocation input.
+	approval           string // UI decision, independent of the host execution result.
 	workdir            string // Display form of a command's directory outside the shown workspace.
 	searchResults      *int
 	running            bool                   // Started live and not yet completed; replay never sets it.
@@ -168,7 +172,7 @@ type liveActivityNativeItem struct {
 	settled            time.Time              // Successful output stays open from then until its agent's next event.
 	changes            []activityui.ChangeRow // Change rows read from a successful change history, VCS read, or commit.
 	commit             gitCommitKey           // The commit object whose files complete changes.
-	collapsed          bool                   // A completed reasoning block, settled output, or restored block.
+	collapsed          bool                   // Settled output or a restored block.
 	spans              []activityui.TextSpan  // Attachment spans, not text resembling image labels.
 	question           uint64                 // Original user entry, retained even for a live journal publication.
 	thought            time.Duration          // Reasoning time from its start to completion.
@@ -185,16 +189,27 @@ func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {
 	return other != nil && n.thread == other.thread && n.turn == other.turn && n.item == other.item
 }
 
+// unconfirmed reports a settled host item that did not complete, such as a
+// declined or failed command: it can end without an exit code, so its rows
+// alone read as successful.
+func (n *liveActivityNativeItem) unconfirmed() bool {
+	return n != nil && !n.running && n.status != "" && n.status != "completed"
+}
+
+func (n *liveActivityNativeItem) replacesItem(other *liveActivityNativeItem) bool {
+	return n != nil && len(n.replacesItems) != 0 && other != nil && n.thread == other.thread && n.turn == other.turn && slices.Contains(n.replacesItems, other.item)
+}
+
 func (v *liveActivityView) entrySeq(entry activityPaneEntry) uint64 {
 	for _, current := range v.entries {
-		if entry.native != nil && entry.native.sameItem(current.native) || entry.native == nil && current.Seq == entry.Seq {
+		if entry.native != nil && (entry.native.sameItem(current.native) || current.native.replacesItem(entry.native)) || entry.native == nil && current.Seq == entry.Seq {
 			return current.Seq
 		}
 	}
 	return 0
 }
 
-func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, method, delta string, item appServerItem) {
+func (v *liveActivityView) applyAppServerItem(live bool, cwd, main, thread, turn, id, method, delta string, item appServerItem) {
 	if item.Delivery == "async" && len(item.Questions) > 0 {
 		return
 	}
@@ -202,7 +217,7 @@ func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, metho
 		return
 	}
 	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "text", Text: item.Text, Observed: v.now(),
-		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, command: item.Command, status: item.Status, duration: appServerDuration(item)}}
+		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, live: live, command: item.Command, status: item.Status, duration: appServerDuration(item), replacesItems: item.replacesItems}}
 	if thread != main {
 		entry.Agent = "Thread " + thread
 	}
@@ -219,7 +234,6 @@ func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, metho
 	} else {
 		switch item.Type {
 		case "reasoning":
-			entry.native.collapsed = method == "item/completed"
 			entry.Kind, entry.CallID, entry.Text = "reasoning", id, strings.Join(item.Summary, "\n\n")
 			if strings.TrimSpace(entry.Text) == "" {
 				return
@@ -279,7 +293,7 @@ func (v *liveActivityView) applyAppServerItem(cwd, main, thread, turn, id, metho
 				entry.Agent = "Thread " + thread
 			}
 			entry.Seq, entry.Kind, entry.Text = v.lastSeq+1, "attachments", ""
-			entry.native = &liveActivityNativeItem{thread: thread, turn: turn, item: id + "/attachments", phase: method, attachments: blocks}
+			entry.native = &liveActivityNativeItem{thread: thread, turn: turn, item: id + "/attachments", phase: method, live: live, attachments: blocks}
 			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 		}
 	}
@@ -335,6 +349,35 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 	if entry.native == nil {
 		return false
 	}
+	// A retained child result replaces only the exact answers it contains.
+	// Keep the original record's stable link and position. In reverse arrival
+	// order, a late provider notification or history page cannot add it again.
+	replacement := -1
+	for i, previous := range v.entries {
+		if previous.native.replacesItem(entry.native) {
+			return true
+		}
+		if entry.native.replacesItem(previous.native) {
+			if replacement < 0 {
+				replacement = i
+			}
+		}
+	}
+	if replacement >= 0 {
+		previous := v.entries[replacement]
+		entry.Seq, entry.Observed = previous.Seq, previous.Observed
+		entry.native.question = previous.native.question
+		for i := len(v.entries) - 1; i >= 0; i-- {
+			if i != replacement && (entry.native.replacesItem(v.entries[i].native) || entry.native.sameItem(v.entries[i].native)) {
+				v.removeEntries(i, i+1)
+				if i < replacement {
+					replacement--
+				}
+			}
+		}
+		v.replaceEntry(replacement, entry, parseLiveActivity(entry))
+		return true
+	}
 	for i, previous := range v.entries {
 		if previous.native != nil && previous.native.phase == "input/pending" && entry.Agent == "You" && entry.native.thread == previous.native.thread && entry.Text == previous.Text {
 			// Reconcile the local echo with Codex's authoritative user item.
@@ -345,7 +388,22 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 		if !entry.native.sameItem(previous.native) {
 			continue
 		}
-		if previous.native.phase == "item/completed" || entry.native.phase == "item/started" || previous.native.phase == "turn/completed" && entry.native.phase != "item/completed" {
+		if entry.native.phase == "approval/updated" {
+			native := *previous.native
+			native.approval = entry.native.approval
+			current := previous.activityPaneEntry
+			current.native = &native
+			blocks := slices.Clone(previous.blocks)
+			if native.command != "" && len(blocks) > 1 && !slices.ContainsFunc(blocks, func(b activityui.Block) bool { return b.BatchExit }) {
+				blocks = parseLiveActivity(current)
+			} else {
+				setApprovalBlocks(blocks, native.approval)
+			}
+			v.replaceEntry(i, current, blocks)
+			return true
+		}
+		entry.native.approval = previous.native.approval
+		if previous.native.phase == "item/completed" || entry.native.phase == "item/started" && previous.native.phase != "approval/updated" || previous.native.phase == "turn/completed" && entry.native.phase != "item/completed" {
 			return true
 		}
 		if entry.native.phase == "item/agentMessage/delta" {

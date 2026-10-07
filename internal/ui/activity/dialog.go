@@ -28,10 +28,11 @@ type DialogPage struct {
 // DialogLine is one numbered source/output line, a logical unnumbered error
 // line, or a pre-laid-out row such as a note or rendered Markdown.
 type DialogLine struct {
-	Wrap   bool   // Keep an unnumbered logical line intact for search; wrap only for display.
-	Number int    // Zero leaves the number column blank.
-	Gutter string // "│" before source, "┆" before output, empty for other rows.
-	Text   string // Styled.
+	Wrap        bool   // Keep an unnumbered logical line intact for search; wrap only for display.
+	Number      int    // Zero leaves the number column blank.
+	Gutter      string // "│" before source, "┆" before output, empty for other rows.
+	GutterStyle string // Optional number style, including wrapped rows and their left padding.
+	Text        string // Styled.
 }
 
 // dialogHighlightBytes bounds the content the dialog colors; larger content
@@ -79,29 +80,19 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 			page.digits = max(page.digits, len(strconv.Itoa(line.Number)))
 		}
 	}
+	if block.Approval != "" {
+		label := approvalLabel(block.Approval)
+		if label != "" {
+			add(DialogLine{Text: Dim + "Approval: " + Undim + label})
+		}
+		if ansi.Strip(label) != block.Approval {
+			add(DialogLine{Text: Dim + livediff.Safe(block.Approval, false) + Undim, Wrap: true})
+		}
+	}
 	gap := func() {
 		if len(page.Lines) > 0 {
 			add(DialogLine{})
 		}
-	}
-
-	// Keep timestamps in distinct metadata rows rather than clipping both
-	// into the dialog's single-line status strip. They are not copied output.
-	startedLabel, endedLabel, elapsedLabel := "Started ", "Ended   ", "Elapsed "
-	if block.NotificationTiming {
-		startedLabel, endedLabel, elapsedLabel = "Observed start ", "Observed end   ", "Host elapsed   "
-	}
-	if !block.Started.IsZero() {
-		add(DialogLine{Text: Dim + startedLabel + block.Started.Local().Format("2006-01-02 15:04:05.000 MST") + Undim})
-	}
-	if !block.Ended.IsZero() {
-		add(DialogLine{Text: Dim + endedLabel + block.Ended.Local().Format("2006-01-02 15:04:05.000 MST") + Undim})
-		if block.Duration > 0 {
-			add(DialogLine{Text: Dim + elapsedLabel + block.Duration.String() + Undim})
-		}
-	}
-	if !block.Started.IsZero() {
-		gap()
 	}
 
 	code := livediff.Safe(block.Code, false)
@@ -342,7 +333,13 @@ func (d DialogPage) Rows(i, width int) []string {
 		if k == 0 && line.Number > 0 {
 			number = strconv.Itoa(line.Number)
 		}
-		rows[k] = Dim + strings.Repeat(" ", d.digits-len(number)) + number + " " + line.Gutter + Undim + " " + part
+		style, end := Dim, Undim
+		gutter := line.Gutter
+		if line.GutterStyle != "" {
+			style, end = line.GutterStyle, Reset
+			gutter = "\x1b[49m" + gutter
+		}
+		rows[k] = style + strings.Repeat(" ", d.digits-len(number)) + number + " " + gutter + end + " " + part
 	}
 	return rows
 }
@@ -365,14 +362,15 @@ func (d DialogPage) MatchRow(i, width int, query string) (int, bool) {
 
 // DialogFrame is one frame of the output dialog, before layout.
 type DialogFrame struct {
-	Tabs     string // Styled command selector, empty for a single result.
-	Page     DialogPage
-	Position string   // Page position among a merged row's invocations, such as "2 / 4".
-	Paused   bool     // Live output the reader scrolled away from.
-	Rows     []string // Visible body rows.
-	Top      int      // Index of the first visible body row, for the scroll thumb.
-	Total    int      // Body rows in all.
-	Footer   string   // Styled controls.
+	Tabs         string // Styled command selector, empty for a single result.
+	Page         DialogPage
+	Position     string   // Page position among a merged row's invocations, such as "2 / 4".
+	Paused       bool     // Live output the reader scrolled away from.
+	Rows         []string // Visible body rows.
+	GutterStyles []string // Optional styles for visible rows' left padding.
+	Top          int      // Index of the first visible body row, for the scroll thumb.
+	Total        int      // Body rows in all.
+	Footer       string   // Styled controls.
 }
 
 // Backdrop fades a screen row the dialog is drawn over: its colors and
@@ -428,18 +426,18 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 	title := ansi.Truncate(f.Page.Title, room, "…") + Reset
 	fill := max(0, width-6-ansi.StringWidth(title)-ansi.StringWidth(right))
 	lines := []string{edge("╭─ ") + title + " " + edge(strings.Repeat("─", fill)) + right + edge("─╮")}
-	row := func(text string, thumb bool) string {
+	row := func(text string, thumb bool, gutterStyle string) string {
 		text = ansi.Truncate(text, inner, "…")
 		closing := edge("│")
 		if thumb {
 			closing = p.Theme.Accent() + "▌" + Reset
 		}
-		return edge("│") + " " + text + Reset + strings.Repeat(" ", max(0, inner-ansi.StringWidth(text))) + " " + closing
+		return edge("│") + gutterStyle + " " + Reset + text + Reset + strings.Repeat(" ", max(0, inner-ansi.StringWidth(text))) + " " + closing
 	}
-	lines = append(lines, row(f.Page.Detail, false))
+	lines = append(lines, row(f.Page.Detail, false, ""))
 	body := height - DialogChrome
 	if f.Tabs != "" {
-		lines = append(lines, row(f.Tabs, false))
+		lines = append(lines, row(f.Tabs, false, ""))
 		body--
 	}
 	lines = append(lines, edge("├"+strings.Repeat("─", width-2)+"┤"))
@@ -451,10 +449,14 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 	}
 	for i := range body {
 		text := ""
+		gutterStyle := ""
 		if i < len(f.Rows) {
 			text = f.Rows[i]
 		}
-		lines = append(lines, row(text, i >= thumbFrom && i <= thumbTo))
+		if i < len(f.GutterStyles) {
+			gutterStyle = f.GutterStyles[i]
+		}
+		lines = append(lines, row(text, i >= thumbFrom && i <= thumbTo, gutterStyle))
 	}
 	footer := ansi.Truncate(f.Footer, max(0, width-6), "…")
 	lines = append(lines, edge("╰─ ")+footer+Reset+" "+edge(strings.Repeat("─", max(0, width-5-ansi.StringWidth(footer)))+"╯"))
@@ -523,6 +525,9 @@ func (p *Painter) DialogPageTitle(block Block, now time.Time, width int) string 
 	title := VerbColor(block.Verb) + "\x1b[1m" + verb + Reset
 	if target := dialogTarget(p, block); target != "" {
 		title += Dim + " · " + Undim + target
+	}
+	if outcome := approvalLabel(block.Approval); outcome != "" {
+		title += Dim + " · " + Undim + outcome
 	}
 	if elapsed := RunElapsed(block, now); elapsed != "" {
 		title += Dim + " · " + elapsed + Undim

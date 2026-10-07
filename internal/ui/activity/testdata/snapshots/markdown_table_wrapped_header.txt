@@ -1,0 +1,7 @@
+"\x1b[2m┌──────────┬───────┐\x1b[m"
+"\x1b[2m│\x1b[m \x1b[1mabcdefgh\x1b[m \x1b[2m│\x1b[m \x1b[1mValue\x1b[m \x1b[2m│\x1b[m"
+"\x1b[2m│\x1b[m \x1b[1mijk\x1b[m      \x1b[2m│\x1b[m       \x1b[2m│\x1b[m"
+"\x1b[2m├──────────┼───────┤\x1b[m"
+"\x1b[2m│\x1b[m x        \x1b[2m│\x1b[m y     \x1b[2m│\x1b[m"
+"\x1b[2m└──────────┴───────┘\x1b[m"
+"plain after table   "

@@ -1,0 +1,8 @@
+❯ Show me how the new transcript search instruction looks like                              11:50:06
+
+● main                                                                                      11:50:12
+┃ ↩ re: your message 11:50:06
+┃ ▎ Show me how the new transcript search instruction looks like
+┃ 
+┃ ▎ After selective journal/retained-output reads, search the transcript only for missing exact
+┃ ▎ historical details.

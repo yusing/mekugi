@@ -114,12 +114,12 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 				u.applyObservedActivity()
 			}
 			if len(view.entries) != 1 || view.entries[0].Kind != "error" ||
-				view.entries[0].Text != "Code Mode script failed: SyntaxError: Unexpected token '<<'" {
+				view.entries[0].Text != "exec script failed: SyntaxError: Unexpected token '<<'" {
 				t.Fatalf("failed cell entries: %+v", view.entries)
 			}
 			if !child {
 				got := ansi.Strip(strings.Join(view.renderFeed(90, 40).lines, "\n"))
-				if !strings.Contains(got, "✗ Main") || !strings.Contains(got, "│ Code Mode script failed: SyntaxError: Unexpected token '<<'") {
+				if !strings.Contains(got, "✗ Main") || !strings.Contains(got, "│ exec script failed: SyntaxError: Unexpected token '<<'") {
 					t.Fatalf("Main lacks the failed cell:\n%s", got)
 				}
 			}

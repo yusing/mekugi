@@ -10,6 +10,9 @@ import (
 // sharedEvent keeps event framing in the transcript renderer. Operations and
 // reasoning retain Activity's invocation grouping and branch navigation.
 func (v *liveActivityView) sharedEvent(index int) bool {
+	if blocks := v.entries[index].blocks; len(blocks) == 1 && blocks[0].Kind == "journal" && v.entries[index].Agent != "Main" {
+		return false // Child journal updates stay in their agent's operation group.
+	}
 	return slices.Contains([]string{"text", "reply", "assignment", "start", "final", "error", "compaction"}, v.entries[index].Kind)
 }
 

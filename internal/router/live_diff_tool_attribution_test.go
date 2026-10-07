@@ -98,7 +98,7 @@ func TestLiveDiffRunningEditingToolAttribution(t *testing.T) {
 			}
 			programs := append([]execProgram(nil), observation.Programs...)
 			if tool := execPreviewTool(*observation); tool != tc.tool {
-				t.Fatalf("Code Mode=%v tool=%q, want %q; observation=%+v", codeMode, tool, tc.tool, observation)
+				t.Fatalf("exec=%v tool=%q, want %q; observation=%+v", codeMode, tool, tc.tool, observation)
 			}
 			if !slices.Equal(programs, observation.Programs) {
 				t.Fatal("display changed captured program attribution")

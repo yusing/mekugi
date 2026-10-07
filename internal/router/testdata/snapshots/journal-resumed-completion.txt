@@ -1,16 +1,16 @@
-┌ 1 Main ───────────────────────────────────────────── ▲ 3 ┐┌ 5 Journal · ● 1 done ────────── space expand · d details ┐
-││ ● /1 Restore journal history · done                     ││ ▾ ● /1 Reopened task                              08:00  │
-│                                                          ││   ├ · First check passed                          08:00  │
-│╭─ ✓ journal · 1 done ─────────────────────────── 08:00 ╮ ││   └ · Second check passed                         08:00  │
+┌ 1 Main ───────────────────────────────────────────── ▲ 1 ┐┌ 5 Journal · ● 1 done ────────── space expand · d details ┐
+│◆ First check passed                                      ││ ▾ ● /1 Reopened task                              08:00  │
+│● /1 Restore journal history · done                       ││   ├ · First check passed                          08:00  │
+│                                                          ││   └ · Second check passed                         08:00  │
+│╭─ ✓ journal · 1 done ─────────────────────────── 08:00 ╮ ││                                                          │
 ││ This turn                                             │ ││                                                          │
 ││ ● /1 Restore journal history                          │ ││                                                          │
 ││ ◆ First check passed                                  │ ││                                                          │
 │╰───────────────────────────────────────────────────────╯ ││                                                          │
 │                                                          ││                                                          │
-│◆ journal                                        08:00:04 ││                                                          │
-││ ◐ /1 Restore journal history · started                  ││                                                          │
-││ ◆ Second check passed                                   ││                                                          │
-││ ● /1 Reopened task · done                               ││                                                          │
+│◐ /1 Restore journal history · started              08:00 ││                                                          │
+│◆ Second check passed                                     ││                                                          │
+│● /1 Reopened task · done                                 ││                                                          │
 │                                                          ││                                                          │
 │╭─ ✓ journal · 1 done ─────────────────────────── 08:00 ╮ ││                                                          │
 ││ This turn                                             │ ││                                                          │

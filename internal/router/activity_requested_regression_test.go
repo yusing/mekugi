@@ -1,12 +1,14 @@
 package router
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestRequestedEditGroupsMergeAdjacentInvocations(t *testing.T) {
@@ -46,30 +48,56 @@ func TestRequestedEditGroupsMergeAdjacentInvocations(t *testing.T) {
 	}
 }
 
-func TestRequestedEditGroupKeepsUnresolvedPaths(t *testing.T) {
-	for _, agent := range []string{"Main", "/root/worker"} {
-		for _, known := range []string{"", "Edit `a.go` · python3 (requested)\n\n"} {
-			v := newLiveActivityView()
-			v.childrenOnly = agent != "Main"
-			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
-				{Seq: 1, Agent: agent, Kind: "tool", CallID: "edit", Text: known + "Edit · python3 (requested)\n\nRun `go test ./...`"},
-			}})
-			feed := v.renderFeed(100, 80)
-			if agent == "Main" {
-				feed = v.renderConversation(100)
-			}
-			got := ansi.Strip(strings.Join(feed.lines, "\n"))
-			// The verb column is as wide as the widest verb beside it.
-			row := "Edit paths unavailable via python3 · requested"
-			if known != "" {
-				row = "     paths unavailable"
-			}
-			if strings.Count(got, "· requested") != 1 || strings.Contains(got, "(requested)") || !strings.Contains(got, row) || !strings.Contains(got, "go test ./...") {
-				t.Fatalf("%s lost or detached unresolved targets:\n%s", agent, got)
-			}
-			if known != "" && !strings.Contains(got, "a.go") {
-				t.Fatalf("%s lost the known target:\n%s", agent, got)
-			}
+func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
+	const command = "python3 - <<'PY'\nfrom pathlib import Path\nname='a'\nname += '.txt'\n(Path('src') / name).write_text('new')\nPY"
+	for _, partial := range []bool{false, true} {
+		command := command
+		if partial {
+			command = strings.Replace(command, "name='a'", "Path('known.go').write_text('x')\nname='a'", 1)
+		}
+		for _, tracked := range []bool{false, true} {
+			t.Run(fmt.Sprintf("partial=%v/tracked=%v", partial, tracked), func(t *testing.T) {
+				u := newAppServerSessionTestUI(t, t.TempDir())
+				u.view.conversation = true
+				u.view.painter.Theme = livediff.DarkTheme
+				now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+				u.view.clock = func() time.Time { return now }
+				native := &liveActivityNativeItem{thread: "main", item: "cmd", command: command, status: "completed"}
+				if tracked {
+					native.segments = []commandSegment{{source: command, text: execSegmentText(command)}}
+				}
+				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+					Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command), Observed: now, native: native,
+				}}})
+				feed := u.view.renderFeed(100, 40)
+				var opened bool
+				for _, snippet := range feed.snippets {
+					if u.shell.openOutput(u.view, snippet) {
+						opened = true
+						break
+					}
+				}
+				if !opened || len(u.shell.output.pages) != 1 || u.shell.output.pages[0].EditSource != "" {
+					t.Fatal("unresolved edit has no ordinary command dialog")
+				}
+				// The interpreter projection is the original source, not a made-up edit.
+				page := u.view.painter.DialogPage(u.shell.output.pages[0], 100)
+				var source string
+				for _, line := range page.Lines {
+					source += ansi.Strip(line.Text) + "\n"
+				}
+				if !strings.Contains(source, "name += '.txt'") || !strings.Contains(source, ".write_text('new')") {
+					t.Fatalf("dialog lost original source: %q", source)
+				}
+				snapshot := "unresolved-edit-command"
+				if partial {
+					snapshot = "partial-edit-command"
+					if tracked {
+						snapshot += "-ran"
+					}
+				}
+				assertNativeUISnapshot(t, snapshot, feed.lines)
+			})
 		}
 	}
 }

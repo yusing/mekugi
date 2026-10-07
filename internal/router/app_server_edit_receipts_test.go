@@ -142,6 +142,38 @@ func assertCapturedCommand(t *testing.T, view *liveActivityView, thread, item, v
 	t.Fatalf("missing native command %s", item)
 }
 
+func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "cat > a.go <<'EOF'\nnew\nEOF"}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	data := newLiveDiffData()
+	data.order = []string{"receipt"}
+	receipt := &capturedActivityEdit{thread: "main", calls: []string{"cmd"}, text: "Edit `a.go` +1 -1"}
+	data.attempts["receipt"] = liveDiffAttempt{receipt: receipt}
+	u.shell.diff.data = data
+	u.applyCapturedEdits()
+	assertCapturedCommand(t, u.view, "main", "cmd", "Edit", 0)
+	if allocations := testing.AllocsPerRun(5, u.applyCapturedEdits); allocations > 1 {
+		t.Fatalf("unchanged receipt allocated %.0f times; want at most 1", allocations)
+	}
+	// A terminal host refresh must still reapply counts and keep its failure.
+	item.ExitCode = new(2)
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	assertCapturedCommand(t, u.view, "main", "cmd", "Edit", 2)
+	if !strings.Contains(u.view.entries[0].Text, "+1 -1") {
+		t.Fatal("host refresh lost captured counts")
+	}
+	// A new receipt must replace the cached projection.
+	updated := *receipt
+	updated.text = "Edit `a.go` +2 -1"
+	data.attempts["receipt"] = liveDiffAttempt{receipt: &updated}
+	u.applyCapturedEdits()
+	assertCapturedCommand(t, u.view, "main", "cmd", "Edit", 2)
+	if !strings.Contains(u.view.entries[0].Text, "+2 -1") {
+		t.Fatal("new receipt did not replace captured counts")
+	}
+}
+
 func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 	v := newLiveActivityView()
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
@@ -332,4 +364,27 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/workspace")
+	item := appServerItem{ID: "cmd", Type: "commandExecution", Cwd: "/command-dir", Command: "mcat /command-dir/read.go; rg '/command-dir/query' /command-dir/src; printf new > /command-dir/edit.go", Status: "completed", ExitCode: new(0)}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	data := newLiveDiffData()
+	data.order = []string{"receipt"}
+	data.attempts["receipt"] = liveDiffAttempt{receipt: &capturedActivityEdit{thread: "main", calls: []string{"cmd"}, text: "Edit `edit.go` +1 -1"}}
+	check := func(view *liveActivityView) {
+		t.Helper()
+		entry := view.entries[0]
+		if !strings.Contains(entry.Text, "Read `read.go`") || !strings.Contains(entry.Text, "Search `/command-dir/query` in `src`") || !strings.Contains(entry.Text, "Edit `edit.go` +1 -1") || entry.native.command != item.Command {
+			t.Fatalf("receipt changed neighboring paths, query or source: %q", entry.Text)
+		}
+	}
+	u.shell.diff.data = data
+	u.applyCapturedEdits()
+	check(u.view)
+	restored := newAppServerSessionTestUI(t, u.session.cwd)
+	restored.shell.diff.data = data
+	restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
+	check(restored.view)
 }

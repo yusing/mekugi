@@ -1,13 +1,13 @@
 ┌ 1 Main ────────────────────────────────┐
-│◆ journal                      12:00:00 │
-││ ◐ /1 Validate native journal ·        │
-││   started                             │
-││ ◆ Receipts persist before             │
-││   publication.                        │
+│◐ /1 Validate native journal · started  │
+│◆ Receipts persist before publication.  │
 │                                        │
 │● main                         12:00:00 │
 │┃ Native tools retain execution         │
 │┃ authority.                            │
+│                                        │
+│                                        │
+│                                        │
 │                                        │
 │                                        │
 │                                        │

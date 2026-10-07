@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/yusing/mekugi/internal/claude"
 	"github.com/yusing/mekugi/internal/router"
@@ -101,7 +102,14 @@ func runClaude(ctx context.Context, args []string, in, out *os.File, stderr io.W
 		return fail(err)
 	}
 	endpoint := observations.Endpoint()
-	bashEnv, err := observations.PrepareCommandTracking(ctx, execTrackHelper(), os.Getenv("BASH_ENV"))
+	config.Environment = restoreInheritedShellEnvironment(os.Environ())
+	previous := ""
+	for _, entry := range config.Environment {
+		if value, ok := strings.CutPrefix(entry, "BASH_ENV="); ok {
+			previous = value
+		}
+	}
+	bashEnv, err := observations.PrepareCommandTracking(ctx, execTrackHelper(), previous)
 	if err != nil {
 		return fail(err)
 	}

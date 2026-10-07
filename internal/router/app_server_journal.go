@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/execsegment"
 )
 
 // Match only the generated shell grammar, not commands mentioning mjournal.
@@ -14,7 +16,7 @@ func (u *appServerUI) internalJournalCommand(thread string, item appServerItem) 
 	if item.Type != "commandExecution" || u.proxy == nil || u.proxy.replayStore == nil {
 		return false
 	}
-	parts := nativeJournalCommand.FindStringSubmatch(appServerDisplayCommand(item.Command))
+	parts := nativeJournalCommand.FindStringSubmatch(execsegment.ShOriginal(appServerDisplayCommand(item.Command)))
 	if parts == nil {
 		return false
 	}
@@ -35,7 +37,7 @@ func (u *appServerUI) internalJournalCommand(thread string, item appServerItem) 
 }
 
 // lowersJournalCommand reports whether parts, a nativeJournalCommand match,
-// is a publication this translated Code Mode call issues. The opaque token
+// is a publication this translated exec call issues. The opaque token
 // alone is not provenance: the exact generated prefix must belong to the
 // durable carrier, including on resume.
 func (h *mekugiHistory) lowersJournalCommand(parts []string) bool {

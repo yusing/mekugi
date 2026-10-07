@@ -1,12 +1,14 @@
 package router
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"strings"
 
@@ -400,7 +402,13 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 			t.journalNativeTerminal = nil
 		}
 		if delivery := t.journalAnswerDelivery; delivery != nil {
-			if err := t.proxy.journals.acknowledge(t.ctx, t.proxy.replayStore, t.directory, delivery.thread, delivery.revisions, true); err == nil {
+			// The host can close its response immediately after reading the
+			// terminal event. Retain that confirmed delivery with a bounded
+			// receipt context, independent of the completed request's lifetime.
+			receiptCtx, cancel := context.WithTimeout(context.WithoutCancel(t.ctx), shutdownTimeout)
+			err := t.proxy.journals.acknowledge(receiptCtx, t.proxy.replayStore, t.directory, delivery.thread, delivery.revisions, true)
+			cancel()
+			if err == nil {
 				t.journalAnswerDelivery = nil
 			}
 		}
@@ -485,7 +493,11 @@ func (t *mekugiResponseTransform) journalTerminalMessages(response []byte) ([]ma
 		id := commentaryMessageID("journal-summary\x00" + jsonResponseID(response))
 		message := assistantCommentaryMessage(id, t.journalChildResult)
 		message["phase"] = mustMarshalJSON("final_answer")
-		retained := t.retainCommentary(message)
+		var replacement *commentaryReplacement
+		if t.shellTurnID != "" && len(t.journalNaturalAnswerIDs) > 0 {
+			replacement = &commentaryReplacement{Thread: t.shellThreadID, Turn: t.shellTurnID, Items: slices.Sorted(maps.Keys(t.journalNaturalAnswerIDs))}
+		}
+		retained := t.retainCommentaryReplacing(replacement, message)
 		if len(retained) == 0 {
 			return nil, errors.New("cannot retain child journal terminal summary")
 		}

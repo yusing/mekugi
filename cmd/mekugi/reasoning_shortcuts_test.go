@@ -12,7 +12,7 @@ func TestReasoningShortcuts(t *testing.T) {
 		if !slices.Equal(got, want) {
 			t.Fatalf("%s: got %q, want %q", effort, got, want)
 		}
-		if _, _, err := appServerArgs(got); err != nil {
+		if _, _, _, err := appServerArgs(got); err != nil {
 			t.Fatal(err)
 		}
 	}

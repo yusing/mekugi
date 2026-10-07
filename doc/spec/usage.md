@@ -25,7 +25,7 @@ to later totals without producing their own notices.
 
 Only positively observed native thread creation establishes a fresh lifetime
 baseline. Otherwise the prior window is unknown, even when accounting arrives
-before history hydration or without a native UI. Restored counters also remain
+before history hydration or without a UI. Restored counters also remain
 lower bounds: persisted counters cannot prove that a later request was retained
 before another router stopped. Later observed tokens, cost and roundtrips never
 erase this uncertainty. Host context counts and host-normalized usage cannot fill

@@ -5,11 +5,15 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func selectionTestUI(rows ...string) *terminalUI {
@@ -32,6 +36,92 @@ func selectionTestDrag(t *testing.T, u *terminalUI, x1, y1, x2, y2 int) {
 	}
 }
 
+func TestTerminalSelectionSyntaxColors(t *testing.T) {
+	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+		for _, dialog := range []bool{false, true} {
+			t.Run(fmt.Sprintf("theme=%d/dialog=%v", theme, dialog), func(t *testing.T) {
+				const source = `var text = "green"`
+				p := &activityui.Painter{Theme: theme}
+				u := selectionTestUI(p.Inline("`" + source + "` outside"))
+				u.main.view.painter.Theme = theme
+				x, y := 0, 0
+				if dialog {
+					u.width, u.height = 80, 18
+					u.openBlocks(u.main.view, []activityui.Block{{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "sample.go"}}, Tail: []string{source + " // outside"}}})
+					drawOutputDialog(u)
+					x, y = outputSelectionPoint(t, u, source)
+				}
+				paint := func() *vt.Emulator {
+					rows := slices.Clone(u.paintedRows)
+					if dialog {
+						rows = make([]string, u.height)
+						u.paintOutput(rows, u.width, u.height)
+					} else {
+						u.paintSelection(rows)
+					}
+					screen := vt.NewEmulator(u.width, u.height)
+					t.Cleanup(func() { screen.Close() })
+					for y, row := range rows {
+						fmt.Fprintf(screen, "\x1b[%d;1H%s", y+1, row)
+					}
+					return screen
+				}
+				before := paint()
+				if dialog {
+					outputSelectionDrag(u, x, y, x+len(source)-1, y)
+				} else {
+					selectionTestDrag(t, u, x, y, x+len(source)-1, y)
+				}
+				after := paint()
+				for at := x; at < x+len(source); at++ {
+					old, got := before.CellAt(at, y).Style, after.CellAt(at, y).Style
+					if got.Fg != old.Fg || got.Bg == nil || got.Bg == old.Bg || got.Attrs&uv.AttrReverse != 0 || got.Bg != after.CellAt(x, y).Style.Bg {
+						t.Fatalf("selection changed syntax or lost fill at %d: before=%+v after=%+v", at, old, got)
+					}
+				}
+				if before.CellAt(x+len(source)+1, y).Style != after.CellAt(x+len(source)+1, y).Style || u.selection.text() != source {
+					t.Fatal("selection changed adjacent styles or copied text")
+				}
+				if dialog {
+					u.selection = nil
+					u.output.query, u.output.match = "green", 0
+					searched := paint()
+					at := x + strings.Index(source, "green")
+					if searched.CellAt(at, y).Style.Fg != before.CellAt(at, y).Style.Fg || searched.CellAt(at, y).Style.Bg != after.CellAt(at, y).Style.Bg {
+						t.Fatal("search match lost syntax colors or selection fill")
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestTerminalSelectionComposerCaretStyles(t *testing.T) {
+	for _, back := range []int{0, 3} {
+		main, _ := newAppServerTestUI()
+		main.draft, main.cursorBack = "abcdef", back
+		frame, _ := main.mainFrame(40, 12, 0)
+		u := &terminalUI{main: main, width: 40, height: len(frame), paintedWidth: 40, paintedRows: frame, layout: terminalLayout{codex: terminalRect{0, 0, 40, len(frame)}}}
+		x, y := main.composerRect.x, main.composerRect.y
+		selectionTestDrag(t, u, x, y, x+5, y)
+		u.paintSelection(frame)
+		screen := vt.NewEmulator(40, len(frame))
+		defer screen.Close()
+		for y, row := range frame {
+			fmt.Fprintf(screen, "\x1b[%d;1H%s", y+1, row)
+		}
+		for at := x; at < x+6; at++ {
+			style := screen.CellAt(at, y).Style
+			if style.Attrs&uv.AttrReverse != 0 || style.Bg != screen.CellAt(x, y).Style.Bg {
+				t.Fatalf("selected composer caret breaks fill: %+v", style)
+			}
+		}
+		if back == 0 && screen.CellAt(x+6, y).Style.Attrs&uv.AttrReverse == 0 {
+			t.Fatal("selection cleared the unselected caret")
+		}
+	}
+}
+
 func TestTerminalUISelectionDragText(t *testing.T) {
 	for _, tt := range []struct {
 		name           string
@@ -43,7 +133,8 @@ func TestTerminalUISelectionDragText(t *testing.T) {
 		{"reverse", []string{"hello world"}, 4, 0, 0, 0, "hello"},
 		{"multiline", []string{"one two", "three four"}, 4, 0, 4, 1, "two\nthree"},
 		{"reverse multiline", []string{"one two", "three four"}, 4, 1, 4, 0, "two\nthree"},
-		{"wide styled", []string{"\x1b[31mA你好B\x1b[0m"}, 1, 0, 4, 0, "你好"},
+		{"wide styled", []string{"\x1b[31mA你好B\x1b[0m"}, 2, 0, 4, 0, "你好"},
+		{"combining", []string{"Ae\u0301Z"}, 1, 0, 2, 0, "e\u0301Z"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			u := selectionTestUI(tt.rows...)
@@ -87,54 +178,89 @@ func TestTerminalUISelectionSkipsFrames(t *testing.T) {
 	}
 }
 
-func TestTerminalUISelectionReferencePreservesDraftAndUndo(t *testing.T) {
-	u := selectionTestUI("hello world")
-	u.main.insertDraft("before after")
-	u.main.cursorBack = len("after")
-	u.focus = 2
-	selectionTestDrag(t, u, 0, 0, 4, 0)
-	if err := u.key('r'); err != nil {
-		t.Fatal(err)
-	}
-	if u.main.draft != "before [Selected message] after" || u.focus != 0 || u.selection != nil {
-		t.Fatalf("reference: draft=%q focus=%d selection=%v", u.main.draft, u.focus, u.selection)
-	}
-	if got := u.main.selections; len(got) != 1 || got[0].text != "hello" || u.main.draft[got[0].start:got[0].end] != "[Selected message]" {
-		t.Fatalf("reference token = %+v", got)
-	}
-	u.main.undoDraft(false)
-	if u.main.draft != "before after" || u.main.cursorBack != len("after") {
-		t.Fatalf("undo reference lost draft/cursor: %q, %d", u.main.draft, u.main.cursorBack)
-	}
-}
-
-func TestTerminalUISelectionCopyAndClear(t *testing.T) {
-	for _, action := range []byte{'c', 3, 27} {
-		t.Run(string(action), func(t *testing.T) {
-			u := selectionTestUI("hello world")
-			u.main.draft = "keep me"
-			selectionTestDrag(t, u, 0, 0, 4, 0)
-			if err := u.key(action); err != nil {
-				t.Fatal(err)
+func TestTerminalUISelectionActions(t *testing.T) {
+	for _, dialog := range []bool{false, true} {
+		for _, key := range []string{"r", "R", "c", "C", "\x03", "\x1b", "reference click", "copy click", "clear click", "separator", "question", "y"} {
+			if key == "y" && !dialog {
+				continue
 			}
-			if action == 27 {
-				// A lone Escape clears only after the parser has ruled out a CSI sequence.
-				if u.selection == nil {
-					t.Fatal("Escape cleared selection before sequence timeout")
+			t.Run(fmt.Sprintf("dialog=%v/%q", dialog, key), func(t *testing.T) {
+				u := selectionTestUI("hello world")
+				mention := "[Selected message]"
+				if dialog {
+					u, _ = outputSelectionFixture("hello world\n", false)
+					u.main, _ = newAppServerTestUI()
+					x, y := outputSelectionPoint(t, u, "hello")
+					outputSelectionDrag(u, x, y, x+4, y)
+					mention = "[Selected dialog]"
+				} else {
+					selectionTestDrag(t, u, 0, 0, 4, 0)
 				}
-				u.sequenceAt = time.Now().Add(-time.Second)
-				if err := u.flushEscape(); err != nil {
-					t.Fatal(err)
+				u.main.draft, u.main.cursorBack, u.focus = "before after", len("after"), 2
+				if key == "question" {
+					u.main.questions.active = &nativeQuestionCall{questions: []nativeQuestion{{}}}
 				}
-			}
-			want := ""
-			if action == 'c' || action == 3 {
-				want = "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("hello")) + "\x07"
-			}
-			if u.selection != nil || u.main.draft != "keep me" || u.clipboard != want {
-				t.Fatalf("action %q: selection=%v draft=%q clipboard=%q", action, u.selection, u.main.draft, u.clipboard)
-			}
-		})
+				selected := u.selection
+				action := key
+				if strings.Contains(key, "click") || key == "separator" {
+					x, y := map[string]int{"reference click": 1, "copy click": 15, "clear click": 28, "separator": 12}[key], u.height-1
+					if dialog {
+						x += u.output.rect.x + 3
+						y = u.output.rect.y + u.output.rect.h - 1
+					}
+					if err := u.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", x+1, y+1)); err != nil {
+						t.Fatal(err)
+					}
+					action = map[string]string{"reference click": "r", "copy click": "c", "clear click": "\x1b", "separator": "separator"}[key]
+				} else {
+					if action == "question" {
+						action = "r"
+					}
+					if err := u.key(action[0]); err != nil {
+						t.Fatal(err)
+					}
+					if action == "\x1b" {
+						u.sequenceAt = time.Now().Add(-time.Second)
+						if err := u.flushEscape(); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				if action == "separator" {
+					if u.selection != selected {
+						t.Fatal("separator changed selection")
+					}
+					return
+				}
+				reference := action == "r" || action == "R"
+				if u.selection != nil || dialog && (u.output == nil) != reference {
+					t.Fatal("wrong selection or dialog lifetime")
+				}
+				if reference {
+					want := "before " + mention + " after"
+					if key == "question" {
+						want = "before > hello\n\nafter"
+					} else if len(u.main.selections) != 1 || u.main.selections[0].text != "hello" {
+						t.Fatal("reference lost quote")
+					}
+					if u.main.draft != want || u.focus != 0 {
+						t.Fatalf("reference draft=%q focus=%d", u.main.draft, u.focus)
+					}
+					u.main.undoDraft(false)
+					if u.main.draft != "before after" || u.main.cursorBack != len("after") {
+						t.Fatal("undo lost draft/caret")
+					}
+				} else {
+					want := ""
+					if action != "\x1b" {
+						want = "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("hello")) + "\x07"
+					}
+					if u.clipboard != want || u.main.draft != "before after" || u.focus != 2 {
+						t.Fatal("copy/clear changed draft, focus or clipboard")
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -246,7 +372,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 			u.shell.diffOpen = false
 			u.shell.journalOpen = false
 		}
-		view.applyAppServerItem("", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "hello [report](</tmp/my project/report.go:12>)"})
+		view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "hello [report](</tmp/my project/report.go:12>)"})
 		screen := vt.NewEmulator(120, 30)
 		defer screen.Close()
 		var wire bytes.Buffer

@@ -27,15 +27,15 @@ const (
 )
 
 // Split returns the script's segments when every segment can be tracked
-// without changing the script's behavior. It reports false for single
-// commands, for scripts whose first command runs before the shell's DEBUG
-// trap can replace the script, and for scripts whose semantics depend on the
-// shell state the instrumentation touches: job control, traps, top-level
-// returns, process replacement, command tracing, and variables naming the
-// current command.
+// without changing the script's behavior. Single commands are observed in
+// place, without a rewrite. It reports false for lists whose first command
+// runs before the shell's DEBUG trap can replace the script, and for scripts
+// whose semantics depend on the shell state the instrumentation touches:
+// job control, traps, top-level returns, process replacement, command tracing,
+// and variables naming the current command.
 func Split(script string) ([]Segment, bool) {
 	program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(script), "")
-	if err != nil || strings.Contains(script, "__mekugi_") || !trapsFirst(program.Stmts) || !trackable(program) {
+	if err != nil || strings.Contains(script, "__mekugi_") || !trackable(program) {
 		return nil, false
 	}
 	var segments []Segment
@@ -53,8 +53,11 @@ func Split(script string) ([]Segment, bool) {
 	for _, stmt := range program.Stmts {
 		add(stmt)
 	}
-	if len(segments) < 2 {
+	if len(segments) == 0 || len(segments) > 1 && !trapsFirst(program.Stmts) {
 		return nil, false
+	}
+	if len(segments) == 1 {
+		return segments, true
 	}
 	// The rewrite must parse, or the shell would reject a script that the
 	// user's own shell accepts.
@@ -143,7 +146,7 @@ func trapsFirst(stmts []*syntax.Stmt) bool {
 var untrackedBuiltins = []string{"wait", "jobs", "fg", "bg", "disown", "trap", "coproc", "suspend", "caller"}
 
 // Variables the instrumentation changes between segments.
-var untrackedParameters = []string{"PIPESTATUS", "_", "LINENO", "BASH_LINENO", "BASH_COMMAND", "BASH_SOURCE", "FUNCNAME", "BASH_EXECUTION_STRING"}
+var untrackedParameters = []string{"!", "PIPESTATUS", "_", "LINENO", "BASH_LINENO", "BASH_COMMAND", "BASH_SOURCE", "FUNCNAME", "BASH_EXECUTION_STRING"}
 
 func trackable(program *syntax.File) bool {
 	ok := true

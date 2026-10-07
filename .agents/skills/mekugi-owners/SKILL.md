@@ -19,8 +19,11 @@ behavioral contract. UI presentation packages and router session integration are
 | Versioned plugin shared-core adapter and private WASM bridge | `internal/router/toolplugin/core-v1.mjs`, `internal/router/toolplugin/core-v1.d.ts`, `internal/sharedwasm` |
 | Activity presentation, diff navigation/previews, and terminal primitives | `internal/ui/activity`, `internal/ui/diffview`, `internal/ui/terminal`; native session integration remains in `internal/router` |
 | Native screen composition and pane layout | `internal/router/native_shell.go`; preview fixtures in `internal/router/app_server_preview_test.go` |
-| Session/composer controller and host-event reconciliation | `internal/router/app_server_ui.go`; input paths in `internal/router/app_server_input.go` |
-| Dialog integration and background fading | `internal/router/output_dialog.go`, `internal/ui/activity/dialog.go`, `internal/ui/activity/faint.go` |
+| Session/composer controller and host-event reconciliation | `internal/router/app_server_ui.go`; input paths in `internal/router/app_server_input.go`; composer error display in `internal/router/composer_notice.go` |
+| Source-aware selection, scrolling, and logical copy | `internal/router/terminal_selection.go`, `internal/router/terminal_source_selection_test.go`, `internal/router/terminal_selection_scroll_test.go`; logical row semantics in `internal/logicalrow` |
+| Native approval dialog, Codex approval responses, and approval-mode thread policy | `internal/router/app_server_approvals.go`; question dock in `internal/router/app_server_questions.go` |
+| Remote VCS write guard: classification, command instrumentation, and approval hand-off | `internal/vcsguard` (hook protocol in `hook.go`, source instrumentation in `rewrite.go`, startup setup in `shell.go`), `cmd/mekugi-exec/guard*.go`, `internal/router/vcs_guard.go`; session hook registration in `cmd/mekugi/vcs_guard_hook.go`, effective-hook checks in `internal/router/app_server_guard_hook.go`, shell environment in `cmd/mekugi/wrap.go`; contract in `doc/spec/execution.md` REQ-EXECUTION-003 |
+| Dialog integration, Markdown file links, and background fading | `internal/router/output_dialog.go`, `internal/router/markdown_file_dialog.go`, `internal/ui/activity/dialog.go`, `internal/ui/activity/faint.go` |
 | Shared Markdown and activity painting | `internal/ui/activity/paint.go`; rendering coverage in `internal/ui/activity/*snapshot_test.go` |
 | Submitted file attachments | `internal/router/composer_file_attachment.go`; shared path formatting in `internal/pathdisplay` |
 | Journal cards and agent roster presentation | `internal/router/native_journal.go`, `internal/router/journal_card.go`, `internal/router/native_roster.go`; durable journal state remains separate |
@@ -36,6 +39,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Claude native command segments | Literal wrapper adapter: `internal/execsegment/claude.go`; shared shell observer: `internal/execsegment/hook.go`, `cmd/mekugi-exec/main.go`; native registration and shared UI consumption: `internal/router/runtime_exec_track.go`, `internal/router/runtime_observation.go`, `internal/router/exec_track.go`. Completed replay: `internal/router/command_segments.go`, `internal/router/native_runtime_segments.go`; native child/fork selections: `internal/router/runtime_history.go`, `internal/claude/bridge/session_history.ts`. Native acceptance: `internal/router/runtime_exec_track_claude_native_test.go`, `internal/router/native_runtime_segments_claude_native_test.go`; gated segment/dialog/cancellation PTY: `internal/router/native_runtime_segments_pty_test.go`; rendered fixtures and differential checks: `internal/router/runtime_exec_track_test.go`. |
 | Native tool observation and Bash capture | `internal/router/runtime_observation.go`, `internal/router/runtime_observation_service.go`; native hooks in `internal/claude/bridge/companion.ts`; interface in `doc/spec/changes.md` |
 | Claude journal and tool-guidance delivery | Workflow source: `internal/router/claude_companion_skill.md`; invocation-local generation: `internal/router/runtime_companion.go`; bounded loading: `internal/claude/bridge/guidance.ts`; preset and native hook delivery: `internal/claude/bridge/bridge.ts`, `internal/claude/bridge/companion.ts`. Native MCP receipts and large-read output: `internal/router/runtime_journal.go`. Contract: `doc/spec/guide.md`. Native prompt/adoption entrypoints: `runtime_guidance_claude_native_test.go`, `runtime_journal_adoption_claude_live_test.go` in `internal/router`. |
+| Shared Diff syntax and word highlighting | `internal/livediff/render.go`, `internal/livediff/word_diff.go`, `internal/livediff/theme.go`; source previews in `internal/ui/diffview/preview.go` |
 | Codex app-server stdio RPC and child-process lifecycle | `internal/appserver` |
 | Router lifecycle, launch flags, modes, and HTTP endpoints | `internal/router/server.go`, `internal/router/flags.go` |
 | Third-party native-agent projection, Grok authentication/translation, and model metadata | `internal/router/subagent_bridge.go`, `internal/router/grok_*.go` |
@@ -43,13 +47,18 @@ behavioral contract. UI presentation packages and router session integration are
 | Per-thread token/cost reports and final-answer stream ordering | `internal/router/thread_usage.go`, `internal/router/token_cost.go`, `internal/router/final_answer_stream.go` |
 | Codex-facing WebSocket sessions, incremental history, and steering | `internal/router/server_websocket.go` |
 | Codex authentication and upstream Responses transport | `internal/router/client.go`, `internal/router/client_websocket.go` |
+| Provider-measured output throughput and response-byte receipt timing | `internal/router/output_throughput.go`, `internal/router/thread_usage_store.go`, `internal/router/stream_diagnostics.go`; capture snapshots remain in `capturer` |
 | Stock tool preservation and response observation | `internal/router/mekugi_proxy.go`, `internal/router/mekugi_response_transform.go`, `internal/router/native_apply_patch.go` |
+| Model-visible duplicate output references | `internal/router/output_dedupe.go`; content matching in `internal/outputdedupe`; provider-prefix reuse in `internal/router/provider_history.go` |
+| Shell segment reports and measured command timing | `internal/execsegment`, `cmd/mekugi-exec`, `internal/router/exec_track.go`; isolated shell fixtures in `internal/router/exec_track_test.go`, sandbox acceptance in `internal/router/app_server_exec_track_codex_e2e_test.go` |
 | Journal state, router-owned CRUD, terminal delivery, and replay | `internal/router/journal.go`, `internal/router/journal_tool.go`, `internal/router/journal_delivery.go` |
 | Journal continuation/reset and recovery text | `internal/router/journal_reset_driver.go`, `internal/router/journal_compaction.go`, `internal/router/journal_summary.go` |
 | Journal writing rules and projected agent guidance | Prose source: `guidance/frontend_guidance.md.tmpl`; generated output: `internal/router/frontend_guidance.md`; embedding: `internal/router/frontend_guidance.go`; journal consumer: `internal/router/journal_tool.go`. Generation/check: `TestGeneratedFrontendGuidanceIsCurrent` in `internal/router/frontend_guidance_generation_test.go`. Frontend tool descriptions remain owned by their executable tool sources. |
+| Inherited instruction conflict cleanup and prepared-request role projection | `internal/router/instruction_conflicts.go`, `internal/router/instruction_cache_test.go`, `internal/router/stock_guidance_workflow_test.go`; recorded stock fixtures in `internal/router/testdata/instruction-cleanup/`, contract in `doc/spec/guide.md` |
 | AX runtime evidence and offline measurements | `capturer/ax.go`; authenticated reader dispatch in `internal/router/tool_plugin_worker.go` |
 | Offline logical session inspection | `internal/router/session_inspect.go`, dispatched by `cmd/mekugi/main.go` |
-| Offline native UI replay and profiling | `internal/router/session_ui_replay.go`; interface in `doc/spec/session_replay.md`, usage under README's "Replay a session" |
+| Offline UI replay and profiling | `internal/router/session_ui_replay.go`; interface in `doc/spec/session_replay.md`, usage under README's "Replay a session" |
+| Live session and offline replay performance profiling | `internal/router/profiling.go`, `internal/router/profiling_disabled.go`; diagnostic binary recipe in `Makefile` |
 | Observed review diffs, change IDs, and bounded reads | `review.go`, `internal/router/native_apply_patch.go`, `internal/router/mekugi_changes.go`, `internal/router/mchanges.go` |
 | Durable replay, request-visible history, and retained output | `internal/router/mekugi_store.go`, `internal/router/mekugi_history.go`, `internal/router/shell_output_read.go` |
 | Authenticated frontend registry, worker, and PATH | `internal/router/tool_registry.go`, `internal/router/tool_plugin_worker.go`, `internal/router/tool_wrapper.go`, `internal/runtimepath` |
@@ -74,11 +83,14 @@ independent user sessions. The logical inspection interface is in `doc/spec/sess
   Paginate remaining evidence with `--offset`. Select JSON fields for a smaller view rather
   than piping minified JSON through a line limit such as `head`.
 - For reproducible UI lag, the replay command accepts a literal session ID, not a rollout path:
-  `mekugi replay-session --session ID --headless --width 160 --height 48 --cpu-profile
-  /absolute/path/to/new-profile.pprof`. Keep inputs, speed and dimensions fixed for comparisons.
+  `bin/mekugi-pprof replay-session --session ID --headless --width 160 --height 48`.
+  Build with `make mekugi-pprof`; use the printed profiling URL with `go tool pprof`.
+  Keep inputs, speed and dimensions fixed for comparisons.
   Replay measures rendering, not terminal backpressure or live host/provider latency; use live
   profiling for those. The replay contract owns available selectors and limitations.
 
 When investigating an older running installation, identify that process's binary and artifact
 locations before applying the current storage layout. Use `CONTEXT-TESTS.md` for focused checks;
 its owner table remains the validation authority.
+For live CPU/heap faults, sample the identified process and resume the identified session.
+Replay or a fresh session can miss retained process state and does not replace that evidence.

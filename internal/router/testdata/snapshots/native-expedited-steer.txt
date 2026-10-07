@@ -1,0 +1,16 @@
+Mekugi dev • codex
+
+
+
+
+
+
+
+• Sending steer once interrupted · ctrl+c restores input
+  ↳ Apply this instruction now.
+• Queued for the next turn · alt+↑ edits
+  ↳ Next turn stays queued.
+
+╭─ ◐ Interrupting… 0s ─────────────────────────────────────────────────────────╮
+│ ❯ Keep editing this draft.                                                   │
+╰───────────────────────────────────────────────────────────────────────── 0% ─╯

@@ -1,12 +1,17 @@
 package router
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/yusing/mekugi/internal/pathdisplay"
+)
 
 // Source: codex-rs/shell-command/src/parse_command.rs:1787:1842,2349:2389
 // and codex-rs/tui/src/exec_cell/render.rs:384:392@6f6af0fce4381233fa2e83dc24641167e68dfcb5.
-// Display query and target instead of execution flags. Preserve authored paths
-// and all explicit patterns; this projection never changes the shell command.
-func toolActivitySearch(argv []string) (string, bool) {
+// Display query and target instead of execution flags. Shorten paths against
+// the known command directory and preserve all explicit patterns; this
+// projection never changes the shell command.
+func toolActivitySearch(argv []string, cwd string) (string, bool) {
 	var queries, paths []string
 	files, explicit, optionsEnded := false, false, false
 	for i := 1; i < len(argv); i++ {
@@ -55,6 +60,9 @@ func toolActivitySearch(argv []string) (string, bool) {
 	if files {
 		target := "."
 		if len(paths) != 0 {
+			for i, path := range paths {
+				paths[i] = pathdisplay.ForWorkspace(cwd, path)
+			}
 			target = strings.Join(paths, " ")
 		}
 		return "List " + toolActivityCode(target), true
@@ -74,7 +82,7 @@ func toolActivitySearch(argv []string) (string, bool) {
 			} else {
 				display.WriteString(" ")
 			}
-			display.WriteString(toolActivityCode(path))
+			display.WriteString(toolActivityCode(pathdisplay.ForWorkspace(cwd, path)))
 		}
 	}
 	return display.String(), true

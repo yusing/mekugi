@@ -1,10 +1,14 @@
 package router
 
 import (
+	"path/filepath"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/execsegment"
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
-// Use one label table for native calls and normalized Code Mode identifiers.
+// Use one label table for native calls and normalized exec identifiers.
 // Retain full arguments: auxiliary options are part of the observed operation too.
 func toolActivityBuiltinLabel(name string) string {
 	switch name {
@@ -54,5 +58,19 @@ func toolActivityFenced(language, input string) string {
 }
 
 func toolActivityShell(script string) string {
-	return toolActivityShellLanguage(script, "bash")
+	return toolActivityShellInDirectory(script, "")
+}
+
+func toolActivityShellInDirectory(script, cwd string) string {
+	return toolActivityShellLanguage(toolActivityShellSource(script), "bash", cwd)
+}
+
+func toolActivityShellSource(script string) string {
+	return vcsguard.DisplayScript(execsegment.ShOriginal(script), func(directory string) bool {
+		if !filepath.IsAbs(directory) || filepath.Base(directory) != vcsguard.Directory {
+			return false
+		}
+		_, ok := toolRegistryIDFromDirectory(filepath.Dir(directory))
+		return ok
+	})
 }

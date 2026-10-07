@@ -1,4 +1,4 @@
 ╭─ ✓ journal ───────────────────────────────────────────────────────────────────── 22:31 ╮
 │ This turn                                                                              │
-│ ◆ Validation passed with go test. See report.                                          │
+│ ◆ Validation passed with cat  x | sort. See report.                                    │
 ╰────────────────────────────────────────────────────────────────────────────────────────╯

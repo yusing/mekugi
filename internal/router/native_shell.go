@@ -299,7 +299,18 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			draw(left, body)
 		} else {
 			l.codex = terminalRect{left.x + 1, left.y + 1, iw, ih}
-			draw(left, nativeBox(left.w, left.h, nativeTitle(1, "Main", u.main.questionBadge(), u.focus == 0), u.main.mainHeaderRight(left.w, u.focus == 0), u.focus == 0, body, rules))
+			detail := u.main.mainTitleDetail()
+			if set := u.main.view.activeSkills()["Main"]; set != nil && u.main.view.skillsHover == "Main" {
+				detail = strings.TrimSuffix(detail, set.label()) + activityui.Underline(set.label())
+			}
+			title := nativeTitle(1, "Main", detail, u.focus == 0)
+			// The skill count ends the title, after the frame corner and a space.
+			// A truncated title has no reliable target.
+			if set := u.main.view.activeSkills()["Main"]; set != nil && strings.HasSuffix(ansi.Strip(detail), set.label()) && ansi.StringWidth(title)+5 <= left.w {
+				end := left.x + 2 + ansi.StringWidth(title)
+				l.mainSkills = terminalRect{end - ansi.StringWidth(set.label()), left.y, ansi.StringWidth(set.label()), 1}
+			}
+			draw(left, nativeBox(left.w, left.h, title, u.main.mainHeaderRight(left.w, u.focus == 0), u.focus == 0, body, rules))
 		}
 	}
 	if !framed && right.w > 0 && right.h > 0 && u.journalOpen {
@@ -489,7 +500,7 @@ func (u *terminalUI) nativeStatus() string {
 		hints = terminalHints{{"ctrl+b 1-5", "focus", 0}, {"2/3", "diff or activity", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
 		return tabs.String() + "  " + hints.render()
 	case u.focus == 1:
-		hints = terminalHints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"r", "follow", 0}, {"?", "help", 0}}
+		hints = terminalHints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"?", "help", 0}}
 		if u.diff.back.kind != 0 {
 			hints = append(terminalHints{{"esc", "back", 0}}, hints...)
 		}

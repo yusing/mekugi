@@ -17,7 +17,7 @@ func TestConversationJoinsConsecutiveUserMessagesInTurn(t *testing.T) {
 	v := newLiveActivityView()
 	v.conversation = true
 	user := func(turn, id, text string) {
-		v.applyAppServerItem("", "main", "main", turn, id, "item/completed", "", appServerItem{
+		v.applyAppServerItem(true, "", "main", "main", turn, id, "item/completed", "", appServerItem{
 			Type: "userMessage", Content: []byte(fmt.Sprintf(`[{"type":"text","text":%q}]`, text)),
 		})
 	}
@@ -52,19 +52,19 @@ func TestConversationJoinsConsecutiveUserMessagesInTurn(t *testing.T) {
 
 func TestLiveActivityNativeItemsShareStateAndRendering(t *testing.T) {
 	v := newLiveActivityView()
-	v.applyAppServerItem("", "root", "root", "turn", "answer", "item/agentMessage/delta", "partial", appServerItem{})
+	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "partial", appServerItem{})
 	first := v.entries[0].Seq
-	v.applyAppServerItem("", "root", "root", "turn", "answer", "item/started", "", appServerItem{Type: "agentMessage"})
+	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/started", "", appServerItem{Type: "agentMessage"})
 	if v.entries[0].Text != "partial" {
 		t.Fatal("late start erased streamed activity")
 	}
-	v.applyAppServerItem("", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "complete"})
-	v.applyAppServerItem("", "root", "root", "turn", "answer", "item/agentMessage/delta", "late", appServerItem{})
+	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "complete"})
+	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "late", appServerItem{})
 	if len(v.entries) != 1 || v.entries[0].Text != "complete" || v.entries[0].Seq != first || v.entries[0].blocks[0].Body != "complete" {
 		t.Fatal("activity identity/update diverged")
 	}
-	v.applyAppServerItem("", "root", "child", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "child"})
-	v.applyAppServerItem("", "root", "root", "turn", "cmd", "item/completed", "", appServerItem{Type: "commandExecution", Command: "printf ok", Status: "completed"})
+	v.applyAppServerItem(true, "", "root", "child", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "child"})
+	v.applyAppServerItem(true, "", "root", "root", "turn", "cmd", "item/completed", "", appServerItem{Type: "commandExecution", Command: "printf ok", Status: "completed"})
 	if len(v.entries) != 3 || v.entries[1].Agent != "Thread child" || v.entries[2].blocks[0].Verb != "Run" || v.entries[2].blocks[0].Code != "printf ok" {
 		t.Fatal("native items did not enter shared activity blocks")
 	}
@@ -156,11 +156,11 @@ func TestAppServerMainRosterSummary(t *testing.T) {
 	if got, _ := u.agents.current(root, time.Now()); ansi.Strip(got) != "Working" {
 		t.Fatalf("Main status missing: %q", got)
 	}
-	u.view.applyAppServerItem("", "main", "main", "turn", "answer", "item/agentMessage/delta", "Checking the roster", appServerItem{})
+	u.view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/agentMessage/delta", "Checking the roster", appServerItem{})
 	if got, _ := u.agents.current(root, time.Now()); ansi.Strip(got) != "Checking the roster" {
 		t.Fatalf("Main streaming summary missing: %q", got)
 	}
-	u.view.applyAppServerItem("", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Roster fixed"})
+	u.view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Roster fixed"})
 	if got, _ := u.agents.current(root, time.Now()); ansi.Strip(got) != "Roster fixed" {
 		t.Fatalf("Main completed summary stale: %q", got)
 	}
@@ -369,7 +369,7 @@ func TestLiveActivityQuestionLinksKeepIndividualPrompts(t *testing.T) {
 func TestLiveActivityConversationKeepsFullTextAndViewport(t *testing.T) {
 	v := newLiveActivityView()
 	text := strings.Repeat("visible line\n", 30) + "END_OF_ANSWER"
-	v.applyAppServerItem("", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: text})
+	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: text})
 	compact := v.renderFeed(80, 9)
 	v.conversation = true
 	full := v.renderFeed(80, 9)
@@ -386,7 +386,7 @@ func TestLiveActivityConversationKeepsFullTextAndViewport(t *testing.T) {
 		t.Fatal("Main did not pause the activity viewport")
 	}
 	offset := v.offset
-	v.applyAppServerItem("", "root", "root", "turn", "next", "item/completed", "", appServerItem{Type: "agentMessage", Text: "new answer"})
+	v.applyAppServerItem(true, "", "root", "root", "turn", "next", "item/completed", "", appServerItem{Type: "agentMessage", Text: "new answer"})
 	if err := u.paint(&bytes.Buffer{}, 80, 15); err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func TestLiveActivityConversationKeepsFullTextAndViewport(t *testing.T) {
 
 func TestLiveActivityMainShortTerminalKeepsNewestLine(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.view.applyAppServerItem("", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "earlier paragraph\n\nLATEST_VISIBLE_LINE"})
+	u.view.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "earlier paragraph\n\nLATEST_VISIBLE_LINE"})
 	var frame bytes.Buffer
 	if err := u.paint(&frame, 80, 6); err != nil {
 		t.Fatal(err)
@@ -418,7 +418,7 @@ func TestAppServerReusesTerminalShellAndJournalRenderer(t *testing.T) {
 		t.Fatal(err)
 	}
 	if u.shell.layout.codex.w != 58 || u.shell.layout.journal.h != u.shell.layout.codex.h || u.shell.layout.live.h != 0 || u.shell.layout.vertical != 60 {
-		t.Fatalf("native UI changed the existing pane positions: %+v", u.shell.layout)
+		t.Fatalf("UI changed the existing pane positions: %+v", u.shell.layout)
 	}
 	if err := u.paint(&bytes.Buffer{}, 100, 4); err != nil {
 		t.Fatal(err)

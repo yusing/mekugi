@@ -1,3 +1,12 @@
-✗ Main                                                                  12:00:00
-│ Journal compaction unavailable; using the provider summary. Error: session
-│ storage lease is not a regular file
+Mekugi dev • codex
+
+
+
+
+
+
+
+
+╭─ ✗ Journal compaction unavailable; using the provider summary. Erro… ── [✓] ─╮
+│ ❯                                                                            │
+╰───────────────────────────────────────────────────────────────────────── 0% ─╯

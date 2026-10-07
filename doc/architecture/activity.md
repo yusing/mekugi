@@ -36,10 +36,16 @@ stable entry IDs move with their source;
 consumers do not maintain index-aligned entry and block collections. Main's
 threaded layout invalidates cross-entry dependent runs on record updates, while
 ordinary Activity updates keep unrelated completed runs warm.
+The commentary replay record owns the exact provider item IDs contained in an
+enriched child result, scoped to workspace, thread, and turn. Native feed records
+consume that provenance to replace the source cards in place, preserving stable
+links and timestamps. Reversed live arrival and older history pages cannot restore
+the replaced cards. Missing provenance preserves host content; text and ID prefixes
+do not establish replacement. This presentation does not change host transcripts.
 
 ## CTR-ACTIVITY-002 — Native child history pages
 
-The native UI owns request-local child pagination state, keyed by stable root
+The UI owns request-local child pagination state, keyed by stable root
 and child IDs. Codex owns visible lineage, including inherited fork items and
 archived descendants. Session switches retire response correlation and cursors;
 fresh resume rediscovers history instead of reviving continuation handles.
@@ -60,10 +66,18 @@ out-of-scope items are errors, not end-of-history. A null `nextCursor` ends a tu
 then the next read selects the preceding turn. Pagination errors are never
 silently replaced by an unbounded read.
 
+Active skills reconstruct from Codex event history on exit/resume, without a new durable store; see the [display contract](../spec/native_ui.md#session-status).
+Paginated child skill scans are independent of lazy Activity reads: descending `thread/items/list` pages cover turns and inherited history, stopping at the latest completed compaction.
+Only one bounded scan runs at a time; incomplete or failed scans leave counts unknown with a notice. Live resets override scans; session switches retire correlation. Observation neither resumes children nor invokes a model.
+
 Unloaded history, loading, and failed reads have separate presentation states.
 Pending rollout placements stay with their child until their item/turn is
 loaded. Stable Activity entry IDs survive older-page insertion and continue
-to own output and Main links. Existing transcript retention remains bounded.
+to own output and Main links. Transcript retention retires completed records
+before live running commands, which survive until completion. A feed may
+temporarily exceed its normal retained-record limit when all retained commands
+are live; [running-header pinning](../spec/activity_display.md#agents-roster-and-navigation)
+does not revive running state on replay.
 While an older page is pending, same-child lifecycle notifications reconcile
 after the page; deltas are not retained, and buffer saturation cancels the
 observational read before applying live events. Cancellation retires only

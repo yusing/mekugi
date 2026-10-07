@@ -20,7 +20,7 @@ import (
 // including router-generated journal continuations.
 type requestExecutor struct {
 	titleGenerator *sessionTitleGenerator
-	serviceTiers   map[string]string
+	serviceTiers   *serviceTierSettings
 	provider       responseProvider
 	output         io.Writer
 	issues         *CriticalErrors
@@ -149,7 +149,9 @@ func (a *requestAttempt) run() (*requestContinuation, error) {
 	if err := a.prepare(); err != nil {
 		return nil, err
 	}
-	if a.tryJournalCompaction() {
+	if answered, err := a.tryJournalCompaction(); err != nil {
+		return nil, err
+	} else if answered {
 		if err := a.prepareResponse(); err != nil {
 			return nil, err
 		}
@@ -167,6 +169,9 @@ func (a *requestAttempt) run() (*requestContinuation, error) {
 	}
 	if err := a.prepareWire(); err != nil {
 		return nil, err
+	}
+	if a.metadataValid && a.metadata.RequestKind == responses.Compaction {
+		capturer.ObserveCompaction(a.startCtx, "provider", 0, 0, 0)
 	}
 	if err := a.forward(); err != nil {
 		return nil, err
@@ -194,7 +199,7 @@ func (a *requestAttempt) prepare() error {
 	}
 	a.threadID = codexThreadID(a.headers)
 	if a.metadataValid && a.metadata.RequestKind == responses.Turn && a.executor.titleGenerator.needsPrompt(a.threadID) {
-		a.executor.titleGenerator.observe(a.threadID, journalQuestionFromInput(a.request.fields["input"], "/root"), a.headers, false)
+		a.executor.titleGenerator.observe(a.threadID, requestUserTextFromInput(a.request.fields["input"], "/root", true), a.headers, false)
 	}
 	a.finalization.threadID = a.threadID
 	a.finalization.turnID = a.metadata.TurnID
@@ -230,7 +235,7 @@ func (a *requestAttempt) prepare() error {
 		exchange.history.providerReasoning = a.request.fields["reasoning"]
 	}
 	requestedTier := jsonString(a.request.fields, "service_tier")
-	if tier := effectiveServiceTier(a.request.model(), requestedTier, a.executor.serviceTiers); tier != requestedTier {
+	if tier := effectiveServiceTier(a.request.model(), requestedTier, a.executor.serviceTiers, a.threadID); tier != requestedTier {
 		a.request.fields["service_tier"] = mustMarshalJSON(tier)
 	}
 
@@ -454,6 +459,9 @@ func (a *requestAttempt) prepareResponse() error {
 	a.hooks.onUsage = func(counts tokenCounts) {
 		a.finalization.observation.usageCounts = counts
 		a.finalization.observation.usageObserved = true
+		if a.usageTracker != nil {
+			a.usageTracker.receivedAt = a.hooks.receivedAt
+		}
 		if a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices {
 			if a.mekugiTransform != nil {
 				a.mekugiTransform.observeResponseUsage(counts)
@@ -461,7 +469,7 @@ func (a *requestAttempt) prepareResponse() error {
 				a.usageTracker.observe(counts)
 			}
 		}
-		throughput := measureOutputThroughput(counts, a.providerStarted)
+		throughput := measureOutputThroughput(counts, a.providerStarted, a.hooks.receivedAt)
 		if a.usageTracker != nil {
 			throughput = a.usageTracker.throughput
 		}

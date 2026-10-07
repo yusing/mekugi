@@ -1,54 +1,46 @@
 package activity
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"testing"
 
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
-func TestMarkdownInlineSyntax(t *testing.T) {
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme, 0} {
-		p := Painter{Theme: theme}
-		for _, code := range []string{"git commit -m 'amend: parser'", "GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash HEAD~2", "echo \"$HOME\" && printf '%s' 42", "internal/ui/activity/paint.go", "a `literal` b", "猫👩‍💻"} {
-			t.Run(fmt.Sprint(theme)+"/"+code, func(t *testing.T) {
-				source := "**before ``" + code + "`` after** tail"
-				got := p.Inline(source)
-				if ansi.Strip(got) != "before "+code+" after tail" {
-					t.Fatalf("changed inline text: %q", got)
-				}
-				screen := vt.NewEmulator(ansi.StringWidth(got)+1, 1)
-				defer screen.Close()
-				fmt.Fprint(screen, got)
-				expected := vt.NewEmulator(ansi.StringWidth(code)+1, 1)
-				defer expected.Close()
-				highlighted := strings.Join(p.Highlight("bash", code), "\n")
-				fmt.Fprint(expected, p.Theme.Accent()+strings.ReplaceAll(highlighted, "\x1b[39m", p.Theme.Accent()))
-				distinct := false
-				for x := range ansi.StringWidth(code) {
-					cell, want := screen.CellAt(7+x, 0), expected.CellAt(x, 0)
-					if cell.Content != want.Content || cell.Style.Fg != want.Style.Fg || (cell.Content != "" && cell.Style.Attrs&uv.AttrBold == 0) {
-						t.Fatalf("inline cell %d = %+v, expected syntax %+v with bold", x, cell, want)
-					}
-					distinct = distinct || cell.Style.Fg != expected.CellAt(ansi.StringWidth(code), 0).Style.Fg
-				}
-				if strings.HasPrefix(code, "git ") && !distinct {
-					t.Fatal("shell code still has uniform color")
-				}
-				if cell := screen.CellAt(7+ansi.StringWidth(code)+1, 0); cell.Style.Fg != nil || cell.Style.Attrs&uv.AttrBold == 0 {
-					t.Fatalf("syntax leaked into bold prose: %+v", cell.Style)
-				}
-				if cell := screen.CellAt(ansi.StringWidth(got)-1, 0); !cell.Style.IsZero() {
-					t.Fatalf("style leaked after prose: %+v", cell.Style)
-				}
-			})
-		}
+func TestUISnapshotMarkdownStyles(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		theme livediff.Theme
+	}{
+		{"terminal", livediff.TerminalTheme},
+		{"dark", livediff.DarkTheme},
+		{"light", livediff.LightTheme},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := Painter{Theme: tc.theme}
+			var rows []string
+			for _, code := range []string{
+				"package main",
+				"func _ready(): print(42)",
+				"#!/bin/bash",
+				"notify:         notif.FromCtx(parent.Context()).Notify,",
+				"FOO=bar command args...",
+				"\"not := code\"",
+				"internal/ui/activity/paint.go",
+				"猫👩‍💻",
+				"completed successfully",
+			} {
+				rows = append(rows, p.Inline("**before ``"+code+"`` after** tail"))
+			}
+			// Wrapped inline commands and Go, shell, and diff fences retain syntax.
+			source := markdownSyntaxSource + "\n\n```bash\necho \"$HOME\"\n```\n\n```diff\n+added\n-removed\n```"
+			rows = append(rows, p.Markdown(source, 32)...)
+			rows = append(rows, "plain after syntax")
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown_styles_"+tc.name+".txt", rows, 80)
+		})
 	}
 }
 
@@ -79,20 +71,6 @@ func TestMarkdownSyntaxSourceCopy(t *testing.T) {
 	for _, width := range []int{8, 18, 72} {
 		if got := selectedMarkdown(t, markdownSyntaxSource, width); got != want {
 			t.Fatalf("width %d: copy = %q, want %q", width, got, want)
-		}
-	}
-}
-
-func TestMarkdownFencedSyntaxPreserved(t *testing.T) {
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
-		p := Painter{Theme: theme}
-		for lang, source := range map[string]string{"go": "func main() { println(42) }", "bash": "echo \"$HOME\"", "diff": "+added\n-removed"} {
-			rows := strings.Join(p.Markdown("```"+lang+"\n"+source+"\n```", 80), "\n")
-			for _, highlighted := range p.Highlight(lang, source) {
-				if highlighted == ansi.Strip(highlighted) || !strings.Contains(rows, highlighted) {
-					t.Fatalf("%s fence lost highlighting: %q", lang, rows)
-				}
-			}
 		}
 	}
 }

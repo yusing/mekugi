@@ -34,15 +34,25 @@ type mekugiReplayStore struct {
 	liveDiff           func([]liveDiffChange)
 	maxCommentaryBytes int64
 	snapshots          *workspaceSnapshots
+	admission          *storageAdmission
 }
 type replayRecord struct {
 	Version      int
 	Workspace    string
 	CallID       string
 	Commentary   bool
-	CaptureOrder uint64 `json:",omitzero"`
+	Replacement  *commentaryReplacement `json:",omitempty"`
+	CaptureOrder uint64                 `json:",omitzero"`
 	History      mekugiHistory
 	Snapshots    *replaySnapshots `json:",omitempty"`
+}
+
+// A child result contains these exact provider answers. Native presentation can
+// replace their cards without changing host messages or relying on text matches.
+type commentaryReplacement struct {
+	Thread string
+	Turn   string
+	Items  []string
 }
 
 // Keep request-local state out of immutable replay comparisons as well as JSON.
@@ -66,9 +76,10 @@ func durableHistory(h mekugiHistory) mekugiHistory {
 		observation.WindowStart = observation.WindowStart.UTC()
 		observation.Files = slices.Clone(observation.Files)
 		for i := range observation.Files {
-			// The live-preview stamp is intentionally not serialized. Keep the
-			// request's copy while comparing against the persisted capture.
+			// Live-preview state is not serialized. Keep the request's copy
+			// while comparing against the persisted capture.
 			observation.Files[i].watchStamp = ""
+			observation.Files[i].watchMoveOnly = false
 		}
 		observation.Listings = slices.Clone(observation.Listings)
 		for i := range observation.Listings {
@@ -115,7 +126,7 @@ func openMekugiReplayStoreContext(ctx context.Context, directory string) (*mekug
 	if err := ensurePrivateStateDirectory(directory); err != nil {
 		return nil, err
 	}
-	s := &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, snapshots: newWorkspaceSnapshots(directory)}
+	s := &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, snapshots: newWorkspaceSnapshots(directory), admission: new(storageAdmission)}
 	if err := s.locked(ctx, func() error { return nil }); err != nil {
 		return nil, err
 	}
@@ -156,6 +167,12 @@ func (s *mekugiReplayStore) locked(ctx context.Context, fn func() error) (err er
 		return ctx.Err()
 	}
 	defer func() { err = errors.Join(err, lock.Unlock()) }()
+	if s.admission != nil {
+		// The file lock owns cross-process serialization. This mutex also
+		// establishes memory synchronization for the shared local snapshot.
+		s.admission.mu.Lock()
+		defer s.admission.mu.Unlock()
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -248,14 +265,14 @@ func (s *mekugiReplayStore) hasCommentary(ctx context.Context, workspace, id str
 	})
 	return
 }
-func (s *mekugiReplayStore) putCommentary(ctx context.Context, workspace string, ids []string) error {
+func (s *mekugiReplayStore) putCommentaryReplacing(ctx context.Context, workspace string, ids []string, replacement *commentaryReplacement) error {
 	if s == nil {
 		return nil
 	}
 	s = s.scoped(ctx)
 	return s.locked(ctx, func() error {
 		for _, id := range ids {
-			if err := s.write(replayRecord{Version: 1, Workspace: workspace, CallID: id, Commentary: true}); err != nil {
+			if err := s.write(replayRecord{Version: 1, Workspace: workspace, CallID: id, Commentary: true, Replacement: replacement}); err != nil {
 				return err
 			}
 		}
@@ -343,6 +360,12 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 		return err
 	}
 	if exists {
+		if r.Commentary && previous.Replacement != nil {
+			if r.Replacement != nil && !reflect.DeepEqual(previous.Replacement, r.Replacement) {
+				return errors.New("conflicting commentary replacement provenance")
+			}
+			r.Replacement = previous.Replacement
+		}
 		r.CaptureOrder = previous.CaptureOrder
 		r.History, err = mergeReplayHistory(previous.History, r.History)
 		if err != nil {
@@ -400,10 +423,29 @@ func (s *mekugiReplayStore) writeFile(name, pattern string, data []byte) error {
 			}
 		}
 	}
+	var files map[string]int64
+	if s.admission != nil {
+		revision, err := s.storageRevision()
+		if err != nil {
+			return err
+		}
+		if revision == s.admission.revision {
+			files = s.admission.files
+		}
+	}
 	if err := s.advanceStorageRevision(); err != nil {
 		return err
 	}
-	return persistence.AtomicFile(path, pattern, data, s.writes)
+	if err := persistence.AtomicFile(path, pattern, data, s.writes); err != nil {
+		return err
+	}
+	if files != nil {
+		if retainedDataName(name) || storageCatalogName(name) {
+			files[name] = int64(len(data))
+		}
+		s.admission.files = files
+	}
+	return nil
 }
 
 func ensurePrivateStateDirectory(directory string) error {

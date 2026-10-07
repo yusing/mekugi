@@ -3,7 +3,6 @@ package router
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	json "encoding/json/v2"
 	"fmt"
 	"io"
@@ -70,11 +69,12 @@ func TestJournalCompactionFallbackDebug(t *testing.T) {
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 			ctx := context.WithValue(t.Context(), debugContextKey{}, debug)
 			var output bytes.Buffer
-			if err := executeRequest(ctx, ctx, request, headers, "compact-debug", provider, &output, nil, proxy); err != nil {
-				t.Fatal(err)
-			}
-			if len(provider.forwarded) != 1 || !bytes.Equal(provider.forwarded[0], original) || !bytes.Equal(output.Bytes(), wire) {
+			err = executeRequest(ctx, ctx, request, headers, "compact-debug", provider, &output, nil, proxy)
+			if mode == "slice" && (err != nil || len(provider.forwarded) != 1 || !bytes.Equal(provider.forwarded[0], original) || !bytes.Equal(output.Bytes(), wire)) {
 				t.Fatalf("fallback altered provider request/response: forwarded=%q output=%s", provider.forwarded, &output)
+			}
+			if mode != "slice" && (err == nil || len(provider.forwarded) != 0 || output.Len() != 0) {
+				t.Fatalf("failed reset reached provider: %v forwards=%d", err, len(provider.forwarded))
 			}
 			data, err := os.ReadFile(debug.paths[0])
 			if err != nil {
@@ -88,7 +88,7 @@ func TestJournalCompactionFallbackDebug(t *testing.T) {
 					t.Fatal(err)
 				}
 				switch event["event"] {
-				case "journal_compaction_fallback":
+				case "journal_context_reset_failed":
 					fallbacks = append(fallbacks, event)
 				case "request_complete":
 					requestID, _ = event["request_id"].(string)
@@ -111,9 +111,8 @@ func TestJournalCompactionFallbackDebug(t *testing.T) {
 			if event["error"] != cause || requestID == "" || event["request_id"] != requestID || event["session_id"] != "compact-debug" || event["thread_id"] != thread {
 				t.Fatalf("fallback diagnostic lost error or request identity: %v; request=%q", event, requestID)
 			}
-			wantNotice := [4]string{"compact-debug", thread, fmt.Sprintf("journal_compaction_fallback:%x", sha256.Sum256([]byte(cause))), "Journal compaction unavailable; using the provider summary. Error: " + cause}
-			if len(notices) != 1 || notices[0] != wantNotice {
-				t.Fatalf("fixed fallback notice changed: %v", notices)
+			if len(notices) != 0 {
+				t.Fatalf("reset failure emitted a provider fallback notice: %v", notices)
 			}
 		})
 	}
@@ -130,8 +129,9 @@ func TestUISnapshotJournalCompactionFallback(t *testing.T) {
 	attempt.journalCompactionFallback(fmt.Errorf("session storage lease is not a regular file"))
 	delivery := u.applyCriticalNotices()
 	if delivery == nil {
-		t.Fatal("fallback cause did not reach the native transcript")
+		t.Fatal("fallback cause did not reach the composer")
 	}
-	assertNativeUISnapshot(t, "journal-compaction-fallback", u.view.renderFeed(80, 24).lines)
+	rows, _ := u.mainFrame(80, 12, 0)
+	assertNativeUISnapshot(t, "journal-compaction-fallback", rows)
 	delivery.finish(true)
 }

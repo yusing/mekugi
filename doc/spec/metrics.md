@@ -17,7 +17,7 @@ attempt is an SSE fallback. Unknown transport markers remain visible. Empty and
 unavailable observations MUST have explicit presentation. The open dialog refreshes
 from a detached in-process snapshot; it requires no HTTP polling or separate
 listener. `GET /` no longer serves HTML. Navigation and lifecycle belong to the
-[native UI contract](native_ui.md#session-metrics).
+[UI contract](native_ui.md#session-metrics).
 
 The capturer MUST observe both the Codex-facing Responses handler and every provider-facing
 Responses or Chat Completions attempt made by that request. Correlation MUST remain process-private and MUST NOT add a
@@ -96,9 +96,14 @@ the recorder, never reconstructed from a previous launch.
 
 `output_throughput` pairs provider-authoritative `output_tokens` with
 `duration_ns` and `measured_requests`. The timer starts immediately before forwarding
-one provider request and stops at its first terminal usage observation, including
-request latency and automatic transport retries, excluding local preparation,
-post-response delivery, tools and idle time between requests. Output includes reasoning.
+one provider request and stops when the response bytes containing its first terminal
+usage observation are read, including request latency and automatic transport retries,
+excluding local preparation, post-response delivery, tools and idle time between
+requests. Measured throughput uses the receipt time of those response bytes:
+local transformation, capture, and downstream delivery of already-read output MUST NOT
+lengthen their durations. Unread transport buffering and backpressure remain part of
+the observed provider-request duration; this is not provider-only generation speed.
+Output includes reasoning.
 Missing or inconsistent token totals, absent timing and nonpositive elapsed time
 produce no measurement, not zero TPS. Explicit zero output with positive timing
 remains a measured zero rate. The session average is the sum of measured output tokens
@@ -107,13 +112,22 @@ of request rates or session wall-clock duration. Unmeasured requests contribute 
 neither sum. Coverage is the measured-request count and summed duration. Measurements
 are attached to the usage-bearing attempt and remain cumulative after detail eviction.
 
-Main's composer and each agent's roster display the latest started forwarded
-provider request's rate, not the user/app-server turn or a streamed token estimate.
-A newly started request clears the old rate until terminal usage arrives. Late
-responses from older requests cannot replace the newest round. Retained last-round
-measurements restore by stable thread identity through the existing usage record;
-restoration never revives an in-flight stopwatch. Old records without timing leave
-throughput absent. `/session` retains its existing all-threads-in-this-launch scope.
+Main's composer and child-agent roster rows display provider-measured total output
+throughput for forwarded requests, not the user/app-server turn's rate. Main's output
+rate MUST appear only in its composer, never in its roster row. The last valid
+rate MUST remain visible while streaming, across new requests and missing terminal
+measurements, until a newer valid terminal measurement arrives. Throughput MUST
+remain absent before the first valid measurement. Local visible-output TPS estimates
+MUST NOT be displayed: visible streaming excludes hidden reasoning and cannot stand
+in for provider-counted total output. Authoritative terminal usage includes
+provider-counted reasoning. Terminal measurements from older requests MUST NOT
+replace the newest-started request's display updates.
+
+Only authoritative paired token-and-duration measurements restore by stable
+thread identity through the existing usage record; restoration never revives an
+in-flight stopwatch. Old records without timing leave throughput absent.
+`/session` retains its existing
+all-threads-in-this-launch scope and authoritative average calculation.
 
 
 Metrics v7 removes v6's previous-input-length cache attribution. It does not

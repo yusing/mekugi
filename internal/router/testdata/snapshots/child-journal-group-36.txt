@@ -1,0 +1,12 @@
+● reviewer                  12:34:56
+│ └ Read doc/spec/journal.md
+│ 
+│ Recovery keeps both task bodies.
+│ • Authored list item
+│ 
+│     code stays indented
+│ 
+│ ● Confirm fallback
+│ 
+│ └ Search recovery in
+│          internal/router

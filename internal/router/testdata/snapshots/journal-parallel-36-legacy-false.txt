@@ -1,10 +1,9 @@
-◆ journal                   12:00:00
-│ ◐ /1 Unify journal rendering ·
-│   started ›
-│ ◆ Validation passed with shared
-│   rendering. ›
-│ ⚠ /2 Provider check · blocked ·
-│   Waiting for provider evidence ›
+◐ /1 Unify journal rendering ·
+  started ›
+◆ Validation passed with shared
+  rendering. ›
+⚠ /2 Provider check · blocked ·
+  Waiting for provider evidence ›
 
 ╭─ ✓ journal · 1 open ────── 12:00 ╮
 │ This turn                        │

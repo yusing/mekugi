@@ -30,13 +30,33 @@ func TestAutoWrapProcess(t *testing.T) {
 		if os.Getenv("MEKUGI_AUTO_WRAP_HEADLESS") == "1" {
 			args = []string{"headless", "--yolo"}
 		}
-		code, err := wrapCodex(t.Context(), nil, args)
+		var routerArgs []string
+		if os.Getenv("MEKUGI_AUTO_WRAP_GUARD") == "off" {
+			routerArgs = []string{"--vcs-guard=false"}
+		}
+		code, err := wrapCodex(t.Context(), routerArgs, args)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		}
 		os.Exit(code)
 	}
 	if len(os.Args) > 4 && os.Args[4] == "app-server" {
+		if expected := os.Getenv("MEKUGI_AUTO_WRAP_GUARD"); expected != "" {
+			guard := os.Getenv("MEKUGI_VCS_GUARD_HOOK")
+			if expected == "default" {
+				link := filepath.Join(filepath.Dir(os.Getenv("BASH_ENV")), "vcs-approval.sock")
+				socket, err := os.Readlink(link)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(os.Getenv("MEKUGI_AUTO_WRAP_RPC_MARKER")+".guard", []byte(socket), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if (guard != "") != (expected == "default") {
+				t.Fatalf("guard hook for %s = %q", expected, guard)
+			}
+		}
 		marker, err := os.OpenFile(os.Getenv("MEKUGI_AUTO_WRAP_RPC_MARKER"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 		if err != nil {
 			t.Fatal(err)
@@ -73,7 +93,7 @@ func TestAutoWrapProcess(t *testing.T) {
 		os.Exit(0) // Keep the test runner's PASS line out of the RPC stream.
 	}
 	workspace := os.Getenv("MEKUGI_AUTO_WRAP_WORKSPACE")
-	body := `{"model":"gpt-test","input":[{"role":"user","content":"test"}],"tools":[{"type":"function","name":"exec_command","description":"run a command"},{"type":"custom","name":"apply_patch","description":"apply a patch"}],"tool_choice":"auto"}`
+	body := `{"model":"gpt-test","input":[{"role":"user","content":"test"}],"tools":[{"type":"custom","name":"exec","description":"Run JavaScript with tools.exec_command and tools.apply_patch"}],"tool_choice":"auto"}`
 	request, err := http.NewRequest("POST", os.Getenv("MEKUGI_BASE_URL")+"/responses", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -106,9 +126,22 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 		terminal bool
 		optOut   bool
 		failure  bool
-	}{{"terminal", true, false, false}, {"terminal-env-zero", true, true, false}, {"redirected", false, false, false}, {"terminal-failure", true, false, true}} {
+		guard    bool
+	}{{"terminal", true, false, false, false}, {"terminal-env-zero", true, true, false, false}, {"redirected", false, false, false, false}, {"terminal-failure", true, false, true, false}, {"terminal-default-guard", true, false, false, true}} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
+			launcher := os.Args[0]
+			t.Setenv("MEKUGI_AUTO_WRAP_GUARD", "off")
+			if test.guard {
+				t.Setenv("MEKUGI_AUTO_WRAP_GUARD", "default")
+				launcher = filepath.Join(dir, "mekugi")
+				if err := os.Link(os.Args[0], launcher); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "mekugi-exec"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
 			workspace := t.TempDir()
 			herdrMarker := filepath.Join(dir, "herdr-invoked")
 			rpcMarker := filepath.Join(dir, "app-server-rpc")
@@ -149,7 +182,7 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestAutoWrapProcess$", "--", "router")
+			cmd := exec.CommandContext(ctx, launcher, "-test.run=^TestAutoWrapProcess$", "--", "router")
 			var output []byte
 			var err error
 			if test.terminal {
@@ -187,6 +220,15 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 				}
 			} else if err != nil {
 				t.Fatalf("wrapper: %v\n%s", err, output)
+			}
+			if test.guard {
+				data, err := os.ReadFile(rpcMarker + ".guard")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := os.Lstat(filepath.Dir(string(data))); !os.IsNotExist(err) {
+					t.Fatalf("guard socket directory survived process exit: %s: %v", data, err)
+				}
 			}
 			if _, err := os.Stat(herdrMarker); !os.IsNotExist(err) {
 				t.Fatalf("wrapper invoked Herdr: %v", err)

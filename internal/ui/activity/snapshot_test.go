@@ -16,6 +16,14 @@ func TestUISnapshotActivityBlocks(t *testing.T) {
 		block Block
 	}{
 		{
+			name: "timeout_narrow", width: 18,
+			block: ParseOperation("Read `file.go 1:20` (timeout 90s)"),
+		},
+		{
+			name: "timeout_run", width: 44,
+			block: ParseOperation("Run (timeout 12.5s)\n```bash\nunknown arg\n```"),
+		},
+		{
 			name: "failed_command", width: 44,
 			block: Block{Kind: "op", Verb: "Run", Code: "go test ./internal/ui/activity -run TestDialog", ExitCode: 1, Duration: 125 * time.Millisecond,
 				Tail: []string{"--- FAIL: TestDialog (0.00s)", "    dialog_test.go:42: unexpected output", "FAIL"}, TailOmitted: 8},
@@ -39,6 +47,19 @@ func TestUISnapshotActivityBlocks(t *testing.T) {
 			}},
 		},
 		{
+			name: "collapsed_batch", width: 72,
+			block: func() Block {
+				batch, _ := CollapseBatch(GroupOperations([]Block{
+					{Kind: "reads", Verb: "Search", Reads: []Read{{Path: "zzz"}}},
+					{Kind: "reads", Verb: "Search", Reads: []Read{{Path: "bbb"}}},
+					{Kind: "op", Verb: "Run", Code: "foo", Lang: "bash", Fenced: true},
+					{Kind: "reads", Verb: "Read", Reads: []Read{{Path: "bar"}}},
+					{Kind: "op", Verb: "Edit", EditSource: "apply_patch"},
+				}))
+				return batch
+			}(),
+		},
+		{
 			name: "change_report", width: 80,
 			block: Block{Kind: "op", Verb: "Run", Code: "mchanges --summary", Changes: []ChangeRow{
 				{Verb: "Edited", Label: "internal/ui/activity/dialog_test.go", Added: 24, Removed: 3},
@@ -49,6 +70,9 @@ func TestUISnapshotActivityBlocks(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if len(tc.block.Timeouts) > 0 {
+				tc.block.Duration = 500 * time.Millisecond
+			}
 			p := Painter{Theme: livediff.DarkTheme}
 			uisnapshot.Assert(t, "testdata/snapshots/activity_"+tc.name+".txt", strings.Join(p.Block(tc.block, tc.width), "\n")+"\n")
 		})

@@ -54,6 +54,7 @@ type terminalRect struct{ x, y, w, h int }
 
 type terminalLayout struct {
 	codex, diff, agents, roster, live, journal terminalRect
+	mainSkills                                 terminalRect // Main's active-skill count in its title.
 	vertical, horizontal, rosterHorizontal     int
 }
 
@@ -88,7 +89,10 @@ func (u *terminalUI) key(key byte) error {
 			return nil
 		}
 		if u.focus == 0 {
-			return u.send(string([]byte{key}))
+			// Bypass shell shortcuts: even the ESC in the paste terminator
+			// belongs to the composer, not selection dismissal or transcript follow.
+			_, err := u.main.key(key)
+			return err
 		}
 		return nil
 	}
@@ -139,6 +143,7 @@ func (u *terminalUI) key(key byte) error {
 			}
 			if s == "\x1b[O" {
 				u.clearJournalHover() // No pointer report follows the pointer out of the window.
+				u.clearSkillsHover()
 			}
 			return nil
 		}
@@ -172,21 +177,8 @@ func (u *terminalUI) key(key byte) error {
 		}
 		return u.send(s)
 	}
-	if u.selection != nil && !u.selection.dragging {
-		switch key {
-		case 'r', 'R', 'c', 'C', 3:
-			if key == 3 {
-				key = 'c'
-			}
-			if key == 'R' {
-				key = 'r'
-			}
-			if key == 'C' {
-				key = 'c'
-			}
-			u.selectionAction(key)
-			return nil
-		}
+	if key != 27 && u.output == nil && u.selectionKey(string(key)) {
+		return nil
 	}
 	if key == 27 {
 		u.sequence = "\x1b"
@@ -204,7 +196,7 @@ func (u *terminalUI) key(key byte) error {
 		case '1', '2', '3', '4', '5':
 			u.selectNativePane(int(key - '1'))
 		case 'q':
-			if u.main != nil {
+			if u.main != nil && !u.main.openApprovals() {
 				u.main.openQuestions()
 			}
 		case '!':
@@ -332,7 +324,7 @@ func (u *terminalUI) send(s string) error {
 	if s == "\x1b" && u.main != nil && u.main.runtime != nil && (u.main.runtime.continuation != nil || u.main.runtime.resetRequest != "") {
 		return u.main.cancelRuntimeContinuation(true)
 	}
-	if s == "x" && u.main != nil && u.main.runtimeCanStopTask() && (u.output == nil || !u.output.typing && u.output.selection == nil) {
+	if s == "x" && u.main != nil && u.main.runtimeCanStopTask() && (u.output == nil || !u.output.typing && u.selection == nil) {
 		return u.main.runtimeStopTask()
 	}
 	if s == "\x1b" && u.focus == 2 && u.main != nil && u.main.historyLoading != nil {
@@ -345,6 +337,9 @@ func (u *terminalUI) send(s string) error {
 	}
 	if u.output != nil {
 		u.outputKey(s)
+		return nil
+	}
+	if s != "\x1b" && u.selectionKey(s) {
 		return nil
 	}
 	if u.main != nil && u.focus == 0 && u.main.statusPanel != nil {
@@ -362,6 +357,9 @@ func (u *terminalUI) send(s string) error {
 	}
 
 	if s == "\x1b" && u.main != nil && u.focus == 0 && !u.main.paste {
+		if handled, err := u.main.approvalKey(s); handled {
+			return err
+		}
 		if handled, err := u.main.questionKey(s); handled {
 			return err
 		}
@@ -374,8 +372,7 @@ func (u *terminalUI) send(s string) error {
 		return nil
 	}
 	if u.main != nil && u.focus == 0 && !u.main.paste {
-		if s == "\x1b" && u.selection != nil {
-			u.selection = nil
+		if s == "\x1b" && u.selectionKey(s) {
 			return nil
 		}
 		if handled, err := u.main.btwKey(s); handled {
@@ -399,8 +396,7 @@ func (u *terminalUI) send(s string) error {
 		}
 	}
 	if u.selection != nil && !u.selection.dragging {
-		if s == "\x1b" {
-			u.selection = nil
+		if s == "\x1b" && u.selectionKey(s) {
 			return nil
 		}
 		// Editing or navigating dismisses the contextual actions.
@@ -412,7 +408,7 @@ func (u *terminalUI) send(s string) error {
 			return u.main.keyboardInterrupt()
 		}
 		if u.main.turn != "" || u.main.starting() || u.main.submission.text != "" || len(u.main.unsent)+len(u.main.queued) > 0 {
-			return u.main.keyboardInterrupt()
+			return u.main.keyboardEscape()
 		}
 		return nil
 	}
@@ -472,6 +468,15 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	button, x, y := v[0], v[1]-1, v[2]-1
 	release := s[len(s)-1] == 'm'
+	if u.main != nil {
+		u.main.view.skillsHover = ""
+		if button == 35 && !release && u.output == nil && u.layout.mainSkills.contains(x, y) {
+			u.main.view.skillsHover = "Main"
+		}
+	}
+	if u.agents != nil && (u.output != nil || !u.layout.roster.contains(x, y)) {
+		u.agents.skillsHover = ""
+	}
 	if !u.layout.journal.contains(x, y) || u.output != nil {
 		u.clearJournalHover()
 	}
@@ -546,6 +551,22 @@ func (u *terminalUI) mouse(s string) error {
 	if u.selectionMouse(button, x, y, release) {
 		return nil
 	}
+	if u.selection == nil && u.drag == 0 && u.main != nil && u.main.composerNoticeMouse(button, x-u.layout.codex.x, y-u.layout.codex.y, release) {
+		return nil
+	}
+	if u.main != nil && u.main.btw != nil && !release && button&64 != 0 {
+		r := u.main.btw.rect
+		r.x += u.layout.codex.x
+		r.y += u.layout.codex.y
+		if r.contains(x, y) {
+			delta := outputDialogWheelRows
+			if button&1 != 0 {
+				delta = -delta
+			}
+			u.main.btw.scroll = max(0, u.main.btw.scroll+delta)
+			return nil
+		}
+	}
 	if release && u.drag != 0 {
 		u.drag = 0
 		return nil
@@ -591,6 +612,11 @@ func (u *terminalUI) mouse(s string) error {
 				u.liveDock.ScrollBatch("/root", terminalui.PaneWheelDown)
 			}
 		}
+		return nil
+	}
+	if button&^28 == 0 && !release && u.main != nil && u.layout.mainSkills.contains(x, y) {
+		u.focus = 0
+		u.openSkills(u.main.view, "Main")
 		return nil
 	}
 	pane := -1
@@ -675,6 +701,10 @@ func (u *terminalUI) mouse(s string) error {
 		} else {
 			only, selected := u.agents.only, u.agents.selected
 			u.agents.pointAgent(action, y-r.y+1, x-r.x+1)
+			if agent := u.agents.skillsRequest; agent != "" {
+				u.agents.skillsRequest = ""
+				u.openSkills(u.agents, agent)
+			}
 			u.showRosterPick(only, selected)
 		}
 	} else {
@@ -686,4 +716,13 @@ func (u *terminalUI) mouse(s string) error {
 
 func (u *terminalUI) applyDiff(ctx context.Context, event liveDiffEvent) {
 	u.applyNativeDiff(ctx, event)
+}
+
+func (u *terminalUI) clearSkillsHover() {
+	if u.main != nil {
+		u.main.view.skillsHover = ""
+	}
+	if u.agents != nil {
+		u.agents.skillsHover = ""
+	}
 }

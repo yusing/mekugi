@@ -2,9 +2,10 @@
 
 ## REQ-NOTICES-001 — Actionable router diagnostics
 
-Router failures that block work or require action produce native Main error entries,
-not generated assistant commentary or provider-response items. Success and ordinary
-cancellation are silent. The original HTTP failure, tool error, exit code, and
+Router failures that block work or require action produce user-only error feedback
+in Main's composer, not transcript entries, generated assistant commentary or
+provider-response items. Success and ordinary cancellation are silent.
+The original HTTP failure, tool error, exit code, and
 substantive provider result remain unchanged.
 
 ### Content and scope
@@ -26,17 +27,25 @@ Deduplication uses the originating session/category and, when present, thread/tu
 and diagnostic identity. Distinct causes remain separate. Repeated causes retain
 counts without repeatedly interrupting the native view.
 
+The composer shows an error-batch preview and an ellipsis when details are omitted.
+Clicking an elided error opens the complete batch in the shared error dialog;
+the check button (`[✓]`) dismisses it. These controls follow the
+[composer feedback behavior](native_ui.md#req-native-ui-001--ui).
+Cleanup planning and reclaimed-storage progress remain transcript content.
+
 ### Delivery and recovery
 
 The bounded queue reserves a notice for one native delivery at a time and acknowledges
-it only after a successful terminal write with Main content painted. Failed or hidden
-writes release the reservation and leave the notice pending. Retrying presentation
-does not duplicate the retained Main entry. No model turn or writable provider response
-is needed to display a notice.
+it only after a successful terminal write paints its visible surface. Composer errors
+and transcript progress acknowledge independently: a visible composer can deliver its
+errors while transcript progress is hidden. Failed writes, hidden or replaced composer
+feedback, covering dialogs and frozen selection leave the affected notices pending.
+Retrying restores the complete error batch without duplicating transcript progress.
+No model turn or writable provider response is needed to display a notice.
 
 At most 256 session/category entries are retained until shutdown. Excess distinct
 entries become an overflow count. The launcher reports undelivered notices and repeat
-counts after Codex exits, including when no native UI was attached. Native display
+counts after Codex exits, including when no UI was attached. UI display
 never inserts notice IDs into model-visible history. Existing durable exact-ID replay
 cleanup still removes previously retained router-authored messages; it does not infer
 provenance from text or prefixes.
@@ -44,8 +53,12 @@ provenance from text or prefixes.
 Acceptance:
 
 1. JSON and SSE provider output contains no generated critical-error commentary.
-2. Native Main displays root and proven-child notices, but not unrelated-thread notices.
+2. Main's composer displays root, proven-child and router-wide errors, but not
+   unrelated-thread errors. Child errors name their origin; omitted details open
+   in full, and the check button dismisses the batch.
 3. Concurrent claims, failed writes, and retries preserve single delivery and pending
    recovery. Successful display acknowledges only the captured repeat count.
+   Composer errors and cleanup progress acknowledge only their own visible surface;
+   hidden, replaced, dialog-covered or frozen-selection feedback remains pending.
 4. With no usable native view, pending notices remain reportable after shutdown; queue
    overflow does not change request success or failure.

@@ -125,7 +125,7 @@ func TestJournalSummaryCollapsesSupersededNodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"\n/1 Separate preview UI · superseded by /3\n", "\n/2 [done] Minimal client · superseded by /4\n", "Claude is another backend of the existing UI", "/4 [working] Connect the existing UI"} {
+	for _, want := range []string{"\n/1 Separate preview UI; superseded by /3\n", "/3 Same Mekugi UI", "/4 [working] Connect the existing UI"} {
 		if !strings.Contains(summary.Text, want) {
 			t.Errorf("summary missing %q:\n%s", want, summary.Text)
 		}

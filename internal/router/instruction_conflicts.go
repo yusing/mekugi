@@ -2,107 +2,84 @@ package router
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
-// Source: internal/router/model_instruction_conflicts.go:1:141@origin/main rewriteStockToolConflicts.
-// One exact-phrase rewrite handles current stock-prompt conflicts in the
+// Match Codex's uninstalled-plugin advertisement, not caller-authored plugin
+// policy. Names and IDs come from the host's current recommendation list.
+var stockRecommendedPlugins = regexp.MustCompile(`(?m)^<recommended_plugins>\r?\nHere is a list of plugins that are available but not installed\.\r?\n\r?\n(?:- [^\r\n<>]+ \([^\r\n<>]+\)\r?\n)+</recommended_plugins>(\r?)$`)
+
+// Exact stock-fragment rewrites handle current stock-prompt conflicts in the
 // request's instruction carriers, excluding fenced examples. Frontend
 // descriptions remain registry-owned.
 func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
-	catalog := request.responseTools()
-	sections := []*responsesToolSection{catalog.top}
-	for _, group := range catalog.additional {
-		sections = append(sections, group.tools)
-	}
-	planOnly := false
-	for _, section := range sections {
-		if section == nil || section.err != nil {
-			continue
-		}
-		for _, tool := range section.tools {
-			if tool == nil {
-				continue
-			}
-			candidates := []*responsesToolDefinition{tool}
-			if tool.Type == "namespace" && tool.Name == "functions" && tool.nested != nil && tool.nested.err == nil {
-				candidates = tool.nested.tools
-			}
-			for _, candidate := range candidates {
-				if candidate != nil && candidate.Type == "function" &&
-					(candidate.Name == "request_user_input" || candidate.Name == "functions.request_user_input") &&
-					strings.Contains(candidate.Description, "This tool is only available in Plan mode.") {
-					planOnly = true
-				}
-			}
-		}
-	}
 	pairs := []string{
 		"Put this explanation in a short, separate paragraph at the end of both commentary and final, after any permission question.",
-		"Record this explanation as a short journal note after any permission question; journal changes appear as they happen.",
+		"",
 		"Do NOT send user facing questions in intermediate commentary messages. Do NOT put a final response in the commentary channel. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users.",
-		"Use the user-input tools for questions when available. Finish with a concise final answer; the router flushes it with the journal.",
+		"",
 		"Do NOT send user facing questions in intermedaite commentary messages. Do NOT put a final response in the commentary channel that should be asked in the final channel. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users.",
-		"Use the user-input tools for questions when available. Finish with a concise final answer; the router flushes it with the journal.",
+		"",
 		"Do NOT put a final response (e.g. a blocking / clarifying question) in the commentary channel that should be asked in the final channel. Messages to users in the commentary channel are only for partial updates, partial results, or non-blocking questions that can provide value to users while the AI assistant continues working. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users.",
-		"Use the user-input tools for questions when available. Journal changes appear as they happen. Finish with a concise final answer; the router flushes it with the journal.",
+		"",
 		"- You share updates in the `commentary` channel.",
-		"- Record the plan, task states and established results using journal operations.",
-		"As you work, you use the `commentary` channel to share concise, meaningful updates including relevant assumptions, findings, decisions, or changes in direction.",
-		"Record meaningful findings, decisions, and changes of approach as journal items, batching mutations on supported calls.",
-		"As you work, you send messages to the `commentary` channel.",
-		"As you work, batch journal mutations on supported tool calls.",
+		"",
 		"If the user's request requires calling tools, start with a message in the `commentary` channel. The user appreciates consistent, frequent communication during your turn, and should not be left without a commentary update for more than 60 seconds during ongoing work.",
-		"Use the projected Journal guidance for progress delivery; batch plan/add/set/log/remove operations on useful calls, inside exec in Code Mode. Use the journal read operation to inspect it, and finish with a final answer rather than a journal call.",
+		"",
 		"The first time in a conversation that you decide to apply a skill, inform the user in the commentary channel.",
-		"When applying a skill is a meaningful milestone, record it in the journal.",
+		"",
 		"Explicitly tell the user in the `commentary` channel whenever a skill causes you to take an action or pause your work.",
-		"Record skill-related milestones in the journal; record a blocking issue as a blocked task with its reason.",
+		"",
 		"- First, tell the user in the commentary channel **why** you are using the skill.",
-		"- Record why you are using the skill when it is a meaningful journal milestone.",
-		"answer briefly in commentary,",
-		"answer briefly in a journal note,",
+		"",
 	}
-	// Restore the pinned planning/wait conflicts without rewriting caller-added
+	for i := range pairs {
+		pairs[i] = "\n" + pairs[i] + "\n"
+	}
+	// These stock paragraphs mix useful policy with a commentary directive.
+	// Match the complete paragraph so caller-added qualifications remain intact.
+	for _, paragraph := range []struct{ source, remove string }{
+		{
+			"The user gets very frustrated when you stop and ask for confirmation or permission, so make sure to explicitly explain why you need the confirmation (for example, a SKILL.md, AGENTS.md, memory, or approval auto-review block) and where it came from. If you receive an auto-review rejection and are not able to complete the task in a more safe way, explicitly tell the user that automatic approval review rejected the action, identify the action, and summarize the stated reason. Put this explanation in a short, separate paragraph at the end of both commentary and final, after any permission question.",
+			" Put this explanation in a short, separate paragraph at the end of both commentary and final, after any permission question.",
+		},
+		{
+			"The user may send a new message while you are still working. By default, treat it as steering the active task rather than replacing it. Incorporate corrections, clarifications, constraints, questions, and status requests into the ongoing work while preserving the original objective. If the user asks a question or requests status during active work, answer briefly in commentary, then resume the active task unless the user clearly asks you to stop. Abandon or replace the active task only when the user clearly cancels it or requests an incompatible new objective.",
+			" in commentary",
+		},
+	} {
+		pairs = append(pairs, "\n"+paragraph.source+"\n", "\n"+strings.ReplaceAll(paragraph.source, paragraph.remove, "")+"\n")
+	}
+	// Rewrite the pinned wait conflict without changing caller-added
 	// qualifications. Newlines restrict these replacements to whole physical lines.
 	for _, pair := range [][2]string{
-		{"* Keep asking until you can clearly state: goal + success criteria, audience, in/out of scope, constraints, current state, and the key preferences/tradeoffs.", "* Resolve enough intent to clearly state: goal + success criteria, audience, in/out of scope, constraints, current state, and the key preferences/tradeoffs."},
-		{"* Once intent is stable, keep asking until the spec is decision complete: approach, interfaces (APIs/schemas/I/O), data flow, edge cases/failure modes, testing + acceptance criteria, rollout/monitoring, and any migrations/compat constraints.", "* Once intent is stable, resolve the spec until it is decision complete: approach, interfaces (APIs/schemas/I/O), data flow, edge cases/failure modes, testing + acceptance criteria, rollout/monitoring, and any migrations/compat constraints."},
-		{"You SHOULD ask many questions, but each question must:", "Ask only the questions needed to make the plan decision complete. Each question must:"},
-		{"- Avoid performing blocking sleep or wait calls longer than 60 seconds, as they may prevent you from communicating with the user for their duration.", "- Use completion notifications or interruptible waits; do not shorten waits solely to record progress."},
+		{"- Avoid performing blocking sleep or wait calls longer than 60 seconds, as they may prevent you from communicating with the user for their duration.", embeddedInstruction("interruptible_wait")},
 	} {
 		pairs = append(pairs, "\n"+pair[0]+"\n", "\n"+pair[1]+"\n")
 	}
-	// Frame one physical line at a time, so only complete stock-tool lines
-	// disappear. In particular, caller-added suffixes and generic plan advice
-	// must not be removed with the unavailable update_plan tool.
+	// Remove complete stock progress lines, preserving caller qualifications.
 	for _, line := range []string{
-		"When using the planning tool:",
-		"- Skip using the planning tool for straightforward tasks (roughly the easiest 25%).",
-		"- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan.",
-		"You have access to an `update_plan` tool which tracks steps.",
-		"A tool named `update_plan` is available to you. Update the checklist.",
-		"Separately, `update_plan` is a checklist/progress/TODOs tool; it does not enter or exit Plan Mode.",
-		"When `update_plan` is available, follow this section.",
-		"- Use the plan tool to explain the work",
-		"- If you create a checklist or task list, update its statuses.",
-		"If update_plan is available, use it for complex work.",
+		"<multi_agent_mode>Any earlier instruction enabling proactive multi-agent delegation no longer applies. Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask for sub-agents, delegation, or parallel agent work.</multi_agent_mode>",
+		"- You yield back to the user and end your turn by sending a final message to the `final` channel.",
+		"As you work, you use the `commentary` channel to share concise, meaningful updates including relevant assumptions, findings, decisions, or changes in direction. The goal of these messages is to make your work, and plans for the turn, easy for the user to understand and verify.",
+		"As you work, you send messages to the `commentary` channel. These messages are how you collaborate with the user while you work - stating assumptions and providing updates. These messages should be concise and quickly scannable. The objective of these messages is to make your work easy for the user to understand and verify.",
+		"- Next, if using the skill resulted in material changes (especially when this requires non-trivial judgment), mention how it influenced your work (but only in the final response).",
+		"- You share updates in `commentary` channel.",
+		"You have two channels for staying in conversation with the user:",
+		"## Intermediate commentary",
+		"As you work, you send messages to the `commentary` channel.",
 	} {
 		pairs = append(pairs, "\n"+line+"\n", "\n\n")
-	}
-	if planOnly {
-		pairs = append(pairs,
-			"Use the `request_user_input` tool only when it is listed in the available tools for this turn.",
-			"Do not call the `request_user_input` tool in Default mode, even if it is listed in the available tools for this turn.",
-			"Use the `request_user_input` tool only for optional questions where the answer would materially improve the quality of the work.",
-			"For optional questions, make a reasonable assumption and continue unless explicit user input is required.",
-			"If `request_user_input` returns no answers, continue with best judgment instead of asking again or treating the turn as blocked.",
-			"",
-		)
 	}
 	replacer := strings.NewReplacer(pairs...)
 	rewriteText := func(source string) string {
 		var output strings.Builder
+		var plain strings.Builder
+		flushPlain := func() {
+			output.WriteString(stockRecommendedPlugins.ReplaceAllString(plain.String(), "$1"))
+			plain.Reset()
+		}
 		var fence byte
 		var fenceWidth int
 		for line := range strings.SplitAfterSeq(source, "\n") {
@@ -127,13 +104,15 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 				fence = 0
 			}
 			if fenced {
+				flushPlain()
 				output.WriteString(line)
 				continue
 			}
 			framed := replacer.Replace("\n" + content + "\n")
-			output.WriteString(strings.TrimSuffix(strings.TrimPrefix(framed, "\n"), "\n"))
-			output.WriteString(line[len(content):])
+			plain.WriteString(strings.TrimSuffix(strings.TrimPrefix(framed, "\n"), "\n"))
+			plain.WriteString(line[len(content):])
 		}
+		flushPlain()
 		return output.String()
 	}
 	if original, ok := decodeJSONString(request.fields["instructions"]); ok {

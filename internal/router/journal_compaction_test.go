@@ -4,6 +4,7 @@ import (
 	"bytes"
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -92,9 +93,21 @@ func TestJournalCompactionDeliversDurableSummaryWithoutProvider(t *testing.T) {
 	if len(provider.forwarded) != 0 {
 		t.Fatal("failed local delivery replayed compaction upstream")
 	}
+	// Context-full triggers can arrive at each ordinary-turn phase.
+	for _, phase := range []string{"pre_turn", "mid_turn", "post_turn"} {
+		metadata.Compaction = mustTestJSON(t, map[string]any{"trigger": "auto", "reason": "context_limit", "implementation": "responses_compaction_v2", "phase": phase, "strategy": "memento"})
+		headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, metadata)))
+		output.Reset()
+		if err := executeRequest(t.Context(), t.Context(), request, headers, "compact-"+phase, provider, &output, nil, proxy); err != nil {
+			t.Fatal(err)
+		}
+		if len(provider.forwarded) != 0 || !strings.Contains(output.String(), "Continue parser") {
+			t.Fatalf("%s did not reset from journal: %s", phase, &output)
+		}
+	}
 }
 
-func TestJournalCompactionFallbackPreservesProviderRequest(t *testing.T) {
+func TestJournalCompactionAutoRejectsUnavailableReset(t *testing.T) {
 	t.Parallel()
 	for _, scenario := range []string{"off", "slice", "missing-thread", "conflicted-header", "conflicted-headers", "ambiguous-workspace", "ambiguous-history", "missing-evidence", "conflicted-journal", "oversize-summary", "record-failure"} {
 		t.Run(scenario, func(t *testing.T) {
@@ -128,7 +141,7 @@ func TestJournalCompactionFallbackPreservesProviderRequest(t *testing.T) {
 				}
 			case "oversize-summary":
 				for range 4 {
-					if _, err := proxy.journals.apply(transform.ctx, proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "add", Kind: "context", Title: new("Constraint"), Body: new(strings.Repeat("x", 12000))}}); err != nil {
+					if _, err := proxy.journals.apply(transform.ctx, proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "add", Kind: "context", Title: new(strings.Repeat("Constraint ", 1200))}}); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -150,7 +163,15 @@ func TestJournalCompactionFallbackPreservesProviderRequest(t *testing.T) {
 			response.Header.Set("Content-Type", "text/event-stream")
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 			var output bytes.Buffer
-			if err := executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, &output, nil, proxy); err != nil {
+			err = executeRequest(t.Context(), t.Context(), request, headers, "compact", provider, &output, nil, proxy)
+			if proxy.journalCompaction == "auto" {
+				compatibility, ok := errors.AsType[*requestCompatibilityError](err)
+				if !ok || compatibility.code != "journal_context_reset_unavailable" || len(provider.forwarded) != 0 || output.Len() != 0 {
+					t.Fatalf("unavailable reset reached provider or hid failure: err=%v forwards=%d output=%s", err, len(provider.forwarded), &output)
+				}
+				return
+			}
+			if err != nil {
 				t.Fatal(err)
 			}
 			if len(provider.forwarded) != 1 || !bytes.Equal(provider.forwarded[0], original) || !bytes.Equal(output.Bytes(), wire) {
@@ -217,8 +238,8 @@ func TestCompactedResponseIDUsesLatestCompleteRecord(t *testing.T) {
 func TestJournalCompactionFlagGate(t *testing.T) {
 	t.Parallel()
 	flags := newRouterFlags(io.Discard)
-	if *flags.journalCompaction != "off" {
-		t.Fatal("auto was enabled without paid evaluation")
+	if *flags.journalCompaction != "auto" {
+		t.Fatal("journal context reset is not enabled by default")
 	}
 	for _, value := range []string{"auto", "slice", "off"} {
 		if _, _, err := SplitCommand([]string{"--journal-compaction=" + value, "codex", "exec"}); err != nil {
@@ -262,7 +283,7 @@ func TestJournalCompactionPreservesRoutingPolicy(t *testing.T) {
 				}
 				executor := requestExecutor{
 					provider: provider, output: output, mekugiCalls: proxy,
-					serviceTiers: map[string]string{"gpt-6-sol": "fast"},
+					serviceTiers: &serviceTierSettings{configured: map[string]string{"gpt-6-sol": "fast"}},
 				}
 				err = executor.execute(t.Context(), t.Context(), request, headers, "compact")
 				if (err != nil) != failed {

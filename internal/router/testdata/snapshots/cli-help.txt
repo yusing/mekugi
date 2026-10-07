@@ -11,10 +11,12 @@ Usage: mekugi [flags] [Codex arguments...]
     	optional sanitized capture JSONL path
   -debug
     	record diagnostics, capture, metrics, instructions, runtime reads, and AX report; print session diagnosis command on exit
+  -duplicate-output
+    	opt in to duplicate output and attachment references in model input
   -grok-auth-file string
     	Grok OAuth credential file (default ~/.grok/auth.json)
   -journal-compaction string
-    	journal compaction: auto, slice, or off (default remains gated on evaluation) (default "off")
+    	journal context reset: auto (default), slice, or off (default "auto")
   -mode string
     	response mode: mekugi or passthrough (default "mekugi")
   -post-compact-recovery
@@ -23,3 +25,5 @@ Usage: mekugi [flags] [Codex arguments...]
     	maximum upstream inactivity between WebSocket messages or HTTP response bytes (default 4m0s)
   -timeout duration
     	upstream response-start timeout (default 10m0s)
+  -vcs-guard
+    	ask before remote VCS writes in the UI, independently of Codex approval policy (default true)

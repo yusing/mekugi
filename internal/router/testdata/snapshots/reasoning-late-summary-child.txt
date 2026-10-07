@@ -1,3 +1,2 @@
 ● worker                                                                08:38:59
 │ • Checking for 4s
-│   Public summary.

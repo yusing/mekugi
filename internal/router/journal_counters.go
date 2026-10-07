@@ -31,7 +31,8 @@ func (j *threadJournal) countJournalOperation(op string) {
 // so they are bounded instead of joining the journal's permanent call receipts.
 const maxJournalCounterReceipts = 64
 
-// Counter writes never append work events or move evidence/delivery cursors.
+// Counter writes never change tasks or timers, append work events, or move
+// evidence/delivery cursors.
 // Failure is advisory and cannot replace an accepted tool result or answer.
 func (p *mekugiProxy) journalCounters(ctx context.Context, workspace, thread, receipt string, update func(*threadJournal)) {
 	var snapshot *capturer.JournalMetrics
@@ -46,7 +47,7 @@ func (p *mekugiProxy) journalCounters(ctx context.Context, workspace, thread, re
 			return err
 		})
 	} else {
-		err = p.journals.transaction(ctx, p.replayStore, workspace, thread, func(j *threadJournal, exists bool) error {
+		err = p.journals.transactionWithTiming(ctx, p.replayStore, workspace, thread, false, func(j *threadJournal, exists bool) error {
 			if !exists {
 				return errJournalUnchanged
 			}

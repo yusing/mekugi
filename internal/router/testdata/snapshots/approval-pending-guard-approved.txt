@@ -1,0 +1,3 @@
+"\x1b[2m└ \x1b[38;5;214;22;1mRunning\x1b[m \x1b[38;2;210;168;255mgit\x1b[m push origin main                  "
+"\x1b[2m  \x1b[m        \x1b[38;5;214mPending Approval\x1b[m                      "
+"plain after approval                            "

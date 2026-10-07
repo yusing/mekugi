@@ -24,10 +24,12 @@ import (
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/term"
 )
 
 type appServerItem struct {
+	replacesItems    []string                  // Retained presentation provenance, not a host field.
 	DurationMS       *int64                    `json:"durationMs"`
 	Delivery         string                    `json:"delivery"`
 	Questions        []nativeQuestion          `json:"questions"`
@@ -84,6 +86,9 @@ type appServerUI struct {
 	btwThreads                map[string]*appServerBTW
 	notifications             *nativeNotifications
 	questions                 nativeQuestionDock
+	approvals                 nativeApprovalDock
+	approvalMode              bool // Codex's configured policy applies, not --yolo's.
+	guardHookCheck            approvalHookCheck
 	statusPanel               *appServerStatusReport
 	sessionCapture            *capturer.Recorder
 	resumePicker              *appServerResumePicker
@@ -126,10 +131,12 @@ type appServerUI struct {
 	notice                    string     // Composer feedback; errors persist until the next draft edit.
 	noticeAlert               bool
 	noticeUntil               time.Time
-	turnStarted               time.Time // Shown as elapsed time while a turn runs.
+	noticeDetails             terminalRect // Truncated composer error, relative to Main.
+	noticeDismiss             terminalRect // Check button, relative to Main.
+	turnStarted               time.Time    // Shown as elapsed time while a turn runs.
 	model, reasoningEffort    string
 	serviceTier               string
-	serviceTiers              map[string]string // Shared invocation config; presentation only.
+	serviceTiers              *serviceTierSettings // Invocation defaults and confirmed thread/model choices.
 	models                    []appServerModel
 	modelsLoading             bool
 	reasoningKey              *bool
@@ -163,12 +170,22 @@ type appServerUI struct {
 // StartAppServerUI starts the native terminal frontend without router observers.
 // Codex app-server owns execution; the launcher
 // still owns routing, environment, invocation-local configuration and cancellation.
-func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string) (func() error, error) {
+func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
-	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint, nil, nil, resumeArgv, "", nil)
+	return startAppServerUI(ctx, cmd, stdin, stdout, nil, nil, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
 }
 
-func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers map[string]string, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionTitleGenerator) (func() error, error) {
+// Codex approval policy and the invocation-local VCS guard are independent.
+func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionTitleGenerator, approvals bool) (func() error, error) {
+	guardCommand := ""
+	for _, entry := range cmd.Environ() {
+		if command, ok := strings.CutPrefix(entry, vcsguard.HookEnvironment+"="); ok {
+			guardCommand = command
+		}
+	}
+	if guardCommand != "" && (proxy == nil || proxy.execTrack == nil || proxy.execTrack.guardClose == nil) {
+		return nil, errors.New("VCS guard approval channel is unavailable")
+	}
 	var resumeCwd string
 	if resumeThread == "--last" || resumeThread == resumePickerStartup {
 		var err error
@@ -184,7 +201,8 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers}
+	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u.guardHookCheck.command = guardCommand
 	if generator != nil {
 		u.titleGenerator = generator
 		u.titleUpdates = generator.updates
@@ -293,6 +311,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						u.commandSegmentRetained(err)
 					case update := <-u.titleUpdates:
 						u.persistSessionTitle(update)
+					case request := <-u.guardRequests():
+						u.addGuardApproval(request)
+						u.dirty = true
 					case message, ok := <-c.Messages:
 						if !ok {
 							exited = true
@@ -312,7 +333,13 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						u.dirty = true
 					case <-tick.C:
+						if len(u.unsent) > 0 && u.unsent[0].questionCall != nil && !u.proxy.emittingToolInput(u.session.cwd, u.thread) {
+							if err := u.flushInput(); err != nil {
+								return err
+							}
+						}
 						u.refreshSessionMetrics(false)
+						u.startSkillHistory()
 						if err := u.tickJournalReset(u.now()); err != nil {
 							u.setNotice(err.Error(), true)
 						}
@@ -323,7 +350,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						u.flushStreamOutput()
 						u.startCommitReads()
 						u.paneError(u.panes.save(u.shell, u.now(), false))
-						if u.expireNotice(u.now()) {
+						if u.expireNotice(u.now()) || u.expireApprovals() {
 							u.dirty = true
 						}
 						now := u.now()
@@ -381,7 +408,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 								notices.finish(false)
 								return err
 							}
-							notices.finish(u.mainContentPainted)
+							notices.finish(true)
 							for sink, items := range journalPending {
 								if !u.mainContentPainted {
 									if !u.journalPanePresents(sink) {
@@ -423,6 +450,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		u.finishCommandSegments()
 		err = errors.Join(err, u.finishJournalAcknowledgements(true))
 		u.hideQuestions()
+		u.hideApprovals()
 		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
 			fmt.Fprintln(stdout, "Unsent draft:\n"+livediff.Safe(unsent.text, false))
 		}
@@ -475,12 +503,16 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	defer u.refreshPicker()
 	u.ensureJournalReset()
 	if u.reset != nil {
+		pendingCompletion := u.reset.pendingCompleted
 		handled, resetErr := u.reset.message(m)
 		if resetErr != nil {
 			u.setNotice("Journal slice: "+resetErr.Error(), true)
 		}
 		u.showResetNotice()
 		if handled {
+			if pendingCompletion != "" && pendingCompletion == u.reset.continuationTurn && !u.reset.active() && u.questionCount() == 0 {
+				u.notify("agent-turn-complete", "Agent turn complete")
+			}
 			return u.flushInput()
 		}
 	}
@@ -532,6 +564,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return nil
 		}
 		delete(u.requests, string(m.ID))
+		if strings.HasPrefix(method, "activity-skills/") {
+			return u.skillHistoryResponse(strings.TrimPrefix(method, "activity-skills/"), m)
+		}
 		if strings.HasPrefix(method, "activity/") {
 			return u.childHistoryResponse(method, m)
 		}
@@ -576,7 +611,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if m.Error != nil {
 				u.restoreDrafts(append([]composerDraft{{text: "/compact"}}, slices.Concat(u.unsent, u.queued)...)...)
 				u.unsent, u.queued = nil, nil
-				u.setNotice("Compaction failed: "+m.Error.Message, true)
+				u.setNotice(u.compactionText("Compaction failed: ")+m.Error.Message, true)
 				u.status = "Ready"
 			}
 			return nil
@@ -596,6 +631,24 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			return nil
 		}
+		if method == "steer/interrupt" {
+			u.steerInterruptAckPending = false
+			if m.Error != nil {
+				u.sendSteersAfterInterrupt = false
+				u.interruption.finish()
+				// The completion can precede this rejection. Do not deliver
+				// steers that were moved to the local stack in that interval.
+				if u.turn == "" {
+					u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
+					u.unsent, u.queued = nil, nil
+				}
+				u.setNotice("Could not interrupt to send steer: "+m.Error.Message, true)
+			}
+			return nil
+		}
+		if method == "approval/hooks" {
+			return u.guardHookResponse(m)
+		}
 		if method == "thread/start" && u.replacement.pending() && m.Error != nil {
 			u.replacement.finish()
 			u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
@@ -614,6 +667,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			if method == "turn/interrupt" {
 				u.interruption.finish()
+				u.sendSteersAfterInterrupt = false
 			}
 			return nil
 		}
@@ -715,7 +769,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 					u.setNotice("Wait targets could not be retained: "+err.Error(), true)
 				}
 			}
-			restoreContextUsage(u.session.agent("/root"), result.Thread)
+			u.restoreContextUsage(u.session.agent("/root"), result.Thread)
 			u.restoreUsage(result.Thread)
 			u.observeCost(u.thread, u.session.agent("/root"))
 			if u.agents != nil {
@@ -792,6 +846,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		return nil
 	}
 	u.resolveNotification(m)
+	if handled, err := u.approvalMessage(m); handled {
+		return err
+	}
 	if handled, err := u.questionMessage(m); handled {
 		return err
 	}
@@ -859,11 +916,13 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
 			if p.Turn.Status == "completed" && u.questionCount() == 0 {
-				u.notify("agent-turn-complete", "Agent turn complete")
 				if u.reset != nil && len(u.unsent) == 0 && len(u.queued) == 0 {
 					if err := u.reset.completed(p.Turn.ID); err != nil {
 						u.setNotice("Slice continuation: "+err.Error(), true)
 					}
+				}
+				if !u.reset.active() {
+					u.notify("agent-turn-complete", "Agent turn complete")
 				}
 			}
 			for _, c := range u.questions.calls {
@@ -895,7 +954,10 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				return nil
 			}
 		}
-		u.view.applyAppServerItem(u.session.cwd, u.thread, p.ThreadID, p.TurnID, p.ItemID, m.Method, p.Delta, p.Item)
+		if p.Item.Type == "agentMessage" && m.Method == "item/completed" {
+			p.Item.replacesItems = u.proxy.commentaryReplacementItems(u.ctx, u.session.cwd, p.ThreadID, p.TurnID, p.ItemID)
+		}
+		u.view.applyAppServerItem(true, u.session.cwd, u.thread, p.ThreadID, p.TurnID, p.ItemID, m.Method, p.Delta, p.Item)
 	}
 	return nil
 }
@@ -908,9 +970,15 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	if u.questions.active != nil && !u.questions.painted {
 		u.hideQuestions()
 	}
+	if u.approvals.open && !u.approvals.painted {
+		u.hideApprovals()
+	}
 	if u.escape == "" && key != 27 {
 		if u.runtime != nil && key == 3 && u.questions.active != nil {
 			return false, u.runtimeDecision(false)
+		}
+		if handled, err := u.approvalKey(string([]byte{key})); handled {
+			return false, err
 		}
 		if handled, err := u.questionKey(string([]byte{key})); handled {
 			return false, err
@@ -949,7 +1017,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.escape = ""
 	}
 	if u.escape == "" {
-		if u.currentQuestion() == nil && key == '?' && u.draft == "" && (u.shell == nil || u.shell.focus == 0) {
+		if u.currentQuestion() == nil && !u.approvals.open && key == '?' && u.draft == "" && (u.shell == nil || u.shell.focus == 0) {
 			u.keybindings = !u.keybindings
 			return false, nil
 		}
@@ -961,6 +1029,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		if key >= 0x40 && key <= 0x7e || len(u.escape) > 32 {
+			if handled, err := u.approvalKey(u.escape); handled {
+				u.escape = ""
+				return false, err
+			}
 			if handled, err := u.questionKey(u.escape); handled {
 				u.escape = ""
 				return false, err
@@ -1188,6 +1260,7 @@ func mainActivityLinked(entry activityPaneEntry) bool {
 }
 
 func (u *appServerUI) applyMainActivity(entry activityPaneEntry) {
+	u.annotateChildCompletion(&entry)
 	entry.Seq = u.view.lastSeq + 1
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	if entry.Kind == "final" && (u.restoring == nil || !u.restoring.paging) {
@@ -1195,9 +1268,24 @@ func (u *appServerUI) applyMainActivity(entry activityPaneEntry) {
 	}
 }
 
+func (u *appServerUI) annotateChildCompletion(entry *activityPaneEntry) {
+	if entry.Kind != "final" || entry.native == nil || entry.Agent == "/root" || entry.Agent == "Main" || len(entry.native.replacesItems) != 0 {
+		return
+	}
+	items := u.proxy.commentaryReplacementItems(u.ctx, u.session.cwd, entry.native.thread, entry.native.turn, entry.native.item)
+	if len(items) != 0 {
+		native := *entry.native
+		native.replacesItems = items
+		entry.native = &native
+	}
+}
+
 // applyActivity projects the collector once into the two audiences. Ordinary
 // root activity stays in Main, but a directed message belongs at both ends.
 func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activityPaneAgent) {
+	for i := range entries {
+		u.annotateChildCompletion(&entries[i])
+	}
 	paneEntries := slices.Clone(entries)
 	for i := range paneEntries {
 		paneEntries[i].Agent = paneActivityAgent(paneEntries[i])
@@ -1217,15 +1305,18 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 		}
 	}
 	u.applyCapturedEdits()
+	u.flushApprovalUpdates()
 }
 
 // mainFrame is the transcript above a boxed composer. The top border carries
 // the session state; the bottom border the model. dock rows are left blank
 // between the two, in the returned rectangle, for the live edit dock.
 func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, dockRect terminalRect) {
+	u.autoOpenApprovals()
 	u.autoOpenQuestions()
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalRect{}
+	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
 	u.questions.rect = terminalRect{}
 	if u.statusPanel != nil {
 		return u.statusPanelFrame(width, height), terminalRect{}
@@ -1262,6 +1353,8 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
 			dockRect.y++
 			u.composerRect.y++
+			u.noticeDetails.y++
+			u.noticeDismiss.y++
 			if u.btw != nil && u.btw.rect.h > 0 {
 				u.btw.rect.y++
 			}
@@ -1283,6 +1376,11 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		strip = ""
 	}
 	var pending []string
+	approvalRows := u.approvalRows(width, max(1, min(height/2, room)))
+	if len(approvalRows) > 0 {
+		dock = 0
+		room -= len(approvalRows)
+	}
 	questionRows := u.questionRows(width, max(1, min(height/2, room)))
 	if len(questionRows) > 0 {
 		dock = 0
@@ -1343,6 +1441,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	frame = append(frame, btwRows...)
 	u.questions.rect = terminalRect{0, len(frame), width, len(questionRows)}
 	frame = append(frame, questionRows...)
+	frame = append(frame, approvalRows...)
 	if strip != "" {
 		frame = append(frame, strip)
 	}
@@ -1350,12 +1449,15 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	if u.questions.active != nil {
 		u.questions.painted = true
 	}
+	if u.approvals.open {
+		u.approvals.painted = true
+	}
 	// Visual reference: Grok CLI PromptStyle / PromptWidget::draw, source
 	// crates/codegen/xai-grok-pager/src/views/prompt_widget/mod.rs:217:240,3007:3078
 	// @be7ce6e8cffe46d20bef9834b211616082ee866b. Keep continuation rows aligned.
 	// Colors: xai-grok-pager-render/src/theme/oscura.rs, same revision.
 	border := "\x1b[38;2;52;48;72m"
-	if u.currentQuestion() != nil {
+	if u.currentQuestion() != nil || u.approvals.open {
 		border = u.view.painter.Theme.Accent()
 	} else if u.shellMode() {
 		border = activityui.Red
@@ -1363,7 +1465,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	const inputColor = "\x1b[39m"
 	focused := u.shell == nil || u.shell.focus == 0
 	if boxed {
-		frame = append(frame, composerBorder("╭", "╮", u.stateLabel(u.now()), "", width, border))
+		frame = append(frame, u.composerNoticeBorder(width, len(frame), border))
 	}
 	textX := min(2, inset)
 	if boxed {
@@ -1439,7 +1541,7 @@ func composerBorder(open, close, left, right string, width int, color string) st
 	}
 	inner := width - 2
 	l, r := segment(left), segment(right)
-	if inner-ansi.StringWidth(l)-ansi.StringWidth(r)-2 < 1 {
+	if inner-ansi.StringWidth(l)-ansi.StringWidth(r)-2 < 0 {
 		r = ""
 	}
 	if room := inner - ansi.StringWidth(r) - 2; ansi.StringWidth(l) > room {
@@ -1450,56 +1552,6 @@ func composerBorder(open, close, left, right string, width int, color string) st
 	}
 	fill := max(0, inner-ansi.StringWidth(l)-ansi.StringWidth(r)-2)
 	return color + open + "─" + l + strings.Repeat("─", fill) + r + "─" + close + activityui.Reset
-}
-
-// Successful feedback is transient; actionable errors remain until editing.
-func (u *appServerUI) setNotice(text string, alert bool) {
-	u.notice, u.noticeAlert = text, alert
-	u.noticeUntil = time.Time{}
-	if text != "" && !alert {
-		u.noticeUntil = u.now().Add(3 * time.Second)
-	}
-}
-
-func (u *appServerUI) expireNotice(now time.Time) bool {
-	if u.noticeUntil.IsZero() || now.Before(u.noticeUntil) {
-		return false
-	}
-	u.setNotice("", false)
-	return true
-}
-
-// stateLabel is the session state followed by any composer notice.
-func (u *appServerUI) stateLabel(now time.Time) string {
-	label := u.sessionLabel(now)
-	if u.questions.active != nil {
-		label = "answering"
-		if u.currentQuestion().note {
-			label += " · note"
-		}
-		if len(u.questions.active.request) > 0 {
-			label += " · turn waiting"
-		}
-		if u.questions.parked.snapshot.text != "" {
-			label += " · draft kept"
-		}
-	}
-	if u.shellMode() {
-		label = activityui.Red + "Shell Mode" + activityui.Reset + " · " + label
-	}
-	notice := strings.ReplaceAll(livediff.Safe(u.notice, false), "\n", " ")
-	switch {
-	case notice == "":
-		return label
-	case u.noticeAlert:
-		notice = activityui.Red + "✗ " + notice + activityui.Reset
-	default:
-		notice = "\x1b[39m" + notice + activityui.Reset
-	}
-	if label == "" {
-		return notice
-	}
-	return label + activityui.Dim + " · " + activityui.Undim + notice
 }
 
 func (u *appServerUI) sessionAnimating() bool {
@@ -1527,7 +1579,7 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 	case status == "":
 		return ""
 	case u.alert:
-		return activityui.Red + "✗ " + status + activityui.Reset
+		return activityui.Red + "✗ " + activityui.ErrorPreview(u.status) + activityui.Reset
 	case u.turn != "":
 		label := "\x1b[39m◐ " + activityui.StatusPulse(status, now, u.view.painter.Colors) + activityui.Reset
 		if status == "Working" {
@@ -1680,44 +1732,13 @@ func (u *appServerUI) interruptTurn() error {
 		_, err := u.requestAs("turn/interrupt", "compact/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
 		return err
 	}
+	if u.sendSteersAfterInterrupt {
+		u.steerInterruptAckPending = true
+		_, err := u.requestAs("turn/interrupt", "steer/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
+		if err != nil {
+			u.steerInterruptAckPending = false
+		}
+		return err
+	}
 	return u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
-}
-
-// applyCriticalNotices presents router diagnostics without creating assistant
-// messages. The caller acknowledges the reserved batch only after terminal paint.
-func (u *appServerUI) applyCriticalNotices() *criticalNoticeDelivery {
-	var activity *subagentActivity
-	if u.proxy != nil {
-		activity = u.proxy.activity
-	}
-	delivery := u.issues.takeNative(u.thread, activity)
-	if delivery == nil {
-		return nil
-	}
-	if u.noticeEntries == nil {
-		u.noticeEntries = make(map[string]bool)
-	}
-	for _, notice := range delivery.snapshots {
-		if u.noticeEntries[notice.id] {
-			continue
-		}
-		text := noticeText(&notice)
-		kind := "error"
-		if notice.category == "storage_cleanup_planning" || notice.category == "storage_cleanup_reclaimed" {
-			kind = "progress"
-		}
-		if notice.thread != "" && notice.thread != u.thread && activity != nil {
-			activity.mu.Lock()
-			if node := activity.threads[notice.thread]; node != nil {
-				text = node.name + ": " + text
-			}
-			activity.mu.Unlock()
-		}
-		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
-			Seq: u.view.lastSeq + 1, Agent: "Main", Kind: kind, Text: text, Observed: u.now(),
-		}}})
-		u.noticeEntries[notice.id] = true
-	}
-	u.dirty = true
-	return delivery
 }

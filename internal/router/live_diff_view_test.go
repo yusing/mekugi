@@ -28,55 +28,22 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 			Review: mekugi.ReviewFile{AfterPath: path, Diff: diff},
 		}}})
 	}
-	for focusFile := range files {
-		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90, focusFile, files[focusFile].Chunks[0])
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(render.Starts) != 2 || render.Starts[0] != 0 || render.Starts[1] <= 0 {
-			t.Fatalf("missing file boundaries: %v", render.Starts)
-		}
-		for i, name := range []string{"first", "second"} {
-			end := len(render.Lines)
-			if i+1 < len(files) {
-				end = render.Starts[i+1]
-			}
-			text := ansi.Strip(strings.Join(render.Lines[render.Starts[i]:end], "\n"))
-			if !strings.Contains(text, name+".txt") || !strings.Contains(text, name+" content") {
-				t.Fatalf("file %d not rendered in its own section: %q", i, text)
-			}
-			if i == focusFile && (render.FocusOffset < render.Starts[i] || render.FocusOffset >= end) {
-				t.Fatalf("same line number in another file stole focus: %+v", render)
-			}
-		}
-	}
-}
-
-func TestLiveDiffFollowEmptyLatestFile(t *testing.T) {
-	workspace := t.TempDir()
-	first := filepath.Join(workspace, "first.txt")
-	second := filepath.Join(workspace, "second.txt")
-	diff := "--- /dev/null\n+++ " + strconv.Quote(first) + "\n@@ -0,0 +1,40 @@\n" + strings.Repeat("+first content\n", 40)
-	files := []livediff.File{
-		{Path: first, Chunks: []livediff.Chunk{{
-			Review: mekugi.ReviewFile{AfterPath: first, Diff: diff}}}},
-		{Path: second}, // The latest file was fully reverted.
-	}
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90, 1, livediff.Chunk{})
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if render.FocusOffset != render.Starts[1] {
-		t.Fatalf("empty latest file lost focus: offset=%d starts=%v", render.FocusOffset, render.Starts)
+	if len(render.Starts) != 2 || render.Starts[0] != 0 || render.Starts[1] <= 0 {
+		t.Fatalf("missing file boundaries: %v", render.Starts)
 	}
-	const rows = 18
-	if len(render.Lines) <= rows {
-		t.Fatal("fixture must require scrolling")
-	}
-	offset := min(render.FocusOffset, len(render.Lines)-rows)
-	viewport := ansi.Strip(strings.Join(render.Lines[offset:offset+rows], "\n"))
-	if strings.Contains(viewport, "second.txt") || strings.Contains(viewport, "No visible changes") {
-		t.Fatalf("reverted file remained Visible: %q", viewport)
+	for i, name := range []string{"first", "second"} {
+		end := len(render.Lines)
+		if i+1 < len(files) {
+			end = render.Starts[i+1]
+		}
+		text := ansi.Strip(strings.Join(render.Lines[render.Starts[i]:end], "\n"))
+		if !strings.Contains(text, name+".txt") || !strings.Contains(text, name+" content") {
+			t.Fatalf("file %d not rendered in its own section: %q", i, text)
+		}
 	}
 }
 
@@ -248,7 +215,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		frame := waitFrame(func(frame string) bool {
 			return strings.Contains(frame, "DIFF · ") || strings.Contains(frame, "STREAM · ")
 		})
-		if !strings.Contains(frame, "FOLLOW") || !strings.Contains(frame, "Temporary file one.") {
+		if !strings.Contains(frame, "Temporary file one.") {
 			t.Fatalf("horizontal input %q changed the view: %q", report, frame)
 		}
 	}
@@ -259,7 +226,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	atStatus := func(frame string) bool {
-		return strings.Contains(frame, "PAUSED") && strings.Contains(frame, "Status: created") &&
+		return strings.Contains(frame, "DIFF · v stream") && strings.Contains(frame, "Status: created") &&
 			!strings.Contains(frame, strings.Repeat("x", 8))
 	}
 	waitFrame(atStatus)
@@ -278,10 +245,10 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	}
 	waitFrame(atStatus)
 
-	if _, err := terminal.Write([]byte("r")); err != nil {
+	if _, err := terminal.Write([]byte("g")); err != nil {
 		t.Fatal(err)
 	}
-	frame = waitFrame(func(frame string) bool { return strings.Contains(frame, "FOLLOW") })
+	frame = waitFrame(func(frame string) bool { return strings.Contains(frame, "DIFF · v stream") })
 	if strings.Contains(frame, "LATEST UPDATE") || strings.Contains(frame, "●") {
 		t.Fatal("startup history was marked as newly observed")
 	}
@@ -297,11 +264,11 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	if strings.Contains(frame, "LATEST UPDATE") {
 		t.Fatal("update label is still displayed")
 	}
-	if _, err := terminal.Write([]byte("n")); err != nil {
+	if _, err := terminal.Write([]byte("gpn")); err != nil {
 		t.Fatal(err)
 	}
 	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "PAUSED") &&
+		return strings.Contains(frame, "DIFF · v stream") &&
 			strings.Contains(frame, "Temporary file two.") && !strings.Contains(frame, "Temporary file one.")
 	})
 	if err := os.WriteFile(filepath.Join(workspace, "first.txt"),
@@ -310,27 +277,27 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	}
 	publish("update-first", []capturedEdit{{"first.txt", "Temporary file one." + longSuffix + "\nStatus: adjusted 界 é\n"}})
 	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "PAUSED · new changes available") &&
+		return strings.Contains(frame, "DIFF · v stream") &&
 			!strings.Contains(frame, "LATEST UPDATE")
 	})
 	if err := pty.Setsize(terminal, &pty.Winsize{Rows: 44, Cols: 90}); err != nil {
 		t.Fatal(err)
 	}
 	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "PAUSED · new changes available")
+		return strings.Contains(frame, "DIFF · v stream")
 	})
-	if _, err := terminal.Write([]byte("r")); err != nil {
+	if _, err := terminal.Write([]byte("pg")); err != nil {
 		t.Fatal(err)
 	}
 	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "FOLLOW") &&
+		return strings.Contains(frame, "DIFF · v stream") &&
 			strings.Contains(frame, "adjusted 界 é") && !strings.Contains(frame, "new changes available")
 	})
 	if _, err := terminal.Write([]byte("n")); err != nil {
 		t.Fatal(err)
 	}
 	waitFrame(func(frame string) bool {
-		return strings.Contains(frame, "PAUSED") && strings.Contains(frame, "Temporary file two.") &&
+		return strings.Contains(frame, "DIFF · v stream") && strings.Contains(frame, "Temporary file two.") &&
 			!strings.Contains(frame, "new changes available")
 	})
 	if _, err := terminal.Write([]byte{3}); err != nil {

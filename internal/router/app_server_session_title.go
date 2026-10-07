@@ -168,7 +168,7 @@ func (u *appServerUI) mainHeaderRight(width int, focused bool) string {
 		return scroll
 	}
 	// Account for both labels' framing spaces and one separating border cell.
-	available := width - 2 - ansi.StringWidth(nativeTitle(1, "Main", u.questionBadge(), focused)) - 5
+	available := width - 2 - ansi.StringWidth(nativeTitle(1, "Main", u.mainTitleDetail(), focused)) - 5
 	if scroll != "" && available > ansi.StringWidth(scroll)+6 {
 		title = ansi.Truncate(title, available-ansi.StringWidth(scroll)-3, "…")
 		return scroll + " · " + title

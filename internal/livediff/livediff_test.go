@@ -28,7 +28,7 @@ func TestViewMergeRefresh(t *testing.T) {
 func TestRendererPreservesSourceAndTheme(t *testing.T) {
 	chunk := testChunk("edit", "file.go", "@@ -1 +1 @@\n-return \"old\"\n+return \"new\"\n")
 	render, err := new(Renderer).Render(t.Context(), DarkTheme,
-		[]File{{Path: "file.go", Chunks: []Chunk{chunk}}}, "", 80, 0, chunk)
+		[]File{{Path: "file.go", Chunks: []Chunk{chunk}}}, "", 80)
 	if err != nil {
 		t.Fatal(err)
 	}

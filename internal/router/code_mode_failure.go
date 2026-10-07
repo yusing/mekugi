@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// observeCodeModeFailures annotates Code Mode cells that failed, such as on a
+// observeCodeModeFailures annotates exec cells that failed, such as on a
 // JavaScript syntax error. The host emits no item for the cell itself, so a
 // script that failed before any nested tool call would otherwise leave no row.
 // Only outputs new in this request are read; the result passes unchanged.
@@ -106,7 +106,7 @@ func codeModeFailureText(texts []string) (string, bool) {
 	if status, _, _ := codeModeExecutionHeader(texts[0]); status != "Script failed" {
 		return "", false
 	}
-	text := "Code Mode script failed"
+	text := "exec script failed"
 	if len(texts) > 1 {
 		if detail, ok := strings.CutPrefix(texts[len(texts)-1], "Script error:\n"); ok {
 			if strings.TrimSpace(detail) != "" {

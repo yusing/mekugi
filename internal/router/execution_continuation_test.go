@@ -153,7 +153,7 @@ func TestExecutionContinuationCompletionKeepsProviderPrefix(t *testing.T) {
 			"Wall time: 0.1 seconds\nProcess exited with code 0\nOutput:\n",
 			continuationTestCall("exec_command", "start", `{"cmd":"sleep 100"}`),
 			continuationTestCall("write_stdin", "finish", `{"session_id":42,"chars":""}`)},
-		{"code mode", "Script completed\nWall time 0.1 seconds\nOutput:\n{\"session_id\":42,\"output\":\"\"}",
+		{"exec", "Script completed\nWall time 0.1 seconds\nOutput:\n{\"session_id\":42,\"output\":\"\"}",
 			"Script completed\nWall time 0.1 seconds\nOutput:\n{\"exit_code\":0,\"output\":\"done\"}",
 			continuationTestCall("exec", "start", `text(await tools.exec_command({cmd:"sleep 100",yield_time_ms:1000}));`),
 			continuationTestCall("exec", "finish", `text(await tools.write_stdin({session_id:42,chars:""}));`)},
@@ -346,7 +346,7 @@ func TestExecutionContinuationNestedLongWait(t *testing.T) {
 }
 
 func TestExecutionContinuationRecognizesSessionJavaScriptFromHistory(t *testing.T) {
-	// Sanitized Code Mode inputs observed in September 2026 sessions. Session
+	// Sanitized exec inputs observed in September 2026 sessions. Session
 	// IDs are normalized; the old pragma remains readable in history but must
 	// not be emitted in a new continuation.
 	for _, test := range []struct {

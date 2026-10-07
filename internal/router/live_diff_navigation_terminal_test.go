@@ -104,7 +104,7 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 	})
 	// Pointer scrolling targets the list, not the selected file's viewport.
 	ui.write(t, "\x1b[<65;5;10M")
-	wheel := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "PAUSED") })
+	wheel := ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream") })
 	if !strings.Contains(ansi.Strip(wheel), "file_023_content") {
 		t.Fatal("list wheel moved the selected diff viewport")
 	}
@@ -123,7 +123,7 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 	if !strings.Contains(ansi.Strip(hidden), "file_005_content") {
 		t.Fatal("hiding the file dock changed the diff selection")
 	}
-	ui.write(t, "s")
+	ui.write(t, "s\r")
 	ui.frame(t, func(frame string) bool { return strings.Contains(liveDiffFrameRow(frame, 1), "Files") })
 	// On narrow panes the dock becomes a full-width picker toggled by s.
 	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 22, Cols: 70}); err != nil {
@@ -159,7 +159,7 @@ func TestLiveDiffHunkNavigationAndFileMemory(t *testing.T) {
 	c.files = []livediff.File{{Path: "a.go", Chunks: []livediff.Chunk{{Key: "a", Review: mekugi.ReviewFile{BeforePath: "a.go", AfterPath: "a.go", Diff: "@@ -1 +1 @@\n-old\n+new\n@@ -20 +20 @@\n-before\n+after\n"}}}}, {Path: "b.go", Chunks: []livediff.Chunk{{Key: "b", Review: mekugi.RenderReviewFile("", "b.go", "", "second\n")}}}}
 	c.view.Files = c.files
 	var err error
-	c.rendering, err = c.renderer.Render(t.Context(), livediff.DarkTheme, c.files, "", 80, 0, livediff.Chunk{})
+	c.rendering, err = c.renderer.Render(t.Context(), livediff.DarkTheme, c.files, "", 80)
 	if err != nil {
 		t.Fatal(err)
 	}

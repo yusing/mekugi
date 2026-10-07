@@ -196,7 +196,7 @@ func executionResumeHandle(item map[string]json.RawMessage, history mekugiHistor
 }
 
 // Match only the host's leading metadata, never strings printed by the program
-// below Output:. Native session metadata inside Code Mode needs a verified
+// below Output:. Native session metadata inside exec needs a verified
 // router carrier or transparent native-result projection as well.
 func codeModeExecutionHeader(text string) (status, cell string, body string) {
 	first, rest, ok := strings.Cut(text, "\n")

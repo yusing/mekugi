@@ -26,7 +26,9 @@ type execSourceScope struct {
 	aliases                     map[string]string
 	result                      execProviderResult
 	iterations                  []string
-	intentOnly                  bool // Display classification: no filesystem or nested provider inspection.
+	intentOnly                  bool              // Display classification: no filesystem or nested provider inspection.
+	temporaryEnv                map[string]string // Display-only symbolic roots from explicit shell mktemp bindings.
+	temporaryWrites             bool
 	writes                      bool
 	walkDepth, pathDepth, nodes int
 }
@@ -153,6 +155,11 @@ func (s *execSourceScope) paths(node *sitter.Node) []string {
 	if node == nil {
 		return nil
 	}
+	if s.intentOnly && s.python && node.Kind() == "subscript" && s.text(node.ChildByFieldName("value")) == "os.environ" {
+		if key, ok := s.literal(node.ChildByFieldName("subscript")); ok && s.temporaryEnv[key] != "" {
+			return []string{s.temporaryEnv[key]}
+		}
+	}
 	if value, ok := s.literal(node); ok {
 		if s.intentOnly {
 			return []string{value}
@@ -191,7 +198,7 @@ func (s *execSourceScope) paths(node *sitter.Node) []string {
 		}
 		var paths []string
 		for _, segment := range right {
-			paths = append(paths, joinExecPaths(left, segment)...)
+			paths = append(paths, s.joinPaths(left, segment)...)
 		}
 		return paths
 	}
@@ -202,6 +209,12 @@ func (s *execSourceScope) paths(node *sitter.Node) []string {
 		base = alias
 	}
 	if (base == "Path" || base == "PurePath" || base == "open" || base == "file") && len(args) > 0 {
+		if s.intentOnly && len(s.temporaryEnv) != 0 && (base == "Path" || base == "PurePath") && len(args) != 1 {
+			// An additional constructor segment can override the temporary
+			// root. Unsupported constructors must keep unknown edit intent.
+			s.result.open = true
+			return nil
+		}
 		return s.paths(args[0])
 	}
 	if base == "join" || base == "resolve" {
@@ -215,7 +228,7 @@ func (s *execSourceScope) paths(node *sitter.Node) []string {
 			if !ok {
 				return nil
 			}
-			paths = joinExecPaths(paths, segment)
+			paths = s.joinPaths(paths, segment)
 		}
 		return paths
 	}
@@ -292,6 +305,17 @@ func joinExecPaths(paths []string, segment string) []string {
 	return result
 }
 
+func (s *execSourceScope) joinPaths(paths []string, segment string) []string {
+	for _, path := range paths {
+		if strings.ContainsRune(path, '\x00') && slices.Contains(strings.Split(filepath.ToSlash(segment), "/"), "..") {
+			// Parent traversal cannot turn a symbolic root into a concrete path.
+			s.result.open = true
+			return nil
+		}
+	}
+	return joinExecPaths(paths, segment)
+}
+
 func (s *execSourceScope) glob(root, pattern string) []string {
 	if s.intentOnly || !filepath.IsAbs(root) {
 		return nil
@@ -337,6 +361,29 @@ func (s *execSourceScope) add(node *sitter.Node, tree bool) {
 		s.result.open = true
 		return
 	}
+	if s.intentOnly && len(s.temporaryEnv) != 0 {
+		var ordinary []string
+		for _, path := range paths {
+			temporary := false
+			for _, root := range s.temporaryEnv {
+				if path == root || strings.HasPrefix(path, root+string(filepath.Separator)) {
+					temporary = true
+					break
+				}
+			}
+			if temporary {
+				s.temporaryWrites = true
+			} else if strings.ContainsRune(path, '\x00') {
+				s.result.open = true
+			} else {
+				ordinary = append(ordinary, path)
+			}
+		}
+		paths = ordinary
+		if len(paths) == 0 {
+			return
+		}
+	}
 	s.result.scope = append(s.result.scope, execProviderFiles(paths, tree))
 }
 
@@ -350,6 +397,39 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 	}
 	if node == nil {
 		return
+	}
+	if s.intentOnly && len(s.temporaryEnv) != 0 {
+		// Proof is limited to straight-line source with an unmodified os
+		// module and environment. A rebinding or nested scope invalidates it.
+		if node.Kind() == "function_definition" || node.Kind() == "class_definition" || node.Kind() == "if_statement" || node.Kind() == "for_statement" || node.Kind() == "while_statement" || node.Kind() == "try_statement" {
+			s.result.open = true
+		}
+		if node.Kind() == "assignment" || node.Kind() == "augmented_assignment" {
+			left := s.text(node.ChildByFieldName("left"))
+			if left == "os" || left == "Path" || left == "PurePath" || left == "open" || s.aliases[left] == "Path" || s.aliases[left] == "PurePath" || strings.HasPrefix(left, "os.") {
+				s.result.open = true
+			}
+		}
+		if function, _ := sourceCall(node); function != nil && strings.HasPrefix(s.text(function), "os.environ.") {
+			s.result.open = true
+		}
+		if node.Kind() == "attribute" && s.text(node) == "os.environ" {
+			parent := node.Parent()
+			if parent == nil || parent.Kind() != "subscript" {
+				// An environment object that escapes a direct key read can be
+				// mutated through aliases. Do not claim it still names mktemp.
+				s.result.open = true
+			}
+		}
+		if node.Kind() == "identifier" && s.text(node) == "os" {
+			parent := node.Parent()
+			if parent == nil || parent.Kind() != "attribute" && parent.Kind() != "dotted_name" {
+				s.result.open = true
+			}
+		}
+		if node.Kind() == "aliased_import" && s.text(node.ChildByFieldName("name")) == "os" || node.Kind() == "import_from_statement" && s.text(node.ChildByFieldName("module_name")) == "os" {
+			s.result.open = true
+		}
 	}
 	if time.Now().After(s.input.deadline) {
 		s.result.open = true

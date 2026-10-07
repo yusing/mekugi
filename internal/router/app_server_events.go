@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"mvdan.cc/sh/v3/expand"
@@ -360,7 +361,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		item := p.Item
 		id := cmp.Or(p.ItemID, item.ID)
 		item = u.waitItem(item, p.ThreadID, p.TurnID, id, m.Method == "item/started")
-		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method, live: true, command: item.Command, duration: appServerDuration(item), workdir: appServerCommandWorkdir(item, s.cwd)}
+		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: m.Method, live: true, command: item.Command, status: item.Status, duration: appServerDuration(item), workdir: appServerCommandWorkdir(item, s.cwd)}
 		agent := s.path(p.ThreadID)
 		if m.Method != "item/completed" && item.Type != "reasoning" && item.Type != "userMessage" {
 			// Other output started first: that request streamed no reasoning.
@@ -397,7 +398,6 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				s.startThinking(key, native, now)
 			}
 			if m.Method == "item/completed" {
-				native.settled = now
 				if pending, ok := s.pendingThinking[p.ThreadID]; ok && s.thinking[key].IsZero() && strings.TrimSpace(text) != "" {
 					// A summary delivered only at completion still takes over the block.
 					delete(s.pendingThinking, p.ThreadID)
@@ -428,6 +428,16 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			if u.internalJournalCommand(p.ThreadID, item) {
 				break
 			}
+			if item.Type == "commandExecution" && u.proxy != nil {
+				if ms, known := u.proxy.nativeTrace.commandTimeout(p.ThreadID, id); known {
+					native.commandTimeout = strconv.FormatUint(ms/1000, 10)
+					if fraction := ms % 1000; fraction != 0 {
+						native.commandTimeout += "." + strings.TrimRight(fmt.Sprintf("%03d", fraction), "0")
+					}
+					native.commandTimeout += "s"
+				}
+			}
+			native.commandCwd = appServerCommandDirectory(item, s.cwd)
 			native.searchResults = appServerSearchResults(item)
 			entry := activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: appServerToolText(item, s.cwd), CallID: id, Observed: now, native: native}
 			key := [3]string{p.ThreadID, p.TurnID, id}
@@ -440,6 +450,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 					} else {
 						native.output = run.entry.native.output
 						native.commandStarted = run.entry.native.commandStarted
+						native.commandTimeout = cmp.Or(native.commandTimeout, run.entry.native.commandTimeout)
 					}
 				}
 				entries = append(entries, entry)
@@ -449,6 +460,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				native.commandEnded = now
 				if run := s.commands[key]; run != nil {
 					native.commandStarted = run.entry.native.commandStarted
+					native.commandTimeout = cmp.Or(native.commandTimeout, run.entry.native.commandTimeout)
 				}
 			}
 			s.retainOutput(native, item)
@@ -602,7 +614,7 @@ func (s *appServerSession) endThinking(thread string, now time.Time) []activityP
 			phase = "discarded"
 		}
 		entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: s.path(thread), Kind: "reasoning", Text: text, CallID: key[2], Observed: now,
-			native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], phase: phase, thought: now.Sub(s.thinking[key]), settled: now, live: true}})
+			native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], phase: phase, thought: now.Sub(s.thinking[key]), live: true}})
 		delete(s.thinking, key)
 	}
 	return entries
@@ -725,15 +737,20 @@ func appServerCommandWorkdir(item appServerItem, workspace string) string {
 	return pathdisplay.ForWorkspace(workspace, filepath.Clean(item.Cwd))
 }
 
+func appServerCommandDirectory(item appServerItem, workspace string) string {
+	if filepath.IsAbs(item.Cwd) {
+		return item.Cwd
+	}
+	return workspace
+}
+
 // appServerCommandText uses Codex's typed classification, then the shared
 // display classifier for frontends that Codex does not recognize. Neither
 // classification changes the executed command or retained host item. Paths
 // display relative to the directory the command ran in, which
 // appServerCommandWorkdir labels when it differs from the workspace.
 func appServerCommandText(item appServerItem, cwd string) string {
-	if appServerCommandWorkdir(item, cwd) != "" {
-		cwd = item.Cwd
-	}
+	cwd = appServerCommandDirectory(item, cwd)
 	var parts []string
 	for _, action := range item.CommandActions {
 		switch action.Type {
@@ -755,7 +772,7 @@ func appServerCommandText(item appServerItem, cwd string) string {
 		}
 	}
 	if len(parts) == 0 {
-		return toolActivityShell(appServerDisplayCommand(item.Command))
+		return toolActivityShellInDirectory(appServerDisplayCommand(item.Command), cwd)
 	}
 	return strings.Join(parts, "\n\n")
 }
@@ -831,7 +848,7 @@ func appServerDisplayCommand(command string) string {
 	return command
 }
 
-// appServerShellScript is the script of a host Bash command, exactly as the
+// appServerShellScript is the script of a host Bash or sh command, exactly as the
 // shell receives it with -c or -lc.
 func appServerShellScript(command string) (string, bool) {
 	args, ok := appServerCommandArgs(command)
@@ -839,7 +856,8 @@ func appServerShellScript(command string) (string, bool) {
 		return "", false
 	}
 	name := filepath.Base(args[0])
-	return args[2], strings.TrimSuffix(name, filepath.Ext(name)) == "bash"
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+	return execsegment.ShOriginal(args[2]), name == "bash" || name == "sh" || name == "dash"
 }
 
 // appServerCommandArgs unquotes a host command made only of literal words.

@@ -15,7 +15,7 @@ func runJournalSurveyCell(t *testing.T, setup, lowered, verify string) {
 	t.Helper()
 	node, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("Node is required to execute lowered Code Mode")
+		t.Skip("Node is required to execute lowered exec")
 	}
 	script := `const assert = require("node:assert/strict");` + setup + `
 (async()=>{` + lowered + `})().then(async result=>{` + verify + `}, error=>{throw error;}).catch(error=>{console.error(error);process.exitCode=1;});`

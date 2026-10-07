@@ -379,6 +379,7 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 	}
 	dim := func(text string) string { return activityui.Dim + text + activityui.Undim }
 	safe := func(text string) string { return livediff.Safe(text, false) }
+	p := activityui.Painter{Theme: theme}
 	path := journalDisplayPath(node)
 	if local := journalLocalPath(node.Path); local != node.Path {
 		path = local
@@ -400,7 +401,7 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 				text += dim(" · ") + journalStateColor(theme, node.State) + state + activityui.Reset
 			}
 		} else {
-			text = journalStateGlyph(node.State) + " " + dim(safe(path)) + " " + safe(node.Title)
+			text = journalStateGlyph(node.State) + " " + dim(safe(path)) + " " + p.Inline(node.Title)
 			mounted := row.open && slices.ContainsFunc(node.Children, func(child journalNode) bool {
 				return child.Agent == node.Agent && strings.HasPrefix(child.Path, node.Path+"/@")
 			})
@@ -409,9 +410,10 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 			}
 		}
 		if node.Reason != "" {
-			reason := dim(safe(node.Reason))
+			painted := p.Inline(node.Reason)
+			reason := dim(painted)
 			if node.State == "blocked" {
-				reason = activityui.Amber + safe(node.Reason) + activityui.Reset
+				reason = activityui.Amber + painted + activityui.Reset
 			}
 			text += dim(" · ") + reason
 		}
@@ -425,7 +427,7 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 		case journalViewGroup(node):
 			text = dim("⎇ ") + "\x1b[1m" + safe(node.Title) + "\x1b[22m"
 		default:
-			text = theme.Accent() + "◆" + activityui.Reset + " " + dim(safe(path)) + " " + safe(node.Title)
+			text = theme.Accent() + "◆" + activityui.Reset + " " + dim(safe(path)) + " " + p.Inline(node.Title)
 		}
 	case "answer":
 		first := journalPreview(node.Body)
@@ -438,7 +440,7 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 		if node.Kind == "note" && title == "Note" && node.Body != "" {
 			title, _, _ = strings.Cut(node.Body, "\n")
 		}
-		text = dim("·") + " " + safe(title)
+		text = dim("·") + " " + p.Inline(title)
 	}
 	if node.SupersededBy != "" {
 		text += dim(" · superseded by " + safe(journalLocalPath(node.SupersededBy)))
@@ -448,7 +450,7 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 	}
 	line := strings.Repeat(" ", journalRowMargin) + dim(row.lead) + disclosure + text
 	if node.State == "dropped" || node.SupersededBy != "" {
-		line = dim(ansi.Strip(line))
+		line = activityui.Backdrop(line) + activityui.Undim
 	}
 	stamp := journalLocalTime(node.Updated.At)
 	if stamp == "" || width < 40 {
@@ -752,10 +754,10 @@ func (u *appServerUI) journalPlanStrip(width int) string {
 	if !ok {
 		return ""
 	}
-	theme := u.view.painter.Theme
 	node := pin.node
 	node.Body = "" // The strip identifies work; supporting detail belongs in the card.
-	left := journalNodeRow(theme, journalCompactNode(node), "")
+	lead, text := journalPaintNodeParts(&u.view.painter, node, "", true)
+	left := lead + text
 	if pin.node.Finished == nil && pin.node.WorkTimer.Known {
 		left += activityui.Dim + " · " + pin.node.WorkTimer.at(u.now()).Round(time.Second).String() + activityui.Undim
 	}
@@ -815,8 +817,26 @@ func journalNodeRow(theme livediff.Theme, node journalNode, verb string) string 
 // journalNodeParts splits a node row into its glyph lead and its text, so
 // wrapped rows can hang under the text.
 func journalNodeParts(theme livediff.Theme, node journalNode, verb string) (lead, text string) {
+	p := activityui.Painter{Theme: theme}
+	return journalPaintNodeParts(&p, node, verb, false)
+}
+
+func journalPaintNodeParts(p *activityui.Painter, node journalNode, verb string, compact bool) (lead, text string) {
+	theme := p.Theme
 	safe := func(text string) string { return livediff.Safe(strings.Join(strings.Fields(text), " "), false) }
-	title := safe(node.Title)
+	paint := func(text string) string { return p.Inline(strings.ReplaceAll(text, "\n", " ")) }
+	if compact {
+		if node.Kind == "task" && node.Body == "" {
+			node.Title = paint(node.Title)
+		}
+		node = journalCompactNodePreview(node, func(text string) string { return journalInlinePreview(p, text) })
+	} else {
+		if node.Kind == "note" && node.Title == "Note" && node.Body != "" {
+			node.Title, _, _ = strings.Cut(node.Body, "\n")
+		}
+		node.Title, node.Reason = paint(node.Title), paint(node.Reason)
+	}
+	title := node.Title
 	path := safe(journalDisplayPath(node))
 	superseded := ""
 	if node.SupersededBy != "" {
@@ -826,10 +846,6 @@ func journalNodeParts(theme livediff.Theme, node journalNode, verb string) (lead
 	case verb == "removed":
 		return activityui.Dim + "⊖ " + activityui.Undim, activityui.Dim + path + " " + title + " · removed" + activityui.Undim
 	case node.Kind == "note":
-		if title == "Note" && node.Body != "" {
-			first, _, _ := strings.Cut(node.Body, "\n")
-			title = safe(first)
-		}
 		return theme.Accent() + "◆" + activityui.Reset + " ", title + superseded
 	case node.Kind != "task":
 		return activityui.Dim + "◇ " + activityui.Undim, activityui.Dim + path + activityui.Undim + " " + title + superseded
@@ -840,7 +856,7 @@ func journalNodeParts(theme livediff.Theme, node journalNode, verb string) (lead
 		details = append(details, verb)
 	}
 	if node.Reason != "" {
-		details = append(details, safe(node.Reason))
+		details = append(details, node.Reason)
 	}
 	if elapsed := journalTaskElapsed(node); elapsed != "" {
 		details = append(details, elapsed)
@@ -968,10 +984,7 @@ func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, 
 	changed, left, open := journalCardEntries(card.Journal, card.Since)
 	var happened [][]string
 	row := func(node journalNode, verb string) []string {
-		if !expand {
-			node = journalCompactNode(node)
-		}
-		lead, text := journalNodeParts(theme, node, verb)
+		lead, text := journalPaintNodeParts(p, node, verb, !expand)
 		lines := activityui.Hang(lead, text, inner)
 		if !expand && len(lines) > journalCardPreviewRows {
 			lines = lines[:journalCardPreviewRows]
@@ -1047,19 +1060,15 @@ func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, 
 	return rows, journalCardFacts(changed, open, expand)
 }
 
-// journalEventsItem shows adjacent journal changes as one journal item: a
-// heading, then each task change or note on its own row under the journal
-// gutter. A row's time shows only where it differs from the row above.
+// journalEventsItem shows adjacent journal changes as flat rows.
+// A row's time shows only where it differs from the row above.
 func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last, width int) ([]activityui.Block, map[uint64]int) {
 	p := &v.painter
-	accent := p.Theme.Accent()
 	head := v.entries[first].activityPaneEntry
-	out.add(0, conversationHeading(accent+"◆"+activityui.Reset, "\x1b[1m"+accent+"journal"+activityui.Reset, "", head, width))
-	gutter := accent + "│" + activityui.Reset + " "
-	body := max(1, width-2)
+	body := max(1, width)
 	var laid []activityui.Block
 	entryRows := make(map[uint64]int)
-	stamp := head.Observed.Local().Format("15:04")
+	stamp := ""
 	for k := first; k <= last; k++ {
 		entry := v.entries[k].activityPaneEntry
 		if !v.visible(entry) || entry.Kind != "journal_event" {
@@ -1097,7 +1106,7 @@ func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last
 			if entry.native != nil && entry.native.recovery != "" && v.snippet == snippet {
 				line = activityui.Underline(line)
 			}
-			out.add(0, gutter+line)
+			out.add(0, line)
 			out.snippets[len(out.snippets)-1] = snippet
 		}
 	}

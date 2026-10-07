@@ -78,7 +78,7 @@ func TestAgentEditNoticeNativePatchProjectionAndReplay(t *testing.T) {
 	}
 	patch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-old\n+new\n*** End Patch\n"
 	transform := prepareNativeStockTransform(t, proxy, workspace, "notice-patch")
-	streamNativePatch(t, transform, patch, nil, nil)
+	retainPatchObservation(t, transform, patch)
 	if err := os.WriteFile(target, []byte("new\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestAgentEditNoticeShellProjection(t *testing.T) {
 			}
 			transform := prepareNativeStockTransform(t, proxy, workspace, "notice-shell")
 			arguments := string(mustMarshalJSON(map[string]any{"cmd": "printf 'new\\n' > file.txt"}))
-			streamNativeExecCommand(t, transform, "shell-call", arguments)
+			retainCommandObservation(t, transform, "shell-call", arguments)
 			if effect {
 				if err := os.WriteFile(target, []byte("new\n"), 0o600); err != nil {
 					t.Fatal(err)
@@ -167,7 +167,7 @@ func TestAgentEditNoticeShellContinuation(t *testing.T) {
 	}
 	transform := prepareNativeStockTransform(t, proxy, workspace, "notice-continuation")
 	arguments := string(mustMarshalJSON(map[string]any{"cmd": "printf 'new\\n' > file.txt"}))
-	streamNativeExecCommand(t, transform, "shell-call", arguments)
+	retainCommandObservation(t, transform, "shell-call", arguments)
 	running := nativeExecOutput("Process running with session ID 9")
 	items := []any{
 		map[string]any{"type": "function_call", "id": "shell-call-item", "call_id": "shell-call", "name": nativeExecCommandToolName, "arguments": arguments},

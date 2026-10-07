@@ -21,7 +21,7 @@ func TestCompactionCapturesCompletedNativeExecWrite(t *testing.T) {
 }
 
 func TestCompactionCapturesCompletedCodeModePatch(t *testing.T) {
-	testCompactionCapture(t, "code-mode", false)
+	testCompactionCapture(t, "exec", false)
 }
 
 // The host result first becomes visible in compaction, not in an ordinary
@@ -42,7 +42,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 				storeDirectory := firstProxy.replayStore.directory
 				var transform *mekugiResponseTransform
 				var trace *nativeTraceFixture
-				if tool == "code-mode" {
+				if tool == "exec" {
 					trace = newNativeTraceFixture(t)
 					firstProxy.nativeTrace = &nativeToolTrace{directory: trace.root}
 					transform, _, _, workspace = newMekugiTestTransformWithProxy(t, firstProxy)
@@ -56,7 +56,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 				var derivedCallID string
 				if tool == "patch" {
 					patch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-old\n+new\n*** End Patch\n"
-					streamNativePatch(t, transform, patch, nil, nil)
+					retainPatchObservation(t, transform, patch)
 					result := "Success. Updated the following files:\nM file.txt\n"
 					if failed {
 						result = "Error: patch failed"
@@ -66,7 +66,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 						map[string]any{"type": "custom_tool_call_output", "call_id": "patch-call", "output": result},
 					}
 					derivedCallID = nativePatchDerivedCallID("patch-call", 0)
-				} else if tool == "code-mode" {
+				} else if tool == "exec" {
 					patch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-old\n+new\n*** End Patch\n"
 					source := "await tools.apply_patch(" + string(mustTestJSON(t, patch)) + ");"
 					call := map[string]any{"type": "custom_tool_call", "id": "code-item", "call_id": "code-call", "name": "exec", "input": source, "status": "completed"}
@@ -83,7 +83,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 					derivedCallID = nativePatchDerivedCallID("code-call", 0)
 				} else {
 					arguments := string(mustTestJSON(t, map[string]any{"cmd": "printf 'new\\n' > file.txt", "workdir": workspace}))
-					streamNativeExecCommand(t, transform, "exec-call", arguments)
+					retainCommandObservation(t, transform, "exec-call", arguments)
 					items = []any{
 						map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments, "status": "completed"},
 						map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process exited with code 0")},
@@ -170,7 +170,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 							t.Fatalf("unchanged failed patch claimed success: %+v", history)
 						}
 					} else {
-						if tool == "code-mode" && (len(history.HostResults) != 1 || history.HostResults[0].Status != "completed") {
+						if tool == "exec" && (len(history.HostResults) != 1 || history.HostResults[0].Status != "completed") {
 							t.Fatalf("nested patch host result was not recovered: %+v", history.HostResults)
 						}
 						if history.ChangeID == "" || len(history.ReviewFiles) != 1 || history.TranslationError != "" {

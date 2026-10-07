@@ -41,6 +41,7 @@ type threadUsageTotal struct {
 
 type threadUsageObservation struct {
 	started       time.Time
+	receivedAt    time.Time
 	throughput    capturer.OutputThroughput
 	once          sync.Once
 	totals        *threadUsage
@@ -71,7 +72,11 @@ func (o *threadUsageObservation) observe(counts tokenCounts) {
 		round := providerRoundOutput{}
 		if !o.started.IsZero() {
 			round.StartedUnixNano = o.started.UnixNano()
-			round.Throughput = measureOutputThroughput(counts, o.started)
+			at := o.receivedAt
+			if at.IsZero() {
+				at = time.Now()
+			}
+			round.Throughput = measureOutputThroughput(counts, o.started, at)
 		}
 		o.throughput = round.Throughput
 		o.totals.addRound(o, tier, counts, round)
@@ -82,10 +87,6 @@ func (o *threadUsageObservation) observe(counts tokenCounts) {
 // A later successful response must not revive an apparently complete total.
 func (o *threadUsageObservation) finish() {
 	o.observe(tokenCounts{Incomplete: true})
-}
-
-func (u *threadUsage) add(thread, model, reasoning, serviceTier string, counts tokenCounts, conflicted bool, price *openCodePrice) {
-	u.addRound(&threadUsageObservation{thread: thread, model: model, reasoning: reasoning, conflicted: conflicted, openCodePrice: price}, serviceTier, counts, providerRoundOutput{})
 }
 
 func (u *threadUsage) addRound(o *threadUsageObservation, serviceTier string, counts tokenCounts, round providerRoundOutput) {
@@ -134,7 +135,7 @@ func usageTotalReport(total *threadUsageTotal) (tokenUsageReport, bool) {
 		return tokenUsageReport{}, false
 	}
 	if !total.complete {
-		return tokenUsageReport{roundtrips: total.roundtrips, priorUnknown: total.priorUnknown}, false
+		return tokenUsageReport{roundtrips: total.roundtrips, priorUnknown: total.priorUnknown, roundOutput: total.roundOutput}, false
 	}
 	return tokenUsageReport{tokenCounts: total.counts, cost: total.cost, model: strings.Join(total.models, ", "), missingUsage: total.missingUsage, priorUnknown: total.priorUnknown, roundtrips: total.roundtrips, roundOutput: total.roundOutput}, true
 }
@@ -151,24 +152,6 @@ func (u *threadUsage) snapshot(thread string) (tokenUsageReport, bool) {
 		return report, observed
 	}
 	return tokenUsageReport{}, false
-}
-
-// roundtrips counts the thread's forwarded provider requests, which remain
-// countable after its token totals become incomplete.
-func (u *threadUsage) roundtrips(thread string) uint64 {
-	if u == nil {
-		return 0
-	}
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	if u.closed {
-		return 0
-	}
-	u.loadLocked(thread)
-	if u.threads[thread] == nil {
-		return 0
-	}
-	return u.threads[thread].roundtrips
 }
 
 func (u *threadUsage) close() {

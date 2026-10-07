@@ -5,19 +5,16 @@ import (
 	"strings"
 	"testing"
 
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/charmbracelet/x/vt"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
-func TestMarkdownTableAlignment(t *testing.T) {
+func TestUISnapshotMarkdownTableAlignment(t *testing.T) {
 	p := activityui.Painter{}
-	got := strings.Join(plainLines(p.Markdown("Name | N | State\n:--- | ---: | :---:\n猫 | 12 | yes\nlong | 2 | no", 40)), "\n")
-	want := "┌──────┬────┬───────┐\n│ Name │  N │ State │\n├──────┼────┼───────┤\n│ 猫   │ 12 │  yes  │\n│ long │  2 │  no   │\n└──────┴────┴───────┘"
-	if got != want {
-		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
-	}
+	rows := p.Markdown("Name | N | State\n:--- | ---: | :---:\n猫 | 12 | yes\nlong | 2 | no", 40)
+	rows = append(rows, "plain after table")
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown_table_alignment.txt", rows, 40)
 }
 
 func TestMarkdownTableParsing(t *testing.T) {
@@ -79,31 +76,14 @@ func TestMarkdownTableResponsive(t *testing.T) {
 	}
 }
 
-func TestMarkdownTableLinkBoundaries(t *testing.T) {
+func TestUISnapshotMarkdownTableLinkBoundaries(t *testing.T) {
 	p := activityui.Painter{}
 	for _, width := range []int{12, 22, 60} {
-		rows := p.Markdown("Link | Flag\n--- | ---\n[abcdefghijk](https://example.com) | **YES**", width)
-		screen := vt.NewEmulator(width+1, len(rows))
-		defer screen.Close()
-		letters := ""
-		for y, row := range rows {
-			_, _ = fmt.Fprintf(screen, "\x1b[%d;1H\x1b[0m%s", y+1, row)
-			for x := range ansi.StringWidth(row) {
-				cell := screen.CellAt(x, y)
-				if strings.Contains("abcdefghijk", cell.Content) && cell.Content != "" && cell.Link.URL == "https://example.com" {
-					letters += cell.Content
-				}
-				if cell.Content == "│" && cell.Link.URL != "" {
-					t.Fatalf("linked border at %d,%d", x, y)
-				}
-				if cell.Content == "Y" && cell.Link.URL != "" {
-					t.Fatal("link leaked into next cell")
-				}
-			}
-		}
-		if letters != "abcdefghijk" {
-			t.Fatalf("width %d: wrapped link lost: %q", width, letters)
-		}
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			rows := p.Markdown("Link | Flag\n--- | ---\n[abcdefghijk](https://example.com) | **YES**", width)
+			rows = append(rows, "plain after")
+			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/markdown_table_links_%d.txt", width), rows, width)
+		})
 	}
 }
 
@@ -132,30 +112,11 @@ func TestMarkdownTableSummary(t *testing.T) {
 	}
 }
 
-func TestMarkdownTableWrappedHeaderStyle(t *testing.T) {
+func TestUISnapshotMarkdownTableWrappedHeaderStyle(t *testing.T) {
 	p := activityui.Painter{}
 	rows := p.Markdown("abcdefghijk | Value\n--- | ---\nx | y", 20)
-	screen := vt.NewEmulator(21, len(rows))
-	defer screen.Close()
-	letters := ""
-	for y, row := range rows {
-		_, _ = fmt.Fprintf(screen, "\x1b[%d;1H\x1b[0m%s", y+1, row)
-		if strings.HasPrefix(ansi.Strip(row), "├") {
-			break
-		}
-		for x := range ansi.StringWidth(row) {
-			cell := screen.CellAt(x, y)
-			if cell.Content != "" && strings.Contains("abcdefghijk", cell.Content) && x < 10 {
-				if cell.Style.Attrs&uv.AttrBold == 0 {
-					t.Fatalf("unemphasized header at %d,%d: %#v", x, y, cell)
-				}
-				letters += cell.Content
-			}
-		}
-	}
-	if letters != "abcdefghijk" {
-		t.Fatalf("header content lost: %q", letters)
-	}
+	rows = append(rows, "plain after table")
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown_table_wrapped_header.txt", rows, 20)
 }
 
 func TestMarkdownTableRecordAlignment(t *testing.T) {

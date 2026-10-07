@@ -22,8 +22,11 @@ The MCP adapter rejects mutations and workspace changes before execution.
 
 Mekugi observes stock Codex `apply_patch` calls. Codex executes each call once;
 Mekugi does not replace the tool, run a hook, apply a second patch, or alter the
-argument or result. A complete argument may be projected as a provisional live
-diff while streaming. Only the actual host result and resulting workspace
+argument or host result. The
+[duplicate-output projection](execution.md#duplicate-output-projection) may
+reference repeated model-visible output only after observation and retention
+have consumed the original text. A complete argument may be projected as a
+provisional live diff while streaming. Only the actual host result and resulting workspace
 state determine a completed change record. A yielded call remains unfinished
 until its host continuation is terminal. Saved file differences are applied
 changes: a later command or test failure does not undo bytes already written.
@@ -41,7 +44,7 @@ dependent review evidence as durable.
 
 Completed host results first visible in a compaction request are reconciled before
 either journal synthesis or provider forwarding can discard that input. This
-includes native patches, Code Mode patches and exec-observed writes. Observation
+includes stock patches and exec-observed writes. Observation
 does not project replay carriers or edit notices into the forwarded compaction
 payload. Missing workspace metadata may use only the unique retained workspace
 owned by that thread; ambiguity cannot establish capture scope.
@@ -60,7 +63,7 @@ show only their retained rows, never context borrowed from the current workspace
 or another invocation. Composed net views and apply/revert hunk grouping remain
 compact, so wider review context does not join independently replayable changes.
 
-Patches inside one Code Mode cell share a pre-cell/post-cell observation window.
+Patches inside one `exec` cell share a pre-cell/post-cell observation window.
 Literal complete inputs name their baselines before execution. Host tracing
 confirms individual outcomes and repeated literal call occurrences, without
 evaluating JavaScript or learning a before-state after execution. A cell whose
@@ -74,8 +77,8 @@ independently of sibling command processes that remain running.
 
 ### Command effects
 
-Mekugi records known edit sources in stock `exec_command` and literal Code Mode
-command calls. These include literal text/file redirections (`cat`, `printf`,
+Mekugi records known edit sources in literal stock `tools.exec_command`
+calls. These include literal text/file redirections (`cat`, `printf`,
 `echo`, `tee`), coreutils file operations including `mv` and `rm`, in-place `sed`
 and `perl`, formatters with individually named file targets, supported
 source-derived Python and JavaScript writes, local VCS
@@ -162,6 +165,17 @@ remain in call history without an ID. Historical observation-only and tool-manag
 records remain available through explicit `--history`, but are absent from
 authored diffs, counts, notices, saved Diff, and child handoffs. Admission uses
 retained provenance, not file classification.
+
+VCS commands that import, discard, or write out repository content retain their
+effects as diagnostic history, not agent-authored changes. These effects are
+excluded from authored counts, diffs, notices, saved Diff, live diff, and child
+handoffs. This includes redirected or piped repository output.
+Command observation uses the shared VCS classification to distinguish possible
+writers from read-only commands. In a window containing both a VCS writer and an
+interpreter edit, source-named interpreter targets remain authored; unnamed
+effects cannot be separated from the VCS operation and remain diagnostic.
+Recognized read-only VCS siblings do not exclude unnamed interpreter changes. New captures
+persist this provenance for restart; existing retained provenance is not rewritten.
 
 Root and child agents share their inherited namespace; forks and side threads
 receive isolated visible records, and resume reads retained evidence after a
@@ -266,6 +280,8 @@ not substituted tool results. After persistence, the
 agent-visible completed tool response also receives a separate text part with
 the change ID and `mchanges ID --summary` statistics. This bounded notice does
 not replace the original host result or alter the user-facing edit display.
+The separate duplicate-output projection may reference repeated host text in
+model input; it leaves the appended change notice intact.
 No-effect and unfinished calls receive no notice; partial edits report only
 retained evidence. Continuations receive the notice when they finish the edit.
 
@@ -327,11 +343,14 @@ In an interactive terminal, Mekugi opens its integrated viewer on the
 first observed editing or execution call. The stream view shows concurrent
 main-agent and child calls. It streams edits only: provisional `apply_patch`
 diffs and the file effects of shell commands, before completion. Stock `cat`
-heredoc redirections are always streamed, including from a native
-`exec_command` or Code Mode `tools.exec_command` call whose arguments are
-still arriving. Literal `cp`, `mv`, `rm`, and `tee` heredoc commands are
-predicted from current file contents. A preview does not claim that Codex ran
-or accepted an edit. A Code Mode patch held in an immutable top-level literal
+heredoc redirections are always streamed, including from a nested
+`tools.exec_command` call whose arguments are
+still arriving. Literal `cp`, `rm`, and `tee` heredoc commands are
+predicted from current file contents. Moves do not open live source cards:
+they have no arriving source content. Their completed evidence remains in
+Activity and the saved diff. Independent source writes in the same call still
+stream. A preview does not claim that Codex ran
+or accepted an edit. A nested patch held in an immutable top-level literal
 binding is rendered as the patch preview.
 Literal Python `Path.write_text` and `open(..., "w").write` bodies and literal
 JavaScript `writeFileSync`/`writeFile` bodies can be predicted without evaluation.
@@ -405,8 +424,9 @@ displayed edit. A literal `workdir` resolves relative targets, as does a literal
 predicted as if each succeeds. Literal variable assignments, `set`, `echo`, and
 `true` steps do not prevent a prediction. When an edit's `workdir` is computed,
 the card reports that its target cannot be resolved.
-Scope cards list pending VCS restore, deletion, or switch targets when their
-targets are known. Ordinary command watches remain hidden until a captured
+Recognized VCS effects have no pending or running live-diff card. Authored
+targets in mixed calls remain visible, using the same provenance admission as
+authored counts. Ordinary command watches remain hidden until a captured
 file changes. A `may write` footer distinguishes captured paths from additional
 unknown write targets and stays anchored to the bottom of its card. Unknown
 targets describe incomplete command-wide coverage, not a failure to resolve the
@@ -421,9 +441,10 @@ return to their captured state. When a live segment report uniquely matches the
 writer's thread, turn and exact script, and the host invocation started after
 the writer window opened, the card finishes after all recognized
 edit segments (including file copies and Go formatter writes) end or are skipped, independently
-of a following test or other non-edit segment. A uniquely matched native command
-completion also finishes its card when no segment report exists, without waiting
-for later commands in the same Code Mode cell. Its final frame uses observed
+of a following test or other non-edit segment. A uniquely matched native Bash or
+`sh` command completion also finishes its card when no segment report exists,
+including commands with supported literal `env` prefixes, without waiting for
+later commands in the same `exec` cell. Its final frame uses observed
 files, not predicted content; later edit segments keep it open. Ambiguous
 concurrent matches cannot retire each other's cards. Without tracking, a literal edit's card finishes when its
 captured targets match the fully projected edit. The completed card says
@@ -439,7 +460,9 @@ polling.
 
 Query-based Mercurial scoping and literal `sed`/`perl` substitution prediction are
 outside this delivery. Original stock result content remains unchanged alongside
-the agent-visible change notice.
+the agent-visible change notice, except for the model-visible
+duplicate-output projection. Retained evidence and the user-facing display
+keep the full result.
 Patch previews show projected source changes with the affected file's language
 highlighting, not the `apply_patch` instruction envelope. If source matching
 cannot establish that projection, the viewer must not fabricate a diff. A
@@ -460,7 +483,7 @@ evidence remains available in Activity and the saved diff.
 
 The live batch header names the editing tool for its selected edit before the
 file count, such as `apply_patch`, `python`, or `cat`, including edits nested
-in Code Mode. The enclosing executor is not the editing tool. Unknown editing
+in `exec`. The enclosing executor is not the editing tool. Unknown editing
 tool identity is omitted. Following a new edit or pinning another edit switches
 the header to that edit's tool, not a sibling's.
 
@@ -490,7 +513,7 @@ than draining all line boundaries in a provider burst. A reveal held between
 target units counts the frames it waited, so it can cover several lines; idle
 time before a burst does not count. Bounded lag catch-up may skip ahead. After
 the call finishes, queued units keep distinct reveals for about one second; the
-remaining final input then appears at once. Shell/Code Mode input
+remaining final input then appears at once. Shell/JavaScript input
 that finishes before any target diff was published skips this catch-up and
 publishes its final projection without manufacturing an active stream.
 The reveal advances by whole decoded lines. An unfinished line stays
@@ -519,15 +542,27 @@ The line-number column of a card never narrows while its call streams.
 The saved diff view uses completed known-edit patch and command evidence. It includes
 changes from children that are visible to the parent. The viewer switches
 to it after the root's usage and journal flush, and back to stream for the
-next prompt. The user can switch, scroll, pause following, or resume without changing execution or durable evidence. Each mode's
+next prompt. The user can switch or browse without changing execution or durable evidence. Each mode's
 footer reports what the other holds: live calls from the diff view, and
 captured files from the stream view. A child caller's card label uses the
 same color as that agent in the agents pane.
 
+Replacement blocks emphasize removed and inserted words with stronger red and
+green backgrounds, like git-delta, while preserving source syntax colors.
+Unchanged words keep the subtle changed-row fill. Comparisons span consecutive
+replacement rows so line reflow does not mark all retained words as changed.
+Pure additions and removals keep their row fill. Large replacement blocks may
+omit word emphasis to keep rendering bounded. This decoration changes no source
+text, line coordinates, selection, or retained evidence. Source previews use
+the same decoration for the replacement rows available in their visible window.
+
 The saved diff navigator is a presentation index over captured files, not a
 reordering of capture history. Wide panes show a persistent, collapsible left
-dock with colored status and inline added/removed counts; `s` hides it. Narrow
-panes use `s` to toggle a full-width picker so code retains its reading width.
+dock with colored status and inline added/removed counts. `s` shows and focuses
+the file/Changes navigator; pressing it again hides the navigator. Narrow
+standalone panes use a full-width picker so code retains its reading width.
+Narrow native panes stack the list above the diff; focusing the list enlarges
+it without covering the diff.
 The diff pane header omits the redundant file/path/row count; section headings
 within the diff still identify each file.
 Tree and flat choices remain stable for the viewer lifetime. Filtering shows
@@ -536,12 +571,14 @@ it restores the tree's expansion and navigation position. Files use stable
 path ordering, with folders first in tree mode. Next/previous file navigation
 uses the matching set, revealing destinations inside collapsed folders.
 
-The navigator and diff have independent viewports. Keyboard focus is visible;
+The navigator and diff have independent viewports and keyboard focus. Arrow keys
+act on the focused region. Keyboard focus is visible;
 the active list row is shaded in place rather than marked by a separate arrow
 column, leaving that cell available for file names and graph rows. Moving the
 cursor onto a file, or onto a change (its first file), shows that file while
-the list keeps focus; Enter opens it and leaves the list. The row under the
-pointer is underlined, apart from its tree or graph lanes, and a click acts like Enter on that row. After Enter
+the list keeps focus; Enter opens it and focuses the diff. The row under the
+pointer is underlined, apart from its tree or graph lanes. Clicking a list row
+selects it while keeping list focus; clicking diff content focuses the diff. After Enter
 opens a file, Esc returns to the list; after Enter on a branch sets its caller
 filter, Esc restores the previous filter. Otherwise Esc closes help or the
 filter, then leaves the list.
@@ -559,7 +596,7 @@ caller's first change; each row shows the change ID, source, file count, known
 line counts. A single-file change always shows its file: nested below it
 beside the diff, or in place of the count when the list is stacked with the
 diff or covers it, where it has no file rows to expand. Missing line counts use `?`, not a command-failure glyph. A file's
-section heading lists the changes it composes. Every saved capture participates
+section heading lists the changes it composes. Every saved authored capture participates
 in composition regardless of command exit status. If retained contents cannot
 form one coherent diff, the pane shows the individual captured edits with their
 IDs instead of hiding them behind a composition error or inventing a net diff.
@@ -578,7 +615,7 @@ content change, or `RM` for a rename with captured edits. `?` marks incomplete
 evidence without claiming a confirmed modification; a rename
 names its source as `old → new`. `UU` marks a net diff that still adds
 `mchanges` revert or apply conflict markers, and clears once they are resolved.
-Incoming updates retain the paused file, navigator cursor, and top-row identity
+Incoming updates refresh content while retaining the chosen file, navigator cursor, and top-row identity
 where those entries still exist. Resize keeps the logical diff anchor and the
 focused navigator entry visible. File status, known line counts, folder file
 counts, and recent-update marks remain distinct from capture confirmation;
@@ -586,7 +623,7 @@ unknown counts are not presented as zero. Help is available without permanently
 occupying code rows. These controls change no execution or durable evidence.
 
 Mekugi owns the native terminal composition, while Codex app-server remains the
-execution authority. The [native UI contract](native_ui.md)
+execution authority. The [UI contract](native_ui.md)
 owns pane layout and input: Main on the left, Diff or Activity on the right,
 and the child Agents roster below. `Ctrl-B` followed by `1`, `2`, `3`, or `4`
 focuses those panes. Mouse dragging and prefix shortcuts resize panes and the
@@ -594,7 +631,7 @@ file navigator without changing evidence.
 
 Diff and agents scrolling use one contract: arrows or `j`/`k` move one line,
 PageUp/PageDown or `b`/Space move one page, Home/End or `g`/`G` go to the
-beginning/end. These actions pause following; `r` resumes it. The wheel scrolls
+beginning/end. The saved Diff has no follow mode or resume-follow shortcut. The wheel scrolls
 diff and activity by three lines per event without changing keyboard focus.
 Consecutive wheel events accumulate even before the next rendered frame. Stream cards retain
 their source windows during manual scrolling and resume their live tips with `r`.
@@ -613,7 +650,8 @@ joined. Redirected sessions retain stock input/output and inline activity.
 
 Acceptance:
 
-1. Direct and Code Mode patch calls retain exact stock arguments and results.
+1. Nested stock patch calls retain exact arguments and host results; only eligible
+   model-visible text may use the duplicate-output projection.
 2. A streaming preview appears before completion but does not create success
    evidence or a change ID before the host result.
 3. Successful, failed, no-op, and partial outcomes are distinguished by
@@ -626,8 +664,9 @@ Acceptance:
 5. Child handoff and resume use durable ownership, not a live process; replay
    never executes an edit again.
 6. Live `cat`, file-operation, and interpreter projections are presentation
-   only and preserve stock PTY, yield, result, and `write_stdin` behavior.
-7. A declared native or literal Code Mode command produces a record with the
+   only and preserve stock PTY, yield, host result, and `write_stdin` behavior.
+   The separate duplicate-output projection changes only eligible model input.
+7. A literal nested command produces a record with the
    actual command outcome and reviewable scoped effects. A nonzero exit is retained
    in debug history; saved edits still publish their change receipt.
 8. A yielded command is finalized only by its terminal continuation result.

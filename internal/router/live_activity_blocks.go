@@ -59,20 +59,67 @@ func commandTimingIsCompound(blocks []activityui.Block, entry activityPaneEntry)
 	return compound
 }
 
+// journalActivityBody removes the generated list wrapper from journal updates.
+// A child's task body replaces its summary row; a body-free update keeps its
+// title and state. The original block remains the detail and copy source.
+func journalActivityBody(body string, child bool) string {
+	var items []string
+	for _, item := range strings.Split(strings.TrimPrefix(body, "- "), "\n- ") {
+		title, detail, _ := strings.Cut(item, "\n")
+		rows := strings.Split(detail, "\n")
+		for i := range rows {
+			rows[i] = strings.TrimPrefix(rows[i], "  ")
+		}
+		detail = strings.Trim(strings.Join(rows, "\n"), "\n")
+		parts := strings.SplitN(title, " ", 3)
+		if child && len(parts) == 3 && strings.HasPrefix(parts[1], "/") {
+			for _, glyph := range journalGlyphs {
+				if parts[0] == glyph {
+					if strings.TrimSpace(detail) != "" {
+						title = ""
+					} else {
+						title = parts[0] + " " + parts[2]
+					}
+					break
+				}
+			}
+		}
+		if title != "" && detail != "" {
+			title += "\n"
+		}
+		items = append(items, title+detail)
+	}
+	return strings.Join(items, "\n\n")
+}
+
 func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 	defer func() {
 		// An unsupported batch has one host clock, not a clock per classified
 		// operation. Keep that total visible and its output on one explicit row.
-		if n := entry.native; entry.Kind == "tool" && n != nil && n.command != "" && len(n.segments) == 0 &&
-			(n.running || n.duration > 0) && commandTimingIsCompound(blocks, entry) &&
+		if n := entry.native; entry.Kind == "tool" && n != nil && n.command != "" &&
+			(len(n.segments) == 0 && (n.running || n.duration > 0) && commandTimingIsCompound(blocks, entry) || n.approval != "" && len(blocks) > 1) &&
 			!slices.ContainsFunc(blocks, func(b activityui.Block) bool { return b.BatchExit }) {
 			batch := activityui.Block{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true, Running: n.running, Output: n.output, Tail: entry.outputTail, TailOmitted: entry.outputOmit, Collapsed: n.collapsed}
-			for i := range blocks {
-				blocks[i].Output, blocks[i].Tail, blocks[i].TailOmitted = nil, nil, 0
+			if len(n.segments) == 0 {
+				for i := range blocks {
+					blocks[i].Output, blocks[i].Tail, blocks[i].TailOmitted = nil, nil, 0
+				}
+			} else {
+				batch.Output, batch.Tail, batch.TailOmitted = nil, nil, 0
 			}
 			blocks = append(blocks, batch)
 		}
+		if n := entry.native; n != nil && n.commandTimeout != "" {
+			for i := range blocks {
+				if !slices.Contains(blocks[i].Timeouts, n.commandTimeout) {
+					blocks[i].Timeouts = append(slices.Clone(blocks[i].Timeouts), n.commandTimeout)
+				}
+			}
+		}
 		setCommandTiming(blocks, entry)
+		if entry.native != nil && len(blocks) > 0 {
+			setApprovalBlocks(blocks, entry.native.approval)
+		}
 		if entry.Kind == "tool" && entry.native != nil && entry.native.workdir != "" && len(blocks) > 0 {
 			// Every row keeps the directory for merging; one label per invocation.
 			for i := range blocks {
@@ -125,13 +172,13 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		for i := range blocks {
 			block := &blocks[i]
 			if entry.native != nil {
-				block.Live = entry.native.phase == "summary" || entry.native.phase == "item/started"
-				block.Collapsed = entry.native.collapsed && block.Collapsible()
+				block.Live = i == len(blocks)-1 && (entry.native.phase == "summary" || entry.native.phase == "item/started")
 				// Duration belongs to the item, not to each detected section.
 				if i == len(blocks)-1 && entry.native.thought >= time.Second {
 					block.Elapsed = liveActivityAge(entry.native.thought)
 				}
 			}
+			block.Collapsed = block.Collapsible()
 		}
 		return blocks
 	case "native_journal":
@@ -186,7 +233,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		}
 		if entry.native != nil && len(blocks) > 0 {
 			blocks[len(blocks)-1].Output = entry.native.output
-			if entry.native.status == "failed" {
+			if entry.native.status == "failed" && (entry.native.output == nil || !entry.native.output.View().Exited || entry.native.output.View().Exit == 0) {
 				last := &blocks[len(blocks)-1]
 				last.Label = strings.TrimSpace(last.Label + " · failed")
 			}
@@ -270,6 +317,21 @@ func retainBatchResult(blocks []activityui.Block, batch activityui.Block) []acti
 	return append(blocks, batch)
 }
 
+// setApprovalBlocks puts a compound invocation's state on its aggregate row.
+func setApprovalBlocks(blocks []activityui.Block, outcome string) {
+	if len(blocks) == 0 {
+		return
+	}
+	at := 0
+	for i := range blocks {
+		blocks[i].Approval = ""
+		if blocks[i].BatchExit {
+			at = i
+		}
+	}
+	blocks[at].Approval = outcome
+}
+
 // commandExitBlocks keeps a combined shell failure separate from classified
 // operations: without a complete segment report none owns the batch's exit.
 func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitted int) []activityui.Block {
@@ -323,7 +385,7 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 	if script, ok := appServerShellScript(command); ok {
 		command = script
 	}
-	_, classified := toolActivityReads(command)
+	_, classified := toolActivityReads(command, "")
 	for _, segment := range entry.native.segments {
 		if classified && !segment.skipped && segment.exit == 0 {
 			if program, err := syntax.NewParser().Parse(strings.NewReader(segment.source), ""); err == nil && len(program.Stmts) == 1 && toolActivityReadSeparator(program.Stmts[0]) {
@@ -349,7 +411,9 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 		for i := range operations {
 			operations[i].Running, operations[i].Skipped = segment.running, segment.skipped
 			if block := &operations[i]; !segment.running && strings.HasSuffix(block.EditSource, " (requested)") {
-				status := "completed"
+				// A segment boundary confirms execution, not a file change.
+				// Captured evidence alone replaces intent with applied counts.
+				status := "ran"
 				if segment.skipped {
 					status = "skipped"
 				} else if segment.exit != 0 {
@@ -373,7 +437,8 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 		last.Changes = commitChanges(segment.changes, segment.commit)
 		blocks = append(blocks, operations...)
 	}
-	hasCombinedOutput := len(entry.outputTail) > 0 || entry.outputOmit > 0
+	singleOutput := len(entry.native.segments) == 1 && entry.native.segments[0].output == nil && entry.native.output != nil
+	hasCombinedOutput := singleOutput || len(entry.outputTail) > 0 || entry.outputOmit > 0
 	if len(blocks) == 0 && entry.native.output != nil {
 		output := entry.native.output.View()
 		hasCombinedOutput = hasCombinedOutput || len(output.Lines) > 0 || output.Dropped > 0 || output.Released

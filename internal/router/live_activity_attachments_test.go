@@ -30,9 +30,9 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 	item := appServerItem{Type: "userMessage", Content: content, ID: "input"}
 	u, _ := newAppServerTestUI()
 	for _, method := range []string{"item/started", "item/completed", "item/completed"} {
-		u.view.applyAppServerItem(cwd, u.thread, u.thread, "turn", item.ID, method, "", item)
+		u.view.applyAppServerItem(true, cwd, u.thread, u.thread, "turn", item.ID, method, "", item)
 	}
-	u.view.applyAppServerItem(cwd, u.thread, u.thread, "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Agent response"})
+	u.view.applyAppServerItem(true, cwd, u.thread, u.thread, "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Agent response"})
 	if len(u.view.entries) != 3 || u.view.entries[1].Kind != "attachments" {
 		t.Fatalf("missing, duplicated, or reordered receipts: %+v", u.view.entries)
 	}
@@ -87,7 +87,7 @@ func TestLiveActivityAttachmentDisplayPaths(t *testing.T) {
 				t.Fatal(err)
 			}
 			v := newLiveActivityView()
-			v.applyAppServerItem(tt.workspace, "main", tt.thread, "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
+			v.applyAppServerItem(true, tt.workspace, "main", tt.thread, "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
 			if len(v.entries) != 2 || len(v.entries[1].blocks) != 1 || v.entries[1].blocks[0].Path != tt.want {
 				t.Fatalf("attachment display path: got %+v, want %q", v.entries, tt.want)
 			}
@@ -124,7 +124,7 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 				item := appServerItem{Type: "userMessage", Content: content, ID: "input"}
 				// The same host-owned item drives live delivery and fresh-process replay.
 				for _, phase := range []string{"item/started", "item/completed"} {
-					v.applyAppServerItem("/workspace", "main", thread, "turn", "input", phase, "", item)
+					v.applyAppServerItem(true, "/workspace", "main", thread, "turn", "input", phase, "", item)
 				}
 				if len(v.entries) != 2 || len(v.entries[1].blocks) != 2 {
 					t.Fatalf("duplicate chunk or receipt: %+v", v.entries)
@@ -186,7 +186,7 @@ func TestUISnapshotAttachmentDialogs(t *testing.T) {
 	frames = append(frames, frameComposerSkillFromPath("guide", "/workspace/SKILL.md", "# Guide\n\nUse **submitted** instructions.\n")...)
 	frames = append(frames, "Attached file \"/workspace/missing.txt\": CONTENT NOT ATTACHED (\"missing\"). Read this separately if needed.")
 	content, _ := json.Marshal([]map[string]string{{"type": "text", "text": encodeFileAttachments(frames)}})
-	v.applyAppServerItem("/workspace", "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
+	v.applyAppServerItem(true, "/workspace", "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
 	feed := v.renderFeed(80, 40)
 	uisnapshot.Assert(t, "testdata/snapshots/attachment-receipts.txt", strings.Join(feed.lines, "\n")+"\n")
 	for i, name := range []string{"file", "skill"} {
@@ -215,7 +215,7 @@ func TestUISnapshotDirectoryAttachment(t *testing.T) {
 	draft.snapshotFileAttachments(cwd)
 	content, _ := json.Marshal(draft.input())
 	v := sharedEventsView(false)
-	v.applyAppServerItem(cwd, "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
+	v.applyAppServerItem(true, cwd, "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
 	feed := v.renderFeed(80, 40)
 	uisnapshot.Assert(t, "testdata/snapshots/directory-attachment-receipt.txt", strings.Join(feed.lines, "\n")+"\n")
 	page := v.painter.DialogPage(v.entries[1].blocks[0], 72)
@@ -244,7 +244,7 @@ func TestLiveActivityAttachmentStackedSnapshots(t *testing.T) {
 				t.Fatal(err)
 			}
 			v := sharedEventsView(false)
-			v.applyAppServerItem("/workspace", "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
+			v.applyAppServerItem(true, "/workspace", "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
 			blocks := v.entries[1].blocks
 			if len(blocks) != 2 {
 				t.Fatalf("stacked snapshots collapsed together: %d receipts", len(blocks))

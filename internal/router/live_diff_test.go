@@ -53,7 +53,7 @@ func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 	chunk := livediff.Chunk{
 		Review: mekugi.ReviewFile{BeforePath: before, AfterPath: after, Diff: diff},
 	}
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: after, Chunks: []livediff.Chunk{chunk}}}, workspace, 240, 0, chunk)
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: after, Chunks: []livediff.Chunk{chunk}}}, workspace, 240)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestLiveDiffNativeRenderer(t *testing.T) {
 	file := livediff.File{Path: path, Chunks: []livediff.Chunk{{
 		Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n"},
 	}}}
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 80, 0, livediff.Chunk{})
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 80)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,35 +226,6 @@ func TestLiveDiffNativeRenderer(t *testing.T) {
 	}
 	if !strings.Contains(ansi.Strip(text), "new") || !strings.Contains(text, "\x1b[") {
 		t.Fatalf("native renderer did not Render: %q", text)
-	}
-}
-
-func TestLiveDiffRenderFollowsLatestHunk(t *testing.T) {
-	workspace := t.TempDir()
-	path := filepath.Join(workspace, "file.txt")
-	header := "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n"
-	top := header + "@@ -1 +1 @@\n-top\n+TOP\n"
-	bottom := header + "@@ -99 +100 @@\n-bottom\n+BOTTOM\n"
-	file := livediff.File{Chunks: []livediff.Chunk{
-		{Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: top}},
-		{Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: bottom}},
-	}}
-	for i, diff := range []string{top, bottom} {
-		focus := livediff.Chunk{Review: mekugi.ReviewFile{Diff: diff}}
-		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 80, 0, focus)
-		if err != nil {
-			t.Fatal(err)
-		}
-		text := ansi.Strip(strings.Join(render.Lines[render.FocusOffset:], "\n"))
-		if !strings.Contains(text, []string{"TOP", "BOTTOM"}[i]) {
-			t.Fatalf("focus missed changed hunk: offset=%d %q", render.FocusOffset, text)
-		}
-		if i == 1 && strings.Contains(text, "TOP") {
-			t.Fatalf("bottom hunk focused the top: %q", text)
-		}
-		if strings.Contains(strings.Join(render.Lines, "\n"), "mekugi-live-diff-") {
-			t.Fatal("renderer markers leaked into viewport")
-		}
 	}
 }
 
@@ -347,7 +318,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		waitFor(reply.theme.Foreground(chroma.GenericInserted), "FOLLOW")
+		waitFor(reply.theme.Foreground(chroma.GenericInserted), "DIFF · v stream")
 	}
 	// Unrelated and malformed OSC payloads must not flush, navigate, or quit,
 	// even when they include escape-prefixed command keys or overflow the buffer.
@@ -362,7 +333,6 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	if _, err := terminal.Write([]byte("?")); err != nil {
 		t.Fatal(err)
 	}
-	// Following fills the viewport through the final row of this replacement.
 	// New files must not move the paused selection or its visible source row.
 	selectedFileHighlighted := func(output, name string, height int) bool {
 		for row := 1; row <= height; row++ {
@@ -373,7 +343,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 		}
 		return false
 	}
-	before := waitFor("M second.go", "PAUSED", livediff.DarkTheme.SelectionBackground())
+	before := waitFor("M second.go", "DIFF · v stream", livediff.DarkTheme.SelectionBackground())
 	if !selectedFileHighlighted(before, "M second.go", 20) {
 		t.Fatalf("navigation did not select second.go: %q", liveDiffFrameRow(before, 5))
 	}
@@ -387,7 +357,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	_, beforeSource, _ := strings.Cut(lastRow(before, 2), "│")
 	liveDiffTestChange(t, store, workspace, "three", "first.go")
 	liveDiffTestChange(t, store, workspace, "four", "third.go")
-	after := waitFor("M second.go", "3/3 · tree", "PAUSED", livediff.DarkTheme.SelectionBackground())
+	after := waitFor("M second.go", "3/3 · tree", "DIFF · v stream", livediff.DarkTheme.SelectionBackground())
 	if !selectedFileHighlighted(after, "M second.go", 20) {
 		t.Fatalf("new files moved paused selection: %q", liveDiffFrameRow(after, 5))
 	}
@@ -405,8 +375,8 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	if _, err := terminal.Write([]byte("r")); err != nil {
 		t.Fatal(err)
 	}
-	if output := waitFor("FOLLOW", "M third.go", livediff.DarkTheme.SelectionBackground()); !selectedFileHighlighted(output, "M third.go", 25) {
-		t.Fatalf("resume did not select latest edit: %s", output)
+	if output := waitFor("DIFF · v stream", "M second.go", livediff.DarkTheme.SelectionBackground()); !selectedFileHighlighted(output, "M second.go", 25) {
+		t.Fatalf("removed r shortcut changed selected file: %s", output)
 	}
 	if _, err := terminal.Write([]byte{3}); err != nil {
 		t.Fatal(err)

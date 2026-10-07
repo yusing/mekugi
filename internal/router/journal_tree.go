@@ -70,9 +70,14 @@ func (j *threadJournal) ensureTree() {
 		if item.Path != "" {
 			continue
 		}
-		j.NextOrdinal[""]++
-		item.Path = "/" + strconv.FormatUint(j.NextOrdinal[""], 10)
 		setLegacyJournalContent(item)
+		if item.Kind == "answer" {
+			// Outcomes retain their own identity without consuming a task-tree ordinal.
+			item.Path = "/outcome-" + item.ID
+		} else {
+			j.NextOrdinal[""]++
+			item.Path = "/" + strconv.FormatUint(j.NextOrdinal[""], 10)
+		}
 	}
 	if j.Version == 1 {
 		j.Version = 2
@@ -123,7 +128,7 @@ func (j *threadJournal) treeParent(path string) error {
 		return fmt.Errorf("journal path not found: %s", path)
 	}
 	if j.Items[i].Kind != "task" {
-		// Ordinals are shared by every kind, so a guessed path often lands on a note.
+		// Task-tree ordinals include notes and context, so a guessed path can land on a note.
 		hint := "omit under for the root"
 		if task := journalParent(path); task != "" {
 			hint = "use its task " + task + " or " + hint

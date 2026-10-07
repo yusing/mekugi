@@ -288,6 +288,7 @@ func TestLiveDiffNavigationDockAndPickerKeys(t *testing.T) {
 		t.Fatal("s did not restore the wide dock")
 	}
 	c.lastWidth = 70
+	c.navigation.Focused = false
 	c.view.Following = true
 	c.navigationKey('s')
 	if !c.navigation.Focused || c.navigation.Hidden || c.navigation.Width(70) != 0 || c.view.Following {
@@ -367,5 +368,58 @@ func TestLiveDiffNavigationChainSplitKeepsAncestor(t *testing.T) {
 	nav.Top = 3
 	if row := ansi.Strip(nav.Render(files, nil, 0, 34, 10, livediff.DarkTheme)[2]); nav.Top != 0 || !strings.Contains(row, "internal") {
 		t.Fatalf("fitting tree scrolled to %d, first row %q", nav.Top, row)
+	}
+}
+
+func TestLiveDiffIndependentFocusArrows(t *testing.T) {
+	for _, width := range []int{70, 120} {
+		c := newLiveDiffTerminalController(nil, "", nil)
+		c.diffMode, c.native, c.lastWidth = true, true, width
+		c.files = []livediff.File{navigationFile("a.go"), navigationFile("b.go")}
+		c.view.Merge(c.files)
+		c.navigation.Flat = true
+		c.navigation.Rebuild(c.files, "")
+		c.navigationKey('s')
+		for _, key := range []byte("\x1b[B") {
+			c.handleKey(key)
+		}
+		if !c.navigation.Focused || c.navigation.Cursor != 1 || c.view.Selected != 1 || c.offset != 0 {
+			t.Fatalf("width %d: arrows did not navigate files independently: %+v", width, c.navigation)
+		}
+		c.handleKey('\r')
+		if c.navigation.Focused {
+			t.Fatal("Enter did not focus diff")
+		}
+		for _, key := range []byte("\x1b[A") {
+			c.handleKey(key)
+		}
+		if c.navigation.Cursor != 1 {
+			t.Fatal("diff arrow moved file cursor")
+		}
+		c.escapeKey()
+		if !c.navigation.Focused {
+			t.Fatal("Esc did not return to files")
+		}
+		c.close()
+	}
+}
+
+func TestLiveDiffUpdatesPreserveManualChoice(t *testing.T) {
+	c := liveDiffChangesController(t, 120, 12, []livediff.Chunk{
+		liveDiffCapture("one", "a.go", 1, "", strings.Repeat("first\n", 40), livediff.Origin{}),
+		liveDiffCapture("two", "b.go", 2, "", "second\n", livediff.Origin{}),
+	})
+	c.handleKey('j')
+	c.frame(t)
+	selected, offset := c.view.Selected, c.offset
+	files := append([]livediff.File(nil), c.view.Files...)
+	files[1].Chunks = append(files[1].Chunks, liveDiffCapture("three", "b.go", 3, "second\n", "updated\n", livediff.Origin{}))
+	c.view.Merge(files)
+	c.view.RefreshVisible()
+	c.frame(t)
+	c.handleKey('r')
+	c.frame(t)
+	if c.view.Selected != selected || c.offset != offset || c.view.Following {
+		t.Fatalf("incoming edit or removed shortcut moved choice: file=%d offset=%d", c.view.Selected, c.offset)
 	}
 }

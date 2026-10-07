@@ -32,7 +32,7 @@ import (
 // no model or network requests; edits land in a temporary workspace.
 func TestNativeUIPreview(t *testing.T) {
 	if os.Getenv("MEKUGI_NATIVE_UI_PREVIEW") != "1" {
-		t.Skip("interactive native UI preview")
+		t.Skip("interactive UI preview")
 	}
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {

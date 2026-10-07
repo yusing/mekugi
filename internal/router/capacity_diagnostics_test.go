@@ -66,7 +66,7 @@ func TestCapacityNoticesAreVisibleAndDoNotConsumeTools(t *testing.T) {
 func TestJournalCapacityReturnsActionableHostToolError(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("Node is required to execute the lowered Code Mode fixture")
+		t.Skip("Node is required to execute the lowered exec fixture")
 	}
 	transform, proxy := newRuntimeCommentaryTransform(t)
 	for range maxCommentaryRoutes {

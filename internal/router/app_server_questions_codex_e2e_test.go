@@ -69,12 +69,16 @@ func (p *questionCodexProvider) forwardExecution(ctx, _ context.Context, body []
 
 func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 	for _, tc := range []struct {
-		mode  string
-		image bool
-	}{{"async", false}, {"sync", false}, {"async", true}, {"sync", true}} {
+		mode       string
+		image      bool
+		bareArrows bool
+	}{{"async", false, false}, {"sync", false, false}, {"async", true, false}, {"sync", true, false}, {"async", false, true}, {"sync", false, true}} {
 		name := tc.mode
 		if tc.image {
 			name += "-image"
+		}
+		if tc.bareArrows {
+			name += "-arrows"
 		}
 		t.Run(name, func(t *testing.T) {
 			mode := tc.mode
@@ -84,6 +88,12 @@ func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 			}
 			answer := func(terminal *appResumeTerminal) {
 				t.Helper()
+				if tc.bareArrows {
+					terminal.send("one two\x1b[D\x1b[DX\x1b[CY")
+					terminal.await("one tXwYo")
+					terminal.send("\r")
+					return
+				}
 				if !tc.image {
 					terminal.send("1\r")
 					return
@@ -144,7 +154,11 @@ func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 					t.Fatal(err)
 				}
 				encoded, _ := json.Marshal(parsed.Input)
-				if strings.Count(string(encoded), "<send_user_message_question_reply>") != 1 || !strings.Contains(string(encoded), `request_user_input_async`) || !strings.Contains(string(encoded), map[bool]string{false: "Customers", true: "[Image 1]"}[tc.image]) {
+				wantAnswer := map[bool]string{false: "Customers", true: "[Image 1]"}[tc.image]
+				if tc.bareArrows {
+					wantAnswer = "one tXwYo"
+				}
+				if strings.Count(string(encoded), "<send_user_message_question_reply>") != 1 || !strings.Contains(string(encoded), `request_user_input_async`) || !strings.Contains(string(encoded), wantAnswer) {
 					t.Fatal("async reply was not included exactly once in the mid-turn provider input")
 				}
 				if tc.image {
@@ -181,6 +195,9 @@ func TestUserInputQuestionsNativeCodexE2E(t *testing.T) {
 					}
 					answers := result.Answers["scope"].Answers
 					want := "Narrow"
+					if tc.bareArrows {
+						want = "user_note: one tXwYo"
+					}
 					if tc.image {
 						want = "user_note: [Image 1] "
 					}

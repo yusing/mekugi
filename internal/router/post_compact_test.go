@@ -85,7 +85,15 @@ func TestPostCompactHookRestoresDurableMainThreadStateAfterRestart(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := postCompactInput("SessionStart", "compact", thread, workspace)
+	transcript := filepath.Join(t.TempDir(), "session transcript.jsonl")
+	inputBytes, err := json.Marshal(map[string]string{
+		"hook_event_name": "SessionStart", "source": "compact", "session_id": thread, "cwd": workspace,
+		"transcript_path": transcript,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := string(inputBytes)
 	var stdout, stderr bytes.Buffer
 	if code := RunPostCompactHook(t.Context(), nil, strings.NewReader(input), &stdout, &stderr); code != 0 {
 		t.Fatalf("hook exit %d: %s", code, stderr.String())
@@ -107,6 +115,7 @@ func TestPostCompactHookRestoresDurableMainThreadStateAfterRestart(t *testing.T)
 		"SessionStart", "Mekugi post-compaction recovery", answerIDs[0], flushedIDs[0], "Which contract should guide the change?",
 		"Use the retained API contract.", "flushed=true", "Already delivered, still durable.",
 		"**Changes:**", changeID, "M\t1\t1\tdurable.txt",
+		"For missing details, search transcript: \"" + transcript + "\"",
 	} {
 		if want == "SessionStart" {
 			if response.Output.Event != want {
@@ -172,6 +181,9 @@ func TestPostCompactHookMainThreadIsolationAndInputFailures(t *testing.T) {
 		stdout, stderr, code := runPostCompactInput(t, postCompactInput("SessionStart", "compact", root, workspace))
 		if code != 0 || stderr != "" || !strings.Contains(stdout, "private "+root) || strings.Contains(stdout, "private "+sibling) {
 			t.Fatalf("thread-scoped context = (%d, %q, %q), want only %q", code, stdout, stderr, root)
+		}
+		if strings.Contains(stdout, "search transcript:") {
+			t.Fatal("hook supplied a transcript pointer without transcript_path")
 		}
 	})
 	t.Run("other workspace cannot borrow journal", func(t *testing.T) {

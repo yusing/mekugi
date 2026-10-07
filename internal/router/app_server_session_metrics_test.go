@@ -1,6 +1,7 @@
 package router
 
 import (
+	"encoding/base64"
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -10,10 +11,46 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/persistence"
 )
+
+func TestSessionMetricsWrappedDirectoryCopy(t *testing.T) {
+	const path = "/tmp/mekugi debug/a-long-session-directory/mekugi-debug-3106556733"
+	for _, width := range []int{35, 100} {
+		u, _ := newAppServerTestUI()
+		u.replayDebugDirectory = path
+		u.showSessionMetrics()
+		screen := vt.NewEmulator(width, 24)
+		defer screen.Close()
+		if err := u.paint(screen, width, 24); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+		x1, y1, x2, y2 := -1, -1, -1, -1
+		for y, row := range strings.Split(screen.String(), "\n") {
+			if before, _, ok := strings.Cut(row, "/tmp/"); ok {
+				x1, y1 = ansi.StringWidth(before), y
+			}
+			if before, _, ok := strings.Cut(row, "3106556733"); ok {
+				x2, y2 = ansi.StringWidth(before)+len("3106556733")-1, y
+			}
+		}
+		if x1 < 0 || y2 <= y1 {
+			t.Fatalf("wrapped directory missing at width %d: %s", width, screen.String())
+		}
+		if width == 35 {
+			x1, y1, x2, y2 = x2, y2, x1, y1
+		}
+		selectionTestDrag(t, u.shell, x1, y1, x2, y2)
+		u.shell.selectionAction('c')
+		if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(path)) + "\x07"; u.shell.clipboard != want {
+			t.Fatalf("wrapped directory copy = %q, want %q", u.shell.clipboard, want)
+		}
+	}
+}
 
 // Decode the public snapshot boundary rather than naming capture-owned types.
 func sessionMetricsFixture(t *testing.T) capturer.MetricsSnapshot {

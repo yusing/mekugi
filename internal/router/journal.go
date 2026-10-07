@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gofrs/flock"
+	"github.com/yusing/goutils/synk"
 	"github.com/yusing/mekugi/capturer"
 )
 
@@ -313,10 +314,19 @@ func readJournalRecord(path string) (threadJournal, bool, error) {
 		return threadJournal{}, false, err
 	}
 	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, maxReplayRecordBytes+1))
+	pool := synk.GetSizedBytesPool()
+	buffer := pool.GetBuffer(int(info.Size()) + bytes.MinRead)
+	defer func() {
+		// Journal content is private. Decoding owns its strings and slices;
+		// only this temporary read buffer returns to the shared pool.
+		clear(buffer.Bytes())
+		pool.PutBuffer(buffer)
+	}()
+	_, err = buffer.ReadFrom(io.LimitReader(file, maxReplayRecordBytes+1))
 	if err != nil {
 		return threadJournal{}, false, err
 	}
+	data := buffer.Bytes()
 	var journal threadJournal
 	if len(data) > maxReplayRecordBytes || json.Unmarshal(data, &journal) != nil ||
 		(journal.Version != 1 && journal.Version != 2) || journal.Thread == "" || filepath.Base(path) != journalFilename(journal.Workspace, journal.Thread) {
@@ -344,6 +354,12 @@ func writeThreadJournal(store *mekugiReplayStore, journal threadJournal) error {
 }
 
 func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore, workspace, thread string, mutate func(*threadJournal, bool) error) error {
+	return s.transactionWithTiming(ctx, store, workspace, thread, true, mutate)
+}
+
+// Counter-only persistence must not change the view it measures. Work and
+// lifecycle transactions still checkpoint timers before capturing their events.
+func (s *journalStore) transactionWithTiming(ctx context.Context, store *mekugiReplayStore, workspace, thread string, checkpointTimers bool, mutate func(*threadJournal, bool) error) error {
 	if strings.TrimSpace(thread) == "" {
 		return errors.New("journal requires a stable thread ID")
 	}
@@ -370,14 +386,13 @@ func (s *journalStore) transaction(ctx context.Context, store *mekugiReplayStore
 			}
 		}
 		next := current.clone()
-		next.discardForeignTimerAnchors()
-		next.TimerOwner = journalTimerOwner
-		next.checkpointWorkTimers(time.Now())
+		if checkpointTimers {
+			next.discardForeignTimerAnchors()
+			next.TimerOwner = journalTimerOwner
+			next.checkpointWorkTimers(time.Now())
+		}
 		if err := mutate(&next, exists); err != nil {
 			if errors.Is(err, errJournalUnchanged) {
-				if store == nil {
-					s.memory[key] = current
-				}
 				return nil
 			}
 			return err

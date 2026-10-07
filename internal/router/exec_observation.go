@@ -23,6 +23,7 @@ import (
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 const (
@@ -84,6 +85,8 @@ type execFileSnapshot struct {
 	// watchStamp is the live preview's capture-time metadata baseline. It is
 	// not durable evidence and must not replace content comparison.
 	watchStamp string
+	// Move-only operands have retained evidence, but no arriving source to stream.
+	watchMoveOnly bool
 	// CopyOf names the source a copy command writes into this path.
 	CopyOf string `json:",omitempty"`
 }
@@ -99,7 +102,7 @@ type execOmission struct {
 }
 
 // execObservation is the durable pre-call capture of one observed call: a
-// native exec_command, or all literal commands of one Code Mode cell.
+// native exec_command, or all literal commands of one exec cell.
 type execObservation struct {
 	Commands []execCommandInput
 	// CommandClasses retain pre-call classification for repeated literal
@@ -124,7 +127,7 @@ type execObservation struct {
 	// final equality cannot prove those intermediate attempts had no effects.
 	RepeatedPaths bool `json:",omitzero"`
 	// LiteralClass preserves pre-captured scope independently of uncertainty
-	// about additional Code Mode calls whose arguments are not yet resolved.
+	// about additional exec calls whose arguments are not yet resolved.
 	LiteralClass string `json:",omitempty"`
 	// Inventory is the selected workspace before an opaque call. It is
 	// window evidence, separate from the explicit scope above.
@@ -136,13 +139,14 @@ type execObservation struct {
 
 // execOutcome is the finalized status of an observed exec record.
 type execOutcome struct {
-	OutputRef string `json:",omitempty"` // Router-retained failed host result, readable with mread.
-	Status    string
-	Exit      *int `json:",omitempty"`
-	Class     string
-	Labels    []string `json:",omitempty"`
-	Coverage  string
-	CodeMode  bool `json:",omitzero"`
+	DeletedDirectories []string `json:",omitempty"` // Captured directory roots absent after the call.
+	OutputRef          string   `json:",omitempty"` // Router-retained failed host result, readable with mread.
+	Status             string
+	Exit               *int `json:",omitempty"`
+	Class              string
+	Labels             []string `json:",omitempty"`
+	Coverage           string
+	CodeMode           bool `json:",omitzero"`
 	// Scope lists the captured paths, the only paths the record compares
 	// exactly.
 	Scope       []string `json:",omitempty"`
@@ -377,8 +381,8 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 	}
 	if dynamic {
 		observation.LiteralClass = class.String()
-		class, observation.Reason = execOpaque, "Code Mode cell has a non-literal command"
-		observation.Programs = append(observation.Programs, execProgram{Label: "Code Mode command"})
+		class, observation.Reason = execOpaque, "exec cell has a non-literal command"
+		observation.Programs = append(observation.Programs, execProgram{Label: "exec command"})
 		if filepath.IsAbs(env.directory) {
 			observation.Roots = execAddRoot(observation.Roots, filepath.Clean(env.directory))
 		}
@@ -404,7 +408,8 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 	capture.scopeRoots = observation.Roots
 	for _, managed := range []bool{false, true} {
 		for _, entry := range scope {
-			if (entry.Origin != "") == managed && (env.previewOnly || entry.Origin == "") {
+			tool, _, _ := strings.Cut(entry.Origin, " ")
+			if (entry.Origin != "") == managed && (env.previewOnly || entry.Origin == "" || vcsguard.IsTool(tool)) {
 				capture.entry(entry)
 			}
 		}
@@ -491,6 +496,7 @@ type execListing struct {
 
 type execCapture struct {
 	origin       string
+	moveOnly     bool
 	deadline     time.Time
 	seen         map[string]bool
 	files        []execFileSnapshot
@@ -533,17 +539,17 @@ func (c *execCapture) add(path string) {
 func (c *execCapture) addCopy(path, source string) {
 	path = filepath.Clean(path)
 	if c.seen[path] {
-		if c.origin != "" {
-			for i := range c.files {
-				if c.files[i].Path == path && c.files[i].Origin == "" {
-					// A direct path may fall in several managed scopes.
-					file := &c.files[i]
-					if !slices.Contains(strings.Split(file.AlsoManaged, ", "), c.origin) {
-						file.AlsoManaged = strings.TrimPrefix(file.AlsoManaged+", "+c.origin, ", ")
-					}
-					break
-				}
+		for i := range c.files {
+			file := &c.files[i]
+			if file.Path != path {
+				continue
 			}
+			file.watchMoveOnly = file.watchMoveOnly && c.moveOnly
+			// A direct path may fall in several managed scopes.
+			if c.origin != "" && file.Origin == "" && !slices.Contains(strings.Split(file.AlsoManaged, ", "), c.origin) {
+				file.AlsoManaged = strings.TrimPrefix(file.AlsoManaged+", "+c.origin, ", ")
+			}
+			break
 		}
 		return
 	}
@@ -566,6 +572,7 @@ func (c *execCapture) addCopy(path, source string) {
 	snapshot := snapshotExecFile(path, &c.budget)
 	snapshot.CopyOf = source
 	snapshot.Origin = c.origin
+	snapshot.watchMoveOnly = c.moveOnly
 	c.files = append(c.files, snapshot)
 }
 
@@ -684,6 +691,7 @@ func (c *execCapture) expand(operand execOperand) ([]string, bool) {
 
 func (c *execCapture) entry(entry execScopeEntry) {
 	c.origin = entry.Origin
+	c.moveOnly = entry.Kind == execScopeInto && entry.Sources
 	var sources []string
 	for _, operand := range entry.Operands {
 		matches, ok := c.expand(operand)
@@ -1095,11 +1103,22 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 		}
 		return false
 	}
+	vcsOrigin := ""
+	for _, program := range observation.Programs {
+		if program.VCS {
+			vcsOrigin = program.Label
+			break
+		}
+	}
 	for _, snapshot := range env.snapshot {
 		if !claimed(snapshot.before.Path) {
 			if endpoint, ok := env.before[snapshot.before.Path]; ok {
 				snapshot.before = endpoint
 			}
+			// A mixed call has no per-write facts. Only source-named sibling
+			// edits can be separated from VCS effects; keep the rest in history.
+			snapshot.before.Origin = vcsOrigin
+			metadata[snapshot.before.Path] = snapshot.before
 			record(snapshot.before, snapshot.after)
 			after[snapshot.before.Path] = snapshot.after
 		}
@@ -1284,7 +1303,7 @@ func boundExecReviews(reviews []mekugi.ReviewFile, complete bool) ([]mekugi.Revi
 	return reviews, complete
 }
 
-// execResultState reads a stock command or Code Mode result. A yielded native
+// execResultState reads a stock command or exec result. A yielded native
 // session or running cell returns the continuation key that later completes it.
 func execResultState(toolName string, raw json.RawMessage) (terminal bool, exit *int, completed bool, text, pending string) {
 	text, _ = stockToolOutput(raw)
@@ -1322,7 +1341,7 @@ func execDerivedCallID(callID string, codeMode bool) string {
 
 func execObservationScript(observation execObservation) string {
 	if len(observation.Commands) == 0 {
-		return "# Code Mode commands are not literal\n"
+		return "# exec commands are not literal\n"
 	}
 	if !observation.CodeMode && len(observation.Commands) == 1 {
 		return observation.Commands[0].Command
@@ -1475,6 +1494,14 @@ func reconcileObservedWindow(ctx context.Context, store *mekugiReplayStore, wind
 		CodeMode:    observation.CodeMode, Overlaps: view.overlaps, Background: background,
 	}
 	outcome.Scope = observation.scopePaths()
+	for _, listing := range observation.Listings {
+		if listing.Entries == nil {
+			continue
+		}
+		if _, err := os.Lstat(listing.Root); errors.Is(err, os.ErrNotExist) {
+			outcome.DeletedDirectories = execAddRoot(outcome.DeletedDirectories, listing.Root)
+		}
+	}
 	if len(env.before) > 0 {
 		for path := range env.before {
 			if !slices.Contains(outcome.Scope, path) {
@@ -1654,7 +1681,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 }
 
 // stockLiteralExecCommands extracts literal tools.exec_command calls from a
-// Code Mode cell. Any other reference to the command tools, including
+// exec cell. Any other reference to the command tools, including
 // write_stdin input that can drive a started process, makes the cell dynamic.
 func stockLiteralExecCommands(source, directory, sessionShell string) (commands []execCommandInput, dynamic bool) {
 	if len(source) > maxMekugiScriptBytes || !strings.Contains(source, "tools") {

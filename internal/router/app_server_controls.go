@@ -36,7 +36,32 @@ func (u *appServerUI) keyboardInterrupt() error {
 		u.status = "Interrupting…"
 		return u.runtime.client.Interrupt(u.ctx)
 	}
+	u.sendSteersAfterInterrupt = false
 	return u.interruptTurn()
+}
+
+// Escape expedites pending steers like Codex: interrupt, then submit the
+// uncommitted input after the host confirms the turn ended. Ctrl-C restores it.
+func (u *appServerUI) keyboardEscape() error {
+	if u.interruptLocked {
+		u.lockNotice()
+		return nil
+	}
+	// Completion can arrive before either acknowledgement. A repeated Escape
+	// must not restore the waiting input or interrupt its replacement turn.
+	if u.sendSteersAfterInterrupt || u.steerInterruptAckPending {
+		return nil
+	}
+	if u.turn != "" && u.interruption.target == "" && !u.compaction.pending() {
+		u.sendSteersAfterInterrupt = len(u.steers) > 0 ||
+			u.submission.turn != "" && !u.submission.committed ||
+			len(u.unsent) > 0 && u.unsent[0].text != "/compact"
+	}
+	err := u.interruptTurn()
+	if err != nil {
+		u.sendSteersAfterInterrupt = false
+	}
+	return err
 }
 
 // Live thread IDs are stable across nickname metadata updates. Pending spawns

@@ -296,26 +296,13 @@ func (c *liveDiffTerminalController) navigationKey(key byte) bool {
 		n.EnsureVisible(c.navRows)
 		return true
 	case 's':
-		if c.native && c.lastWidth < 100 {
-			// The stacked list stays above the diff: s focuses it, and again hides it.
-			n.Hidden, n.Focused = n.Focused, !n.Focused
-			if n.Focused {
-				c.view.Following = false
-				c.revealFile()
-			}
-		} else if c.lastWidth < 100 {
-			// A narrow viewport has no dock; the same key toggles its picker.
-			n.Hidden = false
-			n.Focused = !n.Focused
-			if n.Focused {
-				c.view.Following = false
-				c.revealFile()
-			}
-		} else {
-			n.Hidden = !n.Hidden
-			n.Focused = false
-		}
+		// Focus the navigator first; a second press hides it.
+		n.Hidden, n.Focused = n.Focused, !n.Focused
 		n.Filtering = false
+		if n.Focused {
+			c.view.Following = false
+			c.revealFile()
+		}
 		return true
 	}
 	if !n.Focused {

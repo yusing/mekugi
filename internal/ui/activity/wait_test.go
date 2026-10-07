@@ -5,11 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func TestMutedAgentPalette(t *testing.T) {
@@ -36,51 +35,24 @@ func TestMutedAgentPalette(t *testing.T) {
 	}
 }
 
-func TestWaitProgressMutedTargets(t *testing.T) {
+func TestUISnapshotWaitProgressMutedTargets(t *testing.T) {
 	block := activityui.Block{Kind: "progress", Body: "Finished waiting", WaitTargets: []activityui.WaitTarget{
 		{Name: "/root/agent1", Status: "Still running"}, {Name: "/root/agent6", Status: "completed"},
 	}}
-	source := "\x1b[38;5;243m• Finished waiting · \x1b[38;5;133magent1\x1b[38;5;243m: Still running, \x1b[38;5;31magent6\x1b[38;5;243m: completed\x1b[0m"
-	if block.ProgressText() != ansi.Strip(strings.TrimPrefix(source, "\x1b[38;5;243m• ")) {
+	if block.ProgressText() != "Finished waiting · agent1: Still running, agent6: completed" {
 		t.Fatal("plain summary differs")
 	}
-	for _, theme := range []livediff.Theme{livediff.LightTheme, livediff.DarkTheme} {
-		for _, width := range []int{18, 120} {
-			p := activityui.Painter{Theme: theme}
+	var p activityui.Painter
+	for _, width := range []int{18, 120} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			rows := p.Block(block, width)
-			expected := vt.NewEmulator(120, 1)
-			defer expected.Close()
-			fmt.Fprint(expected, source)
-			got := vt.NewEmulator(width+1, len(rows))
-			defer got.Close()
-			offset := 0
-			for y, row := range rows {
-				if ansi.StringWidth(row) > width {
-					t.Fatalf("overflow: %q", row)
-				}
-				fmt.Fprintf(got, "\x1b[%d;1H\x1b[0m%s", y+1, activityui.FaintFallback(row))
-				for x := range ansi.StringWidth(row) {
-					cell := got.CellAt(x, y)
-					if cell.Content == " " {
-						continue
-					}
-					for expected.CellAt(offset, 0).Content == " " {
-						offset++
-					}
-					want := expected.CellAt(offset, 0)
-					if cell.Content != want.Content || !cell.Style.Equal(&want.Style) {
-						t.Fatalf("width=%d cell %d,%d = %+v, want %+v", width, x, y, cell, want)
-					}
-					if cell.Style.Attrs&(uv.AttrFaint|uv.AttrBold) != 0 {
-						t.Fatal("wait text uses faint or bold")
-					}
-					offset++
-				}
+			rows = append(rows, "plain after wait")
+			for _, row := range p.Block(block, width) {
+				rows = append(rows, activityui.FaintFallback(row))
 			}
-			if offset != ansi.StringWidth(source) {
-				t.Fatal("missing progress text")
-			}
-		}
+			rows = append(rows, "plain after wait")
+			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/wait_targets_%d.txt", width), rows, width)
+		})
 	}
 }
 

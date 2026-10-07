@@ -20,7 +20,7 @@ func TestNativeExecSedInPlaceCapturesEdit(t *testing.T) {
 	writeTestFile(t, target, before)
 	transform := prepareNativeStockTransform(t, proxy, workspace, "sed-session")
 	arguments := string(mustMarshalJSON(map[string]any{"cmd": command, "workdir": workspace}))
-	streamNativeExecCommand(t, transform, "sed-call", arguments)
+	retainCommandObservation(t, transform, "sed-call", arguments)
 	if history := transform.local["sed-call"]; history.ExecObservation == nil || history.CarrierPayload != arguments {
 		t.Fatalf("sed input was not retained before execution: %+v", history)
 	}
