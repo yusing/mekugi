@@ -609,7 +609,10 @@ checks; affected documents are updated before implementation. Ordinary questions
 explanations and read-only reviews keep their conversational flow. Main work updates
 and newly established facts go into the journal, attached to the next useful tool
 call rather than standalone commentary or a journal-only request. Notes lead with the result or decision, then supporting
-evidence. Task state changes convey milestones such as investigation finished or
+evidence. Each item has a short, clear title or first line with no trailing
+punctuation, preferably an action-subject clause with a bold action, such as
+"**Completed** the task". This item format is shared by main and subagent guidance.
+Task state changes convey milestones such as investigation finished or
 validation started; notes record new findings, decisions, measured progress and
 blockers. Announcing the next action or repeating a task state or unchanged fact
 is not a new note. Standing constraints belong in context once. Changed decisions

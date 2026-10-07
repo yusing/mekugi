@@ -152,6 +152,9 @@ func TestJournalGuidanceUsesRequestRole(t *testing.T) {
 				if strings.Count(got, want) != 1 || strings.Contains(got, stale) || !strings.Contains(got, testCodeModeDescription) {
 					t.Fatalf("%s: journal role or stock contract mismatch", phase)
 				}
+				if strings.Count(got, `Give each item a short, clear title or first line with no trailing punctuation. Prefer an action-subject clause with the action in bold:`) != 1 || !strings.Contains(got, `"**Completed** the task"`) {
+					t.Fatalf("%s: journal item formatting guidance is missing or duplicated", phase)
+				}
 			}
 		})
 	}
