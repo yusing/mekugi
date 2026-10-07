@@ -27,7 +27,7 @@ func (u *appServerUI) keyboardInterrupt() error {
 		return nil
 	}
 	if u.runtime != nil {
-		if !u.runtime.busy {
+		if !u.runtime.busy && u.runtime.shell == nil {
 			return nil
 		}
 		if err := u.stopRuntimeJournalTurn(); err != nil {

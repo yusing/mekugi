@@ -17,8 +17,8 @@ sessions, and patch review. No fork, no config edits, no daemon. The
 
 - **Claude Code preview.** `mekugi claude` offers streaming conversation, native
   permission decisions, shared live/saved Diff, live command output with supported
-  Bash command segments, saved-session title/resume/clear controls, Bash utilities
-  and durable journals in the existing interface, without an inference router. See its
+  Bash command segments, retaining `!command` input, saved-session title/resume/clear
+  controls, Bash utilities and durable journals in the existing interface, without an inference router. See its
   [current limits and build instructions](#claude-code-preview).
 
 ### Agent-facing
@@ -207,6 +207,17 @@ otherwise clears the draft, interrupts active work, then quits when idle.
 preferences are restored when resuming the same session. Input entered during a turn stays in the composer rather
 than being silently steered or queued.
 
+Type `!command` to use the shared Shell Mode composer. Claude executes it once,
+without inference, sandboxing, per-command permission prompts or persistent shell
+state. Remove attachments and picker tokens before submitting. Confirmed command
+and output become context for later messages and resume; output appears after
+execution, rather than streaming. Click its output row to open the shared dialog.
+Cancelling uses native shutdown and resumes the same saved session. It also ends
+other work in that Main query, while keeping the unsent draft and independent
+side conversation. If shutdown cannot confirm completion, resume manually after
+the reported failure. This shortcut follows native user-shell semantics rather
+than the model's Bash tool permission policy.
+
 `/model` opens the shared picker with Claude's advertised models; `/model MODEL`
 uses the native model setter, including custom model IDs. `/effort` (or `/reasoning`)
 shows the current model's advertised effort levels. `/effort default` resets the
@@ -348,8 +359,8 @@ packet in full. Overflow or missing evidence leaves the native summary intact,
 reports unavailable recovery facts, and still supplies current workflow guidance.
 The utility and journal integration is invocation-local.
 
-Bash edit previews, native terminal foreground switching, the user shell
-shortcut and full rich-preview continuity remain unfinished. Command
+Bash edit previews, native terminal foreground switching and full rich-preview
+continuity remain unfinished. Command
 segments and session controls do not imply full shared-controller parity.
 Commands advertised by the SDK are forwarded natively;
 unadvertised commands are rejected rather than emulated.
@@ -1071,7 +1082,13 @@ also exercises the shared PTY picker's All filter, search and Enter in both
 directions, plus fresh launch from another workspace. Full session-control PTY
 and live-model acceptance remain outstanding.
 Native segment fixtures check shared UI events, with separate narrow/wide renderer
-snapshots and segment-click checks; segmented PTY acceptance remains outstanding.
+snapshots and gated PTY checks for live segment dialogs, clicks and cancellation.
+Retaining-shell API and shared PTY checks prove native execution, later context,
+fresh resume, fork isolation, cancellation handoff and draft/model/effort continuity.
+The API check also proves that an independent side conversation survives Main
+shell cancellation and retains its follow-up context. These use a local provider
+without inference; live-model behavior and background-task/permission cleanup
+during shell handoff remain separate coverage gaps.
 Prompt-delivery and command-output PTY fixtures use a scripted local provider without inference;
 live adoption and other live lifecycle checks use the installed authenticated runtime with
 its normal billing.

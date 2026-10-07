@@ -1504,7 +1504,7 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 
 func (u *appServerUI) sessionAnimating() bool {
 	if u.runtime != nil {
-		return u.runtime.busy
+		return u.runtime.busy || u.runtime.shell != nil
 	}
 	return u.btw != nil && (u.btw.busy || u.btw.starting) || !u.alert && (u.turn != "" || u.starting() || u.submission.text != "" || u.restoring != nil || u.thread == "")
 }
@@ -1514,6 +1514,9 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 	if u.runtime != nil {
 		if u.alert {
 			return activityui.Red + "✗ " + status + activityui.Reset
+		}
+		if u.runtime.shell != nil && !u.runtime.busy {
+			return activityui.StatusPulse("Running shell", now, u.view.painter.Colors) + activityui.Reset
 		}
 		if u.runtime.busy {
 			return activityui.StatusPulse(status, now, u.view.painter.Colors) + activityui.Reset

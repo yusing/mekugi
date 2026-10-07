@@ -16,6 +16,7 @@ type adapter struct {
 	streams       map[string]string
 	text          map[string]*textMessage
 	tools         map[toolBlock]*toolInput
+	historyShell  *session.ShellCommand
 }
 
 func (a *adapter) decode(data []byte) (events []session.Event, err error) {
@@ -42,6 +43,9 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		OutputFile  string                 `json:"outputFile"`
 		Truncated   bool                   `json:"truncated"`
 		Done        bool                   `json:"done"`
+		Command     string                 `json:"command"`
+		Output      string                 `json:"output"`
+		Retained    bool                   `json:"retained"`
 		Input       jsontext.Value         `json:"input"`
 		Event       nativeEvent            `json:"event"`
 		Frame       jsontext.Value         `json:"frame"`
@@ -106,6 +110,8 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		return []session.Event{{Kind: "ready", CommandInfo: frame.CommandInfo, Models: frame.Models}}, nil
 	case "commands":
 		return []session.Event{{Kind: "commands", CommandInfo: frame.CommandInfo}}, nil
+	case "shell_restarting", "shell_restarted":
+		return []session.Event{{Kind: frame.Kind, CommandInfo: frame.CommandInfo, Text: frame.Text}}, nil
 	case "settings":
 		return []session.Event{{Kind: "settings", Settings: &session.Settings{ID: frame.ID, Field: frame.Field, Value: frame.Value}, Failed: frame.Failed, Text: frame.Text}}, nil
 	case "title":
@@ -121,6 +127,14 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		return []session.Event{{Kind: "task_control", ID: frame.ID, Failed: frame.Failed, Text: frame.Text}}, nil
 	case "agent_message":
 		return []session.Event{{Kind: frame.Kind, AgentMessage: &session.AgentMessage{ID: frame.ID, SessionID: frame.SessionID, AgentID: frame.AgentID, Text: frame.Text}, Failed: frame.Failed}}, nil
+	case "shell_started", "shell_done":
+		result := &session.ShellResult{ShellCommand: session.ShellCommand{ID: frame.ID, SessionID: frame.SessionID, Command: frame.Command}, Retained: frame.Retained}
+		result.Output, result.ExitCode = shellOutput(frame.Output)
+		events := []session.Event{{Kind: frame.Kind, Shell: result, Failed: frame.Failed, Text: frame.Text}}
+		if frame.Kind == "shell_started" {
+			events = append([]session.Event{{Kind: "session", SessionID: frame.SessionID, Cwd: frame.Cwd}}, events...)
+		}
+		return events, nil
 	case "saved_agent":
 		return []session.Event{{Kind: "task", Historical: true, Callers: frame.Callers, Task: &session.Task{ID: frame.ID, Kind: "local_agent", Status: "saved"}}}, nil
 	case "reset":
@@ -132,6 +146,9 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 	case "reset_ready":
 		return []session.Event{{Kind: frame.Kind, ID: frame.ID, Failed: frame.Failed, Text: frame.Text, SessionID: frame.SessionID}}, nil
 	case "history":
+		if events, ok := a.shellHistory(frame.Event); ok {
+			return events, nil
+		}
 		return historyEvents(frame.Event)
 	case "notice":
 		return []session.Event{{Kind: "notice", Text: frame.Text}}, nil

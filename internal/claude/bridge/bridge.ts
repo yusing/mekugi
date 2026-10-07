@@ -14,6 +14,7 @@ import {sessionPage} from './session_controls.js';
 import {sessionHistory, type HistorySelection} from './session_history.js';
 import {SideQueries} from './side_query.js';
 import {AgentMessages, type AgentMessage} from './agent_messages.js';
+import {UserShell, type NativeInput} from './user_shell.js';
 
 const limit = 8 * 1024 * 1024;
 const config = JSON.parse(process.argv[2]) as {cwd: string; executable: string; resume?: string; forkSession?: boolean; model?: string; companionFD?: number};
@@ -25,7 +26,7 @@ if (config.companionFD !== undefined) {
 const abortController = new AbortController();
 let stopping = false;
 let wake: (() => void) | undefined;
-const inputs: SDKUserMessage[] = [];
+const inputs: NativeInput[] = [];
 const permissions = new Map<string, (result: PermissionResult) => void>();
 let serial = 0;
 let controls = Promise.resolve();
@@ -45,6 +46,7 @@ let background = new Set<string>();
 let running!: Query;
 let agents: AgentMessages | undefined;
 let pendingAgentMessages = 0;
+let shell: UserShell | undefined;
 let pump = Promise.resolve();
 let stopped!: () => void;
 const closed = new Promise<void>(resolve => { stopped = resolve; });
@@ -60,13 +62,17 @@ const sides = new SideQueries(emit);
 async function* messages(generation: number): AsyncGenerator<SDKUserMessage> {
   while (!stopping && generation === epoch) {
     const message = inputs.shift();
-    if (message) yield message;
+    if (message) yield message as SDKUserMessage;
     else await new Promise<void>(resolve => { wake = resolve; });
   }
 }
 let observer: ReturnType<typeof companion> | undefined;
 async function createQuery(fresh?: {session: string; context: string}): Promise<Query> {
   agents = await AgentMessages.create();
+  shell = new UserShell(input => {inputs.push(input); wake?.(); wake = undefined;}, async frame => {
+    if (frame.kind === 'shell_started') activeSession = frame.sessionID;
+    await emit({...frame, cwd});
+  });
   const guidance = endpoint ? companionGuidance(endpoint) : '';
   const frontendChunks = endpoint ? companionFrontendGuidance(endpoint) : [];
   const frontends = frontendChunks.join('');
@@ -83,6 +89,7 @@ async function createQuery(fresh?: {session: string; context: string}): Promise<
   settingSources: ['user', 'project', 'local'],
   includePartialMessages: true,
   forwardSubagentText: true,
+  extraArgs: {'replay-user-messages': null},
   ...(fresh ? {sessionId: fresh.session} : resume ? {resume} : {}),
   ...(!fresh && forkSession ? {forkSession: true} : {}),
   ...(model ? {model} : {}),
@@ -118,9 +125,11 @@ async function createQuery(fresh?: {session: string; context: string}): Promise<
 async function watch(query: Query): Promise<void> {
   const queryObserver = observer;
   const queryAgents = agents;
+  const queryShell = shell;
   const output = taskOutput(query, emit, text => emit({kind: 'notice', text}));
   try {
     for await (const event of query) {
+      if (await queryShell?.event(event)) continue;
       if (event.type === 'system' && event.subtype === 'init') activeSession = event.session_id;
       if (event.type === 'result') pendingTurns = Math.max(0, pendingTurns - 1);
       if (event.type === 'system' && event.subtype === 'background_tasks_changed') background = new Set(event.tasks.map(task => task.task_id));
@@ -144,14 +153,16 @@ async function watch(query: Query): Promise<void> {
       }
       await emit({kind: 'event', event});
     }
+    queryShell?.queryEnded(new Error('Native query ended before shell cancellation evidence'));
     if (!stopping && !replacing) throw new Error('Native query ended unexpectedly');
   } catch (error) {
+    queryShell?.queryEnded(error);
     if (!stopping && !replacing) { await emit({kind: 'error', text: String(error)}); stop(); }
   } finally {output.close(); await queryAgents?.close();}
 }
 
 async function reset(id: string): Promise<void> {
-  if (!endpoint || pendingTurns || inputs.length || permissions.size || background.size || pendingAgentMessages || replacing || pendingReset) {
+  if (!endpoint || pendingTurns || inputs.length || permissions.size || background.size || pendingAgentMessages || shell?.pending || replacing || pendingReset) {
     await emit({kind: 'reset_ready', id, failed: true, text: 'Journal reset requires an idle query with no queued input, permissions or background tasks'});
     return;
   }
@@ -197,7 +208,7 @@ async function reset(id: string): Promise<void> {
 }
 
 async function changeSession(id: string, target?: string, workspaceHint?: string): Promise<void> {
-  if (pendingTurns || inputs.length || permissions.size || background.size || pendingAgentMessages || replacing || pendingReset) {
+  if (pendingTurns || inputs.length || permissions.size || background.size || pendingAgentMessages || shell?.pending || replacing || pendingReset) {
     await emit({kind: 'session_ready', id, failed: true, text: 'Session switching requires idle native work and no queued input, permissions or background tasks'});
     return;
   }
@@ -267,6 +278,42 @@ async function resumeInfo(session: string, workspaceHint?: string): Promise<SDKS
   return {...local, cwd: workspace};
 }
 
+async function interruptShell(): Promise<void> {
+  if (replacing) return;
+  const terminal = shell?.shutdown();
+  if (!terminal) return; // Execution ended already; let native history finish.
+  replacing = true;
+  try {
+    await emit({kind: 'shell_restarting', text: 'Native shutdown cancels all work in this query; resuming the same session'});
+    const receipt = await terminal;
+    epoch++;
+    wake?.(); wake = undefined;
+    running.close();
+    await pump;
+    // Resume only confirmed history. Shutdown discards queued native work.
+    inputs.length = 0;
+    pendingTurns = 0;
+    background.clear();
+    const info = await getSessionInfo(receipt.session, {dir: cwd});
+    resume = info ? receipt.session : undefined;
+    forkSession = false;
+    activeSession = receipt.session;
+    running = await createQuery(info ? undefined : {session: receipt.session, context: ''});
+    shell!.retain(receipt);
+    pump = watch(running);
+    const commands = await running.supportedCommands();
+    if (effort) {
+      const result = await setSettings(running, effort);
+      if (result.failed) throw new Error(result.text);
+    }
+    replacing = false;
+    await emit({kind: 'shell_restarted', commandInfo: commands});
+  } catch (error) {
+    await emit({kind: 'error', text: `Native shell cancellation did not establish resumed context; resume manually: ${String(error)}`});
+    stop();
+  } finally {replacing = false;}
+}
+
 function stop(): void {
   if (stopping) return;
   stopping = true;
@@ -282,6 +329,13 @@ lines.on('line', (line: string) => {
   try {
     const command = JSON.parse(line) as {kind: string; text?: string; content?: SDKUserMessage['message']['content']; id?: string; agentID?: string; allow?: boolean; answers?: Record<string, string>; sessionID?: string; title?: string; cwd?: string; cursor?: string; limit?: number};
     switch (command.kind) {
+      case 'shell':
+        if (replacing || pendingReset || !shell) {
+          void emit({kind: 'shell_done', id: command.id, sessionID: command.sessionID, failed: true, text: 'Native session is not ready; command not executed'}).catch(stop);
+        } else {
+          void shell.start({id: command.id ?? '', sessionID: command.sessionID ?? '', text: command.text ?? ''}, cwd, activeSession).catch(stop);
+        }
+        break;
       case 'agent_message': {
         const message: AgentMessage = {id: command.id ?? '', sessionID: command.sessionID ?? '', agentID: command.agentID ?? '', text: command.text ?? ''};
         if (replacing || !agents) {void emit({...message, kind: 'agent_message', failed: true, text: 'Native session is not ready'}).catch(stop); break;}
@@ -306,6 +360,7 @@ lines.on('line', (line: string) => {
         break;
       case 'input':
         if (replacing) throw new Error('Input arrived during journal reset');
+        if (shell?.pending) throw new Error('Input arrived before native shell history completion');
         if (pendingTurns >= 16 || typeof command.text !== 'string' && !Array.isArray(command.content)) throw new Error('Invalid or excessive pending input');
         pendingTurns++;
         inputs.push({type: 'user', message: {role: 'user', content: command.content ?? command.text!}, parent_tool_use_id: null, origin: {kind: 'human'}});
@@ -346,7 +401,11 @@ lines.on('line', (line: string) => {
         break;
       case 'interrupt':
         if (replacing) { resetCancelled = true; break; }
-        void running.interrupt().catch(async error => { await emit({kind: 'notice', text: `Interrupt failed: ${String(error)}`}); });
+        if (shell?.pending) {
+          controls = controls.then(interruptShell).catch(stop);
+        } else {
+          void running.interrupt().catch(async error => { await emit({kind: 'notice', text: `Interrupt failed: ${String(error)}`}); });
+        }
         break;
       case 'settings':
         controls = controls.then(async () => {

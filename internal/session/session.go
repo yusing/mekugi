@@ -30,6 +30,7 @@ type Event struct {
 	Change       *SessionChange
 	SideID       string
 	AgentMessage *AgentMessage
+	Shell        *ShellResult
 }
 
 type SavedSession struct {
@@ -104,6 +105,19 @@ type TaskClient interface {
 type AgentMessage struct{ ID, SessionID, AgentID, Text string }
 type AgentMessageClient interface {
 	SendAgentMessage(context.Context, AgentMessage) error
+}
+
+// Direct user-shell input is distinct from a model's permission-controlled tool.
+// Native completion and transcript append completion settle it independently.
+type ShellCommand struct{ ID, SessionID, Command string }
+type ShellResult struct {
+	ShellCommand
+	Output   string
+	ExitCode *int
+	Retained bool
+}
+type ShellClient interface {
+	RunShell(context.Context, ShellCommand) error
 }
 
 // Reset prepares a fresh native query. reset_ready is not durable completion:

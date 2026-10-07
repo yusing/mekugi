@@ -98,7 +98,7 @@ func (u *appServerUI) runtimeBackgroundWork() bool {
 func (u *appServerUI) requestRuntimeReset() error {
 	r := u.runtime
 	client, ok := r.client.(session.ResetClient)
-	if !ok || r.busy || !r.ready || r.resetRequest != "" || r.settings != nil || r.message != nil || u.questionCount() != 0 || u.runtimeBackgroundWork() {
+	if !ok || r.busy || r.shell != nil || !r.ready || r.resetRequest != "" || r.settings != nil || r.message != nil || u.questionCount() != 0 || u.runtimeBackgroundWork() {
 		return errors.New("reset waits for idle native work, permissions and settings")
 	}
 	id := "native-reset-" + rand.Text()
@@ -152,7 +152,7 @@ func (u *appServerUI) sendRuntimeContinuation(text string) error {
 
 func (u *appServerUI) tickRuntimeJournal(now time.Time) error {
 	r := u.runtime
-	if u.runtimeJournalOwner() == nil || r.busy || !r.ready || r.resetRequest != "" {
+	if u.runtimeJournalOwner() == nil || r.busy || r.shell != nil || !r.ready || r.resetRequest != "" {
 		return nil
 	}
 	o, ctx, b, err := u.runtimeJournalScope()

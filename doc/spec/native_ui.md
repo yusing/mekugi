@@ -26,6 +26,22 @@ frames fail the connection, not silently change native arguments or results.
 User input is held until initialization and history loading complete; input during
 an active turn remains a draft. Native terminal results settle turn activity.
 
+Claude's retaining `!command` shortcut uses the original Shell Mode composer
+and native one-shot user-shell input. Shell syntax passes through unchanged
+after removing `!` and surrounding whitespace. Attachments and picker tokens
+must be removed; an empty command stays in the composer. This direct native
+user action runs without inference, sandboxing, per-command permission prompts
+or persistent shell state. It follows native user-shell semantics rather than
+the model's Bash tool policy. Cancelling a shell uses native session shutdown,
+which also ends other work in that query, followed by native resume of the same
+session. Independent side conversations stay open. If shutdown loses its native
+completion evidence, the connection reports failure and requires manual resume.
+The unsent draft and confirmed history stay intact. Confirmed native command/output
+becomes context for later messages and resume without replaying effects. Native
+history completion, rather than submission or echo, confirms retention. Output
+remains aggregate because the native input surface exposes no incremental stdout.
+Saved native receipts restore shared command rows and dialogs, never processes.
+
 Claude `/btw QUESTION` uses the shared side-question dock with a separate native
 SDK fork of Main's saved conversation. Main remains active and later Main turns
 do not enter side follow-ups. The dock streams native answers, accepts follow-ups
@@ -191,8 +207,15 @@ unknown-target draft retention. Installed-native API acceptance adds completed-c
 continuation, fresh-parent resume, foreign/fork-source rejection and permission denial.
 These cases use a local provider without inference; fresh-process PTY child viewing
 and native terminal foreground switching remain unverified.
-Native terminal foreground switching,
-the user shell shortcut and full rich-preview continuity remain unfinished;
+Installed-native retaining-shell API and shared PTY acceptance prove exactly-once
+execution, retained command/output, nonzero exits, fresh resume, fork isolation,
+query-wide cancellation, draft/model/effort and companion continuity. The API
+also proves that an active independent side query survives Main cancellation and
+retains its isolated follow-up context. Full-bridge transport fixtures prove
+that missing shutdown evidence reports failure instead of waiting indefinitely.
+These checks use a local provider without inference; background-task/permission
+cleanup during shell handoff lacks direct runtime acceptance.
+Native terminal foreground switching and full rich-preview continuity remain unfinished;
 this backend does not claim full Codex parity.
 
 ## REQ-NATIVE-UI-001 — Native app-server UI

@@ -194,6 +194,9 @@ func (c *Client) StopTask(ctx context.Context, id string) error {
 func (c *Client) SendAgentMessage(ctx context.Context, message session.AgentMessage) error {
 	return c.send(ctx, map[string]string{"kind": "agent_message", "id": message.ID, "sessionID": message.SessionID, "agentID": message.AgentID, "text": message.Text})
 }
+func (c *Client) RunShell(ctx context.Context, command session.ShellCommand) error {
+	return c.send(ctx, map[string]string{"kind": "shell", "id": command.ID, "sessionID": command.SessionID, "text": command.Command})
+}
 func (c *Client) Reset(ctx context.Context, id string) error {
 	return c.send(ctx, map[string]string{"kind": "reset", "id": id})
 }

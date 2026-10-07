@@ -40,6 +40,7 @@ type nativeRuntimeSession struct {
 	taskCallers       map[string]string
 	message           *session.AgentMessage
 	messageDraft      composerDraft
+	shell             *session.ShellCommand
 	stoppingTasks     map[string]bool
 	turn              string
 	continuation      *journalResetIntent
@@ -220,6 +221,9 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 	switch key {
 	case '\r', '\t':
 		text := u.draft
+		if u.shellMode() {
+			return true, false, u.submitShell()
+		}
 		if u.runtimeMessageCommand(text) {
 			return true, false, nil
 		}
@@ -250,7 +254,7 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 		}
 		switch strings.TrimSpace(text) {
 		case "/quit":
-			if r.busy {
+			if r.busy || r.shell != nil {
 				u.setNotice("Interrupt the active turn before quitting", false)
 				return true, false, nil
 			}
@@ -279,7 +283,7 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 			u.setNotice("Runtime is starting · draft kept", false)
 			return true, false, nil
 		}
-		if r.busy {
+		if r.busy || r.shell != nil {
 			u.setNotice("Runtime is working · draft kept · Ctrl-C interrupts", false)
 			return true, false, nil
 		}
@@ -326,7 +330,7 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 		if u.draft != "" {
 			return false, false, nil
 		}
-		if r.busy {
+		if r.busy || r.shell != nil {
 			return true, false, u.keyboardInterrupt()
 		}
 		if u.interruptLocked {
@@ -360,6 +364,14 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 	case "commands":
 		u.runtimeCommands(e.CommandInfo)
 		u.refreshRuntimePicker()
+	case "shell_restarting":
+		u.runtime.ready = false
+		u.setNotice(e.Text, false)
+	case "shell_restarted":
+		u.runtime.ready, u.runtime.busy = true, false
+		u.runtimeCommands(e.CommandInfo)
+		u.runtimeRoster()
+		u.status = "Ready"
 	case "settings":
 		u.runtimeSettingsReceipt(e)
 	case "title":
@@ -395,6 +407,8 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		u.runtimeTask(e)
 	case "agent_message":
 		u.runtimeMessageReceipt(e)
+	case "shell_started", "shell_done":
+		u.runtimeShellEvent(e)
 	case "command_output":
 		u.runtimeCommandOutput(e)
 	case "task_control":

@@ -4,10 +4,16 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/internal/session"
 )
 
 func (u *appServerUI) shellMode() bool {
-	return u.runtime == nil && u.currentQuestion() == nil && strings.HasPrefix(u.draft, "!")
+	if u.runtime != nil {
+		if _, ok := u.runtime.client.(session.ShellClient); !ok {
+			return false
+		}
+	}
+	return u.currentQuestion() == nil && strings.HasPrefix(u.draft, "!")
 }
 
 // Source: codex-rs/tui/src/chatwidget/input_submission.rs:36:67@1cc7e236.
@@ -18,6 +24,9 @@ func (u *appServerUI) submitShell() error {
 	if command == "" {
 		u.setNotice("Type a shell command after !", false)
 		return nil
+	}
+	if u.runtime != nil {
+		return u.submitRuntimeShell(command)
 	}
 	if u.thread == "" || u.restoring != nil {
 		return nil
