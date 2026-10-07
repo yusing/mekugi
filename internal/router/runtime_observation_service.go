@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 // ObservationEndpoint is an invocation-private capability held by the SDK bridge.
@@ -35,6 +37,7 @@ type ObservationService struct {
 	stagedCompanion *runtimeSessionCompanion
 	receipts        bool
 	trackCancel     context.CancelFunc
+	guard           *nativeVCSGuard
 }
 
 type observationRequest struct {
@@ -173,7 +176,26 @@ func startObservationService(owner *nativeObservationOwner) (*ObservationService
 					err = s.journal.bind(ctx, request.Binding)
 				}
 			case "before":
-				err = owner.before(ctx, request.Call)
+				call := request.Call
+				if s.guard != nil && call.Tool == "Bash" {
+					var script string
+					script, err = s.guardScript(call)
+					if err != nil {
+						break
+					}
+					result := map[string]any{"guardReady": true}
+					if captureErr := owner.before(ctx, call); captureErr != nil {
+						result["captureError"] = captureErr.Error()
+					} else {
+						owner.execTrack.nativeGuardScript([3]string{call.Binding.Session, call.Binding.Agent, call.ID}, script)
+					}
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.MarshalWrite(w, result)
+					return
+				}
+				if err == nil {
+					err = owner.before(ctx, call)
+				}
 			case "after":
 				changeID, err = owner.after(ctx, request.Call, request.Terminal)
 			case "task":
@@ -269,7 +291,7 @@ func (s *ObservationService) Close() error {
 	companionErr := s.closeCompanion()
 	s.owner.close()
 	// Remove only the exact resources this launch created. Retained evidence stays.
-	return errors.Join(err, companionErr, removeObservationSocket(s.endpoint.Socket), s.closeCommandTracking(), os.Remove(s.directory))
+	return errors.Join(err, companionErr, removeObservationSocket(s.endpoint.Socket), s.closeCommandTracking(), os.RemoveAll(filepath.Join(s.directory, vcsguard.Directory)), os.Remove(s.directory))
 }
 func removeObservationSocket(path string) error {
 	err := os.Remove(path)

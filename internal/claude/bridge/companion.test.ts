@@ -8,7 +8,7 @@ import { once } from 'node:events';
 import type { HookInput, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { companion } from './companion.js';
 
-async function fixture(t: test.TestContext, failure?: 'reject' | 'disconnect' | 'oversized' | 'stall'): Promise<{
+async function fixture(t: test.TestContext, failure?: 'reject' | 'disconnect' | 'oversized' | 'stall', guard?: {guardReady?: boolean; captureError?: string}): Promise<{
   observer: ReturnType<typeof companion>; payloads: Record<string, unknown>[]; notices: string[]; cwd: string;
 }> {
   const cwd = await realpath(await mkdtemp(join(tmpdir(), 'mekugi-hook-test-')));
@@ -23,13 +23,36 @@ async function fixture(t: test.TestContext, failure?: 'reject' | 'disconnect' | 
     if (failure === 'reject') { res.writeHead(503); res.end('unavailable'); }
     else if (failure === 'disconnect') req.socket.destroy();
     else if (failure === 'oversized') res.end('x'.repeat(8193));
-    else if (failure !== 'stall') res.end('{}');
+    else if (failure !== 'stall') res.end(JSON.stringify(guard ?? {}));
   });
   server.listen(socket);
   await once(server, 'listening');
   t.after(async () => { server.close(); await once(server, 'close'); await rm(cwd, {recursive: true}); });
-  return {observer: companion({socket, token: 'test-capability'}, cwd, async text => { notices.push(text); }), payloads, notices, cwd};
+  return {observer: companion({socket, token: 'test-capability', ...(guard ? {vcsGuard: true} : {})}, cwd, async text => { notices.push(text); }), payloads, notices, cwd};
 }
+
+test('startup guard preserves original input and native denial settles its exact tuple', async t => {
+  const {observer, payloads, notices, cwd} = await fixture(t, undefined, {guardReady: true, captureError: 'fixture capture unavailable'});
+  const base = {session_id: 'session', cwd, transcript_path: '/native/transcript', tool_use_id: 'guarded', tool_name: 'Bash'};
+  const args = {command: 'git push', timeout: 1000, description: 'unchanged'};
+  assert.deepEqual(await invoke(observer, {...base, hook_event_name: 'PreToolUse', tool_input: args}),{});
+  assert.equal(args.command, 'git push');
+  assert.match(notices[0]!, /fixture capture unavailable/);
+  await observer.event({type: 'user', session_id: 'other', message: {role: 'user', content: [{type: 'tool_result', tool_use_id: 'guarded', is_error: true, content: 'native deny'}]}} as SDKMessage);
+  assert.equal(payloads.length, 1);
+  await observer.event({type: 'user', session_id: 'session', message: {role: 'user', content: [{type: 'tool_result', tool_use_id: 'guarded', is_error: true, content: 'native deny'}]}} as SDKMessage);
+  assert.equal((payloads[1]?.call as Record<string, unknown>).input, JSON.stringify(args));
+  assert.deepEqual(payloads[1]?.terminal, {status: 'failed', report: 'native deny'});
+});
+
+test('guard transport rejection denies Bash while auxiliary capture stays permissive', async t => {
+  const {observer, cwd} = await fixture(t, 'reject', {});
+  const base = {session_id: 'session', cwd, transcript_path: '/native/transcript', tool_use_id: 'guarded'};
+  const response = await invoke(observer, {...base, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: {command: 'git push'}}) as {hookSpecificOutput: {permissionDecision: string; permissionDecisionReason: string}};
+  assert.equal(response.hookSpecificOutput.permissionDecision, 'deny');
+  assert.match(response.hookSpecificOutput.permissionDecisionReason, /VCS guard unavailable/);
+  assert.deepEqual(await invoke(observer, {...base, hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: {file_path: 'f', content: 'unchanged'}}), {});
+});
 
 async function invoke(observer: ReturnType<typeof companion>, input: HookInput, toolID?: string, signal = new AbortController().signal): Promise<unknown> {
   const callback = observer.hooks?.[input.hook_event_name]?.[0]?.hooks[0];

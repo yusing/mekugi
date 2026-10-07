@@ -63,6 +63,9 @@ func TestClaudeLaunchPTYProcess(t *testing.T) {
 			t.Fatal("missing private observation capability")
 		}
 		// Never print these values, including in assertion failures.
+		if !endpoint.VCSGuard || endpoint.BashEnv == "" {
+			t.Fatal("default launch omitted native startup guarding")
+		}
 		for _, value := range append(slices.Clone(os.Args), os.Environ()...) {
 			if strings.Contains(value, endpoint.Token) || strings.Contains(value, endpoint.Socket) {
 				t.Fatal("observation capability leaked through argv or environment")
@@ -194,13 +197,21 @@ func TestClaudeDefaultLaunchPTY(t *testing.T) {
 				t.Fatal(err)
 			}
 			reportPath := filepath.Join(directory, "launch.json")
+			// Give the launcher its packaged sibling without installing a binary.
+			launcher := filepath.Join(directory, "mekugi")
+			if err := os.Link(os.Args[0], launcher); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(directory, "mekugi-exec"), []byte("#!/bin/sh\nexit 1\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
 			args := []string{"-test.run=^TestClaudeLaunchPTYProcess$", "--", "--cwd", workspace, "--bridge", bridge}
 			if controls {
 				args = append(args, "--resume", "native-session", "--fork-session", "--model", "native-model")
 			}
-			command := exec.CommandContext(ctx, os.Args[0], args...)
+			command := exec.CommandContext(ctx, launcher, args...)
 			command.Env = append(os.Environ(), "MEKUGI_TEST_CLAUDE_LAUNCH_PROCESS=ui", "MEKUGI_TEST_CLAUDE_LAUNCH_REPORT="+reportPath,
 				"PATH="+directory+string(os.PathListSeparator)+os.Getenv("PATH"), "XDG_STATE_HOME="+filepath.Join(directory, "state"),
 				"XDG_CONFIG_HOME="+filepath.Join(directory, "config"), "MEKUGI_RUNTIME_DIR="+filepath.Join(directory, "runtime"), "TERM=xterm-256color")

@@ -59,23 +59,55 @@ func ClaudeTracker(helper, socket, directory string) string {
 	return tracker(helper, socket, directory, " claude")
 }
 
+// ClaudeGuardTracker keeps original native policy input and guards execution
+// inside the same Bash startup replacement used for segment observation.
+func ClaudeGuardTracker(helper, socket, directory, guard string) string {
+	return tracker(helper, socket, directory, " claude "+shellsyntax.Quote(guard))
+}
+
 // ClaudeHook ignores snapshot creation and nested shells. The helper validates
 // the wrapper before the startup DEBUG trap can replace its first command.
 func ClaudeHook(tracker string) string {
+	return claudeHook(". " + shellsyntax.Quote(tracker))
+}
+
+// ClaudeGuardHook rejects a missing tracker instead of executing without a guard.
+func ClaudeGuardHook(tracker string) string {
+	return claudeHook("if [ ! -r " + shellsyntax.Quote(tracker) + " ] || [ ! -s " + shellsyntax.Quote(tracker) + ` ]; then
+    printf "%s\n" "mekugi: native VCS guard unavailable" >&2
+    exit 1
+  fi
+  . ` + shellsyntax.Quote(tracker))
+}
+
+func claudeHook(source string) string {
 	return `if [ -n "${BASH_EXECUTION_STRING+x}" ] && [ -z "${` + Guard + `+x}" ]; then
   case $BASH_EXECUTION_STRING in
-  *"eval "*"pwd -P >| "*) export ` + Guard + `=1; . ` + shellsyntax.Quote(tracker) + ` ;;
+  *"eval "*"pwd -P >| "*) export ` + Guard + `=1; ` + source + ` ;;
   esac
 fi
 `
 }
 
 func tracker(helper, channel, directory, mode string) string {
+	declined := ""
+	if mode != "" && mode != " claude" {
+		declined = `if [ "$__mekugi_m" != pass ]; then
+    trap 'trap - DEBUG; printf "%s\n" "mekugi: native VCS guard unavailable" >&2; exit 1' DEBUG
+  fi
+  `
+	}
 	return `exec {__mekugi_o}>&1 {__mekugi_x}>&2
 coproc __MEKUGI_EXEC { exec ` + shellsyntax.Quote(helper) + ` ` + shellsyntax.Quote(channel) + ` ` + shellsyntax.Quote(directory) + ` "$BASH_EXECUTION_STRING"` + mode + ` 3>&"$__mekugi_o" 4>&"$__mekugi_x" 2>/dev/null; } 2>/dev/null
-__mekugi_c=${__MEKUGI_EXEC[1]-} __mekugi_a=${__MEKUGI_EXEC[0]-} __mekugi_m= __mekugi_d= __mekugi_p= __mekugi_y= __mekugi_z=
+__mekugi_c=${__MEKUGI_EXEC[1]-} __mekugi_a=${__MEKUGI_EXEC[0]-} __mekugi_j=${__MEKUGI_EXEC_PID-} __mekugi_m= __mekugi_d= __mekugi_p= __mekugi_y= __mekugi_z=
 [ -n "$__mekugi_a" ] && IFS=' ' read -r __mekugi_m __mekugi_d <&"$__mekugi_a"
 case $__mekugi_m in
+deny) ;;
+guard)
+  if ! { __mekugi_p=$(<"$__mekugi_d/script") && [ -n "$__mekugi_p" ]; } 2>/dev/null; then
+    __mekugi_m=deny
+  fi
+  ;;
 observe) ;;
 relay|status)
   if ! { __mekugi_p=$(<"$__mekugi_d/script") && [ -n "$__mekugi_p" ]; } 2>/dev/null; then
@@ -95,6 +127,16 @@ exec {__mekugi_o}>&- {__mekugi_x}>&-
 [ -n "$__mekugi_z" ] && exec {__mekugi_z}>&-
 unset -v __mekugi_y __mekugi_z
 case $__mekugi_m in
+guard|deny)
+  [ -n "$__mekugi_c" ] && exec {__mekugi_c}>&-
+  [ -n "$__mekugi_a" ] && exec {__mekugi_a}<&-
+  [ -n "$__mekugi_j" ] && wait "$__mekugi_j" 2>/dev/null
+  if [ "$__mekugi_m" = guard ]; then
+    trap 'trap - DEBUG; eval "$__mekugi_p"; exit "$?"' DEBUG
+  else
+    trap 'trap - DEBUG; printf "%s\n" "mekugi: native VCS guard unavailable" >&2; exit 1' DEBUG
+  fi
+  ;;
 observe|relay|status)
   unset -v __mekugi_o __mekugi_x __mekugi_m
   printf 'o\n' >&"$__mekugi_c"
@@ -114,7 +156,7 @@ observe|relay|status)
   [ -n "$__mekugi_c" ] && exec {__mekugi_c}>&-
   [ -n "$__mekugi_a" ] && exec {__mekugi_a}<&-
   [ -n "${__MEKUGI_EXEC_PID-}" ] && wait "$__MEKUGI_EXEC_PID" 2>/dev/null
-  unset -v __mekugi_o __mekugi_x __mekugi_c __mekugi_a __mekugi_m __mekugi_d __mekugi_p
+  ` + declined + `unset -v __mekugi_o __mekugi_x __mekugi_c __mekugi_a __mekugi_m __mekugi_d __mekugi_p
   ;;
 esac
 `

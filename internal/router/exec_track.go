@@ -56,23 +56,25 @@ type execTrackHub struct {
 }
 
 type execTrackCommand struct {
-	key    [3]string // Thread/session, turn/agent, item.
-	script string
-	serial uint64
+	key         [3]string // Thread/session, turn/agent, item.
+	script      string
+	guardScript string // Exact execution rewrite, installed after native permissions.
+	serial      uint64
 }
 
 // execTrack is one command's report, guarded by the hub.
 type execTrack struct {
-	script   string
-	hostOnly bool   // Native command identity, before any segment report.
-	serial   uint64 // Host start, before the helper claims this item.
-	segments []execTrackSegment
-	terminal bool // Output stays on the terminal; only statuses are reported.
-	lossy    bool // Output reports stopped at the helper's bound.
-	ended    bool // The report connection closed.
-	done     bool // The shell finished its script.
-	code     int  // The shell's exit status, once done.
-	dirty    bool
+	script      string
+	guardScript string
+	hostOnly    bool   // Native command identity, before any segment report.
+	serial      uint64 // Host start, before the helper claims this item.
+	segments    []execTrackSegment
+	terminal    bool // Output stays on the terminal; only statuses are reported.
+	lossy       bool // Output reports stopped at the helper's bound.
+	ended       bool // The report connection closed.
+	done        bool // The shell finished its script.
+	code        int  // The shell's exit status, once done.
+	dirty       bool
 }
 
 type execTrackSegment struct {
@@ -224,6 +226,21 @@ func (h *execTrackHub) nativeKeys(session string) [][3]string {
 	return keys
 }
 
+// The observation service supplies both sides of its exact native rewrite.
+// Keep execution matching separate from proposal-source matching.
+func (h *execTrackHub) nativeGuardScript(key [3]string, source string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := range h.started {
+		command := &h.started[i]
+		if command.key != key {
+			continue
+		}
+		command.guardScript = source
+		break
+	}
+}
+
 // A native terminal hook retires unmatched claims, not reports the UI still
 // needs to drain. Its shell cannot claim a command after native completion.
 func (h *execTrackHub) nativeCompleted(key [3]string) {
@@ -302,7 +319,7 @@ func (h *execTrackHub) claim(ctx context.Context, hello execsegment.Message) ([3
 			command := h.started[index]
 			key := command.key
 			h.started = slices.Delete(h.started, index, index+1)
-			track := &execTrack{script: hello.Script, serial: command.serial, terminal: hello.Terminal, dirty: true}
+			track := &execTrack{script: hello.Script, guardScript: command.guardScript, serial: command.serial, terminal: hello.Terminal, dirty: true}
 			for _, source := range hello.Segments {
 				track.segments = append(track.segments, execTrackSegment{source: source, edit: execSegmentEdits(source), vcs: vcsSegment(source)})
 			}
@@ -373,12 +390,23 @@ func (h *execTrackHub) serve(ctx context.Context, report, reply *os.File, work s
 			return
 		}
 	}
-	if rewritten != "" {
-		if err := os.WriteFile(filepath.Join(work, "script"), []byte(rewritten), 0o600); err != nil {
-			return
+	key, track, ok := h.claim(ctx, hello)
+	if ok && track.guardScript != "" && hello.Wrapper != "" {
+		parts, valid := execsegment.Split(track.guardScript)
+		if valid && len(parts) == len(segments) {
+			rewritten, ok = execsegment.ClaudeExecutionWrapper(hello.Wrapper, execsegment.Rewrite(track.guardScript, parts))
+		} else {
+			ok = false
 		}
 	}
-	key, track, ok := h.claim(ctx, hello)
+	if ok && rewritten != "" {
+		if err := os.WriteFile(filepath.Join(work, "script"), []byte(rewritten), 0600); err != nil {
+			ok = false
+		}
+	}
+	if !ok && track != nil {
+		h.finish(key)
+	}
 	if err := writeExecTrackReply(reply, ok); err != nil || !ok {
 		if ok {
 			h.finish(key)

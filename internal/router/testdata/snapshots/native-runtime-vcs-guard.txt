@@ -1,0 +1,20 @@
+┌ 1 Main ──────────────────────────────────────────────────────────────────────┐
+│└ Status working tree · git                                                   │
+│                                                                              │
+│                                                                              │
+│  ! Allow this remote write?                                                  │
+│  git push origin main                                                        │
+│  Denying fails only this command with exit status 1.                         │
+│  › 1. Yes, run it                                                            │
+│    2. Yes, for this exact command and workdir this session                   │
+│    3. No, fail this command                                                  │
+│  1–3 choose · type deny with reason · enter confirm · esc hide               │
+│                                                                              │
+│╭─ approving · turn waiting ─────────────────────────────────────────────────╮│
+││ ❯                                                                          ││
+│╰──────────────────────────────────────────────────────────── claude-sonnet ─╯│
+└──────────────────────────────────────────────────────────────────────────────┘
+─ 4 Agents · 1 ─────────────────────────────────────────────────────────────────
+ ● main  idle
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes

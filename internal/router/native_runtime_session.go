@@ -114,6 +114,9 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 					u.applyPickerScan(result)
 				case result := <-u.commandSegmentWrites:
 					u.commandSegmentRetained(result)
+				case request := <-u.guardRequests():
+					u.runtimeGuardApproval(request)
+					u.dirty = true
 				case key, ok := <-keys:
 					if !ok {
 						return io.EOF
@@ -123,6 +126,9 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 					}
 					u.dirty = true
 				case <-tick.C:
+					if u.expireApprovals() {
+						u.dirty = true
+					}
 					if u.expireNotice(u.now()) {
 						u.dirty = true
 					}

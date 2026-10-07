@@ -12,3 +12,5 @@ Claude Code runtime. Releases and make install include the bridge. No inference 
     	native Claude model choice
   -resume string
     	Claude session ID to resume
+  -vcs-guard
+    	ask before reached remote VCS writes independently of Claude permissions (default true)

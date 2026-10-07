@@ -39,6 +39,13 @@ const (
 )
 
 func main() {
+	if len(os.Args) == 4 && os.Args[1] == "--claude-guard-env" {
+		if err := nativeGuardEnvironment(os.Args[2], os.Args[3], os.Stdin); err != nil {
+			fmt.Fprintln(os.Stderr, "Mekugi VCS guard: "+err.Error()+"; use --vcs-guard=false to opt out")
+			os.Exit(2)
+		}
+		return
+	}
 	if len(os.Args) == 4 && os.Args[1] == "--sh-open" {
 		if work := shOpen(os.Args[2], os.Args[3]); work != "" {
 			fmt.Println(work)
@@ -108,14 +115,22 @@ func run(args []string) int {
 		args = []string{args[1], args[2], script}
 		defer fmt.Println("decline")
 	}
-	if len(args) != 3 && (len(args) != 4 || args[3] != "claude") {
+	if len(args) != 3 && ((len(args) != 4 && len(args) != 5) || args[3] != "claude") {
 		return 2
 	}
 	channel, directory, script := args[0], args[1], args[2]
+	handedOff := false
+	if len(args) == 5 {
+		defer func() {
+			if !handedOff {
+				nativeGuardFallback(args[2], args[4])
+			}
+		}()
+	}
 	thread, wrapper := os.Getenv("CODEX_THREAD_ID"), ""
 	var segments []execsegment.Segment
 	var ok bool
-	if len(args) == 4 {
+	if len(args) >= 4 {
 		wrapper, thread = script, ""
 		script, _, segments, ok = execsegment.ClaudeWrapper(wrapper)
 	} else {
@@ -177,6 +192,7 @@ func run(args []string) int {
 	if _, err := unix.Write(r.ack, []byte(mode+" "+work+"\n")); err != nil {
 		return 0
 	}
+	handedOff = true
 	r.run()
 	r.report.close(flushTimeout)
 	return 0

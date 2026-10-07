@@ -128,6 +128,7 @@ func TestClaudePackagedLaunch(t *testing.T) {
 				"XDG_STATE_HOME=" + filepath.Join(fixture, "state"),
 				"MEKUGI_RUNTIME_DIR=" + filepath.Join(fixture, "runtime"),
 				"CLAUDE_CONFIG_DIR=" + filepath.Join(fixture, "claude-config"),
+				"CLAUDE_CODE_SHELL=/bin/bash",
 				"MEKUGI_TEST_PACKAGE_CLI_REPORT=" + reportPath,
 				"TERM=xterm-256color",
 			}
@@ -219,11 +220,12 @@ func TestClaudePackagedLaunch(t *testing.T) {
 				Initialized bool     `json:"initialized"`
 				Stopped     bool     `json:"stopped"`
 				Prompts     int      `json:"prompts"`
+				GuardProbe  bool     `json:"guardProbe"`
 			}
 			if err := json.Unmarshal(data, &report); err != nil {
 				t.Fatal(err)
 			}
-			if !report.Initialized || !report.Stopped || report.Prompts != 0 || report.Cwd != workspace {
+			if !report.Initialized || !report.Stopped || !report.GuardProbe || report.Prompts != 0 || report.Cwd != workspace {
 				t.Fatalf("SDK initialization, workspace, or clean shutdown mismatch: %+v", report)
 			}
 			for _, flag := range []string{"--input-format", "--output-format"} {
@@ -240,7 +242,14 @@ func TestClaudePackagedLaunch(t *testing.T) {
 const packagedClaudeFixture = `#!/usr/bin/env node
 const fs = require('node:fs');
 const readline = require('node:readline');
-const report = {args: process.argv.slice(2), cwd: process.cwd(), initialized: false, stopped: false, prompts: 0};
+const {spawnSync} = require('node:child_process');
+const report = {args: process.argv.slice(2), cwd: process.cwd(), initialized: false, stopped: false, prompts: 0, guardProbe: false};
+const settingsArg = report.args[report.args.indexOf('--settings') + 1];
+const settings = JSON.parse(settingsArg.startsWith('{') ? settingsArg : fs.readFileSync(settingsArg, 'utf8'));
+const hooks = Object.entries(settings.hooks).flatMap(([event, groups]) => groups.flatMap(group => group.hooks.map(hook => ({
+  event, matcher: group.matcher || '', source: 'flagSettings', type: hook.type,
+  commandText: [hook.command, ...hook.args].join(' ')
+}))));
 const save = () => fs.writeFileSync(process.env.MEKUGI_TEST_PACKAGE_CLI_REPORT, JSON.stringify(report));
 const stop = () => { report.stopped = true; save(); process.exit(0); };
 save();
@@ -252,12 +261,25 @@ lines.on('line', line => {
   const frame = JSON.parse(line);
   if (frame.type === 'user') { report.prompts++; save(); process.exit(91); }
   if (frame.type !== 'control_request') return;
-  if (frame.request.subtype !== 'initialize') { process.exit(92); }
-  report.initialized = true;
+  let response;
+  switch (frame.request.subtype) {
+    case 'initialize': {
+      const hook = settings.hooks.SessionStart[0].hooks[0];
+      const result = spawnSync(hook.command, hook.args, {input: JSON.stringify({hook_event_name: 'SessionStart'}), encoding: 'utf8'});
+      if (result.status !== 0) process.exit(93);
+      report.guardProbe = true;
+      report.initialized = true;
+      response = {commands: [], models: [], agents: [], account: {}};
+      break;
+    }
+    case 'get_settings': response = {effective: settings}; break;
+    case 'get_hooks_listing': response = {policy: {allDisabled: false, managedOnly: false, pluginOnly: false, policyHookCount: 0}, hooks}; break;
+    default: process.exit(92);
+  }
   save();
   process.stdout.write(JSON.stringify({type: 'control_response', response: {
     subtype: 'success', request_id: frame.request_id,
-    response: {commands: [], models: [], agents: [], account: {}}
+    response
   }}) + '\n');
 });
 `

@@ -60,6 +60,28 @@ choice, cancellation or native automatic denial. Exact native tool identity keep
 Main and child decisions separate; a failed command alone does not imply denial.
 A submitted choice remains pending until matching native execution or tool-result
 evidence confirms it.
+Interactive Claude also uses the shared independent reached-command VCS write
+approval. `mekugi claude --vcs-guard=false` disables this guard only. Official
+`PreToolUse` supplies exact observation metadata and keeps Bash input unchanged.
+The existing Bash startup observer applies the narrow guard rewrite after Claude
+checks the original command. Skipped shell branches do not ask. The shared approval dock offers
+allow once, allow the exact expanded command and workdir for this UI session,
+or deny only that reached command. Native user-shell input keeps its direct
+user-action semantics.
+This startup guard requires a usable native Bash selection through
+`CLAUDE_CODE_SHELL` or `SHELL`. Unknown selection, zsh, disabled hooks, competing
+Bash hooks and unowned session-environment hooks reject guarded use with an
+explanation and an opt-out, including background hooks. An official executable
+hook checks the materialized native startup environment before Bash effects.
+Missing or unreadable owned startup resources reject guarded execution.
+Unsupported or ambiguous segment claims use the same reached-command approval
+without assigning a native command row. Auxiliary report failure may fall back
+to this guard-only path; an unavailable guard or replacement script rejects
+execution with an explanation.
+Incompatible settings are rejected, not replaced. Native shell prefixes, enabled
+sandboxing and credential rules that modify startup keys are rejected because the probe does
+not establish the final executor's environment or resource access on those paths.
+It preserves caller settings instead of silently selecting another interpreter.
 Historical transcript rows cannot recreate pending permissions or tools. Resume
 validates the selected workspace against SDK session metadata before accepting
 new input; at most 2,000 messages are read for display, with longer history noted.
@@ -170,8 +192,8 @@ from their painted rows in Main and Activity. Running shell jobs remain outside
 the Agents roster. Their task disclosure and command-output dialog retain the
 native stop action (`x`), without changing search text or replaying execution.
 
-Normal launch adds native observational hooks, without altering
-user configuration, permissions, tool inputs or results. Actual file effects enter
+Normal launch adds native observational hooks, without altering tool inputs,
+user configuration, permissions or results. Actual file effects enter
 saved Diff and separate Activity capture cards through the existing change store.
 Failed operations can leave changes; successful no-effect operations receive no
 change ID. Baseline and publication failures remain coverage gaps. Captures describe

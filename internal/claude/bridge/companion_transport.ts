@@ -3,6 +3,8 @@ import { request } from 'node:http';
 export interface CompanionConfig {
   socket: string; token: string; plugin?: string; frontendDirectory?: string; bashEnv?: string;
   journalSchema?: Record<string, unknown>;
+  vcsGuard?: boolean;
+  vcsGuardHelper?: string;
 }
 
 export function companionRequest(config: CompanionConfig, payload: unknown, signal?: AbortSignal, responseLimit = 8192): Promise<unknown> {

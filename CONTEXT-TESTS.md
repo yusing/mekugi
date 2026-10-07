@@ -137,6 +137,23 @@ env MEKUGI_UPDATE_FRONTEND_GUIDANCE=1 make test TEST_PACKAGES=./internal/router 
 make test TEST_PACKAGES=./internal/router TEST_RUN='GeneratedFrontendGuidance|ProjectedStockGuidance|JournalRulesHaveOneOwner|JournalGuidanceUsesRequestRole|Instruction|ConflictRewrite|WebSocketPrewarmToolGuidance'
 ```
 
+## Native Claude VCS guard
+
+Offline metadata, shared approval and snapshot checks use `NativeRuntimeVCSGuard`.
+After `make test-claude`, run the installed-native local-provider acceptance:
+
+```sh
+MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestNativeRuntimeVCSGuard(Startup)?ClaudeNative$' TEST_FLAGS='-count=1 -v -timeout=2m'
+```
+
+It covers original native permission rules and arguments, reached/skipped writes,
+command-local denial, wrappers, exact-session grants and once-only effects without
+inference. Startup admission also proves project/legacy environment override,
+missing startup resources/helper, shell-prefix and foreground/background competing-hook rejection before ready,
+with no model/tool calls and preserved caller settings.
+`ClaudeExecTrackGuard` covers real Bash helper/report/replacement delivery failure,
+guard-only fallback and identical concurrent inputs without guessed row identity.
+
 ## Static checks
 
 Run `make lint` with `golangci-lint` and `deadcode` on PATH. It uses `.golangci.yml`

@@ -29,6 +29,8 @@ type ObservationEndpoint struct {
 	FrontendDirectory string         `json:"frontendDirectory,omitempty"`
 	JournalSchema     jsontext.Value `json:"journalSchema,omitempty"`
 	BashEnv           string         `json:"bashEnv,omitempty"`
+	VCSGuard          bool           `json:"vcsGuard,omitzero"`
+	VCSGuardHelper    string         `json:"vcsGuardHelper,omitempty"`
 }
 
 type Config struct {

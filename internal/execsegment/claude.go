@@ -13,6 +13,34 @@ import (
 // setup/eval/cwd-write wrapper. Setup and the native cwd write stay unchanged.
 // Unsupported wrappers run untracked, not through a substitute executor.
 func ClaudeWrapper(wrapper string) (script, rewritten string, segments []Segment, ok bool) {
+	script, start, end, ok := claudePayload(wrapper)
+	if !ok {
+		return
+	}
+	segments, ok = Split(script)
+	if !ok {
+		return
+	}
+	rewritten = wrapper[:start] + shellsyntax.Quote(Rewrite(script, segments)) + wrapper[end:]
+	return
+}
+
+// ClaudePayload reads only the literal native eval operand.
+func ClaudePayload(wrapper string) (string, bool) {
+	script, _, _, ok := claudePayload(wrapper)
+	return script, ok
+}
+
+// ClaudeExecutionWrapper changes only that operand after native permissions.
+func ClaudeExecutionWrapper(wrapper, script string) (string, bool) {
+	_, start, end, ok := claudePayload(wrapper)
+	if !ok {
+		return "", false
+	}
+	return wrapper[:start] + shellsyntax.Quote(script) + wrapper[end:], true
+}
+
+func claudePayload(wrapper string) (script string, start, end int, ok bool) {
 	program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(wrapper), "")
 	if err != nil || len(program.Stmts) != 1 || !trapsFirst(program.Stmts) {
 		return
@@ -65,13 +93,8 @@ func ClaudeWrapper(wrapper string) (script, rewritten string, segments []Segment
 	if !literal {
 		return
 	}
-	segments, ok = Split(script)
-	if !ok {
-		return
-	}
 	operand := call.Args[1]
-	rewritten = wrapper[:operand.Pos().Offset()] + shellsyntax.Quote(Rewrite(script, segments)) + wrapper[operand.End().Offset():]
-	return
+	return script, int(operand.Pos().Offset()), int(operand.End().Offset()), true
 }
 
 // Reject expansions before using the syntax library's literal decoder. No

@@ -16,6 +16,7 @@ import {SideQueries} from './side_query.js';
 import {AgentMessages, type AgentMessage} from './agent_messages.js';
 import {UserShell, type NativeInput} from './user_shell.js';
 import {PermissionRequests} from './permissions.js';
+import {nativeVCSGuard} from './vcs_guard.js';
 
 const limit = 8 * 1024 * 1024;
 const config = JSON.parse(process.argv[2]) as {cwd: string; executable: string; resume?: string; forkSession?: boolean; model?: string; companionFD?: number};
@@ -67,7 +68,9 @@ async function* messages(generation: number): AsyncGenerator<SDKUserMessage> {
   }
 }
 let observer: ReturnType<typeof companion> | undefined;
+let guardProbe: Awaited<ReturnType<typeof nativeVCSGuard>> | undefined;
 async function createQuery(fresh?: {session: string; context: string}): Promise<Query> {
+  let owned: Query;
   agents = await AgentMessages.create();
   shell = new UserShell(input => {inputs.push(input); wake?.(); wake = undefined;}, async frame => {
     if (frame.kind === 'shell_started') activeSession = frame.sessionID;
@@ -76,17 +79,21 @@ async function createQuery(fresh?: {session: string; context: string}): Promise<
   const guidance = endpoint ? companionGuidance(endpoint) : '';
   const frontendChunks = endpoint ? companionFrontendGuidance(endpoint) : [];
   const frontends = frontendChunks.join('');
+  const probe = endpoint?.vcsGuard ? await nativeVCSGuard(endpoint.vcsGuardHelper, endpoint.bashEnv) : undefined;
+  guardProbe = probe;
   observer = endpoint ? companion(endpoint, cwd, text => emit({kind: 'notice', text}), Boolean(resume) && !fresh,
-    {workflow: guidance, frontends: frontendChunks}) : undefined;
+    {workflow: guidance, frontends: frontendChunks}, probe ? id => probe.verify(owned, id) : undefined) : undefined;
   const journal = endpoint ? journalServer(endpoint) : undefined;
   // Fresh sessions pin additive workflow guidance with Claude's native preset.
   // Resume keeps that recorded prompt; its first input hook supplies current text.
   const append = [!resume || fresh ? guidance : '', !resume || fresh ? frontends : '', fresh?.context ?? ''].filter(Boolean).join('\n\n');
-  return query({prompt: messages(epoch), options: {
+  try {
+  owned = query({prompt: messages(epoch), options: {
   cwd,
   pathToClaudeCodeExecutable: config.executable,
   systemPrompt: {type: 'preset', preset: 'claude_code', ...(append ? {append} : {})},
   settingSources: ['user', 'project', 'local'],
+  ...(probe ? {settings: probe.settings} : {}),
   includePartialMessages: true,
   forwardSubagentText: true,
   extraArgs: {'replay-user-messages': null},
@@ -102,12 +109,18 @@ async function createQuery(fresh?: {session: string; context: string}): Promise<
   ...(journal ? {mcpServers: {mekugi: journal}} : {}),
   canUseTool: permissions.canUseTool,
 }});
+  } catch (error) {await probe?.close(); throw error;}
+  if (probe) {
+    try {await probe.verify(owned);} catch (error) {owned.close(); await probe.close(); throw error;}
+  }
+  return owned;
 }
 
 async function watch(query: Query): Promise<void> {
   const queryObserver = observer;
   const queryAgents = agents;
   const queryShell = shell;
+  const queryProbe = guardProbe;
   const output = taskOutput(query, emit, text => emit({kind: 'notice', text}));
   try {
     for await (const event of query) {
@@ -148,7 +161,7 @@ async function watch(query: Query): Promise<void> {
   } catch (error) {
     queryShell?.queryEnded(error);
     if (!stopping && !replacing) { await emit({kind: 'error', text: String(error)}); stop(); }
-  } finally {output.close(); permissions.close(); await queryAgents?.close();}
+  } finally {output.close(); permissions.close(); await queryAgents?.close(); await queryProbe?.close();}
 }
 
 async function reset(id: string): Promise<void> {

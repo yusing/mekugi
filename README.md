@@ -18,7 +18,8 @@ sessions, and patch review. No fork, no config edits, no daemon. The
 - **Claude Code preview.** `mekugi claude` offers streaming conversation, native
   permission decisions, shared live/saved Diff, live command output with supported
   Bash command segments, retaining `!command` input, saved-session title/resume/clear
-  controls, Bash utilities and durable journals in the existing interface, without an inference router. See its
+  controls, independent reached-command remote-write approval, Bash utilities and
+  durable journals in the existing interface, without an inference router. See its
   [current limits and build instructions](#claude-code-preview).
 
 ### Agent-facing
@@ -322,6 +323,19 @@ observation cannot attribute changes made while Mekugi was disconnected. Press
 `v` in Diff to select live proposals or saved captures; your selection survives
 updates. Permission prompts follow Claude's configured policy, including native
 automatic approval; observation does not change that policy.
+
+Interactive Claude adds a separate approval before a reached remote VCS write.
+Allow it once, allow the exact command and workdir for this UI session, or deny
+only that command. Skipped branches do not ask. The guard currently requires
+native Bash selected through `CLAUDE_CODE_SHELL` or `SHELL`. The guard rejects
+unsupported shell selection or conflicting native hooks. Settings that replace
+the startup observer are rejected before Bash effects instead of being overwritten. Use
+`mekugi claude --vcs-guard=false` to retain native permissions without this guard.
+Native sandboxing and shell-prefix wrappers currently require that opt-out.
+Unsupported or ambiguous command tracking still asks through the same approval
+dock without assigning the decision to a guessed command row. Missing guard
+resources or an incomplete startup handoff reject execution with an explanation.
+Direct `!command` keeps its native user-action semantics.
 
 The shared composer completes SDK-advertised commands and skills with `/` and
 workspace file paths with `@`, including ignored files but excluding VCS internals.
@@ -1294,7 +1308,8 @@ Shared title/list/clear/resume acceptance uses the installed native runtime with
 a scripted provider, rendered picker and no inference. Cross-workspace acceptance
 also exercises the shared PTY picker's All filter, search and Enter in both
 directions, plus fresh launch from another workspace. Full session-control PTY
-and live-model acceptance remain outstanding.
+acceptance covers title, paging/search, clear/resume, failures and cancellation;
+live-model acceptance remains separate.
 Native segment fixtures check shared UI events, with separate narrow/wide renderer
 snapshots and gated PTY checks for live segment dialogs, clicks and cancellation.
 Retaining-shell API and shared PTY checks prove native execution, later context,

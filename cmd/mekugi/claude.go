@@ -24,6 +24,7 @@ func runClaude(ctx context.Context, args []string, in, out *os.File, stderr io.W
 	fork := flags.Bool("fork-session", false, "fork the resumed native conversation to a new Claude session")
 	model := flags.String("model", "", "native Claude model choice")
 	bridge := flags.String("bridge", "", "path to built Claude SDK bridge")
+	guard := flags.Bool("vcs-guard", true, "ask before reached remote VCS writes independently of Claude permissions")
 	flags.Usage = func() {
 		fmt.Fprint(stderr, "Usage: mekugi claude [--cwd DIR] [--resume SESSION] [--model MODEL]\n\nClaude Code backend for the shared UI. Requires Node and an installed, authenticated\nClaude Code runtime. Releases and make install include the bridge. No inference router.\n")
 		flags.PrintDefaults()
@@ -109,11 +110,20 @@ func runClaude(ctx context.Context, args []string, in, out *os.File, stderr io.W
 			previous = value
 		}
 	}
-	bashEnv, err := observations.PrepareCommandTracking(ctx, execTrackHelper(), previous)
+	helper := execTrackHelper()
+	bashEnv, err := observations.PrepareCommandTracking(ctx, helper, previous)
 	if err != nil {
 		return fail(err)
 	}
-	config.Companion = &claude.ObservationEndpoint{Socket: endpoint.Socket, Token: endpoint.Token, Plugin: presentation.Plugin, FrontendDirectory: presentation.FrontendDirectory, JournalSchema: presentation.JournalSchema, BashEnv: bashEnv}
+	if *guard {
+		if err := observations.PrepareVCSGuard(ctx, helper); err != nil {
+			return fail(err)
+		}
+	}
+	config.Companion = &claude.ObservationEndpoint{Socket: endpoint.Socket, Token: endpoint.Token, Plugin: presentation.Plugin, FrontendDirectory: presentation.FrontendDirectory, JournalSchema: presentation.JournalSchema, BashEnv: bashEnv, VCSGuard: *guard}
+	if *guard {
+		config.Companion.VCSGuardHelper = helper
+	}
 	client, err := claude.Start(ctx, node, *bridge, config)
 	if err != nil {
 		return fail(err)

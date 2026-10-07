@@ -1,7 +1,7 @@
 import { companionRequest, type CompanionConfig } from './companion_transport.js';
 export type { CompanionConfig } from './companion_transport.js';
 import { realpath } from 'node:fs/promises';
-import type { HookCallback, HookInput, Options, SDKMessage, SDKSessionInfo } from '@anthropic-ai/claude-agent-sdk';
+import type { HookCallback, HookInput, Options, SDKMessage, SDKSessionInfo, SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk';
 import { companionGuidance, companionFrontendGuidance, type CompanionPrompt } from './guidance.js';
 
 interface Binding { runtime: 'claude'; session: string; workspace: string; agent?: string }
@@ -11,9 +11,9 @@ const object = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 
 // Only the bridge holds this capability. Session/agent hooks deliver the shared
-// companion guidance; tool observation adds no permissions or argument rewrites.
+// companion guidance.
 export function companion(config: CompanionConfig, cwd: string, notice: (text: string) => Promise<void>, rootInputGuidance = true,
-  prompt: CompanionPrompt = {workflow: companionGuidance(config), frontends: companionFrontendGuidance(config)}): {
+  prompt: CompanionPrompt = {workflow: companionGuidance(config), frontends: companionFrontendGuidance(config)}, verifyGuard?: (id: string) => Promise<void>): {
   hooks: Options['hooks']; event: (event: SDKMessage) => Promise<void>;
   resume: (info: SDKSessionInfo) => Promise<void>;
 } {
@@ -36,6 +36,7 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
     };
   });
   let rootGuidanceSession: string | undefined;
+  const guarded = new Map<string, NativeCall>();
   const send = (payload: unknown, signal?: AbortSignal): Promise<unknown> => companionRequest(config, payload, signal);
   const binding = async (input: Pick<HookInput, 'session_id' | 'cwd' | 'agent_id'>): Promise<Binding> => {
     if (await realpath(input.cwd) !== cwd) throw new Error('native hook workspace differs from this launch');
@@ -45,7 +46,7 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
     const text = typeof value === 'string' ? value : JSON.stringify(value) ?? '';
     return text.slice(0, 32768);
   };
-  const hook: HookCallback = async (input, toolUseID, options) => {
+  const hook: HookCallback = async (input, toolUseID, options): Promise<SyncHookJSONOutput> => {
     try {
       const scope = await binding(input);
       if (input.hook_event_name === 'UserPromptSubmit') {
@@ -96,9 +97,23 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
         if (typeof args.file_path !== 'string' || !args.file_path) throw new Error('native file path missing');
         call.paths = [args.file_path];
       }
-      if (input.hook_event_name === 'PreToolUse') await send({operation: 'before', call}, options.signal);
+      if (input.hook_event_name === 'PreToolUse') {
+        if (config.vcsGuard && input.tool_name === 'Bash') {
+          // Instrumentation must fail closed, independently of auxiliary capture.
+          await verifyGuard?.(input.tool_use_id);
+          if (guarded.size >= 1024) throw new Error('native guard pending-call limit reached');
+          const result = await send({operation: 'before', call}, options.signal) as {guardReady?: boolean; captureError?: string};
+          if (result.guardReady !== true) throw new Error('native startup guard unavailable');
+          guarded.set(call.id, call);
+          if (result.captureError) void notice(`Companion capture unavailable: ${result.captureError}`).catch(() => {});
+          // Native rules evaluate original input. Startup guards execution.
+          return {};
+        }
+        await send({operation: 'before', call}, options.signal);
+      }
       else if (input.hook_event_name === 'PostToolUseFailure') {
         const result = await send({operation: 'after', call, terminal: {status: input.is_interrupt ? 'stopped' : 'failed', report: input.error, interrupted: input.is_interrupt ?? false}}, options.signal) as {changeID?: string};
+        guarded.delete(call.id);
         if (config.frontendDirectory && result.changeID) return {hookSpecificOutput: {hookEventName: 'PostToolUseFailure', additionalContext: `Mekugi recorded actual file effects: ${result.changeID}. Review this explicit ID with mchanges through native Bash.`}};
       }
       else {
@@ -106,9 +121,13 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
         const task = typeof response?.backgroundTaskId === 'string' ? response.backgroundTaskId : undefined;
         if (args.run_in_background === true && !task) throw new Error('background Bash completion identity unavailable; capture left unfinished');
         const result = await send({operation: 'after', call, terminal: {status: task ? 'running' : 'completed', ...(task ? {task} : {}), report: report(input.tool_response)}}, options.signal) as {changeID?: string};
+        guarded.delete(call.id);
         if (config.frontendDirectory && result.changeID) return {hookSpecificOutput: {hookEventName: 'PostToolUse', additionalContext: `Mekugi recorded actual file effects: ${result.changeID}. Review this explicit ID with mchanges through native Bash.`}};
       }
     } catch (error) {
+      if (config.vcsGuard && input.hook_event_name === 'PreToolUse' && input.tool_name === 'Bash') {
+        return {hookSpecificOutput: {hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Mekugi VCS guard unavailable: ${String(error)}`}};
+      }
       void notice(`Companion capture unavailable: ${String(error)}`).catch(() => {});
     }
     return {};
@@ -126,6 +145,17 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
       PostToolUse: [{...matcher, matcher: 'Edit|Write|Bash'}], PostToolUseFailure: [{...matcher, matcher: 'Edit|Write|Bash'}]},
     event: async event => {
       try {
+        // Native permission denial precedes execution and has no post-tool hook.
+        // Its exact error result closes only the observation opened for this call.
+        if (event.type === 'user' && Array.isArray(event.message.content)) {
+          for (const block of event.message.content) {
+            if (block.type !== 'tool_result' || !block.is_error) continue;
+            const call = guarded.get(block.tool_use_id);
+            if (!call || call.binding.session !== event.session_id) continue;
+            await send({operation: 'after', call, terminal: {status: 'failed', report: report(block.content)}});
+            guarded.delete(call.id);
+          }
+        }
         if (config.journalSchema && event.type === 'user') {
           const result = object(event.tool_use_result);
           if (typeof result?.agentId === 'string' && Array.isArray(event.message.content)) {
