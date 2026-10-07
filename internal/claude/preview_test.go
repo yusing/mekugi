@@ -151,6 +151,31 @@ func TestPreviewNativeCorrelationAndStop(t *testing.T) {
 	previewAssertEdit(t, previewDelta(t, &a, "", 1, `{"file_path":"next.txt","content":"next"}`), "next-1", "", "next.txt", "next", true)
 }
 
+func TestPreviewNativeBashCommandPrefixes(t *testing.T) {
+	var a adapter
+	for _, parent := range []string{"", "child"} {
+		previewFrame(t, &a, parent, map[string]any{"type": "message_start", "message": map[string]any{"id": "message-" + parent}})
+		previewFrame(t, &a, parent, map[string]any{"type": "content_block_start", "index": 0, "content_block": map[string]any{"type": "tool_use", "id": "bash-" + parent, "name": "Bash", "input": map[string]any{}}})
+		events := previewDelta(t, &a, parent, 0, `{"command":"cat > out.txt <<'EOF'\n台\uD83D`)
+		if len(events) != 1 || events[0].ID != "bash-"+parent || events[0].Caller != parent || events[0].CommandInput == nil || events[0].CommandInput.Text != "cat > out.txt <<'EOF'\n台" || events[0].CommandInput.Complete {
+			t.Fatalf("native Bash prefix: %+v", events)
+		}
+		events = previewDelta(t, &a, parent, 0, `\uDE00\nEOF\n"}`)
+		if len(events) != 1 || events[0].CommandInput == nil || events[0].CommandInput.Text != "cat > out.txt <<'EOF'\n台😀\nEOF\n" || events[0].CommandInput.Complete {
+			t.Fatalf("native Bash complete arguments are still input: %+v", events)
+		}
+		events = previewFrame(t, &a, parent, map[string]any{"type": "content_block_stop", "index": 0})
+		if len(events) != 1 || events[0].CommandInput == nil || !events[0].CommandInput.Complete {
+			t.Fatalf("native Bash input boundary: %+v", events)
+		}
+	}
+	for _, input := range []string{`{"command":42}`, `{"command":"ok","command":"other"}`, `{"command":"bad\q`, `{"command":"unfinished`} {
+		if got := decodeCommand("Bash", input, true); got != nil {
+			t.Fatalf("invalid final input projected a command: %+v", got)
+		}
+	}
+}
+
 func TestPreviewNativeUnknownAndInvalidFrames(t *testing.T) {
 	var a adapter
 	previewStart(t, &a, "", "message", "call", 0)

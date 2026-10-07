@@ -1,0 +1,32 @@
+┌ 1 Main ──────────────────────────────────────────────────┐┌ 3 Activity · child-id 1/1 ─────────────────────── FOLLOW ┐
+│● child-id                                       12:00:00 ││LIVE · cat · 2 files · 1–1/2 · ^B e next · pinned         │
+││ •  · running                                            ││  child-id · ◐ M example.txt +1 -1                        │
+│                                                          ││  1│-before                                               │
+│                                                          ││▎ 1│+streamed command proposal                            │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││Proposed input · not saved edit evidence                  │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│╭─ Ready ────────────────────────────────────────────────╮││                                                          │
+││ ❯                                                      │││                                                          │
+│╰──────────────────────────────────────── claude-sonnet ─╯││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+─ 4 Agents · 2 · 1 working ─────────────────────────────────────────────────────────────────────────────────────────────
+ ● main  idle
+ ◐ └ child-id  running
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents¹   j/k scroll · n/p agent · a all · esc bottom · enter open · ^B

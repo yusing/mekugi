@@ -40,10 +40,7 @@ func (u *appServerUI) runtimePreview(e session.Event) {
 		p.before, p.exists, p.err = liveDiffPreviewFile(path)
 		r.previews[e.ID] = p
 	}
-	caller := "/root"
-	if e.Caller != "" {
-		caller = "native/" + e.Caller
-	}
+	caller := u.runtimeCallerLane(e.Caller)
 	preview := diffview.Preview{ID: e.ID, Workspace: u.session.cwd, Thread: u.thread, Caller: caller,
 		Tool: e.Role, Status: diffview.PreviewEdit, Footer: "Proposed input · not saved edit evidence"}
 	switch {

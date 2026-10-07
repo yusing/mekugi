@@ -5,9 +5,49 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/session"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func runtimeTaskLane(id string) string { return "/root/" + id }
+
+func (u *appServerUI) runtimeCallerLane(caller string) string {
+	if caller == "" {
+		return "/root"
+	}
+	for _, id := range u.runtime.taskOrder {
+		if task := u.runtime.tasks[id]; task.ToolID == caller || u.runtime.taskCallers[caller] == id {
+			if task.Kind == "local_bash" {
+				return "/root"
+			}
+			return runtimeTaskLane(id)
+		}
+	}
+	return "native/" + caller
+}
+
+func (u *appServerUI) rebindRuntimePreviewCallers() {
+	resolve := func(preview diffview.Preview) diffview.Preview {
+		if caller, ok := strings.CutPrefix(preview.Caller, "native/"); ok {
+			preview.Caller = u.runtimeCallerLane(caller)
+		}
+		return preview
+	}
+	for _, pane := range []*diffview.PreviewPane{&u.shell.liveDock, &u.shell.diff.previewPane} {
+		for _, id := range pane.Order {
+			view := pane.Views[id]
+			if next := resolve(view.Current); next.Caller != view.Current.Caller {
+				pane.Update(next)
+			}
+		}
+	}
+	for id, pending := range u.shell.livePending {
+		pending.preview = resolve(pending.preview)
+		u.shell.livePending[id] = pending
+	}
+	for _, pending := range u.runtime.previews {
+		pending.preview = resolve(pending.preview)
+	}
+}
 func runtimeTaskTerminal(status string) bool {
 	return status == "completed" || status == "failed" || status == "stopped" || status == "killed" || status == "saved"
 }
@@ -77,6 +117,7 @@ func (u *appServerUI) runtimeTask(e session.Event) {
 	if t.Kind == "local_bash" && runtimeTaskTerminal(t.Status) {
 		u.runtimeFinishCommand(t.ToolID, t.Status == "failed")
 	}
+	u.rebindRuntimePreviewCallers()
 	if !t.Ambient && !e.Historical {
 		caller := "task/" + t.ID
 		if t.Kind == "local_bash" {

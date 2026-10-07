@@ -88,8 +88,12 @@ identity. Each partial input is bounded to 256 KiB, with at most 128 active
 buffers. Complete paths and operands are required; partial content is marked as
 an incoming prefix, never removal of an unseen suffix. Full arguments remain
 provisional until a native tool result, and result arrival still does not make a
-saved capture. Preview filesystem reads use the existing bounded reader. Bash
-edit previews remain unavailable. Claude `/to <agent> <message>` uses the shared
+saved capture. Preview filesystem reads use the existing bounded reader. Native
+Bash argument prefixes use the original asynchronous shell-preview projector
+for literal heredoc and supported interpreter writes. Proposals stay separate
+from native execution and saved captures. Child proposals follow the selected
+roster lane. Retiring a query removes its live proposals; native history never
+restores preview workers. Claude `/to <agent> <message>` uses the shared
 composer and agent-argument autocomplete with the official invocation-local native mod session.send carrier.
 Tab or Enter inserts a roster target; submitting a complete command sends its
 plain-text message to that child without changing Main input or roster filters.
@@ -215,7 +219,16 @@ retains its isolated follow-up context. Full-bridge transport fixtures prove
 that missing shutdown evidence reports failure instead of waiting indefinitely.
 These checks use a local provider without inference; background-task/permission
 cleanup during shell handoff lacks direct runtime acceptance.
-Native terminal foreground switching and full rich-preview continuity remain unfinished;
+Installed-native local-provider PTY acceptance proves growing Bash proposals before
+complete input or effects, independent scrolling/resizing, exact native input,
+exactly-once effects and independent saved capture reconciliation. Child/fork/fresh
+resume acceptance proves child command attribution, segment output and Events
+clicks, saved dialogs and separate fork Diff authority without replaying effects
+or restoring proposal workers. Native child input arrives complete, not as a
+partial stream. Offline consuming checks cover proposal retirement, late child
+correlation and shared mailbox recovery; reviewed snapshots cover Main and selected
+child rendering. These cases use no inference.
+Native terminal foreground switching remains unavailable through the selected carrier;
 this backend does not claim full Codex parity.
 
 ## REQ-NATIVE-UI-001 — Native app-server UI

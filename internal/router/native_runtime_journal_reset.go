@@ -124,6 +124,7 @@ func (u *appServerUI) runtimeResetReady(e session.Event) error {
 		return nil
 	}
 	// No native session has been created yet. Input will establish identity.
+	u.closeRuntimeCommandPreviews()
 	if err := u.closeBTW(); err != nil {
 		return err
 	}

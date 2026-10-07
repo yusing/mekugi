@@ -25,6 +25,11 @@ type nativeRuntimeSession struct {
 	ready             bool
 	serial            uint64
 	previews          map[string]*runtimePreview
+	commandPreviews   map[string]*runtimeCommandPreview
+	previewBroker     *liveDiffBroker
+	previewSubscriber *liveDiffSubscriber
+	previewReady      <-chan struct{}
+	previewGap        <-chan struct{}
 	observations      *ObservationService
 	observationEvents <-chan liveDiffEvent
 	observationGap    <-chan struct{}
@@ -67,6 +72,7 @@ func newRuntimeUI(ctx context.Context, client session.Client, name, cwd string) 
 // The caller owns runtime startup/shutdown; this loop owns only the terminal.
 func RunNativeSession(ctx context.Context, client session.Client, name, cwd string, stdin, stdout *os.File, observations ...*ObservationService) error {
 	u := newRuntimeUI(ctx, client, name, cwd)
+	defer u.closeRuntimeCommandPreviews()
 	defer u.finishRuntimeCommandSegments(stdout)
 	u.panes = &nativePanePersistence{}
 	defer func() { u.paneError(u.panes.save(u.shell, u.now(), true)) }()
@@ -97,6 +103,10 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 					u.dirty = true
 				case event := <-u.runtime.observationEvents:
 					u.applyRuntimeObservation(event)
+				case <-u.runtime.previewReady:
+					u.applyRuntimeCommandPreviews()
+				case <-u.runtime.previewGap:
+					u.applyRuntimeCommandPreviews()
 				case <-u.runtime.observationGap:
 					u.attachRuntimeObservation(u.runtime.observations)
 				case result := <-u.picker.scanResults:
@@ -112,6 +122,7 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 					}
 					u.dirty = true
 				case <-tick.C:
+					u.reapRuntimeCommandPreviews()
 					u.flushRuntimeCommandSegments()
 					if settleActivity(u.now(), u.view, u.agents) {
 						u.dirty = true
@@ -365,6 +376,7 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		u.runtimeCommands(e.CommandInfo)
 		u.refreshRuntimePicker()
 	case "shell_restarting":
+		u.closeRuntimeCommandPreviews()
 		u.runtime.ready = false
 		u.setNotice(e.Text, false)
 	case "shell_restarted":
@@ -420,6 +432,9 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 			}
 		}
 	case "session":
+		if u.thread != e.SessionID || e.Cwd != "" && u.session.cwd != e.Cwd {
+			u.closeRuntimeCommandPreviews()
+		}
 		if e.Cwd != "" {
 			u.session.cwd, u.shell.diff.workspace = e.Cwd, e.Cwd
 		}
@@ -449,9 +464,12 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		u.setNotice("Context reset from journal · native session "+e.SessionID, false)
 	case "edit":
 		u.runtimePreview(e)
+	case "command_preview":
+		u.runtimeCommandPreview(e)
 	case "message", "tool", "tool_result":
 		u.runtimeEntry(e)
 		if e.Kind == "tool_result" {
+			u.finishRuntimeCommandPreview(e.ID)
 			u.settleRuntimePreview(e.ID, e.Failed)
 			if e.Historical {
 				u.restoreRuntimeCommandOutput(e.ID)
@@ -464,6 +482,11 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 	case "error":
 		return errors.New(e.Text)
 	case "done":
+		for id, p := range u.runtime.commandPreviews {
+			if !p.complete && p.worker.preview.Caller == "/root" {
+				u.finishRuntimeCommandPreview(id)
+			}
+		}
 		if s := u.runtime.observations; s != nil && s.journal != nil {
 			if err := s.journal.complete(u.ctx, e.ID); err != nil {
 				u.setNotice("Journal completion report unavailable: "+err.Error(), true)
@@ -561,19 +584,12 @@ func (u *appServerUI) runtimeEntry(e session.Event) {
 	for _, v := range []*liveActivityView{u.view, u.agents} {
 		entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "text", Text: e.Text, CallID: e.ID, Observed: u.now()}
 		if e.Caller != "" {
-			entry.Agent = "native/" + e.Caller
+			entry.Agent = u.runtimeCallerLane(e.Caller)
+			if entry.Agent == "/root" {
+				entry.Agent = "Main"
+			}
 			if e.Kind == "task" {
 				entry.Agent = runtimeTaskLane(strings.TrimPrefix(e.Caller, "task/"))
-			}
-			for _, id := range u.runtime.taskOrder {
-				if task := u.runtime.tasks[id]; task.ToolID == e.Caller || u.runtime.taskCallers[e.Caller] == id {
-					if task.Kind == "local_bash" {
-						entry.Agent = "Main"
-					} else {
-						entry.Agent = runtimeTaskLane(id)
-					}
-					break
-				}
 			}
 		}
 		if e.Kind == "task" {

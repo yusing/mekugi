@@ -45,10 +45,24 @@ func (a *adapter) toolDelta(parent string, index int, delta string, final bool) 
 		return []session.Event{{Kind: "notice", Text: "Tool input exceeds the live preview limit; native execution is unchanged"}}
 	}
 	t.input += delta
+	if command := decodeCommand(t.name, t.input, final); command != nil {
+		return []session.Event{{Kind: "command_preview", ID: t.id, Role: t.name, Caller: parent, CommandInput: command}}
+	}
 	if edit := decodeEdit(t.name, t.input, final); edit != nil {
 		return []session.Event{{Kind: "edit", ID: t.id, Role: t.name, Caller: parent, Edit: edit}}
 	}
 	return nil
+}
+
+func decodeCommand(tool, input string, final bool) *session.CommandInput {
+	if tool != "Bash" || len(input) > inputLimit || final && !jsontext.Value(input).IsValid() {
+		return nil
+	}
+	command, ok := editFields(input)["command"]
+	if !ok || command.text == "" {
+		return nil
+	}
+	return &session.CommandInput{Text: command.text, Complete: final}
 }
 
 type stringField struct {

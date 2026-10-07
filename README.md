@@ -286,9 +286,13 @@ Capture warnings remain
 readable in the transcript when they do not fit in the status line.
 
 Claude uses the existing pane shell, not a separate interface. Edit/Write input
-streams appear as provisional proposals in the shared live-edit dock and Diff
-pane. Partial content does not claim deletion of an unseen suffix. Native tool
-completion does not turn these proposals into saved edit evidence.
+streams and supported literal Bash heredoc/interpreter writes appear as provisional
+proposals in the shared live-edit dock and Diff pane. Partial
+content does not claim deletion of an unseen suffix. Child proposals follow the
+selected Activity lane; the native runtime exposes complete child input rather
+than partial child streams. Native tool completion does not turn proposals into
+saved edit evidence. Query replacement removes live proposals; resume and forks
+restore confirmed output and segments without restoring proposal workers.
 
 Invocation-local observational hooks record actual Edit/Write
 file effects, including partial effects of failed tools, enter the same saved Diff
@@ -359,8 +363,8 @@ packet in full. Overflow or missing evidence leaves the native summary intact,
 reports unavailable recovery facts, and still supplies current workflow guidance.
 The utility and journal integration is invocation-local.
 
-Bash edit previews, native terminal foreground switching and full rich-preview
-continuity remain unfinished. Command
+Native terminal foreground switching is unavailable through the direct-message
+carrier; roster filters and `/to` provide shared viewing and child messaging. Command
 segments and session controls do not imply full shared-controller parity.
 Commands advertised by the SDK are forwarded natively;
 unadvertised commands are rejected rather than emulated.

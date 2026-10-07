@@ -311,6 +311,9 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 				}
 			case "tool_use":
 				result = append(result, session.Event{Kind: "tool", ID: block.ID, Role: block.Name, Text: string(block.Input)})
+				if command := decodeCommand(block.Name, string(block.Input), true); command != nil {
+					result = append(result, session.Event{Kind: "command_preview", ID: block.ID, Role: block.Name, Caller: e.Parent, CommandInput: command})
+				}
 				if edit := decodeEdit(block.Name, string(block.Input), true); edit != nil {
 					result = append(result, session.Event{Kind: "edit", ID: block.ID, Role: block.Name, Edit: edit, Caller: e.Parent})
 				}

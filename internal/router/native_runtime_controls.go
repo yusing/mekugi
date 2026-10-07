@@ -69,6 +69,7 @@ func (u *appServerUI) runtimeSessionChanged(e session.Event) error {
 		}
 		return nil
 	}
+	u.closeRuntimeCommandPreviews()
 	if err := u.clearSessionPresentation(); err != nil {
 		return err
 	}

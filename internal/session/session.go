@@ -31,6 +31,13 @@ type Event struct {
 	SideID       string
 	AgentMessage *AgentMessage
 	Shell        *ShellResult
+	CommandInput *CommandInput
+}
+
+// CommandInput is received proposal text, not execution or completion evidence.
+type CommandInput struct {
+	Text     string
+	Complete bool
 }
 
 type SavedSession struct {
