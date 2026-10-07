@@ -81,7 +81,12 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 					t.Fatal("unresolved edit has no ordinary command dialog")
 				}
 				// The interpreter projection is the original source, not a made-up edit.
-				if source := u.shell.output.pages[0].Code; !strings.Contains(source, "name += '.txt'") || !strings.Contains(source, ".write_text('new')") {
+				page := u.view.painter.DialogPage(u.shell.output.pages[0], 100)
+				var source string
+				for _, line := range page.Lines {
+					source += ansi.Strip(line.Text) + "\n"
+				}
+				if !strings.Contains(source, "name += '.txt'") || !strings.Contains(source, ".write_text('new')") {
 					t.Fatalf("dialog lost original source: %q", source)
 				}
 				snapshot := "unresolved-edit-command"

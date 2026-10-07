@@ -217,7 +217,12 @@ uses the file's syntax colors; numbered search matches color the path, line
 number and matched source separately. Search titles retain pattern/path colors.
 When per-command boundaries were not retained (including restored history,
 terminal-only or lossy reports), the dialog labels the host buffer as combined
-output instead of attributing it to the last command. It never guesses boundaries. It takes
+output instead of attributing it to the last command. It never guesses boundaries.
+It shows recognized edits with the same operation classification as the feed, rather than
+showing their source as a Run script. Unresolved source stays visible, and the
+combined buffer and invocation outcome remain separate from those requested edits.
+Source-derived Run rows remain requested intent when execution was not observed.
+The dialog takes
 at most 90% of each dimension, or the available screen below 60 columns, over
 the panes faded to faint uncolored text. A theme-aware filled surface and
 accent-colored frame separate the dialog from those panes; syntax, diff, and

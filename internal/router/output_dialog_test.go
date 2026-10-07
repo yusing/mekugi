@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,33 @@ import (
 	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
+
+func TestUISnapshotCombinedEditOutput(t *testing.T) {
+	command, err := os.ReadFile("testdata/python-rewrite-command.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{string(command), execsegment.ShScript("/private/exec-track.sh", string(command))} {
+		output := new(activityui.Retention).New()
+		output.Write("build failed\n")
+		output.Finish(nil, new(2))
+		view := newLiveActivityView()
+		view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+			Seq: 1, Agent: "Main", Kind: "tool", Text: toolActivityShell(command),
+			native: &liveActivityNativeItem{command: command, output: output},
+		}}})
+		u := &terminalUI{}
+		if !u.openEntry(view, 1) || len(u.output.pages) != 1 {
+			t.Fatal("missing combined output page")
+		}
+		rows := make([]string, 24)
+		u.paintOutput(rows, 100, len(rows))
+		if u.output.laid.Text != "build failed" {
+			t.Fatalf("combined output lost host text: %q", u.output.laid.Text)
+		}
+		assertNativeUISnapshot(t, "combined-edit-output", rows)
+	}
+}
 
 func dialogForOutput(output *activityui.Output) *terminalUI {
 	view := newLiveActivityView()

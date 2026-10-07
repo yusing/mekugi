@@ -1,0 +1,24 @@
+
+
+
+
+╭─ Ran · combined output ────────────────────────────────────────────────────────── [×] ─╮
+│ 1 line · exit 2                                                                        │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ Edit   go.mod via python3 · requested                                                  │
+│        README.md                                                                       │
+│        api.go                                                                          │
+│        git.go                                                                          │
+│        sync.go                                                                         │
+│ Run    gofmt -w main.go api.go git.go sync.go · requested                              │
+│ Run    make build · requested                                                          │
+│ Run    make test · requested                                                           │
+│                                                                                        │
+│ Per-command output boundaries were not retained for this invocation.                   │
+│                                                                                        │
+│ 1 ┆ build failed                                                                       │
+╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ──────────────────────────────────────╯
+
+
+
+

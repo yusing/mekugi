@@ -55,6 +55,7 @@ type Block struct {
 	StatAlign          int  // Widest line-count text in this row's group.
 	StatScale          int  // Largest changed-line total in a multi-row group; 0 omits bars.
 	Running            bool // A live command the host has not completed.
+	Requested          bool // Source intent without observed per-command execution.
 	Segment            bool // Ends one tracked segment of a command list; shows that segment's exit.
 	Skipped            bool // A tracked segment the command list never reached.
 	Tail               []string
@@ -195,6 +196,8 @@ func AlignVerbs(blocks []Block) []Block {
 // RowVerb is the verb a row shows.
 func RowVerb(b Block) string {
 	switch {
+	case b.Kind == "op" && b.Verb == "Run" && b.Requested:
+		return "Run"
 	case b.Kind == "op" && b.Verb == "Run" && b.Running:
 		return "Running"
 	case b.Kind == "op" && b.Verb == "Run" && !b.Skipped:

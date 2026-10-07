@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
@@ -203,6 +204,31 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 				return nil
 			}
 			pages := []activityui.Block{{Source: source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: toolActivityShellSource(appServerDisplayCommand(entry.native.command)), Lang: "bash", Output: entry.native.output, Tail: entry.outputTail, TailOmitted: entry.outputOmit, Running: entry.native.running, Body: "Per-command output boundaries were not retained for this invocation."}}
+			// Keep edit source out of Run pages just as the feed does. The
+			// operations describe intent; only the batch owns output and exit.
+			classified := toolOperationBlocks(toolActivityShellInDirectory(appServerDisplayCommand(entry.native.command), entry.native.commandCwd))
+			if slices.ContainsFunc(classified, func(block activityui.Block) bool { return block.EditSource != "" }) {
+				if segments, ok := execsegment.Split(pages[0].Code); ok {
+					classified = nil
+					for _, segment := range segments {
+						classified = append(classified, toolOperationBlocks(execSegmentTextInDirectory(segment.Source, entry.native.commandCwd))...)
+					}
+				}
+				for i := range classified {
+					classified[i].Requested = true
+					if classified[i].Verb == "Run" {
+						classified[i].Label += " · requested"
+					}
+				}
+				pages[0].Code = ""
+				pages[0].Rows = func(width int) []string {
+					var rows []string
+					for _, block := range activityui.GroupOperations(classified) {
+						rows = append(rows, v.painter.Block(block, width)...)
+					}
+					return append(append(rows, ""), v.painter.Markdown(pages[0].Body, width)...)
+				}
+			}
 			setCommandTiming(pages, entry.activityPaneEntry)
 			pages[0].Approval = entry.native.approval
 			return pages
