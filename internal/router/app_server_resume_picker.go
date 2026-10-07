@@ -12,6 +12,7 @@ import (
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/internal/session"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -74,7 +75,7 @@ func (u *appServerUI) resumeCommand(text string) error {
 		u.setNotice("Use /resume or /resume THREAD_ID", true)
 		return nil
 	}
-	if u.thread == "" || u.restoring != nil || u.replacement.pending() {
+	if u.runtime == nil && u.thread == "" || u.restoring != nil || u.replacement.pending() {
 		u.setNotice("Wait for the session to be ready", false)
 		return nil
 	}
@@ -82,10 +83,13 @@ func (u *appServerUI) resumeCommand(text string) error {
 		u.setNotice("/resume is disabled while a task is in progress", true)
 		return nil
 	}
-	u.takeDraft()
 	if len(fields) == 2 {
-		return u.resumeSession(fields[1])
+		if u.runtime == nil || fields[1] == u.thread {
+			u.takeDraft()
+		}
+		return u.resumeSession(fields[1], "")
 	}
+	u.takeDraft()
 	return u.openResumePicker(false)
 }
 
@@ -105,6 +109,25 @@ func (u *appServerUI) loadResumePage(reset bool) error {
 	if reset {
 		p.rows, p.seen, p.cursor, p.selected, p.top = nil, make(map[string]bool), "", 0, 0
 		p.loadedAt = time.Now()
+	}
+	if u.runtime != nil {
+		client, ok := u.runtime.client.(session.SessionListClient)
+		if !ok {
+			u.resumePickerFailed("Saved sessions are unavailable for this runtime")
+			return nil
+		}
+		u.runtime.serial++
+		id := fmt.Sprintf("sessions/%d", u.runtime.serial)
+		cwd := ""
+		if !p.all {
+			cwd = p.cwd
+		}
+		if err := client.ListSessions(u.ctx, session.SessionListRequest{ID: id, Cwd: cwd, Cursor: p.cursor, Limit: resumePickerPage}); err != nil {
+			u.resumePickerFailed("Could not list sessions: " + err.Error())
+			return nil
+		}
+		p.request, p.loading, p.problem = id, true, ""
+		return nil
 	}
 	params := resumableThreads(resumePickerPage)
 	if !p.all {
@@ -149,11 +172,8 @@ func (u *appServerUI) resumePickerResponse(m appserver.Message) error {
 		u.resumePickerFailed("Invalid session list: " + err.Error())
 		return nil
 	}
+	var rows []appServerResumeRow
 	for _, thread := range result.Data {
-		if thread.ID == "" || p.seen[thread.ID] {
-			continue
-		}
-		p.seen[thread.ID] = true
 		row := appServerResumeRow{id: thread.ID, title: strings.TrimSpace(thread.Name), cwd: thread.Cwd, updated: thread.UpdatedAt}
 		if row.title == "" {
 			row.title = strings.TrimSpace(thread.Preview)
@@ -161,9 +181,21 @@ func (u *appServerUI) resumePickerResponse(m appserver.Message) error {
 		if thread.GitInfo != nil {
 			row.branch = thread.GitInfo.Branch
 		}
+		rows = append(rows, row)
+	}
+	return u.receiveResumePage(rows, result.NextCursor)
+}
+
+func (u *appServerUI) receiveResumePage(rows []appServerResumeRow, cursor string) error {
+	p := u.resumePicker
+	for _, row := range rows {
+		if row.id == "" || p.seen[row.id] {
+			continue
+		}
+		p.seen[row.id] = true
 		p.rows = append(p.rows, row)
 	}
-	p.cursor = result.NextCursor
+	p.cursor = cursor
 	return u.fillResumePicker()
 }
 
@@ -200,10 +232,13 @@ func (u *appServerUI) closeResumePicker() {
 
 // resumeSession switches this UI to a saved thread. The old presentation
 // stays usable until Codex confirms the new thread, as for /clear.
-func (u *appServerUI) resumeSession(id string) error {
+func (u *appServerUI) resumeSession(id, workspace string) error {
 	if id == u.thread {
 		u.setNotice("Already viewing this session", false)
 		return nil
+	}
+	if u.runtime != nil {
+		return u.changeRuntimeSession(id, workspace)
 	}
 	u.replacement.resume(id)
 	if err := u.requestResume(id); err != nil {
@@ -278,13 +313,14 @@ func (u *appServerUI) resumePickerKey(key string) error {
 		if len(rows) == 0 {
 			break
 		}
-		id := rows[p.selected].id
+		row := rows[p.selected]
+		id := row.id
 		u.closeResumePicker()
 		if p.startup {
 			u.resumeThread = id
 			return u.requestResume(id)
 		}
-		return u.resumeSession(id)
+		return u.resumeSession(id, row.cwd)
 	case "\x7f", "\b":
 		if p.query != "" {
 			_, n := utf8.DecodeLastRuneInString(p.query)

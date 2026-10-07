@@ -34,8 +34,8 @@ func ExecTrackPaths(frontendDirectory string) (socket, directory string) {
 }
 
 // execTrackHub receives the segment reports of tracked command shells and
-// matches each to the live Codex command item that started it. It only
-// observes: execution, output, and exit status stay with Codex and its shell.
+// matches each to the live runtime command item that started it. It only
+// observes: execution, output, and exit status stay with the runtime and its shell.
 type execTrackHub struct {
 	listener net.Listener
 	mu       sync.Mutex
@@ -49,7 +49,7 @@ type execTrackHub struct {
 }
 
 type execTrackCommand struct {
-	key    [3]string // Thread, turn, item.
+	key    [3]string // Thread/session, turn/agent, item.
 	script string
 	serial uint64
 }
@@ -130,6 +130,14 @@ func (h *execTrackHub) start(key [3]string, command string) {
 	if !ok {
 		return
 	}
+	h.startScript(key, script)
+}
+
+// Native hooks have the literal payload, not Codex's executable/argv display.
+func (h *execTrackHub) startScript(key [3]string, script string) {
+	if h == nil {
+		return
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if slices.ContainsFunc(h.started, func(c execTrackCommand) bool { return c.key == key }) || h.tracks[key] != nil {
@@ -140,6 +148,33 @@ func (h *execTrackHub) start(key [3]string, command string) {
 	for preview := range h.previews {
 		preview.retain(key, &execTrack{script: script, serial: h.sequence, hostOnly: true})
 	}
+	h.signal()
+}
+
+func (h *execTrackHub) nativeKeys(session string) [][3]string {
+	if h == nil {
+		return nil
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var keys [][3]string
+	for candidate := range h.tracks {
+		if candidate[0] == session {
+			keys = append(keys, candidate)
+		}
+	}
+	return keys
+}
+
+// A native terminal hook retires unmatched claims, not reports the UI still
+// needs to drain. Its shell cannot claim a command after native completion.
+func (h *execTrackHub) nativeCompleted(key [3]string) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.started = slices.DeleteFunc(h.started, func(c execTrackCommand) bool { return c.key == key })
 	h.signal()
 }
 

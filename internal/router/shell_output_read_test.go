@@ -18,6 +18,48 @@ func (s *mekugiReplayStore) putShellOutput(ctx context.Context, stdout, stderr s
 	return s.putTypedOutput(ctx, toolplugin.OmittedOutput{Stdout: stdout, Stderr: stderr}, exitCode)
 }
 
+func TestShellOutputReadChunksAndRetention(t *testing.T) {
+	t.Parallel()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Repeat("x", 1<<20) + "suffix"
+	id, err := store.putOutputChunks(t.Context(), text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.readShellOutput(t.Context(), id)
+	if err != nil || first.Next == "" {
+		t.Fatalf("missing chained source: %+v %v", first, err)
+	}
+	second, err := store.readShellOutput(t.Context(), first.Next)
+	if err != nil || first.Stdout+second.Stdout != text || first.Stderr != "" || second.Next != "" {
+		t.Fatalf("invalid snapshot chunks: %v", err)
+	}
+	names, err := store.readDependencyNames(first)
+	if err != nil || len(names) != 2 {
+		t.Fatalf("unread chunk not retained: %v, %v", names, err)
+	}
+	manifest := toolWorkerManifest{ReplayDirectory: store.directory}
+	page := executeMRead(t.Context(), manifest, []string{id, "--stdout", "--max-tokens", "100"})
+	if page.ExitCode != 1 || page.Stdout != first.Stdout || !strings.Contains(page.Stderr, "next_call: mread "+first.Next) {
+		t.Fatalf("chunk continuation not exposed through stdout selection: %+v", page)
+	}
+	cursor, err := store.putReadCursor(t.Context(), second, [2]int{len(second.Stdout) - len("suffix"), 0}, "stdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page = executeMRead(t.Context(), manifest, []string{cursor, "--max-tokens", "100"})
+	if page.ExitCode != 0 || page.Stdout != "suffix" || page.Stderr != "" {
+		t.Fatalf("final chunk did not settle: %+v", page)
+	}
+	first.Next = first.ID
+	if err := validateReadRecord(first); err == nil {
+		t.Fatal("self-linked chunk accepted")
+	}
+}
+
 func TestShellOutputReadPagesAndRestart(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)

@@ -1,4 +1,4 @@
-// Package execsegment splits a Codex command script into its top-level
+// Package execsegment splits a native command script into its top-level
 // segments and instruments them for per-segment tracking. The helper that
 // runs inside the command shell and the router that displays it share this
 // split, so their segment indices always agree.

@@ -46,7 +46,8 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 	if _, port, err := net.SplitHostPort(address); err != nil || port == "0" {
 		t.Fatalf("ready URL = %q", baseURL)
 	}
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: new(http.Transport)}
+	t.Cleanup(client.CloseIdleConnections)
 	response, err := client.Get(strings.TrimSuffix(baseURL, "/v1") + "/api/metrics")
 	if err != nil {
 		t.Fatal(err)
@@ -63,6 +64,7 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("superseded HTML dashboard is still served: %d", response.StatusCode)
 	}
+	client.CloseIdleConnections()
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)

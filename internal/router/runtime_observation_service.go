@@ -24,25 +24,30 @@ type ObservationEndpoint struct {
 // It exposes no tool executor, filesystem mutation command, permission decision
 // or inference transport.
 type ObservationService struct {
-	owner         *nativeObservationOwner
-	server        *http.Server
-	directory     string
-	endpoint      ObservationEndpoint
-	journal       *runtimeJournalOwner
-	frontendToken string
-	registry      *toolRegistry
-	receipts      bool
+	owner           *nativeObservationOwner
+	server          *http.Server
+	directory       string
+	endpoint        ObservationEndpoint
+	journal         *runtimeJournalOwner
+	frontendToken   string
+	registry        *toolRegistry
+	plugin          string
+	stagedCompanion *runtimeSessionCompanion
+	receipts        bool
+	trackCancel     context.CancelFunc
 }
 
 type observationRequest struct {
-	Operation string              `json:"operation"`
-	Binding   ObservationBinding  `json:"binding,omitzero"`
-	Call      ObservationCall     `json:"call,omitzero"`
-	Terminal  ObservationTerminal `json:"terminal,omitzero"`
-	Task      observationTask     `json:"task,omitzero"`
-	NativeID  string              `json:"nativeID,omitempty"`
-	Input     string              `json:"input,omitempty"`
-	Child     string              `json:"child,omitempty"`
+	Operation     string              `json:"operation"`
+	Binding       ObservationBinding  `json:"binding,omitzero"`
+	Source        ObservationBinding  `json:"source,omitzero"`
+	Call          ObservationCall     `json:"call,omitzero"`
+	Terminal      ObservationTerminal `json:"terminal,omitzero"`
+	Task          observationTask     `json:"task,omitzero"`
+	NativeID      string              `json:"nativeID,omitempty"`
+	Input         string              `json:"input,omitempty"`
+	Child         string              `json:"child,omitempty"`
+	MaxCharacters int                 `json:"maxCharacters,omitzero"`
 }
 
 type observationTask struct {
@@ -87,14 +92,17 @@ func startObservationService(owner *nativeObservationOwner) (*ObservationService
 	slots := make(chan struct{}, 16)
 	s.server = &http.Server{ReadTimeout: 4 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: time.Second, MaxHeaderBytes: 4096,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			owner.mu.Lock()
 			frontend := r.URL.Path == "/frontend/context" && s.registry != nil
+			frontendToken := s.frontendToken
+			owner.mu.Unlock()
 			if r.Method != http.MethodPost || r.URL.Path != "/observe" && !frontend {
 				http.NotFound(w, r)
 				return
 			}
 			token := endpoint.Token
 			if frontend {
-				token = s.frontendToken
+				token = frontendToken
 			}
 			if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) != 1 {
 				http.Error(w, "invalid observation capability", http.StatusUnauthorized)
@@ -111,6 +119,11 @@ func startObservationService(owner *nativeObservationOwner) (*ObservationService
 			defer cancel()
 			if frontend {
 				owner.mu.Lock()
+				if frontendToken != s.frontendToken {
+					owner.mu.Unlock()
+					http.Error(w, "retired frontend capability", http.StatusUnauthorized)
+					return
+				}
 				binding := ObservationBinding{Runtime: owner.runtime, Session: owner.session, Workspace: owner.workspace}
 				_, bound := owner.bindings[binding]
 				owner.mu.Unlock()
@@ -130,6 +143,19 @@ func startObservationService(owner *nativeObservationOwner) (*ObservationService
 			var err error
 			var changeID string
 			switch request.Operation {
+			case "session_switch_check", "session_switch":
+				err = s.switchSession(ctx, request.Source, request.Binding, request.Operation == "session_switch_check")
+				if err == nil && request.Operation == "session_switch" {
+					owner.mu.Lock()
+					result := CompanionPresentation{Plugin: s.plugin}
+					if s.registry != nil {
+						result.FrontendDirectory = s.registry.frontendDirectory
+					}
+					owner.mu.Unlock()
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.MarshalWrite(w, result)
+					return
+				}
 			case "bind":
 				err = owner.bind(ctx, request.Binding)
 				if err == nil && s.journal != nil {
@@ -173,7 +199,11 @@ func startObservationService(owner *nativeObservationOwner) (*ObservationService
 					err = errors.New("companion journal is disabled")
 				} else {
 					var text string
-					text, err = s.journal.recover(ctx, request.Binding)
+					capacity := request.MaxCharacters
+					if capacity == 0 {
+						capacity = 10000
+					}
+					text, err = s.journal.recoverBounded(ctx, request.Binding, capacity)
 					if err == nil {
 						w.Header().Set("Content-Type", "application/json")
 						_ = json.MarshalWrite(w, map[string]string{"text": text})
@@ -220,10 +250,15 @@ func startObservationService(owner *nativeObservationOwner) (*ObservationService
 func (s *ObservationService) Endpoint() ObservationEndpoint { return s.endpoint }
 func (s *ObservationService) Close() error {
 	err := s.server.Close()
+	if s.trackCancel != nil {
+		s.trackCancel()
+		s.owner.execTrack.close()
+		s.owner.execTrack.wg.Wait()
+	}
 	companionErr := s.closeCompanion()
 	s.owner.close()
 	// Remove only the exact resources this launch created. Retained evidence stays.
-	return errors.Join(err, companionErr, removeObservationSocket(s.endpoint.Socket), os.Remove(s.directory))
+	return errors.Join(err, companionErr, removeObservationSocket(s.endpoint.Socket), s.closeCommandTracking(), os.Remove(s.directory))
 }
 func removeObservationSocket(path string) error {
 	err := os.Remove(path)

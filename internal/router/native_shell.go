@@ -500,9 +500,6 @@ func (u *terminalUI) nativeStatus() string {
 		hints = terminalHints{{"j/k", "select", 0}, {"enter", "open", 0}, {"c", "copy path", 0}, {"esc", "Main", 0}}
 	case u.focus == 3:
 		hints = terminalHints{{"j/k", "agent", 0}, {"a", filter, 0}, {"esc", "back", 0}}
-		if u.main != nil && u.main.runtime != nil {
-			hints[0].label = "task"
-		}
 		if u.main != nil && u.main.runtimeCanStopTask() {
 			hints = append(hints, terminalHint{"x", "stop task", 0})
 		}
@@ -558,5 +555,8 @@ func (u *terminalUI) flushEscape() error {
 		return nil
 	}
 	u.sequence = ""
+	if u.main != nil {
+		u.main.dirty = true
+	}
 	return u.send("\x1b")
 }

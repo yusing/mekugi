@@ -1,8 +1,7 @@
 ┌ 1 Main ──────────────────────────────────────────────────┐┌ 2 Diff · saved · 1 file +1 -0 ───────────────────────────┐
-│● Main                                           12:00:00 ││▎ 1/1  example.txt · New file +1 -0 ───────────────────── │
-││ Write  native result                                    ││▎ ┄ amber1 main·Bash                                      │
-││        ┆ native result                                  ││▎ 1│+observed background effect                           │
-│                                                          ││                                                          │
+│└ Write                                                   ││▎ 1/1  example.txt · New file +1 -0 ───────────────────── │
+│        ┆ native result                                   ││▎ ┄ amber1 main·Bash                                      │
+│                                                          ││▎ 1│+observed background effect                           │
 │● main                                           12:00:00 ││                                                          │
 │┃ Captured amber1                                         ││                                                          │
 │┃                                                         ││                                                          │
@@ -23,10 +22,11 @@
 │                                                          ││                                                          │
 │                                                          ││                                                          │
 │                                                          ││                                                          │
-│                                                          ││                                                          │
-│                                                          ││                                                          │
 │╭─ Ready ────────────────────────────────────────────────╮││                                                          │
 ││ ❯                                                      │││                                                          │
 │╰──────────────────────────────────────── claude-sonnet ─╯││                                                          │
 └──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+─ 4 Agents · 1 ───────────────────────────────────────────────────────────────────────────────────────────────── +1 -0 ─
+ ● main  idle
+
  1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   s files · tab changes · [ ] hunks · a caller · r follow · ? hel

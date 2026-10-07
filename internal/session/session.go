@@ -11,6 +11,7 @@ type Event struct {
 	Role        string
 	Text        string
 	SessionID   string
+	Cwd         string
 	Model       string
 	Failed      bool
 	Prompt      *Prompt
@@ -22,6 +23,44 @@ type Event struct {
 	Usage       *Usage
 	Limit       *RateLimit
 	Task        *Task
+	Output      *CommandOutput
+	Title       *SessionTitle
+	Sessions    *SessionPage
+	Change      *SessionChange
+}
+
+type SavedSession struct {
+	ID, Title, Cwd, Branch string
+	Updated                int64
+}
+type SessionPage struct {
+	ID, Cursor string
+	Sessions   []SavedSession
+}
+type SessionListRequest struct {
+	ID, Cwd, Cursor string
+	Limit           int
+}
+type SessionListClient interface {
+	ListSessions(context.Context, SessionListRequest) error
+}
+
+// An empty SessionID starts a new native session without inherited context.
+type SessionChange struct{ ID, SessionID, Title, Cwd string }
+type SessionChangeClient interface {
+	ChangeSession(context.Context, SessionChange) error
+}
+
+type SessionTitle struct{ ID, SessionID, Title string }
+
+type TitleClient interface {
+	RenameSession(context.Context, SessionTitle) error
+}
+
+// CommandOutput is a native tail snapshot, not an append-only byte stream.
+type CommandOutput struct {
+	TaskID          string
+	Truncated, Done bool
 }
 
 // Usage totals are the latest native query-pipeline snapshot, including native
@@ -48,8 +87,8 @@ type RateLimit struct {
 
 // Task identity is not an agent principal or authorization to that agent's store.
 type Task struct {
-	ID, ToolID, Kind, Description, Status, Summary string
-	Ambient                                        bool
+	ID, ToolID, Kind, Role, Description, Status, Summary string
+	Ambient                                              bool
 }
 type TaskClient interface {
 	StopTask(context.Context, string) error

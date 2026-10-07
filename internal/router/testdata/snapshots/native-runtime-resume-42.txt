@@ -1,0 +1,12 @@
+  Resume a previous session
+  Filter: Cwd All
+  Type to search
+
+  Updated  Conversation
+  2m ago   Current Claude conversation · …
+› 2h ago   Fix session restore and histor…
+
+
+
+
+  enter resume · esc close · tab cwd/all …

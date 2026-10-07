@@ -19,14 +19,14 @@
 │                                        │
 │                                        │
 │                                        │
+│                                        │
+│                                        │
+│                                        │
 └────────────────────────────────────────┘
-─ 4 Agents · 6 · 1 working · 1 error ─────
- ◐ nat…checks  running
- ✓ nat…review  completed
- ! nati…build  failed
- · native/ta…  stopped
- · na…waiting  paused
- · na…pending
- Roles: ● local_bash  ● local_agent
+─ 4 Agents · 4 ───────────────────────────
+ ● main       idle
+ ✓ ├ review   completed
+ ● ├ waiting  paused
+ ● └ pending
 
  1 Main  [ 2 Diff │ 3 Activity │ 5 Journal

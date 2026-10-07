@@ -178,3 +178,51 @@ Acceptance:
 6. Without prior `/hooks` approval, the registered hook is trusted and runs; a user
    `enabled = false` state for its key still disables it. Opting out registers no
    hook and no trust state.
+
+## REQ-GUIDE-003 — Claude companion guidance
+
+The invocation-local companion skill owns the Claude journal workflow. The
+authenticated frontend registry owns utility descriptions. Substantial work uses
+the durable journal for its plan, task states, established facts and constraints;
+small answers and necessary questions remain conversational. Native tool
+restrictions and permission policy remain authoritative.
+
+Fresh native queries append the mandatory generated workflow and the complete
+authenticated frontend catalog to Claude's preset prompt. Resume preserves the
+native pinned prompt and receives current guidance through its first
+`UserPromptSubmit` hook. Delivery is keyed by native session identity, not by a
+later `system/init` event. SDK startup `SessionStart` runs before callback
+registration and is not a mandatory root carrier. Native children receive full
+guidance through `SubagentStart`; classic compact hooks supply it again.
+
+Hook delivery separates workflow from catalog fragments. Workflow must fit its
+10,000 UTF-16-unit inline carrier; each catalog callback fragment is at most
+9,000 UTF-16 units, so the entire executable registry reaches native context
+without becoming a persisted preview. The authenticated invocation-local catalog
+path remains a recovery/reference source, not a required redundant read.
+Oversized or missing registered artifacts fail startup rather than silently
+making mandatory guidance optional. The small companion MCP tool set is exposed
+without deferred tool search.
+
+Classic compact recovery is additive. Mandatory recovery facts must fit the
+capacity left after workflow guidance. If they do not fit or cannot be read, the
+native summary stays intact, current workflow and catalog guidance still arrive,
+and the adapter reports unavailable facts. No carrier replaces Claude's base
+prompt, disables its prompt snapshot, changes native arguments/results, or writes
+persistent user configuration.
+
+Acceptance:
+
+1. Native local-provider requests for fresh, resume, child and compact lanes contain
+   the complete generated journal workflow and every full executable frontend
+   contract. Fresh and resume requests also prove companion MCP descriptors; child
+   tool availability remains subject to native restrictions. Direct callback tests
+   alone do not establish native consumption.
+2. Ordinary native implementation, without a user instruction to invoke the
+   journal, produces retained task updates, shared UI publication and verified
+   completion. Model omission is distinct from missing transport or guidance;
+   successful adoption by one model does not establish compliance by all models.
+3. Resume, child startup and compact hooks preserve native identity and tool
+   restrictions. Repeated ordinary input does not repeat root guidance.
+4. Recovery failure preserves native compaction and mandatory workflow delivery,
+   reports the missing facts, and never claims an empty successful recovery.

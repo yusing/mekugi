@@ -4,6 +4,7 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/session"
 )
 
@@ -123,6 +125,36 @@ readline.createInterface({input: process.stdin}).on('line', line => {
 	}
 	if _, ok := <-client.Events(); ok {
 		t.Fatal("events channel remains open after Close")
+	}
+}
+
+func TestClientIsolatesOnlyFreshCommandTrackingGuard(t *testing.T) {
+	t.Setenv(execsegment.Guard, "1")
+	t.Setenv("MEKUGI_NATIVE_PARENT_VALUE", "preserved")
+	for _, tracking := range []bool{false, true} {
+		t.Run(fmt.Sprint(tracking), func(t *testing.T) {
+			config := Config{Cwd: t.TempDir()}
+			if tracking {
+				config.Companion = &ObservationEndpoint{BashEnv: "/launch/private/bash-env"}
+			}
+			client := startMockBridge(t, t.Context(), `
+console.log(JSON.stringify({kind:'notice', text:JSON.stringify({guard:process.env.MEKUGI_EXEC_TRACK ?? null, parent:process.env.MEKUGI_NATIVE_PARENT_VALUE})}));
+process.stdin.resume();
+`, config)
+			var environment struct {
+				Guard  *string `json:"guard"`
+				Parent string  `json:"parent"`
+			}
+			if err := json.Unmarshal([]byte(nextEvent(t, client).Text), &environment); err != nil {
+				t.Fatal(err)
+			}
+			if environment.Parent != "preserved" || tracking && environment.Guard != nil || !tracking && (environment.Guard == nil || *environment.Guard != "1") {
+				t.Fatalf("wrong native launch environment: %+v", environment)
+			}
+			if os.Getenv(execsegment.Guard) != "1" || os.Getenv("MEKUGI_NATIVE_PARENT_VALUE") != "preserved" {
+				t.Fatal("launch changed caller environment")
+			}
+		})
 	}
 }
 

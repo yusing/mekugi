@@ -37,6 +37,9 @@ var nativeCommands = []composerChoice{
 // Compact uses its native RPC after acknowledged interruption, never a
 // turn/steer text payload. Tab can explicitly queue it instead.
 func (u *appServerUI) sessionCommand(command string) error {
+	if u.runtime != nil {
+		return u.changeRuntimeSession("", "")
+	}
 	if u.thread == "" || u.restoring != nil || u.replacement.pending() {
 		u.setNotice("Wait for the session to be ready", false)
 		return nil
@@ -88,6 +91,10 @@ func (u *appServerUI) submitCompact(queue bool) error {
 
 // sessionBusy reports work that leaving the current thread would strand.
 func (u *appServerUI) sessionBusy() bool {
+	if u.runtime != nil {
+		r := u.runtime
+		return r.busy || !r.ready || r.settings != nil || r.changeRequest != "" || r.resetRequest != "" || u.questionCount() != 0 || u.runtimeBackgroundWork()
+	}
 	return u.busy() || u.reset.active()
 }
 
@@ -144,8 +151,10 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.statusPanel, u.statusReports = nil, nil
 	u.requests = make(map[string]string) // Retire old-thread response correlation.
 	u.childHistory, u.historyLoading = nil, nil
-	if err := u.request("thread/unsubscribe", map[string]any{"threadId": u.thread}); err != nil {
-		return err
+	if u.runtime == nil {
+		if err := u.request("thread/unsubscribe", map[string]any{"threadId": u.thread}); err != nil {
+			return err
+		}
 	}
 	u.picker = composerPicker{}
 	u.compacting, u.polling = nil, nil
@@ -205,12 +214,14 @@ func (u *appServerUI) releaseRetired(root string) {
 // resetDiffScope starts the saved Diff over for a resumed root thread; its
 // restoration then includes only that thread and its descendants.
 func (u *appServerUI) resetDiffScope() {
-	if u.shell == nil || u.shell.auto == nil {
+	if u.shell == nil {
 		return
 	}
 	u.shell.diff.resetScope()
 	u.shell.liveDock, u.shell.diffFailure, u.shell.diffUnseen = diffview.PreviewPane{}, "", false
-	u.shell.auto.resetScope()
+	if u.shell.auto != nil {
+		u.shell.auto.resetScope()
+	}
 }
 
 func (u *appServerUI) filterCommands(query string) {

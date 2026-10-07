@@ -17,58 +17,70 @@ import (
 var claudeCompanionSkill string
 
 type CompanionPresentation struct {
-	Plugin            string
-	FrontendDirectory string
-	JournalSchema     jsontext.Value
+	Plugin            string         `json:"plugin,omitempty"`
+	FrontendDirectory string         `json:"frontendDirectory,omitempty"`
+	JournalSchema     jsontext.Value `json:"journalSchema,omitempty"`
 }
 
 // PrepareCompanion installs the shared utilities and journal for this launch.
 // It does not change persistent Claude configuration.
 func (s *ObservationService) PrepareCompanion(ctx context.Context) (CompanionPresentation, error) {
-	var result CompanionPresentation
 	s.EnableJournal()
+	result, registry, err := s.prepareCompanion(ctx, s.owner.workspace, s.frontendToken, filepath.Join(s.directory, "plugin"))
+	if err != nil {
+		return result, err
+	}
+	s.owner.mu.Lock()
+	s.registry, s.plugin, s.receipts = registry, result.Plugin, true
+	s.owner.mu.Unlock()
+	return result, nil
+}
+
+func (s *ObservationService) prepareCompanion(ctx context.Context, workspace, token, plugin string) (result CompanionPresentation, registry *toolRegistry, err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, registry.Close(), os.RemoveAll(plugin))
+		}
+	}()
 	result.JournalSchema = s.JournalSchema()
 	var utilitiesText, journalText string
 	data, err := mekugiDataDirectory()
 	if err != nil {
-		return result, err
+		return result, registry, err
 	}
 	runtimeDir, err := runtimepath.Directory()
 	if err != nil {
-		return result, err
+		return result, registry, err
 	}
-	registry, err := buildRuntimeToolRegistry(ctx, data, runtimeDir, s.owner.store.directory, runtimeFrontendBinding{
-		Runtime: s.owner.runtime, Workspace: s.owner.workspace, Endpoint: ObservationEndpoint{Socket: s.endpoint.Socket, Token: s.frontendToken},
+	registry, err = buildRuntimeToolRegistry(ctx, data, runtimeDir, s.owner.store.directory, runtimeFrontendBinding{
+		Runtime: s.owner.runtime, Workspace: workspace, Endpoint: ObservationEndpoint{Socket: s.endpoint.Socket, Token: token},
 	})
 	if err != nil {
-		return result, err
+		return result, registry, err
 	}
-	s.registry = registry
 	if err := registry.installFrontends(); err != nil {
-		return result, err
+		return result, registry, err
 	}
 	result.FrontendDirectory = registry.frontendDirectory
-	s.receipts = true
-	utilitiesText = "Run the enabled commands through Claude's native Bash, with its normal permissions. Read [the shared frontend contracts](frontends.md) when choosing arguments. Native Bash has no Codex yielded-session or write_stdin protocol.\n\nUse explicit recorded change IDs received from companion hooks or the saved Diff pane. Use MCP mchanges with args [] or [\"--mine\"] for your own changes, or [\"--list\"] to recover your IDs. This read-only adapter joins the exact native caller receipt to the shared change reader. Invocation-wide Bash environment does not prove agent identity, so implicit selection remains unavailable in Bash. --workspace cannot select another workspace. Apply/revert require explicit IDs and execute only in the native Bash process; mread recovers retained output without repeating a mutation. Background capture receipts may appear only in saved Diff."
+	utilitiesText = "Run the enabled commands through Claude's native Bash, with its normal permissions. The shared frontend contracts are injected into native context; [their catalog](frontends.md) is a recovery reference. Native Bash has no Codex yielded-session or write_stdin protocol.\n\nUse explicit recorded change IDs received from companion hooks or the saved Diff pane. Use MCP mchanges with args [] or [\"--mine\"] for your own changes, or [\"--list\"] to recover your IDs. This read-only adapter joins the exact native caller receipt to the shared change reader. Invocation-wide Bash environment does not prove agent identity, so implicit selection remains unavailable in Bash. --workspace cannot select another workspace. Apply/revert require explicit IDs and execute only in the native Bash process; mread recovers retained output without repeating a mutation. Background capture receipts may appear only in saved Diff."
 	journalText = "Use companion MCP journal_batch for a batch of plan/add/set/log/remove operations and journal_read for trees (p, depth, view, and agent when ancestry is proven). Paths are stable sibling ordinals. A batch is atomic; a rejected operation leaves the tree unchanged. Task states are pending, working, done, blocked or dropped; blocked/dropped require reason. Context nodes retain constraints, notes retain established facts, tasks retain actionable work. Update the owning node instead of duplicating or contradicting it.\n\nThe MCP handler joins native tool-use metadata to an exact authenticated hook receipt. Missing caller evidence is a rejection, not root authority. Child journals remain unmounted until native Agent results establish their parent; mounted views are read-only. Use view own for an unbound child. Completing a native turn prepares a work report but does not finish authored tasks. Do not add a journal-only finish call or rewrite the substantive answer. Record a plan with reset: slice to use journal-only context reset between completed slices. The shared UI continues runnable work after successful turns, with an Escape-cancellable countdown. Mark input-needed tasks blocked and completed tasks done. Reset uses a fresh native session and retained journal context, not a provider summary; it waits for background work and permissions. Do not record transient handles as resumable state. Classic native compaction with extra instructions still adds bounded recovery to the native summary."
-	plugin := filepath.Join(s.directory, "plugin")
 	if err := os.MkdirAll(filepath.Join(plugin, ".claude-plugin"), 0700); err != nil {
-		return result, err
+		return result, registry, err
 	}
 	skillDir := filepath.Join(plugin, "skills", "mekugi")
 	if err := os.MkdirAll(skillDir, 0700); err != nil {
-		return result, err
+		return result, registry, err
 	}
 	skill := strings.NewReplacer("{{UTILITIES}}", utilitiesText, "{{JOURNAL}}", journalText).Replace(claudeCompanionSkill)
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skill), 0600); err != nil {
-		return result, err
+		return result, registry, err
 	}
 	if err := os.WriteFile(filepath.Join(plugin, ".claude-plugin", "plugin.json"), []byte(`{"name":"mekugi","version":"1.0.0","description":"Invocation-local Mekugi companion"}`), 0600); err != nil {
-		return result, err
+		return result, registry, err
 	}
-	if s.registry != nil {
+	if registry != nil {
 		var guide strings.Builder
-		for _, entry := range s.registry.ordered {
+		for _, entry := range registry.ordered {
 			if !entry.Executable || len(entry.Specification) == 0 {
 				continue
 			}
@@ -76,21 +88,25 @@ func (s *ObservationService) PrepareCompanion(ctx context.Context) (CompanionPre
 				Description string `json:"description"`
 			}
 			if err := json.Unmarshal(entry.Specification, &spec); err != nil {
-				return result, err
+				return result, registry, err
 			}
 			guide.WriteString("## " + entry.Name + "\n\n" + spec.Description + "\n\n")
 		}
 		if err := os.WriteFile(filepath.Join(skillDir, "frontends.md"), []byte(guide.String()), 0600); err != nil {
-			return result, err
+			return result, registry, err
 		}
 	}
 	result.Plugin = plugin
-	return result, nil
+	return result, registry, nil
 }
 
 func (s *ObservationService) closeCompanion() error {
 	if s.journal != nil {
 		s.journal.journals.detachNative(s.journal.sink())
 	}
-	return errors.Join(s.registry.Close(), os.RemoveAll(filepath.Join(s.directory, "plugin")))
+	var stagedErr error
+	if s.stagedCompanion != nil {
+		stagedErr = s.stagedCompanion.close()
+	}
+	return errors.Join(stagedErr, s.registry.Close(), os.RemoveAll(s.plugin))
 }

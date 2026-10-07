@@ -143,6 +143,9 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	case view.Dropped > 0:
 		notes = append(notes, Elision{Hidden: view.Dropped, Form: ElisionEarlier}.Text()+" not retained")
 	}
+	if view.PrefixOmitted {
+		notes = append(notes, "The host supplied only the output tail; earlier output is unavailable.")
+	}
 	if len(view.Lines) == 0 {
 		switch {
 		case !view.Done:

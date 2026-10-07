@@ -17,12 +17,12 @@
 │                                        │
 │                                        │
 │                                        │
-│                                        │
-│                                        │
-│                                        │
 │╭─ Ready ──────────────────────────────╮│
 ││ ❯ Compare this diagram [Image 1] with││
 ││    @src/handler.go                   ││
 │╰────────────────────── claude-sonnet ─╯│
 └────────────────────────────────────────┘
+─ 4 Agents · 1 ───────────────────────────
+ ● main  idle
+
  1 Main  [ 2 Diff │ 3 Activity │ 5 Journal

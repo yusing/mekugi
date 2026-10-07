@@ -79,6 +79,7 @@ func TestNativeObservationFreshProcessRecovery(t *testing.T) {
 		nativeObservationRecoveryPhase(t, phase, os.Getenv("MEKUGI_OBSERVATION_RECOVERY_DIR"))
 		return
 	}
+	t.Parallel()
 	directory := t.TempDir()
 	workspace := filepath.Join(directory, "workspace")
 	if err := os.Mkdir(workspace, 0700); err != nil {

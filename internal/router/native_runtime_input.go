@@ -113,9 +113,23 @@ func (u *appServerUI) runtimeCommandChoices(query string) {
 	}
 	for _, c := range []composerChoice{
 		{name: "/copy", description: "Copy a response"}, {name: "/usage", description: "Show native usage and limits"},
-		{name: "/session", description: "Show native usage and limits"}, {name: "/quit", description: "Quit when idle"},
+		{name: "/session", description: "Show native usage and limits"}, {name: "/status", description: "Show session settings and usage limits"}, {name: "/quit", description: "Quit when idle"},
 	} {
 		choices[c.name[1:]] = c
+	}
+	for _, c := range nativeCommands {
+		if c.name == "/lock" || c.name == "/unlock" || c.name == "/live" {
+			choices[c.name[1:]] = c
+		}
+	}
+	if _, ok := u.runtime.client.(session.TitleClient); ok {
+		choices["title"] = composerChoice{name: "/title", description: "Rename this session"}
+	}
+	if _, ok := u.runtime.client.(session.SessionChangeClient); ok {
+		choices["clear"] = composerChoice{name: "/clear", description: "Clear the transcript and start a new session"}
+		if _, ok := u.runtime.client.(session.SessionListClient); ok {
+			choices["resume"] = composerChoice{name: "/resume", description: "Resume a saved session"}
+		}
 	}
 	if _, ok := u.runtime.client.(session.SettingsClient); ok {
 		choices["model"] = composerChoice{name: "/model", description: "Choose a native model"}

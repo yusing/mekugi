@@ -1,0 +1,36 @@
+┌ 1 Main ───────────────────────────────────────────── ▲ 2 ┐┌ 5 Journal ───────────────────── space expand · d details ┐
+│                                                          ││ No journal entries.                                      │
+│├ Status working tree · git                               ││                                                          │
+││        ┆  M example.go                                  ││                                                          │
+│├ Read   example.go (2 lines)                             ││                                                          │
+│├ Search answer in internal                               ││                                                          │
+││        ┆ internal/example.go:3:const answer = 42        ││                                                          │
+│├ Edit   example.go                                       ││                                                          │
+││        ┆ File updated                                   ││                                                          │
+│├ Ran    make test                                        ││                                                          │
+││        ┆ ok example                                     ││                                                          │
+│└ Ran    false · failed                                   ││                                                          │
+│         ┆ command failed                                 ││                                                          │
+│                                                          ││                                                          │
+│● review                                         12:00:00 ││                                                          │
+││ • Review implementation · completed                     ││                                                          │
+││ Review complete                                         ││                                                          │
+│                                                          ││                                                          │
+│● review                                         12:00:00 ││                                                          │
+││ Reviewed command lifecycle and shared output.           ││                                                          │
+│                                                          ││                                                          │
+│• Build preview · completed                               ││                                                          │
+│Preview built                                             ││                                                          │
+│                                                          ││                                                          │
+│• Watch checks · running                                  ││                                                          │
+│                                                          ││                                                          │
+│╭─ Ready ────────────────────────────────────────────────╮││                                                          │
+││ ❯                                                      │││                                                          │
+│╰──────────────────────────────────────── claude-sonnet ─╯││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+─ 4 Agents · 2 ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ● main      idle
+ ✓ └ review  completed
+ Roles: ● reviewer
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   j/k agent · a only · esc back · ^B 1-5 panes

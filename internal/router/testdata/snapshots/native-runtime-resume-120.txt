@@ -1,0 +1,12 @@
+  Resume a previous session
+  Filter: Cwd All
+  Type to search
+
+  Updated  Branch              Directory       Conversation
+  2m ago   main                .               Current Claude conversation · current
+› 2h ago   feat/native-resume  /other/project  Fix session restore and history ordering                                 
+
+
+
+
+  enter resume · esc close · tab cwd/all · ctrl+c close · ↑/↓ browse

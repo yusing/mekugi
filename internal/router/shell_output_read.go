@@ -187,6 +187,9 @@ func executeMRead(
 				pageTokens = tokens
 			}
 			next := ""
+			if page.Complete {
+				next = source.Next
+			}
 			if !page.Complete {
 				// Persist before exposing this page or suggesting the next operation.
 				next, err = store.putReadCursor(ctx, source, page.Position, stream)

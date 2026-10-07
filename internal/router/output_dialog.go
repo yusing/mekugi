@@ -635,7 +635,14 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 			body[i] = selected.row(i)
 		}
 	}
-	frame := activityui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.laid, Paused: d.laid.Live && !d.follow, Rows: body, Top: d.top, Total: d.total(), Footer: d.footer(w)}
+	footer := d.footer(w)
+	if u.main != nil && u.main.runtimeCanStopTask() && !d.typing && d.selection == nil {
+		footer = activityui.Dim + "x stop task · " + activityui.Undim + footer
+		if ansi.StringWidth(footer) > w-6 {
+			footer = activityui.Dim + "x stop task · ↑↓ scroll · esc" + activityui.Undim
+		}
+	}
+	frame := activityui.DialogFrame{Tabs: d.tabRow(w - 4), Page: d.laid, Paused: d.laid.Live && !d.follow, Rows: body, Top: d.top, Total: d.total(), Footer: footer}
 	if len(d.pages) > 1 {
 		frame.Position = fmt.Sprintf("%d / %d", d.page+1, len(d.pages))
 	}

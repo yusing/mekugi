@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -14,7 +15,7 @@ import (
 
 func TestJournalListTransportPagesLargeAuthenticatedSnapshot(t *testing.T) {
 	t.Parallel()
-	want := make([]journalItem, 100)
+	want := make([]journalItem, 2*journalListPageItems+1)
 	for index := range want {
 		want[index] = journalItem{ID: strconv.Itoa(index), Text: strings.Repeat("\x01", maxJournalItemBytes-1), Author: "/root"}
 	}
@@ -36,6 +37,7 @@ func TestJournalListTransportPagesLargeAuthenticatedSnapshot(t *testing.T) {
 		Revision string            `json:"revision"`
 	}
 	var collected []journalListItem
+	var pageLengths []int
 	var revision string
 	for offset := 0; ; {
 		args := []string{commentaryOnceArgument, server.URL, token, url.PathEscape(`{"op":"list","agent":"/root"}`)}
@@ -61,6 +63,7 @@ func TestJournalListTransportPagesLargeAuthenticatedSnapshot(t *testing.T) {
 			t.Fatal("revision changed without rejecting the snapshot")
 		}
 		revision = got.Revision
+		pageLengths = append(pageLengths, len(got.Items))
 		collected = append(collected, got.Items...)
 		if got.Next == nil {
 			break
@@ -72,6 +75,9 @@ func TestJournalListTransportPagesLargeAuthenticatedSnapshot(t *testing.T) {
 	}
 	if len(collected) != len(want) {
 		t.Fatalf("collected %d items, want %d", len(collected), len(want))
+	}
+	if !slices.Equal(pageLengths, []int{journalListPageItems, journalListPageItems, 1}) {
+		t.Fatalf("page lengths = %v; want two full pages and one partial page", pageLengths)
 	}
 	for index, item := range collected {
 		if item.ID != want[index].ID || item.Text != want[index].Text {

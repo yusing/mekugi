@@ -11,9 +11,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/session"
 )
 
@@ -25,6 +28,7 @@ type ObservationEndpoint struct {
 	Plugin            string         `json:"plugin,omitempty"`
 	FrontendDirectory string         `json:"frontendDirectory,omitempty"`
 	JournalSchema     jsontext.Value `json:"journalSchema,omitempty"`
+	BashEnv           string         `json:"bashEnv,omitempty"`
 }
 
 type Config struct {
@@ -81,6 +85,13 @@ func Start(ctx context.Context, node, bridge string, config Config) (*Client, er
 	ctx, cancel := context.WithCancel(ctx)
 	cmd := exec.CommandContext(ctx, node, bridge, string(payload))
 	cmd.Dir = config.Cwd
+	if config.Companion != nil && config.Companion.BashEnv != "" {
+		// A fresh native launch owns a new observer. Do not inherit the calling
+		// command's nested-shell guard; its own command shells set it normally.
+		cmd.Env = slices.DeleteFunc(os.Environ(), func(value string) bool {
+			return strings.HasPrefix(value, execsegment.Guard+"=")
+		})
+	}
 	if endpointPipe != nil {
 		cmd.ExtraFiles = []*os.File{endpointPipe}
 	}
@@ -183,6 +194,15 @@ func (c *Client) StopTask(ctx context.Context, id string) error {
 func (c *Client) Reset(ctx context.Context, id string) error {
 	return c.send(ctx, map[string]string{"kind": "reset", "id": id})
 }
+func (c *Client) RenameSession(ctx context.Context, title session.SessionTitle) error {
+	return c.send(ctx, map[string]string{"kind": "title", "id": title.ID, "sessionID": title.SessionID, "title": title.Title})
+}
+func (c *Client) ListSessions(ctx context.Context, request session.SessionListRequest) error {
+	return c.send(ctx, map[string]any{"kind": "sessions", "id": request.ID, "cwd": request.Cwd, "cursor": request.Cursor, "limit": request.Limit})
+}
+func (c *Client) ChangeSession(ctx context.Context, change session.SessionChange) error {
+	return c.send(ctx, map[string]string{"kind": "session_change", "id": change.ID, "sessionID": change.SessionID, "cwd": change.Cwd})
+}
 func (c *Client) Close() error {
 	c.closeOnce.Do(func() {
 		c.input.Close()
@@ -211,6 +231,7 @@ type nativeEvent struct {
 	session.Usage
 	Commands       []session.Command  `json:"commands"`
 	Limit          *session.RateLimit `json:"rate_limit_info"`
+	SubagentType   string             `json:"subagent_type"`
 	TaskID         string             `json:"task_id"`
 	ToolUseID      string             `json:"tool_use_id"`
 	TaskType       string             `json:"task_type"`
@@ -238,7 +259,8 @@ type nativeEvent struct {
 		ID      string         `json:"id"`
 		Content jsontext.Value `json:"content"`
 	} `json:"message"`
-	Event struct {
+	ToolResult jsontext.Value `json:"tool_use_result"`
+	Event      struct {
 		Type    string `json:"type"`
 		Index   int    `json:"index"`
 		Message struct {

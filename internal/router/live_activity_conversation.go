@@ -520,8 +520,14 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		}
 		out.hang(gutter, gutter, p.Markdown(entry.Text, width-2))
 	default:
+		disclosure := false
+		if entry.Kind == "progress" && len(blocks) == 1 {
+			block := blocks[0]
+			disclosure = v.clickTarget(&block, liveActivitySnippet{run: entry.Seq, block: 0}, width-2)
+			blocks = []activityui.Block{block}
+		}
 		v.agentItem(&out, entry, blocks, first, width, thread)
-		if entry.Kind == "error" && len(blocks) > 0 && activityui.ErrorHasDetails(blocks[0]) {
+		if disclosure || entry.Kind == "error" && len(blocks) > 0 && activityui.ErrorHasDetails(blocks[0]) {
 			laid = blocks
 			for row := range out.snippets {
 				out.snippets[row] = liveActivitySnippet{run: entry.Seq, block: 0}

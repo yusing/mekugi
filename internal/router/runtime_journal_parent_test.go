@@ -69,6 +69,14 @@ func TestRuntimeJournalRecoveryUsesNativeScopeAndMandatoryOverflow(t *testing.T)
 	if err != nil || journalSummaryCharacters(text) > 10000 {
 		t.Fatalf("recovery: %v", err)
 	}
+	for _, capacity := range []int{-1, 10001} {
+		if _, err := s.journal.recoverBounded(t.Context(), b, capacity); err == nil {
+			t.Fatalf("invalid recovery capacity accepted: %d", capacity)
+		}
+	}
+	if text, err := s.journal.recoverBounded(t.Context(), b, 6350); err != nil || journalSummaryCharacters(text) > 6350 {
+		t.Fatalf("reserved guidance capacity ignored: %v", err)
+	}
 	alien := b
 	alien.Session = "alien"
 	if _, err := s.journal.recover(t.Context(), alien); err == nil {
@@ -83,6 +91,13 @@ func TestRuntimeJournalRecoveryUsesNativeScopeAndMandatoryOverflow(t *testing.T)
 	ctx, err := s.journal.scope(t.Context(), b)
 	if err != nil {
 		t.Fatal(err)
+	}
+	reserved := strings.Repeat("x", 6500)
+	if _, err := s.journal.journals.apply(ctx, s.owner.store, b.Workspace, observationThread(b), "reserved", []journalMutation{{Op: "add", Kind: "context", Title: new("Required facts"), Body: &reserved}}); err != nil {
+		t.Fatal(err)
+	}
+	if text, err := s.journal.recoverBounded(t.Context(), b, 6350); err == nil || text != "" {
+		t.Fatal("reserved guidance capacity exposed truncated mandatory facts")
 	}
 	body := strings.Repeat("x", 10001)
 	if _, err := s.journal.journals.apply(ctx, s.owner.store, b.Workspace, observationThread(b), "overflow", []journalMutation{{Op: "add", Kind: "context", Title: new("Mandatory"), Body: new(string(body))}}); err != nil {

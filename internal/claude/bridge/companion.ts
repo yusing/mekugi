@@ -2,6 +2,7 @@ import { companionRequest, type CompanionConfig } from './companion_transport.js
 export type { CompanionConfig } from './companion_transport.js';
 import { realpath } from 'node:fs/promises';
 import type { HookCallback, HookInput, Options, SDKMessage, SDKSessionInfo } from '@anthropic-ai/claude-agent-sdk';
+import { companionGuidance, companionFrontendGuidance, type CompanionPrompt } from './guidance.js';
 
 interface Binding { runtime: 'claude'; session: string; workspace: string; agent?: string }
 interface NativeCall { binding: Binding; id: string; tool: string; input: string; paths?: string[]; command?: string }
@@ -9,12 +10,32 @@ const terminal = (status: string): boolean => ['completed', 'failed', 'stopped']
 const object = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 
-// Only the bridge holds this capability. Hooks add no permissions, substitutions,
-// tool-result edits or model context, including when observation is unavailable.
-export function companion(config: CompanionConfig, cwd: string, notice: (text: string) => Promise<void>): {
+// Only the bridge holds this capability. Session/agent hooks deliver the shared
+// companion guidance; tool observation adds no permissions or argument rewrites.
+export function companion(config: CompanionConfig, cwd: string, notice: (text: string) => Promise<void>, rootInputGuidance = true,
+  prompt: CompanionPrompt = {workflow: companionGuidance(config), frontends: companionFrontendGuidance(config)}): {
   hooks: Options['hooks']; event: (event: SDKMessage) => Promise<void>;
   resume: (info: SDKSessionInfo) => Promise<void>;
 } {
+  const guidance = prompt.workflow;
+  const frontendHooks: HookCallback[] = prompt.frontends.map(context => {
+    let deliveredSession: string | undefined;
+    return async input => {
+      try {
+        const scope = await binding(input);
+        const firstInput = input.hook_event_name === 'UserPromptSubmit' && !scope.agent && rootInputGuidance && deliveredSession !== scope.session;
+        const child = input.hook_event_name === 'SubagentStart';
+        const compact = input.hook_event_name === 'SessionStart' && input.source === 'compact';
+        if (!firstInput && !child && !compact) return {};
+        if (firstInput) deliveredSession = scope.session;
+        return {hookSpecificOutput: {hookEventName: input.hook_event_name, additionalContext: context}};
+      } catch (error) {
+        void notice(`Frontend guidance unavailable: ${String(error)}`).catch(() => {});
+        return {};
+      }
+    };
+  });
+  let rootGuidanceSession: string | undefined;
   const send = (payload: unknown, signal?: AbortSignal): Promise<unknown> => companionRequest(config, payload, signal);
   const binding = async (input: Pick<HookInput, 'session_id' | 'cwd' | 'agent_id'>): Promise<Binding> => {
     if (await realpath(input.cwd) !== cwd) throw new Error('native hook workspace differs from this launch');
@@ -27,17 +48,29 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
   const hook: HookCallback = async (input, toolUseID, options) => {
     try {
       const scope = await binding(input);
-      if (input.hook_event_name === 'SessionStart' || input.hook_event_name === 'SubagentStart') {
-        await send({operation: 'bind', binding: scope}, options.signal);
-        if (input.hook_event_name === 'SessionStart' && input.source === 'compact' && config.journalSchema) {
-          const result = await companionRequest(config, {operation: 'journal_recovery', binding: scope}, options.signal, 128 * 1024) as {text?: string};
-          if (typeof result.text === 'string' && result.text.length <= 10000) {
-            await notice(`Journal recovery prepared (${result.text.length} characters); native summary preserved`);
-            return {hookSpecificOutput: {hookEventName: 'SessionStart', additionalContext: result.text}};
-          }
-          throw new Error('Native journal recovery carrier unavailable');
+      if (input.hook_event_name === 'UserPromptSubmit') {
+        if (!scope.agent && guidance && rootGuidanceSession !== scope.session) {
+          rootGuidanceSession = scope.session;
+          return {hookSpecificOutput: {hookEventName: 'UserPromptSubmit', additionalContext: guidance}};
         }
         return {};
+      }
+      if (input.hook_event_name === 'SessionStart' || input.hook_event_name === 'SubagentStart') {
+        await send({operation: 'bind', binding: scope}, options.signal);
+        let context = input.hook_event_name === 'SubagentStart' ? guidance : '';
+        if (input.hook_event_name === 'SessionStart' && input.source === 'compact' && config.journalSchema) {
+          context = guidance;
+          try {
+            const maxCharacters = 10000 - (guidance ? guidance.length + 2 : 0);
+            const result = await companionRequest(config, {operation: 'journal_recovery', binding: scope, maxCharacters}, options.signal, 128 * 1024) as {text?: string};
+            if (typeof result.text !== 'string' || result.text.length > maxCharacters) throw new Error('Native journal recovery carrier unavailable');
+            await notice(`Journal recovery prepared (${result.text.length} characters); native summary preserved`);
+            context = context ? `${context}\n\n${result.text}` : result.text;
+          } catch (error) {
+            void notice(`Journal recovery unavailable: ${String(error)}; native summary and workflow guidance preserved`).catch(() => {});
+          }
+        }
+        return context ? {hookSpecificOutput: {hookEventName: input.hook_event_name, additionalContext: context}} : {};
       }
       if (input.hook_event_name !== 'PreToolUse' && input.hook_event_name !== 'PostToolUse' && input.hook_event_name !== 'PostToolUseFailure') return {};
       if (toolUseID && toolUseID !== input.tool_use_id) throw new Error('native hook tool IDs disagree');
@@ -81,6 +114,7 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
     return {};
   };
   const matcher = {hooks: [hook], timeout: 6};
+  const contextMatcher = {...matcher, hooks: [hook, ...frontendHooks]};
   return {
     resume: async info => {
       try {
@@ -88,7 +122,7 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
         await send({operation: 'bind', binding: await binding({session_id: info.sessionId, cwd: info.cwd})});
       } catch (error) { void notice(`Companion capture unavailable: ${String(error)}`).catch(() => {}); }
     },
-    hooks: {SessionStart: [matcher], SubagentStart: [matcher], PreToolUse: [{...matcher, matcher: config.journalSchema ? 'Edit|Write|Bash|Agent|Task|mcp__mekugi__journal_batch|mcp__mekugi__journal_read|mcp__mekugi__mchanges' : 'Edit|Write|Bash'}],
+    hooks: {SessionStart: [contextMatcher], SubagentStart: [contextMatcher], ...(guidance && rootInputGuidance ? {UserPromptSubmit: [contextMatcher]} : {}), PreToolUse: [{...matcher, matcher: config.journalSchema ? 'Edit|Write|Bash|Agent|Task|mcp__mekugi__journal_batch|mcp__mekugi__journal_read|mcp__mekugi__mchanges' : 'Edit|Write|Bash'}],
       PostToolUse: [{...matcher, matcher: 'Edit|Write|Bash'}], PostToolUseFailure: [{...matcher, matcher: 'Edit|Write|Bash'}]},
     event: async event => {
       try {

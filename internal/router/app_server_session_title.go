@@ -2,10 +2,12 @@ package router
 
 import (
 	json "encoding/json/v2"
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/internal/session"
 )
 
 type sessionTitleRequest struct {
@@ -71,7 +73,20 @@ func (u *appServerUI) persistSessionTitle(update sessionTitleUpdate) {
 }
 
 func (u *appServerUI) requestSessionTitle(update sessionTitleUpdate, manual bool) bool {
-	id, err := u.requestAs("thread/name/set", "session/title", map[string]any{"threadId": update.thread, "name": update.name})
+	var id string
+	var err error
+	if u.runtime != nil {
+		client, ok := u.runtime.client.(session.TitleClient)
+		if !ok {
+			u.setNotice("Session titles are unavailable for this runtime", false)
+			return false
+		}
+		u.runtime.serial++
+		id = fmt.Sprintf("title/%d", u.runtime.serial)
+		err = client.RenameSession(u.ctx, session.SessionTitle{ID: id, SessionID: update.thread, Title: update.name})
+	} else {
+		id, err = u.requestAs("thread/name/set", "session/title", map[string]any{"threadId": update.thread, "name": update.name})
+	}
 	if err != nil {
 		u.setNotice("Session title could not be saved", false)
 		u.dirty = true
@@ -85,21 +100,12 @@ func (u *appServerUI) requestSessionTitle(update sessionTitleUpdate, manual bool
 }
 
 func (u *appServerUI) sessionTitleMessage(m appserver.Message) bool {
-	if update, ok := u.titleRequests[string(m.ID)]; ok {
-		delete(u.titleRequests, string(m.ID))
-		delete(u.requests, string(m.ID))
-		if update.manual && u.titleRenames[update.thread] == update.name {
-			delete(u.titleRenames, update.thread)
-		}
+	if _, ok := u.titleRequests[string(m.ID)]; ok {
+		message := ""
 		if m.Error != nil {
-			if update.thread == u.thread && u.titleRenames[update.thread] == "" {
-				u.setNotice("Session title could not be saved: "+m.Error.Message, false)
-				u.dirty = true
-			}
-		} else {
-			u.confirmSessionTitle(update.thread, update.name)
+			message = m.Error.Message
 		}
-		u.flushTitleRename(update.thread)
+		u.finishSessionTitle(string(m.ID), message)
 		return true
 	}
 	if m.Method != "thread/name/updated" {
@@ -113,6 +119,25 @@ func (u *appServerUI) sessionTitleMessage(m appserver.Message) bool {
 		u.confirmSessionTitle(params.ThreadID, params.ThreadName)
 	}
 	return true
+}
+
+func (u *appServerUI) finishSessionTitle(id, failure string) {
+	if update, ok := u.titleRequests[id]; ok {
+		delete(u.titleRequests, id)
+		delete(u.requests, id)
+		if update.manual && u.titleRenames[update.thread] == update.name {
+			delete(u.titleRenames, update.thread)
+		}
+		if failure != "" {
+			if update.thread == u.thread && u.titleRenames[update.thread] == "" {
+				u.setNotice("Session title could not be saved: "+failure, false)
+				u.dirty = true
+			}
+		} else {
+			u.confirmSessionTitle(update.thread, update.name)
+		}
+		u.flushTitleRename(update.thread)
+	}
 }
 
 func (u *appServerUI) confirmSessionTitle(thread, name string) {

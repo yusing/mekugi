@@ -14,9 +14,6 @@
 │                                        │
 │                                        │
 │                                        │
-│                                        │
-│                                        │
-│                                        │
 │  Choose model                          │
 │  default                               │
 │› sonnet   Current                      │
@@ -25,4 +22,7 @@
 │                                        │
 │  ↑/↓ navigate · enter apply · esc cance│
 └────────────────────────────────────────┘
+─ 4 Agents · 1 ───────────────────────────
+ ● main  idle
+
  1 Main  [ 2 Diff │ 3 Activity │ 5 Journal

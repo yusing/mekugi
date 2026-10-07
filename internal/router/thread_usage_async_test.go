@@ -73,6 +73,7 @@ func flushUsageForTest(t *testing.T, usage *threadUsage) {
 }
 
 func TestThreadUsageAsyncConsumersIgnoreStoreContention(t *testing.T) {
+	t.Parallel()
 	directory := t.TempDir()
 	store := usageStoreFixture(t, directory)
 	seed := storedUsageFixture(store)

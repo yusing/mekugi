@@ -137,7 +137,7 @@ func TestNativeRuntimeEvidenceTaskPatchAndLifecycle(t *testing.T) {
 	}
 	u.runtimeEntry(session.Event{Kind: "tool", ID: "nested-tool", Role: "Bash", Caller: initial.ToolID, Text: "go test"})
 	for _, view := range []*liveActivityView{u.view, u.agents} {
-		if view.entries[len(view.entries)-1].Agent != "native/task/background" {
+		if view.entries[len(view.entries)-1].Agent != "Main" {
 			t.Fatal("native caller was not associated with its task identity")
 		}
 	}
@@ -156,7 +156,7 @@ func TestNativeRuntimeEvidenceAmbientTaskPatches(t *testing.T) {
 	runtimeEvidenceTask(t, u, "task_started", session.Task{ID: "ambient", Ambient: true, Kind: "ambient", Description: "Background housekeeping", Status: "running"})
 	runtimeEvidenceTask(t, u, "task_progress", session.Task{ID: "ambient", Summary: "Still running"})
 	runtimeEvidenceTask(t, u, "task_notification", session.Task{ID: "ambient", Status: "completed"})
-	if !u.runtime.tasks["ambient"].Ambient || len(u.agents.agents) != 0 || len(u.agents.entries) != 0 || len(u.view.entries) != 0 {
+	if !u.runtime.tasks["ambient"].Ambient || len(u.agents.agents) != 1 || u.agents.agents[0].Name != "/root" || len(u.agents.entries) != 0 || len(u.view.entries) != 0 {
 		t.Fatal("ambient patch leaked into native task presentation")
 	}
 }
@@ -166,16 +166,16 @@ func TestNativeRuntimeEvidenceStopTaskIntent(t *testing.T) {
 	f := &runtimeTaskTestClient{runtimeTestClient: base}
 	runtimeEvidenceTask(t, u, "task_started", session.Task{ID: "other", Description: "Other task", Status: "running"})
 	runtimeEvidenceTask(t, u, "task_started", session.Task{ID: "selected", Description: "Selected task", Status: "running"})
-	u.agents.selected, u.shell.focus = "native/task/selected", 3
+	u.agents.selected, u.shell.focus = "/root/selected", 3
 	if u.runtimeCanStopTask() {
 		t.Fatal("client without optional task controls exposed stop")
 	}
 	u.runtime.client = f
-	u.agents.selected = "native/task/unknown"
+	u.agents.selected = "/root/unknown"
 	if u.runtimeCanStopTask() {
 		t.Fatal("unobserved task identity exposed native control")
 	}
-	u.agents.selected = "native/task/selected"
+	u.agents.selected = "/root/selected"
 	if !u.runtimeCanStopTask() {
 		t.Fatal("selected active task did not expose optional stop")
 	}
@@ -214,12 +214,13 @@ func TestNativeRuntimeEvidenceStopTaskIntent(t *testing.T) {
 }
 
 func TestNativeRuntimeEvidenceTaskDisplayBound(t *testing.T) {
+	t.Parallel()
 	u, _ := runtimeTestUI(t)
 	for i := range 256 {
 		runtimeEvidenceTask(t, u, "task_started", session.Task{ID: fmt.Sprint(i), Description: "Task", Status: "running"})
 	}
 	runtimeEvidenceTask(t, u, "task_started", session.Task{ID: "overflow", Status: "running"})
-	if len(u.runtime.tasks) != 256 || len(u.runtime.taskOrder) != 256 || len(u.agents.agents) != 256 {
+	if len(u.runtime.tasks) != 256 || len(u.runtime.taskOrder) != 256 || len(u.agents.agents) != 257 {
 		t.Fatal("active display bound was exceeded")
 	}
 	if _, ok := u.runtime.tasks["overflow"]; ok {
@@ -230,7 +231,7 @@ func TestNativeRuntimeEvidenceTaskDisplayBound(t *testing.T) {
 	if _, ok := u.runtime.tasks["127"]; ok {
 		t.Fatal("settled task was not evicted before active tasks")
 	}
-	if len(u.runtime.tasks) != 256 || len(u.runtime.taskOrder) != 256 || len(u.agents.agents) != 256 || u.runtime.tasks["0"].Status != "running" || u.runtime.tasks["overflow"].Status != "running" {
+	if len(u.runtime.tasks) != 256 || len(u.runtime.taskOrder) != 256 || len(u.agents.agents) != 257 || u.runtime.tasks["0"].Status != "running" || u.runtime.tasks["overflow"].Status != "running" {
 		t.Fatal("bounded replacement lost an active task")
 	}
 }
@@ -255,7 +256,7 @@ func TestUISnapshotNativeRuntimeEvidence(t *testing.T) {
 			runtimeEvidenceTask(t, u, "task_notification", session.Task{ID: "waiting", Kind: "local_agent", Description: "Await native continuation", Status: "paused"})
 			runtimeEvidenceTask(t, u, "task_progress", session.Task{ID: "pending", Kind: "local_agent", Description: "Await native lifecycle evidence"})
 			runtimeEvidenceTask(t, u, "task_started", session.Task{ID: "ambient", Ambient: true, Status: "running"})
-			u.shell.focus, u.agents.selected, u.agents.only = 3, "native/task/checks", true
+			u.shell.focus, u.agents.selected, u.agents.only = 3, "/root/review", true
 			u.shell.rosterHeight = 10
 			uisnapshot.Assert(t, filepath.Join("testdata", "snapshots", fmt.Sprintf("native-runtime-evidence-tasks-%d.txt", width)), runtimeFrame(t, u, width, 32))
 		})

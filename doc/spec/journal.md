@@ -19,10 +19,12 @@ delivery windows, never hooks, tools or processes. Forks have independent journa
 source context alone does not prove inherited journal authorization.
 
 Classic native compact recovery is additive and preserves the native summary.
-Mandatory constraints and open tasks must fit the 10,000 UTF-16-unit carrier in
-full; overflow, missing evidence or transport failure reports unavailable recovery
-without blocking native compaction. Classic recovery does not replace context
-or skip native summary inference.
+Mandatory workflow guidance consumes part of the 10,000 UTF-16-unit recovery
+carrier. Constraints and open tasks must fit its remaining capacity in full;
+overflow, missing evidence or transport failure reports unavailable recovery
+without blocking native compaction or changing its summary. Mandatory workflow
+and complete frontend catalog guidance still arrive through their native carriers.
+Classic recovery does not replace context or skip native summary inference.
 
 The shared native UI uses a journal-only reset for plain `/compact` and for
 completed slice boundaries. It initializes a fresh SDK query with a fresh native

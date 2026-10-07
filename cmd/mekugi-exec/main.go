@@ -1,4 +1,4 @@
-// Command mekugi-exec tracks the segments of one Codex command script. It is
+// Command mekugi-exec tracks the segments of one native command script. It is
 // started by the Bash hook from execsegment as the command shell's coprocess,
 // with the shell's original stdout and stderr on descriptors 3 and 4.
 //
@@ -42,11 +42,23 @@ func main() {
 // run declines by exiting before replying; the shell then runs the original
 // script itself.
 func run(args []string) int {
-	if len(args) != 3 {
+	if len(args) != 3 && (len(args) != 4 || args[3] != "claude") {
 		return 2
 	}
 	socket, directory, script := args[0], args[1], args[2]
-	segments, ok := execsegment.Split(script)
+	var segments []execsegment.Segment
+	var ok bool
+	rewritten := ""
+	thread := os.Getenv("CODEX_THREAD_ID")
+	if len(args) == 4 {
+		script, rewritten, segments, ok = execsegment.ClaudeWrapper(script)
+		thread = "" // The invocation can contain native children, not a Codex thread.
+	} else {
+		segments, ok = execsegment.Split(script)
+		if ok {
+			rewritten = execsegment.Rewrite(script, segments)
+		}
+	}
 	if !ok {
 		return 0
 	}
@@ -60,7 +72,7 @@ func run(args []string) int {
 		return 0
 	}
 	defer conn.Close()
-	hello := execsegment.Message{Type: execsegment.Hello, Version: execsegment.Protocol, Thread: os.Getenv("CODEX_THREAD_ID"), Script: script, Segments: sources, Terminal: terminal}
+	hello := execsegment.Message{Type: execsegment.Hello, Version: execsegment.Protocol, Thread: thread, Script: script, Segments: sources, Terminal: terminal}
 	if err := writeMessage(conn, hello); err != nil {
 		return 0
 	}
@@ -74,7 +86,7 @@ func run(args []string) int {
 		return 0
 	}
 	defer os.RemoveAll(work)
-	if err := os.WriteFile(filepath.Join(work, "script"), []byte(execsegment.Rewrite(script, segments)), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(work, "script"), []byte(rewritten), 0o600); err != nil {
 		return 0
 	}
 	r := &relay{ack: 1, sinks: [2]int{3, 4}, readers: [2]int{-1, -1}, report: newReporter(conn)}

@@ -33,6 +33,7 @@ type shellOutputRecord struct {
 	StdoutKind   string              `json:"stdout_kind,omitempty"`
 	StderrKind   string              `json:"stderr_kind,omitempty"`
 	Source       string              `json:"source,omitempty"`
+	Next         string              `json:"next,omitempty"`
 	Position     [2]int              `json:"position,omitempty"`
 	Stream       string              `json:"stream,omitempty"`
 	CursorDigest string              `json:"cursor_digest,omitempty"`
@@ -134,6 +135,34 @@ func (s *mekugiReplayStore) putTypedOutput(ctx context.Context, output toolplugi
 		SourceRow: output.SourceRow,
 	}
 	return s.putReadRecord(ctx, record)
+}
+
+// Chunks are an immutable read snapshot. Next is managed provenance, not a
+// command hidden in stderr, so retention protects every unread dependency.
+func (s *mekugiReplayStore) putOutputChunks(ctx context.Context, text string) (string, error) {
+	if !utf8.ValidString(text) {
+		return "", errors.New("invalid UTF-8 read snapshot")
+	}
+	if text == "" {
+		return s.putTypedOutput(ctx, toolplugin.OmittedOutput{}, 0)
+	}
+	var next string
+	for end := len(text); end > 0; {
+		start := max(0, end-(1<<20))
+		for start > 0 && !utf8.RuneStart(text[start]) {
+			start--
+		}
+		handles, err := s.allocateHandles(ctx, 1)
+		if err != nil {
+			return "", err
+		}
+		next, err = s.putReadRecord(ctx, shellOutputRecord{Version: 1, ID: handles[0], Stdout: text[start:end], Next: next})
+		if err != nil {
+			return "", err
+		}
+		end = start
+	}
+	return next, nil
 }
 
 func (s *mekugiReplayStore) putReadCursor(ctx context.Context, source shellOutputRecord, position [2]int, stream string) (string, error) {
@@ -239,6 +268,9 @@ func validateReadRecord(record shellOutputRecord) error {
 	}
 	if record.Stream != "" && record.Stream != "stdout" && record.Stream != "stderr" {
 		return errors.New("invalid read stream selection")
+	}
+	if record.Next != "" && (!validShellOutputID(record.Next) || record.Next == record.ID || record.Source != "") {
+		return errors.New("invalid read snapshot chunk")
 	}
 	if record.Source != "" {
 		if !validShellOutputID(record.Source) || record.Source == record.ID ||

@@ -87,6 +87,7 @@ func (f *runtimeFrontendWorkerFixture) edit(t *testing.T, binding ObservationBin
 }
 
 func TestRuntimeFrontendRegistryAndIdentity(t *testing.T) {
+	t.Parallel()
 	f := newRuntimeFrontendWorkerFixture(t)
 	var names []string
 	for name := range f.registry.frontends {
@@ -132,6 +133,7 @@ func TestRuntimeFrontendRegistryAndIdentity(t *testing.T) {
 }
 
 func TestRuntimeFrontendRegistryValidatesOmittedBuiltinCollision(t *testing.T) {
+	t.Parallel()
 	data := t.TempDir()
 	plugins := filepath.Join(data, "plugins")
 	if err := os.MkdirAll(plugins, 0700); err != nil {
@@ -150,6 +152,7 @@ func TestRuntimeFrontendRegistryValidatesOmittedBuiltinCollision(t *testing.T) {
 }
 
 func TestRuntimeFrontendMChangesSelectionAndWorkspace(t *testing.T) {
+	t.Parallel()
 	f := newRuntimeFrontendWorkerFixture(t)
 	child := f.root
 	child.Agent = "child"
@@ -204,6 +207,7 @@ func TestRuntimeFrontendMChangesSelectionAndWorkspace(t *testing.T) {
 }
 
 func TestRuntimeFrontendMutationRemainsLocalAndObserved(t *testing.T) {
+	t.Parallel()
 	f := newRuntimeFrontendWorkerFixture(t)
 	id := f.edit(t, f.root, "initial-edit", "one\ntwo\n", "one\nTWO\n")
 	child := f.root
@@ -248,6 +252,7 @@ func TestRuntimeFrontendMutationRemainsLocalAndObserved(t *testing.T) {
 }
 
 func TestRuntimeFrontendOutputRecoveryUsesRootSession(t *testing.T) {
+	t.Parallel()
 	f := newRuntimeFrontendWorkerFixture(t)
 	text := strings.Repeat("retained runtime output\n", 60)
 	writeTestFile(t, filepath.Join(f.root.Workspace, "output.txt"), text)
@@ -275,6 +280,7 @@ func TestRuntimeFrontendOutputRecoveryUsesRootSession(t *testing.T) {
 }
 
 func TestRuntimeFrontendMutationConflictAndPendingDependency(t *testing.T) {
+	t.Parallel()
 	f := newRuntimeFrontendWorkerFixture(t)
 	id := f.edit(t, f.root, "initial-edit", "one\ntwo\n", "one\nTWO\n")
 	ctx, release, err := f.store.beginSession(t.Context(), observationThread(f.root), "")

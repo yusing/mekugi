@@ -1,0 +1,36 @@
+┌ 5 Journal ───────── space expand · d details ┐
+│ No journal entries.                          │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+│                                              │
+└──────────────────────────────────────────────┘
+─ 4 Agents · 2 ─────────────────────────────────
+ ● main      idle
+ ✓ └ review  completed
+ Roles: ● reviewer
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4

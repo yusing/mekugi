@@ -58,6 +58,7 @@ func runtimeFrontendContextReply(t *testing.T, binding ObservationBinding) strin
 }
 
 func TestRuntimeFrontendContextReplies(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{
 		"success", "exact_limit", "wrong_runtime", "wrong_workspace", "missing_session", "agent", "branch",
 		"empty", "malformed", "trailing_value", "trailing_garbage", "oversized", "missing_binding", "null_binding",
@@ -159,6 +160,7 @@ func TestRuntimeFrontendContextReplies(t *testing.T) {
 }
 
 func TestRuntimeFrontendContextInvalidBinding(t *testing.T) {
+	t.Parallel()
 	var requests atomic.Int32
 	valid := runtimeFrontendContextFixture(t, func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
@@ -198,6 +200,7 @@ func TestRuntimeFrontendContextInvalidBinding(t *testing.T) {
 }
 
 func TestRuntimeFrontendContextCancellation(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"already_canceled", "in_flight", "deadline"} {
 		t.Run(name, func(t *testing.T) {
 			started := make(chan struct{})
@@ -240,6 +243,7 @@ func TestRuntimeFrontendContextCancellation(t *testing.T) {
 }
 
 func TestRuntimeFrontendContextClientTimeout(t *testing.T) {
+	t.Parallel()
 	// Real Unix I/O cannot use synctest's virtual clock. Keep one real timeout
 	// check to distinguish the client's bound from caller-driven cancellation.
 	binding := runtimeFrontendContextFixture(t, func(w http.ResponseWriter, r *http.Request) {

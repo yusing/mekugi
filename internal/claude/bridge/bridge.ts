@@ -1,13 +1,16 @@
-import { query, getSessionInfo, getSessionMessages, type SDKUserMessage, type PermissionResult, type Query } from '@anthropic-ai/claude-agent-sdk';
+import { query, getSessionInfo, getSessionMessages, renameSession, type SDKSessionInfo, type SDKUserMessage, type PermissionResult, type Query } from '@anthropic-ai/claude-agent-sdk';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { companionRequest } from './companion_transport.js';
-import { realpath } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import { companion, type CompanionConfig } from './companion.js';
 import { journalServer } from './journal.js';
+import { companionGuidance, companionFrontendGuidance } from './guidance.js';
 import { readFileSync, closeSync } from 'node:fs';
 import { setSettings, type SettingsCommand } from './controls.js';
+import { taskOutput } from './task_output.js';
+import {sessionPage} from './session_controls.js';
 
 const limit = 8 * 1024 * 1024;
 const config = JSON.parse(process.argv[2]) as {cwd: string; executable: string; resume?: string; forkSession?: boolean; model?: string; companionFD?: number};
@@ -29,6 +32,10 @@ let replacing = false;
 let resetCancelled = false;
 let pendingReset: {id: string; session: string} | undefined;
 let model = config.model;
+let resume = config.resume;
+let cwd = config.cwd;
+let forkSession = config.forkSession;
+let activeSession = config.forkSession ? '' : config.resume ?? '';
 let effort: SettingsCommand | undefined;
 let background = new Set<string>();
 let running!: Query;
@@ -50,22 +57,32 @@ async function* messages(generation: number): AsyncGenerator<SDKUserMessage> {
     else await new Promise<void>(resolve => { wake = resolve; });
   }
 }
-const observer = endpoint ? companion(endpoint, config.cwd, text => emit({kind: 'notice', text})) : undefined;
+let observer: ReturnType<typeof companion> | undefined;
 function createQuery(fresh?: {session: string; context: string}): Query {
+  const guidance = endpoint ? companionGuidance(endpoint) : '';
+  const frontendChunks = endpoint ? companionFrontendGuidance(endpoint) : [];
+  const frontends = frontendChunks.join('');
+  observer = endpoint ? companion(endpoint, cwd, text => emit({kind: 'notice', text}), Boolean(resume) && !fresh,
+    {workflow: guidance, frontends: frontendChunks}) : undefined;
   const journal = endpoint ? journalServer(endpoint) : undefined;
+  // Fresh sessions pin additive workflow guidance with Claude's native preset.
+  // Resume keeps that recorded prompt; its first input hook supplies current text.
+  const append = [!resume || fresh ? guidance : '', !resume || fresh ? frontends : '', fresh?.context ?? ''].filter(Boolean).join('\n\n');
   return query({prompt: messages(epoch), options: {
-  cwd: config.cwd,
+  cwd,
   pathToClaudeCodeExecutable: config.executable,
-  systemPrompt: {type: 'preset', preset: 'claude_code', ...(fresh ? {append: fresh.context} : {})},
+  systemPrompt: {type: 'preset', preset: 'claude_code', ...(append ? {append} : {})},
   settingSources: ['user', 'project', 'local'],
   includePartialMessages: true,
-  ...(fresh ? {sessionId: fresh.session} : config.resume ? {resume: config.resume} : {}),
-  ...(!fresh && config.forkSession ? {forkSession: true} : {}),
+  ...(fresh ? {sessionId: fresh.session} : resume ? {resume} : {}),
+  ...(!fresh && forkSession ? {forkSession: true} : {}),
   ...(model ? {model} : {}),
   abortController,
-  ...(observer ? {hooks: observer.hooks} : {}),
+  ...(observer ? {hooks: fresh ? {...observer.hooks, UserPromptSubmit: []} : observer.hooks} : {}),
   ...(endpoint?.plugin ? {plugins: [{type: 'local' as const, path: endpoint.plugin}]} : {}),
-  ...(endpoint?.frontendDirectory ? {env: {...process.env, PATH: `${endpoint.frontendDirectory}:${process.env.PATH ?? ''}`}} : {}),
+  ...(endpoint?.frontendDirectory || endpoint?.bashEnv ? {env: {...process.env,
+    ...(endpoint.frontendDirectory ? {PATH: `${endpoint.frontendDirectory}:${process.env.PATH ?? ''}`} : {}),
+    ...(endpoint.bashEnv ? {BASH_ENV: endpoint.bashEnv} : {})}} : {}),
   ...(journal ? {mcpServers: {mekugi: journal}} : {}),
   canUseTool: async (tool, input, options) => {
     const id = String(++serial);
@@ -90,14 +107,18 @@ function createQuery(fresh?: {session: string; context: string}): Query {
 }
 
 async function watch(query: Query): Promise<void> {
+  const queryObserver = observer;
+  const output = taskOutput(query, emit, text => emit({kind: 'notice', text}));
   try {
     for await (const event of query) {
+      if (event.type === 'system' && event.subtype === 'init') activeSession = event.session_id;
       if (event.type === 'result') pendingTurns = Math.max(0, pendingTurns - 1);
       if (event.type === 'system' && event.subtype === 'background_tasks_changed') background = new Set(event.tasks.map(task => task.task_id));
-      await observer?.event(event);
+      await queryObserver?.event(event);
+      await output.event(event);
       if (pendingReset && event.type === 'system' && event.subtype === 'init') {
         if (event.session_id !== pendingReset.session) throw new Error('Reset native session identity mismatch');
-        await companionRequest(endpoint!, {operation: 'journal_reset_installed', binding: {runtime: 'claude', workspace: config.cwd, session: event.session_id}});
+        await companionRequest(endpoint!, {operation: 'journal_reset_installed', binding: {runtime: 'claude', workspace: cwd, session: event.session_id}});
         await emit({kind: 'reset', id: pendingReset.id, sessionID: event.session_id});
         pendingReset = undefined;
       }
@@ -106,7 +127,7 @@ async function watch(query: Query): Promise<void> {
     if (!stopping && !replacing) throw new Error('Native query ended unexpectedly');
   } catch (error) {
     if (!stopping && !replacing) { await emit({kind: 'error', text: String(error)}); stop(); }
-  }
+  } finally {output.close();}
 }
 
 async function reset(id: string): Promise<void> {
@@ -130,10 +151,11 @@ async function reset(id: string): Promise<void> {
     await emit({kind: 'notice', text: 'Native query drained; preparing retained journal scope'});
     if (stopping || resetCancelled) throw new Error('Journal reset cancelled after query shutdown; resume manually');
     const session = randomUUID();
-    const packet = await companionRequest(endpoint, {operation: 'journal_reset', binding: {runtime: 'claude', workspace: config.cwd, session}}, undefined, 128 * 1024) as {text: string};
+    const packet = await companionRequest(endpoint, {operation: 'journal_reset', binding: {runtime: 'claude', workspace: cwd, session}}, undefined, 128 * 1024) as {text: string};
     if (typeof packet.text !== 'string' || !packet.text || packet.text.length > 10000) throw new Error('Invalid journal reset packet');
     if (stopping || resetCancelled) throw new Error('Journal reset cancelled before new query initialization; resume manually');
     pendingReset = {id, session};
+    activeSession = session;
     running = createQuery({session, context: packet.text});
     pump = watch(running);
     await running.supportedCommands();
@@ -153,6 +175,76 @@ async function reset(id: string): Promise<void> {
   } finally { replacing = false; }
 }
 
+async function changeSession(id: string, target?: string, workspaceHint?: string): Promise<void> {
+  if (pendingTurns || inputs.length || permissions.size || background.size || replacing || pendingReset) {
+    await emit({kind: 'session_ready', id, failed: true, text: 'Session switching requires idle native work and no queued input, permissions or background tasks'});
+    return;
+  }
+  replacing = true;
+  resetCancelled = false;
+  let retired = false;
+  try {
+    const info = target ? await resumeInfo(target, workspaceHint) : undefined;
+    const workspace = info?.cwd ?? cwd;
+    const history = target ? await getSessionMessages(target, {dir: workspace, limit: 2001}) : [];
+    if (target && !history.length) throw new Error('Native resume history is unavailable');
+    const next = target ?? randomUUID();
+    const source = {runtime: 'claude', workspace: cwd, session: activeSession};
+    const binding = {...source, workspace, session: next};
+    if (endpoint) await companionRequest(endpoint, {operation: 'session_switch_check', source, binding});
+    if (stopping || resetCancelled) throw new Error('Session switch cancelled');
+    epoch++;
+    running.close();
+    wake?.(); wake = undefined;
+    retired = true;
+    await pump;
+    if (stopping || resetCancelled) throw new Error('Session switch cancelled after query shutdown; resume manually');
+    if (endpoint) {
+      const presentation = await companionRequest(endpoint, {operation: 'session_switch', source, binding}) as Pick<CompanionConfig, 'plugin' | 'frontendDirectory'>;
+      endpoint = {...endpoint, ...presentation};
+    }
+    cwd = workspace;
+    resume = target;
+    forkSession = false;
+    activeSession = next;
+    running = createQuery(target ? undefined : {session: next, context: ''});
+    await emit({kind: 'session_change', id, sessionID: target ?? '', cwd, title: info?.customTitle ?? info?.summary ?? ''});
+    for (const message of history.slice(0, 2000)) await emit({kind: 'history', event: message});
+    if (history.length > 2000) await emit({kind: 'notice', text: 'Transcript display limited to the first 2000 messages; native resume retains its own context'});
+    pump = watch(running);
+    const commands = await running.supportedCommands();
+    if (effort) {
+      const receipt = await setSettings(running, effort);
+      if (receipt.failed) throw new Error(receipt.text);
+    }
+    replacing = false;
+    await emit({kind: 'commands', commandInfo: commands});
+    await emit({kind: 'session_ready', id});
+  } catch (error) {
+    if (retired) {
+      await emit({kind: 'error', text: `Session switch did not establish a new query; resume manually: ${String(error)}`});
+      stop();
+    } else {
+      await emit({kind: 'session_ready', id, failed: true, text: String(error)});
+    }
+  } finally { replacing = false; }
+}
+
+async function resumeInfo(session: string, workspaceHint?: string): Promise<SDKSessionInfo> {
+  const info = await getSessionInfo(session, workspaceHint ? {dir: workspaceHint} : undefined);
+  if (!info || info.sessionId !== session || !info.cwd) {
+    throw new Error('Native resume session metadata or workspace is unavailable');
+  }
+  const workspace = await realpath(info.cwd);
+  if (workspaceHint && await realpath(workspaceHint) !== workspace) throw new Error('Native resume metadata differs from the selected workspace');
+  if (!(await stat(workspace)).isDirectory()) throw new Error('Native resume workspace is not a directory');
+  const local = workspaceHint === workspace ? info : await getSessionInfo(session, {dir: workspace});
+  if (!local || local.sessionId !== session || !local.cwd || await realpath(local.cwd) !== workspace) {
+    throw new Error('Native resume metadata does not match its workspace');
+  }
+  return {...local, cwd: workspace};
+}
+
 function stop(): void {
   if (stopping) return;
   stopping = true;
@@ -166,7 +258,7 @@ const lines = createInterface({input: process.stdin, crlfDelay: Infinity});
 lines.on('line', (line: string) => {
   if (Buffer.byteLength(line) > limit) { stop(); return; }
   try {
-    const command = JSON.parse(line) as {kind: string; text?: string; content?: SDKUserMessage['message']['content']; id?: string; allow?: boolean; answers?: Record<string, string>};
+    const command = JSON.parse(line) as {kind: string; text?: string; content?: SDKUserMessage['message']['content']; id?: string; allow?: boolean; answers?: Record<string, string>; sessionID?: string; title?: string; cwd?: string; cursor?: string; limit?: number};
     switch (command.kind) {
       case 'input':
         if (replacing) throw new Error('Input arrived during journal reset');
@@ -185,6 +277,28 @@ lines.on('line', (line: string) => {
       case 'reset':
         if (!command.id) throw new Error('Missing reset request ID');
         controls = controls.then(() => reset(command.id!)).catch(stop);
+        break;
+      case 'title':
+        if (!command.id || !command.sessionID || !command.title?.trim()) throw new Error('Invalid session title request');
+        controls = controls.then(async () => {
+          try {
+            await renameSession(command.sessionID!, command.title!, {dir: cwd});
+            await emit({kind: 'title', id: command.id, sessionID: command.sessionID, title: command.title});
+          } catch (error) {
+            await emit({kind: 'title', id: command.id, sessionID: command.sessionID, title: command.title, failed: true, text: String(error)});
+          }
+        }).catch(stop);
+        break;
+      case 'sessions':
+        if (!command.id || command.limit === undefined) throw new Error('Missing session list request');
+        controls = controls.then(async () => {
+          try { await emit(await sessionPage({id: command.id!, cwd: command.cwd, cursor: command.cursor, limit: command.limit!})); }
+          catch (error) { await emit({kind: 'sessions', id: command.id, failed: true, text: String(error)}); }
+        }).catch(stop);
+        break;
+      case 'session_change':
+        if (!command.id) throw new Error('Missing session transition request');
+        controls = controls.then(() => changeSession(command.id!, command.sessionID || undefined, command.cwd || undefined)).catch(stop);
         break;
       case 'interrupt':
         if (replacing) { resetCancelled = true; break; }
@@ -215,17 +329,26 @@ process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
 try {
   if (config.resume) {
-    const info = await getSessionInfo(config.resume, {dir: config.cwd});
-    if (!info || info.sessionId !== config.resume || !info.cwd || await realpath(info.cwd) !== await realpath(config.cwd)) {
-      throw new Error('Resume session does not belong to the selected workspace');
+    const info = await resumeInfo(config.resume);
+    if (info.cwd !== await realpath(cwd)) {
+      if (config.forkSession) throw new Error('Launch a native fork from its verified session workspace');
+      if (endpoint) {
+        const source = {runtime: 'claude', workspace: cwd, session: ''};
+        const binding = {...source, workspace: info.cwd!, session: info.sessionId};
+        await companionRequest(endpoint, {operation: 'session_switch_check', source, binding});
+        const presentation = await companionRequest(endpoint, {operation: 'session_switch', source, binding}) as Pick<CompanionConfig, 'plugin' | 'frontendDirectory'>;
+        endpoint = {...endpoint, ...presentation};
+      }
     }
+    cwd = info.cwd!;
     // Verified native history establishes an ordinary resumed session before
     // the first prompt. A fork must wait for its newly assigned native identity.
     if (!config.forkSession) {
+      observer = endpoint ? companion(endpoint, cwd, text => emit({kind: 'notice', text}), true) : undefined;
       await observer?.resume(info);
-      await emit({kind: 'session', sessionID: info.sessionId});
+      await emit({kind: 'session', sessionID: info.sessionId, cwd, title: info.customTitle ?? info.summary});
     }
-    const history = await getSessionMessages(config.resume, {dir: config.cwd, limit: 2001});
+    const history = await getSessionMessages(config.resume, {dir: cwd, limit: 2001});
     for (const message of history.slice(0, 2000)) {
       await emit({kind: 'history', event: message});
     }

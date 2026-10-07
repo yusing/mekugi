@@ -163,6 +163,7 @@ type liveActivityNativeItem struct {
 	workdir            string // Display form of a command's directory outside the shown workspace.
 	searchResults      *int
 	running            bool                   // Started live and not yet completed; replay never sets it.
+	background         bool                   // The host launch result defers command completion to a native task.
 	live               bool                   // From a live notification; restored history never sets it.
 	settled            time.Time              // Successful output stays open from then until its agent's next event.
 	changes            []activityui.ChangeRow // Change rows read from a successful change history, VCS read, or commit.

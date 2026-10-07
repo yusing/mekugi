@@ -13,16 +13,17 @@ import (
 // across commands. Outputs belong to the UI goroutine.
 type Output struct {
 	outputLineBuffer
-	lines     []string
-	bytes     int  // Retained line bytes, charged to the retention.
-	dropped   int  // Lines before lines.
-	truncated bool // At least one completed line exceeded OutputLineBytes.
-	released  bool
-	done      bool
-	exited    bool // The host reported an exit status.
-	exit      int
-	version   int
-	owner     *Retention
+	lines         []string
+	bytes         int  // Retained line bytes, charged to the retention.
+	dropped       int  // Lines before lines.
+	truncated     bool // At least one completed line exceeded OutputLineBytes.
+	prefixOmitted bool // The host supplies only a tail with an unknown number of earlier lines.
+	released      bool
+	done          bool
+	exited        bool // The host reported an exit status.
+	exit          int
+	version       int
+	owner         *Retention
 }
 
 // Host aggregates stop at 1 MiB; a live stream keeps as much of its latest
@@ -79,6 +80,21 @@ func (o *Output) Write(output string) {
 	}
 }
 
+// Snapshot replaces the current tail without inventing deltas or line counts.
+// Its Output identity remains stable for already-open dialogs.
+func (o *Output) Snapshot(output string, prefixOmitted bool) {
+	if o.done || o.released {
+		return
+	}
+	before := o.bytes + len(o.line)
+	o.lines, o.line, o.cr, o.bytes, o.dropped = nil, nil, false, 0, 0
+	o.truncated, o.prefixOmitted = false, prefixOmitted
+	if o.owner != nil {
+		o.owner.bytes -= before
+	}
+	o.Write(output)
+}
+
 func (o *Output) endLine() {
 	line := string(o.line)
 	if len(line) > OutputLineBytes {
@@ -109,13 +125,7 @@ func (o *Output) Finish(aggregate *string, exit *int) {
 		return
 	}
 	if aggregate != nil && !o.released {
-		before := o.bytes + len(o.line)
-		o.lines, o.line, o.cr, o.bytes, o.dropped = nil, nil, false, 0, 0
-		o.truncated = false
-		if o.owner != nil {
-			o.owner.bytes -= before
-		}
-		o.Write(*aggregate)
+		o.Snapshot(*aggregate, false)
 	}
 	if len(o.line) > 0 {
 		before := o.bytes + len(o.line)
@@ -148,13 +158,14 @@ func (o *Output) Release() {
 
 // OutputView is what an Output retains at one moment.
 type OutputView struct {
-	Lines     []string // Retained lines, then an unfinished one.
-	Dropped   int      // Lines before Lines no longer retained.
-	Truncated bool     // A retained line lost bytes to the per-line limit.
-	Released  bool     // The session released this output for newer output.
-	Done      bool
-	Exited    bool // Exit is the host's reported status.
-	Exit      int
+	Lines         []string // Retained lines, then an unfinished one.
+	Dropped       int      // Lines before Lines no longer retained.
+	Truncated     bool     // A retained line lost bytes to the per-line limit.
+	Released      bool     // The session released this output for newer output.
+	Done          bool
+	Exited        bool // Exit is the host's reported status.
+	Exit          int
+	PrefixOmitted bool // Earlier host bytes are absent; their line count is unknown.
 }
 
 // Version changes whenever the output's view does.
@@ -176,5 +187,5 @@ func (o *Output) View() OutputView {
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
 	}
-	return OutputView{Lines: lines, Dropped: o.dropped, Truncated: o.truncated || len(o.line) > OutputLineBytes, Released: o.released, Done: o.done, Exited: o.exited, Exit: o.exit}
+	return OutputView{Lines: lines, Dropped: o.dropped, Truncated: o.truncated || len(o.line) > OutputLineBytes, Released: o.released, Done: o.done, Exited: o.exited, Exit: o.exit, PrefixOmitted: o.prefixOmitted}
 }

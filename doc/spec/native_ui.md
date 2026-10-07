@@ -5,9 +5,13 @@
 `mekugi claude` selects the official Claude Code Agent SDK backend before router
 startup. It uses the existing Main/composer, Activity, question dock, live-edit
 dock and Diff controllers. Codex-specific controls do not dispatch from this
-backend; runtime commands are admitted only when advertised by its SDK. Claude
+backend; other runtime commands are admitted only when advertised by its SDK. Claude
 keeps execution, permissions, authentication, configuration and native history.
-Shared utility, journal and observation adapters are invocation-local. Claude
+Native tool events feed the shared operation classifier and bounded output-dialog
+retention. Main and child agents use the shared roster; background Bash jobs do
+not become agents. Native notices remain available in the transcript. The shared
+keyboard lock, live-pane toggle, status dialog and per-session pane persistence
+apply to this backend. Shared utility, journal and observation adapters are invocation-local. Claude
 keeps its normal configuration and permission policy; Mekugi does not route inference.
 
 The bridge pins Agent SDK 0.3.288, whose package metadata targets Claude Code
@@ -24,14 +28,66 @@ Historical transcript rows cannot recreate pending permissions or tools. Resume
 validates the selected workspace against SDK session metadata before accepting
 new input; at most 2,000 messages are read for display, with longer history noted.
 
+Shared `/title <title>` saves native session names without model input. Native
+rename writes are serialized and settle only on matching receipts; saved-session
+listing preserves those names. `/resume` uses the existing shared picker with
+SDK session metadata, paginated title/branch/directory/session-ID search and
+Cwd/All toggling. Only the latest listing request can publish a page. Failed
+listing stops automatic paging until an explicit restart with Tab. Enter selects
+a saved session; `/resume SESSION_ID` selects it directly. All lists other
+workspaces. Selecting one validates its SDK metadata and moves the shared UI,
+Journal, Diff and utility frontends to that session's workspace. Launch-time
+resume also uses the verified session workspace when it differs from launch cwd.
+
+Resume replaces an idle native query and restores the selected native history
+and title. `/clear` drains that query and prepares empty context in the current
+workspace, without copying journal or change authority. Neither operation deletes
+saved sessions or filesystem changes. A turn, pending settings or permission,
+live Bash or child work, or unfinished observation blocks switching. The SDK
+continues to own queries, permissions and transcripts; observer binding, journal
+sink and saved Diff scope rotate only after the old query drains. Cross-workspace
+frontends are prepared before teardown; retired frontend capabilities cannot read
+the selected workspace. Old events
+cannot repopulate the replacement view. Preflight failure preserves the old
+presentation, and a failed send preserves the draft. Failure after query retirement
+requires manual resume, not a fabricated rollback to a live old query.
+
 Edit/Write arguments are correlated by native parent/message/block and tool-use
 identity. Each partial input is bounded to 256 KiB, with at most 128 active
 buffers. Complete paths and operands are required; partial content is marked as
 an incoming prefix, never removal of an unseen suffix. Full arguments remain
 provisional until a native tool result, and result arrival still does not make a
-saved capture. Preview filesystem reads use the existing bounded reader. Bash previews and agent messaging remain unavailable. Saved change evidence,
+saved capture. Preview filesystem reads use the existing bounded reader. Bash
+edit previews and agent messaging remain unavailable. Saved change evidence,
 durable journals, native model/effort controls and task status/stop use the shared
 UI and their native adapters.
+
+Supported native Bash literal eval/cwd wrappers use the shared command-segment
+instrumentation and original shared rows, with actual per-segment exits, skips,
+output and dialogs. Observation preserves native command input, shell setup,
+permissions, execution and working-directory updates. Existing `BASH_ENV` remains
+sourced; only a new tracked bridge launch isolates an inherited observer guard,
+without changing its parent environment. Unsupported wrapper or script shapes,
+and ambiguous identical concurrent inputs, execute unchanged with aggregate
+output rather than guessed segment attribution. Background launch and root-turn
+completion cannot finalize segment rows; matching native terminal evidence is
+required. Live segment reports are not yet durably restored on native resume.
+
+Unsegmented foreground and background command output updates the shared retention owner
+through the pinned runtime's read-only `getTaskOutput` capability. Native snapshots
+contain at most an 8 KiB tail, not lossless deltas. Shared Output rows and dialogs
+identify tail-only evidence without inventing omitted line counts. Native task
+registration waits at least two seconds before exposing foreground tasks; short
+commands may supply only their final aggregate. The native foreground aggregate
+remains authoritative. Background launch and root-turn completion do not settle
+live output; matching terminal task evidence does. Missing output remains unavailable rather than reconstructed.
+Complete background-output parity is not established.
+
+Successful command output follows the shared timed-collapse lifecycle; failure
+details stay expanded. Command output and task events open the shared dialog
+from their painted rows in Main and Activity. Running shell jobs remain outside
+the Agents roster. Their task disclosure and command-output dialog retain the
+native stop action (`x`), without changing search text or replaying execution.
 
 Normal launch adds native observational hooks, without altering
 user configuration, permissions, tool inputs or results. Actual file effects enter
@@ -45,17 +101,42 @@ Delayed pre-tool receipts cannot reopen a settled call or establish its baseline
 after effects occurred. Retained task/call identities remain historical evidence,
 not authority to resume an observation or invoke tools as a saved child agent.
 Live predictions never become saved bytes. Explicit live/saved selection survives
-updates, focus and resizing. Journal and utility adapters use the shared owners. Shell tracing and output
-transformation are not added by this backend.
+updates, focus and resizing. Journal and utility adapters use the shared owners.
+Command-segment observation does not rewrite native results.
+
+Companion instructions follow the [native guidance contract](guide.md#req-guide-003--claude-companion-guidance).
+Journal tools require authenticated native caller receipts. Large tree reads
+retain an immutable JSON snapshot through the shared output store before exposing
+`mread` references. Immutable UTF-8-safe chunks keep both MCP responses and
+presentation frames bounded, using the managed Next continuation chain and existing `mread`,
+not a separate MCP reader. Recovery never repeats journal mutations or native tools.
 
 Acceptance includes adapter correlation/escape/bound tests; shared-composer,
 permission and multi-select interaction tests; reviewed narrow/wide snapshots;
-and PTY streaming, preview arrival before tool completion, focus, scrolling and
-resize. Observation acceptance includes native exactly-once execution and hook/SDK
-identity equality, persisted baselines, failed and no-effect edits, ignored explicit
+and native scripted-provider PTY acceptance for incremental foreground/background
+output and command-output/task-event clicks in Main and Activity, with exactly-once
+effects and no inference. Preview acceptance covers arrival before tool completion,
+focus, scrolling and resize. Observation acceptance includes native exactly-once
+execution and hook/SDK identity equality, persisted baselines, failed and no-effect edits, ignored explicit
 paths, concurrent scopes, storage retries and fresh-process saved evidence. Offline
 fixtures do not establish native background ordering, permission fidelity,
-subscription eligibility or compaction replacement support.
+subscription eligibility or compaction replacement support. Live output does not
+force backgrounding, reexecute tools, rewrite native results or change persistent
+settings. Installed-runtime scripted-provider segment cases check shared UI events,
+not PTY rendering. Offline Bash wrapper differential cases, reviewed narrow/wide
+shared-renderer snapshots and segment-click checks cover the supported slice;
+segmented PTY acceptance remains outstanding. Installed-runtime scripted-provider
+session-control acceptance proves title persistence/listing, clear, resume and
+A-to-B-to-A switching with the rendered shared picker and no inference, not a PTY.
+Offline controller/title/scope tests and reviewed narrow/wide snapshots cover
+the shared controls. Cross-workspace scripted-provider acceptance adds native
+history/title/cwd restoration, current guidance, failed-preflight draft retention,
+fresh launch from another workspace and exactly-once Bash effects. It exercises
+the shared PTY picker's All filter, search and Enter in both directions; full
+session-control PTY and live-model acceptance remain outstanding.
+Side queries, agent messaging/switching,
+the user shell shortcut and full rich-preview continuity remain unfinished;
+this backend does not claim full Codex parity.
 
 ## REQ-NATIVE-UI-001 — Native app-server UI
 

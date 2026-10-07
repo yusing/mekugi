@@ -277,12 +277,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			}
 		}
 		v.appendEntry(entry, blocks)
-		if v.standalone(entry) {
-			if v.events == nil {
-				v.events = make(map[string]liveActivityEvent)
-			}
-			v.events[entry.Agent] = liveActivityEvent{entry.Seq, cmp.Or(entry.Observed, v.now())}
-		}
+		v.observeStandalone(entry)
 		if !v.following && v.visible(entry) {
 			v.unseen++
 		}
@@ -1756,6 +1751,17 @@ func (v *liveActivityView) expireFlash(now time.Time) bool {
 // separate operation, message or thinking, not roster-only wait progress.
 func (v *liveActivityView) standalone(entry activityPaneEntry) bool {
 	return !(entry.native != nil && entry.native.wait != nil) && !(entry.Kind == "tool" && entry.Text == "")
+}
+
+// Lifecycle observation is independent of whether this view paints the event.
+func (v *liveActivityView) observeStandalone(entry activityPaneEntry) {
+	if !v.standalone(entry) {
+		return
+	}
+	if v.events == nil {
+		v.events = make(map[string]liveActivityEvent)
+	}
+	v.events[entry.Agent] = liveActivityEvent{entry.Seq, cmp.Or(entry.Observed, v.now())}
 }
 
 // settleActivity collapses completed reasoning and successful command output once its agent's

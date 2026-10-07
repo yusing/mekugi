@@ -16,8 +16,9 @@ sessions, and patch review. No fork, no config edits, no daemon. The
 ## Features
 
 - **Claude Code preview.** `mekugi claude` offers streaming conversation, native
-  permission decisions, shared live/saved Diff, Bash utilities and durable journals
-  in the existing interface, without an inference router. See its
+  permission decisions, shared live/saved Diff, live command output with supported
+  Bash command segments, saved-session title/resume/clear controls, Bash utilities
+  and durable journals in the existing interface, without an inference router. See its
   [current limits and build instructions](#claude-code-preview).
 
 ### Agent-facing
@@ -176,6 +177,24 @@ screen. Resume preserves Claude's context and restores available transcript rows
 from the selected workspace. Display restoration reads at most 2,000 messages;
 a notice identifies longer histories. No tools or approvals are replayed.
 
+Use `/title <title>` to save a native session title without a model request.
+The shared `/resume` picker lists saved native sessions, newest first, with
+paginated title, branch, directory and session-ID search. Tab toggles Cwd/All
+and restarts a failed listing; Enter opens the selected session.
+`/resume SESSION_ID` switches directly. All lists other workspaces; opening a
+session moves the UI, Journal, Diff and utility frontends to its verified native
+workspace. Launch-time `--resume SESSION_ID` also selects that workspace, even
+when launched from another directory.
+
+`/clear` starts empty context in the current workspace without copying the old
+journal or change scope. Saved sessions and filesystem changes are not deleted.
+Resume restores the selected session's native history/title and available retained
+Mekugi evidence. Switching requires idle native work: active turns, settings,
+permissions, Bash jobs, child agents and unfinished observations block it.
+Validation failure keeps the old view; a command that cannot be sent keeps its
+draft. If replacement fails after the old query has closed, resume manually
+rather than expecting the old conversation to remain active.
+
 Enter sends a message; Ctrl-J adds a line; bracketed paste preserves multiline
 text. The same composer supports undo/redo, external editing and copying. Use
 PgUp/PgDn or the mouse wheel to scroll, and Ctrl-B 1 / 2 / 3 to select Main / Diff /
@@ -183,7 +202,9 @@ Activity. Native approvals use the shared question dock: select Allow once or
 Deny and press Enter. Questions accept option numbers or free text; multi-select
 questions use Space to toggle choices before Enter. Ctrl-C declines a pending request,
 otherwise clears the draft, interrupts active work, then quits when idle.
-`/quit` exits when idle. Input entered during a turn stays in the composer rather
+`/quit` exits when idle. `/lock` and `/unlock` control keyboard interruption.
+`/live`, `/live on` and `/live off` control the shared live-edit dock. Pane layout
+preferences are restored when resuming the same session. Input entered during a turn stays in the composer rather
 than being silently steered or queued.
 
 `/model` opens the shared picker with Claude's advertised models; `/model MODEL`
@@ -204,14 +225,28 @@ history remain the same as resume. Saved Mekugi observations remain scoped to
 their native session: a fork does not copy the parent's capture history or revive
 its running tools.
 
-`/usage` or `/session` opens the shared status dialog with the latest available
+`/status`, `/usage` or `/session` opens the shared status dialog with the latest available
 Claude-reported cumulative tokens, cache usage and limit windows. Missing fields
 are omitted. API-equivalent cost estimates are labeled separately from subscription
 charges; these views do not make token-count requests or show router traffic.
-Native tasks and their updates appear in Activity and the Agents roster. These
-rows identify native tasks, not writable agent journal namespaces. Select a live
-task in Agents and press `x` to request its native stop; only a terminal runtime
+Main and native child agents appear in the shared Agents roster. Background Bash
+jobs stay in the conversation as task progress, not extra agents. Select a live
+child in Agents and press `x` to request its native stop; only a terminal runtime
 event settles its row. Root-turn completion does not complete background tasks.
+Tool calls use the same compact operation rows as Codex. Supported Bash command
+lists show each command's actual exit or skipped status and its own output in the
+shared rows and dialog. Click command-output or task-event rows in Main or Activity
+to open it. Unsupported shell wrappers or scripts, and identical concurrent inputs
+that cannot be attributed safely, run unchanged with combined output instead.
+Per-command reports are not yet restored on native resume.
+
+Unsegmented foreground and background commands update the dialog with native
+last-8-KiB tail snapshots, not a lossless output stream; the dialog labels this
+limitation. Native task registration has a two-second grace period, so short
+commands may show only their final aggregate. The final native foreground result
+remains authoritative; complete background-output parity is not established.
+Capture warnings remain
+readable in the transcript when they do not fit in the status line.
 
 Claude uses the existing pane shell, not a separate interface. Edit/Write input
 streams appear as provisional proposals in the shared live-edit dock and Diff
@@ -243,7 +278,12 @@ and an 8 MiB combined bridge frame. Failed submissions keep the draft and images
 
 Shared utility frontends run in native Bash, including
 `mcat`, `inspect_file`, `msymbol`, `mrun`, `mread` and `mchanges`. An invocation-local
-skill describes their shared contracts. Completed foreground captures
+skill supplies mandatory journal workflow guidance, and the complete authenticated
+utility contracts are injected automatically into native context. Fresh sessions
+receive them with the native preset; resumed sessions receive current guidance on
+their first input without replacing the saved prompt. Children and compaction
+receive the same guidance. The catalog file remains a recovery reference, not a
+required extra read. Completed foreground captures
 return explicit change IDs through companion hook context, without replacing the
 native tool result. Review those IDs with `mchanges`; apply/revert run only through
 native Bash and its permissions, and their actual effects become new captures.
@@ -256,6 +296,11 @@ operations with explicit IDs.
 
 Native MCP journal batches/reads feed the shared Journal pane (`Ctrl-B 5`),
 Main event cards and plan strip, without an additional activation flag.
+Claude receives instructions to plan substantial work in the journal and keep
+task states current. Large journal reads return a saved-output continuation for
+`mread`, rather than failing when the tree exceeds one tool response. Its immutable
+snapshot uses the same managed output chunks and continuation chain as other
+retained reads, without a separate journal reader.
 Journal calls require native tool identity matched to authenticated hook evidence,
 not a model-provided agent ID. Native agent tool restrictions still apply;
 agents without access to the companion MCP tools cannot author a journal.
@@ -273,14 +318,18 @@ work delays dispatch, and uncertain dispatch is never replayed after restart.
 
 `/compact` with extra instructions still uses native summarization followed by bounded
 additive journal recovery. Mandatory constraints and open tasks must fit the recovery
-packet in full. Overflow or missing evidence leaves the usable conversation intact
-and reports unavailable recovery. The utility and journal integration is invocation-local.
+packet in full. Overflow or missing evidence leaves the native summary intact,
+reports unavailable recovery facts, and still supplies current workflow guidance.
+The utility and journal integration is invocation-local.
 
-Bash previews and agent messaging/switching are not connected yet.
+Bash edit previews, agent messaging/switching, side queries, the user shell
+shortcut and full rich-preview continuity remain unfinished. Live command
+segments and session controls do not imply full shared-controller parity.
 Commands advertised by the SDK are forwarded natively;
 unadvertised commands, including a separate `/btw` workflow, are rejected rather
 than emulated.
-Compaction replacement, shell tracing and output rewriting remain unavailable.
+Command observation leaves native command input, setup, permissions, execution
+and working-directory updates unchanged; it does not rewrite native results.
 Only exposed text, native tool input/results and task/usage observations are displayed;
 unavailable usage and change evidence are not invented. Oversized bridge events stop the client with an error;
 Claude's own session remains the history authority. The full Codex interface below
@@ -413,6 +462,9 @@ picker updates on the next launch. See the [provider contract](doc/spec/opencode
 variables override it and any file keys; an empty per-service value disables that service.
 
 ## Native UI
+
+This section describes the Codex-backed interface. Claude uses the same pane
+shell with the capabilities and limits in [Claude Code preview](#claude-code-preview).
 
 Every interactive launch lays out Main, Diff, Activity, Journal,
 and Agents panes in one terminal without an external pane manager. Main holds the
@@ -667,7 +719,7 @@ Herdr is optional and does not control Mekugi's internal panes.
 ### Output dialog
 
 Click a command, program, read, error, or long-content excerpt in Main or Activity to
-open its full content in the shared dialog above the panes, without expanding
+open its retained content in the shared dialog above the panes, without expanding
 the transcript. Read source and unified diffs use syntax colors. Untyped command
 output above 8 KiB stays uncolored for responsiveness; its text remains available
 for reading, searching, and copying. File-specific and diff highlighting retain
@@ -986,6 +1038,18 @@ Run `make test-claude` for offline bridge compilation and transport tests. After
 `make build-claude`, run `make test-claude-package CLAUDE_PACKAGE_DIR=bin` to
 check extracted and relocated package startup with a fake Claude executable.
 These checks do not prove compatibility with an authenticated live Claude session.
+The opt-in [Claude acceptance checks](CONTEXT-TESTS.md#focused-checks) cover native
+guidance delivery, ordinary journal adoption, command segments and session lifecycle.
+Shared title/list/clear/resume acceptance uses the installed native runtime with
+a scripted provider, rendered picker and no inference. Cross-workspace acceptance
+also exercises the shared PTY picker's All filter, search and Enter in both
+directions, plus fresh launch from another workspace. Full session-control PTY
+and live-model acceptance remain outstanding.
+Native segment fixtures check shared UI events, with separate narrow/wide renderer
+snapshots and segment-click checks; segmented PTY acceptance remains outstanding.
+Prompt-delivery and command-output PTY fixtures use a scripted local provider without inference;
+live adoption and other live lifecycle checks use the installed authenticated runtime with
+its normal billing.
 
 For offline terminal-layout regression checks, run `make test-ui-snapshots`.
 Failures leave `.txt.new` candidates beside the reviewed fixtures and print a

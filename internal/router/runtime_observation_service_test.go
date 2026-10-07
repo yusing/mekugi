@@ -92,6 +92,7 @@ func TestNativeObservationServiceCapabilityAndCapture(t *testing.T) {
 	}
 }
 func TestNativeObservationBackgroundTerminalEdges(t *testing.T) {
+	t.Parallel()
 	for _, early := range []bool{false, true} {
 		for _, status := range []string{"completed", "failed", "stopped"} {
 			t.Run(status+map[bool]string{true: "/early", false: "/late"}[early], func(t *testing.T) {

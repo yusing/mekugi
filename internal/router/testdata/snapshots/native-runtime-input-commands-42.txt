@@ -8,21 +8,21 @@
 │                                        │
 │                                        │
 │                                        │
-│                                        │
-│                                        │
-│                                        │
-│                                        │
 │› /compact  Compact conversation        │
 │  /copy     Copy a response             │
+│  /live     Show or hide Live edits for…│
+│  /lock     Prevent accidental keyboard…│
 │  /quit     Quit when idle              │
 │  /review   Review current workspace ch…│
 │  /rv       Review current workspace ch…│
 │  /session  Show native usage and limits│
-│  /usage    Show native usage and limits│
-│                                        │
+│↓                                       │
 │  ↑/↓ navigate · enter select · tab comp│
 │╭─ Ready ──────────────────────────────╮│
 ││ ❯ /                                  ││
 │╰────────────────────── claude-sonnet ─╯│
 └────────────────────────────────────────┘
+─ 4 Agents · 1 ───────────────────────────
+ ● main  idle
+
  1 Main  [ 2 Diff │ 3 Activity │ 5 Journal

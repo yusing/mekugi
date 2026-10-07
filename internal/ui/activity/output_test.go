@@ -16,6 +16,33 @@ func TestOutputRedrawAcrossChunks(t *testing.T) {
 	}
 }
 
+func TestOutputSnapshotsReplaceWithoutInventingDeltas(t *testing.T) {
+	var retention Retention
+	o := retention.New()
+	o.Snapshot("first\n", false)
+	o.Snapshot("first\nsecond\n", false)
+	if !slices.Equal(o.View().Lines, []string{"first", "second"}) || o.View().Done {
+		t.Fatal("live snapshot appended duplicated output")
+	}
+	o.Snapshot("tail\n", true)
+	view := o.View()
+	if !view.PrefixOmitted || view.Dropped != 0 || !slices.Equal(view.Lines, []string{"tail"}) {
+		t.Fatal("tail snapshot invented a line count or kept old bytes")
+	}
+	if retention.bytes != o.bytes+len(o.line) {
+		t.Fatal("snapshot replacement leaked retention accounting")
+	}
+	o.Finish(new("full final output"), nil)
+	if !o.View().Done || o.View().PrefixOmitted {
+		t.Fatal("full aggregate inherited the tail limitation")
+	}
+	version := o.Version()
+	o.Snapshot("late", true)
+	if o.Version() != version || !slices.Equal(o.View().Lines, []string{"full final output"}) {
+		t.Fatal("late snapshot altered completed output")
+	}
+}
+
 func TestOutputBoundsAndDroppedLines(t *testing.T) {
 	var o Output
 	line := strings.Repeat("x", OutputLineBytes)

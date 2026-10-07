@@ -152,18 +152,14 @@ func (o *runtimeJournalOwner) resetSession(ctx context.Context, operation string
 	}}); err != nil {
 		return nil, fmt.Errorf("retain prepared reset context: %w", err)
 	}
-	// Only the bridge calls this after closing and draining the old query.
-	// Keep its leases until launch shutdown, but do not authorize its old hooks.
-	o.capture.session = target.Session
-	clear(o.capture.bindings)
-	clear(o.capture.tasks)
-	clear(o.capture.taskEvents)
-	clear(o.capture.live)
-	clear(o.capture.pending)
-	o.capture.windows = &execWindowRegistry{}
+	o.capture.retireBindingsLocked(target.Session)
+	o.detachSession()
+	return map[string]string{"text": text}, nil
+}
+
+func (o *runtimeJournalOwner) detachSession() {
 	o.mu.Lock()
+	defer o.mu.Unlock()
 	o.journals.detachNative(o.root)
 	o.root, o.turn, o.pendingStop = nil, "", ""
-	o.mu.Unlock()
-	return map[string]string{"text": text}, nil
 }

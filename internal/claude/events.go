@@ -18,19 +18,27 @@ type adapter struct {
 
 func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 	var frame struct {
-		CommandInfo []session.Command `json:"commandInfo"`
-		Models      []session.Model   `json:"models"`
-		Field       string            `json:"field"`
-		Value       string            `json:"value"`
-		Failed      bool              `json:"failed"`
-		Kind        string            `json:"kind"`
-		SessionID   string            `json:"sessionID"`
-		ID          string            `json:"id"`
-		Tool        string            `json:"tool"`
-		Text        string            `json:"text"`
-		Description string            `json:"description"`
-		Input       jsontext.Value    `json:"input"`
-		Event       nativeEvent       `json:"event"`
+		CommandInfo []session.Command      `json:"commandInfo"`
+		Models      []session.Model        `json:"models"`
+		Field       string                 `json:"field"`
+		Value       string                 `json:"value"`
+		Failed      bool                   `json:"failed"`
+		Kind        string                 `json:"kind"`
+		SessionID   string                 `json:"sessionID"`
+		Title       string                 `json:"title"`
+		Cwd         string                 `json:"cwd"`
+		Sessions    []session.SavedSession `json:"sessions"`
+		Cursor      string                 `json:"cursor"`
+		ID          string                 `json:"id"`
+		Tool        string                 `json:"tool"`
+		Text        string                 `json:"text"`
+		Description string                 `json:"description"`
+		Caller      string                 `json:"caller"`
+		TaskID      string                 `json:"taskID"`
+		Truncated   bool                   `json:"truncated"`
+		Done        bool                   `json:"done"`
+		Input       jsontext.Value         `json:"input"`
+		Event       nativeEvent            `json:"event"`
 	}
 	if err := json.Unmarshal(data, &frame); err != nil {
 		return nil, fmt.Errorf("invalid Claude bridge frame: %w", err)
@@ -48,11 +56,26 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 			return nil, fmt.Errorf("native resume identity unavailable")
 		}
 		a.resumeSession = frame.SessionID
-		return []session.Event{{Kind: "session", SessionID: frame.SessionID}}, nil
+		e := session.Event{Kind: "session", SessionID: frame.SessionID, Cwd: frame.Cwd}
+		if frame.Title != "" {
+			e.Title = &session.SessionTitle{SessionID: frame.SessionID, Title: frame.Title}
+		}
+		return []session.Event{e}, nil
 	case "ready":
 		return []session.Event{{Kind: "ready", CommandInfo: frame.CommandInfo, Models: frame.Models}}, nil
+	case "commands":
+		return []session.Event{{Kind: "commands", CommandInfo: frame.CommandInfo}}, nil
 	case "settings":
 		return []session.Event{{Kind: "settings", Settings: &session.Settings{ID: frame.ID, Field: frame.Field, Value: frame.Value}, Failed: frame.Failed, Text: frame.Text}}, nil
+	case "title":
+		return []session.Event{{Kind: "title", Title: &session.SessionTitle{ID: frame.ID, SessionID: frame.SessionID, Title: frame.Title}, Failed: frame.Failed, Text: frame.Text}}, nil
+	case "sessions":
+		return []session.Event{{Kind: frame.Kind, Sessions: &session.SessionPage{ID: frame.ID, Cursor: frame.Cursor, Sessions: frame.Sessions}, Failed: frame.Failed, Text: frame.Text}}, nil
+	case "session_change", "session_ready":
+		if frame.Kind == "session_change" {
+			a.resumeSession, a.streams, a.text, a.tools = frame.SessionID, nil, nil, nil
+		}
+		return []session.Event{{Kind: frame.Kind, Change: &session.SessionChange{ID: frame.ID, SessionID: frame.SessionID, Title: frame.Title, Cwd: frame.Cwd}, Failed: frame.Failed, Text: frame.Text}}, nil
 	case "task_control":
 		return []session.Event{{Kind: "task_control", ID: frame.ID, Failed: frame.Failed, Text: frame.Text}}, nil
 	case "reset":
@@ -67,6 +90,11 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		return historyEvents(frame.Event)
 	case "notice":
 		return []session.Event{{Kind: "notice", Text: frame.Text}}, nil
+	case "command_output":
+		if frame.ID == "" || frame.TaskID == "" || len(frame.Text) > 16<<10 {
+			return nil, fmt.Errorf("invalid native command output snapshot")
+		}
+		return []session.Event{{Kind: "command_output", ID: frame.ID, Caller: frame.Caller, Text: frame.Text, Failed: frame.Failed, Output: &session.CommandOutput{TaskID: frame.TaskID, Truncated: frame.Truncated, Done: frame.Done}}}, nil
 	case "error":
 		return []session.Event{{Kind: "error", Text: frame.Text}}, nil
 	case "permission_cancelled":
@@ -114,7 +142,7 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 			return []session.Event{{Kind: "commands", CommandInfo: e.Commands}}, nil
 		}
 		if e.TaskID != "" {
-			task := &session.Task{ID: e.TaskID, ToolID: e.ToolUseID, Kind: e.TaskType, Description: e.Description, Summary: e.Summary, Ambient: e.Ambient || e.SkipTranscript}
+			task := &session.Task{ID: e.TaskID, ToolID: e.ToolUseID, Kind: e.TaskType, Role: e.SubagentType, Description: e.Description, Summary: e.Summary, Ambient: e.Ambient || e.SkipTranscript}
 			switch e.Subtype {
 			case "task_started":
 				task.Status = "running"
@@ -233,9 +261,19 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 			return nil, err
 		}
 		var result []session.Event
+		var response struct {
+			BackgroundTaskID string `json:"backgroundTaskId"`
+		}
+		if e.ToolResult.Kind() == '{' {
+			_ = json.Unmarshal(e.ToolResult, &response)
+		}
 		for _, block := range blocks {
 			if block.Type == "tool_result" {
-				result = append(result, session.Event{Kind: "tool_result", ID: block.ToolUseID, Text: contentText(block.Content), Failed: block.IsError})
+				event := session.Event{Kind: "tool_result", ID: block.ToolUseID, Text: contentText(block.Content), Failed: block.IsError}
+				if response.BackgroundTaskID != "" && len(blocks) == 1 {
+					event.Output = &session.CommandOutput{TaskID: response.BackgroundTaskID}
+				}
+				result = append(result, event)
 			}
 		}
 		return result, nil

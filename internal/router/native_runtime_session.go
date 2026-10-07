@@ -10,9 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/session"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"golang.org/x/term"
 )
@@ -44,6 +42,7 @@ type nativeRuntimeSession struct {
 	continuation      *journalResetIntent
 	continueAt        time.Time
 	resetRequest      string
+	changeRequest     string
 	resetSource       ObservationBinding
 	restoredJournal   string
 }
@@ -51,6 +50,7 @@ type nativeRuntimeSession struct {
 func newRuntimeUI(ctx context.Context, client session.Client, name, cwd string) *appServerUI {
 	u := &appServerUI{ctx: ctx, view: newLiveActivityView(), agents: newLiveActivityView(), status: "Starting Claude Code…", dirty: true,
 		runtime: &nativeRuntimeSession{client: client, name: name}}
+	u.view.clock, u.agents.clock = u.now, u.now
 	u.session.cwd = cwd
 	u.ensureShell()
 	u.shell.diff.workspace = cwd
@@ -63,6 +63,8 @@ func newRuntimeUI(ctx context.Context, client session.Client, name, cwd string) 
 // The caller owns runtime startup/shutdown; this loop owns only the terminal.
 func RunNativeSession(ctx context.Context, client session.Client, name, cwd string, stdin, stdout *os.File, observations ...*ObservationService) error {
 	u := newRuntimeUI(ctx, client, name, cwd)
+	u.panes = &nativePanePersistence{}
+	defer func() { u.paneError(u.panes.save(u.shell, u.now(), true)) }()
 	if len(observations) > 0 && observations[0] != nil {
 		u.attachRuntimeObservation(observations[0])
 	}
@@ -103,7 +105,11 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 					}
 					u.dirty = true
 				case <-tick.C:
-					if s := u.runtime.observations; s != nil && s.journal != nil {
+					u.flushRuntimeCommandSegments()
+					if settleActivity(u.now(), u.view, u.agents) {
+						u.dirty = true
+					}
+					if s := u.runtime.observations; s != nil && s.journal != nil && u.runtime.changeRequest == "" {
 						if sink := s.journal.sink(); sink != nil {
 							u.journal = sink
 						}
@@ -112,7 +118,7 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 					if err := u.tickRuntimeJournal(u.now()); err != nil {
 						u.setNotice("Journal continuation unavailable: "+err.Error(), true)
 					}
-					if err := u.shell.flushEscape(); err != nil {
+					if err := u.drainKeys(keys); err != nil || u.quitRequested {
 						return err
 					}
 					w, h, err := term.GetSize(int(stdout.Fd()))
@@ -127,6 +133,7 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 						if err := u.acknowledgeRuntimeJournal(pending); err != nil {
 							u.setNotice("Journal paint receipt unavailable: "+err.Error(), true)
 						}
+						u.paneError(u.panes.save(u.shell, u.now(), false))
 						u.dirty = false
 					}
 				}
@@ -194,6 +201,20 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 	switch key {
 	case '\r', '\t':
 		text := u.draft
+		if handled, err := u.controlsCommand(strings.TrimSpace(text)); handled {
+			return true, false, err
+		}
+		if u.titleCommand(strings.TrimSpace(text)) {
+			return true, false, nil
+		}
+		if fields := strings.Fields(text); len(fields) > 0 {
+			switch fields[0] {
+			case "/resume":
+				return true, false, u.resumeCommand(text)
+			case "/clear":
+				return true, false, u.sessionCommand("/clear")
+			}
+		}
 		if strings.TrimSpace(text) == "" {
 			return true, false, nil
 		}
@@ -207,9 +228,13 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 		case "/copy":
 			u.showCopyPicker()
 			return true, false, nil
-		case "/usage", "/session":
+		case "/usage", "/session", "/status":
 			u.showRuntimeUsage()
 			return true, false, nil
+		}
+		if fields := strings.Fields(text); len(fields) > 0 && fields[0] == "/live" {
+			handled, err := u.settingsCommand(text)
+			return handled, false, err
 		}
 		if handled, err := u.runtimeSettingsCommand(text); handled {
 			return true, false, err
@@ -263,6 +288,7 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 		r.serial++
 		u.runtimeEntry(session.Event{Kind: "message", ID: fmt.Sprintf("input/%d", r.serial), Role: "You", Text: text})
 		r.busy = true
+		u.runtimeRoster()
 		u.status, u.alert = "Working", false
 		u.view.follow()
 		return true, false, nil
@@ -272,6 +298,10 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 		}
 		if r.busy {
 			return true, false, u.keyboardInterrupt()
+		}
+		if u.interruptLocked {
+			u.lockNotice()
+			return true, false, nil
 		}
 		return true, true, nil
 	case 22:
@@ -292,15 +322,32 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		u.runtime.models = e.Models
 		u.runtime.ready = true
 		u.status = "Ready"
+		u.runtimeRoster()
 	case "commands":
 		u.runtimeCommands(e.CommandInfo)
 		u.refreshRuntimePicker()
 	case "settings":
 		u.runtimeSettingsReceipt(e)
+	case "title":
+		if e.Title != nil {
+			failure := ""
+			if e.Failed {
+				failure = e.Text
+				if failure == "" {
+					failure = "Native rename failed"
+				}
+			}
+			u.finishSessionTitle(e.Title.ID, failure)
+		}
+	case "sessions":
+		return u.runtimeSessionPage(e)
+	case "session_change", "session_ready":
+		return u.runtimeSessionChanged(e)
 	case "usage":
 		if e.Usage != nil {
 			u.runtime.usage = e.Usage
 			u.renderRuntimeUsage()
+			u.runtimeRoster()
 		}
 	case "limit":
 		if e.Limit != nil {
@@ -312,6 +359,8 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		}
 	case "task":
 		u.runtimeTask(e)
+	case "command_output":
+		u.runtimeCommandOutput(e)
 	case "task_control":
 		if u.runtime.stoppingTasks[e.ID] {
 			delete(u.runtime.stoppingTasks, e.ID)
@@ -321,7 +370,25 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 			}
 		}
 	case "session":
-		u.thread, u.model = e.SessionID, e.Model
+		if e.Cwd != "" {
+			u.session.cwd, u.shell.diff.workspace = e.Cwd, e.Cwd
+		}
+		if u.panes != nil && e.SessionID != u.thread {
+			u.paneError(u.panes.save(u.shell, u.now(), true))
+			u.paneError(u.panes.open(u.shell, u.session.cwd, "claude/"+e.SessionID, true))
+		}
+		u.thread = e.SessionID
+		if e.Title != nil {
+			u.confirmSessionTitle(e.SessionID, e.Title.Title)
+		}
+		if u.pendingTitle != "" {
+			name := u.pendingTitle
+			u.pendingTitle = ""
+			u.renameSessionTitle(name)
+		}
+		if e.Model != "" {
+			u.model = e.Model
+		}
 	case "reset_ready":
 		return u.runtimeResetReady(e)
 	case "reset":
@@ -338,6 +405,7 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		}
 	case "notice":
 		u.setNotice(e.Text, false)
+		u.runtimeEntry(session.Event{Kind: "notice", Text: e.Text})
 	case "error":
 		return errors.New(e.Text)
 	case "done":
@@ -350,6 +418,7 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 			u.settleRuntimePreview(id, true)
 		}
 		u.runtime.busy = false
+		u.runtimeRoster()
 		if u.runtime.observations != nil && u.runtime.observations.owner.pendingCount.Load() == 0 && !u.shell.diff.modeChosen {
 			u.shell.diff.diffMode, u.shell.diff.dirty = true, true
 		}
@@ -430,47 +499,45 @@ func (u *appServerUI) runtimeDecision(allow bool) error {
 // Project presentation values directly, never through appServerItem or RPC
 // names. Replacement uses native IDs; predicted bytes are not saved edits.
 func (u *appServerUI) runtimeEntry(e session.Event) {
+	var tool activityPaneEntry
+	if e.Kind == "tool" || e.Kind == "tool_result" {
+		tool = u.runtimeToolEntry(u.view, activityPaneEntry{Observed: u.now()}, e)
+	}
 	for _, v := range []*liveActivityView{u.view, u.agents} {
-		if v == u.agents && e.Kind == "message" {
-			continue
-		}
 		entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "text", Text: e.Text, CallID: e.ID, Observed: u.now()}
 		if e.Caller != "" {
 			entry.Agent = "native/" + e.Caller
+			if e.Kind == "task" {
+				entry.Agent = runtimeTaskLane(strings.TrimPrefix(e.Caller, "task/"))
+			}
 			for _, id := range u.runtime.taskOrder {
 				if task := u.runtime.tasks[id]; task.ToolID == e.Caller {
-					entry.Agent = runtimeTaskLane(id)
-					break
-				}
-			}
-		}
-		if e.Role == "You" {
-			entry.Agent = "You"
-		}
-		var blocks []activityui.Block
-		if e.Kind == "tool" || e.Kind == "tool_result" {
-			entry.Kind = "runtime_tool"
-			label := e.Role
-			input := e.Text
-			for _, old := range v.entries {
-				if old.CallID == e.ID && len(old.blocks) > 0 {
-					label = old.blocks[0].Verb
-					if e.Kind == "tool_result" {
-						input = old.blocks[0].Code
+					if task.Kind == "local_bash" {
+						entry.Agent = "Main"
+					} else {
+						entry.Agent = runtimeTaskLane(id)
 					}
 					break
 				}
 			}
-			blocks = []activityui.Block{{Kind: "op", Verb: label, Code: livediff.Safe(input, false), Fenced: true, Running: e.Kind == "tool" && !e.Historical}}
-			if e.Kind == "tool_result" {
-				blocks[0].Tail = strings.Split(livediff.Safe(e.Text, false), "\n")
-			}
-			if e.Failed {
-				blocks[0].Label = "failed"
-			}
-		} else {
-			blocks = parseLiveActivity(entry)
 		}
+		if e.Kind == "task" {
+			entry.Kind = "progress"
+			entry.native = &liveActivityNativeItem{thread: u.thread, item: e.ID, phase: "task"}
+		}
+		if e.Role == "You" {
+			entry.Agent = "You"
+		}
+		if v == u.agents && e.Kind == "message" && e.Caller == "" {
+			v.lastSeq = entry.Seq
+			v.observeStandalone(entry)
+			continue
+		}
+		if e.Kind == "tool" || e.Kind == "tool_result" {
+			entry.Kind, entry.Text, entry.native = tool.Kind, tool.Text, tool.native
+			entry.outputTail, entry.outputOmit = tool.outputTail, tool.outputOmit
+		}
+		blocks := parseLiveActivity(entry)
 		found := false
 		for i, old := range v.entries {
 			if old.CallID == e.ID && e.ID != "" {
@@ -481,8 +548,7 @@ func (u *appServerUI) runtimeEntry(e session.Event) {
 			}
 		}
 		if !found {
-			v.lastSeq = entry.Seq
-			v.appendEntry(entry, blocks)
+			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 		}
 	}
 }
@@ -491,6 +557,7 @@ func (u *appServerUI) runtimeEntry(e session.Event) {
 // It never restores preview workers, native hooks or running processes.
 func (u *appServerUI) attachRuntimeObservation(service *ObservationService) {
 	u.runtime.observations = service
+	u.execTrack = service.owner.execTrack
 	sub := service.owner.broker.subscribe()
 	u.runtime.observationEvents, u.runtime.observationGap = sub.events, sub.gap
 	u.shell.diff.store = service.owner.store

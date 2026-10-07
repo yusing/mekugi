@@ -43,6 +43,7 @@ func observationIsolationService(t *testing.T, directory string, binding Observa
 }
 
 func TestNativeObservationIPCConcurrentIsolation(t *testing.T) {
+	t.Parallel()
 	for _, sharedWorkspace := range []bool{true, false} {
 		name := "different-workspaces/same-session"
 		if sharedWorkspace {

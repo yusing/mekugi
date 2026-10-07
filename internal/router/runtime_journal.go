@@ -218,7 +218,25 @@ func (o *runtimeJournalOwner) invoke(ctx context.Context, operation, id, input s
 		args.View = "own"
 	}
 	nodes, err := o.journals.readTree(ctx, o.capture.store, root.Workspace, thread, args.Agent, args.P, args.Depth, args.View)
-	return map[string]any{"nodes": nodes}, err
+	if err != nil {
+		return nil, err
+	}
+	return o.readResult(ctx, nodes)
+}
+
+// Large trees stay in the shared output store, not an oversized native MCP
+// result or UI frame. References carry an immutable snapshot, not a new read.
+func (o *runtimeJournalOwner) readResult(ctx context.Context, nodes []journalNode) (any, error) {
+	result := map[string]any{"nodes": nodes}
+	data, err := json.Marshal(result)
+	if err != nil || len(data) <= 128<<10 {
+		return result, err
+	}
+	next, err := o.capture.store.putOutputChunks(ctx, string(data))
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"incomplete": true, "bytes": len(data), "format": "JSON object with nodes; concatenate stdout in continuation order", "next_call": "mread " + next}, nil
 }
 
 func (o *runtimeJournalOwner) sink() *nativeJournalSink {
@@ -246,6 +264,13 @@ func (o *runtimeJournalOwner) complete(ctx context.Context, turn string) error {
 }
 
 func (o *runtimeJournalOwner) recover(ctx context.Context, b ObservationBinding) (string, error) {
+	return o.recoverBounded(ctx, b, 10000)
+}
+
+func (o *runtimeJournalOwner) recoverBounded(ctx context.Context, b ObservationBinding, capacity int) (string, error) {
+	if capacity < 1 || capacity > 10000 {
+		return "", errors.New("native journal recovery capacity must be 1 to 10000 characters")
+	}
 	ctx, err := o.scope(ctx, b)
 	if err != nil {
 		return "", err
@@ -265,7 +290,7 @@ func (o *runtimeJournalOwner) recover(ctx context.Context, b ObservationBinding)
 		if !exists {
 			return errors.New("native journal recovery evidence unavailable")
 		}
-		result, err = store.journalSummaryBoundedLocked(ctx, j, 10000)
+		result, err = store.journalSummaryBoundedLocked(ctx, j, capacity)
 		return err
 	})
 	return result.Text, err

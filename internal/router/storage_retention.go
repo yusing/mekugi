@@ -377,10 +377,13 @@ func (s *mekugiReplayStore) readDependencyNames(record shellOutputRecord) ([]str
 			}
 		}
 
-		if record.Source == "" {
+		id := record.Source
+		if id == "" {
+			id = record.Next
+		}
+		if id == "" {
 			return names, nil
 		}
-		id := record.Source
 		name, err := s.outputName(id)
 		if err != nil {
 			return nil, err

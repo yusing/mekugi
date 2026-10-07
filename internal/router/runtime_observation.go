@@ -1,8 +1,10 @@
 package router
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -11,6 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/yusing/mekugi/internal/execsegment"
 
 	"github.com/gofrs/flock"
 )
@@ -37,6 +41,28 @@ type ObservationCall struct {
 	Shell   string             `json:"shell,omitempty"`
 }
 
+// Hooks can serialize the same native JSON object in different member orders.
+// Compare those objects, not serialization order. Retained evidence stays exact;
+// numbers are not converted to floats or canonicalized with a loss of precision.
+func sameObservationCall(a, b *ObservationCall) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	left, right := *a, *b
+	left.Input, right.Input = "", ""
+	if !reflect.DeepEqual(left, right) {
+		return false
+	}
+	if a.Input == b.Input {
+		return true
+	}
+	x, y := jsontext.Value(a.Input), jsontext.Value(b.Input)
+	if x.Format(jsontext.ReorderRawObjects(true)) != nil || y.Format(jsontext.ReorderRawObjects(true)) != nil {
+		return false
+	}
+	return bytes.Equal(x, y)
+}
+
 type ObservationTerminal struct {
 	Task        string `json:"task,omitempty"`
 	Status      string `json:"status"`
@@ -60,6 +86,7 @@ type nativeObservationOwner struct {
 	tasks                       map[string]string
 	taskEvents                  map[string]observationTask
 	broker                      *liveDiffBroker
+	execTrack                   *execTrackHub
 }
 
 func newNativeObservationOwner(ctx context.Context, store *mekugiReplayStore, runtime, workspace string) (*nativeObservationOwner, error) {
@@ -83,6 +110,10 @@ func observationKey(call ObservationCall) string {
 func (o *nativeObservationOwner) bind(ctx context.Context, b ObservationBinding) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	return o.bindLocked(ctx, b)
+}
+
+func (o *nativeObservationOwner) bindLocked(ctx context.Context, b ObservationBinding) error {
 	if b.Runtime != o.runtime || b.Session == "" || b.Workspace != o.workspace || b.Branch != "" {
 		return errors.New("native observation binding does not match this launch")
 	}
@@ -217,7 +248,7 @@ func (o *nativeObservationOwner) before(ctx context.Context, call ObservationCal
 	if prior, found, err := o.store.lookup(ctx, o.workspace, key+"/before"); err != nil {
 		return err
 	} else if found {
-		if prior.NativeObservation == nil || !reflect.DeepEqual(prior.NativeObservation.Call, &call) {
+		if prior.NativeObservation == nil || !sameObservationCall(prior.NativeObservation.Call, &call) {
 			return errors.New("native call identity/input changed")
 		}
 		// Replay never opens another observation window or captures a later baseline.
@@ -229,7 +260,7 @@ func (o *nativeObservationOwner) before(ctx context.Context, call ObservationCal
 	if prior, found, err := o.store.lookup(ctx, o.workspace, key+"/after"); err != nil {
 		return err
 	} else if found {
-		if prior.NativeObservation == nil || !reflect.DeepEqual(prior.NativeObservation.Call, &call) {
+		if prior.NativeObservation == nil || !sameObservationCall(prior.NativeObservation.Call, &call) {
 			return errors.New("native call identity/input changed")
 		}
 		return nil
@@ -265,6 +296,11 @@ func (o *nativeObservationOwner) before(ctx context.Context, call ObservationCal
 		return err
 	}
 	o.live[key] = true
+	if o.execTrack != nil && call.Tool == "Bash" && call.Command != "" {
+		if _, trackable := execsegment.Split(call.Command); trackable {
+			o.execTrack.startScript([3]string{call.Binding.Session, call.Binding.Agent, call.ID}, call.Command)
+		}
+	}
 	o.pendingCount.Add(1)
 	o.windows.open(&execWindow{ref: key, roots: observation.Roots, thread: history.ExecutingThread, named: true, endpointScope: observation.scopePaths(), endpointWide: call.Command != "" && observation.Class != execNeutral.String()})
 	return nil
@@ -286,7 +322,7 @@ func (o *nativeObservationOwner) finishLocked(ctx context.Context, call Observat
 	if prior, found, err := o.store.lookup(ctx, o.workspace, key+"/after"); err != nil {
 		return "", err
 	} else if found {
-		if prior.NativeObservation == nil || !reflect.DeepEqual(prior.NativeObservation.Call, &call) {
+		if prior.NativeObservation == nil || !sameObservationCall(prior.NativeObservation.Call, &call) {
 			return "", errors.New("native completion identity/input changed")
 		}
 		// put repairs a publication that failed after writing its durable record.
@@ -300,7 +336,7 @@ func (o *nativeObservationOwner) finishLocked(ctx context.Context, call Observat
 	if err != nil {
 		return "", err
 	}
-	if found && (before.NativeObservation == nil || !reflect.DeepEqual(before.NativeObservation.Call, &call)) {
+	if found && (before.NativeObservation == nil || !sameObservationCall(before.NativeObservation.Call, &call)) {
 		return "", errors.New("native completion differs from pre-tool input")
 	}
 	if terminal.Task != "" && terminal.Status == "running" {
@@ -361,6 +397,7 @@ func (o *nativeObservationOwner) finishLocked(ctx context.Context, call Observat
 	if err := o.store.put(ctx, o.workspace, map[string]mekugiHistory{key + "/after": record}); err != nil {
 		return "", err
 	}
+	o.execTrack.nativeCompleted([3]string{call.Binding.Session, call.Binding.Agent, call.ID})
 	o.settled(key, terminal.Task)
 	return record.ChangeID, nil
 }

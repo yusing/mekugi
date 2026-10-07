@@ -112,6 +112,9 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		if entry.native != nil && entry.native.wait != nil {
 			return []activityui.Block{*entry.native.wait}
 		}
+		if entry.native != nil && entry.native.phase == "task" {
+			return []activityui.Block{{Kind: "progress", Label: text, Body: text}}
+		}
 		return []activityui.Block{{Kind: "progress", Body: text}}
 	case "assignment":
 		if entry.assignment != nil {
@@ -183,6 +186,10 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		}
 		if entry.native != nil && len(blocks) > 0 {
 			blocks[len(blocks)-1].Output = entry.native.output
+			if entry.native.status == "failed" {
+				last := &blocks[len(blocks)-1]
+				last.Label = strings.TrimSpace(last.Label + " · failed")
+			}
 		}
 		if entry.native != nil && (entry.native.running || len(entry.outputTail) > 0) {
 			// The host provides one stream for the whole invocation. Place it
