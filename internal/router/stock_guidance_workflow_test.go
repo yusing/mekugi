@@ -54,6 +54,10 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 		t.Errorf("journal guidance appears %d times; want one owner", count)
 	}
 	for _, rule := range []string{
+		"exploration with the specification and affected reader documents, implementation with verification, review when warranted, then delivery",
+		"update affected documents before implementation",
+		"keeping implementation and its verification together",
+		"Ordinary questions, explanations and read-only reviews keep their conversational flow",
 		"one concrete result and a completion check",
 		"sized for about 5-10 minutes of work",
 		"pending sibling slices under the same parent",
@@ -62,7 +66,7 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 		"reset context and continue with the next pending slice",
 	} {
 		if !strings.Contains(combined, rule) {
-			t.Errorf("prepared request lacks slice guidance: %s", rule)
+			t.Errorf("prepared request lacks workflow guidance: %s", rule)
 		}
 	}
 }

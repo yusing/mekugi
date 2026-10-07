@@ -600,14 +600,22 @@ stock tool catalog and prompt.
 
 ### Runtime authoring
 
-Tasks express intentions. Main work updates and newly established facts go into the
-journal, attached to the next useful tool call rather than standalone commentary
-or a journal-only request. Notes lead with the result or decision, then supporting
+Tasks express concrete outcomes in task workflow order for authorized changes:
+exploration with the specification and affected reader documents, implementation
+with verification, review when warranted, then delivery. Bounded work uses the
+confirmed request and existing records without empty phase tasks. Exploration
+records accepted behavior, scope, non-goals, decisions, testing seams and acceptance
+checks; affected documents are updated before implementation. Ordinary questions,
+explanations and read-only reviews keep their conversational flow. Main work updates
+and newly established facts go into the journal, attached to the next useful tool
+call rather than standalone commentary or a journal-only request. Notes lead with the result or decision, then supporting
 evidence. Task state changes convey milestones such as investigation finished or
 validation started; notes record new findings, decisions, measured progress and
 blockers. Announcing the next action or repeating a task state or unchanged fact
-is not a new note. Standing constraints belong in context once. Parents record
+is not a new note. Standing constraints belong in context once. Changed decisions
+update their existing contract record and affected documents. Parents record
 integration decisions, not copies of child journals.
+Delivery checks agreement between the contract, documents and verified outcome.
 Main work completion uses the finish marker in the final useful execution when its
 result can establish completion. It adds neither a standalone finalization tool
 call nor a follow-up `Done.` provider acknowledgment. Required result interpretation
