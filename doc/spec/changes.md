@@ -154,7 +154,8 @@ retained provenance, not file classification.
 
 VCS commands that import, discard, or write out repository content retain their
 effects as diagnostic history, not agent-authored changes. These effects are
-excluded from authored counts, diffs, notices, saved Diff, and child handoffs.
+excluded from authored counts, diffs, notices, saved Diff, live diff, and child
+handoffs. This includes redirected or piped repository output.
 Command observation uses the shared VCS classification to distinguish possible
 writers from read-only commands. In a window containing both a VCS writer and an
 interpreter edit, source-named interpreter targets remain authored; unnamed
@@ -409,8 +410,9 @@ displayed edit. A literal `workdir` resolves relative targets, as does a literal
 predicted as if each succeeds. Literal variable assignments, `set`, `echo`, and
 `true` steps do not prevent a prediction. When an edit's `workdir` is computed,
 the card reports that its target cannot be resolved.
-Scope cards list pending VCS restore, deletion, or switch targets when their
-targets are known. Ordinary command watches remain hidden until a captured
+Recognized VCS effects have no pending or running live-diff card. Authored
+targets in mixed calls remain visible, using the same provenance admission as
+authored counts. Ordinary command watches remain hidden until a captured
 file changes. A `may write` footer distinguishes captured paths from additional
 unknown write targets and stays anchored to the bottom of its card. Unknown
 targets describe incomplete command-wide coverage, not a failure to resolve the

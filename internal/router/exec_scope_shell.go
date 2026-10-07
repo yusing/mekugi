@@ -170,11 +170,14 @@ type execShellWalker struct {
 	authoredOnly bool
 	// A pipe from an unsupported process is output, not authored text.
 	generatedInput bool
-	depth          int
-	deadline       time.Time
-	stdin          string
-	cwd            string
-	plan           *execPlan
+	// generatedOrigin retains a recognized VCS producer through a pipeline.
+	generatedOrigin string
+	vcsOrigin       string
+	depth           int
+	deadline        time.Time
+	stdin           string
+	cwd             string
+	plan            *execPlan
 	// moves counts cd commands walked, so a list can tell that the directory
 	// may have changed even when it returns to the same path.
 	moves int
@@ -250,6 +253,14 @@ func execGuardedCd(stmt *syntax.Stmt) bool {
 
 func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 	w.program = execProgram{}
+	previousOrigin := w.vcsOrigin
+	w.vcsOrigin = ""
+	// Each statement owns its scope, while compound output retains all producers.
+	defer func() {
+		if previousOrigin != "" {
+			w.vcsOrigin = previousOrigin
+		}
+	}()
 	w.stdin = ""
 	for _, redirect := range stmt.Redirs {
 		if body, ok := liveDiffShellHeredoc(redirect, false); ok {
@@ -273,6 +284,18 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 			w.redirect(redirect)
 		}
 	}
+	redirects := len(w.plan.Scope)
+	defer func() {
+		origin := w.vcsOrigin
+		if origin == "" && w.stdin == "" && !authoredShellRedirection(stmt, w.generatedInput) {
+			origin = w.generatedOrigin
+		}
+		if origin != "" {
+			for i := writes; i < redirects; i++ {
+				w.plan.Scope[i].Origin = origin
+			}
+		}
+	}()
 	if len(w.plan.Scope) != writes {
 		label := "shell"
 		if call, ok := stmt.Cmd.(*syntax.CallExpr); ok && len(call.Args) != 0 {
@@ -294,10 +317,14 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 				return
 			}
 			// Pipeline sides run in subshells, so a cd there does not leak.
-			w.subshell(func(inner *execShellWalker) { inner.stmt(command.X) })
+			origin := w.subshell(func(inner *execShellWalker) { inner.stmt(command.X) })
 			generated := !authoredPipeOutput(command.X, w.generatedInput)
-			w.subshell(func(inner *execShellWalker) {
+			w.vcsOrigin = w.subshell(func(inner *execShellWalker) {
 				inner.generatedInput = generated
+				inner.generatedOrigin = ""
+				if generated {
+					inner.generatedOrigin = origin
+				}
 				inner.stmt(command.Y)
 			})
 		case syntax.AndStmt:
@@ -323,7 +350,7 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 	case *syntax.Block:
 		w.stmts(command.Stmts)
 	case *syntax.Subshell:
-		w.subshell(func(inner *execShellWalker) { inner.stmts(command.Stmts) })
+		w.vcsOrigin = w.subshell(func(inner *execShellWalker) { inner.stmts(command.Stmts) })
 	case *syntax.IfClause:
 		// Every branch may run; the scope is a superset, never a prediction.
 		// Conditions of later clauses run after earlier ones failed.
@@ -333,6 +360,9 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 			conditions.stmts(clause.Cond)
 			branch := conditions
 			branch.stmts(clause.Then)
+			if w.vcsOrigin == "" {
+				w.vcsOrigin = branch.vcsOrigin
+			}
 			moves = max(moves, branch.moves)
 		}
 		if moves != w.moves {
@@ -357,6 +387,9 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 		for _, item := range command.Items {
 			branch := *w
 			branch.stmts(item.Stmts)
+			if w.vcsOrigin == "" {
+				w.vcsOrigin = branch.vcsOrigin
+			}
 			moves = max(moves, branch.moves)
 		}
 		if moves != w.moves {
@@ -464,9 +497,13 @@ func execResolutionVariable(assign *syntax.Assign) bool {
 	return assign.Name != nil && (assign.Name.Value == "PATH" || assign.Name.Value == "BASH_ENV" || assign.Name.Value == "ENV")
 }
 
-func (w *execShellWalker) subshell(walk func(*execShellWalker)) {
-	inner := execShellWalker{authoredOnly: w.authoredOnly, generatedInput: w.generatedInput, cwd: w.cwd, plan: w.plan, functions: w.functions, deadline: w.deadline, depth: w.depth, changes: w.changes}
+func (w *execShellWalker) subshell(walk func(*execShellWalker)) string {
+	inner := execShellWalker{authoredOnly: w.authoredOnly, generatedInput: w.generatedInput, generatedOrigin: w.generatedOrigin, cwd: w.cwd, plan: w.plan, functions: w.functions, deadline: w.deadline, depth: w.depth, changes: w.changes}
 	walk(&inner)
+	if inner.vcsOrigin != "" {
+		return inner.vcsOrigin
+	}
+	return inner.generatedOrigin
 }
 
 func (w *execShellWalker) redirect(redirect *syntax.Redirect) {
@@ -831,6 +868,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 		return
 	}
 	if vcsguard.IsTool(identity) {
+		w.vcsOrigin = w.program.Label
 		values, literal := literalArgs(args)
 		w.program.VCS = !literal || vcsguard.WorktreeWrites(append([]string{identity}, values...))
 		start := len(w.plan.Scope)
@@ -930,7 +968,13 @@ func (w *execShellWalker) command(identity, name string, args []*syntax.Word) {
 		if w.authoredOnly && identity == "tee" && w.generatedInput && w.stdin == "" {
 			return
 		}
+		start := len(w.plan.Scope)
 		w.fileOperands(identity, args)
+		if identity == "tee" && w.generatedOrigin != "" && w.stdin == "" {
+			for i := start; i < len(w.plan.Scope); i++ {
+				w.plan.Scope[i].Origin = w.generatedOrigin
+			}
+		}
 	case "sed":
 		w.sed(args)
 	case "perl":

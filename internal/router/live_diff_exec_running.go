@@ -14,7 +14,7 @@ import (
 
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/ui/diffview"
-	"mvdan.cc/sh/v3/syntax"
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 // The window registry owns display cancellation, not process continuation.
@@ -24,8 +24,18 @@ var execRunningPreviewSlots = make(chan struct{}, 16)
 const execRunningPreviewBytes = 1 << 20
 
 func (r *execWindowRegistry) preview(ref string, observation execObservation, broker *liveDiffBroker, workspace, thread, caller string) {
-	observation.Files = slices.DeleteFunc(slices.Clone(observation.Files), func(file execFileSnapshot) bool { return file.watchMoveOnly })
-	if r == nil || broker == nil || len(observation.Files) == 0 && execPendingScope(observation) == "" {
+	// VCS effects use the same provenance admission as authored counts.
+	// Display-only formatter captures retain their existing preview behavior.
+	excludedVCS := func(origin string) bool {
+		tool, _, _ := strings.Cut(origin, " ")
+		return vcsguard.IsTool(tool) && !authoredReview(mekugi.ReviewFile{Origin: origin})
+	}
+	observation.Files = slices.DeleteFunc(slices.Clone(observation.Files), func(file execFileSnapshot) bool {
+		return file.watchMoveOnly || excludedVCS(file.Origin)
+	})
+	observation.Omitted = slices.DeleteFunc(slices.Clone(observation.Omitted), func(omission execOmission) bool { return excludedVCS(omission.Origin) })
+	observation.Listings = slices.DeleteFunc(slices.Clone(observation.Listings), func(listing execListing) bool { return excludedVCS(listing.Origin) })
+	if r == nil || broker == nil || len(observation.Files) == 0 {
 		return
 	}
 	r.mu.Lock()
@@ -94,65 +104,6 @@ func execScopePreviewFooter(observation execObservation) string {
 	return footer
 }
 
-func execPendingScope(observation execObservation) string {
-	paths := execPreviewPaths(observation)
-	if len(paths) == 0 {
-		return ""
-	}
-	verb := ""
-	for _, command := range observation.Commands {
-		program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(command.Command), "")
-		if err != nil {
-			continue
-		}
-		syntax.Walk(program, func(node syntax.Node) bool {
-			if _, declaration := node.(*syntax.FuncDecl); declaration {
-				// A definition alone does not run its body. Actual writes still
-				// appear through the running file watch.
-				return false
-			}
-			call, ok := node.(*syntax.CallExpr)
-			if !ok {
-				return true
-			}
-			words, ok := literalArgs(call.Args)
-			if !ok || len(words) < 2 {
-				return true
-			}
-			name := filepath.Base(words[0])
-			subcommand := words[1]
-			if name == "git" {
-				var parsed bool
-				subcommand, _, _, parsed = gitSubcommand(words[1:])
-				if !parsed {
-					return true
-				}
-			}
-			switch name + " " + subcommand {
-			case "git restore", "git reset", "svn revert", "hg revert":
-				verb = "will restore (pending)"
-			case "git clean":
-				verb = "will delete (pending)"
-			case "git switch", "git checkout":
-				verb = "will switch (pending)"
-			}
-			return true
-		})
-	}
-	if verb == "" {
-		return ""
-	}
-	var body strings.Builder
-	body.WriteString(verb)
-	for _, path := range paths[:min(32, len(paths))] {
-		body.WriteString("\n" + path)
-	}
-	if len(paths) > 32 {
-		fmt.Fprintf(&body, "\n+%d more", len(paths)-32)
-	}
-	return body.String()
-}
-
 // Reuse literal edit projection against the pre-call capture, never a fresh
 // read of a file the host may already have edited. Unprojectable effects keep
 // the normal host-result lifecycle; tests acquire no predicted write targets.
@@ -208,7 +159,6 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 	defer broker.discardRunningPreview(preview)
 	expected := execPreviewExpected(ctx, observation)
 	matched := make(map[string]bool)
-	pending := execPendingScope(observation)
 	footer := execScopePreviewFooter(observation)
 	if len(expected) > 0 {
 		// This card belongs to the projected edit, not arbitrary side effects
@@ -216,10 +166,6 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 		footer = execScopePreviewFooter(execObservation{Files: observation.Files})
 	}
 	preview.Footer = footer
-	if pending != "" {
-		preview.Status, preview.Input = diffview.PreviewPending, pending
-		broker.publishPreview(preview, false)
-	}
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	stamps := make(map[string]string)
@@ -342,21 +288,15 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 			}
 			return
 		}
-		status, input := diffview.PreviewRunning, ""
 		if len(preview.Files) == 0 {
-			if pending == "" {
-				broker.discardRunningPreview(preview)
-				preview.Status, preview.Input = "", ""
-				continue
-			}
-			status, input = diffview.PreviewPending, pending
+			broker.discardRunningPreview(preview)
+			preview.Status, preview.Input = "", ""
+			continue
 		}
-		updated = updated || preview.Status != status || preview.Input != input
-		preview.Status, preview.Input = status, input
+		updated = updated || preview.Status != diffview.PreviewRunning
+		preview.Status, preview.Input = diffview.PreviewRunning, ""
 		preview.Footer = footer
-		if status == diffview.PreviewRunning {
-			preview.Footer = strings.Replace(preview.Footer, "may write", "observed changes", 1)
-		}
+		preview.Footer = strings.Replace(preview.Footer, "may write", "observed changes", 1)
 		if !updated {
 			// Admission can reject a new card while the broker is full. Keep
 			// retrying until it is visible, even if its files remain unchanged.
