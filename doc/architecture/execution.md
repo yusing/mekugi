@@ -11,9 +11,9 @@ stock call.
 The final request projection may replace eligible repeated model-visible output
 with references under the
 [duplicate-output contract](../spec/execution.md#duplicate-output-projection).
-`internal/router/output_dedupe.go` owns host-part selection, preserved headers,
-exclusions, and labels; `internal/outputdedupe` owns request-local verbatim
-matching. All observers, retention, and continuation advice consume original
+`internal/router/output_dedupe.go` owns host-part and submitted attachment-body
+selection, preserved headers, exclusions, and labels; `internal/outputdedupe` owns
+request-local verbatim matching. All observers, retention, and continuation advice consume original
 host output before this projection. Neither owner changes the host result,
 rollout, retained replay evidence, or UI, or restores matcher state across views.
 

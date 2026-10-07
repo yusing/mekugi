@@ -32,13 +32,13 @@ func TestSplitCommand(t *testing.T) {
 	}
 }
 
-func TestDuplicateOutputFlagDefaultsOn(t *testing.T) {
+func TestDuplicateOutputFlagOptIn(t *testing.T) {
 	flags := newRouterFlags(io.Discard)
-	if !*flags.duplicateOutput {
-		t.Fatal("duplicate output projection must default on")
+	if *flags.duplicateOutput {
+		t.Fatal("duplicate output projection must default off")
 	}
-	if err := flags.Parse([]string{"--duplicate-output=false"}); err != nil || *flags.duplicateOutput {
-		t.Fatalf("opt-out = %v, %v", *flags.duplicateOutput, err)
+	if err := flags.Parse([]string{"--duplicate-output"}); err != nil || !*flags.duplicateOutput {
+		t.Fatalf("opt-in = %v, %v", *flags.duplicateOutput, err)
 	}
 }
 

@@ -44,7 +44,7 @@ func newRouterFlags(stderr io.Writer) routerFlags {
 		postCompactRecovery: flags.Bool("post-compact-recovery", true, "restore journal and change context after compaction through a pre-trusted Codex hook"),
 		vcsGuard:            flags.Bool("vcs-guard", true, "ask before remote VCS writes in the UI, independently of Codex approval policy"),
 		journalCompaction:   flags.String("journal-compaction", "auto", "journal context reset: auto (default), slice, or off"),
-		duplicateOutput:     flags.Bool("duplicate-output", true, "project duplicate output as references in model input (disable with --duplicate-output=false)"),
+		duplicateOutput:     flags.Bool("duplicate-output", false, "opt in to duplicate output and attachment references in model input"),
 		grokAuthFile:        flags.String("grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)"),
 		captureOutput:       flags.String("capture-output", "", "optional sanitized capture JSONL path"),
 		debug:               flags.Bool("debug", false, "record diagnostics, capture, metrics, instructions, runtime reads, and AX report; print session diagnosis command on exit"),

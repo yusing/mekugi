@@ -166,8 +166,8 @@ Acceptance:
 
 ### Duplicate-output projection
 
-Duplicate-output projection is enabled by default in Mekugi mode. Disable it
-with the launch option `--duplicate-output=false`. It changes only eligible output
+Duplicate-output projection is opt-in in Mekugi mode. Enable it with the launch
+option `--duplicate-output`; it is off by default. It changes only eligible text
 in the model-visible request input. Passthrough is unchanged. The original request
 input, host result, Codex rollout, retained replay and change evidence, and UI
 keep the full text. Every evidence consumer, including command and patch
@@ -175,8 +175,16 @@ observation, result confirmation, failure observation, retention, and continuati
 advice, reads the original output before this final projection.
 
 A unit is one host-produced text part of a `function_call_output` or
-`custom_tool_call_output`; a string output is one part. Execution headers remain
-verbatim. Router-appended parts, including journal IDs, warnings, edit notices,
+`custom_tool_call_output`, or one submitted file or managed-skill frame body in a
+user message through a complete durable envelope in an `input_text` part.
+A string output is one part. Execution and attachment headers remain
+verbatim. Durable attachment envelopes use their submitted bodies; files and skills
+are never reopened to infer equality. Frame byte ranges describe the original
+snapshot, while reference rows address the earlier visible body. Ordinary user
+requests, base instructions, selection attachments, malformed envelopes, and media
+are excluded. String-content or non-`input_text` envelopes and bare frame text
+remain ordinary input. Native selected-skill XML retains its existing manager
+rewrite. Router-appended parts, including journal IDs, warnings, edit notices,
 and continuation advice, remain intact. Outputs without a call ID and native
 live-session JSON envelopes are excluded.
 
@@ -191,8 +199,9 @@ References have the form ``[same as `git diff -- review.go`]`` or
 ``[same as `mchanges amber1` L40-112]``; a single row uses `L40`. The row range is
 omitted for an entire earlier unit. Rows count the earlier unit as delivered,
 with each generated marker counting as one row. Labels use the source cell's
-single literal nested command when available, otherwise the source unit's first
-line, shortened to 60 characters. References always target visible verbatim
+single literal nested command when available, the attachment header for a frame,
+or the source output's first line, shortened to 60 characters. References always
+target visible verbatim
 text, never generated markers or replaced spans, so they need no second hop.
 Literal host text resembling a marker remains host text.
 

@@ -29,8 +29,8 @@ Provider-selection arguments are rejected. Mekugi flags precede `codex`; subsequ
 noninteractive arguments remain intact, including subcommands and `--` delimiters.
 Interactive terminal arguments follow the native client mapping below.
 
-The Mekugi flag `--duplicate-output` defaults to `true`. Use
-`--duplicate-output=false` to disable the
+The Mekugi flag `--duplicate-output` defaults to `false`. Use
+`--duplicate-output` to enable the
 [model-visible duplicate-output projection](execution.md#duplicate-output-projection)
 without changing host results, retained evidence, or the UI. It has no effect in
 passthrough mode.

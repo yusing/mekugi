@@ -4,6 +4,8 @@ import (
 	"bytes"
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
+	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -260,5 +262,173 @@ func TestDuplicateOutputMarkersPointToVerbatim(t *testing.T) {
 	projectDuplicateOutputs(request, duplicateOutputHostParts(original), "exec")
 	if !bytes.Equal(first, request.fields["input"]) {
 		t.Fatal("same original input projected differently")
+	}
+}
+
+func TestDuplicateOutputAttachmentsAndWirePrefix(t *testing.T) {
+	var body string
+	for i := range 12 {
+		body += fmt.Sprintf("unchanged submitted content %02d\n", i)
+	}
+	user := func(text string) any {
+		return map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": text}}}
+	}
+	for _, tc := range []struct {
+		name  string
+		frame func(string) string
+	}{
+		{"file snapshot", func(body string) string { return frameComposerFile("/missing/file.go", body)[0] }},
+		{"skill snapshot", func(body string) string { return frameComposerSkillFromPath("review", "/missing/SKILL.md", body)[0] }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			frame := tc.frame(body)
+			header, _, ok := strings.Cut(frame, "\n")
+			header += "\n"
+			if !ok {
+				t.Fatal("producer frame was not eligible")
+			}
+			attach := func(text string) any {
+				return user(encodeFileAttachments([]string{text}))
+			}
+			input := []any{attach(frame), user(body), attach(frame)}
+			for _, enabled := range []bool{false, true} {
+				proxy := newManagedMekugiProxy(t)
+				proxy.duplicateOutput = enabled
+				wire := func(input []any) *parsedResponsesRequest {
+					request := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
+					if fresh := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{}); !bytes.Equal(request.fields["input"], fresh.fields["input"]) {
+						t.Fatal("same original attachment input projected differently")
+					}
+					attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}, mekugiCalls: proxy}, t.Context(), t.Context(), *request, http.Header{}, "")
+					if err := attempt.prepareWire(); err != nil {
+						t.Fatal(err)
+					}
+					return &attempt.request
+				}
+				request := wire(input)
+				items := duplicateTestItems(t, request)
+				texts := func(item map[string]jsonv1.RawMessage) string {
+					var parts []struct {
+						Text string `json:"text"`
+					}
+					if err := json.Unmarshal(item["content"], &parts); err != nil {
+						t.Fatal(err)
+					}
+					return parts[0].Text
+				}
+				want := frame
+				if enabled {
+					want = header + "[same as `" + duplicateOutputLabel(header, "") + "`]\n"
+				}
+				if texts(items[0]) != frame || texts(items[1]) != body || texts(items[2]) != want {
+					t.Fatalf("wire content changed incorrectly: %s", request.fields["input"])
+				}
+				if !sameJSONValue(request.originalFields["input"], mustMarshalJSON(input)) {
+					t.Fatal("original snapshot changed")
+				}
+				if !enabled || tc.name != "skill snapshot" {
+					continue
+				}
+				first := request.fields["input"]
+				var prefix []jsonv1.RawMessage
+				if err := json.Unmarshal(first, &prefix); err != nil {
+					t.Fatal(err)
+				}
+				state, err := (providerHistory{confirmed: true}).append(prefix)
+				if err != nil {
+					t.Fatal(err)
+				}
+				grown := wire(append(slices.Clone(input), attach(frame)))
+				if texts(duplicateTestItems(t, grown)[3]) != want {
+					t.Fatal("third snapshot referenced a generated marker")
+				}
+				exchange := &webSocketExchange{parentID: "parent", history: &webSocketHistory{parent: &webSocketHistory{providerHistory: state}}}
+				grown.fields["previous_response_id"] = mustMarshalJSON("parent")
+				if err := exchange.reconcileProviderHistory(grown, mustMarshalJSON(grown.fields)); err != nil {
+					t.Fatal(err)
+				}
+				if grown.cachedInput != len(prefix) || grown.rebaseInput {
+					t.Fatal("attachment projection rewrote the confirmed prefix")
+				}
+			}
+		})
+	}
+}
+
+func TestDuplicateOutputAttachmentEligibility(t *testing.T) {
+	var body string
+	for i := range 12 {
+		body += fmt.Sprintf("attached body source text %02d\n", i)
+	}
+	frame := frameComposerFile("/missing/example", body)[0]
+	user := func(content any) any { return map[string]any{"role": "user", "content": content} }
+	parts := []any{map[string]any{"type": "input_text", "text": encodeFileAttachments([]string{frame})}, map[string]any{"type": "input_image", "image_url": "image"}}
+	classified := map[string]any{"role": "user", "content": parts, "internal_chat_message_metadata_passthrough": map[string]any{"content_item_kinds": []string{"agents_md.instructions", "user.image"}}}
+	input := []any{
+		classified,
+		map[string]any{"role": "developer", "content": parts},
+		user(fileAttachmentPrefix + "invalid JSON" + fileAttachmentSuffix),
+		user("Attached file /missing: CONTENT NOT ATTACHED\n" + body),
+		user(body),
+		user([]any{map[string]any{"type": "input_text", "text": encodeFileAttachments([]string{frame})}}),
+	}
+	input = append(input, duplicateTestInput("read file", "output", body)...)
+	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustMarshalJSON(input)}}
+	projectDuplicateOutputs(request, duplicateOutputHostParts(request.fields["input"]), "exec")
+	items := duplicateTestItems(t, request)
+	for at := range 6 {
+		if !sameJSONValue(mustMarshalJSON(items[at]), mustMarshalJSON(input[at])) {
+			t.Fatalf("ineligible item %d changed, or the first eligible source was hidden", at)
+		}
+	}
+	header, _, _ := strings.Cut(frame, "\n")
+	header += "\n"
+	if got := jsonString(items[7], "output"); got != duplicateTestHeader+"[same as `"+duplicateOutputLabel(header, "")+"`]\n" {
+		t.Fatalf("tool did not reference the visible attachment: %q", got)
+	}
+}
+
+func TestDuplicateOutputAttachmentDeliveredShape(t *testing.T) {
+	var body string
+	for i := range 12 {
+		body += fmt.Sprintf("distinct delivered frame row %02d\n", i)
+	}
+	frame := frameComposerFile("/missing/delivery", body)[0]
+	envelope := encodeFileAttachments([]string{frame})
+	part := func(kind, text string) any { return map[string]any{"type": kind, "text": text} }
+	for _, content := range []any{
+		envelope,
+		[]any{part("text", envelope)},
+		[]any{part("input_text", envelope), part("input_text", frame)},
+		[]any{part("input_text", frame), part("input_text", envelope)},
+	} {
+		input := []any{map[string]any{"role": "user", "content": content}}
+		input = append(input, duplicateTestInput("later body", "later", body)...)
+		proxy := newManagedMekugiProxy(t)
+		proxy.duplicateOutput = true
+		request := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
+		attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}, mekugiCalls: proxy}, t.Context(), t.Context(), *request, http.Header{}, "")
+		if err := attempt.prepareWire(); err != nil {
+			t.Fatal(err)
+		}
+		items := duplicateTestItems(t, &attempt.request)
+		// Unsupported shapes must not become invisible sources. Supported
+		// envelopes move after ordinary parts, which must stay full and earlier.
+		_, array := content.([]any)
+		supported := array && len(content.([]any)) == 2
+		if strings.Contains(jsonString(items[len(items)-1], "output"), "[same as") != supported {
+			t.Fatalf("wrong source eligibility for %T: %s", content, attempt.request.fields["input"])
+		}
+		if supported {
+			var parts []struct {
+				Text string `json:"text"`
+			}
+			if err := json.Unmarshal(items[0]["content"], &parts); err != nil {
+				t.Fatal(err)
+			}
+			if parts[0].Text != frame {
+				t.Fatal("first delivered frame references later text")
+			}
+		}
 	}
 }

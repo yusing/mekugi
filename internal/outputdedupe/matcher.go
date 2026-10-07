@@ -1,4 +1,4 @@
-// Package outputdedupe finds repeated line runs in earlier visible tool output.
+// Package outputdedupe finds repeated line runs in earlier visible text.
 // An Index belongs to one forward pass over a model request, not to a session.
 package outputdedupe
 
@@ -73,8 +73,8 @@ func New() *Index {
 	return &Index{seed: maphash.MakeSeed(), seeds: make(map[uint64][4]position), firstPiece: 1}
 }
 
-// Close clears tool text before returning buffers. It is safe to call repeatedly.
-// Existing projections own only original host text and remain usable.
+// Close clears indexed text before returning buffers. It is safe to call repeatedly.
+// Existing projections own only original text and remain usable.
 func (idx *Index) Close() {
 	for i := range idx.pieces {
 		idx.pieces[i].release()

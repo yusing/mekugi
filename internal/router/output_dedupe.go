@@ -21,6 +21,61 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 	commands := make(map[string]string)
 	var labels []string
 	changed := false
+	projectBody := func(header, body, label string) string {
+		if len(body) < outputdedupe.Threshold {
+			return header + body
+		}
+		projection := index.Project(body)
+		source := len(labels)
+		labels = append(labels, label)
+		index.Add(source, projection)
+		if len(projection.Spans) == 0 {
+			return header + body
+		}
+		var result strings.Builder
+		result.WriteString(header)
+		start := 0
+		for _, span := range projection.Spans {
+			result.WriteString(body[start:span.Start])
+			fmt.Fprintf(&result, "[same as `%s`", labels[span.Source])
+			if !span.Whole {
+				if span.FirstLine == span.LastLine {
+					fmt.Fprintf(&result, " L%d", span.FirstLine)
+				} else {
+					fmt.Fprintf(&result, " L%d-%d", span.FirstLine, span.LastLine)
+				}
+			}
+			result.WriteByte(']')
+			if body[span.End-1] == '\n' {
+				result.WriteByte('\n')
+			}
+			start = span.End
+		}
+		result.WriteString(body[start:])
+		return result.String()
+	}
+	projectFrame := func(text string) string {
+		header, body, ok := duplicateAttachmentBody(text)
+		if !ok {
+			return text
+		}
+		return projectBody(header, body, duplicateOutputLabel(header, ""))
+	}
+	projectAttachment := func(text string) string {
+		frames, ok := decodeFileAttachments(text)
+		if !ok {
+			return text
+		}
+		changed := false
+		for i, frame := range frames {
+			frames[i] = projectFrame(frame)
+			changed = changed || frames[i] != frame
+		}
+		if changed {
+			return encodeFileAttachments(frames)
+		}
+		return text
+	}
 	for at, raw := range items {
 		var item map[string]jsonv1.RawMessage
 		if json.Unmarshal(raw, &item) != nil {
@@ -29,6 +84,18 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 		id := jsonString(item, "call_id")
 		if jsonString(item, "type") == "custom_tool_call" {
 			commands[id] = duplicateOutputCommand(item, execName)
+		}
+		if jsonString(item, "role") == "user" {
+			var metadata struct {
+				Kinds []string `json:"content_item_kinds"`
+			}
+			_ = json.Unmarshal(item["internal_chat_message_metadata_passthrough"], &metadata)
+			if content, ok := projectDuplicateTextParts(item["content"], -1, true, metadata.Kinds, projectAttachment); ok {
+				item["content"] = content
+				items[at] = mustMarshalJSON(item)
+				changed = true
+			}
+			continue
 		}
 		if !duplicateOutputItem(item) || len(hostParts[id]) == 0 {
 			continue
@@ -40,67 +107,13 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 		}
 		projectText := func(text string) string {
 			header, body := duplicateOutputBody(text)
-			if len(body) < outputdedupe.Threshold || nativeJSONSession(body) != 0 {
+			if nativeJSONSession(body) != 0 {
 				return text
 			}
-			projection := index.Project(body)
-			source := len(labels)
-			labels = append(labels, duplicateOutputLabel(commands[id], body))
-			index.Add(source, projection)
-			if len(projection.Spans) == 0 {
-				return text
-			}
-			var result strings.Builder
-			result.WriteString(header)
-			start := 0
-			for _, span := range projection.Spans {
-				result.WriteString(body[start:span.Start])
-				fmt.Fprintf(&result, "[same as `%s`", labels[span.Source])
-				if !span.Whole {
-					if span.FirstLine == span.LastLine {
-						fmt.Fprintf(&result, " L%d", span.FirstLine)
-					} else {
-						fmt.Fprintf(&result, " L%d-%d", span.FirstLine, span.LastLine)
-					}
-				}
-				result.WriteByte(']')
-				if body[span.End-1] == '\n' {
-					result.WriteByte('\n')
-				}
-				start = span.End
-			}
-			result.WriteString(body[start:])
-			return result.String()
+			return projectBody(header, body, duplicateOutputLabel(commands[id], body))
 		}
-		itemChanged := false
-		var text string
-		if json.Unmarshal(item["output"], &text) == nil {
-			if projected := projectText(text); projected != text {
-				item["output"] = mustMarshalJSON(projected)
-				itemChanged = true
-			}
-		} else {
-			var parts []jsonv1.RawMessage
-			if json.Unmarshal(item["output"], &parts) != nil {
-				continue
-			}
-			for partAt := 0; partAt < min(count, len(parts)); partAt++ {
-				var part map[string]jsonv1.RawMessage
-				if json.Unmarshal(parts[partAt], &part) != nil || jsonString(part, "type") != "input_text" ||
-					json.Unmarshal(part["text"], &text) != nil {
-					continue
-				}
-				if projected := projectText(text); projected != text {
-					part["text"] = mustMarshalJSON(projected)
-					parts[partAt] = mustMarshalJSON(part)
-					itemChanged = true
-				}
-			}
-			if itemChanged {
-				item["output"] = mustMarshalJSON(parts)
-			}
-		}
-		if itemChanged {
+		if output, ok := projectDuplicateTextParts(item["output"], count, false, nil, projectText); ok {
+			item["output"] = output
 			items[at] = mustMarshalJSON(item)
 			changed = true
 		}
@@ -108,6 +121,66 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 	if changed {
 		request.setInput(mustMarshalJSON(items))
 	}
+}
+
+// Project only complete attachment frames, never ordinary prompts or failure
+// receipts. Snapshot byte ranges remain those of the original submitted body.
+func duplicateAttachmentBody(text string) (header, body string, ok bool) {
+	first, body, found := strings.Cut(text, "\n")
+	if !found || !strings.Contains(first, " (UTF-8 bytes ") ||
+		!strings.HasSuffix(first, attachmentReadGuidance+"):") ||
+		!strings.HasPrefix(first, "Attached file ") && !managedSkillFrame(text) {
+		return "", "", false
+	}
+	return first + "\n", body, true
+}
+
+// A negative count selects all user parts. Host counts exclude router appends.
+func projectDuplicateTextParts(raw jsonv1.RawMessage, count int, user bool, kinds []string, project func(string) string) (jsonv1.RawMessage, bool) {
+	eligible := func(at int) bool {
+		return !user || at >= len(kinds) || kinds[at] == "" || strings.HasPrefix(kinds[at], "user.")
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		if user {
+			// The wire owner expands only array input_text envelopes.
+			return raw, false
+		}
+		if projected := project(text); projected != text {
+			return mustMarshalJSON(projected), true
+		}
+		return raw, false
+	}
+	var parts []jsonv1.RawMessage
+	if json.Unmarshal(raw, &parts) != nil {
+		return raw, false
+	}
+	if count < 0 {
+		count = len(parts)
+	}
+	changed := false
+	for at := 0; at < min(count, len(parts)); at++ {
+		if !eligible(at) {
+			continue
+		}
+		var part map[string]jsonv1.RawMessage
+		if json.Unmarshal(parts[at], &part) != nil {
+			continue
+		}
+		kind := jsonString(part, "type")
+		if kind != "input_text" || json.Unmarshal(part["text"], &text) != nil {
+			continue
+		}
+		if projected := project(text); projected != text {
+			part["text"] = mustMarshalJSON(projected)
+			parts[at] = mustMarshalJSON(part)
+			changed = true
+		}
+	}
+	if changed {
+		return mustMarshalJSON(parts), true
+	}
+	return raw, false
 }
 
 // Capture this boundary before replay and all router-owned output appends.
