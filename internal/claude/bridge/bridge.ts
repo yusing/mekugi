@@ -78,6 +78,7 @@ function createQuery(fresh?: {session: string; context: string}): Query {
   systemPrompt: {type: 'preset', preset: 'claude_code', ...(append ? {append} : {})},
   settingSources: ['user', 'project', 'local'],
   includePartialMessages: true,
+  forwardSubagentText: true,
   ...(fresh ? {sessionId: fresh.session} : resume ? {resume} : {}),
   ...(!fresh && forkSession ? {forkSession: true} : {}),
   ...(model ? {model} : {}),

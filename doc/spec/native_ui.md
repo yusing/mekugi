@@ -10,8 +10,12 @@ commands are admitted only when advertised by its SDK. Claude
 keeps execution, permissions, authentication, configuration and native history.
 Native tool events feed the shared operation classifier and bounded output-dialog
 retention. Main and child agents use the shared roster; background Bash jobs do
-not become agents. Native notices remain available in the transcript. The shared
-keyboard lock, live-pane toggle, status dialog and per-session pane persistence
+not become agents. Native child conversation text feeds the shared Activity pane
+while child work continues. Roster picks filter Activity; they do not redirect Main's
+composer or grant authority to a task ID. Parent-tool identity selects the child
+display lane, without inventing child partial-stream events. Native notices remain
+available in the transcript. The shared keyboard lock, live-pane toggle, status
+dialog and per-session pane persistence
 apply to this backend. Shared utility, journal and observation adapters are invocation-local. Claude
 keeps its normal configuration and permission policy; Mekugi does not route inference.
 
@@ -69,7 +73,7 @@ buffers. Complete paths and operands are required; partial content is marked as
 an incoming prefix, never removal of an unseen suffix. Full arguments remain
 provisional until a native tool result, and result arrival still does not make a
 saved capture. Preview filesystem reads use the existing bounded reader. Bash
-edit previews and agent messaging remain unavailable. Saved change evidence,
+edit previews and direct user-to-agent messaging remain unavailable. Saved change evidence,
 durable journals, native model/effort controls and task status/stop use the shared
 UI and their native adapters.
 
@@ -168,7 +172,12 @@ history/title/cwd restoration, current guidance, failed-preflight draft retentio
 fresh launch from another workspace and exactly-once Bash effects. It exercises
 the shared PTY picker's All filter, search and Enter in both directions; full
 session-control PTY and live-model acceptance remain outstanding.
-Side queries, agent messaging/switching,
+Installed-native child-viewing PTY acceptance proves child text before settlement,
+keyboard and mouse roster filtering, Main isolation, shared live output dialogs,
+native model-tool SendMessage context retention and native child stop with
+exactly-once effects. It uses a local provider and does not establish direct user
+messaging, execution switching or fresh-process child viewing.
+Direct user-to-agent messaging/execution switching,
 the user shell shortcut and full rich-preview continuity remain unfinished;
 this backend does not claim full Codex parity.
 

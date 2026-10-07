@@ -236,9 +236,12 @@ command-segment reports follow inherited native history without reviving tools.
 Claude-reported cumulative tokens, cache usage and limit windows. Missing fields
 are omitted. API-equivalent cost estimates are labeled separately from subscription
 charges; these views do not make token-count requests or show router traffic.
-Main and native child agents appear in the shared Agents roster. Background Bash
-jobs stay in the conversation as task progress, not extra agents. Select a live
-child in Agents and press `x` to request its native stop; only a terminal runtime
+Main and native child agents appear in the shared Agents roster. Child conversation
+text is forwarded into the shared Activity pane while native work continues.
+Ctrl-B 4 focuses Agents; j/k select a child and `a` toggles its Activity filter.
+Roster selection changes the view; composer input still goes to Main.
+Background Bash jobs stay in the conversation as task progress, not extra agents.
+Select a live child in Agents and press `x` to request its native stop; only a terminal runtime
 event settles its row. Root-turn completion does not complete background tasks.
 Tool calls use the same compact operation rows as Codex. Supported Bash command
 lists show each command's actual exit or skipped status and its own output in the
@@ -338,7 +341,7 @@ packet in full. Overflow or missing evidence leaves the native summary intact,
 reports unavailable recovery facts, and still supplies current workflow guidance.
 The utility and journal integration is invocation-local.
 
-Bash edit previews, agent messaging/switching, the user shell
+Bash edit previews, direct user-to-agent messaging/execution switching, the user shell
 shortcut and full rich-preview continuity remain unfinished. Command
 segments and session controls do not imply full shared-controller parity.
 Commands advertised by the SDK are forwarded natively;
