@@ -253,6 +253,12 @@ func (d *outputDialog) tabRow(width int) string {
 			label += " " + strings.SplitN(block.Code, "\n", 2)[0]
 		}
 		label += " "
+		if d.filePath != "" {
+			label = " Markdown "
+			if i == 1 {
+				label = " File "
+			}
+		}
 		label = ansi.Truncate(label, cell, "…")
 		label += strings.Repeat(" ", max(0, cell-ansi.StringWidth(label)))
 		if i == d.page {
@@ -299,6 +305,9 @@ func (d *outputDialog) showPage(page int) {
 		block := d.pages[page]
 		state.match = -1
 		state.follow = block.Live || block.Running || block.Output != nil && !block.Output.View().Done
+		if d.filePath != "" && page == 1 {
+			d.pendingLine = d.fileFirst
+		}
 	}
 	d.top, d.match, d.follow, d.typing, d.missed, d.draft, d.query = state.top, state.match, state.follow, state.typing, state.missed, state.draft, state.query
 }
@@ -719,8 +728,12 @@ func (d *outputDialog) footer(width int) string {
 		return "/" + d.draft + "▏" + dim + "  enter find · esc cancel" + undim
 	}
 	keys := []string{"↑↓ PgUp/PgDn g/G scroll"}
+	navigation := "←→ command"
+	if d.filePath != "" {
+		navigation = "←→ view"
+	}
 	if len(d.pages) > 1 {
-		keys = append(keys, "←→ command")
+		keys = append(keys, navigation)
 	}
 	keys = append(keys, "/ find")
 	if d.query != "" {
@@ -737,7 +750,7 @@ func (d *outputDialog) footer(width int) string {
 	if ansi.StringWidth(footer) > width-6 {
 		footer = dim + "↑↓ scroll · / find · y copy · esc" + undim
 		if len(d.pages) > 1 {
-			footer = dim + "←→ command · ↑↓ scroll · y copy · esc" + undim
+			footer = dim + navigation + " · ↑↓ scroll · y copy · esc" + undim
 		}
 	}
 	return footer

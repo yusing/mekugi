@@ -1,0 +1,24 @@
+
+
+    ╭─ Read · sample.md ─────────────────────────────────────── 1 / 2 [×] ─╮
+    │ 14 lines                                                             │
+    │  Markdown                          File                              │
+    ├──────────────────────────────────────────────────────────────────────┤
+    │ sample.md                                                            │
+    │                                                                      │
+    │ Heading                                                              │
+    │                                                                      │
+    │ Bold and code.                                                       │
+    │                                                                      │
+    │ • A list item                                                        │
+    │                                                                      │
+    │ ┌──────┬───────┐                                                     │
+    │ │ Name │ Value │                                                     │
+    │ ├──────┼───────┤                                                     │
+    │ │ one  │ two   │                                                     │
+    │ └──────┴───────┘                                                     │
+    │                                                                      │
+    │  package sample                                                      │
+    ╰─ ↑↓ PgUp/PgDn g/G scroll · ←→ view · / find · y copy · esc ──────────╯
+
+

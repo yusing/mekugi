@@ -28,7 +28,7 @@ func outputSelectionPoint(t *testing.T, u *terminalUI, text string) (int, int) {
 	for y, row := range u.output.body {
 		plain := ansi.Strip(row)
 		if i := strings.Index(plain, text); i >= 0 {
-			return u.output.rect.x + 2 + ansi.StringWidth(plain[:i]), u.output.rect.y + 3 + y
+			return u.output.rect.x + 2 + ansi.StringWidth(plain[:i]), u.output.rect.y + u.output.chrome() - 1 + y
 		}
 	}
 	t.Fatalf("text %q absent from dialog body", text)

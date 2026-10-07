@@ -13,6 +13,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/internal/sourcekind"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -60,15 +61,24 @@ func (u *terminalUI) openMarkdownFile(view *liveActivityView, target string) boo
 	display := pathdisplay.ForWorkspace(workspace, path)
 	block := activityui.Block{Kind: "reads", Verb: "Read", Path: display + location, SyntaxPath: path, Reads: []activityui.Read{{Path: display + location}}}
 	data, err := readMarkdownFile(path)
+	source := string(data)
+	content := livediff.Safe(source, false)
 	if err != nil {
 		block.Kind, block.Verb, block.Body = "error", "", err.Error()
 	} else {
-		block.Tail = strings.Split(livediff.Safe(string(data), false), "\n")
+		block.Tail = strings.Split(content, "\n")
 	}
-	u.openBlocks(view, []activityui.Block{block})
+	pages := []activityui.Block{block}
+	if format, _ := sourcekind.Classify(path); err == nil && format.Kind == "markdown" {
+		rendered := block
+		rendered.Body, rendered.Tail = content, nil
+		rendered.Detail = activityui.Dim + fmt.Sprintf("%d lines", len(block.Tail)) + activityui.Undim
+		pages = []activityui.Block{rendered, block}
+	}
+	u.openBlocks(view, pages)
 	u.output.filePath, u.output.pendingLine = display, first
 	u.output.fileFirst, u.output.fileLast = first, last
-	u.output.fileText = string(data)
+	u.output.fileText = source
 	return true
 }
 

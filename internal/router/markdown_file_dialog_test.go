@@ -87,6 +87,79 @@ func TestMarkdownFileDialogSanitizesDisplayKeepsSourceCopy(t *testing.T) {
 	}
 }
 
+func TestMarkdownFileDialogViews(t *testing.T) {
+	workspace := t.TempDir()
+	content := "# Heading\n\n**bold** and [source](sample.go:1)\n\n" + strings.Repeat("more content\n", 40)
+	path := filepath.Join(workspace, "sample.md")
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "sample.go"), []byte("package sample\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	main, _ := newAppServerTestUI()
+	main.session.cwd = workspace
+	u := &terminalUI{main: main, width: 80, height: 18}
+	u.openMarkdownFile(main.view, path+":30-31")
+	drawOutputDialog(u)
+	x, y := outputSelectionPoint(t, u, "bold")
+	outputSelectionDrag(u, x, y, x+3, y)
+	if u.selection == nil || u.selection.text() != "**bold**" {
+		t.Fatal("rendered selection lost Markdown source formatting")
+	}
+	u.outputKey("\x1b") // Clear the selection.
+	u.outputKey("/")
+	u.outputKey("bold")
+	u.outputKey("\r")
+	markdownTop := u.output.top
+	tab := u.output.tabs[1]
+	u.outputMouse(0, u.output.rect.x+2+tab.from, u.output.rect.y+2, false)
+	drawOutputDialog(u)
+	if u.output.page != 1 || u.output.top == 0 || u.output.query != "" {
+		t.Fatal("File tab did not reveal the source location with separate search state")
+	}
+	for _, key := range []string{"y", "\x1b[D", "y"} {
+		u.outputKey(key)
+		drawOutputDialog(u)
+		if key == "y" && u.clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte(content))+"\x07" {
+			t.Fatal("view copy changed source bytes")
+		}
+	}
+	if u.output.query != "bold" || u.output.top != markdownTop {
+		t.Fatal("view switching lost navigation")
+	}
+	x, y = outputSelectionPoint(t, u, "source")
+	u.outputMouse(0, x, y, false)
+	u.outputMouse(0, x, y, true)
+	if u.output.filePath != "sample.go" || len(u.output.pages) != 1 {
+		t.Fatal("rendered local link did not open the source file")
+	}
+}
+
+func TestUISnapshotMarkdownFileViews(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "sample.md")
+	content := "# Heading\n\n**Bold** and `code`.\n\n- A list item\n\n| Name | Value |\n| --- | --- |\n| one | two |\n\n```go\npackage sample\n```\n"
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	main, _ := newAppServerTestUI()
+	main.session.cwd = workspace
+	u := &terminalUI{main: main, width: 80, height: 24}
+	u.openMarkdownFile(main.view, path)
+	for _, view := range []string{"markdown", "file"} {
+		rows := make([]string, u.height)
+		u.paintOutput(rows, u.width, u.height)
+		screen := vt.NewEmulator(u.width, u.height)
+		for y, row := range rows {
+			fmt.Fprintf(screen, "\x1b[%d;1H%s", y+1, row)
+		}
+		assertNativeUISnapshot(t, "native-markdown-file-"+view+"-view", strings.Split(screen.String(), "\n"))
+		screen.Close()
+		u.outputKey("\x1b[C")
+	}
+}
+
 func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "sample.go"), []byte("package sample\n"), 0600); err != nil {

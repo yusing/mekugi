@@ -178,9 +178,14 @@ Clicking a recognized Markdown file link in Main, Activity, or Markdown dialog
 content opens an existing regular local file in this dialog. Relative paths
 require the current session's workspace metadata; absolute paths and local
 `file:///` URLs are also supported. A `:line` or `:first-last` suffix appears
-in the title, reveals the first source line when it exists, and
+in the title, reveals the first source line in File view when it exists, and
 highlights the included line numbers with a fill that includes their left padding
 and stops before the gutter divider. The numbers and source stay in place.
+Markdown files open in rendered
+Markdown view by default, with Markdown and File tabs selectable by click or
+Left/Right. File view retains numbered, syntax-colored source. Each view keeps
+its own scroll and search state; whole-page copy in either view copies the original
+file bytes. Other file types and read errors retain their single File view.
 Paths inside the workspace use shared
 workspace-relative display;
 external paths stay absolute. The body includes a selectable path row and source
