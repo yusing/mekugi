@@ -1,5 +1,5 @@
 
-› /compact  Reset context from journal if available, or queue while busy                
+› /compact  Reset context from journal; Tab queues while busy                           
 
 
   enter insert · esc close

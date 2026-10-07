@@ -6,6 +6,20 @@ import (
 )
 
 func (p *mekugiProxy) observeJournalHostTurn(ctx context.Context, workspace, method string, event appServerEvent) error {
+	if event.ThreadID != "" {
+		if method == "thread/tokenUsage/updated" {
+			usage := event.TokenUsage
+			used := uint64(0)
+			if usage.Last != nil {
+				used = usage.Last.TotalTokens
+			}
+			p.observeContextSliceUsage(event.ThreadID, usage.Last != nil, used, usage.ModelContextWindow)
+		} else if method == "item/completed" && event.Item.Type == "contextCompaction" {
+			p.mu.Lock()
+			delete(p.contextSliceReminder, event.ThreadID)
+			p.mu.Unlock()
+		}
+	}
 	state, reason := "", ""
 	if method == "turn/started" {
 		state = "working"

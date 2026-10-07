@@ -79,7 +79,7 @@ func TestNativeJournalPresentationCodexE2E(t *testing.T) {
 				continue
 			}
 			var event appServerEvent
-			if m.Method != "" {
+			if m.Method == "item/started" || m.Method == "item/completed" || m.Method == "turn/completed" {
 				if err := json.Unmarshal(m.Params, &event); err != nil {
 					t.Fatal(err)
 				}

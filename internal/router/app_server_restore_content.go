@@ -354,7 +354,7 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 	s := &u.session
 	name := s.paths[info.ID]
 	agent := s.agent(name)
-	restoreContextUsage(agent, info)
+	u.restoreContextUsage(agent, info)
 	u.restoreUsage(info)
 	agent.Started, agent.LastResponse = restoredAgentTimes(info)
 	agent.WorkTimer = restoredAgentWork(info)

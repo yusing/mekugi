@@ -1,6 +1,6 @@
-• Context compacted
+• Context reset
 
-❯ Continue the task from where you left off before compaction.         12:00:00
+❯ Continue the task from where you left off before context reset.      12:00:00
 
 
 

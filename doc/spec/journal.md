@@ -217,31 +217,33 @@ The summary is at most 64 KiB. Context paths and open tasks must fit its
 reserved half; otherwise rendering fails rather than omitting a context path or
 an open task. Corrupt failure evidence also fails rendering. The native recovery
 hook
-treats failure as advisory; router-side synthesis uses provider fallback.
+treats failure as advisory; router-side reset failure stops `auto` without a
+provider request. `slice` retains provider fallback.
 Neither recovery path acknowledges events or replays effects.
 
 ## Router-answered compaction
 
-`--journal-compaction=auto` opts into journal summaries for validated local Codex
-compaction requests, including child threads. The default remains `off` until the
-offline harness and separately authorized paid evaluation establish the proposed
-success, redo and token-cost gate. `slice` is reset-only, with ordinary compactions
-forwarded to the provider.
+`--journal-compaction=auto` is the default. Manual `/compact` and context-full
+requests use journal context reset, including child threads, without provider
+compaction. `off` opts out and restores provider compaction. `slice` resets only at
+planned slice boundaries; ordinary compactions still go to the provider.
+Passthrough implies `off` unless explicitly configured; explicit `auto` or `slice`
+is rejected.
 
-Synthesis requires one selected workspace, an unambiguous requesting thread and
-durable journal or executing-thread-owned change evidence. Conflicted identities,
-missing evidence, rendering failures and persistence failures forward the request
-without journal/tool projection. Existing model aliases and service-tier policy
-still apply. Invalid compaction protocol requests retain the existing validation
-errors. A summary is never empty. A downstream delivery failure is reported, not
-retried as a second provider request.
-Fallback notices include the local failure cause, including storage-lease failures;
-distinct causes remain separately visible. Intentional slice-mode bypasses are silent.
+Reset requires one selected workspace, an unambiguous requesting thread and
+durable journal or executing-thread-owned change evidence. Unavailable or
+ambiguous identity, evidence or storage, rendering failures and persistence
+failures stop `auto` with a visible error and no provider request. There is no
+provider fallback in `auto`. Invalid compaction protocol requests retain the
+existing validation errors. A summary is never empty. A downstream delivery
+failure is reported, not retried as a second provider request. In `slice`, local
+reset failures retain provider fallback with the local cause visible; distinct
+causes remain separately visible. Intentional slice-mode bypasses are silent.
 
-Native local compaction may omit workspace metadata. Only a unique workspace
-already selected in that requesting thread's durable journal/execution records
-can substitute for it. Conflicting historical workspaces fall back to the provider;
-router cwd and another thread's records never supply a directory.
+Native local reset may omit workspace metadata. Only a unique workspace already
+selected in that requesting thread's durable journal/execution records can
+substitute for it. Conflicting historical workspaces stop `auto`; router cwd and
+another thread's records never supply a directory.
 
 Codex retains execution and history authority. The router supplies a completed
 assistant summary through the same streamed Responses delivery path, persisting
@@ -250,18 +252,18 @@ made, and no model usage is fabricated. Metrics distinguish router answers from
 provider answers and report zero provider attempts/tokens for router answers.
 Summary bytes and evidence counts are measurements, never savings estimates.
 
-In `auto`, `/compact` describes an attempted journal context reset, including
-provider fallback, rather than promising a journal answer. Live progress follows
-that intent. Completion and restored history show one journal reset row, without
-duplicate native progress commentary, only
-for the exact thread, turn and item retained in a router-answer receipt, or the
-standalone turn identified by a slice-reset event. Provider answers keep “Context
-compacted”, regardless of configured mode.
-Receipts retain answered-item provenance across later compactions; older receipts
-without it keep host wording rather than guessing from the current setting.
+In `auto`, `/compact`, live progress, queued commands, cancellation and
+continuation text describe context reset. Generic completion and restored history
+use “Context reset”, including older provider or ambiguous records. This label
+alone claims neither a journal answer nor zero provider tokens.
+Only exact retained thread, turn and item provenance in a router-answer receipt,
+or a standalone slice-reset event, identifies “Context reset from journal” and
+its zero-provider-token claim. These rows appear once without duplicate native
+progress commentary. Receipts retain answered-item provenance across later resets.
 Buffered manual standalone notifications bind their retained answer to the unique
-host item. Ordinary automatic compactions keep host wording because several can
-share one turn, and buffered UI observations do not identify the HTTP request's item.
+host item; ordinary automatic compactions can share a turn and cannot be identified
+from buffered UI observations alone. In `off` and `slice`, ordinary provider rows
+keep “Context compacted”.
 
 The journal's “Context reset from journal” row opens the shared scrollable dialog
 with the exact model-visible recovery message retained for that response. The
@@ -277,6 +279,17 @@ compacted transcript record identifies that persisted response. Missing or
 unreadable transcript evidence, older host records without response IDs, and
 provider-written summaries keep normal hook recovery. Failed or interrupted local
 responses cannot suppress recovery for another compaction.
+
+### Context-pressure reminder
+
+When the latest host-reported context use reaches at least 70% of the model context
+window, the next model request's journal tool guidance reminds the agent to split
+work into slices. The threshold
+uses the last context snapshot and model window, not cumulative token usage.
+Successful host context-compaction completion clears the reminder. Native resume
+restores it from host-selected context facts; missing or unknown context does not
+invent a threshold crossing. The reminder does not itself reset context or force a
+slice boundary.
 
 ### Journal continuation
 
@@ -321,9 +334,11 @@ with no countdown delay and emits reset events instead of rendering a strip.
 With `slice` or `auto`, the frontend asks Codex to compact before continuing.
 The UI describes that journal-driven operation as a context reset,
 including its progress, completion, and restored event. Ordinary provider
-compactions retain their compaction wording even when reset mode is enabled.
+compactions in `slice` retain their compaction wording; `auto` uses context-reset
+wording for all compaction-related presentation.
 Only a router-answered, successfully completed compaction permits the automatic
-continuation. Provider fallback leaves the plan available for manual continuation.
+continuation. A failed reset leaves the plan available for manual continuation.
+In `slice`, provider fallback also leaves continuation manual.
 With `off`, the same countdown continues the plan without resetting context.
 This keeps the continuing-context comparison separate from compaction policy.
 

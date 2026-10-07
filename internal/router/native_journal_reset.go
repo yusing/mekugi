@@ -1,6 +1,7 @@
 package router
 
 import (
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
@@ -98,11 +99,10 @@ func (u *appServerUI) journalCompactionAnswered(thread, turn, item string) bool 
 	return false
 }
 
-// Auto mode attempts journal synthesis for ordinary compactions too. Dispatch
-// wording expresses that intent; only an exact receipt changes completion.
+// Auto replaces provider compaction for manual and automatic requests.
 func (u *appServerUI) compactionProgressText() string {
 	if u.proxy != nil && u.proxy.journalCompaction == "auto" {
-		return "Resetting context from journal if available"
+		return "Resetting context from journal"
 	}
 	return "Compacting context"
 }
@@ -123,4 +123,12 @@ func (u *appServerUI) journalResetEvent(thread, turn string) bool {
 		}
 	}
 	return false
+}
+
+// Keep host/internal compaction identities while displaying the auto reset policy.
+func (u *appServerUI) compactionText(text string) string {
+	if u.proxy != nil && u.proxy.journalCompaction == "auto" {
+		return strings.NewReplacer("context compaction", "context reset", "Compacting", "Resetting context", "Compaction", "Context reset", "compaction", "context reset").Replace(text)
+	}
+	return text
 }

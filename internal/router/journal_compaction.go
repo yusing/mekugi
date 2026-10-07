@@ -54,30 +54,31 @@ func journalCompactionName(workspace, thread string) string {
 }
 
 // Compaction shares ordinary terminal delivery but neither invokes a provider
-// nor initializes model usage. Errors before publication fall back upstream.
-func (a *requestAttempt) tryJournalCompaction() bool {
+// nor initializes model usage. Auto errors preserve context without a provider request.
+func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 	if !a.metadataValid || a.metadata.RequestKind != responses.Compaction {
-		return false
+		return false, nil
 	}
-	capturer.ObserveCompaction(a.startCtx, "provider", 0, 0, 0)
 	p := a.executor.mekugiCalls
-	if p == nil || p.replayStore == nil || a.prewarm ||
+	if p == nil {
+		return false, nil
+	}
+	if p.replayStore == nil || a.prewarm ||
 		a.threadID == "" || a.metadata.activityIdentityInvalid ||
 		a.metadata.ThreadID != "" && a.metadata.ThreadID != a.threadID ||
 		slices.ContainsFunc(a.headers.Values(threadIDHeader), func(value string) bool {
 			return strings.TrimSpace(value) != "" && strings.TrimSpace(value) != a.threadID
 		}) ||
 		len(a.metadata.Directories) > 1 {
-		return false
+		return a.journalCompactionUnavailable(errors.New("context reset identity or storage is unavailable"))
 	}
 	workspace, ok := usableRoutingDirectory(a.metadata.Directories)
 	if len(a.metadata.Directories) != 0 && !ok {
-		return false
+		return a.journalCompactionUnavailable(errors.New("context reset workspace is unavailable"))
 	}
 	ctx, release, err := p.replayStore.beginSession(a.startCtx, a.threadID, a.sessionID)
 	if err != nil {
-		a.journalCompactionFallback(err)
-		return false
+		return a.journalCompactionUnavailable(err)
 	}
 	store := p.replayStore.scoped(ctx)
 	if workspace == "" {
@@ -95,12 +96,11 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 	}
 	if err != nil {
 		release()
-		a.journalCompactionFallback(err)
-		return false // Auxiliary capture failure must not block stock compaction.
+		return a.journalCompactionUnavailable(err)
 	}
 	if p.journalCompaction != "auto" && p.journalCompaction != "slice" {
 		release()
-		return false
+		return false, nil
 	}
 	var summary journalSummary
 	var wire []byte
@@ -181,10 +181,10 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 	})
 	if err != nil {
 		release()
-		if !errors.Is(err, errJournalUnchanged) {
-			a.journalCompactionFallback(err)
+		if errors.Is(err, errJournalUnchanged) {
+			return false, nil
 		}
-		return false
+		return a.journalCompactionUnavailable(err)
 	}
 	a.compactionRelease = release
 	a.response = &http.Response{
@@ -194,7 +194,7 @@ func (a *requestAttempt) tryJournalCompaction() bool {
 	a.streamResponse = true
 	a.finalization.upstreamStatusCode = http.StatusOK
 	capturer.ObserveCompaction(a.startCtx, "router", len(summary.Text), summary.Changes, summary.Failures)
-	return true
+	return true, nil
 }
 
 // Only manual standalone receipts may bind a host item. Ordinary automatic
@@ -226,6 +226,19 @@ func (s *mekugiReplayStore) bindStandaloneCompactionItem(ctx context.Context, wo
 		}
 		return s.writeManagedFile(journalCompactionName(workspace, thread), "compaction-pending-", data)
 	})
+}
+
+// Slice retains its provider fallback. Auto must never run provider compaction.
+func (a *requestAttempt) journalCompactionUnavailable(err error) (bool, error) {
+	if p := a.executor.mekugiCalls; p != nil && p.journalCompaction == "auto" {
+		a.debug.event(map[string]any{
+			"event": "journal_context_reset_failed", "error": err.Error(),
+			"request_id": a.debugID, "session_id": a.sessionID, "thread_id": a.threadID,
+		})
+		return false, &requestCompatibilityError{code: "journal_context_reset_unavailable", message: "Context reset unavailable: " + err.Error()}
+	}
+	a.journalCompactionFallback(err)
+	return false, nil
 }
 
 func (a *requestAttempt) journalCompactionFallback(err error) {

@@ -149,7 +149,9 @@ func (a *requestAttempt) run() (*requestContinuation, error) {
 	if err := a.prepare(); err != nil {
 		return nil, err
 	}
-	if a.tryJournalCompaction() {
+	if answered, err := a.tryJournalCompaction(); err != nil {
+		return nil, err
+	} else if answered {
 		if err := a.prepareResponse(); err != nil {
 			return nil, err
 		}
@@ -167,6 +169,9 @@ func (a *requestAttempt) run() (*requestContinuation, error) {
 	}
 	if err := a.prepareWire(); err != nil {
 		return nil, err
+	}
+	if a.metadataValid && a.metadata.RequestKind == responses.Compaction {
+		capturer.ObserveCompaction(a.startCtx, "provider", 0, 0, 0)
 	}
 	if err := a.forward(); err != nil {
 		return nil, err

@@ -132,19 +132,20 @@ type mekugiProxy struct {
 	approvalMu         sync.Mutex
 	approvalFeedback   map[[2]string][]string // Live thread/turn feedback; no host steering.
 
-	mu                 sync.RWMutex
-	toolInputEmissions map[*mekugiResponseTransform]map[string]bool // Live generation only, never command execution or replay.
-	btwThreads         map[string]bool                              // Live ephemeral UI threads; never inherited or replayed.
-	replayStore        *mekugiReplayStore
-	sessions           map[string]*mekugiHistorySession
-	noticeSink         func(string, string, string, string)
-	storageTurns       map[string]uint64
-	storageSequence    uint64
-	storageLeases      map[string]func()
-	activeSessions     map[string]int
-	historyBytes       int
-	sessionSequence    uint64
-	closed             bool
+	mu                   sync.RWMutex
+	toolInputEmissions   map[*mekugiResponseTransform]map[string]bool // Live generation only, never command execution or replay.
+	contextSliceReminder map[string]bool                              // Latest host context observation, never inherited.
+	btwThreads           map[string]bool                              // Live ephemeral UI threads; never inherited or replayed.
+	replayStore          *mekugiReplayStore
+	sessions             map[string]*mekugiHistorySession
+	noticeSink           func(string, string, string, string)
+	storageTurns         map[string]uint64
+	storageSequence      uint64
+	storageLeases        map[string]func()
+	activeSessions       map[string]int
+	historyBytes         int
+	sessionSequence      uint64
+	closed               bool
 }
 
 func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *mekugiProxy {
@@ -476,6 +477,14 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	}
 	if metadata.SubagentKind != "" {
 		journalGuidance = codeModeSubagentJournalGuidance
+	}
+	if !prewarm {
+		p.mu.RLock()
+		remind := p.contextSliceReminder[threadID]
+		p.mu.RUnlock()
+		if remind {
+			journalGuidance = strings.Replace(journalGuidance, "<journal>\n", "<journal>\n"+embeddedInstruction("journal_context_reminder")+"\n", 1)
+		}
 	}
 	// Discover an execution owner before projecting tools: a native
 	// handshake may not yet carry the instruction or tool catalog of a turn.

@@ -28,6 +28,10 @@ sessions, and patch review. No fork, no config edits, no daemon.
   see the [projection contract](doc/spec/execution.md#duplicate-output-projection).
 - **Task journal.** Record plans, results, constraints, and blockers as durable
   work state, rather than repeating status summaries in conversation.
+- **Journal context reset.** Manual and context-full resets use retained journal,
+  change and failure evidence by default, including subagents, without a provider
+  summary request. Opt out with `--journal-compaction=off`; see
+  [recovery behavior and limits](#troubleshooting-and-integrations).
 - **Session continuity.** Retained journal and change evidence survives resume,
   forks, side threads, and compaction, subject to [storage retention](#replay-storage).
 - **Custom tools.** Extend the agent's capabilities with your own
@@ -282,7 +286,9 @@ session to completion, continuing unfinished journal work and any planned slices
 mekugi --journal-compaction=slice headless --yolo < prompt.txt
 ```
 
-Use `off` to continue slices in one context, or `slice` to reset between them.
+The default `auto` resets at slice boundaries and for manual or context-full
+requests. Use `off` to continue slices in one context with provider compaction,
+or `slice` to reset only between slices and use provider compaction otherwise.
 Unlike the UI, headless journal continuations have no countdown delay.
 It accepts model and `-c` options, not resume or positional prompts. Prompts must
 be nonempty and at most 16 MiB. Unlike the UI, it requires explicit `--yolo`.
@@ -302,7 +308,7 @@ exit means the run or its shutdown failed. Ordinary `codex exec` is unchanged.
 | `--mode` | `mekugi` | Use `passthrough` with `mekugi codex` to forward traffic without Mekugi tools or plugins |
 | `--vcs-guard` | `true` | Ask before remote VCS writes in the UI, even with `--yolo`; `false` disables only this guard |
 | `--post-compact-recovery` | `true` | Use `false` to skip the post-compaction context hook |
-| `--journal-compaction` | `off` | Experimental `auto` uses journal summaries without a provider request; `slice` resets only between planned slices |
+| `--journal-compaction` | `auto` | Journal context reset without a provider request; `off` restores provider compaction; `slice` resets only between planned slices |
 | `--duplicate-output` | `true` | Use duplicate-output references in model input; `--duplicate-output=false` disables them; full results and evidence stay intact; no effect in passthrough |
 | `--grok-auth-file` | `~/.grok/auth.json` | Select a Grok OAuth credential store |
 | `--timeout` | `10m` | Wait for the upstream response to start |
@@ -313,7 +319,8 @@ exit means the run or its shutdown failed. Ordinary `codex exec` is unchanged.
 `mekugi --mode passthrough --vcs-guard=false codex` forwards traffic only. It doesn't
 need Node.js, and capture still works. Interactive passthrough can't
 [guard remote writes](#approvals), so it requires `--vcs-guard=false` and retains
-Codex's configured approval and sandbox policy.
+Codex's configured approval and sandbox policy. Passthrough implies
+`--journal-compaction=off`; explicit `auto` or `slice` is rejected.
 
 If a detached multiplexer hides your mosh connection, use
 `mekugi --ansi-faint=off codex` for readable dimmed text. The setting applies only
@@ -454,16 +461,18 @@ steering new input.
   without resending it. With no pending steers, Esc interrupts and restores input
   without resending, and never quits. Closing a picker, help, or selection and
   returning scrollback to the bottom take precedence over Esc interruption.
-- **Session controls.** Enter on `/compact` interrupts the current turn and compacts
-  after Codex acknowledges its end, with or without `instant_interrupt`. Tab queues
-  compaction until the current turn ends. After successful busy compaction, waiting
+- **Session controls.** `/compact` performs a context reset by default. Enter interrupts
+  the current turn and resets after Codex acknowledges its end, with or without
+  `instant_interrupt`. Tab queues the reset until the current turn ends. After a
+  successful busy reset, waiting
   input runs next; without waiting input, Mekugi sends a visible continuation
   message to resume the task.
-  Idle compaction stays idle, and failure or interruption never automatically
-  continues it. Ctrl+C cancels queued compaction and restores waiting input
+  An idle reset stays idle, and failure or interruption never automatically
+  continues it. Ctrl+C cancels a queued reset and restores waiting input
   without interrupting Main. Cancelling while an Enter-command interruption is
-  pending prevents compaction but cannot undo that interruption; once compaction
-  starts, it interrupts only that compaction. `/clear` starts a fresh session and clears its transcript; it is
+  pending prevents the reset but cannot undo that interruption; once the reset
+  starts, Ctrl+C interrupts only that reset. `/clear` starts a fresh session and
+  clears its transcript; it is
   available while idle and does not delete saved sessions or filesystem changes.
   A normal interrupt returns unsent input to the composer without automatically
   resending it; Esc with pending steers uses the expedited delivery above.
@@ -494,7 +503,7 @@ selection or close the panel;
 Main keeps working and your draft stays. Closing discards the side
 conversation, and it can't be resumed.
 If the side question needs compaction, it is rejected and restored to the composer.
-Compact Main, close the side panel, and retry to take a fresh snapshot.
+Run `/compact` on Main, close the side panel, and retry to take a fresh snapshot.
 
 ### Resume
 
@@ -817,21 +826,26 @@ Every section is optional. Settings are read at startup and never rewritten.
   settings are left alone; to enable recovery with them, add a `SessionStart`
   handler matching `^compact$` that runs `/absolute/path/to/mekugi post-compact`.
   Hook failures don't stop the task. See [guidance behavior](doc/spec/guide.md).
-- **Journal compaction (opt-in):** `--journal-compaction=auto` uses retained task,
-  constraint, change and failed-command evidence instead of asking the model for a
-  summary. It includes subagents and falls back to the provider if evidence cannot
-  be safely recovered.
+- **Journal context reset:** The default `--journal-compaction=auto` uses retained
+  task, constraint, change and failed-command evidence for `/compact` and
+  context-full requests instead of asking the provider for a summary, including
+  child threads. Unavailable or ambiguous identity, evidence, storage or recovery
+  rendering stops the reset with a visible error and no provider request.
   Recovery keeps constraints and open work inline; completed task bodies and agent
-  history stay available through journal reads when needed, rather than filling
-  the restored context.
-  The default remains `off` pending comparative evaluation; this is not evidence
-  of improved model success or token savings. In the UI, sliced plans show
-  a countdown between successful turns; Esc cancels. `slice` and `auto` reset
-  context before continuing, while `off` continues without resetting. An interrupted
-  reset may require manual continuation. Resets appear once in the journal, not as
-  duplicate commentary. Click the journal's **Context reset from journal** row to
-  read the recovery message shown to the model. Older or expired messages are
-  marked unavailable. See [compaction behavior](doc/spec/journal.md#router-answered-compaction).
+  history stay available through journal reads when needed. This does not establish
+  improved model success or token savings.
+  Opt out with `--journal-compaction=off` for provider compaction. `slice` uses journal
+  resets only at planned slice boundaries and provider compaction otherwise.
+  When the latest host-reported context use reaches at least 70% of the model
+  context window, the next model request reminds the agent to split work into slices.
+  Ordinary unfinished-work continuation keeps context. At planned slice boundaries,
+  `auto` and `slice` reset before continuing, while `off` continues without resetting.
+  The UI offers a countdown; Esc cancels. An interrupted reset may require manual
+  continuation. Auto-mode commands and progress say **Context reset**. Exact retained
+  journal-answer evidence adds **Context reset from journal**; click it to read the
+  recovery message shown to the model. Older or expired messages are marked
+  unavailable. Generic reset rows do not claim journal provenance or zero provider
+  tokens. See [reset behavior](doc/spec/journal.md#router-answered-compaction).
 - **Instructions:** Wrapped sessions disable Codex's `/goal` feature. Anything
   between `<!-- mekugi:omit -->` and `<!-- /mekugi:omit -->` in instruction files
   is omitted for the session; the files themselves are not changed. When

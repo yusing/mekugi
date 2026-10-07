@@ -2,8 +2,12 @@ package router
 
 import (
 	jsonv1 "encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/appserver"
 )
 
 func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
@@ -61,6 +65,56 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 			t.Errorf("prepared request lacks slice guidance: %s", rule)
 		}
 	}
+}
+
+func TestJournalContextSliceReminderUsesHostUsage(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.proxy = proxy
+	check := func(want bool) {
+		t.Helper()
+		_, _, request, _ := newMekugiTestTransformWithProxy(t, proxy)
+		got := decodeResponsesToolCatalog(request.fields).additional[0].tools.tools[0].nested.tools[0].Description
+		count := strings.Count(got, embeddedInstruction("journal_context_reminder"))
+		if (count == 1) != want || count > 1 {
+			t.Fatalf("reminder count=%d, want=%v", count, want)
+		}
+	}
+	usage := func(thread string, used, window uint64) {
+		appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{
+			"threadId": thread, "tokenUsage": map[string]any{
+				"last": map[string]any{"totalTokens": used}, "modelContextWindow": window,
+			},
+		})
+	}
+	usage("thread-1", 699, 1000)
+	check(false)
+	usage("thread-1", 700, 1000)
+	check(true)
+	appServerTestNotify(t, u, "item/completed", map[string]any{
+		"threadId": "thread-1", "turnId": "reset", "item": appServerItem{ID: "reset", Type: "contextCompaction"},
+	})
+	check(false)
+	usage("child", 900, 1000)
+	check(false)
+	usage("thread-1", 900, 0)
+	check(false)
+	// A fresh frontend restores the hint from host context facts, not live ancestry.
+	u.proxy = newManagedMekugiProxy(t)
+	proxy = u.proxy
+	rollout := filepath.Join(t.TempDir(), "rollout.jsonl")
+	if err := os.WriteFile(rollout, []byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"thread-1\"}}\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"last_token_usage\":{\"total_tokens\":700},\"model_context_window\":1000}}}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	u.restoreContextUsage(&activityPaneAgent{}, appServerThreadInfo{ID: "thread-1", Path: rollout})
+	check(true)
+	// Headless receives the same host usage, without starting another turn.
+	h := &headlessAppServer{ctx: t.Context(), proxy: proxy, thread: "thread-1", reset: &journalResetDriver{workspace: u.session.cwd}}
+	params := mustMarshalJSON(map[string]any{"threadId": "thread-1", "tokenUsage": map[string]any{"last": map[string]any{"totalTokens": 100}, "modelContextWindow": 1000}})
+	if err := h.message(appserver.Message{Method: "thread/tokenUsage/updated", Params: []byte(params)}); err != nil {
+		t.Fatal(err)
+	}
+	check(false)
 }
 
 func TestJournalGuidanceUsesRequestRole(t *testing.T) {

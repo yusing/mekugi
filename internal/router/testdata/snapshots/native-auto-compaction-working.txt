@@ -1,1 +1,1 @@
-◐ Resetting context from journal if available 0s
+◐ Resetting context from journal 0s

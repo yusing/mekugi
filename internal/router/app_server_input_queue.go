@@ -162,7 +162,7 @@ func (u *appServerUI) flushInput() error {
 	}
 	if u.turn == "" && u.compaction.takeContinuation() {
 		if len(u.unsent)+len(u.queued) == 0 {
-			u.unsent = append(u.unsent, composerDraft{text: "Continue the task from where you left off before compaction."})
+			u.unsent = append(u.unsent, composerDraft{text: u.compactionText("Continue the task from where you left off before compaction.")})
 		}
 	}
 	var parts []composerDraft
@@ -477,7 +477,7 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 	default:
 		header = "Waiting to send"
 	}
-	section(header, append(steers, u.unsent...))
+	section(u.compactionText(header), append(steers, u.unsent...))
 	section("Queued for the next turn · alt+↑ edits", u.queued)
 	return lines
 }

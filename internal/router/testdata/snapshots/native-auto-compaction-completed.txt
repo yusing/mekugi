@@ -2,9 +2,9 @@
   ›
 ◆ ↻ Context reset from journal · 0 provider tokens ›
 
-• Context compacted
+• Context reset
 
-• Context compacted
+• Context reset
 
 
 

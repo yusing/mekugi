@@ -78,8 +78,17 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if value := *flags.journalCompaction; value != "auto" && value != "slice" && value != "off" {
 		return errors.New("--journal-compaction must be auto, slice, or off")
 	}
-	if *flags.mode == "passthrough" && *flags.journalCompaction != "off" {
-		return errors.New("--journal-compaction requires --mode mekugi")
+	if *flags.mode == "passthrough" {
+		journalCompactionSet := false
+		flags.Visit(func(item *flag.Flag) {
+			if item.Name == "journal-compaction" {
+				journalCompactionSet = true
+			}
+		})
+		if journalCompactionSet && *flags.journalCompaction != "off" {
+			return errors.New("--journal-compaction requires --mode mekugi")
+		}
+		*flags.journalCompaction = "off"
 	}
 	faint, err := terminalui.SupportsFaint(ctx, *flags.ansiFaint)
 	if err != nil {

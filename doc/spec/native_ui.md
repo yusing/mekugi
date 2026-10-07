@@ -564,7 +564,7 @@ notice. Bare `/btw` explains the required question rather than submitting input.
 When Codex requires compaction for a side turn, the request is rejected before
 either a provider summary or journal summary runs. Its pending question and
 attachments return ahead of any newer composer draft. Main remains untouched.
-The user can compact Main, close the side panel, and retry on a new snapshot;
+The user can run `/compact` on Main, close the side panel, and retry on a new snapshot;
 the rejected side conversation cannot accept a follow-up. Admission uses Codex's
 actual compaction decision, not an estimate from the displayed context meter.
 
@@ -841,8 +841,10 @@ Explicit composer Escape delivery is separate: it interrupts through Codex and
 resubmits uncommitted steers as a new turn, without replaying tools.
 
 `/compact` asks Codex to replace the current conversation context. In journal
-`auto` mode its description and live progress identify an attempted journal reset
-with provider fallback; other modes describe ordinary compaction. Enter interrupts
+`auto` mode, the default, its description, live progress, queued-command,
+cancellation and continuation text say context reset, with no provider fallback.
+Unavailable recovery stops with a visible error. Other modes describe ordinary
+compaction outside planned slice resets. Enter interrupts
 the active turn through the host, then waits for both interruption acknowledgement
 and turn completion before starting compaction. This explicit command does not
 depend on `instant_interrupt`, which controls conversation steering rather than
@@ -1058,8 +1060,11 @@ cancels an undispatched continuation rather than competing with it.
 
 Host progress has one presentation mapping for live events and restored history.
 Compaction start replaces Main’s `Working` label with mode-aware progress;
-completion restores ordinary turn status and adds a `Context compacted` event
-for host compaction. When exact retained journal answer evidence identifies the
+completion restores ordinary turn status and adds a generic `Context reset` event
+in `auto`, or `Context compacted` for ordinary provider compaction in `off` and
+`slice`. Auto also uses the generic label for older provider or ambiguous history;
+it does not imply journal provenance, recovery disclosure or zero provider tokens.
+When exact retained journal answer evidence identifies the
 completed item, a single clickable `Context reset from journal` row belongs to
 the journal instead, with no duplicate progress commentary. Slice resets use their
 durable journal note. Neither adds a reply-context

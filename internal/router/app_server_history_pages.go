@@ -411,7 +411,7 @@ func (u *appServerUI) hydrateChildHistoryMetadata(h *appServerChildHistory) {
 			agent.Final = h.info.Turns[len(h.info.Turns)-1].Status == "completed"
 		}
 	}
-	restoreContextUsage(agent, h.info)
+	u.restoreContextUsage(agent, h.info)
 	u.restoreUsage(h.info)
 	u.observeCost(h.info.ID, agent)
 	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})

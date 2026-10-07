@@ -40,8 +40,12 @@ the managed read store. Summaries read journal, change and failure evidence unde
 one replay lock, scoped by durable thread/workspace identity. The same renderer
 serves v2 hook recovery and compaction synthesis; summary text is not usage evidence.
 
-The request executor selects local compaction after protocol validation, before
-provider preparation. Local responses reuse terminal delivery and cancellation,
+The request executor selects journal context reset after protocol validation,
+before provider preparation. `auto` is the default for manual and context-full
+requests, including children; unavailable identity, evidence, storage or rendering
+stops the request before provider preparation. `off` restores provider compaction,
+and `slice` retains provider handling outside armed slice resets and on reset
+failure. Local responses reuse terminal delivery and cancellation,
 not tool execution or a second request path. The replay store retains the latest
 synthesis identity per workspace/thread, before response publication. Session
 leases protect evidence through delivery. The post-compaction hook compares that
@@ -52,6 +56,13 @@ attempt, rather than interpreting synthetic envelope usage as provider usage.
 For native compaction's missing workspace metadata, the session ownership catalog
 proves the unique prior selected workspace from exact thread-owned records. This
 lookup remains valid after restart and rejects multiple historical workspaces.
+
+The proxy owns a per-thread context-pressure reminder derived from the latest host
+context-usage snapshot and model window, not cumulative usage. At 70% or more it
+adds a split-slice reminder to the next request's journal tool guidance. Successful
+host context-compaction completion clears it; native host-selected context facts
+restore it on resume. This observation neither dispatches a reset nor changes
+journal continuation intent.
 
 Continuation state belongs to the journal record: turn-start sequence, handled
 turn ID and one intent bound to the completed turn. The intent distinguishes

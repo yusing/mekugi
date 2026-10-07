@@ -610,7 +610,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if m.Error != nil {
 				u.restoreDrafts(append([]composerDraft{{text: "/compact"}}, slices.Concat(u.unsent, u.queued)...)...)
 				u.unsent, u.queued = nil, nil
-				u.setNotice("Compaction failed: "+m.Error.Message, true)
+				u.setNotice(u.compactionText("Compaction failed: ")+m.Error.Message, true)
 				u.status = "Ready"
 			}
 			return nil
@@ -768,7 +768,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 					u.setNotice("Wait targets could not be retained: "+err.Error(), true)
 				}
 			}
-			restoreContextUsage(u.session.agent("/root"), result.Thread)
+			u.restoreContextUsage(u.session.agent("/root"), result.Thread)
 			u.restoreUsage(result.Thread)
 			u.observeCost(u.thread, u.session.agent("/root"))
 			if u.agents != nil {
