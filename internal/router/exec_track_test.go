@@ -45,9 +45,12 @@ type execTrackShell struct {
 	home string
 }
 
+// Use native Bash, not a PATH wrapper that can rewrite the registered script.
+const execTrackBash = "/bin/bash"
+
 func newExecTrackShell(t *testing.T) *execTrackShell {
 	t.Helper()
-	if _, err := exec.LookPath("bash"); err != nil {
+	if _, err := exec.LookPath(execTrackBash); err != nil {
 		t.Skip("bash unavailable")
 	}
 	helper, err := execTrackHelper()
@@ -81,7 +84,7 @@ type execTrackRun struct {
 
 func runExecTrackShell(t *testing.T, env []string, script string) execTrackRun {
 	t.Helper()
-	cmd := exec.Command("bash", "-lc", script)
+	cmd := exec.Command(execTrackBash, "-lc", script)
 	cmd.Env, cmd.Dir = env, t.TempDir()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -240,7 +243,7 @@ func TestExecTrackMatchesDelayedHostStart(t *testing.T) {
 	shell := newExecTrackShell(t)
 	script := "echo first; false && echo never; echo last"
 	key := [3]string{"thread", "turn", "delayed"}
-	cmd := exec.CommandContext(t.Context(), "bash", "-lc", script)
+	cmd := exec.CommandContext(t.Context(), execTrackBash, "-lc", script)
 	cmd.Env, cmd.Dir = shell.env, t.TempDir()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -269,7 +272,7 @@ func TestExecTrackLeavesNestedShellsAlone(t *testing.T) {
 	t.Parallel()
 	shell := newExecTrackShell(t)
 	key := [3]string{"thread", "turn", "item"}
-	script := "echo outer; bash -c 'echo inner; echo nested'"
+	script := "echo outer; /bin/bash -c 'echo inner; echo nested'"
 	shell.hub.start(key, "/usr/bin/bash -lc "+quoteShellWord(script))
 	// A nested shell's script matches no item; without the guard it would
 	// wait for one before running.
@@ -477,7 +480,7 @@ func newTrackedAppServerUI(t *testing.T) (*appServerUI, *execTrackHub) {
 func TestExecTrackTracksTheCommandInsideCodexSnapshotWrapper(t *testing.T) {
 	t.Parallel()
 	shell := newExecTrackShell(t)
-	bash, err := exec.LookPath("bash")
+	bash, err := exec.LookPath(execTrackBash)
 	if err != nil {
 		t.Skip("bash unavailable")
 	}
@@ -509,7 +512,7 @@ func TestExecTrackReportsTerminalCommandStatusOnly(t *testing.T) {
 	script := "test -t 1 && echo tty; false"
 	key := [3]string{"thread", "turn", "tty"}
 	shell.hub.start(key, "/usr/bin/bash -lc "+quoteShellWord(script))
-	cmd := exec.Command("bash", "-lc", script)
+	cmd := exec.Command(execTrackBash, "-lc", script)
 	cmd.Env = shell.env
 	terminal, err := pty.Start(cmd)
 	if err != nil {
