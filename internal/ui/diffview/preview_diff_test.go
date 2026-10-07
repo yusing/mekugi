@@ -1,49 +1,45 @@
 package diffview
 
 import (
-	"strings"
 	"testing"
 
-	"github.com/alecthomas/chroma/v2"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
-func TestPreviewDiffTailStyles(t *testing.T) {
-	for _, theme := range []livediff.Theme{livediff.TerminalTheme, livediff.DarkTheme, livediff.LightTheme} {
-		for _, input := range []string{
-			"--- \"src/main.go\"\n+++ \"src/main.go\"\n@@ -1 +1 @@\n-var x = 1\n+var x = 2\n",
-			"+++ \"src/main.go\"\n@@ -1 +1 @@\n-var x = 1\n+var x = 2\n",
-			"-old\n+new\n",
-		} {
-			pane := PreviewPane{}
-			pane.Update(Preview{ID: "tail", Workspace: "/workspace", Caller: "/root", Input: input, DiffText: true, Truncated: true})
-			rows, err := pane.Render(t.Context(), "/workspace", theme, 60, 10)
-			if err != nil {
-				t.Fatal(err)
-			}
-			rendered := strings.Join(rows, "\n")
-			for _, kind := range []byte{'-', '+'} {
-				if !strings.Contains(rendered, theme.RowBackground(kind)) {
-					t.Fatalf("missing %c fill: %q", kind, rendered)
+func TestUISnapshotDiffTailStyles(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		theme livediff.Theme
+	}{
+		{"terminal", livediff.TerminalTheme},
+		{"dark", livediff.DarkTheme},
+		{"light", livediff.LightTheme},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var frame []string
+			for _, input := range []string{
+				"--- \"src/main.go\"\n+++ \"src/main.go\"\n@@ -1 +1 @@\n-var x = 1\n+var x = 2\n",
+				"+++ \"src/main.go\"\n@@ -1 +1 @@\n-var x = 1\n+var x = 2\n",
+				"-old\n+new\n",
+			} {
+				pane := PreviewPane{}
+				pane.Update(Preview{ID: "tail", Workspace: "/workspace", Caller: "/root", Input: input, DiffText: true, Truncated: true})
+				rows, err := pane.Render(t.Context(), "/workspace", tc.theme, 60, 10)
+				if err != nil {
+					t.Fatal(err)
+				}
+				frame = append(frame, rows...)
+				frame = append(frame, "plain after preview")
+				for _, row := range pane.Views["tail"].Source {
+					if row.Number != 0 {
+						t.Fatal("tail has fabricated coordinates")
+					}
 				}
 			}
-			if strings.Contains(input, "@@") && !strings.Contains(rendered, theme.Foreground(chroma.KeywordDeclaration)) {
-				t.Fatalf("missing Go syntax: %q", rendered)
-			}
-			if strings.Contains(input, "@@") && (!strings.Contains(rendered, theme.WordBackground('-')) || !strings.Contains(rendered, theme.WordBackground('+'))) {
-				t.Fatalf("missing changed-word fills: %q", rendered)
-			}
-			for _, row := range pane.Views["tail"].Source {
-				if row.Number != 0 {
-					t.Fatal("tail has fabricated coordinates")
-				}
-			}
-			if strings.Contains(ansi.Strip(rendered), "++var") {
-				t.Fatal("duplicated marker")
-			}
-		}
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/preview_tail_styles_"+tc.name+".txt", frame, 60)
+		})
 	}
 }
 

@@ -136,7 +136,15 @@ Other owners keep fixtures in their own `testdata/snapshots/` directories.
 `internal/uisnapshot.Assert` strips ANSI sequences only: spacing, blank lines,
 wrapping, and borders remain exact. Tests fix time, theme, dimensions, and other
 nondeterministic inputs before invoking the actual renderer. Text snapshots do
-not establish color/style correctness or replace interaction and PTY acceptance.
+not establish color/style correctness. `internal/uisnapshot.AssertTerminal`
+paints actual renderer rows into the shared VT emulator at a fixed width, then
+stores its canonical ANSI output as quoted rows. These fixtures cover terminal
+cell colors, emphasis, links, padding, and style restoration without depending on
+the renderer's choice of equivalent escape sequences. Include a following plain
+row when checking that a style does not leak. Representative Activity syntax and
+dialog surfaces, plus Diff tail styles, cover terminal, dark, and light themes.
+Both snapshot forms use the same review/update commands and preserve separate
+copy, state, bounds, interaction, and PTY acceptance.
 Repository Git attributes suppress trailing-space and final-blank-row warnings
 only for these text fixtures; `git diff --check` still checks ordinary sources.
 
