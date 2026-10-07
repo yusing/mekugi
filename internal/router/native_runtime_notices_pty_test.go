@@ -44,7 +44,8 @@ func TestNativeRuntimeNoticesPTYCompactDeliveryAndDismissal(t *testing.T) {
 	client := &runtimeTestClient{events: make(chan session.Event, 16)}
 	terminal, stop := startNativeRuntimePTY(t, t.Context(), client, binding.Workspace, service)
 	t.Cleanup(stop)
-	terminal.resize(120, 5)
+	// Four rows leave room for the composer and status, without a transcript.
+	terminal.resize(120, 4)
 	client.events <- session.Event{Kind: "session", SessionID: binding.Session}
 	client.events <- session.Event{Kind: "ready"}
 	client.events <- session.Event{Kind: "tool", ID: "command", Role: "Bash", Text: savedSegmentInput}
@@ -52,7 +53,7 @@ func TestNativeRuntimeNoticesPTYCompactDeliveryAndDismissal(t *testing.T) {
 	const notice = "Command segment history could not be retained"
 	awaitNativeNoticeFrame(t, terminal, 3*time.Second, func(frame string) bool { return strings.Contains(frame, notice) })
 	if strings.Contains(terminal.screen.String(), "first") {
-		t.Fatal("compact fixture painted the transcript")
+		t.Fatalf("compact fixture painted the transcript:\n%s", terminal.screen.String())
 	}
 	// Click the rendered check, without editing (which also clears feedback).
 	clicked := false
