@@ -38,7 +38,16 @@ func DisplayScript(script string, isGuardDirectory func(string) bool) string {
 				directory, literal := staticWord(&syntax.Word{Parts: parts[:len(parts)-2]})
 				if literal && isGuardDirectory(directory) {
 					start, end := int(assign.Pos().Offset()), int(call.Args[0].Pos().Offset())
-					if script[start:end] == pathPrefix(directory) {
+					item := ""
+					if len(call.Assigns) > 1 {
+						identity := call.Assigns[len(call.Assigns)-2]
+						if identity.Name != nil && identity.Name.Value == ItemEnvironment && identity.Value != nil {
+							if value, ok := staticWord(identity.Value); ok && value != "" {
+								item, start = value, int(identity.Pos().Offset())
+							}
+						}
+					}
+					if script[start:end] == itemPathPrefix(directory, item) {
 						edits = append(edits, sourceEdit{start: start, end: end})
 					}
 				}
@@ -57,7 +66,16 @@ func DisplayScript(script string, isGuardDirectory func(string) bool) string {
 		if !static || !isGuardDirectory(directory) {
 			return true
 		}
-		word := call.Args[i+3]
+		target := i + 3
+		item := ""
+		if flag, _ := staticWord(call.Args[target]); flag == ItemFlag && target+2 < len(call.Args) {
+			item, static = staticWord(call.Args[target+1])
+			if !static || item == "" {
+				return true
+			}
+			target += 2
+		}
+		word := call.Args[target]
 		value, static := staticWord(word)
 		tool := static && slices.Contains(Tools, filepath.Base(value)) || !static && vcsPathSuffix(word)
 		shell := static && slices.Contains(Shells, filepath.Base(value))
@@ -67,6 +85,9 @@ func DisplayScript(script string, isGuardDirectory func(string) bool) string {
 		}
 		start, end := int(call.Args[i].Pos().Offset()), int(word.Pos().Offset())
 		prefix := shellsyntax.Quote(helper) + " " + mode + " " + shellsyntax.Quote(directory) + " "
+		if item != "" {
+			prefix += ItemFlag + " " + shellsyntax.Quote(item) + " "
+		}
 		if script[start:end] == prefix {
 			edits = append(edits, sourceEdit{start: start, end: end})
 		}

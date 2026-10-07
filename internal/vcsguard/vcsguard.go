@@ -30,6 +30,12 @@ const Directory = "vcs-guard"
 // Channel names the session-local Unix approval socket.
 const Channel = "vcs-approval.sock"
 
+// ItemEnvironment carries the exact host command identity to a PATH guard.
+const ItemEnvironment = "MEKUGI_VCS_ITEM"
+
+// ItemFlag carries the same identity through wrappers that clear the environment.
+const ItemFlag = "--vcs-item"
+
 // Tools are the command names the guard intercepts.
 var Tools = []string{"git", "gh", "hg", "svn", "jj"}
 
@@ -42,6 +48,7 @@ func IsTool(name string) bool {
 // Message asks the router to approve one remote write.
 type Message struct {
 	Thread     string   `json:"thread,omitempty"`
+	Item       string   `json:"item,omitempty"`
 	Cwd        string   `json:"cwd,omitempty"`
 	Argv       []string `json:"argv"`
 	Executable string   `json:"executable"` // Resolved tool, separate from its display name.

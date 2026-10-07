@@ -13,6 +13,46 @@ import (
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
+func TestVCSGuardHostItemIdentity(t *testing.T) {
+	t.Parallel()
+	shell := newVCSGuardShell(t)
+	items := make(chan string, 4)
+	go func() {
+		for range 4 {
+			select {
+			case request := <-shell.hub.approvals:
+				items <- request.item
+				request.reply <- vcsguard.Reply{OK: true}
+			case <-t.Context().Done():
+				return
+			}
+		}
+	}()
+	helper, err := execTrackHelper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
+	git := quoteShellWord(filepath.Join(shell.real, "git"))
+	file := filepath.Join(t.TempDir(), "push.sh")
+	if err := os.WriteFile(file, []byte("git push\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script := "git push; env -i " + git + " push; env -i sh -c " + quoteShellWord(git+" push") + "; sh " + quoteShellWord(file)
+	changed, err := vcsguard.RewriteForItem(script, helper, guard, "host-item")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run := runShell(t, shell.env, "bash", "-c", changed); run.code != 0 {
+		t.Fatalf("run = %+v", run)
+	}
+	for range 4 {
+		if item := <-items; item != "host-item" {
+			t.Fatalf("guard item = %q", item)
+		}
+	}
+}
+
 // Run a guarded-write fixture inside another guarded session. Any escaped
 // request reaches this test's channel, never a live user's approval dialog.
 func TestVCSGuardFixturesIsolateInheritedSession(t *testing.T) {

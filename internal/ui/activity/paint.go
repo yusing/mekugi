@@ -650,12 +650,14 @@ func (p *Painter) Block(block Block, width int) []string {
 // succeeded. Withdrawal and external resolution do not imply a decision.
 func approvalLabel(outcome string) string {
 	switch {
+	case strings.HasPrefix(outcome, "Pending Approval"):
+		return Amber + "Pending Approval" + Reset
+	case strings.HasPrefix(outcome, "Auto Denied"):
+		return Red + "Auto Denied" + Reset
 	case strings.HasPrefix(outcome, "Approved"), strings.HasPrefix(outcome, "Granted"), strings.HasPrefix(outcome, "Allowed"):
 		return Green + "Approved" + Reset
 	case strings.HasPrefix(outcome, "Denied"), strings.HasPrefix(outcome, "Declined"), strings.HasPrefix(outcome, "Blocked"):
 		return Red + "Denied" + Reset
-	case outcome != "":
-		return Dim + livediff.Safe(outcome, false) + Undim
 	}
 	return ""
 }

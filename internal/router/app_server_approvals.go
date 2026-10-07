@@ -45,6 +45,7 @@ type nativeApproval struct {
 	selected     int
 	textTop      int
 	editor       questionEditor // Optional denial reason.
+	outcome      string         // Latest guard state while its host item is not yet visible.
 }
 
 // nativeApprovalDock shows the oldest pending approval above the composer.
@@ -52,6 +53,7 @@ type nativeApproval struct {
 // composer, so typing cannot answer a request that appeared mid-keystroke.
 type nativeApprovalDock struct {
 	pending  []*nativeApproval
+	unbound  []*nativeApproval // Guard socket notifications can precede host items.
 	open     bool
 	autoOpen bool
 	painted  bool
@@ -109,6 +111,7 @@ func (u *appServerUI) approvalDirectory(cwd string) []string {
 
 func (u *appServerUI) addApproval(a *nativeApproval) {
 	u.approvals.pending = append(u.approvals.pending, a)
+	u.recordApproval(a, "Pending Approval")
 	u.approvals.autoOpen = true
 	if a.request == nil {
 		u.notify("approval-requested", "Approval requested")
@@ -120,14 +123,11 @@ func (u *appServerUI) addGuardApproval(request *vcsApproval) {
 	if request.finished() {
 		return
 	}
-	if u.approvals.allowed[guardApprovalIdentity(request)] {
-		request.reply <- vcsguard.Reply{OK: true}
-		return
-	}
 	details := u.approvalDirectory(request.cwd)
 	details = append(details, "Denying fails only this command with exit status 1.")
-	u.addApproval(&nativeApproval{
+	a := &nativeApproval{
 		thread:  request.thread,
+		item:    request.item,
 		guard:   request,
 		title:   "Allow this remote write?",
 		subject: workerCommand(request.argv[0], request.argv[1:]),
@@ -137,13 +137,56 @@ func (u *appServerUI) addGuardApproval(request *vcsApproval) {
 			{label: "Yes, for this exact command and workdir this session", approve: true, session: true, outcome: "Approved for this session"},
 			{label: "No, fail this command", deny: true, outcome: "Denied"},
 		},
-	})
+	}
+	// Match only the hook's exact host item. An environment-clearing wrapper
+	// can omit the thread; an ambiguous item is never attributed by recency.
+	if request.item != "" {
+		if owner := u.approvalItem(request.thread, "", request.item); owner != nil {
+			a.thread, a.turn, a.item = owner.thread, owner.turn, owner.item
+		}
+	}
+	if u.approvals.allowed[guardApprovalIdentity(request)] {
+		u.recordApproval(a, "Approved for this session")
+		request.reply <- vcsguard.Reply{OK: true}
+		return
+	}
+	u.addApproval(a)
 }
 
 // approvalMessage answers Codex's approval requests. Resolution and turn
 // completion notifications also reach their other owners.
 func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 	switch m.Method {
+	case "item/autoApprovalReview/started", "item/autoApprovalReview/completed":
+		var p struct {
+			ThreadID string `json:"threadId"`
+			TurnID   string `json:"turnId"`
+			ItemID   string `json:"targetItemId"`
+			Review   struct {
+				Status string `json:"status"`
+			} `json:"review"`
+		}
+		if err := json.Unmarshal(m.Params, &p); err != nil {
+			return true, err
+		}
+		if p.ItemID == "" {
+			return true, nil
+		}
+		outcome := ""
+		switch p.Review.Status {
+		case "inProgress":
+			outcome = "Pending Approval"
+		case "approved":
+			outcome = "Approved"
+		case "denied", "timedOut":
+			outcome = "Auto Denied"
+		case "aborted":
+			outcome = "Review aborted"
+		default:
+			return true, nil
+		}
+		u.recordApproval(&nativeApproval{thread: p.ThreadID, turn: p.TurnID, item: p.ItemID}, outcome)
+		return true, nil
 	case "serverRequest/resolved":
 		var p struct {
 			ThreadID  string         `json:"threadId"`
@@ -437,7 +480,7 @@ func (u *appServerUI) expireApprovals() bool {
 	changed := false
 	for _, a := range slices.Clone(u.approvals.pending) {
 		if a.guard != nil && a.guard.finished() {
-			outcome := "Denied: no answer within 5 minutes"
+			outcome := "Auto Denied: no answer within 5 minutes"
 			if a.guard.outcome == "withdrawn" {
 				outcome = "Withdrawn: the command stopped"
 			}
@@ -465,21 +508,70 @@ func (u *appServerUI) endApproval(a *nativeApproval, outcome string) {
 	if a.request != nil && u.notifications != nil {
 		delete(u.notifications.blocked, string(a.request))
 	}
-	// Native requests name their exact host item. A guard request names the
-	// guarded argv, not an outer host item; keep that command separate rather
-	// than attributing its decision to an unrelated or concurrent invocation.
-	item := a.item
-	if item == "" {
-		item = fmt.Sprintf("approval/%d", u.session.next())
+	u.recordApproval(a, outcome)
+}
+
+// approvalItem finds one exact host identity across the two presentation views.
+func (u *appServerUI) approvalItem(thread, turn, item string) *liveActivityNativeItem {
+	var owner *liveActivityNativeItem
+	for _, view := range []*liveActivityView{u.view, u.agents} {
+		if view == nil {
+			continue
+		}
+		for _, entry := range view.entries {
+			n := entry.native
+			if n == nil || n.item != item || thread != "" && n.thread != thread || turn != "" && n.turn != turn {
+				continue
+			}
+			if owner != nil && !owner.sameItem(n) {
+				return nil
+			}
+			owner = n
+		}
 	}
-	entry := activityPaneEntry{Seq: u.session.next(), Kind: "approval", Text: a.subject, Observed: u.now(),
-		native: &liveActivityNativeItem{thread: a.thread, turn: a.turn, item: item, phase: "approval/ended", approval: outcome}}
+	return owner
+}
+
+// recordApproval updates the host item, never a separate approval event.
+func (u *appServerUI) recordApproval(a *nativeApproval, outcome string) {
+	if a.item == "" {
+		return
+	}
+	if (a.subject == "" || a.guard != nil) && u.approvalItem(a.thread, a.turn, a.item) == nil {
+		if a.guard != nil {
+			a.outcome = outcome
+			if !slices.Contains(u.approvals.unbound, a) {
+				u.approvals.unbound = append(u.approvals.unbound, a)
+			}
+		}
+		return
+	}
+	if a.guard != nil {
+		owner := u.approvalItem(a.thread, a.turn, a.item)
+		a.thread, a.turn = owner.thread, owner.turn
+		outcome += "\nCommand: " + a.subject
+	}
+	entry := activityPaneEntry{Seq: u.session.next(), Kind: "tool", Text: toolActivityShell(a.subject), Observed: u.now(),
+		native: &liveActivityNativeItem{thread: a.thread, turn: a.turn, item: a.item, phase: "approval/updated", approval: outcome}}
 	if u.agents != nil {
 		entry.Agent = u.session.path(a.thread)
 		u.applyActivity([]activityPaneEntry{entry}, nil)
 	} else {
 		entry.Seq, entry.Agent = u.view.lastSeq+1, "Main"
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+	}
+}
+
+// flushApprovalUpdates reconciles the independent guard and host channels.
+func (u *appServerUI) flushApprovalUpdates() {
+	for i := 0; i < len(u.approvals.unbound); {
+		a := u.approvals.unbound[i]
+		if u.approvalItem(a.thread, a.turn, a.item) == nil {
+			i++
+			continue
+		}
+		u.approvals.unbound = slices.Delete(u.approvals.unbound, i, i+1)
+		u.recordApproval(a, a.outcome)
 	}
 }
 

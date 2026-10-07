@@ -386,20 +386,22 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 		if !entry.native.sameItem(previous.native) {
 			continue
 		}
-		if entry.native.phase == "approval/ended" {
+		if entry.native.phase == "approval/updated" {
 			native := *previous.native
 			native.approval = entry.native.approval
 			current := previous.activityPaneEntry
 			current.native = &native
 			blocks := slices.Clone(previous.blocks)
-			if len(blocks) > 0 {
-				blocks[0].Approval = native.approval
+			if native.command != "" && len(blocks) > 1 && !slices.ContainsFunc(blocks, func(b activityui.Block) bool { return b.BatchExit }) {
+				blocks = parseLiveActivity(current)
+			} else {
+				setApprovalBlocks(blocks, native.approval)
 			}
 			v.replaceEntry(i, current, blocks)
 			return true
 		}
 		entry.native.approval = previous.native.approval
-		if previous.native.phase == "item/completed" || entry.native.phase == "item/started" && previous.native.phase != "approval/ended" || previous.native.phase == "turn/completed" && entry.native.phase != "item/completed" {
+		if previous.native.phase == "item/completed" || entry.native.phase == "item/started" && previous.native.phase != "approval/updated" || previous.native.phase == "turn/completed" && entry.native.phase != "item/completed" {
 			return true
 		}
 		if entry.native.phase == "item/agentMessage/delta" {

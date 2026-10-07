@@ -70,7 +70,9 @@ func guardCommand(directory, name, explicit, argv0 string, defaultPath bool, arg
 // dispatch back to it. Its active-shim identity excludes that executable while
 // preserving the guarded PATH for the real command and its children.
 func guardEnvironment(real string) []string {
-	environment := os.Environ()
+	environment := slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		return strings.HasPrefix(entry, vcsguard.ItemEnvironment+"=")
+	})
 	resolved, err := filepath.EvalSymlinks(real)
 	if err != nil || resolved == real || filepath.Base(resolved) != "mise" {
 		return environment
@@ -190,7 +192,7 @@ func approve(directory, executable string, argv []string) (bool, string) {
 		return false, unavailable
 	}
 	cwd, _ := os.Getwd()
-	message := vcsguard.Message{Thread: os.Getenv("CODEX_THREAD_ID"), Cwd: cwd, Argv: argv, Executable: executable}
+	message := vcsguard.Message{Thread: os.Getenv("CODEX_THREAD_ID"), Item: os.Getenv(vcsguard.ItemEnvironment), Cwd: cwd, Argv: argv, Executable: executable}
 	data, err := json.Marshal(&message)
 	if err != nil || len(data) > vcsguard.MaxMessage {
 		return false, "invalid approval request"

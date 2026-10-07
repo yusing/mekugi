@@ -15,6 +15,11 @@ import (
 // shell still expands arguments and owns control flow, redirections and status.
 // Parsing never executes expansions or reads scripts from the filesystem.
 func Rewrite(script, helper, directory string) (string, error) {
+	return RewriteForItem(script, helper, directory, "")
+}
+
+// RewriteForItem retains the host item ID in command-local guard input.
+func RewriteForItem(script, helper, directory, item string) (string, error) {
 	tree, err := parseScript(script)
 	if err != nil {
 		return "", fmt.Errorf("VCS guard: cannot parse command: %w", err)
@@ -39,7 +44,7 @@ func Rewrite(script, helper, directory string) (string, error) {
 			if i == 0 && static && value == name {
 				// Preserve aliases and shell functions. Only external lookup needs
 				// our PATH entry, after any command-local PATH assignment.
-				prefix := pathPrefix(directory)
+				prefix := itemPathPrefix(directory, item)
 				if !strings.HasSuffix(script[int(call.Pos().Offset()):start], prefix) {
 					edits = append(edits, sourceEdit{start, start, prefix})
 				}
@@ -51,7 +56,11 @@ func Rewrite(script, helper, directory string) (string, error) {
 				if defaultPath {
 					mode += "-default"
 				}
-				edits = append(edits, sourceEdit{start, end, shellsyntax.Quote(helper) + " " + mode + " " + shellsyntax.Quote(directory) + " " + script[start:end]})
+				prefix := shellsyntax.Quote(helper) + " " + mode + " " + shellsyntax.Quote(directory) + " "
+				if item != "" {
+					prefix += ItemFlag + " " + shellsyntax.Quote(item) + " "
+				}
+				edits = append(edits, sourceEdit{start, end, prefix + script[start:end]})
 			}
 		}
 		return true
@@ -61,6 +70,13 @@ func Rewrite(script, helper, directory string) (string, error) {
 
 func pathPrefix(directory string) string {
 	return "PATH=" + shellsyntax.Quote(directory) + ":\"${PATH-/bin:/usr/bin}\" "
+}
+
+func itemPathPrefix(directory, item string) string {
+	if item == "" {
+		return pathPrefix(directory)
+	}
+	return ItemEnvironment + "=" + shellsyntax.Quote(item) + " " + pathPrefix(directory)
 }
 
 func parseScript(script string) (*syntax.File, error) {

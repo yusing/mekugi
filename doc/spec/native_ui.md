@@ -1393,13 +1393,19 @@ one-row banner, `! N approvals pending · ctrl+b q review`, waits, and Ctrl+B Q
 opens approvals before questions. Keystrokes received before the dock is painted
 do not answer it. The open composer says `approving · turn waiting`.
 
-Outcomes appear beside the associated native item, without an extra Session row.
-A VCS guard outcome names the guarded command under its caller rather than
-claiming a decision for the outer shell invocation. `Approved` is green and
-`Denied` is red, independently of execution success; command dialogs show the
-decision and its full scope or reason. External resolution shows `Resolved
-elsewhere`, and a turn ending before an answer shows `Turn ended before an
-answer`, without claiming approval or denial. A guarded write the user did not
-answer ends as `Denied: no answer within 5 minutes`, or `Withdrawn: the command
+Approval state appears beside the associated native item, without an extra
+`Approval` event or Session row. A request shows yellow `Pending Approval` until
+it settles. A VCS guard state updates its existing host command row; the dialog retains the
+guarded command with the decision. Compound invocations show their state on the
+aggregate shell-batch row, not an unrelated classified subcommand. `Approved` is
+green; `Denied` and `Auto Denied` are red, independently of execution success.
+Command dialogs show the decision and its full scope or reason. External resolution and a turn ending
+before an answer clear the pending state. Their dialog details show `Resolved
+elsewhere` or `Turn ended before an answer`, without claiming approval or denial.
+A guarded write the user did not answer ends as `Auto Denied: no answer within
+5 minutes`, or `Withdrawn: the command
 stopped` when its command exited first; an answer chosen after either is not
-sent. Headless runs still require `--yolo`.
+sent. Codex auto-review notifications update their exact target item: pending
+review shows `Pending Approval`, approval shows `Approved`, and denial or review
+timeout shows `Auto Denied`. A review with no target item does not assign its
+decision to an unrelated command. Headless runs still require `--yolo`.

@@ -25,7 +25,7 @@ func TestGuardCommandDisplayProjection(t *testing.T) {
 git status
 EOF`,
 	} {
-		guarded, err := vcsguard.Rewrite(source, displayGuardHelper, displayGuardDirectory)
+		guarded, err := vcsguard.RewriteForItem(source, displayGuardHelper, displayGuardDirectory, "cmd")
 		if err != nil {
 			t.Fatal(err)
 		}

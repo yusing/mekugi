@@ -81,8 +81,11 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		}
 	}
 	if block.Approval != "" {
-		add(DialogLine{Text: Dim + "Approval: " + Undim + approvalLabel(block.Approval)})
-		if ansi.Strip(approvalLabel(block.Approval)) != block.Approval {
+		label := approvalLabel(block.Approval)
+		if label != "" {
+			add(DialogLine{Text: Dim + "Approval: " + Undim + label})
+		}
+		if ansi.Strip(label) != block.Approval {
 			add(DialogLine{Text: Dim + livediff.Safe(block.Approval, false) + Undim, Wrap: true})
 		}
 	}

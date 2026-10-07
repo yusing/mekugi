@@ -16,6 +16,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
@@ -167,7 +168,7 @@ func TestNativeApprovalEndsWhenResolvedElsewhere(t *testing.T) {
 	if strings.Contains(input.String(), `"decision"`) {
 		t.Fatalf("ended approval was answered: %s", input.String())
 	}
-	if got := approvalTestTranscript(t, u); !strings.Contains(got, "git push origin main · Turn ended before an answer") || len(u.view.entries) != 1 {
+	if got := approvalTestTranscript(t, u); strings.Contains(got, "Pending Approval") || len(u.view.entries) != 1 || u.view.entries[0].native.approval != "Turn ended before an answer" {
 		t.Fatalf("transcript = %q", got)
 	}
 }
@@ -205,10 +206,13 @@ func TestNativeApprovalWaitsForAnEmptyComposer(t *testing.T) {
 }
 
 func TestNativeApprovalGuardedWrite(t *testing.T) {
-	u, _ := newAppServerTestUI()
-	u.session.start("main", "/work")
+	u := newAppServerSessionTestUI(t, "/work")
+	id := 0
 	newRequest := func() *vcsApproval {
-		return &vcsApproval{thread: "main", cwd: "/work", argv: []string{"git", "push", "origin", "main"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})}
+		id++
+		item := fmt.Sprintf("cmd-%d", id)
+		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": appServerItem{ID: item, Type: "commandExecution", Command: "git push origin main", Status: "inProgress"}})
+		return &vcsApproval{thread: "main", item: item, cwd: "/work", argv: []string{"git", "push", "origin", "main"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})}
 	}
 	approved, denied, expired := newRequest(), newRequest(), newRequest()
 	for _, request := range []*vcsApproval{approved, denied, expired} {
@@ -236,8 +240,8 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 	if len(expired.reply) != 0 || len(u.approvals.pending) != 0 {
 		t.Fatal("expired write was answered")
 	}
-	for i, want := range []string{"Approved", "Denied", "Denied: no answer within 5 minutes"} {
-		if len(u.view.entries) != 3 || u.view.entries[i].blocks[0].Approval != want {
+	for i, want := range []string{"Approved", "Denied", "Auto Denied: no answer within 5 minutes"} {
+		if len(u.view.entries) != 3 || u.view.entries[i].blocks[0].Approval != want+"\nCommand: git push origin main" {
 			t.Fatalf("approval %d = %+v", i, u.view.entries)
 		}
 	}
@@ -245,7 +249,7 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 	u.addGuardApproval(withdrawn)
 	withdrawn.outcome = "withdrawn"
 	close(withdrawn.done)
-	if !u.expireApprovals() || !strings.Contains(approvalTestTranscript(t, u), "git push origin main · Withdrawn: the command stopped") {
+	if !u.expireApprovals() || strings.Contains(approvalTestTranscript(t, u), "Approval") || u.view.entries[3].native.approval != "Withdrawn: the command stopped\nCommand: git push origin main" {
 		t.Fatalf("transcript = %q", approvalTestTranscript(t, u))
 	}
 }
@@ -533,8 +537,8 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 	}{
 		{name: "native-approved", outcome: "Approved"},
 		{name: "native-denied", outcome: "Declined", early: true, choice: 1},
-		{name: "guard-approved", outcome: "Approved", guard: true},
-		{name: "guard-denied-child", outcome: "Denied", guard: true, child: true, choice: 2},
+		{name: "guard-approved", outcome: "Approved", guard: true, early: true},
+		{name: "guard-denied-child", outcome: "Denied", guard: true, child: true, early: true, choice: 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, "/workspace")
@@ -557,11 +561,24 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 				u.shell.paintOutput(make([]string, 18), 80, 18)
 			}
 			if tc.guard {
-				u.addGuardApproval(&vcsApproval{thread: thread, argv: []string{"git", "push", "origin", "main"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})})
+				u.addGuardApproval(&vcsApproval{thread: thread, item: "cmd", argv: []string{"git", "push", "origin", "main"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})})
 			} else {
 				approvalTestCommand(t, u, 7, map[string]any{"threadId": thread, "availableDecisions": []string{"accept", "decline"}})
 			}
 			a := u.approvals.pending[0]
+			if tc.guard && tc.early && !tc.child {
+				notify("item/started")
+				native := *view.entries[0].native
+				native.phase = "item/commandExecution/outputDelta"
+				native.segments = []commandSegment{{source: item.Command, text: toolActivityShell(item.Command), running: true}}
+				u.applyActivity([]activityPaneEntry{{Seq: u.session.next(), Agent: u.session.path(thread), Kind: "tool", Text: toolActivityShell(item.Command), native: &native}}, nil)
+				if len(view.entries) != 1 || len(view.entries[0].blocks) != 1 || !strings.HasPrefix(view.entries[0].native.approval, "Pending Approval") {
+					t.Fatal("early guard pending state was not reconciled")
+				}
+			}
+			if tc.name == "guard-approved" {
+				uisnapshot.AssertTerminal(t, "testdata/snapshots/approval-pending-"+tc.name+".txt", append(view.renderFeed(48, 30).lines, "plain after approval"), 48)
+			}
 			if err := u.answerApproval(a, a.choices[tc.choice]); err != nil {
 				t.Fatal(err)
 			}
@@ -570,8 +587,11 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 					t.Fatalf("painted dialog did not refresh before host output: %s", frame)
 				}
 			}
-			if tc.early {
+			if tc.early && (!tc.guard || tc.child) {
 				notify("item/started")
+				if tc.guard && len(u.approvals.unbound) != 0 {
+					t.Fatal("early guard decision was not reconciled")
+				}
 			}
 			item.Status, item.ExitCode = "completed", new(1) // Approval does not mean execution succeeded.
 			if tc.choice == 1 && !tc.guard {
@@ -579,13 +599,11 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			}
 			notify("item/completed")
 			count := 1
+			outcome := tc.outcome
 			if tc.guard {
-				count = 2 // The guard names its argv, not an outer host item.
-				if view.entries[0].native.approval != "" {
-					t.Fatal("guard decision changed the outer host command")
-				}
+				outcome += "\nCommand: git push origin main"
 			}
-			if len(view.entries) != count || view.entries[count-1].native.approval != tc.outcome {
+			if len(view.entries) != count || view.entries[count-1].native.approval != outcome {
 				t.Fatalf("entries = %+v", view.entries)
 			}
 			entry := view.entries[count-1]
@@ -612,6 +630,42 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 				t.Fatalf("dialog lost the decision: %q", rows)
 			}
 			assertNativeUISnapshot(t, "approval-dialog-"+tc.name, rows)
+		})
+	}
+}
+
+func TestUISnapshotNativeAutoApprovalStates(t *testing.T) {
+	previous := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() { time.Local = previous })
+	for _, status := range []string{"approved", "denied", "timedOut", "aborted"} {
+		t.Run(status, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, "/workspace")
+			u.clock = func() time.Time { return time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC) }
+			u.view.clock, u.agents.clock = u.clock, u.clock
+			u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
+			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "git push", Status: "inProgress"}
+			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "turn", "item": item})
+			review := func(method, state, target string) {
+				appServerTestNotify(t, u, method, map[string]any{"threadId": "child", "turnId": "turn", "reviewId": "review", "targetItemId": target, "review": map[string]any{"status": state}, "decisionSource": "agent"})
+			}
+			review("item/autoApprovalReview/started", "inProgress", "cmd")
+			if got := u.agents.entries[0].blocks[0].Approval; got != "Pending Approval" {
+				t.Fatalf("pending state = %q", got)
+			}
+			review("item/autoApprovalReview/completed", status, "cmd")
+			want := map[string]string{"approved": "Approved", "denied": "Auto Denied", "timedOut": "Auto Denied", "aborted": "Review aborted"}[status]
+			item.Status, item.ExitCode = "completed", new(1)
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "turn", "item": item})
+			// Untargeted network reviews and missing items cannot add a row.
+			review("item/autoApprovalReview/completed", "approved", "")
+			review("item/autoApprovalReview/completed", "approved", "missing")
+			if len(u.agents.entries) != 1 || len(u.view.entries) != 0 || u.agents.entries[0].blocks[0].Approval != want {
+				t.Fatalf("review changed another record: %+v", u.agents.entries)
+			}
+			if status == "approved" || status == "denied" {
+				uisnapshot.AssertTerminal(t, "testdata/snapshots/approval-auto-"+status+".txt", append(u.agents.renderFeed(48, 30).lines, "plain after approval"), 48)
+			}
 		})
 	}
 }

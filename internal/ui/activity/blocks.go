@@ -198,6 +198,8 @@ func RowVerb(b Block) string {
 	switch {
 	case b.Kind == "op" && b.Verb == "Run" && b.Requested:
 		return "Run"
+	case b.Kind == "op" && b.Verb == "Run" && !b.Running && strings.HasPrefix(b.Approval, "Pending Approval"):
+		return "Run"
 	case b.Kind == "op" && b.Verb == "Run" && b.Running:
 		return "Running"
 	case b.Kind == "op" && b.Verb == "Run" && !b.Skipped:

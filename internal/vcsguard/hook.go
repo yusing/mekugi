@@ -45,6 +45,7 @@ func RunHook(helper, directory string, input io.Reader, output, diagnostics io.W
 	var request struct {
 		Event string `json:"hook_event_name"`
 		Tool  string `json:"tool_name"`
+		Item  string `json:"tool_use_id"`
 		Input struct {
 			Command *string `json:"command"`
 		} `json:"tool_input"`
@@ -62,7 +63,7 @@ func RunHook(helper, directory string, input io.Reader, output, diagnostics io.W
 	changed := *request.Input.Command
 	if directory != "" {
 		var err error
-		changed, err = Rewrite(changed, helper, directory)
+		changed, err = RewriteForItem(changed, helper, directory, request.Item)
 		if err != nil {
 			return fail(err)
 		}

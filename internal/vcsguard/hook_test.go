@@ -15,7 +15,7 @@ func TestRunHookNativeUpdatedInput(t *testing.T) {
 	t.Setenv(execsegment.ShTrackerEnvironment, "")
 	marker := filepath.Join(t.TempDir(), "must-not-execute")
 	command := `git push "$(touch '` + marker + `')"; printf '%s' "$HOME"`
-	request, err := json.Marshal(map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": map[string]any{"command": command, "workdir": "/workspace"}})
+	request, err := json.Marshal(map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "cmd", "tool_input": map[string]any{"command": command, "workdir": "/workspace"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestRunHookNativeUpdatedInput(t *testing.T) {
 	if err := json.Unmarshal(output.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	expected, err := Rewrite(command, "/private/helper", "/private/guard")
+	expected, err := RewriteForItem(command, "/private/helper", "/private/guard", "cmd")
 	if err != nil {
 		t.Fatal(err)
 	}

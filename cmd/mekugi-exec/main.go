@@ -54,6 +54,13 @@ func main() {
 		os.Exit(vcsguard.RunHook(helper, os.Args[2], os.Stdin, os.Stdout, os.Stderr))
 	}
 	if len(os.Args) >= 4 && (strings.TrimSuffix(os.Args[1], "-default") == "--vcs-command" || strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell") {
+		if os.Args[3] == vcsguard.ItemFlag && len(os.Args) >= 6 {
+			if err := os.Setenv(vcsguard.ItemEnvironment, os.Args[4]); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			os.Args = append(os.Args[:3], os.Args[5:]...)
+		}
 		defaultPath := strings.HasSuffix(os.Args[1], "-default")
 		target := os.Args[3]
 		argv0 := target

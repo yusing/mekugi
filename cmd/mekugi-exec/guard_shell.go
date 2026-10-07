@@ -55,13 +55,19 @@ func guardShell(directory, target, argv0 string, defaultPath bool, args []string
 		}
 	}
 	if commandString && payload >= 0 && payload < len(args) {
-		args[payload], err = vcsguard.Rewrite(args[payload], helper, directory)
+		args[payload], err = vcsguard.RewriteForItem(args[payload], helper, directory, os.Getenv(vcsguard.ItemEnvironment))
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := unix.Exec(real, append([]string{argv0}, args...), guardEnvironment(real)); err != nil {
+	environment := guardEnvironment(real)
+	// Script files are not rewritten; their descendant PATH guards still
+	// belong to this host invocation.
+	if item := os.Getenv(vcsguard.ItemEnvironment); item != "" {
+		environment = append(environment, vcsguard.ItemEnvironment+"="+item)
+	}
+	if err := unix.Exec(real, append([]string{argv0}, args...), environment); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}
 	return 126

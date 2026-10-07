@@ -160,6 +160,7 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 						})
 					}
 					await("Allow this remote write?")
+					await("Pending Approval")
 					for _, key := range []string{answer, "\r"} {
 						if _, err := io.WriteString(outer, key); err != nil {
 							t.Fatal(err)

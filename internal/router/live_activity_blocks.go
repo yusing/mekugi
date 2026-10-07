@@ -96,12 +96,16 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 	defer func() {
 		// An unsupported batch has one host clock, not a clock per classified
 		// operation. Keep that total visible and its output on one explicit row.
-		if n := entry.native; entry.Kind == "tool" && n != nil && n.command != "" && len(n.segments) == 0 &&
-			(n.running || n.duration > 0) && commandTimingIsCompound(blocks, entry) &&
+		if n := entry.native; entry.Kind == "tool" && n != nil && n.command != "" &&
+			(len(n.segments) == 0 && (n.running || n.duration > 0) && commandTimingIsCompound(blocks, entry) || n.approval != "" && len(blocks) > 1) &&
 			!slices.ContainsFunc(blocks, func(b activityui.Block) bool { return b.BatchExit }) {
 			batch := activityui.Block{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true, Running: n.running, Output: n.output, Tail: entry.outputTail, TailOmitted: entry.outputOmit, Collapsed: n.collapsed}
-			for i := range blocks {
-				blocks[i].Output, blocks[i].Tail, blocks[i].TailOmitted = nil, nil, 0
+			if len(n.segments) == 0 {
+				for i := range blocks {
+					blocks[i].Output, blocks[i].Tail, blocks[i].TailOmitted = nil, nil, 0
+				}
+			} else {
+				batch.Output, batch.Tail, batch.TailOmitted = nil, nil, 0
 			}
 			blocks = append(blocks, batch)
 		}
@@ -114,7 +118,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		}
 		setCommandTiming(blocks, entry)
 		if entry.native != nil && len(blocks) > 0 {
-			blocks[0].Approval = entry.native.approval
+			setApprovalBlocks(blocks, entry.native.approval)
 		}
 		if entry.Kind == "tool" && entry.native != nil && entry.native.workdir != "" && len(blocks) > 0 {
 			// Every row keeps the directory for merging; one label per invocation.
@@ -127,8 +131,6 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 	text := livediff.Safe(entry.Text, false)
 	source := activityui.MarkdownSource(entry.Text)
 	switch entry.Kind {
-	case "approval":
-		return []activityui.Block{{Kind: "op", Verb: "Approval", Code: text, Lang: "bash", Fenced: true}}
 	case "journal_card":
 		return []activityui.Block{{Kind: "summary", Label: "Journal", Body: text, Collapsed: true}}
 	case "journal_event":
@@ -306,6 +308,21 @@ func retainBatchResult(blocks []activityui.Block, batch activityui.Block) []acti
 		return blocks
 	}
 	return append(blocks, batch)
+}
+
+// setApprovalBlocks puts a compound invocation's state on its aggregate row.
+func setApprovalBlocks(blocks []activityui.Block, outcome string) {
+	if len(blocks) == 0 {
+		return
+	}
+	at := 0
+	for i := range blocks {
+		blocks[i].Approval = ""
+		if blocks[i].BatchExit {
+			at = i
+		}
+	}
+	blocks[at].Approval = outcome
 }
 
 // commandExitBlocks keeps a combined shell failure separate from classified

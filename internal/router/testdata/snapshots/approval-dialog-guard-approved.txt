@@ -3,12 +3,12 @@
 
 
 
-╭─ Approval · git push origin main · Approved ─────────────────── [×] ─╮
-│                                                                      │
+╭─ Ran · git push origin main · Approved ──────────────────────── [×] ─╮
+│ exit 1                                                               │
 ├──────────────────────────────────────────────────────────────────────┤
 │ Approval: Approved                                                   │
-│                                                                      │
-│                                                                      │
+│ Approved                                                             │
+│ Command: git push origin main                                        │
 ╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ────────────────────╯
 
 
