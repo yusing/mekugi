@@ -14,7 +14,7 @@ import (
 // retention and conversation grouping as the other backend. They are not RPCs.
 func (u *appServerUI) runtimeToolEntry(v *liveActivityView, entry activityPaneEntry, e session.Event) activityPaneEntry {
 	entry.Kind = "tool"
-	entry.native = &liveActivityNativeItem{thread: u.thread, item: e.ID, running: e.Kind == "tool" && !e.Historical}
+	entry.native = &liveActivityNativeItem{thread: u.thread, item: e.ID, live: !e.Historical, running: e.Kind == "tool" && !e.Historical}
 	entry.Text = e.Role
 	for _, old := range v.entries {
 		if old.CallID == e.ID && e.ID != "" {

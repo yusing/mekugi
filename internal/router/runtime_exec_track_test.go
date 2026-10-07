@@ -153,6 +153,10 @@ func runtimeSegmentUI(t *testing.T) (*appServerUI, *execTrack) {
 	track.apply(execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0), Timing: execsegment.Timing{Started: start, Ended: start.Add(20 * time.Millisecond), ElapsedNS: int64(20 * time.Millisecond)}})
 	track.apply(execsegment.Message{Type: execsegment.Begin, Index: 1, Timing: execsegment.Timing{Started: start.Add(20 * time.Millisecond)}})
 	u.flushRuntimeCommandSegments()
+	// Live invocations use the shared operation cadence. Advance its clock,
+	// as the real terminal tick does, before inspecting measured segment rows.
+	u.view.pace(u.now().Add(time.Second))
+	u.agents.pace(u.now().Add(time.Second))
 	return u, track
 }
 
