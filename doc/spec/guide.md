@@ -35,6 +35,7 @@ model-specific prompt file or routing-session ID.
 The projected helper guidance explains when the tools reduce work, not just their syntax:
 structural outlines for navigation, semantic references for caller-impacting edits, bounded
 command windows and retained-output recovery, and explicit captured-change ranges for reviewers.
+It also notes that frontend commands support ordinary shell pipes.
 CLI help includes concrete invocation examples and consequential option interactions, including
 inclusive file ranges and line limits within those ranges. A smaller window is incomplete
 evidence, not coverage of the full requested range.
