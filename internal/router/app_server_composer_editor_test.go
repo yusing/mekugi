@@ -2,9 +2,11 @@ package router
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -70,9 +72,14 @@ func TestAppServerComposerEditorTerminalHandoff(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ctx = ctx
 	u.draft = "original"
+	u.ensureShell()
+	defer u.shell.diffScreen.Close()
 	done := make(chan error, 1)
 	go func() {
-		err := terminalui.WithRawPane(ctx, slave, slave, "ENTER!", "LEAVE!", func(keys <-chan byte) error {
+		err := terminalui.WithRawPane(ctx, slave, slave, "\x1b[?1049hENTER!", "\x1b[?1049lLEAVE!", func(keys <-chan byte) error {
+			if err := u.paint(slave, 120, 30); err != nil {
+				return err
+			}
 			select {
 			case key := <-keys:
 				_, err := u.key(key)
@@ -95,7 +102,14 @@ func TestAppServerComposerEditorTerminalHandoff(t *testing.T) {
 			done <- errors.New(u.notice)
 			return
 		}
-		done <- terminalui.WithRawPane(ctx, slave, slave, "RESUME!", "DONE!", func(keys <-chan byte) error {
+		done <- terminalui.WithRawPane(ctx, slave, slave, "\x1b[?1049hRESUME!", "\x1b[?1049lDONE!", func(keys <-chan byte) error {
+			var frame bytes.Buffer
+			if err := u.paint(io.MultiWriter(slave, &frame), 120, 30); err != nil {
+				return err
+			}
+			if rows := strings.Count(frame.String(), "\x1b[2K"); rows != 30 {
+				return fmt.Errorf("editor return repainted %d of 30 rows", rows)
+			}
 			select {
 			case key := <-keys:
 				_, err := u.key(key)
@@ -164,6 +178,10 @@ func TestAppServerComposerEditorFailurePreservesRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer output.Close()
+	if err := u.paint(io.Discard, 120, 30); err != nil {
+		t.Fatal(err)
+	}
+	defer u.shell.diffScreen.Close()
 	u.openComposerEditor(output, output)
 	if u.draft != "original" || !u.noticeAlert {
 		t.Fatalf("editor failure: draft=%q notice=%q", u.draft, u.notice)
@@ -173,6 +191,13 @@ func TestAppServerComposerEditorFailurePreservesRecovery(t *testing.T) {
 		t.Fatalf("missing recovery path: %q", u.notice)
 	}
 	defer os.Remove(path)
+	var frame bytes.Buffer
+	if err := u.paint(&frame, 120, 30); err != nil {
+		t.Fatal(err)
+	}
+	if rows := strings.Count(frame.String(), "\x1b[2K"); rows != 30 {
+		t.Fatalf("editor failure repainted %d of 30 rows", rows)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil || string(data) != "recover me" {
 		t.Fatalf("recovery=%q %v", data, err)

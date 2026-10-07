@@ -17,6 +17,11 @@ var errOpenComposerEditor = errors.New("open composer editor")
 // Called only after withRawPane has joined its input reader and restored the
 // terminal. The next pane invocation re-enters raw mode and repaints the UI.
 func (u *appServerUI) openComposerEditor(stdin, stdout *os.File) {
+	// Leaving the alternate screen discards its contents. The next paint must
+	// restore every row, including unchanged panes and failed editor launches.
+	if u.shell != nil {
+		u.shell.paintedRows = nil
+	}
 	file, err := os.CreateTemp("", "mekugi-draft-*.txt")
 	if err != nil {
 		u.setNotice("Open editor: "+err.Error(), true)
