@@ -71,7 +71,16 @@ without changing its parent environment. Unsupported wrapper or script shapes,
 and ambiguous identical concurrent inputs, execute unchanged with aggregate
 output rather than guessed segment attribution. Background launch and root-turn
 completion cannot finalize segment rows; matching native terminal evidence is
-required. Live segment reports are not yet durably restored on native resume.
+required. Completed segment observations use the shared retained command store.
+Visible native history selects the exact tool identity, command, caller and result
+before saved segments are adopted into the selected workspace and session. Resume
+and inherited fork history restore completed output, exits and skips, without live
+trackers, processes or repeated effects. Missing or mismatched evidence keeps the
+native aggregate. Child history uses the same rule when the native runtime exposes
+that child's transcript; a parent tool result is not a child's command history.
+Inherited child display stays at the fork boundary even if the source child later
+continues. A saved selection reads the original native child transcript. If that
+transcript is unavailable, the UI reports the gap instead of inventing history.
 
 Unsegmented foreground and background command output updates the shared retention owner
 through the pinned runtime's read-only `getTaskOutput` capability. Native snapshots

@@ -1,6 +1,7 @@
 package router
 
 import (
+	"crypto/sha256"
 	json "encoding/json/v2"
 	"strings"
 
@@ -34,6 +35,10 @@ func (u *appServerUI) runtimeToolEntry(v *liveActivityView, entry activityPaneEn
 			entry.native.output = u.session.outputs.New()
 		}
 		return entry
+	}
+	if entry.native.command != "" {
+		entry.native.commandResult = &runtimeCommandResult{Output: sha256.Sum256([]byte(e.Text)),
+			nativeCommandResult: nativeCommandResult{Failed: e.Failed, Caller: e.Caller}}
 	}
 	if e.Output != nil && e.Output.TaskID != "" && !e.Output.Done && !e.Failed {
 		// A native background launch is not command completion. Its placeholder

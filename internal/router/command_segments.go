@@ -14,10 +14,11 @@ import (
 // Completed segment observations share the managed replay store's atomic
 // publication, workspace scope and retention. They are not execution receipts.
 type retainedCommandSegments struct {
-	Command string
-	Exit    int
-	Output  [32]byte // Bind the report to the host aggregate, without a second copy.
-	Parts   []retainedCommandSegment
+	Command      string
+	Exit         int
+	Output       [32]byte // Bind the report to the host aggregate, without a second copy.
+	Parts        []retainedCommandSegment
+	NativeResult *nativeCommandResult `json:",omitempty"`
 }
 
 type retainedCommandSegment struct {
@@ -50,11 +51,14 @@ func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item appSer
 	if !ok || !split || len(parts) != len(view.segments) || !view.complete || view.code != *item.ExitCode {
 		return
 	}
-	if u.commandSegmentPending == commandSegmentRetentionLimit {
-		u.commandSegmentRetentionFailed([3]string{entry.native.thread, entry.native.turn, entry.native.item}, fmt.Errorf("pending command segment reports reached the limit of %d", commandSegmentRetentionLimit))
-		return
-	}
-	record := &retainedCommandSegments{Command: item.Command, Exit: *item.ExitCode, Output: sha256.Sum256([]byte(*item.AggregatedOutput))}
+	record := commandSegmentRecord(item.Command, parts, view, sha256.Sum256([]byte(*item.AggregatedOutput)))
+	ctx := context.WithValue(u.ctx, storageSessionKey{}, storageSessionIdentity{Thread: entry.native.thread})
+	u.writeCommandSegments(ctx, u.proxy.replayStore, u.session.cwd, commandSegmentsID(entry.native.turn, entry.native.item),
+		[3]string{entry.native.thread, entry.native.turn, entry.native.item}, record)
+}
+
+func commandSegmentRecord(command string, parts []execsegment.Segment, view execTrackView, output [32]byte) *retainedCommandSegments {
+	record := &retainedCommandSegments{Command: command, Exit: view.code, Output: output}
 	for i, segment := range view.segments {
 		part := retainedCommandSegment{Timing: segment.timing, Source: parts[i].Source, Skipped: segment.skipped, Exit: segment.exit}
 		if view.output && segment.output != nil {
@@ -70,14 +74,18 @@ func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item appSer
 		}
 		record.Parts = append(record.Parts, part)
 	}
+	return record
+}
+
+func (u *appServerUI) writeCommandSegments(ctx context.Context, store *mekugiReplayStore, workspace, id string, key [3]string, record *retainedCommandSegments) {
+	if u.commandSegmentPending == commandSegmentRetentionLimit {
+		u.commandSegmentRetentionFailed(key, fmt.Errorf("pending command segment reports reached the limit of %d", commandSegmentRetentionLimit))
+		return
+	}
 	// Snapshot every UI-owned value before leaving the event loop. The shared
 	// store can be busy with capture or another session; that must neither
 	// freeze presentation nor discard a report after a one-second lock wait.
-	ctx, cancel := context.WithTimeout(u.ctx, 30*time.Second)
-	ctx = context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: entry.native.thread})
-	id := commandSegmentsID(entry.native.turn, entry.native.item)
-	key := [3]string{entry.native.thread, entry.native.turn, entry.native.item}
-	store, workspace := u.proxy.replayStore, u.session.cwd
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	if u.commandSegmentWrites == nil {
 		u.commandSegmentWrites = make(chan commandSegmentWrite, commandSegmentRetentionLimit)
 	}
@@ -137,6 +145,11 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 	if record == nil {
 		return
 	}
+	u.restoreRetainedCommandSegments(entry, item, record)
+}
+
+func (u *appServerUI) restoreRetainedCommandSegments(entry *activityPaneEntry, item appServerItem, record *retainedCommandSegments) {
+	entry.native.segments = nil
 	separate := true
 	for _, part := range record.Parts {
 		separate = separate && (part.Skipped || part.Output != nil)
@@ -225,17 +238,27 @@ func readCommandSegments(store *mekugiReplayStore, workspace, turn string, item 
 		return nil, err
 	}
 	candidate := r.History.CommandSegments
-	if candidate == nil || candidate.Command != item.Command || candidate.Exit != *item.ExitCode || candidate.Output != sha256.Sum256([]byte(*item.AggregatedOutput)) || len(candidate.Parts) != len(parts) {
+	if candidate == nil || candidate.Command != item.Command || candidate.Exit != *item.ExitCode || candidate.Output != sha256.Sum256([]byte(*item.AggregatedOutput)) {
 		return nil, nil
+	}
+	if !validCommandSegmentParts(candidate, parts) {
+		return nil, nil
+	}
+	return candidate, nil
+}
+
+func validCommandSegmentParts(candidate *retainedCommandSegments, parts []execsegment.Segment) bool {
+	if len(candidate.Parts) != len(parts) {
+		return false
 	}
 	for i, part := range candidate.Parts {
 		if part.Source != parts[i].Source || part.Skipped && (part.Output != nil || part.Exit != 0 || part.Timing != (execsegment.Timing{})) {
-			return nil, nil
+			return false
 		}
 		timing := part.Timing
 		if timing.ElapsedNS < 0 || timing.Started.IsZero() && (!timing.Ended.IsZero() || timing.ElapsedNS != 0) || timing.Ended.IsZero() && timing.ElapsedNS != 0 {
-			return nil, nil
+			return false
 		}
 	}
-	return candidate, nil
+	return true
 }

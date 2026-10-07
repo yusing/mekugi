@@ -26,6 +26,7 @@ type mekugiHistory struct {
 	ToolName          string
 	NativeObservation *nativeObservationRecord `json:",omitempty"`
 	NativeOutput      *retainedNativeOutput    `json:",omitempty"`
+	NativeHistory     *nativeHistorySelection  `json:",omitempty"`
 	PluginID          string
 
 	Script          string

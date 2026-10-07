@@ -69,6 +69,9 @@ func (u *appServerUI) flushRuntimeCommandSegments() {
 			continue
 		}
 		final := !old.native.running
+		if final && old.native.commandResult == nil {
+			continue // Keep the report until its native transcript result arrives.
+		}
 		report, changed := u.execTrack.view(key, false, execSegmentText, &u.session.outputs)
 		if final && !report.ended {
 			if u.now().Sub(old.native.commandEnded) < execTrackCompletionWait {
@@ -81,6 +84,7 @@ func (u *appServerUI) flushRuntimeCommandSegments() {
 			report.segments, report.output = nil, false
 		} else if final {
 			report, _ = u.execTrack.view(key, true, execSegmentText, &u.session.outputs)
+			u.retainRuntimeCommandSegments(old.activityPaneEntry, report)
 		} else if !changed {
 			continue
 		}

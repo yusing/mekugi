@@ -177,6 +177,7 @@ type liveActivityNativeItem struct {
 	capturedEdit       *capturedActivityEdit  // Exact invocation receipt reconciled by the live diff owner.
 	editPages          []activityui.Block     // Completed host file changes, available before outer-cell capture.
 	segments           []commandSegment       // A tracked command's own segments, replacing its single row.
+	commandResult      *runtimeCommandResult  // Exact native transcript result, distinct from background task output.
 	output             *activityui.Output     // A command's retained host output, which the output dialog reads.
 }
 

@@ -1,4 +1,4 @@
-import { query, getSessionInfo, getSessionMessages, renameSession, type SDKSessionInfo, type SDKUserMessage, type PermissionResult, type Query } from '@anthropic-ai/claude-agent-sdk';
+import { query, getSessionInfo, renameSession, type SDKSessionInfo, type SDKUserMessage, type PermissionResult, type Query } from '@anthropic-ai/claude-agent-sdk';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
@@ -11,6 +11,7 @@ import { readFileSync, closeSync } from 'node:fs';
 import { setSettings, type SettingsCommand } from './controls.js';
 import { taskOutput } from './task_output.js';
 import {sessionPage} from './session_controls.js';
+import {sessionHistory, type HistorySelection} from './session_history.js';
 
 const limit = 8 * 1024 * 1024;
 const config = JSON.parse(process.argv[2]) as {cwd: string; executable: string; resume?: string; forkSession?: boolean; model?: string; companionFD?: number};
@@ -36,6 +37,7 @@ let resume = config.resume;
 let cwd = config.cwd;
 let forkSession = config.forkSession;
 let activeSession = config.forkSession ? '' : config.resume ?? '';
+let forkHistory: {source: string; children: HistorySelection[]} | undefined;
 let effort: SettingsCommand | undefined;
 let background = new Set<string>();
 let running!: Query;
@@ -115,6 +117,16 @@ async function watch(query: Query): Promise<void> {
       if (event.type === 'result') pendingTurns = Math.max(0, pendingTurns - 1);
       if (event.type === 'system' && event.subtype === 'background_tasks_changed') background = new Set(event.tasks.map(task => task.task_id));
       await queryObserver?.event(event);
+      if (forkHistory && event.type === 'system' && event.subtype === 'init') {
+        const selection = forkHistory;
+        forkHistory = undefined;
+        if (endpoint) {
+          try {
+            await companionRequest(endpoint, {operation: 'history_fork', binding: {runtime: 'claude', workspace: cwd, session: event.session_id},
+              source: {runtime: 'claude', workspace: cwd, session: selection.source}, history: selection.children});
+          } catch (error) { await emit({kind: 'notice', text: `Native fork child history could not be retained: ${String(error)}`}); }
+        }
+      }
       await output.event(event);
       if (pendingReset && event.type === 'system' && event.subtype === 'init') {
         if (event.session_id !== pendingReset.session) throw new Error('Reset native session identity mismatch');
@@ -186,8 +198,7 @@ async function changeSession(id: string, target?: string, workspaceHint?: string
   try {
     const info = target ? await resumeInfo(target, workspaceHint) : undefined;
     const workspace = info?.cwd ?? cwd;
-    const history = target ? await getSessionMessages(target, {dir: workspace, limit: 2001}) : [];
-    if (target && !history.length) throw new Error('Native resume history is unavailable');
+    const history = target ? await sessionHistory(target, workspace, endpoint) : {messages: [], notices: []};
     const next = target ?? randomUUID();
     const source = {runtime: 'claude', workspace: cwd, session: activeSession};
     const binding = {...source, workspace, session: next};
@@ -209,8 +220,8 @@ async function changeSession(id: string, target?: string, workspaceHint?: string
     activeSession = next;
     running = createQuery(target ? undefined : {session: next, context: ''});
     await emit({kind: 'session_change', id, sessionID: target ?? '', cwd, title: info?.customTitle ?? info?.summary ?? ''});
-    for (const message of history.slice(0, 2000)) await emit({kind: 'history', event: message});
-    if (history.length > 2000) await emit({kind: 'notice', text: 'Transcript display limited to the first 2000 messages; native resume retains its own context'});
+    for (const message of history.messages) await emit({kind: 'history', event: message});
+    for (const text of history.notices) await emit({kind: 'notice', text});
     pump = watch(running);
     const commands = await running.supportedCommands();
     if (effort) {
@@ -348,11 +359,12 @@ try {
       await observer?.resume(info);
       await emit({kind: 'session', sessionID: info.sessionId, cwd, title: info.customTitle ?? info.summary});
     }
-    const history = await getSessionMessages(config.resume, {dir: cwd, limit: 2001});
-    for (const message of history.slice(0, 2000)) {
+    const history = await sessionHistory(config.resume, cwd, endpoint);
+    if (config.forkSession) forkHistory = {source: config.resume, children: history.children};
+    for (const message of history.messages) {
       await emit({kind: 'history', event: message});
     }
-    if (history.length > 2000) await emit({kind: 'notice', text: 'Transcript display limited to the first 2000 messages; native resume retains its own context'});
+    for (const text of history.notices) await emit({kind: 'notice', text});
   }
   running = createQuery();
   pump = watch(running);

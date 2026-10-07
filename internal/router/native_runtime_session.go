@@ -63,6 +63,7 @@ func newRuntimeUI(ctx context.Context, client session.Client, name, cwd string) 
 // The caller owns runtime startup/shutdown; this loop owns only the terminal.
 func RunNativeSession(ctx context.Context, client session.Client, name, cwd string, stdin, stdout *os.File, observations ...*ObservationService) error {
 	u := newRuntimeUI(ctx, client, name, cwd)
+	defer u.finishRuntimeCommandSegments(stdout)
 	u.panes = &nativePanePersistence{}
 	defer func() { u.paneError(u.panes.save(u.shell, u.now(), true)) }()
 	if len(observations) > 0 && observations[0] != nil {
@@ -96,6 +97,8 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 					u.attachRuntimeObservation(u.runtime.observations)
 				case result := <-u.picker.scanResults:
 					u.applyPickerScan(result)
+				case result := <-u.commandSegmentWrites:
+					u.commandSegmentRetained(result)
 				case key, ok := <-keys:
 					if !ok {
 						return io.EOF
@@ -121,15 +124,19 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 					if err := u.drainKeys(keys); err != nil || u.quitRequested {
 						return err
 					}
+					notices := u.applyCriticalNotices()
 					w, h, err := term.GetSize(int(stdout.Fd()))
 					if err != nil {
+						notices.finish(false)
 						return err
 					}
 					if u.dirty || w != width || h != height || u.sessionAnimating() || u.shell.animating(time.Now()) {
 						width, height = w, h
 						if err := u.paint(stdout, w, h); err != nil {
+							notices.finish(false)
 							return err
 						}
+						notices.finish(u.mainContentPainted)
 						if err := u.acknowledgeRuntimeJournal(pending); err != nil {
 							u.setNotice("Journal paint receipt unavailable: "+err.Error(), true)
 						}
@@ -145,6 +152,15 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 		u.openComposerEditor(stdin, stdout)
 		u.shell.paintedRows = nil
 		u.dirty = true
+	}
+}
+
+func (u *appServerUI) finishRuntimeCommandSegments(output io.Writer) {
+	u.finishCommandSegments()
+	// The raw pane has closed before this fallback. A write can fail during
+	// the drain, after the last paint, or while Main is hidden in another pane.
+	for _, message := range u.issues.Pending() {
+		fmt.Fprintln(output, message)
 	}
 }
 
@@ -378,6 +394,7 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 			u.paneError(u.panes.open(u.shell, u.session.cwd, "claude/"+e.SessionID, true))
 		}
 		u.thread = e.SessionID
+		u.restoreRuntimeHistorySegments()
 		if e.Title != nil {
 			u.confirmSessionTitle(e.SessionID, e.Title.Title)
 		}
@@ -404,6 +421,7 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 			u.settleRuntimePreview(e.ID, e.Failed)
 			if e.Historical {
 				u.restoreRuntimeCommandOutput(e.ID)
+				u.restoreRuntimeCommandSegments(e.ID)
 			}
 		}
 	case "notice":

@@ -38,16 +38,17 @@ type ObservationService struct {
 }
 
 type observationRequest struct {
-	Operation     string              `json:"operation"`
-	Binding       ObservationBinding  `json:"binding,omitzero"`
-	Source        ObservationBinding  `json:"source,omitzero"`
-	Call          ObservationCall     `json:"call,omitzero"`
-	Terminal      ObservationTerminal `json:"terminal,omitzero"`
-	Task          observationTask     `json:"task,omitzero"`
-	NativeID      string              `json:"nativeID,omitempty"`
-	Input         string              `json:"input,omitempty"`
-	Child         string              `json:"child,omitempty"`
-	MaxCharacters int                 `json:"maxCharacters,omitzero"`
+	Operation     string               `json:"operation"`
+	Binding       ObservationBinding   `json:"binding,omitzero"`
+	Source        ObservationBinding   `json:"source,omitzero"`
+	Call          ObservationCall      `json:"call,omitzero"`
+	Terminal      ObservationTerminal  `json:"terminal,omitzero"`
+	Task          observationTask      `json:"task,omitzero"`
+	NativeID      string               `json:"nativeID,omitempty"`
+	Input         string               `json:"input,omitempty"`
+	Child         string               `json:"child,omitempty"`
+	MaxCharacters int                  `json:"maxCharacters,omitzero"`
+	History       []nativeHistoryChild `json:"history,omitempty"`
 }
 
 type observationTask struct {
@@ -143,6 +144,16 @@ func startObservationService(owner *nativeObservationOwner) (*ObservationService
 			var err error
 			var changeID string
 			switch request.Operation {
+			case "history_fork":
+				err = owner.retainForkHistory(ctx, request.Binding, request.Source, request.History)
+			case "history_read":
+				var children []nativeHistoryChild
+				children, err = owner.readForkHistory(ctx, request.Binding)
+				if err == nil {
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.MarshalWrite(w, map[string][]nativeHistoryChild{"children": children})
+					return
+				}
 			case "session_switch_check", "session_switch":
 				err = s.switchSession(ctx, request.Source, request.Binding, request.Operation == "session_switch_check")
 				if err == nil && request.Operation == "session_switch" {

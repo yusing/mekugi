@@ -221,9 +221,9 @@ To branch a native conversation in a new launch, use
 `mekugi claude --cwd /path/to/workspace --resume SESSION_ID --fork-session`.
 Claude assigns a new session ID and retains the source conversation's context;
 subsequent fork input does not change the source. Workspace admission and native
-history remain the same as resume. Saved Mekugi observations remain scoped to
-their native session: a fork does not copy the parent's capture history or revive
-its running tools.
+history remain the same as resume. Saved Diff captures remain scoped to their
+native session: a fork does not copy the parent's capture history. Completed
+command-segment reports follow inherited native history without reviving tools.
 
 `/status`, `/usage` or `/session` opens the shared status dialog with the latest available
 Claude-reported cumulative tokens, cache usage and limit windows. Missing fields
@@ -238,7 +238,10 @@ lists show each command's actual exit or skipped status and its own output in th
 shared rows and dialog. Click command-output or task-event rows in Main or Activity
 to open it. Unsupported shell wrappers or scripts, and identical concurrent inputs
 that cannot be attributed safely, run unchanged with combined output instead.
-Per-command reports are not yet restored on native resume.
+Completed per-command reports restore on native resume and forks, including
+saved child rows, without repeating tools. Forks retain the child history selected
+at branching; later source-child work stays out. Inherited child display requires
+the original native child transcript; unavailable history is reported.
 
 Unsegmented foreground and background commands update the dialog with native
 last-8-KiB tail snapshots, not a lossless output stream; the dialog labels this
@@ -329,7 +332,7 @@ reports unavailable recovery facts, and still supplies current workflow guidance
 The utility and journal integration is invocation-local.
 
 Bash edit previews, agent messaging/switching, side queries, the user shell
-shortcut and full rich-preview continuity remain unfinished. Live command
+shortcut and full rich-preview continuity remain unfinished. Command
 segments and session controls do not imply full shared-controller parity.
 Commands advertised by the SDK are forwarded natively;
 unadvertised commands, including a separate `/btw` workflow, are rejected rather
