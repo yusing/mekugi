@@ -131,6 +131,7 @@ sessions, the Agents roster, and responsive Activity layouts. Activity blocks an
 output dialogs live in `internal/ui/activity/testdata/snapshots/`; diff navigation,
 change graphs, and streaming previews live in `internal/ui/diffview/testdata/snapshots/`.
 Launcher debug handoffs live in `cmd/mekugi/testdata/snapshots/`.
+Shared Diff syntax and row styles live in `internal/livediff/testdata/snapshots/`.
 Other owners keep fixtures in their own `testdata/snapshots/` directories.
 
 `internal/uisnapshot.Assert` strips ANSI sequences only: spacing, blank lines,
@@ -141,8 +142,11 @@ paints actual renderer rows into the shared VT emulator at a fixed width, then
 stores its canonical ANSI output as quoted rows. These fixtures cover terminal
 cell colors, emphasis, links, padding, and style restoration without depending on
 the renderer's choice of equivalent escape sequences. Include a following plain
-row when checking that a style does not leak. Representative Activity syntax and
-dialog surfaces, plus Diff tail styles, cover terminal, dark, and light themes.
+row when checking that a style does not leak. Activity code fills, tables,
+reasoning, wait targets, and answer flashes, shared Diff syntax and row fills,
+and native dialog, attachment, keybinding, and roster surfaces extend the
+terminal-style coverage. Theme-sensitive cases cover terminal, dark, and light
+themes; code fills also cover a reported background.
 Both snapshot forms use the same review/update commands and preserve separate
 copy, state, bounds, interaction, and PTY acceptance.
 Repository Git attributes suppress trailing-space and final-blank-row warnings

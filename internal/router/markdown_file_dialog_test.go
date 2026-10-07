@@ -2,18 +2,16 @@ package router
 
 import (
 	"encoding/base64"
-	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
@@ -150,12 +148,7 @@ func TestUISnapshotMarkdownFileViews(t *testing.T) {
 	for _, view := range []string{"markdown", "file"} {
 		rows := make([]string, u.height)
 		u.paintOutput(rows, u.width, u.height)
-		screen := vt.NewEmulator(u.width, u.height)
-		for y, row := range rows {
-			fmt.Fprintf(screen, "\x1b[%d;1H%s", y+1, row)
-		}
-		assertNativeUISnapshot(t, "native-markdown-file-"+view+"-view", strings.Split(screen.String(), "\n"))
-		screen.Close()
+		uisnapshot.AssertTerminal(t, "testdata/snapshots/native-markdown-file-"+view+"-view.txt", append(rows, "plain after file view"), u.width)
 		u.outputKey("\x1b[C")
 	}
 }
@@ -237,38 +230,10 @@ func TestUISnapshotMarkdownFileDialog(t *testing.T) {
 			}
 			rows := make([]string, u.height)
 			u.paintOutput(rows, u.width, u.height)
-			screen := vt.NewEmulator(u.width, u.height)
-			defer screen.Close()
-			for y, row := range rows {
-				fmt.Fprintf(screen, "\x1b[%d;1H%s", y+1, row)
-			}
-			assertNativeUISnapshot(t, test.name, strings.Split(screen.String(), "\n"))
-			if !failure {
-				for i, line := range u.output.laid.Lines {
-					for wrap := range u.output.laid.Rows(i, u.output.rect.w-4) {
-						y := u.output.rect.y + 3 + u.output.starts[i] + wrap - u.output.top
-						if y < u.output.rect.y+3 || y >= u.output.rect.y+3+u.output.rows || line.Number == 0 {
-							continue
-						}
-						gutter := screen.CellAt(u.output.rect.x+u.output.laid.Indent(i), y).Style
-						text := screen.CellAt(u.output.rect.x+2+u.output.laid.Indent(i), y).Style
-						linked := line.Number >= u.output.fileFirst && line.Number <= u.output.fileLast
-						if gutter.Bg != text.Bg {
-							t.Fatalf("fill covers the divider on line %d wrap %d", line.Number, wrap)
-						}
-						for x := u.output.rect.x + 1; x < u.output.rect.x+u.output.laid.Indent(i); x++ {
-							style := screen.CellAt(x, y).Style
-							if (style.Bg != text.Bg) != linked || linked && (style.Attrs&uv.AttrFaint != 0 || style.Fg != gutter.Fg) {
-								t.Fatalf("fill boundary or number color lost at %d,%d: %+v", x, y, style)
-							}
-						}
-					}
-				}
-			}
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/"+test.name+".txt", append(rows, "plain after file dialog"), u.width)
 			if failure {
-				x, y := outputSelectionPoint(t, u, "file is not")
-				if screen.CellAt(x, y).Style.Fg != ansi.IndexedColor(203) || ansi.Strip(u.output.laid.Lines[2].Text) != "file is not UTF-8 text" {
-					t.Fatalf("read error is not red literal content: color=%v", screen.CellAt(x, y).Style.Fg)
+				if ansi.Strip(u.output.laid.Lines[2].Text) != "file is not UTF-8 text" {
+					t.Fatal("read error literal content changed")
 				}
 				u.outputKey("y")
 				if u.clipboard != "\x1b]52;c;"+base64.StdEncoding.EncodeToString([]byte("file is not UTF-8 text"))+"\x07" {

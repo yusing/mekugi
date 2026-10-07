@@ -66,17 +66,7 @@ func TestUISnapshotSubmittedAttachmentTokens(t *testing.T) {
 	entry := activityPaneEntry{Agent: "You", Text: text, Observed: time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local), native: &liveActivityNativeItem{spans: spans}}
 	var out conversationLines
 	u.view.userItemContinued(&out, entry, 80, false)
-	uisnapshot.Assert(t, "testdata/snapshots/submitted-attachment-tokens.txt", strings.Join(out.lines, "\n")+"\n")
-	// Text snapshots strip colors. Verify actual terminal cells share token style.
-	screen := vt.NewEmulator(80, 2)
-	defer screen.Close()
-	fmt.Fprint(screen, strings.Join(out.lines, "\n"))
-	first := screen.CellAt(2, 0)
-	file := screen.CellAt(24, 0)
-	ordinary := screen.CellAt(34, 0)
-	if first.Style.Fg == nil || file.Style.Fg == nil || first.Style.Fg == file.Style.Fg || file.Style.Fg == ordinary.Style.Fg {
-		t.Fatalf("skill/file/plain styles not distinct: %+v %+v %+v", first.Style, file.Style, ordinary.Style)
-	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/submitted-attachment-tokens.txt", append(out.lines, "plain after attachments"), 80)
 }
 
 func pasteTestImage(t *testing.T) string {

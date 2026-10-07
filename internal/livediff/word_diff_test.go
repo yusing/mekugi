@@ -1,13 +1,14 @@
 package livediff
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/alecthomas/chroma/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 // Read terminal styles at painted characters, including wrapped carry SGRs.
@@ -120,7 +121,7 @@ func TestWordDiffGraphemeGeometry(t *testing.T) {
 	}
 }
 
-func TestWordDiffWrappedSourceStyles(t *testing.T) {
+func TestUISnapshotWordDiffWrappedSourceStyles(t *testing.T) {
 	const old, next = "return old_identifier\n", "return very_long_new_identifier\n"
 	review := mekugi.RenderReviewFile("file.go", "file.go", old, next)
 	for _, theme := range []Theme{TerminalTheme, DarkTheme, LightTheme} {
@@ -136,8 +137,7 @@ func TestWordDiffWrappedSourceStyles(t *testing.T) {
 		if removed.String() != "old_identifier" || added.String() != "very_long_new_identifier" {
 			t.Fatalf("wrapped emphasis included gutters/padding or lost carry: %q -> %q", removed.String(), added.String())
 		}
-		if !strings.Contains(strings.Join(render.Lines, ""), theme.Foreground(chroma.Keyword)) {
-			t.Fatal("word emphasis lost keyword syntax color")
-		}
+		rows := append(render.Lines, "plain after diff")
+		uisnapshot.AssertTerminal(t, "testdata/snapshots/wrapped_source_styles_"+strconv.Itoa(int(theme))+".txt", rows, 16)
 	}
 }

@@ -1,0 +1,4 @@
+"\x1b[2m• Finished waiting · \x1b[38;5;170magent1\x1b[39m: Still running, \x1b[38;5;39magent6\x1b[39m: completed\x1b[m                                                           "
+"plain after wait                                                                                                        "
+"\x1b[38;5;243m• Finished waiting · \x1b[38;5;133magent1\x1b[38;5;243m: Still running, \x1b[38;5;31magent6\x1b[38;5;243m: completed\x1b[m                                                           "
+"plain after wait                                                                                                        "

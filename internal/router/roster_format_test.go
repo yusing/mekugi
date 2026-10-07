@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func TestRosterSummaryFormatting(t *testing.T) {
@@ -90,13 +91,8 @@ func TestRosterRoleUsesDurableSpawnEvidence(t *testing.T) {
 	}
 }
 
-func TestRosterStripPreservesSelectionStyling(t *testing.T) {
+func TestUISnapshotRosterStripSelectionStyling(t *testing.T) {
 	v := liveActivityTestView("/root/a", "/root/b")
 	v.selected, v.hovered = "/root/a", "/root/b"
-	line := v.renderStrip(v.roster(), 80)
-	for _, name := range []string{"a", "b"} {
-		if !strings.Contains(line, "\x1b[4m"+name+"\x1b[24m") || !strings.Contains(line, activityui.Color("/root/"+name)) {
-			t.Fatalf("strip lost selection or color: %q", line)
-		}
-	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/roster-strip-selection.txt", []string{v.renderStrip(v.roster(), 80), "plain after roster"}, 80)
 }

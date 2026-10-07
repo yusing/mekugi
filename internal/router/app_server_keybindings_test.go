@@ -1,12 +1,14 @@
 package router
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func TestNativeUIKeybindings(t *testing.T) {
@@ -95,42 +97,16 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	}
 }
 
-func TestNativeUIKeybindingsColumns(t *testing.T) {
+func TestUISnapshotNativeUIKeybindingsColumns(t *testing.T) {
 	for _, width := range []int{40, 100, 140} {
-		frame := renderNativeKeybindings(width, 40)
-		plain := make([]string, len(frame))
-		for i, row := range frame {
-			plain[i] = ansi.Strip(row)
-			if ansi.StringWidth(row) > width {
-				t.Fatalf("width %d: overflowing row %q", width, row)
-			}
-		}
-		text := strings.Join(plain, "\n")
-		for _, label := range []string{"Compose", "Session", "Transcript", "External editor", "Close shortcuts"} {
-			if !strings.Contains(text, label) {
-				t.Fatalf("width %d: missing %s", width, label)
-			}
-		}
-		if width == 140 {
-			heading := -1
-			for i, row := range plain {
-				if strings.Contains(row, "Compose") {
-					heading = i
-					break
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			frame := renderNativeKeybindings(width, 40)
+			for _, row := range frame {
+				if ansi.StringWidth(row) > width {
+					t.Fatalf("width %d: overflowing row %q", width, row)
 				}
 			}
-			if heading < 3 || !strings.Contains(plain[heading], "Session") || !strings.Contains(plain[heading], "Transcript") {
-				t.Fatalf("headings do not share a row: %q", plain)
-			}
-			if !strings.Contains(frame[heading-2], "\x1b[1m") || !strings.Contains(frame[heading+1], "\x1b[38;2;80;155;225m") {
-				t.Fatal("missing bold title or blue keys")
-			}
-			if strings.Index(plain[heading+1], "New line") != strings.Index(plain[heading+12], "External editor") {
-				t.Fatal("Compose descriptions are not aligned")
-			}
-		}
-		if !strings.Contains(plain[len(plain)-1], "Close shortcuts") {
-			t.Fatal("shortcuts must dock at the bottom above the composer")
-		}
+			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-keybindings-%d.txt", width), append(frame, "plain after shortcuts"), width)
+		})
 	}
 }

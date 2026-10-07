@@ -10,6 +10,7 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func testThemeChunk(key, path, diff string) Chunk {
@@ -26,64 +27,37 @@ func assertNoBackground(t *testing.T, text string) {
 	}
 }
 
-func TestLiveDiffThemeTokens(t *testing.T) {
+func TestUISnapshotLiveDiffSourceStyles(t *testing.T) {
 	for _, theme := range []Theme{TerminalTheme, LightTheme, DarkTheme} {
 		t.Run(strconv.Itoa(int(theme)), func(t *testing.T) {
-			const source = "func retainedShellTestOutput() {\n\tcount := len(make([]string, 42)) // comment\n\treturn \"value\"\n}\n"
-			lines, err := new(Renderer).ColorSource(t.Context(), theme, "file.go", source)
-			if err != nil {
-				t.Fatal(err)
-			}
-			colored := strings.Join(lines, "\n") + "\n"
-			if ansi.Strip(colored) != source {
-				t.Fatalf("theme changed source: %q", colored)
-			}
-			for _, token := range []struct {
-				text string
-				kind chroma.TokenType
+			var rows []string
+			for _, tc := range []struct {
+				path, source string
 			}{
-				{"func", chroma.KeywordDeclaration},
-				{"retainedShellTestOutput", chroma.NameFunction},
-				{"len", chroma.NameBuiltin},
-				{"make", chroma.NameBuiltin},
-				{"string", chroma.KeywordType},
-				{":=", chroma.Operator},
-				{"42", chroma.LiteralNumberInteger},
-				{"\"value\"", chroma.LiteralString},
-				{"// comment", chroma.CommentSingle},
+				{"file.go", "func retainedShellTestOutput() {\n\tcount := len(make([]string, 42)) // comment\n\treturn \"value\"\n}\n"},
+				{"file.py", "def render(value):\n    return len(value)\n"},
+				{"file.js", "function render(value) { return Math.abs(value); }\n"},
+				{"file.ts", "function render(value: number) { return Math.abs(value); }\n"},
+				{"file.html", "<div class=\"card\">Hello</div>\n"},
 			} {
-				style := theme.Foreground(token.kind)
-				if style == "" || !strings.Contains(colored, style+token.text+"\x1b[39m") {
-					t.Errorf("missing %s style for %q: %q", token.kind, token.text, colored)
+				lines, err := new(Renderer).ColorSource(t.Context(), theme, tc.path, tc.source)
+				if err != nil {
+					t.Fatal(err)
 				}
+				colored := strings.Join(lines, "\n") + "\n"
+				if ansi.Strip(colored) != tc.source {
+					t.Fatalf("theme changed %s source: %q", tc.path, colored)
+				}
+				assertNoBackground(t, colored)
+				if strings.Contains(colored, "\x1b[0m") {
+					t.Fatal("token styling should reset only foreground")
+				}
+				rows = append(rows, tc.path)
+				rows = append(rows, lines...)
+				rows = append(rows, "plain after source")
 			}
-			assertNoBackground(t, colored)
-			if strings.Contains(colored, "\x1b[0m") {
-				t.Fatal("token styling should reset only foreground")
-			}
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/source_styles_"+strconv.Itoa(int(theme))+".txt", rows, 80)
 		})
-	}
-}
-
-func TestLiveDiffThemeLanguageCoverage(t *testing.T) {
-	for _, theme := range []Theme{TerminalTheme, LightTheme, DarkTheme} {
-		for _, tc := range []struct {
-			path, source, name string
-			kind               chroma.TokenType
-		}{
-			{"file.py", "def render(value):\n    return len(value)\n", "render", chroma.NameFunction},
-			{"file.js", "function render(value) { return Math.abs(value); }\n", "Math", chroma.NameBuiltin},
-			{"file.ts", "function render(value: number) { return Math.abs(value); }\n", "Math", chroma.NameBuiltin},
-			{"file.html", "<div class=\"card\">Hello</div>\n", "div", chroma.NameTag},
-			{"file.html", "<div class=\"card\">Hello</div>\n", "class", chroma.NameAttribute},
-		} {
-			lines, err := new(Renderer).ColorSource(t.Context(), theme, tc.path, tc.source)
-			colored := strings.Join(lines, "\n") + "\n"
-			if err != nil || ansi.Strip(colored) != tc.source ||
-				!strings.Contains(colored, theme.Foreground(tc.kind)+tc.name+"\x1b[39m") {
-				t.Errorf("theme %d, %s: missing %s color or changed source: %q, %v", theme, tc.path, tc.kind, colored, err)
-			}
-		}
 	}
 }
 
@@ -244,7 +218,7 @@ func TestLiveDiffThemeContrast(t *testing.T) {
 	}
 }
 
-func TestLiveDiffRowFills(t *testing.T) {
+func TestUISnapshotLiveDiffRowFills(t *testing.T) {
 	chunk := testThemeChunk("edit", "file.go",
 		"@@ -9,3 +19,3 @@\n context\n-return \"old\"\n+return \"界\"\n tail\n")
 	chunk.Status = ""
@@ -267,13 +241,8 @@ func TestLiveDiffRowFills(t *testing.T) {
 					assertNoBackground(t, line)
 					continue
 				}
-				kind := byte('-')
-				if sourceIndex == 2 {
-					kind = '+'
-				}
 				if width > 3 {
-					if !strings.Contains(line, theme.RowBackground(kind)) ||
-						ansi.StringWidth(line) != width-1 ||
+					if ansi.StringWidth(line) != width-1 ||
 						!strings.HasSuffix(line, "\x1b[0m") {
 						t.Fatalf("missing full-width bounded fill: %q", line)
 					}
@@ -288,6 +257,10 @@ func TestLiveDiffRowFills(t *testing.T) {
 						t.Fatalf("wrong single-column coordinate: %q", render.Lines[i+1])
 					}
 				}
+			}
+			if width == 8 || width == 80 {
+				rows := append(slices.Clone(render.Lines), "plain")
+				uisnapshot.AssertTerminal(t, "testdata/snapshots/row_fills_"+strconv.Itoa(int(theme))+"_"+strconv.Itoa(width)+".txt", rows, width)
 			}
 		}
 	}

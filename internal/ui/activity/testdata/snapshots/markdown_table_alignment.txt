@@ -1,0 +1,7 @@
+"\x1b[2m┌──────┬────┬───────┐\x1b[m                   "
+"\x1b[2m│\x1b[m \x1b[1mName\x1b[m \x1b[2m│\x1b[m  \x1b[1mN\x1b[m \x1b[2m│\x1b[m \x1b[1mState\x1b[m \x1b[2m│\x1b[m                   "
+"\x1b[2m├──────┼────┼───────┤\x1b[m                   "
+"\x1b[2m│\x1b[m 猫   \x1b[2m│\x1b[m 12 \x1b[2m│\x1b[m  yes  \x1b[2m│\x1b[m                   "
+"\x1b[2m│\x1b[m long \x1b[2m│\x1b[m  2 \x1b[2m│\x1b[m  no   \x1b[2m│\x1b[m                   "
+"\x1b[2m└──────┴────┴───────┘\x1b[m                   "
+"plain after table                       "

@@ -8,7 +8,7 @@ TEST_FLAGS ?=
 # Process/PTY fixtures spend most of their time waiting, not using a CPU.
 TEST_PARALLEL ?= 32
 SNAPSHOT ?= ^TestUISnapshot
-SNAPSHOT_PACKAGES ?= ./internal/ui/... ./internal/router ./cmd/mekugi
+SNAPSHOT_PACKAGES ?= ./internal/ui/... ./internal/livediff ./internal/router ./cmd/mekugi
 
 install: preview-assets
 	$(GO) install ./cmd/mekugi ./cmd/mekugi-exec

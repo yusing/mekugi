@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func TestUISnapshotCombinedEditOutput(t *testing.T) {
@@ -247,7 +247,7 @@ func TestOutputDialogTrackedSegmentKeepsOwnRetention(t *testing.T) {
 	}
 }
 
-func TestOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
+func TestUISnapshotOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
 	for _, width := range []int{100, 50} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			output := new(activityui.Retention).New()
@@ -260,28 +260,15 @@ func TestOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
 				rows[i] = "background"
 			}
 			u.paintOutput(rows, width, height)
+			// paintOutput overlays with cursor addressing, so snapshot its final VT rows.
 			screen := vt.NewEmulator(width, height)
 			defer screen.Close()
-			for i, row := range rows {
-				if _, err := screen.WriteString(fmt.Sprintf("\x1b[%d;1H%s", i+1, row)); err != nil {
+			for y, row := range rows {
+				if _, err := fmt.Fprintf(screen, "\x1b[%d;1H%s", y+1, row); err != nil {
 					t.Fatal(err)
 				}
 			}
-			frame := ansi.Strip(screen.String())
-			border := screen.CellAt(u.output.rect.x, u.output.rect.y).Style
-			if border.Bg == nil || border.Attrs&uv.AttrFaint != 0 {
-				t.Fatalf("dialog inherited backdrop or lost surface: %+v", border)
-			}
-			if width >= outputDialogFullWidth {
-				background := screen.CellAt(0, 0).Style
-				if background.Bg != nil || background.Attrs&uv.AttrFaint == 0 {
-					t.Fatalf("backdrop lost isolation: %+v", background)
-				}
-			}
-			t.Logf("dialog frame:\n%s", frame)
-			if !strings.Contains(frame, "modal content") || width >= outputDialogFullWidth && !strings.Contains(frame, "background") {
-				t.Fatalf("VT overlay lost dialog or background: %q", frame)
-			}
+			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/native-output-dialog-%d.txt", width), strings.Split(screen.Render(), "\n"), width)
 			if width < outputDialogFullWidth {
 				if u.output.rect.x != 0 || u.output.rect.y != 0 || u.output.rect.w != width || u.output.rect.h != height {
 					t.Fatalf("narrow dialog did not take screen width: %+v", u.output.rect)
