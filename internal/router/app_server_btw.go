@@ -9,12 +9,14 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/session"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
-// The dock owns presentation and RPC correlation only. Codex owns the snapshot,
-// conversation history, execution, cancellation and unloading of this thread.
+// The dock owns presentation and request correlation only. The native backend
+// owns the snapshot, conversation history, execution and cancellation.
 type appServerBTW struct {
+	nativeID                       string
 	thread, turn, question, status string
 	pending                        composerDraft
 	answer                         []btwAnswer
@@ -34,6 +36,7 @@ type btwRequest struct {
 }
 
 const btwCompactionRequired = "Side question requires compaction. Compact Main, then close this panel and retry /btw."
+const btwInstruction = "This is a /btw side question. Answer only the side question using the conversation context. Do not continue the main task or use tools."
 
 func (p *mekugiProxy) setBTWThread(thread string, active bool) {
 	if p == nil {
@@ -113,6 +116,9 @@ func (u *appServerUI) flushBTW() error {
 	if b == nil || b.pending.text == "" || b.starting || b.turn != "" || u.replacement.pending() {
 		return nil
 	}
+	if u.runtime != nil {
+		return u.flushRuntimeBTW(b)
+	}
 	parts := []composerDraft{b.pending}
 	if u.waitForSkillBindings(parts) {
 		return nil
@@ -152,7 +158,7 @@ func (u *appServerUI) flushBTW() error {
 	b.starting, b.status = true, "Answering"
 	b.started = u.now()
 	input := b.pending.input()
-	input = append(appserver.Input("This is a /btw side question. Answer only the side question using the conversation context. Do not continue the main task or use tools."), input...)
+	input = append(appserver.Input(btwInstruction), input...)
 	textBytes := 0
 	for _, part := range input {
 		text, _ := part["text"].(string)
@@ -193,6 +199,12 @@ func (u *appServerUI) closeBTW() error {
 }
 
 func (u *appServerUI) releaseBTW(b *appServerBTW) error {
+	if u.runtime != nil {
+		if b.nativeID == "" {
+			return nil
+		}
+		return u.runtime.client.(session.SideClient).CloseSide(u.ctx, b.nativeID)
+	}
 	if b.thread == "" || b.starting || b.interrupting || b.unloading {
 		return nil // The correlated response will finish cancellation.
 	}
@@ -345,20 +357,9 @@ func (u *appServerUI) btwMessage(m appserver.Message) (bool, error) {
 		if id == "" {
 			id = p.Item.ID
 		}
-		index := -1
-		for i := range b.answer {
-			if b.answer[i].id == id {
-				index = i
-				break
-			}
-		}
+		index := b.answerIndex(id)
 		if index < 0 {
-			if len(b.answer) >= 256 {
-				b.truncated = true
-				return true, nil
-			}
-			b.answer = append(b.answer, btwAnswer{id: id})
-			index = len(b.answer) - 1
+			return true, nil
 		}
 		if m.Method == "item/completed" {
 			b.answer[index].text = ""
@@ -370,7 +371,21 @@ func (u *appServerUI) btwMessage(m appserver.Message) (bool, error) {
 	return true, nil
 }
 
-// The model's full context stays in Codex; the transient display is bounded.
+func (b *appServerBTW) answerIndex(id string) int {
+	for i := range b.answer {
+		if b.answer[i].id == id {
+			return i
+		}
+	}
+	if len(b.answer) >= 256 {
+		b.truncated = true
+		return -1
+	}
+	b.answer = append(b.answer, btwAnswer{id: id})
+	return len(b.answer) - 1
+}
+
+// The model's full context stays native; the transient display is bounded.
 func (b *appServerBTW) appendAnswer(index int, text string) {
 	room := 256 << 10
 	for _, item := range b.answer {

@@ -225,6 +225,14 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 		}
 		if fields := strings.Fields(text); len(fields) > 0 {
 			switch fields[0] {
+			case "/btw":
+				if _, ok := r.client.(session.SideClient); ok {
+					if !r.ready || r.settings != nil || r.resetRequest != "" || r.continuation != nil {
+						u.setNotice("Wait for native session controls before asking a side question", false)
+						return true, false, nil
+					}
+					return true, false, u.submitBTW()
+				}
 			case "/resume":
 				return true, false, u.resumeCommand(text)
 			case "/clear":
@@ -332,6 +340,10 @@ func (u *appServerUI) runtimeKey(key byte) (handled, quit bool, err error) {
 }
 
 func (u *appServerUI) runtimeEvent(e session.Event) error {
+	if e.SideID != "" {
+		u.runtimeBTWEvent(e)
+		return nil
+	}
 	switch e.Kind {
 	case "ready":
 		u.runtimeCommands(e.CommandInfo)

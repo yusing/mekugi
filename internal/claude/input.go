@@ -15,14 +15,34 @@ import (
 // User-selected attachments become supported native content blocks. No upload,
 // image rewrite, native mention expansion or instruction injection occurs here.
 func (c *Client) SendInput(ctx context.Context, parts []session.InputPart) error {
+	blocks, err := inputBlocks(ctx, parts)
+	if err != nil {
+		return err
+	}
+	return c.send(ctx, map[string]any{"kind": "input", "content": blocks})
+}
+
+func (c *Client) SendSide(ctx context.Context, side session.SideInput) error {
+	blocks, err := inputBlocks(ctx, side.Input)
+	if err != nil {
+		return err
+	}
+	return c.send(ctx, map[string]any{"kind": "side_input", "id": side.ID, "sessionID": side.Source, "content": blocks})
+}
+
+func (c *Client) CloseSide(ctx context.Context, id string) error {
+	return c.send(ctx, map[string]string{"kind": "side_close", "id": id})
+}
+
+func inputBlocks(ctx context.Context, parts []session.InputPart) ([]map[string]any, error) {
 	if len(parts) == 0 {
-		return fmt.Errorf("input is empty")
+		return nil, fmt.Errorf("input is empty")
 	}
 	var blocks []map[string]any
 	bytes := 0
 	for _, part := range parts {
 		if err := ctx.Err(); err != nil {
-			return err
+			return nil, err
 		}
 		if part.ImagePath == "" {
 			bytes += len(part.Text)
@@ -30,16 +50,16 @@ func (c *Client) SendInput(ctx context.Context, parts []session.InputPart) error
 		} else {
 			data, media, err := readInputImage(part.ImagePath)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			bytes += len(data)
 			blocks = append(blocks, map[string]any{"type": "image", "source": map[string]string{"type": "base64", "media_type": media, "data": data}})
 		}
 		if bytes > frameLimit {
-			return fmt.Errorf("attachments exceed the 8 MiB bridge frame limit")
+			return nil, fmt.Errorf("attachments exceed the 8 MiB bridge frame limit")
 		}
 	}
-	return c.send(ctx, map[string]any{"kind": "input", "content": blocks})
+	return blocks, nil
 }
 
 func readInputImage(path string) (string, string, error) {

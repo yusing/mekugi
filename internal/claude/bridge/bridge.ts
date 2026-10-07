@@ -1,4 +1,4 @@
-import { query, getSessionInfo, renameSession, type SDKSessionInfo, type SDKUserMessage, type PermissionResult, type Query } from '@anthropic-ai/claude-agent-sdk';
+import { query, getSessionInfo, renameSession, type SDKSessionInfo, type SDKUserMessage, type PermissionResult, type Query, type EffortLevel } from '@anthropic-ai/claude-agent-sdk';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
@@ -12,6 +12,7 @@ import { setSettings, type SettingsCommand } from './controls.js';
 import { taskOutput } from './task_output.js';
 import {sessionPage} from './session_controls.js';
 import {sessionHistory, type HistorySelection} from './session_history.js';
+import {SideQueries} from './side_query.js';
 
 const limit = 8 * 1024 * 1024;
 const config = JSON.parse(process.argv[2]) as {cwd: string; executable: string; resume?: string; forkSession?: boolean; model?: string; companionFD?: number};
@@ -52,6 +53,7 @@ async function emit(value: unknown): Promise<void> {
   if (Buffer.byteLength(frame) > limit) throw new Error('Claude event exceeds the 8 MiB bridge frame limit');
   if (!process.stdout.write(frame)) await once(process.stdout, 'drain');
 }
+const sides = new SideQueries(emit);
 async function* messages(generation: number): AsyncGenerator<SDKUserMessage> {
   while (!stopping && generation === epoch) {
     const message = inputs.shift();
@@ -155,6 +157,7 @@ async function reset(id: string): Promise<void> {
     await companionRequest(endpoint, {operation: 'journal_reset_check'});
     await emit({kind: 'notice', text: 'Journal recovery validated; retiring idle native query'});
     if (stopping || resetCancelled) throw new Error('Journal reset cancelled');
+    await sides.closeAll();
     epoch++;
     running.close();
     wake?.(); wake = undefined;
@@ -204,6 +207,7 @@ async function changeSession(id: string, target?: string, workspaceHint?: string
     const binding = {...source, workspace, session: next};
     if (endpoint) await companionRequest(endpoint, {operation: 'session_switch_check', source, binding});
     if (stopping || resetCancelled) throw new Error('Session switch cancelled');
+    await sides.closeAll();
     epoch++;
     running.close();
     wake?.(); wake = undefined;
@@ -271,6 +275,19 @@ lines.on('line', (line: string) => {
   try {
     const command = JSON.parse(line) as {kind: string; text?: string; content?: SDKUserMessage['message']['content']; id?: string; allow?: boolean; answers?: Record<string, string>; sessionID?: string; title?: string; cwd?: string; cursor?: string; limit?: number};
     switch (command.kind) {
+      case 'side_input':
+        controls = controls.then(async () => {
+          if (replacing || !activeSession || command.sessionID !== activeSession) {
+            await emit({kind: 'side', id: command.id, frame: {kind: 'error', text: 'Main session is not ready for a native snapshot'}});
+            return;
+          }
+          await sides.input({id: command.id ?? '', source: activeSession, content: command.content ?? []},
+            {cwd, executable: config.executable, model, ...(effort && effort.value !== 'default' ? {effort: effort.value as EffortLevel} : {})});
+        }).catch(stop);
+        break;
+      case 'side_close':
+        controls = controls.then(() => sides.close(command.id ?? '')).catch(stop);
+        break;
       case 'input':
         if (replacing) throw new Error('Input arrived during journal reset');
         if (pendingTurns >= 16 || typeof command.text !== 'string' && !Array.isArray(command.content)) throw new Error('Invalid or excessive pending input');
@@ -379,6 +396,7 @@ try {
   if (!stopping) { await emit({kind: 'error', text: String(error)}); process.exitCode = 1; }
 } finally {
   stop();
+  await sides.closeAll();
   running?.close();
   lines.close();
 }

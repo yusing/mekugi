@@ -1,0 +1,28 @@
+┌ 1 Main ──────────────────────────────────────────────────┐┌ 5 Journal ───────────────────── space expand · d details ┐
+│Mekugi dev • Claude Code                                  ││ No journal entries.                                      │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│╭─ /btw · Answering · 0s                                  ││                                                          │
+││ explain context                                         ││                                                          │
+││ The side answer uses the native snapshot.               ││                                                          │
+││                                                         ││                                                          │
+││ • Main continues.                                       ││                                                          │
+││ • Follow-ups stay isolated.                             ││                                                          │
+│╰─ /btw follow-up · Esc close                             ││                                                          │
+│                                                          ││                                                          │
+│╭─ Ready ────────────────────────────────────────────────╮││                                                          │
+││ ❯ Main draft kept                                      │││                                                          │
+│╰──────────────────────────────────────── claude-sonnet ─╯││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+─ 4 Agents · 1 ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ● main  idle
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes

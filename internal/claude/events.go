@@ -11,6 +11,7 @@ import (
 )
 
 type adapter struct {
+	sides         map[string]*adapter
 	resumeSession string
 	streams       map[string]string
 	text          map[string]*textMessage
@@ -41,6 +42,7 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		Done        bool                   `json:"done"`
 		Input       jsontext.Value         `json:"input"`
 		Event       nativeEvent            `json:"event"`
+		Frame       jsontext.Value         `json:"frame"`
 	}
 	if err := json.Unmarshal(data, &frame); err != nil {
 		return nil, fmt.Errorf("invalid Claude bridge frame: %w", err)
@@ -53,6 +55,41 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		}
 	}()
 	switch frame.Kind {
+	case "side":
+		if frame.ID == "" {
+			return nil, fmt.Errorf("missing native side identity")
+		}
+		var header struct {
+			Kind string `json:"kind"`
+		}
+		if err := json.Unmarshal(frame.Frame, &header); err != nil {
+			return nil, err
+		}
+		if header.Kind != "event" && header.Kind != "error" && header.Kind != "side_closed" {
+			return nil, fmt.Errorf("invalid native side frame")
+		}
+		if header.Kind == "side_closed" {
+			delete(a.sides, frame.ID)
+			return []session.Event{{Kind: "side_closed", SideID: frame.ID}}, nil
+		}
+		if header.Kind == "error" {
+			events, err := new(adapter).decode(frame.Frame)
+			for i := range events {
+				events[i].SideID = frame.ID
+			}
+			return events, err
+		}
+		if a.sides == nil {
+			a.sides = make(map[string]*adapter)
+		}
+		if a.sides[frame.ID] == nil {
+			a.sides[frame.ID] = new(adapter)
+		}
+		events, err := a.sides[frame.ID].decode(frame.Frame)
+		for i := range events {
+			events[i].SideID = frame.ID
+		}
+		return events, err
 	case "session":
 		if frame.SessionID == "" {
 			return nil, fmt.Errorf("native resume identity unavailable")

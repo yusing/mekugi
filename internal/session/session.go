@@ -27,6 +27,7 @@ type Event struct {
 	Title       *SessionTitle
 	Sessions    *SessionPage
 	Change      *SessionChange
+	SideID      string
 }
 
 type SavedSession struct {
@@ -105,6 +106,14 @@ type ResetClient interface {
 type InputPart struct{ Text, ImagePath string }
 type InputClient interface {
 	SendInput(context.Context, []InputPart) error
+}
+type SideInput struct {
+	ID, Source string
+	Input      []InputPart
+}
+type SideClient interface {
+	SendSide(context.Context, SideInput) error
+	CloseSide(context.Context, string) error
 }
 type Command struct {
 	Name        string   `json:"name"`

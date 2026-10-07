@@ -46,6 +46,18 @@ func TestAdapterSessionAndTextStreaming(t *testing.T) {
 	assertDecode(t, &a, `{"kind":"event","event":{"type":"result","session_id":"session-1","is_error":false}}`, []session.Event{{Kind: "done", SessionID: "session-1"}})
 }
 
+func TestAdapterSideStreamingDoesNotBorrowMain(t *testing.T) {
+	var a adapter
+	assertDecode(t, &a, `{"kind":"event","event":{"type":"stream_event","event":{"type":"message_start","message":{"id":"same-id"}}}}`, nil)
+	assertDecode(t, &a, `{"kind":"side","id":"side-1","frame":{"kind":"event","event":{"type":"stream_event","event":{"type":"message_start","message":{"id":"same-id"}}}}}`, nil)
+	assertDecode(t, &a, `{"kind":"side","id":"side-1","frame":{"kind":"event","event":{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Side"}}}}}`, []session.Event{{Kind: "message", ID: "same-id", Role: "Claude", Text: "Side", SideID: "side-1"}})
+	assertDecode(t, &a, `{"kind":"event","event":{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Main"}}}}`, []session.Event{{Kind: "message", ID: "same-id", Role: "Claude", Text: "Main"}})
+	assertDecode(t, &a, `{"kind":"side","id":"side-1","frame":{"kind":"side_closed"}}`, []session.Event{{Kind: "side_closed", SideID: "side-1"}})
+	if len(a.sides) != 0 {
+		t.Fatal("closed native side retained stream state")
+	}
+}
+
 func TestAdapterResumedSessionJournalReset(t *testing.T) {
 	var a adapter
 	assertDecode(t, &a, `{"kind":"session","sessionID":"old-session"}`, []session.Event{{Kind: "session", SessionID: "old-session"}})

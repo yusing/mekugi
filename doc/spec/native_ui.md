@@ -5,7 +5,8 @@
 `mekugi claude` selects the official Claude Code Agent SDK backend before router
 startup. It uses the existing Main/composer, Activity, question dock, live-edit
 dock and Diff controllers. Codex-specific controls do not dispatch from this
-backend; other runtime commands are admitted only when advertised by its SDK. Claude
+backend. Connected shared controls use native SDK operations; additional runtime
+commands are admitted only when advertised by its SDK. Claude
 keeps execution, permissions, authentication, configuration and native history.
 Native tool events feed the shared operation classifier and bounded output-dialog
 retention. Main and child agents use the shared roster; background Bash jobs do
@@ -20,6 +21,16 @@ private JSON-lines frames are bounded to 8 MiB. Malformed or oversized transport
 frames fail the connection, not silently change native arguments or results.
 User input is held until initialization and history loading complete; input during
 an active turn remains a draft. Native terminal results settle turn activity.
+
+Claude `/btw QUESTION` uses the shared side-question dock with a separate native
+SDK fork of Main's saved conversation. Main remains active and later Main turns
+do not enter side follow-ups. The dock streams native answers, accepts follow-ups
+and explicit file-picker/image attachments, and closes with Esc without cancelling Main
+or changing its draft. This context-only query disables built-in tools and
+configured MCP servers and denies tool requests. It inherits Main's current model
+and requested effort. Native history owns the fork context; the temporary side
+query is not saved or restored on resume. Closing the dock makes the next `/btw`
+take a new snapshot. Native startup errors restore the unsent side draft.
 
 Native permission requests use explicit allow-once/deny decisions. Question
 requests support single choice, multiple choices and free text through the same

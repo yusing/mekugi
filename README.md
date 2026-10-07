@@ -217,6 +217,13 @@ overrides apply on the next turn and may be limited by native policy. The compos
 labels effort as a request, not a guaranteed effective level. These controls are
 invocation-local and do not save settings files or offer Codex service tiers.
 
+`/btw QUESTION` opens the shared side-question dock from a native snapshot of
+Main. Answers stream without interrupting Main or changing its history. Repeat
+`/btw` for a follow-up; later Main turns stay out of this side conversation.
+File-picker attachments and pasted images are accepted, but the context-only side
+query cannot use tools. PgUp/PgDn scroll; Esc closes only the side query and keeps
+Main's draft. The temporary dock is not saved or restored on resume.
+
 To branch a native conversation in a new launch, use
 `mekugi claude --cwd /path/to/workspace --resume SESSION_ID --fork-session`.
 Claude assigns a new session ID and retains the source conversation's context;
@@ -331,12 +338,11 @@ packet in full. Overflow or missing evidence leaves the native summary intact,
 reports unavailable recovery facts, and still supplies current workflow guidance.
 The utility and journal integration is invocation-local.
 
-Bash edit previews, agent messaging/switching, side queries, the user shell
+Bash edit previews, agent messaging/switching, the user shell
 shortcut and full rich-preview continuity remain unfinished. Command
 segments and session controls do not imply full shared-controller parity.
 Commands advertised by the SDK are forwarded natively;
-unadvertised commands, including a separate `/btw` workflow, are rejected rather
-than emulated.
+unadvertised commands are rejected rather than emulated.
 Command observation leaves native command input, setup, permissions, execution
 and working-directory updates unchanged; it does not rewrite native results.
 Only exposed text, native tool input/results and task/usage observations are displayed;

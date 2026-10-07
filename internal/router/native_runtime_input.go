@@ -18,19 +18,32 @@ func (u *appServerUI) sendRuntimeInput() error {
 	if !ok {
 		return fmt.Errorf("native image input is unavailable")
 	}
+	return client.SendInput(u.ctx, runtimeInputParts(u.draftSnapshot()))
+}
+
+func runtimeInputParts(draft composerDraft) []session.InputPart {
 	var parts []session.InputPart
 	at := 0
-	for _, image := range u.images {
+	for _, image := range draft.images {
 		if image.start > at {
-			parts = append(parts, session.InputPart{Text: u.draft[at:image.start]})
+			parts = append(parts, session.InputPart{Text: draft.text[at:image.start]})
 		}
 		parts = append(parts, session.InputPart{ImagePath: image.path})
 		at = image.end
 	}
-	if at < len(u.draft) {
-		parts = append(parts, session.InputPart{Text: u.draft[at:]})
+	if at < len(draft.text) {
+		parts = append(parts, session.InputPart{Text: draft.text[at:]})
 	}
-	return client.SendInput(u.ctx, parts)
+	for _, attachment := range draft.attachments {
+		frames, ok := decodeFileAttachments(attachment)
+		if !ok {
+			frames = []string{attachment}
+		}
+		for _, frame := range frames {
+			parts = append(parts, session.InputPart{Text: frame})
+		}
+	}
+	return parts
 }
 
 // Claude skills use native slash names, not Codex's dollar-token binding.
@@ -124,6 +137,9 @@ func (u *appServerUI) runtimeCommandChoices(query string) {
 	}
 	if _, ok := u.runtime.client.(session.TitleClient); ok {
 		choices["title"] = composerChoice{name: "/title", description: "Rename this session"}
+	}
+	if _, ok := u.runtime.client.(session.SideClient); ok {
+		choices["btw"] = composerChoice{name: "/btw", description: "Ask a side question without interrupting Main"}
 	}
 	if _, ok := u.runtime.client.(session.SessionChangeClient); ok {
 		choices["clear"] = composerChoice{name: "/clear", description: "Clear the transcript and start a new session"}

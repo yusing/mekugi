@@ -124,6 +124,9 @@ func (u *appServerUI) runtimeResetReady(e session.Event) error {
 		return nil
 	}
 	// No native session has been created yet. Input will establish identity.
+	if err := u.closeBTW(); err != nil {
+		return err
+	}
 	r.restoredJournal = ""
 	u.setNotice("Journal context prepared · next input creates the native session", false)
 	if r.continuation != nil && u.draft == "" && len(u.images) == 0 && u.questionCount() == 0 {
