@@ -82,6 +82,11 @@ Inherited child display stays at the fork boundary even if the source child late
 continues. A saved selection reads the original native child transcript. If that
 transcript is unavailable, the UI reports the gap instead of inventing history.
 
+Ctrl-C in Main requests native foreground interruption. A running background
+command keeps the native `x` stop action in its segment-output dialog. Cancellation
+must not invent exits or skipped segments: an incomplete shell observation falls
+back to the native aggregate, and only native terminal evidence settles activity.
+
 Unsegmented foreground and background command output updates the shared retention owner
 through the pinned runtime's read-only `getTaskOutput` capability. Native snapshots
 contain at most an 8 KiB tail, not lossless deltas. Shared Output rows and dialogs
@@ -137,10 +142,13 @@ paths, concurrent scopes, storage retries and fresh-process saved evidence. Offl
 fixtures do not establish native background ordering, permission fidelity,
 subscription eligibility or compaction replacement support. Live output does not
 force backgrounding, reexecute tools, rewrite native results or change persistent
-settings. Installed-runtime scripted-provider segment cases check shared UI events,
-not PTY rendering. Offline Bash wrapper differential cases, reviewed narrow/wide
-shared-renderer snapshots and segment-click checks cover the supported slice;
-segmented PTY acceptance remains outstanding. Installed-runtime scripted-provider
+settings. Installed-runtime scripted-provider segment cases check shared UI events.
+Gated native PTY cases establish per-segment disclosure and incremental open-dialog
+output in Main and Activity, final exits/skips, Events clicks, foreground Ctrl-C
+and background dialog stop, including native terminal receipts, process death and
+exactly-once effects. Offline Bash wrapper differential cases and reviewed
+narrow/wide shared-renderer snapshots cover layout. These cases use no inference
+and do not establish live-model behavior. Installed-runtime scripted-provider
 session-control acceptance proves title persistence/listing, clear, resume and
 A-to-B-to-A switching with the rendered shared picker and no inference, not a PTY.
 Offline controller/title/scope tests and reviewed narrow/wide snapshots cover
