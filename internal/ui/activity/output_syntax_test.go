@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
@@ -153,7 +154,8 @@ func TestDiffOutputUsesPaneSyntaxAndRetainedTailContext(t *testing.T) {
 	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
 		p := Painter{Theme: theme}
 		var renderer livediff.Renderer
-		want, err := renderer.ColorSource(t.Context(), theme, "sample.go", "package main\n\nvar answer = 42\n")
+		_, want, err := renderer.ColorHunk(t.Context(), theme, mekugi.ReviewFile{BeforePath: "sample.go", AfterPath: "sample.go"},
+			[]mekugi.ReviewRow{{Kind: ' ', Text: "package main\n"}, {Kind: ' ', Text: "\n"}, {Kind: '-', Text: "var answer = 41\n"}, {Kind: '+', Text: "var answer = 42\n"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -191,7 +193,8 @@ func TestCapturedEditDialogUsesPaneSyntax(t *testing.T) {
 	block := Block{Kind: "op", Verb: "Edit", Path: "main.go", Code: source, Lang: "diff", Fenced: true}
 	page := p.DialogPage(block, 120)
 	var renderer livediff.Renderer
-	want, err := renderer.ColorSource(t.Context(), p.Theme, "main.go", "var answer = 42\n")
+	_, want, err := renderer.ColorHunk(t.Context(), p.Theme, mekugi.ReviewFile{BeforePath: "main.go", AfterPath: "main.go"},
+		[]mekugi.ReviewRow{{Kind: '-', Text: "var answer = 41\n"}, {Kind: '+', Text: "var answer = 42\n"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +218,8 @@ func TestTimestampedDiffRetainedSyntax(t *testing.T) {
 	p := Painter{Theme: livediff.DarkTheme}
 	block := Block{Kind: "op", Verb: "Run", Output: &output, Tail: []string{"+var answer = 42"}, TailOmitted: 4}
 	var renderer livediff.Renderer
-	source, err := renderer.ColorSource(t.Context(), p.Theme, "path.go", "var answer = 42\n")
+	_, source, err := renderer.ColorHunk(t.Context(), p.Theme, mekugi.ReviewFile{BeforePath: "path.go", AfterPath: "path.go"},
+		[]mekugi.ReviewRow{{Kind: '-', Text: "var answer = 41\n"}, {Kind: '+', Text: "var answer = 42\n"}})
 	if err != nil {
 		t.Fatal(err)
 	}

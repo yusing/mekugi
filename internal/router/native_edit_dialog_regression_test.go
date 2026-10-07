@@ -88,8 +88,20 @@ func TestNativeEditDialogRegressionActionsCopyAndSyntax(t *testing.T) {
 						t.Fatal(err)
 					}
 					wantLine := colored[0]
+					if tc.kind == "update" {
+						before, after, err := renderer.ColorHunk(t.Context(), livediff.DarkTheme,
+							mekugi.ReviewFile{BeforePath: "answer.go", AfterPath: "answer.go"},
+							[]mekugi.ReviewRow{{Kind: '-', Text: tc.before}, {Kind: '+', Text: tc.after}})
+						if err != nil {
+							t.Fatal(err)
+						}
+						wantLine = after[0]
+						if side.kind == '-' {
+							wantLine = before[0]
+						}
+					}
 					if captured || tc.kind == "update" {
-						wantLine = livediff.SourceLine(livediff.DarkTheme, ansi.StringWidth(colored[0])+4, "", colored[0], side.kind)
+						wantLine = livediff.SourceLine(livediff.DarkTheme, ansi.StringWidth(wantLine)+4, "", wantLine, side.kind)
 					}
 					found := false
 					for _, line := range u.output.laid.Lines {

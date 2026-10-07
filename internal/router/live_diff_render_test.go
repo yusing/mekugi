@@ -103,7 +103,7 @@ func TestLiveDiffNativeSyntaxSidesAndMultiline(t *testing.T) {
 	}
 	if len(before) != 3 || len(after) != 2 ||
 		!strings.Contains(before[1], livediff.TerminalTheme.Foreground(chroma.CommentMultiline)) ||
-		!strings.Contains(after[0], livediff.TerminalTheme.Foreground(chroma.Keyword)+"return\x1b[39m") ||
+		!strings.Contains(after[0], livediff.TerminalTheme.Foreground(chroma.Keyword)+livediff.TerminalTheme.WordBackground('+')+"return\x1b[39m") ||
 		!strings.Contains(after[0], livediff.TerminalTheme.Foreground(chroma.LiteralString)) ||
 		!strings.Contains(after[1], livediff.TerminalTheme.Foreground(chroma.LiteralNumberInteger)+"42\x1b[39m") {
 		t.Fatalf("syntax state leaked across sides or rows: before=%q after=%q", before, after)

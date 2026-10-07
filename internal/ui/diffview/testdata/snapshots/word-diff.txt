@@ -1,0 +1,6 @@
+  1/1  guidance.txt +1 -1 ─────────────────────────────────
+  1│-Keep each listed task small and bounded. Record result
+   │-s as they become known.                               
+  1│+Keep each listed task small and checkable. At 70% cont
+   │+ext use, split the current slice. Record results as th
+   │+ey become known.                                      

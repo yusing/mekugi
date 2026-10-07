@@ -76,6 +76,23 @@ func (theme Theme) RowBackground(kind byte) string {
 	return "\x1b[48;2;49;27;31m"
 }
 
+// WordBackground emphasizes changed words without replacing syntax foregrounds.
+func (theme Theme) WordBackground(kind byte) string {
+	if kind != '+' && kind != '-' {
+		return ""
+	}
+	if theme == LightTheme {
+		if kind == '+' {
+			return "\x1b[48;2;183;225;191m"
+		}
+		return "\x1b[48;2;255;190;184m"
+	}
+	if kind == '+' {
+		return "\x1b[48;2;36;76;47m"
+	}
+	return "\x1b[48;2;100;40;47m"
+}
+
 // SelectionBackground is a neutral fill that marks a selected row in place.
 func (theme Theme) SelectionBackground() string {
 	if theme == LightTheme {

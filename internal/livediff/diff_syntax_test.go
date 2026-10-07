@@ -37,7 +37,11 @@ func TestColorDiffUsesPaneRowForeground(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got, want := rows[len(rows)-1], SourceLine(theme, 9, "", "plain", '+'); got != want {
+			text := "plain"
+			if strings.Contains(source, "@@") {
+				text = theme.WordBackground('+') + text + theme.RowBackground('+')
+			}
+			if got, want := rows[len(rows)-1], SourceLine(theme, 9, "", text, '+'); got != want {
 				t.Fatalf("row differs from pane: %q != %q", got, want)
 			}
 		}

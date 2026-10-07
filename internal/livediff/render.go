@@ -11,6 +11,7 @@ import (
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/pathdisplay"
@@ -391,19 +392,38 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 // Source wrapping is shared by layout and decoration, so syntax cannot change geometry.
 func sourceFragments(theme Theme, width, sourceWidth int, numbers, continuationNumbers, text string, kind byte) []string {
 	var lines []string
-	carry := ""
-	for fragment := range strings.SplitSeq(ansi.Hardwrap(text, sourceWidth, true), "\n") {
-		fragment = carry + fragment
-		if start := strings.LastIndex(fragment, "\x1b["); start >= 0 {
-			if end := strings.IndexByte(fragment[start:], 'm'); end >= 0 {
-				carry = fragment[start : start+end+1]
-			}
-		}
+	for _, fragment := range WrapSource(text, sourceWidth) {
 		prefix := numbers
 		if len(lines) > 0 && numbers != "" {
 			prefix = continuationNumbers
 		}
 		lines = append(lines, SourceLine(theme, width, prefix, fragment, kind))
+	}
+	return lines
+}
+
+// WrapSource keeps both syntax foregrounds and word backgrounds on independently
+// painted continuation rows. SourceLine keeps gutters and padding at the row fill.
+func WrapSource(text string, width int) []string {
+	var style uv.Style
+	parser := ansi.GetParser()
+	defer func() {
+		parser.SetHandler(ansi.Handler{})
+		ansi.PutParser(parser)
+	}()
+	parser.SetHandler(ansi.Handler{HandleCsi: func(cmd ansi.Cmd, params ansi.Params) {
+		if cmd == 'm' {
+			uv.ReadStyle(params, &style)
+		}
+	}})
+	var lines []string
+	for fragment := range strings.SplitSeq(ansi.Hardwrap(text, max(1, width), true), "\n") {
+		carry := ""
+		if !style.IsZero() {
+			carry = style.String()
+		}
+		lines = append(lines, carry+fragment)
+		parser.Parse([]byte(fragment))
 	}
 	return lines
 }
@@ -502,6 +522,7 @@ func SourceLine(theme Theme, width int, numbers, fragment string, kind byte) str
 		base := theme.Foreground(chroma.NameOther)
 		line = strings.ReplaceAll(line, "\x1b[39m", base)
 		line = ansi.Truncate(line, max(0, width-3), "")
+		line += background // Word emphasis must not extend into right padding.
 		line += strings.Repeat(" ", max(0, width-3-ansi.StringWidth(line)))
 		line = background + base + line
 	}
@@ -533,7 +554,10 @@ func (r *Renderer) ColorHunk(ctx context.Context, theme Theme, review mekugi.Rev
 		return nil, nil, err
 	}
 	next, err := r.ColorSource(ctx, theme, review.AfterPath, after.String())
-	return old, next, err
+	if err != nil {
+		return nil, nil, err
+	}
+	return colorHunkWords(ctx, theme, rows, old, next)
 }
 
 // Syntax is best-effort decoration. Bound lexer input independently of the

@@ -533,6 +533,15 @@ footer reports what the other holds: live calls from the diff view, and
 captured files from the stream view. A child caller's card label uses the
 same color as that agent in the agents pane.
 
+Replacement blocks emphasize removed and inserted words with stronger red and
+green backgrounds, like git-delta, while preserving source syntax colors.
+Unchanged words keep the subtle changed-row fill. Comparisons span consecutive
+replacement rows so line reflow does not mark all retained words as changed.
+Pure additions and removals keep their row fill. Large replacement blocks may
+omit word emphasis to keep rendering bounded. This decoration changes no source
+text, line coordinates, selection, or retained evidence. Source previews use
+the same decoration for the replacement rows available in their visible window.
+
 The saved diff navigator is a presentation index over captured files, not a
 reordering of capture history. Wide panes show a persistent, collapsible left
 dock with colored status and inline added/removed counts. `s` shows and focuses

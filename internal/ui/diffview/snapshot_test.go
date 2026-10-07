@@ -131,3 +131,15 @@ func TestUISnapshotDependencyDirectoryNavigation(t *testing.T) {
 	nav.Rebuild(files, "/workspace")
 	assertRowsSnapshot(t, "dependency-directory-navigation", nav.Render(files, []livediff.Counts{file.NetCounts()}, 0, 50, 5, livediff.DarkTheme))
 }
+
+func TestUISnapshotWordDiff(t *testing.T) {
+	const before = "Keep each listed task small and bounded. Record results as they become known.\n"
+	const after = "Keep each listed task small and checkable. At 70% context use, split the current slice. Record results as they become known.\n"
+	review := mekugi.RenderReviewFile("guidance.txt", "guidance.txt", before, after)
+	render, err := new(livediff.Renderer).Render(t.Context(), livediff.DarkTheme,
+		[]livediff.File{{Path: "guidance.txt", Chunks: []livediff.Chunk{{Review: review}}}}, "", 60)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertRowsSnapshot(t, "word-diff", render.Lines)
+}

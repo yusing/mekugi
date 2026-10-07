@@ -255,6 +255,11 @@ func TestLiveDiffTerminalComposedContextIsNotDuplicated(t *testing.T) {
 		t.Fatal(err)
 	}
 	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "new second") })
+	for _, kind := range []byte{'-', '+'} {
+		if !strings.Contains(frame, livediff.TerminalTheme.WordBackground(kind)) {
+			t.Fatalf("PTY Diff frame has no %c word emphasis: %q", kind, frame)
+		}
+	}
 	for _, text := range []string{"See the editing guide", "and prerequisites."} {
 		if strings.Count(ansi.Strip(frame), text) != 1 {
 			t.Fatalf("duplicated composed context %q: %q", text, ansi.Strip(frame))

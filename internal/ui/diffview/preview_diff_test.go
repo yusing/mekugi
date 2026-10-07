@@ -32,6 +32,9 @@ func TestPreviewDiffTailStyles(t *testing.T) {
 			if strings.Contains(input, "@@") && !strings.Contains(rendered, theme.Foreground(chroma.KeywordDeclaration)) {
 				t.Fatalf("missing Go syntax: %q", rendered)
 			}
+			if strings.Contains(input, "@@") && (!strings.Contains(rendered, theme.WordBackground('-')) || !strings.Contains(rendered, theme.WordBackground('+'))) {
+				t.Fatalf("missing changed-word fills: %q", rendered)
+			}
 			for _, row := range pane.Views["tail"].Source {
 				if row.Number != 0 {
 					t.Fatal("tail has fabricated coordinates")
