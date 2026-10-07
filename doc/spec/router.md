@@ -358,7 +358,7 @@ including router, UI, and replay work, not separate Codex, executor, or worker p
 These routes have no additional authentication. Loopback callers can access command-line
 arguments and other private process data, so captures must remain private. Profiling
 is separate from sanitized metrics and debug evidence. The
-[reader workflow](../../README.md#profile-live-sessions-and-replay) owns build and capture examples.
+[reader workflow](../../docs/contributing/development.md#profile-live-sessions-and-replay) owns build and capture examples.
 
 ### UI
 

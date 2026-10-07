@@ -82,7 +82,7 @@ through `bin/mekugi-pprof replay-session`. Captures are requested over HTTP whil
 playback is running; replay creates no automatic profile files and accepts no
 `--cpu-profile` or `--heap-profile` flags. The normal command remains offline with
 no profiling listener.
-See the [shared profiling workflow](../../README.md#profile-live-sessions-and-replay).
+See the [shared profiling workflow](../../docs/contributing/development.md#profile-live-sessions-and-replay).
 
 Frame timings include output pacing, layout, and writes;
 write time is also measured separately. Headless writes cannot establish terminal
