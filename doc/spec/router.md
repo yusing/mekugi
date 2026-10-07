@@ -113,7 +113,8 @@ maintenance cannot free enough space, stops making progress, or does not complet
 wait. Cancellation interrupts the wait. Retrying persistence must not rerun the host operation
 or upstream request. Background work notices pressure promptly without waiting for the next age sweep.
 An age-sweep failure does not fail an
-unrelated request and is reported as a router-wide notice.
+unrelated request and is reported as a router-wide notice with the failed cleanup
+phase and underlying error.
 The policy never deletes Codex transcripts, workspace files, explicitly selected external
 capture/read outputs, or exported copies of debug bundles. Generated debug bundles under
 the state root have independent age retention, not the replay-data byte budget.

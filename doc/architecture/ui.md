@@ -15,7 +15,8 @@ capture, accounting, or replay authority. Observable terminal behavior belongs t
   their viewport and reveal animation. It consumes shared `internal/livediff` models
   and router-produced preview snapshots. Rendering a preview cannot finalize evidence.
 - `internal/ui/terminal` owns raw-terminal restoration, cancellable input reading,
-  mouse decoding, and shared scrolling primitives. Callers retain pane composition,
+  mouse decoding, and shared scrolling primitives. Input cancellation preserves
+  caller descriptors and their shared file-status flags. Callers retain pane composition,
   focus, follow policy, and the enclosing session lifetime.
 - Router-native `/session` presentation consumes a detached capturer snapshot.
   It owns only view, scroll and retained-exchange selection, never a metric store.

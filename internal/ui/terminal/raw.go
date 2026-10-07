@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/muesli/cancelreader"
 	"golang.org/x/term"
 )
 
@@ -24,9 +25,10 @@ func WithRawPane(ctx context.Context, stdin, stdout *os.File, enter, leave strin
 		_, e := io.WriteString(stdout, leave)
 		err = errors.Join(err, e)
 	}()
-	// A private descriptor makes cancellation interrupt Read without closing the
-	// caller's stdin. The goroutine is joined before restoring terminal state.
-	input, err := os.Open(stdin.Name())
+	// Reopening /dev/stdin on macOS shares file-status flags with stdio. Go
+	// enables nonblocking mode on the reopened file, which can break stdout.
+	// Cancel the read without reopening or closing the caller's descriptor.
+	input, err := cancelreader.NewReader(stdin)
 	if err != nil {
 		return err
 	}
@@ -51,6 +53,11 @@ func WithRawPane(ctx context.Context, stdin, stdout *os.File, enter, leave strin
 			}
 		}
 	}()
-	defer func() { cancel(); input.Close(); <-done }()
+	defer func() {
+		cancel()
+		input.Cancel()
+		<-done
+		err = errors.Join(err, input.Close())
+	}()
 	return body(keys)
 }

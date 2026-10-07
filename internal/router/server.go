@@ -322,8 +322,8 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 				issues.mu.Lock()
 				defer issues.mu.Unlock()
 				return issues.failureStore
-			}, func() {
-				issues.addNotice("", "storage_cleanup_failure", "Mekugi could not complete background storage cleanup. Session requests continue unless storage reaches its limit.")
+			}, func(err error) {
+				issues.addNotice("", "storage_cleanup_failure", fmt.Sprintf("Mekugi could not complete background storage cleanup: %v. Session requests continue unless storage reaches its limit.", err))
 			})
 		}()
 		defer func() {
