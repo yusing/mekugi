@@ -432,10 +432,11 @@ func newExecPreviewTrack(hub *execTrackHub, thread, turn string, commands []exec
 	p := &execPreviewTrack{hub: hub, thread: thread, turn: turn, matches: make(map[string]*execPreviewMatch)}
 	for _, command := range commands {
 		if execSegmentEdits(command.Command) {
-			if previous := p.matches[command.Command]; previous != nil {
+			script := p.authoredScript(command.Command)
+			if previous := p.matches[script]; previous != nil {
 				previous.ambiguous = true
 			} else {
-				p.matches[command.Command] = &execPreviewMatch{}
+				p.matches[script] = &execPreviewMatch{}
 			}
 		}
 	}
@@ -471,13 +472,30 @@ func (p *execPreviewTrack) retain(key [3]string, track *execTrack) {
 	if key[0] != p.thread || key[1] != p.turn || track.serial <= p.after {
 		return
 	}
-	if match := p.matches[track.script]; match != nil {
+	if match := p.matches[p.authoredScript(track.script)]; match != nil {
 		if match.track != nil && match.key != key {
 			match.ambiguous = true
 		} else {
 			match.key, match.track = key, track
 		}
 	}
+}
+
+// Only the current session's exact guard instrumentation may differ from the
+// captured authored source. Host/report matching keeps the executing script.
+func (p *execPreviewTrack) authoredScript(script string) string {
+	guard := filepath.Join(filepath.Dir(p.hub.directory), vcsguard.Directory)
+	source := vcsguard.DisplayScript(script, func(directory string) bool { return directory == guard })
+	if source == script {
+		return script
+	}
+	// This owner has no authenticated helper executable. An inverse rewrite
+	// with no helper must match exactly, so only injected PATH prefixes qualify.
+	rewritten, err := vcsguard.Rewrite(source, "", guard)
+	if err != nil || rewritten != script {
+		return script
+	}
+	return source
 }
 
 func (p *execPreviewTrack) close() {
@@ -508,7 +526,7 @@ func (p *execPreviewTrack) state() (tracked, settled bool, changed <-chan struct
 			matches++
 		}
 		for _, pending := range h.started {
-			if pending.key[0] == p.thread && pending.key[1] == p.turn && pending.script == script && pending.serial > p.after && pending.key != retained.key {
+			if pending.key[0] == p.thread && pending.key[1] == p.turn && pending.serial > p.after && pending.key != retained.key && p.authoredScript(pending.script) == script {
 				matches++
 			}
 		}

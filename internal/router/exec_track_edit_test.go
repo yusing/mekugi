@@ -17,11 +17,12 @@ import (
 	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 	t.Parallel()
-	for _, edit := range []string{"gofmt -w source.go", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go", "python3 - <<'PY'\nfrom pathlib import Path\nPath('source.go').write_text('package p; var A=1\\n')\nPY\ngofmt -w source.go"} {
+	for _, edit := range []string{"gofmt -w source.go", "gofmt -w source.go; git --version >/dev/null", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go", "python3 - <<'PY'\nfrom pathlib import Path\nPath('source.go').write_text('package p; var A=1\\n')\nPY\ngofmt -w source.go"} {
 		t.Run(filepath.Base(strings.Fields(edit)[0]), func(t *testing.T) {
 			shell := newExecTrackShell(t)
 			workspace := t.TempDir()
@@ -44,6 +45,13 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			observation, ok := captureExecObservation([]execCommandInput{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
 			if !ok || observation == nil || len(observation.Files) == 0 {
 				t.Fatal("missing edit capture")
+			}
+			if strings.Contains(edit, "git --version") {
+				var err error
+				script, err = vcsguard.Rewrite(script, "/private/mekugi-exec", filepath.Join(filepath.Dir(shell.hub.directory), vcsguard.Directory))
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			u := newAppServerSessionTestUI(t, workspace)
 			u.execTrack = shell.hub
@@ -240,6 +248,46 @@ func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
 			tracked, settled, _ := tracking.state()
 			if tracked != tc.wantTracked || settled != tc.wantSettled {
 				t.Fatalf("state = %v, %v", tracked, settled)
+			}
+		})
+	}
+}
+
+func TestExecPreviewTrackGuardIdentity(t *testing.T) {
+	const original = "gofmt -w source.go; git --version"
+	const guard = "/private/session/vcs-guard"
+	for _, scenario := range []string{"current", "captured guarded", "foreign", "pending duplicate", "lookalike helper"} {
+		t.Run(scenario, func(t *testing.T) {
+			hub := &execTrackHub{directory: "/private/session/exec", changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack)}
+			script, directory := original, guard
+			if scenario == "foreign" {
+				directory = "/private/other/vcs-guard"
+			}
+			if scenario == "lookalike helper" {
+				script = "gofmt -w source.go; /usr/bin/git --version"
+			}
+			wrapped, err := vcsguard.Rewrite(script, "/unrelated/mekugi-exec", directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			commands := []execCommandInput{{Command: script}}
+			if scenario == "captured guarded" {
+				commands[0].Command = wrapped
+			}
+			p := newExecPreviewTrack(hub, "main", "turn", commands)
+			defer p.close()
+			key := [3]string{"main", "turn", "command"}
+			hub.start(key, "/bin/bash -lc "+quoteShellWord(wrapped))
+			if _, _, ok := hub.claim(t.Context(), execsegment.Message{Thread: "main", Script: wrapped}); !ok {
+				t.Fatal("raw report ownership failed")
+			}
+			hub.completed(key)
+			if scenario == "pending duplicate" {
+				hub.start([3]string{"main", "turn", "pending"}, "/bin/bash -lc "+quoteShellWord(original))
+			}
+			_, settled, _ := p.state()
+			if settled != (scenario == "current" || scenario == "captured guarded") {
+				t.Fatalf("preview settled = %v", settled)
 			}
 		})
 	}

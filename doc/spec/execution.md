@@ -337,7 +337,11 @@ Acceptance:
 5. An incomplete report never replaces the host's combined output or exit.
 6. Edit intent and running diff cards use segment lifecycle rather than waiting
    for later non-edit commands. Preview matching requires exact thread, turn and
-   script identity and rejects ambiguous matches. These live observations never
+   authored script identity after removing exact PATH-prefix instrumentation for
+   the current session's VCS guard. Helper wrappers, unrecognized source, and
+   other-session source stay intact;
+   ambiguous matches are rejected. Report matching and host inputs remain unchanged.
+   These live observations never
    finalize the host command or create durable change receipts.
 7. Completed segment output, timing, failure and skipped states survive a fresh router
    and inherited host history. Changed workspace, turn, item, command, aggregate
