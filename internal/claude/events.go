@@ -203,6 +203,9 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 			return []session.Event{{Kind: "limit", Limit: e.Limit}}, nil
 		}
 	case "system":
+		if e.Subtype == "compact_boundary" {
+			return []session.Event{{Kind: "context", ID: e.UUID, Text: "Context compacted"}}, nil
+		}
 		if e.Subtype == "commands_changed" {
 			return []session.Event{{Kind: "commands", CommandInfo: e.Commands}}, nil
 		}
@@ -331,6 +334,8 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		var result []session.Event
 		var response struct {
 			BackgroundTaskID string `json:"backgroundTaskId"`
+			Success          bool   `json:"success"`
+			CommandName      string `json:"commandName"`
 		}
 		if e.ToolResult.Kind() == '{' {
 			_ = json.Unmarshal(e.ToolResult, &response)
@@ -341,10 +346,15 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 				if response.BackgroundTaskID != "" && len(blocks) == 1 {
 					event.Output = &session.CommandOutput{TaskID: response.BackgroundTaskID}
 				}
+				if response.Success && !block.IsError && len(blocks) == 1 {
+					event.Skill = response.CommandName
+				}
 				result = append(result, event)
 			}
 		}
 		return result, nil
+	case "conversation_reset":
+		return []session.Event{{Kind: "context", ID: e.UUID, Text: "Context reset"}}, nil
 	case "result":
 		clear(a.tools)
 		clear(a.text)

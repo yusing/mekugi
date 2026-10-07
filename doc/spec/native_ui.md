@@ -59,6 +59,15 @@ Historical transcript rows cannot recreate pending permissions or tools. Resume
 validates the selected workspace against SDK session metadata before accepting
 new input; at most 2,000 messages are read for display, with longer history noted.
 
+Claude uses the shared loaded-skill counts and name dialog. Successful native
+`Skill` results supply the canonical skill name; successful `Read` operations
+on `SKILL.md` supply its directory name. Pending, failed and unconfirmed skill
+calls load nothing. Main's native compaction and context-reset receipts clear its
+count while preserving child counts. Late child metadata keeps already confirmed
+loads with that child. Native child context-boundary delivery remains unfinished;
+the pinned SDK does not forward child system compact boundaries. These
+observations do not change native context or compaction.
+
 Shared `/title <title>` saves native session names without model input. Native
 rename writes are serialized and settle only on matching receipts; saved-session
 listing preserves those names. `/resume` uses the existing shared picker with

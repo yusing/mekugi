@@ -161,6 +161,7 @@ type liveActivityNativeItem struct {
 	recovery           string            // Exact retained model-visible reset message, or an unavailable notice.
 	replacesItems      []string          // Exact provider items contained in this retained child result.
 	command, status    string
+	tool               string // Native tool name, distinct from its classified presentation.
 	commandCwd         string // Metadata-owned directory for classified paths and receipt refreshes.
 	commandTimeout     string // Explicit timeout from available invocation input.
 	approval           string // UI decision, independent of the host execution result.

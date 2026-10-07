@@ -32,6 +32,7 @@ type Event struct {
 	AgentMessage *AgentMessage
 	Shell        *ShellResult
 	CommandInput *CommandInput
+	Skill        string // Canonical name from a successful native Skill receipt.
 }
 
 // CommandInput is received proposal text, not execution or completion evidence.

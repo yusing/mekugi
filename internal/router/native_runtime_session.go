@@ -465,6 +465,9 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 			u.attachRuntimeObservation(u.runtime.observations)
 		}
 		u.setNotice("Context reset from journal · native session "+e.SessionID, false)
+		u.runtimeEntry(session.Event{Kind: "context", ID: "reset/" + e.ID, Text: "Context reset from journal"})
+	case "context":
+		u.runtimeEntry(e)
 	case "edit":
 		u.runtimePreview(e)
 	case "command_preview":
@@ -598,6 +601,10 @@ func (u *appServerUI) runtimeEntry(e session.Event) {
 		if e.Kind == "task" {
 			entry.Kind = "progress"
 			entry.native = &liveActivityNativeItem{thread: u.thread, item: e.ID, phase: "task"}
+		}
+		if e.Kind == "context" {
+			entry.Kind = "progress"
+			entry.native = &liveActivityNativeItem{thread: u.thread, item: e.ID, live: !e.Historical}
 		}
 		if e.Role == "You" {
 			entry.Agent = "You"

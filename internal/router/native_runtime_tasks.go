@@ -109,8 +109,9 @@ func (u *appServerUI) runtimeTask(e session.Event) {
 			r.taskCallers = make(map[string]string)
 		}
 		for _, caller := range append(slices.Clone(e.Callers), t.ToolID) {
-			if caller != "" {
+			if caller != "" && r.taskCallers[caller] != t.ID {
 				r.taskCallers[caller] = t.ID
+				u.renameThreadActivity("native/"+caller, runtimeTaskLane(t.ID))
 			}
 		}
 	}

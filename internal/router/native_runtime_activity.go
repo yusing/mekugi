@@ -27,6 +27,7 @@ func (u *appServerUI) runtimeToolEntry(v *liveActivityView, entry activityPaneEn
 		}
 	}
 	if e.Kind == "tool" {
+		entry.native.tool = e.Role
 		entry.Text, entry.native.command = runtimeToolText(e.Role, e.Text, u.session.cwd)
 		if !e.Historical && entry.native.commandStarted.IsZero() {
 			entry.native.commandStarted = entry.Observed
@@ -54,6 +55,9 @@ func (u *appServerUI) runtimeToolEntry(v *liveActivityView, entry activityPaneEn
 		return entry
 	}
 	entry.native.running = false
+	if entry.native.tool == "Skill" && e.Skill != "" && !e.Failed {
+		entry.Text = "Skill " + commentaryCode(e.Skill)
+	}
 	if !e.Historical {
 		entry.native.commandEnded = u.now()
 	}

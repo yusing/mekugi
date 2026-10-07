@@ -92,7 +92,7 @@ type liveActivitySkills struct {
 func contextBoundary(entry activityPaneEntry) bool {
 	switch entry.Kind {
 	case "progress":
-		return entry.Text == "Context compacted" || entry.Text == "Context reset from journal"
+		return entry.Text == "Context compacted" || entry.Text == "Context reset" || entry.Text == "Context reset from journal"
 	case "journal_event":
 		return entry.journalEvent != nil && entry.journalEvent.Op == "reset"
 	}
