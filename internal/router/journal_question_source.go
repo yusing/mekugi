@@ -10,6 +10,13 @@ import (
 // consult a thread-wide "last question" cache: steering and forks have distinct
 // visible histories, and a newer media-only message must not select an older one.
 func journalQuestionFromInput(raw json.RawMessage, recipient string) string {
+	return requestUserTextFromInput(raw, recipient, false)
+}
+
+// Naming includes submitted file snapshots; journal questions exclude them.
+// Keep snapshots separate from request text so editor-prefix stripping cannot
+// interpret file contents as the user's request boundary.
+func requestUserTextFromInput(raw json.RawMessage, recipient string, includeAttachedFiles bool) string {
 	input, err := decodeResponsesInput(raw)
 	if err != nil {
 		return ""
@@ -45,7 +52,7 @@ func journalQuestionFromInput(raw json.RawMessage, recipient string) string {
 			Kinds []string `json:"content_item_kinds"`
 		}
 		_ = json.Unmarshal(item.fields["internal_chat_message_metadata_passthrough"], &metadata)
-		var text []string
+		var text, files []string
 		userContent := false
 		for index, part := range parts {
 			kind := ""
@@ -63,7 +70,14 @@ func journalQuestionFromInput(raw json.RawMessage, recipient string) string {
 				continue
 			}
 			if part.Type == "input_text" || part.Type == "text" {
-				if _, attached := decodeFileAttachments(part.Text); attached {
+				if frames, attached := decodeFileAttachments(part.Text); attached {
+					if includeAttachedFiles {
+						for _, frame := range frames {
+							if strings.HasPrefix(frame, "Attached file ") {
+								files = append(files, frame)
+							}
+						}
+					}
 					continue
 				}
 				if !strings.HasPrefix(kind, "user.") && journalContextText(part.Text) {
@@ -73,8 +87,9 @@ func journalQuestionFromInput(raw json.RawMessage, recipient string) string {
 			}
 			userContent = true
 		}
-		if userContent || len(parts) == 0 {
-			return journalUserText(strings.Join(text, "\n"))
+		if userContent || len(parts) == 0 || len(files) != 0 {
+			prompt := journalUserText(strings.Join(text, "\n"))
+			return strings.Join(append([]string{prompt}, files...), "\n")
 		}
 	}
 	return ""

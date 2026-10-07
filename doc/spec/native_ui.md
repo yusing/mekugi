@@ -308,7 +308,10 @@ when valid Codex credentials and a provider are present. Otherwise naming is
 silently skipped without a request. There is no fallback to the session's model
 and no separate availability probe. An unavailable service or model, rejected
 credentials, or another unsuccessful naming response also silently skips naming.
-Only the first user request text is used, not instructions, tools, or later history.
+Naming uses the first user request text and its submitted file or directory
+snapshots within the naming input bound, not skill instructions, tools, or later
+history. Snapshots supply content, not just inline filenames, without reopening
+files. Attachment contents remain excluded from journal question text.
 Prewarm, compaction, unsuccessful responses, children, and side questions do not
 start naming. Naming uses separate request identity and does not block or change
 the original response. Its tokens are included in router usage totals.

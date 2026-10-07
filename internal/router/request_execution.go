@@ -199,7 +199,7 @@ func (a *requestAttempt) prepare() error {
 	}
 	a.threadID = codexThreadID(a.headers)
 	if a.metadataValid && a.metadata.RequestKind == responses.Turn && a.executor.titleGenerator.needsPrompt(a.threadID) {
-		a.executor.titleGenerator.observe(a.threadID, journalQuestionFromInput(a.request.fields["input"], "/root"), a.headers, false)
+		a.executor.titleGenerator.observe(a.threadID, requestUserTextFromInput(a.request.fields["input"], "/root", true), a.headers, false)
 	}
 	a.finalization.threadID = a.threadID
 	a.finalization.turnID = a.metadata.TurnID
