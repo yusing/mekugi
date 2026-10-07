@@ -15,6 +15,17 @@ import (
 const journalCardNoteLimit = 3
 const journalCardPreviewRows = 2
 
+// Single-line previews retain inline styles; block summaries keep their existing geometry.
+func journalInlinePreview(p *activityui.Painter, text string) string {
+	first, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	plain := journalPreview(text)
+	styled := p.Inline(first)
+	if strings.TrimSpace(ansi.Strip(styled)) == plain {
+		return styled
+	}
+	return plain
+}
+
 func journalPreview(text string) string {
 	// Summary strips styles. Keep Markdown geometry without discarded syntax work.
 	p := activityui.Painter{LayoutOnly: true}
@@ -31,16 +42,20 @@ func journalPreview(text string) string {
 
 // Compact presentation never changes the retained node or its full details.
 func journalCompactNode(node journalNode) journalNode {
+	return journalCompactNodePreview(node, journalPreview)
+}
+
+func journalCompactNodePreview(node journalNode, preview func(string) string) journalNode {
 	if node.Reason != "" {
-		node.Reason = ansi.Truncate(journalPreview(node.Reason), 80, "…")
+		node.Reason = ansi.Truncate(preview(node.Reason), 80, "…")
 	}
 	if node.Kind == "note" || node.Kind == "context" || node.Kind == "task" && node.Body != "" {
 		if node.Title == "Note" && node.Body != "" {
-			node.Title = journalPreview(node.Body)
+			node.Title = preview(node.Body)
 		} else {
-			node.Title = journalPreview(node.Title)
+			node.Title = preview(node.Title)
 			if node.Body != "" {
-				node.Title += ": " + journalPreview(node.Body)
+				node.Title += ": " + preview(node.Body)
 			}
 		}
 	}

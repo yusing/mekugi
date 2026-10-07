@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
@@ -136,13 +138,40 @@ func TestJournalNoiseCardPreservesDetailAndOpenCount(t *testing.T) {
 func TestUISnapshotJournalNoiseRichNotePreview(t *testing.T) {
 	v := newLiveActivityView()
 	v.painter.Theme = livediff.DarkTheme
-	body := "**Validation passed** with `go test`. See [report](/home/yusing/projects/mekugi/FIXME.md).\n\nFull supporting evidence remains available."
+	body := "**Validation passed** with `cat  x | sort`. See [report](</tmp/two  spaces.md>).\n\nFull supporting evidence remains available."
 	note := journalNode{Path: "/1", Kind: "note", Title: "Note", Body: body}
 	card := &nativeJournalCard{Journal: threadJournal{Events: []journalEvent{{Seq: 1, Op: "add", Path: "/1", Fields: note}}}}
 	entry := activityPaneEntry{Seq: 1, Observed: journalNoiseTime(), journalCard: card, native: &liveActivityNativeItem{}}
 	var out conversationLines
 	v.journalCardLines(&out, entry, 90)
 	assertNativeJournalSnapshot(t, "journal-noise-rich-note-preview", out.lines)
+	var events conversationLines
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Kind: "journal_event", journalEvent: &card.Journal.Events[0]}}})
+	v.journalEventsItem(&events, 0, 0, 40)
+	expanded, _ := journalCardRows(&v.painter, card, 86, true)
+	pane := new(nativeJournalView).renderRow(journalPaneRow{node: note}, 90, livediff.DarkTheme)
+	for label, rows := range map[string][]string{"pane": {pane}, "events": events.lines, "preview": out.lines, "expanded": expanded} {
+		styled := strings.Join(rows, "\n")
+		if !strings.Contains(styled, "\x1b]8;;file:///tmp/two%20%20spaces.md") {
+			t.Fatalf("%s lost the link target: %q", label, styled)
+		}
+		screen := vt.NewEmulator(90, len(rows))
+		for y, row := range rows {
+			fmt.Fprintf(screen, "\x1b[%d;1H%s", y+1, row)
+			if x := strings.Index(ansi.Strip(row), "Validation passed"); x >= 0 && screen.CellAt(x, y).Style.Attrs&uv.AttrBold == 0 {
+				t.Errorf("%s lost bold result text", label)
+			}
+		}
+		screen.Close()
+	}
+	first, _, _ := strings.Cut(body, "\n")
+	for _, muted := range []journalNode{{Kind: "task", State: "dropped", Title: first}, {Kind: "note", Title: "Note", Body: body, SupersededBy: "/2"}} {
+		row := new(nativeJournalView).renderRow(journalPaneRow{node: muted}, 90, livediff.DarkTheme)
+		if !strings.Contains(row, "\x1b]8;;file:///tmp/two%20%20spaces.md") {
+			t.Fatalf("dimmed row lost its link target: %q", row)
+		}
+	}
+	assertNativeJournalSnapshot(t, "journal-rich-note-pane-and-events", append([]string{pane}, events.lines...))
 	if card.Journal.Events[0].Fields.Body != body {
 		t.Fatal("rich preview rewrote the original note")
 	}

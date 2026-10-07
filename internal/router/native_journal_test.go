@@ -46,6 +46,31 @@ func TestUISnapshotNativeJournalAgentsGroupIsNotAConstraint(t *testing.T) {
 	assertNativeJournalSnapshot(t, "journal-agents-group", new(nativeJournalView).render(&journal, 80, 6, false, false, livediff.DarkTheme))
 }
 
+func TestUISnapshotNativeJournalMarkdownTitles(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.view.painter.Theme = livediff.DarkTheme
+	j := nativeJournalFixture()
+	for i := range j.Items {
+		j.Items[i].Title = "**Rendered** `editor` [report](</tmp/two  spaces.md>)"
+	}
+	j.Items[2].Reason = "**Needs** `approval`"
+	j.Items = append(j.Items, journalItem{Path: "/5", Kind: "context", Title: "**Kept** [scope](/tmp/scope.md)"})
+	u.journal = &nativeJournalSink{tree: &j}
+	var rows []string
+	for _, width := range []int{80, 24} {
+		rows = append(rows, u.journalView.render(&j, width, 8, false, false, livediff.DarkTheme)...)
+		strip := u.journalPlanStrip(width)
+		if !strings.Contains(strip, "\x1b[1mRendered") {
+			t.Fatalf("%d-column plan strip lost bold task title: %q", width, strip)
+		}
+		if width == 80 && !strings.Contains(strip, "\x1b]8;;file:///tmp/two%20%20spaces.md") {
+			t.Fatalf("plan strip changed its link target: %q", strip)
+		}
+		rows = append(rows, strip)
+	}
+	assertNativeJournalSnapshot(t, "journal-markdown-titles", rows)
+}
+
 func TestNativeJournalSelectionExpansionAndCopyPath(t *testing.T) {
 	journal := nativeJournalFixture()
 	u, _ := newAppServerTestUI()

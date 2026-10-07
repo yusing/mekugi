@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -24,6 +25,9 @@ func TestJournalPreviewRetainsMarkdownSummary(t *testing.T) {
 			want := p.Summary([]activityui.Block{{Kind: "final", Body: text}}, 80)
 			if got := journalPreview(text); got != want {
 				t.Fatalf("plain preview changed Markdown summary: got %q, want %q", got, want)
+			}
+			if got := strings.TrimSpace(ansi.Strip(journalInlinePreview(&p, text))); got != want {
+				t.Fatalf("styled preview changed Markdown summary: got %q, want %q", got, want)
 			}
 		})
 	}

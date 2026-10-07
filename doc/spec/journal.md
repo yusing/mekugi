@@ -30,8 +30,12 @@ app-server requests without workspace metadata. Only notes from the presented na
 are suppressed in Main or acknowledged via the pane. Router stamps display in local time
 at the row's right edge when the pane is wide enough.
 Only tasks show state; blocked tasks retain their reason and dropped tasks are dimmed.
+Authored item titles and reason previews use the shared inline Markdown painter,
+including bold text, code spans and links. Pane rows remain one visual row and
+clip after painting; full bodies use the shared Markdown renderer in details.
 A superseded node is dimmed with a `superseded by PATH` suffix, in the pane and in
-journal event rows; its pane subtree starts collapsed.
+journal event rows; its pane subtree starts collapsed. Dimmed pane rows retain
+their link targets while foreground colors and emphasis yield to dim presentation.
 A plan strip above the composer shows current owned work: working tasks precede
 blocked tasks, then pending tasks. Within a state, the most recently updated task
 wins. Adding pending work cannot displace working work. The strip uses the same
@@ -70,6 +74,8 @@ toward the title's open total. Captured answers are excluded. Collapsed node row
 use at most two visual rows, with short blocker explanations. The newest three
 changed notes show result-first previews, in chronological order, with an
 older-note disclosure when needed. Changed context remains visible independently.
+Inline Markdown remains styled in event rows, compact card previews and plan
+strips. Wrapping and preview limits apply to painted text, not markup delimiters.
 Once no owned tasks remain open, a preview exceeding eight rendered body rows
 collapses to a disclosure with task and note counts. Wrapping at the current width
 counts toward that budget, not task count; smaller cards stay readable inline.
@@ -360,7 +366,7 @@ are never renumbered or reused after successful removal. Titles are display text
 not addresses. Notes and context nodes have no state. Only tasks have `pending`,
 `working`, `done`, `blocked`, or `dropped` state. Answers remain router-owned.
 
-Nodes contain a one-line nonblank title, optional Markdown body, author, creation
+Nodes contain a one-line nonblank Markdown title, optional Markdown body, author, creation
 and update stamps (`seq`, RFC 3339 `at`), children, and an optional `superseded_by`
 path naming the node that replaced them. Tasks can additionally contain
 a reason, their first working stamp and their latest completion/drop stamp.
