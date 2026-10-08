@@ -12,6 +12,7 @@ import { setSettings, type SettingsCommand } from './controls.js';
 import { taskOutput } from './task_output.js';
 import {sessionPage} from './session_controls.js';
 import {sessionHistory, type HistorySelection} from './session_history.js';
+import {restoreSkillHistory} from './skill_history.js';
 import {SideQueries} from './side_query.js';
 import {AgentMessages, type AgentMessage} from './agent_messages.js';
 import {UserShell, type NativeInput} from './user_shell.js';
@@ -221,7 +222,7 @@ async function changeSession(id: string, target?: string, workspaceHint?: string
   try {
     const info = target ? await resumeInfo(target, workspaceHint) : undefined;
     const workspace = info?.cwd ?? cwd;
-    const history = target ? await sessionHistory(target, workspace, endpoint) : {messages: [], notices: [], agents: []};
+    const history = target ? await sessionHistory(target, workspace, endpoint) : {messages: [], notices: [], agents: [], contexts: []};
     const next = target ?? randomUUID();
     const source = {runtime: 'claude', workspace: cwd, session: activeSession};
     const binding = {...source, workspace, session: next};
@@ -245,6 +246,7 @@ async function changeSession(id: string, target?: string, workspaceHint?: string
     running = await createQuery(target ? undefined : {session: next, context: ''});
     await emit({kind: 'session_change', id, sessionID: target ?? '', cwd, title: info?.customTitle ?? info?.summary ?? ''});
     for (const agent of history.agents) await emit({kind: 'saved_agent', ...agent});
+    if (target) await restoreSkillHistory(target, cwd, history.contexts, emit);
     for (const message of history.messages) await emit({kind: 'history', event: message});
     for (const text of history.notices) await emit({kind: 'notice', text});
     pump = watch(running);
@@ -453,8 +455,9 @@ try {
       await emit({kind: 'session', sessionID: info.sessionId, cwd, title: info.customTitle ?? info.summary});
     }
     const history = await sessionHistory(config.resume, cwd, endpoint);
-    if (config.forkSession) forkHistory = {source: config.resume, children: history.children};
     for (const agent of history.agents) await emit({kind: 'saved_agent', ...agent});
+    const contexts = await restoreSkillHistory(config.resume, cwd, history.contexts, emit, history.children);
+    if (config.forkSession) forkHistory = {source: config.resume, children: contexts};
     for (const message of history.messages) {
       await emit({kind: 'history', event: message});
     }

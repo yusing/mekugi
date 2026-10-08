@@ -13,6 +13,7 @@ type nativeHistoryChild struct {
 	SessionID  string   `json:"sessionID"`
 	AgentID    string   `json:"agentID"`
 	MessageIDs []string `json:"messageIDs"`
+	Complete   bool     `json:"complete,omitempty"`
 }
 
 type nativeHistorySelection struct {
@@ -40,7 +41,7 @@ func validNativeHistorySelection(target ObservationBinding, selection *nativeHis
 			}
 		}
 	}
-	return count <= 2000
+	return count <= 32768
 }
 
 func (o *nativeObservationOwner) retainForkHistory(ctx context.Context, target, source ObservationBinding, children []nativeHistoryChild) error {

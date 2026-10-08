@@ -260,6 +260,7 @@ type nativeEvent struct {
 		Error       string `json:"error"`
 	} `json:"patch"`
 	Content           string   `json:"content"`
+	IsCompactSummary  bool     `json:"isCompactSummary"`
 	UUID              string   `json:"uuid"`
 	Type              string   `json:"type"`
 	Subtype           string   `json:"subtype"`

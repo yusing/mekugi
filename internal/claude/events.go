@@ -27,6 +27,7 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		Value       string                 `json:"value"`
 		Failed      bool                   `json:"failed"`
 		Kind        string                 `json:"kind"`
+		Phase       string                 `json:"phase"`
 		SessionID   string                 `json:"sessionID"`
 		AgentID     string                 `json:"agentID"`
 		Title       string                 `json:"title"`
@@ -152,6 +153,19 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 			return events, nil
 		}
 		return historyEvents(frame.Event)
+	case "skill_history":
+		h := &session.SkillHistory{AgentID: frame.AgentID, Phase: frame.Phase}
+		if frame.Phase == "message" {
+			if frame.Event.IsCompactSummary {
+				h.Events = []session.Event{{Kind: "context", Text: "Context compacted", Historical: true}}
+			} else {
+				h.Events, err = historyEvents(frame.Event)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		return []session.Event{{Kind: frame.Kind, Failed: frame.Failed, SkillHistory: h}}, nil
 	case "notice":
 		return []session.Event{{Kind: "notice", Text: frame.Text}}, nil
 	case "command_output":

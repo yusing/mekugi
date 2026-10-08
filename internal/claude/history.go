@@ -2,6 +2,8 @@ package claude
 
 import (
 	json "encoding/json/v2"
+	"strings"
+
 	"github.com/yusing/mekugi/internal/session"
 )
 
@@ -37,8 +39,30 @@ func historyEvents(e nativeEvent) ([]session.Event, error) {
 		case "tool_use":
 			result = append(result, session.Event{Kind: "tool", ID: "history/" + b.ID, Role: b.Name, Text: string(b.Input), Historical: true})
 		case "tool_result":
-			result = append(result, session.Event{Kind: "tool_result", ID: "history/" + b.ToolUseID, Text: contentText(b.Content), Failed: b.IsError, Historical: true})
+			text := contentText(b.Content)
+			result = append(result, session.Event{Kind: "tool_result", ID: "history/" + b.ToolUseID, Text: text, Skill: savedSkillName(text), Failed: b.IsError, Historical: true})
 		}
 	}
 	return result, nil
+}
+
+// Native Skill maps its resolved commandName into these tool-result forms.
+// The caller must still pair this receipt with a successful native Skill call.
+func savedSkillName(text string) string {
+	if name, ok := strings.CutPrefix(text, "Launching skill: "); ok && !strings.ContainsAny(name, "\r\n") {
+		return name
+	}
+	if rest, ok := strings.CutPrefix(text, `Skill "`); ok {
+		name, suffix, found := strings.Cut(rest, `"`)
+		if found && (strings.HasPrefix(suffix, " launched (forked execution, running in the background).\n\n") || strings.HasPrefix(suffix, " completed (forked execution).\n\nResult:\n")) {
+			return name
+		}
+	}
+	if rest, ok := strings.CutPrefix(text, "Loaded skill instructions (read-only): "); ok {
+		name, found := strings.CutSuffix(rest, ". Nothing was executed; delegate execution to a worker.")
+		if found {
+			return name
+		}
+	}
+	return ""
 }

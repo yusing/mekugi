@@ -70,6 +70,16 @@ Active skills reconstruct from Codex event history on exit/resume, without a new
 Paginated child skill scans are independent of lazy Activity reads: descending `thread/items/list` pages cover turns and inherited history, stopping at the latest completed compaction.
 Only one bounded scan runs at a time; incomplete or failed scans leave counts unknown with a notice. Live resets override scans; session switches retire correlation. Observation neither resumes children nor invokes a model.
 
+Claude reads one bounded SDK-selected snapshot per owner, separately from its
+2,000-message display window. SDK offsets slice a full read rather than page
+storage. Forks retain independently bounded complete child UUID selections
+through the existing history owner. Existing inherited selections remain the
+admission boundary; legacy records with unknown completeness hide skill counts.
+Native compact-summary markers and timestamps retire earlier loads, including
+pre-compaction records that the SDK relinks after the summary;
+canonical native Skill result text and successful Read pairs confirm new ones.
+Only complete scans publish counts through the shared skill owner.
+
 Unloaded history, loading, and failed reads have separate presentation states.
 Pending rollout placements stay with their child until their item/turn is
 loaded. Stable Activity entry IDs survive older-page insertion and continue

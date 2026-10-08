@@ -95,6 +95,14 @@ loads with that child. Native child context-boundary delivery remains unfinished
 the pinned SDK does not forward child system compact boundaries. These
 observations do not change native context or compaction.
 
+Resume and fork restore confirmed loads from a separate bounded SDK scan of
+each selected conversation chain, independently of the transcript display
+window. Forks capture complete child UUID selections through the existing native
+history owner; inherited child reads use only that fixed selection. Legacy
+selections with unknown completeness hide their counts. Failed
+or incomplete scans hide that owner's count and show a notice; they do not
+prevent native resume. Native compact-summary receipts clear earlier loads.
+
 Shared `/title <title>` saves native session names without model input. Native
 rename writes are serialized and settle only on matching receipts; saved-session
 listing preserves those names. `/resume` uses the existing shared picker with

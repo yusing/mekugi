@@ -55,6 +55,7 @@ type nativeRuntimeSession struct {
 	resetSource       ObservationBinding
 	restoredJournal   string
 	permissionChoices map[string]string
+	skillScan         *runtimeSkillScan
 }
 
 func newRuntimeUI(ctx context.Context, client session.Client, name, cwd string) *appServerUI {
@@ -480,6 +481,8 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		u.runtimeEntry(session.Event{Kind: "context", ID: "reset/" + e.ID, Text: "Context reset from journal"})
 	case "context":
 		u.runtimeEntry(e)
+	case "skill_history":
+		u.runtimeSkillHistory(e)
 	case "edit":
 		u.runtimePreview(e)
 	case "command_preview":

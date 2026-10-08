@@ -2,6 +2,7 @@ package router
 
 import (
 	"reflect"
+	"strconv"
 	"testing"
 )
 
@@ -11,7 +12,11 @@ func TestNativeForkHistorySelectionRestartAndIsolation(t *testing.T) {
 	source.Session = "parent"
 	directory := t.TempDir()
 	service, _, closeService := observationIsolationService(t, directory, binding)
-	children := []nativeHistoryChild{{SessionID: source.Session, AgentID: "native-child", MessageIDs: []string{"native-message-a", "native-message-b"}}}
+	ids := make([]string, 2101)
+	for i := range ids {
+		ids[i] = "native-message-" + strconv.Itoa(i)
+	}
+	children := []nativeHistoryChild{{SessionID: source.Session, AgentID: "native-child", MessageIDs: ids, Complete: true}}
 	if err := service.owner.retainForkHistory(t.Context(), binding, source, children); err == nil {
 		t.Fatal("unbound fork acquired retained history")
 	}

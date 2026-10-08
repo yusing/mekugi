@@ -118,6 +118,12 @@ func TestNativeRuntimeSavedSegmentsClaudeNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	binding := ObservationBinding{Runtime: "claude", Workspace: t.TempDir()}
+	if err := os.Mkdir(filepath.Join(binding.Workspace, ".claude"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(binding.Workspace, ".claude", "settings.json"), []byte(`{"permissions":{"defaultMode":"default"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 	storeDirectory := t.TempDir()
 	// Each launch has its own owner and native bridge, sharing only durable files.
 	launch := func(resume string, fork bool) (*claude.Client, *appServerUI, func()) {
@@ -174,8 +180,8 @@ func TestNativeRuntimeSavedSegmentsClaudeNative(t *testing.T) {
 				if event.Kind == "error" || event.Kind == "done" && event.Failed {
 					t.Fatalf("native failure: %+v", event)
 				}
-				if event.Kind == "tool_result" && event.ID == "saved-child-followup-agent" && event.Failed {
-					t.Fatalf("official child resume failed: %s", event.Text)
+				if event.Kind == "tool_result" && (event.ID == "saved-child-agent" || event.ID == "saved-child-followup-agent") && event.Failed {
+					t.Fatalf("official child call failed: %s", event.Text)
 				}
 				if event.Kind == "tool_result" && event.ID == "saved-child-followup-agent" {
 					followupReport = event.Text

@@ -33,6 +33,14 @@ type Event struct {
 	Shell        *ShellResult
 	CommandInput *CommandInput
 	Skill        string // Canonical name from a successful native Skill receipt.
+	SkillHistory *SkillHistory
+}
+
+// SkillHistory observes one saved current context independently of display.
+// Messages cannot restore execution, permissions, or processes.
+type SkillHistory struct {
+	AgentID, Phase string
+	Events         []Event
 }
 
 // CommandInput is received proposal text, not execution or completion evidence.

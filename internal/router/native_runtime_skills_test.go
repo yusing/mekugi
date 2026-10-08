@@ -6,9 +6,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/claude"
+	"github.com/yusing/mekugi/internal/session"
 )
 
 // Exercise the real JSON-lines client/decoder and shared renderer without
@@ -127,4 +130,73 @@ func TestUISnapshotNativeRuntimeConfirmedSkills(t *testing.T) {
 	result("new-main", "", `{}`, false)
 	feed(`{"kind":"reset","id":"journal-reset","sessionID":"new-native-session"}`)
 	counts(nil, []string{"child-guide"})
+}
+
+func TestUISnapshotNativeRuntimeSavedSkills(t *testing.T) {
+	u, _ := runtimeTestUI(t)
+	feed := runtimeDecodedFrames(t, u)
+	scan := func(agent, phase string, failed bool) {
+		feed(fmt.Sprintf(`{"kind":"skill_history","agentID":%q,"phase":%q,"failed":%t}`, agent, phase, failed))
+	}
+	load := func(agent, id, name, input, receipt string, failed bool) {
+		feed(fmt.Sprintf(`{"kind":"skill_history","agentID":%q,"phase":"message","event":{"type":"assistant","uuid":%q,"message":{"content":[{"type":"tool_use","id":%q,"name":%q,"input":%s}]}}}`, agent, id, id, name, input))
+		feed(fmt.Sprintf(`{"kind":"skill_history","agentID":%q,"phase":"message","event":{"type":"user","uuid":%q,"message":{"content":[{"type":"tool_result","tool_use_id":%q,"content":%q,"is_error":%t}]}}}`, agent, id+"-result", id, receipt, failed))
+	}
+	counts := func(main, child []string) {
+		t.Helper()
+		for _, v := range []*liveActivityView{u.view, u.agents} {
+			for owner, want := range map[string][]string{"Main": main, "/root/child": child} {
+				got := slices.Clone(v.activeSkills()[owner])
+				slices.Sort(got)
+				if !slices.Equal(got, want) {
+					t.Fatalf("%s saved loads = %v, want %v", owner, got, want)
+				}
+			}
+		}
+	}
+	scan("", "start", false)
+	load("", "old", "Read", `{"file_path":"/work/old/SKILL.md"}`, "old body", false)
+	feed(`{"kind":"skill_history","phase":"message","event":{"type":"user","uuid":"summary","isCompactSummary":true,"message":{"content":[]}}}`)
+	load("", "canonical", "Skill", `{"skill":"alias"}`, "Launching skill: plugin:guide", false)
+	load("", "read", "Read", `{"file_path":"/work/testing/SKILL.md"}`, "skill body", false)
+	load("", "failed", "Read", `{"file_path":"/work/failed/SKILL.md"}`, "denied", true)
+	counts(nil, nil) // A partial scan cannot publish a count.
+	scan("", "done", false)
+	feed(`{"kind":"saved_agent","id":"child","callers":["parent-tool"]}`)
+	scan("child", "start", false)
+	load("child", "child-read", "Read", `{"file_path":"/work/child-guide/SKILL.md"}`, "child body", false)
+	scan("child", "done", false)
+	counts([]string{"plugin:guide", "testing"}, []string{"child-guide"})
+	// Lazy display and retained rows cannot add a requested alias to the scan.
+	feed(`{"kind":"history","event":{"type":"assistant","uuid":"display","message":{"content":[{"type":"tool_use","id":"display-only","name":"Read","input":{"file_path":"/work/not-current/SKILL.md"}}]}}}`)
+	feed(`{"kind":"history","event":{"type":"user","uuid":"display-result","message":{"content":[{"type":"tool_result","tool_use_id":"display-only","content":"saved"}]}}}`)
+	counts([]string{"plugin:guide", "testing"}, []string{"child-guide"})
+	paintTitle := func(name string) {
+		t.Helper()
+		t.Run(name, func(t *testing.T) {
+			screen := vt.NewEmulator(120, 28)
+			defer screen.Close()
+			if err := u.paint(screen, 120, 28); err != nil {
+				t.Fatal(err)
+			}
+			assertNativeUISnapshot(t, name, strings.Split(screen.String(), "\n")[:1])
+		})
+	}
+	paintTitle("native-runtime-saved-skills")
+	scan("", "start", false)
+	load("", "unknown", "Skill", `{"skill":"alias"}`, "Unrecognized native receipt", false)
+	scan("", "done", false)
+	counts(nil, []string{"child-guide"})
+	if u.notice == "" {
+		t.Fatal("incomplete canonical receipt did not show a notice")
+	}
+	paintTitle("native-runtime-unknown-saved-skills")
+	scan("child", "start", false)
+	load("child", "partial", "Read", `{"file_path":"/work/partial/SKILL.md"}`, "child body", false)
+	scan("child", "done", true)
+	counts(nil, nil)
+	feed(`{"kind":"event","event":{"type":"system","subtype":"compact_boundary","uuid":"live-boundary"}}`)
+	u.runtimeEntry(session.Event{Kind: "tool", ID: "live", Role: "Read", Text: `{"file_path":"/work/new/SKILL.md"}`})
+	u.runtimeEntry(session.Event{Kind: "tool_result", ID: "live", Text: "native read"})
+	counts([]string{"new"}, nil)
 }
