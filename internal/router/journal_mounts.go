@@ -364,6 +364,20 @@ func (s *journalStore) validateMountedCompletion(store *mekugiReplayStore, j thr
 			// checking nested mounts even when their ancestor host has finished.
 			mounted := strings.HasPrefix(child.Path[strings.LastIndex(child.Path, "/")+1:], "@")
 			if child.Kind == "task" && mounted && strings.HasPrefix(child.Path, parent.Path+"/") && child.State != "done" && child.State != "dropped" {
+				// Dropping an assignment accepts its failed or interrupted host
+				// outcome. Live and unresolved mounts still gate completion.
+				abandoned := false
+				if child.State == "blocked" {
+					for path := journalParent(child.Path); path != "" && path != parent.Path; path = journalParent(path) {
+						if i := j.treeIndex(path); i >= 0 && j.Items[i].Kind == "task" && j.Items[i].State == "dropped" {
+							abandoned = true
+							break
+						}
+					}
+				}
+				if abandoned {
+					continue
+				}
 				open = append(open, child.Path)
 			}
 		}

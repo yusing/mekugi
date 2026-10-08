@@ -29,6 +29,9 @@ sinks cache immutable composed views only. Child lifecycle comes from accepted
 requests and host turn observations, never provider final-answer text. A child's
 publication refreshes ancestor views without mutating ancestor event logs or cursors.
 Parent completion validates mounted host lifecycles, not child-authored task states.
+An owned dropped assignment releases failed or interrupted mounts from that gate;
+live and unresolved mounts retain it. This disposition does not change child lifecycle
+evidence or terminate a host process.
 The child result exposes unchanged open tasks alongside its event delta; only the
 child can change those states, and the parent retains the integration decision.
 

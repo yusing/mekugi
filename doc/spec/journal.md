@@ -139,7 +139,10 @@ increments the child's durable turn count, including its initial assignment; mou
 reads and journal recovery show it, so delegation limits survive compaction. Provider response
 completion alone is not child completion. Frontends without host completion
 evidence retain the last observed state. A parent cannot become done while any
-mounted host lifecycle remains open, including nested or unresolved mounts. Child-authored
+required mounted host lifecycle remains open, including nested or unresolved mounts.
+A failed or interrupted delegate under an owned dropped assignment no longer gates
+parent completion. Its recorded lifecycle remains visible; live and unresolved mounts
+still gate completion, including nested delegates under the abandoned assignment. Child-authored
 task states do not gate parent completion: they remain unchanged and visible at the
 completion handoff, where the parent owns the integration decision. The check applies
 to tasks a batch completes or rebinds; a child resumed under an already done task
@@ -452,7 +455,7 @@ checks identity, task kind, uniqueness and immutable binding. Planned task objec
 do not accept agent; bind an existing planned task with `set`.
 
 Mutation batches validate at the end. A done task cannot retain open owned descendant
-tasks or open mounted host lifecycles. Rejection lists those paths and rolls back all
+tasks or required open mounted host lifecycles. Rejection lists those paths and rolls back all
 nodes, ordinals and events. Invalid bindings, including duplicate child mounts,
 likewise leave the entire batch unchanged
 and do not retain a success receipt.
