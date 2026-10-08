@@ -99,17 +99,25 @@ func openThreadRollout(info appServerThreadInfo) (*os.File, os.FileInfo, bool) {
 	return f, stat, true
 }
 
-// Live and restored host usage share the next-request reminder policy.
+type hostContextUsage struct {
+	tokens, window uint64
+}
+
+// Live and restored host usage share reminder and subslice-reset policy.
 func (p *mekugiProxy) observeContextSliceUsage(thread string, known bool, used, window uint64) {
 	if p == nil || thread == "" {
 		return
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.contextSliceReminder == nil {
-		p.contextSliceReminder = make(map[string]bool)
+	if !known {
+		delete(p.contextUsage, thread)
+		return
 	}
-	p.contextSliceReminder[thread] = known && window > 0 && float64(used)/float64(window) >= 0.7
+	if p.contextUsage == nil {
+		p.contextUsage = make(map[string]hostContextUsage)
+	}
+	p.contextUsage[thread] = hostContextUsage{tokens: used, window: window}
 }
 
 func (u *appServerUI) restoreContextUsage(agent *activityPaneAgent, info appServerThreadInfo) {

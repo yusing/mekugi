@@ -16,7 +16,7 @@ func (p *mekugiProxy) observeJournalHostTurn(ctx context.Context, workspace, met
 			p.observeContextSliceUsage(event.ThreadID, usage.Last != nil, used, usage.ModelContextWindow)
 		} else if method == "item/completed" && event.Item.Type == "contextCompaction" {
 			p.mu.Lock()
-			delete(p.contextSliceReminder, event.ThreadID)
+			delete(p.contextUsage, event.ThreadID)
 			p.mu.Unlock()
 		}
 	}
