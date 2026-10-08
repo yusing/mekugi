@@ -662,7 +662,8 @@ stock tool catalog and prompt.
 
 The projected guidance explains journal usage, without prescribing development,
 delegation, review, document workflow, or personal setup. Tasks track
-outcomes that need continuation; short assignments need no plan. Main work updates
+outcomes that need continuation; short assignments need no plan. A parent task names
+the requested outcome, and its separate concrete results are child tasks. Main work updates
 go into the journal, attached to useful tool calls. Journal text uses ASD-STE100 and
 one topic per item. Titles have no trailing punctuation and prefer a bold action;
 bodies hold detail. Notes record new results and blockers. Context retains constraints

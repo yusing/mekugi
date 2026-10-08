@@ -56,7 +56,7 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 	if count := strings.Count(combined, owner[1:len(owner)-1]); count != 1 {
 		t.Errorf("journal guidance appears %d times; want one owner", count)
 	}
-	for _, rule := range []string{"reset:\"slice\"", "pending sibling", "questions and requested answers stay conversational"} {
+	for _, rule := range []string{"reset:\"slice\"", "pending sibling", "child tasks under it", "questions and requested answers stay conversational"} {
 		if !strings.Contains(codeModeJournalGuidance, rule) {
 			t.Errorf("journal usage guidance is missing: %s", rule)
 		}

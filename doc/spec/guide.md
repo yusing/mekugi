@@ -56,7 +56,8 @@ The journal owner supplies the additive durable-work guidance once per request: 
 structured tools receive the optional atomic `journal` mutation field.
 The guidance covers journal use and completion, without prescribing delegation, review,
 document workflow or personal setup. Tasks track work that needs continuation;
-short assignments need no plan. Main guidance covers work updates, recovery facts, slice
+short assignments need no plan. Main guidance plans an outcome task's separate results as
+child tasks. Main guidance covers work updates, recovery facts, slice
 boundaries, and work-report completion. Subagent guidance covers interim facts and final
 reports. Both versions include the same JavaScript helper API
 (including read, required fields, stable paths and failures) and batching contract. Main work updates belong in the journal; requested answers
