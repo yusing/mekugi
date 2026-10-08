@@ -76,9 +76,10 @@ type liveActivityView struct {
 	// opening names the snippet requested in the shared dialog.
 	snippet liveActivitySnippet // Hovered content target.
 	opening liveActivitySnippet
-	// passed holds Main's sent messages and operation batches that have
+	// passed holds journal groups, Main's sent messages and operation batches that have
 	// scrolled above the viewport. Messages then show as excerpts linking to
 	// Activity, and batches as one row opening their operations.
+	// Journal groups retain compact previews opening their full details.
 	passed map[uint64]bool
 
 	// Geometry of the last frame, used by scrolling keys and the pointer.
@@ -1523,6 +1524,10 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 			last = j
 		}
 		key := liveActivityRunKey{first: v.entries[i].Seq, last: v.entries[last].Seq, revision: v.runRevision(i, last+1), width: width, clip: clip, theme: v.painter.Theme, hover: -1, tail: v.tailRows()}
+		foldJournal := v.entries[i].Kind == "journal_event" || v.entries[i].Kind == "journal_card"
+		if foldJournal {
+			key.excerpt = v.passed[key.last]
+		}
 		if flash != 0 && slices.ContainsFunc(v.entries[i:j], func(entry liveActivityRecord) bool { return entry.Seq == flash }) {
 			key.flash = flash
 		}
@@ -1570,6 +1575,12 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 			feed.separator()
 		}
 		head := len(feed.lines)
+		if full := key; !ok && key.excerpt && !v.following && head < v.offset {
+			full.excerpt = false
+			if shown, ok := v.runs[full]; ok {
+				v.offset -= len(shown.lines) - len(run.lines)
+			}
+		}
 		if !run.colored {
 			feed.paints = append(feed.paints, liveActivityPaint{head, key, render})
 		}
@@ -1580,6 +1591,9 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 			feed.heads = append(feed.heads, head)
 		}
 		feed.appendRows(run)
+		if foldJournal && !key.excerpt {
+			feed.passing = append(feed.passing, liveActivityPassing{key.last, len(feed.lines)})
+		}
 		i = j
 	}
 	// A preview can arrive before the caller's first transcript entry.

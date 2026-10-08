@@ -95,6 +95,7 @@ func journalNoiseCard() *nativeJournalCard {
 
 func TestUISnapshotJournalNoiseCardPreviewAndExpanded(t *testing.T) {
 	v := newLiveActivityView()
+	v.passed = map[uint64]bool{1: true}
 	v.painter.Theme = livediff.DarkTheme
 	card := journalNoiseCard()
 	entry := activityPaneEntry{Seq: 1, Observed: journalNoiseTime(), journalCard: card, native: &liveActivityNativeItem{}}
@@ -137,6 +138,7 @@ func TestJournalNoiseCardPreservesDetailAndOpenCount(t *testing.T) {
 
 func TestUISnapshotJournalNoiseRichNotePreview(t *testing.T) {
 	v := newLiveActivityView()
+	v.passed = map[uint64]bool{1: true}
 	v.painter.Theme = livediff.DarkTheme
 	body := "**Validation passed** with `cat  x | sort`. See [report](</tmp/two  spaces.md>).\n\nFull supporting evidence remains available."
 	note := journalNode{Path: "/1", Kind: "note", Title: "Note", Body: body}

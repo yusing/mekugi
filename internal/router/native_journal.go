@@ -907,8 +907,8 @@ func (v *liveActivityView) applyTreeJournal(thread string, p nativeJournalPublic
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 }
 
-// journalCardLines lays out Main's work report separately from its ordinary
-// answer, with its notes counted; the card opens as journalCardBlock.
+// journalCardLines shows the full report until it leaves the viewport. Its
+// compact preview still opens the full journalCardBlock for details and copy.
 func (v *liveActivityView) journalCardLines(out *conversationLines, entry activityPaneEntry, width int) {
 	card := entry.journalCard
 	if card == nil {
@@ -916,7 +916,7 @@ func (v *liveActivityView) journalCardLines(out *conversationLines, entry activi
 	}
 	p := &v.painter
 	snippet := liveActivitySnippet{run: entry.Seq, block: 0}
-	rows, facts := journalCardRows(p, card, max(1, width-4), false)
+	rows, facts := journalCardRows(p, card, max(1, width-4), !v.passed[entry.Seq])
 	title := activityui.Green + "✓" + activityui.Reset + activityui.Dim + " journal"
 	if len(facts) > 0 {
 		title += " · " + strings.Join(facts, " · ")
@@ -983,6 +983,21 @@ func journalCardFacts(changed []journalEvent, open int, includeNotes bool) []str
 
 const journalCompletedCardRows = 8 // Body budget; with borders, a small card is at most ten rows.
 
+func journalBodyRows(p *activityui.Painter, node journalNode, width int) []string {
+	body := node.Body
+	if node.Kind == "note" && node.Title == "Note" {
+		_, body, _ = strings.Cut(body, "\n") // The row already shows its first line.
+	}
+	if body = strings.TrimSpace(body); body == "" {
+		return nil
+	}
+	rows := p.Markdown(livediff.Safe(body, false), max(1, width-2))
+	for i := range rows {
+		rows[i] = "  " + rows[i]
+	}
+	return rows
+}
+
 // journalCardRows lays out a work report's body: what
 // happened this turn one node per row, then the tasks still open. This turn
 // aggregates each node to its final state in the window; a node both added
@@ -1001,15 +1016,7 @@ func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, 
 			lines[len(lines)-1] = ansi.Truncate(lines[len(lines)-1], max(1, inner-1), "") + "…"
 		}
 		if expand && verb != "removed" {
-			body := node.Body
-			if node.Kind == "note" && node.Title == "Note" {
-				_, body, _ = strings.Cut(body, "\n") // The row already shows its first line.
-			}
-			if body = strings.TrimSpace(body); body != "" {
-				for _, line := range p.Markdown(livediff.Safe(body, false), max(1, inner-2)) {
-					lines = append(lines, "  "+line)
-				}
-			}
+			lines = append(lines, journalBodyRows(p, node, inner)...)
 		}
 		return lines
 	}
@@ -1079,6 +1086,7 @@ func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last
 	var laid []activityui.Block
 	entryRows := make(map[uint64]int)
 	stamp := ""
+	expand := !v.passed[v.entries[last].Seq]
 	for k := first; k <= last; k++ {
 		entry := v.entries[k].activityPaneEntry
 		if !v.visible(entry) || entry.Kind != "journal_event" {
@@ -1088,7 +1096,7 @@ func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last
 		lead, text := "", livediff.Safe(entry.Text, false)
 		detail := ""
 		if event := entry.journalEvent; event != nil {
-			lead, text = journalNodeParts(p.Theme, event.Fields, journalEventVerb(*event))
+			lead, text = journalPaintNodeParts(p, event.Fields, journalEventVerb(*event), !expand)
 			if event.Op != "remove" && strings.TrimSpace(event.Fields.Body) != "" {
 				detail = journalEventText(*event)
 				text += activityui.Dim + " ›" + activityui.Undim
@@ -1112,7 +1120,11 @@ func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last
 			laid = append(laid, activityui.Block{Kind: "text", Verb: "Journal", Label: entry.journalEvent.Path, Body: livediff.Safe(detail, false)})
 		}
 		// Wrapped rows hang under the text, past the state glyph.
-		for _, line := range activityui.Hang(lead, text, body) {
+		lines := activityui.Hang(lead, text, body)
+		if event := entry.journalEvent; expand && event != nil && event.Op != "remove" {
+			lines = append(lines, journalBodyRows(p, event.Fields, body)...)
+		}
+		for _, line := range lines {
 			if entry.native != nil && entry.native.recovery != "" && v.snippet == snippet {
 				line = activityui.Underline(line)
 			}

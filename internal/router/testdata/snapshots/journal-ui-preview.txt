@@ -22,7 +22,7 @@ STATUS REPLY WITH UNCHANGED OPEN TASKS, 100 COLUMNS
 
 REPLY WITH JOURNAL ROWS, 100 COLUMNS
 
-╭─ ✓ journal · 2 done ────────────────────────────────────────────────────────────────────── 08:16 ╮
+╭─ ✓ journal · 2 done · 1 note ───────────────────────────────────────────────────────────── 08:16 ╮
 │ This turn                                                                                        │
 │ ● /1 Integrate reply context and slice navigation                                                │
 │ ● /2 Expand entries and fit older subtrees                                                       │
@@ -37,7 +37,7 @@ REPLY WITH JOURNAL ROWS, 100 COLUMNS
 
 SAME REPLY, 60 COLUMNS
 
-╭─ ✓ journal · 2 done ────────────────────────────── 08:16 ╮
+╭─ ✓ journal · 2 done · 1 note ───────────────────── 08:16 ╮
 │ This turn                                                │
 │ ● /1 Integrate reply context and slice navigation        │
 │ ● /2 Expand entries and fit older subtrees               │
@@ -53,7 +53,7 @@ SAME REPLY, 60 COLUMNS
 
 EMPTY OUTCOME WITH WORK REPORT, 60 COLUMNS
 
-╭─ ✓ journal · 2 done ────────────────────────────── 08:16 ╮
+╭─ ✓ journal · 2 done · 1 note ───────────────────── 08:16 ╮
 │ This turn                                                │
 │ ● /1 Integrate reply context and slice navigation        │
 │ ● /2 Expand entries and fit older subtrees               │

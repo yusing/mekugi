@@ -2,5 +2,6 @@
 ○ /2 Second · added
 ● /1 First · done · 0s
 ◇ /3 Preserve host authority ›
+  Use retained observations, not revived continuation handles.
 ○ /4 Continue validation · added
 ◆ ↻ Context reset from journal · 0 provider tokens ›

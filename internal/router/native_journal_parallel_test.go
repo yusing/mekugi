@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
@@ -87,6 +88,34 @@ func TestNativeParallelJournalDetailsAndNavigation(t *testing.T) {
 		}
 		if len(v.entries) != before || v.following != true {
 			t.Fatal("opening journal details mutated retention or pane follow state")
+		}
+	}
+}
+
+func TestNativeParallelJournalFoldsAboveViewport(t *testing.T) {
+	for _, conversation := range []bool{true, false} {
+		v := parallelJournalView(t, conversation, false)
+		for i := range 20 {
+			entry := activityPaneEntry{Seq: uint64(i + 5), Agent: "Main", Kind: "text", Text: fmt.Sprintf("Later message %d", i), Observed: v.now()}
+			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+		}
+		feed := v.renderFeed(60, 6)
+		if !strings.Contains(strings.Join(feed.lines, "\n"), "Copy retains this detail.") || len(feed.passing) != 2 {
+			t.Fatal("journal event and report did not start expanded")
+		}
+		v.following, v.offset = false, feed.passing[0].end-1
+		v.viewport(feed, 6)
+		if v.passed[3] || v.passed[4] {
+			t.Fatal("partially visible journal folded")
+		}
+		v.offset = feed.passing[1].end + 2
+		top := v.viewport(feed, 6)[0]
+		feed = v.renderFeed(60, 6)
+		if !v.passed[3] || !v.passed[4] || strings.Contains(strings.Join(feed.lines, "\n"), "Copy retains this detail.") {
+			t.Fatal("out-of-view journal stayed expanded")
+		}
+		if got := v.viewport(feed, 6)[0]; ansi.Strip(got) != ansi.Strip(top) {
+			t.Fatalf("journal collapse moved the scrolled viewport: conversation=%v top=%q want=%q offset=%d", conversation, got, top, v.offset)
 		}
 	}
 }

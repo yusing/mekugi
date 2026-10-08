@@ -338,6 +338,7 @@ func TestUISnapshotNativeJournalDurableMultilineDetails(t *testing.T) {
 
 func TestUISnapshotNativeJournalCollapsedCardOmitsAnswerAndAggregatesTasks(t *testing.T) {
 	v := newLiveActivityView()
+	v.passed = map[uint64]bool{1: true}
 	v.painter.Theme = livediff.DarkTheme
 	parser := journalNode{Path: "/1", Kind: "task", Title: "Parser"}
 	state := func(node journalNode, state string) journalNode { node.State = state; return node }
@@ -383,6 +384,7 @@ func TestUISnapshotNativeJournalCardDialogShowsCardRowsAndFullNotes(t *testing.T
 
 func TestUISnapshotNativeJournalCollapsedCardShowsRemoval(t *testing.T) {
 	v := newLiveActivityView()
+	v.passed = map[uint64]bool{1: true}
 	v.painter.Theme = livediff.DarkTheme
 	card := &nativeJournalCard{Journal: threadJournal{Events: []journalEvent{{Seq: 1, Op: "remove", Path: "/1", Fields: journalNode{Path: "/1", Kind: "task", Title: "Old task", State: "working"}}}}}
 	entry := activityPaneEntry{Seq: 1, Observed: time.Date(2026, 9, 30, 8, 16, 39, 0, time.Local), journalCard: card, native: &liveActivityNativeItem{}}

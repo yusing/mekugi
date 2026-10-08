@@ -187,6 +187,10 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		}
 		thread.followed = continues(k, k+1)
 		key := liveActivityRunKey{first: v.entries[it.first].Seq, last: v.entries[it.last].Seq, revision: v.runRevision(it.first, it.last+1), width: width, theme: v.painter.Theme, hover: -1, main: true, thread: thread, excerpt: v.passed[v.entries[it.first].Seq], tail: v.tailRows()}
+		journal := v.entries[it.first].Kind == "journal_event" || v.entries[it.first].Kind == "journal_card"
+		if journal {
+			key.excerpt = v.passed[key.last]
+		}
 		if it.lead >= 0 {
 			key.lead = v.entries[it.lead].Seq
 		}
@@ -261,8 +265,10 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			feed.heads = append(feed.heads, start)
 		}
 		feed.appendRows(run)
-		if v.sentMessage(it.first) || !key.excerpt && run.batch {
-			feed.passing = append(feed.passing, liveActivityPassing{v.entries[it.first].Seq, len(feed.lines)})
+		if journal && !key.excerpt {
+			feed.passing = append(feed.passing, liveActivityPassing{key.last, len(feed.lines)})
+		} else if v.sentMessage(it.first) || !key.excerpt && run.batch {
+			feed.passing = append(feed.passing, liveActivityPassing{key.first, len(feed.lines)})
 		}
 	}
 	for _, entry := range v.entries {

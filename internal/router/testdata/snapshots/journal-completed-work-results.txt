@@ -1,14 +1,41 @@
 90 columns, sample content
-╭─ ✓ journal · 2 done ──────────────────────────────────────────────────────────── 22:31 ╮
+╭─ ✓ journal · 2 done · 6 notes ────────────────────────────────────────────────── 22:31 ╮
 │ This turn                                                                              │
 │ ● /1 Repair replay selection                                                           │
 │ ● /2 Validate journal presentation                                                     │
+│ ◆ Replay metadata identifies the owning workspace.                                     │
+│ ◆ Retained answers survive restart without rerunning tools.                            │
+│ ◆ Changed open tasks appear once, while the open count remains accurate.               │
 │ ◆ Focused transport and snapshot checks passed.                                        │
+│   Supporting command evidence remains available.                                       │
 │ ◆ Independent review found no remaining correctness issue.                             │
+│   Review scope and details remain available.                                           │
 │ ◆ Live model compliance is still unmeasured.                                           │
-│ ◆ 3 earlier notes · click to open                                                      │
+│   Offline rendering cannot establish whether the model follows the revised prompt.     │
 ╰────────────────────────────────────────────────────────────────────────────────────────╯
 40 columns, sample content
 ╭─ ✓ journal · 2 done · 6 notes ───────╮
-│ ▸ Details · click to open            │
+│ This turn                            │
+│ ● /1 Repair replay selection         │
+│ ● /2 Validate journal presentation   │
+│ ◆ Replay metadata identifies the     │
+│   owning workspace.                  │
+│ ◆ Retained answers survive restart   │
+│   without rerunning tools.           │
+│ ◆ Changed open tasks appear once,    │
+│   while the open count remains       │
+│   accurate.                          │
+│ ◆ Focused transport and snapshot     │
+│   checks passed.                     │
+│   Supporting command evidence        │
+│   remains available.                 │
+│ ◆ Independent review found no        │
+│   remaining correctness issue.       │
+│   Review scope and details remain    │
+│   available.                         │
+│ ◆ Live model compliance is still     │
+│   unmeasured.                        │
+│   Offline rendering cannot establish │
+│   whether the model follows the      │
+│   revised prompt.                    │
 ╰──────────────────────────────────────╯

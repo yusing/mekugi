@@ -1198,7 +1198,9 @@ The native client publishes Codex-compatible terminal lifecycle titles so pane
 managers can recognize working and action-required states without parsing the
 transcript. The Main turn supplies the work spinner; pending questions (including
 hidden or resumed async questions), pending approvals and unsupported server
-requests take priority with `Action Required`. Settled Main turns remove the spinner; child completion
+requests take priority with `Action Required`. Automatic journal continuation keeps
+the spinner through its countdown, context reset and next-turn acknowledgement.
+Settled Main turns without automatic continuation remove the spinner; child completion
 does not mark Main done. Herdr owns the distinction between unseen completion
 and seen idle, including its blue and green indicators. Titles are cleared when
 the native client exits or yields the terminal to an external editor.

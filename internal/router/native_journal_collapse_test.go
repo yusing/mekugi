@@ -27,6 +27,7 @@ func nativeJournalCompletedFixture() *nativeJournalCard {
 
 func TestUISnapshotNativeJournalCompletionHeight(t *testing.T) {
 	v := newLiveActivityView()
+	v.passed = map[uint64]bool{1: true}
 	v.painter.Theme = livediff.DarkTheme
 	card := nativeJournalCompletedFixture()
 	entry := activityPaneEntry{Seq: 1, Observed: journalNoiseTime(), journalCard: card, native: &liveActivityNativeItem{}}
@@ -58,6 +59,7 @@ func TestUISnapshotNativeJournalCompletionHeight(t *testing.T) {
 
 func TestUISnapshotNativeJournalCompletionTaskCountIsNotHeight(t *testing.T) {
 	v := newLiveActivityView()
+	v.passed = map[uint64]bool{0: true}
 	v.painter.Theme = livediff.DarkTheme
 	card := &nativeJournalCard{}
 	for i := range 7 {
@@ -71,6 +73,7 @@ func TestUISnapshotNativeJournalCompletionTaskCountIsNotHeight(t *testing.T) {
 
 func TestUISnapshotNativeJournalCompletionOpensFullReport(t *testing.T) {
 	v := newLiveActivityView()
+	v.passed = map[uint64]bool{1: true}
 	v.painter.Theme = livediff.DarkTheme
 	card := nativeJournalCompletedFixture()
 	beforeItems, beforeEvents := slices.Clone(card.Journal.Items), slices.Clone(card.Journal.Events)

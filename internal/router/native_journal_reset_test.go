@@ -69,6 +69,11 @@ func TestNativeJournalResetCountdownEscape(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ctx, u.proxy, u.client, u.thread, u.reset = t.Context(), d.proxy, d.client, d.thread, d
 	u.ensureShell()
+	notificationTestOutput(t, u)
+	u.writeTerminalTitle(time.Unix(0, 0))
+	if u.notifications.lastTitle != "Mekugi ⠋" {
+		t.Fatal("reset countdown reported terminal idle")
+	}
 	frame, _ := u.mainFrame(100, 24, 0)
 	if text := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(text, "Resetting context") || !strings.Contains(text, "/2 Second") || !strings.Contains(text, "Esc cancels") {
 		t.Fatalf("countdown is not visible: %s", text)
@@ -83,6 +88,10 @@ func TestNativeJournalResetCountdownEscape(t *testing.T) {
 	intent, err := d.proxy.replayStore.resetIntent(t.Context(), d.workspace, d.thread)
 	if err != nil || intent != nil || d.active() {
 		t.Fatalf("Esc left active intent: %+v %v", intent, err)
+	}
+	u.writeTerminalTitle(time.Unix(0, 0))
+	if u.notifications.lastTitle != "Mekugi" {
+		t.Fatal("cancelled continuation retained terminal working state")
 	}
 }
 

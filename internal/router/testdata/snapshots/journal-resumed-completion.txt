@@ -2,7 +2,7 @@
 │◆ First check passed                                      ││ ▾ ● /1 Reopened task                              08:00  │
 │● /1 Restore journal history · done                       ││   ├ · First check passed                          08:00  │
 │                                                          ││   └ · Second check passed                         08:00  │
-│╭─ ✓ journal · 1 done ─────────────────────────── 08:00 ╮ ││                                                          │
+│╭─ ✓ journal · 1 done · 1 note ────────────────── 08:00 ╮ ││                                                          │
 ││ This turn                                             │ ││                                                          │
 ││ ● /1 Restore journal history                          │ ││                                                          │
 ││ ◆ First check passed                                  │ ││                                                          │
@@ -12,7 +12,7 @@
 │◆ Second check passed                                     ││                                                          │
 │● /1 Reopened task · done                                 ││                                                          │
 │                                                          ││                                                          │
-│╭─ ✓ journal · 1 done ─────────────────────────── 08:00 ╮ ││                                                          │
+│╭─ ✓ journal · 1 done · 1 note ────────────────── 08:00 ╮ ││                                                          │
 ││ This turn                                             │ ││                                                          │
 ││ ● /1 Reopened task                                    │ ││                                                          │
 ││ ◆ Second check passed                                 │ ││                                                          │

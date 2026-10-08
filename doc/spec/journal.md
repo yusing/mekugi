@@ -66,22 +66,25 @@ Native Main receives flat event rows after persistence, without a journal headin
 or nested rail. Task rows retain their colored state glyph, dim path, title and
 change; notes retain their diamond-led content. Wrapped rows align under the content.
 A row's time shows only where it differs from the row above and fits the width.
-A row with a body opens its full details on click. Notes are rows only while the
-Journal pane is hidden; blocked task rows remain visible. Successful terminal delivery
-publishes a separate work-report card only when non-answer events remain unacknowledged
+A row with a body shows its details inline until its journal group scrolls above
+the viewport, then retains a compact row. A click opens its full details.
+Notes are rows only while the Journal pane is hidden; blocked task rows remain
+visible. Successful terminal delivery publishes a separate work-report card only
+when non-answer events remain unacknowledged
 or mounted-journal diagnostics need to be shown. Captured answers and unchanged open
 tasks alone do not produce a card. This turn shows the final change per owned path,
 omitting add/remove transients and descendants of removed subtrees. Remaining adds
 only unchanged open owned tasks; changed open tasks appear once, but still count
-toward the title's open total. Captured answers are excluded. Collapsed node rows
-use at most two visual rows, with short blocker explanations. The newest three
-changed notes show result-first previews, in chronological order, with an
+toward the title's open total. Captured answers are excluded. Work-report cards
+start expanded and use their compact preview after scrolling above the viewport.
+Collapsed node rows use at most two visual rows, with short blocker explanations.
+Compact previews show the newest three changed notes in chronological order, with an
 older-note disclosure when needed. Changed context remains visible independently.
 Inline Markdown remains styled in event rows, compact card previews and plan
 strips. Wrapping and preview limits apply to painted text, not markup delimiters.
-Once no owned tasks remain open, a preview exceeding eight rendered body rows
-collapses to a disclosure with task and note counts. Wrapping at the current width
-counts toward that budget, not task count; smaller cards stay readable inline.
+Once no owned tasks remain open, an out-of-view preview exceeding eight rendered
+body rows collapses to a disclosure with task and note counts. Wrapping at the
+current width counts toward that budget, not task count; smaller cards stay readable inline.
 Mount diagnostics prevent this automatic collapse.
 A click opens the shared dialog with full reasons and bodies, including older notes;
 copied reports also retain that detail. Time and counts appear on the detail row.
