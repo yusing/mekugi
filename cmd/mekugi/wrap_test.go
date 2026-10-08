@@ -42,66 +42,75 @@ func TestCodexArgsForcesExecutionFeatureToggles(t *testing.T) {
 }
 
 func TestCodexArgsPreservesArguments(t *testing.T) {
-	forwarded := []string{"exec", "-c", "model=\"example\"", "--", "a prompt with spaces"}
-	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true, true)
-	index := slices.Index(forwarded, "--")
-	if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[index+18:], forwarded[index:]) {
-		t.Fatalf("forwarded arguments changed: %q", args)
-	}
-	var config struct {
-		Features struct {
-			Goals    *bool `toml:"goals"`
-			Exec     *bool `toml:"code_mode"`
-			ExecOnly *bool `toml:"code_mode_only"`
-		} `toml:"features"`
-		IncludeCollaborationModeInstructions *bool `toml:"include_collaboration_mode_instructions"`
-		Skills                               struct {
-			IncludeInstructions *bool `toml:"include_instructions"`
-		} `toml:"skills"`
-		ModelProvider string `toml:"model_provider"`
-		Providers     map[string]struct {
-			Name       string `toml:"name"`
-			BaseURL    string `toml:"base_url"`
-			WireAPI    string `toml:"wire_api"`
-			WebSockets bool   `toml:"supports_websockets"`
-			Auth       bool   `toml:"requires_openai_auth"`
-		} `toml:"model_providers"`
-	}
-	if !slices.Equal(args[index+6:index+8], []string{"--disable", "goals"}) {
-		t.Fatalf("goal feature toggle not disabled: %q", args)
-	}
-	var settings []string
-	for i := index; i < index+18; i += 2 {
-		if args[i] == "--disable" {
-			continue
+	for _, openAIAuth := range []bool{true, false} {
+		forwarded := []string{"exec", "-c", "model=\"example\"", "--", "a prompt with spaces"}
+		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true, openAIAuth)
+		index := slices.Index(forwarded, "--")
+		if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[index+18:], forwarded[index:]) {
+			t.Fatalf("forwarded arguments changed: %q", args)
 		}
-		if args[i] != "-c" {
-			t.Fatalf("not a config override: %q", args)
+		var config struct {
+			Features struct {
+				Goals    *bool `toml:"goals"`
+				Exec     *bool `toml:"code_mode"`
+				ExecOnly *bool `toml:"code_mode_only"`
+			} `toml:"features"`
+			IncludeCollaborationModeInstructions *bool `toml:"include_collaboration_mode_instructions"`
+			Skills                               struct {
+				IncludeInstructions *bool `toml:"include_instructions"`
+			} `toml:"skills"`
+			ModelProvider string `toml:"model_provider"`
+			OpenAIBaseURL string `toml:"openai_base_url"`
+			Providers     map[string]struct {
+				Name       string `toml:"name"`
+				BaseURL    string `toml:"base_url"`
+				WireAPI    string `toml:"wire_api"`
+				WebSockets bool   `toml:"supports_websockets"`
+				Auth       bool   `toml:"requires_openai_auth"`
+			} `toml:"model_providers"`
 		}
-		settings = append(settings, args[i+1])
-	}
-	if _, err := toml.Decode(strings.Join(settings, "\n"), &config); err != nil {
-		t.Fatal(err)
-	}
-	if config.IncludeCollaborationModeInstructions == nil || *config.IncludeCollaborationModeInstructions {
-		t.Fatalf("collaboration mode instructions not disabled: %q", args)
-	}
-	if config.Skills.IncludeInstructions == nil || *config.Skills.IncludeInstructions {
-		t.Fatalf("skill instructions not disabled: %q", args)
-	}
-	if config.Features.Exec == nil || !*config.Features.Exec || config.Features.ExecOnly == nil || !*config.Features.ExecOnly {
-		t.Fatalf("exec interface not forced: %q", args)
-	}
-	if config.Features.Goals == nil || *config.Features.Goals {
-		t.Fatalf("goals not disabled: %q", args)
-	}
-	provider := config.Providers[config.ModelProvider]
-	if provider.Name == "" || provider.BaseURL != "http://127.0.0.1:12345/v1" || provider.WireAPI != "responses" || !provider.Auth || provider.WebSockets {
-		t.Fatalf("provider = %+v", provider)
-	}
-	withoutDelimiter := []string{"exec", "-c", `model="example"`, "prompt"}
-	if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter, true, true, true); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
-		t.Fatalf("ordinary -c or prompt moved: %q", got)
+		if !slices.Equal(args[index+6:index+8], []string{"--disable", "goals"}) {
+			t.Fatalf("goal feature toggle not disabled: %q", args)
+		}
+		var settings []string
+		for i := index; i < index+18; i += 2 {
+			if args[i] == "--disable" {
+				continue
+			}
+			if args[i] != "-c" {
+				t.Fatalf("not a config override: %q", args)
+			}
+			settings = append(settings, args[i+1])
+		}
+		if _, err := toml.Decode(strings.Join(settings, "\n"), &config); err != nil {
+			t.Fatal(err)
+		}
+		if config.IncludeCollaborationModeInstructions == nil || *config.IncludeCollaborationModeInstructions {
+			t.Fatalf("collaboration mode instructions not disabled: %q", args)
+		}
+		if config.Skills.IncludeInstructions == nil || *config.Skills.IncludeInstructions {
+			t.Fatalf("skill instructions not disabled: %q", args)
+		}
+		if config.Features.Exec == nil || !*config.Features.Exec || config.Features.ExecOnly == nil || !*config.Features.ExecOnly {
+			t.Fatalf("exec interface not forced: %q", args)
+		}
+		if config.Features.Goals == nil || *config.Features.Goals {
+			t.Fatalf("goals not disabled: %q", args)
+		}
+		if openAIAuth {
+			if config.ModelProvider != "openai" || config.OpenAIBaseURL != "http://127.0.0.1:12345/v1" || len(config.Providers) != 0 {
+				t.Fatalf("built-in provider changed: %+v", config)
+			}
+		} else {
+			provider := config.Providers[config.ModelProvider]
+			if config.ModelProvider != "mekugi_wrap" || len(config.Providers) != 1 || config.OpenAIBaseURL != "" || provider.Name != "mekugi" || provider.BaseURL != "http://127.0.0.1:12345/v1" || provider.WireAPI != "responses" || provider.Auth || provider.WebSockets {
+				t.Fatalf("third-party provider changed: %+v", config)
+			}
+		}
+		withoutDelimiter := []string{"exec", "-c", `model="example"`, "prompt"}
+		if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter, true, true, openAIAuth); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
+			t.Fatalf("ordinary -c or prompt moved: %q", got)
+		}
 	}
 }
 

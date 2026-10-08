@@ -5,9 +5,9 @@
 ### Codex WebSocket transport
 
 The router accepts Responses WebSocket upgrades at `GET /v1/responses`. The
-wrapper sets `supports_websockets=false` in its invocation-only provider override
-to disable Codex model prewarm, without modifying user configuration. Wrapped
-turns use HTTP `POST /v1/responses` for streaming SSE and nonstream terminal JSON,
+OpenAI wrapper retains the built-in provider's WebSocket and prewarm support,
+without modifying user configuration. Codex owns fallback to HTTP
+`POST /v1/responses` for streaming SSE and nonstream terminal JSON,
 with pooled provider WebSockets as described below. The WebSocket endpoint retains
 its transport contract for compatible clients; native `turn/steer` remains Codex-owned,
 not a router translation of HTTP input into `response.steer`. Models discovery and
@@ -34,13 +34,18 @@ item-interrupted events. An `interrupted` incomplete terminal drains that
 response without declaring successful model completion. Codex supplies the next
 `response.create`; the router neither fabricates a successor nor cancels tools.
 
-Startup metadata with `request_kind="prewarm"` and explicit `generate=false`
+Startup metadata with `request_kind="prewarm"` and explicit `generate=false`,
+without retained journal compaction references,
 is a non-generating transport handshake and does not require workspaces or a
 supported tool catalog. When Codex supplies a supported execution catalog, prewarm
 uses the same instruction, tool, and collaboration projection as a generating turn,
 so the first turn can reuse that prefix. An execution-free or catalog-free handshake
-remains native. Prewarm does not initialize replay, journal, or agent lifecycle state. Generating requests cannot use prewarm
-metadata to bypass ordinary turn validation.
+remains native. Ordinary startup prewarm does not initialize replay, journal, or
+agent lifecycle state. Prewarm with retained journal compaction references requires
+a workspace and restores the exact retained context through durable replay and
+inherited scope validation before provider forwarding. See
+[journal recovery](journal.md). Generating requests cannot use prewarm metadata to
+bypass ordinary turn validation.
 
 The provider upgrade's nonempty `x-codex-turn-state` header reaches Codex as a
 `response.metadata` event before the first response event, because the downstream

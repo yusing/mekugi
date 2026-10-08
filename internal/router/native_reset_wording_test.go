@@ -290,7 +290,7 @@ func TestNativeAutomaticCompactionBufferedPreviousItem(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": u.thread, "turnId": d.compactTurn, "item": old})
 	// The prior provider completion and next automatic start are buffered in
 	// the native client; the router already receives the next compaction HTTP request.
-	request, headers := journalCompactionRequest(t, workspace, u.thread)
+	request, headers := journalCompactionV2Request(t, workspace, u.thread)
 	metadata, _ := decodeCodexTurnMetadata(headers)
 	metadata.TurnID = d.compactTurn
 	metadata.Compaction = mustTestJSON(t, map[string]any{"trigger": "auto", "reason": "context_limit", "phase": "mid_turn", "implementation": "responses_compaction_v2", "strategy": "memento"})

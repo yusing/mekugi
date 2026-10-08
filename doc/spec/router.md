@@ -22,7 +22,11 @@ under [REQ-GROK-001](grok.md), then the first available Go model, then Zen.
 
 Invocation-only provider overrides select the listener, Responses transport,
 and Codex-managed authentication against the fixed ChatGPT upstream for
-`mekugi codex`. Third-party-only launches use `requires_openai_auth=false` and
+`mekugi codex`. OpenAI launches retain Codex's built-in provider through an
+invocation-local base URL override, preserving native tool availability, reasoning-effort
+updates, and internal request metadata. Stock WebSockets and startup prewarming remain
+available. Codex owns retry decisions and fallback to HTTP/SSE. Third-party-only
+launches use `requires_openai_auth=false` and
 provider-owned credentials; OpenAI requests are rejected locally in these modes. Provider
 selection in config and profiles is overridden without modifying configuration.
 Provider-selection arguments are rejected. Mekugi flags precede `codex`; subsequent
@@ -46,11 +50,17 @@ Wrapped sessions disable Codex goals through invocation-only feature and config
 overrides. The host does not expose `/goal`, goal tools or goal instructions;
 journal slice continuation does not coordinate with goals.
 
-The wrapped provider sets `supports_websockets=false` in the final invocation-only
-config layer. Codex does not start model prewarm on startup, resume, forks or
-model changes; its turns stream to the router over HTTP. This does not disable
-router-to-provider WebSockets, rewrite prewarm responses or edit user configuration.
-The router retains its existing transport handling for other supported requests.
+OpenAI auxiliary requests for standalone search, native image generation/editing,
+and history-note operations use authenticated endpoint forwarding. The router
+preserves their request body, response status, headers, and output without tool
+projection or automatic retries. These endpoints are unavailable in third-party-only
+launches. Auxiliary bodies retain their native streaming and encoding. Compressed
+HTTP Responses requests are decoded before projection, with
+the existing request budget applied to both encoded and decoded input.
+
+The local base URL does not claim Codex backend-route eligibility. Backend-specific
+workspace routing and experimental context activation remain unavailable until
+their routing can preserve interception by the session router.
 
 ChatGPT requests explicitly select `access_programs.cyber="standard"`, including
 prewarming and continuations over either transport. This overrides client Daybreak

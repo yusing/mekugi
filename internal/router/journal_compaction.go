@@ -43,7 +43,11 @@ type journalCompactionRecovery struct {
 	Thread     string `json:"thread"`
 	ResponseID string `json:"response_id"`
 	Text       string `json:"text"`
+	Namespace  string `json:"namespace,omitempty"`
+	Reference  string `json:"reference,omitempty"`
 }
+
+const journalCompactionReferencePrefix = "mekugi:journal:"
 
 func journalCompactionRecoveryName(workspace, thread, response string) string {
 	return fmt.Sprintf("compaction-%x.json", sha256.Sum256([]byte("recovery\x00"+journalKey(workspace, thread)+"\x00"+response)))
@@ -51,6 +55,128 @@ func journalCompactionRecoveryName(workspace, thread, response string) string {
 
 func journalCompactionName(workspace, thread string) string {
 	return fmt.Sprintf("compaction-%x.json", sha256.Sum256([]byte(journalKey(workspace, thread))))
+}
+
+// Compaction and execution-free requests skip ordinary replay projection, but
+// must still resolve local native history before any provider sees it.
+func (p *mekugiProxy) prepareJournalCompactionInput(ctx context.Context, request *parsedResponsesRequest, sessionID, threadID string, metadata codexTurnMetadata) error {
+	items, local, err := journalCompactionInput(request)
+	if err != nil || !local {
+		return err
+	}
+	if p == nil || p.replayStore == nil || threadID == "" || metadata.activityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != threadID {
+		return errors.New("journal compaction recovery identity or storage is unavailable")
+	}
+	workspace, ok := usableRoutingDirectory(metadata.Directories)
+	if !ok && len(metadata.Directories) != 0 {
+		return errors.New("journal compaction recovery workspace is unavailable")
+	}
+	ctx, release, err := p.replayStore.beginSession(ctx, threadID, sessionID)
+	if err != nil {
+		return err
+	}
+	defer release()
+	if workspace == "" && metadata.RequestKind == responses.Compaction {
+		err = p.replayStore.scoped(ctx).locked(ctx, func() error {
+			workspace, err = p.replayStore.compactionWorkspace(threadID)
+			return err
+		})
+	}
+	if err != nil {
+		return err
+	}
+	if workspace == "" {
+		return errors.New("journal compaction recovery workspace is unavailable")
+	}
+	ctx, err = p.replayStore.prepareHandleScope(ctx, metadata)
+	if err != nil {
+		return err
+	}
+	// Validate visible replay before publishing any inherited handle scope.
+	observed := *request
+	observed.fields = maps.Clone(request.fields)
+	if _, err := p.reconcileVisibleInput(ctx, &observed, workspace, workspace+"\x00"+threadID); err != nil {
+		return err
+	}
+	return p.replayStore.restoreJournalCompactionItems(ctx, request, workspace, items)
+}
+
+func journalCompactionInput(request *parsedResponsesRequest) ([]map[string]jsonv1.RawMessage, bool, error) {
+	raw := bytes.TrimSpace(request.fields["input"])
+	if len(raw) == 0 || raw[0] != '[' {
+		return nil, false, nil
+	}
+	var items []map[string]jsonv1.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, false, err
+	}
+	for _, item := range items {
+		if (jsonString(item, "type") == "compaction" || jsonString(item, "type") == "compaction_summary") && strings.HasPrefix(jsonString(item, "encrypted_content"), journalCompactionReferencePrefix) {
+			return items, true, nil
+		}
+	}
+	return items, false, nil
+}
+
+func (s *mekugiReplayStore) restoreJournalCompactionInput(ctx context.Context, request *parsedResponsesRequest, workspace string) error {
+	items, local, err := journalCompactionInput(request)
+	if err != nil || !local {
+		return err
+	}
+	return s.restoreJournalCompactionItems(ctx, request, workspace, items)
+}
+
+func (s *mekugiReplayStore) restoreJournalCompactionItems(ctx context.Context, request *parsedResponsesRequest, workspace string, items []map[string]jsonv1.RawMessage) error {
+	if s == nil {
+		return errors.New("journal compaction recovery storage is unavailable")
+	}
+	s = s.scoped(ctx)
+	err := s.locked(ctx, func() error {
+		var names []string
+		for index, item := range items {
+			if jsonString(item, "type") != "compaction" && jsonString(item, "type") != "compaction_summary" {
+				continue
+			}
+			reference := jsonString(item, "encrypted_content")
+			if !strings.HasPrefix(reference, journalCompactionReferencePrefix) {
+				continue // Provider-owned ciphertext has its native meaning.
+			}
+			parts := strings.Split(strings.TrimPrefix(reference, journalCompactionReferencePrefix), ":")
+			if len(parts) != 3 || parts[1] == "" || parts[2] == "" {
+				return errors.New("invalid journal compaction reference")
+			}
+			owner, err := s.handleOwner(parts[0])
+			if err != nil {
+				return err
+			}
+			name := journalCompactionRecoveryName(workspace, parts[1], parts[2])
+			data, err := readManagedOutputFile(filepath.Join(s.directory, name))
+			if err != nil {
+				return fmt.Errorf("read journal compaction recovery: %w", err)
+			}
+			var recovery journalCompactionRecovery
+			if err := json.Unmarshal(data, &recovery); err != nil {
+				return err
+			}
+			if recovery.Workspace != workspace || recovery.Thread != parts[1] || recovery.ResponseID != parts[2] || recovery.Reference != reference || recovery.Namespace != owner || strings.TrimSpace(recovery.Text) == "" || len(recovery.Text) > maxJournalSummaryBytes {
+				return errors.New("invalid journal compaction recovery identity or size")
+			}
+			items[index] = map[string]jsonv1.RawMessage{
+				"type": mustMarshalJSON("message"), "role": mustMarshalJSON("assistant"),
+				"content": mustMarshalJSON([]any{map[string]any{"type": "output_text", "text": recovery.Text, "annotations": []any{}}}),
+			}
+			names = append(names, name)
+		}
+		return s.retainFiles(names...)
+	})
+	if err != nil {
+		return err
+	}
+	input, err := json.Marshal(&items)
+	if err == nil {
+		request.setInput(input)
+	}
+	return err
 }
 
 // Compaction shares ordinary terminal delivery but neither invokes a provider
@@ -88,6 +214,10 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 		})
 	}
 	if err == nil {
+		ctx, err = store.prepareHandleScope(ctx, a.metadata)
+		store = store.scoped(ctx)
+	}
+	if err == nil {
 		// Both compaction policies consume these results. Reconcile on a
 		// detached request: persist host outcomes, discard replay projections.
 		observed := a.request
@@ -115,8 +245,9 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 			j = threadJournal{Workspace: workspace, Thread: a.threadID, IdentityKnown: true}
 		}
 		var metadata struct {
-			Trigger string `json:"trigger"`
-			Phase   string `json:"phase"`
+			Trigger        string `json:"trigger"`
+			Phase          string `json:"phase"`
+			Implementation string `json:"implementation"`
 		}
 		_ = json.Unmarshal(a.metadata.Compaction, &metadata)
 		// Compaction turns do not begin a journal turn, so an intent armed
@@ -134,7 +265,21 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 			return errors.New("no durable compaction evidence")
 		}
 		id := "resp_mekugi_compact_" + rand.Text()
-		wire, err = journalCompactionSSE(id, a.request.model(), summary.Text)
+		recovery := journalCompactionRecovery{Workspace: workspace, Thread: a.threadID, ResponseID: id, Text: summary.Text}
+		v2 := metadata.Implementation == "responses_compaction_v2"
+		if v2 {
+			handles, err := store.allocateHandlesLocked(1)
+			if err != nil {
+				return err
+			}
+			recovery.Namespace = store.handleNamespace()
+			recovery.Reference = journalCompactionReferencePrefix + handles[0] + ":" + a.threadID + ":" + id
+			wire, err = journalCompactionItemSSE(id, a.request.model(), map[string]any{
+				"id": commentaryid.CompactionPrefix + id, "type": "compaction", "encrypted_content": recovery.Reference,
+			})
+		} else {
+			wire, err = journalCompactionSSE(id, a.request.model(), summary.Text)
+		}
 		if err != nil {
 			return err
 		}
@@ -155,9 +300,10 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 			if !slices.Contains(record.AnsweredItems, item) {
 				record.AnsweredItems = append(record.AnsweredItems, item)
 			}
-			// Save the exact model-visible message, not a future regeneration.
-			// Separate records keep later receipts small and preserve old resets.
-			recovery := journalCompactionRecovery{Workspace: workspace, Thread: a.threadID, ResponseID: id, Text: summary.Text}
+		}
+		if v2 || a.metadata.TurnID != "" && metadata.Trigger == "manual" && metadata.Phase == "standalone_turn" {
+			// Save the exact summary before exposing the native item. Automatic
+			// V2 resets need this record even without presentation provenance.
 			data, err := json.Marshal(&recovery)
 			if err != nil {
 				return err
@@ -313,6 +459,10 @@ func journalCompactionSSE(id, model, summary string) ([]byte, error) {
 		"id": commentaryid.CompactionPrefix + id, "type": "message", "role": "assistant", "status": "completed",
 		"content": []any{map[string]any{"type": "output_text", "text": summary, "annotations": []any{}}},
 	}
+	return journalCompactionItemSSE(id, model, item)
+}
+
+func journalCompactionItemSSE(id, model string, item map[string]any) ([]byte, error) {
 	response := map[string]any{
 		"id": id, "object": "response", "model": model, "status": "completed", "output": []any{item},
 		"usage": map[string]any{"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},

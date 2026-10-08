@@ -57,6 +57,12 @@ For native compaction's missing workspace metadata, the session ownership catalo
 proves the unique prior selected workspace from exact thread-owned records. This
 lookup remains valid after restart and rejects multiple historical workspaces.
 
+Native Responses compaction V2 uses the same local interception and recovery
+owners. Its router-owned compaction item restores the exact retained summary
+before provider preparation, with durable scope authorization. Real provider
+compaction items retain their native meaning. This introduces no separate route
+or provider compaction request.
+
 The proxy owns a per-thread context-pressure reminder derived from the latest host
 context-usage snapshot and model window, not cumulative usage. At 70% or more it
 adds a split-slice reminder to the next request's journal tool guidance. Successful

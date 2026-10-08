@@ -5,6 +5,26 @@ The original workspace observations below were recorded on 2026-07-28 with Codex
 eternal Codex contract. Re-run focused E2E checks after a Codex upgrade before
 changing routing assumptions.
 
+### Built-in OpenAI through the local endpoint (2026-10-08)
+
+Codex CLI 0.161.0 passes with the existing base-URL override, retaining its
+built-in OpenAI provider while requests pass through Mekugi's existing projection
+and journal owners.
+`TestAppServerBuiltInOpenAINativeCodexE2E` passes native web-tool exposure,
+turn metadata, effort changes, and selected-workspace journal identity over
+WebSockets and stock HTTP/SSE fallback. Prewarming and side-thread continuity
+pass over WebSockets.
+The built-in and legacy slice-reset tests also pass, including exact V2 summary
+restoration after fresh resume and fork, zero-provider compaction, and headless
+continuation. These are installed-host local-mock checks.
+
+An isolated production launch with CLI 0.161.0 and `gpt-6-luna` also passes native
+search and page retrieval, local zero-provider V2 reset, pending-task continuation,
+stock patch execution, exact file checks, both durable task completions, and
+terminal headless delivery. All eight provider exchanges complete over WebSockets.
+The local compaction has `provider_expected=false` and no provider exchange.
+The disposable credential copy is removed after exit; user configuration is unchanged.
+
 ### Native nested-tool receipts (2026-09-25)
 
 Installed Codex CLI 0.156.1 was exercised with a deterministic local provider by

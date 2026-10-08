@@ -9,6 +9,13 @@ credentials or live model usage. These tests require the `journal_e2e` build tag
 The fixtures are the `internal/router/*_codex_e2e_test.go` files. List them with
 `git grep -h '^func Test.*E2E' -- 'internal/router/*_codex_e2e_test.go'`.
 
+The built-in OpenAI fixture uses the existing local base-URL override and fake
+credentials. It checks native web-tool exposure, internal turn metadata,
+reasoning-effort updates, and selected-workspace journal identity over WebSockets
+and stock HTTP/SSE fallback. It also checks prewarming and side-thread continuity
+over WebSockets. These local mocks prove installed-host behavior; live model
+acceptance is a separate check.
+
 The frontend fixture invokes an authenticated configured command through
 stock exec `tools.exec_command`, including cwd, environment, argv, stdin
 separation, and exit status. The mrun fixture checks Codex-owned PTY yield and
@@ -43,6 +50,11 @@ and exact host-item provenance after reopening storage, without slice-driven dis
 The slice-reset fixture drives manual app-server compaction followed by the next
 planned turn through the shared reset policy. It verifies the continuation path,
 recovered summary and consumed intent without a provider compaction request.
+It covers both built-in OpenAI Responses compaction V2 and legacy custom-provider
+text compaction. The built-in fixture uses isolated fake credentials and stock
+HTTP/SSE fallback against the local listener.
+It reopens durable storage and restarts Codex, then verifies exact V2 summary
+restoration through native thread resume and fork without reference leakage.
 The headless fixture exercises the production JSONL adapter with both `off` and
 `slice`, proving two turns, reset-only compaction and clean host shutdown.
 

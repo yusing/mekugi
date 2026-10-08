@@ -251,10 +251,17 @@ selected in that requesting thread's durable journal/execution records can
 substitute for it. Conflicting historical workspaces stop `auto`; router cwd and
 another thread's records never supply a directory.
 
-Codex retains execution and history authority. The router supplies a completed
-assistant summary through the same streamed Responses delivery path, persisting
-its thread/workspace and response identity before exposure. No model request is
-made, and no model usage is fabricated. Metrics distinguish router answers from
+Codex retains execution and history authority. The router uses the native
+compaction response shape through the same streamed Responses delivery path:
+an assistant summary for local text compaction, or one compaction item for
+Responses compaction V2. A router-owned V2 item refers to the exact retained
+journal summary. Later requests resolve that item locally before provider
+forwarding; its reference never reaches the provider. Resolution uses existing
+durable scope and recovery ownership, including permitted inherited history.
+Missing or unauthorized recovery fails before inference. Provider-owned
+encrypted compaction items remain unchanged. The summary and its thread/workspace
+and response identity persist before exposure. No model request is made for the
+local reset, and no model usage is fabricated. Metrics distinguish router answers from
 provider answers and report zero provider attempts/tokens for router answers.
 Summary bytes and evidence counts are measurements, never savings estimates.
 

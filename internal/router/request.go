@@ -226,15 +226,3 @@ func parseResponsesRequest(body []byte) (parsedResponsesRequest, error) {
 	}
 	return parsedResponsesRequest{fields: request, streamResponse: streamResponse, originalBody: body, originalFields: maps.Clone(request)}, nil
 }
-
-// readResponsesRequest reads and validates a Responses request body from a reader.
-func readResponsesRequest(reader io.Reader) ([]byte, error) {
-	body, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, fmt.Errorf("read Responses request: %w", err)
-	}
-	if len(bytes.TrimSpace(body)) == 0 {
-		return nil, errors.New("responses request body is empty")
-	}
-	return body, nil
-}

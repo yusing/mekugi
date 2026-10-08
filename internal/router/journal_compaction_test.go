@@ -95,7 +95,7 @@ func TestJournalCompactionDeliversDurableSummaryWithoutProvider(t *testing.T) {
 	}
 	// Context-full triggers can arrive at each ordinary-turn phase.
 	for _, phase := range []string{"pre_turn", "mid_turn", "post_turn"} {
-		metadata.Compaction = mustTestJSON(t, map[string]any{"trigger": "auto", "reason": "context_limit", "implementation": "responses_compaction_v2", "phase": phase, "strategy": "memento"})
+		metadata.Compaction = mustTestJSON(t, map[string]any{"trigger": "auto", "reason": "context_limit", "implementation": "responses", "phase": phase, "strategy": "memento"})
 		headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, metadata)))
 		output.Reset()
 		if err := executeRequest(t.Context(), t.Context(), request, headers, "compact-"+phase, provider, &output, nil, proxy); err != nil {

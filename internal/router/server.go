@@ -3,6 +3,7 @@ package router
 // Source: main.go:20:551 HTTP lifecycle and Responses proxy execution.
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -340,6 +341,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
+	registerCodexAuxiliaryRoutes(mux, ctx, *flags.timeout, provider)
 	if mekugiCalls != nil {
 		mux.HandleFunc("POST "+commentaryPublisherPath, mekugiCalls.commentary.serveHTTP)
 	}
@@ -550,13 +552,13 @@ func responsesHandler(
 	}
 	return func(writer http.ResponseWriter, request *http.Request) {
 		trackedWriter := &trackedResponseWriter{ResponseWriter: writer}
-		body, err := readResponsesRequest(io.LimitReader(request.Body, responsesRequestBufferBytes+1))
+		body, status, err := readCodexHTTPBody(request)
 		if err != nil {
-			http.Error(trackedWriter, err.Error(), http.StatusBadRequest)
+			http.Error(trackedWriter, err.Error(), status)
 			return
 		}
-		if len(body) > responsesRequestBufferBytes {
-			http.Error(trackedWriter, "Responses request exceeds the router buffer budget", http.StatusRequestEntityTooLarge)
+		if len(bytes.TrimSpace(body)) == 0 {
+			http.Error(trackedWriter, "responses request body is empty", http.StatusBadRequest)
 			return
 		}
 		parsedRequest, err := parseResponsesRequest(body)

@@ -398,6 +398,7 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 	if !request.streamResponse {
 		return errors.New("mekugi compaction bypass requires a streaming request")
 	}
+	v2 := compaction.Implementation == "responses_compaction_v2"
 
 	var tools []jsonv1.RawMessage
 	if rawTools, exists := request.fields["tools"]; exists {
@@ -405,7 +406,7 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 			return fmt.Errorf("decode compaction tools: %w", err)
 		}
 	}
-	if len(tools) != 0 {
+	if !v2 && len(tools) != 0 {
 		return errors.New("mekugi compaction request cannot expose tools")
 	}
 
@@ -416,10 +417,17 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 	if len(items) == 0 {
 		return errors.New("mekugi compaction request requires nonempty input")
 	}
-	for _, rawItem := range items {
+	triggers := 0
+	for index, rawItem := range items {
 		var item map[string]jsonv1.RawMessage
 		if err := jsonv1.Unmarshal(rawItem, &item); err != nil || item == nil {
 			return errors.New("mekugi compaction request contains a malformed input item")
+		}
+		if jsonString(item, "type") == "compaction_trigger" {
+			triggers++
+			if !v2 || index != len(items)-1 {
+				return errors.New("mekugi compaction trigger must end a V2 request")
+			}
 		}
 		if jsonString(item, "type") != "additional_tools" {
 			continue
@@ -428,9 +436,12 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 		if err := jsonv1.Unmarshal(item["tools"], &additionalTools); err != nil {
 			return fmt.Errorf("decode compaction additional tools: %w", err)
 		}
-		if len(additionalTools) != 0 {
+		if !v2 && len(additionalTools) != 0 {
 			return errors.New("mekugi compaction request cannot expose tools")
 		}
+	}
+	if v2 && triggers != 1 {
+		return errors.New("mekugi V2 compaction requires one final trigger")
 	}
 
 	var toolChoice string
@@ -438,8 +449,8 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 		return errors.New("mekugi compaction request requires automatic tool choice")
 	}
 	var parallelToolCalls bool
-	if err := jsonv1.Unmarshal(request.fields["parallel_tool_calls"], &parallelToolCalls); err != nil || parallelToolCalls {
-		return errors.New("mekugi compaction request requires disabled parallel tool calls")
+	if err := jsonv1.Unmarshal(request.fields["parallel_tool_calls"], &parallelToolCalls); err != nil || !v2 && parallelToolCalls {
+		return errors.New("mekugi compaction request has incompatible parallel tool calls")
 	}
 	return nil
 }
@@ -451,7 +462,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		if err := validateMekugiCompactionRequest(request, metadata); err != nil {
 			return nil, err
 		}
-		return nil, nil
+		return nil, p.prepareJournalCompactionInput(ctx, request, sessionID, threadID, metadata)
 	}
 	if p == nil {
 		return nil, errors.New("mekugi response proxy is unavailable")
@@ -468,7 +479,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		if !prewarm && strings.TrimSpace(threadID) == "" {
 			return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
 		}
-		return nil, nil
+		return nil, p.prepareJournalCompactionInput(ctx, request, sessionID, threadID, metadata)
 	}
 	journalGuidance := codeModeJournalGuidance
 	var hostParts map[string][]int
@@ -495,7 +506,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 			return nil, err
 		}
 		if execution == nil {
-			return nil, nil
+			return nil, p.prepareJournalCompactionInput(ctx, request, sessionID, threadID, metadata)
 		}
 	}
 	if err := rewriteRequestInstructionConflicts(request); err != nil {
@@ -545,7 +556,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	}
 
 	if prewarm {
-		return nil, nil
+		return nil, p.prepareJournalCompactionInput(ctx, request, sessionID, threadID, metadata)
 	}
 	if strings.TrimSpace(threadID) == "" {
 		return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
@@ -566,6 +577,10 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	}
 	visible, err := p.reconcileVisibleInput(ctx, request, directory, historySessionID)
 	if err != nil {
+		p.deactivateSession(historySessionID)
+		return nil, err
+	}
+	if err := p.replayStore.restoreJournalCompactionInput(ctx, request, directory); err != nil {
 		p.deactivateSession(historySessionID)
 		return nil, err
 	}

@@ -35,7 +35,7 @@ func TestWrapCodexSkipsThirdPartyCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(args), "requires_openai_auth=true") || !strings.HasPrefix(string(args), "exec\n--profile\nwork\n--ignore-user-config\nprompt\n") {
+	if !strings.Contains(string(args), `model_provider="openai"`) || !strings.Contains(string(args), `openai_base_url="http://127.0.0.1:`) || !strings.HasPrefix(string(args), "exec\n--profile\nwork\n--ignore-user-config\nprompt\n") {
 		t.Fatalf("Codex launch lost host authentication or selectors: %s", args)
 	}
 	if strings.Contains(string(args), "model_catalog_json=") || strings.Contains(string(args), "model=\"grok") {
