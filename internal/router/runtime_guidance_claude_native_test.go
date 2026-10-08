@@ -24,7 +24,7 @@ func TestRuntimeGuidanceClaudeNativeDelivery(t *testing.T) {
 	defer cancel()
 	t.Setenv(routerTestWorkerEnvironment, "1")
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
-	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	nativeGuidanceFixtureConfig(t)
 	t.Setenv("ANTHROPIC_API_KEY", "native-delivery-fixture")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
@@ -54,6 +54,7 @@ func TestRuntimeGuidanceClaudeNativeDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	installNativePromptModFixture(t, presentation.Plugin)
 	bridge, err := filepath.Abs("../claude/bridge/dist/bridge.js")
 	if err != nil {
 		t.Fatal(err)
@@ -112,6 +113,7 @@ func TestRuntimeGuidanceClaudeNativeDelivery(t *testing.T) {
 		return packet, nativeSession
 	}
 	packet, nativeSession := capture("")
+	assertNativePromptModFixture(t, packet, true)
 	skillPath := filepath.Join(presentation.Plugin, "skills", "mekugi", "SKILL.md")
 	skill, err := os.ReadFile(skillPath)
 	if err != nil {
@@ -162,6 +164,7 @@ func TestRuntimeGuidanceClaudeNativeDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 	resumed, resumedSession := capture(nativeSession)
+	assertNativePromptModFixture(t, resumed, true)
 	if resumedSession != nativeSession {
 		t.Fatal("native resume changed identity")
 	}

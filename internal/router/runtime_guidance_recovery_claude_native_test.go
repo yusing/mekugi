@@ -28,7 +28,7 @@ func TestRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T) {
 	defer cancel()
 	t.Setenv(routerTestWorkerEnvironment, "1")
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
-	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	nativeGuidanceFixtureConfig(t)
 	t.Setenv("ANTHROPIC_API_KEY", "native-recovery-fixture")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
@@ -94,6 +94,7 @@ func TestRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T) {
 		t.Fatal(err)
 	}
 	agents := filepath.Join(presentation.Plugin, "agents")
+	installNativePromptModFixture(t, presentation.Plugin)
 	if err := os.Mkdir(agents, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -194,6 +195,11 @@ func TestRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T) {
 		t.Fatalf("native consumer requests missing: child=%t compact=%t requests=%d summaries=%d", childPacket != nil, compactPacket != nil, requests, summaryRequests)
 	}
 	for name, packet := range map[string]map[string]any{"child": childPacket, "post-compact": compactPacket} {
+		// A native custom child's prompt has no preset session_guidance section.
+		assertNativePromptModFixture(t, packet, name != "child")
+		if name == "child" && !strings.Contains(nativeGuidanceRequestText(packet["system"]), "Return CHILD_ACCEPTED without tools.") {
+			t.Fatal("prompt mods replaced the native custom child's system instructions")
+		}
 		// Inspect messages, not the inherited root system prompt. This proves
 		// native hook context reached the specific consuming model request.
 		if !strings.Contains(nativeGuidanceRequestText(packet["messages"]), body) {
