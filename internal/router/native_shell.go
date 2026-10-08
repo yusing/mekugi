@@ -155,7 +155,7 @@ func nativeRule(open, close, fill, left, right string, width int, color string) 
 		if label == "" {
 			return ""
 		}
-		return " " + label + activityui.Reset + color + " "
+		return " \x1b[39m" + label + activityui.Reset + color + " "
 	}
 	l, r := segment(left), segment(right)
 	if ansi.StringWidth(l)+ansi.StringWidth(r)+1 > inner {
@@ -194,7 +194,7 @@ func nativeBox(width, height int, title, right string, focused bool, body []stri
 func nativeTitle(digit int, name, detail string, focused bool) string {
 	label := fmt.Sprintf("%d %s", digit, name)
 	if focused {
-		label = "\x1b[1m" + label + "\x1b[22m"
+		label = nativeBorder(true) + "\x1b[1m" + label + "\x1b[22m"
 	} else {
 		label = activityui.Dim + label + activityui.Undim
 	}

@@ -11,7 +11,29 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
+
+func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {
+	const width = 40
+	u := &appServerUI{model: "model", view: newLiveActivityView()}
+	frame, _ := u.mainFrame(width, 3, 0)
+	rows := []string{
+		nativeRule("┌", "┐", "─", nativeTitle(2, "Diff", "", false), activityui.Dim+"metadata"+activityui.Undim, width, nativeBorder(false)),
+		nativeRule("┌", "┐", "─", nativeTitle(1, "Main", "", true), "", width, nativeBorder(true)),
+		nativeRule("┌", "┐", "─", "\x1b[38;5;170m"+activityui.Dim+"agent"+activityui.Undim, "", width, nativeBorder(false)),
+	}
+	screen := vt.NewEmulator(width, 1)
+	defer screen.Close()
+	_, _ = screen.Write([]byte(rows[0]))
+	label := screen.CellAt(4, 0).Style
+	if label.Fg != nil || label.Attrs&uv.AttrFaint == 0 {
+		t.Fatalf("faint label inherited the border foreground or lost faint: %+v", label)
+	}
+	rows = append(rows, frame...)
+	rows = append(rows, "plain after borders")
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/native-faint-label-foreground.txt", rows, width)
+}
 
 func TestNativeUISubtleForeground(t *testing.T) {
 	p := activityui.Painter{}

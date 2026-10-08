@@ -1519,7 +1519,7 @@ func composerBorder(open, close, left, right string, width int, color string) st
 		if label == "" {
 			return ""
 		}
-		return " " + label + color + " "
+		return " \x1b[39m" + label + color + " "
 	}
 	inner := width - 2
 	l, r := segment(left), segment(right)

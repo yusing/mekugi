@@ -283,6 +283,9 @@ Missing or conflicting spawn evidence supplies no role label; explicit host
 metadata remains authoritative. Agent names retain their identity colors. Every pane has a title bar with
 its tab number, focus and scroll state, and the status bar shows the tabs with
 contextual key hints. Ctrl-B + number focuses a pane.
+Uncolored labels in pane and composer borders use the terminal text foreground,
+not the border's decorative foreground. Faint styling and explicit label colors
+remain intact.
 
 Main's top-right title-bar label reads the host's thread name, including names
 restored on resume and inherited by forks. An unnamed thread has no placeholder;
