@@ -31,9 +31,9 @@ and ripgrep even when the tested application uses only built-in frontends.
 
 `TEST_PARALLEL` defaults to 32 so independent process and PTY fixtures can overlap
 their waits; override it for a constrained machine. Tests that change process-wide
-environment or working directory remain serial. Measure the default suite with
-`make test TEST_FLAGS=-count=1` after warming build caches; report compilation time
-separately from test execution.
+environment or working directory remain serial. When full-suite timing is needed,
+use `make test TEST_FLAGS=-count=1` and reuse warm build caches where available;
+report compilation time separately from test execution.
 
 For router profiling, use a temporary output directory and pass `-cpuprofile`,
 `-blockprofile`, and `-o` paths through `TEST_FLAGS`. Inspect both CPU and block
