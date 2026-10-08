@@ -177,7 +177,7 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 		if !ok {
 			return nil, errors.New("journal workspace is unavailable")
 		}
-		return proxy.journals.apply(ctx, proxy.replayStore, workspace, thread, "runtime:"+receipt, mutations)
+		return proxy.applyJournal(ctx, workspace, thread, "runtime:"+receipt, mutations)
 	}
 	broker.journalLister = func(ctx context.Context, session, thread, agent string) ([]journalItem, error) {
 		workspace, _, ok := strings.Cut(session, "\x00")
@@ -201,7 +201,7 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 		if !ok {
 			return nil, errors.New("journal workspace is unavailable")
 		}
-		nodes, err := proxy.journals.readTree(ctx, proxy.replayStore, workspace, thread, agent, path, depth, view)
+		nodes, err := proxy.readJournalTree(ctx, workspace, thread, agent, path, depth, view)
 		if err == nil {
 			proxy.countJournalRead(ctx, workspace, thread, "", "read")
 		}

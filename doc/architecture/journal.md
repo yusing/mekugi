@@ -26,7 +26,17 @@ unbound task. Operation-specific structured schemas and JavaScript input declara
 project through the journal tool guidance owner. Reserved view paths keep foreign
 nodes distinct without changing local ordinals. Native
 sinks cache immutable composed views only. Child lifecycle comes from accepted
-requests and host turn observations, never provider final-answer text. A child's
+requests and host turn observations, never provider final-answer text. For stock-CLI
+consumers, the existing private trace reader supplies structured child-result status.
+The journal owner accepts only current-turn results with matching child, parent,
+canonical path, and proven ancestry. Reads and mutations refresh this host evidence,
+loading only observed threads and their parent chains;
+the trace retains observed start order so a pre-request follow-up outcome cannot
+reuse the previous turn's success. An idle child adopts an unmatched start or
+failure, because a restarted router's trace lacks its durable turn. Content-validation
+failures exclude that ancestry from reconciliation. Reconciliation writes do not
+add the child record to the caller's retained session. Completed
+evidence persists independently of the disposable trace. A child's
 publication refreshes ancestor views without mutating ancestor event logs or cursors.
 Parent completion validates mounted host lifecycles, not child-authored task states.
 An owned dropped assignment releases failed or interrupted mounts from that gate;

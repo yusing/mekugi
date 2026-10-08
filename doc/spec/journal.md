@@ -137,7 +137,15 @@ not mutation targets. `read agent` addresses the child's local paths. Combined
 views are bounded to 8,192 nodes; larger views require a narrower agent read.
 
 The router records a child's accepted requests as working. Native app-server
-turn completion supplies done or blocked lifecycle evidence. Each new host turn ID
+turn completion supplies done or blocked lifecycle evidence. Ordinary stock-CLI
+consumers use Codex's structured child-result trace, matched to the durable child,
+parent, canonical agent path, and current turn. Journal reads and mutations refresh
+this evidence so a delivered child result can be integrated without a follow-up.
+Observed host starts establish follow-up boundaries even before a provider request;
+a proven failure before that request remains blocked, including after a router restart.
+Unmatched success keeps integration open; an unmatched failure cannot replace a live turn. Unrelated, missing,
+ambiguous, or corrupt evidence cannot settle a live child.
+Each new host turn ID
 increments the child's durable turn count, including its initial assignment; mounted
 reads and journal recovery show it, so delegation limits survive compaction. Provider response
 completion alone is not child completion. Frontends without host completion

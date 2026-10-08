@@ -257,7 +257,7 @@ func (t *mekugiResponseTransform) transformStructuredCommentary(item map[string]
 		extracted.mutations = append(extracted.mutations, journalMutation{Op: "finish", finishTurn: finishTurn, fallbackReceipt: callID + ":journal"})
 	}
 	if len(extracted.mutations) != 0 || extracted.finish {
-		ids, err = t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, receipt, bindJournalAnswers(extracted.mutations, t.journalQuestion))
+		ids, err = t.proxy.applyJournal(t.ctx, t.directory, t.shellThreadID, receipt, bindJournalAnswers(extracted.mutations, t.journalQuestion))
 		if err != nil {
 			return nil, err
 		}
