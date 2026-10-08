@@ -390,7 +390,7 @@ sandbox settings.
 
 The guard uses Codex's native command hook to instrument shell command text
 before execution. It leaves expansion and control flow to Codex's selected
-shell, including Bash, sh and zsh, rather than selecting Bash or running the
+shell, including Bash and sh, rather than running the
 whole script in a substitute interpreter. It preserves all other tool arguments,
 permissions, sandbox settings, process ownership and continuation semantics.
 A command asks only when execution reaches it, not for a skipped branch.
@@ -408,7 +408,7 @@ Direct commands and supported wrappers (`env`, `command`, `exec`, `nohup`,
 `timeout`, `nice` and `xargs`) recognize guarded tools by name or executable
 path. Absolute and relative paths may contain spaces and need not be on PATH;
 expanded directory paths such as `"$tools/git"` are recognized by their tool-name
-suffix. Nested `sh`, `bash`, `dash`, `zsh` and `ksh` command-string invocations
+suffix. Nested `sh`, `bash`, `dash` and `ksh` command-string invocations
 are instrumented after their `-c` payload expands. Bare tool and shell names
 retain shell-function lookup and use the command-local PATH; `command -p`
 retains its default-path lookup.
@@ -465,7 +465,7 @@ The guard protects against accidental remote writes, not arbitrary process
 execution. Command-text instrumentation does not comprehensively cover fully
 computed executable words without a recognized tool-path suffix, `eval`,
 `env -S` split payloads, sourced files, script-file contents, or arbitrary
-programs that internally execute absolute VCS paths. Bash and zsh startup
+programs that internally execute absolute VCS paths. Bash startup
 guards add PATH and known-absolute-path coverage inside scripts without changing
 user startup files; they do not remove these limits. Parsing failures reported
 by Mekugi's hook reject that tool call. Hook failures outside the handler follow
@@ -486,7 +486,7 @@ Acceptance:
 4. Installed Codex with unsandboxed execution, including `--yolo`, runs the real
    helper to the native dock; denial fails only the push, and approval runs it.
    A blocked or unreachable connection denies the command.
-   The same holds in Bash, sh and zsh, by tool name and by direct or
+   The same holds in Bash and sh, by tool name and by direct or
    supported-wrapper executable path,
    including expanded paths and paths with spaces.
 5. A nested shell command string is checked after expansion. Command-local PATH,

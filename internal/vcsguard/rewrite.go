@@ -80,17 +80,8 @@ func itemPathPrefix(directory, item string) string {
 }
 
 func parseScript(script string) (*syntax.File, error) {
-	var tree *syntax.File
-	var err error
-	// The host hook exposes command text but no shell selector. Retain source
-	// bytes instead of printing an AST in a potentially different dialect.
-	for _, variant := range []syntax.LangVariant{syntax.LangBash, syntax.LangZsh} {
-		tree, err = syntax.NewParser(syntax.Variant(variant)).Parse(strings.NewReader(script), "")
-		if err == nil {
-			break
-		}
-	}
-	return tree, err
+	// Keep authored bytes; instrumentation does not print a different dialect.
+	return syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(script), "")
 }
 
 func editSource(script string, edits []sourceEdit) (string, error) {
@@ -117,7 +108,7 @@ type sourceEdit struct {
 	text       string
 }
 
-var Shells = []string{"sh", "bash", "dash", "zsh", "ksh"}
+var Shells = []string{"sh", "bash", "dash", "ksh"}
 
 // vcsPathSuffix recognizes a dynamic directory while leaving its expansion
 // to the native shell, for example "$tools/git" or ${tools}/git.

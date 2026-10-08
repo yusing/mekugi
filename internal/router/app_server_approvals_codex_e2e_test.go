@@ -67,7 +67,7 @@ func TestNativeApprovalDenialSameTurnCodexE2E(t *testing.T) {
 		},
 	}
 	runAppServerPreviewWith(t, provider, proxy, appServerPreview{
-		environment: []string{"PATH=" + execTrackPath(), "ZDOTDIR=" + t.TempDir(), vcsguard.HookEnvironment + "="},
+		environment: []string{"PATH=" + execTrackPath(), vcsguard.HookEnvironment + "="},
 		codexArgs:   []string{"-c", `sandbox_mode="read-only"`, "-c", `approval_policy="on-request"`, "-c", "hooks={}"},
 		approvals:   true,
 		noJournal:   true,

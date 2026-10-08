@@ -242,9 +242,9 @@ app-server, never generated commentary. [Router errors](notices.md) render as us
 composer feedback and leave the transcript and provider responses unchanged.
 Cleanup planning and reclaimed-storage progress remain transcript content.
 
-Run cards omit literal Bash, Zsh, or Sh `-c`/`-lc` launch wrappers and PowerShell
-`-Command`/`-c` wrappers (optionally preceded by `-NoLogo`/`-NoProfile`), matching
-Codex's shell recognition. The inner source uses the existing shell highlighting. Commands with outer redirects, assignments, additional arguments,
+Run cards omit literal Bash or Sh `-c`/`-lc` launch wrappers and PowerShell
+`-Command`/`-c` wrappers (optionally preceded by `-NoLogo`/`-NoProfile`).
+The inner source uses the existing shell highlighting. Commands with outer redirects, assignments, additional arguments,
 or dynamic wrapper words remain intact. This is display-only, including resumed items.
 When Codex cannot classify a command, the shared shell display classifier identifies
 frontend reads, inspections, searches and skill reads after removing a literal

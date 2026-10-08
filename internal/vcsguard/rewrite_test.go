@@ -37,3 +37,13 @@ func TestRewriteExecutablePositions(t *testing.T) {
 		}
 	}
 }
+
+func TestRewriteLeavesZshUnsupported(t *testing.T) {
+	const script = `zsh -c 'git push origin main'`
+	if got, err := Rewrite(script, "/private/helper", "/private/guard"); err != nil || got != script {
+		t.Fatalf("unsupported shell rewritten: %q, %v", got, err)
+	}
+	if _, err := Rewrite(`git push origin ${(q)branch}`, "/private/helper", "/private/guard"); err == nil {
+		t.Fatal("Zsh-only syntax was accepted")
+	}
+}

@@ -74,7 +74,7 @@ func TestVCSGuardFixturesIsolateInheritedSession(t *testing.T) {
 }
 
 func TestVCSGuardInstrumentedNativeShells(t *testing.T) {
-	for _, name := range []string{"bash", "sh", "zsh"} {
+	for _, name := range []string{"bash", "sh"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			execTrackShellExecutable(t, name)

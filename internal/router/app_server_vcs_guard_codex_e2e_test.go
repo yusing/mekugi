@@ -59,16 +59,6 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 			absent:  []string{"FAKE git push"},
 		},
 		{
-			// Zsh reads no BASH_ENV. The native hook preserves its selected
-			// shell and guards both executable forms at command reachability.
-			name: "zsh", shell: "zsh",
-			command: "git push origin main; echo NAME_EXIT $?; ABS_GIT push --tags && echo NEVER; echo SHELL $ZSH_NAME; git log",
-			answers: []string{"3", "3"},
-			prompts: []string{"git push --tags"},
-			want:    []string{"NAME_EXIT 1", "SHELL zsh", "FAKE git log"},
-			absent:  []string{"FAKE git push", "NEVER"},
-		},
-		{
 			name: "sh-wrappers", shell: "/bin/sh",
 			command: "false && ABS_GIT push unreachable refs/heads/unused; echo BRANCH_EXIT $?; git add -A && env -i ABS_GIT push mirror refs/heads/topic:refs/heads/review && echo NEVER_ENV; echo ENV_EXIT $?; command ABS_GIT push other --tags && echo NEVER; echo COMMAND_EXIT $?; git log",
 			answers: []string{"3", "3"},
@@ -169,7 +159,7 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 				}
 			}
 			runAppServerPreviewWith(t, provider, proxy, appServerPreview{
-				environment: []string{"PATH=" + execTrackPath(), "ZDOTDIR=" + t.TempDir(), vcsguard.HookEnvironment + "=" + vcsguard.HookCommand(helper, guard)},
+				environment: []string{"PATH=" + execTrackPath(), vcsguard.HookEnvironment + "=" + vcsguard.HookCommand(helper, guard)},
 				codexArgs:   []string{"-c", hook, "-c", "hooks.state={" + state + "}", "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`},
 				approvals:   false,
 				noJournal:   true, // Journal delivery is not under test.

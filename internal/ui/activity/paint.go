@@ -93,7 +93,7 @@ func liveActivityLanguagePath(lang string) string {
 	switch strings.ToLower(lang) {
 	case "":
 		return ""
-	case "bash", "sh", "shell", "zsh", "console":
+	case "bash", "sh", "shell", "console":
 		return "command.sh"
 	case "javascript", "js":
 		return "source.js"

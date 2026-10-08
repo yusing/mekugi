@@ -163,9 +163,7 @@ func TestFrontendPathSurvivesLoginBash(t *testing.T) {
 	}
 }
 
-// With the VCS guard enabled, it comes first in Bash and zsh alike, and zsh's
-// startup wrappers keep the user's ZDOTDIR for their own files.
-func TestFrontendShellEnvironmentGuardsBashAndZsh(t *testing.T) {
+func TestFrontendShellEnvironmentGuardsBash(t *testing.T) {
 	frontend := filepath.Join(t.TempDir(), "bin")
 	if err := os.MkdirAll(frontend, 0o700); err != nil {
 		t.Fatal(err)
@@ -174,55 +172,22 @@ func TestFrontendShellEnvironmentGuardsBashAndZsh(t *testing.T) {
 	if err := os.WriteFile(helper, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	user := t.TempDir()
-	environment, err := frontendShellEnvironment([]string{"PATH=/usr/bin:/bin", "ZDOTDIR=" + user, vcsguard.UserZdotdirEnvironment + "=/stale"}, frontend, helper, true)
+	environment, err := frontendShellEnvironment([]string{"PATH=/usr/bin:/bin"}, frontend, helper, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	guard, _ := vcsguard.Paths(frontend)
-	zdotdir := filepath.Join(filepath.Dir(frontend), "zsh")
-	values := map[string][]string{}
+	values := map[string]string{}
 	for _, entry := range environment {
 		key, value, _ := strings.Cut(entry, "=")
-		values[key] = append(values[key], value)
+		values[key] = value
 	}
-	if !slices.Equal(values["ZDOTDIR"], []string{zdotdir}) || !slices.Equal(values[vcsguard.UserZdotdirEnvironment], []string{user}) {
-		t.Fatalf("zsh environment = %q", environment)
+	if !strings.HasPrefix(values["PATH"], guard+":"+frontend+":") {
+		t.Fatalf("PATH = %q", values["PATH"])
 	}
-	if path := values["PATH"]; !strings.HasPrefix(path[len(path)-1], guard+":"+frontend+":") {
-		t.Fatalf("PATH = %q", path)
-	}
-	bashEnv, err := os.ReadFile(values["BASH_ENV"][0])
+	bashEnv, err := os.ReadFile(values["BASH_ENV"])
 	if err != nil || !strings.Contains(string(bashEnv), "__mekugi_vcs_paths") {
 		t.Fatalf("BASH_ENV = %q, %v", bashEnv, err)
-	}
-	for _, name := range []string{".zshenv", ".zprofile", ".zshrc", ".zlogin", "mekugi-setup.zsh"} {
-		if _, err := os.Stat(filepath.Join(zdotdir, name)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// A nested session keeps the user's files, not the outer session's
-	// wrappers, which would otherwise source themselves.
-	inner := filepath.Join(t.TempDir(), "bin")
-	if err := os.MkdirAll(inner, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	nested, err := frontendShellEnvironment(environment, inner, helper, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Contains(nested, vcsguard.UserZdotdirEnvironment+"="+user) || !slices.Contains(nested, "ZDOTDIR="+filepath.Join(filepath.Dir(inner), "zsh")) {
-		t.Fatalf("nested environment = %q", nested)
-	}
-	if zsh, err := frontendFixtureShell("zsh"); err == nil {
-		if err := os.WriteFile(filepath.Join(user, ".zshenv"), []byte("print -n user\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		command := exec.Command(zsh, "-c", "printf ' %s' ${path[1]:t}")
-		command.Env = append(nested, "HOME="+t.TempDir())
-		if output, err := command.Output(); err != nil || string(output) != "user "+vcsguard.Directory {
-			t.Fatalf("nested zsh = %q, %v", output, err)
-		}
 	}
 }
 
@@ -849,12 +814,11 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 	if err := os.WriteFile(helper, []byte("#!/bin/sh\nprintf '%s\\n' \"$3\" > \"$MEKUGI_TEST_TRACK_LOG\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	userZsh := t.TempDir()
-	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "ZDOTDIR=" + userZsh, "MEKUGI_TEST_TRACK_LOG=" + log, execsegment.Guard + "=1", execsegment.ShTrackerEnvironment + "=/outer/exec-track.sh"}, frontend, helper, false)
+	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "MEKUGI_TEST_TRACK_LOG=" + log, execsegment.Guard + "=1", execsegment.ShTrackerEnvironment + "=/outer/exec-track.sh"}, frontend, helper, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(environment, "PATH="+frontend+":"+os.Getenv("PATH")) || !slices.Contains(environment, "ZDOTDIR="+userZsh) {
+	if !slices.Contains(environment, "PATH="+frontend+":"+os.Getenv("PATH")) {
 		t.Fatalf("unguarded environment = %q", environment)
 	}
 	if slices.Contains(environment, execsegment.Guard+"=1") || !slices.Contains(environment, execsegment.ShTrackerEnvironment+"="+filepath.Join(root, "exec-track.sh")) {
@@ -887,54 +851,38 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 }
 
 func TestFrontendNestedGuardOptOut(t *testing.T) {
-	for _, withZdotdir := range []bool{false, true} {
-		t.Run(fmt.Sprintf("zdotdir=%t", withZdotdir), func(t *testing.T) {
-			root := t.TempDir()
-			outer, inner, real := filepath.Join(root, "outer", "bin"), filepath.Join(root, "inner", "bin"), filepath.Join(root, "user", vcsguard.Directory)
-			for _, path := range []string{outer, inner, real} {
-				if err := os.MkdirAll(path, 0o700); err != nil {
-					t.Fatal(err)
-				}
-			}
-			helper, userEnv := filepath.Join(root, "mekugi-exec"), filepath.Join(root, "user-bash-env")
-			for path, script := range map[string]string{
-				helper:                     "#!/bin/sh\nprintf OUTER_GUARD\n",
-				filepath.Join(real, "git"): "#!/bin/sh\nprintf REAL_GIT\n",
-				userEnv:                    "export USER_STARTUP=preserved\n",
-			} {
-				if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
-					t.Fatal(err)
-				}
-			}
-			env := []string{"PATH=" + real + ":/usr/bin:/bin", "BASH_ENV=" + userEnv}
-			userZsh := filepath.Join(root, "user-zsh")
-			if withZdotdir {
-				env = append(env, "ZDOTDIR="+userZsh)
-			}
-			env, err := frontendShellEnvironment(env, outer, helper, true)
-			if err != nil {
-				t.Fatal(err)
-			}
-			env, err = frontendShellEnvironment(env, inner, "", false)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, entry := range env {
-				if value, ok := strings.CutPrefix(entry, "ZDOTDIR="); ok && (!withZdotdir || value != userZsh) {
-					t.Fatalf("restored ZDOTDIR = %q", value)
-				}
-			}
-			if withZdotdir && !slices.Contains(env, "ZDOTDIR="+userZsh) {
-				t.Fatal("user ZDOTDIR lost")
-			}
-			for _, name := range []string{"git", filepath.Join(real, "git")} {
-				cmd := exec.Command("/bin/bash", "-c", shellsyntax.Quote(name)+" push; printf ' %s' \"$USER_STARTUP\"")
-				cmd.Env = env
-				out, err := cmd.CombinedOutput()
-				if err != nil || string(out) != "REAL_GIT preserved" {
-					t.Fatalf("nested opt-out %q = %q, %v", name, out, err)
-				}
-			}
-		})
+	root := t.TempDir()
+	outer, inner, real := filepath.Join(root, "outer", "bin"), filepath.Join(root, "inner", "bin"), filepath.Join(root, "user", vcsguard.Directory)
+	for _, path := range []string{outer, inner, real} {
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	helper, userEnv := filepath.Join(root, "mekugi-exec"), filepath.Join(root, "user-bash-env")
+	for path, script := range map[string]string{
+		helper:                     "#!/bin/sh\nprintf OUTER_GUARD\n",
+		filepath.Join(real, "git"): "#!/bin/sh\nprintf REAL_GIT\n",
+		userEnv:                    "export USER_STARTUP=preserved\n",
+	} {
+		if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	env := []string{"PATH=" + real + ":/usr/bin:/bin", "BASH_ENV=" + userEnv}
+	env, err := frontendShellEnvironment(env, outer, helper, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err = frontendShellEnvironment(env, inner, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"git", filepath.Join(real, "git")} {
+		cmd := exec.Command("/bin/bash", "-c", shellsyntax.Quote(name)+" push; printf ' %s' \"$USER_STARTUP\"")
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		if err != nil || string(out) != "REAL_GIT preserved" {
+			t.Fatalf("nested opt-out %q = %q, %v", name, out, err)
+		}
 	}
 }

@@ -64,7 +64,7 @@ func TestSplitPreservesShellConstructs(t *testing.T) {
 		"if true; then\n#!python3\nprintf one\nfi\n",
 		"echo \"$(cat <<'EOF'\n#!python3\nEOF\n)\"\n",
 	} {
-		for _, interpreter := range []string{"", "#!bash\n", "#!sh\n", "#!dash\n", "#!ash\n", "#!ksh\n", "#!mksh\n", "#!zsh\n"} {
+		for _, interpreter := range []string{"", "#!bash\n", "#!sh\n", "#!dash\n", "#!ash\n", "#!ksh\n", "#!mksh\n"} {
 			first := interpreter + source
 			if IsBatch(first) {
 				t.Errorf("literal header became a boundary: %q", first)
@@ -158,7 +158,7 @@ func BenchmarkSplitHeredocHeaders(b *testing.B) {
 }
 
 func TestSplitProtectsLaterProgramHeredocs(t *testing.T) {
-	for _, header := range []string{"#!bash\n", "#!sh\n", "#!zsh\n"} {
+	for _, header := range []string{"#!bash\n", "#!sh\n"} {
 		first := "printf one\n"
 		second := "#!python3\nprint(2)\n"
 		third := header + "cat <<'EOF'\n#!python3\nEOF\n"

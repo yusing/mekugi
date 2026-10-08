@@ -827,7 +827,7 @@ func appServerDisplayCommand(command string) string {
 	name := filepath.Base(args[0])
 	name = strings.TrimSuffix(name, filepath.Ext(name))
 	switch name {
-	case "bash", "zsh", "sh":
+	case "bash", "sh":
 		if len(args) == 3 && (args[1] == "-lc" || args[1] == "-c") {
 			return args[2]
 		}

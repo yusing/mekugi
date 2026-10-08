@@ -315,7 +315,7 @@ const frontendBashEnvMarker = "# Mekugi frontend shell startup\n"
 // frontendShellEnvironment restores the frontend PATH in Codex's Bash command
 // shells and, with a helper, reports each command's segments to the router.
 // A guard puts the helper ahead of the version-control tools, and defines a
-// function for each absolute path to one, in Bash and zsh, so remote writes
+// function for each absolute path to one, in Bash, so remote writes
 // wait for the user's approval.
 func frontendShellEnvironment(environment []string, directory, helper string, guard bool) ([]string, error) {
 	// Login Bash may replace inherited PATH while reading /etc/profile. Its
@@ -323,8 +323,6 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	previous := ""
 	basePath := ""
 	userBashEnv, userBashEnvSet := "", false
-	zdotdir, zdotdirSet := "", false
-	userZdotdir, userZdotdirSet := "", false
 	for _, entry := range environment {
 		if value, ok := strings.CutPrefix(entry, "BASH_ENV="); ok {
 			previous = value
@@ -335,12 +333,6 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 		if value, ok := strings.CutPrefix(entry, "PATH="); ok {
 			basePath = value
 		}
-		if value, ok := strings.CutPrefix(entry, "ZDOTDIR="); ok {
-			zdotdir, zdotdirSet = value, true
-		}
-		if value, ok := strings.CutPrefix(entry, vcsguard.UserZdotdirEnvironment+"="); ok {
-			userZdotdir, userZdotdirSet = value, true
-		}
 	}
 	var inheritedGuards []string
 	if userBashEnvSet && filepath.Base(previous) == "frontend-bash-env" {
@@ -348,12 +340,6 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 			inheritedGuards = append(inheritedGuards, filepath.Join(filepath.Dir(previous), vcsguard.Directory))
 			previous = userBashEnv
 		}
-	}
-	restoreZsh := zdotdirSet && vcsguard.IsZshStartup(zdotdir)
-	if restoreZsh {
-		inheritedGuards = append(inheritedGuards, filepath.Join(filepath.Dir(zdotdir), vcsguard.Directory))
-		// A nested session: the user's files are those the outer one ran.
-		zdotdir, zdotdirSet = userZdotdir, userZdotdirSet
 	}
 	paths := filepath.SplitList(basePath)
 	paths = slices.DeleteFunc(paths, func(path string) bool {
@@ -381,27 +367,12 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 		front = guardDirectory + string(os.PathListSeparator) + directory
 	}
 	startup += "PATH=" + shellsyntax.Quote(front) + ":\"$PATH\"; export PATH\n"
-	var zsh []string
 	if guard {
 		guardDirectory, _ := vcsguard.Paths(directory)
-		known := vcsguard.KnownPaths(basePath)
-		startup += vcsguard.Functions("bash", guardDirectory, known)
-		// Zsh reads no BASH_ENV; its startup files, which ZDOTDIR locates,
-		// run the user's own and then the same setup.
-		zshDirectory := filepath.Join(filepath.Dir(directory), "zsh")
-		if err := vcsguard.WriteZshStartup(zshDirectory, vcsguard.ZshPath(guardDirectory, directory)+vcsguard.Functions("zsh", guardDirectory, known)); err != nil {
-			return nil, fmt.Errorf("prepare VCS write guard: %w", err)
-		}
-		zsh = append(zsh, "ZDOTDIR="+zshDirectory)
-		if zdotdirSet {
-			zsh = append(zsh, vcsguard.UserZdotdirEnvironment+"="+zdotdir)
-		}
-	} else if restoreZsh && zdotdirSet {
-		zsh = append(zsh, "ZDOTDIR="+zdotdir)
+		startup += vcsguard.Functions(guardDirectory, vcsguard.KnownPaths(basePath))
 	}
 	environment = slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
-		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, execsegment.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, execsegment.Guard+"=") ||
-			((guard || restoreZsh) && (strings.HasPrefix(entry, "ZDOTDIR=") || strings.HasPrefix(entry, vcsguard.UserZdotdirEnvironment+"=")))
+		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, execsegment.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, execsegment.Guard+"=")
 	})
 	if helper != "" {
 		socket, trackDirectory := router.ExecTrackPaths(directory)
@@ -420,9 +391,9 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	if err := os.WriteFile(path, []byte(startup), 0o600); err != nil {
 		return nil, fmt.Errorf("prepare frontend shell environment: %w", err)
 	}
-	return append(append(environment,
+	return append(environment,
 		"PATH="+front+string(os.PathListSeparator)+basePath,
-		"BASH_ENV="+path, userBashEnvEnvironment+"="+previous), zsh...), nil
+		"BASH_ENV="+path, userBashEnvEnvironment+"="+previous), nil
 }
 
 // Joining the startup receiver before launch ensures an interrupt it has already

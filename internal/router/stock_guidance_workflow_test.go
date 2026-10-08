@@ -35,6 +35,9 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 		if !strings.Contains(got, stock) {
 			t.Fatal("exec stock description was not preserved")
 		}
+		if !strings.Contains(got, "On macOS, pass `shell:\"bash\"` to `tools.exec_command` unless the task explicitly requires another shell") {
+			t.Fatal("exec description lost macOS Bash selection guidance")
+		}
 		for _, owner := range []string{guide, codeModeJournalGuidance} {
 			if strings.Count(got, owner) != 1 {
 				t.Error("exec description must include each guidance owner exactly once")
