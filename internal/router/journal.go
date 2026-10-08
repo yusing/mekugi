@@ -59,7 +59,9 @@ type journalMutation struct {
 	Text             *string          `json:"text,omitempty"`
 	Answer           *bool            `json:"answer,omitempty"`
 	inferredQuestion string
-	ReportNow        bool `json:"report_now,omitzero"`
+	finishTurn       string
+	fallbackReceipt  string // Saves a native array whose finish has runnable work.
+	ReportNow        bool   `json:"report_now,omitzero"`
 }
 
 type journalItem struct {
@@ -667,6 +669,17 @@ func decodeJournalMutations(raw []byte) ([]journalMutation, error) {
 }
 
 func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, workspace, thread, receiptID string, mutations []journalMutation) ([]string, error) {
+	finishTurn, fallbackReceipt := "", ""
+	if len(mutations) != 0 && mutations[len(mutations)-1].Op == "finish" {
+		finishTurn, fallbackReceipt = mutations[len(mutations)-1].finishTurn, mutations[len(mutations)-1].fallbackReceipt
+	}
+	mutations, finish, err := splitJournalFinish(mutations)
+	if err != nil {
+		return nil, err
+	}
+	if finish && finishTurn == "" {
+		return nil, errors.New("journal finish requires a turn-bound host invocation")
+	}
 	release, err := s.lockDelivery(ctx, store, workspace)
 	if err != nil {
 		return nil, err
@@ -684,12 +697,14 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 			return fmt.Errorf("journal state is missing for thread %q in workspace %q; initialization did not complete or session data was cleaned up; retry the request to initialize it", thread, workspace)
 		}
 		counters = j.Counters.Clone()
-		if receipt, ok := j.Receipts[receiptID]; receiptID != "" && ok {
-			if receipt.Digest != digest {
-				return errors.New("journal call changed its mutations")
+		for _, id := range []string{receiptID, fallbackReceipt} {
+			if receipt, ok := j.Receipts[id]; id != "" && ok {
+				if receipt.Digest != digest {
+					return errors.New("journal call changed its mutations")
+				}
+				ids = slices.Clone(receipt.IDs)
+				return errJournalUnchanged
 			}
-			ids = slices.Clone(receipt.IDs)
-			return errJournalUnchanged
 		}
 		j.ensureTree()
 		treeMutated := false
@@ -818,8 +833,19 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 				return err
 			}
 		}
-		if receiptID != "" {
-			j.Receipts[receiptID] = journalReceipt{Digest: digest, IDs: slices.Clone(ids)}
+		receipt := receiptID
+		if finish {
+			if next := j.continuationCandidate(finishTurn); next != nil && next.Resume {
+				if fallbackReceipt == "" {
+					return fmt.Errorf("journal finish has runnable task %s (%s); continue that work, complete a slice, or record its blocker before finish", next.Path, next.Title)
+				}
+				// A native array rejection would fail the response. Without the
+				// finish receipt, the host result reaches provider inference.
+				receipt = fallbackReceipt
+			}
+		}
+		if receipt != "" {
+			j.Receipts[receipt] = journalReceipt{Digest: digest, IDs: slices.Clone(ids)}
 		}
 		for _, mutation := range mutations {
 			if mutation.Answer == nil || !*mutation.Answer {

@@ -115,6 +115,12 @@ frontend; that publisher cannot complete a turn or acquire Codex execution
 authority. Its finish marker retains a receipt scoped to the originating host
 call and turn. The request pipeline selects local terminal delivery only after
 visible host results and native trace outcomes confirm completion.
+The mutation transaction checks finish against the candidate journal before
+saving that receipt. A pure journal-owned continuation selector is shared by
+this check and Main continuation; caller identity and dispatch remain separate.
+Ordinary runnable work rejects the whole batch with its task path. Completed
+slice boundaries, blocked reports and user-stopped work retain their ending behavior.
+A native journal array drops only that marker, because its rejection would fail the response.
 This restores v1's result-driven completion boundary without its old shell executor.
 Codex still owns the continuation request; no provider inference is admitted for
 that local response. Its mutation rejections are structured results for the helper, while

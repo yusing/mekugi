@@ -434,7 +434,16 @@ rejection handling. No dedicated journal tool is exposed. Operations are:
   JavaScript helper batch or a nested stock `exec_command`/`write_stdin` journal array.
   The preceding mutations and invocation-scoped receipt persist atomically; the marker
   contributes no returned path. A lone helper marker returns null. A rejected batch
-  records no finish receipt. It does not stop or execute host work.
+  records no finish receipt. The candidate journal must have no ordinary runnable
+  local work, or a completed slice boundary with a pending sibling. Otherwise the
+  entire batch is rejected with the runnable task path, so the agent can correct
+  it in the same host turn. A native journal array cannot return that rejection
+  without failing the response, so it applies its other mutations without the
+  receipt, and the host result reaches ordinary provider inference.
+  Blocked reports and user-stopped work remain eligible.
+  This check applies to the caller's own work, including child journals; it neither
+  completes delegated work nor changes the host-result completion checks.
+  It does not stop or execute host work.
 - `read {p?, agent?, depth?, view?}`: returns the selected subtree. Depth zero omits
   child nodes. Omitted agent selects the caller; explicit agents require proven
   ancestry. The default `combined` view includes read-only mounted agents. `own`
