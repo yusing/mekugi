@@ -3,7 +3,6 @@ package router
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -69,74 +68,78 @@ func TestLiveDiffCodeModeStreamsInterpreterWrite(t *testing.T) {
 
 func TestLiveDiffNativeExecPythonStreamsTargetDiff(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct{ openRead, computed bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
-		t.Run(fmt.Sprintf("openRead=%v/computed=%v", tc.openRead, tc.computed), func(t *testing.T) {
-			t.Parallel()
-			workspace := t.TempDir()
-			target := filepath.Join(workspace, "target.txt")
-			if err := os.WriteFile(target, []byte("old old\n"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			store, err := openMekugiReplayStore(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
-				Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
-			})
-			ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
-			ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
-			worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", nativeExecCommandToolName)
-			t.Cleanup(worker.stop)
-			command := "python3 - <<'PY'\nfrom pathlib import Path\np = Path('target.txt')\ns = p.read_text()\ns = s.replace('old', 'new', 1)\np.write_text(s)\nPY\n"
-			write := "p.write_text"
-			if tc.openRead {
-				command = "python3 - <<'PY'\np = 'target.txt'\ns = open(p).read()\ns = s.replace('old', 'new', 1)\nopen(p, 'w').write(s)\nPY\n"
-				write = "open(p, 'w').write"
-			}
-			if tc.computed {
-				command = strings.Replace(command, "s.replace('old', 'new', 1)", "s.replace('o' + 'ld', ' NEW '.strip().lower(), len('é'))", 1)
-			}
-			encoded, err := json.Marshal(map[string]string{"cmd": command, "workdir": workspace})
-			if err != nil {
-				t.Fatal(err)
-			}
-			input := string(encoded)
-			point := strings.Index(input, write)
-			if point < 0 {
-				t.Fatal("missing Python write")
-			}
-			if preview, _ := worker.project(input[:point], workspace, false); len(preview.Files) != 0 {
-				t.Fatalf("read-only prefix invented a target edit: %+v", preview)
-			}
-			// The write has arrived, but the transporting JSON and heredoc
-			// are still open. A read-buffer change alone is not an edit.
-			point += len(write) + len("(s)")
-			worker.appendDelta(input[:point])
-			preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
-				return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+new old")
-			})
-			if preview.Complete || preview.Input != "" || preview.Files[0].AfterPath != target {
-				t.Fatalf("native Python input did not stream a target diff: %+v", preview)
-			}
-			frame := ansi.Strip(ui.frame(t, func(frame string) bool {
-				plain := ansi.Strip(frame)
-				return strings.Contains(plain, "target.txt") && strings.Contains(plain, "+new old")
-			}))
-			if strings.Contains(frame, "from pathlib import Path") || strings.Contains(frame, "p.write_text") {
-				t.Fatalf("native Python pane showed source rather than diff: %s", frame)
-			}
-			worker.appendDelta(input[point:])
-			worker.finish(input)
-			ui.frame(t, func(frame string) bool {
-				plain := ansi.Strip(frame)
-				return strings.Contains(plain, "○ M") && strings.Contains(plain, "+new old")
-			})
-			if got, err := os.ReadFile(target); err != nil || string(got) != "old old\n" {
-				t.Fatalf("preview executed Python: %q, %v", got, err)
-			}
-		})
+	workspace := t.TempDir()
+	before := map[string]string{"path.txt": "old old\n", "open.txt": "old old\n"}
+	for name, text := range before {
+		writeTestFile(t, filepath.Join(workspace, name), text)
 	}
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+	})
+	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
+	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
+	// Share one viewer while both I/O forms stream independently.
+	type pendingCall struct {
+		worker      *liveDiffPreviewWorker
+		input, name string
+		point       int
+	}
+	var pending []pendingCall
+	for _, tc := range []struct{ name, command, write string }{
+		{"path.txt", "python3 - <<'PY'\nfrom pathlib import Path\np = Path('path.txt')\ns = p.read_text()\ns = s.replace('o' + 'ld', ' NEW '.strip().lower(), len('é'))\np.write_text(s)\nPY\n", "p.write_text(s)"},
+		{"open.txt", "python3 - <<'PY'\np = 'open.txt'\ns = open(p).read()\ns = s.replace('old', 'new', 1)\nopen(p, 'w').write(s)\nPY\n", "open(p, 'w').write(s)"},
+	} {
+		worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", nativeExecCommandToolName)
+		t.Cleanup(worker.stop)
+		input := string(mustTestJSON(t, map[string]string{"cmd": tc.command, "workdir": workspace}))
+		point := strings.Index(input, tc.write)
+		if preview, _ := worker.project(input[:point], workspace, false); len(preview.Files) != 0 {
+			t.Fatalf("%s read-only prefix invented a target edit: %+v", tc.name, preview)
+		}
+		// The write has arrived, but JSON and the heredoc are still open.
+		point += len(tc.write)
+		worker.appendDelta(input[:point])
+		pending = append(pending, pendingCall{worker, input, tc.name, point})
+	}
+	for _, call := range pending {
+		preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
+			return len(preview.Files) == 1 && preview.Files[0].AfterPath == filepath.Join(workspace, call.name)
+		})
+		if preview.Complete || preview.Input != "" {
+			t.Fatalf("%s did not stream before completion: %+v", call.name, preview)
+		}
+		assertPythonExpansionDiffs(t, workspace, preview.Files, before, map[string]string{call.name: "new old\n"})
+	}
+	frame := ansi.Strip(ui.frame(t, func(frame string) bool {
+		plain := ansi.Strip(frame)
+		return strings.Contains(plain, "◐ M path.txt") && strings.Contains(plain, "◐ M open.txt") && strings.Count(plain, "+new old") == 2
+	}))
+	if strings.Contains(frame, "from pathlib import Path") || strings.Contains(frame, "p.write_text") || strings.Contains(frame, "open(p") {
+		t.Fatalf("native Python pane showed source rather than diff: %s", frame)
+	}
+	for _, call := range pending {
+		call.worker.appendDelta(call.input[call.point:])
+		call.worker.finish(call.input)
+	}
+	ui.frame(t, func(frame string) bool {
+		plain := ansi.Strip(frame)
+		return strings.Contains(plain, "○ M path.txt") && strings.Contains(plain, "○ M open.txt") && strings.Count(plain, "+new old") == 2
+	})
+	entries, err := os.ReadDir(workspace)
+	if err != nil || len(entries) != len(before) {
+		t.Fatalf("preview changed directory entries: %v, %v", entries, err)
+	}
+	for name, want := range before {
+		got, err := os.ReadFile(filepath.Join(workspace, name))
+		if err != nil || string(got) != want {
+			t.Fatalf("preview executed Python for %s: %q, %v", name, got, err)
+		}
+	}
+	ui.quit(t)
 }
 
 func TestLiveDiffCompletionOnlyShellDoesNotOpenNativeDock(t *testing.T) {

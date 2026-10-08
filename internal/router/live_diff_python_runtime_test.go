@@ -12,10 +12,7 @@ import (
 
 func TestLiveDiffPythonExpansionRuntime(t *testing.T) {
 	t.Parallel()
-	python, err := exec.LookPath("python3")
-	if err != nil {
-		t.Skip("python3 is unavailable for differential runtime validation")
-	}
+	python, pythonErr := exec.LookPath("python3")
 	// Use an actual source baseline, but execute only the fixed scripts below,
 	// never commands discovered in source, history, or a corpus.
 	source, err := os.ReadFile("live_diff_python_values.go")
@@ -304,6 +301,10 @@ func TestLiveDiffPythonExpansionRuntime(t *testing.T) {
 				if err != nil || string(got) != want {
 					t.Fatalf("preview mutated %q: got=%q err=%v want=%q", name, got, err, want)
 				}
+			}
+			if pythonErr != nil {
+				assertPythonExpansionDiffs(t, previewDirectory, files, before, after)
+				t.Skip("preview checked; python3 is unavailable for differential runtime validation")
 			}
 
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)

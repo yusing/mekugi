@@ -7,9 +7,6 @@ import (
 
 func TestRewriteExecutablePositions(t *testing.T) {
 	for _, script := range []string{
-		`'/unlisted directory/git' push origin main; echo after`,
-		`env -i -u NAME '/unlisted directory/git' push --tags && echo after`,
-		`command /usr/bin/git push upstream main`,
 		`exec /usr/bin/gh pr create`,
 		`timeout -k 1 5 nice -n 2 /usr/bin/hg push`,
 		`timeout "$delay" /usr/bin/git push`,

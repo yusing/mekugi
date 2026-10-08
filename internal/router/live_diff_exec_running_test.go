@@ -169,6 +169,14 @@ func TestExecRunningPreviewExcludesVCSScope(t *testing.T) {
 }
 
 func TestExecRunningPreviewKeepsAuthoredVCSSiblings(t *testing.T) {
+	type previewWorkflow struct {
+		command string
+		path    string
+		broker  *liveDiffBroker
+	}
+	var workflows []previewWorkflow
+	// Keep environment-changing setup serial, but start every isolated watch
+	// before waiting so the preview tickers can overlap.
 	for _, command := range []string{
 		"git restore -- authored.txt; printf after > authored.txt",
 		"git status --short; printf after > authored.txt",
@@ -176,31 +184,34 @@ func TestExecRunningPreviewKeepsAuthoredVCSSiblings(t *testing.T) {
 		"git show HEAD:restored.txt | printf after > authored.txt",
 		"(git show HEAD:restored.txt; printf after > authored.txt; true) > exported.txt",
 	} {
-		t.Run(command, func(t *testing.T) {
-			repo := newExecVCSTestRepo(t, map[string]string{"restored.txt": "committed\n", "authored.txt": "committed\n"})
-			writeTestFile(t, filepath.Join(repo, "restored.txt"), "dirty\n")
-			path := filepath.Join(repo, "authored.txt")
-			observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo, previewOnly: true})
-			if !observed || observation == nil {
-				t.Fatal("mixed scope missing")
-			}
-			store, err := openMekugiReplayStore(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{repo: {"thread": true}}})
-			registry := &execWindowRegistry{}
-			registry.open(&execWindow{ref: "mixed", roots: []string{repo}, thread: "thread"})
-			defer registry.close("mixed")
-			registry.preview("mixed", *observation, broker, repo, "thread", "/root")
-			process := exec.Command(execTrackShellExecutable(t, "bash"), "-c", command)
-			process.Dir = repo
-			process.Env = append(os.Environ(), "BASH_ENV=", "MEKUGI_EXEC_TRACK=", "GIT_TERMINAL_PROMPT=0")
-			if output, err := process.CombinedOutput(); err != nil {
-				t.Fatalf("execute fixture: %v: %s", err, output)
-			}
-			preview := waitExecScopePreview(t, broker, func(p diffview.Preview) bool { return len(p.Files) > 0 })
-			if len(preview.Files) != 1 || preview.Files[0].AfterPath != path || strings.Contains(preview.Footer, "restored.txt") || strings.Contains(preview.Footer, "exported.txt") {
+		repo := newExecVCSTestRepo(t, map[string]string{"restored.txt": "committed\n", "authored.txt": "committed\n"})
+		writeTestFile(t, filepath.Join(repo, "restored.txt"), "dirty\n")
+		path := filepath.Join(repo, "authored.txt")
+		observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo, previewOnly: true})
+		if !observed || observation == nil {
+			t.Fatalf("mixed scope missing for %q", command)
+		}
+		store, err := openMekugiReplayStore(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{repo: {"thread": true}}})
+		registry := &execWindowRegistry{}
+		registry.open(&execWindow{ref: "mixed", roots: []string{repo}, thread: "thread"})
+		t.Cleanup(func() { registry.close("mixed") })
+		registry.preview("mixed", *observation, broker, repo, "thread", "/root")
+		process := exec.Command(execTrackShellExecutable(t, "bash"), "-c", command)
+		process.Dir = repo
+		process.Env = append(os.Environ(), "BASH_ENV=", "MEKUGI_EXEC_TRACK=", "GIT_TERMINAL_PROMPT=0")
+		if output, err := process.CombinedOutput(); err != nil {
+			t.Fatalf("execute fixture %q: %v: %s", command, err, output)
+		}
+		workflows = append(workflows, previewWorkflow{command, path, broker})
+	}
+	for _, workflow := range workflows {
+		t.Run(workflow.command, func(t *testing.T) {
+			preview := waitExecScopePreview(t, workflow.broker, func(p diffview.Preview) bool { return len(p.Files) > 0 })
+			if len(preview.Files) != 1 || preview.Files[0].AfterPath != workflow.path || strings.Contains(preview.Footer, "restored.txt") || strings.Contains(preview.Footer, "exported.txt") {
 				t.Fatalf("mixed preview lost authored admission: %+v", preview)
 			}
 		})
@@ -292,6 +303,8 @@ func TestExecRunningPreviewShowsAuthoredScopeAndCancelsWithoutEvidence(t *testin
 }
 
 func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
+	// The capacity case needs all process-wide preview slots. Keep its parent
+	// serial; the lifecycle cases can share slots after the capacity case closes.
 	t.Run("active preview bound", func(t *testing.T) {
 		repo, tracked, observation := captureRunningExecScope(t)
 		store, err := openMekugiReplayStore(t.TempDir())
@@ -331,6 +344,7 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 
 	for _, lifecycle := range []string{"background", "broker shutdown"} {
 		t.Run(lifecycle, func(t *testing.T) {
+			t.Parallel()
 			repo, tracked, observation := captureRunningExecScope(t)
 			store, err := openMekugiReplayStore(t.TempDir())
 			if err != nil {

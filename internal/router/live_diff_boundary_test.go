@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/yusing/mekugi/internal/ui/diffview"
@@ -56,43 +57,54 @@ func liveDiffStatementBurstCases() []struct{ path, body, first, second string } 
 
 func TestLiveDiffBurstRevealsStatementsSeparately(t *testing.T) {
 	t.Parallel()
-	for _, source := range liveDiffStatementBurstCases() {
-		for _, kind := range []string{applyPatchToolName, "exec", nativeExecCommandToolName} {
-			t.Run(source.path+"/"+source.first+"/"+kind, func(t *testing.T) {
-				t.Parallel()
+	for _, kind := range []string{applyPatchToolName, "exec", nativeExecCommandToolName} {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
 				workspace := t.TempDir()
 				broker := newLiveDiffBroker(t.Context())
 				broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"root": true}}})
 				sub := broker.subscribe()
 				defer broker.unsubscribe(sub)
 				<-sub.events
-				input := "*** Begin Patch\n*** Add File: " + source.path + "\n+" + strings.ReplaceAll(strings.TrimSuffix(source.body, "\n"), "\n", "\n+") + "\n"
-				if kind == "exec" {
-					input = "await tools.apply_patch(" + strconv.Quote(input)
-				} else if kind == nativeExecCommandToolName {
-					command := "python3 - <<'PY'\nfrom pathlib import Path\nPath(" + strconv.Quote(source.path) + ").write_text(" + strconv.Quote(source.body) + ")\n"
-					input = `{"cmd":` + strconv.Quote(command)
+				// Share transport setup across the source forms. Each call still
+				// receives both statements in one burst; controlled time exercises
+				// real worker pacing without repeated wall-clock waits.
+				sources := liveDiffStatementBurstCases()
+				if kind != applyPatchToolName {
+					// Language gating is shared. Encoded transports need the
+					// multiline and same-line boundaries, not every language again.
+					sources = sources[:2]
 				}
-				worker := startLiveDiffPreview(t.Context(), broker, workspace, "root", kind)
-				defer worker.stop()
-				// Both statements arrive in the same provider burst. No demo
-				// sleeps or separate appendDelta calls can manufacture this pass.
-				worker.appendDelta(input)
-				first := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
-					return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, source.first)
-				})
-				if strings.Contains(first.Files[0].Diff, source.second) {
-					t.Fatalf("two statements emitted together:\n%s", first.Files[0].Diff)
-				}
-				firstSeen := time.Now()
-				waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
-					return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, source.second)
-				})
-				if elapsed := time.Since(firstSeen); elapsed < diffview.PreviewUnitDelay-2*diffview.PreviewFrameDelay {
-					t.Fatalf("next statement overlapped the preceding fade: %v", elapsed)
+				for _, source := range sources {
+					input := "*** Begin Patch\n*** Add File: " + source.path + "\n+" + strings.ReplaceAll(strings.TrimSuffix(source.body, "\n"), "\n", "\n+") + "\n"
+					if kind == "exec" {
+						input = "await tools.apply_patch(" + strconv.Quote(input)
+					} else if kind == nativeExecCommandToolName {
+						command := "python3 - <<'PY'\nfrom pathlib import Path\nPath(" + strconv.Quote(source.path) + ").write_text(" + strconv.Quote(source.body) + ")\n"
+						input = `{"cmd":` + strconv.Quote(command)
+					}
+					worker := startLiveDiffPreview(t.Context(), broker, workspace, "root", kind)
+					t.Cleanup(worker.stop)
+					worker.appendDelta(input)
+					first := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
+						return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, source.first)
+					})
+					if strings.Contains(first.Files[0].Diff, source.second) {
+						t.Fatalf("two statements emitted together:\n%s", first.Files[0].Diff)
+					}
+					firstSeen := time.Now()
+					waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool {
+						return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, source.second)
+					})
+					if elapsed := time.Since(firstSeen); elapsed < diffview.PreviewUnitDelay-2*diffview.PreviewFrameDelay {
+						t.Fatalf("next statement overlapped the preceding fade: %v", elapsed)
+					}
+					worker.stop()
+					<-worker.done
 				}
 			})
-		}
+		})
 	}
 }
 
