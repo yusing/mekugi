@@ -435,9 +435,23 @@ func (o *runtimeJournalOwner) task(ctx context.Context, event observationTask, s
 	}
 	records := map[string]mekugiHistory{key: proof, callKey: proof}
 	if !start {
-		terminalProof := proof
-		terminalProof.NativeObservation = &nativeObservationRecord{Binding: call.Binding, Call: &call, Terminal: &ObservationTerminal{Task: event.ID, Status: event.Status}}
-		records[callKey+"/terminal"] = terminalProof
+		terminalKey := callKey + "/terminal"
+		prior, found, err := o.capture.store.lookup(ctx, root.Workspace, terminalKey)
+		if err != nil {
+			return err
+		}
+		if found {
+			// Native shutdown can mark already-completed children stopped.
+			// Keep the settled proof; it also deduplicates child lifecycle.
+			r := prior.NativeObservation
+			if r == nil || r.Terminal == nil || r.Terminal.Task != event.ID || !sameObservationCall(r.Call, &call) {
+				return errors.New("native journal terminal identity changed")
+			}
+		} else {
+			terminalProof := proof
+			terminalProof.NativeObservation = &nativeObservationRecord{Binding: call.Binding, Call: &call, Terminal: &ObservationTerminal{Task: event.ID, Status: event.Status}}
+			records[terminalKey] = terminalProof
+		}
 	}
 	if err := o.capture.store.put(ctx, root.Workspace, records); err != nil {
 		return err

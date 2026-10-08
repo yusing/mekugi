@@ -51,7 +51,8 @@ Native Agent results persist child/parent proof against the exact pre-tool recei
 the shared ancestry validator controls mounted reads. Unproven children remain
 independent, not root aliases. Task starts retain the native task/spawning-call
 mapping so either terminal SDK task form can settle background agent lifecycle;
-replayed terminal receipts cannot overwrite later child work. Native completion prepares a publication window,
+later query-shutdown status retains the first confirmed terminal proof.
+Replayed terminal receipts cannot overwrite later child work. Native completion prepares a publication window,
 not an authored task-state mutation; shared sinks acknowledge exact painted
 revisions without hiding Claude's answer.
 

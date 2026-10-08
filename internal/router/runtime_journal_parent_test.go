@@ -161,6 +161,20 @@ func TestRuntimeJournalBackgroundTaskLifecycle(t *testing.T) {
 				if err != nil || j.LifecycleState != "working" {
 					t.Fatalf("duplicate terminal replayed lifecycle: %+v %v", j, err)
 				}
+				if status == "completed" {
+					// Native query shutdown can mark a completed child stopped.
+					// Preserve its settled proof and any later authored work.
+					terminal.Status = "stopped"
+					settle()
+					proof, found, err := s.owner.store.lookup(ctx, root.Workspace, journalNativeReceiptID(root, start.CallID)+"/task/terminal")
+					if err != nil || !found || proof.NativeObservation.Terminal.Status != "completed" {
+						t.Fatalf("shutdown replaced confirmed child completion: %+v %v", proof, err)
+					}
+					j, _, err = readThreadJournal(s.owner.store.scoped(ctx), root.Workspace, observationThread(child))
+					if err != nil || j.LifecycleState != "working" {
+						t.Fatalf("shutdown replayed child lifecycle: %+v %v", j, err)
+					}
+				}
 				mismatch := terminal
 				mismatch.CallID = "alien-call"
 				if err := s.journal.task(t.Context(), mismatch, false); err == nil {

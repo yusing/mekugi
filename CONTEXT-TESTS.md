@@ -154,6 +154,17 @@ with no model/tool calls and preserved caller settings.
 `ClaudeExecTrackGuard` covers real Bash helper/report/replacement delivery failure,
 guard-only fallback and identical concurrent inputs without guessed row identity.
 
+Guard handoff acceptance uses the same installed-native local provider:
+
+```sh
+MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestNativeRuntimeVCSGuard(Handoff|Children)ClaudeNative$' TEST_FLAGS='-count=1 -v -timeout=3m'
+```
+
+The handoff fixture checks A → B → A, clear and fresh A-launch B-resume against
+exact argv/cwd/executable grants for the UI lifetime. The child fixture checks
+independent reached requests, native cancellation, sibling continuity and
+same-session shell shutdown/resume. Both check effects without inference.
+
 ## Static checks
 
 Run `make lint` with `golangci-lint` and `deadcode` on PATH. It uses `.golangci.yml`
