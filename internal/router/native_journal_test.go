@@ -48,6 +48,8 @@ func TestUISnapshotNativeJournalAgentsGroupIsNotAConstraint(t *testing.T) {
 
 func TestUISnapshotNativeJournalMarkdownTitles(t *testing.T) {
 	u, _ := newAppServerTestUI()
+	u.view.painter.FileLink = func(string) bool { return true }
+	u.journalView.fileLink = u.view.painter.FileLink
 	u.turn = "active"
 	u.view.painter.Theme = livediff.DarkTheme
 	j := nativeJournalFixture()

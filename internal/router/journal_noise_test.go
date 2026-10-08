@@ -138,6 +138,7 @@ func TestJournalNoiseCardPreservesDetailAndOpenCount(t *testing.T) {
 
 func TestUISnapshotJournalNoiseRichNotePreview(t *testing.T) {
 	v := newLiveActivityView()
+	v.painter.FileLink = func(string) bool { return true }
 	v.passed = map[uint64]bool{1: true}
 	v.painter.Theme = livediff.DarkTheme
 	body := "**Validation passed** with `cat  x | sort`. See [report](</tmp/two  spaces.md>).\n\nFull supporting evidence remains available."
@@ -151,7 +152,7 @@ func TestUISnapshotJournalNoiseRichNotePreview(t *testing.T) {
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Kind: "journal_event", journalEvent: &card.Journal.Events[0]}}})
 	v.journalEventsItem(&events, 0, 0, 40)
 	expanded, _ := journalCardRows(&v.painter, card, 86, true)
-	pane := new(nativeJournalView).renderRow(journalPaneRow{node: note}, 90, livediff.DarkTheme)
+	pane := (&nativeJournalView{fileLink: v.painter.FileLink}).renderRow(journalPaneRow{node: note}, 90, livediff.DarkTheme)
 	for label, rows := range map[string][]string{"pane": {pane}, "events": events.lines, "preview": out.lines, "expanded": expanded} {
 		styled := strings.Join(rows, "\n")
 		if !strings.Contains(styled, "\x1b]8;;file:///tmp/two%20%20spaces.md") {
@@ -168,7 +169,7 @@ func TestUISnapshotJournalNoiseRichNotePreview(t *testing.T) {
 	}
 	first, _, _ := strings.Cut(body, "\n")
 	for _, muted := range []journalNode{{Kind: "task", State: "dropped", Title: first}, {Kind: "note", Title: "Note", Body: body, SupersededBy: "/2"}} {
-		row := new(nativeJournalView).renderRow(journalPaneRow{node: muted}, 90, livediff.DarkTheme)
+		row := (&nativeJournalView{fileLink: v.painter.FileLink}).renderRow(journalPaneRow{node: muted}, 90, livediff.DarkTheme)
 		if !strings.Contains(row, "\x1b]8;;file:///tmp/two%20%20spaces.md") {
 			t.Fatalf("dimmed row lost its link target: %q", row)
 		}

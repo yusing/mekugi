@@ -752,7 +752,7 @@ the selection. Recognized Markdown file links in Main, Activity, and shared
 dialogs open local source with the path, content, and read errors copyable, as
 specified by [activity display](activity_display.md). HTTP(S) links still copy
 their destinations in Main and Activity; clicking them inside a dialog still
-does nothing. Missing or unrecognized file links retain their prior click behavior.
+does nothing. Missing local file destinations are not clickable.
 Clipboard availability is controlled by the user's terminal.
 Arrow keys move the insertion caret across graphemes and displayed
 rows. At the first/last displayed row, Up/Down recalls older/newer submitted

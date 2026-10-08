@@ -37,6 +37,9 @@ type Painter struct {
 	// CopySource carries semantic annotations to the native viewport.
 	CopySource bool
 	CopyScope  uint64 // Stable native entry/block scope for cached source identities.
+	// FileLink checks local destinations against the caller's workspace metadata.
+	// Without a resolver, only web destinations become clickable.
+	FileLink func(target string) bool
 }
 
 func (p *Painter) now() time.Time {
@@ -304,13 +307,17 @@ func (p *Painter) Inline(line string) string {
 	for i := 0; i < len(line); {
 		if line[i] == '[' {
 			if label, target, end, ok := liveActivityLink(line[i:]); ok {
-				out.WriteString(p.inlineLink(label, target))
+				if p.linkAllowed(target) {
+					out.WriteString(p.inlineLink(label, target))
+				} else {
+					out.WriteString(label)
+				}
 				i += end
 				continue
 			}
 		}
 		if code, end, ok := liveActivityCodeSpan(line, i); ok {
-			if rawFilePath(code) {
+			if rawFilePath(code) && p.linkAllowed(code) {
 				out.WriteString(p.inlineLink(code, code))
 				i = end
 				continue
@@ -341,7 +348,7 @@ func (p *Painter) Inline(line string) string {
 				end = i + stop
 			}
 			path := strings.TrimRight(line[i:end], ".,;!?")
-			if rawFilePath(path) {
+			if rawFilePath(path) && p.linkAllowed(path) {
 				out.WriteString(p.inlineLink(path, path))
 				i += len(path)
 				continue
@@ -354,6 +361,10 @@ func (p *Painter) Inline(line string) string {
 		out.WriteString(Undim)
 	}
 	return out.String()
+}
+
+func (p *Painter) linkAllowed(target string) bool {
+	return strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "http://") || p.FileLink != nil && p.FileLink(target)
 }
 
 func (p *Painter) inlineLink(label, target string) string {
@@ -385,8 +396,8 @@ func rawFilePath(path string) bool {
 	return !strings.Contains(base, ":") && !strings.ContainsAny(first, " \t") && name != "" && (strings.Contains(base, "/") || file)
 }
 
-// Local paths, file URLs and HTTP(S) URLs become terminal links. File existence
-// and workspace-relative resolution belong to the click handler.
+// Parse local paths, file URLs and HTTP(S) URLs independently of clickability,
+// so missing destinations retain the same visible label and copy annotations.
 func liveActivityLink(s string) (label, target string, end int, ok bool) {
 	close := strings.Index(s, "](")
 	if close < 2 || s[0] != '[' {
@@ -408,7 +419,10 @@ func liveActivityLink(s string) (label, target string, end int, ok bool) {
 	}
 	path := target
 	if colon := strings.LastIndexByte(path, ':'); colon >= 0 {
-		if line, err := strconv.Atoi(path[colon+1:]); err == nil && line > 0 {
+		from, to, ranged := strings.Cut(path[colon+1:], "-")
+		first, err := strconv.Atoi(from)
+		last, lastErr := strconv.Atoi(to)
+		if err == nil && first > 0 && (!ranged || lastErr == nil && last >= first) {
 			path = path[:colon]
 		}
 	}

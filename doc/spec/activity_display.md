@@ -84,7 +84,9 @@ change code text, wrapping, or source-aware copying. Recognized local-file Markd
 hyperlink rather than exposing the raw destination syntax. Wrapped links retain their
 destination and underline only on their text, never on row padding or gutters.
 Raw file-shaped paths in authored text, including journal items and inline code,
-use the same clickable styling without changing the source or copied text.
+use the same clickable styling only when the local target exists as a regular file,
+resolved from session workspace metadata for relative paths. Missing paths and
+slash-separated prose remain unlinked, without changing the source or copied text.
 Paths with spaces can use an inline code span or an explicit Markdown link.
 Journal ordinals and agent names remain identifiers; fenced code stays literal.
 A completed child
@@ -210,8 +212,8 @@ Terminal controls are sanitized for display; whole-page `y` copies the original
 source bytes; dragging selects the visible path or content for selection copying. Reads
 accept UTF-8 text up to 8 MiB; oversized, binary/non-UTF-8, or unreadable files
 show red, copyable errors. Each opening reads current contents, without ongoing
-file monitoring. Missing or unrecognized destinations retain their prior click
-behavior. HTTP(S) links still copy their destinations in Main and Activity;
+file monitoring. Missing local destinations are not clickable; their Markdown labels
+remain visible. HTTP(S) links still copy their destinations in Main and Activity;
 clicking them inside a dialog still does nothing.
 
 Errors show a bounded first-line preview rather than an unbounded inline diagnostic.

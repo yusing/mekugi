@@ -25,11 +25,14 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 		t.Fatal(err)
 	}
 	fileURL := (&url.URL{Scheme: "file", Path: path}).String()
+	main, _ := newAppServerTestUI()
+	main.session.cwd = workspace
+	painter := activityui.Painter{FileLink: main.markdownFileExists}
 	for _, target := range []string{"src/source #1?%.go", path + ":26", fileURL + ":26", "src/source #1?%.go:26-27", fileURL + ":26-27", "`" + path + ":26`"} {
 		t.Run(target, func(t *testing.T) {
-			row := (&activityui.Painter{}).Inline("[source](<" + target + ">)")
+			row := painter.Inline("[source](<" + target + ">)")
 			if strings.HasPrefix(target, "`") {
-				row = (&activityui.Painter{}).Inline(target)
+				row = painter.Inline(target)
 				target = strings.Trim(target, "`")
 			}
 			u := selectionTestUI(row)
@@ -61,6 +64,28 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 				t.Fatal("drag activated the file link")
 			}
 		})
+	}
+}
+
+func TestUISnapshotMarkdownFileLinkExistence(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.ensureShell()
+	t.Cleanup(u.shell.diff.close)
+	u.session.cwd = t.TempDir()
+	if err := os.WriteFile(filepath.Join(u.session.cwd, "sample.go"), []byte("package sample\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	text := "Historical replacement count or resulting speed/cost savings.\n" +
+		"Missing: missing.go, `missing.go`, [missing](missing.go).\n" +
+		"Existing: sample.go:1, `sample.go`, [source](sample.go:1-2).\n" +
+		"Web: [remote](https://example.com)."
+	for _, view := range []*liveActivityView{u.view, u.agents} {
+		rows := view.painter.Markdown(text, 72)
+		uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown-file-link-existence.txt", append(rows, "plain after links"), 72)
+	}
+	u.session.cwd = ""
+	if strings.Contains(u.view.painter.Inline("sample.go"), "\x1b]8;") {
+		t.Fatal("relative path became clickable without workspace metadata")
 	}
 }
 
@@ -187,6 +212,9 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 		t.Fatal("displayed path is not selectable")
 	}
 	for _, target := range []string{"missing.go", "sample.go:0", "sample.go:2-1", "sample.go:1-", workspace, "file://remote" + workspace + "/sample.go", "https://example.com", "#section"} {
+		if target != "https://example.com" && strings.Contains(main.view.painter.Inline("[file](<"+target+">)"), "\x1b]8;") {
+			t.Fatalf("linked non-file destination %q", target)
+		}
 		if u.openMarkdownFile(main.view, target) {
 			t.Fatalf("opened non-file destination %q", target)
 		}

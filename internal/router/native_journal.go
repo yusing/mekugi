@@ -18,6 +18,7 @@ type nativeJournalCard struct {
 
 type nativeJournalView struct {
 	unscoped bool
+	fileLink func(string) bool
 	// expanded records explicit disclosure choices; absent nodes fit automatically.
 	expanded                 map[string]bool
 	selected, offset, height int
@@ -379,7 +380,7 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 	}
 	dim := func(text string) string { return activityui.Dim + text + activityui.Undim }
 	safe := func(text string) string { return livediff.Safe(text, false) }
-	p := activityui.Painter{Theme: theme}
+	p := activityui.Painter{Theme: theme, FileLink: v.fileLink}
 	path := journalDisplayPath(node)
 	if local := journalLocalPath(node.Path); local != node.Path {
 		path = local

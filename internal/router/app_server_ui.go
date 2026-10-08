@@ -1614,12 +1614,15 @@ func scrollLabel(v *liveActivityView) string {
 
 func (u *appServerUI) ensureShell() {
 	u.view.conversation = true
+	u.view.painter.FileLink = u.markdownFileExists
+	u.journalView.fileLink = u.markdownFileExists
 	if u.shell != nil {
 		return
 	}
 	if u.agents == nil {
 		u.agents = newLiveActivityView()
 	}
+	u.agents.painter.FileLink = u.markdownFileExists
 	u.agents.childrenOnly = true
 	u.agents.status = "" // Fed by app-server directly, never by a collector connection.
 	u.agents.mainView = u.view
