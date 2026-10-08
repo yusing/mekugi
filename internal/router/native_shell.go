@@ -325,6 +325,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		var body []string
 		var title, label string
 		if u.diffOpen {
+			if u.main != nil {
+				u.diff.updateTaskScope(u.main.journal.presented())
+			}
 			diffRows := content
 			l.diff = terminalRect{right.x + 1, contentY, iw, diffRows}
 			if u.diffScreen.Width() != iw || u.diffScreen.Height() != diffRows {

@@ -1,0 +1,4 @@
+▎ 1/1  a.go +1 -1 ──────────────────────────────────────────────────────────────────────
+▎ ┄ amber2 main  1 change outside scope as baseline
+▎ 1│-draft                                                                              
+▎ 1│+final                                                                              

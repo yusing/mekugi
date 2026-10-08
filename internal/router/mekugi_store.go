@@ -43,6 +43,7 @@ type replayRecord struct {
 	Commentary   bool
 	Replacement  *commentaryReplacement `json:",omitempty"`
 	CaptureOrder uint64                 `json:",omitzero"`
+	TaskPath     string                 `json:",omitempty"`
 	History      mekugiHistory
 	Snapshots    *replaySnapshots `json:",omitempty"`
 }
@@ -360,6 +361,7 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 		return err
 	}
 	if exists {
+		r.TaskPath = previous.TaskPath
 		if r.Commentary && previous.Replacement != nil {
 			if r.Replacement != nil && !reflect.DeepEqual(previous.Replacement, r.Replacement) {
 				return errors.New("conflicting commentary replacement provenance")
@@ -377,6 +379,12 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 	}
 	failed := r.History.ExecOutcome != nil && r.History.ExecOutcome.Status == execStatusFailed && r.History.ExecOutcome.SharedWith == ""
 	if !exists && !r.Commentary && (r.History.ChangeID != "" && len(r.History.ReviewFiles) > 0 || failed) {
+		thread := cmp.Or(r.History.ExecutingThread, s.session.Thread)
+		if journal, found, readErr := readThreadJournal(s, r.Workspace, thread); readErr == nil && found {
+			if task := liveDiffCurrentTask(journal.Items); task != nil && task.State == "working" {
+				r.TaskPath = task.Path
+			}
+		}
 		r.CaptureOrder, err = s.nextCaptureOrder()
 		if err != nil {
 			return err

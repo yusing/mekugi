@@ -15,6 +15,7 @@ import (
 // liveDiffChanges is the Changes tab: captured changes in capture order, one
 // graph lane per caller. Lanes branch from main at the caller's first change.
 type liveDiffChanges struct {
+	Scope string
 	Query string
 	Nodes []liveDiffChangeNode
 	lanes []string
@@ -235,6 +236,9 @@ func (l *liveDiffChanges) Render(focused bool, filtering bool, callerFilter stri
 		scope = "@" + name
 	}
 	heading := fmt.Sprintf(" Changes  %d · %s", len(l.Nodes), livediff.Safe(scope, false))
+	if l.Scope != "" {
+		heading += " · " + livediff.Safe(l.Scope, false)
+	}
 	if focused {
 		heading = theme.Accent() + "▎" + strings.TrimPrefix(heading, " ") + "\x1b[0m"
 	}

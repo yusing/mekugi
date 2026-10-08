@@ -557,6 +557,18 @@ it restores the tree's expansion and navigation position. Files use stable
 path ordering, with folders first in tree mode. Next/previous file navigation
 uses the matching set, revealing destinations inside collapsed folders.
 
+`c` cycles the saved Diff scope through current subslice (the default), current
+top-level slice, and all. The scope applies to Files in tree and flat views,
+Changes in branch view, file/change jumps, and the displayed diff. It combines
+with path, change, and caller filters. The current subslice is the deepest
+working owned task, otherwise its blocker or latest completed task; its
+descendants and bound child agents are included. Slice includes that task's
+top-level ancestor and descendants. Earlier captures compose as baseline.
+Task attribution is retained with each capture, so later task transitions and
+resume do not reassign earlier edits. Unattributed captures remain available
+in all. Without a current journal task, scopes show all retained captures.
+Scope selection is local to the viewer and resets to subslice on session switch.
+
 The navigator and diff have independent viewports and keyboard focus. Arrow keys
 act on the focused region. Keyboard focus is visible;
 the active list row is shaded in place rather than marked by a separate arrow

@@ -34,6 +34,8 @@ type liveDiffTerminalController struct {
 	scope       liveDiffScope
 	coverage    string
 	view        livediff.View
+	taskScope   liveDiffTaskScope
+	taskJournal *threadJournal
 	previewPane diffview.PreviewPane
 
 	previewFrame    *time.Timer
@@ -326,7 +328,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 				text = left + strings.Repeat(" ", max(0, navWidth-ansi.StringWidth(left))) + livediff.Subtle + "│\x1b[0m" + text
 			}
 			if c.help {
-				help := slices.DeleteFunc([]string{"", "  Diff navigation", "", "  s       focus / hide files", "  Tab     files / changes by caller", "          Changes: Enter caller filters · Enter h/l expand / collapse change", "  /       filter paths, or changes by id, @caller, source · Ctrl-U clear", "  t       tree / flat list", "  ↑↓ j/k  move focused list / scroll diff", "  ←→ h/l  collapse / expand folder", "  Enter   focus diff or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  { / }   previous / next change", "  a / 0   next caller / all callers", "  PgUp/Dn page · Home/End first / last", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help", "  Ctrl-C  quit"}, func(line string) bool {
+				help := slices.DeleteFunc([]string{"", "  Diff navigation", "", "  s       focus / hide files", "  Tab     files / changes by caller", "          Changes: Enter caller filters · Enter h/l expand / collapse change", "  /       filter paths, or changes by id, @caller, source · Ctrl-U clear", "  t       tree / flat list", "  c       subslice / slice / all", "  ↑↓ j/k  move focused list / scroll diff", "  ←→ h/l  collapse / expand folder", "  Enter   focus diff or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  { / }   previous / next change", "  a / 0   next caller / all callers", "  PgUp/Dn page · Home/End first / last", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help", "  Ctrl-C  quit"}, func(line string) bool {
 					return c.native && strings.HasPrefix(line, "  v ")
 				})
 				text = ""
@@ -390,7 +392,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 			name, _ := diffview.CallerStyle(c.theme)(c.view.Caller)
 			scope = " · @" + livediff.Safe(name, false) + " (0 all)"
 		}
-		writeRow(height, "DIFF · "+stream+mode+scope+" · s files · Tab changes · ? help")
+		writeRow(height, "DIFF · "+stream+mode+scope+" · c scope · s files · Tab changes · ? help")
 	default:
 		diff := "v diff"
 		if count := len(c.files); count > 0 {
@@ -409,6 +411,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 // resetScope drops the saved-diff projection before the view follows another
 // root thread. Display preferences survive; files, filters and scroll do not.
 func (c *liveDiffTerminalController) resetScope() {
+	c.taskScope, c.taskJournal = liveDiffSubslice, nil
 	c.data, c.scope, c.callerCounts, c.coverage = newLiveDiffData(), liveDiffScope{}, nil, "CONNECTING"
 	c.netCounts = nil
 	c.view = livediff.View{Scroll: make(map[string]int)}
@@ -500,8 +503,8 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 // filtered view needs another projection; the normal case reuses its cache.
 func liveDiffNetCounts(view *livediff.View) *livediff.Counts {
 	all := *view
-	if all.Caller != "" {
-		all.Caller, all.Visible = "", nil
+	if all.Caller != "" || all.TaskPaths != nil {
+		all.Caller, all.TaskPaths, all.Visible = "", nil, nil
 	}
 	all.RefreshVisible()
 	var total *livediff.Counts
@@ -789,6 +792,10 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		if c.diffMode {
 			c.cycleCaller()
 		}
+	case 'c':
+		if c.diffMode {
+			c.cycleTaskScope()
+		}
 	case '0':
 		if c.diffMode {
 			c.filterCaller("")
@@ -849,9 +856,21 @@ func (c *liveDiffTerminalController) callerDots() []string {
 // file's position on the right.
 func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 	left := "no captured edits yet"
+	visible, position := 0, 0
+	for i, file := range c.files {
+		if len(file.Chunks) > 0 {
+			visible++
+			if i == c.view.Selected {
+				position = visible
+			}
+		}
+	}
 	if len(c.files) > 0 {
 		var total livediff.Counts
 		for _, file := range c.files {
+			if len(file.Chunks) == 0 {
+				continue
+			}
 			count := file.NetCounts()
 			if count.Added < 0 || count.Removed < 0 {
 				total = livediff.Counts{Added: -1, Removed: -1}
@@ -860,13 +879,16 @@ func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 			total.Added += count.Added
 			total.Removed += count.Removed
 		}
-		left = fmt.Sprintf("%d files", len(c.files))
-		if len(c.files) == 1 {
+		left = fmt.Sprintf("%d files", visible)
+		if visible == 1 {
 			left = "1 file"
 		}
 		left += diffview.CountStats(total, c.theme)
 	}
 	var right []string
+	if c.navigation.Scope != "" {
+		right = append(right, livediff.Safe(c.navigation.Scope, false)+" (c)")
+	}
 	if c.navigation.Focused {
 		right = append(right, "files focus")
 	} else {
@@ -881,8 +903,8 @@ func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 		right = append(right, "@"+livediff.Safe(name, false))
 	}
 
-	if len(c.files) > 1 {
-		right = append(right, fmt.Sprintf("%d/%d", c.view.Selected+1, len(c.files)))
+	if visible > 1 {
+		right = append(right, fmt.Sprintf("%d/%d", position, visible))
 	}
 	return left, strings.Join(right, activityui.Dim+" · "+activityui.Undim)
 }

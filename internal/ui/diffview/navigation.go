@@ -35,6 +35,8 @@ type Navigation struct {
 	Dots []string
 	// caller is the view's caller filter, for the heading.
 	Caller string
+	// Scope names the selected journal task range, when one is available.
+	Scope string
 	// workspace displays rename sources.
 	workspace string
 }
@@ -205,6 +207,9 @@ func (n *Navigation) Render(files []livediff.File, counts []livediff.Counts, sel
 		mode = "flat"
 	}
 	heading := fmt.Sprintf(" Files  %d/%d · %s", len(n.Matches), n.total, mode)
+	if n.Scope != "" {
+		heading += " · " + livediff.Safe(n.Scope, false)
+	}
 	if n.Caller != "" {
 		name, _ := CallerStyle(theme)(n.Caller)
 		heading += " · @" + livediff.Safe(name, false)
