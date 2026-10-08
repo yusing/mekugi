@@ -110,7 +110,7 @@ func TestSessionUIReplayJournalPreservesSemanticMessagesAndSeek(t *testing.T) {
 		for _, entry := range p.ui.view.entries {
 			text.WriteString(entry.Text)
 		}
-		if !strings.Contains(text.String(), "Checked the implementation") || !strings.Contains(text.String(), "Read `journal /1`") || !strings.Contains(text.String(), "mjournal --help") || strings.Contains(text.String(), "--journal-once") {
+		if !strings.Contains(text.String(), "Checked the implementation") || !strings.Contains(text.String(), "Read `journal entries at /1`") || !strings.Contains(text.String(), "mjournal --help") || strings.Contains(text.String(), "--journal-once") {
 			t.Fatalf("lost meaningful journal or ordinary command: %s", text.String())
 		}
 	}
@@ -140,7 +140,7 @@ func TestSessionUIReplayJournalRequiresExactProvenance(t *testing.T) {
 			case "read":
 				prefix, _, _ := strings.Cut(command, " '")
 				command = prefix + journalTransportArgument(t, map[string]any{"op": "read", "agent": "worker"})
-				wantCandidate, wantActions = false, []appServerCommandAction{{Type: "read", Path: "journal worker"}}
+				wantCandidate, wantActions = false, []appServerCommandAction{{Type: "read", Path: "journal entries for agent worker"}}
 			case "tracked":
 				command = execsegment.ShScript("/private/exec-track.sh", command)
 				wantHidden = true

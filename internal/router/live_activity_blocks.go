@@ -122,6 +122,15 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 			}
 		}
 		setCommandTiming(blocks, entry)
+		if n := entry.native; n != nil && n.operation != "" {
+			// Only authenticated journal reads/lists carry a typed operation.
+			// Their transport pages are read content, including one-line JSON.
+			for i := range blocks {
+				blocks[i].JournalTransport = true
+				blocks[i].Results = n.journalResults
+				blocks[i].Collapsed = (n.collapsed || blocks[i].ReadOutput()) && blocks[i].Collapsible()
+			}
+		}
 		if entry.native != nil && len(blocks) > 0 {
 			setApprovalBlocks(blocks, entry.native.approval)
 		}

@@ -1,0 +1,4 @@
+"\x1b[2m├ \x1b[38;5;75;22;1mRead\x1b[m \x1b[2mjournal entries at /\x1b[22;1m12\x1b[22;2m (2 results) · 70ms\x1b[m                                                    "
+"\x1b[2m├ \x1b[38;5;75;22;1mList\x1b[m \x1b[2mjournal entries at /\x1b[22;1m12\x1b[22;2m (0 results) · 110ms\x1b[m                                                   "
+"\x1b[2m└ \x1b[38;5;203;22;1mRead\x1b[m \x1b[2mjournal entries at /\x1b[22;1m12\x1b[22;2m · 70ms\x1b[m \x1b[2m· \x1b[38;5;203;22mexit 1\x1b[m                                                       "
+"\x1b[2m  \x1b[m     \x1b[2m┆\x1b[m journal changed during read; retry the read                                                "

@@ -154,7 +154,15 @@ timed commands and pipelines, use begin/EXIT duration rather than the host's
 invocation duration, as specified in [REQ-EXECUTION-002](execution.md).
 The dialog keeps the same elapsed suffix without extra timing metadata rows.
 Timed commands retain their individual rows rather
-than merging reads or folding staging into a commit. An EXIT boundary also
+than merging reads or folding staging into a commit. Verified journal read/list
+transports are an exception: adjacent successful pages group like other reads,
+including one-line JSON output, which collapses immediately. Their row sums
+observed page durations; the output dialog retains each page's output and timing.
+Labels identify the requested entries, outline, or task view, agent/task scope,
+and child-depth limit. Successful responses show their known result count,
+including zero, rather than a JSON line count or pagination revision.
+These scoped rows stay visible when older command batches fold, including on resume.
+Running or failed pages remain separate. An EXIT boundary also
 ends the active command when `exit` or `errexit` bypasses its normal end hook.
 Completed observations retain timestamps and duration across resume and forks;
 skipped commands have neither. A disconnected report supplies no invented end.

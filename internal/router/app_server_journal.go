@@ -2,10 +2,10 @@ package router
 
 import (
 	"encoding/base64"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"net/url"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -22,6 +22,15 @@ var nativeJournalCommand = regexp.MustCompile(`^mjournal --journal-once (\S+) ([
 // naming its journal target, also the text of its tracked segment. ok is
 // false for a hidden command; other items are shown unchanged.
 func (u *appServerUI) journalTransport(thread string, item appServerItem) (shown appServerItem, operation string, ok bool) {
+	if p := u.replay; p != nil && p.next > 0 {
+		// Offline ingestion already checked durable provenance. Its private
+		// marker does not cross the JSON notification adapter, so reuse it
+		// only for this exact replay event, not a host-supplied action label.
+		event := p.source.Events[p.next-1]
+		if event.Params.ThreadID == thread && event.Params.Item.ID == item.ID && event.Params.Item.Command == item.Command && event.Params.Item.journalTransport {
+			return item, appServerCommandText(item, ""), true
+		}
+	}
 	parts := u.verifiedJournalCommand(thread, item)
 	if parts == nil {
 		return item, "", true
@@ -62,6 +71,7 @@ func journalTransportItem(item appServerItem, parts []string) (appServerItem, st
 		return item, "", false
 	}
 	item.CommandActions = []appServerCommandAction{action}
+	item.journalTransport = true
 	return item, appServerCommandText(item, ""), true
 }
 
@@ -77,11 +87,35 @@ func journalReadAction(payload string) (appServerCommandAction, bool) {
 		Op    string `json:"op"`
 		P     string `json:"p"`
 		Agent string `json:"agent"`
+		View  string `json:"view"`
+		Depth *int   `json:"depth"`
 	}
 	if json.Unmarshal([]byte(decoded), &request) != nil {
 		return appServerCommandAction{}, false
 	}
-	target := strings.Join(slices.DeleteFunc([]string{"journal", request.Agent, request.P}, func(part string) bool { return part == "" }), " ")
+	target := "journal entries"
+	switch request.View {
+	case "tasks", "outline":
+		target = "journal " + request.View
+	case "own":
+		target = "own journal entries"
+	}
+	if request.Agent != "" {
+		target += " for agent " + request.Agent
+	}
+	if request.P != "" {
+		target += " at " + request.P
+	}
+	if request.Depth != nil {
+		switch *request.Depth {
+		case 0:
+			target += " (top level)"
+		case 1:
+			target += " (1 child level)"
+		default:
+			target += " (" + strconv.Itoa(*request.Depth) + " child levels)"
+		}
+	}
 	switch request.Op {
 	case "read":
 		return appServerCommandAction{Type: "read", Path: target}, true
@@ -89,6 +123,21 @@ func journalReadAction(payload string) (appServerCommandAction, bool) {
 		return appServerCommandAction{Type: "listFiles", Path: target}, true
 	}
 	return appServerCommandAction{}, false
+}
+
+// Count only a successful, complete host response, not its bounded display tail.
+func journalReadResults(item appServerItem) *int {
+	if item.ExitCode == nil || *item.ExitCode != 0 || item.AggregatedOutput == nil {
+		return nil
+	}
+	var page struct {
+		OK    bool             `json:"ok"`
+		Items []jsontext.Value `json:"items"`
+	}
+	if json.Unmarshal([]byte(*item.AggregatedOutput), &page) != nil || !page.OK || page.Items == nil {
+		return nil
+	}
+	return new(len(page.Items))
 }
 
 // lowersJournalCommand reports whether parts, a nativeJournalCommand match,

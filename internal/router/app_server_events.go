@@ -429,6 +429,9 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			if item, native.operation, shown = u.journalTransport(p.ThreadID, item); !shown {
 				break
 			}
+			if native.operation != "" {
+				native.journalResults = journalReadResults(item)
+			}
 			if item.Type == "commandExecution" && u.proxy != nil {
 				if ms, known := u.proxy.nativeTrace.commandTimeout(p.ThreadID, id); known {
 					native.commandTimeout = strconv.FormatUint(ms/1000, 10)

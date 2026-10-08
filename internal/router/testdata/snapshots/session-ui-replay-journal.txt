@@ -1,12 +1,12 @@
 ┌ 1 Main ──────────────────────────────────────────────────┐┌ 3 Activity ────────────────────────────────────── FOLLOW ┐
-│└ Read journal /1 · 60ms                                  ││                                                          │
-│       ┆ {"ok":true,"items":[]}                           ││                                                          │
+│└ Read journal entries at /1 (0 results) · 60ms           ││                                                          │
 │                                                          ││                                                          │
 │● main                                           08:00:00 ││                                                          │
 │┃ Journal: Checked the implementation.                    ││                                                          │
 │                                                          ││                                                          │
 │└ Ran mjournal --help · 400ms                             ││                                                          │
 │      ┆ Journal command help                              ││                                                          │
+│                                                          ││                                                          │
 │                                                          ││                                                          │
 │                                                          ││                                                          │
 │                                                          ││                                                          │
