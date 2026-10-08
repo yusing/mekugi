@@ -2,7 +2,9 @@ package router
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -54,7 +56,21 @@ func TestNativeJournalPrecedesNextHostCommand(t *testing.T) {
 	assertOrder()
 }
 
-func TestNativeJournalTransportHiddenWithDurableProvenance(t *testing.T) {
+// journalTransportArgument is the quoted payload the generated helper
+// appends to its transport prefix.
+func journalTransportArgument(t *testing.T, request any) string {
+	t.Helper()
+	data, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return " '" + url.QueryEscape(string(data)) + "'"
+}
+
+// journalTransportFixture retains a lowered journal cell for the UI's thread
+// and returns its transport prefix and live authorization token.
+func journalTransportFixture(t *testing.T) (*appServerUI, *mekugiProxy, string, string) {
+	t.Helper()
 	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	proxy.commentaryEndpoint = "http://127.0.0.1:1234/internal/commentary"
 	const callID = "journal-cell"
@@ -64,7 +80,6 @@ func TestNativeJournalTransportHiddenWithDurableProvenance(t *testing.T) {
 		t.Fatalf("lowering: %v %v", changed, err)
 	}
 	token := transform.commentarySubscriptions[0].token
-	command := workerCommand("mjournal", []string{commentaryOnceArgument, proxy.commentaryEndpoint, token}) + " '%7B%22op%22%3A%22list%22%7D'"
 	u := newAppServerSessionTestUI(t, workspace)
 	u.proxy = proxy
 	proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
@@ -75,8 +90,13 @@ func TestNativeJournalTransportHiddenWithDurableProvenance(t *testing.T) {
 	if err := proxy.replayStore.put(t.Context(), workspace, map[string]mekugiHistory{callID: history}); err != nil {
 		t.Fatal(err)
 	}
+	return u, proxy, workerCommand("mjournal", []string{commentaryOnceArgument, proxy.commentaryEndpoint, token}), token
+}
 
-	command = workerCommand("/bin/bash", []string{"-c", execsegment.ShScript("/private/exec-track.sh", command)})
+func TestNativeJournalTransportHiddenWithDurableProvenance(t *testing.T) {
+	u, proxy, prefix, token := journalTransportFixture(t)
+	command := workerCommand("/bin/bash", []string{"-c", execsegment.ShScript("/private/exec-track.sh", prefix+journalTransportArgument(t, map[string]any{"op": "add", "title": "Checked"}))})
+	var err error
 	for _, method := range []string{"item/started", "item/completed"} {
 		appServerTestNotify(t, u, method, map[string]any{"threadId": u.thread, "turnId": "turn", "item": map[string]any{"id": "internal", "type": "commandExecution", "command": command}})
 	}
@@ -94,12 +114,55 @@ func TestNativeJournalTransportHiddenWithDurableProvenance(t *testing.T) {
 		t.Fatal("restored transport visible")
 	}
 	for _, command := range []string{command + "; echo visible", "echo " + command, strings.Replace(command, token, "unproven.token", 1), "mjournal --help"} {
-		if u.internalJournalCommand(u.thread, appServerItem{Type: "commandExecution", Command: command}) {
-			t.Fatalf("hid ordinary command %q", command)
+		if _, _, shown := u.journalTransport(u.thread, appServerItem{Type: "commandExecution", Command: command}); !shown || u.verifiedJournalCommand(u.thread, appServerItem{Type: "commandExecution", Command: command}) != nil {
+			t.Fatalf("classified ordinary command %q", command)
 		}
 	}
-	if u.internalJournalCommand("other-thread", appServerItem{Type: "commandExecution", Command: command}) {
+	if u.verifiedJournalCommand("other-thread", appServerItem{Type: "commandExecution", Command: command}) != nil {
 		t.Fatal("borrowed another thread's provenance")
+	}
+	batch := prefix + journalTransportArgument(t, []map[string]any{{"op": "add", "title": "Checked"}})
+	if _, _, shown := u.journalTransport(u.thread, appServerItem{Type: "commandExecution", Command: batch}); shown {
+		t.Fatal("batched mutation transport visible")
+	}
+}
+
+// Reads and lists persist no event, so their transport is their only trace.
+func TestNativeJournalReadTransportShowsTypedOperation(t *testing.T) {
+	u, proxy, prefix, token := journalTransportFixture(t)
+	const revision = " 12 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	for _, test := range []struct {
+		name    string
+		command string
+		want    string
+	}{
+		{"read", prefix + journalTransportArgument(t, map[string]any{"op": "read", "p": "/3/5", "depth": 1}), "Read `journal /3/5`"},
+		{"read continuation", prefix + journalTransportArgument(t, map[string]any{"op": "read"}) + revision, "Read `journal`"},
+		{"agent list", prefix + journalTransportArgument(t, map[string]any{"op": "list", "agent": "worker"}), "List `journal worker`"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := workerCommand("/bin/bash", []string{"-c", execsegment.ShScript("/private/exec-track.sh", test.command)})
+			u.view = newLiveActivityView()
+			for _, method := range []string{"item/started", "item/completed"} {
+				appServerTestNotify(t, u, method, map[string]any{"threadId": u.thread, "turnId": "turn", "item": map[string]any{"id": "read", "type": "commandExecution", "command": command, "exitCode": 0, "aggregatedOutput": `{"ok":true,"items":[]}`}})
+			}
+			if len(u.view.entries) != 1 || u.view.entries[0].Text != test.want || u.view.entries[0].native.operation != test.want {
+				t.Fatalf("live transport entries = %+v, want %q", u.view.entries, test.want)
+			}
+			if got := commandSegmentText(u.view.entries[0].native, test.command, ""); got != test.want {
+				t.Fatalf("tracked segment text = %q, want %q", got, test.want)
+			}
+			u.view = newLiveActivityView()
+			u.restoreHistory([]appServerHistoryTurn{{ID: "turn", Items: []appServerItem{{ID: "read", Type: "commandExecution", Command: command, ExitCode: new(0), AggregatedOutput: new(`{"ok":true,"items":[]}`)}}}})
+			if len(u.view.entries) != 1 || u.view.entries[0].Text != test.want {
+				t.Fatalf("restored transport entries = %+v, want %q", u.view.entries, test.want)
+			}
+		})
+	}
+	proxy.commentary.cancel(token)
+	unproven := strings.Replace(prefix, token, "unproven.token", 1) + journalTransportArgument(t, map[string]any{"op": "read"})
+	if shown, operation, ok := u.journalTransport(u.thread, appServerItem{Type: "commandExecution", Command: unproven}); !ok || operation != "" || len(shown.CommandActions) != 0 {
+		t.Fatalf("unproven read classified: %+v %q %v", shown, operation, ok)
 	}
 }
 
@@ -122,7 +185,7 @@ func nativeChildJournalHistoryFixture(t *testing.T) (*appServerUI, string, strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := workerCommand("mjournal", []string{commentaryOnceArgument, proxy.commentaryEndpoint, transform.commentarySubscriptions[0].token}) + " '%7B%22op%22%3A%22list%22%7D'"
+	command := workerCommand("mjournal", []string{commentaryOnceArgument, proxy.commentaryEndpoint, transform.commentarySubscriptions[0].token}) + journalTransportArgument(t, map[string]any{"op": "add", "title": "Checked"})
 	history := mekugiHistory{ToolName: "exec", Script: source, CarrierPayload: lowered, ExecutingThread: child}
 	if err := proxy.replayStore.put(t.Context(), workspace, map[string]mekugiHistory{callID: history}); err != nil {
 		t.Fatal(err)

@@ -425,7 +425,8 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "reasoning", Text: text, CallID: id, Observed: now, native: native})
 			}
 		case "commandExecution", "webSearch":
-			if u.internalJournalCommand(p.ThreadID, item) {
+			var shown bool
+			if item, native.operation, shown = u.journalTransport(p.ThreadID, item); !shown {
 				break
 			}
 			if item.Type == "commandExecution" && u.proxy != nil {

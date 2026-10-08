@@ -31,9 +31,11 @@ retained revisions and recorded host turns to reconstruct mounted and unmounted
 hierarchies. Latest stored child items or lifecycle cannot supply historical state;
 missing records or unproven ancestry are disclosed. Journal progress uses the
 recorded clock, including pause and backward seek. Router-generated journal
-transport commands and their synthetic output are hidden only when the strict
+transport commands are classified only when the strict
 generated shell grammar matches the durable translated carrier for the executing
-thread and metadata workspace (or its original empty workspace scope). Reading
+thread and metadata workspace (or its original empty workspace scope). Mutation
+transports and their synthetic output are hidden; read and list transports show
+their typed journal operation, as in live sessions. Reading
 that provenance creates no store, locks, or writers. Missing, invalid, or unrelated
 provenance keeps the command visible and discloses an unverified transport candidate.
 

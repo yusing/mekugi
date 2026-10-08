@@ -103,8 +103,12 @@ including those without `report_now`, even without an open provider response.
 The frontend applies pending milestones before later host events and preserves
 their transcript position at terminal flush. Captured answers remain terminal-only, including answers without a linked question.
 Native deletion retracts an already applied milestone even without `report_now`.
-Internal journal transport commands are hidden only when their exact generated
-prefix matches the same thread’s durable translated call, including on resume.
+Internal journal transport commands are classified only when their exact generated
+prefix matches the same thread’s durable translated call, including on resume and
+offline replay. Mutation transports are hidden; their persisted events have rows.
+Read and list transports persist no event, so each shows as a typed `Read` or `List`
+operation naming its journal target, such as `journal /3/5` or `journal worker`,
+in place of the generated command, including its tracked segment.
 Ordinary commands mentioning `mjournal` remain visible. Enqueueing is not acknowledgement: successful
 UI output acknowledges exact revisions through the journal owner. Terminal
 records become eligible only after successful downstream response completion.

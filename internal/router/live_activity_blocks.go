@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"mvdan.cc/sh/v3/syntax"
@@ -46,6 +47,10 @@ func commandTimingIsCompound(blocks []activityui.Block, entry activityPaneEntry)
 	command := entry.native.command
 	if script, ok := appServerShellScript(command); ok {
 		command = script
+	} else {
+		// Offline replay retains a tracked script without its shell argv;
+		// the tracking envelope is not authored compound work.
+		command = execsegment.ShOriginal(command)
 	}
 	compound := len(blocks) > 1 || len(entry.native.segments) > 0
 	if program, err := syntax.NewParser().Parse(strings.NewReader(command), ""); err == nil {
