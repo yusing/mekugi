@@ -508,7 +508,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 		if key == "" {
 			key = completed.callID
 		}
-		execGroups[key] = append(execGroups[key], execCompletion(completed))
+		execGroups[key] = append(execGroups[key], execCompletion{callID: completed.callID, history: completed.history, output: completed.output})
 	}
 	for _, completed := range completedPatches {
 		thread := completed.history.ExecutingThread

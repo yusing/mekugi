@@ -107,6 +107,7 @@ type appServerUI struct {
 	agents                    *liveActivityView
 	proxy                     *mekugiProxy
 	execTrack                 *execTrackHub // Per-segment command reports; nil when not tracking.
+	shellEdits                appServerShellEdits
 	issues                    *CriticalErrors
 	noticeEntries             map[string]bool
 	journalView               nativeJournalView
@@ -496,6 +497,7 @@ func (u *appServerUI) requestAs(method, label string, params any) (string, error
 }
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
+	u.observeShellMessage(m)
 	if u.sessionTitleMessage(m) {
 		return nil
 	}
@@ -605,6 +607,19 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.shellResponse(m.Error)
 			return nil
 		}
+		if method == "environment/info" {
+			if m.Error == nil {
+				var info struct {
+					Shell struct {
+						Path string `json:"path"`
+					} `json:"shell"`
+				}
+				if json.Unmarshal(m.Result, &info) == nil {
+					u.shellEdits.shell = info.Shell.Path
+				}
+			}
+			return nil
+		}
 		if method == "thread/compact/start" {
 			u.compactResponse(m.Error != nil)
 			if m.Error != nil {
@@ -680,6 +695,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			if _, err := u.client.Send("initialized", map[string]any{}, false); err != nil {
 				return err
+			}
+			if u.proxy != nil {
+				if err := u.request("environment/info", map[string]any{"environmentId": "local"}); err != nil {
+					return err
+				}
 			}
 			if u.resumeThread == resumePickerStartup {
 				u.status = "Choose a session"

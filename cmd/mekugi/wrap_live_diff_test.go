@@ -75,6 +75,8 @@ func TestAutoWrapProcess(t *testing.T) {
 			switch request.Method {
 			case "initialize":
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{}}`+"\n", request.ID)
+			case "environment/info":
+				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"shell":{"name":"bash","path":"/bin/bash"}}}`+"\n", request.ID)
 			case "thread/start":
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"thread":{"id":"auto-wrap","cwd":%q},"model":"test-model"}}`+"\n", request.ID, os.Getenv("MEKUGI_AUTO_WRAP_WORKSPACE"))
 				if os.Getenv("MEKUGI_AUTO_WRAP_FAILURE") == "1" {
@@ -238,7 +240,7 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 					t.Fatalf("terminal wrapper did not render native Main: %q", output)
 				}
 				calls, readErr := os.ReadFile(rpcMarker)
-				if readErr != nil || !bytes.Contains(calls, []byte("initialize\ninitialized\nthread/start\n")) {
+				if readErr != nil || !bytes.Contains(calls, []byte("initialize\ninitialized\nenvironment/info\nthread/start\n")) {
 					t.Fatalf("native app-server handshake: %q, %v", calls, readErr)
 				}
 			} else if bytes.Contains(output, []byte("\x1b[?1049h")) || bytes.Contains(output, []byte("1 Main")) {

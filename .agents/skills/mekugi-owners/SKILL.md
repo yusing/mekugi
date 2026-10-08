@@ -49,7 +49,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Offline logical session inspection | `internal/router/session_inspect.go`, dispatched by `cmd/mekugi/main.go` |
 | Offline UI replay and profiling | `internal/router/session_ui_replay.go`; interface in `doc/spec/session_replay.md`, usage in `docs/contributing/development.md` |
 | Live session and offline replay performance profiling | `internal/router/profiling.go`, `internal/router/profiling_disabled.go`; diagnostic binary recipe in `Makefile` |
-| Observed review diffs, change IDs, and bounded reads | `review.go`, `internal/router/native_apply_patch.go`, `internal/router/mekugi_changes.go`, `internal/router/mchanges.go` |
+| Observed review diffs, change IDs, and bounded reads | `review.go`, `internal/router/native_apply_patch.go`, `internal/router/exec_observation.go`, `internal/router/app_server_shell_edits.go`, `internal/router/mekugi_changes.go`, `internal/router/mchanges.go` |
 | Durable replay, request-visible history, and retained output | `internal/router/mekugi_store.go`, `internal/router/mekugi_history.go`, `internal/router/shell_output_read.go` |
 | Authenticated frontend registry, worker, and PATH | `internal/router/tool_registry.go`, `internal/router/tool_plugin_worker.go`, `internal/router/tool_wrapper.go`, `internal/runtimepath` |
 | Built-in tool sources, output tokenization, and plugin runtime | `internal/router/toolplugin/native_*.go`; plugin loading and embedded assets in `internal/router/toolplugin/runtime.go` |

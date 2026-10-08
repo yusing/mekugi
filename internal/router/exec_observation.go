@@ -1334,6 +1334,15 @@ type execCompletion struct {
 	callID  string
 	history mekugiHistory
 	output  json.RawMessage
+	host    *nativeToolResult // Native Shell Mode has an item result, not a tool-output header.
+}
+
+func (c execCompletion) resultState() (terminal bool, exit *int, completed bool, text, pending string) {
+	if c.host != nil {
+		text, _ = stockToolOutput(c.output)
+		return true, c.host.ExitCode, c.host.Status == "completed" && c.host.ExitCode != nil && *c.host.ExitCode == 0, text, ""
+	}
+	return execResultState(c.history.ToolName, c.output)
 }
 
 // execSiblingKey groups calls of one response. Siblings finalized in
@@ -1441,7 +1450,7 @@ func execDerivedUpstreamItem(derivedCallID, arguments string) map[string]json.Ra
 func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace string, members []execCompletion) error {
 	var pending []execCompletion
 	for _, member := range members {
-		terminal, _, _, _, _ := execResultState(member.history.ToolName, member.output)
+		terminal, _, _, _, _ := member.resultState()
 		if member.history.ExecObservation == nil || !terminal {
 			continue
 		}
@@ -1518,7 +1527,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	var reports, failureReports []string
 	var hostResults []nativeToolResult
 	for index, member := range members {
-		_, exit, completed, resultText, _ := execResultState(member.history.ToolName, member.output)
+		_, exit, completed, resultText, _ := member.resultState()
 		status := execStatusCompleted
 		switch {
 		case member.history.ExecObservation.CodeMode && completed:
@@ -1539,6 +1548,9 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 			if len(results) == 1 {
 				exit = results[0].ExitCode
 			}
+		}
+		if member.host != nil {
+			hostResults = append(hostResults, *member.host)
 		}
 		if len(members) == 1 {
 			outcome.Exit = exit
