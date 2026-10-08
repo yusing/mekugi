@@ -73,19 +73,20 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 	if exec != nil {
 		roots = exec.DeletedDirectories
 		for _, root := range exec.DeletedDirectories {
-			count, complete := 0, true
+			count, removed := 0, true
 			for _, file := range history.ReviewFiles {
 				if !execPathWithin(file.BeforePath, root) {
 					continue
 				}
-				if file.Incomplete != "" || file.AfterPath != "" || !authoredReview(file) {
-					complete = false
+				// Missing content does not undo the confirmed removal of a path.
+				if file.AfterPath != "" || !authoredReview(file) {
+					removed = false
 				}
 				if !file.Directory {
 					count++
 				}
 			}
-			if count > 0 && complete {
+			if count > 0 && removed {
 				directories[root] = count
 			}
 		}
@@ -93,6 +94,9 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 	for _, file := range history.ReviewFiles {
 		if !authoredReview(file) {
 			continue
+		}
+		if file.Incomplete != "" {
+			reasons[file.Incomplete]++
 		}
 		grouped := false
 		for _, root := range roots {
@@ -128,7 +132,6 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 			continue
 		}
 		if file.Incomplete != "" {
-			reasons[file.Incomplete]++
 			continue
 		}
 		summary := action + " " + commentaryCode(path)
