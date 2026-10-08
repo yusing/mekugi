@@ -5,6 +5,11 @@
 Router failures that block work or require action produce user-only error feedback
 in Main's composer, not transcript entries, generated assistant commentary or
 provider-response items. Success and ordinary cancellation are silent.
+Request failures with an identified Codex thread and turn remain hidden while
+Codex can retry. A host-confirmed failed turn releases its request notices;
+completion or interruption discards them. Attempt diagnostics remain available
+by reference even when recovery makes a notice unnecessary. Auxiliary notices
+do not wait for a turn outcome.
 The original HTTP failure, tool error, exit code, and
 substantive provider result remain unchanged.
 
@@ -45,7 +50,10 @@ No model turn or writable provider response is needed to display a notice.
 
 At most 256 session/category entries are retained until shutdown. Excess distinct
 entries become an overflow count. The launcher reports undelivered notices and repeat
-counts after Codex exits, including when no UI was attached. UI display
+counts after Codex exits, including when no UI was attached. Unresolved request
+notices remain available for launcher recovery if no host turn outcome was
+observed. Host-confirmed recovered or interrupted turns produce no launcher error
+summary. UI display
 never inserts notice IDs into model-visible history. Existing durable exact-ID replay
 cleanup still removes previously retained router-authored messages; it does not infer
 provenance from text or prefixes.
@@ -62,3 +70,8 @@ Acceptance:
    hidden, replaced, dialog-covered or frozen-selection feedback remains pending.
 4. With no usable native view, pending notices remain reportable after shutdown; queue
    overflow does not change request success or failure.
+5. Request-attempt failures do not interrupt retrying turns. Host completion or
+   interruption clears their notices; terminal failure releases the complete
+   diagnostic batch for that thread and turn, including proven children. A late
+   request finalization uses a retained recent host turn outcome. Without a
+   retained outcome, its notice remains available for launcher recovery.

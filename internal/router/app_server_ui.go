@@ -497,6 +497,7 @@ func (u *appServerUI) requestAs(method, label string, params any) (string, error
 }
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
+	u.issues.observeTurnCompletion(m.Method, m.Params)
 	u.observeShellMessage(m)
 	if u.sessionTitleMessage(m) {
 		return nil
