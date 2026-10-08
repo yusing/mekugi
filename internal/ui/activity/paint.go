@@ -304,17 +304,17 @@ func (p *Painter) Inline(line string) string {
 	for i := 0; i < len(line); {
 		if line[i] == '[' {
 			if label, target, end, ok := liveActivityLink(line[i:]); ok {
-				link := target
-				if strings.HasPrefix(target, "/") {
-					path := url.URL{Scheme: "file", Path: target}
-					link = path.String()
-				}
-				out.WriteString("\x1b]8;;" + link + "\x1b\\" + p.Theme.Accent() + "\x1b[4m" + label + "\x1b[24;39m\x1b]8;;\x1b\\")
+				out.WriteString(p.inlineLink(label, target))
 				i += end
 				continue
 			}
 		}
 		if code, end, ok := liveActivityCodeSpan(line, i); ok {
+			if rawFilePath(code) {
+				out.WriteString(p.inlineLink(code, code))
+				i = end
+				continue
+			}
 			// Inline spans have no language tag. Detect from their content,
 			// retaining the accent for plain text and uncolored tokens.
 			highlighted := code
@@ -335,6 +335,18 @@ func (p *Painter) Inline(line string) string {
 			i += 2
 			continue
 		}
+		if i == 0 || strings.ContainsRune(" \t<([\"'", rune(line[i-1])) || i >= 2 && line[i-2:i] == "**" {
+			end := len(line)
+			if stop := strings.IndexAny(line[i:], " \t<>[](){}\"'`*"); stop >= 0 {
+				end = i + stop
+			}
+			path := strings.TrimRight(line[i:end], ".,;!?")
+			if rawFilePath(path) {
+				out.WriteString(p.inlineLink(path, path))
+				i += len(path)
+				continue
+			}
+		}
 		out.WriteByte(line[i])
 		i++
 	}
@@ -342,6 +354,35 @@ func (p *Painter) Inline(line string) string {
 		out.WriteString(Undim)
 	}
 	return out.String()
+}
+
+func (p *Painter) inlineLink(label, target string) string {
+	if strings.HasPrefix(target, "/") {
+		path := url.URL{Scheme: "file", Path: target}
+		target = path.String()
+	}
+	return "\x1b]8;;" + target + "\x1b\\" + p.Theme.Accent() + "\x1b[4m" + label + "\x1b[24;39m\x1b]8;;\x1b\\"
+}
+
+// Recognize file-shaped operands without reading the filesystem during painting.
+// Journal ordinals and canonical agent names are identifiers, not file links.
+func rawFilePath(path string) bool {
+	if path == "" || strings.ContainsAny(path[:1], "#!@$?") || strings.ContainsAny(path, "\x00\r\n\x1b\"'(){}[]=*;") || strings.Contains(path, "://") {
+		return false
+	}
+	base := path
+	if colon := strings.LastIndexByte(base, ':'); colon >= 0 {
+		base = base[:colon]
+	}
+	name := base[strings.LastIndexByte(base, '/')+1:]
+	file := strings.Contains(name, ".") && strings.Trim(name, ". ") != ""
+	if strings.HasPrefix(base, "/") {
+		first := strings.SplitN(base[1:], "/", 2)[0]
+		_, ordinal := strconv.Atoi(first)
+		return name != "" && ordinal != nil && (first != "root" || file)
+	}
+	first := strings.SplitN(base, "/", 2)[0]
+	return !strings.Contains(base, ":") && !strings.ContainsAny(first, " \t") && name != "" && (strings.Contains(base, "/") || file)
 }
 
 // Local paths, file URLs and HTTP(S) URLs become terminal links. File existence

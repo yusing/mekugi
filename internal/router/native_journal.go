@@ -629,6 +629,10 @@ func (u *terminalUI) journalMouse(button, x, y int) error {
 		view.toggle(row)
 		return nil
 	}
+	r := u.layout.journal
+	if _, link := u.selectionScreen(u.paintedRows, r.x+x, r.y+y); link != "" && u.openMarkdownFile(u.main.view, link) {
+		return nil
+	}
 	u.openJournalRow(row.node)
 	return nil
 }

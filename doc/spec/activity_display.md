@@ -82,7 +82,12 @@ spans stay plain with the existing accent, which also colors plain tokens in det
 code. Fenced code retains language-specific highlighting. Decoration must not
 change code text, wrapping, or source-aware copying. Recognized local-file Markdown links show their label as a terminal
 hyperlink rather than exposing the raw destination syntax. Wrapped links retain their
-destination and underline only on their text, never on row padding or gutters. A completed child
+destination and underline only on their text, never on row padding or gutters.
+Raw file-shaped paths in authored text, including journal items and inline code,
+use the same clickable styling without changing the source or copied text.
+Paths with spaces can use an inline code span or an explicit Markdown link.
+Journal ordinals and agent names remain identifiers; fenced code stays literal.
+A completed child
 compaction appears as an event in the feed and as the agent's latest roster
 activity; an attempted or failed compaction does not claim completion.
 Read line spans display as `L25–46`. Each `Run` operation is its own row. In
@@ -185,7 +190,7 @@ from the saved command when its timing is known. `yield_time_ms` does not produc
 a timeout suffix. A suffix that does not fit wraps beneath its operation row.
 
 The shared content dialog captures keys and pointer events above both panes.
-Clicking a recognized Markdown file link in Main, Activity, or Markdown dialog
+Clicking a recognized file link in Main, Activity, Journal, or Markdown dialog
 content opens an existing regular local file in this dialog. Relative paths
 require the current session's workspace metadata; absolute paths and local
 `file:///` URLs are also supported. A `:line` or `:first-last` suffix appears

@@ -25,9 +25,13 @@ func TestMarkdownFileLinkClickAndDrag(t *testing.T) {
 		t.Fatal(err)
 	}
 	fileURL := (&url.URL{Scheme: "file", Path: path}).String()
-	for _, target := range []string{"src/source #1?%.go", path + ":26", fileURL + ":26", "src/source #1?%.go:26-27", fileURL + ":26-27"} {
+	for _, target := range []string{"src/source #1?%.go", path + ":26", fileURL + ":26", "src/source #1?%.go:26-27", fileURL + ":26-27", "`" + path + ":26`"} {
 		t.Run(target, func(t *testing.T) {
 			row := (&activityui.Painter{}).Inline("[source](<" + target + ">)")
+			if strings.HasPrefix(target, "`") {
+				row = (&activityui.Painter{}).Inline(target)
+				target = strings.Trim(target, "`")
+			}
 			u := selectionTestUI(row)
 			u.main.session.cwd = workspace
 			u.selectionMouse(0, 1, 0, false)
@@ -161,7 +165,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	main, _ := newAppServerTestUI()
 	main.session.cwd = workspace
 	u := &terminalUI{main: main, width: 80, height: 18}
-	u.openBlocks(main.view, []activityui.Block{{Body: "Open [source](sample.go:1) or [remote](https://example.com)."}})
+	u.openBlocks(main.view, []activityui.Block{{Body: "Open sample.go:1 or [remote](https://example.com)."}})
 	drawOutputDialog(u)
 	before := u.output
 	x, y := outputSelectionPoint(t, u, "remote")
@@ -170,7 +174,7 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	if u.output != before || u.clipboard != "" {
 		t.Fatal("non-file dialog link behavior changed")
 	}
-	x, y = outputSelectionPoint(t, u, "source")
+	x, y = outputSelectionPoint(t, u, "sample.go:1")
 	u.outputMouse(0, x, y, false)
 	u.outputMouse(0, x, y, true)
 	if u.output == before || u.output.filePath != "sample.go" {
@@ -202,6 +206,32 @@ func TestMarkdownFileLinkFromDialog(t *testing.T) {
 	if !u.openMarkdownFile(main.view, path) || u.output.filePath != path || u.output.fileFirst != 0 {
 		t.Fatal("location parsing took precedence over an exact file name")
 	}
+}
+
+func TestRawFileLinkFromJournalPane(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.ensureShell()
+	t.Cleanup(u.shell.diff.close)
+	u.session.cwd = t.TempDir()
+	if err := os.WriteFile(filepath.Join(u.session.cwd, "sample.go"), []byte("package sample\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	journal := nativeJournalFixture()
+	journal.Items[0].Title = "Read sample.go:1"
+	u.journal = &nativeJournalSink{tree: &journal}
+	u.shell.journalOpen = true
+	rows := nativeJournalPaintedPane(t, u)
+	r := u.shell.layout.journal
+	for y, row := range rows {
+		if x := strings.Index(ansi.Strip(row), "sample.go:1"); x >= 0 {
+			nativeJournalMouse(t, u, 0, r.x+x, r.y+y)
+			if u.shell.output == nil || u.shell.output.filePath != "sample.go" {
+				t.Fatal("journal path click did not open the file")
+			}
+			return
+		}
+	}
+	t.Fatal("journal file path was not rendered")
 }
 
 func TestUISnapshotMarkdownFileDialog(t *testing.T) {
