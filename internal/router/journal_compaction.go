@@ -41,6 +41,7 @@ type journalCompactionItem struct {
 type journalCompactionRecovery struct {
 	Workspace  string `json:"workspace"`
 	Thread     string `json:"thread"`
+	Turn       string `json:"turn,omitempty"`
 	ResponseID string `json:"response_id"`
 	Text       string `json:"text"`
 	Namespace  string `json:"namespace,omitempty"`
@@ -271,7 +272,7 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 			return errors.New("no durable compaction evidence")
 		}
 		id := "resp_mekugi_compact_" + rand.Text()
-		recovery := journalCompactionRecovery{Workspace: workspace, Thread: a.threadID, ResponseID: id, Text: summary.Text}
+		recovery := journalCompactionRecovery{Workspace: workspace, Thread: a.threadID, Turn: a.metadata.TurnID, ResponseID: id, Text: summary.Text}
 		v2 := metadata.Implementation == "responses_compaction_v2"
 		if v2 {
 			handles, handleErr := store.allocateHandlesLocked(1)

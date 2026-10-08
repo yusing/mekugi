@@ -44,6 +44,10 @@ func (u *appServerUI) progress(item appServerItem, method, thread, turn string) 
 	text, wait, handled := appServerProgress(item, method)
 	if item.Type == "contextCompaction" && text != "" {
 		answered := u.journalCompactionAnswered(thread, turn, item.ID)
+		if !answered {
+			u.bindRolloutCompaction(thread, turn, item.ID)
+			answered = u.journalCompactionAnswered(thread, turn, item.ID)
+		}
 		if u.journalResetEvent(thread, turn) {
 			return "", wait, handled // The slice driver's durable journal event owns this reset.
 		}

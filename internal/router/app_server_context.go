@@ -121,6 +121,9 @@ func (p *mekugiProxy) observeContextSliceUsage(thread string, known bool, used, 
 }
 
 func (u *appServerUI) restoreContextUsage(agent *activityPaneAgent, info appServerThreadInfo) {
+	if info.ID == u.thread {
+		u.session.compactionRollout = appServerThreadInfo{ID: info.ID, Path: info.Path, Cwd: info.Cwd}
+	}
 	restoreContextUsage(agent, info)
 	if agent != nil {
 		u.proxy.observeContextSliceUsage(info.ID, agent.ContextKnown, agent.ContextTokens, agent.ContextWindow)

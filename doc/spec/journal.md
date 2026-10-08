@@ -303,7 +303,10 @@ its zero-provider-token claim. These rows appear once without duplicate native
 progress commentary. Receipts retain answered-item provenance across later resets.
 Buffered manual standalone notifications bind their retained answer to the unique
 host item; ordinary automatic compactions can share a turn and cannot be identified
-from buffered UI observations alone. In `off` and `slice`, ordinary provider rows
+from buffered UI observations alone. For paginated sessions, the verified
+host-selected rollout associates the completed compaction item with its original
+response. Missing, older, or ambiguous rollout evidence keeps the generic label.
+In `off` and `slice`, ordinary provider rows
 keep “Context compacted”.
 
 The journal's “Context reset from journal” row opens the shared scrollable dialog

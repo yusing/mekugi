@@ -42,6 +42,8 @@ type appServerSession struct {
 	waits           map[[3]string][]appServerWaitTarget // Start-time targets by thread, turn, item.
 	waitStore       *mekugiReplayStore
 	waitContext     context.Context
+
+	compactionRollout appServerThreadInfo // Host-selected Main rollout, without its history.
 }
 
 // appServerCommandRun is a started command whose streamed output tail is

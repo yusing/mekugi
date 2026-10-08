@@ -47,6 +47,8 @@ task/change evidence, and suppresses only the matching recovery hook injection.
 The native journal-presentation fixture drives ordinary manual `/compact` in
 `auto` mode through real app-server notifications, checking journal-reset rendering
 and exact host-item provenance after reopening storage, without slice-driven dispatch.
+The native journal-rollout disclosure fixture also checks the installed host's
+paginated item-to-compaction-response association with built-in OpenAI V2 compaction.
 The slice-reset fixture drives manual app-server compaction followed by the next
 planned turn through the shared reset policy. It verifies the continuation path,
 recovered summary and consumed intent without a provider compaction request.
