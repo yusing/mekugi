@@ -50,12 +50,27 @@ func (s *journalStore) completedSlice(ctx context.Context, store *mekugiReplaySt
 			return errJournalUnchanged
 		}
 		j.ResetHandledTurn, j.ResetIntent = turn, nil
-		// A blocker is an explicit stop, not an invitation to try another turn.
-		for _, item := range j.Items {
-			if item.Kind == "task" && item.State == "blocked" {
-				return nil
-			}
+		if next := j.continuationCandidate(turn); next != nil {
+			next.ID = rand.Text()
+			j.ResetIntent = next
+			copy := *next
+			intent = &copy
 		}
+		return nil
+	})
+	return intent, err
+}
+
+// Select from candidate journal facts without handling a turn or allocating an
+// intent ID. Main continuation owns its root gate; finish checks each caller's work.
+func (j *threadJournal) continuationCandidate(turn string) *journalResetIntent {
+	// A blocker is an explicit stop, not an invitation to try another turn.
+	for _, item := range j.Items {
+		if item.Kind == "task" && item.State == "blocked" {
+			return nil
+		}
+	}
+	if turn != "" && j.TurnID == turn {
 		for _, event := range j.Events {
 			if event.Seq <= j.TurnStartSeq || !event.Transition || event.Fields.State != "done" || !j.SliceParents[journalParent(event.Path)] {
 				continue
@@ -66,28 +81,20 @@ func (s *journalStore) completedSlice(ctx context.Context, store *mekugiReplaySt
 			}
 			for _, item := range j.Items {
 				if item.Kind == "task" && item.State == "pending" && item.Agent == "" && j.StoppedTasks[item.Path] == "" && journalParent(item.Path) == journalParent(event.Path) {
-					j.ResetIntent = &journalResetIntent{ID: rand.Text(), Turn: turn, Path: item.Path, Title: item.Title, Phase: "pending"}
-					copy := *j.ResetIntent
-					intent = &copy
-					return nil
+					return &journalResetIntent{Turn: turn, Path: item.Path, Title: item.Title, Phase: "pending"}
 				}
 			}
 		}
-		// A substantive answer does not finish an open plan. Prefer work already
-		// in progress, without requiring a mutation in this (possibly follow-up) turn.
-		for _, state := range []string{"working", "pending"} {
-			for _, item := range j.Items {
-				if item.State == state && j.runnableJournalTask(item.Path) {
-					j.ResetIntent = &journalResetIntent{ID: rand.Text(), Turn: turn, Path: item.Path, Title: item.Title, Phase: "pending", Resume: true}
-					copy := *j.ResetIntent
-					intent = &copy
-					return nil
-				}
+	}
+	// Prefer work already in progress, including an unchanged follow-up turn.
+	for _, state := range []string{"working", "pending"} {
+		for _, item := range j.Items {
+			if item.State == state && j.runnableJournalTask(item.Path) {
+				return &journalResetIntent{Turn: turn, Path: item.Path, Title: item.Title, Phase: "pending", Resume: true}
 			}
 		}
-		return nil
-	})
-	return intent, err
+	}
+	return nil
 }
 
 // Only local runnable work may drive a turn. A parent waiting for unfinished
