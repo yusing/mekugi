@@ -102,6 +102,21 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 	}
 }
 
+func TestUISnapshotMoveIntent(t *testing.T) {
+	const move = "mv internal/router/testdata/snapshots/journal-noise-blocked-strip.txt.new internal/router/testdata/snapshots/journal-noise-blocked-strip.txt"
+	command := move + "; gofmt -w internal/router/native_journal.go"
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.painter.Theme = livediff.DarkTheme
+	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+		Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command),
+		native: &liveActivityNativeItem{thread: "main", item: "cmd", command: command, status: "completed", segments: []commandSegment{
+			{source: move, text: execSegmentText(move)},
+			{source: "gofmt -w internal/router/native_journal.go", text: execSegmentText("gofmt -w internal/router/native_journal.go")},
+		}},
+	}}})
+	assertNativeUISnapshot(t, "move-intent-ran", u.view.renderConversation(100).lines)
+}
+
 func TestRequestedReasoningHeadsOperationTree(t *testing.T) {
 	for _, agent := range []string{"Main", "/root/worker"} {
 		for _, operation := range []struct{ text, first string }{

@@ -158,6 +158,10 @@ it in place with the observed file changes. Read-only `sed` is not an edit.
 `cat` output redirections also show edit intent for simple variable targets,
 keeping the target expression unevaluated and the heredoc body out of Run cards.
 Literal, statically scoped `rm` commands show requested `Delete` intent.
+Literal, statically scoped `mv` commands show requested `Move` intent with the
+source and destination operands. Explicit directory targets show each source's
+destination within that directory. An unforced two-operand destination remains
+the requested operand; only captured evidence establishes the resulting paths.
 A receipt replaces edit intent without removing neighboring operations in a
 mixed script; combined host output remains attached to the final operation.
 
