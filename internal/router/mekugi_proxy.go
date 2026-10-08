@@ -526,7 +526,16 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	envelopes := prepareSubagentInputEnvelopes(request.fields, recipient)
 
 	tools := request.responseTools()
-	directory, _ := usableRoutingDirectory(metadata.Directories)
+	directory, directorySelected := usableRoutingDirectory(metadata.Directories)
+	if !directorySelected && len(metadata.Directories) != 0 {
+		_, local, err := journalCompactionInput(request)
+		if err != nil {
+			return nil, err
+		}
+		if local {
+			return nil, errors.New("journal compaction recovery workspace is unavailable")
+		}
+	}
 	originalTools, originalToolsPresent := request.fields["tools"]
 	originalTools = bytes.Clone(originalTools)
 	originalToolChoice, originalToolChoicePresent := request.fields["tool_choice"]

@@ -268,7 +268,13 @@ Responses compaction V2. A router-owned V2 item refers to the exact retained
 journal summary. Later requests resolve that item locally before provider
 forwarding; its reference never reaches the provider. Resolution uses existing
 durable scope and recovery ownership, including permitted inherited history.
-Missing or unauthorized recovery fails before inference. Provider-owned
+When a consuming request omits workspace metadata, an authorized reference uses
+its source thread's unique workspace from retained journal/execution records.
+This applies to ordinary, execution-free and prewarm requests, including resume
+with retained ancestry. It does not supply a filesystem execution directory.
+Declared unusable or different workspaces remain errors; absent or ambiguous
+source evidence fails before inference. Missing or unauthorized recovery fails
+before inference. Provider-owned
 encrypted compaction items remain unchanged. The summary and its thread/workspace
 and response identity persist before exposure. No model request is made for the
 local reset, and no model usage is fabricated. Metrics distinguish router answers from

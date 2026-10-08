@@ -85,9 +85,6 @@ func (p *mekugiProxy) prepareJournalCompactionInput(ctx context.Context, request
 	if err != nil {
 		return err
 	}
-	if workspace == "" {
-		return errors.New("journal compaction recovery workspace is unavailable")
-	}
 	ctx, err = p.replayStore.prepareHandleScope(ctx, metadata)
 	if err != nil {
 		return err
@@ -149,7 +146,16 @@ func (s *mekugiReplayStore) restoreJournalCompactionItems(ctx context.Context, r
 			if err != nil {
 				return err
 			}
-			name := journalCompactionRecoveryName(workspace, parts[1], parts[2])
+			recoveryWorkspace := workspace
+			if recoveryWorkspace == "" {
+				// Authorization precedes source lookup. Recovery scope never
+				// supplies the request's filesystem execution directory.
+				recoveryWorkspace, err = s.compactionWorkspace(parts[1])
+				if err != nil {
+					return fmt.Errorf("resolve journal compaction recovery workspace: %w", err)
+				}
+			}
+			name := journalCompactionRecoveryName(recoveryWorkspace, parts[1], parts[2])
 			data, err := readManagedOutputFile(filepath.Join(s.directory, name))
 			if err != nil {
 				return fmt.Errorf("read journal compaction recovery: %w", err)
@@ -158,7 +164,7 @@ func (s *mekugiReplayStore) restoreJournalCompactionItems(ctx context.Context, r
 			if err := json.Unmarshal(data, &recovery); err != nil {
 				return err
 			}
-			if recovery.Workspace != workspace || recovery.Thread != parts[1] || recovery.ResponseID != parts[2] || recovery.Reference != reference || recovery.Namespace != owner || strings.TrimSpace(recovery.Text) == "" || len(recovery.Text) > maxJournalSummaryBytes {
+			if recovery.Workspace != recoveryWorkspace || recovery.Thread != parts[1] || recovery.ResponseID != parts[2] || recovery.Reference != reference || recovery.Namespace != owner || strings.TrimSpace(recovery.Text) == "" || len(recovery.Text) > maxJournalSummaryBytes {
 				return errors.New("invalid journal compaction recovery identity or size")
 			}
 			items[index] = map[string]jsonv1.RawMessage{

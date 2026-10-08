@@ -81,6 +81,9 @@ func v2ContinuityRequest(t *testing.T, workspace, thread, parent, fork string, i
 	})
 	headers := serverMetadataHeaders(t, "turn", map[string]jsonv1.RawMessage{workspace: nil})
 	metadata, _ := decodeCodexTurnMetadata(headers)
+	if workspace == "" {
+		metadata.Directories = nil
+	}
 	metadata.ThreadID, metadata.ParentThreadID, metadata.ForkedFromThreadID = thread, parent, fork
 	if parent != "" {
 		metadata.SubagentKind = "thread_spawn"
@@ -173,7 +176,7 @@ func TestJournalCompactionV2ContinuityDurableHistories(t *testing.T) {
 
 func TestJournalCompactionV2ContinuityUnavailableRecoveryFailsBeforeProvider(t *testing.T) {
 	t.Parallel()
-	for _, boundary := range []string{"unrelated-thread", "unrelated-workspace", "missing-record", "corrupt-identity"} {
+	for _, boundary := range []string{"unrelated-thread", "unrelated-workspace", "declared-unusable", "missing-workspace-evidence", "ambiguous-workspace-evidence", "missing-record", "corrupt-identity"} {
 		t.Run(boundary, func(t *testing.T) {
 			transform, proxy, _, workspace := newDurableTreeTransform(t)
 			thread := transform.shellThreadID
@@ -188,6 +191,18 @@ func TestJournalCompactionV2ContinuityUnavailableRecoveryFailsBeforeProvider(t *
 				thread = "unrelated-thread"
 			case "unrelated-workspace":
 				workspace = t.TempDir()
+			case "declared-unusable":
+				workspace = "relative-workspace"
+			case "missing-workspace-evidence":
+				if err := os.Remove(filepath.Join(proxy.replayStore.directory, storageSessionName(thread))); err != nil {
+					t.Fatal(err)
+				}
+				workspace = ""
+			case "ambiguous-workspace-evidence":
+				if err := proxy.journals.initialize(transform.ctx, proxy.replayStore, t.TempDir(), thread, "/root", ""); err != nil {
+					t.Fatal(err)
+				}
+				workspace = ""
 			case "missing-record":
 				if err := os.Remove(path); err != nil {
 					t.Fatal(err)
@@ -210,6 +225,73 @@ func TestJournalCompactionV2ContinuityUnavailableRecoveryFailsBeforeProvider(t *
 				t.Fatal("unavailable recovery reached provider")
 			}
 		})
+	}
+}
+
+func TestJournalCompactionV2ContinuityApprovalWithoutWorkspace(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{"ordinary", "execution-free"} {
+		t.Run(path, func(t *testing.T) {
+			transform, proxy, _, workspace := newDurableTreeTransform(t)
+			source := transform.shellThreadID
+			proxy.journalCompaction = "auto"
+			if _, err := proxy.journals.apply(transform.ctx, proxy.replayStore, workspace, source, "", []journalMutation{{Op: "add", Kind: "context", Title: new("Approval recovery source")}}); err != nil {
+				t.Fatal(err)
+			}
+			item, recovery := deliverV2ContinuityReset(t, proxy, workspace, source)
+			transform.Close()
+			for _, parent := range []string{source, ""} {
+				proxy = reopenV2ContinuityProxy(t, proxy)
+				request, headers := v2ContinuityRequest(t, "", "approval-thread", parent, "", item)
+				if path == "execution-free" {
+					request = serverRequest(t, func(fields map[string]any) {
+						delete(fields, "tools")
+						fields["input"] = []any{item, map[string]any{"type": "compaction", "encrypted_content": "provider-ciphertext"}, map[string]any{"role": "user", "content": "Approve the command."}}
+					})
+				}
+				provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
+				var output bytes.Buffer
+				attempt := newRequestAttempt(requestExecutor{provider: provider, output: &output, issues: NewCriticalErrors(), mekugiCalls: proxy}, t.Context(), t.Context(), request, headers, "approval")
+				continuation, err := attempt.run()
+				if err := attempt.finish(err); err != nil {
+					t.Fatal(err)
+				}
+				if continuation != nil {
+					t.Fatal("approval request started a journal continuation")
+				}
+				if prepared := attempt.mekugiTransform; prepared != nil && prepared.directory != "" {
+					t.Fatalf("recovery selected execution directory %q", prepared.directory)
+				}
+				requireV2SummaryForward(t, provider.forwarded, recovery.Text)
+			}
+		})
+	}
+}
+
+func TestJournalCompactionV2ContinuityRejectsChangedCallBeforeFallback(t *testing.T) {
+	t.Parallel()
+	transform, proxy, _, workspace := newDurableTreeTransform(t)
+	thread := transform.shellThreadID
+	proxy.journalCompaction = "auto"
+	if _, err := proxy.journals.apply(transform.ctx, proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "add", Kind: "context", Title: new("Retained call validation")}}); err != nil {
+		t.Fatal(err)
+	}
+	item, _ := deliverV2ContinuityReset(t, proxy, workspace, thread)
+	writeTestFile(t, filepath.Join(workspace, "file.txt"), "original\n")
+	retainCommandObservation(t, transform, "retained-call", string(mustTestJSON(t, map[string]any{"cmd": "printf retained > file.txt"})))
+	transform.Close()
+	proxy = reopenV2ContinuityProxy(t, proxy)
+	proxy.journalCompaction = "slice"
+	request, headers := journalCompactionV2Request(t, workspace, thread)
+	request.fields["input"] = mustTestJSON(t, []any{item, map[string]any{"type": "function_call", "call_id": "retained-call", "name": nativeExecCommandToolName, "arguments": string(mustTestJSON(t, map[string]any{"cmd": "printf changed > file.txt"}))}, map[string]any{"type": "compaction_trigger"}})
+	metadata, _ := decodeCodexTurnMetadata(headers)
+	metadata.Directories = nil
+	headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, metadata)))
+	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
+	var output bytes.Buffer
+	err := executeRequest(t.Context(), t.Context(), request, headers, "changed-call", provider, &output, nil, proxy)
+	if err == nil || !strings.Contains(err.Error(), "changed translated payload") || len(provider.forwarded) != 0 {
+		t.Fatalf("changed call was not rejected before fallback: error=%v forwards=%d", err, len(provider.forwarded))
 	}
 }
 
@@ -248,6 +330,9 @@ func TestJournalCompactionV2ContinuityWebSocketPrewarm(t *testing.T) {
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	thread := transform.shellThreadID
 	proxy.journalCompaction = "auto"
+	if _, err := proxy.journals.apply(transform.ctx, proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "add", Kind: "context", Title: new("Prewarm recovery source")}}); err != nil {
+		t.Fatal(err)
+	}
 	item, recovery := deliverV2ContinuityReset(t, proxy, workspace, thread)
 	transform.Close()
 	proxy = reopenV2ContinuityProxy(t, proxy)
@@ -288,7 +373,7 @@ func TestJournalCompactionV2ContinuityWebSocketPrewarm(t *testing.T) {
 		}
 		_, _, _ = upstream.Read(ctx)
 	}), proxy, headers)
-	metadata := codexTurnMetadata{RequestKind: "prewarm", ThreadID: thread, Directories: map[string]jsonv1.RawMessage{workspace: nil}}
+	metadata := codexTurnMetadata{RequestKind: "prewarm", ThreadID: thread}
 	clientMetadata := map[string]string{codexTurnMetadataHeader: string(mustTestJSON(t, metadata)), threadIDHeader: thread}
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "generate": false, "input": []any{item}, "client_metadata": clientMetadata})
 	if result := socketRead(t, ctx, conn); jsonString(result, "type") != "response.completed" {
