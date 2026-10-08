@@ -164,6 +164,7 @@ func startObservationService(owner *nativeObservationOwner) (*ObservationService
 					result := CompanionPresentation{Plugin: s.plugin}
 					if s.registry != nil {
 						result.FrontendDirectory = s.registry.frontendDirectory
+						result.ManagedSkills = skillsManagerInWorkspace(owner.workspace, result.FrontendDirectory)
 					}
 					owner.mu.Unlock()
 					w.Header().Set("Content-Type", "application/json")

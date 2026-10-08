@@ -3,20 +3,30 @@ package router
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 )
 
 func skillsManagerInPath(extraDirectory string) bool {
-	if path, err := exec.LookPath("skills-mgr"); err == nil || path != "" && errors.Is(err, exec.ErrDot) {
-		return true
+	return skillsManagerInWorkspace("", extraDirectory)
+}
+
+func skillsManagerInWorkspace(workspace, extraDirectory string) bool {
+	directories := filepath.SplitList(os.Getenv("PATH"))
+	if extraDirectory != "" {
+		directories = append(directories, extraDirectory)
 	}
-	if extraDirectory == "" {
-		return false
+	for _, directory := range directories {
+		if workspace != "" && !filepath.IsAbs(directory) {
+			directory = filepath.Join(workspace, directory)
+		}
+		if path, err := exec.LookPath(filepath.Join(directory, "skills-mgr")); err == nil || path != "" && errors.Is(err, exec.ErrDot) {
+			return true
+		}
 	}
-	_, err := exec.LookPath(filepath.Join(extraDirectory, "skills-mgr"))
-	return err == nil
+	return false
 }
 
 func selectedSkillInstructions(text string) (name, path string) {

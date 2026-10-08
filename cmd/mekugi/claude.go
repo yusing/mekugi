@@ -120,7 +120,7 @@ func runClaude(ctx context.Context, args []string, in, out *os.File, stderr io.W
 			return fail(err)
 		}
 	}
-	config.Companion = &claude.ObservationEndpoint{Socket: endpoint.Socket, Token: endpoint.Token, Plugin: presentation.Plugin, FrontendDirectory: presentation.FrontendDirectory, JournalSchema: presentation.JournalSchema, BashEnv: bashEnv, VCSGuard: *guard}
+	config.Companion = &claude.ObservationEndpoint{Socket: endpoint.Socket, Token: endpoint.Token, Plugin: presentation.Plugin, FrontendDirectory: presentation.FrontendDirectory, ManagedSkills: presentation.ManagedSkills, JournalSchema: presentation.JournalSchema, BashEnv: bashEnv, VCSGuard: *guard}
 	if *guard {
 		config.Companion.VCSGuardHelper = helper
 	}

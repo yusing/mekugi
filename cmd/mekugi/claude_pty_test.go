@@ -31,6 +31,7 @@ type claudeLaunchReport struct {
 	Socket            string        `json:"socket"`
 	Plugin            string        `json:"plugin"`
 	FrontendDirectory string        `json:"frontendDirectory"`
+	ManagedSkills     bool          `json:"managedSkills"`
 	ShellOutput       string        `json:"shellOutput,omitempty"`
 }
 
@@ -149,7 +150,7 @@ func TestClaudeLaunchPTYProcess(t *testing.T) {
 			}
 			shellOutput = string(output)
 		}
-		report, err := json.Marshal(claudeLaunchReport{Config: launch.Config, Socket: endpoint.Socket, Plugin: endpoint.Plugin, FrontendDirectory: endpoint.FrontendDirectory, ShellOutput: shellOutput})
+		report, err := json.Marshal(claudeLaunchReport{Config: launch.Config, Socket: endpoint.Socket, Plugin: endpoint.Plugin, FrontendDirectory: endpoint.FrontendDirectory, ManagedSkills: endpoint.ManagedSkills, ShellOutput: shellOutput})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -213,9 +214,12 @@ func TestClaudeDefaultLaunchPTY(t *testing.T) {
 			}
 			command := exec.CommandContext(ctx, launcher, args...)
 			command.Env = append(os.Environ(), "MEKUGI_TEST_CLAUDE_LAUNCH_PROCESS=ui", "MEKUGI_TEST_CLAUDE_LAUNCH_REPORT="+reportPath,
-				"PATH="+directory+string(os.PathListSeparator)+os.Getenv("PATH"), "XDG_STATE_HOME="+filepath.Join(directory, "state"),
+				"PATH="+directory, "XDG_STATE_HOME="+filepath.Join(directory, "state"),
 				"XDG_CONFIG_HOME="+filepath.Join(directory, "config"), "MEKUGI_RUNTIME_DIR="+filepath.Join(directory, "runtime"), "TERM=xterm-256color")
 			if controls {
+				if err := os.WriteFile(filepath.Join(directory, "skills-mgr"), []byte("#!/bin/sh\n"), 0700); err != nil {
+					t.Fatal(err)
+				}
 				outer := filepath.Join(directory, "parent", "bin")
 				if err := os.MkdirAll(outer, 0700); err != nil {
 					t.Fatal(err)
@@ -321,6 +325,9 @@ func TestClaudeDefaultLaunchPTY(t *testing.T) {
 			}
 			if !reflect.DeepEqual(report.Config, want) {
 				t.Fatal("native CLI controls or workspace changed at bridge boundary")
+			}
+			if report.ManagedSkills != controls {
+				t.Fatal("launcher lost the selected native skill owner at the private bridge boundary")
 			}
 			if controls && report.ShellOutput != "REAL_GIT native_kept" {
 				t.Fatalf("native launch borrowed its parent guard or lost caller startup: %q", report.ShellOutput)

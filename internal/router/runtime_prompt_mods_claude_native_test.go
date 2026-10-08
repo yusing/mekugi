@@ -16,6 +16,10 @@ func nativeGuidanceFixtureConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CLAUDE_CONFIG_DIR", directory)
+	if err := os.WriteFile(filepath.Join(directory, "skills-mgr"), []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 // These replacements run only in the scripted-provider guidance fixtures.
@@ -61,4 +65,17 @@ func assertNativePromptModFixture(t *testing.T, packet map[string]any, preset bo
 		}
 	}
 	t.Fatal("native prompt-mod fixture has no Read tool")
+}
+
+func assertNativeManagedSkillFixture(t *testing.T, packet map[string]any, managed bool) {
+	t.Helper()
+	tools, _ := packet["tools"].([]any)
+	found := false
+	for _, value := range tools {
+		tool, _ := value.(map[string]any)
+		found = found || tool["name"] == "Skill"
+	}
+	if found == managed {
+		t.Fatalf("native Skill availability differs from selected owner: managed=%t offered=%t", managed, found)
+	}
 }

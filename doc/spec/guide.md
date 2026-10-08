@@ -208,6 +208,11 @@ the durable journal for its plan, task states, established facts and constraints
 small answers and necessary questions remain conversational. Native tool
 restrictions and permission policy remain authoritative.
 
+When `skills-mgr` is executable in the native invocation PATH, it owns skill
+loading and the invocation disables Claude's native `Skill` tool. The native
+tool remains available when that manager is absent. Saved confirmed skill
+loads remain part of native history and current-context restoration.
+
 Fresh native queries append the mandatory generated workflow and the complete
 authenticated frontend catalog to Claude's preset prompt. Resume preserves the
 native pinned prompt and receives current guidance through its first

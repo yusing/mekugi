@@ -98,7 +98,7 @@ func TestRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T) {
 	if err := os.Mkdir(agents, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(agents, "guidance-acceptance.md"), []byte("---\nname: guidance-acceptance\ndescription: Isolated native guidance acceptance.\ntools: Read\nmodel: haiku\n---\nReturn CHILD_ACCEPTED without tools.\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(agents, "guidance-acceptance.md"), []byte("---\nname: guidance-acceptance\ndescription: Isolated native guidance acceptance.\ntools: Read, Skill\nmodel: haiku\n---\nReturn CHILD_ACCEPTED without tools.\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	skill, err := os.ReadFile(filepath.Join(presentation.Plugin, "skills", "mekugi", "SKILL.md"))
@@ -119,7 +119,7 @@ func TestRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T) {
 		t.Fatal(err)
 	}
 	endpoint := service.Endpoint()
-	client, err := claude.Start(ctx, "node", bridge, claude.Config{Cwd: binding.Workspace, Executable: executable, Model: "haiku", Companion: &claude.ObservationEndpoint{Socket: endpoint.Socket, Token: endpoint.Token, Plugin: presentation.Plugin, FrontendDirectory: presentation.FrontendDirectory, JournalSchema: presentation.JournalSchema}})
+	client, err := claude.Start(ctx, "node", bridge, claude.Config{Cwd: binding.Workspace, Executable: executable, Model: "haiku", Companion: &claude.ObservationEndpoint{Socket: endpoint.Socket, Token: endpoint.Token, Plugin: presentation.Plugin, FrontendDirectory: presentation.FrontendDirectory, ManagedSkills: presentation.ManagedSkills, JournalSchema: presentation.JournalSchema}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,6 +197,7 @@ func TestRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T) {
 	for name, packet := range map[string]map[string]any{"child": childPacket, "post-compact": compactPacket} {
 		// A native custom child's prompt has no preset session_guidance section.
 		assertNativePromptModFixture(t, packet, name != "child")
+		assertNativeManagedSkillFixture(t, packet, presentation.ManagedSkills)
 		if name == "child" && !strings.Contains(nativeGuidanceRequestText(packet["system"]), "Return CHILD_ACCEPTED without tools.") {
 			t.Fatal("prompt mods replaced the native custom child's system instructions")
 		}

@@ -40,7 +40,20 @@ func TestRuntimeGuidanceClaudeNativeDelivery(t *testing.T) {
 				case requests <- packet:
 				default:
 				}
-				nativeGuidanceProviderReply(w, packet, []any{map[string]any{"type": "text", "text": "OK"}}, "end_turn")
+				content := []any{map[string]any{"type": "text", "text": "OK"}}
+				stop := "end_turn"
+				tools, _ := packet["tools"].([]any)
+				skillOffered := false
+				for _, value := range tools {
+					tool, _ := value.(map[string]any)
+					skillOffered = skillOffered || tool["name"] == "Skill"
+				}
+				text := nativeGuidanceRequestText(packet)
+				if len(tools) > 0 && !skillOffered && !strings.Contains(text, "native-disabled-skill") {
+					content = []any{map[string]any{"type": "tool_use", "id": "native-disabled-skill", "name": "Skill", "input": map[string]any{"skill": "mekugi:mekugi"}}}
+					stop = "tool_use"
+				}
+				nativeGuidanceProviderReply(w, packet, content, stop)
 				return
 			}
 		}
@@ -64,9 +77,9 @@ func TestRuntimeGuidanceClaudeNativeDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 	endpoint := service.Endpoint()
-	capture := func(resume string) (map[string]any, string) {
+	capture := func(resume string, managed bool) (map[string]any, string) {
 		client, err := claude.Start(ctx, "node", bridge, claude.Config{Cwd: binding.Workspace, Executable: executable, Model: "haiku", Resume: resume, Companion: &claude.ObservationEndpoint{
-			Socket: endpoint.Socket, Token: endpoint.Token, Plugin: presentation.Plugin, FrontendDirectory: presentation.FrontendDirectory, JournalSchema: presentation.JournalSchema,
+			Socket: endpoint.Socket, Token: endpoint.Token, Plugin: presentation.Plugin, FrontendDirectory: presentation.FrontendDirectory, ManagedSkills: managed, JournalSchema: presentation.JournalSchema,
 		}})
 		if err != nil {
 			t.Fatal(err)
@@ -75,6 +88,7 @@ func TestRuntimeGuidanceClaudeNativeDelivery(t *testing.T) {
 		var packet map[string]any
 		var nativeSession string
 		completed := false
+		blockedSkill := false
 		for packet == nil || nativeSession == "" || !completed {
 			select {
 			case <-ctx.Done():
@@ -97,6 +111,12 @@ func TestRuntimeGuidanceClaudeNativeDelivery(t *testing.T) {
 				if event.Kind == "session" {
 					nativeSession = event.SessionID
 				}
+				if event.Kind == "tool_result" && event.ID == "native-disabled-skill" {
+					if !event.Failed {
+						t.Fatal("a disallowed native Skill call executed successfully")
+					}
+					blockedSkill = true
+				}
 				if event.Kind == "done" {
 					if event.Failed {
 						t.Fatalf("scripted native turn failed: %s", event.Text)
@@ -110,10 +130,17 @@ func TestRuntimeGuidanceClaudeNativeDelivery(t *testing.T) {
 				}
 			}
 		}
+		if managed && resume == "" && !blockedSkill {
+			t.Fatal("native disallowed Skill execution was not checked")
+		}
 		return packet, nativeSession
 	}
-	packet, nativeSession := capture("")
+	if !presentation.ManagedSkills {
+		t.Fatal("companion did not select the fixture's skills-mgr owner")
+	}
+	packet, nativeSession := capture("", presentation.ManagedSkills)
 	assertNativePromptModFixture(t, packet, true)
+	assertNativeManagedSkillFixture(t, packet, presentation.ManagedSkills)
 	skillPath := filepath.Join(presentation.Plugin, "skills", "mekugi", "SKILL.md")
 	skill, err := os.ReadFile(skillPath)
 	if err != nil {
@@ -163,8 +190,9 @@ func TestRuntimeGuidanceClaudeNativeDelivery(t *testing.T) {
 	if err := os.WriteFile(skillPath, append(skill, []byte("\n"+current+"\n")...), 0600); err != nil {
 		t.Fatal(err)
 	}
-	resumed, resumedSession := capture(nativeSession)
+	resumed, resumedSession := capture(nativeSession, presentation.ManagedSkills)
 	assertNativePromptModFixture(t, resumed, true)
+	assertNativeManagedSkillFixture(t, resumed, presentation.ManagedSkills)
 	if resumedSession != nativeSession {
 		t.Fatal("native resume changed identity")
 	}
@@ -174,5 +202,7 @@ func TestRuntimeGuidanceClaudeNativeDelivery(t *testing.T) {
 		t.Fatal("complete current guidance is absent from resumed input context")
 	}
 	assertNativeFrontendContracts(t, service.registry, resumed["messages"])
+	unmanaged, _ := capture("", false)
+	assertNativeManagedSkillFixture(t, unmanaged, false)
 	t.Log("complete production guidance and MCP descriptors reached native fresh and resumed requests; no model ran")
 }

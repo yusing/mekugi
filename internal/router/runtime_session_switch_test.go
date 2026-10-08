@@ -1,6 +1,7 @@
 package router
 
 import (
+	json "encoding/json/v2"
 	"github.com/yusing/mekugi/internal/session"
 	"net/http"
 	"os"
@@ -158,8 +159,16 @@ func TestRuntimeSessionSwitchStagesWorkspaceCompanion(t *testing.T) {
 	t.Setenv(routerTestWorkerEnvironment, "1")
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
 	s, a, client := runtimeJournalFixture(t)
-	if _, err := s.PrepareCompanion(t.Context()); err != nil {
+	managerDir := filepath.Join(a.Workspace, "bin")
+	if err := os.Mkdir(managerDir, 0700); err != nil {
 		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(managerDir, "skills-mgr"), []byte("#!/bin/sh\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", "bin")
+	if p, err := s.PrepareCompanion(t.Context()); err != nil || !p.ManagedSkills {
+		t.Fatalf("selected workspace A manager was not found: managed=%t error=%v", p.ManagedSkills, err)
 	}
 	runtimeJournalBind(t, s, a, client)
 	runtimeJournalAdd(t, s, a, client, "saved-a", "Only workspace A")
@@ -177,12 +186,17 @@ func TestRuntimeSessionSwitchStagesWorkspaceCompanion(t *testing.T) {
 		t.Fatalf("preflight retired source context: %+v %v", root, err)
 	}
 	staged := s.stagedCompanion
+	if staged.presentation.ManagedSkills {
+		t.Fatal("workspace B borrowed workspace A's relative skills-mgr")
+	}
 	manifest, err := readToolWorkerManifest(filepath.Join(staged.registry.SnapshotDir, toolPluginManifestFilename))
 	if err != nil || manifest.Runtime == nil || manifest.Runtime.Workspace != b.Workspace {
 		t.Fatalf("target frontends were not authenticated for B: %+v %v", manifest.Runtime, err)
 	}
-	if err := s.switchSession(t.Context(), a, b, false); err != nil {
-		t.Fatal(err)
+	status, body := observationPost(t, s, client, s.Endpoint().Token, observationRequest{Operation: "session_switch", Source: a, Binding: b})
+	var presentation map[string]any
+	if status != http.StatusOK || json.Unmarshal([]byte(body), &presentation) != nil || presentation["managedSkills"] != false {
+		t.Fatalf("handoff did not replace managed ownership with explicit false: %d %s", status, body)
 	}
 	if _, err := runtimeFrontendContext(t.Context(), originalBinding); err == nil {
 		t.Fatal("retired frontend capability borrowed B context")

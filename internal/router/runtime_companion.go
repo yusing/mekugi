@@ -19,6 +19,7 @@ var claudeCompanionSkill string
 type CompanionPresentation struct {
 	Plugin            string         `json:"plugin,omitempty"`
 	FrontendDirectory string         `json:"frontendDirectory,omitempty"`
+	ManagedSkills     bool           `json:"managedSkills"`
 	JournalSchema     jsontext.Value `json:"journalSchema,omitempty"`
 }
 
@@ -62,6 +63,7 @@ func (s *ObservationService) prepareCompanion(ctx context.Context, workspace, to
 		return result, registry, err
 	}
 	result.FrontendDirectory = registry.frontendDirectory
+	result.ManagedSkills = skillsManagerInWorkspace(workspace, result.FrontendDirectory)
 	utilitiesText = "Run the enabled commands through Claude's native Bash, with its normal permissions. The shared frontend contracts are injected into native context; [their catalog](frontends.md) is a recovery reference. Native Bash has no Codex yielded-session or write_stdin protocol.\n\nUse explicit recorded change IDs received from companion hooks or the saved Diff pane. Use MCP mchanges with args [] or [\"--mine\"] for your own changes, or [\"--list\"] to recover your IDs. This read-only adapter joins the exact native caller receipt to the shared change reader. Invocation-wide Bash environment does not prove agent identity, so implicit selection remains unavailable in Bash. --workspace cannot select another workspace. Apply/revert require explicit IDs and execute only in the native Bash process; mread recovers retained output without repeating a mutation. Background capture receipts may appear only in saved Diff."
 	journalText = "Use companion MCP journal_batch for a batch of plan/add/set/log/remove operations and journal_read for trees (p, depth, view, and agent when ancestry is proven). Paths are stable sibling ordinals. A batch is atomic; a rejected operation leaves the tree unchanged. Task states are pending, working, done, blocked or dropped; blocked/dropped require reason. Context nodes retain constraints, notes retain established facts, tasks retain actionable work. Update the owning node instead of duplicating or contradicting it.\n\nThe MCP handler joins native tool-use metadata to an exact authenticated hook receipt. Missing caller evidence is a rejection, not root authority. Child journals remain unmounted until native Agent results establish their parent; mounted views are read-only. Use view own for an unbound child. Completing a native turn prepares a work report but does not finish authored tasks. Do not add a journal-only finish call or rewrite the substantive answer. Record a plan with reset: slice to use journal-only context reset between completed slices. The shared UI continues runnable work after successful turns, with an Escape-cancellable countdown. Mark input-needed tasks blocked and completed tasks done. Reset uses a fresh native session and retained journal context, not a provider summary; it waits for background work and permissions. Do not record transient handles as resumable state. Classic native compaction with extra instructions still adds bounded recovery to the native summary."
 	if err := os.MkdirAll(filepath.Join(plugin, ".claude-plugin"), 0700); err != nil {

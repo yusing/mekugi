@@ -3,6 +3,7 @@ import { request } from 'node:http';
 export interface CompanionConfig {
   socket: string; token: string; plugin?: string; frontendDirectory?: string; bashEnv?: string;
   journalSchema?: Record<string, unknown>;
+  managedSkills?: boolean;
   vcsGuard?: boolean;
   vcsGuardHelper?: string;
 }

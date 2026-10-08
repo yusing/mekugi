@@ -27,6 +27,7 @@ type ObservationEndpoint struct {
 	Token             string         `json:"token"`
 	Plugin            string         `json:"plugin,omitempty"`
 	FrontendDirectory string         `json:"frontendDirectory,omitempty"`
+	ManagedSkills     bool           `json:"managedSkills,omitzero"`
 	JournalSchema     jsontext.Value `json:"journalSchema,omitempty"`
 	BashEnv           string         `json:"bashEnv,omitempty"`
 	VCSGuard          bool           `json:"vcsGuard,omitzero"`

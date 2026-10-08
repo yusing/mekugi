@@ -94,6 +94,7 @@ async function createQuery(fresh?: {session: string; context: string}): Promise<
   pathToClaudeCodeExecutable: config.executable,
   systemPrompt: {type: 'preset', preset: 'claude_code', ...(append ? {append} : {})},
   settingSources: ['user', 'project', 'local'],
+  ...(endpoint?.managedSkills ? {disallowedTools: ['Skill']} : {}),
   ...(probe ? {settings: probe.settings} : {}),
   includePartialMessages: true,
   forwardSubagentText: true,
@@ -236,7 +237,7 @@ async function changeSession(id: string, target?: string, workspaceHint?: string
     await pump;
     if (stopping || resetCancelled) throw new Error('Session switch cancelled after query shutdown; resume manually');
     if (endpoint) {
-      const presentation = await companionRequest(endpoint, {operation: 'session_switch', source, binding}) as Pick<CompanionConfig, 'plugin' | 'frontendDirectory'>;
+      const presentation = await companionRequest(endpoint, {operation: 'session_switch', source, binding}) as Pick<CompanionConfig, 'plugin' | 'frontendDirectory' | 'managedSkills'>;
       endpoint = {...endpoint, ...presentation};
     }
     cwd = workspace;
@@ -442,7 +443,7 @@ try {
         const source = {runtime: 'claude', workspace: cwd, session: ''};
         const binding = {...source, workspace: info.cwd!, session: info.sessionId};
         await companionRequest(endpoint, {operation: 'session_switch_check', source, binding});
-        const presentation = await companionRequest(endpoint, {operation: 'session_switch', source, binding}) as Pick<CompanionConfig, 'plugin' | 'frontendDirectory'>;
+        const presentation = await companionRequest(endpoint, {operation: 'session_switch', source, binding}) as Pick<CompanionConfig, 'plugin' | 'frontendDirectory' | 'managedSkills'>;
         endpoint = {...endpoint, ...presentation};
       }
     }
