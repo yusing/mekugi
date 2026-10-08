@@ -66,8 +66,8 @@ before provider preparation, with durable scope authorization. Real provider
 compaction items retain their native meaning. This introduces no separate route
 or provider compaction request.
 
-The proxy owns a per-thread context-pressure reminder derived from the latest host
-context-usage snapshot and model window, not cumulative usage. At 70% or more it
+The proxy owns the latest per-thread host context-usage snapshot and model window,
+not cumulative usage. At 70% or more it
 adds a split-slice reminder to the next request's journal tool guidance. Successful
 host context-compaction completion clears it; native host-selected context facts
 restore it on resume. This observation neither dispatches a reset nor changes
@@ -84,7 +84,11 @@ A manual standalone compaction consumes only
 an armed intent in the requesting thread/workspace, recording its response ID.
 Fork initialization does not copy turn checkpoints or intents.
 
-The shared app-server reset driver owns countdown cancellation,
+The shared app-server reset driver uses that snapshot for the
+[subslice reset threshold](../spec/journal.md#journal-continuation), including
+countdown presentation and dispatch. Missing evidence keeps the reset behavior;
+the threshold does not change top-level transitions or host-selected compaction.
+The driver owns countdown cancellation,
 compaction acknowledgement and matching host turn
 completion, then `turn/start`. Terminal presentation does not implement a second
 policy. A continuation's reserved client-message ID identifies its transcript row;

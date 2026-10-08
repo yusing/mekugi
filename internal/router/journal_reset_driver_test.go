@@ -13,16 +13,26 @@ import (
 
 func resetDriverFixture(t *testing.T, mode string) (*journalResetDriver, *appServerTestInput) {
 	t.Helper()
+	return resetDriverPlanFixture(t, mode, "")
+}
+
+func resetDriverPlanFixture(t *testing.T, mode, parent string) (*journalResetDriver, *appServerTestInput) {
+	t.Helper()
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	thread := transform.shellThreadID
 	proxy.journalCompaction = mode
-	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "plan", Reset: "slice", Tasks: []jsontext.Value{jsontext.Value(`{"title":"First","state":"working"}`), jsontext.Value(`"Second"`)}}}); err != nil {
+	if parent != "" {
+		if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "add", Kind: "task", Title: new("Parent"), State: new("working")}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "plan", Under: parent, Reset: "slice", Tasks: []jsontext.Value{jsontext.Value(`{"title":"First","state":"working"}`), jsontext.Value(`"Second"`)}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := proxy.journals.beginJournalTurn(t.Context(), proxy.replayStore, workspace, thread, "first-turn"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "set", P: "/1", State: new("done")}}); err != nil {
+	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "set", P: parent + "/1", State: new("done")}}); err != nil {
 		t.Fatal(err)
 	}
 	_, wire := newAppServerTestUI()
@@ -36,6 +46,56 @@ func resetDriverFixture(t *testing.T, mode string) (*journalResetDriver, *appSer
 	}
 	d.deadline = time.Unix(101, 0)
 	return d, wire
+}
+
+func TestJournalResetDriverSubsliceContextThreshold(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, mode, parent string
+		tokens             *uint64
+		method             string
+	}{
+		{"below", "slice", "/1", new(uint64(149_999)), "turn/start"},
+		{"known-zero", "auto", "/1", new(uint64(0)), "turn/start"},
+		{"at-threshold", "auto", "/1", new(uint64(150_000)), "thread/compact/start"},
+		{"unknown", "slice", "/1", nil, "thread/compact/start"},
+		{"top-level", "slice", "", new(uint64(149_999)), "thread/compact/start"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d, wire := resetDriverPlanFixture(t, tc.mode, tc.parent)
+			h := &headlessAppServer{ctx: t.Context(), proxy: d.proxy, thread: d.thread, reset: d}
+			usage := func(thread string, tokens *uint64) {
+				t.Helper()
+				var last any
+				if tokens != nil {
+					last = map[string]any{"totalTokens": *tokens}
+				}
+				params := mustTestJSON(t, map[string]any{"threadId": thread, "tokenUsage": map[string]any{
+					"total": map[string]any{"totalTokens": 900_000}, "last": last,
+				}})
+				if err := h.message(appserver.Message{Method: "thread/tokenUsage/updated", Params: params}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			usage(d.thread, new(uint64(200_000)))
+			usage(d.thread, tc.tokens)
+			usage("other", new(uint64(200_000)))
+			if err := d.tick(time.Unix(102, 0)); err != nil {
+				t.Fatal(err)
+			}
+			resetDriverRequireMethods(t, wire, tc.method)
+			if tc.method == "turn/start" {
+				if !strings.Contains(wire.String(), tc.parent+"/2 Second") {
+					t.Fatalf("continuation lost the subslice: %s", wire.String())
+				}
+				resetDriverReply(t, d, `{"turn":{"id":"continued"}}`)
+				intent, err := d.proxy.replayStore.resetIntent(t.Context(), d.workspace, d.thread)
+				if err != nil || intent != nil {
+					t.Fatalf("continuation retained reset intent: %+v %v", intent, err)
+				}
+			}
+		})
+	}
 }
 
 func resetDriverReply(t *testing.T, d *journalResetDriver, result string) {

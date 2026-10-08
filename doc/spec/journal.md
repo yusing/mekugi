@@ -347,7 +347,13 @@ child completion cannot drive a Main reset.
 The [headless frontend](router.md#headless-app-server-frontend) uses the same policy
 with no countdown delay and emits reset events instead of rendering a strip.
 
-With `slice` or `auto`, the frontend asks Codex to compact before continuing.
+With `slice` or `auto`, the frontend asks Codex to compact before continuing
+between top-level slices. Between subslices, such as `/3/1` and `/3/2`, it
+continues with the current context when the latest host-reported context use is
+below 150,000 tokens. At or above that threshold, or when context use is unknown,
+the subslice transition also requests a reset. This uses the current thread's
+latest context snapshot, not cumulative usage or another thread's context.
+Manual and context-full compactions keep their configured behavior.
 The UI describes that journal-driven operation as a context reset,
 including its progress, completion, and restored event. Ordinary provider
 compactions in `slice` retain their compaction wording; `auto` uses context-reset

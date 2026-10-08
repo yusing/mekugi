@@ -19,6 +19,50 @@ func seedNativeJournalResetPreview(p *nativePreview) {
 	p.ui.shell.focus, p.ui.shell.journalOpen = 0, false
 }
 
+func TestUISnapshotJournalSubsliceCountdown(t *testing.T) {
+	d, wire := resetDriverPlanFixture(t, "auto", "/1")
+	u := newAppServerSessionTestUI(t, d.workspace)
+	u.ctx, u.proxy, u.client, u.thread, u.reset = t.Context(), d.proxy, d.client, d.thread, d
+	u.session.start(d.thread, d.workspace)
+	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{
+		"threadId": d.thread, "tokenUsage": map[string]any{
+			"total": map[string]any{"totalTokens": 900_000},
+			"last":  map[string]any{"totalTokens": 149_999}, "modelContextWindow": 400_000,
+		},
+	})
+	assertNativeUISnapshot(t, "journal-subslice-countdown", []string{u.journalResetStrip(100)})
+	if err := u.tickJournalReset(time.Unix(102, 0)); err != nil {
+		t.Fatal(err)
+	}
+	resetDriverRequireMethods(t, wire, "turn/start")
+}
+
+func TestNativeJournalSubsliceResumeUsesRestoredContext(t *testing.T) {
+	d, wire := resetDriverPlanFixture(t, "slice", "/1")
+	reopened, err := openMekugiReplayStore(d.proxy.replayStore.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := &mekugiProxy{journals: newJournalStore(), replayStore: reopened, journalCompaction: "slice"}
+	u, _ := newAppServerTestUI()
+	u.proxy = proxy
+	rollout := writeTestRollout(t, d.thread, map[string]any{"type": "event_msg", "payload": map[string]any{
+		"type": "token_count", "info": map[string]any{
+			"last_token_usage":  map[string]any{"total_tokens": 149_999},
+			"total_token_usage": map[string]any{"total_tokens": 900_000}, "model_context_window": 400_000,
+		},
+	}})
+	u.restoreContextUsage(&activityPaneAgent{}, appServerThreadInfo{ID: d.thread, Path: rollout})
+	next := &journalResetDriver{ctx: t.Context(), proxy: proxy, client: d.client, workspace: d.workspace, thread: d.thread}
+	if err := next.restore(); err != nil {
+		t.Fatal(err)
+	}
+	if err := next.tick(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	resetDriverRequireMethods(t, wire, "turn/start")
+}
+
 func TestNativeJournalResetCountdownEscape(t *testing.T) {
 	d, wire := resetDriverFixture(t, "slice")
 	d.deadline = time.Now().Add(3 * time.Second)
