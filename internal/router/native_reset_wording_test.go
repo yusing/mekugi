@@ -69,7 +69,7 @@ func fixResetPresentationTime(u *appServerUI) {
 }
 
 func TestUISnapshotNativeResetWording(t *testing.T) {
-	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 9, 30, 20, 0, 0, 0, time.Local)
 	for _, mode := range []string{"slice", "auto", "off"} {
 		t.Run(mode, func(t *testing.T) {
 			d, _ := resetDriverFixture(t, mode)
@@ -140,7 +140,7 @@ func TestUISnapshotNativeResetRestored(t *testing.T) {
 		t.Fatal(err)
 	}
 	u.view.painter.Theme = livediff.DarkTheme
-	u.view.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
+	u.view.clock = func() time.Time { return time.Date(2026, 9, 30, 20, 0, 0, 0, time.Local) }
 	u.restoreHistory([]appServerHistoryTurn{
 		{ID: "reset-turn", Status: "completed", Items: []appServerItem{{ID: "reset", Type: "contextCompaction"}}},
 		{ID: "provider-turn", Status: "completed", Items: []appServerItem{{ID: "provider", Type: "contextCompaction"}}},
@@ -185,7 +185,7 @@ func TestUISnapshotNativeAutoCompactionWording(t *testing.T) {
 	u.session.start(d.thread, d.workspace)
 	u.journal = d.proxy.journals.attachNative(d.workspace, d.thread)
 	t.Cleanup(func() { d.proxy.journals.detachNative(u.journal) })
-	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 9, 30, 20, 0, 0, 0, time.Local)
 	u.view.painter.Theme = livediff.DarkTheme
 	u.view.clock = func() time.Time { return now }
 	u.clock = u.view.clock

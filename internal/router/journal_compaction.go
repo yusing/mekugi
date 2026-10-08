@@ -268,9 +268,9 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 		recovery := journalCompactionRecovery{Workspace: workspace, Thread: a.threadID, ResponseID: id, Text: summary.Text}
 		v2 := metadata.Implementation == "responses_compaction_v2"
 		if v2 {
-			handles, err := store.allocateHandlesLocked(1)
-			if err != nil {
-				return err
+			handles, handleErr := store.allocateHandlesLocked(1)
+			if handleErr != nil {
+				return handleErr
 			}
 			recovery.Namespace = store.handleNamespace()
 			recovery.Reference = journalCompactionReferencePrefix + handles[0] + ":" + a.threadID + ":" + id

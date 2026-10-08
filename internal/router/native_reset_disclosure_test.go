@@ -66,7 +66,7 @@ func TestUISnapshotNativeResetRecoveryDisclosure(t *testing.T) {
 				}
 			}
 			u.view.painter.Theme = livediff.DarkTheme
-			u.view.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
+			u.view.clock = func() time.Time { return time.Date(2026, 9, 30, 20, 0, 0, 0, time.Local) }
 			u.clock = u.view.clock
 			item := appServerItem{ID: "reset-item", Type: "contextCompaction"}
 			if mode != "live" && mode != "slice-live" {

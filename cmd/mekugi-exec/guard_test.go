@@ -9,7 +9,11 @@ import (
 
 func TestGuardEnvironmentMiseShimIdentity(t *testing.T) {
 	root := t.TempDir()
-	manager, shim := filepath.Join(root, "mise"), filepath.Join(root, "bash")
+	alias := filepath.Join(t.TempDir(), "linked")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Fatal(err)
+	}
+	manager, shim := filepath.Join(alias, "mise"), filepath.Join(alias, "bash")
 	if err := os.WriteFile(manager, nil, 0o700); err != nil {
 		t.Fatal(err)
 	}

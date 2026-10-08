@@ -74,7 +74,7 @@ func guardEnvironment(real string) []string {
 		return strings.HasPrefix(entry, vcsguard.ItemEnvironment+"=")
 	})
 	resolved, err := filepath.EvalSymlinks(real)
-	if err != nil || resolved == real || filepath.Base(resolved) != "mise" {
+	if err != nil || filepath.Base(real) == "mise" || filepath.Base(resolved) != "mise" {
 		return environment
 	}
 	helper, err := os.Executable()

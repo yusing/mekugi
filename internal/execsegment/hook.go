@@ -29,7 +29,11 @@ func Hook(tracker string) string {
     # Starting the coprocess changes these observations even if it declines.
     case $BASH_EXECUTION_STRING in
     *'$!'*|*'${!'*|*'$_'*|*'${_'*|*'PIPESTATUS'*|*'LINENO'*|*'BASH_COMMAND'*|*'BASH_SOURCE'*|*'FUNCNAME'*|*'BASH_EXECUTION_STRING'*) ;;
-    *) . ` + shellsyntax.Quote(tracker) + ` ;;
+    *)
+      # Coprocesses and dynamic descriptors require Bash 4.1 or newer.
+      if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 1) )); then
+        . ` + shellsyntax.Quote(tracker) + `
+      fi ;;
     esac ;;
   esac
 fi

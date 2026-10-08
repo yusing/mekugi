@@ -231,8 +231,10 @@ command. Codex's startup, cancellation, sandbox, and process group apply
 unchanged.
 
 For Bash, the launcher adds a hook to the startup file that the frontend PATH
-already uses. The hook runs in the command shell Codex started, after login
-startup, so profile functions and aliases remain available. It never evaluates
+already uses. Segment tracking requires Bash 4.1 or newer; older Bash runs the
+original command once with aggregate host output. The hook runs in the command
+shell Codex started, after login startup, so profile functions and aliases remain
+available. It never evaluates
 the script or starts a second shell for it. The helper `mekugi-exec`, installed
 beside `mekugi`, splits the script with the router's own splitter and asks the
 router to match it to a live `commandExecution` item by thread and exact script.

@@ -176,6 +176,7 @@ func TestNativeExecResultFinalizesAfterReplayProxyReconstruction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(store.snapshots.close)
 	firstProxy := newManagedMekugiProxy(t)
 	firstProxy.replayStore = store
 	workspace := t.TempDir()
@@ -192,6 +193,7 @@ func TestNativeExecResultFinalizesAfterReplayProxyReconstruction(t *testing.T) {
 	if err := firstProxy.Close(); err != nil {
 		t.Fatal(err)
 	}
+	store.snapshots.close()
 
 	// Codex owns execution. Simulate its one host execution between the
 	// request that captured the call and the later terminal tool result.
@@ -207,6 +209,7 @@ func TestNativeExecResultFinalizesAfterReplayProxyReconstruction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(freshStore.snapshots.close)
 	freshProxy.replayStore = freshStore
 	items := []any{
 		map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments},

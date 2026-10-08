@@ -88,7 +88,7 @@ func TestTemporaryWritePreservesCaptureUncertainty(t *testing.T) {
 }
 
 func TestUISnapshotTemporaryWriteActivity(t *testing.T) {
-	now := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 10, 3, 20, 0, 0, 0, time.Local)
 	for _, agent := range []string{"Main", "/root/worker"} {
 		for _, unresolved := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/unknown=%v", agent, unresolved), func(t *testing.T) {

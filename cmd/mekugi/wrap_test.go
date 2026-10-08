@@ -867,8 +867,19 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 	const script = "printf local; printf read"
 	command := exec.Command(bash, "-c", script)
 	command.Env = environment
-	if output, err := command.Output(); err != nil || string(output) != "localread" {
+	if output, err := command.CombinedOutput(); err != nil || string(output) != "localread" {
 		t.Fatalf("unguarded command = %q, %v", output, err)
+	}
+	compatible := exec.Command(bash, "-c", `(( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 1) ))`)
+	compatible.Env = []string{"PATH=" + os.Getenv("PATH")}
+	if err := compatible.Run(); err != nil {
+		if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 1 {
+			t.Fatalf("check Bash tracking support: %v", err)
+		}
+		if _, err := os.Stat(log); !os.IsNotExist(err) {
+			t.Fatalf("unsupported Bash started tracking: %v", err)
+		}
+		return
 	}
 	if tracked, err := os.ReadFile(log); err != nil || string(tracked) != script+"\n" {
 		t.Fatalf("tracked script = %q, %v", tracked, err)
