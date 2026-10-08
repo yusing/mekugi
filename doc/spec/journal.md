@@ -199,11 +199,8 @@ at most eight entries and an omitted count. These are not claims that processes
 are still running. Recovery restores neither continuation handles nor JavaScript
 store values; the host remains authoritative for live execution state.
 
-Main journal guidance asks authors to keep explicit constraints and settled decisions
-in context, with one owning node per topic that corrections update in place, and
-to mark replaced decisions superseded. Authors record the facts later work needs
-from loaded documents and skills, not which ones were read, and keep handoff
-details in task notes. Recovery cannot reconstruct
+Journal context retains constraints and decisions needed after reset. Corrections update
+the owning node; supersession preserves replaced facts as history. Recovery cannot reconstruct
 unrecorded decisions or replace missing document contents with a claim that a
 read occurred.
 
@@ -648,25 +645,15 @@ stock tool catalog and prompt.
 
 ### Runtime authoring
 
-Tasks express concrete outcomes in task workflow order for authorized changes:
-exploration with the specification and affected reader documents, implementation
-with verification, review when warranted, then delivery. Bounded work uses the
-confirmed request and existing records without empty phase tasks. Exploration
-records accepted behavior, scope, non-goals, decisions, testing seams and acceptance
-checks; affected documents are updated before implementation. Ordinary questions,
-explanations and read-only reviews keep their conversational flow. Main work updates
-and newly established facts go into the journal, attached to the next useful tool
-call rather than standalone commentary or a journal-only request. Notes lead with the result or decision, then supporting
-evidence. Each item has a short, clear title or first line with no trailing
-punctuation, preferably an action-subject clause with a bold action, such as
-"**Completed** the task". This item format is shared by main and subagent guidance.
-Task state changes convey milestones such as investigation finished or
-validation started; notes record new findings, decisions, measured progress and
-blockers. Announcing the next action or repeating a task state or unchanged fact
-is not a new note. Standing constraints belong in context once. Changed decisions
-update their existing contract record and affected documents. Parents record
-integration decisions, not copies of child journals.
-Delivery checks agreement between the contract, documents and verified outcome.
+The projected guidance explains journal usage, without prescribing development,
+delegation, review, document workflow, or personal setup. Tasks track
+outcomes that need continuation; short assignments need no plan. Main work updates
+go into the journal, attached to useful tool calls. Journal text uses ASD-STE100 and
+one topic per item. Titles have no trailing punctuation and prefer a bold action;
+bodies hold detail. Notes record new results and blockers. Context retains constraints
+and decisions needed after reset; corrections update the owning node.
+With `reset:"slice"`, bounded tasks have concrete results and completion checks.
+Completed tasks are turn boundaries so the frontend can reset and continue to a pending sibling.
 Main work completion uses the finish marker in the final useful execution when its
 result can establish completion. It adds neither a standalone finalization tool
 call nor a follow-up `Done.` provider acknowledgment. Required result interpretation

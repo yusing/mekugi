@@ -42,7 +42,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			if bytes.Contains(request["input"], []byte("omitted-rtk-policy")) || bytes.Contains(request["input"], []byte("mekugi:omit")) || bytes.Contains(request["input"], []byte(conflictingProgress)) || bytes.Contains(request["input"], []byte("recommended_plugins")) || bytes.Contains(request["input"], []byte("multi_agent_mode")) {
+			if bytes.Contains(request["input"], []byte("omitted-rtk-policy")) || bytes.Contains(request["input"], []byte("mekugi:omit")) || bytes.Contains(request["input"], []byte(conflictingProgress)) || bytes.Contains(request["input"], []byte("recommended_plugins")) {
 				t.Error("provider received omitted or conflicting instructions")
 			}
 			var input []json.RawMessage

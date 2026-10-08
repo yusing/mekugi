@@ -10,9 +10,9 @@ retired shell carrier, HPATCH, hash-target editing, or CTP instructions.
 
 Exact inherited stock progress conflicts are deleted, and the pinned wait conflict is
 rewritten in top-level instructions and developer text parts. Pinned stock paragraphs lose
-their commentary directives while retaining permission and task-steering policy. The exact
-stock explicit-request-only delegation restriction and complete stock uninstalled-plugin
-advertisements are removed; custom delegation and plugin policy remain intact. Unrelated policy,
+their commentary directives while retaining permission and task-steering policy. Complete stock
+uninstalled-plugin advertisements are removed. Inherited delegation and custom plugin policy
+remain intact. Unrelated policy,
 system messages, user content, non-text parts, and fenced examples remain unchanged. Rewriting is
 idempotent and model-independent. Execution-free requests retain their native guidance.
 The pinned short-wait fragment yields to completion notifications or interruptible waits.
@@ -51,10 +51,11 @@ The journal owner supplies the additive durable-work guidance once per request: 
 `exec` in one marked Journal section. No dedicated
 `functions.journal` tool is exposed. Eligible
 structured tools receive the optional atomic `journal` mutation field.
-Main guidance owns planning, task states, established facts, constraints and
-work-report completion. Subagent guidance is shorter: brief assignments need no
-task or plan, task titles describe outcomes rather than roles, and completion
-reports each result once. Both versions include the same JavaScript helper API
+The guidance covers journal use and completion, without prescribing delegation, review,
+document workflow or personal setup. Tasks track work that needs continuation;
+short assignments need no plan. Main guidance covers work updates, recovery facts, slice
+boundaries, and work-report completion. Subagent guidance covers interim facts and final
+reports. Both versions include the same JavaScript helper API
 (including read, required fields, stable paths and failures) and batching contract. Main work updates belong in the journal; requested answers
 and necessary questions remain conversational. Subagents record useful interim facts and may deliver their
 final report directly. A result already recorded in the journal is not repeated
@@ -113,9 +114,9 @@ Acceptance:
    sibling tools, and stock execution contracts remain unchanged.
 3. The execution-tool journal section and optional mutation field expose enough guidance to record concise
    tasks and facts, read retained subtrees, and finish naturally with an answer.
-   Main journal writing guidance requires ASD-STE100, a short clear title or first line,
-   supporting details in the body, and one topic per item. Separate topics use
-   separate items; "and" can connect parts of one topic.
+   Journal format uses ASD-STE100, short titles with no trailing punctuation, a bold
+   action where useful, and one topic per item. Bodies hold detail. Slice guidance retains
+   bounded checkable results; guidance specifies no generic development workflow.
    Main work turns use the finish marker in the final useful execution when host results
    establish completion, without a follow-up `Done.` acknowledgment or another
    provider request. A usable deliverable, usage explanation or needed decision
