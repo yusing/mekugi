@@ -354,17 +354,21 @@ label column; when that column would take more than half the pane, all labels
 stack above their values. Rendering is derived from the current text and pane width, including
 streaming updates and restored messages.
 
-Completed `mermaid` fences render the bounded Codex 0.159.0 flowchart subset:
+Completed `mermaid` fences render an extended bounded Codex 0.159.0 flowchart subset:
 `flowchart`/`graph`, TD/TB/BT/LR/RL, rectangle/decision/stadium nodes, solid and
 dashed directed/undirected/bidirectional edges, pipe and spaced directed labels,
 and `&` endpoint groups expanded across chained edges. Quoted labels preserve
-punctuation, delimiters, and semicolons. Each edge has a separate lane; crossings
+punctuation, delimiters, and semicolons. Node labels support `<br>`, `<br/>`, and
+`<br />` line breaks and wrap to fit the pane. LR/RL charts retain their horizontal
+layout when it fits; otherwise they use TD/BT respectively, keeping node order
+and every edge. Each edge has a separate lane; crossings
 are not junctions. No external renderer or process runs.
 
-Unsupported syntax, HTML/entities, unsafe or non-additive-width labels, open
+Unsupported syntax, other HTML/entities, unsafe or non-additive-width labels, open
 fences, and diagrams that cannot fit the pane retain the source code display,
 never a partial diagram. Bounds are 16 KiB source, 16 nodes, 24 expanded edges,
-24 references per group, 40 display cells per label, and 65,536 canvas cells.
+24 references per group, 256 display cells per node label, 40 display cells per
+edge label, and 65,536 canvas cells.
 Flowchart subgraphs and other Mermaid families are outside this port. Rendering
 is recomputed from current text and width, including quoted blocks and replay.
 The upstream subset and layout come from

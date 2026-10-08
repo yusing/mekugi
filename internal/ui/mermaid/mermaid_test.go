@@ -33,9 +33,6 @@ func TestUpstreamDirections(t *testing.T) {
 		if !ok || !reflect.DeepEqual(rows, exact) {
 			t.Fatal("exact width")
 		}
-		if _, ok := Render(source, width-1); ok {
-			t.Fatal("accepted too narrow")
-		}
 		cases = append(cases, direction+"\n"+strings.Join(rows, "\n"))
 	}
 	if got := strings.Join(cases, "\n\n") + "\n"; got != string(want) {
@@ -49,6 +46,7 @@ func TestEquivalentForms(t *testing.T) {
 		{"A -. retry .-> B", "A -.->|retry| B"},
 		{"A[Input & config] & B -- send --> C & D -.-> E", "A[Input & config];B;C;D;E;A -->|send| C;A -->|send| D;B -->|send| C;B -->|send| D;C -.-> E;D -.-> E"},
 		{"A --> B & B", "A --> B; A --> B"},
+		{`A["one<br>two"] --> B`, `A["one<br />two"] --> B`},
 		{`A["Review & confirm;"] -->|"Yes & continue"| B{"Ready?"}`, `A[Review & confirm;] -->|Yes & continue| B{Ready?}`},
 	} {
 		a, ok := parse("graph;" + pair[0])
@@ -63,7 +61,7 @@ func TestEquivalentForms(t *testing.T) {
 	}
 }
 func TestFallback(t *testing.T) {
-	for _, body := range []string{"A -->", "A &", "A --> & B", "A --o B", "A---oB", "A-.-xB", "A === B", "A -- label --- B", "A <-->|| B", "subgraph S;A;end", "A[(Database)]", "A[[nested]]", "A[one];A[two]", `A["<b>HTML</b>"]`, "A[&amp;]", "A[&#38;]", "A[#semi;]", "A[\x1b]", "A[e\u0301]", "A[\"unfinished]", "A[\"`markdown`\"]", "A[" + strings.Repeat("x", 41) + "]", strings.Repeat("A & ", 24) + "A", "A & B & C & D & E --> F & G & H & I & J"} {
+	for _, body := range []string{"A -->", "A &", "A --> & B", "A --o B", "A---oB", "A-.-xB", "A === B", "A -- label --- B", "A <-->|| B", "subgraph S;A;end", "A[(Database)]", "A[[nested]]", "A[one];A[two]", `A["<b>HTML</b>"]`, "A[&amp;]", "A[&#38;]", "A[#semi;]", "A[\x1b]", "A[e\u0301]", "A[\"unfinished]", "A[\"`markdown`\"]", "A[" + strings.Repeat("x", maxNodeLabel+1) + "]", "A -->|" + strings.Repeat("x", maxLabel+1) + "| B", "A -->|one<br/>two| B", strings.Repeat("A & ", 24) + "A", "A & B & C & D & E --> F & G & H & I & J"} {
 		if rows, ok := Render("flowchart TD;"+body, 1000); ok || rows != nil {
 			t.Fatalf("accepted %q", body)
 		}
@@ -74,7 +72,11 @@ func TestFallback(t *testing.T) {
 		}
 	}
 }
+
 func TestLimitsAndLoops(t *testing.T) {
+	if _, ok := Render("graph;A["+strings.Repeat("界", maxNodeLabel/2)+"]", 20); !ok {
+		t.Fatal("bounded wide label rejected")
+	}
 	source := "graph TD;" + strings.Repeat("A --> A;", 24)
 	if _, ok := Render(source, 100); !ok {
 		t.Fatal("24 edges rejected")
@@ -94,7 +96,7 @@ func TestLimitsAndLoops(t *testing.T) {
 	}
 }
 func FuzzRender(f *testing.F) {
-	for _, s := range []string{"graph TD;A & B --> C & D", "graph RL;A -. retry .-> A", `graph;A["a;b"] -->|"x|y"| B`} {
+	for _, s := range []string{"graph TD;A & B --> C & D", "graph RL;A -. retry .-> A", `graph;A["a;b"] -->|"x|y"| B`, `graph RL;A(["请求<br/>Start"]) --> B{"` + strings.Repeat("work ", 12) + `done?"}; B -. retry .-> B`} {
 		f.Add(s, 80)
 	}
 	f.Fuzz(func(t *testing.T, source string, width int) {
@@ -117,10 +119,11 @@ func FuzzRender(f *testing.F) {
 }
 
 // Source: codex-rs/mermaid/src/tests.rs:308:410@[687a119f0fcaace47e1f1abcc77cec6c813fd6da] reconstruct_every_edge_from_rendered_paths
+// Multiline labels exercise ports below wrapped node content in every direction.
 func TestReconstructEveryEdge(t *testing.T) {
 	for mask := range 512 {
 		for _, direction := range []string{"TD", "BT", "LR", "RL"} {
-			source := "graph " + direction + ";A;B;C;"
+			source := "graph " + direction + ";A[A<br>A];B[B<br>B];C[C<br>C];"
 			var want []string
 			for from := range 3 {
 				for to := range 3 {
