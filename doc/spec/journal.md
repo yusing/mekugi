@@ -354,8 +354,11 @@ Forks and side threads do not inherit a live continuation. Switching models or
 viewing another agent does not transfer continuation ownership.
 
 A plan marked `reset: "slice"` can continue between successful native Main turns.
-When a task becomes done during the completed turn and has a pending sibling,
-the frontend offers a three-second countdown to the next pending sibling. Escape
+When a task becomes done during the completed turn and has an eligible pending sibling,
+the frontend offers a three-second countdown to that sibling, including a sibling
+with open subtasks. Finished, dropped, or delegated ancestors exclude a target
+from both selection and dispatch. An excluded sibling does not hide other local
+work or permit premature finish. Escape
 or queued user input cancels it. Failed and interrupted turns do not continue;
 child completion cannot drive a Main reset.
 The [headless frontend](router.md#headless-app-server-frontend) uses the same policy

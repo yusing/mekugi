@@ -78,7 +78,7 @@ func (j *threadJournal) continuationCandidate(turn string) *journalResetIntent {
 				continue
 			}
 			for _, item := range j.Items {
-				if item.Kind == "task" && item.State == "pending" && item.Agent == "" && j.StoppedTasks[item.Path] == "" && journalParent(item.Path) == journalParent(event.Path) {
+				if item.State == "pending" && journalParent(item.Path) == journalParent(event.Path) && j.localJournalTask(item.Path) {
 					return &journalResetIntent{Turn: turn, Path: item.Path, Title: item.Title, Phase: "pending"}
 				}
 			}
@@ -107,9 +107,9 @@ func (j *threadJournal) continuationBlocker() *journalItem {
 	return blocker
 }
 
-// Only local runnable work may drive a turn. A parent waiting for unfinished
-// children is not itself runnable, and a bound agent retains its own lifecycle.
-func (j *threadJournal) runnableJournalTask(path string) bool {
+// Slice targets may have open children, but share ordinary work's ownership
+// and ancestor disposition checks.
+func (j *threadJournal) localJournalTask(path string) bool {
 	i := j.treeIndex(path)
 	if i < 0 || j.StoppedTasks[path] != "" || j.Items[i].Kind != "task" || (j.Items[i].State != "pending" && j.Items[i].State != "working") {
 		return false
@@ -122,7 +122,18 @@ func (j *threadJournal) runnableJournalTask(path string) bool {
 			if item.Agent != "" || item.State == "done" || item.State == "dropped" {
 				return false
 			}
-		} else if strings.HasPrefix(item.Path, path+"/") && (item.State == "pending" || item.State == "working") {
+		}
+	}
+	return true
+}
+
+// A parent waiting for unfinished children is not itself runnable.
+func (j *threadJournal) runnableJournalTask(path string) bool {
+	if !j.localJournalTask(path) {
+		return false
+	}
+	for _, item := range j.Items {
+		if item.Kind == "task" && strings.HasPrefix(item.Path, path+"/") && (item.State == "pending" || item.State == "working") {
 			return false
 		}
 	}
@@ -136,13 +147,8 @@ func (j *threadJournal) continuationCurrent(intent *journalResetIntent) bool {
 	if intent.Resume {
 		return intent.Turn == j.TurnID && j.runnableJournalTask(intent.Path)
 	}
-	for _, item := range j.Items {
-		if item.Kind == "task" && (item.Path == intent.Path || strings.HasPrefix(intent.Path, item.Path+"/")) && (item.Agent != "" || item.State == "dropped") {
-			return false
-		}
-	}
 	i := j.treeIndex(intent.Path)
-	return i >= 0 && j.Items[i].State == "pending"
+	return i >= 0 && j.Items[i].State == "pending" && j.localJournalTask(intent.Path)
 }
 
 // Retain the user's stop before requesting an interrupt. The host can race and

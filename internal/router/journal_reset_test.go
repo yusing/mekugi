@@ -3,8 +3,10 @@ package router
 import (
 	"bytes"
 	"encoding/json/jsontext"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func resetPlan(t *testing.T, proxy *mekugiProxy, workspace, thread string) {
@@ -93,6 +95,63 @@ func TestJournalResetRequiresNewDoneTransitionAndPendingSibling(t *testing.T) {
 			intent, err := proxy.journals.completedSlice(t.Context(), proxy.replayStore, workspace, thread, "turn")
 			if err != nil || (scenario == "blocked" && intent != nil) || (scenario != "blocked" && (intent == nil || !intent.Resume)) {
 				t.Fatalf("scenario %s generated intent=%+v err=%v", scenario, intent, err)
+			}
+		})
+	}
+}
+
+func TestJournalSliceAncestorEligibility(t *testing.T) {
+	t.Parallel()
+	for _, scenario := range []string{"dropped", "delegated", "non-leaf"} {
+		t.Run(scenario, func(t *testing.T) {
+			d, wire := resetDriverPlanFixture(t, "off", "/1")
+			mutations := []journalMutation{{Op: "add", Kind: "task", Title: new("Independent work"), State: new("working")}}
+			switch scenario {
+			case "dropped":
+				mutations = append(mutations, journalMutation{Op: "set", P: "/1", State: new("dropped"), Reason: new("Abandoned plan")})
+			case "delegated":
+				mutations = append(mutations, journalMutation{Op: "set", P: "/1", Agent: "/root/worker"})
+			case "non-leaf":
+				mutations = append(mutations, journalMutation{Op: "add", Under: "/1/2", Kind: "task", Title: new("Subtask")})
+			}
+			if _, err := d.proxy.journals.apply(t.Context(), d.proxy.replayStore, d.workspace, d.thread, "", mutations); err != nil {
+				t.Fatal(err)
+			}
+			before, _, err := readThreadJournal(d.proxy.replayStore, d.workspace, d.thread)
+			if err != nil {
+				t.Fatal(err)
+			}
+			next := before.continuationCandidate("first-turn")
+			want := "/2"
+			if scenario == "non-leaf" {
+				want = "/1/2"
+			}
+			if next == nil || next.Path != want || next.Resume != (scenario != "non-leaf") || !before.continuationCurrent(next) {
+				t.Fatalf("candidate=%+v want current target %s", next, want)
+			}
+			_, err = d.proxy.journals.apply(t.Context(), d.proxy.replayStore, d.workspace, d.thread, "finish-check", []journalMutation{
+				{Op: "log", Text: new("Final report")}, {Op: "finish", finishTurn: "first-turn"},
+			})
+			if scenario == "non-leaf" {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err == nil || !strings.Contains(err.Error(), "runnable task /2") {
+					t.Fatalf("premature finish error=%v", err)
+				}
+				after, _, readErr := readThreadJournal(d.proxy.replayStore, d.workspace, d.thread)
+				if readErr != nil || !reflect.DeepEqual(before, after) {
+					t.Fatalf("rejected finish changed journal: %v", readErr)
+				}
+			}
+			if err := d.tick(time.Unix(102, 0)); err != nil {
+				t.Fatal(err)
+			}
+			if scenario == "non-leaf" {
+				resetDriverRequireMethods(t, wire, "turn/start")
+			} else {
+				resetDriverRequireMethods(t, wire)
 			}
 		})
 	}
