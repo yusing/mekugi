@@ -136,6 +136,12 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 			}
 		}
 	}
+	resume, blocker := j.continuationCandidate(""), j.continuationBlocker()
+	if resume != nil {
+		next = resume.Path
+	} else if blocker != nil {
+		next = blocker.Path
+	}
 	hiddenBySupersession := func(path string) bool {
 		for parent := journalParent(path); parent != ""; parent = journalParent(parent) {
 			if superseded[parent] {
@@ -428,9 +434,14 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		for _, entry := range slices.Backward(listed) {
 			text.WriteString(entry)
 		}
-		fmt.Fprintf(&text, "\nResume: continue %s; read the listed journal paths, mchanges ranges and mread references as needed.\n", cmp.Or(next, "the journal plan"))
-	} else {
-		fmt.Fprintf(&text, "\nResume: continue %s; read retained journal paths and mchanges ranges as needed.\n", cmp.Or(next, "the journal plan"))
+	}
+	switch {
+	case blocker != nil:
+		fmt.Fprintf(&text, "\nContinuation paused: %s: %s\n", blocker.Path, blocker.Reason)
+	case resume != nil:
+		fmt.Fprintf(&text, "\nResume: continue %s; read listed journal paths, mchanges ranges and mread references as needed.\n", resume.Path)
+	default:
+		text.WriteString("\nResume: no runnable local task.\n")
 	}
 	text.WriteString("Read more: journal({op:\"read\",p:\"PATH\",depth:1}); journal({op:\"read\",view:\"outline\"}) finds own older paths. For an agent, add agent:\"NAME\",view:\"own\" using its heading. Discover older agents with journal({op:\"read\",depth:1}). Read relevant context paths before acting.\n")
 	if text.Len() > maxJournalSummaryBytes {

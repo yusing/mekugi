@@ -393,6 +393,13 @@ func TestJournalAutoResumeUserStopSurvivesLaterQuestions(t *testing.T) {
 			} else if d.intent == nil || d.intent.Path != want {
 				t.Fatalf("intent=%+v want=%s", d.intent, want)
 			}
+			summary, err := summaryForTest(t, t.Context(), d.proxy.replayStore, d.workspace, d.thread)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want == "" && !strings.Contains(summary.Text, "Resume: no runnable local task") || want != "" && !strings.Contains(summary.Text, "Resume: continue "+want) {
+				t.Fatalf("recovery disagrees with stopped-work eligibility: %s", summary.Text)
+			}
 			resetDriverRequireMethods(t, wire)
 		})
 	}

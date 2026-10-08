@@ -47,10 +47,13 @@ func TestJournalSummaryOrdersOpenTasksAndIndexesContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, fact := range []string{"Keep protocol v1 stable", "Read relevant context paths before acting", "Awaiting API decision", "Resume: continue /4"} {
+	for _, fact := range []string{"Keep protocol v1 stable", "Read relevant context paths before acting", "Continuation paused: /3: Awaiting API decision"} {
 		if !strings.Contains(summary.Text, fact) {
 			t.Errorf("summary omitted %q: %s", fact, summary.Text)
 		}
+	}
+	if strings.Contains(summary.Text, "Resume: continue") {
+		t.Fatal("blocked journal directed unrelated work to continue")
 	}
 	working, pending, blocked := strings.Index(summary.Text, "/4 [working]"), strings.Index(summary.Text, "/2 [pending]"), strings.Index(summary.Text, "/3 [blocked]")
 	if working < 0 || pending < working || blocked < pending {

@@ -48,6 +48,7 @@ func TestUISnapshotNativeJournalAgentsGroupIsNotAConstraint(t *testing.T) {
 
 func TestUISnapshotNativeJournalMarkdownTitles(t *testing.T) {
 	u, _ := newAppServerTestUI()
+	u.turn = "active"
 	u.view.painter.Theme = livediff.DarkTheme
 	j := nativeJournalFixture()
 	for i := range j.Items {
@@ -105,7 +106,7 @@ func TestUISnapshotNativeJournalPlanStripOnlyWithOpenTask(t *testing.T) {
 	u.journal = &nativeJournalSink{tree: &journal}
 	assertNativeJournalSnapshot(t, "journal-plan-strip", []string{u.journalPlanStrip(80)})
 	mounted := append(slices.Clone(journal.Items), journalItem{Path: "/@agents/@child", Kind: "task", Title: "/root/child", State: "working"},
-		journalItem{Path: "/@agents/@child/1", Kind: "task", Title: "Child pending", State: "pending"})
+		journalItem{Path: "/@agents/@child/1", Kind: "task", Title: "Child blocked", State: "blocked", Reason: "Child decision", Updated: 100})
 	u.journal.tree = &threadJournal{Items: mounted}
 	assertNativeJournalSnapshot(t, "journal-plan-strip-mounted", []string{u.journalPlanStrip(120)})
 	u.journal.tree = &journal
@@ -247,7 +248,7 @@ func TestNativeJournalNamespacesDoNotHideUndisplayedNotes(t *testing.T) {
 	u.ensureShell()
 	t.Cleanup(u.shell.diff.close)
 	workspace, unscoped := nativeJournalFixture(), nativeJournalFixture()
-	unscoped.Items[1].Title = "Unscoped task"
+	unscoped.Items[2].Reason = "Unscoped decision"
 	u.journal = &nativeJournalSink{workspace: "/workspace", tree: &workspace}
 	u.unscopedJournal = &nativeJournalSink{tree: &unscoped}
 	u.shell.layout.journal, u.shell.journalOpen, u.shell.focus = terminalRect{0, 0, 80, 20}, true, 4
@@ -259,7 +260,7 @@ func TestNativeJournalNamespacesDoNotHideUndisplayedNotes(t *testing.T) {
 	if err := u.shell.journalKey("n"); err != nil {
 		t.Fatal(err)
 	}
-	if !u.journalPanePresents(u.unscopedJournal) || u.journalPanePresents(u.journal) || !strings.Contains(u.journalPlanStrip(100), "Unscoped task") {
+	if !u.journalPanePresents(u.unscopedJournal) || u.journalPanePresents(u.journal) || !strings.Contains(u.journalPlanStrip(100), "Unscoped decision") {
 		t.Fatal("namespace switch did not select the other tree and strip")
 	}
 	u.applyJournalPublication(u.unscopedJournal, nativeJournalPublication{event: publication.event, item: journalItem{ID: "event:2", Text: "Pane-only result", Updated: 2}})

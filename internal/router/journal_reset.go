@@ -65,10 +65,8 @@ func (s *journalStore) completedSlice(ctx context.Context, store *mekugiReplaySt
 // intent ID. Main continuation owns its root gate; finish checks each caller's work.
 func (j *threadJournal) continuationCandidate(turn string) *journalResetIntent {
 	// A blocker is an explicit stop, not an invitation to try another turn.
-	for _, item := range j.Items {
-		if item.Kind == "task" && item.State == "blocked" {
-			return nil
-		}
+	if j.continuationBlocker() != nil {
+		return nil
 	}
 	if turn != "" && j.TurnID == turn {
 		for _, event := range j.Events {
@@ -97,6 +95,18 @@ func (j *threadJournal) continuationCandidate(turn string) *journalResetIntent {
 	return nil
 }
 
+// Mounted child state is evidence, not an owned task that pauses this journal.
+func (j *threadJournal) continuationBlocker() *journalItem {
+	var blocker *journalItem
+	for i := range j.Items {
+		item := &j.Items[i]
+		if item.Kind == "task" && item.State == "blocked" && !strings.Contains(item.Path, "/@") && (blocker == nil || item.Updated > blocker.Updated) {
+			blocker = item
+		}
+	}
+	return blocker
+}
+
 // Only local runnable work may drive a turn. A parent waiting for unfinished
 // children is not itself runnable, and a bound agent retains its own lifecycle.
 func (j *threadJournal) runnableJournalTask(path string) bool {
@@ -107,9 +117,6 @@ func (j *threadJournal) runnableJournalTask(path string) bool {
 	for _, item := range j.Items {
 		if item.Kind != "task" {
 			continue
-		}
-		if item.State == "blocked" {
-			return false
 		}
 		if item.Path == path || strings.HasPrefix(path, item.Path+"/") {
 			if item.Agent != "" || item.State == "done" || item.State == "dropped" {
@@ -123,15 +130,14 @@ func (j *threadJournal) runnableJournalTask(path string) bool {
 }
 
 func (j *threadJournal) continuationCurrent(intent *journalResetIntent) bool {
-	if !j.IdentityKnown || j.IdentityConflicted || j.Parent != "" || j.StoppedTasks[intent.Path] != "" {
+	if !j.IdentityKnown || j.IdentityConflicted || j.Parent != "" || j.StoppedTasks[intent.Path] != "" || j.continuationBlocker() != nil {
 		return false
 	}
 	if intent.Resume {
 		return intent.Turn == j.TurnID && j.runnableJournalTask(intent.Path)
 	}
 	for _, item := range j.Items {
-		if item.Kind == "task" && (item.State == "blocked" ||
-			((item.Path == intent.Path || strings.HasPrefix(intent.Path, item.Path+"/")) && (item.Agent != "" || item.State == "dropped"))) {
+		if item.Kind == "task" && (item.Path == intent.Path || strings.HasPrefix(intent.Path, item.Path+"/")) && (item.Agent != "" || item.State == "dropped") {
 			return false
 		}
 	}

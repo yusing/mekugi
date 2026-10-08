@@ -23,7 +23,7 @@ func TestJournalSummarySeparatesCompletedAgentFromOpenIntegration(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"/1 [working] Inspect changes", "child done; integration remains open", "Agent child [done]; parent task /1", "Resume: continue /1"} {
+	for _, want := range []string{"/1 [working] Inspect changes", "child done; integration remains open", "Agent child [done]; parent task /1", "Resume: no runnable local task"} {
 		if !strings.Contains(summary.Text, want) {
 			t.Fatalf("missing %q: %s", want, summary.Text)
 		}

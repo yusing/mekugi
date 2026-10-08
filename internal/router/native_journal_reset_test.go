@@ -110,6 +110,52 @@ func TestNativeJournalResetRequiresSuccessfulHostCompletion(t *testing.T) {
 	}
 }
 
+func TestUISnapshotJournalContinuationPause(t *testing.T) {
+	d, wire := autoResumeFixture(t)
+	if _, err := d.proxy.journals.apply(t.Context(), d.proxy.replayStore, d.workspace, d.thread, "", []journalMutation{
+		{Op: "add", Kind: "task", Title: new("Check approval"), State: new("blocked"), Reason: new("Awaiting **approval**")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.completed("answer"); err != nil || d.active() {
+		t.Fatalf("blocked work continued: active=%v err=%v", d.active(), err)
+	}
+	resetDriverRequireMethods(t, wire)
+	store, err := openMekugiReplayStore(d.proxy.replayStore.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := &mekugiProxy{journals: newJournalStore(), replayStore: store}
+	u := newAppServerSessionTestUI(t, d.workspace)
+	u.proxy, u.thread = proxy, d.thread
+	u.journal = proxy.journals.attachNative(d.workspace, d.thread)
+	t.Cleanup(func() { proxy.journals.detachNative(u.journal) })
+	if err := proxy.journals.restoreNative(t.Context(), store, u.journal); err != nil {
+		t.Fatal(err)
+	}
+	assertNativeUISnapshot(t, "journal-continuation-paused", []string{u.journalPlanStrip(100), u.journalPlanStrip(50)})
+	if !strings.Contains(u.journalPlanStrip(100), "\x1b[1mapproval") {
+		t.Fatal("pause reason lost its Markdown style")
+	}
+	summary, err := summaryForTest(t, t.Context(), store, d.workspace, d.thread)
+	if err != nil || !strings.Contains(summary.Text, "Continuation paused: /2: Awaiting **approval**") || strings.Contains(summary.Text, "Resume: continue") {
+		t.Fatalf("recovery lost the pause: %s, %v", summary.Text, err)
+	}
+	if _, err := proxy.journals.apply(t.Context(), store, d.workspace, d.thread, "", []journalMutation{{Op: "set", P: "/2", State: new("done")}}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(u.journalPlanStrip(100), "Continuation paused") {
+		t.Fatal("resolved blocker left a stale pause strip")
+	}
+	if err := proxy.journals.beginJournalTurn(t.Context(), store, d.workspace, d.thread, "unblocked"); err != nil {
+		t.Fatal(err)
+	}
+	next := &journalResetDriver{ctx: t.Context(), proxy: proxy, client: d.client, workspace: d.workspace, thread: d.thread}
+	if err := next.completed("unblocked"); err != nil || next.intent == nil || next.intent.Path != "/1" {
+		t.Fatalf("resolved blocker did not release local work: %+v %v", next.intent, err)
+	}
+}
+
 func TestNativeJournalAutoContinueUsesClientProvenance(t *testing.T) {
 	for _, id := range []string{"ordinary", journalContinuationPrefix + "fixture"} {
 		view := newLiveActivityView()

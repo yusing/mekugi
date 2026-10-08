@@ -738,6 +738,11 @@ func (u *appServerUI) journalPin() (journalPin, bool) {
 			current = item
 		}
 	}
+	if u.turn == "" {
+		if blocker := j.continuationBlocker(); blocker != nil {
+			current = blocker
+		}
+	}
 	if current == nil && u.turn != "" {
 		current = finished
 	}
@@ -756,8 +761,13 @@ func (u *appServerUI) journalPlanStrip(width int) string {
 	}
 	node := pin.node
 	node.Body = "" // The strip identifies work; supporting detail belongs in the card.
-	lead, text := journalPaintNodeParts(&u.view.painter, node, "", true)
-	left := lead + text
+	var left string
+	if u.turn == "" && node.State == "blocked" {
+		left = activityui.Amber + "Continuation paused" + activityui.Reset + " " + activityui.Dim + livediff.Safe(node.Path, false) + activityui.Undim + ": " + u.view.painter.Inline(node.Reason)
+	} else {
+		lead, text := journalPaintNodeParts(&u.view.painter, node, "", true)
+		left = lead + text
+	}
 	if pin.node.Finished == nil && pin.node.WorkTimer.Known {
 		left += activityui.Dim + " · " + pin.node.WorkTimer.at(u.now()).Round(time.Second).String() + activityui.Undim
 	}

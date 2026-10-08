@@ -122,6 +122,9 @@ visible host results and native trace outcomes confirm completion.
 The mutation transaction checks finish against the candidate journal before
 saving that receipt. A pure journal-owned continuation selector is shared by
 this check and Main continuation; caller identity and dispatch remain separate.
+The same selector supplies recovery's runnable target. Its owned-task blocker
+check also supplies the idle native plan strip's pause path and reason. Mounted
+child state remains separate from owned-task eligibility.
 Ordinary runnable work rejects the whole batch with its task path. Completed
 slice boundaries, blocked reports and user-stopped work retain their ending behavior.
 A native journal array drops only that marker, because its rejection would fail the response.

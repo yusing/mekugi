@@ -1,7 +1,7 @@
 40 columns
-⚠ /1 Check build prerequisite…  0/1 done
+Continuation paused /1: Requi…  0/1 done
 17 columns
-⚠ /1 Check build…
+Continuation pau…
 ╭─ ✓ journal · 1 open ────────── 22:31 ╮
 │ This turn                            │
 │ ⚠ /1 Check build prerequisites and   │

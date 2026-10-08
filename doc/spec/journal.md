@@ -43,6 +43,9 @@ current state as the pane, with a short blocker preview, right-aligned owned-tas
 progress and the pane key, which yield to the title when narrow. It remains while
 any owned task is open; during a Main turn after the last task finishes it shows
 the most recently updated finished task. An idle all-finished journal has no strip.
+When Main is idle and an owned blocked task pauses continuation, the strip shows
+`Continuation paused` with the most recently updated blocked task's path and reason
+instead of unrelated working work. The full task remains available in the Journal pane.
 
 Child journals mount read-only under the parent's linked task, or under an Agents
 group when unlinked. Mount headings name the agent once and distinguish its host
@@ -211,7 +214,11 @@ references. Unknown exit status stays unknown. At most eight failed commands are
 listed, newest kept within the remaining capacity, with earlier ones counted. A
 failed command whose output was not retained is listed as such. Unordered records
 from before failure capture ordering are covered by a known journal boundary. The
-resume direction names the working task and offers evidence reads on demand,
+resume direction uses the same local-work eligibility as automatic continuation.
+An owned blocked task names the paused path and reason instead of directing
+continuation of unrelated work. User-stopped or delegated work does not become a
+resume target. When no local task is runnable, recovery offers evidence reads
+without directing a new turn. It offers evidence reads on demand,
 rather than requiring every retained change or output to be read before work or
 treating an investigation's hypothesis as established. Capturing failed output
 does not replace or alter the host's result. An unreadable evidence boundary does
@@ -317,7 +324,8 @@ only the slice boundary below can request a reset.
 
 The native frontend offers the same cancellable three-second countdown for
 ordinary and slice continuation. A blocked task pauses journal continuation;
-pending user questions, queued input, failed/interrupted turns, and explicit
+the idle plan strip and recovery identify the blocking owned task and its reason.
+Pending user questions, queued input, failed/interrupted turns, and explicit
 user interruption do not trigger it. User interruption wins even when the host
 races to report successful completion. Finished/dropped tasks and work owned by
 delegates cannot drive a new Main turn. A parent waiting on unfinished children
