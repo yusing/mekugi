@@ -3,10 +3,11 @@ package router
 import (
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
-	"github.com/yusing/mekugi"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi"
 )
 
 func TestChildJournalResultDeltaAcknowledgement(t *testing.T) {

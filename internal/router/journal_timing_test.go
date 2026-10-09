@@ -1,11 +1,12 @@
 package router
 
 import (
-	"github.com/yusing/mekugi/internal/uisnapshot"
 	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func TestJournalActiveWorkTiming(t *testing.T) {

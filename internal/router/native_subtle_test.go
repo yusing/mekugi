@@ -3,11 +3,12 @@ package router
 import (
 	"bytes"
 	"fmt"
-	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"testing"
 	"time"
+
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/charmbracelet/x/vt"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
