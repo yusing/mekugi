@@ -528,7 +528,7 @@ func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
 	if len(blocks) != 1 || journal == nil || len(journal.Groups) != 2 || journal.Groups[0].Question != question ||
 		len(journal.Groups[0].Answers) != 2 || journal.Groups[0].Answers[0].Text != "Yes.\n\n- `node -e` covered" ||
 		journal.Groups[1].Question != "" || journal.Groups[1].Answers[0].ID != "misc" ||
-		journal.Changes != "amber3..amber4" || len(journal.Stats) != 2 || journal.Stats[0] != (activityui.Stat{"M", "10", "2", "internal/a.go"}) {
+		journal.Changes != "amber3..amber4" || len(journal.Stats) != 2 || journal.Stats[0] != (activityui.Stat{Status: "M", Added: "10", Removed: "2", Path: "internal/a.go"}) {
 		t.Fatalf("journal = %+v", journal)
 	}
 	painter := activityui.Painter{Theme: livediff.DarkTheme}

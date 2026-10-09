@@ -140,7 +140,7 @@ func (c *liveDiffTerminalController) openChange(change string, file int) {
 		return
 	}
 	c.view.Open(file)
-	c.navigation.Changes.Target = diffview.ChangeTarget{change, c.view.Files[file].Key()}
+	c.navigation.Changes.Target = diffview.ChangeTarget{Change: change, File: c.view.Files[file].Key()}
 	c.revealFile()
 }
 
@@ -154,7 +154,7 @@ func (c *liveDiffTerminalController) stepChange(direction int) {
 			if file.File >= len(c.view.Files) {
 				continue
 			}
-			targets = append(targets, diffview.ChangeTarget{node.Change, c.view.Files[file.File].Key()})
+			targets = append(targets, diffview.ChangeTarget{Change: node.Change, File: c.view.Files[file.File].Key()})
 			files = append(files, file.File)
 		}
 	}
