@@ -45,4 +45,4 @@
  ● editor  idle                                                                                                                          0%
  ● reviewer  idle                                                                                                                        0%
 
- 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   j/k scroll · n/p agent · a only · esc bottom · enter open · ^B 1-5 panes · ^E expan
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   j/k scroll · n/p agent · a only · ^B 1-5 panes · ^E expand events

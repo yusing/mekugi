@@ -21,4 +21,4 @@
  ● main  idle                                                                                      
  ✓ 1 finished · worker
 
- 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   j/k scroll · n/p agent · a only · esc botto
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   j/k scroll · n/p agent · a only · ^B 1-5 pa

@@ -504,7 +504,7 @@ func (u *terminalUI) nativeStatus() string {
 			hints = append(terminalHints{{"esc", "back", 0}}, hints...)
 		}
 	case u.focus == 2:
-		hints = terminalHints{{"j/k", "scroll", 0}, {"n/p", "agent", 0}, {"a", filter, 0}, {"esc", "bottom", 0}, {"enter", "open", 0}}
+		hints = terminalHints{{"j/k", "scroll", 0}, {"n/p", "agent", 0}, {"a", filter, 0}}
 	case u.focus == 4:
 		// Expansion, details and namespace keys are in the pane title.
 		hints = terminalHints{{"j/k", "select", 0}, {"enter", "open", 0}, {"c", "copy path", 0}, {"esc", "Main", 0}}
