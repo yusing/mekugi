@@ -137,6 +137,22 @@ env MEKUGI_UPDATE_FRONTEND_GUIDANCE=1 make test TEST_PACKAGES=./internal/router 
 make test TEST_PACKAGES=./internal/router TEST_RUN='GeneratedFrontendGuidance|ProjectedStockGuidance|JournalRulesHaveOneOwner|JournalGuidanceUsesRequestRole|Instruction|ConflictRewrite|WebSocketPrewarmToolGuidance'
 ```
 
+## Native Claude static guidance proof
+
+Static guidance consolidation has a separate isolated-source proof:
+
+```sh
+MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestRuntimeGuidanceClaudeNativeStaticMod' TEST_FLAGS='-count=1 -v -timeout=3m'
+```
+
+It compiles a disposable bridge with preset append and static classic-hook text
+empty. One official engine-attachment mod reads the current workflow and complete
+authenticated catalog. Fresh, repeated, changed-guidance resume, custom child
+and post-compact provider requests prove consumption, retained native summary,
+nonempty current journal recovery, MCP tool availability, Skill restrictions and
+exactly-once child execution. This proof
+does not change production guidance delivery or use model inference.
+
 ## Native Claude VCS guard
 
 Offline metadata, shared approval and snapshot checks use `NativeRuntimeVCSGuard`.

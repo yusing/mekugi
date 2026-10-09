@@ -2,10 +2,112 @@ package router
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
+
+// Compile an isolated authoritative-source overlay with all old static carriers
+// empty. Production still uses its unchanged bridge until the mod proves parity.
+func nativeStaticGuidanceFixtureBridge(t *testing.T, plugin string) string {
+	t.Helper()
+	source, err := filepath.Abs("../claude/bridge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".ts") && name != "package.json" && name != "tsconfig.json" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(source, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if name == "bridge.ts" {
+			text := string(data)
+			for before, after := range map[string]string{
+				"const guidance = endpoint ? companionGuidance(endpoint) : '';":               "const guidance = '';",
+				"const frontendChunks = endpoint ? companionFrontendGuidance(endpoint) : [];": "const frontendChunks: string[] = [];",
+			} {
+				if strings.Count(text, before) != 1 {
+					t.Fatal("static-carrier fixture overlay no longer matches its source owner")
+				}
+				text = strings.Replace(text, before, after, 1)
+			}
+			data = []byte(text)
+		}
+		if err := os.WriteFile(filepath.Join(root, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(source, "node_modules"), filepath.Join(root, "node_modules")); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(t.Context(), "npm", "run", "build", "--prefix", root)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("isolated guidance bridge compile: %v\n%s", err, output)
+	}
+	path := filepath.Join(plugin, "hooks", "register.js")
+	skillPath := filepath.Join(plugin, "skills", "mekugi", "SKILL.md")
+	frontendsPath := filepath.Join(plugin, "skills", "mekugi", "frontends.md")
+	// This proof preserves native attachment text and reads the same current
+	// workflow/catalog owners independently of preset append and classic hooks.
+	hook := `  on('prompt.attachment', {type: 'date'}, async ($, e, next) => {
+    if (e.origin.kind !== 'engine') return next(e);
+    const skill = await $.fs.read(` + strconv.Quote(skillPath) + `);
+    const workflow = skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').trim();
+    const contracts = await $.fs.read(` + strconv.Quote(frontendsPath) + `);
+    const attachment = await next(e);
+    return {text: attachment.text + '\n\n' + workflow + '\n\n' + contracts + '\n\nFrontend recovery: ' + ` + strconv.Quote(frontendsPath) + `};
+  });
+`
+	if err := os.WriteFile(path, []byte("export function register(on) {\n"+hook+"}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(root, "dist", "bridge.js")
+}
+
+func assertNativeStaticGuidanceFixture(t *testing.T, packet map[string]any, plugin string, registry *toolRegistry) {
+	t.Helper()
+	skill, err := os.ReadFile(filepath.Join(plugin, "skills", "mekugi", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, body, ok := strings.Cut(string(skill), "\n---\n")
+	if !ok {
+		t.Fatal("generated workflow has no body")
+	}
+	body = strings.TrimSpace(body)
+	context := nativeGuidanceRequestText(packet["messages"])
+	if strings.Count(context, body) != 1 || strings.Contains(nativeGuidanceRequestText(packet["system"]), body) {
+		t.Fatal("mod did not deliver exactly one complete current workflow independently of preset append")
+	}
+	assertNativeFrontendContracts(t, registry, context)
+}
+
+func assertNativeCompanionTools(t *testing.T, packet map[string]any) {
+	t.Helper()
+	names := make(map[string]bool)
+	tools, _ := packet["tools"].([]any)
+	for _, value := range tools {
+		tool, _ := value.(map[string]any)
+		name, _ := tool["name"].(string)
+		names[name] = true
+	}
+	for _, name := range []string{"mcp__mekugi__journal_batch", "mcp__mekugi__journal_read", "mcp__mekugi__mchanges"} {
+		if !names[name] {
+			t.Fatalf("native work prompt lacks %s", name)
+		}
+	}
+}
 
 func nativeGuidanceFixtureConfig(t *testing.T) {
 	t.Helper()

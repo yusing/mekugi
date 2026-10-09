@@ -21,6 +21,14 @@ import (
 
 // Real native child and classic /compact consumers, with no model inference.
 func TestRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T) {
+	testRuntimeGuidanceClaudeNativeChildAndCompact(t, false)
+}
+
+func TestRuntimeGuidanceClaudeNativeStaticModChildAndCompact(t *testing.T) {
+	testRuntimeGuidanceClaudeNativeChildAndCompact(t, true)
+}
+
+func testRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T, staticMod bool) {
 	if os.Getenv("MEKUGI_TEST_NATIVE_CLAUDE") != "1" {
 		t.Skip("requires installed native Claude and built bridge")
 	}
@@ -36,6 +44,7 @@ func TestRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T) {
 	const childPrompt = "NATIVE_CHILD_GUIDANCE_FIXTURE"
 	const afterPrompt = "NATIVE_AFTER_COMPACT_GUIDANCE_FIXTURE"
 	const summary = "NATIVE_SUMMARY_RETAIN_CEDAR: the native child completed its one assigned task."
+	const recoveryFact = "NATIVE_JOURNAL_RECOVERY_CEDAR: retain the current shared journal fact"
 	var mu sync.Mutex
 	var childPacket, compactPacket map[string]any
 	var requests, parentRequests, childRequests, summaryRequests int
@@ -88,7 +97,7 @@ func TestRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T) {
 	}))
 	defer provider.Close()
 	t.Setenv("ANTHROPIC_BASE_URL", provider.URL)
-	service, binding, _ := observationHTTPFixture(t)
+	service, binding, journalClient := observationHTTPFixture(t)
 	presentation, err := service.PrepareCompanion(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -113,6 +122,9 @@ func TestRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T) {
 	bridge, err := filepath.Abs("../claude/bridge/dist/bridge.js")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if staticMod {
+		bridge = nativeStaticGuidanceFixtureBridge(t, presentation.Plugin)
 	}
 	executable, err := exec.LookPath("claude")
 	if err != nil {
@@ -175,6 +187,11 @@ func TestRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T) {
 				}
 				phase++
 				if phase < 3 {
+					if staticMod && phase == 1 {
+						root := binding
+						root.Session = nativeSession
+						runtimeJournalAdd(t, service, root, journalClient, "guidance-recovery", recoveryFact)
+					}
 					mu.Lock()
 					requestPhase = phase
 					mu.Unlock()
@@ -196,7 +213,9 @@ func TestRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T) {
 	}
 	for name, packet := range map[string]map[string]any{"child": childPacket, "post-compact": compactPacket} {
 		// A native custom child's prompt has no preset session_guidance section.
-		assertNativePromptModFixture(t, packet, name != "child")
+		if !staticMod {
+			assertNativePromptModFixture(t, packet, name != "child")
+		}
 		assertNativeManagedSkillFixture(t, packet, presentation.ManagedSkills)
 		if name == "child" && !strings.Contains(nativeGuidanceRequestText(packet["system"]), "Return CHILD_ACCEPTED without tools.") {
 			t.Fatal("prompt mods replaced the native custom child's system instructions")
@@ -210,6 +229,9 @@ func TestRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T) {
 	}
 	if !strings.Contains(nativeGuidanceRequestText(compactPacket["messages"]), summary) {
 		t.Fatalf("classic recovery replaced or omitted the native summary: summary requests=%d parent requests=%d", summaryRequests, parentRequests)
+	}
+	if staticMod && !strings.Contains(nativeGuidanceRequestText(compactPacket["messages"]), recoveryFact) {
+		t.Fatal("classic compact omitted the current nonempty journal recovery")
 	}
 	if len(agentCalls) != 1 || !agentCalls["native-child-once"] || agentResults != 1 || childRequests != 1 || parentRequests != 2 || compactBoundaries != 1 || summaryRequests != 1 {
 		t.Fatalf("native execution duplicated or incomplete: Agent=%d results=%d child=%d parent=%d compact=%d summaries=%d", len(agentCalls), agentResults, childRequests, parentRequests, compactBoundaries, summaryRequests)
