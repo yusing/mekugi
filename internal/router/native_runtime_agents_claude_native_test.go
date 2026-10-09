@@ -30,7 +30,12 @@ func TestNativeRuntimeAgentsClaudePTY(t *testing.T) {
 	defer cancel()
 	t.Setenv(routerTestWorkerEnvironment, "1")
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
-	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	configDirectory := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", configDirectory)
+	// Local providers exercise native permissions without a real Auto classifier.
+	if err := os.WriteFile(filepath.Join(configDirectory, "settings.json"), []byte(`{"permissions":{"defaultMode":"default"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("ANTHROPIC_API_KEY", "native-agents-fixture")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
@@ -221,10 +226,14 @@ func TestNativeRuntimeAgentsClaudePTY(t *testing.T) {
 	await("root settled while child runs", func(s string) bool {
 		return strings.Contains(s, main) && strings.Contains(s, "Ready") && strings.Contains(s, "running")
 	})
+	// Complete native permission interaction before roster navigation. The
+	// pending question can otherwise take focus while the fixture selects a child.
+	await("child Bash output before settlement", func(s string) bool { return strings.Contains(s, "┆ CHILD_BASH_LIVE") })
 	terminal.keys("\x02" + "4")
 	terminal.keys("\x1b[B\r")
-	await("original child Activity before settlement", func(s string) bool {
-		return strings.Contains(nativeAgentsActivity(s), initial) && !strings.Contains(nativeAgentsActivity(s), main) && strings.Contains(s, "running")
+	await("original child Activity and live output before settlement", func(s string) bool {
+		activity := nativeAgentsActivity(s)
+		return strings.Contains(activity, initial) && !strings.Contains(activity, main) && strings.Contains(s, "running") && strings.Contains(activity, "┆ CHILD_BASH_LIVE")
 	})
 	mu.Lock()
 	var childTask string
@@ -241,7 +250,6 @@ func TestNativeRuntimeAgentsClaudePTY(t *testing.T) {
 	if childTask == "" || !childText {
 		t.Fatalf("child text lost native task/caller identity: task=%q text=%v", childTask, childText)
 	}
-	await("child Bash output before settlement", func(s string) bool { return strings.Contains(nativeAgentsActivity(s), "┆ CHILD_BASH_LIVE") })
 	click("┆ CHILD_BASH_LIVE", false)
 	await("original shared child output dialog", func(s string) bool {
 		return strings.Contains(s, "y copy · esc") && strings.Contains(s, "1 ┆ CHILD_BASH_LIVE") && strings.Contains(s, "● live")

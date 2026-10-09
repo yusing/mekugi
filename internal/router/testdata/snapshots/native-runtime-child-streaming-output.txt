@@ -1,0 +1,40 @@
+┌ 1 Main ──────────────────────────────────────────────────┐┌ 3 Activity · child 1/1 ────────────────────────── FOLLOW ┐
+│● child                                          12:00:00 ││● child                                          12:00:00 │
+││ • Native child conversation · running                   │││ • Native child conversation · running                   │
+│                                                          │││ ├ Running printf 'once\n' >> child-effects.txt;         │
+│● child                                          12:00:00 │││ │         printf 'CHILD_BASH_LIVE\n';                   │
+││ Running printf 'once\n' >> child-effects.txt;           │││ │         while [ ! -f child-release.gate ];            │
+││         printf 'CHILD_BASH_LIVE\n';                     │││ │         do sleep 0.05;                                │
+││         while [ ! -f child-release.gate ];              │││ │         done                                          │
+││         do sleep 0.05;                                  │││ ├ Running shell batch · Approved                        │
+││         done                                            │││ │         ┆ CHILD_BASH_LIVE                             │
+││ Running shell batch · Approved                          │││ └ Asked  1 question · answered                          │
+││         ┆ CHILD_BASH_LIVE                               │││                                                         │
+│                                                          │││     {"command":"gated child command"}                   │
+│● child                                          12:00:00 │││     └ Allow once                                        │
+││ Asked  1 question · answered                            ││                                                          │
+││                                                         ││                                                          │
+││   {"command":"gated child command"}                     ││                                                          │
+││   └ Allow once                                          ││                                                          │
+│                                                          ││                                                          │
+│• Child gated effect · running                            ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│                                                          ││                                                          │
+│╭─ Ready ────────────────────────────────────────────────╮││                                                          │
+││ ❯                                                      │││                                                          │
+│╰──────────────────────────────────────── claude-sonnet ─╯││                                                          │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+─ 4 Agents · 2 · 1 working ─────────────────────────────────────────────────────────────────────────────────────────────
+ ● main  idle
+ ◐ └ child  running
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents¹   j/k scroll · n/p agent · a all · esc bottom · enter open · ^B

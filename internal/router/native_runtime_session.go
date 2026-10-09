@@ -138,6 +138,11 @@ func RunNativeSession(ctx context.Context, client session.Client, name, cwd stri
 					if settleActivity(u.now(), u.view, u.agents) {
 						u.dirty = true
 					}
+					for _, view := range []*liveActivityView{u.view, u.agents} {
+						if view.pace(u.now()) {
+							u.dirty = true
+						}
+					}
 					if s := u.runtime.observations; s != nil && s.journal != nil && u.runtime.changeRequest == "" {
 						if sink := s.journal.sink(); sink != nil {
 							u.journal = sink

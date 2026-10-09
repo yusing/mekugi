@@ -196,7 +196,9 @@ unavailable, preserving the readable tail rather than claiming complete evidence
 
 Successful command output follows the shared timed-collapse lifecycle; failure
 details stay expanded. Command output and task events open the shared dialog
-from their painted rows in Main and Activity. Running shell jobs remain outside
+from their painted rows in Main and Activity. Selected child Activity advances
+the shared operation-reveal lifecycle while native work continues, so later output
+and approval rows remain available before settlement. Running shell jobs remain outside
 the Agents roster. Their task disclosure and command-output dialog retain the
 native stop action (`x`), without changing search text or replaying execution.
 

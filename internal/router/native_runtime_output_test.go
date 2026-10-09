@@ -39,6 +39,27 @@ func TestNativeRuntimeOutputSnapshotKeepsOpenDialogAndNativeAggregate(t *testing
 	}
 }
 
+func TestUISnapshotNativeRuntimeChildStreamingOutput(t *testing.T) {
+	previous := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() { time.Local = previous })
+	u, _ := runtimeTestUI(t)
+	u.clock = func() time.Time { return time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC) }
+	feed := runtimeDecodedFrames(t, u)
+	runtimeEvidenceTask(t, u, "task_started", session.Task{ID: "child", ToolID: "spawn", Kind: "local_agent", Description: "Native child conversation", Status: "running"})
+	feed(`{"kind":"event","event":{"type":"assistant","parent_tool_use_id":"spawn","message":{"content":[{"type":"tool_use","id":"command","name":"Bash","input":{"command":"printf 'once\\n' >> child-effects.txt; printf 'CHILD_BASH_LIVE\\n'; while [ ! -f child-release.gate ]; do sleep 0.05; done"}}]}}}`)
+	feed(`{"kind":"permission","id":"approval","toolUseID":"command","agentID":"child","tool":"Bash","input":{"command":"gated child command"}}`)
+	runtimeFrame(t, u, 120, 40)
+	runtimeKeys(t, u, "1\r")
+	feed(`{"kind":"permission_decision","id":"approval","toolUseID":"command","allow":true}`)
+	runtimeEvidenceTask(t, u, "task_started", session.Task{ID: "shell", ToolID: "command", Kind: "local_bash", Description: "Child gated effect", Status: "running"})
+	feed(`{"kind":"command_output","id":"command","taskID":"shell","text":"CHILD_BASH_LIVE\n"}`)
+	runtimeKeys(t, u, "\x02"+"3")
+	u.agents.only, u.agents.selected = true, runtimeTaskLane("child")
+	finishPacing(u.view, u.agents)
+	uisnapshot.Assert(t, "testdata/snapshots/native-runtime-child-streaming-output.txt", runtimeFrame(t, u, 120, 40))
+}
+
 func TestNativeRuntimeOutputEscapeRequestsRedrawWithoutNewEvents(t *testing.T) {
 	u, _ := runtimeTestUI(t)
 	runtimeEvidenceEvent(t, u, session.Event{Kind: "tool", ID: "command", Role: "Bash", Text: `{"command":"make watch"}`})
