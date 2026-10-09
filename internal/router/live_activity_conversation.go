@@ -461,6 +461,9 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 				}
 			}
 		}
+		if v.expansion == 0 {
+			summaries = activityui.CompactReasoning(summaries)
+		}
 		laid = summaries
 		for index, block := range laid {
 			block = v.discloseBlock(block)

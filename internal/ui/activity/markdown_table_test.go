@@ -91,7 +91,7 @@ func TestMarkdownTableStopsAtBlocks(t *testing.T) {
 	p := activityui.Painter{}
 	for _, following := range []string{"# Notes | important | keep this", "- Notes | important | keep this", "* Notes | important | keep this", "> Notes | important | keep this"} {
 		rows := plainLines(p.Markdown("A | B\n--- | ---\nx | y\n"+following, 60))
-		if len(rows) != 6 || !strings.HasPrefix(rows[4], "└") || !strings.Contains(rows[5], "Notes | important | keep this") {
+		if len(rows) < 6 || !strings.HasPrefix(rows[4], "└") || !strings.Contains(rows[5], "Notes | important | keep this") {
 			t.Fatalf("block swallowed: %q", rows)
 		}
 	}

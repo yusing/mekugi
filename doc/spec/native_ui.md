@@ -1154,8 +1154,9 @@ while streaming and `• Thought` after completion. The latest three body rows
 remain visible, with `· +N lines` counting the rows above them.
 Summary bursts roll through at the command-output cadence, retaining their
 original Markdown. Earlier sections fold as soon as the next section starts.
-Item completion folds the final section immediately after queued text has been
-shown. An observed item duration is shown on its last section only,
+Item completion keeps all sections open after queued text has been shown.
+They fold with successful command output after later activity and a 5-second
+quiet period. An observed item duration is shown on its last section only,
 not attributed separately to each section. Each forwarded request to a provider
 that streams untitled reasoning shows `• Thinking…` from the request start, so the wait for the
 first delta is not silent; the request's first reasoning item takes over that block.
@@ -1168,7 +1169,11 @@ that ends first completes its unfinished blocks.
 In Main and Activity, a click on a finished row opens its body in the shared
 dialog. Restored long summaries start folded, while short ones remain directly
 visible. Each section's own body is retained for its dialog. Consecutive items keep their
-own rows and collapse independently, including the latest item.
+own rows. The latest completed item remains open until later activity.
+Collapsed sections of one item share a single row, with bullet-separated titles
+and the item duration once at the end. Long rows elide titles to retain the duration.
+Clicking the row opens its retained sections as dialog pages; expanded presentation
+keeps their original paragraphs.
 An item that starts without public text creates no summary row; its observed
 start still supplies timing when public text arrives later. Provider-request
 waiting progress remains separate and is removed when no public summary arrives.
@@ -1176,7 +1181,8 @@ Late deltas cannot reopen completed items. Text appears only when
 the host supplies a public summary; raw and encrypted reasoning are not a
 substitute for summaries delivered late or only at completion.
 
-Successful command output eligible to fold shares one debounce deadline across Main and Activity,
+Completed reasoning and successful command output eligible to fold share one
+5-second quiet-period deadline across Main and Activity,
 including late completions, so it collapses in a single screen update rather than
 one result at a time. An agent's latest command output remains open until later activity.
 

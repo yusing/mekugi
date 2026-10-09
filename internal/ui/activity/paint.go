@@ -521,9 +521,64 @@ func (p *Painter) markdown(text string, width int, reasoning bool) []string {
 			continue
 		}
 		indent := line[:len(line)-len(trimmed)]
+		// Headings follow Bun's terminal Markdown: one bold color per level and
+		// a rule under the first two, from three cells up to the full width.
+		heading := func(level int, prefix, title, closing, underline string) {
+			style, color := "\x1b[1m", ""
+			if !reasoning {
+				color = p.Theme.HeadingColor(level)
+			}
+			style += color
+			// Inline spans end with their own resets; restore the heading style after each.
+			inline := strings.NewReplacer(Reset, Reset+style, Undim, Undim+"\x1b[1m", "\x1b[39m", "\x1b[39m"+color, "\x1b[24;39m", "\x1b[24;39m"+color).Replace(p.Inline(title))
+			rows := Wrap(style+inline+Reset, width, false)
+			if copying {
+				f := copyInline(title)
+				f.ID, f.Prefix = copyID(strconv.Itoa(i), identity), prefix
+				if closing != "" {
+					f.Styles = append(f.Styles, copyStyle{0, len(f.Text), "", closing, -1})
+				}
+				rows = p.CopyWrapped(rows, f, 0)
+			}
+			lines = append(lines, rows...)
+			if level > 2 || reasoning {
+				if underline != "" {
+					i++
+				}
+				return
+			}
+			cells := 0
+			for _, row := range rows {
+				cells = max(cells, ansi.StringWidth(row))
+			}
+			rule := "─"
+			if level == 1 {
+				rule = "═"
+			}
+			row := Dim + strings.Repeat(rule, min(width, max(3, cells))) + Reset
+			if copying && underline != "" {
+				row = copyTag(CopyFragment{ID: copyID(strconv.Itoa(i+1), identity), Text: underline, Width: ansi.StringWidth(row)}) + row
+			} else if copying {
+				row = CopyDecoration(row)
+			}
+			lines = append(lines, row)
+			if underline != "" {
+				i++
+			}
+		}
+		if len(indent) <= 3 {
+			if level, prefix, title, closing, ok := atxHeading(trimmed); ok {
+				heading(level, prefix, title, closing, "")
+				continue
+			}
+			if i+1 < len(source) && trimmed != "" && !strings.HasPrefix(trimmed, "- ") && !strings.HasPrefix(trimmed, "* ") {
+				if level, underline, ok := setextUnderline(livediff.Safe(source[i+1], false)); ok {
+					heading(level, "", strings.TrimRight(trimmed, " \t"), "", underline)
+					continue
+				}
+			}
+		}
 		switch {
-		case strings.HasPrefix(trimmed, "#"):
-			lines = append(lines, annotate(Wrap("\x1b[1m"+p.Inline(strings.TrimLeft(trimmed, "# "))+Undim, width, false), strings.TrimLeft(trimmed, "# "), trimmed[:len(trimmed)-len(strings.TrimLeft(trimmed, "# "))], 0, i)...)
 		case strings.HasPrefix(trimmed, "- "), strings.HasPrefix(trimmed, "* "):
 			lines = append(lines, annotateHang(liveActivityHang(indent+Dim+"•"+Undim+" ", p.Inline(trimmed[2:]), width), trimmed[2:], indent+trimmed[:2], ansi.StringWidth(indent)+2, i)...)
 		default:
@@ -546,6 +601,38 @@ func (p *Painter) markdown(text string, width int, reasoning bool) []string {
 		lines = lines[1:]
 	}
 	return lines
+}
+
+// atxHeading parses a CommonMark ATX heading: one to six markers followed by
+// whitespace or the line end, and an optional closing marker sequence.
+func atxHeading(line string) (level int, prefix, title, closing string, ok bool) {
+	level = len(line) - len(strings.TrimLeft(line, "#"))
+	rest := line[level:]
+	if level == 0 || level > 6 || rest != "" && rest[0] != ' ' && rest[0] != '\t' {
+		return 0, "", "", "", false
+	}
+	title = strings.TrimLeft(rest, " \t")
+	prefix = line[:len(line)-len(title)]
+	title = strings.TrimRight(title, " \t")
+	if open := strings.TrimRight(title, "#"); open == "" || strings.HasSuffix(open, " ") || strings.HasSuffix(open, "\t") {
+		title = strings.TrimRight(open, " \t")
+		closing = strings.TrimRight(line[len(prefix)+len(title):], " \t")
+	}
+	return level, prefix, title, closing, true
+}
+
+// setextUnderline reports a line of only = or - markers that turns the
+// preceding paragraph line into a level one or two heading.
+func setextUnderline(line string) (level int, underline string, ok bool) {
+	underline = strings.TrimRight(line, " \t")
+	marks := strings.TrimLeft(underline, " ")
+	if len(underline)-len(marks) > 3 || marks == "" || strings.Trim(marks, marks[:1]) != "" || marks[0] != '=' && marks[0] != '-' {
+		return 0, "", false
+	}
+	if marks[0] == '=' {
+		return 1, underline, true
+	}
+	return 2, underline, true
 }
 
 // quote keeps a visible bar on every wrapped row and renders the quoted

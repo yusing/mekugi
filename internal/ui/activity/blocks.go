@@ -64,8 +64,8 @@ type Block struct {
 	Changes            []ChangeRow  // Change history rows open output shows instead of Tail.
 	Output             *Output      // The invocation's retained output, which the output dialog reads.
 	Hook               *HookDetails // Hook metadata on an ordinary Run operation.
-	// Members are the invocations a merged read row stands for, each with its
-	// own output, which the output dialog pages through.
+	// Members are merged read invocations or compact reasoning sections,
+	// each retained as a separate output dialog page.
 	Members    []Block
 	SourceRows int    // Rows a command or program preview may use; 0 shows it whole.
 	Flash      bool   // Presentation-only: another pane just opened this entry.
@@ -81,12 +81,12 @@ type Block struct {
 	Detail string // Styled facts for the dialog's detail row when it has none of its own.
 }
 
-// Successful output stays open until its agent's
+// Completed reasoning and successful output stay open until their agent's
 // next standalone event, then collapses once events pause for
 // OutputDebounce. Eligible outputs share the latest deadline across agents
 // and late completions, so a quick run of commands collapses together rather than
 // one row at a time. Restored history starts settled.
-const OutputDebounce = 750 * time.Millisecond
+const OutputDebounce = 5 * time.Second
 
 // Collapsible reports a settled block that can show as one row: finished
 // thinking as its header, or a successful command's output as its

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
@@ -45,8 +46,12 @@ func TestUISnapshotAppServerReasoningBeforeLaterActivity(t *testing.T) {
 				if len(view.entries) != 2 || view.entries[0].Kind != "reasoning" || view.entries[0].Seq >= view.entries[1].Seq || view.entries[0].blocks[0].Live {
 					t.Fatalf("summary chronology or completion lost: %+v", view.entries)
 				}
-				if !view.entries[0].blocks[0].Collapsed {
-					t.Fatal("completed paced summary did not fold immediately")
+				if view.entries[0].blocks[0].Collapsed || settleActivity(at.Add(time.Second), view) {
+					t.Fatal("completed paced summary folded before it could be read")
+				}
+				uisnapshot.Assert(t, "testdata/snapshots/reasoning-before-"+later+"-"+thread+"-expanded.txt", strings.Join(view.renderFeed(80, 40).lines, "\n")+"\n")
+				if !settleActivity(at.Add(activityui.OutputDebounce), view) || !view.entries[0].blocks[0].Collapsed {
+					t.Fatal("completed paced summary did not fold after the reading period")
 				}
 				uisnapshot.Assert(t, "testdata/snapshots/reasoning-before-"+later+"-"+thread+"-collapsed.txt", strings.Join(view.renderFeed(80, 40).lines, "\n")+"\n")
 			})

@@ -53,23 +53,29 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			snapshot("rolling")
 			rollCommandOutput(u)
 			snapshot("done")
+			if view.entries[0].blocks[0].Collapsed || view.entries[0].blocks[1].Collapsed || settleActivity(at.Add(time.Minute), view) {
+				t.Fatal("latest completed reasoning did not stay open")
+			}
 			if len(u.session.summaries) != 0 || len(view.entries[0].blocks) != 2 || view.entries[0].blocks[0].Live || view.entries[0].blocks[1].Live || view.entries[0].blocks[0].Elapsed != "" || view.entries[0].blocks[1].Elapsed != "2s" {
 				t.Fatalf("section completion or item duration lost: %+v", view.entries)
 			}
-			// Each title opens only its own retained section, not the whole item.
+			// The compact row retains one dialog page per original section.
+			nextEvent(t, u, thread)
+			settleActivity(at.Add(time.Minute), view)
+			snapshot("collapsed")
 			feed := view.renderFeed(80, 40)
 			for i := range 2 {
 				opened := false
 				for _, snippet := range feed.snippets {
 					block, ok := view.snippetBlock(snippet)
-					if !ok || block.Source != view.entries[0].Seq || block.Section != i {
+					if !ok || block.Source != view.entries[0].Seq || len(block.Members) != 2 {
 						continue
 					}
 					if !u.shell.openOutput(view, snippet) {
 						t.Fatal("section has no dialog target")
 					}
-					page := view.painter.DialogPage(u.shell.output.pages[0], 80)
-					if page.Text != block.Body || strings.Contains(page.Text, []string{"Third checkpoint.", "First checkpoint."}[i]) {
+					page := view.painter.DialogPage(u.shell.output.pages[i], 80)
+					if page.Text != block.Members[i].Body || strings.Contains(page.Text, []string{"Third checkpoint.", "First checkpoint."}[i]) {
 						t.Fatalf("section dialog mixed bodies: %+v", page)
 					}
 					opened = true

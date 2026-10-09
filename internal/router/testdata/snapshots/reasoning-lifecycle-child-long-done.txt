@@ -1,2 +1,6 @@
 ● worker                                                                08:00:00
 │ • Checking tests for 2s
+│   First checkpoint.
+│   
+│   Second checkpoint.
+│ … +4 lines

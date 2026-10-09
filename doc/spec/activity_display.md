@@ -166,7 +166,7 @@ same rule because it has no live segment report.
 Completion replaces it with the tail of the host's aggregated output. A
 failure keeps that tail open. After a zero exit it stays open until the same
 agent's next standalone event, such as a separate command, Skill or Read, then
-collapses to one muted `┆ … +N lines` row once events pause for 750 ms after the
+collapses to one muted `┆ … +N lines` row once events pause for 5 seconds after the
 later of that event and the output's completion, so a quick run of commands
 collapses together; a click on the command opens its retained output in the dialog. Output following a file or skill read
 (`Read`, or `Skill` other than `skills-mgr run`) is collapsed as soon as the read
@@ -379,6 +379,18 @@ provider answers, exact replacement provenance combines their cards into one
 complete enriched reply in Main and Activity. The assignment link and full reply
 remain available. Host messages stay unchanged; missing replacement evidence keeps
 the messages separate rather than guessing from matching text.
+
+Authored Markdown headings follow Bun's terminal Markdown rendering. ATX
+headings take one to six markers followed by a space or the line end, with any
+closing marker sequence hidden; Setext `===` and `---` underlines make the
+preceding paragraph line a level one or two heading. Titles are bold, and
+levels one to five use magenta, cyan, yellow, green, and blue in the theme's
+palette; level six keeps the default foreground. Inline code, bold text, and
+links restore the heading style after their own styling. H1 adds a dimmed
+double rule and H2 a dimmed single rule, matching the widest rendered title row
+with a minimum of three cells. Reasoning summaries keep headings as plain bold
+text without rules. Source-aware copying retains the original markers and
+Setext underlines and excludes generated ATX rules.
 
 Authored Markdown tables render as compact bordered grids with emphasized headers,
 column alignment, inline styles and links, and wrapped cells rather than clipped

@@ -1658,6 +1658,9 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		return block.Kind == "filter" || block.GroupHeader != "" && !block.GroupStart
 	}
 	rail := ""
+	if v.expansion == 0 {
+		blocks = activityui.CompactReasoning(blocks)
+	}
 	blocks = activityui.AlignVerbs(activityui.GroupOperations(blocks))
 	run.blocks = blocks
 	for index, block := range blocks {
@@ -1897,7 +1900,7 @@ func (v *liveActivityView) standalone(entry activityPaneEntry) bool {
 	return !(entry.native != nil && entry.native.wait != nil) && !(entry.Kind == "tool" && entry.Text == "")
 }
 
-// settleActivity collapses successful command output once its agent's
+// settleActivity collapses completed reasoning and successful output once their agent's
 // next standalone event has been followed by a pause. Entries are shared
 // between views, so each view replaces rather than modifies native state.
 func settleActivity(now time.Time, views ...*liveActivityView) bool {

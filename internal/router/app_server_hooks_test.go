@@ -52,7 +52,7 @@ func TestAppServerHookLifecycleUsesRunPresentation(t *testing.T) {
 		t.Fatalf("Main did not render hook source and output: %s", rows)
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "later", "item": appServerItem{ID: "next", Type: "commandExecution", Command: "true", ExitCode: new(0)}})
-	settleActivity(u.now().Add(time.Second), u.view, u.agents)
+	settleActivity(u.now().Add(activityui.OutputDebounce), u.view, u.agents)
 	if !u.view.entries[0].blocks[0].Collapsed {
 		t.Fatal("successful hook output did not use Run collapse")
 	}

@@ -1,2 +1,6 @@
 • Inspecting layout
+  First checkpoint.
+  Second checkpoint.
 • Checking completion for 2s
+  Third checkpoint.
+  Fourth checkpoint.

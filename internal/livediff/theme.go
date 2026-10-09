@@ -112,6 +112,23 @@ func (theme Theme) Accent() string {
 	}
 }
 
+// HeadingColor follows Bun's terminal Markdown palette: magenta, cyan,
+// yellow, green and blue for levels one to five. Level six keeps the default
+// foreground, which Bun's white matches only on dark backgrounds.
+func (theme Theme) HeadingColor(level int) string {
+	if level < 1 || level > 5 {
+		return ""
+	}
+	switch theme {
+	case LightTheme:
+		return [...]string{"\x1b[38;2;130;80;223m", theme.Accent(), "\x1b[38;2;135;80;0m", "\x1b[38;2;10;102;52m", "\x1b[38;2;9;105;218m"}[level-1]
+	case DarkTheme:
+		return [...]string{"\x1b[38;2;210;168;255m", theme.Accent(), "\x1b[38;2;242;192;120m", "\x1b[38;2;165;214;167m", "\x1b[38;2;121;192;255m"}[level-1]
+	default:
+		return [...]string{"\x1b[35m", "\x1b[36m", "\x1b[33m", "\x1b[32m", "\x1b[34m"}[level-1]
+	}
+}
+
 // COLORFGBG is a fallback for terminals that do not answer OSC 11. Its final
 // field is the background's palette index; the optional middle field is ignored.
 // Only neutral indices have a useful light/dark interpretation without a reply.

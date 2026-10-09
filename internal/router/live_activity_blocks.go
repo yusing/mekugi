@@ -187,7 +187,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 					block.Elapsed = liveActivityAge(entry.native.thought)
 				}
 			}
-			block.Collapsed = block.Collapsible()
+			block.Collapsed = block.Collapsible() && (entry.native == nil || !entry.native.live || entry.native.collapsed || entry.native.phase != "item/completed")
 		}
 		return blocks
 	case "native_journal":

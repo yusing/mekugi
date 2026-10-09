@@ -47,6 +47,36 @@ func ReasoningSummaryBody(text string) string {
 // streams, following grok-build's truncated thinking blocks.
 const ThinkingTailRows = 3
 
+// CompactReasoning joins collapsed sections of one item without changing the
+// source blocks used by expanded presentation or the dialog's section pages.
+func CompactReasoning(blocks []Block) []Block {
+	var out []Block
+	for i := 0; i < len(blocks); {
+		block := blocks[i]
+		j := i + 1
+		if block.Kind == "summary" && block.Collapsed && !block.Live {
+			for j < len(blocks) && blocks[j].Kind == "summary" && blocks[j].Collapsed && !blocks[j].Live && blocks[j].Source == block.Source {
+				j++
+			}
+		}
+		if j > i+1 {
+			var labels, bodies []string
+			for _, section := range blocks[i:j] {
+				label := section.Label
+				if label == "" {
+					label = "Thought"
+				}
+				labels, bodies = append(labels, label), append(bodies, section.Body)
+			}
+			block.Label, block.Body = strings.Join(labels, " • "), strings.Join(bodies, "\n\n")
+			block.Elapsed, block.Members = blocks[j-1].Elapsed, blocks[i:j]
+		}
+		out = append(out, block)
+		i = j
+	}
+	return out
+}
+
 // thinkingHeader labels long reasoning blocks; short summaries render directly.
 func (p *Painter) thinkingHeader(block Block, width int) (string, bool) {
 	label := block.Label

@@ -317,7 +317,7 @@ func TestDialogSkillOutputStates(t *testing.T) {
 			for _, line := range page.Lines {
 				rows = append(rows, ansi.Strip(line.Text))
 			}
-			if page.Text != "# Guide" || rows[len(rows)-1] != "Guide" || !strings.Contains(strings.Join(rows, "\n"), tc.note) || page.Live == tc.output.done {
+			if page.Text != "# Guide" || !strings.Contains(strings.Join(rows, "\n"), "Guide\n") || !strings.Contains(strings.Join(rows, "\n"), tc.note) || page.Live == tc.output.done {
 				t.Fatalf("skill state lost: %+v", page)
 			}
 		})

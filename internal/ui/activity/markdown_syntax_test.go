@@ -46,6 +46,24 @@ func TestUISnapshotMarkdownStyles(t *testing.T) {
 
 const markdownSyntaxSource = "Run `git commit -m 'amend: parser'` then `echo \"$HOME\"`.\n\n```go\nfunc main() { println(42) }\n```\n\n```bash\nGIT_SEQUENCE_EDITOR=: git rebase -i --autosquash HEAD~2\n```"
 
+func TestUISnapshotMarkdownHeadings(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		theme livediff.Theme
+	}{{"terminal", livediff.TerminalTheme}, {"dark", livediff.DarkTheme}, {"light", livediff.LightTheme}} {
+		for _, width := range []int{12, 40} {
+			t.Run(tc.name+"_"+strconv.Itoa(width), func(t *testing.T) {
+				p := Painter{Theme: tc.theme, CopySource: true}
+				rows := p.Markdown("# Main heading\n\n## Section heading ##\n\n### Subsection with `code` and **bold** text\n\n#### Detail\n\n##### Deeper\n\n###### Sixth\n\n# H\n\nSetext title\n===\n\nSetext section\n---\n\n#nospace and ####### seven stay text.\n\nPlain after headings.", width)
+				for i := range rows {
+					rows[i], _ = ExtractCopy(rows[i])
+				}
+				uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown_headings_"+tc.name+"_"+strconv.Itoa(width)+".txt", rows, 40)
+			})
+		}
+	}
+}
+
 func TestUISnapshotMarkdownSyntax(t *testing.T) {
 	for _, width := range []int{18, 72} {
 		t.Run(strconv.Itoa(width), func(t *testing.T) {

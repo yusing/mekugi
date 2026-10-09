@@ -340,6 +340,9 @@ func TestAppServerOutputCollapsesTogetherAfterEventsPause(t *testing.T) {
 	run("first")
 	run("second")
 	start := time.Now()
+	if settleActivity(start.Add(time.Second), u.view) {
+		t.Fatal("output collapsed before it could be read")
+	}
 	// Rapid commands keep deferring the collapse rather than folding one by one.
 	if settleActivity(start.Add(activityui.OutputDebounce/2), u.view) {
 		t.Fatal("output collapsed while events were still arriving")

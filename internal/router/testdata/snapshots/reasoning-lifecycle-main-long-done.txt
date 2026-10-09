@@ -1,1 +1,8 @@
 • Checking tests for 2s
+  First checkpoint.
+  
+  Second checkpoint.
+  
+  Third checkpoint.
+  
+  Fourth checkpoint.

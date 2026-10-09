@@ -47,7 +47,7 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 	u.agents.only, u.agents.selected = false, "/root/worker"
 	main = ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
 	child = ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n"))
-	if strings.Count(main, "• Complete") != 1 || strings.Count(child, "• Complete") != 1 || strings.Contains(main+child, "Final public") || strings.Contains(main+child, "PRIVATE") || strings.Contains(main+child, "Public main summary") {
+	if strings.Count(main, "• Complete") != 1 || strings.Count(child, "• Complete") != 1 || !strings.Contains(main, "Final public main.") || !strings.Contains(child, "Final public child.") || strings.Contains(main+child, "PRIVATE") || strings.Contains(main+child, "Public main summary") {
 		t.Fatalf("completed summaries: main=%q, child=%q", main, child)
 	}
 	// A reused item ID in a new turn must not replace earlier summaries.
@@ -218,7 +218,7 @@ func TestAppServerProviderThinking(t *testing.T) {
 	// A route without a replayable summary completes with an empty one.
 	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "r1", "type": "reasoning", "summary": []string{}}})
 	// A sub-second block names no duration rather than "0s".
-	if got := feed(); !strings.Contains(got, "• Thought") || strings.Contains(got, "Thought for") || strings.Contains(got, "First thought.") || strings.Contains(got, "Thinking…") {
+	if got := feed(); !strings.Contains(got, "• Thought") || strings.Contains(got, "Thought for") || !strings.Contains(got, "First thought.") || strings.Contains(got, "Thinking…") {
 		t.Fatalf("completed thinking: %q", got)
 	}
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "child", "turnId": "t", "itemId": "r2", "delta": "Interrupted thought."})
@@ -228,7 +228,7 @@ func TestAppServerProviderThinking(t *testing.T) {
 	}
 }
 
-// Finished long reasoning folds immediately in Main and Activity;
+// Finished long reasoning folds after later activity and a quiet period;
 // a click opens it in the shared dialog.
 func TestAppServerThinkingFolds(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
@@ -239,7 +239,9 @@ func TestAppServerThinkingFolds(t *testing.T) {
 		reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
 		reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "r", "delta": body})
 		reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{body}}})
+		nextEvent(t, u, thread)
 	}
+	settleActivity(time.Now().Add(time.Minute), u.view, u.agents)
 	for name, view := range map[string]*liveActivityView{"Main": u.view, "Activity": u.agents} {
 		t.Run(name, func(t *testing.T) {
 			render := func() liveActivityFeed { return view.renderFeed(90, 40) }
@@ -386,6 +388,8 @@ func TestAppServerStartedSummarySettlesWithoutDelta(t *testing.T) {
 				} else {
 					reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "r", "type": "reasoning", "summary": []string{}}})
 				}
+				nextEvent(t, u, thread)
+				settleActivity(time.Now().Add(time.Minute), view)
 				feed := view.renderFeed(90, 40)
 				if got := ansi.Strip(strings.Join(feed.lines, "\n")); strings.Contains(got, "Thinking…") || !strings.Contains(got, "• Checking") || strings.Contains(got, "Started public body.") {
 					t.Fatalf("started summary did not settle: %s", got)

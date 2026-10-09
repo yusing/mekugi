@@ -1,4 +1,6 @@
 ● worker                                                                08:00:00
 │ • Finalizing execution journal
+│   First retained paragraph.
 │ 
 │ • Preparing final renderings for 2s
+│   Last retained paragraph.

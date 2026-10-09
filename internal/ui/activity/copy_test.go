@@ -111,6 +111,9 @@ func TestMarkdownSourceCopyWhitespaceAndFormatting(t *testing.T) {
 		{"[hello world](https://example.com)", "[hello world](https://example.com)"},
 		{"Read /tmp/source.go:26 and `src/file name.go`.", "Read /tmp/source.go:26 and `src/file name.go`."},
 		{"# Title\n- item wraps across rows", "# Title\n- item wraps across rows"},
+		{"# Main heading\n\n## Section heading\n\n### Subsection\n\n#### Detail", "# Main heading\n\n## Section heading\n\n### Subsection\n\n#### Detail"},
+		{"## Closed ##\n\n### `code` and **bold**", "## Closed ##\n\n### `code` and **bold**"},
+		{"Setext title\n===\n\nSection\n---", "Setext title\n===\n\nSection\n---"},
 	} {
 		for _, width := range []int{8, 20, 80} {
 			if got := selectedMarkdown(t, tc.source, width); got != tc.want {
