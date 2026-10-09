@@ -238,7 +238,42 @@ func captureNativePaths(paths []string, workspace string) *execObservation {
 	return observation
 }
 
+func prepareNativeObservation(ctx context.Context, store *mekugiReplayStore, workspace string, call ObservationCall) (observation *execObservation, err error) {
+	started := time.Now().UTC()
+	workdir := call.Workdir
+	if workdir == "" {
+		workdir = workspace
+	}
+	if len(call.Paths) > 0 {
+		if len(call.Paths) > 32 {
+			return nil, errors.New("native path scope exceeds limit")
+		}
+		observation = captureNativePaths(call.Paths, workdir)
+	} else if call.Command != "" {
+		commands := []execCommandInput{{Command: call.Command, Workdir: workdir, Shell: call.Shell}}
+		var observed bool
+		observation, observed = captureExecObservation(commands, false, false, execCaptureEnv{directory: workdir, changes: storeChangeResolver(ctx, store)})
+		source := observation
+		observation, _ = snapshotObservedWorkspace(ctx, store, workspace, observation, observed)
+		if observation == nil && source != nil && source.Class != execNeutral.String() {
+			observation = source
+			observation.Reason += "; workspace baseline unavailable"
+		}
+	}
+	if observation == nil {
+		observation = &execObservation{Class: execNeutral.String(), Reason: "no captured write scope"}
+	}
+	observation.WindowStart = started
+	return observation, nil
+}
+
 func (o *nativeObservationOwner) before(ctx context.Context, call ObservationCall) error {
+	return o.beforePrepared(ctx, call, nil, nil)
+}
+
+// A local user command can capture its baseline before the native host assigns
+// its first session ID. Admission still requires the confirmed binding.
+func (o *nativeObservationOwner) beforePrepared(ctx context.Context, call ObservationCall, observation *execObservation, window *execWindow) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	ctx, err := o.callContext(ctx, call)
@@ -269,32 +304,12 @@ func (o *nativeObservationOwner) before(ctx context.Context, call ObservationCal
 	if len(o.live) >= 1024 {
 		return errors.New("native pending observation limit reached")
 	}
-	started := time.Now().UTC()
-	workdir := call.Workdir
-	if workdir == "" {
-		workdir = o.workspace
-	}
-	var observation *execObservation
-	if len(call.Paths) > 0 {
-		if len(call.Paths) > 32 {
-			return errors.New("native path scope exceeds limit")
-		}
-		observation = captureNativePaths(call.Paths, workdir)
-	} else if call.Command != "" {
-		commands := []execCommandInput{{Command: call.Command, Workdir: workdir, Shell: call.Shell}}
-		var observed bool
-		observation, observed = captureExecObservation(commands, false, false, execCaptureEnv{directory: workdir, changes: storeChangeResolver(ctx, o.store)})
-		source := observation
-		observation, _ = snapshotObservedWorkspace(ctx, o.store, o.workspace, observation, observed)
-		if observation == nil && source != nil && source.Class != execNeutral.String() {
-			observation = source
-			observation.Reason += "; workspace baseline unavailable"
-		}
-	}
 	if observation == nil {
-		observation = &execObservation{Class: execNeutral.String(), Reason: "no captured write scope"}
+		observation, err = prepareNativeObservation(ctx, o.store, o.workspace, call)
+		if err != nil {
+			return err
+		}
 	}
-	observation.WindowStart = started
 	history := mekugiHistory{ToolName: call.Tool, Root: o.workspace, ExecutingThread: observationThread(call.Binding), ExecObservation: observation,
 		NativeObservation: &nativeObservationRecord{Binding: call.Binding, Call: &call, Started: observation.WindowStart}}
 	if err := o.store.put(ctx, o.workspace, map[string]mekugiHistory{key + "/before": history}); err != nil {
@@ -307,7 +322,15 @@ func (o *nativeObservationOwner) before(ctx context.Context, call ObservationCal
 		}
 	}
 	o.pendingCount.Add(1)
-	o.windows.open(&execWindow{ref: key, roots: observation.Roots, thread: history.ExecutingThread, named: true, endpointScope: observation.scopePaths(), endpointWide: call.Command != "" && observation.Class != execNeutral.String()})
+	if window != nil {
+		// Keep the overlap claims collected before the first native session was
+		// bound. Reopening here would attribute intervening tool effects twice.
+		o.windows.mu.Lock()
+		window.ref, window.thread = key, history.ExecutingThread
+		o.windows.mu.Unlock()
+	} else {
+		o.windows.open(&execWindow{ref: key, roots: observation.Roots, thread: history.ExecutingThread, named: true, endpointScope: observation.scopePaths(), endpointWide: call.Command != "" && observation.Class != execNeutral.String()})
+	}
 	return nil
 }
 

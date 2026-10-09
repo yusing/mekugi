@@ -46,6 +46,7 @@ type nativeRuntimeSession struct {
 	message           *session.AgentMessage
 	messageDraft      composerDraft
 	shell             *session.ShellCommand
+	shellCapture      *runtimeShellCapture
 	stoppingTasks     map[string]bool
 	turn              string
 	continuation      *journalResetIntent
@@ -74,6 +75,7 @@ func newRuntimeUI(ctx context.Context, client session.Client, name, cwd string) 
 // The caller owns runtime startup/shutdown; this loop owns only the terminal.
 func RunNativeSession(ctx context.Context, client session.Client, name, cwd string, stdin, stdout *os.File, observations ...*ObservationService) error {
 	u := newRuntimeUI(ctx, client, name, cwd)
+	defer u.discardRuntimeShellCapture()
 	defer u.closeRuntimeCommandPreviews()
 	defer u.finishRuntimeCommandSegments(stdout)
 	u.panes = &nativePanePersistence{}

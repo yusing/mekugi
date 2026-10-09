@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,7 +56,8 @@ func TestNativeRuntimeShellClaudePTY(t *testing.T) {
 	defer provider.Close()
 	t.Setenv("ANTHROPIC_BASE_URL", provider.URL)
 	binding := ObservationBinding{Runtime: "claude", Workspace: t.TempDir()}
-	service, _, closeObservation := observationIsolationService(t, t.TempDir(), binding)
+	storeDirectory := t.TempDir()
+	service, _, closeObservation := observationIsolationService(t, storeDirectory, binding)
 	defer closeObservation()
 	presentation, err := service.PrepareCompanion(ctx)
 	if err != nil {
@@ -109,7 +111,12 @@ func TestNativeRuntimeShellClaudePTY(t *testing.T) {
 	defer stopOnce()
 	await := func(label string, match func(string) bool) {
 		t.Helper()
-		if !terminal.observe(20*time.Second, match) {
+		if !terminal.observe(20*time.Second, func(s string) bool {
+			if strings.Contains(s, "Shell change capture") {
+				t.Fatalf("native shell capture error:\n%s", s)
+			}
+			return match(s)
+		}) {
 			t.Fatalf("missing %s:\n%s", label, terminal.screen.String())
 		}
 	}
@@ -132,7 +139,8 @@ func TestNativeRuntimeShellClaudePTY(t *testing.T) {
 	}
 	await("ready", func(s string) bool { return strings.Contains(s, "Ready") })
 	// Enter Shell Mode through the real composer, before the first model turn.
-	terminal.keys("!printf SHELL_PTY_COMPLETE; printf 'once\\n' >> shell-pty-effects; while [ ! -f shell-pty-release ]; do sleep 0.05; done")
+	const firstCommand = "printf SHELL_PTY_COMPLETE; printf 'once\\n' >> shell-pty-effects; while [ ! -f shell-pty-release ]; do sleep 0.05; done"
+	terminal.keys("!" + firstCommand)
 	await("Shell Mode", func(s string) bool { return strings.Contains(s, "Shell Mode") })
 	terminal.keys("\r")
 	await("native shell running", func(s string) bool {
@@ -159,6 +167,69 @@ func TestNativeRuntimeShellClaudePTY(t *testing.T) {
 	await("draft after dialog", func(s string) bool {
 		return strings.Contains(s, "draft kept during shell") && !strings.Contains(s, "y copy · esc")
 	})
+	// Read the persisted consumer, not live capture windows or transcript text.
+	assertCapture := func(name, content, command, status string, wantChanges int) mekugiHistory {
+		t.Helper()
+		reader, err := openMekugiReplayStore(storeDirectory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, _ := saved.Load().(string)
+		b := ObservationBinding{Runtime: "claude", Workspace: binding.Workspace, Session: id}
+		files, err := reader.liveDiffSnapshotFiles(ctx, liveDiffScope{Workspaces: map[string]map[string]bool{binding.Workspace: {observationThread(b): true}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(binding.Workspace, name)
+		changeID := ""
+		for _, file := range files {
+			if file.Path != path {
+				continue
+			}
+			if len(file.Chunks) != 1 || file.Chunks[0].Change == "" || !strings.Contains(file.Chunks[0].Review.Diff, "+"+strings.TrimSpace(content)) {
+				t.Fatalf("saved shell effect missing or duplicated: %#v", file)
+			}
+			changeID = file.Chunks[0].Change
+		}
+		if changeID == "" {
+			t.Fatalf("saved shell Diff missing %s: %#v", name, files)
+		}
+		scope, release, err := reader.beginSession(ctx, observationThread(b), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer release()
+		index, err := reader.scoped(scope).readChangeIndex(binding.Workspace)
+		if err != nil || len(index.Changes) != wantChanges {
+			t.Fatalf("saved shell Changes: %#v %v", index, err)
+		}
+		change := index.Changes[changeID]
+		if len(change.Calls) != 1 {
+			t.Fatalf("shell capture repeated: %#v", change)
+		}
+		history, found, err := reader.lookup(ctx, binding.Workspace, change.Calls[0].ID)
+		if err != nil || !found || history.NativeObservation == nil || history.NativeObservation.Call == nil || history.NativeObservation.Call.Tool != "userShell" || history.NativeObservation.Call.Command != command || history.ExecOutcome == nil || history.ExecOutcome.Status != status {
+			t.Fatalf("saved shell receipt lost exact input/outcome: %#v found=%v err=%v", history, found, err)
+		}
+		return history
+	}
+	firstCapture := assertCapture("shell-pty-effects", "once\n", firstCommand, "completed", 1)
+	assertSavedUI := func(name, content string) {
+		t.Helper()
+		terminal.keys("\x02" + "2")
+		await("saved shell Diff", func(s string) bool {
+			pane := nativeClaudeDiffPane(s)
+			return strings.Contains(pane, "saved") && strings.Contains(pane, name) && strings.Contains(pane, "+"+strings.TrimSpace(content))
+		})
+		terminal.keys("\t")
+		await("saved shell Changes", func(s string) bool {
+			pane := nativeClaudeDiffPane(s)
+			return strings.Contains(pane, "Changes") && strings.Contains(pane, "userShell")
+		})
+		terminal.keys("\t\x02" + "1")
+		await("Main after saved capture", func(s string) bool { return strings.Contains(s, "1 Main") })
+	}
+	assertSavedUI("shell-pty-effects", "once\n")
 	// A fresh native bridge and UI must display saved user-shell rows before input.
 	stopOnce()
 	if err := client.Close(); err != nil {
@@ -168,6 +239,16 @@ func TestNativeRuntimeShellClaudePTY(t *testing.T) {
 	if !ok || resume == "" {
 		t.Fatal("shell did not establish saved native identity")
 	}
+	closeObservation()
+	service, _, closeObservation = observationIsolationService(t, storeDirectory, binding)
+	defer closeObservation()
+	presentation, err = service.PrepareCompanion(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint = service.Endpoint()
+	companion = &claude.ObservationEndpoint{Socket: endpoint.Socket, Token: endpoint.Token, Plugin: presentation.Plugin, FrontendDirectory: presentation.FrontendDirectory, JournalSchema: presentation.JournalSchema}
+	skillPath = filepath.Join(presentation.Plugin, "skills", "mekugi", "SKILL.md")
 	client, err = claude.Start(ctx, "node", bridge, claude.Config{Cwd: binding.Workspace, Executable: executable, Resume: resume, Model: "haiku", Companion: companion})
 	if err != nil {
 		t.Fatal(err)
@@ -178,6 +259,10 @@ func TestNativeRuntimeShellClaudePTY(t *testing.T) {
 	await("resumed shell before input", func(s string) bool { return strings.Contains(s, "Ready") && strings.Contains(s, "SHELL_PTY_COMPLETE") })
 	if calls.Load() != 0 {
 		t.Fatal("shell replay queried model")
+	}
+	assertSavedUI("shell-pty-effects", "once\n")
+	if restored := assertCapture("shell-pty-effects", "once\n", firstCommand, "completed", 1); !reflect.DeepEqual(firstCapture, restored) {
+		t.Fatal("fresh observation owner or historical shell replay changed saved capture")
 	}
 	t.Log("shared PTY Shell Mode submit, draft retention, submission lock, output click/dialog and fresh replay before input passed without inference")
 	terminal.paste("/model sonnet")
@@ -193,7 +278,8 @@ func TestNativeRuntimeShellClaudePTY(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	terminal.paste("!printf CANCEL_PTY; echo $$ > shell-pty-cancel.pid; while [ ! -f shell-pty-cancel-release ]; do sleep 0.05; done; printf forbidden > shell-pty-late")
+	const cancelCommand = "printf CANCEL_PTY; printf 'partial\\n' >> shell-pty-partial; echo $$ > shell-pty-cancel.pid; while [ ! -f shell-pty-cancel-release ]; do sleep 0.05; done; printf forbidden > shell-pty-late"
+	terminal.paste("!" + cancelCommand)
 	await("second shell running", func(s string) bool {
 		return strings.Contains(s, "shell-pty-cancel.pid") && !strings.Contains(s, "Shell Mode")
 	})
@@ -232,6 +318,8 @@ func TestNativeRuntimeShellClaudePTY(t *testing.T) {
 		t.Fatalf("Ctrl-C left native shell process alive: %v", err)
 	}
 	pid = 0 // Native cancellation already proved process death.
+	assertCapture("shell-pty-partial", "partial\n", cancelCommand, "failed", 2)
+	assertSavedUI("shell-pty-partial", "partial\n")
 	terminal.keys("\x1a")
 	await("unsent draft restored after handoff", func(s string) bool {
 		return strings.Contains(s, "draft kept after cancellation") && strings.Contains(s, "sonnet") && strings.Contains(s, "effort request low")
@@ -243,6 +331,10 @@ func TestNativeRuntimeShellClaudePTY(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(binding.Workspace, "shell-pty-effects"))
 	if err != nil || string(data) != "once\n" {
 		t.Fatalf("user shell effects: %q %v", data, err)
+	}
+	partial, err := os.ReadFile(filepath.Join(binding.Workspace, "shell-pty-partial"))
+	if err != nil || string(partial) != "partial\n" {
+		t.Fatalf("cancelled shell partial effects repeated: %q %v", partial, err)
 	}
 	if calls.Load() != 0 {
 		t.Fatal("shell cancellation queried model")

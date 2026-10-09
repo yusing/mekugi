@@ -91,14 +91,20 @@ async function createQuery(fresh?: {session: string; context: string}): Promise<
       if (!stopping && generation === epoch) await emit({kind: 'notice', text: `Native child context boundary unavailable: ${String(error)}`});
     }
   });
-  shell = new UserShell(input => {inputs.push(input); wake?.(); wake = undefined;}, async frame => {
-    if (frame.kind === 'shell_started') activeSession = frame.sessionID;
-    await emit({...frame, cwd});
-  });
   const probe = endpoint?.vcsGuard ? await nativeVCSGuard(endpoint.vcsGuardHelper, endpoint.bashEnv) : undefined;
   guardProbe = probe;
-  observer = endpoint ? companion(endpoint, cwd, text => emit({kind: 'notice', text}),
+  const shellObserver = endpoint ? companion(endpoint, cwd, text => emit({kind: 'notice', text}),
     probe ? id => probe.verify(owned, id) : undefined) : undefined;
+  observer = shellObserver;
+  shell = new UserShell(input => {inputs.push(input); wake?.(); wake = undefined;}, async frame => {
+    if (frame.kind === 'shell_started') activeSession = frame.sessionID;
+    if (frame.kind === 'shell_done' && frame.output && shellObserver) {
+      const info = await getSessionInfo(frame.sessionID, {dir: queryWorkspace});
+      if (info?.sessionId === frame.sessionID) await shellObserver.resume(info);
+      else await emit({kind: 'notice', text: 'Native shell capture unavailable: session metadata missing'});
+    }
+    await emit({...frame, cwd: queryWorkspace});
+  });
   const journal = endpoint ? journalServer(endpoint) : undefined;
   try {
   owned = query({prompt: prompt(), options: {

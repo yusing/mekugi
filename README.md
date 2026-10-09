@@ -204,6 +204,7 @@ without inference, sandboxing, per-command permission prompts or persistent shel
 state. Remove attachments and picker tokens before submitting. Confirmed command
 and output become context for later messages and resume; output appears after
 execution, rather than streaming. Click its output row to open the shared dialog.
+Confirmed file effects use the same saved Diff and Changes history as tool edits.
 Cancelling uses native shutdown and resumes the same saved session. It also ends
 other work in that Main query, while keeping the unsent draft and independent
 side conversation. If shutdown cannot confirm completion, resume manually after

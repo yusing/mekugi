@@ -92,6 +92,102 @@ func TestNativeRuntimeShellFailureRecoveryAndInterruption(t *testing.T) {
 	}
 }
 
+func TestNativeRuntimeShellCapturesEffectsWithoutReplayingHistory(t *testing.T) {
+	owner, store, binding := nativeObservationFixture(t)
+	u, client := runtimeShellUI(t)
+	u.session.cwd, u.thread = binding.Workspace, binding.Session
+	u.attachRuntimeObservation(&ObservationService{owner: owner})
+	for i, code := range []int{0, 7} {
+		u.draft = "!printf saved > saved.txt"
+		runtimeKeys(t, u, "\r")
+		command := client.commands[len(client.commands)-1]
+		call := u.runtime.shellCapture
+		if call == nil || owner.pendingCount.Load() != 1 {
+			t.Fatal("local submission did not open its native observation")
+		}
+		runtimeShellReceipt(t, u, "shell_started", command, "", nil)
+		nativeObservationWrite(t, filepath.Join(binding.Workspace, "saved.txt"), fmt.Sprintf("saved-%d\n", i))
+		runtimeShellReceipt(t, u, "shell_done", command, "native output", &code)
+		key := observationKey(call.call) + "/after"
+		history, found, err := store.lookup(t.Context(), binding.Workspace, key)
+		if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 || owner.pendingCount.Load() != 0 {
+			t.Fatalf("native shell capture: %+v, %v, %v", history, found, err)
+		}
+		if (history.ExecOutcome.Status == "failed") != (code != 0) {
+			t.Fatal("capture changed native command outcome")
+		}
+		runtimeEvidenceEvent(t, u, session.Event{Kind: "shell_done", Historical: true,
+			Shell: &session.ShellResult{ShellCommand: command, Output: "native output", ExitCode: &code, Retained: true}})
+		fresh, err := openMekugiReplayStore(store.directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		saved, found, err := fresh.lookup(t.Context(), binding.Workspace, key)
+		if err != nil || !found || saved.ChangeID != history.ChangeID || owner.pendingCount.Load() != 0 {
+			t.Fatal("native shell history replay changed retained effects")
+		}
+	}
+	client.err = errors.New("not sent")
+	u.draft = "!printf forbidden > never.txt"
+	runtimeKeys(t, u, "\r")
+	if u.runtime.shellCapture != nil || owner.pendingCount.Load() != 0 || u.draft == "" {
+		t.Fatal("failed native submission kept an observation or lost its draft")
+	}
+}
+
+func TestNativeRuntimeShellExcludesConcurrentToolEffects(t *testing.T) {
+	for _, bound := range []bool{true, false} {
+		t.Run(fmt.Sprint(bound), func(t *testing.T) {
+			binding := ObservationBinding{Runtime: "claude", Workspace: t.TempDir(), Session: "native-session"}
+			store, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			owner, err := newNativeObservationOwner(t.Context(), store, binding.Runtime, binding.Workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(owner.close)
+			u, client := runtimeShellUI(t)
+			u.session.cwd = binding.Workspace
+			u.thread = ""
+			if bound {
+				if err := owner.bind(t.Context(), binding); err != nil {
+					t.Fatal(err)
+				}
+				u.thread = binding.Session
+			}
+			u.attachRuntimeObservation(&ObservationService{owner: owner})
+			u.draft = "!printf shell > shell.txt"
+			runtimeKeys(t, u, "\r")
+			capture := u.runtime.shellCapture
+			if capture == nil {
+				t.Fatal("shell capture unavailable")
+			}
+			if err := owner.bind(t.Context(), binding); err != nil {
+				t.Fatal(err)
+			}
+			other := ObservationCall{Binding: binding, ID: "other-tool", Tool: "Write", Input: `{}`, Paths: []string{filepath.Join(binding.Workspace, "other.txt")}}
+			if err := owner.before(t.Context(), other); err != nil {
+				t.Fatal(err)
+			}
+			nativeObservationWrite(t, other.Paths[0], "other tool\n")
+			if _, err := owner.after(t.Context(), other, ObservationTerminal{Status: "completed"}); err != nil {
+				t.Fatal(err)
+			}
+			command := client.commands[0]
+			command.SessionID = binding.Session
+			runtimeShellReceipt(t, u, "shell_started", command, "", nil)
+			nativeObservationWrite(t, filepath.Join(binding.Workspace, "shell.txt"), "shell\n")
+			runtimeShellReceipt(t, u, "shell_done", command, "native output", new(0))
+			history := nativeObservationHistory(t, store, capture.call, "after")
+			if len(history.ReviewFiles) != 1 || history.ReviewFiles[0].AfterPath != filepath.Join(binding.Workspace, "shell.txt") {
+				t.Fatalf("shell captured another tool effect: %#v", history.ReviewFiles)
+			}
+		})
+	}
+}
+
 func TestUISnapshotNativeRuntimeShell(t *testing.T) {
 	for _, width := range []int{48, 120} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {

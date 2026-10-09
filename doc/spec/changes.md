@@ -88,7 +88,9 @@ Commands submitted through native Shell Mode (`!`) use the same change recorder.
 Completed file effects update the saved Diff totals, pane, and Changes history,
 including `mchanges revert` and `apply`. Submission acknowledgements and replayed
 command history do not create captures; the matching terminal host item completes
-the observation. Codex retains execution, output, and interruption ownership.
+the observation. The selected native host retains execution, output, and
+interruption ownership. Failed commands can retain confirmed partial effects;
+unconfirmed completion reports a capture gap rather than successful evidence.
 
 Mekugi records known edit sources in literal stock `tools.exec_command`
 calls. These include literal text/file redirections (`cat`, `printf`,
