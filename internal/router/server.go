@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/internal/orchestrate"
 	"github.com/yusing/mekugi/internal/persistence"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"github.com/yusing/mekugi/internal/vcsguard"
@@ -57,6 +58,7 @@ type Session struct {
 	FrontendDirectory    string
 	NativeTraceDirectory string
 	JournalMCPSocket     string
+	OrchestrateMCPSocket string
 }
 
 // RunSession owns the private router for one wrapped Codex process.
@@ -334,6 +336,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	defer func() { runErr = errors.Join(runErr, stopProfiling()) }()
 	mux := http.NewServeMux()
 	var journalMCPSocket string
+	var orchestrateMCPSocket string
 	mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
 	registerCodexAuxiliaryRoutes(mux, ctx, *flags.timeout, provider)
@@ -344,6 +347,17 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			return fmt.Errorf("initialize journal MCP: %w", err)
 		}
 		defer func() { runErr = errors.Join(runErr, stopJournalMCP()) }()
+		state, err := mekugiStateDirectory()
+		if err != nil {
+			return err
+		}
+		var stopOrchestrateMCP func() error
+		orchestrateMCPSocket, stopOrchestrateMCP, err = startJournalMCP(ctx, newOrchestrateMCPServer(mekugiCalls,
+			&orchestrate.Store{Directory: filepath.Join(state, "orchestrate"), Writes: mekugiCalls.replayStore.writes}))
+		if err != nil {
+			return fmt.Errorf("initialize orchestration MCP: %w", err)
+		}
+		defer func() { runErr = errors.Join(runErr, stopOrchestrateMCP()) }()
 	}
 	webSocketEndpoint := responsesWebSocketHandler(ctx, *flags.timeout, provider, issues, mekugiCalls)
 	defer webSocketEndpoint.Close()
@@ -367,6 +381,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, VCSGuard: *flags.vcsGuard, SkillsManagerAvailable: skillsManagerAvailable}
 		if mekugiCalls != nil {
 			session.JournalMCPSocket = journalMCPSocket
+			session.OrchestrateMCPSocket = orchestrateMCPSocket
 			session.StartHeadless = func(ctx context.Context, cmd *exec.Cmd, input io.Reader, output io.Writer) (func() error, error) {
 				return startHeadlessAppServer(ctx, cmd, input, output, mekugiCalls, issues)
 			}

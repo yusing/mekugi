@@ -20,9 +20,9 @@ func main() {
 func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if len(os.Args) > 1 && os.Args[1] == "journal-mcp" {
+	if len(os.Args) > 1 && (os.Args[1] == "journal-mcp" || os.Args[1] == "orchestrate-mcp") {
 		if len(os.Args) != 3 {
-			fmt.Fprintln(os.Stderr, "mekugi: journal-mcp requires one socket path")
+			fmt.Fprintf(os.Stderr, "mekugi: %s requires one socket path\n", os.Args[1])
 			return 2
 		}
 		if err := router.RunJournalMCPBridge(ctx, os.Args[2], os.Stdin, os.Stdout); err != nil {

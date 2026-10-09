@@ -147,7 +147,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		}
 	}
 
-	if session.PostCompactRecovery || session.JournalMCPSocket != "" {
+	if session.PostCompactRecovery || session.JournalMCPSocket != "" || session.OrchestrateMCPSocket != "" {
 		worker, err := os.Executable()
 		if err != nil {
 			cancel()
@@ -163,6 +163,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		if session.JournalMCPSocket != "" {
 			args = journalMCPArgs(args, worker, session)
 		}
+		args = orchestrateMCPArgs(args, worker, session)
 	}
 	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.JournalEnabled, session.SkillsManagerAvailable, !session.ThirdPartyOnly)...)
 	cmd.Env = append(slices.DeleteFunc(os.Environ(), func(entry string) bool {
