@@ -555,7 +555,7 @@ visible-row column sizing; it never submits a command to the model.
 
 `/orchestrate ISSUES` sends the issues and initial workflow instructions through
 the ordinary composer. The [orchestration contract](orchestrate.md) owns its
-staged capabilities, including the pending bare-command run picker.
+staged capabilities.
 
 `/copy` opens a local picker for the latest completed response in the active
 thread, including restored history and journal answers. Whole response preserves

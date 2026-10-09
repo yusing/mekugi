@@ -313,7 +313,7 @@ func (u *appServerUI) pasteByte(key byte) {
 	case u.picker.modal == "manage":
 		u.picker.query += string(u.pasted)
 		u.pasted = nil
-	case u.picker.modal == "menu" || u.picker.modal == "copy" || u.picker.modal == "settings":
+	case u.picker.modal == "menu" || u.picker.modal == "copy" || u.picker.modal == "settings" || u.picker.modal == "orchestrate":
 		u.pasted = nil
 	default:
 		u.finishPaste()

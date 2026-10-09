@@ -162,7 +162,12 @@ user input carries the issues and workflow instructions; later ordinary input
 does not repeat them or change tool exposure. Attachments, busy input, rejection
 and cancellation use the composer lifecycle. Fresh children receive their
 checkout, assignment and orchestration-tool instructions in their first input.
-Bare `/orchestrate` reports usage until the run picker is delivered.
+Bare `/orchestrate` opens a picker of this Main's retained batches and coordinator.
+It shows branch, lifecycle and available live timer, token and cost metrics.
+Selecting a subscribed thread switches the viewed shell without starting a turn
+or reloading history. Prepared batches remain visible before launch. Retained
+threads that are not subscribed remain visible, but require resume before viewing.
+An empty run offers `/orchestrate ISSUES`; Escape closes the picker.
 
 The Orchestration group in Agents lists the coordinator and its live batch
 threads. Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`
@@ -179,8 +184,7 @@ Resolution during answer paste discards that paste instead of editing another dr
 
 The remaining capabilities are accepted but not yet delivered:
 
-- Bare `/orchestrate` opens its run picker. Workflow instructions recover once
-  after context reset.
+- Workflow instructions recover once after context reset.
 - `send_message` can target Main's next turn without waking it. Child follow-ups
   can wake Main through the normal composer lifecycle.
 - Resume restores run identities and confirmed facts without reviving processes

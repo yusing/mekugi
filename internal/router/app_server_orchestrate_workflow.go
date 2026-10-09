@@ -23,7 +23,7 @@ Issues:
 func (u *appServerUI) expandOrchestrate() bool {
 	prefix := strings.Index(u.draft, "/orchestrate") + len("/orchestrate")
 	if strings.TrimSpace(u.draft[prefix:]) == "" {
-		u.setNotice("Usage: /orchestrate ISSUES · run picker pending", false)
+		u.openOrchestratePicker()
 		return false
 	}
 	if u.proxy == nil || u.proxy.orchestration == nil {
