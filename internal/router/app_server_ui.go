@@ -22,7 +22,6 @@ import (
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/term"
@@ -83,6 +82,7 @@ type appServerUI struct {
 	btw                       *appServerBTW
 	btwRequests               map[string]btwRequest
 	btwThreads                map[string]*appServerBTW
+	navigation                *orchestrateNavigation
 	orchestrateRequests       map[string]orchestrateRPC
 	orchestrateThreads        map[string]*orchestrateChild
 	orchestrateJobs           []func() func()
@@ -237,8 +237,12 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	}
 	u.ensureShell()
 	u.shell.faint = faint
+	owner := u
 	return func() (runErr error) {
-		defer func() { runErr = errors.Join(runErr, u.closeOrchestrateStorage()) }()
+		defer func() {
+			runErr = errors.Join(runErr, owner.closeOrchestrateStorage())
+			owner.closeOrchestratedViews()
+		}()
 		if proxy != nil && proxy.orchestration != nil {
 			proxy.orchestration.active.Store(true)
 			defer proxy.orchestration.active.Store(false)
@@ -279,30 +283,30 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 				width, height := 0, 0
 				agePaint := u.now()
 				for {
+					u = owner.viewedUI()
 					select {
 					case <-ctx.Done():
 						return ctx.Err()
 					case <-autoChanged:
 						u.shell.auto.mu.Lock()
-						u.shell.diff.workspace = u.shell.auto.workspace
+						u.shell.diff.workspace = u.session.cwd
 						u.shell.auto.mu.Unlock()
 						u.dirty = true
 					case <-diffGap:
-						u.shell.liveDock = diffview.PreviewPane{}
-						clear(u.shell.livePending)
+						owner.resetOrchestrationPreviews()
 						sub = u.shell.auto.events.subscribe()
 						diffEvents, diffGap, diffReady = sub.events, sub.gap, sub.previewReady
 						u.dirty = true
 					case <-diffReady:
 						for _, event := range u.shell.auto.events.takePreviews(sub) {
-							u.shell.applyDiff(ctx, event)
+							owner.applyOrchestrationDiff(ctx, event)
 						}
 						if err := u.finishRestoredContent(); err != nil {
 							return err
 						}
 						u.dirty = true
 					case event := <-diffEvents:
-						u.shell.applyDiff(ctx, event)
+						owner.applyOrchestrationDiff(ctx, event)
 						if err := u.finishRestoredContent(); err != nil {
 							return err
 						}
@@ -327,18 +331,18 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 					case update := <-u.titleUpdates:
 						u.persistSessionTitle(update)
 					case request := <-u.guardRequests():
-						u.addGuardApproval(request)
+						owner.orchestrationGuardApproval(request)
 						u.dirty = true
-					case request := <-u.orchestrateCommands():
-						u.startOrchestratedChild(request)
-					case complete := <-u.orchestrateCompletions:
-						u.completeOrchestrateWork(complete)
+					case request := <-owner.orchestrateCommands():
+						owner.startOrchestratedChild(request)
+					case complete := <-owner.orchestrateCompletions:
+						owner.completeOrchestrateWork(complete)
 					case message, ok := <-c.Messages:
 						if !ok {
 							exited = true
 							return errors.Join(errors.New("app-server disconnected; active work may be incomplete"), <-c.Done)
 						}
-						if err := u.message(message); err != nil {
+						if err := owner.message(message); err != nil {
 							return err
 						}
 						u.dirty = true
@@ -352,6 +356,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						u.dirty = true
 					case <-tick.C:
+						if err := owner.tickOrchestratedViews(u); err != nil {
+							return err
+						}
 						if len(u.unsent) > 0 && u.unsent[0].questionCall != nil && !u.proxy.emittingToolInput(u.session.cwd, u.thread) {
 							if err := u.flushInput(); err != nil {
 								return err
@@ -397,6 +404,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						if err := u.drainKeys(keys); err != nil || u.quitRequested {
 							return err
 						}
+						u = owner.viewedUI()
 						notices := u.applyCriticalNotices()
 						journalPending := make(map[*nativeJournalSink][]nativeJournalPublication)
 						if err := u.finishJournalAcknowledgements(false); err != nil {
@@ -449,6 +457,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 					u.writeTerminalTitle(u.now())
 				}
 			})
+			u = owner.viewedUI()
 			var fileEditor *openFileEditor
 			if errors.Is(err, errOpenComposerEditor) {
 				u.openComposerEditor(stdin, stdout)
@@ -459,6 +468,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 			}
 			u.dirty = true
 		}
+		u = owner
 		if saveErr := u.panes.save(u.shell, u.now(), true); saveErr != nil {
 			fmt.Fprintln(stdout, "Pane layout or settings could not be saved:", livediff.Safe(saveErr.Error(), false))
 		}
@@ -470,23 +480,12 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 				<-c.Done
 			}
 		}
+		err = errors.Join(err, owner.finishOrchestratedViews(stdout))
 		u.finishCommandSegments()
 		err = errors.Join(err, u.finishJournalAcknowledgements(true))
 		u.hideQuestions()
 		u.hideApprovals()
-		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
-			fmt.Fprintln(stdout, "Unsent draft:\n"+livediff.Safe(unsent.text, false))
-		}
-		unknown := slices.Clone(u.steers)
-		if !u.submission.committed {
-			unknown = append(unknown, u.submission)
-		}
-		if unknown := joinDrafts(u.steerParts(unknown)...); unknown.text != "" {
-			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+livediff.Safe(unknown.text, false))
-		}
-		if u.shellCommand.pending.text != "" {
-			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+livediff.Safe(u.shellCommand.pending.text, false))
-		}
+		u.writeUnsettledInput(stdout, "")
 		if err != nil {
 			c.Diagnostics.Lock()
 			defer c.Diagnostics.Unlock()
@@ -522,6 +521,11 @@ func (u *appServerUI) requestAs(method, label string, params any) (string, error
 func (u *appServerUI) message(m appserver.Message) (err error) {
 	if handled := u.orchestrateMessage(m); handled {
 		return nil
+	}
+	if u.navigation != nil && u.navigation.owner == u {
+		if handled, err := u.navigation.route(m); handled {
+			return err
+		}
 	}
 	u.issues.observeTurnCompletion(m.Method, m.Params)
 	u.observeShellMessage(m)
@@ -1689,6 +1693,7 @@ func (u *appServerUI) ensureShell() {
 func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	u.ensureShell()
 	u.refreshRosterRoles()
+	u.orchestrationRoster()
 	u.agents.mainView = u.view
 	u.view.status = livediff.Safe(u.status, false)
 	u.shell.width, u.shell.height = max(1, width), max(1, height)
@@ -1778,4 +1783,20 @@ func (u *appServerUI) interruptTurn() error {
 		return err
 	}
 	return u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
+}
+
+func (u *appServerUI) writeUnsettledInput(out io.Writer, source string) {
+	if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
+		fmt.Fprintln(out, "Unsent draft"+source+":\n"+livediff.Safe(unsent.text, false))
+	}
+	unknown := slices.Clone(u.steers)
+	if !u.submission.committed {
+		unknown = append(unknown, u.submission)
+	}
+	if unknown := joinDrafts(u.steerParts(unknown)...); unknown.text != "" {
+		fmt.Fprintln(out, "Submission outcome unknown"+source+"; not automatically resent:\n"+livediff.Safe(unknown.text, false))
+	}
+	if u.shellCommand.pending.text != "" {
+		fmt.Fprintln(out, "Shell submission outcome unknown"+source+"; not automatically rerun:\n"+livediff.Safe(u.shellCommand.pending.text, false))
+	}
 }

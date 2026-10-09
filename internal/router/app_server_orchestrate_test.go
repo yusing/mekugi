@@ -50,7 +50,7 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 	defer client.Close()
 	u, w := newAppServerTestUI()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.closeOrchestratedViews(); u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.ctx, u.proxy = t.Context(), proxy
 	u.session.start("main", workspace)
 	u.model, u.reasoningEffort = "model", "high"
@@ -161,6 +161,10 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 	take(result, false)
 	if u.thread != "main" || u.turn != "" || u.model != "model" {
 		t.Fatal("child launch replaced Main")
+	}
+	childView := u.navigation.views["child"]
+	if childView == nil || childView.model != "effective-model" || childView.session.cwd != batch.Cwd {
+		t.Fatal("confirmed launch did not retain its own view")
 	}
 	if got, err := os.ReadFile(filepath.Join(batch.Cwd, "input")); err != nil || string(got) != "copied input" {
 		t.Fatal("prepared input changed", err)
@@ -283,7 +287,9 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 	dispatch()
 	request = btwTestRequest(t, w, "turn/interrupt", "child")
 	event := appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"child","turn":{"id":"child-turn","status":"interrupted"}}`)}
-	u.orchestrateMessage(event)
+	if err := u.message(event); err != nil {
+		t.Fatal(err)
+	}
 	drainOrchestrateWork(t, u)
 	assertEvent(take(wait, false), "done", "interrupted")
 	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"turn already finished"}}`, request.ID))

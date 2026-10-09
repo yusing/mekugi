@@ -225,7 +225,7 @@ Activity unless you select another pane. Narrow terminals show one pane.
 | --- | --- |
 | Focus Main / Diff / Activity / Agents / Journal | `Ctrl-B`, then `1` / `2` / `3` / `4` / `5` |
 | Resize splits | Drag dividers, or `Ctrl-B`, then arrows; Up/Down in Agents adjusts its height |
-| Resize Diff navigator | `Ctrl-B`, then `[` / `]` |
+| Resize Diff navigator without orchestration; otherwise cycle threads | `Ctrl-B`, then `[` / `]` |
 | Browse Main history | `Ctrl-B`, then PageUp / PageDown |
 | Return to Main | Ctrl-C |
 

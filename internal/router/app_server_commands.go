@@ -89,6 +89,9 @@ func (u *appServerUI) submitCompact(queue bool) error {
 
 // sessionBusy reports work that leaving the current thread would strand.
 func (u *appServerUI) sessionBusy() bool {
+	if u.navigation != nil && u.navigation.owner != u {
+		return true
+	}
 	return u.busy() || u.reset.active() || u.orchestrateBusy()
 }
 
@@ -131,7 +134,21 @@ func (u *appServerUI) clearSessionPresentation() error {
 	for thread := range u.session.paths {
 		u.retiredThreads[thread] = u.thread
 	}
+	if u.navigation != nil {
+		for _, thread := range u.navigation.order {
+			if thread == u.thread {
+				continue
+			}
+			if err := u.request("thread/unsubscribe", map[string]any{"threadId": thread}); err != nil {
+				return err
+			}
+		}
+		u.closeOrchestratedViews()
+		u.navigation = nil
+		u.agents.orchestration, u.agents.orchestrationLabels = nil, nil
+	}
 	if u.proxy != nil {
+		u.proxy.activity.detachNativePane(u.thread)
 		u.proxy.journals.detachNative(u.journal)
 		u.proxy.journals.detachNative(u.unscopedJournal)
 	}

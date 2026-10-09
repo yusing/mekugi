@@ -31,7 +31,7 @@ func orchestrateIdentityPendingTurnInWorkspace(t *testing.T, replay *mekugiRepla
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
 	u.ensureShell()
-	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() { u.closeOrchestratedViews(); u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.session.start("main", workspace)
 	u.proxy = &mekugiProxy{journals: newJournalStore(), replayStore: replay, orchestration: &orchestrateRuntime{store: store}}
 	if replay != nil {

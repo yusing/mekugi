@@ -206,6 +206,12 @@ func (u *appServerUI) orchestrateRPCRequest(request orchestrateRPC, params any) 
 }
 
 func (u *appServerUI) finishOrchestrate(child *orchestrateChild, err error) {
+	if err != nil && u.navigation != nil {
+		if v := u.navigation.views[child.batch.Launch.ThreadID]; v != nil && v.awaitingTurn && child.turn == "" {
+			v.awaitingTurn = false
+			v.setNotice("Orchestration startup: "+err.Error(), true)
+		}
+	}
 	select {
 	case child.command.reply <- orchestrateResult{batch: child.batch, err: err}:
 	default:
@@ -365,8 +371,16 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 					u.finishOrchestrate(child, err)
 					return
 				}
-				input := orchestrateChildInput(cwd, c.input.Message)
-				if err := u.orchestrateRequest(child, "turn/start", map[string]any{"threadId": thread, "input": appserver.Input(input)}); err != nil {
+				if err := u.addOrchestratedView(child, raw, func() {
+					if u.orchestrateClosing || c.ctx.Err() != nil {
+						u.finishOrchestrate(child, context.Canceled)
+						return
+					}
+					input := orchestrateChildInput(cwd, c.input.Message)
+					if err := u.orchestrateRequest(child, "turn/start", map[string]any{"threadId": thread, "input": appserver.Input(input)}); err != nil {
+						u.failOrchestrate(child, err)
+					}
+				}); err != nil {
 					u.failOrchestrate(child, err)
 				}
 			}
@@ -379,6 +393,12 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 		child.batch.Launch.TurnID = result.Turn.ID
 		if child.batch.Launch.HostStatus == "" || child.batch.Launch.HostStatus == "running" {
 			child.turn = result.Turn.ID
+		}
+		if u.navigation != nil && child.turn == result.Turn.ID {
+			if v := u.navigation.views[child.batch.Launch.ThreadID]; v != nil && v.awaitingTurn {
+				v.started(result.Turn.ID)
+				v.status, v.turnStarted = "Working", v.now()
+			}
 		}
 		// Cancellation cleanup does not wait for acknowledgement persistence.
 		interrupted := c.ctx.Err() != nil
@@ -411,6 +431,19 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 }
 
 func (u *appServerUI) orchestrateBusy() bool {
+	if n := u.navigation; n != nil {
+		if n.owner != u {
+			return n.owner.busy() || n.owner.reset.active() || n.owner.orchestrateBusy()
+		}
+		if len(n.pending) != 0 || len(n.reads) != 0 {
+			return true
+		}
+		for _, v := range n.views {
+			if v != u && (v.busy() || len(v.activeChildren) != 0 || v.reset.active() || len(v.btwRequests) != 0 || v.btw != nil && (v.btw.busy || v.btw.starting || v.btw.interrupting)) {
+				return true
+			}
+		}
+	}
 	if len(u.orchestrateRequests) != 0 || len(u.orchestrateJobs) != 0 {
 		return true
 	}

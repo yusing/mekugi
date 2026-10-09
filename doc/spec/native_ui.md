@@ -19,6 +19,9 @@ Operation-row formatting and feed controls are specified by
 
 ### UI
 
+Orchestration thread navigation follows the
+[orchestration contract](orchestrate.md#accepted-delivery-scope).
+
 Journal shares the auxiliary column with Diff and Activity (`Ctrl-B 5`). No bare
 key opens it, so composer text that starts with any letter is typed. Its plan strip, tree navigation, transition rows and expandable
 terminal card follow [journal presentation](journal.md#native-journal-presentation).

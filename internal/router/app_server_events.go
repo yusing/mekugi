@@ -167,7 +167,7 @@ func (s *appServerSession) registerThread(info appServerThreadInfo) {
 	_ = json.Unmarshal(info.Source, &source)
 	spawn := source.SubAgent.ThreadSpawn
 	info.ParentThreadID = cmp.Or(info.ParentThreadID, spawn.ParentThreadID)
-	info.agentPath = spawn.AgentPath
+	info.agentPath = cmp.Or(spawn.AgentPath, info.agentPath)
 	stored := info
 	stored.Turns = nil
 	s.threads[info.ID] = stored

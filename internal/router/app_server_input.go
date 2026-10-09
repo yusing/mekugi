@@ -14,12 +14,13 @@ func (u *appServerUI) drainKeys(keys <-chan byte) error {
 			if !ok {
 				return io.EOF
 			}
-			u.dirty = true
-			if err := u.shell.key(key); err != nil || u.quitRequested {
+			viewed := u.viewedUI()
+			viewed.dirty = true
+			if err := viewed.shell.key(key); err != nil || viewed.quitRequested {
 				return err
 			}
 		default:
-			return u.shell.flushEscape()
+			return u.viewedUI().shell.flushEscape()
 		}
 	}
 	return nil

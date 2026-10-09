@@ -74,8 +74,9 @@ Cancellation prevents the first turn when possible. Late host acknowledgements
 remain useful; an already-started turn is interrupted even if saving its result
 fails. An interrupt acknowledgement does not claim the turn has finished: host
 lifecycle events supply that outcome. Checkout preparation and orchestration
-run-storage waits leave input and host events responsive. Running batches currently
-prevent quitting or switching coordinators; confirmation and thread navigation remain below.
+run-storage waits leave input and host events responsive. Running batches prevent
+quitting or replacing the coordinator. Viewing another thread leaves its work
+subscribed and does not replace the coordinator.
 
 The prepared checkout replaces the source repository in runtime workspace roots;
 explicit external roots and an empty root list remain inherited. Named permission
@@ -163,15 +164,24 @@ and cancellation use the composer lifecycle. Fresh children receive their
 checkout, assignment and orchestration-tool instructions in their first input.
 Bare `/orchestrate` reports usage until the run picker is delivered.
 
+The Orchestration group in Agents lists the coordinator and its live batch
+threads. Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`
+cycle these threads. Without orchestration navigation, these shortcuts resize
+the Diff navigator. The Main pane title shows `main` or `main › batch`.
+Transcript, Activity, native Agents, Journal, Diff, settings and unsent drafts
+belong to the viewed thread. Switching uses the subscribed in-memory state,
+without resuming a thread or reloading history. Background threads continue to
+receive events and process their existing input lifecycle. Prompts currently
+remain with their originating view until cross-thread prompt navigation is delivered.
+
 The remaining capabilities are accepted but not yet delivered:
 
 - Bare `/orchestrate` opens its run picker. Workflow instructions recover once
   after context reset.
 - `send_message` can target Main's next turn without waking it. Child follow-ups
   can wake Main through the normal composer lifecycle.
-- Thread navigation scopes transcript, Activity, Agents, Journal and Diff to the
-  viewed thread. Drafts remain per-thread in memory. Questions and approvals are
-  labeled and answered on their originating threads.
+- Questions and approvals from any thread appear on the viewed shell, labeled
+  with their source, and answers return to their originating thread.
 - Resume restores run identities and confirmed facts without reviving processes
   or repeating effects. Exit confirms interruption of running children.
 - Main integrates native VCS branches serially, preserving coherent commits and
