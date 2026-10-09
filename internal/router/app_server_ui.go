@@ -1185,6 +1185,12 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.titleCommand(text) {
 			return false, nil
 		}
+		if text == "/orchestrate" || strings.HasPrefix(text, "/orchestrate ") || strings.HasPrefix(text, "/orchestrate\n") || strings.HasPrefix(text, "/orchestrate\t") {
+			if !u.expandOrchestrate() {
+				return false, nil
+			}
+			text = strings.TrimSpace(u.draft)
+		}
 		if text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
 			return false, u.submitBTW()
 		}
@@ -1229,7 +1235,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /btw, /status, /session, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /btw, /orchestrate, /status, /session, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil {

@@ -365,7 +365,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 					u.finishOrchestrate(child, err)
 					return
 				}
-				input := fmt.Sprintf("Work in %s. Your coordinator is main. Assignment:\n%s", cwd, c.input.Message)
+				input := orchestrateChildInput(cwd, c.input.Message)
 				if err := u.orchestrateRequest(child, "turn/start", map[string]any{"threadId": thread, "input": appserver.Input(input)}); err != nil {
 					u.failOrchestrate(child, err)
 				}

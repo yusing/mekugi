@@ -542,13 +542,17 @@ results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
 Typing `/` at the start of an otherwise single-token draft opens a local command
-catalog with descriptions for `/title`, `/compact`, `/clear`, `/resume`, `/btw`, `/status`, `/session`, `/copy`,
+catalog with descriptions for `/title`, `/compact`, `/clear`, `/resume`, `/btw`, `/orchestrate`, `/status`, `/session`, `/copy`,
 `/model`, `/effort`, `/reasoning`, `/tier`, `/live`, `/skills`, and `/quit`.
 Typing filters commands with fuzzy matching; Up/Down selects, Tab
 completes without executing, Enter runs the selected command, and Escape closes
 the catalog without changing the draft. Arguments close completion. Pasted text
 does not activate the catalog. The catalog uses the shared picker viewport and
 visible-row column sizing; it never submits a command to the model.
+
+`/orchestrate ISSUES` sends the issues and initial workflow instructions through
+the ordinary composer. The [orchestration contract](orchestrate.md) owns its
+staged capabilities, including the pending bare-command run picker.
 
 `/copy` opens a local picker for the latest completed response in the active
 thread, including restored history and journal answers. Whole response preserves

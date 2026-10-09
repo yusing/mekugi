@@ -1,0 +1,46 @@
+package router
+
+import (
+	"fmt"
+	"strings"
+)
+
+// Workflow instructions are explicit input, not request-dependent tool guidance.
+const orchestrateWorkflow = `Coordinate these issues as isolated Git batches. Plan independent journal tasks; bind each integration task to /root/task_name. Names use lowercase letters, digits and underscores.
+Call tools.mcp__orchestrate__<tool> with JSON arguments:
+prepare: task_name
+spawn_agent: task_name,message; optional model,reasoning_effort,service_tier
+list_agents: {}
+wait_agent: timeout_ms (default 10000)
+send_message,followup_task: target,message
+interrupt_agent: target
+Prepare at committed HEAD, then copy required ignored inputs into the returned cwd before spawn. Source uncommitted edits do not follow. Spawn starts a fresh independent thread; message carries its complete assignment, constraints and checks. Select requested budgets; omitted settings inherit Main's effective settings.
+send_message queues without waking; followup_task starts or steers. Targets are task names or /root/task_name. Native collaboration tools cannot reach these threads.
+Review and integrate branches with native Git commands, one at a time, preserving coherent commits and unrelated source edits. Set each bound task accepted after integration; child completion leaves it open. Keep checkouts and branches until explicit cleanup is available.
+Issues:
+`
+
+func (u *appServerUI) expandOrchestrate() bool {
+	prefix := strings.Index(u.draft, "/orchestrate") + len("/orchestrate")
+	if strings.TrimSpace(u.draft[prefix:]) == "" {
+		u.setNotice("Usage: /orchestrate ISSUES · run picker pending", false)
+		return false
+	}
+	if u.proxy == nil || u.proxy.orchestration == nil {
+		u.setNotice("Orchestration is unavailable in this session", true)
+		return false
+	}
+	if u.thread == "" || u.restoring != nil || u.replacement.pending() {
+		u.setNotice("Wait for the session to be ready", false)
+		return false
+	}
+	u.deleteDraftRange(0, prefix)
+	u.loadDraft(joinDrafts(composerDraft{text: orchestrateWorkflow}, u.draftSnapshot()))
+	return true
+}
+
+func orchestrateChildInput(cwd, message string) string {
+	return fmt.Sprintf(`Work in %s. Your coordinator is main. Use tools.mcp__orchestrate__send_message({target,message}) to queue sibling input and tools.mcp__orchestrate__followup_task({target,message}) to start or steer a sibling. Targets are task names or /root/task_name; native collaboration tools reach only your native descendants. Read Main's journal with agent:"main"; keep your own journal root independent. Ask your own decision questions. Main reviews and accepts your result after integration.
+Assignment:
+%s`, cwd, message)
+}
