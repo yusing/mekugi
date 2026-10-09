@@ -102,6 +102,10 @@ func (p *uiReplayPlayback) advance(position time.Duration) error {
 		p.observeReplayJournalTurn(e)
 		p.next++
 		switch e.Method {
+		case "replay/hook":
+			entry := p.ui.session.hookEntry(e.Params.ThreadID, *e.Params.HookObservation, false)
+			entry.Seq = p.ui.session.next()
+			p.ui.applyActivity([]activityPaneEntry{entry}, nil)
 		case "replay/journal":
 			p.applyReplayJournal(e)
 		case "replay/providerStarted":
@@ -394,6 +398,9 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 	}
 	for _, failure := range source.JournalUnavailable {
 		fmt.Fprintf(stderr, "Coverage: journal history unavailable (%s); recorded host activity is preserved.\n", failure)
+	}
+	for _, failure := range source.HookUnavailable {
+		fmt.Fprintf(stderr, "Coverage: hook history unavailable (%s).\n", failure)
 	}
 	p := newUIReplayPlayback(ctx, source, *speed)
 	defer p.close()

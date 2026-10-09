@@ -145,6 +145,13 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 	text := livediff.Safe(entry.Text, false)
 	source := activityui.MarkdownSource(entry.Text)
 	switch entry.Kind {
+	case "hook":
+		n := entry.native
+		if n == nil || n.hook == nil {
+			return nil
+		}
+		return []activityui.Block{{Kind: "op", Verb: "Run", Hook: n.hook, Label: text, Running: n.running,
+			Output: n.output, Tail: entry.outputTail, TailOmitted: entry.outputOmit, Collapsed: n.collapsed}}
 	case "journal_card":
 		return []activityui.Block{{Kind: "summary", Label: "Journal", Body: text, Collapsed: true}}
 	case "journal_event":

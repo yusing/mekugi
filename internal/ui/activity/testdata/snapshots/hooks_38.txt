@@ -1,0 +1,25 @@
+Hook Running PreToolUse · hooks.toml ·
+             async · 1s
+Hook Ran PreToolUse · hooks.toml ·
+         async · 120ms
+Hook Failed PreToolUse · hooks.toml ·
+            async · 120ms
+            ┆ error: executable not f…
+            ┆ warning: check hook con…
+╭─ Hook Failed · PreToolUse ·…  [×] ─╮
+│ command · async · 2 lines          │
+├────────────────────────────────────┤
+│ 1 ┆ error: executable not found    │
+│ 2 ┆ warning: check hook configurat │
+│   ┆ ion                            │
+│                                    │
+│                                    │
+│                                    │
+╰─ esc close ────────────────────────╯
+Hook Blocked PreToolUse · hooks.toml ·
+             async · 120ms
+             ┆ feedback: operation re…
+Hook Stopped PreToolUse · hooks.toml ·
+             async · 120ms
+Hook Run PreToolUse · hooks.toml ·
+         async · outcome unknown

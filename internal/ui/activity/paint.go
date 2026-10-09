@@ -1175,7 +1175,7 @@ func (p *Painter) ranRow(block Block, width int) []string {
 	if block.ShowWorkdir && block.Workdir != "" {
 		label = strings.TrimSpace(label + " " + workdirLabel(block.Workdir))
 	}
-	color, exit := VerbColor("Run"), ""
+	color, exit := block.runColor(), ""
 	if block.ExitCode != 0 {
 		color, exit = Red, Dim+"· "+Undim+exitText(block.ExitCode)
 	}
@@ -1809,6 +1809,9 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 		verb := block.Verb
 		if block.Running {
 			verb = "Running"
+		}
+		if block.Hook != nil {
+			return block.runColor() + RowVerb(block) + Reset + " " + detail + more
 		}
 		return SummaryVerb(verb) + detail + more
 	case "message":

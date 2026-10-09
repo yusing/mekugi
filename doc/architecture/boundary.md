@@ -10,7 +10,10 @@ confinement policy. Observation cannot authorize a host effect.
 
 The replay store retains completed stock-call identity, bounded known-edit
 baselines, endpoint differences, change IDs, host results, and managed omitted
-output. Recording uses source-resolved edit operands and their link targets,
+output. Hook observations use the same managed publication and retention owner.
+Records are scoped by metadata workspace, thread, and hook run identity; resume
+and offline replay read published observations without restoring process resources.
+Recording uses source-resolved edit operands and their link targets,
 plus differences between private workspace snapshots taken around writer
 commands. Ignore rules decide only which unnamed paths a snapshot covers; they
 never exclude a source-named target. Snapshots are a private Git directory and

@@ -231,6 +231,8 @@ func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placement
 		}
 		if index >= 0 {
 			byTurn[index] = append(byTurn[index], p)
+		} else if p.entry.Kind == "hook" {
+			u.applyRestoredMain([]*restoredPlacement{p})
 		}
 	}
 	for index, turn := range turns {

@@ -114,15 +114,17 @@ type appServerEvent struct {
 	Status struct {
 		Type string `json:"type"`
 	} `json:"status"`
-	ThreadID   string              `json:"threadId"`
-	TurnID     string              `json:"turnId"`
-	ItemID     string              `json:"itemId"`
-	Delta      string              `json:"delta"`
-	ProcessID  string              `json:"processId"`
-	Stdin      string              `json:"stdin"`
-	Item       appServerItem       `json:"item"`
-	Thread     appServerThreadInfo `json:"thread"`
-	TokenUsage struct {
+	ThreadID        string                   `json:"threadId"`
+	TurnID          string                   `json:"turnId"`
+	ItemID          string                   `json:"itemId"`
+	Delta           string                   `json:"delta"`
+	ProcessID       string                   `json:"processId"`
+	Stdin           string                   `json:"stdin"`
+	Item            appServerItem            `json:"item"`
+	Run             *appServerHookRun        `json:"run,omitempty"`
+	HookObservation *retainedHookObservation `json:"-"` // Offline presentation, never a host field.
+	Thread          appServerThreadInfo      `json:"thread"`
+	TokenUsage      struct {
 		Total              appServerTokenUsage  `json:"total"`
 		Last               *appServerTokenUsage `json:"last"`
 		ModelContextWindow uint64               `json:"modelContextWindow"`
@@ -215,13 +217,16 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	switch m.Method {
 	case "thread/started", "thread/status/changed", "thread/tokenUsage/updated", "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded",
 		"turn/started", "turn/completed", "item/started", "item/completed", "item/agentMessage/delta", "item/commandExecution/terminalInteraction",
-		"item/commandExecution/outputDelta":
+		"item/commandExecution/outputDelta", "hook/started", "hook/completed":
 	default:
 		return false, nil
 	}
 	var p appServerEvent
 	if err := json.Unmarshal(m.Params, &p); err != nil {
 		return true, fmt.Errorf("%s: %w", m.Method, err)
+	}
+	if m.Method == "hook/started" || m.Method == "hook/completed" {
+		return true, u.hookEvent(m.Method, p)
 	}
 	u.observeProgress(m.Method, p)
 	if u.proxy != nil && u.proxy.journals != nil && p.ThreadID != "" {

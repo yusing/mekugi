@@ -60,10 +60,11 @@ type Block struct {
 	Segment            bool // Ends one tracked segment of a command list; shows that segment's exit.
 	Skipped            bool // A tracked segment the command list never reached.
 	Tail               []string
-	TailOmitted        int         // Output lines before Tail.
-	TailRows           int         // Tail lines open output shows; 0 shows all of Tail.
-	Changes            []ChangeRow // Change history rows open output shows instead of Tail.
-	Output             *Output     // The invocation's retained output, which the output dialog reads.
+	TailOmitted        int          // Output lines before Tail.
+	TailRows           int          // Tail lines open output shows; 0 shows all of Tail.
+	Changes            []ChangeRow  // Change history rows open output shows instead of Tail.
+	Output             *Output      // The invocation's retained output, which the output dialog reads.
+	Hook               *HookDetails // Hook metadata on an ordinary Run operation.
 	// Members are the invocations a merged read row stands for, each with its
 	// own output, which the output dialog pages through.
 	Members    []Block
@@ -92,6 +93,9 @@ const OutputDebounce = 750 * time.Millisecond
 // thinking as its header, or a successful command's output as its
 // line count.
 func (b Block) Collapsible() bool {
+	if b.Hook != nil && (b.Hook.Status != "completed" || b.Hook.HasError) {
+		return false
+	}
 	switch b.Kind {
 	case "summary":
 		return !b.Live
@@ -203,6 +207,23 @@ func AlignVerbs(blocks []Block) []Block {
 
 // RowVerb is the verb a row shows.
 func RowVerb(b Block) string {
+	if b.Hook != nil {
+		switch b.Hook.Status {
+		case "running":
+			if b.Running {
+				return "Hook Running"
+			}
+		case "completed":
+			return "Hook Ran"
+		case "failed":
+			return "Hook Failed"
+		case "blocked":
+			return "Hook Blocked"
+		case "stopped":
+			return "Hook Stopped"
+		}
+		return "Hook Run"
+	}
 	switch {
 	case b.Kind == "op" && b.Verb == "Run" && b.Requested:
 		return "Run"

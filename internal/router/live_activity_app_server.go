@@ -183,9 +183,13 @@ type liveActivityNativeItem struct {
 	editPages          []activityui.Block     // Completed host file changes, available before outer-cell capture.
 	segments           []commandSegment       // A tracked command's own segments, replacing its single row.
 	output             *activityui.Output     // A command's retained host output, which the output dialog reads.
+	hook               *activityui.HookDetails
 }
 
 func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {
+	if n.hook != nil || other != nil && other.hook != nil {
+		return n.hook != nil && other != nil && other.hook != nil && n.thread == other.thread && n.item == other.item
+	}
 	return other != nil && n.thread == other.thread && n.turn == other.turn && n.item == other.item
 }
 
@@ -403,7 +407,7 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 			return true
 		}
 		entry.native.approval = previous.native.approval
-		if previous.native.phase == "item/completed" || entry.native.phase == "item/started" && previous.native.phase != "approval/updated" || previous.native.phase == "turn/completed" && entry.native.phase != "item/completed" {
+		if previous.native.phase == "item/completed" || entry.native.phase == "item/started" && previous.native.phase != "approval/updated" && previous.native.phase != "hook/restored" || previous.native.phase == "turn/completed" && entry.native.phase != "item/completed" {
 			return true
 		}
 		if entry.native.phase == "item/agentMessage/delta" {

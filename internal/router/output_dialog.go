@@ -312,6 +312,9 @@ func (u *terminalUI) openRequested(view *liveActivityView) {
 
 func (d *outputDialog) pageKey(page int) outputPageKey {
 	block := d.pages[page]
+	if block.Hook != nil {
+		return outputPageKey{source: block.Source, index: page}
+	}
 	if block.Output != nil {
 		return outputPageKey{output: block.Output}
 	}
@@ -358,7 +361,11 @@ func (d *outputDialog) refreshPages() {
 					if entry.native != nil {
 						origin.Approval = entry.native.approval
 					}
-					if origin.Verb == "Run" && entry.native != nil {
+					if origin.Hook != nil && len(entry.blocks) == 1 {
+						current := entry.blocks[0]
+						current.Source = origin.Source
+						origin = current
+					} else if origin.Verb == "Run" && entry.native != nil {
 						timed := []activityui.Block{origin}
 						setCommandTiming(timed, entry.activityPaneEntry)
 						origin = timed[0]

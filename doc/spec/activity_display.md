@@ -97,6 +97,19 @@ the UI it reads `Running` from the host's command start, in
 Main and in the agent's feed and roster summary, and `Ran` once the host
 completes it. A yielded process stays `Running` across turns until it exits;
 replayed history never shows `Running`.
+Hook runs specialize the same Run presentation: `Hook Running`, `Hook Ran`,
+`Hook Failed`, `Hook Blocked`, or `Hook Stopped`. An unfinished restored hook
+reads `Hook Run` with `outcome unknown`. Rows name the hook event and configuration
+source, with `async` for asynchronous handlers. Hook completion, independently of
+turn completion, ends a running hook. Hook status is distinct from command exit;
+no exit code is inferred. The output dialog also names the handler type.
+Host-supplied structured output retains its warning, stop, feedback, context, and
+error labels, using Run's bounded tail and retained-output dialog. Successful
+output follows Run's collapse behavior; failed, blocked, stopped, or error-bearing
+output stays open. Hook notifications do not expose command source, raw stdout,
+stderr, or streaming output deltas. Mekugi retains observed hook runs in its
+existing managed store for resume and offline replay, scoped to workspace and
+thread. Missing observations cannot be reconstructed from Codex's rollout.
 A single-line command follows the verb. When it does not fit, each top-level
 statement after `;`, `&&`, or `||` starts a row aligned with the first, and a
 statement that is still too wide breaks at unquoted blanks with a muted ` \`

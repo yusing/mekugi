@@ -204,6 +204,7 @@ func (u *appServerUI) readRestoredRollouts() {
 	for _, info := range infos {
 		agent := u.session.path(info.ID)
 		rollout := readRestoredRollout(info, agent)
+		rollout.events = append(rollout.events, u.restoredHookEvents(info)...)
 		r.itemAt[info.ID] = rollout.itemAt
 		if info.ID == r.root.ID {
 			r.journalTurns = rollout.turnAt
@@ -375,6 +376,10 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 				byTurn[index] = append(byTurn[index], p)
 			} else if main, ok := mainActivityEntry(p.entry); ok && p.turn == "" {
 				r.main = append(r.main, &restoredPlacement{entry: main, at: p.at})
+			} else if p.entry.Kind == "hook" {
+				entry := p.entry
+				entry.Seq = s.next()
+				u.applyRestoredActivity([]activityPaneEntry{entry})
 			}
 		}
 		delete(r.pane, name)

@@ -24,6 +24,10 @@ Individual records are bounded to 16 MiB and playback duration to 24 hours.
 Supported retained items include user and agent messages, reasoning summaries,
 commands and output, file-change activity, agent lifecycle and collaboration,
 compaction, and image-view activity. Encrypted/raw reasoning is never projected.
+Observed hook runs come from Mekugi's retained hook records for each loaded
+workspace and thread, because Codex does not persist these notifications.
+Replay shows their recorded output and outcomes without restarting hooks;
+an observation without completion has an unknown outcome and no running state.
 Question and answer presentation is limited to retained semantic items; input
 keystrokes, resize events, journal publications, and live diff previews are absent.
 Retained semantic journal messages remain visible. Authorized child journals use

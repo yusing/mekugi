@@ -34,6 +34,7 @@ type sessionUIReplay struct {
 	Items, Providers   int
 	JournalUnverified  int
 	JournalUnavailable []string
+	HookUnavailable    []string
 }
 
 type uiReplayEvent struct {
@@ -230,6 +231,25 @@ func readSessionUIReplay(ctx context.Context, path, debugDir string, seed uint64
 		})
 		if err != nil {
 			return nil, err
+		}
+		hooks, err := store.readHookObservations(workspace, thread)
+		if err != nil {
+			r.HookUnavailable = append(r.HookUnavailable, fmt.Sprintf("%s: %v", thread, err))
+			hooks = retainedHookObservations{}
+		}
+		totalBytes += hooks.bytes
+		if totalBytes > 256<<20 {
+			return nil, errors.New("replay corpus exceeds 256 MiB")
+		}
+		if hooks.Dropped > 0 {
+			r.HookUnavailable = append(r.HookUnavailable, fmt.Sprintf("%s: %d earlier observations were not retained", thread, hooks.Dropped))
+		}
+		for _, observation := range hooks.Runs {
+			r.Events = append(r.Events, uiReplayEvent{At: observation.At, Method: "replay/hook",
+				Params: appServerEvent{ThreadID: thread, HookObservation: &observation}})
+			if len(r.Events) > 500000 {
+				return nil, errors.New("replay exceeds 500000 events")
+			}
 		}
 		// Item thread IDs resolve the ownership of lifecycle records that have
 		// no thread field, including inherited history in a standalone fork.

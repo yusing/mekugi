@@ -130,6 +130,15 @@ func (u *appServerUI) childHistoryResponse(method string, m appserver.Message) e
 		u.hydrateChildHistoryMetadata(h)
 		h.older = false
 		if h.turn < 0 {
+			// Thread-scoped hooks need no turn or item page to be visible.
+			for _, p := range h.placements {
+				if p.entry.Kind == "hook" {
+					entry := p.entry
+					entry.Seq = u.session.next()
+					u.applyRestoredActivity([]activityPaneEntry{entry})
+				}
+			}
+			h.placements = slices.DeleteFunc(h.placements, func(p *restoredPlacement) bool { return p.entry.Kind == "hook" })
 			return u.finishChildHistory()
 		}
 		return u.requestChildItems(nil)

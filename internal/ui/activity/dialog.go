@@ -46,6 +46,9 @@ const dialogHighlightBytes = 256 << 10
 func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	width = max(8, width)
 	view := OutputView{Lines: block.Tail, Dropped: block.TailOmitted, Done: !block.Running, Exited: !block.Running, Exit: block.ExitCode}
+	if block.Hook != nil {
+		view.Exited = false
+	}
 	if block.Output != nil {
 		view = block.Output.View()
 		if view.Released {
@@ -55,6 +58,12 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	}
 	page := DialogPage{Title: p.DialogPageTitle(block, p.now(), width), Live: block.Live || !view.Done}
 	var detail []string
+	if block.Hook != nil {
+		detail = append(detail, livediff.Safe(block.Hook.HandlerType, false))
+		if block.Hook.ExecutionMode == "async" {
+			detail = append(detail, "async")
+		}
+	}
 	if len(block.Reads) == 1 && len(block.Reads[0].Ranges) > 0 {
 		detail = append(detail, lineRanges(block.Reads[0].Ranges))
 	}
@@ -513,6 +522,9 @@ func (p *Painter) DialogPageTitle(block Block, now time.Time, width int) string 
 		}
 	}
 	title := VerbColor(block.Verb) + "\x1b[1m" + verb + Reset
+	if block.Hook != nil {
+		title = block.runColor() + "\x1b[1m" + verb + Reset
+	}
 	if target := dialogTarget(p, block); target != "" {
 		title += Dim + " · " + Undim + target
 	}
