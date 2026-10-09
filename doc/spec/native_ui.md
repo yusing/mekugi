@@ -1177,7 +1177,7 @@ one result at a time. An agent's latest command output remains open until later 
 
 `Ctrl-E` cycles the focused Main or Activity pane through default presentation,
 expanded events, and expanded all. Expanded events shows full narrative, journal
-details and public reasoning while leaving operation source/output at its normal
+details, public reasoning, and hook runs while leaving operation source/output at its normal
 preview. Both expanded modes show all retained child-journal answers and nonempty
 change reports, including report-only completions. Expanded all also opens retained
 operation source/output. Default restores

@@ -1,6 +1,8 @@
 package router
 
 import (
+	json "encoding/json/v2"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func hookTestRun(workspace, status string) map[string]any {
@@ -43,6 +46,7 @@ func TestAppServerHookLifecycleUsesRunPresentation(t *testing.T) {
 	if b.Running || b.Output.View().Exited || b.Duration != 120*time.Millisecond || !b.Started.Equal(time.Unix(1000, 0)) {
 		t.Fatalf("hook completion borrowed a shell exit or lost host timing: %+v", b)
 	}
+	u.view.expansion = 1 // Default presentation omits hook runs.
 	rows := ansi.Strip(strings.Join(u.view.renderConversation(80).lines, "\n"))
 	if !strings.Contains(rows, "Hook Ran") || !strings.Contains(rows, "hooks.toml") || !strings.Contains(rows, "feedback: policy checked") {
 		t.Fatalf("Main did not render hook source and output: %s", rows)
@@ -213,5 +217,53 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	source, err = readSessionUIReplay(t.Context(), rollout, "", 1)
 	if err != nil || len(source.HookUnavailable) != 1 || len(source.Events) != 2 {
 		t.Fatalf("invalid hook history blocked host replay or hid the gap: %v, %+v", err, source)
+	}
+}
+
+func TestUISnapshotNativeHookVisibility(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	waitTargetTestStore(t, u, waitTargetTestOpenStore(t))
+	u.view.conversation = true
+	global := filepath.Join(u.session.cwd, "hooks.json")
+	run := func(id, event, source, status, message string, entries ...map[string]any) {
+		appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": map[string]any{
+			"id": id, "eventName": event, "handlerType": "command", "executionMode": "sync", "sourcePath": source,
+			"status": status, "statusMessage": message, "startedAt": 1000, "completedAt": 1001, "durationMs": 5, "entries": entries}})
+	}
+	run("guard", "preToolUse", builtinHookSource, "completed", "Applying VCS guard")
+	run("context", "sessionStart", global, "completed", "", map[string]any{"kind": "context", "text": "<skills>"})
+	run("rejected", "preToolUse", global, "blocked", "Checking generated files", map[string]any{"kind": "feedback", "text": "generated file"})
+	rows := ansi.Strip(strings.Join(u.view.renderConversation(80).lines, "\n"))
+	frames := []string{"default", rows}
+	for expansion := uint8(1); expansion <= 2; expansion++ {
+		u.view.expansion = expansion
+		rows = ansi.Strip(strings.Join(u.view.renderConversation(80).lines, "\n"))
+		frames = append(frames, fmt.Sprintf("expansion %d", expansion), rows)
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/native-hook-visibility.txt", strings.Join(frames, "\n")+"\n")
+}
+
+func TestHookObservationMovesReleasedStatusLine(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	store := waitTargetTestOpenStore(t)
+	waitTargetTestStore(t, u, store)
+	// Observations retained before status messages were kept with the run.
+	released := retainedHookObservations{Version: 1, Workspace: u.session.cwd, Thread: "main", Runs: []retainedHookObservation{{
+		Run: appServerHookRun{ID: "generated", EventName: "preToolUse", HandlerType: "command", SourcePath: filepath.Join(u.session.cwd, "hooks.json"), Status: "completed"},
+		At:  time.Unix(1000, 0), Output: "status: Checking for generated Go files\nfeedback: none found", Completed: true}}}
+	data, err := json.Marshal(released)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store.directory, hookObservationsName(u.session.cwd, "main")), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := store.readHookObservations(u.session.cwd, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := u.session.hookEntry("main", r.Runs[0], false)
+	if !strings.Contains(entry.Text, "Checking for generated Go files") || r.Runs[0].Output != "feedback: none found" {
+		t.Fatalf("a released status line stayed output: %q, %q", entry.Text, r.Runs[0].Output)
 	}
 }

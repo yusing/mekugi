@@ -261,7 +261,9 @@ For dash-backed sh, Codex's native `PreToolUse` command hook adds inline
 instrumentation to supported POSIX scripts. It runs in Codex's selected shell,
 without launching a substitute interpreter, and uses the same segment reports,
 measured timing, output retention and UI as Bash. Bash keeps its startup path.
-The native hook is registered for tracking even with `--vcs-guard=false`.
+The native hook is registered for tracking even with `--vcs-guard=false`. Its
+status message, part of its invocation-local trust identity, describes it in hook
+rows: `Applying VCS guard` with the guard enabled, otherwise `Tracking shell segments`.
 With the VCS guard disabled, explicit caller `PreToolUse` conflicts leave caller
 settings intact and sh untracked; an enabled guard rejects a conflicting launch.
 Missing or incompatible hook resources leave commands running once

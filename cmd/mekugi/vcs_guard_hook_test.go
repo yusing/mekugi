@@ -40,8 +40,8 @@ func TestVCSGuardHookArgsPreservesRecoveryTrustAndCaller(t *testing.T) {
 		t.Fatalf("recovery trust lost: %+v", config.Hooks.State)
 	}
 	guard := config.Hooks.State[vcsguard.HookKey]
-	// SHA-256 of the native hook identity, with deterministic JSON keys.
-	const hash = "sha256:1e26e69870a549de1ceda2573201bd8ce133cb8ea9e97234c9f93e9df13b94c0"
+	// Reported as trusted by `codex app-server` hooks/list for this exact hook.
+	const hash = "sha256:e517f39987a2e5743dde04d9e38da6bd5886bdc6ea16da50bcb08a9e11741ae5"
 	if guard.TrustedHash != hash || guard.Enabled != nil {
 		t.Fatalf("guard trust identity or enablement changed: %+v", guard)
 	}

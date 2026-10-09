@@ -459,6 +459,9 @@ func (v *liveActivityView) visible(entry activityPaneEntry) bool {
 	if entry.Kind == "tool" && entry.Text == "" {
 		return false
 	}
+	if v.expansion == 0 && entry.Kind == "hook" { // Expanded presentations disclose hook runs.
+		return false
+	}
 	if entry.Kind == "reasoning" {
 		if v.conversation {
 			return entry.Agent == "Main"

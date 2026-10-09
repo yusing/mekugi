@@ -28,11 +28,13 @@ type appServerHookRun struct {
 	} `json:"entries"`
 }
 
+// Codex's synthetic path for the invocation's -c layer, which holds Mekugi's
+// own hooks and any hook flags the user passes.
+// Source: codex-rs/hooks/src/engine/discovery.rs synthetic_layer_path.
+const builtinHookSource = "/<session-flags>/config.toml"
+
 func hookOutput(run appServerHookRun) (string, bool) {
 	var output activityui.Output
-	if run.StatusMessage != "" {
-		output.Write("status: " + run.StatusMessage + "\n")
-	}
 	hasError := false
 	for _, entry := range run.Entries {
 		hasError = hasError || entry.Kind == "error"
@@ -79,7 +81,7 @@ func (u *appServerUI) hookEvent(method string, event appServerEvent) error {
 	}
 	output, hasError := hookOutput(run)
 	observation := retainedHookObservation{Turn: event.TurnID, Run: run, At: u.now(), Output: output, HasError: hasError, Completed: completed}
-	observation.Run.Entries, observation.Run.StatusMessage = nil, ""
+	observation.Run.Entries = nil
 	if u.replay == nil {
 		if err := s.retainHook(event.ThreadID, observation); err != nil {
 			u.setNotice("Hook observation could not be retained: "+err.Error(), true)
@@ -119,7 +121,15 @@ func (s *appServerSession) hookEntry(thread string, observation retainedHookObse
 	if !n.running {
 		n.output.Finish(nil, nil) // Hook status does not imply a shell exit.
 	}
-	label := run.EventName + " · " + commentaryCode(pathdisplay.ForWorkspace(s.cwd, run.SourcePath))
+	label := run.EventName
+	if run.StatusMessage != "" { // The host's description of what the hook does.
+		label += " · " + run.StatusMessage
+	}
+	if run.SourcePath == builtinHookSource {
+		label += " · builtin"
+	} else {
+		label += " · " + commentaryCode(pathdisplay.ForWorkspace(s.cwd, run.SourcePath))
+	}
 	if run.ExecutionMode == "async" {
 		label += " · async"
 	}

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -55,9 +56,14 @@ func (s *mekugiReplayStore) readHookObservations(workspace, thread string) (reta
 	if r.Version != 1 || r.Workspace != workspace || r.Thread != thread {
 		return r, errors.New("hook observation identity mismatch")
 	}
-	for _, run := range r.Runs {
+	for i, run := range r.Runs {
 		if run.Run.ID == "" || run.At.IsZero() {
 			return r, errors.New("hook observation lacks identity or time")
+		}
+		// Earlier releases kept the status message as the first output line.
+		// Host entries never use that label.
+		if line, ok := strings.CutPrefix(run.Output, "status: "); ok && run.Run.StatusMessage == "" {
+			r.Runs[i].Run.StatusMessage, r.Runs[i].Output, _ = strings.Cut(line, "\n")
 		}
 	}
 	return r, nil

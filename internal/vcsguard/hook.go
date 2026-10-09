@@ -25,16 +25,21 @@ func HookCommand(helper, directory string) string {
 // neither changes user files nor grants sandbox permissions.
 func HookConfig(helper, directory string) (config, state string, err error) {
 	command := HookCommand(helper, directory)
+	// Hook runs carry only this description of what the hook does.
+	status := "Tracking shell segments"
+	if directory != "" {
+		status = "Applying VCS guard"
+	}
 	identity := map[string]any{
 		"event_name": "pre_tool_use", "matcher": "^Bash$",
-		"hooks": []map[string]any{{"type": "command", "command": command, "timeout": 5, "async": false}},
+		"hooks": []map[string]any{{"type": "command", "command": command, "timeout": 5, "async": false, "statusMessage": status}},
 	}
 	data, err := json.Marshal(identity, json.Deterministic(true))
 	if err != nil {
 		return "", "", err
 	}
 	hash := sha256.Sum256(data)
-	config = fmt.Sprintf(`hooks.PreToolUse=[{matcher="^Bash$",hooks=[{type="command",command=%q,timeout=5}]}]`, command)
+	config = fmt.Sprintf(`hooks.PreToolUse=[{matcher="^Bash$",hooks=[{type="command",command=%q,timeout=5,statusMessage=%q}]}]`, command, status)
 	state = strconv.Quote(HookKey) + "={trusted_hash=" + strconv.Quote("sha256:"+hex.EncodeToString(hash[:])) + "}"
 	return config, state, nil
 }

@@ -40,6 +40,9 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 	}
 	path := ""
 	switch {
+	case block.Hook != nil:
+		// Labeled free text in no declared language, which detection misreads.
+		return selectRows(rows)
 	case block.ReadOutput() && len(block.Reads) == 1:
 		path = block.Reads[0].Path
 		if block.SyntaxPath != "" {

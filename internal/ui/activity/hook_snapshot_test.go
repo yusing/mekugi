@@ -42,3 +42,15 @@ func TestUISnapshotHookRuns(t *testing.T) {
 		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/hooks_styles_%d.txt", width), append(rows, "plain after hooks"), width)
 	}
 }
+
+func TestHookOutputSkipsLanguageDetection(t *testing.T) {
+	p := Painter{Theme: livediff.DarkTheme}
+	rows := []string{"#!/bin/bash", "echo ready"}
+	if colored := p.outputColors(Block{Kind: "op", Verb: "Run", Tail: rows}, rows); colored[1] == rows[1] {
+		t.Fatal("fixture no longer exercises content detection")
+	}
+	colored := p.outputColors(Block{Kind: "op", Verb: "Run", Tail: rows, Hook: &HookDetails{Status: "completed"}}, rows)
+	if strings.Join(colored, "\n") != strings.Join(rows, "\n") {
+		t.Fatalf("hook output was colored as a detected language: %q", colored)
+	}
+}

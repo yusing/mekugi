@@ -99,15 +99,23 @@ completes it. A yielded process stays `Running` across turns until it exits;
 replayed history never shows `Running`.
 Hook runs specialize the same Run presentation: `Hook Running`, `Hook Ran`,
 `Hook Failed`, `Hook Blocked`, or `Hook Stopped`. An unfinished restored hook
-reads `Hook Run` with `outcome unknown`. Rows name the hook event and configuration
-source, with `async` for asynchronous handlers. Hook completion, independently of
-turn completion, ends a running hook. Hook status is distinct from command exit;
-no exit code is inferred. The output dialog also names the handler type.
-Host-supplied structured output retains its warning, stop, feedback, context, and
-error labels, using Run's bounded tail and retained-output dialog. Successful
-output follows Run's collapse behavior; failed, blocked, stopped, or error-bearing
-output stays open. Hook notifications do not expose command source, raw stdout,
-stderr, or streaming output deltas. Mekugi retains observed hook runs in its
+reads `Hook Run` with `outcome unknown`. Rows name the hook event, the host's
+status message describing what the hook does when it is configured, and the
+configuration source, with `async` for asynchronous handlers. Hook runs do not
+identify their configured command reliably, so rows never name one. Mekugi's own
+hooks carry status messages: `Applying VCS guard`, or `Tracking shell segments`
+without the guard, and `Restoring Mekugi context`. Codex's session-flag layer
+(`/<session-flags>/config.toml`), which holds Mekugi's hooks and any user `-c`
+hook flags, shows as `builtin`. Hook completion, independently of turn completion,
+ends a running hook. Hook status is distinct from command exit; no exit code is
+inferred. The output dialog also names the handler type. Host-supplied
+structured output retains its warning, stop, feedback, context, and error labels
+as plain text without language detection, using Run's bounded tail and
+retained-output dialog. Default presentation omits hook runs of every outcome;
+expanded events and expanded all show them. Host approval and question surfaces
+are separate and unaffected. Successful output follows Run's collapse behavior;
+failed, blocked, stopped, or error-bearing output stays open. Hook notifications do not expose command source, raw stdout, stderr, or
+streaming output deltas. Mekugi retains observed hook runs in its
 existing managed store for resume and offline replay, scoped to workspace and
 thread. Missing observations cannot be reconstructed from Codex's rollout.
 A single-line command follows the verb. When it does not fit, each top-level
