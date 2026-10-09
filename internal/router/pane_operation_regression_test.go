@@ -147,10 +147,6 @@ func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
 				opening, lineBreak = "const patch = `", "\n"
 			}
 			worker.appendDelta(opening + "*** Begin Patch")
-			assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
-				return strings.Contains(ansi.Strip(frame), "· ◐ edit")
-			}))
-
 			worker.appendDelta(lineBreak + "*** Add File: new.txt" + lineBreak + "+first line" + lineBreak)
 			assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
 				plain := ansi.Strip(frame)

@@ -414,12 +414,15 @@ recognized edit has no card, and a later non-edit call keeps the last
 displayed edit. A literal `workdir` resolves relative targets, as does a literal
 `cd` step before the edit, including in an `a && b` chain, whose steps are
 predicted as if each succeeds. Literal variable assignments, `set`, `echo`, and
-`true` steps do not prevent a prediction. When an edit's `workdir` is computed,
-the card reports that its target cannot be resolved.
+`true` steps do not prevent a prediction. An edit with a computed `workdir`
+has no target-file preview because its target cannot be resolved.
 Recognized VCS effects have no pending or running live-diff card. Authored
 targets in mixed calls remain visible, using the same provenance admission as
 authored counts. Ordinary command watches remain hidden until a captured
-file changes. A `may write` footer distinguishes captured paths from additional
+regular file has a producible source hunk. Sockets and other non-file targets,
+metadata-only changes, and unavailable or binary content do not open live cards;
+their captured evidence remains available in Activity and saved Diff.
+A `may write` footer distinguishes captured paths from additional
 unknown write targets and stays anchored to the bottom of its card. Unknown
 targets describe incomplete command-wide coverage, not a failure to resolve the
 displayed file; for example, a literal edit followed by arbitrary test code
@@ -467,7 +470,7 @@ that the command ran.
 
 A card header names the caller, then states the call with a roster glyph
 rather than a word: `◐` while the call is arriving or running, `✓` once it
-completes, and `!` with the reason when the edit cannot be projected. The
+completes. An unprojectable edit opens no card. The
 current file follows, styled like file navigation: its status and live `+N -N` line counts, with `N/M files` when the call edits
 several. Deleted files do not open live source cards or count toward live
 batch slots. A deletion-only call leaves the transcript visible. Deleted-file
@@ -479,8 +482,8 @@ in `exec`. The enclosing executor is not the editing tool. Unknown editing
 tool identity is omitted. Following a new edit or pinning another edit switches
 the header to that edit's tool, not a sibling's.
 
-The integrated `Diff preview` pane opens on its first displayable preview, not on
-an execution or launch request with no stream content. Agent activity can open
+The integrated `Diff preview` pane opens on its first producible source hunk, not on
+an execution request, patch header, or status without a hunk. Agent activity can open
 independently without reserving an empty live-input area. Explicitly focusing
 the diff pane still opens it on demand.
 

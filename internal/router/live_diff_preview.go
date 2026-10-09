@@ -576,6 +576,12 @@ func (b *liveDiffBroker) publishPreview(preview diffview.Preview, remove bool) {
 	if _, exists := b.previews[preview.ID]; !exists && !preview.Complete && len(b.previews) >= 16 {
 		return
 	}
+	// Only source hunks can open live cards. Metadata and capture failures
+	// remain in the saved evidence, not a transcript-replacing empty preview.
+	preview.Files = slices.DeleteFunc(slices.Clone(preview.Files), func(file mekugi.ReviewFile) bool {
+		added, removed := file.LineCounts()
+		return file.Binary || file.Link || added < 0 || removed < 0 || added+removed == 0
+	})
 	preview = boundLiveDiffPreview(preview)
 	if preview.Status == diffview.PreviewEdit && len(preview.Files) == 0 && (preview.Input == "" || preview.Input == "\n") {
 		// Incomplete fragments retain the latest displayed projection, including
@@ -586,11 +592,10 @@ func (b *liveDiffBroker) publishPreview(preview diffview.Preview, remove bool) {
 			preview.DiffText, preview.Truncated = previous.DiffText, previous.Truncated
 		}
 	}
-	if preview.Status == diffview.PreviewEdit && len(preview.Files) == 0 && preview.Input == "" {
-		// An unfinished edit is not an error panel or a raw-script preview.
-		// Wait for a real projection while leaving captured history untouched.
+	if len(preview.Files) == 0 && strings.TrimSpace(preview.Input) == "" {
+		// Neither a patch header nor a status establishes a displayable hunk.
 		delete(b.previews, preview.ID)
-		preview.Status = ""
+		preview.Status, preview.Input = "", ""
 		b.emitPreviewLocked(preview)
 		return
 	}

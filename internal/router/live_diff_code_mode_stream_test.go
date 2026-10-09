@@ -276,7 +276,7 @@ func TestLiveDiffPartialShellUsesStreamedWorkdir(t *testing.T) {
 	worker.appendDelta(input)
 	worker.finish(input)
 	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool { return preview.Complete })
-	if len(complete.Files) != 0 || !strings.HasPrefix(complete.Status, diffview.PreviewUnavailable) {
+	if len(complete.Files) != 0 || complete.Status != "" || complete.Input != "" {
 		t.Fatalf("computed workdir projected an edit: %+v", complete)
 	}
 }

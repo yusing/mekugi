@@ -130,10 +130,14 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 					t.Fatal("edit preview waited for the following command")
 				}
 			}
-			if len(completed.Files) != 1 || completed.Footer != "observed edit" {
+			wantFiles := 1
+			if binaryCopy {
+				wantFiles = 0 // Binary evidence does not open a source preview.
+			}
+			if len(completed.Files) != wantFiles || completed.Footer != "observed edit" {
 				t.Fatalf("completion lacks actual observed edit: %+v", completed)
 			}
-			if binaryCopy && !completed.Files[0].Binary || !binaryCopy && !strings.Contains(completed.Files[0].Diff, after) {
+			if binaryCopy && completed.Status != "" || !binaryCopy && !strings.Contains(completed.Files[0].Diff, after) {
 				t.Fatalf("completion lost copied content: %+v", completed.Files)
 			}
 			awaitMain(t, u, "Running")
@@ -484,11 +488,15 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 				case <-sub.previewReady:
 					for _, event := range auto.events.takePreviews(sub) {
 						if event.Preview != nil && event.Preview.Complete {
-							if len(event.Preview.Files) != 1 || event.Preview.Footer != "observed edit" {
+							wantFiles := 1
+							if binaryCopy {
+								wantFiles = 0
+							}
+							if len(event.Preview.Files) != wantFiles || event.Preview.Footer != "observed edit" {
 								t.Fatalf("completion lost actual edit: %+v", event.Preview)
 							}
-							if binaryCopy && (!event.Preview.Files[0].Binary || event.Preview.Files[0].AfterPath != path) {
-								t.Fatalf("completion lost binary copy: %+v", event.Preview.Files)
+							if binaryCopy && event.Preview.Status != "" {
+								t.Fatalf("binary copy opened a source preview: %+v", event.Preview)
 							}
 							if !proxy.execWindows.find("cell").closed.IsZero() || u.session.commands[[3]string{"main", "turn", "test"}] == nil {
 								t.Fatal("edit completion ended enclosing cell or sibling test")

@@ -2,16 +2,18 @@ package router
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
-func TestExecRunningPreviewReportsOversizedFile(t *testing.T) {
+func TestExecRunningPreviewOmitsOversizedFile(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	path := filepath.Join(root, "large")
@@ -24,17 +26,53 @@ func TestExecRunningPreviewReportsOversizedFile(t *testing.T) {
 	}
 	before := snapshotExecFile(path, nil)
 	writeTestFile(t, path, strings.Repeat("new\n", 400000))
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	broker := newLiveDiffBroker(ctx)
-	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
-	go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{ID: "oversized", Workspace: root, Thread: "thread"}, nil)
-	preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool { return preview.ID == "oversized" && len(preview.Files) == 1 })
-	if !strings.Contains(preview.Files[0].Incomplete, "content bound") || strings.Contains(preview.Files[0].Diff, "+new") || strings.Contains(preview.Files[0].Diff, "-old") {
-		t.Fatalf("oversized display hid bounds or guessed content: %+v", preview)
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		broker := newLiveDiffBroker(ctx)
+		broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
+		go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{ID: "oversized", Workspace: root, Thread: "thread"}, nil)
+		time.Sleep(time.Second)
+		synctest.Wait()
+		if len(broker.previews) != 0 {
+			t.Fatalf("unavailable content opened a live card: %+v", broker.previews)
+		}
+		cancel()
+	})
+}
+
+func TestLiveDiffSocketAndNewRegularFile(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	path := filepath.Join(root, "socket")
+	before := snapshotExecFile(path, nil)
+	regular := filepath.Join(root, "file")
+	if err := os.Mkdir(regular, 0o700); err != nil {
+		t.Fatal(err)
 	}
-	cancel()
-	waitExecScopePreviewGone(t, broker, "oversized")
+	beforeRegular := snapshotExecFile(regular, nil)
+	if err := os.Remove(regular); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, regular, "new source\n")
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		broker := newLiveDiffBroker(ctx)
+		broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
+		go runExecScopePreview(ctx, broker, execObservation{Files: []execFileSnapshot{before, beforeRegular}}, diffview.Preview{ID: "socket", Workspace: root, Thread: "thread"}, nil)
+		time.Sleep(time.Second)
+		synctest.Wait()
+		preview := broker.previews["socket"]
+		if len(preview.Files) != 1 || preview.Files[0].AfterPath != regular || !strings.Contains(preview.Files[0].Diff, "+new source") {
+			t.Fatalf("socket displayed or new regular file hidden: %+v", preview)
+		}
+	})
 }
 
 func TestExecRunningPreviewRetriesBudgetedFiles(t *testing.T) {

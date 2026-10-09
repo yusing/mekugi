@@ -334,8 +334,9 @@ session, defaults to on at launch (including resume), and never stops activity,
 preview updates, or capture. Hidden docks reserve no space. Showing the pane
 again displays any still-current cards, not expired work.
 
-Streaming edits temporarily replace their owner's transcript. Main uses its
-whole transcript area above the composer; it never hides Activity or a saved
+Streaming edits with producible source hunks temporarily replace their owner's
+transcript. Non-file targets and hunkless changes leave the transcript visible.
+Main uses its whole transcript area above the composer; it never hides Activity or a saved
 Diff. Activity substitutes a compact, single-file live view at the editing
 agent's latest entry, hiding that agent's other transcript rows while retaining
 other agents' activity. If only one pane fits, its own edits appear there;
@@ -359,8 +360,7 @@ and explicit withdrawal remove only the affected previews; transient batches
 are not reconstructed by history replay. Shell or JavaScript projections first
 received at completion do not open a transient view; captured effects remain in
 their receipt and saved diff.
-Pending exec scope
-uses “may write”; once file differences are observed it uses “observed changes”,
+Observed scoped file differences use “observed changes”,
 without claiming exclusive attribution or successful command completion.
 A recognized literal edit finishes its live card once the observed files match
 the projected edit. A following test in the same shell command keeps its own

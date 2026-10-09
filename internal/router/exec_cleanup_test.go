@@ -10,6 +10,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
@@ -163,6 +164,7 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 		for index := range 16 {
 			broker.publishPreview(diffview.Preview{
 				ID: filepath.Join("occupied", string(rune('a'+index))), Workspace: root, Thread: "thread", Status: "RUNNING · occupied",
+				Files: []mekugi.ReviewFile{mekugi.RenderReviewPreviewFile("", path, "", "occupied\n")},
 			}, false)
 		}
 		broker.mu.Lock()
@@ -262,13 +264,13 @@ func TestExecScopePreviewDoesNotTreatReadBudgetAsChange(t *testing.T) {
 			t.Fatal(err)
 		}
 		advanceExecCleanupPreviewTicker(t)
-		changed := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, diffview.PreviewRunning)
-		if len(changed.Files) != 1 || !strings.Contains(changed.Files[0].Incomplete, "content bound") {
-			t.Fatalf("changed large file lost its bounded observation: %+v", changed)
+		changed := assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, "")
+		if len(changed.Files) != 0 {
+			t.Fatalf("unavailable large content opened a preview: %+v", changed)
 		}
 		cancel()
 		synctest.Wait()
-		assertExecCleanupPreview(t, broker.takePreviews(sub), previewID, "")
+		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "cancellation republished a hidden preview")
 	})
 }
 

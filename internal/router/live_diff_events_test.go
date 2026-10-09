@@ -15,6 +15,7 @@ import (
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func liveDiffTestBroker(t *testing.T, store *mekugiReplayStore, scope liveDiffScope) (string, *liveDiffBroker, context.CancelFunc) {
@@ -465,6 +466,52 @@ func TestLiveDiffExpandedScopeBeforePreviewOnDelayedTransport(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("preview was not delivered")
 	}
+}
+
+func TestUISnapshotLiveDiffRequiresHunk(t *testing.T) {
+	workspace := t.TempDir()
+	broker := newLiveDiffBroker(t.Context())
+	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
+	sub := broker.subscribe()
+	var pane diffview.PreviewPane
+	worker := liveDiffPreviewWorker{ctx: t.Context(), kind: applyPatchToolName}
+	for _, input := range []string{
+		"*** Begin Patch\n*** Add File: empty.txt\n",
+		"*** Begin Patch\n*** Add File: empty.txt\n*** End Patch\n",
+	} {
+		preview, ok := worker.project(input, workspace, strings.Contains(input, "*** End Patch"))
+		if !ok {
+			t.Fatal("patch not recognized")
+		}
+		preview.ID, preview.Workspace, preview.Thread = "patch", workspace, "thread"
+		broker.publishPreview(preview, false)
+		if len(broker.previews) != 0 {
+			t.Fatalf("hunkless patch opened live diff: %+v", preview)
+		}
+		for _, event := range broker.takePreviews(sub) {
+			if event.Preview != nil {
+				pane.Update(*event.Preview)
+			}
+		}
+	}
+	if len(pane.Views) != 0 {
+		t.Fatal("hunkless patch reserved live UI space")
+	}
+	valid := mekugi.RenderReviewFile("", filepath.Join(workspace, "valid.txt"), "", "content\n")
+	preview := diffview.Preview{ID: "mixed", Workspace: workspace, Thread: "thread", Status: diffview.PreviewRunning,
+		Files: []mekugi.ReviewFile{mekugi.RenderReviewFile("", filepath.Join(workspace, "empty.txt"), "", ""), valid}}
+	broker.publishPreview(preview, false)
+	if shown := broker.previews[preview.ID]; len(shown.Files) != 1 || shown.Files[0] != valid || len(preview.Files) != 2 {
+		t.Fatalf("mixed admission lost a valid hunk or changed evidence: %+v", shown)
+	}
+	for _, event := range broker.takePreviews(sub) {
+		pane.Update(*event.Preview)
+	}
+	rows, err := pane.Render(t.Context(), workspace, livediff.DarkTheme, 60, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/live-diff-hunk-admission.txt", strings.Join(rows, "\n"))
 }
 
 func TestLiveDiffPreviewScriptPayloadBound(t *testing.T) {

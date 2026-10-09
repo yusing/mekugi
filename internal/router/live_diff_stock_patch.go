@@ -29,7 +29,7 @@ func projectStockPatchPreview(ctx context.Context, workspace string, preview dif
 	} else {
 		preview.Files = files
 		if len(files) == 0 {
-			// Keep a visible provisional card before the first complete change.
+			// Preserve an earlier projected card while this patch has no hunk.
 			preview.Input = "\n"
 		} else {
 			preview.DiffText = false // ReviewFiles use the normal language-aware renderer.

@@ -241,6 +241,13 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 					delete(matched, before.Path)
 				}
 			}
+			if before.Kind == execFileOther || after.Kind == execFileOther ||
+				after.Kind == execFileDir {
+				_, existed := changed[before.Path]
+				updated = updated || existed
+				delete(changed, before.Path)
+				continue
+			}
 			if before.Error != "" || after.Error != "" {
 				if before.watchStamp != "" && before.watchStamp == stamp {
 					_, existed := changed[before.Path]
