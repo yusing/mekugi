@@ -195,7 +195,11 @@ func (u *appServerUI) tickRuntimeJournal(now time.Time) error {
 		r.continuation = nil
 		return err
 	}
-	if !intent.Resume {
+	var tokens uint64
+	if r.contextTokens != nil {
+		tokens = *r.contextTokens
+	}
+	if journalNeedsContextReset(intent, true, tokens, r.contextTokens != nil) {
 		if err := u.requestRuntimeReset(); err != nil {
 			r.continuation = nil
 			return err

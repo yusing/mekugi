@@ -51,8 +51,9 @@ new native conversation; resume the source and continue manually. Uncertain rese
 or turn dispatch is never replayed.
 
 The shared journal policy selects runnable work and stores continuation intent.
-The UI offers a three-second countdown after successful turns. Slice boundaries
-reset first; ordinary unfinished work continues without resetting. Draft input or
+The UI offers a three-second countdown after successful turns. Top-level slice
+boundaries reset first; subslices use the shared current-context threshold policy
+below. Ordinary unfinished work continues without resetting. Draft input or
 questions cancel the countdown without stopping tasks. Escape and user interrupt
 retain a durable stop; later questions and restart cannot revive stopped work.
 Background work and settings delay dispatch. A prepared reset cannot automatically

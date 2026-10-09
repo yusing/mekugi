@@ -279,9 +279,11 @@ type nativeEvent struct {
 		Type    string `json:"type"`
 		Index   int    `json:"index"`
 		Message struct {
-			ID string `json:"id"`
+			ID    string             `json:"id"`
+			Usage nativeContextUsage `json:"usage"`
 		} `json:"message"`
-		Block content `json:"content_block"`
+		Usage nativeContextUsage `json:"usage"`
+		Block content            `json:"content_block"`
 		Delta struct {
 			Type        string `json:"type"`
 			Text        string `json:"text"`

@@ -166,16 +166,20 @@ func (d *journalResetDriver) fail(message string) error {
 }
 
 func (d *journalResetDriver) needsContextReset() bool {
-	if d.intent.Resume || d.proxy.journalCompaction == "off" || d.proxy.journalCompaction == "" {
-		return false
-	}
-	if journalParent(d.intent.Path) == "" {
-		return true
-	}
 	d.proxy.mu.RLock()
 	usage, known := d.proxy.contextUsage[d.thread]
 	d.proxy.mu.RUnlock()
-	return !known || usage.tokens >= 150_000
+	return journalNeedsContextReset(d.intent, d.proxy.journalCompaction != "off" && d.proxy.journalCompaction != "", usage.tokens, known)
+}
+
+func journalNeedsContextReset(intent *journalResetIntent, enabled bool, tokens uint64, known bool) bool {
+	if intent.Resume || !enabled {
+		return false
+	}
+	if journalParent(intent.Path) == "" {
+		return true
+	}
+	return !known || tokens >= 150_000
 }
 
 func (d *journalResetDriver) tick(now time.Time) error {

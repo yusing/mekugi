@@ -11,47 +11,50 @@ import (
 )
 
 type adapter struct {
-	sides         map[string]*adapter
-	resumeSession string
-	streams       map[string]string
-	text          map[string]*textMessage
-	tools         map[toolBlock]*toolInput
-	historyShell  *session.ShellCommand
+	contextSession, contextMessage string
+	contextUsage                   nativeContextUsage
+	sides                          map[string]*adapter
+	resumeSession                  string
+	streams                        map[string]string
+	text                           map[string]*textMessage
+	tools                          map[toolBlock]*toolInput
+	historyShell                   *session.ShellCommand
 }
 
 func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 	var frame struct {
-		CommandInfo []session.Command      `json:"commandInfo"`
-		Models      []session.Model        `json:"models"`
-		Field       string                 `json:"field"`
-		Value       string                 `json:"value"`
-		Failed      bool                   `json:"failed"`
-		Kind        string                 `json:"kind"`
-		Phase       string                 `json:"phase"`
-		SessionID   string                 `json:"sessionID"`
-		AgentID     string                 `json:"agentID"`
-		Title       string                 `json:"title"`
-		Cwd         string                 `json:"cwd"`
-		Sessions    []session.SavedSession `json:"sessions"`
-		Cursor      string                 `json:"cursor"`
-		ID          string                 `json:"id"`
-		Tool        string                 `json:"tool"`
-		ToolUseID   string                 `json:"toolUseID"`
-		Allow       bool                   `json:"allow"`
-		Text        string                 `json:"text"`
-		Description string                 `json:"description"`
-		Caller      string                 `json:"caller"`
-		Callers     []string               `json:"callers"`
-		TaskID      string                 `json:"taskID"`
-		OutputFile  string                 `json:"outputFile"`
-		Truncated   bool                   `json:"truncated"`
-		Done        bool                   `json:"done"`
-		Command     string                 `json:"command"`
-		Output      string                 `json:"output"`
-		Retained    bool                   `json:"retained"`
-		Input       jsontext.Value         `json:"input"`
-		Event       nativeEvent            `json:"event"`
-		Frame       jsontext.Value         `json:"frame"`
+		CommandInfo  []session.Command      `json:"commandInfo"`
+		Models       []session.Model        `json:"models"`
+		Field        string                 `json:"field"`
+		Value        string                 `json:"value"`
+		Failed       bool                   `json:"failed"`
+		Kind         string                 `json:"kind"`
+		Phase        string                 `json:"phase"`
+		SessionID    string                 `json:"sessionID"`
+		AgentID      string                 `json:"agentID"`
+		Title        string                 `json:"title"`
+		Cwd          string                 `json:"cwd"`
+		Sessions     []session.SavedSession `json:"sessions"`
+		Cursor       string                 `json:"cursor"`
+		ID           string                 `json:"id"`
+		Tool         string                 `json:"tool"`
+		ToolUseID    string                 `json:"toolUseID"`
+		Allow        bool                   `json:"allow"`
+		Text         string                 `json:"text"`
+		Description  string                 `json:"description"`
+		Caller       string                 `json:"caller"`
+		Callers      []string               `json:"callers"`
+		TaskID       string                 `json:"taskID"`
+		OutputFile   string                 `json:"outputFile"`
+		Truncated    bool                   `json:"truncated"`
+		Done         bool                   `json:"done"`
+		Command      string                 `json:"command"`
+		Output       string                 `json:"output"`
+		Retained     bool                   `json:"retained"`
+		Input        jsontext.Value         `json:"input"`
+		ContextUsage jsontext.Value         `json:"usage"`
+		Event        nativeEvent            `json:"event"`
+		Frame        jsontext.Value         `json:"frame"`
 	}
 	if err := json.Unmarshal(data, &frame); err != nil {
 		return nil, fmt.Errorf("invalid Claude bridge frame: %w", err)
@@ -64,6 +67,15 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		}
 	}()
 	switch frame.Kind {
+	case "context_usage":
+		var tokens *uint64
+		if len(frame.ContextUsage) != 0 {
+			var usage nativeContextUsage
+			if json.Unmarshal(frame.ContextUsage, &usage) == nil {
+				tokens = usage.tokens()
+			}
+		}
+		return []session.Event{{Kind: frame.Kind, SessionID: frame.SessionID, ContextTokens: tokens}}, nil
 	case "side":
 		if frame.ID == "" {
 			return nil, fmt.Errorf("missing native side identity")
@@ -243,7 +255,10 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 			return []session.Event{{Kind: "permission_denied", ID: e.ToolUseID, Caller: e.Parent}}, nil
 		}
 		if e.Subtype == "compact_boundary" {
-			return []session.Event{{Kind: "context", ID: e.UUID, Text: "Context compacted"}}, nil
+			if e.Parent == "" {
+				a.contextSession, a.contextMessage, a.contextUsage = "", "", nativeContextUsage{}
+			}
+			return []session.Event{{Kind: "context", ID: e.UUID, SessionID: e.SessionID, Text: "Context compacted"}}, nil
 		}
 		if e.Subtype == "commands_changed" {
 			return []session.Event{{Kind: "commands", CommandInfo: e.Commands}}, nil
@@ -281,6 +296,9 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		switch s.Type {
 		case "message_start":
 			a.streams[e.Parent] = s.Message.ID
+			return a.startContext(e), nil
+		case "message_delta":
+			return a.updateContext(e), nil
 		case "content_block_stop":
 			return a.toolDelta(e.Parent, s.Index, "", true), nil
 		case "content_block_start":
@@ -393,7 +411,10 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 		}
 		return result, nil
 	case "conversation_reset":
-		return []session.Event{{Kind: "context", ID: e.UUID, Text: "Context reset"}}, nil
+		if e.Parent == "" {
+			a.contextSession, a.contextMessage, a.contextUsage = "", "", nativeContextUsage{}
+		}
+		return []session.Event{{Kind: "context", ID: e.UUID, SessionID: e.SessionID, Text: "Context reset"}}, nil
 	case "result":
 		clear(a.tools)
 		clear(a.text)

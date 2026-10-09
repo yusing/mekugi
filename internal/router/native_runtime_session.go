@@ -38,6 +38,7 @@ type nativeRuntimeSession struct {
 	settings          *session.Settings
 	effortRequest     string
 	usage             *session.Usage
+	contextTokens     *uint64
 	limits            map[string]session.RateLimit
 	usagePanel        *appServerStatusReport
 	tasks             map[string]session.Task
@@ -425,6 +426,10 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 			u.renderRuntimeUsage()
 			u.runtimeRoster()
 		}
+	case "context_usage":
+		if !e.Historical && e.Caller == "" && e.AgentID == "" && e.SessionID == u.thread {
+			u.runtime.contextTokens = e.ContextTokens
+		}
 	case "limit":
 		if e.Limit != nil {
 			if u.runtime.limits == nil {
@@ -457,6 +462,7 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 	case "session":
 		if u.thread != e.SessionID || e.Cwd != "" && u.session.cwd != e.Cwd {
 			u.closeRuntimeCommandPreviews()
+			u.runtime.contextTokens = nil
 		}
 		if e.Cwd != "" {
 			u.session.cwd, u.shell.diff.workspace = e.Cwd, e.Cwd
@@ -489,6 +495,9 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 	case "context":
 		if e.SessionID != "" && e.SessionID != u.thread {
 			return nil
+		}
+		if e.Caller == "" && e.AgentID == "" && !e.Historical {
+			u.runtime.contextTokens = nil
 		}
 		u.runtimeEntry(e)
 	case "skill_history":

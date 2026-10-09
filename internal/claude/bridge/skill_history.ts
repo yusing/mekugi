@@ -66,7 +66,13 @@ export async function restoreSkillHistory(sessionID: string, cwd: string, childr
         selection = {...target, messageIDs: messages.map(message => message.uuid), complete: true};
         await emit({kind: 'saved_agent', id: agentID, callers: [...new Set(messages.map(message => message.parent_tool_use_id).filter(Boolean))]});
       }
-      for (const message of currentSkillContext(messages)) {
+      const current = currentSkillContext(messages);
+      if (!agentID) {
+        const last = [...current].reverse().find(message => message.type === 'assistant');
+        const body = last?.message as {usage?: unknown; model?: string} | undefined;
+        await emit({kind: 'context_usage', sessionID, ...(body?.model !== '<synthetic>' ? {usage: body?.usage} : {})});
+      }
+      for (const message of current) {
         // Prose is not load evidence. Keep only native tool blocks and explicit
         // compact-summary metadata; never infer a boundary from its text.
         const content = (message.message as {content?: unknown} | undefined)?.content;

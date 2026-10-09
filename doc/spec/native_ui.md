@@ -228,6 +228,11 @@ Large tree reads retain an immutable JSON snapshot through the shared output sto
 presentation frames bounded, using the managed Next continuation chain and existing `mread`,
 not a separate MCP reader. Recovery never repeats journal mutations or native tools.
 
+Native journal continuation uses the shared [subslice reset policy](journal.md#journal-continuation)
+with the latest native request's input, cache and output counts, or complete native
+current-context history after resume. Native server-loop usage selects its last executor
+iteration. Cumulative session usage and child usage do not select Main's reset behavior.
+
 Acceptance includes adapter correlation/escape/bound tests; shared-composer,
 permission and multi-select interaction tests; reviewed narrow/wide snapshots;
 and native scripted-provider PTY acceptance for incremental foreground/background

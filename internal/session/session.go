@@ -5,36 +5,37 @@ package session
 import "context"
 
 type Event struct {
-	CommandInfo  []Command
-	Kind         string
-	ID           string
-	Role         string
-	Text         string
-	SessionID    string
-	Cwd          string
-	Model        string
-	Failed       bool
-	Prompt       *Prompt
-	Edit         *Edit
-	Historical   bool
-	Caller       string
-	AgentID      string // Authenticated native principal, distinct from a parent tool ID.
-	Callers      []string
-	Models       []Model
-	Settings     *Settings
-	Usage        *Usage
-	Limit        *RateLimit
-	Task         *Task
-	Output       *CommandOutput
-	Title        *SessionTitle
-	Sessions     *SessionPage
-	Change       *SessionChange
-	SideID       string
-	AgentMessage *AgentMessage
-	Shell        *ShellResult
-	CommandInput *CommandInput
-	Skill        string // Canonical name from a successful native Skill receipt.
-	SkillHistory *SkillHistory
+	CommandInfo   []Command
+	Kind          string
+	ID            string
+	Role          string
+	Text          string
+	SessionID     string
+	Cwd           string
+	Model         string
+	Failed        bool
+	Prompt        *Prompt
+	Edit          *Edit
+	Historical    bool
+	Caller        string
+	AgentID       string // Authenticated native principal, distinct from a parent tool ID.
+	Callers       []string
+	Models        []Model
+	Settings      *Settings
+	Usage         *Usage
+	ContextTokens *uint64 // Current native context, distinct from cumulative query usage.
+	Limit         *RateLimit
+	Task          *Task
+	Output        *CommandOutput
+	Title         *SessionTitle
+	Sessions      *SessionPage
+	Change        *SessionChange
+	SideID        string
+	AgentMessage  *AgentMessage
+	Shell         *ShellResult
+	CommandInput  *CommandInput
+	Skill         string // Canonical name from a successful native Skill receipt.
+	SkillHistory  *SkillHistory
 }
 
 // SkillHistory observes one saved current context independently of display.

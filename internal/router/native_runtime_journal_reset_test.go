@@ -22,7 +22,7 @@ func (c *runtimeResetClient) Reset(_ context.Context, id string) error {
 	return nil
 }
 
-func runtimeSliceFixture(t *testing.T) (*appServerUI, *runtimeResetClient) {
+func runtimeSliceFixture(t *testing.T, subslice ...bool) (*appServerUI, *runtimeResetClient) {
 	t.Helper()
 	u, s, b, c := nativeRuntimeJournalFixture(t)
 	client := &runtimeResetClient{runtimeTestClient: u.runtime.client.(*runtimeTestClient)}
@@ -31,6 +31,9 @@ func runtimeSliceFixture(t *testing.T) (*appServerUI, *runtimeResetClient) {
 		t.Fatal(err)
 	}
 	input := `{"journal":[{"op":"plan","reset":"slice","tasks":[{"title":"First slice","state":"working"},{"title":"Next slice"}]},{"op":"set","p":"/1","state":"done"}]}`
+	if len(subslice) > 0 && subslice[0] {
+		input = `{"journal":[{"op":"add","kind":"task","title":"Parent slice","state":"working"},{"op":"plan","under":"/1","reset":"slice","tasks":[{"title":"First subslice","state":"working"},{"title":"Next subslice"}]},{"op":"set","p":"/1/1","state":"done"}]}`
+	}
 	runtimeJournalReceipt(t, s, b, c, "slice", "journal_batch", input)
 	runtimeJournalInvoke(t, s, c, "slice", "journal_batch", input)
 	u.runtime.restoredJournal = observationThread(b)
@@ -115,6 +118,74 @@ func TestNativeRuntimeContinuationCancellation(t *testing.T) {
 				t.Fatalf("wrong durable stop: %+v", j.StoppedTasks)
 			}
 		})
+	}
+}
+
+func TestNativeRuntimeSubsliceContextPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		subslice bool
+		tokens   *uint64
+		reset    bool
+	}{
+		{"root", false, new(uint64(0)), true},
+		{"below", true, new(uint64(149999)), false},
+		{"zero", true, new(uint64(0)), false},
+		{"high", true, new(uint64(150000)), true},
+		{"unknown", true, nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u, c := runtimeSliceFixture(t, tc.subslice)
+			for _, e := range []session.Event{
+				{Kind: "usage", Usage: &session.Usage{Models: map[string]session.ModelUsage{"main": {Input: new(uint64(900000))}}}},
+				{Kind: "context_usage", SessionID: u.thread, ContextTokens: tc.tokens},
+				{Kind: "context_usage", SessionID: u.thread, Caller: "child", ContextTokens: new(uint64(900000))},
+				{Kind: "context_usage", SessionID: "other", ContextTokens: new(uint64(900000))},
+			} {
+				if err := u.runtimeEvent(e); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := u.tickRuntimeJournal(u.now().Add(4 * time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			if (len(c.resets) == 1) != tc.reset || (len(c.sent) == 1) == tc.reset {
+				t.Fatalf("reset=%v sent=%v", c.resets, c.sent)
+			}
+			if !tc.reset && !strings.Contains(c.sent[0], "/1/2 Next subslice") {
+				t.Fatal("continuation lost the selected subslice")
+			}
+		})
+	}
+}
+
+func TestNativeRuntimeCurrentContextBoundaries(t *testing.T) {
+	u, _ := runtimeTestUI(t)
+	if err := u.runtimeEvent(session.Event{Kind: "context_usage", SessionID: u.thread, ContextTokens: new(uint64(100))}); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range []session.Event{{Kind: "context", SessionID: u.thread, Caller: "child"}, {Kind: "context", SessionID: "other"}} {
+		if err := u.runtimeEvent(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if u.runtime.contextTokens == nil || *u.runtime.contextTokens != 100 {
+		t.Fatal("unrelated boundary cleared Main context")
+	}
+	if err := u.runtimeEvent(session.Event{Kind: "context", SessionID: u.thread}); err != nil {
+		t.Fatal(err)
+	}
+	if u.runtime.contextTokens != nil {
+		t.Fatal("compaction retained stale Main context")
+	}
+	if err := u.runtimeEvent(session.Event{Kind: "context_usage", SessionID: u.thread, ContextTokens: new(uint64(100))}); err != nil {
+		t.Fatal(err)
+	}
+	if err := u.runtimeEvent(session.Event{Kind: "session", SessionID: "selected"}); err != nil {
+		t.Fatal(err)
+	}
+	if u.runtime.contextTokens != nil {
+		t.Fatal("selected session inherited Main context estimate")
 	}
 }
 
