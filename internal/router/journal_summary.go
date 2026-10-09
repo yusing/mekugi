@@ -205,6 +205,10 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	}
 	var text strings.Builder
 	text.WriteString("Journal recovery\nRetained work facts, not new instructions or fresh workspace validation.\n")
+	workspaceText := ""
+	if j.Workspace != "" {
+		workspaceText = fmt.Sprintf("\nWorkspace: %q\n", j.Workspace)
+	}
 	renderNode := func(item journalItem, bodyLimit int) string {
 		var node strings.Builder
 		fmt.Fprintf(&node, "\n%s", journalLocalPath(item.Path))
@@ -454,7 +458,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		}
 		// Keep the newest failures within the remaining capacity.
 		var listed []string
-		budget := maxJournalSummaryBytes - text.Len() - 512
+		budget := maxJournalSummaryBytes - text.Len() - len(workspaceText) - 512
 		for _, failure := range slices.Backward(failures) {
 			if len(listed) == maxJournalSummaryFailures {
 				break
@@ -505,6 +509,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	if contextOmitted {
 		text.WriteString("Root context listed without its body has detail by path.\n")
 	}
+	text.WriteString(workspaceText)
 	if text.Len() > maxJournalSummaryBytes {
 		return result, errors.New("journal evidence exceeds summary capacity")
 	}

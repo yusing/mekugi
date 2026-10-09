@@ -5,6 +5,7 @@ import (
 	"context"
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -146,6 +147,9 @@ func TestJournalCompactionV2ContinuityDurableHistories(t *testing.T) {
 				t.Fatal(err)
 			}
 			item, recovery := deliverV2ContinuityReset(t, proxy, workspace, source)
+			if !strings.Contains(recovery.Text, fmt.Sprintf("\nWorkspace: %q\n", workspace)) {
+				t.Fatal("recovery omitted the selected workspace")
+			}
 			transform.Close()
 			proxy = reopenV2ContinuityProxy(t, proxy)
 			thread, parent, fork := source, "", ""

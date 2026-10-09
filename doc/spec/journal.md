@@ -257,6 +257,10 @@ treats failure as advisory; router-side reset failure stops `auto` without a
 provider request. `slice` retains provider fallback.
 Neither recovery path acknowledges events or replays effects.
 
+Recovery also names the selected workspace when one is known. The path comes
+from retained routing identity, not process cwd. Recovery neither queries Git
+nor includes Git status or recent commits.
+
 ## Router-answered compaction
 
 `--journal-compaction=auto` is the default. Manual `/compact` and context-full

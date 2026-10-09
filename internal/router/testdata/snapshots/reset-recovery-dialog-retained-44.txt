@@ -7,7 +7,7 @@
 │ validation.                              ▌
 │                                          ▌
 │ Context paths:                           ▌
-│                                          ▌
+│                                          │
 │ /1 Preserve host authority               │
 │ Use retained observations, not revived   │
 │ continuation handles.                    │
