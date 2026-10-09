@@ -460,7 +460,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 			u = owner.viewedUI()
 			var fileEditor *openFileEditor
 			if errors.Is(err, errOpenComposerEditor) {
-				u.openComposerEditor(stdin, stdout)
+				u.promptEditor().openComposerEditor(stdin, stdout)
 			} else if errors.As(err, &fileEditor) {
 				u.openSelectedFileEditor(fileEditor.path, stdin, stdout)
 			} else {
@@ -1013,6 +1013,14 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 }
 
 func (u *appServerUI) key(key byte) (bool, error) {
+	if editor := u.promptEditor(); editor != u {
+		if editor.questions.active != nil && !editor.questions.painted || editor.approvals.open && !editor.approvals.painted {
+			editor.hideQuestions()
+			editor.hideApprovals()
+		} else {
+			return editor.key(key)
+		}
+	}
 	if u.paste {
 		u.pasteByte(key)
 		return false, nil
@@ -1087,7 +1095,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			case "\x1b[1;2A", "\x1b[1;2B":
 				sequence := u.escape
 				u.escape = ""
-				return false, u.stepReasoning(strings.HasSuffix(sequence, "A"))
+				return false, u.viewedUI().stepReasoning(strings.HasSuffix(sequence, "A"))
 			case "\x1b[1;3A", "\x1b[1;2D":
 				u.editQueued()
 			case "\x1b[122;6u":
@@ -1118,7 +1126,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	}
 	switch key {
 	case 5: // Ctrl+E discloses the focused Main transcript, leaving the draft intact.
-		u.view.toggleExpansion()
+		u.viewedUI().view.toggleExpansion()
 	case 23: // macOS terminals may encode Option+Backspace as Ctrl+W.
 		u.deleteWord(true)
 	case 11: // Ctrl+K kills to the logical line end, or joins at its newline.
@@ -1376,6 +1384,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, dockRect terminalRect) {
 	u.autoOpenApprovals()
 	u.autoOpenQuestions()
+	editor := u.promptEditor()
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalRect{}
 	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
@@ -1395,16 +1404,16 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		borderRows, inset = 2, 5
 	}
 	textWidth := width - inset
-	u.composerWidth = textWidth
-	draft, points := u.draftLayout()
-	if q := u.currentQuestion(); q != nil && q.IsSecret {
+	editor.composerWidth = textWidth
+	draft, points := editor.draftLayout()
+	if q := editor.currentQuestion(); q != nil && q.IsSecret {
 		for i, line := range draft {
 			draft[i] = strings.Repeat("•", ansi.StringWidth(line))
 		}
 	}
 	caret := points[len(points)-1]
 	for _, point := range points {
-		if point.Offset == u.cursor() {
+		if point.Offset == editor.cursor() {
 			caret = point
 			break
 		}
@@ -1415,8 +1424,8 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
 			dockRect.y++
 			u.composerRect.y++
-			u.noticeDetails.y++
-			u.noticeDismiss.y++
+			editor.noticeDetails.y++
+			editor.noticeDismiss.y++
 			if u.btw != nil && u.btw.rect.h > 0 {
 				u.btw.rect.y++
 			}
@@ -1508,18 +1517,18 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		frame = append(frame, strip)
 	}
 	frame = append(frame, make([]string, gap)...)
-	if u.questions.active != nil {
-		u.questions.painted = true
+	if editor.questions.active != nil {
+		editor.questions.painted = true
 	}
-	if u.approvals.open {
-		u.approvals.painted = true
+	if editor.approvals.open {
+		editor.approvals.painted = true
 	}
 	// Visual reference: Grok CLI PromptStyle / PromptWidget::draw, source
 	// crates/codegen/xai-grok-pager/src/views/prompt_widget/mod.rs:217:240,3007:3078
 	// @be7ce6e8cffe46d20bef9834b211616082ee866b. Keep continuation rows aligned.
 	// Colors: xai-grok-pager-render/src/theme/oscura.rs, same revision.
 	border := "\x1b[38;2;52;48;72m"
-	if u.currentQuestion() != nil || u.approvals.open {
+	if editor.currentQuestion() != nil || editor.approvals.open {
 		border = u.view.painter.Theme.Accent()
 	} else if u.shellMode() {
 		border = activityui.Red
@@ -1527,7 +1536,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	const inputColor = "\x1b[39m"
 	focused := u.shell == nil || u.shell.focus == 0
 	if boxed {
-		frame = append(frame, u.composerNoticeBorder(width, len(frame), border))
+		frame = append(frame, editor.composerNoticeBorder(width, len(frame), border))
 	}
 	textX := min(2, inset)
 	if boxed {
@@ -1542,7 +1551,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		line = ansi.Truncate(line, textWidth, "")
 		if focused && textWidth > 1 && i+firstRow == caret.Row {
 			before := ansi.Cut(line, 0, caret.Column)
-			cluster, _, _, _ := uniseg.FirstGraphemeClusterInString(u.draft[u.cursor():], -1)
+			cluster, _, _, _ := uniseg.FirstGraphemeClusterInString(editor.draft[editor.cursor():], -1)
 			cellWidth := max(1, ansi.StringWidth(livediff.Safe(cluster, false)))
 			cell := ansi.Cut(line, caret.Column, caret.Column+cellWidth)
 			if ansi.StringWidth(cell) == 0 {

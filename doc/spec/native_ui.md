@@ -1264,7 +1264,10 @@ Redirected/noninteractive execution retains Codex's own behavior.
 ### User-input questions
 
 Root-thread questions use a shared dock above the composer, hiding the live-edit
-dock. `request_user_input` arrives as `item/tool/requestUserInput`; unexpected
+dock. During orchestration, all subscribed roots share this presentation on the
+viewed shell, with a source-thread label. Answer editors and replies remain owned
+by the originating thread; switching preserves the answer and each thread's draft.
+`request_user_input` arrives as `item/tool/requestUserInput`; unexpected
 server requests retain the visibly blocked fallback. Async questions arrive as
 `agentMessage` items with `delivery: "async"` and `questions`, not as server
 requests. They never become final-answer cards, journal finals, or final-answer
@@ -1390,7 +1393,9 @@ thread. It also answers remote writes held by the
 share the question dock's position above the composer and take precedence over
 it: opening one hides the question dock, and a pending question opens after the
 last approval ends. The oldest approval shows first; the header names a child
-agent's path and `1 of N` when more wait.
+agent's path and `1 of N` when more wait. Orchestration approvals also name their
+source thread and appear on the viewed shell; responses and denial feedback use
+that source's host request and turn.
 
 Choices follow the stock TUI approval overlay
 (`codex-rs/tui/src/bottom_pane/approval_overlay.rs` @7135b303d). Command requests

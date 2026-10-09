@@ -171,8 +171,11 @@ the Diff navigator. The Main pane title shows `main` or `main › batch`.
 Transcript, Activity, native Agents, Journal, Diff, settings and unsent drafts
 belong to the viewed thread. Switching uses the subscribed in-memory state,
 without resuming a thread or reloading history. Background threads continue to
-receive events and process their existing input lifecycle. Prompts currently
-remain with their originating view until cross-thread prompt navigation is delivered.
+receive events and process their existing input lifecycle. Pending questions and
+approvals appear on the viewed shell with their source thread. Their answer
+editors stay with the source across switching; hiding restores the viewed draft.
+Replies, denial feedback and interruption target the originating thread.
+Resolution during answer paste discards that paste instead of editing another draft.
 
 The remaining capabilities are accepted but not yet delivered:
 
@@ -180,8 +183,6 @@ The remaining capabilities are accepted but not yet delivered:
   after context reset.
 - `send_message` can target Main's next turn without waking it. Child follow-ups
   can wake Main through the normal composer lifecycle.
-- Questions and approvals from any thread appear on the viewed shell, labeled
-  with their source, and answers return to their originating thread.
 - Resume restores run identities and confirmed facts without reviving processes
   or repeating effects. Exit confirms interruption of running children.
 - Main integrates native VCS branches serially, preserving coherent commits and

@@ -23,6 +23,7 @@ type orchestrateNavigation struct {
 	reads         map[string]string
 	unavailable   map[string]bool
 	pending       []appserver.Message
+	promptOrder   uint64
 }
 
 func (u *appServerUI) viewedUI() *appServerUI {

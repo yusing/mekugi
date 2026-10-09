@@ -22,6 +22,7 @@ import (
 
 type orchestrateCodexProvider struct {
 	native       appServerChildMetadataProvider
+	promptCalls  int
 	requests     chan []byte
 	nativeOutput chan string
 }
@@ -58,7 +59,25 @@ func (p *orchestrateCodexProvider) forwardExecution(ctx, responseCtx context.Con
 	p.native.mu.Lock()
 	p.native.turns[thread]++
 	turn := p.native.turns[thread]
+	prompt := 0
+	if strings.Contains(string(body), "Start the idle follow-up probe.") {
+		p.promptCalls++
+		prompt = p.promptCalls
+	}
 	p.native.mu.Unlock()
+	if prompt == 1 || prompt == 2 {
+		name, args := "request_user_input_async", map[string]any{"questions": []any{map[string]any{"title": "Who receives the batch?", "options": []string{"Customers", "Internal"}}}}
+		if prompt == 2 {
+			name, args = "request_user_input", map[string]any{"questions": []any{map[string]any{"id": "scope", "header": "Scope", "question": "Which batch scope?", "options": []any{map[string]any{"label": "Narrow", "description": "Only this batch"}, map[string]any{"label": "Broad", "description": "All paths"}}}}}
+		}
+		return mchangesNestedCodexResponse(turn, map[string]any{"type": "function_call", "id": name, "call_id": name, "name": name, "arguments": string(mustMarshalJSON(args)), "status": "completed"}), nil
+	}
+	if prompt == 3 {
+		return mchangesNestedCodexResponse(turn, map[string]any{"type": "custom_tool_call", "id": "approval-probe", "call_id": "approval-probe", "name": "exec", "input": `text(await tools.exec_command({cmd:"printf approved",sandbox_permissions:"require_escalated",justification:"Fixture command approval"}));`, "status": "completed"}), nil
+	}
+	if prompt >= 4 {
+		return routerFaultCodexSuccessResponse(), nil
+	}
 	if turn >= 3 {
 		<-responseCtx.Done()
 		return nil, responseCtx.Err()
@@ -87,7 +106,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	cmd := exec.CommandContext(ctx, codex, "app-server",
 		"-c", `model_providers.orchestrate_test={name="orchestrate_test",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`,
 		"-c", `model_provider="orchestrate_test"`, "-c", `model="gpt-6-astra"`, "-c", `model_reasoning_effort="high"`,
-		"-c", `features.multi_agent_v2={enabled=true,tool_namespace="collaboration"}`, "-c", `approval_policy="never"`, "-c", `default_permissions=":workspace"`, "-c", "include_collaboration_mode_instructions=false")
+		"-c", `features.multi_agent_v2={enabled=true,tool_namespace="collaboration"}`, "-c", `approval_policy="on-request"`, "-c", `default_permissions=":workspace"`, "-c", "features.default_mode_request_user_input=true", "-c", "include_collaboration_mode_instructions=false")
 	cmd.Env, cmd.Dir = routerFaultCodexEnvironment(t), workspace
 	client, err := appserver.Start(cmd)
 	if err != nil {
@@ -181,7 +200,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if err := json.Unmarshal(result.batch.Launch.Params, &params); err != nil {
 		t.Fatal(err)
 	}
-	if params.Permissions != ":workspace" || params.ApprovalPolicy != "never" || len(params.RuntimeWorkspaceRoots) == 0 || params.RuntimeWorkspaceRoots[0] != batch.Cwd {
+	if params.Permissions != ":workspace" || params.ApprovalPolicy != "on-request" || len(params.RuntimeWorkspaceRoots) == 0 || params.RuntimeWorkspaceRoots[0] != batch.Cwd {
 		t.Fatalf("inherited permissions missing: %+v", params)
 	}
 	pump(func() bool { return len(provider.nativeOutput) > 0 })
@@ -272,17 +291,73 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if r := <-followup.reply; r.err != nil || r.delivery == nil || r.delivery.State != "delivered" || r.delivery.TurnID == batches[0].Launch.TurnID {
 		t.Fatalf("installed idle follow-up: %+v", r)
 	}
-	for {
+	observed := false
+	for !observed {
 		select {
 		case body := <-provider.requests:
 			if strings.Contains(string(body), followup.input.Message) {
 				if !strings.Contains(string(body), queued.input.Message) {
 					t.Fatal("queued input missing from installed next turn")
 				}
-				return
+				observed = true
 			}
 		case <-ctx.Done():
 			t.Fatal("idle follow-up did not reach the provider", ctx.Err())
 		}
+	}
+	// Real host prompts from the batch appear while Main stays selected. Sync
+	// answers and approval responses preserve the host IDs; the later async
+	// answer uses the batch's ordinary composer lifecycle after its turn ends.
+	u.switchOrchestratedThread(main)
+	pump(func() bool { return view.questionCount() == 2 })
+	u.openQuestions()
+	questionTestPaint(t, u, 80)
+	if err := u.shell.key('\r'); err != nil {
+		t.Fatal(err)
+	}
+	pump(func() bool { return len(view.approvals.pending) > 0 })
+	u.openApprovals()
+	questionTestPaint(t, u, 80)
+	if err := u.shell.key('\r'); err != nil {
+		t.Fatal(err)
+	}
+	pump(func() bool { return view.turn == "" && view.questionCount() == 1 })
+	u.openQuestions()
+	questionTestPaint(t, u, 80)
+	if err := u.shell.key('\r'); err != nil {
+		t.Fatal(err)
+	}
+	pump(func() bool { return view.questionCount() == 0 && view.turn == "" && !view.starting() })
+	if u.draft != "Main draft" || view.draft != "Batch draft" || u.viewedUI() != u {
+		t.Fatal("installed prompt handling changed viewed drafts or coordinator")
+	}
+	asyncSeen, syncSeen, approvalSeen := false, false, false
+	for len(provider.requests) > 0 {
+		body := string(<-provider.requests)
+		asyncSeen = asyncSeen || strings.Contains(body, "<send_user_message_question_reply>") && strings.Contains(body, "Customers")
+		var request struct {
+			Input []struct {
+				CallID string         `json:"call_id"`
+				Output jsontext.Value `json:"output"`
+			} `json:"input"`
+		}
+		if err := json.Unmarshal([]byte(body), &request); err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range request.Input {
+			output := string(item.Output)
+			if item.CallID == "request_user_input" {
+				syncSeen = syncSeen || strings.Contains(output, "Narrow")
+			}
+			if item.CallID == "approval-probe" {
+				approvalSeen = approvalSeen || strings.Contains(output, `\"output\":\"approved\"`) && strings.Contains(output, `\"exit_code\":0`)
+				if !approvalSeen {
+					t.Logf("approval output: %s", output)
+				}
+			}
+		}
+	}
+	if !asyncSeen || !syncSeen || !approvalSeen {
+		t.Fatalf("installed prompts missing provider evidence: async=%v sync=%v approval=%v", asyncSeen, syncSeen, approvalSeen)
 	}
 }
