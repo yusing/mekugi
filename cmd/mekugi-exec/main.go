@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/execsegment"
+	"github.com/yusing/mekugi/internal/sudoask"
 	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
@@ -39,6 +40,20 @@ const (
 )
 
 func main() {
+	if filepath.Base(os.Args[0]) == sudoask.Askpass {
+		os.Exit(sudoPassword())
+	}
+	if filepath.Base(os.Args[0]) == "sudo" {
+		os.Exit(sudoCommand("", "sudo", os.Args[0], false, os.Args[1:]))
+	}
+	if len(os.Args) >= 4 && strings.TrimSuffix(os.Args[1], "-default") == "--sudo-command" {
+		if os.Args[3] == vcsguard.ItemFlag && len(os.Args) >= 6 {
+			os.Setenv(vcsguard.ItemEnvironment, os.Args[4])
+			os.Args = append(os.Args[:3], os.Args[5:]...)
+		}
+		os.Exit(sudoCommand(os.Args[2], os.Args[3], os.Args[3], strings.HasSuffix(os.Args[1], "-default"), os.Args[4:]))
+	}
+
 	if len(os.Args) == 4 && os.Args[1] == "--sh-open" {
 		if work := shOpen(os.Args[2], os.Args[3]); work != "" {
 			fmt.Println(work)

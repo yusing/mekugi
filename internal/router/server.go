@@ -378,7 +378,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 				// guarded remote writes are denied, so guarded startup stops.
 				socket, directory := ExecTrackPaths(frontendDirectory)
 				hub, err := listenExecTrack(ctx, socket, directory)
-				if err == nil && session.VCSGuard {
+				if err == nil {
 					_, channel := vcsguard.Paths(frontendDirectory)
 					if err = hub.listenVCSGuard(ctx, channel); err != nil {
 						hub.close()

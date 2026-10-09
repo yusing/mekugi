@@ -20,6 +20,7 @@ import (
 // after setting outcome, so the UI never answers a request nobody reads.
 type vcsApproval struct {
 	thread, cwd string
+	kind        string
 	item        string // Exact commandExecution item from the native hook.
 	executable  string
 	argv        []string
@@ -111,7 +112,7 @@ func (h *execTrackHub) approve(ctx context.Context, conn net.Conn) {
 		close(gone)
 	}()
 	defer func() { conn.Close(); <-gone }()
-	request := &vcsApproval{thread: message.Thread, item: message.Item, cwd: message.Cwd, executable: message.Executable, argv: message.Argv, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})}
+	request := &vcsApproval{kind: message.Kind, thread: message.Thread, item: message.Item, cwd: message.Cwd, executable: message.Executable, argv: message.Argv, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})}
 	defer close(request.done)
 	request.outcome = "withdrawn"
 	timer := time.NewTimer(time.Until(deadline))

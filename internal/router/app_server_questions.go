@@ -12,6 +12,7 @@ import (
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 type nativeQuestionOption struct {
@@ -38,6 +39,7 @@ type nativeQuestionCall struct {
 	questions          []nativeQuestion
 	sent, resolved     bool
 	submissionID       string
+	sudo               *vcsApproval // Local askpass request; never sent to Codex or retained.
 }
 
 // A parked editor includes the navigation and undo state, not just its text.
@@ -77,7 +79,7 @@ func (u *appServerUI) currentQuestion() *nativeQuestion {
 func (u *appServerUI) questionCount() int {
 	n := 0
 	for _, c := range u.questions.calls {
-		if c.thread != u.thread || c.resolved || c.sent {
+		if (c.thread != u.thread && c.sudo == nil) || c.resolved || c.sent {
 			continue
 		}
 		for _, q := range c.questions {
@@ -90,7 +92,7 @@ func (u *appServerUI) questionCount() int {
 }
 func (u *appServerUI) waitingQuestion() bool {
 	for _, c := range u.questions.calls {
-		if c.thread == u.thread && len(c.request) > 0 && !c.resolved {
+		if c.thread == u.thread && (len(c.request) > 0 || c.sudo != nil) && !c.resolved {
 			return true
 		}
 	}
@@ -101,7 +103,7 @@ func (u *appServerUI) openQuestions() {
 		return
 	}
 	for _, c := range u.questions.calls {
-		if len(c.request) > 0 && !c.resolved && !c.sent {
+		if (len(c.request) > 0 || c.sudo != nil) && !c.resolved && !c.sent {
 			u.openQuestionCall(c)
 			return
 		}
@@ -277,6 +279,17 @@ func (u *appServerUI) resolveQuestionCall(c *nativeQuestionCall, outcome string)
 		}
 	}
 	c.resolved = true
+	if c.sudo != nil {
+		if !c.sent && !c.sudo.finished() {
+			c.sudo.reply <- vcsguard.Reply{Reason: "sudo authentication canceled"}
+			u.recordApproval(&nativeApproval{thread: c.thread, turn: c.turn, item: c.sudo.item}, "Denied: sudo authentication canceled")
+		}
+		for i := range c.questions {
+			c.questions[i].answer = nil
+		}
+		u.questions.calls = slices.DeleteFunc(u.questions.calls, func(call *nativeQuestionCall) bool { return call == c })
+		return
+	}
 	u.renderQuestionRecord(c)
 	if len(c.request) > 0 && c.sent {
 		u.recordSyncQuestionAnswer(c)
@@ -325,15 +338,15 @@ func (u *appServerUI) recordSyncQuestionAnswer(c *nativeQuestionCall) {
 	}
 }
 func (u *appServerUI) endSyncQuestions(turn string) {
-	for _, c := range u.questions.calls {
-		if c.turn == turn && len(c.request) > 0 {
+	for _, c := range slices.Clone(u.questions.calls) {
+		if c.turn == turn && (len(c.request) > 0 || c.sudo != nil) {
 			u.resolveQuestionCall(c, "interrupted")
 		}
 	}
 }
 func (u *appServerUI) supersedeQuestions(turn string) {
 	for _, c := range u.questions.calls {
-		if len(c.request) == 0 && c.turn != turn && (!c.sent || c.submissionID == "") {
+		if c.sudo == nil && len(c.request) == 0 && c.turn != turn && (!c.sent || c.submissionID == "") {
 			u.resolveQuestionCall(c, "superseded")
 		}
 	}
@@ -436,7 +449,7 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 			return true, u.submitQuestions()
 		}
 	default:
-		if len(key) == 1 && key[0] >= '1' && key[0] <= '9' && !q.note && u.draft == "" {
+		if c.sudo == nil && len(key) == 1 && key[0] >= '1' && key[0] <= '9' && !q.note && u.draft == "" {
 			selected := int(key[0] - '1')
 			if selected <= len(q.choices) {
 				q.selected = selected
@@ -465,6 +478,9 @@ func (u *appServerUI) submitQuestions() error {
 		u.questions.autoOpen = true
 		u.autoOpenQuestions()
 	}()
+	if c.sudo != nil {
+		return u.submitSudoPassword(c)
+	}
 	images := questionAnswerImages(c)
 	if len(c.request) > 0 {
 		answers := make(map[string]map[string][]string)
@@ -723,6 +739,9 @@ func (u *appServerUI) rejectQuestionParts(parts []composerDraft) []composerDraft
 	return ordinary
 }
 func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
+	if c.sudo != nil {
+		return
+	}
 	states := []string{}
 	var body []string
 	var records []activityui.Question
@@ -804,7 +823,7 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	padding := min(2, max(0, (width-20)/2))
 	inner := max(1, width-2*padding)
 	state := "open"
-	if len(c.request) > 0 {
+	if len(c.request) > 0 || c.sudo != nil {
 		state = "waiting"
 	}
 	head := fmt.Sprintf("? %d of %d", d.index+1, len(c.questions))
@@ -821,6 +840,9 @@ func (u *appServerUI) questionRows(width, height int) []string {
 		rows = append(rows, "")
 	}
 	keys := [][2]string{{fmt.Sprintf("1–%d", min(9, len(q.choices)+1)), "choose"}, {"type", "answer"}}
+	if c.sudo != nil {
+		keys = [][2]string{{"type", "password"}, {"enter", "submit"}}
+	}
 	arrows := "question"
 	if q.note || q.selected == len(q.choices) {
 		arrows = "move"

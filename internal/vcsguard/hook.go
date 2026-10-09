@@ -11,6 +11,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/sudoask"
 )
 
 const HookKey = "/<session-flags>/config.toml:pre_tool_use:0:0"
@@ -66,9 +67,9 @@ func RunHook(helper, directory string, input io.Reader, output, diagnostics io.W
 		return fail(fmt.Errorf("unexpected hook input"))
 	}
 	changed := *request.Input.Command
-	if directory != "" {
+	if directory != "" || os.Getenv(sudoask.DirectoryEnvironment) != "" {
 		var err error
-		changed, err = RewriteForItem(changed, helper, directory, request.Item)
+		changed, err = RewriteCommands(changed, helper, directory, os.Getenv(sudoask.DirectoryEnvironment), request.Item)
 		if err != nil {
 			return fail(err)
 		}

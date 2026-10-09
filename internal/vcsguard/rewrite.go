@@ -20,6 +20,11 @@ func Rewrite(script, helper, directory string) (string, error) {
 
 // RewriteForItem retains the host item ID in command-local guard input.
 func RewriteForItem(script, helper, directory, item string) (string, error) {
+	return RewriteCommands(script, helper, directory, "", item)
+}
+
+// RewriteCommands also covers sudo independently of remote-write guarding.
+func RewriteCommands(script, helper, directory, sudoDirectory, item string) (string, error) {
 	tree, err := parseScript(script)
 	if err != nil {
 		return "", fmt.Errorf("VCS guard: cannot parse command: %w", err)
@@ -37,26 +42,34 @@ func RewriteForItem(script, helper, directory, item string) (string, error) {
 		word := call.Args[i]
 		value, static := staticWord(word)
 		name := filepath.Base(value)
-		tool := (static && IsTool(name)) || (!static && vcsPathSuffix(word))
-		shell := static && slices.Contains(Shells, name)
-		if tool || shell {
+		tool := directory != "" && ((static && IsTool(name)) || (!static && vcsPathSuffix(word)))
+		sudo := sudoDirectory != "" && ((static && name == "sudo") || (!static && toolPathSuffix(word, "sudo")))
+		shell := directory != "" && static && slices.Contains(Shells, name)
+		if tool || shell || sudo {
+			commandDirectory := directory
+			if sudo {
+				commandDirectory = sudoDirectory
+			}
 			start, end := int(word.Pos().Offset()), int(word.End().Offset())
 			if i == 0 && static && value == name {
 				// Preserve aliases and shell functions. Only external lookup needs
 				// our PATH entry, after any command-local PATH assignment.
-				prefix := itemPathPrefix(directory, item)
+				prefix := itemPathPrefix(commandDirectory, item)
 				if !strings.HasSuffix(script[int(call.Pos().Offset()):start], prefix) {
 					edits = append(edits, sourceEdit{start, start, prefix})
 				}
 			} else {
 				mode := "--vcs-command"
+				if sudo {
+					mode = "--sudo-command"
+				}
 				if shell {
 					mode = "--vcs-shell"
 				}
 				if defaultPath {
 					mode += "-default"
 				}
-				prefix := shellsyntax.Quote(helper) + " " + mode + " " + shellsyntax.Quote(directory) + " "
+				prefix := shellsyntax.Quote(helper) + " " + mode + " " + shellsyntax.Quote(commandDirectory) + " "
 				if item != "" {
 					prefix += ItemFlag + " " + shellsyntax.Quote(item) + " "
 				}
@@ -112,7 +125,9 @@ var Shells = []string{"sh", "bash", "dash", "ksh"}
 
 // vcsPathSuffix recognizes a dynamic directory while leaving its expansion
 // to the native shell, for example "$tools/git" or ${tools}/git.
-func vcsPathSuffix(word *syntax.Word) bool {
+func vcsPathSuffix(word *syntax.Word) bool { return toolPathSuffix(word, "") }
+
+func toolPathSuffix(word *syntax.Word, name string) bool {
 	parts := word.Parts
 	if len(parts) == 0 {
 		return false
@@ -124,7 +139,7 @@ func vcsPathSuffix(word *syntax.Word) bool {
 		return false
 	}
 	last, ok := parts[len(parts)-1].(*syntax.Lit)
-	return ok && strings.Contains(last.Value, "/") && IsTool(last.Value)
+	return ok && strings.Contains(last.Value, "/") && ((name == "" && IsTool(last.Value)) || (name != "" && filepath.Base(last.Value) == name))
 }
 
 // staticWord only unquotes literal text. In particular, expand must never see

@@ -1115,6 +1115,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	case 25:
 		u.undoDraft(true)
 	case 7:
+		if q := u.currentQuestion(); q != nil && q.IsSecret {
+			u.setNotice("External editor is unavailable for secret answers", false)
+			return false, nil
+		}
 		return false, errOpenComposerEditor
 	case 22:
 		u.pasteImage()

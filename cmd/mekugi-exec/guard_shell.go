@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/internal/sudoask"
 	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/sys/unix"
 )
@@ -55,7 +56,7 @@ func guardShell(directory, target, argv0 string, defaultPath bool, args []string
 		}
 	}
 	if commandString && payload >= 0 && payload < len(args) {
-		args[payload], err = vcsguard.RewriteForItem(args[payload], helper, directory, os.Getenv(vcsguard.ItemEnvironment))
+		args[payload], err = vcsguard.RewriteCommands(args[payload], helper, directory, os.Getenv(sudoask.DirectoryEnvironment), os.Getenv(vcsguard.ItemEnvironment))
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

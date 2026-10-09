@@ -138,12 +138,20 @@ func (u *appServerUI) addGuardApproval(request *vcsApproval) {
 			{label: "No, fail this command", deny: true, outcome: "Denied"},
 		},
 	}
+	if request.kind == "sudo" {
+		a.title = "Allow this sudo command?"
+	}
 	// Match only the hook's exact host item. An environment-clearing wrapper
 	// can omit the thread; an ambiguous item is never attributed by recency.
 	if request.item != "" {
 		if owner := u.approvalItem(request.thread, "", request.item); owner != nil {
 			a.thread, a.turn, a.item = owner.thread, owner.turn, owner.item
 		}
+	}
+	// Password requests are never command approvals or session-grant lookups.
+	if request.kind == "sudo-password" {
+		u.openSudoPassword(a)
+		return
 	}
 	if u.approvals.allowed[guardApprovalIdentity(request)] {
 		u.recordApproval(a, "Approved for this session")
@@ -477,7 +485,7 @@ func permissionSummary(value jsontext.Value) string {
 
 // expireApprovals withdraws guarded writes whose command stopped waiting.
 func (u *appServerUI) expireApprovals() bool {
-	changed := false
+	changed := u.expireSudoPasswords()
 	for _, a := range slices.Clone(u.approvals.pending) {
 		if a.guard != nil && a.guard.finished() {
 			outcome := "Auto Denied: no answer within 5 minutes"

@@ -137,7 +137,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.journal, u.unscopedJournal, u.reset = nil, nil, nil
 	u.journalView = nativeJournalView{}
 	u.hideQuestions()
-	u.questions = nativeQuestionDock{}
+	u.questions = nativeQuestionDock{calls: slices.DeleteFunc(slices.Clone(u.questions.calls), func(c *nativeQuestionCall) bool { return c.sudo == nil || c.resolved })}
 	if u.notifications != nil {
 		clear(u.notifications.blocked)
 	}

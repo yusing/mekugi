@@ -42,10 +42,12 @@ path. Model-visible output uses the
 [duplicate-output projection](#duplicate-output-projection) below. The execution
 exceptions are the in-shell segment tracking of
 [REQ-EXECUTION-002](#req-execution-002--track-each-segment-of-a-command-list), which
-keeps the result and the Codex-owned process lifecycle unchanged, and the remote
+keeps the result and the Codex-owned process lifecycle unchanged, the remote
 write guard of
 [REQ-EXECUTION-003](#req-execution-003--guard-remote-vcs-writes), which can fail one
-guarded command. Dash-backed sh tracking and the enabled guard use Codex's native
+guarded command, and
+[sudo authentication](#req-execution-004--unlock-sudo-through-the-native-dialog).
+Dash-backed sh tracking, the enabled guard and sudo support use Codex's native
 `PreToolUse.updatedInput` hook to instrument shell command text. This is a narrow
 exception to byte-identical command input: tool identity, all other arguments,
 selected shell, results, permissions, sandbox and continuations stay Codex-owned.
@@ -516,3 +518,35 @@ Acceptance:
    resolved executable require another decision; closing and resuming clears
    the grant. Denial with or without a reason emits the specified stderr and
    exits 1 without running the real command.
+
+## REQ-EXECUTION-004 — Unlock sudo through the native dialog
+
+Interactive Mekugi command execution asks approval before running each applicable
+sudo invocation, including with cached credentials or passwordless policy.
+The approval dock offers approval once, approval for the exact expanded argument
+list, workdir and resolved executable for the current UI session, or denial.
+Session grants release queued duplicates and expire with the UI, as for the
+[VCS guard](#req-execution-003--guard-remote-vcs-writes). Denial fails only that
+command with exit status 1. Listing privileges (`sudo -l` or `--list`), help,
+version and timestamp removal remain outside command approval.
+Explicit noninteractive, stdin-password and caller-provided askpass modes still
+ask command approval but retain their native input policy.
+
+Approval and password entry are separate. After approval, sudo's native policy
+decides whether authentication is needed. Its askpass request opens only the
+shared secret answer editor; a rejected password requests another answer without
+another command approval. Cached credentials and passwordless commands need no
+password dialog. Session command grants never answer password requests. Skipping
+the password fails authentication. Large argument lists are explicitly abbreviated
+in the password dialog; execution and command approval keep the original arguments.
+Passwords travel only through the private local approval channel
+and askpass pipe. They never enter host tool arguments, model input, input history,
+activity answer records or retained replay. Hiding the dialog keeps its draft;
+command cancellation, UI shutdown and the approval timeout withdraw it.
+
+This support is independent of `--vcs-guard` and Codex's approval policy. It does
+not grant sandbox permissions or change sudo policy. It requires the interactive
+UI, the installed `mekugi-exec` helper and access to its local approval channel;
+headless and passthrough commands retain their existing behavior. Direct sudo
+names and executable paths through supported command wrappers are instrumented
+by the native command hook. Shell functions keep their existing lookup.

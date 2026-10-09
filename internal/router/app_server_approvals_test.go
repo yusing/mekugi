@@ -266,35 +266,56 @@ func TestNativeApprovalThreadPermissions(t *testing.T) {
 }
 
 func TestNativeApprovalGuardSessionMatchesExactCommandAndWorkdir(t *testing.T) {
-	u, _ := newAppServerTestUI()
-	request := func(cwd string, argv ...string) *vcsApproval {
-		return &vcsApproval{cwd: cwd, executable: "/bin/git", argv: argv, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})}
-	}
-	first, queued := request("/work", "git", "push", "origin", "main"), request("/work", "git", "push", "origin", "main")
-	u.addGuardApproval(first)
-	u.addGuardApproval(queued)
-	questionTestPaint(t, u, 80)
-	appServerTestKeys(t, u, "2\r")
-	for _, r := range []*vcsApproval{first, queued, request("/work", "git", "push", "origin", "main")} {
-		if r != first && r != queued {
-			u.addGuardApproval(r)
-		}
-		if len(r.reply) != 1 || !(<-r.reply).OK || len(u.approvals.pending) != 0 {
-			t.Fatal("exact session approval was not reused")
-		}
-	}
-	otherExecutable := request("/work", "git", "push", "origin", "main")
-	otherExecutable.executable = "/other/git"
-	for _, r := range []*vcsApproval{request("/other", "git", "push", "origin", "main"), request("/work", "git", "push", "origin", "other"), request("/work", "git", "push", "origin main"), otherExecutable} {
-		u.addGuardApproval(r)
-		if len(r.reply) != 0 {
-			t.Fatal("session approval broadened to another command or workdir")
-		}
-	}
-	fresh, _ := newAppServerTestUI()
-	fresh.addGuardApproval(request("/work", "git", "push", "origin", "main"))
-	if len(fresh.approvals.pending) != 1 {
-		t.Fatal("approval survived a new UI session")
+	for _, tool := range []string{"git", "sudo"} {
+		t.Run(tool, func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			kind := ""
+			if tool == "sudo" {
+				kind = "sudo"
+			}
+			request := func(cwd string, argv ...string) *vcsApproval {
+				return &vcsApproval{cwd: cwd, kind: kind, executable: "/bin/" + tool, argv: argv, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})}
+			}
+			first, queued := request("/work", tool, "push", "origin", "main"), request("/work", tool, "push", "origin", "main")
+			u.addGuardApproval(first)
+			u.addGuardApproval(queued)
+			questionTestPaint(t, u, 80)
+			appServerTestKeys(t, u, "2\r")
+			for _, r := range []*vcsApproval{first, queued, request("/work", tool, "push", "origin", "main")} {
+				if r != first && r != queued {
+					u.addGuardApproval(r)
+				}
+				if len(r.reply) != 1 || !(<-r.reply).OK || len(u.approvals.pending) != 0 {
+					t.Fatal("exact session approval was not reused")
+				}
+			}
+			if tool == "sudo" {
+				password := request("/work", tool, "push", "origin", "main")
+				password.kind = "sudo-password"
+				u.addGuardApproval(password)
+				if len(password.reply) != 0 || len(u.approvals.pending) != 0 || len(u.questions.calls) != 1 {
+					t.Fatal("command session grant answered a password request")
+				}
+				questionTestPaint(t, u, 80)
+				appServerTestKeys(t, u, "fixture-password\r")
+				if reply := <-password.reply; !reply.OK || reply.Password != "fixture-password" {
+					t.Fatal("session grant did not leave password entry independent")
+				}
+			}
+			otherExecutable := request("/work", tool, "push", "origin", "main")
+			otherExecutable.executable = "/other/" + tool
+			for _, r := range []*vcsApproval{request("/other", tool, "push", "origin", "main"), request("/work", tool, "push", "origin", "other"), request("/work", tool, "push", "origin main"), otherExecutable} {
+				u.addGuardApproval(r)
+				if len(r.reply) != 0 {
+					t.Fatal("session approval broadened to another command or workdir")
+				}
+			}
+			fresh, _ := newAppServerTestUI()
+			fresh.addGuardApproval(request("/work", tool, "push", "origin", "main"))
+			if len(fresh.approvals.pending) != 1 {
+				t.Fatal("approval survived a new UI session")
+			}
+		})
 	}
 }
 

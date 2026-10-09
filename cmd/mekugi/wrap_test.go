@@ -20,6 +20,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/sudoask"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
@@ -810,7 +811,7 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(environment, "PATH="+frontend+":"+os.Getenv("PATH")) {
+	if !slices.Contains(environment, "PATH="+frontend+":"+sudoask.Path(frontend)+":"+os.Getenv("PATH")) {
 		t.Fatalf("unguarded environment = %q", environment)
 	}
 	if slices.Contains(environment, execsegment.Guard+"=1") || !slices.Contains(environment, execsegment.ShTrackerEnvironment+"="+filepath.Join(root, "exec-track.sh")) {

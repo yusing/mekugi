@@ -37,7 +37,7 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 		if u.currentQuestion().note {
 			label += " · note"
 		}
-		if len(u.questions.active.request) > 0 {
+		if len(u.questions.active.request) > 0 || u.questions.active.sudo != nil {
 			label += " · turn waiting"
 		}
 		if u.questions.parked.snapshot.text != "" {

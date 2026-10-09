@@ -18,6 +18,7 @@ import (
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/router"
 	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/sudoask"
 	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/term"
 )
@@ -342,7 +343,7 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	var inheritedGuards []string
 	if userBashEnvSet && filepath.Base(previous) == "frontend-bash-env" {
 		if data, err := os.ReadFile(previous); err == nil && strings.HasPrefix(string(data), frontendBashEnvMarker) {
-			inheritedGuards = append(inheritedGuards, filepath.Join(filepath.Dir(previous), vcsguard.Directory))
+			inheritedGuards = append(inheritedGuards, filepath.Join(filepath.Dir(previous), vcsguard.Directory), sudoask.Path(filepath.Join(filepath.Dir(previous), "bin")))
 			previous = userBashEnv
 		}
 	}
@@ -356,6 +357,17 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 		startup += ". " + shellsyntax.Quote(previous) + "\n"
 	}
 	front := directory
+	if helper != "" {
+		sudoDirectory := sudoask.Path(directory)
+		if err := os.MkdirAll(sudoDirectory, 0o700); err != nil {
+			return nil, err
+		}
+		for _, name := range []string{"sudo", sudoask.Askpass} {
+			if err := os.Symlink(helper, filepath.Join(sudoDirectory, name)); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if guard {
 		if helper == "" {
 			return nil, errors.New("VCS guard requires mekugi-exec beside mekugi; install both or use --vcs-guard=false")
@@ -371,15 +383,19 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 		}
 		front = guardDirectory + string(os.PathListSeparator) + directory
 	}
+	if helper != "" {
+		front += string(os.PathListSeparator) + sudoask.Path(directory)
+	}
 	startup += "PATH=" + shellsyntax.Quote(front) + ":\"$PATH\"; export PATH\n"
 	if guard {
 		guardDirectory, _ := vcsguard.Paths(directory)
 		startup += vcsguard.Functions(guardDirectory, vcsguard.KnownPaths(basePath))
 	}
 	environment = slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
-		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, execsegment.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, execsegment.Guard+"=") || strings.HasPrefix(entry, "CODEX_THREAD_ID=")
+		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, execsegment.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, execsegment.Guard+"=") || strings.HasPrefix(entry, "CODEX_THREAD_ID=") || strings.HasPrefix(entry, sudoask.DirectoryEnvironment+"=")
 	})
 	if helper != "" {
+		environment = append(environment, sudoask.DirectoryEnvironment+"="+sudoask.Path(directory))
 		socket, trackDirectory := router.ExecTrackPaths(directory)
 		tracker := filepath.Join(filepath.Dir(directory), "exec-track.bash")
 		if err := os.WriteFile(tracker, []byte(execsegment.Tracker(helper, socket, trackDirectory)), 0o600); err != nil {

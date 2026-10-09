@@ -1365,7 +1365,8 @@ observed answers. Pending records say `waiting` or `open`; observed outcomes are
 `answered`, `skipped`, `interrupted`, `superseded`, or `answered elsewhere`.
 Answers sit directly under their questions with a distinct reply marker and
 stronger weight; observed completion states use a light/dark-aware success color.
-Secrets are excluded from these answer records. The scripted native preview
+Secrets are excluded from these answer records. External-editor access is
+disabled for secret answers. The scripted native preview
 includes an async question and a sync question. In-process acceptance covers
 encoding, batching, stale IDs, interruption, focus/draft isolation, secret masking
 and history exclusion, external commits, rejection, replay and supersession.
@@ -1401,10 +1402,17 @@ Edit and permission decisions remain unchanged. Proxy-free direct UI and
 passthrough retain original host decisions without typed denial reasons. A request
 with no choice the client can label stays visibly blocked.
 
-Guard requests instead offer approval once, approval for the exact command and
-workdir for this UI session, or denial. The matching scope and lifetime are
-defined by the [VCS guard](execution.md#req-execution-003--guard-remote-vcs-writes),
-not Codex's session or command-prefix grants.
+Guarded sudo and VCS commands offer approval once, approval for the exact command
+and workdir for this UI session, or denial. The matching scope and lifetime are
+defined by [execution](execution.md#req-execution-003--guard-remote-vcs-writes),
+separately from Codex's session or command-prefix grants.
+
+Sudo password entry is separate: only a native authentication request opens the
+shared secret question editor, including on password retries. Skipping that answer denies
+authentication. The password is masked and excluded from history and answer
+records. Cached or passwordless execution still asks command approval;
+[execution](execution.md#req-execution-004--unlock-sudo-through-the-native-dialog)
+owns the supported invocation modes.
 
 The dock shows the title, the command or summary, the directory when it is not
 the workspace root, the reason, and numbered choices; it occupies at most half of

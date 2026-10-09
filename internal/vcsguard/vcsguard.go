@@ -47,6 +47,7 @@ func IsTool(name string) bool {
 
 // Message asks the router to approve one remote write.
 type Message struct {
+	Kind       string   `json:"kind,omitempty"` // sudo command or sudo-password; empty for remote writes.
 	Thread     string   `json:"thread,omitempty"`
 	Item       string   `json:"item,omitempty"`
 	Cwd        string   `json:"cwd,omitempty"`
@@ -56,8 +57,9 @@ type Message struct {
 
 // Reply answers a Message. Reason explains a denial to the command's stderr.
 type Reply struct {
-	OK     bool   `json:"ok"`
-	Reason string `json:"reason,omitempty"`
+	Password string `json:"password,omitempty"` // Askpass pipe only; never retained.
+	OK       bool   `json:"ok"`
+	Reason   string `json:"reason,omitempty"`
 }
 
 // MaxMessage bounds one approval request or reply.
