@@ -106,6 +106,7 @@ type journalSpawnRole struct {
 }
 
 type threadJournal struct {
+	Orchestration        *journalRun                 `json:"orchestration,omitempty"`
 	WorkPaused           bool                        `json:"work_paused,omitzero"`
 	TimerOwner           string                      `json:"timer_owner,omitempty"`
 	Counters             *capturer.JournalMetrics    `json:"counters,omitempty"`
@@ -550,34 +551,53 @@ func (s *journalStore) bindSpawnRoles(ctx context.Context, store *mekugiReplaySt
 
 // Called under the journal mutex and replay lock. Delivery and list authorization
 // share the same workspace-scoped durable identity records.
+type journalWorkspace struct {
+	journals map[string]threadJournal
+	failures map[string]error
+}
+
 func (s *journalStore) workspaceJournals(store *mekugiReplayStore, workspace string) (map[string]threadJournal, map[string]error, error) {
-	recordErrors := make(map[string]error)
-	journals := make(map[string]threadJournal)
+	snapshot, err := s.journalWorkspaces(store)
+	view := snapshot[workspace]
+	if view.journals == nil {
+		view = journalWorkspace{journals: make(map[string]threadJournal), failures: make(map[string]error)}
+	}
+	return view.journals, view.failures, err
+}
+
+// One operation-local scan preserves the existing record/error admission rules.
+func (s *journalStore) journalWorkspaces(store *mekugiReplayStore) (map[string]journalWorkspace, error) {
+	result := make(map[string]journalWorkspace)
+	add := func(journal threadJournal, err error) {
+		view, ok := result[journal.Workspace]
+		if !ok {
+			view = journalWorkspace{journals: make(map[string]threadJournal), failures: make(map[string]error)}
+		}
+		view.journals[journal.Thread], view.failures[journal.Thread] = journal, err
+		result[journal.Workspace] = view
+	}
 	if store == nil {
 		for _, journal := range s.memory {
-			if journal.Workspace == workspace {
-				journals[journal.Thread] = journal.clone()
-			}
+			add(journal.clone(), nil)
 		}
 	} else {
 		entries, err := os.ReadDir(store.directory)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		for _, entry := range entries {
 			if !strings.HasPrefix(entry.Name(), "journal-") || !strings.HasSuffix(entry.Name(), ".json") {
 				continue
 			}
 			journal, exists, err := readJournalRecord(filepath.Join(store.directory, entry.Name()))
-			if exists && journal.Workspace == workspace {
-				journals[journal.Thread] = journal
-				recordErrors[journal.Thread] = err
+			if exists {
+				add(journal, err)
 			}
 			// Unidentifiable records cannot prove ancestry and must not
 			// block an unrelated workspace or tree.
 		}
 	}
-	return journals, recordErrors, nil
+	return result, nil
 }
 
 // Called under the delivery lease, journal mutex, and replay lock. Only complete,
@@ -849,6 +869,7 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 // listAgent resolves authorization and reads content in one locked snapshot.
 // Names alone never establish ancestry, even when separate roots share /root.
 func (s *journalStore) listAgent(ctx context.Context, store *mekugiReplayStore, workspace, caller, agent string) ([]journalItem, error) {
+	store = store.scoped(ctx)
 	release, err := s.lockState(ctx)
 	if err != nil {
 		return nil, err
@@ -856,7 +877,7 @@ func (s *journalStore) listAgent(ctx context.Context, store *mekugiReplayStore, 
 	defer release()
 	var items []journalItem
 	read := func() error {
-		journals, recordErrors, err := s.workspaceJournals(store, workspace)
+		journals, recordErrors, err := s.relatedJournals(store, workspace, caller)
 		if err != nil {
 			return err
 		}

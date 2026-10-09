@@ -8,6 +8,10 @@ invocation-local `orchestrate` MCP server uses host caller metadata and retained
 workspace ownership. Tool arguments cannot select another caller's workspace or
 run. User configuration remains unchanged.
 
+Only an independent coordinator prepares batches. An orchestration child or its
+native descendants cannot start a nested run, including after fresh resume without
+a live parent. Retained run identity governs coordinator admission.
+
 Delivery is staged. The first capability is Git checkout preparation and listing
 through `tools.mcp__orchestrate__prepare({task_name:"batch"})` and
 `tools.mcp__orchestrate__list_agents({})`. Preparation creates no Codex thread and
@@ -122,6 +126,16 @@ requires inspection before resending. Repeating a message call never queues it t
 
 Deferred messages and follow-ups targeting Main remain accepted work below.
 
+## REQ-ORCHESTRATE-005 — Cross-checkout journals
+
+Main binds its journal task to `/root/task_name`. Confirmed orchestration threads
+mount read-only under that binding across the run's checkouts; native descendants
+retain their nested paths. Run records authorize these views after restart, without
+changing the child's own independent journal root. Child reads can select Main
+with `agent: "main"`, while other agent selectors retain their native local paths,
+but cannot reveal sibling results. Child completion leaves Main's integration task
+unchanged; the new accepted state remains below.
+
 ## Accepted delivery scope
 
 The remaining capabilities are accepted but not yet delivered:
@@ -130,8 +144,7 @@ The remaining capabilities are accepted but not yet delivered:
   once in the initial input and recover once after context reset.
 - `send_message` can target Main's next turn without waking it. Child follow-ups
   can wake Main through the normal composer lifecycle.
-- Run-authorized journals mount read-only across checkouts. The new Main-only
-  `accepted` task state records reviewed integration; child completion cannot
+- The new Main-only `accepted` task state records reviewed integration; child completion cannot
   accept its own result or complete Main's integration task.
 - Thread navigation scopes transcript, Activity, Agents, Journal and Diff to the
   viewed thread. Drafts remain per-thread in memory. Questions and approvals are

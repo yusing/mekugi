@@ -45,19 +45,47 @@ type manifest struct {
 
 var taskName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
+func (s *Store) runPath(workspace, main string) (string, error) {
+	if !filepath.IsAbs(s.Directory) || !filepath.IsAbs(workspace) || main == "" {
+		return "", errors.New("orchestration requires absolute storage and workspace paths and a main thread")
+	}
+	return filepath.Join(s.Directory, fmt.Sprintf("%x", sha256.Sum256([]byte(workspace))), fmt.Sprintf("%x.json", sha256.Sum256([]byte(main)))), nil
+}
+
+// Snapshot reads atomically published facts without waiting for a run lock.
+// It grants no dispatch and performs no checkout effects.
+func (s *Store) Snapshot(workspace, main string) ([]Batch, error) {
+	path, err := s.runPath(workspace, main)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var m manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, fmt.Errorf("read orchestration manifest: %w", err)
+	}
+	if m.Version != 1 || m.Workspace != workspace || m.Main != main {
+		return nil, errors.New("orchestration manifest identity mismatch")
+	}
+	return m.Batches, nil
+}
+
 // withRun serializes separate router processes without holding replay-store locks.
 func (s *Store) withRun(ctx context.Context, workspace, main string, apply func(*manifest, string) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if !filepath.IsAbs(s.Directory) || !filepath.IsAbs(workspace) || main == "" {
-		return errors.New("orchestration requires absolute storage and workspace paths and a main thread")
+	path, err := s.runPath(workspace, main)
+	if err != nil {
+		return err
 	}
-	dir := filepath.Join(s.Directory, fmt.Sprintf("%x", sha256.Sum256([]byte(workspace))))
+	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	path := filepath.Join(dir, fmt.Sprintf("%x.json", sha256.Sum256([]byte(main))))
 	lock := flock.New(path+".lock", flock.SetPermissions(0600))
 	locked, err := lock.TryLockContext(ctx, 25*time.Millisecond)
 	if err != nil {

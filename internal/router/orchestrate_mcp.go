@@ -35,6 +35,14 @@ func orchestrateMain(ctx context.Context, proxy *mekugiProxy, workspace, thread,
 		if !exists || !j.IdentityKnown || j.IdentityConflicted || j.Parent != "" || j.Author != "/root" {
 			return errors.New("orchestration preparation requires a proven main thread")
 		}
+		if run := j.Orchestration; run != nil {
+			if run.Main != thread || run.Workspace != workspace || run.Directory != proxy.orchestration.store.Directory {
+				return errors.New("orchestration requires the retained run coordinator; nested runs are unavailable")
+			}
+			if _, err := proxy.orchestration.store.Snapshot(workspace, thread); err != nil {
+				return err
+			}
+		}
 		if name != "" {
 			journals, failures, err := proxy.journals.workspaceJournals(proxy.replayStore, workspace)
 			if err != nil {
@@ -142,7 +150,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		return proxy.orchestration.call(command)
 	})
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "prepare", Description: "Prepare an isolated Git checkout at committed HEAD for a batch; copy required inputs before spawning. Repeating a prepared task returns its record without resetting files.",
+		Name: "prepare", Description: "Main prepares an isolated Git checkout at committed HEAD for a batch. Nested runs are unavailable. Copy required inputs before spawning. Repeating a prepared task returns its record without resetting files.",
 		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"task_name"}, "properties": map[string]any{
 			"task_name": map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
 		}},

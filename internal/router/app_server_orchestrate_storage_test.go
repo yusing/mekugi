@@ -48,6 +48,9 @@ func TestAppServerOrchestrateStorageContention(t *testing.T) {
 	returned := make(chan struct{})
 	go func() {
 		u.startOrchestratedChild(command)
+		if _, err := u.proxy.readJournalTree(u.ctx, workspace, "main", "", "", nil, "combined"); err != nil {
+			t.Error(err)
+		}
 		// Both acknowledgement and lifecycle persistence must also stay off the UI.
 		btwTestReply(t, u, request, `{"turn":{"id":"running-turn"}}`)
 		u.orchestrateMessage(appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"child","turn":{"id":"running-turn","status":"completed"}}`)})

@@ -166,7 +166,7 @@ func (t *mekugiResponseTransform) prepareOwnJournalDelivery(terminal bool) ([]ma
 			}
 		}
 		if terminal && journal.TreeAuthored {
-			journals, recordErrors, readErr := t.proxy.journals.workspaceJournals(t.proxy.replayStore, t.directory)
+			journals, recordErrors, readErr := t.proxy.journals.relatedJournals(t.proxy.replayStore, t.directory, t.shellThreadID)
 			var items []journalItem
 			if readErr == nil {
 				items, readErr = mountedJournalItems(journals, recordErrors, t.shellThreadID, t.shellThreadID)

@@ -136,8 +136,16 @@ Task `add` accepts optional `agent` to create and bind in one atomic operation;
 `set` retains `agent` to bind a direct child's canonical path to one owned task.
 The binding cannot be changed or duplicated. It can precede the child's first
 request; until durable ancestry proves the child, only an unresolved mount appears.
-Only complete, nonconflicting ancestry in the selected workspace permits content
-to appear. Read and list agent selectors accept canonical paths or paths with the
+Complete, nonconflicting native ancestry in the selected workspace permits content
+to appear. Confirmed orchestration runs additionally authorize ancestry across
+their recorded checkouts. Main can bind `/root/task_name` before launch; after host
+thread identity is retained, the child's journal mounts there. Each child keeps
+its independent `/root` identity in its own journal. Combined views give it the
+run's task path and retain the same read-only boundary, including native descendants.
+Inside a batch, explicit agent selectors keep their native local paths;
+`agent: "main"` selects the orchestration coordinator. Reading Main still excludes
+the caller's siblings. Own reads without an agent require only the local record.
+Read and list agent selectors accept canonical paths or paths with the
 `/root/` prefix omitted; task bindings still require canonical paths.
 Reading an ancestor does not reveal the caller's siblings. Ambiguous
 agent identity rejects the combined read rather than selecting a journal.

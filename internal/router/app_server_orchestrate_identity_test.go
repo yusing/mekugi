@@ -29,6 +29,20 @@ func orchestrateIdentityPendingTurnWithReplay(t *testing.T, replay *mekugiReplay
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
 	u.session.start("main", workspace)
 	u.proxy = &mekugiProxy{journals: newJournalStore(), replayStore: replay, orchestration: &orchestrateRuntime{store: store}}
+	if replay != nil {
+		ctx, release, err := replay.beginSession(u.ctx, "main", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		u.ctx = ctx
+		t.Cleanup(release)
+	}
+	if err := u.proxy.journals.initialize(u.ctx, replay, workspace, "main", "/root", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := u.proxy.journals.bindIdentity(u.ctx, replay, workspace, "main", "", "/root", true); err != nil {
+		t.Fatal(err)
+	}
 	u.model, u.reasoningEffort = "model", "high"
 	u.statusConfig.Provider, u.statusConfig.ApprovalsReviewer = "mekugi_wrap", "user"
 	u.statusConfig.Approval = []byte(`"never"`)
