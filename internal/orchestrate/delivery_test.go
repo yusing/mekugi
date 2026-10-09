@@ -41,6 +41,54 @@ func TestDeliveryRetainsDispatchAndAcknowledgement(t *testing.T) {
 	if d, dispatch, err := s.BeginDelivery(t.Context(), workspace, "main", input); err != nil || dispatch || d.TurnID != "followup-turn" {
 		t.Fatal("delivery repeated", d, dispatch, err)
 	}
+	queued := Delivery{ID: "queued-call", From: "main", Target: "child", Message: "deferred", Deferred: true}
+	if d, dispatch, err := s.BeginDelivery(t.Context(), workspace, "main", queued); err != nil || dispatch || d.State != "queued" {
+		t.Fatal("queue started dispatch", d, dispatch, err)
+	}
+	s = &Store{Directory: s.Directory}
+	for _, state := range []string{"canceled", "rejected", "delivered"} {
+		input.ID = state
+		d, text, dispatch, err := s.BeginTurnDelivery(t.Context(), workspace, "main", input)
+		if err != nil || !dispatch || text != "deferred\ncontinue" {
+			t.Fatal("queue was lost or reordered", d, text, dispatch, err)
+		}
+		// Reopening after intent does not redispatch or release the claim.
+		s = &Store{Directory: s.Directory}
+		if _, _, dispatch, err := s.BeginTurnDelivery(t.Context(), workspace, "main", input); err != nil || dispatch {
+			t.Fatal("claimed queue repeated after reopen", dispatch, err)
+		}
+		turn := ""
+		if state == "delivered" {
+			turn = "next-turn"
+		}
+		if _, err := s.RecordDelivery(t.Context(), workspace, "main", d.ID, state, turn, ""); err != nil {
+			t.Fatal(err)
+		}
+		got, _, err := s.BeginDelivery(t.Context(), workspace, "main", queued)
+		want := "queued"
+		if state == "delivered" {
+			want = state
+		}
+		if err != nil || got.State != want || got.TurnID != turn {
+			t.Fatal("queue acknowledgement", got, err)
+		}
+	}
+	queued.ID = "uncertain-queued"
+	if _, _, err := s.BeginDelivery(t.Context(), workspace, "main", queued); err != nil {
+		t.Fatal(err)
+	}
+	input.ID = "uncertain-dispatch"
+	if _, _, _, err := s.BeginTurnDelivery(t.Context(), workspace, "main", input); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordDelivery(t.Context(), workspace, "main", input.ID, "uncertain", "", "connection closed"); err != nil {
+		t.Fatal(err)
+	}
+	s = &Store{Directory: s.Directory}
+	input.ID = "later-dispatch"
+	if _, text, dispatch, err := s.BeginTurnDelivery(t.Context(), workspace, "main", input); err != nil || !dispatch || text != "continue" {
+		t.Fatal("uncertain input was resent", text, dispatch, err)
+	}
 	input.ID, input.From = "foreign-call", "foreign"
 	if _, dispatch, err := s.BeginDelivery(t.Context(), workspace, "main", input); err == nil || dispatch {
 		t.Fatal("unconfirmed caller accepted")

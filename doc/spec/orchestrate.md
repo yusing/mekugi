@@ -112,6 +112,14 @@ Canceling a follow-up stops undispatched work; a late acknowledgement is retaine
 without interrupting the recipient's existing work. Host rejection is reported
 without replacing the batch's launch or turn-completion facts.
 
+`tools.mcp__orchestrate__send_message({target:"batch",message:"Use the revised input."})`
+saves input without waking or steering the batch. Queued messages accompany its
+next idle follow-up turn, in arrival order before the new assignment. A running
+follow-up steers only its own input and leaves deferred messages queued.
+Acknowledgement records which turn received the queued input. A rejected or
+undispatched canceled follow-up leaves that input queued; an uncertain dispatch
+requires inspection before resending. Repeating a message call never queues it twice.
+
 Deferred messages and follow-ups targeting Main remain accepted work below.
 
 ## Accepted delivery scope
@@ -120,8 +128,8 @@ The remaining capabilities are accepted but not yet delivered:
 
 - `/orchestrate` starts the workflow or opens its run picker. Instructions appear
   once in the initial input and recover once after context reset.
-- `send_message` queues input for the recipient's next turn without waking it.
-  Child follow-ups can wake Main through the normal composer lifecycle.
+- `send_message` can target Main's next turn without waking it. Child follow-ups
+  can wake Main through the normal composer lifecycle.
 - Run-authorized journals mount read-only across checkouts. The new Main-only
   `accepted` task state records reviewed integration; child completion cannot
   accept its own result or complete Main's integration task.

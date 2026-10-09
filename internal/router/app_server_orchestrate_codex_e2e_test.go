@@ -186,6 +186,12 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if !strings.Contains(string(first), command.input.Message) {
 		t.Fatal("fresh assignment missing at provider")
 	}
+	queued := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", followup: true, deferred: true, callID: "installed-queued", input: orchestrateSpawnInput{Message: "Deferred input for the next probe turn."}, reply: make(chan orchestrateResult, 1)}
+	u.startOrchestratedChild(queued)
+	pump(func() bool { return len(queued.reply) > 0 })
+	if r := <-queued.reply; r.err != nil || r.delivery == nil || r.delivery.State != "queued" {
+		t.Fatalf("installed deferred message: %+v", r)
+	}
 	followup := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", followup: true, callID: "installed-running", input: orchestrateSpawnInput{Message: "Continue the probe when ready."}, reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(followup)
 	pump(func() bool { return len(followup.reply) > 0 })
@@ -222,6 +228,9 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 		select {
 		case body := <-provider.requests:
 			if strings.Contains(string(body), followup.input.Message) {
+				if !strings.Contains(string(body), queued.input.Message) {
+					t.Fatal("queued input missing from installed next turn")
+				}
 				return
 			}
 		case <-ctx.Done():
