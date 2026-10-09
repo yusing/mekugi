@@ -489,6 +489,12 @@ func (o *runtimeJournalOwner) task(ctx context.Context, event observationTask, s
 }
 
 func (o *runtimeJournalOwner) resolveParents(ctx context.Context) error {
+	identityChanged := false
+	defer func() {
+		if identityChanged {
+			o.capture.broker.refreshScope()
+		}
+	}()
 	o.capture.mu.Lock()
 	bindings := make([]ObservationBinding, 0, len(o.capture.bindings))
 	for b := range o.capture.bindings {
@@ -551,6 +557,7 @@ func (o *runtimeJournalOwner) resolveParents(ctx context.Context) error {
 				}
 				j.Parent = parent.Thread
 				j.IdentityKnown = true
+				identityChanged = true
 				changed = true
 				return nil
 			})

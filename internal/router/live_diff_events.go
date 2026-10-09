@@ -134,6 +134,13 @@ func (b *liveDiffBroker) setScope(scope liveDiffScope) {
 	b.emitLocked(b.scopeEventLocked())
 }
 
+// Retained identity can change the projection of already-admitted captures.
+func (b *liveDiffBroker) refreshScope() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.emitLocked(b.scopeEventLocked())
+}
+
 // resync replaces the scope and detaches the subscriber through its gap, as
 // on overflow. Resubscription restores display state from a fresh snapshot;
 // previews outside the new scope stay out of the view.

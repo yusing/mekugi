@@ -596,6 +596,9 @@ top-level ancestor and descendants. Earlier captures compose as baseline.
 Task attribution is retained with each capture, so later task transitions and
 resume do not reassign earlier edits. Unattributed captures remain available
 in all. Without a current journal task, scopes show all retained captures.
+Claude child callers join mounted task scopes only after verified native ancestry
+establishes their journal identity. Earlier captures join when that proof arrives,
+including after restart; their retained call identity and task attribution stay unchanged.
 Scope selection is local to the viewer and resets to subslice on session switch.
 
 The navigator and diff have independent viewports and keyboard focus. Arrow keys

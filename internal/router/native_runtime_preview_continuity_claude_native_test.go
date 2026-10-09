@@ -31,6 +31,10 @@ func TestNativeRuntimePreviewContinuityClaudePTY(t *testing.T) {
 	t.Setenv(routerTestWorkerEnvironment, "1")
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	// Local providers exercise native prompts without an inference-based Auto classifier.
+	if err := os.WriteFile(filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), "settings.json"), []byte(`{"permissions":{"defaultMode":"default"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("ANTHROPIC_API_KEY", "native-preview-continuity-fixture")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
@@ -294,6 +298,27 @@ func TestNativeRuntimePreviewContinuityClaudePTY(t *testing.T) {
 	if !savedTargets["child-proposal.txt"] || !savedTargets["child-effects.txt"] {
 		t.Fatalf("source child targets not captured: %v", savedTargets)
 	}
+	// Set up the selected task through the shared journal owner. Native hooks
+	// alone must establish the child identity used by this mount and its captures.
+	rootBinding := service.journal.rootBinding()
+	rootCtx, err := service.journal.scope(ctx, rootBinding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.journal.journals.apply(rootCtx, service.owner.store, binding.Workspace, observationThread(rootBinding), "fixture-child-mount",
+		[]journalMutation{{Op: "add", Kind: "task", Title: new("Selected child"), State: new("working"), Agent: "/root/" + childTask}}); err != nil {
+		t.Fatal(err)
+	}
+	assertMountedDiff := func() {
+		t.Helper()
+		terminal.keys("\x02" + "2")
+		await("mounted native child saved Diff", func(s string) bool {
+			pane := nativeClaudeDiffPane(s)
+			return strings.Contains(pane, "subslice /1") && strings.Contains(pane, "child-proposal.txt") && strings.Contains(pane, "CHILD_PROPOSAL_CEDAR")
+		})
+	}
+	terminal.keys("\x02" + "2" + "v") // Return from proposals to saved Diff.
+	assertMountedDiff()
 	closeParent()
 	assertSaved := func() {
 		t.Helper()
@@ -313,6 +338,7 @@ func TestNativeRuntimePreviewContinuityClaudePTY(t *testing.T) {
 	await("fresh parent native history", func(s string) bool {
 		return strings.Contains(s, "Ready") && strings.Contains(s, "CONTINUITY_ROOT_COMPLETE")
 	})
+	assertMountedDiff()
 	assertSaved()
 	closeResume()
 	mu.Lock()

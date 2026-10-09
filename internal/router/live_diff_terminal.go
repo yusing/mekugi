@@ -487,8 +487,23 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 				return false, err
 			}
 		}
+		if err := c.data.refreshNativeCallers(ctx, c.store); err != nil {
+			return false, err
+		}
 	}
 	if event.Kind == "scope" || event.Kind == "change" {
+		for _, attempt := range c.data.attempts {
+			if attempt.nativeCaller == "" || len(attempt.chunks) == 0 {
+				continue
+			}
+			caller := livediff.CallerKey(attempt.chunks[0].Caller)
+			if c.view.Caller == attempt.nativeCaller {
+				c.view.Caller, c.view.Visible = caller, nil
+			}
+			if c.back.caller == attempt.nativeCaller {
+				c.back.caller = caller
+			}
+		}
 		c.view.Merge(c.data.files())
 		c.view.RefreshVisible()
 		c.callerCounts = liveDiffCallerCounts(c.view.Files)

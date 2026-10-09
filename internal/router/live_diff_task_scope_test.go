@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +12,131 @@ import (
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
+
+func TestUISnapshotNativeDiffMountedChildren(t *testing.T) {
+	s, root, client := runtimeJournalFixture(t)
+	child, grandchild, sibling := root, root, root
+	child.Agent, grandchild.Agent, sibling.Agent = "child", "nested", "sibling"
+	for _, binding := range []ObservationBinding{child, grandchild, sibling} {
+		runtimeJournalBind(t, s, binding, client)
+		runtimeJournalAdd(t, s, binding, client, binding.Agent+"-task", binding.Agent+" work")
+	}
+	input := `{"journal":[{"op":"add","kind":"task","title":"Slice","state":"working"},{"op":"add","under":"/1","kind":"task","title":"Selected","state":"working"},{"op":"add","under":"/1","kind":"task","title":"Other","state":"done"}]}`
+	runtimeJournalReceipt(t, s, root, client, "root-tasks", "journal_batch", input)
+	runtimeJournalInvoke(t, s, client, "root-tasks", "journal_batch", input)
+	var calls []ObservationCall
+	for _, binding := range []ObservationBinding{root, child, grandchild, sibling} {
+		name := binding.Agent
+		if name == "" {
+			name = "main"
+		}
+		path := filepath.Join(root.Workspace, name+".txt")
+		call := ObservationCall{Binding: binding, ID: name + "-write", Tool: "Write", Input: `{}`, Paths: []string{path}}
+		if err := s.owner.before(t.Context(), call); err != nil {
+			t.Fatal(err)
+		}
+		nativeObservationWrite(t, path, name+" effect\n")
+		if _, err := s.owner.after(t.Context(), call, ObservationTerminal{Status: "completed"}); err != nil {
+			t.Fatal(err)
+		}
+		calls = append(calls, call)
+	}
+	c := liveDiffChangesController(t, 120, 18, nil)
+	c.store, c.workspace, c.native = s.owner.store, root.Workspace, true
+	sub := s.owner.broker.subscribe()
+	defer s.owner.broker.unsubscribe(sub)
+	apply := func() {
+		t.Helper()
+		for _, event := range s.owner.broker.takePreviews(sub) {
+			if _, err := c.applyEvent(t.Context(), event); err != nil {
+				t.Fatal(err)
+			}
+		}
+		c.updateTaskScope(s.journal.sink().presented())
+		c.frame(t)
+	}
+	apply()
+	if len(c.navigation.Matches) != 1 {
+		t.Fatal("unproven native children entered mounted scope")
+	}
+	c.taskScope = liveDiffAll
+	c.updateTaskScope(s.journal.sink().presented())
+	c.filterCaller("native/child")
+	c.navigation.Focused = true
+	c.back = liveDiffBack{kind: 'b', caller: "native/nested"}
+	nativeParentReceipt(t, s, client, child, "spawn-nested")
+	nativeParentReceipt(t, s, client, root, "spawn-child")
+	nativeParentReceipt(t, s, client, root, "spawn-sibling")
+	for _, proof := range [][2]string{{"spawn-nested", grandchild.Agent}, {"spawn-child", child.Agent}, {"spawn-sibling", sibling.Agent}} {
+		if err := s.journal.parent(t.Context(), proof[0], proof[1], "completed"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mount := `{"journal":[{"op":"set","p":"/1/1","agent":"/root/child"},{"op":"set","p":"/1/2","agent":"/root/sibling"}]}`
+	runtimeJournalReceipt(t, s, root, client, "mount-children", "journal_batch", mount)
+	runtimeJournalInvoke(t, s, client, "mount-children", "journal_batch", mount)
+	apply()
+	if c.view.Caller != "/root/child" || c.back.caller != "/root/child/nested" || len(c.navigation.Matches) != 1 {
+		t.Fatal("ancestry refresh lost active or saved child selection")
+	}
+	c.escapeKey()
+	c.frame(t)
+	if c.view.Caller != "/root/child/nested" || len(c.navigation.Matches) != 1 {
+		t.Fatal("back navigation restored a retired provisional caller")
+	}
+	c.filterCaller("")
+	c.taskScope = liveDiffSubslice
+	c.updateTaskScope(s.journal.sink().presented())
+	c.frame(t)
+	if len(c.navigation.Matches) != 3 || c.callerCounts["/root/child/nested"].Added != 1 || c.callerCounts["/root/sibling"].Added != 1 {
+		t.Fatalf("late native ancestry did not join saved captures: matches=%v callers=%v", c.navigation.Matches, c.callerCounts)
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/native-diff-mounted-children.txt", strings.Join(c.rendering.Lines, "\n"))
+	c.cycleTaskScope()
+	c.frame(t)
+	if len(c.navigation.Matches) != 4 {
+		t.Fatal("slice omitted the separately mounted sibling")
+	}
+	reader, err := openMekugiReplayStore(s.owner.store.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := reader.liveDiffSnapshot(t.Context(), c.scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.data = data
+	c.view.Merge(data.files())
+	c.taskScope = liveDiffSubslice
+	c.updateTaskScope(s.journal.sink().presented())
+	c.frame(t)
+	if len(c.navigation.Matches) != 3 {
+		t.Fatal("restart lost mounted task attribution")
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/native-diff-mounted-children.txt", strings.Join(c.rendering.Lines, "\n"))
+	for _, call := range calls {
+		history := nativeObservationHistory(t, reader, call, "after")
+		want := "/root"
+		if call.Binding.Agent != "" {
+			want = "native/" + call.Binding.Agent
+		}
+		if history.Caller != want {
+			t.Fatal("presentation rewrote retained native caller evidence")
+		}
+		record, found, err := reader.read(root.Workspace, observationKey(call)+"/after", false)
+		task := "/1"
+		if call.Binding.Agent == "" {
+			task = "/1/1"
+		}
+		if err != nil || !found || record.TaskPath != task {
+			t.Fatalf("ancestry refresh reassigned the retained task: %q %v", record.TaskPath, err)
+		}
+	}
+	isolated, err := reader.liveDiffSnapshot(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{root.Workspace: {observationThread(root): true}}})
+	if err != nil || len(isolated.files()) != 1 {
+		t.Fatalf("root-only restart admitted child captures: %v %v", isolated, err)
+	}
+}
 
 func TestUISnapshotLiveDiffTaskScope(t *testing.T) {
 	for _, width := range []int{70, 120} {

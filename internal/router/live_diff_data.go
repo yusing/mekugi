@@ -19,6 +19,7 @@ import (
 type liveDiffAttempt struct {
 	change, correlation string
 	thread              string
+	nativeCaller        string // Retained caller before journal ancestry is confirmed.
 	stream              int
 	chunks              []livediff.Chunk
 	receipt             *capturedActivityEdit
@@ -60,6 +61,10 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 		}
 		history := authoredChangeHistory(record.History)
 		attempt := liveDiffAttempt{thread: cmp.Or(history.ExecutingThread, event.Thread), change: event.ID, correlation: event.Change.Correlation, stream: event.Stream}
+		if native := history.NativeObservation; native != nil && native.Binding.Workspace == event.Workspace &&
+			native.Binding.Runtime != "" && native.Binding.Session != "" && observationThread(native.Binding) == attempt.thread {
+			attempt.nativeCaller = history.Caller
+		}
 		if history.ExecOutcome != nil && history.ExecutingThread != "" {
 			attempt.receipt = capturedEditActivity(event.Workspace, history)
 			if attempt.receipt != nil {
@@ -91,6 +96,39 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 		}
 		d.attempts[key] = attempt
 		d.order = append(d.order, key)
+	}
+	return nil
+}
+
+// Journal identity owns native ancestry. Projection can join an older capture
+// after that proof arrives without changing its retained receipt or task path.
+func (d *liveDiffData) refreshNativeCallers(ctx context.Context, store *mekugiReplayStore) error {
+	callers := make(map[string]string)
+	for key, attempt := range d.attempts {
+		if attempt.nativeCaller == "" || len(attempt.chunks) == 0 {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		workspace := attempt.chunks[0].Workspace
+		identity := workspace + "\x00" + attempt.thread
+		caller, loaded := callers[identity]
+		if !loaded {
+			j, found, err := readThreadJournal(store, workspace, attempt.thread)
+			if err != nil {
+				return err
+			}
+			if found && j.IdentityKnown && !j.IdentityConflicted {
+				caller = j.Author
+			}
+			callers[identity] = caller
+		}
+		caller = cmp.Or(caller, attempt.nativeCaller)
+		for i := range attempt.chunks {
+			attempt.chunks[i].Origin.Caller = caller
+		}
+		d.attempts[key] = attempt
 	}
 	return nil
 }
@@ -151,7 +189,7 @@ func (d *liveDiffData) reconcile(ctx context.Context, s *mekugiReplayStore, scop
 			return errors.New("change records were removed; restart the live view")
 		}
 	}
-	return nil
+	return d.refreshNativeCallers(ctx, s)
 }
 
 func (s *mekugiReplayStore) liveDiffIndexes(workspace string, threads map[string]bool) ([]changeIndex, error) {
