@@ -156,10 +156,17 @@ after restart without checking Git again or reviving processes.
 
 ## Accepted delivery scope
 
+`/orchestrate ISSUES` enters the workflow through the ordinary composer. One
+user input carries the issues and workflow instructions; later ordinary input
+does not repeat them or change tool exposure. Attachments, busy input, rejection
+and cancellation use the composer lifecycle. Fresh children receive their
+checkout, assignment and orchestration-tool instructions in their first input.
+Bare `/orchestrate` reports usage until the run picker is delivered.
+
 The remaining capabilities are accepted but not yet delivered:
 
-- `/orchestrate` starts the workflow or opens its run picker. Instructions appear
-  once in the initial input and recover once after context reset.
+- Bare `/orchestrate` opens its run picker. Workflow instructions recover once
+  after context reset.
 - `send_message` can target Main's next turn without waking it. Child follow-ups
   can wake Main through the normal composer lifecycle.
 - Thread navigation scopes transcript, Activity, Agents, Journal and Diff to the
