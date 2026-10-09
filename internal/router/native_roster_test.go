@@ -388,3 +388,15 @@ func TestNativeRosterLineCountColorsAndZeros(t *testing.T) {
 		}
 	}
 }
+
+func TestAppServerProjectedRoleStillReadsHostMetadata(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	path := u.session.path("child")
+	agent := u.session.agent(path)
+	agent.Name, agent.Role = "/root/checker", "review"
+	u.session.paths["child"] = agent.Name
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "turn"}})
+	if u.session.metadata["child"] == "" {
+		t.Fatal("projected role suppressed authoritative thread metadata")
+	}
+}

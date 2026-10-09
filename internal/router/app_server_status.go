@@ -44,9 +44,12 @@ func statusNotice(value string) []statusField {
 }
 
 type appServerStatusConfig struct {
-	Provider string         `json:"modelProvider"`
-	Approval jsontext.Value `json:"approvalPolicy"`
-	Sandbox  struct {
+	Provider          string         `json:"modelProvider"`
+	Approval          jsontext.Value `json:"approvalPolicy"`
+	ApprovalsReviewer string         `json:"approvalsReviewer"`
+	PermissionProfile jsontext.Value `json:"activePermissionProfile"`
+	WorkspaceRoots    []string       `json:"runtimeWorkspaceRoots"`
+	Sandbox           struct {
 		Type string `json:"type"`
 	} `json:"sandbox"`
 	Instructions []string `json:"instructionSources"`

@@ -83,6 +83,14 @@ type appServerUI struct {
 	btw                       *appServerBTW
 	btwRequests               map[string]btwRequest
 	btwThreads                map[string]*appServerBTW
+	orchestrateRequests       map[string]orchestrateRPC
+	orchestrateThreads        map[string]*orchestrateChild
+	orchestrateJobs           []func() func()
+	orchestrateCompletions    chan func()
+	orchestrateClosing        bool
+	orchestrateStorageContext context.Context
+	orchestrateStorageCancel  context.CancelFunc
+	orchestrateStorageErr     error
 	notifications             *nativeNotifications
 	questions                 nativeQuestionDock
 	approvals                 nativeApprovalDock
@@ -227,7 +235,12 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	}
 	u.ensureShell()
 	u.shell.faint = faint
-	return func() error {
+	return func() (runErr error) {
+		defer func() { runErr = errors.Join(runErr, u.closeOrchestrateStorage()) }()
+		if proxy != nil && proxy.orchestration != nil {
+			proxy.orchestration.active.Store(true)
+			defer proxy.orchestration.active.Store(false)
+		}
 		defer func() {
 			if u.waitRelease != nil {
 				u.waitRelease()
@@ -314,6 +327,10 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 					case request := <-u.guardRequests():
 						u.addGuardApproval(request)
 						u.dirty = true
+					case request := <-u.orchestrateCommands():
+						u.startOrchestratedChild(request)
+					case complete := <-u.orchestrateCompletions:
+						u.completeOrchestrateWork(complete)
 					case message, ok := <-c.Messages:
 						if !ok {
 							exited = true
@@ -501,6 +518,9 @@ func (u *appServerUI) requestAs(method, label string, params any) (string, error
 }
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
+	if handled := u.orchestrateMessage(m); handled {
+		return nil
+	}
 	u.issues.observeTurnCompletion(m.Method, m.Params)
 	u.observeShellMessage(m)
 	if u.sessionTitleMessage(m) {
@@ -1139,6 +1159,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.cancelQueuedCompact() {
 			return false, nil
 		}
+		if u.turn == "" && !u.starting() && u.orchestrateBusy() {
+			u.setNotice("Interrupt orchestration batches before quitting", true)
+			return false, nil
+		}
 		if u.turn != "" || u.starting() || u.submission.text != "" || u.compaction.pending() || u.compaction.continueTask || len(u.unsent)+len(u.queued) > 0 {
 			return false, u.keyboardInterrupt()
 		}
@@ -1188,6 +1212,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		if text == "/quit" {
+			if u.orchestrateBusy() {
+				u.setNotice("Interrupt orchestration batches before quitting", true)
+				return false, nil
+			}
 			if u.turn == "" && !u.starting() && u.submission.text == "" {
 				u.draft = ""
 				return true, nil

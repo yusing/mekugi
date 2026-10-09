@@ -190,6 +190,9 @@ func TestPrepareWorkspaceBoundaries(t *testing.T) {
 			if info, err := os.Stat(batch.Cwd); err != nil || !info.IsDir() {
 				t.Fatalf("prepared cwd unavailable: %+v, %v", batch, err)
 			}
+			if err := validateLaunchCheckout(t.Context(), batch); err != nil {
+				t.Fatalf("prepared checkout cannot launch: %v", err)
+			}
 			if sparse && run("sparse-checkout", "list") != "a\n" {
 				t.Fatal("source sparse settings changed")
 			}

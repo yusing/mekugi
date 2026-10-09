@@ -13,7 +13,7 @@ func (u *appServerUI) requestThreadMetadata(thread string) error {
 	if _, requested := u.session.metadata[thread]; requested {
 		return nil
 	}
-	if path := u.session.paths[thread]; path != "" && path != appServerPlaceholder(thread) && u.session.agent(path).Role != "" {
+	if path := u.session.paths[thread]; u.session.threads[thread].ID != "" && path != "" && path != appServerPlaceholder(thread) && u.session.agent(path).Role != "" {
 		u.session.metadata[thread] = ""
 		return nil // thread/started or restored history already supplied it.
 	}
@@ -38,9 +38,7 @@ func (u *appServerUI) applyThreadMetadata(m appserver.Message) bool {
 		if m.Error != nil || json.Unmarshal(m.Result, &result) != nil || result.Thread.ID != thread {
 			return true // Keep the observed identity; metadata cannot block activity.
 		}
-		old := u.session.path(thread)
-		u.session.registerThread(result.Thread)
-		u.renameThreadActivity(old, u.session.paths[thread])
+		u.registerSessionThread(result.Thread)
 		u.applyActivity(nil, slices.Clone(u.session.agents))
 		return true
 	}

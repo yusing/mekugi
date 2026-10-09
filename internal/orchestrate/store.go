@@ -25,13 +25,14 @@ type Store struct {
 }
 
 type Batch struct {
-	TaskName string `json:"task_name"`
-	Branch   string `json:"branch"`
-	Checkout string `json:"checkout"`
-	Cwd      string `json:"cwd"`
-	Base     string `json:"base"`
-	State    string `json:"state"`
-	Error    string `json:"error,omitempty"`
+	TaskName string  `json:"task_name"`
+	Branch   string  `json:"branch"`
+	Checkout string  `json:"checkout"`
+	Cwd      string  `json:"cwd"`
+	Base     string  `json:"base"`
+	State    string  `json:"state"`
+	Error    string  `json:"error,omitempty"`
+	Launch   *Launch `json:"launch,omitempty"`
 }
 
 type manifest struct {
@@ -143,7 +144,7 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 			}
 		}
 		id := fmt.Sprintf("%x", sha256.Sum256([]byte(workspace+"\x00"+main)))
-		checkout := filepath.Join(strings.TrimSuffix(path, ".json"), name)
+		checkout := filepath.Join(storage, strings.TrimSuffix(filepath.Base(path), ".json"), name)
 		batch = Batch{TaskName: name, Branch: "mekugi/" + id + "/" + name, Checkout: checkout,
 			Cwd: filepath.Join(checkout, relative), Base: base, State: "preparing"}
 		m.Batches = append(m.Batches, batch)

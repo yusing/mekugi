@@ -42,17 +42,50 @@ Acceptance:
    retry the effect. Listing another thread cannot reveal the first run.
 5. Registration is invocation-local and does not change existing journal tools.
 
+## REQ-ORCHESTRATE-002 — Fresh batch threads
+
+The MCP server exposes `spawn_agent` for a prepared batch and `interrupt_agent`
+for its live turn. For example, after preparation:
+
+```js
+await tools.mcp__orchestrate__spawn_agent({task_name:"batch",message:"Complete the assigned batch and report its checks."});
+```
+
+Children start as independent Codex threads with fresh context. `message` carries
+the complete assignment. Main can select model, reasoning effort and service tier;
+omitted settings inherit its current effective values. Host-confirmed settings
+are authoritative. Native subagents stay inside the child's checkout. Host thread
+identity selects their journal workspace. Presentation keeps identical native agent paths in
+different thread trees separate, without changing host identifiers. Live native
+descendants also prevent coordinator departure.
+
+A launch reserves its prepared checkout before requesting a host thread. Repeats
+return retained progress; a changed handoff or launch configuration rejects.
+Confirmed thread identity is saved before the first turn, and confirmed turn
+identity is saved before success is returned. Uncertain outcomes require
+inspection rather than an automatic retry. Launch checks the checkout location,
+branch and baseline without resetting prepared inputs.
+
+Cancellation prevents the first turn when possible. Late host acknowledgements
+remain useful; an already-started turn is interrupted even if saving its result
+fails. An interrupt acknowledgement does not claim the turn has finished: host
+lifecycle events supply that outcome. Checkout preparation and orchestration
+run-storage waits leave input and host events responsive. Running batches currently
+prevent quitting or switching coordinators; confirmation and thread navigation remain below.
+
+The prepared checkout replaces the source repository in runtime workspace roots;
+explicit external roots and an empty root list remain inherited. Named permission
+profiles and approval-review routing remain intact. Missing profile provenance
+rejects launch rather than approximating a custom policy with a sandbox label.
+
 ## Accepted delivery scope
 
 The remaining capabilities are accepted but not yet delivered:
 
 - `/orchestrate` starts the workflow or opens its run picker. Instructions appear
   once in the initial input and recover once after context reset.
-- `spawn_agent` starts or forks a prepared checkout's Codex thread. Main selects
-  role, model, reasoning effort and service tier; host-confirmed settings are
-  authoritative. Native subagents remain inside their parent's checkout.
-- `send_message`, `followup_task`, `wait_agent`, `list_agents` and
-  `interrupt_agent` coordinate run members without replacing Codex execution.
+- `send_message`, `followup_task` and `wait_agent` coordinate run members without
+  replacing Codex execution.
 - Run-authorized journals mount read-only across checkouts. The new Main-only
   `accepted` task state records reviewed integration; child completion cannot
   accept its own result or complete Main's integration task.
@@ -71,6 +104,6 @@ The remaining capabilities are accepted but not yet delivered:
   The home `batch-agent-sessions` skill/helper retires only after parity.
 
 Third-party threads retain their current stable schema exposure during initial
-delivery. Child-authored journal roots remain unchanged. Partial-history fork
-compatibility, nested orchestration, and versioned shadow-source baselines must
+delivery. Child-authored journal roots remain unchanged. Nested orchestration
+and versioned shadow-source baselines must
 be settled before their affected capability is exposed.

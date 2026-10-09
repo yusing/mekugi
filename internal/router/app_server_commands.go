@@ -88,7 +88,7 @@ func (u *appServerUI) submitCompact(queue bool) error {
 
 // sessionBusy reports work that leaving the current thread would strand.
 func (u *appServerUI) sessionBusy() bool {
-	return u.busy() || u.reset.active()
+	return u.busy() || u.reset.active() || u.orchestrateBusy()
 }
 
 // A queued compact is a local action, not Main's running turn. Return waiting
