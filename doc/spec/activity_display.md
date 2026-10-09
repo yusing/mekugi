@@ -261,7 +261,8 @@ buffers above their highlighting limit remain plain text; inferred syntax never
 changes output bytes or line numbering.
 Command titles and source bodies use syntax colors for their language; file-read
 output uses the file type, including when it ends in blank lines. Copying remains
-plain text. Skill-read output renders as Markdown, wrapping to the dialog width
+plain text. Skill-read output renders as Markdown in dialogs and fully expanded
+transcripts, wrapping to the available body width
 without line numbers or output gutters; whole-page copying preserves the retained
 Markdown source. Output from `skills-mgr run` remains literal command output.
 Source uses a numbered solid gutter, command output a dashed gutter, and a

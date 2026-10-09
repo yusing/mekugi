@@ -1,0 +1,79 @@
+● main                                                                  22:31:00
+┃ An event with retained details.
+┃ An event with retained details.
+┃ An event with retained details.
+┃ An event with retained details.
+┃ An event with retained details.
+┃ An event with retained details.
+┃ An event with retained details.
+┃ An event with retained details.
+
+• Inspecting
+  Public reasoning detail.
+  
+  Public reasoning detail.
+  
+  Public reasoning detail.
+  
+  Public reasoning detail.
+  
+  Public reasoning detail.
+  
+  Public reasoning detail.
+└ Ran printf
+      │ echo retained-source
+      │ echo retained-source
+      │ echo retained-source
+      │ echo retained-source
+      │ echo retained-source
+      │ echo retained-source
+      │ echo retained-source
+      │ echo retained-source
+      ┆ first output
+      ┆ last output
+
+● /1 Check expansion · done ›
+  Journal body detail. Journal body detail. Journal body detail. Journal body
+  detail. Journal body detail. Journal body detail. Journal body detail. Journal
+  body detail. Journal body detail. Journal body detail. Journal body detail.
+  Journal body detail. JOURNAL-END
+
+╭─ ✓ journal · 1 open · 5 notes ──────────────────────────────────────── 22:31 ╮
+│ This turn                                                                    │
+│ ⚠ /1 Check build prerequisites and recovery · Required build prerequisites   │
+│   missing: autoconf automake pkg-config protoc libprotobuf-dev zlib1g-dev    │
+│   libncurses-dev libssl-dev; autoconf automake pkg-config protoc             │
+│   libprotobuf-dev zlib1g-dev libncurses-dev libssl-dev; autoconf automake    │
+│   pkg-config protoc libprotobuf-dev zlib1g-dev libncurses-dev libssl-dev;    │
+│   REASON-END                                                                 │
+│ ◆ Evidence 1                                                                 │
+│   Evidence 1 established. Detailed evidence with retained context. Detailed  │
+│   evidence with retained context. Detailed evidence with retained context.   │
+│   Detailed evidence with retained context. Detailed evidence with retained   │
+│   context. Detailed evidence with retained context. Detailed evidence with   │
+│   retained context. Detailed evidence with retained context. NOTE-1-END      │
+│ ◆ Evidence 2                                                                 │
+│   Evidence 2 established. Detailed evidence with retained context. Detailed  │
+│   evidence with retained context. Detailed evidence with retained context.   │
+│   Detailed evidence with retained context. Detailed evidence with retained   │
+│   context. Detailed evidence with retained context. Detailed evidence with   │
+│   retained context. Detailed evidence with retained context. NOTE-2-END      │
+│ ◆ Evidence 3                                                                 │
+│   Evidence 3 established. Detailed evidence with retained context. Detailed  │
+│   evidence with retained context. Detailed evidence with retained context.   │
+│   Detailed evidence with retained context. Detailed evidence with retained   │
+│   context. Detailed evidence with retained context. Detailed evidence with   │
+│   retained context. Detailed evidence with retained context. NOTE-3-END      │
+│ ◆ Evidence 4                                                                 │
+│   Evidence 4 established. Detailed evidence with retained context. Detailed  │
+│   evidence with retained context. Detailed evidence with retained context.   │
+│   Detailed evidence with retained context. Detailed evidence with retained   │
+│   context. Detailed evidence with retained context. Detailed evidence with   │
+│   retained context. Detailed evidence with retained context. NOTE-4-END      │
+│ ◆ Evidence 5                                                                 │
+│   Evidence 5 established. Detailed evidence with retained context. Detailed  │
+│   evidence with retained context. Detailed evidence with retained context.   │
+│   Detailed evidence with retained context. Detailed evidence with retained   │
+│   context. Detailed evidence with retained context. Detailed evidence with   │
+│   retained context. Detailed evidence with retained context. NOTE-5-END      │
+╰──────────────────────────────────────────────────────────────────────────────╯

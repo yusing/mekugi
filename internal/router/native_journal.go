@@ -21,6 +21,7 @@ type nativeJournalView struct {
 	fileLink func(string) bool
 	// expanded records explicit disclosure choices; absent nodes fit automatically.
 	expanded                 map[string]bool
+	expansion                uint8 // Pane-wide disclosure, overridden by individual choices.
 	selected, offset, height int
 	top                      int // Header rows above the first node row.
 	// hover is the pointed pane row plus one. The selection is filled only
@@ -136,6 +137,9 @@ func (v *nativeJournalView) rebuild(j *threadJournal) {
 			row := journalPaneRow{node: node, lead: lead, depth: depth, last: i == len(nodes)-1}
 			// Superseded history stays reachable but starts collapsed.
 			row.open = row.expandable() && node.SupersededBy == ""
+			if v.expansion != 0 {
+				row.open = row.expandable()
+			}
 			if expanded, explicit := v.expanded[node.Path]; explicit {
 				row.open = row.expandable() && expanded
 			}
@@ -165,7 +169,7 @@ func (v *nativeJournalView) rebuild(j *threadJournal) {
 // fit collapses the least recently updated visible subtrees first. A manual
 // expansion protects its ancestors, so fitting never undoes a disclosure click.
 func (v *nativeJournalView) fit() {
-	if v.height <= 0 || len(v.rows) <= v.height {
+	if v.expansion != 0 || v.height <= 0 || len(v.rows) <= v.height {
 		return
 	}
 	type candidate struct {
@@ -531,6 +535,12 @@ func (v *nativeJournalView) journalRowAt(y int) int {
 
 func (u *terminalUI) journalKey(key string) error {
 	view := &u.main.journalView
+	if key == "\x05" {
+		view.expansion = (view.expansion + 1) % 3
+		view.expanded = nil
+		view.hover = 0
+		return nil
+	}
 	view.rebuild(u.main.journalTreeSnapshot())
 	switch key {
 	case "j", "\x1b[B", "k", "\x1b[A", "\x1b[6~", "\x1b[5~", "g", "\x1b[H", "G", "\x1b[F":
@@ -921,7 +931,7 @@ func (v *liveActivityView) journalCardLines(out *conversationLines, entry activi
 	}
 	p := &v.painter
 	snippet := liveActivitySnippet{run: entry.Seq, block: 0}
-	rows, facts := journalCardRows(p, card, max(1, width-4), !v.passed[entry.Seq])
+	rows, facts := journalCardRows(p, card, max(1, width-4), !v.excerpt(v.passed[entry.Seq]))
 	title := activityui.Green + "✓" + activityui.Reset + activityui.Dim + " journal"
 	if len(facts) > 0 {
 		title += " · " + strings.Join(facts, " · ")
@@ -1091,7 +1101,7 @@ func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last
 	var laid []activityui.Block
 	entryRows := make(map[uint64]int)
 	stamp := ""
-	expand := !v.passed[v.entries[last].Seq]
+	expand := !v.excerpt(v.passed[v.entries[last].Seq])
 	for k := first; k <= last; k++ {
 		entry := v.entries[k].activityPaneEntry
 		if !v.visible(entry) || entry.Kind != "journal_event" {

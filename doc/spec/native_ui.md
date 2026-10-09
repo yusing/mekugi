@@ -1174,6 +1174,19 @@ Successful command output eligible to fold shares one debounce deadline across M
 including late completions, so it collapses in a single screen update rather than
 one result at a time. An agent's latest command output remains open until later activity.
 
+`Ctrl-E` cycles the focused Main or Activity pane through default presentation,
+expanded events, and expanded all. Expanded events shows full narrative, journal
+details and public reasoning while leaving operation source/output at its normal
+preview. Both expanded modes show all retained child-journal answers and nonempty
+change reports, including report-only completions. Expanded all also opens retained
+operation source/output. Default restores
+automatic folding, including keeping new event groups open until they leave the
+viewport. User prompts remain unchanged. The choice also applies to arriving content
+and stays local to the pane. The status hint follows the pane shortcut and names
+the next disclosure choice. Dialogs retain
+their existing controls. Toggling preserves following or the item at the top of
+scrollback. Layouts are cached; off-screen blocks defer syntax decoration.
+
 Main and Activity follow new transcript content until manual scrollback or an
 explicit jump to earlier content. Opening or closing Live/Diff, resizing, and
 opening a narrative snippet or output dialog do not disable following. Scrolling to the last full viewport

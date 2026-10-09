@@ -515,6 +515,15 @@ func (u *terminalUI) nativeStatus() string {
 		hints = append(hints, terminalHint{"^B e", "next live", 0})
 	}
 	hints = append(hints, terminalHint{"^B 1-5", "panes", 0})
+	if u.focus == 0 || u.focus == 2 || u.focus == 4 {
+		expansion := u.agents.expansion
+		if u.focus == 0 {
+			expansion = u.main.view.expansion
+		} else if u.focus == 4 {
+			expansion = u.main.journalView.expansion
+		}
+		hints = append(hints, terminalHint{"^E", [3]string{"expand events", "expand all", "default"}[expansion], 0})
+	}
 	return tabs.String() + "  " + hints.render()
 }
 

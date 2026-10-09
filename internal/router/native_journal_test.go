@@ -510,7 +510,7 @@ func TestNativeJournalHintsNamespaceOnlyWithBothJournals(t *testing.T) {
 		t.Fatalf("single journal named a namespace or lost pane hints: %q", screen)
 	}
 	status := ansi.Strip(u.shell.nativeStatus())
-	for _, repeated := range []string{"details", "expand", "namespace"} {
+	for _, repeated := range []string{"d details", "space expand", "namespace"} {
 		if strings.Contains(status, repeated) {
 			t.Fatalf("status bar repeats pane hint %q: %q", repeated, status)
 		}

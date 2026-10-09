@@ -1088,6 +1088,8 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		return false, nil
 	}
 	switch key {
+	case 5: // Ctrl+E discloses the focused Main transcript, leaving the draft intact.
+		u.view.toggleExpansion()
 	case 23: // macOS terminals may encode Option+Backspace as Ctrl+W.
 		u.deleteWord(true)
 	case 11: // Ctrl+K kills to the logical line end, or joins at its newline.

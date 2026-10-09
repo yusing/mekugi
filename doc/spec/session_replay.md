@@ -70,8 +70,9 @@ snapshots cover running, paused, completed, and narrow playback states.
 columns and 8–500 rows). It emits no terminal bytes and returns a JSON timing
 summary on stdout; loading/coverage/progress notices use stderr. Interactive
 mode requires terminal stdin/stdout and restores terminal state on exit.
-The p key pauses playback; Space also pauses outside Journal. Focused Journal
-supports selection with j/k or navigation keys, Space disclosure, namespace
+The p key pauses playback; Space also pauses outside Journal. `Ctrl-E` uses the
+focused pane's [disclosure controls](native_ui.md) as in live presentation.
+Focused Journal supports selection with j/k or navigation keys, Space disclosure, namespace
 switching, copied durable addresses, and d/Enter for read-only details. Its wheel
 scrolls without changing selection. Details support scrolling and close with
 Escape or q; Ctrl+C always quits replay. Outside details, Escape or q quits.

@@ -74,6 +74,7 @@ type Block struct {
 	// Collapsed shows a settled block as one row that opens it; Hovered
 	// underlines that row under the pointer. Both are presentation-only.
 	Collapsed, Hovered bool
+	Expanded           bool // Explicit disclosure bypasses streaming reasoning's tail budget.
 	// Rows paints styled presentation rows at a width; the dialog shows them
 	// in place of Body's Markdown, and Body stays the copied text.
 	Rows   func(width int) []string
@@ -106,6 +107,11 @@ func (b Block) Collapsible() bool {
 func (b Block) ReadOutput() bool {
 	return b.JournalTransport || b.Verb == "Read" || b.Verb == "Skill" && b.Kind == "reads" ||
 		b.Kind == "op" && (b.Verb == "Attached" || b.Verb == "Attached skill")
+}
+
+// MarkdownOutput reports skill content, rather than a skill program's output.
+func (b Block) MarkdownOutput() bool {
+	return (b.Verb == "Skill" || b.Verb == "Attached skill") && b.ReadOutput()
 }
 
 // Instant reports an operation that prints what it reads at once: a read,

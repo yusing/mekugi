@@ -1,0 +1,39 @@
+└ Read 1 file • Inspected 1 target
+
+└ Asked  
+    Continue?
+    └ Yes
+
+└ Searched 1 pattern • Inspected 1 target
+
+● main
+┃ Later visible event.
+┃ Later visible event.
+┃ Later visible event.
+┃ Later visible event.
+┃ Later visible event.
+┃ Later visible event.
+┃ Later visible event.
+┃ Later visible event.
+┃ Later visible event.
+┃ Later visible event.
+
+├ Read    target
+└ Inspect target
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

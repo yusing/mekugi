@@ -108,7 +108,7 @@ func (p *Painter) ReasoningElided(block Block, width int) bool {
 	width = max(8, width)
 	rows, short, titleOnly := p.reasoningContent(block, width)
 	_, headingElided := p.thinkingHeader(block, width-2)
-	return len(rows) > 0 && !short && (block.Collapsed || block.Live && len(rows) > ThinkingTailRows || headingElided && !titleOnly)
+	return len(rows) > 0 && !short && (block.Collapsed || block.Live && !block.Expanded && len(rows) > ThinkingTailRows || headingElided && !titleOnly)
 }
 
 func (p *Painter) reasoningContent(block Block, width int) (rows []string, short, titleOnly bool) {

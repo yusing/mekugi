@@ -34,7 +34,7 @@
   ctrl+b ← / →          Resize panes
 
   Transcript
+  ctrl+e       Default / events / all
   pgup / pgdn  Scroll
   esc          Back to bottom
-
   ? / esc  Close shortcuts

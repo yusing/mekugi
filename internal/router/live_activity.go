@@ -51,6 +51,8 @@ func (v *liveActivityView) handleKey(escape string, key byte) (string, bool) {
 		return "", false
 	}
 	switch key {
+	case 5:
+		v.toggleExpansion()
 	case 'n', '\t':
 		v.selectAgent(1)
 	case 'p':

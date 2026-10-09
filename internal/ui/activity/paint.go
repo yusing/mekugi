@@ -695,6 +695,14 @@ func (p *Painter) Block(block Block, width int) []string {
 			lines[i] = Dim + ansi.Strip(line) + Reset
 		}
 	}
+	if block.Expanded && block.MarkdownOutput() && len(block.Tail) > 0 {
+		indent := min(block.cell(RowVerb(block)), max(0, width-8))
+		rows := p.Markdown(strings.Join(block.Tail, "\n"), width-indent)
+		if block.TailOmitted > 0 {
+			rows = append([]string{Dim + Elision{Hidden: block.TailOmitted, Form: ElisionEarlier}.Text() + " not retained" + Undim}, rows...)
+		}
+		return append(lines, liveActivityIndent(rows, strings.Repeat(" ", indent))...)
+	}
 	if !block.Collapsed {
 		block.Tail = p.tailColors(block)
 	}
@@ -784,7 +792,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			}
 			return []string{Dim + "• " + header + Undim}
 		}
-		if block.Live {
+		if block.Live && !block.Expanded {
 			var hidden int
 			if rows, hidden = TailRows(rows, ThinkingTailRows); hidden > 0 {
 				suffix := " · " + Elision{Hidden: hidden, Form: ElisionSuffix, Hovered: block.Hovered}.String()

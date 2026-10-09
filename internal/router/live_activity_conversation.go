@@ -60,6 +60,11 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		attached    bool   // Tools branching from the reasoning directly above, with no gap.
 	}
 	items := make([]item, 0, len(v.runs))
+	// A question keeps its own rows without preventing operation groups on
+	// either side from folding out of view.
+	tools := func(entry activityPaneEntry) bool {
+		return conversationTool(entry) && entry.Kind != "question"
+	}
 	for i := 0; i < len(v.entries); {
 		if !v.visible(v.entries[i].activityPaneEntry) {
 			i++
@@ -89,7 +94,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 				last = j
 			}
 		}
-		for _, same := range []func(activityPaneEntry) bool{conversationTool, conversationMilestone, conversationJournalEvent} {
+		for _, same := range []func(activityPaneEntry) bool{tools, conversationMilestone, conversationJournalEvent} {
 			if !same(v.entries[i].activityPaneEntry) {
 				continue
 			}
@@ -109,8 +114,10 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 	// Warm runs already know the row count. Reserve the parallel row slices
 	// together instead of repeatedly copying the whole transcript as they grow.
 	rowCapacity := len(items) // Allow separators and a changing tail.
-	for _, run := range v.runs {
-		rowCapacity += len(run.lines)
+	for key, run := range v.runs {
+		if key.expansion == 0 || key.expansion == v.expansion {
+			rowCapacity += len(run.lines)
+		}
 	}
 	feed := liveActivityFeed{
 		lines:     make([]string, 0, rowCapacity),
@@ -186,10 +193,13 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			start = k
 		}
 		thread.followed = continues(k, k+1)
-		key := liveActivityRunKey{first: v.entries[it.first].Seq, last: v.entries[it.last].Seq, revision: v.runRevision(it.first, it.last+1), width: width, theme: v.painter.Theme, hover: -1, main: true, thread: thread, excerpt: v.passed[v.entries[it.first].Seq], tail: v.tailRows()}
+		key := liveActivityRunKey{first: v.entries[it.first].Seq, last: v.entries[it.last].Seq, revision: v.runRevision(it.first, it.last+1), width: width, theme: v.painter.Theme, hover: -1, main: true, thread: thread, excerpt: v.excerpt(v.passed[v.entries[it.first].Seq]), tail: v.tailRows(), expansion: v.expansion}
 		journal := v.entries[it.first].Kind == "journal_event" || v.entries[it.first].Kind == "journal_card"
 		if journal {
-			key.excerpt = v.passed[key.last]
+			key.excerpt = v.excerpt(v.passed[key.last])
+		}
+		if v.entries[it.first].Agent == "You" {
+			key.expansion, key.excerpt = 0, false
 		}
 		if it.lead >= 0 {
 			key.lead = v.entries[it.lead].Seq
@@ -265,6 +275,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			feed.heads = append(feed.heads, start)
 		}
 		feed.appendRows(run)
+		feed.spans = append(feed.spans, liveActivitySpan{key.first, head, len(feed.lines)})
 		if journal && !key.excerpt {
 			feed.passing = append(feed.passing, liveActivityPassing{key.last, len(feed.lines)})
 		} else if v.sentMessage(it.first) || !key.excerpt && run.batch {
@@ -278,7 +289,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			}
 		}
 	}
-	v.runs = used
+	v.retainRuns(used)
 	return feed
 }
 
@@ -380,10 +391,10 @@ func (v *liveActivityView) threadTask(thread conversationThread, index int, seq 
 	return false
 }
 
-// conversationEmpty reports a completion whose Activity excerpt has no answer.
+// conversationEmpty reports a default-mode completion whose Activity excerpt has no answer.
 func (v *liveActivityView) conversationEmpty(index int) bool {
 	entry, blocks := v.entries[index].activityPaneEntry, v.entries[index].blocks
-	return entry.activitySeq != 0 && entry.Kind == "final" && len(blocks) == 1 && blocks[0].Journal != nil && len(blocks[0].Journal.Groups) == 0
+	return v.expansion == 0 && entry.activitySeq != 0 && entry.Kind == "final" && len(blocks) == 1 && blocks[0].Journal != nil && len(blocks[0].Journal.Groups) == 0
 }
 
 type conversationLines struct {
@@ -452,6 +463,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		}
 		laid = summaries
 		for index, block := range laid {
+			block = v.discloseBlock(block)
 			// Thinking and reset disclosures share the existing output dialog.
 			snippet := liveActivitySnippet{run: entry.Seq, block: index}
 			toggle := v.clickTarget(&block, snippet, width)
@@ -490,20 +502,24 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		var toggles []liveActivitySnippet // Aligned with every rendered row, including grouped edits.
 		// Its connectors sit beneath the reasoning bullet. Keep invocation identities
 		// even when adjacent edits share a heading or edit the same path.
-		laid = activityui.AlignVerbs(activityui.GroupOperations(activityui.MergeLiveActivityReads(group)))
+		if v.expansion == 0 {
+			group = activityui.MergeLiveActivityReads(group)
+		}
+		laid = activityui.AlignVerbs(activityui.GroupOperations(group))
 		// A batch that has scrolled out of view keeps one row, which opens
 		// its operations in the output dialog. Failed exits stay visible in the
 		// summary; unconfirmed host items without an exit keep their rows.
 		// Restored groups start folded instead of losing their old viewport state.
-		if collapsed, ok := activityui.CollapseBatch(laid); ok && !unconfirmed && (restored || v.passed[entry.Seq]) {
+		if collapsed, ok := activityui.CollapseBatch(laid); ok && !unconfirmed && v.excerpt(restored || v.passed[entry.Seq]) {
 			laid = []activityui.Block{collapsed}
 		} else {
 			batch = ok && !unconfirmed
 		}
 		for index, block := range laid {
+			block = v.discloseBlock(block)
 			snippet := liveActivitySnippet{run: entry.Seq, block: index}
 			toggle := v.clickTarget(&block, snippet, width-2)
-			if block.Kind == "op" && block.Code != "" {
+			if block.Kind == "op" && block.Code != "" && v.expansion != 2 {
 				// The output dialog shows the whole source.
 				block.SourceRows = conversationSourceRows
 			}
@@ -726,28 +742,28 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 	body := width - 2
 	switch {
 	case block.Kind == "journal":
-		rows := v.paintBlock(len(out.lines), 0, func() []string { return p.Markdown(journalActivityBody(block.Body, true), body) })
+		rows := v.paintBlock(len(out.lines), 0, func() []string { return p.Markdown(journalActivityBody(block.Body, v.expansion == 0), body) })
 		out.hang(gutter, gutter, rows)
 		if block.Body != journalActivityBody(block.Body, true) {
 			for i := len(out.lines) - len(rows); i < len(out.lines); i++ {
 				out.snippets[i] = liveActivitySnippet{run: entry.Seq, block: 0}
 			}
 		}
-	case !v.conversation && block.Kind == "final":
+	case !v.conversation && block.Kind == "final" && v.expansion == 0:
 		block.Flash = v.flashQuestion == entry.Seq && v.now().Before(v.flashUntil)
 		out.hang(gutter, gutter, v.paintBlock(len(out.lines), 5, func() []string { return p.Event(block, body) }))
 	case block.Kind == "start" || block.Kind == "message":
 		switch {
 		case entry.activitySeq != 0 && reply:
 			v.replyExcerpt(out, entry, block.Body, gutter, tail, body, limit)
-		case v.passed[entry.Seq] && v.sentExcerpt(out, entry, block, gutter, tail, body, limit):
+		case v.excerpt(v.passed[entry.Seq]) && v.sentExcerpt(out, entry, block, gutter, tail, body, limit):
 		case thread.followed:
 			v.collapsedItem(out, entry, p.Markdown(block.Body, body), gutter, body)
 		default:
 			out.hang(gutter, gutter, p.Markdown(block.Body, body))
 		}
 	case block.Kind == "final" && block.Journal != nil:
-		if entry.activitySeq == 0 {
+		if entry.activitySeq == 0 || v.expansion != 0 {
 			for _, group := range block.Journal.Groups {
 				if group.Question == "" && group.Target != 0 && !v.threadTask(thread, index, group.Target) {
 					v.journalReplyContext(out, group, index, gutter, body)
@@ -755,8 +771,8 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 			}
 			v.journalItem(out, block.Journal, index, width, gutter, gutter)
 		} else {
-			// A completion is one excerpt, even when its journal contains
-			// several answers. Activity retains the complete result.
+			// Default keeps one excerpt, even when its journal contains several
+			// answers. Expanded modes and Activity retain the complete result.
 			for _, group := range slices.Backward(block.Journal.Groups) {
 				if len(group.Answers) == 0 {
 					continue
@@ -890,6 +906,10 @@ func (v *liveActivityView) sentExcerpt(out *conversationLines, entry activityPan
 }
 
 func (v *liveActivityView) linkedExcerpt(out *conversationLines, entry activityPaneEntry, noun string, rows []string, gutter, tail string, width, limit int) {
+	if v.expansion != 0 {
+		out.hang(gutter, gutter, rows)
+		return
+	}
 	rows, hidden := liveActivityExcerpt(rows, width, limit)
 	out.hang(gutter, gutter, rows)
 	link := v.painter.Theme.Accent() + "↩ Open " + noun + activityui.Reset
@@ -902,6 +922,10 @@ func (v *liveActivityView) linkedExcerpt(out *conversationLines, entry activityP
 // collapsedItem shortens an item its thread has moved past. Assignments have
 // no Activity entry to open, so the dialog resolves their own source entry.
 func (v *liveActivityView) collapsedItem(out *conversationLines, entry activityPaneEntry, rows []string, gutter string, width int) {
+	if v.expansion != 0 {
+		out.hang(gutter, gutter, rows)
+		return
+	}
 	snippet := liveActivitySnippet{run: entry.Seq, block: 0}
 	_, hidden := liveActivityExcerpt(rows, width, conversationEarlierRows)
 	if hidden > 0 {

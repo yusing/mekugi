@@ -34,11 +34,27 @@ func (v *liveActivityView) activityEventItem(index, width, clip int, flash uint6
 			}
 		}
 	}
-	if len(run.lines) > clip+1 {
-		snippet := liveActivitySnippet{run: entry.Seq, block: 0}
+	if clip > 0 && len(run.lines) > clip+1 {
 		run.blocks = entry.blocks
+	}
+	v.clipEvent(&run, entry.activityPaneEntry, clip)
+	// Retain the source identity for dialog refresh while text streams or settles.
+	run.blocks = slices.Clone(run.blocks)
+	for i := range run.blocks {
+		run.blocks[i].Source = entry.Seq
+	}
+	return run
+}
+
+func (v *liveActivityView) clipEvent(run *liveActivityRun, entry activityPaneEntry, clip int) {
+	if clip > 0 && len(run.lines) > clip+1 {
+		snippet := liveActivitySnippet{run: entry.Seq, block: 0}
+		gutter := activityui.Gutter(entry.Agent, v.painter.Theme) + "│" + activityui.Reset + " "
+		if v.conversation && entry.Agent == "Main" && entry.Kind == "text" {
+			gutter = mainGutter(&v.painter)
+		}
 		// Keep the heading outside the body budget. The dialog retains the full entry.
-		run.lines = append(run.lines[:clip:clip], activityui.Gutter(entry.Agent, v.painter.Theme)+"│"+activityui.Reset+" "+
+		run.lines = append(run.lines[:clip:clip], gutter+
 			activityui.Elision{Hidden: len(run.lines) - clip, Hovered: v.snippet == snippet}.String())
 		run.snippets = make([]liveActivitySnippet, len(run.lines))
 		run.questions = run.questions[:len(run.lines)]
@@ -46,10 +62,4 @@ func (v *liveActivityView) activityEventItem(index, width, clip int, flash uint6
 			run.snippets[i] = snippet
 		}
 	}
-	// Retain the source identity for dialog refresh while text streams or settles.
-	run.blocks = slices.Clone(run.blocks)
-	for i := range run.blocks {
-		run.blocks[i].Source = entry.Seq
-	}
-	return run
 }

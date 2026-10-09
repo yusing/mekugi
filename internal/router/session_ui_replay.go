@@ -244,6 +244,9 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 		}
 		return false, nil
 	}
+	if key == 5 {
+		return false, shell.send("\x05")
+	}
 	if shell.focus == 4 && shell.journalOpen {
 		navigation := replayNavigation[key]
 		switch key {

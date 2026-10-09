@@ -14,6 +14,10 @@ fixed; manual expansions are not hidden by automatic ancestor collapse. A disclo
 marker shows each subtree, with its descendant count when collapsed. The title carries
 the pane keys: Space expands or collapses the selected subtree and d opens the
 slice's full Markdown details in one segmented dialog.
+`Ctrl-E` uses the same default, expanded events, expanded all cycle as the transcript.
+Both expanded choices open all Journal subtrees; default restores automatic fitting.
+The choice applies to new subtrees too; individual disclosure controls
+remain available. These choices are transient presentation state.
 Each top-level slice includes all its descendants, even collapsed rows. Opening an
 item uses that same dialog, scrolls to its segment and briefly flashes it; opening
 the slice itself starts at the top without a flash. The status bar lists only the
