@@ -67,6 +67,17 @@ func (s *Store) BeginLaunch(ctx context.Context, workspace, main, name, message 
 }
 
 func validateLaunchCheckout(ctx context.Context, b Batch) error {
+	if err := validateCheckoutIdentity(ctx, b); err != nil {
+		return err
+	}
+	base, err := git(ctx, b.Cwd, "rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil || base != b.Base {
+		return errors.New("prepared checkout baseline changed")
+	}
+	return nil
+}
+
+func validateCheckoutIdentity(ctx context.Context, b Batch) error {
 	checkout, err := filepath.EvalSymlinks(b.Checkout)
 	if err != nil {
 		return err
@@ -97,10 +108,6 @@ func validateLaunchCheckout(ctx context.Context, b Batch) error {
 	branch, err := git(ctx, cwd, "symbolic-ref", "--quiet", "HEAD")
 	if err != nil || branch != "refs/heads/"+b.Branch {
 		return errors.New("prepared checkout branch changed")
-	}
-	base, err := git(ctx, cwd, "rev-parse", "--verify", "HEAD^{commit}")
-	if err != nil || base != b.Base {
-		return errors.New("prepared checkout baseline changed")
 	}
 	return nil
 }

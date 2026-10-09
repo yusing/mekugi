@@ -25,14 +25,15 @@ type Store struct {
 }
 
 type Batch struct {
-	TaskName string  `json:"task_name"`
-	Branch   string  `json:"branch"`
-	Checkout string  `json:"checkout"`
-	Cwd      string  `json:"cwd"`
-	Base     string  `json:"base"`
-	State    string  `json:"state"`
-	Error    string  `json:"error,omitempty"`
-	Launch   *Launch `json:"launch,omitempty"`
+	TaskName    string       `json:"task_name"`
+	Branch      string       `json:"branch"`
+	Checkout    string       `json:"checkout"`
+	Cwd         string       `json:"cwd"`
+	Base        string       `json:"base"`
+	State       string       `json:"state"`
+	Error       string       `json:"error,omitempty"`
+	Launch      *Launch      `json:"launch,omitempty"`
+	Integration *Integration `json:"integration,omitempty"`
 }
 
 type manifest struct {

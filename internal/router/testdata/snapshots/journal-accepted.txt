@@ -1,0 +1,15 @@
+ ● 1 accepted
+   ● /1 Integrate batch
+
+
+
+
+
+Active turn progress
+● /1 Integrate batch                       1/1 done · Ctrl-B 5 journal
+
+Work report
+╭─ ✓ journal · 1 accepted ──────────────────────────────────── 22:31 ╮
+│ This turn                                                          │
+│ ● /1 Integrate batch                                               │
+╰────────────────────────────────────────────────────────────────────╯

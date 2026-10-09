@@ -366,11 +366,11 @@ func (s *journalStore) observeLifecycle(ctx context.Context, store *mekugiReplay
 // unrelated writes.
 func (s *journalStore) validateMountedCompletion(store *mekugiReplayStore, j threadJournal, before []journalItem) error {
 	completing := func(item journalItem) bool {
-		if item.Kind != "task" || item.State != "done" {
+		if item.Kind != "task" || !journalStateCompleted(item.State) {
 			return false
 		}
 		previous := slices.IndexFunc(before, func(old journalItem) bool { return old.Path == item.Path })
-		return previous < 0 || before[previous].State != "done" || before[previous].Agent != item.Agent
+		return previous < 0 || before[previous].State != item.State || before[previous].Agent != item.Agent
 	}
 	if !slices.ContainsFunc(j.Items, completing) || !slices.ContainsFunc(j.Items, func(item journalItem) bool { return item.Agent != "" }) {
 		return nil
@@ -403,7 +403,7 @@ func (s *journalStore) validateMountedCompletion(store *mekugiReplayStore, j thr
 			// roots gate parent integration on observed host completion. Keep
 			// checking nested mounts even when their ancestor host has finished.
 			mounted := strings.HasPrefix(child.Path[strings.LastIndex(child.Path, "/")+1:], "@")
-			if child.Kind == "task" && mounted && strings.HasPrefix(child.Path, parent.Path+"/") && child.State != "done" && child.State != "dropped" {
+			if child.Kind == "task" && mounted && strings.HasPrefix(child.Path, parent.Path+"/") && !journalStateClosed(child.State) {
 				// Dropping an assignment accepts its failed or interrupted host
 				// outcome. Live and unresolved mounts still gate completion.
 				abandoned := false
