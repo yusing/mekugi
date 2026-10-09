@@ -1,4 +1,4 @@
-5 files +5 -5 | all (c) · files focus · CONNECTING · 2/5
+5 files +5 -5 | all (c) · files focus · e editor · CONNECTING · 2/5
 ▎Files  5/5 · tree · all      │  2/5  src/1.go +1 -1 ──────────────────────────────────────────────────────────────────
  / filter paths               │  ┄ amber2 main·apply_patch
 ▼ src (5)                     │  1│-old                                                                                

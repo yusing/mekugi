@@ -1,4 +1,4 @@
-2 files +2 -2 | subslice /1/2 (c) · files focus · CONNECTING · 1/2
+2 files +2 -2 | subslice /1/2 (c) · files focus · e editor · CONNECTING · 1/2
 ▎Files  2/2 · tree · subslic… │  1/2  src/1.go +1 -1 ──────────────────────────────────────────────────────────────────
  / filter paths               │  ┄ amber2 main·apply_patch
 ▼ src (2)                     │  1│-old                                                                                

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi/internal/livediff"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"golang.org/x/term"
 )
@@ -50,6 +51,14 @@ func TestAppServerComposerEditorDraft(t *testing.T) {
 }
 
 func TestAppServerComposerEditorTerminalHandoff(t *testing.T) {
+	testAppServerEditorTerminalHandoff(t, false)
+}
+
+func TestAppServerFileEditorTerminalHandoff(t *testing.T) {
+	testAppServerEditorTerminalHandoff(t, true)
+}
+
+func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	master, slave, err := pty.Open()
@@ -74,6 +83,23 @@ func TestAppServerComposerEditorTerminalHandoff(t *testing.T) {
 	u.draft = "original"
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
+	path := filepath.Join(dir, "selected ' $(touch injected).txt")
+	if selectedFile {
+		if err := os.WriteFile(path, []byte("original file"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		c := u.shell.diff
+		c.workspace = dir
+		c.files = []livediff.File{{Path: path, Chunks: []livediff.Chunk{
+			liveDiffCapture("selected", path, 1, "before\n", "original file\n", livediff.Origin{}),
+		}}}
+		c.view.Files = c.files
+		c.view.RefreshVisible()
+		c.navigation.Rebuild(c.files, dir)
+		c.navigation.Cursor = navigationEntryIndex(c.navigation.Entries, "f:"+path)
+		c.navigation.Focused = true
+		u.shell.focus, u.shell.diffOpen = 1, true
+	}
 	done := make(chan error, 1)
 	go func() {
 		err := terminalui.WithRawPane(ctx, slave, slave, "\x1b[?1049hENTER!", "\x1b[?1049lLEAVE!", func(keys <-chan byte) error {
@@ -82,14 +108,14 @@ func TestAppServerComposerEditorTerminalHandoff(t *testing.T) {
 			}
 			select {
 			case key := <-keys:
-				_, err := u.key(key)
-				return err
+				return u.shell.key(key)
 			case <-ctx.Done():
 				return ctx.Err()
 			}
 		})
-		if !errors.Is(err, errOpenComposerEditor) {
-			done <- fmt.Errorf("editor shortcut: %w", err)
+		var fileEditor *openFileEditor
+		if selectedFile && !errors.As(err, &fileEditor) || !selectedFile && !errors.Is(err, errOpenComposerEditor) {
+			done <- fmt.Errorf("editor shortcut: %v", err)
 			return
 		}
 		state, err := term.GetState(int(slave.Fd()))
@@ -97,12 +123,16 @@ func TestAppServerComposerEditorTerminalHandoff(t *testing.T) {
 			done <- fmt.Errorf("terminal not restored before editor: %v", err)
 			return
 		}
-		u.openComposerEditor(slave, slave)
+		if selectedFile {
+			u.openSelectedFileEditor(fileEditor.path, slave, slave)
+		} else {
+			u.openComposerEditor(slave, slave)
+		}
 		if u.noticeAlert {
 			done <- errors.New(u.notice)
 			return
 		}
-		done <- terminalui.WithRawPane(ctx, slave, slave, "\x1b[?1049hRESUME!", "\x1b[?1049lDONE!", func(keys <-chan byte) error {
+		done <- terminalui.WithRawPane(ctx, slave, slave, "\x1b[?1049h", "\x1b[?1049lDONE!", func(keys <-chan byte) error {
 			var frame bytes.Buffer
 			if err := u.paint(io.MultiWriter(slave, &frame), 120, 30); err != nil {
 				return err
@@ -110,10 +140,12 @@ func TestAppServerComposerEditorTerminalHandoff(t *testing.T) {
 			if rows := strings.Count(frame.String(), "\x1b[2K"); rows != 30 {
 				return fmt.Errorf("editor return repainted %d of 30 rows", rows)
 			}
+			if _, err := fmt.Fprint(slave, "RESUME!"); err != nil {
+				return err
+			}
 			select {
 			case key := <-keys:
-				_, err := u.key(key)
-				return err
+				return u.shell.key(key)
 			case <-ctx.Done():
 				return ctx.Err()
 			}
@@ -126,18 +158,33 @@ func TestAppServerComposerEditorTerminalHandoff(t *testing.T) {
 	reader := bufio.NewReader(master)
 	expect := func(marker string) {
 		t.Helper()
-		for {
-			s, err := reader.ReadString('!')
+		read := make(chan error, 1)
+		go func() {
+			for {
+				s, err := reader.ReadString('!')
+				if err != nil || strings.Contains(s, marker) {
+					read <- err
+					return
+				}
+			}
+		}()
+		select {
+		case err := <-read:
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(s, marker) {
-				return
-			}
+		case err := <-done:
+			t.Fatalf("pane exited before %s: %v", marker, err)
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
 		}
 	}
 	expect("ENTER!")
-	if _, err := master.Write([]byte{7}); err != nil {
+	shortcut := byte(7)
+	if selectedFile {
+		shortcut = 'e'
+	}
+	if _, err := master.Write([]byte{shortcut}); err != nil {
 		t.Fatal(err)
 	}
 	expect("EDITOR!")
@@ -156,7 +203,12 @@ func TestAppServerComposerEditorTerminalHandoff(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	if u.draft != "edited from terminalx" {
+	if selectedFile {
+		data, err := os.ReadFile(path)
+		if err != nil || string(data) != "edited from terminal" || u.draft != "original" || u.shell.focus != 1 || !u.shell.diff.navigation.Focused {
+			t.Fatalf("file=%q draft=%q focus=%d error=%v", data, u.draft, u.shell.focus, err)
+		}
+	} else if u.draft != "edited from terminalx" {
 		t.Fatalf("draft=%q", u.draft)
 	}
 	after, err := term.GetState(int(slave.Fd()))

@@ -430,10 +430,14 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 					u.writeTerminalTitle(u.now())
 				}
 			})
-			if !errors.Is(err, errOpenComposerEditor) {
+			var fileEditor *openFileEditor
+			if errors.Is(err, errOpenComposerEditor) {
+				u.openComposerEditor(stdin, stdout)
+			} else if errors.As(err, &fileEditor) {
+				u.openSelectedFileEditor(fileEditor.path, stdin, stdout)
+			} else {
 				break
 			}
-			u.openComposerEditor(stdin, stdout)
 			u.dirty = true
 		}
 		if saveErr := u.panes.save(u.shell, u.now(), true); saveErr != nil {

@@ -34,22 +34,7 @@ func (u *appServerUI) openComposerEditor(stdin, stdout *os.File) {
 		u.setNotice("Open editor: "+err.Error(), true)
 		return
 	}
-	editor := strings.TrimSpace(os.Getenv("EDITOR"))
-	if editor == "" {
-		editor = strings.TrimSpace(os.Getenv("VISUAL"))
-	}
-	if editor == "" {
-		editor = "vi"
-	}
-	ctx := u.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	// EDITOR is a user-owned shell command; the draft path is a positional
-	// argument, never interpolated into that command.
-	cmd := exec.CommandContext(ctx, "sh", "-c", "exec "+editor+` "$1"`, "mekugi-editor", path)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stdout
-	err = cmd.Run()
+	err = u.runEditor(path, stdin, stdout)
 	if err == nil {
 		var data []byte
 		data, err = os.ReadFile(path)
@@ -63,6 +48,25 @@ func (u *appServerUI) openComposerEditor(stdin, stdout *os.File) {
 	}
 	_ = os.Remove(path)
 	u.setNotice("Draft updated from editor", false)
+}
+
+func (u *appServerUI) runEditor(path string, stdin, stdout *os.File) error {
+	editor := strings.TrimSpace(os.Getenv("EDITOR"))
+	if editor == "" {
+		editor = strings.TrimSpace(os.Getenv("VISUAL"))
+	}
+	if editor == "" {
+		editor = "vi"
+	}
+	ctx := u.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// EDITOR is a user-owned shell command; the file path is a positional
+	// argument, never interpolated into that command.
+	cmd := exec.CommandContext(ctx, "sh", "-c", "exec "+editor+` "$1"`, "mekugi-editor", path)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stdout
+	return cmd.Run()
 }
 
 func (u *appServerUI) applyEditorDraft(text string) error {

@@ -1,4 +1,4 @@
-3 files +3 -3 | slice /1 (c) · files focus · CONNECTING · 2/3
+3 files +3 -3 | slice /1 (c) · files focus · e editor · CONNECTING · 2/3
 ▎Files  3/3 · tree · slice /1
  / filter paths
 ▼ src (3)

@@ -424,6 +424,14 @@ func (u *terminalUI) send(s string) error {
 	}
 	for _, key := range []byte(s) {
 		if u.focus == 1 {
+			if key == 'e' && u.main != nil && u.diff.diffMode && !u.diff.help && u.diff.escape == "" {
+				n := &u.diff.navigation
+				if n.Focused && !n.Filtering && !n.ChangesTab && n.Cursor >= 0 && n.Cursor < len(n.Entries) {
+					if file := n.Entries[n.Cursor].File; file >= 0 && file < len(u.diff.files) {
+						return &openFileEditor{path: u.diff.files[file].Path}
+					}
+				}
+			}
 			if u.diff.handleKey(key) {
 				u.focus = 0
 			}

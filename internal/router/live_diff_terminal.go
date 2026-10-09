@@ -891,6 +891,9 @@ func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 	}
 	if c.navigation.Focused {
 		right = append(right, "files focus")
+		if !c.navigation.ChangesTab && !c.navigation.Filtering {
+			right = append(right, "e editor")
+		}
 	} else {
 		right = append(right, "diff focus")
 	}

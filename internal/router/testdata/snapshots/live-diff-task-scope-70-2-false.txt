@@ -1,4 +1,4 @@
-5 files +5 -5 | all (c) · files focus · CONNECTING · 2/5
+5 files +5 -5 | all (c) · files focus · e editor · CONNECTING · 2/5
 ▎Files  5/5 · tree · all
  / filter paths
 ▼ src (5)

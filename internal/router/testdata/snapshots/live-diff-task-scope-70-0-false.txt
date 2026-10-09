@@ -1,4 +1,4 @@
-2 files +2 -2 | subslice /1/2 (c) · files focus · CONNECTING · 1/2
+2 files +2 -2 | subslice /1/2 (c) · files focus · e editor · CONNECTING · 1/2
 ▎Files  2/2 · tree · subslice /1/2
  / filter paths
 ▼ src (2)

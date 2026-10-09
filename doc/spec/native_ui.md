@@ -377,7 +377,12 @@ narrow; `s` shows and focuses that list, enlarging it without covering the diff,
 and `s` again hides it. The navigator and diff content have separate keyboard
 focus: arrows act on the focused region, clicking a list row keeps list focus,
 and clicking diff content focuses the diff. Enter opens a selected file and
-focuses the diff; Esc returns from that opened diff to the list. Incoming saved
+focuses the diff; Esc returns from that opened diff to the list. In the focused
+Files list, `e` opens the highlighted file's current on-disk contents in `$EDITOR`
+(then `$VISUAL`, then `vi`), with editor arguments supported. Folder rows do
+nothing, and `e` remains text while filtering. The terminal returns to the same
+pane selection after the editor exits; missing files and editor failures show a
+notice. Incoming saved
 edits refresh content without moving the chosen file or scroll position. Saved
 Diff has no follow mode; streaming-preview following is unchanged. A roster pick that changes Activity's agent filter shows
 Activity in place of the saved diff.
