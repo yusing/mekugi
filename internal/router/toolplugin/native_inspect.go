@@ -91,6 +91,25 @@ func inspectNativePath(ctx context.Context, path string) (inspectionData, error)
 	if err != nil {
 		return data, err
 	}
+	return inspectSource(ctx, data, bytes, format)
+}
+
+// InspectSource uses the same structural renderer as inspect_file on a caller's
+// already-opened snapshot, without reopening a path or executing a frontend.
+func InspectSource(ctx context.Context, path string, bytes []byte) (string, error) {
+	data := inspectionData{Path: filepath.ToSlash(path), Size: int64(len(bytes)), Complete: true}
+	format, ok := sourcekind.Classify(path)
+	if !ok || !format.Outline {
+		return "(no outline)\n", nil
+	}
+	data, err := inspectSource(ctx, data, bytes, format)
+	if err != nil {
+		return "", err
+	}
+	return strings.Join(compactNativeOutline(data), ""), nil
+}
+
+func inspectSource(ctx context.Context, data inspectionData, bytes []byte, format sourcekind.Format) (inspectionData, error) {
 	if !utf8.Valid(bytes) {
 		return data, &inspectFailure{"not_utf8", "supported file is not valid UTF-8"}
 	}
