@@ -239,6 +239,9 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		method, s.turn = "turn/steer", u.turn
 		params["expectedTurnId"] = u.turn
 	} else {
+		if tier := u.selectedServiceTier(); tier != "" {
+			params["serviceTier"] = tier
+		}
 		if len(questionReplies(s.text)) == 0 {
 			s.seq = u.view.lastSeq + 1
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: s.seq, Agent: "You", Kind: "text", Text: s.text, Observed: time.Now(),

@@ -22,6 +22,7 @@ type journalResetDriver struct {
 	phase, requestID                      string
 	deadline                              time.Time
 	delay                                 time.Duration
+	serviceTier                           func() string // Current confirmed choice from the native settings owner.
 	compactTurn                           string
 	compactAck, compactDone, compactEnded bool
 	startPending                          bool
@@ -243,10 +244,16 @@ func (d *journalResetDriver) continuePlan(compacted bool) error {
 	}
 	d.startPending = true
 	d.continuationTurn, d.lastStartedTurn, d.pendingCompleted = "", "", ""
-	return d.send("starting", "turn/start", map[string]any{
+	params := map[string]any{
 		"threadId": d.thread, "clientUserMessageId": journalContinuationPrefix + d.intent.ID,
 		"input": []any{map[string]any{"type": "text", "text": journalContinuationText(d.intent)}},
-	})
+	}
+	if d.serviceTier != nil {
+		if tier := d.serviceTier(); tier != "" {
+			params["serviceTier"] = tier
+		}
+	}
+	return d.send("starting", "turn/start", params)
 }
 
 func (d *journalResetDriver) maybeContinue() error {

@@ -391,6 +391,11 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 	}
 }
 
+func (u *appServerUI) selectedServiceTier() string {
+	tier, _ := u.serviceTiers.choice(u.model, u.thread)
+	return tier
+}
+
 func (u *appServerUI) chooseServiceTier() {
 	if u.serviceTiers == nil {
 		u.serviceTiers = new(serviceTierSettings)

@@ -16,6 +16,7 @@ type appServerTurnRequest struct {
 	ID     int    `json:"id"`
 	Method string `json:"method"`
 	Params struct {
+		ServiceTier         string `json:"serviceTier"`
 		ExpectedTurnID      string `json:"expectedTurnId"`
 		ClientUserMessageID string `json:"clientUserMessageId"`
 		Input               []struct {

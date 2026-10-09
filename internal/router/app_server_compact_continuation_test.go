@@ -22,6 +22,9 @@ func TestAppServerCompactQueuedContinuesOnceAfterAckAndTurn(t *testing.T) {
 	for _, beforeAck := range []bool{false, true} {
 		t.Run(fmt.Sprint("turnBeforeAck=", beforeAck), func(t *testing.T) {
 			u, w := newAppServerTestUI()
+			u.model = "gpt-6.1-sol"
+			u.serviceTiers = &serviceTierSettings{configured: map[string]string{u.model: "priority"}}
+			appServerTestKeys(t, u, "/tier default\r")
 			r := queueBusyCompact(t, u, w)
 			ack := fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID)
 			if !beforeAck {
@@ -40,6 +43,9 @@ func TestAppServerCompactQueuedContinuesOnceAfterAckAndTurn(t *testing.T) {
 				appServerTestMessage(t, u, ack)
 			}
 			start := appServerOneRequest(t, w, "turn/start", compactContinuationText)
+			if start.Params.ServiceTier != "default" {
+				t.Fatalf("manual reset lost selected default tier: %+v", start)
+			}
 			appServerTestTurnEnd(t, u, "compact-turn", "completed")
 			appServerTestMessage(t, u, ack)
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"continued"}}}`, start.ID))

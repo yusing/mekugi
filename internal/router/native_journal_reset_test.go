@@ -95,6 +95,45 @@ func TestNativeJournalResetCountdownEscape(t *testing.T) {
 	}
 }
 
+func TestNativeJournalResetPreservesSelectedServiceTier(t *testing.T) {
+	for _, tier := range []string{"priority", "default", ""} {
+		t.Run("selection="+tier, func(t *testing.T) {
+			d, _ := resetDriverFixture(t, "auto")
+			u := newAppServerSessionTestUI(t, d.workspace)
+			u.proxy, u.thread, u.model = d.proxy, d.thread, "gpt-6.1-sol"
+			u.serviceTiers = &serviceTierSettings{configured: map[string]string{u.model: "fast"}}
+			wire := u.client.Input.(*appServerTestInput)
+			if tier != "" {
+				appServerTestKeys(t, u, "/tier "+tier+"\r")
+				if tier == "priority" {
+					assertAppServerSettingsRequest(t, wire, "thread/settings/update", map[string]any{"threadId": d.thread, "serviceTier": tier})
+					appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": d.thread, "threadSettings": map[string]any{"model": u.model, "serviceTier": tier}})
+				}
+			}
+			u.journal = d.proxy.journals.attachNative(d.workspace, d.thread)
+			t.Cleanup(func() { d.proxy.journals.detachNative(u.journal) })
+			if err := d.proxy.journals.restoreNative(t.Context(), d.proxy.replayStore, u.journal); err != nil {
+				t.Fatal(err)
+			}
+			u.ensureJournalReset()
+			d = u.reset
+			if err := d.tick(d.deadline); err != nil {
+				t.Fatal(err)
+			}
+			appServerOneRequest(t, wire, "thread/compact/start", "")
+			resetDriverEvent(t, d, "turn/started", `{"threadId":"`+d.thread+`","turn":{"id":"reset"}}`)
+			deliverRecoveryCompaction(t, d.proxy, d.workspace, d.thread, "reset")
+			resetDriverEvent(t, d, "item/completed", `{"threadId":"`+d.thread+`","turnId":"reset","item":{"type":"contextCompaction"}}`)
+			resetDriverEvent(t, d, "turn/completed", `{"threadId":"`+d.thread+`","turn":{"id":"reset","status":"completed"}}`)
+			resetDriverReply(t, d, `{}`)
+			start := appServerOneRequest(t, wire, "turn/start", journalContinuationText(d.intent))
+			if start.Params.ServiceTier != tier {
+				t.Fatalf("continuation tier=%q, want %q", start.Params.ServiceTier, tier)
+			}
+		})
+	}
+}
+
 func TestNativeJournalResetRequiresSuccessfulHostCompletion(t *testing.T) {
 	for _, status := range []string{"failed", "interrupted", "completed"} {
 		t.Run(status, func(t *testing.T) {

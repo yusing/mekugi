@@ -18,7 +18,7 @@ func (u *appServerUI) ensureJournalReset() {
 	if !ready {
 		return
 	}
-	u.reset = &journalResetDriver{ctx: u.ctx, proxy: u.proxy, client: u.client, workspace: u.journal.workspace, thread: u.thread, delay: 3 * time.Second}
+	u.reset = &journalResetDriver{ctx: u.ctx, proxy: u.proxy, client: u.client, workspace: u.journal.workspace, thread: u.thread, delay: 3 * time.Second, serviceTier: u.selectedServiceTier}
 	if err := u.reset.restore(); err != nil {
 		u.setNotice("Slice reset recovery: "+err.Error(), true)
 	}
