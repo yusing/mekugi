@@ -20,6 +20,7 @@ type Block struct {
 	Duration           time.Duration // Host or measured segment duration; zero means unavailable.
 	NotificationTiming bool          // Timestamps are UI notification observations, not host execution boundaries; Duration is host elapsed.
 	JournalTransport   bool          // Verified journal read/list; adjacent settled pages share a row and sum their durations.
+	Failed             bool          // Host failure without a reported numeric exit, such as a native MCP error.
 	Questions          []Question
 	Source             uint64   // Activity entry identity for exact cross-pane navigation.
 	Section            int      // Reasoning section ordinal within that entry, retained by dialogs.
@@ -97,7 +98,7 @@ func (b Block) Collapsible() bool {
 		return !b.Live
 	case "op", "reads":
 		lines := len(b.Tail) + b.TailOmitted
-		return !b.Running && !b.Skipped && b.ExitCode == 0 && (lines > 1 || b.JournalTransport && lines > 0)
+		return !b.Running && !b.Skipped && !b.Failed && b.ExitCode == 0 && (lines > 1 || b.JournalTransport && lines > 0)
 	}
 	return false
 }
@@ -554,7 +555,7 @@ func MergeLiveActivityReads(blocks []Block) []Block {
 // mergesReads reports whether next joins the read row last.
 func mergesReads(last, next Block) bool {
 	joins := func(b Block) bool {
-		return b.Kind == "reads" && !b.Running && !b.Skipped && b.Approval == "" && (b.Results == nil || b.JournalTransport) && b.ExitCode == 0 &&
+		return b.Kind == "reads" && !b.Running && !b.Skipped && !b.Failed && b.Approval == "" && (b.Results == nil || b.JournalTransport) && b.ExitCode == 0 &&
 			(b.JournalTransport || b.Started.IsZero() && b.Duration == 0) &&
 			(len(b.Tail) == 0 && b.TailOmitted == 0 || b.readContent())
 	}

@@ -219,8 +219,11 @@ updates, focus and resizing. Journal and utility adapters use the shared owners.
 Command-segment observation does not rewrite native results.
 
 Companion instructions follow the [native guidance contract](guide.md#req-guide-003--claude-companion-guidance).
-Journal tools require authenticated native caller receipts. Large tree reads
-retain an immutable JSON snapshot through the shared output store before exposing
+Journal tools require authenticated native caller receipts. Tree reads use the
+shared typed read rows and confirmed entry counts, including empty trees.
+Running or failed reads stay separate; grouped reads keep each original output
+as a dialog page. Reads without a matching caller receipt retain their native tool row.
+Large tree reads retain an immutable JSON snapshot through the shared output store before exposing
 `mread` references. Immutable UTF-8-safe chunks keep both MCP responses and
 presentation frames bounded, using the managed Next continuation chain and existing `mread`,
 not a separate MCP reader. Recovery never repeats journal mutations or native tools.

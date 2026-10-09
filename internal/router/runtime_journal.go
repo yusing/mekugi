@@ -236,7 +236,15 @@ func (o *runtimeJournalOwner) readResult(ctx context.Context, nodes []journalNod
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"incomplete": true, "bytes": len(data), "format": "JSON object with nodes; concatenate stdout in continuation order", "next_call": "mread " + next}, nil
+	return map[string]any{"incomplete": true, "count": journalNodeCount(nodes), "bytes": len(data), "format": "JSON object with nodes; concatenate stdout in continuation order", "next_call": "mread " + next}, nil
+}
+
+func journalNodeCount(nodes []journalNode) int {
+	count := len(nodes)
+	for _, node := range nodes {
+		count += journalNodeCount(node.Children)
+	}
+	return count
 }
 
 func (o *runtimeJournalOwner) sink() *nativeJournalSink {

@@ -1,0 +1,6 @@
+"\x1b[38;5;133m●\x1b[m \x1b[38;5;133;1mreader\x1b[m                                                                                    \x1b[2m12:00:00\x1b[m"
+"\x1b[38;5;133m│\x1b[m \x1b[2m• Scoped journal reader · running\x1b[m                                                                 "
+"\x1b[38;5;133m│\x1b[m \x1b[2m├ \x1b[38;5;75;22;1mRead\x1b[m \x1b[2mown journal entries at /\x1b[22;1m1 (1 child level)\x1b[22;2m (4 results) · 70ms\x1b[m                               "
+"\x1b[38;5;133m│\x1b[m \x1b[2m└ \x1b[38;5;203;22;1mRead\x1b[m \x1b[2mown journal entries at /\x1b[22;1m999\x1b[m \x1b[2m· \x1b[38;5;203;22mfailed\x1b[m                                                       "
+"\x1b[38;5;133m│\x1b[m \x1b[2m  \x1b[m     \x1b[2m┆\x1b[m journal_read: journal path not found: /999; omit p to recover paths in the selected agen…"
+"following plain row                                                                                 "

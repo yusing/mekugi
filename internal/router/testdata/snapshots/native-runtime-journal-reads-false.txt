@@ -1,0 +1,3 @@
+├ Read journal entries at /1 (1 child level) (4 results) · 70ms
+└ Read journal entries at /999 · failed
+       ┆ journal_read: journal path not found: /999; omit p to recover paths in the selected agent …

@@ -83,16 +83,22 @@ func journalReadAction(payload string) (appServerCommandAction, bool) {
 	if err != nil {
 		return appServerCommandAction{}, false
 	}
-	var request struct {
-		Op    string `json:"op"`
-		P     string `json:"p"`
-		Agent string `json:"agent"`
-		View  string `json:"view"`
-		Depth *int   `json:"depth"`
-	}
+	var request journalReadRequest
 	if json.Unmarshal([]byte(decoded), &request) != nil {
 		return appServerCommandAction{}, false
 	}
+	return request.action()
+}
+
+type journalReadRequest struct {
+	Op    string `json:"op,omitempty"`
+	P     string `json:"p,omitempty"`
+	Agent string `json:"agent,omitempty"`
+	View  string `json:"view,omitempty"`
+	Depth *int   `json:"depth,omitempty"`
+}
+
+func (request journalReadRequest) action() (appServerCommandAction, bool) {
 	target := "journal entries"
 	switch request.View {
 	case "tasks", "outline":

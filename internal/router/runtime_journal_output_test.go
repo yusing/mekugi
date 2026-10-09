@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/internal/session"
 )
 
 func TestRuntimeJournalLargeReadRetainsCompleteSnapshot(t *testing.T) {
@@ -41,13 +43,23 @@ func TestRuntimeJournalLargeReadRetainsCompleteSnapshot(t *testing.T) {
 	var result struct {
 		Incomplete bool   `json:"incomplete"`
 		Bytes      int    `json:"bytes"`
+		Count      int    `json:"count"`
 		NextCall   string `json:"next_call"`
 	}
 	if err := json.Unmarshal([]byte(body), &result); err != nil {
 		t.Fatal(err)
 	}
-	if !result.Incomplete || result.Bytes != len(want) || len(body) > 128<<10 || !strings.HasPrefix(result.NextCall, "mread ") {
+	if !result.Incomplete || result.Count != 83 || result.Bytes != len(want) || len(body) > 128<<10 || !strings.HasPrefix(result.NextCall, "mread ") {
 		t.Fatalf("unbounded or invalid response: %s", body)
+	}
+	u, _ := runtimeTestUI(t)
+	u.thread, u.session.cwd = b.Session, b.Workspace
+	u.attachRuntimeObservation(s)
+	u.runtimeEntry(session.Event{Kind: "tool", ID: "read", Role: "mcp__mekugi__journal_read", Text: `{"view":"own"}`})
+	u.runtimeEntry(session.Event{Kind: "tool_result", ID: "read", Text: body})
+	read := u.view.entries[len(u.view.entries)-1].blocks[0]
+	if !read.JournalTransport || read.Results == nil || *read.Results != 83 {
+		t.Fatal("bounded native read lost confirmed snapshot count")
 	}
 	id := strings.TrimPrefix(result.NextCall, "mread ")
 	// Use the public recovery consumer once. The rest of the check reads

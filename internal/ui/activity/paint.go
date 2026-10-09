@@ -738,6 +738,8 @@ func workdirLabel(workdir string) string {
 // no exit, such as a failed read.
 func segmentTrailer(block Block) string {
 	switch {
+	case block.JournalTransport && block.Failed:
+		return Dim + "· " + Undim + Red + "failed" + Reset
 	case block.Skipped && EditStatus(block) != "skipped":
 		return "· skipped"
 	case !block.Segment && !block.JournalTransport || block.ExitCode == 0 || block.GroupHeader != "" || block.Kind != "op" && block.Kind != "reads" || block.VCS():
@@ -817,7 +819,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		return append([]string{Green + "✓ Final answer" + Reset}, liveActivityIndent(p.Markdown(block.Body, width-2), "  ")...)
 	case "reads":
 		color := VerbColor(block.Verb)
-		if block.JournalTransport && block.ExitCode != 0 {
+		if block.JournalTransport && (block.ExitCode != 0 || block.Failed) {
 			color = Red
 		}
 		lead, count := block.lead(color, block.Verb), ResultCount(block.Results)+readLines(block)

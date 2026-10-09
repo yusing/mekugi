@@ -1,0 +1,5 @@
+● reader                                                                                    12:00:00
+│ • Scoped journal reader · running
+│ ├ Read own journal entries at /1 (1 child level) (4 results) · 70ms
+│ └ Read own journal entries at /999 · failed
+│        ┆ journal_read: journal path not found: /999; omit p to recover paths in the selected agen…

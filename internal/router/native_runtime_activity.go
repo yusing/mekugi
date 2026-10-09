@@ -29,6 +29,10 @@ func (u *appServerUI) runtimeToolEntry(v *liveActivityView, entry activityPaneEn
 	if e.Kind == "tool" {
 		entry.native.tool = e.Role
 		entry.Text, entry.native.command = runtimeToolText(e.Role, e.Text, u.session.cwd)
+		if e.Role == "mcp__mekugi__journal_read" {
+			entry.native.journalInput = e.Text
+			u.runtimeJournalReadEntry(&entry, e)
+		}
 		if !e.Historical && entry.native.commandStarted.IsZero() {
 			entry.native.commandStarted = entry.Observed
 		}
@@ -55,11 +59,15 @@ func (u *appServerUI) runtimeToolEntry(v *liveActivityView, entry activityPaneEn
 		return entry
 	}
 	entry.native.running = false
+	u.runtimeJournalReadEntry(&entry, e)
 	if entry.native.tool == "Skill" && e.Skill != "" && !e.Failed {
 		entry.Text = "Skill " + commentaryCode(e.Skill)
 	}
 	if !e.Historical {
 		entry.native.commandEnded = u.now()
+		if entry.native.operation != "" && !entry.native.commandStarted.IsZero() {
+			entry.native.duration = entry.native.commandEnded.Sub(entry.native.commandStarted)
+		}
 	}
 	if entry.native.output == nil {
 		entry.native.output = u.session.outputs.New()

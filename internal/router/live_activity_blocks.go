@@ -128,6 +128,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 			for i := range blocks {
 				blocks[i].JournalTransport = true
 				blocks[i].Results = n.journalResults
+				blocks[i].Failed = n.status == "failed"
 				blocks[i].Collapsed = (n.collapsed || blocks[i].ReadOutput()) && blocks[i].Collapsible()
 			}
 		}
@@ -247,7 +248,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		}
 		if entry.native != nil && len(blocks) > 0 {
 			blocks[len(blocks)-1].Output = entry.native.output
-			if entry.native.status == "failed" && (entry.native.output == nil || !entry.native.output.View().Exited || entry.native.output.View().Exit == 0) {
+			if entry.native.status == "failed" && entry.native.operation == "" && (entry.native.output == nil || !entry.native.output.View().Exited || entry.native.output.View().Exit == 0) {
 				last := &blocks[len(blocks)-1]
 				last.Label = strings.TrimSpace(last.Label + " · failed")
 			}
