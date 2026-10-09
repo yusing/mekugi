@@ -57,6 +57,12 @@ text compaction. The built-in fixture uses isolated fake credentials and stock
 HTTP/SSE fallback against the local listener.
 It reopens durable storage and restarts Codex, then verifies exact V2 summary
 restoration through native thread resume and fork without reference leakage.
+The built-in fixture loads an instruction-named file through real stock execution
+in both exec-cell and function-call forms. It checks fresh reset-time guidance at
+the local provider on continuation, resume and fork, including function-call
+history whose tool is absent from the current declarations. These checks verify
+installed-host routing and local payloads, not live-provider acceptance of the
+synthetic history.
 The headless fixture exercises the production JSONL adapter with both `off` and
 `slice`, proving two turns, reset-only compaction and clean host shutdown.
 

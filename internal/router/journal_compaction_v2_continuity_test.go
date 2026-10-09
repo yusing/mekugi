@@ -16,9 +16,12 @@ import (
 	"github.com/coder/websocket"
 )
 
-func deliverV2ContinuityReset(t *testing.T, proxy *mekugiProxy, workspace, thread string) (map[string]jsonv1.RawMessage, journalCompactionRecovery) {
+func deliverV2ContinuityReset(t *testing.T, proxy *mekugiProxy, workspace, thread string, history ...any) (map[string]jsonv1.RawMessage, journalCompactionRecovery) {
 	t.Helper()
 	request, headers := journalCompactionV2Request(t, workspace, thread)
+	if len(history) > 0 {
+		request.fields["input"] = mustTestJSON(t, append(history, map[string]any{"type": "compaction_trigger"}))
+	}
 	provider := &serverFakeProvider{}
 	var output bytes.Buffer
 	if err := executeRequest(t.Context(), t.Context(), request, headers, "continuity-reset", provider, &output, nil, proxy); err != nil {

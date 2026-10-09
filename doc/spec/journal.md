@@ -332,6 +332,39 @@ unreadable transcript evidence, older host records without response IDs, and
 provider-written summaries keep normal hook recovery. Failed or interrupted local
 responses cannot suppress recovery for another compaction.
 
+### Retained guidance
+
+A router-answered V2 reset also retains guidance the thread loaded before it, so
+the agent does not reload instructions the summary cannot carry. Guidance is a
+file read whose path the request's instruction text names. Instruction text is the base
+instructions, developer messages and AGENTS.md instruction messages; a name
+matches the absolute, `~/`, `$HOME/` or workspace-relative path as a whole token.
+Reads come from literal, simple top-level `cat` and `mcat` commands in
+completed `exec_command` calls and exec cells of the history the compaction
+request carries, including guidance retained by an earlier reset. Other reads
+and dynamic, piped, redirected or nested commands are not guidance. File snapshots require an instruction-named
+resolved path and a bounded regular file; process, system and device files are
+unavailable. A symlink cannot admit a different unnamed source.
+
+At reset, the router reads each source once from the selected workspace. Ranged
+or bounded reads identify the source; retained snapshots contain its whole text.
+Content reflects reset time, so a read that was truncated or batched with other
+output is complete. Skills are not snapshotted; the agent reloads them through
+stock host execution when needed. Collection starts no subprocess.
+Sources fill a 48 KiB budget and render newest first; the budget
+includes source labels and bounded omission and failure notices. The rest are
+listed by read command while space permits, with a count for further notices.
+Sources that cannot be read are listed with their cause and never stop the reset.
+Collection has one five-second deadline and stops snapshotting when no body
+budget remains. Ineligible slice resets collect no guidance.
+
+The snapshot persists with the recovery record. Later requests expand it after
+the recovery message as one completed call to the source's tool with its output,
+so the content keeps the authority of a tool result rather than becoming
+instructions or summary. The recovery message states that the next tool result
+holds retained guidance. Text-form compaction and provider compaction retain no
+guidance.
+
 ### Context-pressure reminder
 
 When the latest host-reported context use reaches at least 70% of the model context

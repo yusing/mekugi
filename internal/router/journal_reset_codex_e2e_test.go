@@ -5,6 +5,7 @@ package router
 import (
 	"bytes"
 	"context"
+	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
@@ -30,6 +31,10 @@ type journalResetCodexProvider struct {
 	continuation, recovered bool
 	thread, retainedSummary string
 	continuity              []codexTurnMetadata
+	guidanceTool            string
+	guidanceReadSent        bool
+	retainedGuidance        string
+	guidanceWithoutTool     int
 }
 
 func (p *journalResetCodexProvider) forwardExecution(ctx, _ context.Context, body []byte, headers http.Header, _ string) (*http.Response, error) {
@@ -50,7 +55,40 @@ func (p *journalResetCodexProvider) forwardExecution(ctx, _ context.Context, bod
 	if thread == "" {
 		return nil, fmt.Errorf("native turn has no thread identity")
 	}
+	if p.guidanceTool != "" && p.turns == 0 {
+		if !p.guidanceReadSent {
+			p.guidanceReadSent = true
+			item := map[string]any{"type": p.guidanceTool, "id": "guidance-read-item", "call_id": "guidance-read", "status": "completed"}
+			if p.guidanceTool == "custom_tool_call" {
+				item["name"], item["input"] = "exec", `const result = await tools.exec_command({cmd:"cat GUIDE.md"}); if (result.exit_code !== 0) throw new Error("guidance read failed"); text(result.output);`
+			} else {
+				item["name"], item["arguments"] = nativeExecCommandToolName, `{"cmd":"cat GUIDE.md"}`
+			}
+			return mchangesNestedCodexResponse(0, item), nil
+		}
+		var request struct {
+			Input []map[string]jsonv1.RawMessage `json:"input"`
+		}
+		if err := json.Unmarshal(body, &request); err != nil {
+			return nil, err
+		}
+		loaded := false
+		for _, item := range request.Input {
+			loaded = loaded || jsonString(item, "call_id") == "guidance-read" && strings.HasSuffix(jsonString(item, "type"), "_output") && strings.Contains(journalMessageText(item["output"]), "Guidance before reset.")
+		}
+		if !loaded {
+			return nil, fmt.Errorf("native host did not return the real guidance read")
+		}
+		if err := os.WriteFile(filepath.Join(p.workspace, "GUIDE.md"), []byte("Guidance at reset.\n"), 0o600); err != nil {
+			return nil, err
+		}
+	}
 	p.turns++
+	if p.guidanceTool != "" && p.turns > 1 {
+		if err := p.checkGuidance(body); err != nil {
+			return nil, err
+		}
+	}
 	switch p.turns {
 	case 1:
 		p.thread = thread
@@ -115,6 +153,79 @@ func (p *journalResetCodexProvider) forwardExecution(ctx, _ context.Context, bod
 	return routerFaultCodexSuccessResponse(), nil
 }
 
+func (p *journalResetCodexProvider) checkGuidance(body []byte) error {
+	var request struct {
+		Input []map[string]jsonv1.RawMessage `json:"input"`
+	}
+	if err := json.Unmarshal(body, &request); err != nil {
+		return err
+	}
+	wantName := "exec"
+	if p.guidanceTool == "function_call" {
+		wantName = nativeExecCommandToolName
+	}
+	calls := 0
+	for i, item := range request.Input {
+		if jsonString(item, "type") != p.guidanceTool || !strings.HasPrefix(jsonString(item, "call_id"), journalGuidanceCallID) {
+			continue
+		}
+		calls++
+		if i == 0 || i+1 >= len(request.Input) || !strings.Contains(journalMessageText(request.Input[i-1]["content"]), "Journal recovery") {
+			return fmt.Errorf("synthetic guidance call is not immediately after recovery")
+		}
+		output := request.Input[i+1]
+		text := jsonString(output, "output")
+		if p.guidanceTool == "custom_tool_call" {
+			var parts []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}
+			if err := json.Unmarshal(output["output"], &parts); err != nil || len(parts) != 1 || parts[0].Type != "input_text" {
+				return fmt.Errorf("synthetic guidance lost its tool-output text part")
+			}
+			text = parts[0].Text
+		}
+		if jsonString(item, "name") != wantName || jsonString(output, "type") != p.guidanceTool+"_output" || jsonString(output, "call_id") != jsonString(item, "call_id") || text != p.retainedGuidance {
+			return fmt.Errorf("synthetic guidance lost call identity or fresh exact output")
+		}
+		command := jsonString(item, "input") + jsonString(item, "arguments")
+		if !strings.Contains(command, "cat ") || !strings.Contains(command, filepath.Join(p.workspace, "GUIDE.md")) {
+			return fmt.Errorf("synthetic guidance lost its source command")
+		}
+	}
+	if calls != 1 {
+		return fmt.Errorf("expected one synthetic guidance pair, got %d", calls)
+	}
+	parsed, err := parseResponsesRequest(body)
+	if err != nil {
+		return err
+	}
+	catalog := parsed.responseTools()
+	sections := []*responsesToolSection{catalog.top}
+	for _, group := range catalog.additional {
+		sections = append(sections, group.tools)
+	}
+	for len(sections) > 0 {
+		section := sections[0]
+		sections = sections[1:]
+		if section.err != nil {
+			return section.err
+		}
+		for _, tool := range section.tools {
+			if tool.Name == wantName || tool.Name == "functions."+wantName {
+				return nil
+			}
+			if tool.nested != nil {
+				sections = append(sections, tool.nested)
+			}
+		}
+	}
+	if p.retainedSummary != "" {
+		p.guidanceWithoutTool++
+	}
+	return nil
+}
+
 // Uses the installed app-server and the same reset policy as native/headless UI.
 // Only the local mock provider is contacted; compaction must be router-answered.
 func TestJournalSliceResetNativeCodexE2E(t *testing.T) {
@@ -123,9 +234,25 @@ func TestJournalSliceResetNativeCodexE2E(t *testing.T) {
 }
 
 func TestJournalSliceResetBuiltInOpenAINativeCodexE2E(t *testing.T) {
-	ctx, cmd, provider := journalResetCodexFixtureProvider(t, true)
-	testJournalSliceResetNativeCodex(t, ctx, cmd, provider)
-	testJournalV2NativeResumeAndFork(t, ctx, cmd, provider)
+	for _, tool := range []string{"custom_tool_call", "function_call"} {
+		t.Run(tool, func(t *testing.T) {
+			ctx, cmd, provider := journalResetCodexFixtureProvider(t, true)
+			provider.guidanceTool = tool
+			writeTestFile(t, filepath.Join(provider.workspace, "AGENTS.md"), "Read GUIDE.md.\n")
+			writeTestFile(t, filepath.Join(provider.workspace, "GUIDE.md"), "Guidance before reset.\n")
+			provider.retainedGuidance = journalGuidanceHeader + "\nFile: " + filepath.Join(provider.workspace, "GUIDE.md") + "\nGuidance at reset.\n"
+			testJournalSliceResetNativeCodex(t, ctx, cmd, provider)
+			testJournalV2NativeResumeAndFork(t, ctx, cmd, provider)
+			// This native catalog exposes exec, but only its nested exec_command.
+			wantAbsent := 0
+			if tool == "function_call" {
+				wantAbsent = 2
+			}
+			if provider.guidanceWithoutTool != wantAbsent {
+				t.Fatalf("resume/fork tool-declaration coverage: got %d absent, want %d", provider.guidanceWithoutTool, wantAbsent)
+			}
+		})
+	}
 }
 
 func testJournalV2NativeResumeAndFork(t *testing.T, ctx context.Context, prior *exec.Cmd, provider *journalResetCodexProvider) {
@@ -152,6 +279,9 @@ func testJournalV2NativeResumeAndFork(t *testing.T, ctx context.Context, prior *
 		t.Fatalf("native reset recovery unavailable: %v", err)
 	}
 	provider.retainedSummary = recovery.Text
+	if provider.guidanceTool != "" && (recovery.Guidance == nil || recovery.Guidance.Tool != provider.guidanceTool || recovery.Guidance.Text != provider.retainedGuidance) {
+		t.Fatal("reopened storage lost exact guidance snapshot")
+	}
 	cmd := exec.CommandContext(ctx, prior.Path, prior.Args[1:]...)
 	cmd.Env, cmd.Dir = prior.Env, prior.Dir
 	client, err := appserver.Start(cmd)

@@ -46,6 +46,8 @@ type journalCompactionRecovery struct {
 	Text       string `json:"text"`
 	Namespace  string `json:"namespace,omitempty"`
 	Reference  string `json:"reference,omitempty"`
+	// Guidance expands after the summary as a retained tool result.
+	Guidance *journalGuidance `json:"guidance,omitempty"`
 }
 
 const journalCompactionReferencePrefix = "mekugi:journal:"
@@ -129,14 +131,13 @@ func (s *mekugiReplayStore) restoreJournalCompactionItems(ctx context.Context, r
 		return errors.New("journal compaction recovery storage is unavailable")
 	}
 	s = s.scoped(ctx)
+	var restored []map[string]jsonv1.RawMessage
 	err := s.locked(ctx, func() error {
 		var names []string
-		for index, item := range items {
-			if jsonString(item, "type") != "compaction" && jsonString(item, "type") != "compaction_summary" {
-				continue
-			}
+		for _, item := range items {
 			reference := jsonString(item, "encrypted_content")
-			if !strings.HasPrefix(reference, journalCompactionReferencePrefix) {
+			if jsonString(item, "type") != "compaction" && jsonString(item, "type") != "compaction_summary" || !strings.HasPrefix(reference, journalCompactionReferencePrefix) {
+				restored = append(restored, item)
 				continue // Provider-owned ciphertext has its native meaning.
 			}
 			parts := strings.Split(strings.TrimPrefix(reference, journalCompactionReferencePrefix), ":")
@@ -168,10 +169,15 @@ func (s *mekugiReplayStore) restoreJournalCompactionItems(ctx context.Context, r
 			if recovery.Workspace != recoveryWorkspace || recovery.Thread != parts[1] || recovery.ResponseID != parts[2] || recovery.Reference != reference || recovery.Namespace != owner || strings.TrimSpace(recovery.Text) == "" || len(recovery.Text) > maxJournalSummaryBytes {
 				return errors.New("invalid journal compaction recovery identity or size")
 			}
-			items[index] = map[string]jsonv1.RawMessage{
+			guidance, err := journalGuidanceItems(recovery.Guidance, recovery.ResponseID)
+			if err != nil {
+				return err
+			}
+			restored = append(restored, map[string]jsonv1.RawMessage{
 				"type": mustMarshalJSON("message"), "role": mustMarshalJSON("assistant"),
 				"content": mustMarshalJSON([]any{map[string]any{"type": "output_text", "text": recovery.Text, "annotations": []any{}}}),
-			}
+			})
+			restored = append(restored, guidance...)
 			names = append(names, name)
 		}
 		return s.retainFiles(names...)
@@ -179,7 +185,7 @@ func (s *mekugiReplayStore) restoreJournalCompactionItems(ctx context.Context, r
 	if err != nil {
 		return err
 	}
-	input, err := json.Marshal(&items)
+	input, err := json.Marshal(&restored)
 	if err == nil {
 		request.setInput(input)
 	}
@@ -239,6 +245,39 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 		release()
 		return false, nil
 	}
+	var metadata struct {
+		Trigger        string `json:"trigger"`
+		Phase          string `json:"phase"`
+		Implementation string `json:"implementation"`
+	}
+	_ = json.Unmarshal(a.metadata.Compaction, &metadata)
+	v2 := metadata.Implementation == "responses_compaction_v2"
+	if p.journalCompaction == "slice" {
+		err = store.locked(ctx, func() error {
+			j, _, err := readThreadJournal(store, workspace, a.threadID)
+			if err != nil {
+				return err
+			}
+			if j.ResetIntent == nil || j.ResetIntent.Phase != "armed" || j.ResetIntent.Turn != j.TurnID || metadata.Trigger != "manual" || metadata.Phase != "standalone_turn" {
+				return errJournalUnchanged
+			}
+			return nil
+		})
+		if err != nil {
+			release()
+			if errors.Is(err, errJournalUnchanged) {
+				return false, nil
+			}
+			return a.journalCompactionUnavailable(err)
+		}
+	}
+	var guidance *journalGuidance
+	if v2 && (p.journalCompaction == "auto" || metadata.Trigger == "manual" && metadata.Phase == "standalone_turn") {
+		// Snapshot outside the store lock: skill loads run skills-mgr.
+		if items, _, err := journalCompactionInput(&a.request); err == nil {
+			guidance = collectJournalGuidance(ctx, items, jsonString(a.request.fields, "instructions"), workspace)
+		}
+	}
 	var summary journalSummary
 	var wire []byte
 	err = store.locked(ctx, func() error {
@@ -251,12 +290,6 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 			// executing-thread ownership, not the request's prose, supplies it.
 			j = threadJournal{Workspace: workspace, Thread: a.threadID, IdentityKnown: true}
 		}
-		var metadata struct {
-			Trigger        string `json:"trigger"`
-			Phase          string `json:"phase"`
-			Implementation string `json:"implementation"`
-		}
-		_ = json.Unmarshal(a.metadata.Compaction, &metadata)
 		// Compaction turns do not begin a journal turn, so an intent armed
 		// after the completed slice still names the latest ordinary turn.
 		reset := j.ResetIntent != nil && j.ResetIntent.Phase == "armed" && j.ResetIntent.Turn == j.TurnID &&
@@ -273,8 +306,11 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 		}
 		id := "resp_mekugi_compact_" + rand.Text()
 		recovery := journalCompactionRecovery{Workspace: workspace, Thread: a.threadID, Turn: a.metadata.TurnID, ResponseID: id, Text: summary.Text}
-		v2 := metadata.Implementation == "responses_compaction_v2"
 		if v2 {
+			if guidance != nil && len(recovery.Text)+len(journalGuidanceNotice) <= maxJournalSummaryBytes {
+				recovery.Text += journalGuidanceNotice
+				recovery.Guidance = guidance
+			}
 			handles, handleErr := store.allocateHandlesLocked(1)
 			if handleErr != nil {
 				return handleErr

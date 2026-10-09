@@ -162,8 +162,11 @@ recovery. This check survives router restart and never acknowledges journal even
 The hook reads the retained journal and executing-thread-owned change evidence
 through their existing owners. V2 uses the [evidence-backed journal summary](journal.md#evidence-backed-recovery),
 including open task paths and states, a context-path index, bounded root-scope,
-resume-branch and current-work bodies, and changes/failures captured after the last
-journal event. Its short read hint explains how to retrieve omitted detail, discover
+resume-branch and current-work bodies, [historical successful checks](journal.md#retained-successful-checks),
+and changes/failures captured after the last journal event. Recovery names the
+selected workspace without Git queries. File guidance the thread loaded
+before the reset follows it as
+[retained guidance](journal.md#retained-guidance). Its short read hint explains how to retrieve omitted detail, discover
 older own paths and find older agents. Child content is
 grouped once under a readable agent heading with child-local paths, which readers
 can select through `agent` and `view:"own"`. Closed work and
