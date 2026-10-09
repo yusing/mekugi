@@ -155,6 +155,21 @@ ordinary lifecycle rules. Reopening an accepted task uses `working` and requires
 new integration evidence before acceptance. Retained acceptance remains available
 after restart without checking Git again or reviving processes.
 
+## REQ-ORCHESTRATE-006 — Restored run discovery
+
+Resuming Main restores its retained run into the Orchestration roster. Preparation
+failures, uncertain launch records and confirmed child identities remain visible.
+A recorded running turn displays as interrupted after restart; its stored last
+observation remains unchanged. Other recorded outcomes retain their lifecycle.
+These rows are unsubscribed facts, with no live timers or usage inferred from them.
+
+Recovery reads the selected Main's manifest without checkout effects, child
+resume requests, turn dispatch or process revival. Empty runs leave ordinary
+session navigation unchanged. Read failures remain visible rather than appearing
+as an empty run. Selecting an unsubscribed row reports that resume is required;
+lazy child resume remains staged below. Subscribed rows keep their live state
+and replace the matching retained row.
+
 ## Accepted delivery scope
 
 `/orchestrate ISSUES` enters the workflow through the ordinary composer. One
@@ -187,8 +202,8 @@ The remaining capabilities are accepted but not yet delivered:
 - Workflow instructions recover once after context reset.
 - `send_message` can target Main's next turn without waking it. Child follow-ups
   can wake Main through the normal composer lifecycle.
-- Resume restores run identities and confirmed facts without reviving processes
-  or repeating effects. Exit confirms interruption of running children.
+- Retained child threads resume when viewed or messaged, without reviving
+  processes or repeating effects. Exit confirms interruption of running children.
 - Main integrates native VCS branches serially, preserving coherent commits and
   unrelated edits. Cleanup removes only idle, accepted, clean run-owned checkouts
   at their accepted tips, with no queued work or active native descendants.

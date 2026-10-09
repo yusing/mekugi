@@ -70,20 +70,24 @@ func (u *appServerUI) refreshOrchestratePicker() {
 	p.choices = append(p.choices, composerChoice{name: owner.thread, display: "main", description: u.orchestratePickerStatus(owner, owner.status)})
 	for _, batch := range p.orchestration.batches {
 		var view *appServerUI
+		state := orchestrateBatchState(batch)
 		if n := owner.navigation; n != nil {
+			for _, retained := range n.retained {
+				if retained.TaskName == batch.TaskName && state == "running" && orchestrateBatchState(retained) == "running" {
+					state = orchestrateRestoredBatchState(batch)
+					break
+				}
+			}
 			for thread, child := range owner.orchestrateThreads {
 				b := child.batch
 				if child.command.main == owner.thread && child.command.workspace == owner.session.cwd && b.TaskName == batch.TaskName {
 					batch, view = b, n.views[thread]
+					state = orchestrateBatchState(batch)
 					break
 				}
 			}
 		}
 		branch := strings.TrimSpace(liveActivityMiddle(batch.Branch, 24))
-		state := batch.State
-		if batch.Launch != nil && batch.Launch.HostStatus != "" {
-			state = batch.Launch.HostStatus
-		}
 		choice := composerChoice{display: batch.TaskName, description: state + " · " + branch}
 		if batch.TaskName == "main" {
 			choice.display = "main batch"
