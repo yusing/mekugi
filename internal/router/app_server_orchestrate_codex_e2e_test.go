@@ -187,12 +187,17 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 		t.Fatal("fresh assignment missing at provider")
 	}
 	interrupt := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", reply: make(chan orchestrateResult, 1)}
+	wait := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, wait: true, reply: make(chan orchestrateResult, 1)}
+	u.startOrchestratedChild(wait)
 	u.startOrchestratedChild(interrupt)
 	pump(func() bool {
-		return len(interrupt.reply) > 0 && u.orchestrateThreads[result.batch.Launch.ThreadID].turn == "" && len(u.orchestrateJobs) == 0
+		return len(interrupt.reply) > 0 && len(wait.reply) > 0 && u.orchestrateThreads[result.batch.Launch.ThreadID].turn == "" && len(u.orchestrateJobs) == 0
 	})
 	if r := <-interrupt.reply; r.err != nil {
 		t.Fatal(r.err)
+	}
+	if r := <-wait.reply; r.err != nil || r.event == nil || r.event.Kind != "done" || r.event.Status != "interrupted" || r.event.Thread != result.batch.Launch.ThreadID {
+		t.Fatalf("installed host wait: %+v", r)
 	}
 	batches, err := store.List(ctx, workspace, main)
 	if err != nil {

@@ -91,6 +91,8 @@ type appServerUI struct {
 	orchestrateStorageContext context.Context
 	orchestrateStorageCancel  context.CancelFunc
 	orchestrateStorageErr     error
+	orchestrateEvents         []orchestrateEvent
+	orchestrateWaiters        []*orchestrateCommand
 	notifications             *nativeNotifications
 	questions                 nativeQuestionDock
 	approvals                 nativeApprovalDock

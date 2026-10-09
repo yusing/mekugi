@@ -24,12 +24,14 @@ type orchestrateCommand struct {
 	workspace, main string
 	input           orchestrateSpawnInput
 	target          string
+	wait            bool
 	reply           chan orchestrateResult
 }
 
 type orchestrateResult struct {
 	batch orchestrate.Batch
 	err   error
+	event *orchestrateEvent
 }
 type orchestrateRPC struct {
 	method  string
@@ -57,6 +59,10 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 	}
 	if command.main != u.thread || command.workspace != u.session.cwd {
 		fail(errors.New("orchestration caller is not the active coordinator"))
+		return
+	}
+	if command.wait {
+		u.waitOrchestratedEvent(command)
 		return
 	}
 	if command.target != "" {
@@ -114,7 +120,7 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 				batch, dispatch, err := store.BeginLaunch(command.ctx, command.workspace, command.main, batch.TaskName, command.input.Message, encoded)
 				return func() {
 					if err != nil || !dispatch {
-						command.reply <- orchestrateResult{batch, err}
+						command.reply <- orchestrateResult{batch: batch, err: err}
 						return
 					}
 					child := &orchestrateChild{command: command, batch: batch}
@@ -185,7 +191,7 @@ func (u *appServerUI) orchestrateRequest(child *orchestrateChild, method string,
 
 func (u *appServerUI) finishOrchestrate(child *orchestrateChild, err error) {
 	select {
-	case child.command.reply <- orchestrateResult{child.batch, err}:
+	case child.command.reply <- orchestrateResult{batch: child.batch, err: err}:
 	default:
 	}
 }
@@ -198,12 +204,18 @@ func (u *appServerUI) failOrchestrate(child *orchestrateChild, err error) {
 			u.orchestrateStorageErr = errors.Join(u.orchestrateStorageErr, persistErr)
 			err := errors.Join(err, persistErr)
 			u.finishOrchestrate(child, err)
+			status := "failed"
+			if persistErr != nil {
+				status = "storage_failed"
+			}
+			u.publishOrchestratedEvent(child, orchestrateEvent{Task: name, Thread: child.batch.Launch.ThreadID, Kind: "failure", Status: status, Message: err.Error()})
 			u.setNotice("Orchestration "+name+": "+err.Error(), true)
 		}
 	})
 }
 
 func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
+	u.observeOrchestratedPrompt(m)
 	if m.Method != "" {
 		if len(u.orchestrateThreads) == 0 || m.Method != "turn/started" && m.Method != "turn/completed" {
 			return false
@@ -226,12 +238,23 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 		if status != "" {
 			child.batch.Launch.HostStatus = status
 			c, store, ctx, name := child.command, u.proxy.orchestration.store, u.orchestrateStorageContext, child.batch.TaskName
+			message := ""
+			if event.Turn.Error != nil {
+				message = event.Turn.Error.Message
+			}
 			u.orchestrateWork(func() func() {
-				err := store.ObserveLaunch(ctx, c.workspace, c.main, name, status, "")
+				err := store.ObserveLaunch(ctx, c.workspace, c.main, name, status, message)
 				return func() {
 					if err != nil {
 						u.orchestrateStorageErr = errors.Join(u.orchestrateStorageErr, err)
 						u.setNotice("Orchestration lifecycle: "+err.Error(), true)
+						u.publishOrchestratedEvent(child, orchestrateEvent{Task: name, Thread: event.ThreadID, Turn: event.Turn.ID, Kind: "failure", Status: "storage_failed", Message: err.Error()})
+					} else if m.Method == "turn/completed" {
+						kind := "done"
+						if status == "failed" {
+							kind = "failure"
+						}
+						u.publishOrchestratedEvent(child, orchestrateEvent{Task: name, Thread: event.ThreadID, Turn: event.Turn.ID, Kind: kind, Status: status, Message: message})
 					}
 				}
 			})
@@ -395,6 +418,10 @@ func (u *appServerUI) orchestrateCleanupInterrupt(child *orchestrateChild, threa
 
 func (u *appServerUI) closeOrchestrateStorage() error {
 	u.orchestrateClosing = true
+	for _, waiter := range u.orchestrateWaiters {
+		waiter.reply <- orchestrateResult{err: context.Canceled}
+	}
+	u.orchestrateWaiters = nil
 	if u.orchestrateStorageCancel == nil {
 		return nil
 	}
