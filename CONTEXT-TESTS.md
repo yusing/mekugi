@@ -152,7 +152,11 @@ nonempty current journal recovery, MCP tool availability, Skill restrictions and
 exactly-once child execution. The same fixtures add isolated named-section,
 attachment and tool-description replacements to prove supported mod composition.
 Disabled-mod admission proves that no work reaches the provider and native
-settings stay unchanged. These checks use no model inference. The pre-removal
+settings stay unchanged. `ManagedMods` mounts a temporary `/etc` only in a Linux
+native subprocess namespace to prove real managed-file restriction; it requires
+`unshare` and available user/mount namespaces. `UnmanagedMods` proves that the
+same user option does not create administrative policy. These checks use no model
+inference. The pre-removal
 isolated-source carrier proof is
 retained in commit `1f4df214`.
 

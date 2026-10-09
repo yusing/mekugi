@@ -355,7 +355,8 @@ receive the same guidance. Classic compact hooks add only changing journal facts
 The catalog file remains a recovery reference, not a
 required extra read. Disabled native hooks, safe/bare modes, or unavailable hook
 policy stop query startup with an explanation, without changing those settings.
-Administrator-controlled mod-only restrictions have not been validated.
+Native managed-only mod restrictions also stop startup. The same option in user
+or project settings does not impose administrative policy.
 Completed foreground captures
 return explicit change IDs through companion hook context, without replacing the
 native tool result. Review those IDs with `mchanges`; apply/revert run only through

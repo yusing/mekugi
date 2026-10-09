@@ -225,6 +225,8 @@ source, not a required redundant read. Oversized or missing registered artifacts
 or native settings that disable the mandatory mod, fail startup before work is
 admitted. Caller policy stays unchanged. The small
 companion MCP tool set is exposed without deferred tool search.
+Administrative mod-only restrictions are read from native policy provenance;
+lower-trust settings do not create an administrative restriction.
 
 Classic compact hooks add only changing journal recovery facts. Mandatory facts
 must fit the native inline recovery carrier. If they do not fit or cannot be read, the

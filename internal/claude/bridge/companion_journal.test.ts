@@ -106,8 +106,9 @@ test('registered guidance preflight requires readable bounded regular artifacts'
 });
 
 test('native mod policy is inspected independently of optional VCS guarding', async () => {
-  const inspect = (listing: unknown) => verifyCompanionGuidance({
+  const inspect = (listing: unknown, sources: unknown[] = []) => verifyCompanionGuidance({
     getHooksListing: async () => listing,
+    getSettings: async () => ({sources}),
   } as unknown as Query);
   const policy = {allDisabled: false, managedOnly: false};
   await inspect({policy});
@@ -117,6 +118,11 @@ test('native mod policy is inspected independently of optional VCS guarding', as
     {policy: {...policy, policyUnreadable: true}}, {policy, safeMode: {}},
     {policy, bareMode: {}}, {policy, errors: ['Native settings unreadable']},
   ]) await assert.rejects(inspect(listing), /Mandatory companion guidance unavailable/);
+  const settings = {pluginConfigs: {'cc-plugin-sec-default@builtin': {options: {allowManagedModsOnly: true}}}};
+  await inspect({policy}, [{source: 'userSettings', settings}]);
+  await inspect({policy}, [{source: 'policySettings', settings: {...settings, prependPlugins: []}}]);
+  await assert.rejects(inspect({policy}, [{source: 'policySettings', settings}]), /only managed mods/);
+  await assert.rejects(inspect({policy}, [{source: 'policySettings', settings: {...settings, prependPlugins: ['SEC-DEFAULT@BUILTIN']}}]), /only managed mods/);
 });
 
 for (const failure of ['overflow', 'transport'] as const) {

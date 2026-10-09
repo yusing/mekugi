@@ -9,27 +9,37 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/yusing/mekugi/internal/claude"
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 // The native consumer sends to a scripted local provider. No model runs.
 func TestRuntimeGuidanceClaudeNativeDelivery(t *testing.T) {
-	testRuntimeGuidanceClaudeNativeDelivery(t, false, false)
+	testRuntimeGuidanceClaudeNativeDelivery(t, false, "")
 }
 
 func TestRuntimeGuidanceClaudeNativePromptMods(t *testing.T) {
-	testRuntimeGuidanceClaudeNativeDelivery(t, true, false)
+	testRuntimeGuidanceClaudeNativeDelivery(t, true, "")
 }
 
 func TestRuntimeGuidanceClaudeNativeDisabled(t *testing.T) {
-	testRuntimeGuidanceClaudeNativeDelivery(t, false, true)
+	testRuntimeGuidanceClaudeNativeDelivery(t, false, "hooks")
 }
 
-func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, promptMods, disabled bool) {
+func TestRuntimeGuidanceClaudeNativeManagedMods(t *testing.T) {
+	testRuntimeGuidanceClaudeNativeDelivery(t, false, "managed")
+}
+
+func TestRuntimeGuidanceClaudeNativeUnmanagedMods(t *testing.T) {
+	testRuntimeGuidanceClaudeNativeDelivery(t, false, "user")
+}
+
+func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, promptMods bool, restriction string) {
 	if os.Getenv("MEKUGI_TEST_NATIVE_CLAUDE") != "1" {
 		t.Skip("requires installed native Claude and built bridge")
 	}
@@ -39,9 +49,14 @@ func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, promptMods, disabled 
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
 	nativeGuidanceFixtureConfig(t)
 	settingsPath := filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), "settings.json")
-	const disabledSettings = `{"disableAllHooks":true,"permissions":{"defaultMode":"default"}}`
-	if disabled {
-		if err := os.WriteFile(settingsPath, []byte(disabledSettings), 0600); err != nil {
+	const modPolicy = `{"pluginConfigs":{"cc-plugin-sec-default@builtin":{"options":{"allowManagedModsOnly":true}}}}`
+	disabled := restriction == "hooks" || restriction == "managed"
+	if restriction == "hooks" || restriction == "user" {
+		settings := `{"disableAllHooks":true,"permissions":{"defaultMode":"default"}}`
+		if restriction == "user" {
+			settings = modPolicy
+		}
+		if err := os.WriteFile(settingsPath, []byte(settings), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -99,6 +114,47 @@ func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, promptMods, disabled 
 	if err != nil {
 		t.Fatal(err)
 	}
+	if restriction == "managed" {
+		if runtime.GOOS != "linux" {
+			t.Skip("isolated native managed-file acceptance requires Linux mount namespaces")
+		}
+		unshare, err := exec.LookPath("unshare")
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Mount only this native subprocess's /etc. The real system policy and
+		// caller settings remain untouched, including when the fixture fails.
+		root := t.TempDir()
+		etc := filepath.Join(root, "etc")
+		settingsPath = filepath.Join(etc, "claude-code", "managed-settings.json")
+		if err := os.MkdirAll(filepath.Dir(settingsPath), 0700); err != nil {
+			t.Fatal(err)
+		}
+		// The public alias remains supported across the native plugin rename.
+		managedPolicy := `{"prependPlugins":["SEC-DEFAULT@BUILTIN"],"pluginConfigs":{"cc-plugin-sec-default@builtin":{"options":{"allowManagedModsOnly":true}}}}`
+		if err := os.WriteFile(settingsPath, []byte(managedPolicy), 0600); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"passwd", "group", "nsswitch.conf", "hosts", "resolv.conf"} {
+			data, err := os.ReadFile(filepath.Join("/etc", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(etc, name), data, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		wrapper := filepath.Join(root, "claude")
+		script := "#!/bin/sh\nexec " + shellsyntax.Quote(unshare) + " --user --map-root-user --mount /bin/sh -c " + shellsyntax.Quote(`mount --bind "$1" /etc || exit; shift; exec "$@"`) + " sh " + shellsyntax.Quote(etc) + " " + shellsyntax.Quote(executable) + " \"$@\"\n"
+		if err := os.WriteFile(wrapper, []byte(script), 0700); err != nil {
+			t.Fatal(err)
+		}
+		executable = wrapper
+	}
+	retainedSettings, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	endpoint := service.Endpoint()
 	invocation := 0
 	capture := func(resume string, managed bool) (map[string]any, string) {
@@ -136,7 +192,7 @@ func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, promptMods, disabled 
 						t.Fatal("disabled guidance admitted a provider request")
 					}
 					retained, err := os.ReadFile(settingsPath)
-					if err != nil || string(retained) != disabledSettings {
+					if err != nil || string(retained) != string(retainedSettings) {
 						t.Fatal("guidance admission changed native settings")
 					}
 					return nil, ""
@@ -215,6 +271,13 @@ func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, promptMods, disabled 
 		assertNativePromptModFixture(t, packet, true)
 	}
 	assertNativeManagedSkillFixture(t, packet, presentation.ManagedSkills)
+	if restriction == "user" {
+		retained, err := os.ReadFile(settingsPath)
+		if err != nil || string(retained) != modPolicy {
+			t.Fatal("unmanaged mod options changed native settings")
+		}
+		return
+	}
 	skillPath := filepath.Join(presentation.Plugin, "skills", "mekugi", "SKILL.md")
 	skill, err := os.ReadFile(skillPath)
 	if err != nil {
