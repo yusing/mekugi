@@ -56,6 +56,7 @@ type composerPicker struct {
 	scanTarget           composerTarget
 	scanCwd              string
 	modal                string // "menu" or "manage" replaces the composer, as in Codex.
+	orchestration        *orchestrateRunPicker
 	query                string
 	initial              map[string]bool
 	toggleID, togglePath string
@@ -147,7 +148,7 @@ func (u *appServerUI) refreshPicker() {
 			}
 		}
 	}
-	if u.currentQuestion() != nil || u.approvals.open {
+	if editor := u.promptEditor(); editor.currentQuestion() != nil || editor.approvals.open {
 		u.picker.open = false
 		return
 	}
@@ -155,6 +156,11 @@ func (u *appServerUI) refreshPicker() {
 		return
 	}
 	p := &u.picker
+	if p.modal == "orchestrate" {
+		p.open = true
+		u.refreshOrchestratePicker()
+		return
+	}
 	draft := u.draftSnapshot()
 	u.bindSkills(&draft, false)
 	u.skills = draft.skills
@@ -432,6 +438,9 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 
 func (u *appServerUI) pickerKey(key string) bool {
 	p := &u.picker
+	if p.modal == "orchestrate" && p.open {
+		return u.orchestratePickerKey(key)
+	}
 	if p.modal == "settings" && p.open {
 		return u.settingsPickerKey(key)
 	}

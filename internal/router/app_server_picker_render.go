@@ -61,6 +61,9 @@ func (u *appServerUI) skillsModalFrame(width, height int) []string {
 
 func (u *appServerUI) renderPicker(width, height int) []string {
 	p := &u.picker
+	if p.modal == "orchestrate" {
+		u.refreshOrchestratePicker()
+	}
 	frame := make([]string, height)
 	p.rowStart, p.rowCount = 0, 0
 	put := func(y int, text string) {
@@ -142,6 +145,10 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 		}
 	}
 	if height > 1 {
+		if p.modal == "orchestrate" {
+			put(0, "  "+bold+"Orchestration"+reset)
+			footer = "  ↑/↓ navigate · enter view · esc close"
+		}
 		if p.modal == "settings" {
 			title := "Choose " + strings.TrimPrefix(u.settingsChoices, "/")
 			put(0, "  "+bold+title+reset)
@@ -224,6 +231,8 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 			}
 			if description != "" && width-(columns+4) >= 24 {
 				text += strings.Repeat(" ", max(0, columns-ansi.StringWidth(label))+2) + dim + description + reset
+			} else if description != "" && p.modal == "orchestrate" {
+				text += "  " + dim + description + reset
 			}
 			text = ansi.Truncate(text, width, "…")
 			if i == p.selected {
