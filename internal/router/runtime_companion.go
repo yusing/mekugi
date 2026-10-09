@@ -98,6 +98,35 @@ func (s *ObservationService) prepareCompanion(ctx context.Context, workspace, to
 			return result, registry, err
 		}
 	}
+	hooks := filepath.Join(plugin, "hooks")
+	if err := os.MkdirAll(hooks, 0700); err != nil {
+		return result, registry, err
+	}
+	if err := os.WriteFile(filepath.Join(hooks, "hooks.json"), []byte(`{"modules":["./register.js"]}`), 0600); err != nil {
+		return result, registry, err
+	}
+	// Native engine attachments are recomputed on resume, unlike pinned system
+	// text. Keep the native attachment and custom-child policy intact.
+	paths, err := json.Marshal(map[string]string{"skill": filepath.Join(skillDir, "SKILL.md"), "frontends": filepath.Join(skillDir, "frontends.md")}, jsontext.EscapeForJS(true))
+	if err != nil {
+		return result, registry, err
+	}
+	mod := `const paths = ` + string(paths) + `;
+export function register(on) {
+  on('prompt.attachment', {type: 'date'}, async ($, e, next) => {
+    if (e.origin.kind !== 'engine') return next(e);
+    const skill = await $.fs.read(paths.skill);
+    const workflow = skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').trim();
+    const frontends = paths.frontends;
+    const contracts = await $.fs.read(frontends);
+    const attachment = await next(e);
+    return {text: (attachment.text ?? '') + '\n\n' + workflow + '\n\n' + contracts + '\n\nFrontend recovery: ' + frontends};
+  });
+}
+`
+	if err := os.WriteFile(filepath.Join(hooks, "register.js"), []byte(mod), 0600); err != nil {
+		return result, registry, err
+	}
 	result.Plugin = plugin
 	return result, registry, nil
 }

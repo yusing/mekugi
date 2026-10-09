@@ -69,8 +69,8 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Claude streamed Bash proposals and branch continuity | After `make test-claude`, run `MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestNativeRuntime(CommandPreview\|PreviewContinuity)ClaudePTY$' TEST_FLAGS='-count=1 -v -timeout=3m'`. Installed-native local-provider PTY proves growing proposals before complete input/effects, scroll/resize, exact native input and independent capture reconciliation, plus child attribution, segment output/Events clicks and saved dialogs across fresh parent/fork/resume without replay. Child input is complete, not a partial stream. No inference. Offline state and reviewed Main/child snapshots: `NativeRuntimeCommandPreview`, `NativeRuntimePreview`, `UISnapshotNativeRuntimeCommandPreview`. |
 | Claude journal-only reset and slice continuation | `MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestRuntimeJournalResetClaudeLive$' TEST_FLAGS='-count=1 -v -timeout=5m'` after `make test-claude`; four real prompts exercise a completed slice, fresh native query with bounded journal context, inherited MCP own-change reads, fresh bridge resume and another reset after resume without old conversation context or tool replay |
 | Claude companion utilities, journals and classic recovery | `MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestRuntimeCompanionClaudeLive$' TEST_FLAGS='-count=1 -v -timeout=4m'` after `make test-claude`; real native Write, Bash utility review/revert, MCP batch/read and manual compact with additive recovery, normal native billing/configuration |
-| Claude mandatory guidance delivery | `MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestRuntimeGuidanceClaudeNativeDelivery$' TEST_FLAGS='-count=1 -v -timeout=2m'` after `make test-claude`; installed native Claude with isolated configuration and a scripted local provider proves full generated guidance and MCP descriptors in fresh/resumed work requests, native named-section, engine-attachment and tool-description mod replacements, native Skill refusal with skills-mgr and unmanaged Skill availability. Native child/compact guidance also checks inherited Skill exclusion. Offline `RuntimeSessionSwitchStagesWorkspaceCompanion` verifies relative-PATH ownership and explicit false on a cross-workspace handoff; `ClaudeDefaultLaunchPTY` verifies managed/unmanaged launcher forwarding. No model inference. |
-| Claude native child and compact guidance | `MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestRuntimeGuidanceClaudeNativeChildAndCompact$' TEST_FLAGS='-count=1 -v -timeout=2m'` after `make test-claude`; scripted native child and classic compact requests prove the complete workflow and authenticated frontend contracts, native summary preservation and exactly-once child execution. Mod replacements cover attachments and tool descriptions in both lanes; named preset sections cover post-compact Main while the custom child retains its own system instructions. No inference. |
+| Claude mandatory guidance delivery | `MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestRuntimeGuidanceClaudeNative(Delivery\|PromptMods\|Disabled)$' TEST_FLAGS='-count=1 -v -timeout=2m'` after `make test-claude`; installed native Claude with isolated configuration and a scripted local provider proves full generated guidance and MCP descriptors in fresh/resumed work requests, native named-section, engine-attachment and tool-description mod replacements, native Skill refusal with skills-mgr and unmanaged Skill availability. Native child/compact guidance also checks inherited Skill exclusion. Offline `RuntimeSessionSwitchStagesWorkspaceCompanion` verifies relative-PATH ownership and explicit false on a cross-workspace handoff; `ClaudeDefaultLaunchPTY` verifies managed/unmanaged launcher forwarding. No model inference. |
+| Claude native child and compact guidance | `MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestRuntimeGuidanceClaudeNative(ChildAndCompact\|PromptModsChildAndCompact)$' TEST_FLAGS='-count=1 -v -timeout=2m'` after `make test-claude`; scripted native child and classic compact requests prove the complete workflow and authenticated frontend contracts, native summary preservation and exactly-once child execution. Mod replacements cover attachments and tool descriptions in both lanes; named preset sections cover post-compact Main while the custom child retains its own system instructions. No inference. |
 | Claude confirmed current-context skills | `make test TEST_PACKAGES=./internal/router TEST_RUN='^TestUISnapshotNativeRuntime(Confirmed\|Saved)Skills$' TEST_FLAGS=-count=1` exercises the real JSON-lines decoder and shared renderer: canonical Skill success, successful Read, pending/failure exclusion, late child identity, trimmed feed, shared name dialogs, complete/unknown saved counts and Main compact/reset isolation. After `make test-claude`, run `MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestNativeRuntimeSavedSkillsClaudeNative$' TEST_FLAGS='-count=1 -v -timeout=2m'` for installed-native local-provider Skill/Read, fresh resume, native fork child selection and Main compact restoration. No inference. Child live context-boundary delivery remains separate. |
 | Claude native Bash input tuples | `MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestNativeBashTupleClaudeScripted$' TEST_FLAGS='-count=1 -v -timeout=2m'` after `make test-claude`; twenty complete hook pairs across default/acceptEdits, coercion, normalization and background execution, with exactly-once effects and unchanged settings; no inference |
 | Claude native command output and clicks | `MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestNativeRuntimeOutputClaudePTY$' TEST_FLAGS='-count=1 -v -timeout=3m'` after `make test-claude`; file-gated foreground/background commands prove incremental tails, complete Unicode background output, shared live dialogs and rendered Main/Activity Events/output clicks. Fresh client/UI resume with the native spool moved proves saved output without tool replay; no inference. Offline chunks, display-bound references and restart: `NativeRuntimeFullOutput`; shared continuation snapshot: `UISnapshotActivityOutputDialog/retained_line_bounds`. |
@@ -137,21 +137,24 @@ env MEKUGI_UPDATE_FRONTEND_GUIDANCE=1 make test TEST_PACKAGES=./internal/router 
 make test TEST_PACKAGES=./internal/router TEST_RUN='GeneratedFrontendGuidance|ProjectedStockGuidance|JournalRulesHaveOneOwner|JournalGuidanceUsesRequestRole|Instruction|ConflictRewrite|WebSocketPrewarmToolGuidance'
 ```
 
-## Native Claude static guidance proof
+## Native Claude static guidance
 
-Static guidance consolidation has a separate isolated-source proof:
+After `make test-claude`, check the production guidance consumers:
 
 ```sh
-MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestRuntimeGuidanceClaudeNativeStaticMod' TEST_FLAGS='-count=1 -v -timeout=3m'
+MEKUGI_TEST_NATIVE_CLAUDE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestRuntimeGuidanceClaudeNative' TEST_FLAGS='-count=1 -v -timeout=3m'
 ```
 
-It compiles a disposable bridge with preset append and static classic-hook text
-empty. One official engine-attachment mod reads the current workflow and complete
+One official engine-attachment mod reads the current workflow and complete
 authenticated catalog. Fresh, repeated, changed-guidance resume, custom child
 and post-compact provider requests prove consumption, retained native summary,
 nonempty current journal recovery, MCP tool availability, Skill restrictions and
-exactly-once child execution. This proof
-does not change production guidance delivery or use model inference.
+exactly-once child execution. The same fixtures add isolated named-section,
+attachment and tool-description replacements to prove supported mod composition.
+Disabled-mod admission proves that no work reaches the provider and native
+settings stay unchanged. These checks use no model inference. The pre-removal
+isolated-source carrier proof is
+retained in commit `1f4df214`.
 
 ## Native Claude VCS guard
 

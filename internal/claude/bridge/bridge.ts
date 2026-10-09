@@ -6,7 +6,7 @@ import { companionRequest } from './companion_transport.js';
 import { realpath, stat } from 'node:fs/promises';
 import { companion, type CompanionConfig } from './companion.js';
 import { journalServer } from './journal.js';
-import { companionGuidance, companionFrontendGuidance } from './guidance.js';
+import { validateCompanionGuidance, verifyCompanionGuidance } from './guidance.js';
 import { readFileSync, closeSync } from 'node:fs';
 import { setSettings, type SettingsCommand } from './controls.js';
 import { taskOutput } from './task_output.js';
@@ -71,28 +71,30 @@ async function* messages(generation: number): AsyncGenerator<SDKUserMessage> {
 let observer: ReturnType<typeof companion> | undefined;
 let guardProbe: Awaited<ReturnType<typeof nativeVCSGuard>> | undefined;
 async function createQuery(fresh?: {session: string; context: string}): Promise<Query> {
-  let owned: Query;
+  if (endpoint) validateCompanionGuidance(endpoint);
+  let owned!: Query;
+  let admit!: (allowed: boolean) => void;
+  const admission = new Promise<boolean>(resolve => {admit = resolve;});
+  const generation = epoch;
+  async function* prompt(): AsyncGenerator<SDKUserMessage> {
+    if (!await admission) return;
+    yield* messages(generation);
+  }
   agents = await AgentMessages.create();
   shell = new UserShell(input => {inputs.push(input); wake?.(); wake = undefined;}, async frame => {
     if (frame.kind === 'shell_started') activeSession = frame.sessionID;
     await emit({...frame, cwd});
   });
-  const guidance = endpoint ? companionGuidance(endpoint) : '';
-  const frontendChunks = endpoint ? companionFrontendGuidance(endpoint) : [];
-  const frontends = frontendChunks.join('');
   const probe = endpoint?.vcsGuard ? await nativeVCSGuard(endpoint.vcsGuardHelper, endpoint.bashEnv) : undefined;
   guardProbe = probe;
-  observer = endpoint ? companion(endpoint, cwd, text => emit({kind: 'notice', text}), Boolean(resume) && !fresh,
-    {workflow: guidance, frontends: frontendChunks}, probe ? id => probe.verify(owned, id) : undefined) : undefined;
+  observer = endpoint ? companion(endpoint, cwd, text => emit({kind: 'notice', text}),
+    probe ? id => probe.verify(owned, id) : undefined) : undefined;
   const journal = endpoint ? journalServer(endpoint) : undefined;
-  // Fresh sessions pin additive workflow guidance with Claude's native preset.
-  // Resume keeps that recorded prompt; its first input hook supplies current text.
-  const append = [!resume || fresh ? guidance : '', !resume || fresh ? frontends : '', fresh?.context ?? ''].filter(Boolean).join('\n\n');
   try {
-  owned = query({prompt: messages(epoch), options: {
+  owned = query({prompt: prompt(), options: {
   cwd,
   pathToClaudeCodeExecutable: config.executable,
-  systemPrompt: {type: 'preset', preset: 'claude_code', ...(append ? {append} : {})},
+  systemPrompt: {type: 'preset', preset: 'claude_code', ...(fresh?.context ? {append: fresh.context} : {})},
   settingSources: ['user', 'project', 'local'],
   ...(endpoint?.managedSkills ? {disallowedTools: ['Skill']} : {}),
   ...(probe ? {settings: probe.settings} : {}),
@@ -103,7 +105,7 @@ async function createQuery(fresh?: {session: string; context: string}): Promise<
   ...(!fresh && forkSession ? {forkSession: true} : {}),
   ...(model ? {model} : {}),
   abortController,
-  ...(observer ? {hooks: fresh ? {...observer.hooks, UserPromptSubmit: []} : observer.hooks} : {}),
+  ...(observer ? {hooks: observer.hooks} : {}),
   plugins: [ ...(endpoint?.plugin ? [{type: 'local' as const, path: endpoint.plugin}] : []), {type: 'local', path: agents.plugin}],
   ...(endpoint?.frontendDirectory || endpoint?.bashEnv ? {env: {...process.env,
     ...(endpoint.frontendDirectory ? {PATH: `${endpoint.frontendDirectory}:${process.env.PATH ?? ''}`} : {}),
@@ -111,11 +113,19 @@ async function createQuery(fresh?: {session: string; context: string}): Promise<
   ...(journal ? {mcpServers: {mekugi: journal}} : {}),
   canUseTool: permissions.canUseTool,
 }});
-  } catch (error) {await probe?.close(); throw error;}
+  if (endpoint?.plugin) await verifyCompanionGuidance(owned);
   if (probe) {
-    try {await probe.verify(owned);} catch (error) {owned.close(); await probe.close(); throw error;}
+    await probe.verify(owned);
   }
+  admit(true);
   return owned;
+  } catch (error) {
+    admit(false);
+    owned?.close();
+    await probe?.close();
+    await agents?.close();
+    throw error;
+  }
 }
 
 async function watch(query: Query): Promise<void> {
@@ -451,7 +461,7 @@ try {
     // Verified native history establishes an ordinary resumed session before
     // the first prompt. A fork must wait for its newly assigned native identity.
     if (!config.forkSession) {
-      observer = endpoint ? companion(endpoint, cwd, text => emit({kind: 'notice', text}), true) : undefined;
+      observer = endpoint ? companion(endpoint, cwd, text => emit({kind: 'notice', text})) : undefined;
       await observer?.resume(info);
       await emit({kind: 'session', sessionID: info.sessionId, cwd, title: info.customTitle ?? info.summary});
     }

@@ -349,10 +349,14 @@ Shared utility frontends run in native Bash, including
 `mcat`, `inspect_file`, `msymbol`, `mrun`, `mread` and `mchanges`. An invocation-local
 skill supplies mandatory journal workflow guidance, and the complete authenticated
 utility contracts are injected automatically into native context. Fresh sessions
-receive them with the native preset; resumed sessions receive current guidance on
-their first input without replacing the saved prompt. Children and compaction
-receive the same guidance. The catalog file remains a recovery reference, not a
-required extra read. Completed foreground captures
+receive them through one native engine attachment; resumed sessions receive
+current guidance without replacing the saved prompt. Children and compaction
+receive the same guidance. Classic compact hooks add only changing journal facts.
+The catalog file remains a recovery reference, not a
+required extra read. Disabled native hooks, safe/bare modes, or unavailable hook
+policy stop query startup with an explanation, without changing those settings.
+Administrator-controlled mod-only restrictions have not been validated.
+Completed foreground captures
 return explicit change IDs through companion hook context, without replacing the
 native tool result. Review those IDs with `mchanges`; apply/revert run only through
 native Bash and its permissions, and their actual effects become new captures.

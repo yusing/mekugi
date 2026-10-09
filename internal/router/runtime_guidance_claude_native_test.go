@@ -18,14 +18,18 @@ import (
 
 // The native consumer sends to a scripted local provider. No model runs.
 func TestRuntimeGuidanceClaudeNativeDelivery(t *testing.T) {
-	testRuntimeGuidanceClaudeNativeDelivery(t, false)
+	testRuntimeGuidanceClaudeNativeDelivery(t, false, false)
 }
 
-func TestRuntimeGuidanceClaudeNativeStaticMod(t *testing.T) {
-	testRuntimeGuidanceClaudeNativeDelivery(t, true)
+func TestRuntimeGuidanceClaudeNativePromptMods(t *testing.T) {
+	testRuntimeGuidanceClaudeNativeDelivery(t, true, false)
 }
 
-func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, staticMod bool) {
+func TestRuntimeGuidanceClaudeNativeDisabled(t *testing.T) {
+	testRuntimeGuidanceClaudeNativeDelivery(t, false, true)
+}
+
+func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, promptMods, disabled bool) {
 	if os.Getenv("MEKUGI_TEST_NATIVE_CLAUDE") != "1" {
 		t.Skip("requires installed native Claude and built bridge")
 	}
@@ -34,6 +38,13 @@ func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, staticMod bool) {
 	t.Setenv(routerTestWorkerEnvironment, "1")
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
 	nativeGuidanceFixtureConfig(t)
+	settingsPath := filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), "settings.json")
+	const disabledSettings = `{"disableAllHooks":true,"permissions":{"defaultMode":"default"}}`
+	if disabled {
+		if err := os.WriteFile(settingsPath, []byte(disabledSettings), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	t.Setenv("ANTHROPIC_API_KEY", "native-delivery-fixture")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
@@ -77,13 +88,12 @@ func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, staticMod bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	installNativePromptModFixture(t, presentation.Plugin)
+	if promptMods {
+		installNativePromptModFixture(t, presentation.Plugin)
+	}
 	bridge, err := filepath.Abs("../claude/bridge/dist/bridge.js")
 	if err != nil {
 		t.Fatal(err)
-	}
-	if staticMod {
-		bridge = nativeStaticGuidanceFixtureBridge(t, presentation.Plugin)
 	}
 	executable, err := exec.LookPath("claude")
 	if err != nil {
@@ -100,6 +110,39 @@ func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, staticMod bool) {
 			t.Fatal(err)
 		}
 		defer client.Close()
+		if disabled {
+			// Input queued before ready still waits for native guidance admission.
+			if err := client.Send(ctx, "NATIVE_DISABLED_GUIDANCE_MUST_NOT_RUN"); err != nil {
+				t.Fatal(err)
+			}
+			for {
+				select {
+				case <-ctx.Done():
+					t.Fatal("disabled mandatory mod did not report unavailable guidance")
+				case <-requests:
+					t.Fatal("disabled guidance admitted a provider request")
+				case event, ok := <-client.Events():
+					if !ok {
+						t.Fatal("native bridge ended without the guidance failure")
+					}
+					if event.Kind != "error" {
+						continue
+					}
+					if !strings.Contains(event.Text, "Mandatory companion guidance unavailable") {
+						t.Fatalf("unexpected native failure: %s", event.Text)
+					}
+					client.Close()
+					if len(requests) != 0 {
+						t.Fatal("disabled guidance admitted a provider request")
+					}
+					retained, err := os.ReadFile(settingsPath)
+					if err != nil || string(retained) != disabledSettings {
+						t.Fatal("guidance admission changed native settings")
+					}
+					return nil, ""
+				}
+			}
+		}
 		var nativeSession string
 		blockedSkill := false
 		turn := func(prompt string, waitReady bool) map[string]any {
@@ -147,14 +190,12 @@ func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, staticMod bool) {
 					}
 				}
 			}
-			if staticMod {
-				assertNativeStaticGuidanceFixture(t, packet, presentation.Plugin, service.registry)
-			}
+			assertNativeStaticGuidance(t, packet, presentation.Plugin, service.registry)
 			assertNativeCompanionTools(t, packet)
 			return packet
 		}
 		packet := turn(fmt.Sprintf("Implement a small integer-range function with tests. GUIDANCE_INVOCATION_%d_INITIAL!", invocation), true)
-		if staticMod && managed && resume == "" {
+		if managed && resume == "" {
 			turn(fmt.Sprintf("Continue the same task without tools. GUIDANCE_INVOCATION_%d_REPEAT!", invocation), false)
 		}
 		if managed && resume == "" && !blockedSkill {
@@ -162,11 +203,15 @@ func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, staticMod bool) {
 		}
 		return packet, nativeSession
 	}
+	if disabled {
+		capture("", presentation.ManagedSkills)
+		return
+	}
 	if !presentation.ManagedSkills {
 		t.Fatal("companion did not select the fixture's skills-mgr owner")
 	}
 	packet, nativeSession := capture("", presentation.ManagedSkills)
-	if !staticMod {
+	if promptMods {
 		assertNativePromptModFixture(t, packet, true)
 	}
 	assertNativeManagedSkillFixture(t, packet, presentation.ManagedSkills)
@@ -180,38 +225,15 @@ func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, staticMod bool) {
 		t.Fatal("generated skill has no body")
 	}
 	body = strings.TrimSpace(body)
-	var system strings.Builder
-	switch blocks := packet["system"].(type) {
-	case string:
-		system.WriteString(blocks)
-	case []any:
-		for _, value := range blocks {
-			if block, ok := value.(map[string]any); ok {
-				if text, ok := block["text"].(string); ok {
-					system.WriteString(text)
-				}
-			}
-		}
-	}
-	context := system.String()
-	if staticMod {
-		context = nativeGuidanceRequestText(packet["messages"])
-	}
-	if !strings.Contains(context, body) {
-		t.Fatalf("complete production guidance is absent from native system context: native text=%d skill=%d tool name=%t", system.Len(), len(body), strings.Contains(system.String(), "mcp__mekugi__journal_batch"))
-	}
-	if !strings.Contains(context, filepath.Join(filepath.Dir(skillPath), "frontends.md")) {
+	if !strings.Contains(nativeGuidanceRequestText(packet["messages"]), filepath.Join(filepath.Dir(skillPath), "frontends.md")) {
 		t.Fatal("authenticated frontend contract path is absent")
-	}
-	if !staticMod {
-		assertNativeFrontendContracts(t, service.registry, context)
 	}
 	const current = "Current invocation guidance after native resume."
 	if err := os.WriteFile(skillPath, append(skill, []byte("\n"+current+"\n")...), 0600); err != nil {
 		t.Fatal(err)
 	}
 	resumed, resumedSession := capture(nativeSession, presentation.ManagedSkills)
-	if !staticMod {
+	if promptMods {
 		assertNativePromptModFixture(t, resumed, true)
 	}
 	assertNativeManagedSkillFixture(t, resumed, presentation.ManagedSkills)
@@ -223,7 +245,7 @@ func testRuntimeGuidanceClaudeNativeDelivery(t *testing.T, staticMod bool) {
 	if !strings.Contains(nativeGuidanceRequestText(resumed["messages"]), body+"\n\n"+current) {
 		t.Fatal("complete current guidance is absent from resumed input context")
 	}
-	if staticMod && strings.Count(nativeGuidanceRequestText(resumed["messages"]), body) != 1 {
+	if strings.Count(nativeGuidanceRequestText(resumed["messages"]), body) != 1 {
 		t.Fatal("resumed mod retained or duplicated superseded workflow")
 	}
 	assertNativeFrontendContracts(t, service.registry, resumed["messages"])

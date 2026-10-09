@@ -213,25 +213,21 @@ loading and the invocation disables Claude's native `Skill` tool. The native
 tool remains available when that manager is absent. Saved confirmed skill
 loads remain part of native history and current-context restoration.
 
-Fresh native queries append the mandatory generated workflow and the complete
-authenticated frontend catalog to Claude's preset prompt. Resume preserves the
-native pinned prompt and receives current guidance through its first
-`UserPromptSubmit` hook. Delivery is keyed by native session identity, not by a
-later `system/init` event. SDK startup `SessionStart` runs before callback
-registration and is not a mandatory root carrier. Native children receive full
-guidance through `SubagentStart`; classic compact hooks supply it again.
+One invocation-local mod adds the mandatory generated workflow and complete
+authenticated frontend catalog to Claude's native engine attachment. Fresh,
+resumed, child and post-compact contexts receive the current invocation's text.
+The native preset, custom-child instructions and saved prompt snapshots remain
+authoritative. Repeated ordinary input retains one current guidance attachment,
+without extra hook fragments or workflow delivery state.
 
-Hook delivery separates workflow from catalog fragments. Workflow must fit its
-10,000 UTF-16-unit inline carrier; each catalog callback fragment is at most
-9,000 UTF-16 units, so the entire executable registry reaches native context
-without becoming a persisted preview. The authenticated invocation-local catalog
-path remains a recovery/reference source, not a required redundant read.
-Oversized or missing registered artifacts fail startup rather than silently
-making mandatory guidance optional. The small companion MCP tool set is exposed
-without deferred tool search.
+The authenticated invocation-local catalog path remains a recovery/reference
+source, not a required redundant read. Oversized or missing registered artifacts,
+or native settings that disable the mandatory mod, fail startup before work is
+admitted. Caller policy stays unchanged. The small
+companion MCP tool set is exposed without deferred tool search.
 
-Classic compact recovery is additive. Mandatory recovery facts must fit the
-capacity left after workflow guidance. If they do not fit or cannot be read, the
+Classic compact hooks add only changing journal recovery facts. Mandatory facts
+must fit the native inline recovery carrier. If they do not fit or cannot be read, the
 native summary stays intact, current workflow and catalog guidance still arrive,
 and the adapter reports unavailable facts. No carrier replaces Claude's base
 prompt, disables its prompt snapshot, changes native arguments/results, or writes
@@ -248,7 +244,7 @@ Acceptance:
    journal, produces retained task updates, shared UI publication and verified
    completion. Model omission is distinct from missing transport or guidance;
    successful adoption by one model does not establish compliance by all models.
-3. Resume, child startup and compact hooks preserve native identity and tool
+3. Resume, child startup and compaction preserve native identity and tool
    restrictions. Repeated ordinary input does not repeat root guidance.
 4. Recovery failure preserves native compaction and mandatory workflow delivery,
    reports the missing facts, and never claims an empty successful recovery.

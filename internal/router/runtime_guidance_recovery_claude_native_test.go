@@ -24,11 +24,11 @@ func TestRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T) {
 	testRuntimeGuidanceClaudeNativeChildAndCompact(t, false)
 }
 
-func TestRuntimeGuidanceClaudeNativeStaticModChildAndCompact(t *testing.T) {
+func TestRuntimeGuidanceClaudeNativePromptModsChildAndCompact(t *testing.T) {
 	testRuntimeGuidanceClaudeNativeChildAndCompact(t, true)
 }
 
-func testRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T, staticMod bool) {
+func testRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T, promptMods bool) {
 	if os.Getenv("MEKUGI_TEST_NATIVE_CLAUDE") != "1" {
 		t.Skip("requires installed native Claude and built bridge")
 	}
@@ -103,28 +103,18 @@ func testRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T, staticMod bool
 		t.Fatal(err)
 	}
 	agents := filepath.Join(presentation.Plugin, "agents")
-	installNativePromptModFixture(t, presentation.Plugin)
+	if promptMods {
+		installNativePromptModFixture(t, presentation.Plugin)
+	}
 	if err := os.Mkdir(agents, 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(agents, "guidance-acceptance.md"), []byte("---\nname: guidance-acceptance\ndescription: Isolated native guidance acceptance.\ntools: Read, Skill\nmodel: haiku\n---\nReturn CHILD_ACCEPTED without tools.\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	skill, err := os.ReadFile(filepath.Join(presentation.Plugin, "skills", "mekugi", "SKILL.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, body, ok := strings.Cut(string(skill), "\n---\n")
-	if !ok {
-		t.Fatal("generated workflow has no body")
-	}
-	body = strings.TrimSpace(body)
 	bridge, err := filepath.Abs("../claude/bridge/dist/bridge.js")
 	if err != nil {
 		t.Fatal(err)
-	}
-	if staticMod {
-		bridge = nativeStaticGuidanceFixtureBridge(t, presentation.Plugin)
 	}
 	executable, err := exec.LookPath("claude")
 	if err != nil {
@@ -187,7 +177,7 @@ func testRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T, staticMod bool
 				}
 				phase++
 				if phase < 3 {
-					if staticMod && phase == 1 {
+					if phase == 1 {
 						root := binding
 						root.Session = nativeSession
 						runtimeJournalAdd(t, service, root, journalClient, "guidance-recovery", recoveryFact)
@@ -213,24 +203,19 @@ func testRuntimeGuidanceClaudeNativeChildAndCompact(t *testing.T, staticMod bool
 	}
 	for name, packet := range map[string]map[string]any{"child": childPacket, "post-compact": compactPacket} {
 		// A native custom child's prompt has no preset session_guidance section.
-		if !staticMod {
+		if promptMods {
 			assertNativePromptModFixture(t, packet, name != "child")
 		}
 		assertNativeManagedSkillFixture(t, packet, presentation.ManagedSkills)
 		if name == "child" && !strings.Contains(nativeGuidanceRequestText(packet["system"]), "Return CHILD_ACCEPTED without tools.") {
 			t.Fatal("prompt mods replaced the native custom child's system instructions")
 		}
-		// Inspect messages, not the inherited root system prompt. This proves
-		// native hook context reached the specific consuming model request.
-		if !strings.Contains(nativeGuidanceRequestText(packet["messages"]), body) {
-			t.Fatalf("complete production workflow absent from native %s messages", name)
-		}
-		assertNativeFrontendContracts(t, service.registry, packet["messages"])
+		assertNativeStaticGuidance(t, packet, presentation.Plugin, service.registry)
 	}
 	if !strings.Contains(nativeGuidanceRequestText(compactPacket["messages"]), summary) {
 		t.Fatalf("classic recovery replaced or omitted the native summary: summary requests=%d parent requests=%d", summaryRequests, parentRequests)
 	}
-	if staticMod && !strings.Contains(nativeGuidanceRequestText(compactPacket["messages"]), recoveryFact) {
+	if !strings.Contains(nativeGuidanceRequestText(compactPacket["messages"]), recoveryFact) {
 		t.Fatal("classic compact omitted the current nonempty journal recovery")
 	}
 	if len(agentCalls) != 1 || !agentCalls["native-child-once"] || agentResults != 1 || childRequests != 1 || parentRequests != 2 || compactBoundaries != 1 || summaryRequests != 1 {

@@ -2,7 +2,6 @@ import { companionRequest, type CompanionConfig } from './companion_transport.js
 export type { CompanionConfig } from './companion_transport.js';
 import { realpath } from 'node:fs/promises';
 import type { HookCallback, HookInput, Options, SDKMessage, SDKSessionInfo, SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk';
-import { companionGuidance, companionFrontendGuidance, type CompanionPrompt } from './guidance.js';
 
 interface Binding { runtime: 'claude'; session: string; workspace: string; agent?: string }
 interface NativeCall { binding: Binding; id: string; tool: string; input: string; paths?: string[]; command?: string; workdir?: string }
@@ -10,27 +9,12 @@ const terminal = (status: string): boolean => ['completed', 'failed', 'stopped']
 const object = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 
-// Only the bridge holds this capability. Session/agent hooks deliver the shared
-// companion guidance.
-export function companion(config: CompanionConfig, cwd: string, notice: (text: string) => Promise<void>, rootInputGuidance = true,
-  prompt: CompanionPrompt = {workflow: companionGuidance(config), frontends: companionFrontendGuidance(config)}, verifyGuard?: (id: string) => Promise<void>): {
+// Only the bridge holds this capability. Hooks bind native callers and deliver
+// changing journal recovery; the invocation-local mod owns static guidance.
+export function companion(config: CompanionConfig, cwd: string, notice: (text: string) => Promise<void>, verifyGuard?: (id: string) => Promise<void>): {
   hooks: Options['hooks']; event: (event: SDKMessage) => Promise<void>;
   resume: (info: SDKSessionInfo) => Promise<void>;
 } {
-  const guidance = prompt.workflow;
-  const frontendHooks: HookCallback[] = prompt.frontends.map(context => {
-    let deliveredSession: string | undefined;
-    return async input => {
-      const scope = caller(input);
-      const firstInput = input.hook_event_name === 'UserPromptSubmit' && !scope.agent && rootInputGuidance && deliveredSession !== scope.session;
-      const child = input.hook_event_name === 'SubagentStart';
-      const compact = input.hook_event_name === 'SessionStart' && input.source === 'compact';
-      if (!firstInput && !child && !compact) return {};
-      if (firstInput) deliveredSession = scope.session;
-      return {hookSpecificOutput: {hookEventName: input.hook_event_name, additionalContext: context}};
-    };
-  });
-  let rootGuidanceSession: string | undefined;
   const pending = new Map<string, NativeCall>();
   const send = (payload: unknown, signal?: AbortSignal): Promise<unknown> => companionRequest(config, payload, signal);
   // The authenticated owner admits session/agent bindings. Hook cwd is the
@@ -55,26 +39,18 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
       // A native cd can change terminal cwd. Keep the original observation
       // namespace; the shared owner still checks exact tool input semantics.
       const scope = prior?.binding ?? caller(input);
-      if (input.hook_event_name === 'UserPromptSubmit') {
-        if (!scope.agent && guidance && rootGuidanceSession !== scope.session) {
-          rootGuidanceSession = scope.session;
-          return {hookSpecificOutput: {hookEventName: 'UserPromptSubmit', additionalContext: guidance}};
-        }
-        return {};
-      }
       if (input.hook_event_name === 'SessionStart' || input.hook_event_name === 'SubagentStart') {
         await send({operation: 'bind', binding: scope}, options.signal);
-        let context = input.hook_event_name === 'SubagentStart' ? guidance : '';
+        let context = '';
         if (input.hook_event_name === 'SessionStart' && input.source === 'compact' && config.journalSchema) {
-          context = guidance;
           try {
-            const maxCharacters = 10000 - (guidance ? guidance.length + 2 : 0);
+            const maxCharacters = 10000;
             const result = await companionRequest(config, {operation: 'journal_recovery', binding: scope, maxCharacters}, options.signal, 128 * 1024) as {text?: string};
             if (typeof result.text !== 'string' || result.text.length > maxCharacters) throw new Error('Native journal recovery carrier unavailable');
             await notice(`Journal recovery prepared (${result.text.length} characters); native summary preserved`);
-            context = context ? `${context}\n\n${result.text}` : result.text;
+            context = result.text;
           } catch (error) {
-            void notice(`Journal recovery unavailable: ${String(error)}; native summary and workflow guidance preserved`).catch(() => {});
+            void notice(`Journal recovery unavailable: ${String(error)}; native summary preserved`).catch(() => {});
           }
         }
         return context ? {hookSpecificOutput: {hookEventName: input.hook_event_name, additionalContext: context}} : {};
@@ -145,7 +121,6 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
     return {};
   };
   const matcher = {hooks: [hook], timeout: 6};
-  const contextMatcher = {...matcher, hooks: [hook, ...frontendHooks]};
   return {
     resume: async info => {
       try {
@@ -153,7 +128,7 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
         await send({operation: 'bind', binding: await binding({session_id: info.sessionId, cwd: info.cwd})});
       } catch (error) { void notice(`Companion capture unavailable: ${String(error)}`).catch(() => {}); }
     },
-    hooks: {SessionStart: [contextMatcher], SubagentStart: [contextMatcher], ...(guidance && rootInputGuidance ? {UserPromptSubmit: [contextMatcher]} : {}), PreToolUse: [{...matcher, matcher: config.journalSchema ? 'Edit|Write|Bash|Agent|Task|mcp__mekugi__journal_batch|mcp__mekugi__journal_read|mcp__mekugi__mchanges' : 'Edit|Write|Bash'}],
+    hooks: {SessionStart: [matcher], SubagentStart: [matcher], PreToolUse: [{...matcher, matcher: config.journalSchema ? 'Edit|Write|Bash|Agent|Task|mcp__mekugi__journal_batch|mcp__mekugi__journal_read|mcp__mekugi__mchanges' : 'Edit|Write|Bash'}],
       PostToolUse: [{...matcher, matcher: 'Edit|Write|Bash'}], PostToolUseFailure: [{...matcher, matcher: 'Edit|Write|Bash'}]},
     event: async event => {
       try {
