@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtemp, rm, realpath, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, realpath, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
@@ -104,6 +104,30 @@ test('verified native resume restores only matching workspace evidence before to
   await observer.resume({...info, cwd: '/'});
   assert.equal(payloads.length, 1);
   assert.equal(notices.length, 2);
+});
+
+test('native terminal cwd changes retain original scope with exact caller pairing', async t => {
+  for (const guard of [undefined, {guardReady: true}]) {
+    const {observer, payloads, notices, cwd} = await fixture(t, undefined, guard);
+    await mkdir(join(cwd, 'surviving'));
+    const tool = {session_id: 'session', cwd, transcript_path: '/native/transcript', tool_use_id: 'cd-call', tool_name: 'Bash', tool_input: {command: 'cd surviving && git push surviving'}};
+    await invoke(observer, {...tool, hook_event_name: 'PreToolUse'});
+    const terminal = {...tool, cwd: join(cwd, 'surviving'), hook_event_name: 'PostToolUse' as const, tool_response: {stdout: 'native result'}};
+    // Neither mismatch may use the original pending call's namespace.
+    await invoke(observer, {...terminal, session_id: 'other'});
+    await invoke(observer, {...terminal, agent_id: 'other'});
+    assert.equal(payloads.length, 1);
+    assert.equal(notices.length, 2);
+    assert.deepEqual(await invoke(observer, terminal), {});
+    assert.deepEqual(payloads[1]?.call, payloads[0]?.call);
+    assert.deepEqual(payloads[1]?.terminal, {status: 'completed', report: '{"stdout":"native result"}'});
+    assert.equal(terminal.cwd, join(cwd, 'surviving'));
+    const following = {...tool, tool_use_id: 'following', cwd: terminal.cwd, tool_input: {command: 'git push surviving'}};
+    await invoke(observer, {...following, hook_event_name: 'PreToolUse'});
+    await invoke(observer, {...following, cwd, hook_event_name: 'PostToolUse', tool_response: {stdout: 'native result'}});
+    assert.deepEqual(payloads[2]?.call, {...payloads[0]?.call as object, id: 'following', input: '{"command":"git push surviving"}', command: 'git push surviving', workdir: terminal.cwd});
+    assert.deepEqual(payloads[3]?.call, payloads[2]?.call);
+  }
 });
 
 test('missing binding or task evidence fails observationally without changing hook decisions', async t => {

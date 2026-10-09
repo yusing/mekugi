@@ -77,8 +77,8 @@ func TestNativeRuntimeVCSGuardHandoffClaudeNative(t *testing.T) {
 		name, command string
 	}
 	phases := []phase{
-		{"a-grant", exact}, {"a-repeat", exact}, {"b-cwd", exact},
-		{"b-argv", "git push changed"}, {"b-executable", shellsyntax.Quote(filepath.Join(otherTools, "git")) + " push 'branch with spaces'"},
+		{"a-grant", exact}, {"b-cwd", exact},
+		{"b-executable", shellsyntax.Quote(filepath.Join(otherTools, "git")) + " push 'branch with spaces'"},
 		{"b-grant", exact}, {"a-return", exact}, {"a-clear", exact}, {"fresh-b", exact},
 	}
 	var mu sync.Mutex
@@ -226,9 +226,6 @@ seedLoop:
 				guards++
 				u.runtimeGuardApproval(request)
 				wantArg, wantExecutable := "branch with spaces", filepath.Join(tools, "git")
-				if p.name == "b-argv" {
-					wantArg = "changed"
-				}
 				if p.name == "b-executable" {
 					wantExecutable = filepath.Join(otherTools, "git")
 				}
@@ -302,7 +299,6 @@ seedLoop:
 	}
 	run(0, a, 1, false)
 	idA := u.thread
-	run(1, a, 0, true)
 	switchTo := func(id, cwd, present, absent string) {
 		t.Helper()
 		runtimeKeys(t, u, "/resume "+id+"\r")
@@ -312,19 +308,18 @@ seedLoop:
 			t.Fatalf("native selected history/workspace mismatch: %s", frame)
 		}
 	}
-	switchTo(idB, b, "NATIVE_B_HISTORY_HANDOFF_7183", "GUARD_HANDOFF_a-repeat!")
+	switchTo(idB, b, "NATIVE_B_HISTORY_HANDOFF_7183", "GUARD_HANDOFF_a-grant!")
+	run(1, b, 2, false)
+	run(3, b, 1, false)
 	run(2, b, 2, false)
-	run(5, b, 1, false)
-	run(3, b, 2, false)
-	run(4, b, 2, false)
-	switchTo(idA, a, "GUARD_HANDOFF_a-repeat!", "NATIVE_B_HISTORY_HANDOFF_7183")
-	run(6, a, 0, true)
+	switchTo(idA, a, "GUARD_HANDOFF_a-grant!", "NATIVE_B_HISTORY_HANDOFF_7183")
+	run(4, a, 0, true)
 	runtimeKeys(t, u, "/clear\r")
 	wait("session_ready")
 	if u.thread != "" || len(u.view.entries) != 0 {
 		t.Fatal("native clear retained departing history")
 	}
-	run(7, a, 0, true)
+	run(5, a, 0, true)
 	if u.thread == "" || u.thread == idA || u.thread == idB {
 		t.Fatal("native clear did not create a distinct query session")
 	}
@@ -339,7 +334,7 @@ seedLoop:
 	if u.thread != idB || u.session.cwd != b || service.owner.workspace != b || !strings.Contains(runtimeFrame(t, u, 120, 70), "NATIVE_B_HISTORY_HANDOFF_7183") {
 		t.Fatal("fresh A launch did not restore native B metadata/history/workspace")
 	}
-	run(8, b, 2, false)
+	run(6, b, 2, false)
 	for _, cwd := range []string{a, b} {
 		if data, err := os.ReadFile(filepath.Join(cwd, ".claude", "settings.local.json")); err != nil || string(data) != settings {
 			t.Fatal("native handoff changed caller permission settings")

@@ -5,7 +5,7 @@ import type { HookCallback, HookInput, Options, SDKMessage, SDKSessionInfo, Sync
 import { companionGuidance, companionFrontendGuidance, type CompanionPrompt } from './guidance.js';
 
 interface Binding { runtime: 'claude'; session: string; workspace: string; agent?: string }
-interface NativeCall { binding: Binding; id: string; tool: string; input: string; paths?: string[]; command?: string }
+interface NativeCall { binding: Binding; id: string; tool: string; input: string; paths?: string[]; command?: string; workdir?: string }
 const terminal = (status: string): boolean => ['completed', 'failed', 'stopped'].includes(status);
 const object = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
@@ -21,26 +21,25 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
   const frontendHooks: HookCallback[] = prompt.frontends.map(context => {
     let deliveredSession: string | undefined;
     return async input => {
-      try {
-        const scope = await binding(input);
-        const firstInput = input.hook_event_name === 'UserPromptSubmit' && !scope.agent && rootInputGuidance && deliveredSession !== scope.session;
-        const child = input.hook_event_name === 'SubagentStart';
-        const compact = input.hook_event_name === 'SessionStart' && input.source === 'compact';
-        if (!firstInput && !child && !compact) return {};
-        if (firstInput) deliveredSession = scope.session;
-        return {hookSpecificOutput: {hookEventName: input.hook_event_name, additionalContext: context}};
-      } catch (error) {
-        void notice(`Frontend guidance unavailable: ${String(error)}`).catch(() => {});
-        return {};
-      }
+      const scope = caller(input);
+      const firstInput = input.hook_event_name === 'UserPromptSubmit' && !scope.agent && rootInputGuidance && deliveredSession !== scope.session;
+      const child = input.hook_event_name === 'SubagentStart';
+      const compact = input.hook_event_name === 'SessionStart' && input.source === 'compact';
+      if (!firstInput && !child && !compact) return {};
+      if (firstInput) deliveredSession = scope.session;
+      return {hookSpecificOutput: {hookEventName: input.hook_event_name, additionalContext: context}};
     };
   });
   let rootGuidanceSession: string | undefined;
-  const guarded = new Map<string, NativeCall>();
+  const pending = new Map<string, NativeCall>();
   const send = (payload: unknown, signal?: AbortSignal): Promise<unknown> => companionRequest(config, payload, signal);
+  // The authenticated owner admits session/agent bindings. Hook cwd is the
+  // native operational directory, not a selector for the launch namespace.
+  const caller = (input: Pick<HookInput, 'session_id' | 'agent_id'>): Binding =>
+    ({runtime: 'claude', session: input.session_id, workspace: cwd, ...(input.agent_id ? {agent: input.agent_id} : {})});
   const binding = async (input: Pick<HookInput, 'session_id' | 'cwd' | 'agent_id'>): Promise<Binding> => {
     if (await realpath(input.cwd) !== cwd) throw new Error('native hook workspace differs from this launch');
-    return {runtime: 'claude', session: input.session_id, workspace: cwd, ...(input.agent_id ? {agent: input.agent_id} : {})};
+    return caller(input);
   };
   const report = (value: unknown): string => {
     const text = typeof value === 'string' ? value : JSON.stringify(value) ?? '';
@@ -48,7 +47,14 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
   };
   const hook: HookCallback = async (input, toolUseID, options): Promise<SyncHookJSONOutput> => {
     try {
-      const scope = await binding(input);
+      const terminalHook = input.hook_event_name === 'PostToolUse' || input.hook_event_name === 'PostToolUseFailure';
+      const prior = terminalHook ? pending.get(input.tool_use_id) : undefined;
+      if (terminalHook && prior && (prior.binding.session !== input.session_id || prior.binding.agent !== input.agent_id || prior.tool !== input.tool_name)) {
+        throw new Error('native terminal caller differs from its original call');
+      }
+      // A native cd can change terminal cwd. Keep the original observation
+      // namespace; the shared owner still checks exact tool input semantics.
+      const scope = prior?.binding ?? caller(input);
       if (input.hook_event_name === 'UserPromptSubmit') {
         if (!scope.agent && guidance && rootGuidanceSession !== scope.session) {
           rootGuidanceSession = scope.session;
@@ -88,6 +94,11 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
       const args = object(input.tool_input);
       if (!args) throw new Error('native tool input is not an object');
       const call: NativeCall = {binding: scope, id: input.tool_use_id, tool: input.tool_name, input: JSON.stringify(input.tool_input)};
+      if (prior?.workdir) call.workdir = prior.workdir;
+      if (input.hook_event_name === 'PreToolUse') {
+        const workdir = await realpath(input.cwd);
+        if (workdir !== cwd) call.workdir = workdir;
+      }
       if (input.tool_name === 'Bash') {
         if (typeof args.command !== 'string') throw new Error('native Bash command missing');
         // The hook does not prove the actual shell executable. Leave it unknown:
@@ -98,22 +109,23 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
         call.paths = [args.file_path];
       }
       if (input.hook_event_name === 'PreToolUse') {
+        if (pending.size >= 1024) throw new Error('native observation pending-call limit reached');
         if (config.vcsGuard && input.tool_name === 'Bash') {
           // Instrumentation must fail closed, independently of auxiliary capture.
           await verifyGuard?.(input.tool_use_id);
-          if (guarded.size >= 1024) throw new Error('native guard pending-call limit reached');
           const result = await send({operation: 'before', call}, options.signal) as {guardReady?: boolean; captureError?: string};
           if (result.guardReady !== true) throw new Error('native startup guard unavailable');
-          guarded.set(call.id, call);
+          pending.set(call.id, call);
           if (result.captureError) void notice(`Companion capture unavailable: ${result.captureError}`).catch(() => {});
           // Native rules evaluate original input. Startup guards execution.
           return {};
         }
         await send({operation: 'before', call}, options.signal);
+        pending.set(call.id, call);
       }
       else if (input.hook_event_name === 'PostToolUseFailure') {
         const result = await send({operation: 'after', call, terminal: {status: input.is_interrupt ? 'stopped' : 'failed', report: input.error, interrupted: input.is_interrupt ?? false}}, options.signal) as {changeID?: string};
-        guarded.delete(call.id);
+        pending.delete(call.id);
         if (config.frontendDirectory && result.changeID) return {hookSpecificOutput: {hookEventName: 'PostToolUseFailure', additionalContext: `Mekugi recorded actual file effects: ${result.changeID}. Review this explicit ID with mchanges through native Bash.`}};
       }
       else {
@@ -121,7 +133,7 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
         const task = typeof response?.backgroundTaskId === 'string' ? response.backgroundTaskId : undefined;
         if (args.run_in_background === true && !task) throw new Error('background Bash completion identity unavailable; capture left unfinished');
         const result = await send({operation: 'after', call, terminal: {status: task ? 'running' : 'completed', ...(task ? {task} : {}), report: report(input.tool_response)}}, options.signal) as {changeID?: string};
-        guarded.delete(call.id);
+        pending.delete(call.id);
         if (config.frontendDirectory && result.changeID) return {hookSpecificOutput: {hookEventName: 'PostToolUse', additionalContext: `Mekugi recorded actual file effects: ${result.changeID}. Review this explicit ID with mchanges through native Bash.`}};
       }
     } catch (error) {
@@ -150,10 +162,10 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
         if (event.type === 'user' && Array.isArray(event.message.content)) {
           for (const block of event.message.content) {
             if (block.type !== 'tool_result' || !block.is_error) continue;
-            const call = guarded.get(block.tool_use_id);
+            const call = pending.get(block.tool_use_id);
             if (!call || call.binding.session !== event.session_id) continue;
             await send({operation: 'after', call, terminal: {status: 'failed', report: report(block.content)}});
-            guarded.delete(call.id);
+            pending.delete(call.id);
           }
         }
         if (config.journalSchema && event.type === 'user') {
@@ -167,7 +179,7 @@ export function companion(config: CompanionConfig, cwd: string, notice: (text: s
         if (event.subtype === 'compact_boundary') {
           await notice('Native context compaction completed');
         } else if (event.subtype === 'init') {
-          await send({operation: 'bind', binding: await binding({session_id: event.session_id, cwd: event.cwd})});
+          await send({operation: 'bind', binding: caller({session_id: event.session_id})});
         } else if (config.journalSchema && event.subtype === 'task_started' && event.tool_use_id) {
           await send({operation: 'journal_task_start', task: {id: event.task_id, session: event.session_id, callID: event.tool_use_id}});
         } else if (event.subtype === 'task_notification' && terminal(event.status)) {

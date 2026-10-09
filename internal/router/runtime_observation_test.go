@@ -106,6 +106,43 @@ func TestNativeObservationActualOutcomesAndIdempotence(t *testing.T) {
 	}
 }
 
+func TestNativeObservationOperationalDirectoryKeepsSelectedScope(t *testing.T) {
+	for _, tool := range []string{"Write", "Bash"} {
+		t.Run(tool, func(t *testing.T) {
+			owner, store, binding := nativeObservationFixture(t)
+			workdir := t.TempDir()
+			path := filepath.Join(workdir, "effect.txt")
+			nativeObservationWrite(t, path, "original\n")
+			call := ObservationCall{Binding: binding, ID: "following", Tool: tool, Input: `{}`, Workdir: workdir}
+			if tool == "Write" {
+				call.Paths = []string{"effect.txt"}
+			} else {
+				call.Command, call.Shell = "printf changed > effect.txt", "/bin/bash"
+			}
+			if err := owner.before(t.Context(), call); err != nil {
+				t.Fatal(err)
+			}
+			nativeObservationWrite(t, path, "changed\n")
+			changed := call
+			changed.Workdir = binding.Workspace
+			if _, err := owner.after(t.Context(), changed, ObservationTerminal{Status: "completed"}); err == nil {
+				t.Fatal("terminal changed original operational directory")
+			}
+			if id, err := owner.after(t.Context(), call, ObservationTerminal{Status: "completed"}); err != nil || id == "" {
+				t.Fatalf("relative effect was not captured: id=%q error=%v", id, err)
+			}
+			history := nativeObservationHistory(t, store, call, "after")
+			if history.Root != binding.Workspace || history.NativeObservation.Binding != binding || len(history.ReviewFiles) != 1 || history.ReviewFiles[0].AfterPath != path {
+				t.Fatalf("operational directory changed selected scope or lost effect: %+v", history)
+			}
+			call.ID, call.Workdir = "relative", "relative"
+			if err := owner.before(t.Context(), call); err == nil {
+				t.Fatal("relative native cwd admitted")
+			}
+		})
+	}
+}
+
 func TestNativeObservationNoEffectHasNoChangeID(t *testing.T) {
 	for _, status := range []string{"completed", "failed", "stopped"} {
 		t.Run(status, func(t *testing.T) {

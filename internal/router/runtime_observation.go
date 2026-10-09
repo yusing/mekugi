@@ -39,6 +39,7 @@ type ObservationCall struct {
 	Paths   []string           `json:"paths,omitempty"`
 	Command string             `json:"command,omitempty"`
 	Shell   string             `json:"shell,omitempty"`
+	Workdir string             `json:"workdir,omitempty"`
 }
 
 // Hooks can serialize the same native JSON object in different member orders.
@@ -201,7 +202,7 @@ func (o *nativeObservationOwner) callContext(ctx context.Context, call Observati
 		return nil, err
 	}
 	bound, ok := o.bindings[call.Binding]
-	if !ok || call.ID == "" || call.Tool == "" || len(call.ID) > 1024 || len(call.Input) > 8<<20 {
+	if !ok || call.ID == "" || call.Tool == "" || len(call.ID) > 1024 || len(call.Input) > 8<<20 || call.Workdir != "" && !filepath.IsAbs(call.Workdir) {
 		return nil, errors.New("unbound or invalid native call")
 	}
 	return context.WithValue(ctx, storageSessionKey{}, bound.Value(storageSessionKey{})), nil
@@ -269,16 +270,20 @@ func (o *nativeObservationOwner) before(ctx context.Context, call ObservationCal
 		return errors.New("native pending observation limit reached")
 	}
 	started := time.Now().UTC()
+	workdir := call.Workdir
+	if workdir == "" {
+		workdir = o.workspace
+	}
 	var observation *execObservation
 	if len(call.Paths) > 0 {
 		if len(call.Paths) > 32 {
 			return errors.New("native path scope exceeds limit")
 		}
-		observation = captureNativePaths(call.Paths, o.workspace)
+		observation = captureNativePaths(call.Paths, workdir)
 	} else if call.Command != "" {
-		commands := []execCommandInput{{Command: call.Command, Workdir: o.workspace, Shell: call.Shell}}
+		commands := []execCommandInput{{Command: call.Command, Workdir: workdir, Shell: call.Shell}}
 		var observed bool
-		observation, observed = captureExecObservation(commands, false, false, execCaptureEnv{directory: o.workspace, changes: storeChangeResolver(ctx, o.store)})
+		observation, observed = captureExecObservation(commands, false, false, execCaptureEnv{directory: workdir, changes: storeChangeResolver(ctx, o.store)})
 		source := observation
 		observation, _ = snapshotObservedWorkspace(ctx, o.store, o.workspace, observation, observed)
 		if observation == nil && source != nil && source.Class != execNeutral.String() {

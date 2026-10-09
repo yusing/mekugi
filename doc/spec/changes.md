@@ -6,6 +6,13 @@ working tree or a claim that unobserved effects did not occur.
 
 ## Native Claude caller selection
 
+Native session workspace and command working directory are distinct. A terminal
+hook can report the directory after a command's `cd`; observation still pairs
+with the original pre-call scope and exact native call identity. Terminal
+metadata alone does not select a new journal or frontend workspace.
+Following tool operands resolve from their native pre-call working directory.
+That directory does not change the selected workspace or caller authorization.
+
 The read-only MCP `mchanges` adapter accepts an `args` array with the shared
 reader arguments. Native tool-use metadata must match an authenticated hook
 receipt, including exact arguments. Empty arguments, `--mine` and `--list`

@@ -3,7 +3,6 @@
 package router
 
 import (
-	"bufio"
 	"context"
 	json "encoding/json/v2"
 	"net/http"
@@ -83,7 +82,7 @@ func TestNativeRuntimeVCSGuardChildrenClaudeNative(t *testing.T) {
 	if err := service.PrepareVCSGuard(ctx, helper); err != nil {
 		t.Fatal(err)
 	}
-	commands := map[string]string{"cancel": "cd cancelled && git push cancelled", "survive": "cd surviving && git push surviving"}
+	commands := map[string]string{"cancel": "cd cancelled && git push cancelled", "survive": "cd surviving && git push surviving", "follow": "git push surviving"}
 	var mu sync.Mutex
 	phases := make(map[string]int)
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -103,7 +102,9 @@ func TestNativeRuntimeVCSGuardChildrenClaudeNative(t *testing.T) {
 		tools, _ := packet["tools"].([]any)
 		if len(tools) > 0 {
 			phase := "root"
-			if strings.Contains(text, "GUARD_CHILD_REPEAT!") {
+			if strings.Contains(text, "GUARD_CHILD_FOLLOW!") {
+				phase = "follow"
+			} else if strings.Contains(text, "GUARD_CHILD_REPEAT!") {
 				phase = "repeat"
 			} else if strings.Contains(text, "GUARD_CHILDREN_ROOT!") {
 				phase = "root"
@@ -181,7 +182,7 @@ func TestNativeRuntimeVCSGuardChildrenClaudeNative(t *testing.T) {
 			case request := <-service.owner.execTrack.approvals:
 				u.runtimeGuardApproval(request)
 				requests[request.item] = request
-				if request.thread != u.thread || request.cwd != filepath.Join(binding.Workspace, map[string]string{"guard-child-cancel": "cancelled", "guard-child-survive": "surviving", "guard-child-repeat": "surviving"}[request.item]) || request.executable != filepath.Join(fake, "git") {
+				if request.thread != u.thread || request.cwd != filepath.Join(binding.Workspace, map[string]string{"guard-child-cancel": "cancelled", "guard-child-survive": "surviving", "guard-child-repeat": "surviving", "guard-child-follow": "surviving"}[request.item]) || request.executable != filepath.Join(fake, "git") {
 					t.Fatalf("guard changed native identity: thread=%q item=%q cwd=%q executable=%q", request.thread, request.item, request.cwd, request.executable)
 				}
 				arg := "surviving"
@@ -237,31 +238,6 @@ func TestNativeRuntimeVCSGuardChildrenClaudeNative(t *testing.T) {
 							t.Logf("native before %s: %+v", id, call)
 						}
 						trace.mu.Unlock()
-						_ = filepath.WalkDir(filepath.Join(config, "projects"), func(path string, d os.DirEntry, err error) error {
-							if err != nil || d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
-								return err
-							}
-							f, err := os.Open(path)
-							if err != nil {
-								return err
-							}
-							defer f.Close()
-							scan := bufio.NewScanner(f)
-							scan.Buffer(nil, 8<<20)
-							lastCwd := ""
-							for scan.Scan() {
-								var row struct {
-									Type      string `json:"type"`
-									Cwd       string `json:"cwd"`
-									SessionID string `json:"sessionId"`
-								}
-								if json.Unmarshal(scan.Bytes(), &row) == nil && row.Cwd != "" && row.Cwd != lastCwd {
-									t.Logf("%s: native record=%s cwd=%q session=%q", label, row.Type, row.Cwd, row.SessionID)
-									lastCwd = row.Cwd
-								}
-							}
-							return scan.Err()
-						})
 						t.Fatal(e.Text)
 					}
 				}
@@ -338,14 +314,30 @@ func TestNativeRuntimeVCSGuardChildrenClaudeNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	await("native shell shutdown/resume receipt", func() bool { return shellDone })
+	mainDone = false
 	runtimeKeys(t, u, "GUARD_CHILD_REPEAT!\r")
-	await("follow-up reused exact UI grant", func() bool { return results["guard-child-repeat"] && requests["guard-child-repeat"] != nil })
+	await("follow-up reused exact UI grant", func() bool { return mainDone && results["guard-child-repeat"] && requests["guard-child-repeat"] != nil })
 	u.expireApprovals()
 	if len(u.approvals.pending) != 0 {
 		t.Fatal("same-session shell handoff lost exact grant")
 	}
 	if data, err := os.ReadFile(effects); err != nil || string(data) != want+want {
 		t.Fatalf("handoff replayed or lost effects=%q error=%v", data, err)
+	}
+	runtimeKeys(t, u, "GUARD_CHILD_FOLLOW!\r")
+	await("following command reused changed-directory grant", func() bool { return results["guard-child-follow"] && requests["guard-child-follow"] != nil })
+	u.expireApprovals()
+	if len(u.approvals.pending) != 0 {
+		t.Fatal("following command lost exact changed-directory grant")
+	}
+	if data, err := os.ReadFile(effects); err != nil || string(data) != want+want+want {
+		t.Fatalf("following command changed native cwd or replayed effects=%q error=%v", data, err)
+	}
+	trace.mu.Lock()
+	following, terminalFollowing := trace.before["guard-child-follow"], trace.after["guard-child-follow"]
+	trace.mu.Unlock()
+	if following.Binding != (ObservationBinding{Runtime: "claude", Session: u.thread, Workspace: binding.Workspace}) || following.Workdir != filepath.Join(binding.Workspace, "surviving") || !sameObservationCall(&following, &terminalFollowing) {
+		t.Fatalf("following command conflated operational cwd with selected scope: before=%+v after=%+v", following, terminalFollowing)
 	}
 	if data, err := os.ReadFile(settingsPath); err != nil || string(data) != settings {
 		t.Fatal("native project permissions changed")
