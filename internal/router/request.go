@@ -25,6 +25,9 @@ type parsedResponsesRequest struct {
 	toolCatalog *responsesToolCatalog
 	// Authorized reset recovery carries the original guidance read order.
 	journalGuidanceOrder []string
+	// Locally restored summaries are not model response rounds.
+	journalRecoveryTexts  []string
+	journalGuidanceSkills map[string][]journalGuidanceSkill
 }
 
 // responseTools returns the decoded tool catalog, decoding it on first access.

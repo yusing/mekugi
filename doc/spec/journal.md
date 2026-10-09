@@ -318,10 +318,10 @@ In `off` and `slice`, ordinary provider rows
 keep “Context compacted”.
 
 The journal's “Context reset from journal” row opens the shared scrollable dialog
-with the exact model-visible recovery message retained for that response. The
-message remains associated with its original thread, turn and item across later
-resets and resume; it is never regenerated from newer journal state. Slice-reset
-notes identify their standalone turn and disclose recovery only when that turn has
+with the exact model-visible recovery message and auto-loaded guidance retained
+for that response. The message remains associated with its original thread, turn
+and item across later resets and resume; it is never regenerated from newer journal
+state. Slice-reset notes identify their standalone turn and disclose recovery only when that turn has
 one retained answer receipt. Older
 receipts or unreadable retained messages open an explicit unavailable notice.
 Provider compaction rows do not acquire a journal-recovery disclosure.
@@ -341,15 +341,17 @@ instructions, developer messages and AGENTS.md instruction messages; a name
 matches the absolute, `~/`, `$HOME/`, `${HOME}/` or workspace-relative path as a whole token.
 Reads come from literal, simple top-level `cat`, `mcat` and `inspect_file` commands in
 completed `exec_command` calls and exec cells of the history the compaction
-request carries, including guidance retained by an earlier reset. Plain `$HOME`
+request carries. Only reads in its first five model responses/tool-call rounds
+qualify; parallel calls in one response count as one round. Guidance retained by
+an earlier reset remains eligible and does not consume a round. Plain `$HOME`
 and `${HOME}` path expansions, quoted or unquoted, resolve to the user's home
 directory without shell execution. Other parameter expansions remain ineligible.
 Only unambiguous single-path expansions qualify. Other reads and dynamic, piped,
 redirected or nested commands are not guidance. File snapshots require an instruction-named
 resolved path and a bounded regular file; process, system and device files are
 unavailable. A symlink cannot admit a different unnamed source.
-Eligibility comes only from the last context's completed reads, including retained
-guidance visible in that context. First-context ordering metadata cannot make an
+File eligibility comes only from the last context's completed reads, including
+retained guidance visible in that context. First-context ordering metadata cannot make an
 older omitted source eligible again.
 
 At reset, the router reads each source once from the selected workspace. Global
@@ -359,8 +361,15 @@ Repository-instruction references below that root retain only the shared
 `inspect_file` structural outline, so their bodies do not displace task guidance.
 Ranged or bounded reads identify the source, not a retained subset of its text.
 Content reflects reset time, so a read that was truncated or batched with other
-output is complete. Skills are not snapshotted; the agent reloads them through
-stock host execution when needed. Collection starts no subprocess.
+output is complete. Skills selected through `$name` mentions are loaded at every
+reset, regardless of the round in which they appear or whether the agent read
+them. The host's selected-skill messages and automatic skill attachments identify
+them by name and source path; plain names do not select skills. Native skills
+read their selected source files. Managed skills, including generated metadata
+placeholders, use `skills-mgr`. Same-named selections with different source paths
+remain distinct. Retained selections keep that identity and resolution policy
+after later resets and restart. Skill bodies have
+budget priority over documents. Agent-selected skill reads alone do not qualify.
 Within each priority tier, sources follow the first context's read order, then
 the last context's read order, then instruction declaration order. The initial
 read order survives later resets and restart through the retained recovery record.

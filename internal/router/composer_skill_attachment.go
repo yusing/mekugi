@@ -36,6 +36,28 @@ func readManagedSkill(ctx context.Context, cwd string, environment []string, nam
 	}
 	return output.Bytes(), nil
 }
+
+// Native selections keep their source path. Managed metadata placeholders
+// identify a manager-owned skill, not a file containing its instructions.
+func readSkillAttachment(ctx context.Context, cwd string, environment []string, skill composerSkill) ([]byte, bool, error) {
+	managed := skill.path == ""
+	if skill.path != "" {
+		if !filepath.IsAbs(skill.path) {
+			return nil, false, fmt.Errorf("skill metadata requires an absolute path")
+		}
+		_, markerErr := os.Stat(filepath.Join(filepath.Dir(skill.path), ".skills-mgr-placeholder"))
+		managed = markerErr == nil
+		if markerErr != nil && !os.IsNotExist(markerErr) {
+			return nil, false, markerErr
+		}
+	}
+	if managed {
+		data, err := readManagedSkill(ctx, cwd, environment, skill.name)
+		return data, true, err
+	}
+	data, err := readComposerFile(skill.path)
+	return data, false, err
+}
 func frameComposerSkillFromPath(name, path, content string) []string {
 	header := fmt.Sprintf("Attached skill %q", name)
 	if path != "" {
@@ -73,31 +95,12 @@ func (d *composerDraft) snapshotSkillAttachments(cwd string, environment []strin
 		}
 		seen[key] = true
 		header := fmt.Sprintf("Attached skill %q", skill.name)
-		var data []byte
-		var err error
-		managed := skill.path == ""
 		if skill.path != "" {
 			header += fmt.Sprintf(" from %q", skill.path)
-			if !filepath.IsAbs(skill.path) {
-				err = fmt.Errorf("skill metadata requires an absolute path")
-			} else {
-				// User-invoked managed skills may be absent from the model's
-				// catalog. Their native path is a generated metadata placeholder,
-				// never the instruction source.
-				_, markerErr := os.Stat(filepath.Join(filepath.Dir(skill.path), ".skills-mgr-placeholder"))
-				managed = markerErr == nil
-				if markerErr != nil && !os.IsNotExist(markerErr) {
-					err = markerErr
-				} else if !managed {
-					data, err = readComposerFile(skill.path)
-				}
-			}
 		}
-		if managed && err == nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			data, err = readManagedSkill(ctx, cwd, environment, skill.name)
-			cancel()
-		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		data, _, err := readSkillAttachment(ctx, cwd, environment, skill)
+		cancel()
 		next := frameComposerSkillFromPath(skill.name, skill.path, string(data))
 		var more bool
 		frames, more = d.appendAttachmentSnapshot(frames, next, header, err)

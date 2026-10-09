@@ -2,3 +2,31 @@
 
 ◆ ↻ Context reset from journal · 0 provider tokens                                   20:00
   ›
+
+╭─ Journal recovery · Context reset from journal ───────────────────────── [×] ─╮
+│                                                                               │
+├───────────────────────────────────────────────────────────────────────────────┤
+│ No recorded changes.                                                          │
+│                                                                               │
+│ Resume: no runnable local task.                                               │
+│ Read more: tools.mcp__mekugi__journal_read({p:"PATH",depth:1}); use           │
+│ view:"outline" for older paths. For an agent, add agent:"NAME",view:"own"     ▌
+│ using its heading. Find older agents with                                     ▌
+│ tools.mcp__mekugi__journal_read({depth:1}).                                   ▌
+│                                                                               ▌
+│ Workspace: "/workspace"                                                       ▌
+│ Auto-loaded guidance: the next tool result holds guidance for this reset.     ▌
+│                                                                               ▌
+│ Guidance loaded at context reset.                                             ▌
+│                                                                               ▌
+│ Skill: demo                                                                   ▌
+│ Skill demo at reset.                                                          ▌
+│                                                                               ▌
+│ Skill: selected                                                               ▌
+│ Skill selected at reset.                                                      ▌
+│                                                                               ▌
+│ Skill: attached                                                               ▌
+│ Skill attached at reset.                                                      ▌
+╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ─────────────────────────────╯
+
+

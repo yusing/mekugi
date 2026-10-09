@@ -133,6 +133,8 @@ func (s *mekugiReplayStore) restoreJournalCompactionItems(ctx context.Context, r
 	s = s.scoped(ctx)
 	var restored []map[string]jsonv1.RawMessage
 	var guidanceOrder []string
+	var recoveryTexts []string
+	retainedSkills := make(map[string][]journalGuidanceSkill)
 	err := s.locked(ctx, func() error {
 		var names []string
 		for _, item := range items {
@@ -177,11 +179,15 @@ func (s *mekugiReplayStore) restoreJournalCompactionItems(ctx context.Context, r
 			if guidanceOrder == nil && recovery.Guidance != nil {
 				guidanceOrder = slices.Clone(recovery.Guidance.FirstReadOrder)
 			}
+			if len(guidance) > 0 && len(recovery.Guidance.Skills) > 0 {
+				retainedSkills[jsonString(guidance[0], "call_id")] = slices.Clone(recovery.Guidance.Skills)
+			}
 			restored = append(restored, map[string]jsonv1.RawMessage{
 				"type": mustMarshalJSON("message"), "role": mustMarshalJSON("assistant"),
 				"content": mustMarshalJSON([]any{map[string]any{"type": "output_text", "text": recovery.Text, "annotations": []any{}}}),
 			})
 			restored = append(restored, guidance...)
+			recoveryTexts = append(recoveryTexts, recovery.Text)
 			names = append(names, name)
 		}
 		return s.retainFiles(names...)
@@ -193,6 +199,8 @@ func (s *mekugiReplayStore) restoreJournalCompactionItems(ctx context.Context, r
 	if err == nil {
 		request.setInput(input)
 		request.journalGuidanceOrder = guidanceOrder
+		request.journalRecoveryTexts = recoveryTexts
+		request.journalGuidanceSkills = retainedSkills
 	}
 	return err
 }
@@ -280,7 +288,7 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 	if v2 && (p.journalCompaction == "auto" || metadata.Trigger == "manual" && metadata.Phase == "standalone_turn") {
 		// Snapshot outside the store lock: skill loads run skills-mgr.
 		if items, _, err := journalCompactionInput(&a.request); err == nil {
-			guidance = collectJournalGuidance(ctx, items, jsonString(a.request.fields, "instructions"), workspace, a.request.journalGuidanceOrder)
+			guidance = collectJournalGuidance(ctx, items, jsonString(a.request.fields, "instructions"), workspace, a.request.journalGuidanceOrder, a.request.journalGuidanceSkills, a.request.journalRecoveryTexts...)
 		}
 	}
 	var summary journalSummary
@@ -692,6 +700,12 @@ func (s *mekugiReplayStore) compactionRecovery(ctx context.Context, workspace, t
 				return errors.New("invalid compaction recovery identity or size")
 			}
 			text = recovery.Text
+			if recovery.Guidance != nil {
+				if _, err := journalGuidanceItems(recovery.Guidance, recovery.ResponseID); err != nil {
+					return err
+				}
+				text += "\n" + recovery.Guidance.Text
+			}
 			return nil
 		}
 		return nil

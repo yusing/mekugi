@@ -119,7 +119,8 @@ func TestJournalCompactionV2GuidancePriorityAndReadOrder(t *testing.T) {
 	check(later.Guidance, want)
 	// Replaying an older snapshot supplies candidates, not a new read order.
 	// Without the initial order, actual last-context reads precede declarations.
-	legacy, err := journalGuidanceItems(&journalGuidance{Tool: first.Guidance.Tool, Name: first.Guidance.Name, Commands: first.Guidance.Commands, Text: first.Guidance.Text}, "resp_mekugi_compact_legacy")
+	legacyText := strings.Replace(first.Guidance.Text, journalGuidanceHeader, "Guidance loaded before context reset, read again at reset.\n", 1)
+	legacy, err := journalGuidanceItems(&journalGuidance{Tool: first.Guidance.Tool, Name: first.Guidance.Name, Commands: first.Guidance.Commands, Text: legacyText}, "resp_mekugi_compact_legacy")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,14 +128,14 @@ func TestJournalCompactionV2GuidancePriorityAndReadOrder(t *testing.T) {
 		map[string]jsonv1.RawMessage{"type": mustTestJSON(t, "function_call"), "call_id": mustTestJSON(t, "last-read"), "name": mustTestJSON(t, nativeExecCommandToolName), "arguments": mustTestJSON(t, `{"cmd":"cat ROOT2.md"}`)},
 		map[string]jsonv1.RawMessage{"type": mustTestJSON(t, "function_call_output"), "call_id": mustTestJSON(t, "last-read")})
 	legacy = append(legacy, map[string]jsonv1.RawMessage{"role": mustTestJSON(t, "user"), "content": mustTestJSON(t, agents["content"])})
-	g := collectJournalGuidance(t.Context(), legacy, "", workspace, nil)
+	g := collectJournalGuidance(t.Context(), legacy, "", workspace, nil, nil)
 	check(g, []string{g1, g2, filepath.Join(workspace, "ROOT2.md"), filepath.Join(workspace, "ROOT1.md"), doc})
 	// Ordering metadata cannot revive a source absent from the last context.
 	old := filepath.Join(workspace, "OLD.md")
 	if err := os.WriteFile(old, []byte("OLDER-CONTEXT-SENTINEL\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	g = collectJournalGuidance(t.Context(), legacy, "Read OLD.md.", workspace, append([]string{old}, first.Guidance.FirstReadOrder...))
+	g = collectJournalGuidance(t.Context(), legacy, "Read OLD.md.", workspace, append([]string{old}, first.Guidance.FirstReadOrder...), nil)
 	check(g, []string{g2, g1, filepath.Join(workspace, "ROOT2.md"), filepath.Join(workspace, "ROOT1.md"), doc})
 	if strings.Contains(g.Text, "OLDER-CONTEXT-SENTINEL") {
 		t.Fatal("initial order revived an older-context source")
@@ -154,7 +155,7 @@ func TestJournalGuidanceTokenBudget(t *testing.T) {
 		{"type": mustTestJSON(t, "function_call"), "name": mustTestJSON(t, nativeExecCommandToolName), "call_id": mustTestJSON(t, "read"), "arguments": mustTestJSON(t, `{"cmd":"cat GUIDE.md"}`)},
 		{"type": mustTestJSON(t, "function_call_output"), "call_id": mustTestJSON(t, "read")},
 	}
-	g := collectJournalGuidance(t.Context(), items, "Read GUIDE.md.", workspace, nil)
+	g := collectJournalGuidance(t.Context(), items, "Read GUIDE.md.", workspace, nil, nil)
 	if g == nil || !strings.Contains(g.Text, body) || guidanceTokenCount(t, g.Text) > maxJournalGuidanceTokens {
 		t.Fatal("token-fitting large source was not retained whole")
 	}
@@ -169,8 +170,44 @@ func TestJournalGuidanceTokenBudget(t *testing.T) {
 	if guidanceTokenCount(t, dense) <= maxJournalGuidanceTokens {
 		t.Fatal("dense fixture does not exceed the token budget")
 	}
-	if got := collectJournalGuidance(t.Context(), items, "Read GUIDE.md.", workspace, nil); got != nil {
+	if got := collectJournalGuidance(t.Context(), items, "Read GUIDE.md.", workspace, nil, nil); got != nil {
 		t.Fatal("token-overflowing source was retained")
+	}
+}
+
+func TestJournalCompactionV2GuidanceFirstFiveResponses(t *testing.T) {
+	t.Parallel()
+	transform, proxy, _, workspace := newDurableTreeTransform(t)
+	defer transform.Close()
+	proxy.journalCompaction = "auto"
+	// A restored summary without guidance also does not consume a response.
+	item, _ := deliverV2ContinuityReset(t, proxy, workspace, transform.shellThreadID)
+	for _, path := range []string{"FIFTH.md", "PARALLEL.md", "LATE.md", "UNFINISHED.md"} {
+		if err := os.WriteFile(filepath.Join(workspace, path), []byte(path+" body\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	history := []any{item, map[string]any{"role": "developer", "content": "Read FIFTH.md PARALLEL.md LATE.md UNFINISHED.md."}}
+	for range 4 {
+		history = append(history, map[string]any{"role": "assistant", "content": "Response without tools."}, map[string]any{"role": "user", "content": "Continue."})
+	}
+	call := func(id, command string) any {
+		return map[string]any{"type": "function_call", "call_id": id, "name": nativeExecCommandToolName, "arguments": string(mustTestJSON(t, map[string]string{"cmd": command}))}
+	}
+	result := func(id string) any {
+		return map[string]any{"type": "function_call_output", "call_id": id, "output": "read"}
+	}
+	history = append(history,
+		map[string]any{"type": "reasoning", "summary": []any{}},
+		map[string]any{"role": "assistant", "content": "Reading guidance."},
+		call("fifth", "cat FIFTH.md"), call("parallel", "mcat PARALLEL.md"), call("unfinished", "cat UNFINISHED.md"),
+		result("fifth"), result("parallel"),
+		map[string]any{"type": "custom_tool_call", "call_id": "sixth", "name": "exec", "input": `text(await tools.exec_command({cmd:"cat LATE.md"}));`},
+		map[string]any{"type": "custom_tool_call_output", "call_id": "sixth", "output": "read"})
+	_, recovery := deliverV2ContinuityReset(t, proxy, workspace, transform.shellThreadID, history...)
+	if recovery.Guidance == nil || !strings.Contains(recovery.Guidance.Text, "FIFTH.md body") || !strings.Contains(recovery.Guidance.Text, "PARALLEL.md body") ||
+		strings.Contains(recovery.Guidance.Text, "LATE.md body") || strings.Contains(recovery.Guidance.Text, "UNFINISHED.md body") {
+		t.Fatalf("wrong first-five guidance: %+v", recovery.Guidance)
 	}
 }
 
@@ -403,4 +440,50 @@ func TestJournalCompactionV2GuidanceBoundsNotices(t *testing.T) {
 	if len(last) != 6 || last[1] != "more" || last[2] != "sources" {
 		t.Fatal("truncated guidance notice joined the count to a source")
 	}
+}
+
+func TestJournalCompactionV2GuidanceNativeSkillIdentity(t *testing.T) {
+	transform, proxy, _, workspace := newDurableTreeTransform(t)
+	defer transform.Close()
+	proxy.journalCompaction = "auto"
+	bin := t.TempDir()
+	script := "#!/bin/sh\nif [ \"$1\" = list ]; then printf '<skills><skill name=\"shared\"/></skills>'; else [ \"$1:$2:$3\" = 'get:--codex:shared' ] || exit 1; printf 'Managed shared.\\n'; fi\n"
+	if err := os.WriteFile(filepath.Join(bin, "skills-mgr"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	only, a, b := filepath.Join(workspace, "native only.md"), filepath.Join(workspace, "shared-a.md"), filepath.Join(workspace, "shared-b.md")
+	placeholder := filepath.Join(workspace, "managed", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(placeholder), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for path, body := range map[string]string{only: "Native only v1.\n", a: "Native shared A.\n", b: "Native shared B.\n", placeholder: "Metadata is not instructions.\n", filepath.Join(filepath.Dir(placeholder), ".skills-mgr-placeholder"): "managed\n"} {
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	draft := composerDraft{skills: []composerSkill{{name: "shared", path: a}, {name: "shared", path: b}, {name: "shared", path: placeholder}}}
+	draft.snapshotSkillAttachments(workspace, os.Environ())
+	selected := "<skill>\n<name>native-only</name>\n<path>" + only + "</path>\nNative only v1.\n</skill>"
+	item, first := deliverV2ContinuityReset(t, proxy, workspace, transform.shellThreadID,
+		map[string]any{"role": "user", "content": selected},
+		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": draft.attachments[0]}}})
+	check := func(recovery journalCompactionRecovery, nativeBody string) {
+		t.Helper()
+		if recovery.Guidance == nil || len(recovery.Guidance.Commands) != 4 {
+			t.Fatalf("native/managed selection identity lost: %+v", recovery.Guidance)
+		}
+		for _, body := range []string{nativeBody, "Native shared A.", "Native shared B.", "Managed shared."} {
+			if strings.Count(recovery.Guidance.Text, body) != 1 {
+				t.Fatalf("wrong selected source for %q: %s", body, recovery.Guidance.Text)
+			}
+		}
+	}
+	check(first, "Native only v1.")
+	if err := os.WriteFile(only, []byte("Native only v2.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	proxy = reopenV2ContinuityProxy(t, proxy)
+	_, later := deliverV2ContinuityReset(t, proxy, workspace, transform.shellThreadID, item)
+	check(later, "Native only v2.")
 }

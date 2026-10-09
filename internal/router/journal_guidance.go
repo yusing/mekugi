@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	jsonv1 "encoding/json"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -23,19 +24,33 @@ import (
 const (
 	maxJournalGuidanceTokens = 12000
 	journalGuidanceCallID    = "call_mekugi_guidance_"
-	journalGuidanceHeader    = "Guidance loaded before context reset, read again at reset.\n"
-	journalGuidanceNotice    = "Retained guidance: the next tool result holds guidance loaded before this reset.\n"
+	journalGuidanceHeader    = "Guidance loaded at context reset.\n"
+	journalGuidanceNotice    = "Auto-loaded guidance: the next tool result holds guidance for this reset.\n"
 )
 
 var errJournalGuidanceBudget = errors.New("exceeds the guidance budget")
 
 // FirstReadOrder preserves precedence, not source eligibility.
 type journalGuidance struct {
-	Tool           string   `json:"tool"`
-	Name           string   `json:"name"`
-	Commands       []string `json:"commands"`
-	Text           string   `json:"text"`
-	FirstReadOrder []string `json:"first_read_order,omitempty"`
+	Tool           string                 `json:"tool"`
+	Name           string                 `json:"name"`
+	Commands       []string               `json:"commands"`
+	Text           string                 `json:"text"`
+	FirstReadOrder []string               `json:"first_read_order,omitempty"`
+	Skills         []journalGuidanceSkill `json:"skills,omitempty"`
+}
+
+type journalGuidanceSkill struct {
+	Name string `json:"name"`
+	Path string `json:"path,omitempty"`
+}
+
+func (s journalGuidanceSkill) key() string {
+	key := "skill:" + s.Name
+	if s.Path != "" {
+		key += "\x00" + s.Path
+	}
+	return key
 }
 
 type journalGuidanceInstruction struct {
@@ -45,7 +60,83 @@ type journalGuidanceInstruction struct {
 
 type journalGuidanceSource struct {
 	path, tool, name  string
+	skill             journalGuidanceSkill
 	tier, declaration int
+}
+
+// Contiguous model items share a response, including parallel calls. User
+// input and tool results separate rounds; restored recovery is not model work.
+func journalGuidanceEarlyReads(items []map[string]jsonv1.RawMessage, recoveryTexts []string) map[string]bool {
+	early := make(map[string]bool)
+	round, inResponse := 0, false
+	for i, item := range items {
+		id := jsonString(item, "call_id")
+		if strings.HasPrefix(id, journalGuidanceCallID) {
+			early[id] = true
+			continue
+		}
+		kind, role := jsonString(item, "type"), jsonString(item, "role")
+		if role == "assistant" && slices.Contains(recoveryTexts, strings.TrimSuffix(journalMessageText(item["content"]), "\n")) {
+			continue
+		}
+		if role == "assistant" && i+1 < len(items) && strings.HasPrefix(jsonString(items[i+1], "call_id"), journalGuidanceCallID) {
+			continue
+		}
+		model := role == "assistant" || kind == "reasoning" || kind == "function_call" || kind == "custom_tool_call"
+		if model {
+			if !inResponse {
+				round++
+				inResponse = true
+			}
+			if round <= 5 && id != "" {
+				early[id] = true
+			}
+		} else if role == "user" || kind == "function_call_output" || kind == "custom_tool_call_output" {
+			inResponse = false
+		}
+	}
+	return early
+}
+
+func journalGuidanceUserSkills(items []map[string]jsonv1.RawMessage) []journalGuidanceSkill {
+	var skills []journalGuidanceSkill
+	add := func(name, path string) {
+		skill := journalGuidanceSkill{Name: name, Path: path}
+		if name != "" && !slices.Contains(skills, skill) {
+			skills = append(skills, skill)
+		}
+	}
+	for _, item := range items {
+		if jsonString(item, "role") != "user" {
+			continue
+		}
+		text := journalMessageText(item["content"])
+		if strings.HasPrefix(strings.TrimSpace(text), "# AGENTS.md instructions for ") {
+			continue
+		}
+		var parts []struct {
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(item["content"], &parts) != nil {
+			parts = append(parts, struct {
+				Text string `json:"text"`
+			}{text})
+		}
+		for _, part := range parts {
+			if name, path := selectedSkillSource(part.Text); name != "" {
+				add(name, path)
+				continue
+			}
+			if frames, ok := decodeFileAttachments(part.Text); ok {
+				for _, frame := range frames {
+					name, path, _ := skillAttachmentFrame(frame)
+					add(name, path)
+				}
+				continue
+			}
+		}
+	}
+	return skills
 }
 
 func journalGuidanceInstructions(items []map[string]jsonv1.RawMessage, base, workspace string) []journalGuidanceInstruction {
@@ -109,7 +200,7 @@ func journalGuidancePriority(path, home, workspace string, instructions []journa
 	return tier, declaration, tier < 3
 }
 
-func collectJournalGuidance(ctx context.Context, items []map[string]jsonv1.RawMessage, baseInstructions, workspace string, firstOrder []string) *journalGuidance {
+func collectJournalGuidance(ctx context.Context, items []map[string]jsonv1.RawMessage, baseInstructions, workspace string, firstOrder []string, retainedSkills map[string][]journalGuidanceSkill, recoveryTexts ...string) *journalGuidance {
 	if !filepath.IsAbs(workspace) {
 		return nil
 	}
@@ -133,10 +224,25 @@ func collectJournalGuidance(ctx context.Context, items []map[string]jsonv1.RawMe
 	}
 	sources := make(map[string]journalGuidanceSource)
 	var lastOrder []string
+	addSkill := func(skill journalGuidanceSkill, tool, name string) {
+		key := skill.key()
+		if _, exists := sources[key]; !exists && skill.Name != "" {
+			sources[key] = journalGuidanceSource{path: key, tool: tool, name: name, skill: skill, tier: -1}
+			lastOrder = append(lastOrder, key)
+		}
+	}
+	for _, skill := range journalGuidanceUserSkills(items) {
+		addSkill(skill, "function_call", nativeExecCommandToolName)
+	}
+	early := journalGuidanceEarlyReads(items, recoveryTexts)
 	for _, item := range items {
 		kind, name := jsonString(item, "type"), jsonString(item, "name")
-		if !completed[jsonString(item, "call_id")] {
+		id := jsonString(item, "call_id")
+		if !completed[id] || !early[id] {
 			continue
+		}
+		for _, skill := range retainedSkills[id] {
+			addSkill(skill, kind, name)
 		}
 		var commands []execCommandInput
 		switch {
@@ -148,6 +254,15 @@ func collectJournalGuidance(ctx context.Context, items []map[string]jsonv1.RawMe
 			}
 		}
 		for _, command := range commands {
+			_, hasSkillIdentity := retainedSkills[id]
+			if strings.HasPrefix(id, journalGuidanceCallID) && !hasSkillIdentity {
+				// Older snapshots encode managed user selections only as commands.
+				for _, argv := range journalGuidanceCommands(command, home) {
+					if len(argv) == 4 && argv[0] == "skills-mgr" && argv[1] == "get" && argv[2] == "--codex" {
+						addSkill(journalGuidanceSkill{Name: argv[3]}, kind, name)
+					}
+				}
+			}
 			for _, path := range journalGuidanceReads(command, home) {
 				tier, declaration, ok := journalGuidancePriority(path, home, workspace, instructions)
 				if !ok {
@@ -156,7 +271,7 @@ func collectJournalGuidance(ctx context.Context, items []map[string]jsonv1.RawMe
 				if !strings.HasPrefix(jsonString(item, "call_id"), journalGuidanceCallID) && !slices.Contains(lastOrder, path) {
 					lastOrder = append(lastOrder, path)
 				}
-				sources[path] = journalGuidanceSource{path, kind, name, tier, declaration}
+				sources[path] = journalGuidanceSource{path: path, tool: kind, name: name, tier: tier, declaration: declaration}
 			}
 		}
 	}
@@ -199,7 +314,25 @@ func collectJournalGuidance(ctx context.Context, items []map[string]jsonv1.RawMe
 		}
 		read := command + shellQuoteArgument(source.path)
 		body, err := "", ctx.Err()
-		if err == nil {
+		if source.skill.Name != "" {
+			var data []byte
+			managed := source.skill.Path == ""
+			if err == nil {
+				data, managed, err = readSkillAttachment(ctx, workspace, os.Environ(), composerSkill{name: source.skill.Name, path: source.skill.Path})
+			}
+			read = "skills-mgr get --codex " + shellQuoteArgument(source.skill.Name)
+			body = "\nSkill: " + source.skill.Name + "\n"
+			if source.skill.Path != "" {
+				body = fmt.Sprintf("\nSkill: %s from %q\n", source.skill.Name, source.skill.Path)
+			}
+			if !managed {
+				read = "cat " + shellQuoteArgument(source.skill.Path)
+			}
+			body += string(data)
+			guidance.Tool, guidance.Name = source.tool, source.name
+			guidance.Commands = append(guidance.Commands, read)
+			guidance.Skills = append(guidance.Skills, source.skill)
+		} else if err == nil {
 			body, err = journalGuidanceSnapshot(ctx, source.path, named, source.tier == 2)
 		}
 		if err == nil {
@@ -225,7 +358,9 @@ func collectJournalGuidance(ctx context.Context, items []map[string]jsonv1.RawMe
 		if guidance.Name == "" {
 			guidance.Tool, guidance.Name = source.tool, source.name
 		}
-		guidance.Commands = append(guidance.Commands, read)
+		if source.skill.Name == "" {
+			guidance.Commands = append(guidance.Commands, read)
+		}
 		text.WriteString(body)
 	}
 	if len(guidance.Commands) == 0 {
@@ -241,12 +376,12 @@ func collectJournalGuidance(ctx context.Context, items []map[string]jsonv1.RawMe
 
 // Only literal simple top-level reads qualify. Ranges select a source, not
 // retained lines; whole-source snapshots need no range accumulation or merging.
-func journalGuidanceReads(command execCommandInput, home string) []string {
+func journalGuidanceCommands(command execCommandInput, home string) [][]string {
 	program, err := syntax.NewParser().Parse(strings.NewReader(command.Command), "")
 	if err != nil {
 		return nil
 	}
-	var sources []string
+	var commands [][]string
 	for _, statement := range program.Stmts {
 		call, ok := statement.Cmd.(*syntax.CallExpr)
 		if !ok || len(call.Assigns) != 0 || len(statement.Redirs) != 0 || statement.Background {
@@ -267,6 +402,14 @@ func journalGuidanceReads(command execCommandInput, home string) []string {
 		if len(argv) == 0 {
 			continue
 		}
+		commands = append(commands, argv)
+	}
+	return commands
+}
+
+func journalGuidanceReads(command execCommandInput, home string) []string {
+	var sources []string
+	for _, argv := range journalGuidanceCommands(command, home) {
 		var paths []string
 		switch argv[0] {
 		case "cat":
@@ -427,7 +570,8 @@ func journalGuidanceItems(guidance *journalGuidance, responseID string) ([]map[s
 	if guidance == nil {
 		return nil, nil
 	}
-	if guidance.Name == "" || len(guidance.Commands) == 0 || !strings.HasPrefix(guidance.Text, journalGuidanceHeader) {
+	if guidance.Name == "" || len(guidance.Commands) == 0 ||
+		!strings.HasPrefix(guidance.Text, journalGuidanceHeader) && !strings.HasPrefix(guidance.Text, "Guidance loaded before context reset, read again at reset.\n") {
 		return nil, errors.New("invalid retained journal guidance")
 	}
 	codec, err := tokenizer.New()
