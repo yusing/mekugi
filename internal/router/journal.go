@@ -21,6 +21,7 @@ import (
 	"github.com/gofrs/flock"
 	"github.com/yusing/goutils/synk"
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/internal/orchestrate"
 )
 
 const (
@@ -58,34 +59,36 @@ type journalMutation struct {
 	finishTurn       string
 	finishItem       string
 	ReportNow        bool `json:"report_now,omitzero"`
+	integration      *orchestrate.Integration
 }
 
 type journalItem struct {
 	WorkTimer activeWorkTimer `json:"work_timer,omitzero"`
 
-	Path         string        `json:"path,omitempty"`
-	Kind         string        `json:"kind,omitempty"`
-	Title        string        `json:"title,omitempty"`
-	Body         string        `json:"body,omitempty"`
-	State        string        `json:"state,omitempty"`
-	Reason       string        `json:"reason,omitempty"`
-	SupersededBy string        `json:"superseded_by,omitempty"`
-	Agent        string        `json:"agent,omitempty"`
-	CreatedAt    string        `json:"created_at,omitempty"`
-	UpdatedAt    string        `json:"updated_at,omitempty"`
-	Started      *journalStamp `json:"started,omitempty"`
-	Finished     *journalStamp `json:"finished,omitempty"`
-	TerminalOnly bool          `json:"terminal_only,omitzero"`
-	Turns        int           `json:"turns,omitzero"` // Mounted agents only; view-only.
-	ID           string        `json:"id"`
-	Text         string        `json:"text"`
-	Question     string        `json:"question,omitempty"`
-	Author       string        `json:"author"`
-	Created      uint64        `json:"created"`
-	Updated      uint64        `json:"updated"`
-	ReportNow    bool          `json:"report_now"`
-	Reported     bool          `json:"reported"`
-	Flushed      bool          `json:"flushed"`
+	Path         string                   `json:"path,omitempty"`
+	Kind         string                   `json:"kind,omitempty"`
+	Title        string                   `json:"title,omitempty"`
+	Body         string                   `json:"body,omitempty"`
+	State        string                   `json:"state,omitempty"`
+	Reason       string                   `json:"reason,omitempty"`
+	SupersededBy string                   `json:"superseded_by,omitempty"`
+	Agent        string                   `json:"agent,omitempty"`
+	Integration  *orchestrate.Integration `json:"integration,omitempty"`
+	CreatedAt    string                   `json:"created_at,omitempty"`
+	UpdatedAt    string                   `json:"updated_at,omitempty"`
+	Started      *journalStamp            `json:"started,omitempty"`
+	Finished     *journalStamp            `json:"finished,omitempty"`
+	TerminalOnly bool                     `json:"terminal_only,omitzero"`
+	Turns        int                      `json:"turns,omitzero"` // Mounted agents only; view-only.
+	ID           string                   `json:"id"`
+	Text         string                   `json:"text"`
+	Question     string                   `json:"question,omitempty"`
+	Author       string                   `json:"author"`
+	Created      uint64                   `json:"created"`
+	Updated      uint64                   `json:"updated"`
+	ReportNow    bool                     `json:"report_now"`
+	Reported     bool                     `json:"reported"`
+	Flushed      bool                     `json:"flushed"`
 	// A later silent edit does not erase the fact that the user saw this ID.
 	EverReported     bool `json:"ever_reported,omitzero"`
 	RootEverReported bool `json:"root_ever_reported,omitzero"`
@@ -835,6 +838,9 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 				return err
 			}
 			if err := s.validateMountedCompletion(store, *j, before); err != nil {
+				return err
+			}
+			if err := validateJournalAcceptance(*j, before); err != nil {
 				return err
 			}
 		}

@@ -99,7 +99,7 @@ func (u *appServerUI) journalPanePresents(sink *nativeJournalSink) bool {
 }
 
 func journalNodeClosed(node journalNode) bool {
-	return node.State == "done" || node.State == "dropped"
+	return journalStateClosed(node.State)
 }
 
 // rebuild keeps the selection on its node as rows arrive, move or collapse.
@@ -254,7 +254,7 @@ func journalLocalTime(at string) string {
 	return stamp.Local().Format("15:04")
 }
 
-var journalStateOrder = []string{"working", "blocked", "pending", "done", "dropped"}
+var journalStateOrder = []string{"working", "blocked", "pending", "done", "accepted", "dropped"}
 
 // journalStateGlyph colors a task state the way Activity colors agent states.
 func journalStateGlyph(state string) string {
@@ -264,7 +264,7 @@ func journalStateGlyph(state string) string {
 		return activityui.Amber + glyph + activityui.Reset
 	case "blocked":
 		return activityui.Red + glyph + activityui.Reset
-	case "done":
+	case "done", "accepted":
 		return activityui.Green + glyph + activityui.Reset
 	case "":
 		return " "
@@ -397,7 +397,7 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 			text = dim("⎇ ") + journalAgentName(node.Agent, theme)
 			state := node.State
 			switch state {
-			case "done":
+			case "done", "accepted":
 				state = "finished"
 			case "working":
 				state = "running"
@@ -742,7 +742,7 @@ func (u *appServerUI) journalPin() (journalPin, bool) {
 			continue // Mounted roots and their descendants belong to child journals.
 		}
 		pin.total++
-		if item.State == "done" || item.State == "dropped" {
+		if journalStateClosed(item.State) {
 			pin.done++
 			if finished == nil || item.Updated > finished.Updated {
 				finished = item
@@ -815,7 +815,7 @@ func (u *appServerUI) journalPlanStrip(width int) string {
 	return ansi.Truncate(left, width, "…")
 }
 
-var journalGlyphs = map[string]string{"pending": "○", "working": "◐", "done": "●", "blocked": "⚠", "dropped": "⊘"}
+var journalGlyphs = map[string]string{"pending": "○", "working": "◐", "done": "●", "accepted": "●", "blocked": "⚠", "dropped": "⊘"}
 
 // journalStateColor colors a task's glyph by state, as Activity colors
 // outcomes: working in the accent, done green, blocked amber.
@@ -823,7 +823,7 @@ func journalStateColor(theme livediff.Theme, state string) string {
 	switch state {
 	case "working":
 		return theme.Accent()
-	case "done":
+	case "done", "accepted":
 		return activityui.Green
 	case "blocked":
 		return activityui.Amber
@@ -840,7 +840,7 @@ func journalEventVerb(event journalEvent) string {
 		return ""
 	case event.Fields.State == "working":
 		return "started"
-	case event.Fields.State == "done", event.Fields.State == "blocked", event.Fields.State == "dropped":
+	case journalStateCompleted(event.Fields.State), event.Fields.State == "blocked", event.Fields.State == "dropped":
 		return event.Fields.State
 	case event.Op == "add":
 		return "added"
@@ -972,13 +972,15 @@ func (v *liveActivityView) journalCardBlock(entry activityPaneEntry) activityui.
 
 // Counts do not depend on width or Markdown rendering.
 func journalCardFacts(changed []journalEvent, open int, includeNotes bool) []string {
-	done, notes := 0, 0
+	done, accepted, notes := 0, 0, 0
 	for _, event := range changed {
 		if event.Op == "remove" {
 			continue
 		}
 		if event.Fields.Kind == "task" && event.Fields.State == "done" {
 			done++
+		} else if event.Fields.Kind == "task" && event.Fields.State == "accepted" {
+			accepted++
 		} else if event.Fields.Kind == "note" {
 			notes++
 		}
@@ -986,6 +988,9 @@ func journalCardFacts(changed []journalEvent, open int, includeNotes bool) []str
 	var facts []string
 	if done > 0 {
 		facts = append(facts, fmt.Sprintf("%d done", done))
+	}
+	if accepted > 0 {
+		facts = append(facts, fmt.Sprintf("%d accepted", accepted))
 	}
 	if open > 0 {
 		facts = append(facts, fmt.Sprintf("%d open", open))

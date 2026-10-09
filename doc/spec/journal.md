@@ -145,6 +145,12 @@ run's task path and retain the same read-only boundary, including native descend
 Inside a batch, explicit agent selectors keep their native local paths;
 `agent: "main"` selects the orchestration coordinator. Reading Main still excludes
 the caller's siblings. Own reads without an agent require only the local record.
+The run coordinator records integrated batch tasks as `accepted`, with verified
+Git tips retained in the task and run. This is a closed task state; it releases
+parent completion, counts as finished in presentation and stays closed in recovery.
+Only Main can create that state on its confirmed batch binding. Child completion
+does not accept the result. See [orchestration](orchestrate.md#req-orchestrate-005--cross-checkout-journals)
+for integration requirements.
 Read and list agent selectors accept canonical paths or paths with the
 `/root/` prefix omitted; task bindings still require canonical paths.
 Reading an ancestor does not reveal the caller's siblings. Ambiguous
@@ -547,7 +553,7 @@ or `Promise.allSettled` preserve normal JavaScript concurrency. Operations are:
 - `set {p, title?, body?, state?, reason?, agent?, superseded_by?}`: updates writable
   fields. Blocked and dropped tasks require a reason. A final task reopens only with
   working. `superseded_by` names an existing node outside the target's subtree; an
-  empty string clears it. Only context nodes, notes, and done or dropped tasks can be
+  empty string clears it. Only context nodes, notes, and closed tasks can be
   superseded: an open task is replaced by dropping it, and a superseded subtree has
   no open tasks. Batch validation rejects a pointer left dangling by removal, so a
   batch that removes a replacement also retargets or clears its pointers. It also
@@ -592,7 +598,7 @@ type-check against the declarations before submitting. Runtime validation still
 checks identity, task kind, uniqueness and immutable binding. Planned task objects
 do not accept agent; bind an existing planned task with `set`.
 
-Mutation batches validate at the end. A done task cannot retain open owned descendant
+Mutation batches validate at the end. A done or accepted task cannot retain open owned descendant
 tasks or required open mounted host lifecycles. Rejection lists those paths and rolls back all
 nodes, ordinals and events. Invalid bindings, including duplicate child mounts,
 likewise leave the entire batch unchanged

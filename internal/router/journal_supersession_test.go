@@ -64,13 +64,13 @@ func TestJournalSupersessionValidatesAndRemainsReadableHistory(t *testing.T) {
 		mutations []journalMutation
 		want      string
 	}{
-		{"open task", []journalMutation{{Op: "set", P: "/4", SupersededBy: new("/3")}}, "only a done or dropped task"},
+		{"open task", []journalMutation{{Op: "set", P: "/4", SupersededBy: new("/3")}}, "only a closed task"},
 		{"self", []journalMutation{{Op: "set", P: "/3", SupersededBy: new("/3")}}, "outside this subtree"},
 		{"descendant", []journalMutation{{Op: "set", P: "/2", SupersededBy: new("/2/1")}}, "outside this subtree"},
 		{"missing", []journalMutation{{Op: "set", P: "/3", SupersededBy: new("/9")}}, "does not exist"},
 		{"other op", []journalMutation{{Op: "log", P: "/4", Text: new("Fact"), SupersededBy: new("/3")}}, "only supported by set"},
 		{"dangling removal", []journalMutation{{Op: "remove", P: "/3"}}, "does not exist"},
-		{"reopen superseded", []journalMutation{{Op: "set", P: "/2", State: new("working")}}, "only a done or dropped task"},
+		{"reopen superseded", []journalMutation{{Op: "set", P: "/2", State: new("working")}}, "only a closed task"},
 		{"open descendant", []journalMutation{
 			{Op: "add", Under: "/4", Kind: "task", Title: new("Stale subtask")},
 			{Op: "set", P: "/4", State: new("dropped"), Reason: new("Replaced"), SupersededBy: new("/3")},

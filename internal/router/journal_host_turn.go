@@ -165,5 +165,9 @@ func (p *mekugiProxy) applyJournal(ctx context.Context, workspace, thread, recei
 	if err := p.refreshJournalChildLifecycles(ctx, workspace, thread); err != nil {
 		return nil, err
 	}
+	mutations, err := p.prepareJournalAcceptance(ctx, workspace, thread, receipt, mutations)
+	if err != nil {
+		return nil, err
+	}
 	return p.journals.apply(ctx, p.replayStore, workspace, thread, receipt, mutations)
 }

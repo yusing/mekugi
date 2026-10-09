@@ -134,7 +134,25 @@ retain their nested paths. Run records authorize these views after restart, with
 changing the child's own independent journal root. Child reads can select Main
 with `agent: "main"`, while other agent selectors retain their native local paths,
 but cannot reveal sibling results. Child completion leaves Main's integration task
-unchanged; the new accepted state remains below.
+unchanged.
+
+Main reviews and integrates the Git branch with native VCS commands, then marks
+its bound journal task `accepted`. Acceptance verifies that the batch's committed
+tip is reachable from source HEAD and records both tips in the run before changing
+the task. The child checkout must retain its recorded location and branch and have
+no tracked or untracked changes; ignored prepared inputs may remain. Checkouts
+with assume-unchanged or skip-worktree paths require inspection before acceptance,
+because those flags can conceal unfinished edits.
+Source edits
+and index are preserved. This verifies integration, while Main owns review.
+
+Only the run coordinator can accept its existing task bound to a confirmed batch.
+Active, unresolved or failed child lifecycles, including native descendants, keep
+acceptance open. A batch task uses `accepted`, rather than `done`, to release its
+parent's completion gate. An abandoned task uses `dropped` with a reason under the
+ordinary lifecycle rules. Reopening an accepted task uses `working` and requires
+new integration evidence before acceptance. Retained acceptance remains available
+after restart without checking Git again or reviving processes.
 
 ## Accepted delivery scope
 
@@ -144,8 +162,6 @@ The remaining capabilities are accepted but not yet delivered:
   once in the initial input and recover once after context reset.
 - `send_message` can target Main's next turn without waking it. Child follow-ups
   can wake Main through the normal composer lifecycle.
-- The new Main-only `accepted` task state records reviewed integration; child completion cannot
-  accept its own result or complete Main's integration task.
 - Thread navigation scopes transcript, Activity, Agents, Journal and Diff to the
   viewed thread. Drafts remain per-thread in memory. Questions and approvals are
   labeled and answered on their originating threads.

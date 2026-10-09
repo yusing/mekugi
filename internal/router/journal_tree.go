@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/internal/orchestrate"
 )
 
 const maxJournalEvents = 4096
@@ -31,16 +33,17 @@ type journalNode struct {
 	Reason string `json:"reason,omitempty"`
 	// SupersededBy names the node that replaced this one; the node itself stays
 	// as history, but reads and recovery no longer present it as current.
-	SupersededBy string        `json:"superseded_by,omitempty"`
-	Question     string        `json:"question,omitempty"`
-	Agent        string        `json:"agent,omitempty"`
-	Turns        int           `json:"turns,omitzero"`
-	Author       string        `json:"author"`
-	Created      journalStamp  `json:"created"`
-	Updated      journalStamp  `json:"updated"`
-	Started      *journalStamp `json:"started,omitempty"`
-	Finished     *journalStamp `json:"finished,omitempty"`
-	Children     []journalNode `json:"children"`
+	SupersededBy string                   `json:"superseded_by,omitempty"`
+	Question     string                   `json:"question,omitempty"`
+	Agent        string                   `json:"agent,omitempty"`
+	Integration  *orchestrate.Integration `json:"integration,omitempty"`
+	Turns        int                      `json:"turns,omitzero"`
+	Author       string                   `json:"author"`
+	Created      journalStamp             `json:"created"`
+	Updated      journalStamp             `json:"updated"`
+	Started      *journalStamp            `json:"started,omitempty"`
+	Finished     *journalStamp            `json:"finished,omitempty"`
+	Children     []journalNode            `json:"children"`
 }
 
 type journalEvent struct {
@@ -104,13 +107,13 @@ func (j *threadJournal) ensureTree() {
 }
 
 func (item journalItem) node() journalNode {
-	return journalNode{WorkTimer: item.WorkTimer, Path: item.Path, Kind: item.Kind, Title: item.Title, Body: item.Body, State: item.State, Reason: item.Reason, SupersededBy: item.SupersededBy, Question: item.Question, Agent: item.Agent, Turns: item.Turns, Author: item.Author,
+	return journalNode{Integration: item.Integration, WorkTimer: item.WorkTimer, Path: item.Path, Kind: item.Kind, Title: item.Title, Body: item.Body, State: item.State, Reason: item.Reason, SupersededBy: item.SupersededBy, Question: item.Question, Agent: item.Agent, Turns: item.Turns, Author: item.Author,
 		Created: journalStamp{Seq: item.Created, At: item.CreatedAt}, Updated: journalStamp{Seq: item.Updated, At: item.UpdatedAt}, Started: item.Started, Finished: item.Finished, Children: []journalNode{}}
 }
 
 // item restores a retained event's node; delivery fields start unset.
 func (node journalNode) item() journalItem {
-	return journalItem{WorkTimer: node.WorkTimer, ID: node.Path, Path: node.Path, Kind: node.Kind, Title: node.Title, Body: node.Body, State: node.State, Reason: node.Reason,
+	return journalItem{Integration: node.Integration, WorkTimer: node.WorkTimer, ID: node.Path, Path: node.Path, Kind: node.Kind, Title: node.Title, Body: node.Body, State: node.State, Reason: node.Reason,
 		SupersededBy: node.SupersededBy, Question: node.Question, Agent: node.Agent, Author: node.Author, Created: node.Created.Seq, CreatedAt: node.Created.At,
 		Updated: node.Updated.Seq, UpdatedAt: node.Updated.At, Started: node.Started, Finished: node.Finished}
 }
@@ -190,8 +193,12 @@ func journalReadOnlyError(item journalItem) error {
 }
 
 func validJournalState(state string) bool {
-	return slices.Contains([]string{"pending", "working", "done", "blocked", "dropped"}, state)
+	return slices.Contains([]string{"pending", "working", "done", "accepted", "blocked", "dropped"}, state)
 }
+
+func journalStateCompleted(state string) bool { return state == "done" || state == "accepted" }
+
+func journalStateClosed(state string) bool { return journalStateCompleted(state) || state == "dropped" }
 
 func (j *threadJournal) treeEvent(op string, index int, transition bool) error {
 	if j.Sequence == ^uint64(0) {
@@ -211,7 +218,7 @@ func (j *threadJournal) treeEvent(op string, index int, transition bool) error {
 	}
 	if transition {
 		item.Finished = nil
-		if item.State == "done" || item.State == "dropped" {
+		if journalStateClosed(item.State) {
 			item.Finished = &stamp
 		}
 	}
@@ -311,7 +318,7 @@ func (j *threadJournal) applyTree(m journalMutation) ([]string, error) {
 			return nil, err
 		}
 		transition := m.State != nil && *m.State != item.State
-		if transition && (item.State == "done" || item.State == "dropped") && *m.State != "working" {
+		if transition && journalStateClosed(item.State) && *m.State != "working" {
 			return nil, errors.New("reopen a final task with state working")
 		}
 		if m.Title != nil {
@@ -328,6 +335,11 @@ func (j *threadJournal) applyTree(m journalMutation) ([]string, error) {
 		}
 		if m.State != nil {
 			item.State = *m.State
+			if item.State == "accepted" && m.integration != nil {
+				item.Integration = m.integration
+			} else if item.State != "accepted" {
+				item.Integration = nil
+			}
 			if item.State != "blocked" && item.State != "dropped" {
 				item.Reason = ""
 			}
@@ -477,9 +489,12 @@ func (j *threadJournal) validateTree() error {
 		if (item.State == "blocked" || item.State == "dropped") && strings.TrimSpace(item.Reason) == "" {
 			return fmt.Errorf("%s: %s requires reason", item.Path, item.State)
 		}
-		if item.State == "done" {
+		if item.State == "accepted" && (item.Integration == nil || item.Integration.Tip == "" || item.Integration.SourceTip == "") {
+			return fmt.Errorf("%s: accepted requires recorded integration evidence", item.Path)
+		}
+		if journalStateCompleted(item.State) {
 			for _, child := range j.Items {
-				if child.Kind == "task" && strings.HasPrefix(child.Path, item.Path+"/") && child.State != "done" && child.State != "dropped" {
+				if child.Kind == "task" && strings.HasPrefix(child.Path, item.Path+"/") && !journalStateClosed(child.State) {
 					open = append(open, child.Path)
 				}
 			}
@@ -487,7 +502,7 @@ func (j *threadJournal) validateTree() error {
 	}
 	if len(open) != 0 {
 		slices.Sort(open)
-		return fmt.Errorf("done tasks have open descendants: %s", strings.Join(slices.Compact(open), ", "))
+		return fmt.Errorf("completed tasks have open descendants: %s", strings.Join(slices.Compact(open), ", "))
 	}
 	return nil
 }
@@ -499,8 +514,8 @@ func (j *threadJournal) validateSupersession(item journalItem) error {
 	if by == "" {
 		return nil
 	}
-	if item.Kind == "task" && item.State != "done" && item.State != "dropped" {
-		return fmt.Errorf("%s: only a done or dropped task can be superseded; drop it with a reason, or finish it first", item.Path)
+	if item.Kind == "task" && !journalStateClosed(item.State) {
+		return fmt.Errorf("%s: only a closed task can be superseded; drop it with a reason, or finish it first", item.Path)
 	}
 	if by == item.Path || strings.HasPrefix(by, item.Path+"/") {
 		return fmt.Errorf("%s: superseded_by must name a node outside this subtree, not %s", item.Path, by)
@@ -510,7 +525,7 @@ func (j *threadJournal) validateSupersession(item journalItem) error {
 	}
 	// Recovery hides a superseded subtree, so it must not hide open work.
 	for _, child := range j.Items {
-		if child.Kind == "task" && strings.HasPrefix(child.Path, item.Path+"/") && child.State != "done" && child.State != "dropped" {
+		if child.Kind == "task" && strings.HasPrefix(child.Path, item.Path+"/") && !journalStateClosed(child.State) {
 			return fmt.Errorf("%s: superseded subtree has open task %s; finish or drop it in the same batch", item.Path, child.Path)
 		}
 	}

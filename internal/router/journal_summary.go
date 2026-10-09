@@ -127,7 +127,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	for _, item := range items {
 		if item.Kind == "task" {
 			tasks[item.Path] = item
-			openTasks[item.Path] = item.State != "done" && item.State != "dropped"
+			openTasks[item.Path] = !journalStateClosed(item.State)
 		}
 		if item.SupersededBy != "" {
 			superseded[item.Path] = true

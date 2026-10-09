@@ -18,6 +18,11 @@ func orchestrateIdentityPendingTurnWithReplay(t *testing.T, replay *mekugiReplay
 	workspace := gitTestWorkspace(t)
 	writeTestFile(t, filepath.Join(workspace, "file"), "base")
 	gitTestCommit(t, workspace)
+	return orchestrateIdentityPendingTurnInWorkspace(t, replay, workspace)
+}
+
+func orchestrateIdentityPendingTurnInWorkspace(t *testing.T, replay *mekugiReplayStore, workspace string) (*appServerUI, btwTestRPC) {
+	t.Helper()
 	store := &orchestrate.Store{Directory: t.TempDir()}
 	batch, err := store.Prepare(t.Context(), workspace, "main", "batch")
 	if err != nil {
