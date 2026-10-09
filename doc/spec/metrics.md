@@ -365,11 +365,13 @@ downstream JSON observations and correlated provider attempts. Status 101
 describes the transport, not successful response completion. Internal SSE
 adaptation MUST NOT contribute synthetic framing bytes to either boundary.
 
-An explicit `generate:false` prewarm may complete locally without a provider
-attempt. Capture derives this exception from the observed request and persists
+An explicit `generate:false` prewarm, router compaction answer, or verified
+journal host-finish may complete locally without a provider attempt. Capture derives
+the prewarm exception from the observed request; the router observes its local
+compaction and journal host-finish decisions before response delivery. Capture persists
 `provider_expected:false` on the sanitized client record, so live and offline
 readers do not report a missing provider. An absent field still means a
-provider is expected. Any actual prewarm provider traffic remains measured in provider usage and
+provider is expected. Any actual provider traffic remains measured in provider usage and
 transport totals. Because Codex turn usage excludes prewarm, reconciliation with the
 Codex result MUST exclude only logical exchanges whose sanitized client record explicitly retains
 `provider_expected:false`.

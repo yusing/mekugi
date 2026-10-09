@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/yusing/mekugi/capturer"
 )
 
 func journalHostFinishReceipt(turn, call string) string {
@@ -161,6 +163,7 @@ func (a *requestAttempt) tryJournalHostFinish() (bool, error) {
 	if err != nil || !finished {
 		return false, err
 	}
+	capturer.ObserveNoProvider(a.startCtx)
 	t.journalFinishRequested = true
 	// This response did not admit inference. Terminal journal delivery must
 	// not finish the prepared observation as a missing provider-usage report.
