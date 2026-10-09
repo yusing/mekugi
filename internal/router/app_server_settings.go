@@ -296,9 +296,11 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	var event struct {
 		ThreadID string `json:"threadId"`
 		Settings struct {
-			Provider string         `json:"modelProvider"`
-			Approval jsontext.Value `json:"approvalPolicy"`
-			Sandbox  *struct {
+			Provider          string         `json:"modelProvider"`
+			Approval          jsontext.Value `json:"approvalPolicy"`
+			ApprovalsReviewer string         `json:"approvalsReviewer"`
+			PermissionProfile jsontext.Value `json:"activePermissionProfile"`
+			Sandbox           *struct {
 				Type string `json:"type"`
 			} `json:"sandboxPolicy"`
 			Cwd         string `json:"cwd"`
@@ -318,6 +320,12 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	}
 	if len(event.Settings.Approval) > 0 {
 		u.statusConfig.Approval = event.Settings.Approval
+	}
+	if event.Settings.ApprovalsReviewer != "" {
+		u.statusConfig.ApprovalsReviewer = event.Settings.ApprovalsReviewer
+	}
+	if len(event.Settings.PermissionProfile) > 0 {
+		u.statusConfig.PermissionProfile = event.Settings.PermissionProfile
 	}
 	if event.Settings.Sandbox != nil {
 		u.statusConfig.Sandbox.Type = event.Settings.Sandbox.Type
