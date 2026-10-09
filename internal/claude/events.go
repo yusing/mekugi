@@ -166,6 +166,11 @@ func (a *adapter) decode(data []byte) (events []session.Event, err error) {
 			}
 		}
 		return []session.Event{{Kind: frame.Kind, Failed: frame.Failed, SkillHistory: h}}, nil
+	case "context_boundary":
+		if frame.ID == "" || frame.SessionID == "" || frame.AgentID == "" {
+			return nil, fmt.Errorf("missing native child context identity")
+		}
+		return []session.Event{{Kind: "context", ID: "context/" + frame.ID, SessionID: frame.SessionID, AgentID: frame.AgentID, Text: "Context compacted"}}, nil
 	case "notice":
 		return []session.Event{{Kind: "notice", Text: frame.Text}}, nil
 	case "command_output":

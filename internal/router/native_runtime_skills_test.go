@@ -120,6 +120,15 @@ func TestUISnapshotNativeRuntimeConfirmedSkills(t *testing.T) {
 			t.Fatal("native loaded skills did not open their shared name dialog")
 		}
 	}
+	feed(`{"kind":"context_boundary","id":"child-compact","sessionID":"retired-session","agentID":"child"}`)
+	counts([]string{"plugin:guide", "testing"}, []string{"child-guide"})
+	feed(`{"kind":"context_boundary","id":"child-compact","sessionID":"native-session","agentID":"child"}`)
+	counts([]string{"plugin:guide", "testing"}, nil)
+	tool("child-new-load", "parent-tool", "Skill", `{"skill":"child-alias"}`)
+	result("child-new-load", "parent-tool", `{"success":true,"commandName":"child-guide"}`, false)
+	// A repeated stored boundary cannot expire loads from its later continuation.
+	feed(`{"kind":"context_boundary","id":"child-compact","sessionID":"native-session","agentID":"child"}`)
+	counts([]string{"plugin:guide", "testing"}, []string{"child-guide"})
 	feed(`{"kind":"event","event":{"type":"system","subtype":"compact_boundary","uuid":"main-compact"}}`)
 	counts(nil, []string{"child-guide"})
 	tool("after-compact", "", "Read", `{"file_path":"/work/fresh/SKILL.md"}`)

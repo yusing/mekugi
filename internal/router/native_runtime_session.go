@@ -485,6 +485,9 @@ func (u *appServerUI) runtimeEvent(e session.Event) error {
 		u.setNotice("Context reset from journal · native session "+e.SessionID, false)
 		u.runtimeEntry(session.Event{Kind: "context", ID: "reset/" + e.ID, Text: "Context reset from journal"})
 	case "context":
+		if e.SessionID != "" && e.SessionID != u.thread {
+			return nil
+		}
 		u.runtimeEntry(e)
 	case "skill_history":
 		u.runtimeSkillHistory(e)
@@ -666,6 +669,9 @@ func (u *appServerUI) runtimeEntry(e session.Event) {
 			entry.native = &liveActivityNativeItem{thread: u.thread, item: e.ID, phase: "task"}
 		}
 		if e.Kind == "context" {
+			if e.AgentID != "" {
+				entry.Agent = runtimeTaskLane(e.AgentID)
+			}
 			entry.Kind = "progress"
 			entry.native = &liveActivityNativeItem{thread: u.thread, item: e.ID, live: !e.Historical}
 		}

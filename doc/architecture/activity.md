@@ -79,6 +79,12 @@ Native compact-summary markers and timestamps retire earlier loads, including
 pre-compaction records that the SDK relinks after the summary;
 canonical native Skill result text and successful Read pairs confirm new ones.
 Only complete scans publish counts through the shared skill owner.
+Live Claude child boundaries come from completed, engine-owned native transcript
+appends through the invocation-local mod. The authenticated observation owner
+checks the root session and admitted child principal before the shared skill owner
+clears that child's loads. Prepared, failed and skipped summaries clear nothing;
+Main and sibling contexts remain independent. Native transcripts and compaction
+results stay unchanged.
 
 Unloaded history, loading, and failed reads have separate presentation states.
 Pending rollout placements stay with their child until their item/turn is

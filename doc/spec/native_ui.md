@@ -91,9 +91,10 @@ Claude uses the shared loaded-skill counts and name dialog. Successful native
 on `SKILL.md` supply its directory name. Pending, failed and unconfirmed skill
 calls load nothing. Main's native compaction and context-reset receipts clear its
 count while preserving child counts. Late child metadata keeps already confirmed
-loads with that child. Native child context-boundary delivery remains unfinished;
-the pinned SDK does not forward child system compact boundaries. These
-observations do not change native context or compaction.
+loads with that child. Completed native child compact appends clear only that
+child's loads, after its preceding SDK tool messages drain. Main and sibling
+contexts remain independent. These observations keep native context,
+compaction results and transcripts unchanged.
 
 Resume and fork restore confirmed loads from a separate bounded SDK scan of
 each selected conversation chain, independently of the transcript display

@@ -41,6 +41,30 @@ func observationHTTPFixture(t *testing.T) (*ObservationService, ObservationBindi
 	t.Cleanup(client.CloseIdleConnections)
 	return service, ObservationBinding{Runtime: "claude", Session: "session", Workspace: workspace}, client
 }
+
+func TestNativeObservationChildContextBoundary(t *testing.T) {
+	service, root, client := observationHTTPFixture(t)
+	child := root
+	child.Agent = "native-child"
+	for _, binding := range []ObservationBinding{root, child} {
+		if err := service.owner.bind(t.Context(), binding); err != nil {
+			t.Fatal(err)
+		}
+	}
+	foreign := child
+	foreign.Session = "retired-session"
+	unknown := child
+	unknown.Agent = "unbound-child"
+	for _, item := range []struct {
+		binding ObservationBinding
+		status  int
+	}{{child, http.StatusOK}, {foreign, http.StatusUnprocessableEntity}, {unknown, http.StatusUnprocessableEntity}} {
+		status, body := observationPost(t, service, client, service.Endpoint().Token, observationRequest{Operation: "context_boundary", Binding: item.binding})
+		if status != item.status {
+			t.Fatalf("native child boundary status=%d want=%d: %s", status, item.status, body)
+		}
+	}
+}
 func observationPost(t *testing.T, service *ObservationService, client *http.Client, token string, value any) (int, string) {
 	t.Helper()
 	data, err := json.Marshal(value)

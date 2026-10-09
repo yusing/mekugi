@@ -18,6 +18,7 @@ type Event struct {
 	Edit         *Edit
 	Historical   bool
 	Caller       string
+	AgentID      string // Authenticated native principal, distinct from a parent tool ID.
 	Callers      []string
 	Models       []Model
 	Settings     *Settings

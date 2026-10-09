@@ -80,7 +80,17 @@ async function createQuery(fresh?: {session: string; context: string}): Promise<
     if (!await admission) return;
     yield* messages(generation);
   }
-  agents = await AgentMessages.create();
+  const queryEndpoint = endpoint;
+  const queryWorkspace = cwd;
+  agents = await AgentMessages.create(async boundary => {
+    if (stopping || generation !== epoch || !queryEndpoint) return;
+    try {
+      await companionRequest(queryEndpoint, {operation: 'context_boundary', binding: {runtime: 'claude', workspace: queryWorkspace, session: boundary.sessionID, agent: boundary.agentID}});
+      if (!stopping && generation === epoch) await emit({kind: 'context_boundary', ...boundary});
+    } catch (error) {
+      if (!stopping && generation === epoch) await emit({kind: 'notice', text: `Native child context boundary unavailable: ${String(error)}`});
+    }
+  });
   shell = new UserShell(input => {inputs.push(input); wake?.(); wake = undefined;}, async frame => {
     if (frame.kind === 'shell_started') activeSession = frame.sessionID;
     await emit({...frame, cwd});
@@ -167,6 +177,7 @@ async function watch(query: Query): Promise<void> {
         pendingReset = undefined;
       }
       await emit({kind: 'event', event});
+      await queryAgents?.event(event);
     }
     queryShell?.queryEnded(new Error('Native query ended before shell cancellation evidence'));
     if (!stopping && !replacing) throw new Error('Native query ended unexpectedly');

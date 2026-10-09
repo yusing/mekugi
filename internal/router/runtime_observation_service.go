@@ -147,6 +147,10 @@ func startObservationService(owner *nativeObservationOwner) (*ObservationService
 			var err error
 			var changeID string
 			switch request.Operation {
+			case "context_boundary":
+				owner.mu.Lock()
+				_, err = owner.callContext(ctx, ObservationCall{Binding: request.Binding, ID: "context", Tool: "context"})
+				owner.mu.Unlock()
 			case "history_fork":
 				err = owner.retainForkHistory(ctx, request.Binding, request.Source, request.History)
 			case "history_read":
