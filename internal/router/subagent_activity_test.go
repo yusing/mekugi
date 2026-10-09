@@ -22,6 +22,21 @@ func TestNativeActivityIsolatedByAncestryAndIdentity(t *testing.T) {
 	if len(entries) != 1 || entries[0].Agent != "/root/a" || !strings.Contains(entries[0].Text, "Message from A") {
 		t.Fatalf("cross-root activity leakage: %+v", entries)
 	}
+	a.attachNativePane("root-b")
+	entries = a.takeNativeActivity("root-b")
+	if len(entries) != 1 || !strings.Contains(entries[0].Text, "Message from B") {
+		t.Fatal("background activity was discarded", entries)
+	}
+	a.beginResponse("child-a", true)
+	a.beginResponse("child-b", true)
+	if len(a.takeRequestStarts("root-a")) != 1 || len(a.takeRequestStarts("root-b")) != 1 {
+		t.Fatal("one root consumed another root's request starts")
+	}
+	a.noteUnreturned("child-a", []string{"a-call"})
+	a.noteUnreturned("child-b", []string{"b-call"})
+	if len(a.takeUnreturned("root-a")) != 1 || len(a.takeUnreturned("root-b")) != 1 {
+		t.Fatal("one root consumed another root's command notes")
+	}
 	if a.observe("child-a", "root-b", "/root/a", true) {
 		t.Fatal("conflicted identity accepted")
 	}

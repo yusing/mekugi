@@ -193,6 +193,16 @@ func (u *terminalUI) key(key byte) error {
 		switch key {
 		case 2:
 			return u.send(string([]byte{2}))
+		case '[', ']':
+			if u.main != nil && u.main.navigation != nil {
+				delta := 1
+				if key == '[' {
+					delta = -1
+				}
+				u.main.cycleOrchestratedThread(delta)
+			} else {
+				u.resize(string(key))
+			}
 		case '1', '2', '3', '4', '5':
 			u.selectNativePane(int(key - '1'))
 		case 'q':
@@ -438,6 +448,9 @@ func (u *terminalUI) send(s string) error {
 		} else {
 			var quit bool
 			if u.focus == 3 {
+				if (key == '\r' || key == '\n') && u.main.pickOrchestratedThread() {
+					return nil
+				}
 				only, selected := u.agents.only, u.agents.selected
 				u.agentEscape, quit = u.agents.handleRosterKey(u.agentEscape, key)
 				u.showRosterPick(only, selected)

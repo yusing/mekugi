@@ -303,7 +303,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			if set := u.main.view.activeSkills()["Main"]; set != nil && u.main.view.skillsHover == "Main" {
 				detail = strings.TrimSuffix(detail, set.label()) + activityui.Underline(set.label())
 			}
-			title := nativeTitle(1, "Main", detail, u.focus == 0)
+			title := nativeTitle(1, u.main.orchestrationTitle(), detail, u.focus == 0)
 			// The skill count ends the title, after the frame corner and a space.
 			// A truncated title has no reliable target.
 			if set := u.main.view.activeSkills()["Main"]; set != nil && strings.HasSuffix(ansi.Strip(detail), set.label()) && ansi.StringWidth(title)+5 <= left.w {

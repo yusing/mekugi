@@ -3,6 +3,7 @@
 package router
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
@@ -98,6 +99,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	defer u.shell.diff.close()
 	defer u.shell.diffScreen.Close()
 	defer u.closeOrchestrateStorage()
+	defer u.closeOrchestratedViews()
 	pump := func(done func() bool) {
 		t.Helper()
 		for !done() {
@@ -207,6 +209,26 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	}
 	if node, ok := mountFind(nodes, path+"/@agents/@"+journalPointerKey(nativeThread)); !ok || node.Agent != "/root/batch/metadata_probe" {
 		t.Fatal("installed native descendant lost cross-checkout journal ancestry", node)
+	}
+	view := u.navigation.views[result.batch.Launch.ThreadID]
+	if view == nil || view.session.paths[nativeThread] != "/root/metadata_probe" || view.model != effective.Model {
+		t.Fatal("installed host tree did not populate its independent view")
+	}
+	u.draft, view.draft = "Main draft", "Batch draft"
+	for _, key := range []byte{2, ']'} {
+		if err := u.shell.key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if u.viewedUI() != view || u.thread != main {
+		t.Fatal("installed navigation replaced the execution coordinator")
+	}
+	var frame bytes.Buffer
+	if err := view.paint(&frame, 120, 40); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(frame.String(), "main › batch") || !strings.Contains(frame.String(), "Batch draft") {
+		t.Fatal("installed batch view did not render its breadcrumb and composer")
 	}
 	first := <-provider.requests
 	if !strings.Contains(string(first), command.input.Message) {
