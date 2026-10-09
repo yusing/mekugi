@@ -154,6 +154,72 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 		t.Fatal("session replacement can strand the child")
 	}
 	u.draft = ""
+	followup := func(callCtx context.Context, from, target, message, id string) <-chan callResult {
+		meta := mcp.Meta{"threadId": from, "sessionId": "session", "callId": id, codexTurnMetadataHeader: map[string]any{"thread_id": from, "turn_id": from + "-turn"}}
+		result := make(chan callResult, 1)
+		go func() {
+			value, err := client.CallTool(callCtx, &mcp.CallToolParams{Name: "followup_task", Arguments: map[string]any{"target": target, "message": message}, Meta: meta})
+			result <- callResult{value, err}
+		}()
+		return result
+	}
+	assertDelivery := func(result *mcp.CallToolResult, state, turn string) {
+		t.Helper()
+		var d orchestrate.Delivery
+		encoded, err := json.Marshal(result.StructuredContent)
+		if err != nil || json.Unmarshal(encoded, &d) != nil || d.State != state || d.TurnID != turn {
+			t.Fatalf("delivery: %s, %v", encoded, err)
+		}
+	}
+	result = followup(t.Context(), "main", "batch", "continue", "running")
+	dispatch()
+	steers := appServerTurnRequests(t, w)
+	if len(steers) != 1 || steers[0].Method != "turn/steer" || steers[0].Params.ExpectedTurnID != "child-turn" || steers[0].text() != "continue" {
+		t.Fatal("running follow-up", steers)
+	}
+	select {
+	case <-result:
+		t.Fatal("delivery returned before host acknowledgement")
+	default:
+	}
+	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"child-turn"}}`, steers[0].ID))
+	assertDelivery(take(result, false), "delivered", "child-turn")
+	firstFollowup := followup(t.Context(), "main", "batch", "first queued follow-up", "serial-first")
+	dispatch()
+	firstRequest := btwTestRequest(t, w, "turn/steer", "child")
+	secondFollowup := followup(t.Context(), "main", "batch", "second queued follow-up", "serial-second")
+	dispatch()
+	if w.Len() != 0 {
+		t.Fatal("second follow-up dispatched before the first acknowledgement")
+	}
+	if len(firstRequest.Params.Input) != 1 || firstRequest.Params.Input[0].Text != "first queued follow-up" {
+		t.Fatal("first follow-up input changed", firstRequest)
+	}
+	orchestrateTestReply(t, u, firstRequest, `{"turnId":"child-turn"}`)
+	assertDelivery(take(firstFollowup, false), "delivered", "child-turn")
+	secondRequest := btwTestRequest(t, w, "turn/steer", "child")
+	if len(secondRequest.Params.Input) != 1 || secondRequest.Params.Input[0].Text != "second queued follow-up" {
+		t.Fatal("second follow-up input changed", secondRequest)
+	}
+	orchestrateTestReply(t, u, secondRequest, `{"turnId":"child-turn"}`)
+	assertDelivery(take(secondFollowup, false), "delivered", "child-turn")
+	result = followup(t.Context(), "main", "batch", "continue", "running")
+	dispatch()
+	assertDelivery(take(result, false), "delivered", "child-turn")
+	if w.Len() != 0 {
+		t.Fatal("repeat delivered twice")
+	}
+	result = followup(t.Context(), "main", "batch", "changed", "running")
+	dispatch()
+	take(result, true)
+	result = followup(t.Context(), "main", "batch", "rejected", "rejected-followup")
+	dispatch()
+	request = btwTestRequest(t, w, "turn/steer", "child")
+	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"turn changed"}}`, request.ID))
+	take(result, true)
+	if u.orchestrateThreads["child"].turn != "child-turn" || u.orchestrateThreads["child"].batch.State != "launched" {
+		t.Fatal("follow-up rejection replaced batch lifecycle")
+	}
 	result = call("spawn_agent", map[string]any{"task_name": "batch", "message": "work"})
 	dispatch()
 	take(result, false)
@@ -223,6 +289,89 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 	encoded, _ := json.Marshal(async.StructuredContent)
 	if err := json.Unmarshal(encoded, &asyncEvent); err != nil || asyncEvent.Item != "async-question" || len(asyncEvent.Request) != 0 {
 		t.Fatal("asynchronous question identity lost", asyncEvent, err)
+	}
+	result = followup(t.Context(), "main", "/root/batch", "resume", "idle")
+	dispatch()
+	request = btwTestRequest(t, w, "turn/start", "child")
+	// Completion can precede the turn/start response.
+	u.orchestrateMessage(appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"child","turn":{"id":"followup-turn","status":"completed"}}`)})
+	orchestrateTestReply(t, u, request, `{"turn":{"id":"followup-turn"}}`)
+	assertDelivery(take(result, false), "delivered", "followup-turn")
+	if u.orchestrateThreads["child"].turn != "" || u.orchestrateThreads["child"].batch.Launch.TurnID != "child-turn" {
+		t.Fatal("follow-up revived a completed turn or replaced the first launch")
+	}
+	take(call("prepare", map[string]any{"task_name": "main"}), false)
+	result = call("spawn_agent", map[string]any{"task_name": "main", "message": "sibling work"})
+	dispatch()
+	request = btwTestRequest(t, w, "thread/start", "")
+	batches, _ = store.List(ctx, workspace, "main")
+	var sibling orchestrate.Batch
+	for _, b := range batches {
+		if b.TaskName == "main" {
+			sibling = b
+		}
+	}
+	response, _ = json.Marshal(map[string]any{"thread": map[string]any{"id": "sibling-child", "cwd": sibling.Cwd}})
+	orchestrateTestReply(t, u, request, string(response))
+	request = btwTestRequest(t, w, "turn/start", "sibling-child")
+	orchestrateTestReply(t, u, request, `{"turn":{"id":"sibling-turn"}}`)
+	take(result, false)
+	result = followup(t.Context(), "child", "/root/main", "coordinate", "sibling-message")
+	dispatch()
+	request = btwTestRequest(t, w, "turn/steer", "sibling-child")
+	orchestrateTestReply(t, u, request, `{"turnId":"sibling-turn"}`)
+	assertDelivery(take(result, false), "delivered", "sibling-turn")
+	result = followup(t.Context(), "child", "main", "coordinator wake is staged", "main-alias")
+	dispatch()
+	take(result, true)
+	// A native subagent does not acquire run-member authority by sharing cwd.
+	nativeCtx, nativeRelease, err := replay.beginSession(ctx, "native", "session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := proxy.journals.initialize(nativeCtx, replay, workspace, "native", "/root/native", "main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := proxy.journals.bindIdentity(nativeCtx, replay, workspace, "native", "main", "/root/native", true); err != nil {
+		t.Fatal(err)
+	}
+	nativeRelease()
+	result = followup(t.Context(), "native", "batch", "not a run member", "native-call")
+	dispatch()
+	take(result, true)
+	lateCtx, cancelLate := context.WithCancel(t.Context())
+	result = followup(lateCtx, "main", "/root/main", "late acknowledgement", "late-followup")
+	lateCommand := dispatch()
+	request = btwTestRequest(t, w, "turn/steer", "sibling-child")
+	cancelLate()
+	select {
+	case <-lateCommand.ctx.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("follow-up cancellation not propagated")
+	}
+	take(result, true)
+	orchestrateTestReply(t, u, request, `{"turnId":"sibling-turn"}`)
+	if w.Len() != 0 || u.orchestrateThreads["sibling-child"].turn != "sibling-turn" {
+		t.Fatal("late follow-up interrupted recipient work")
+	}
+	preCtx, cancelPre := context.WithCancel(t.Context())
+	result = followup(preCtx, "main", "/root/main", "cancel before UI dispatch", "pre-followup")
+	select {
+	case c := <-u.orchestrateCommands():
+		u.startOrchestratedChild(c)
+		cancelPre()
+		select {
+		case <-c.ctx.Done():
+		case <-time.After(5 * time.Second):
+			t.Fatal("pre-dispatch cancellation not propagated")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("follow-up command timeout")
+	}
+	drainOrchestrateWork(t, u)
+	take(result, true)
+	if w.Len() != 0 {
+		t.Fatal("canceled follow-up reached the host")
 	}
 	// Removed options reject at the real MCP schema, before dispatch.
 	for _, option := range []string{"fork_turns", "agent_type"} {

@@ -36,10 +36,11 @@ type Batch struct {
 }
 
 type manifest struct {
-	Version   int     `json:"version"`
-	Workspace string  `json:"workspace"`
-	Main      string  `json:"main"`
-	Batches   []Batch `json:"batches"`
+	Version    int        `json:"version"`
+	Workspace  string     `json:"workspace"`
+	Main       string     `json:"main"`
+	Batches    []Batch    `json:"batches"`
+	Deliveries []Delivery `json:"deliveries,omitempty"`
 }
 
 var taskName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
