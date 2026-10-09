@@ -739,7 +739,8 @@ The router lowers the helper to authenticated `mjournal` through stock `exec_com
 one cell-local helper serves all calls, including nested and concurrent calls,
 without repeating its transport implementation at each call site. It neither runs
 the surrounding program nor owns the host lifecycle. Read transport
-uses bounded flat pages, authorizing each page against the full snapshot revision,
+packs flat pages by encoded byte size so small nodes do not require repeated host
+calls, authorizing each page against the full snapshot revision,
 then assembles the tree inside the helper. A concurrent revision fails rather than
 mixing snapshots. Pagination fields are internal, not model-facing. A rejected
 mutation applies nothing and is a result, not a transport failure: the helper

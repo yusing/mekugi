@@ -26,7 +26,7 @@ func newDurableTreeTransform(t *testing.T) (*mekugiResponseTransform, *mekugiPro
 func TestJournalTreeReadTransportPagesFlatNodes(t *testing.T) {
 	t.Parallel()
 	items := []journalItem{{Path: "/1", ID: "/1", Kind: "task", Title: "Parent", State: "working", Author: "/root"}}
-	for i := 1; i <= journalListPageItems+1; i++ {
+	for i := 1; i <= 103; i++ {
 		path := "/1/" + strconv.Itoa(i)
 		items = append(items, journalItem{Path: path, ID: path, Kind: "note", Title: "Finding", Author: "/root"})
 	}
@@ -61,6 +61,9 @@ func TestJournalTreeReadTransportPagesFlatNodes(t *testing.T) {
 		}
 		if err := jsonv2.Unmarshal(output.Bytes(), &page); err != nil {
 			t.Fatal(err)
+		}
+		if page.Next != nil {
+			t.Fatalf("compact 104-node read requires another host call at %d", *page.Next)
 		}
 		if revision != "" && revision != page.Revision {
 			t.Fatal("paged read revision changed")

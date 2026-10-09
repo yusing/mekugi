@@ -231,7 +231,11 @@ command. Codex's startup, cancellation, sandbox, and process group apply
 unchanged.
 
 For Bash, the launcher adds a hook to the startup file that the frontend PATH
-already uses. Segment tracking requires Bash 4.1 or newer; older Bash runs the
+already uses. Tracking starts only in a host command's execution environment;
+hook-handler shells do not start command matching or wait for its deadline.
+Nested launches discard inherited host command identity before starting Codex,
+which supplies the new command's identity at execution time.
+Segment tracking requires Bash 4.1 or newer; older Bash runs the
 original command once with aggregate host output. The hook runs in the command
 shell Codex started, after login startup, so profile functions and aliases remain
 available. It never evaluates

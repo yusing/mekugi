@@ -21,7 +21,8 @@ const Guard = "MEKUGI_EXEC_TRACK"
 // command shell, pass through without setting the guard: the snapshot would
 // otherwise record it for every later command.
 func Hook(tracker string) string {
-	return `if [ -n "${BASH_EXECUTION_STRING+x}" ] && [ -z "${` + Guard + `+x}" ]; then
+	// Codex injects the executing thread into tool commands, not hook handlers.
+	return `if [ -n "${CODEX_THREAD_ID-}" ] && [ -n "${BASH_EXECUTION_STRING+x}" ] && [ -z "${` + Guard + `+x}" ]; then
   case $BASH_EXECUTION_STRING in
   *__codex_snapshot*|*__CODEX_SNAPSHOT*|"if . '"*) ;;
   *)

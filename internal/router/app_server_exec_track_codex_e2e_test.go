@@ -164,10 +164,27 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 // its own row and status.
 func TestAppServerExecTrackNativeCodex(t *testing.T) {
 	shell := newExecTrackShell(t)
+	helper, err := execTrackHelper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A native PreToolUse handler inherits BASH_ENV but must not enter the
+	// tracker, even while the same startup file tracks the actual tool command.
+	hookHelper := filepath.Join(shell.root, "hook-helper")
+	source := "#!/bin/sh\nif [ -n \"${MEKUGI_EXEC_TRACK-}\" ]; then echo 'hook started tracking' >&2; exit 2; fi\nexec " + quoteShellWord(helper) + " \"$@\"\n"
+	if err := os.WriteFile(hookHelper, []byte(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	hook, state, err := vcsguard.HookConfig(hookHelper, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	proxy.execTrack = shell.hub
-	var environment []string
+	// Match the launcher: the parent test command's identity is not the new
+	// Codex process's hook environment. Codex injects identity into its tools.
+	environment := []string{"CODEX_THREAD_ID="}
 	for _, entry := range shell.env {
 		if strings.HasPrefix(entry, "BASH_ENV=") {
 			environment = append(environment, entry)
@@ -193,7 +210,10 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	runAppServerPreviewWith(t, provider, proxy, appServerPreview{environment: environment, afterPrompt: after, noJournal: true})
+	runAppServerPreviewWith(t, provider, proxy, appServerPreview{
+		environment: environment, afterPrompt: after, noJournal: true,
+		codexArgs: []string{"-c", hook, "-c", "hooks.state={" + state + "}"},
+	})
 }
 
 // Installed Codex must retain actual segment reports while its sandbox

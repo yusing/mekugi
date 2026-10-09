@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	jsonv1 "encoding/json"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -24,7 +25,7 @@ const (
 	commentaryPublisherPath       = "/internal/commentary"
 	commentaryOnceArgument        = "--journal-once"
 	maxCommentaryRoutes           = 256
-	journalListPageItems          = 4 // Worst-case escaped items stay below stock exec's 1 MiB collection cap.
+	journalReadPageBytes          = 512 << 10 // Leave room below stock exec's 1 MiB collection cap.
 	maxCommentaryEvents           = 1024
 	maxCommentaryEventsPerRoute   = 64
 	maxCommentaryPublicationBytes = 16 << 10
@@ -381,7 +382,11 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 				length = len(nodes)
 			}
 			start := min(*publication.Page, length)
-			end := min(start+journalListPageItems, length)
+			end, err := journalReadPageEnd(encoded, start)
+			if err != nil {
+				http.Error(writer, "encode journal page: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
 			response["revision"] = revision
 			if nodes, ok := payload.([]journalNode); ok {
 				response["items"] = nodes[start:end]
@@ -400,6 +405,34 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	}
 	writer.Header().Set("Content-Type", "application/json")
 	_ = jsonv1.NewEncoder(writer).Encode(map[string]any{"ok": true, "items": ids})
+}
+
+// Count the already encoded items, including escaping, rather than reserving
+// worst-case space for every node. Revision hashing still covers the full view.
+func journalReadPageEnd(encoded []byte, start int) (int, error) {
+	decoder := jsontext.NewDecoder(bytes.NewReader(encoded))
+	if _, err := decoder.ReadToken(); err != nil {
+		return 0, err
+	}
+	end, size := start, 0
+	for index := 0; decoder.PeekKind() != ']'; index++ {
+		item, err := decoder.ReadValue()
+		if err != nil {
+			return 0, err
+		}
+		if index < start {
+			continue
+		}
+		if len(item)+1 > journalReadPageBytes {
+			return 0, errors.New("journal item exceeds page byte limit")
+		}
+		if size+len(item)+1 > journalReadPageBytes {
+			break
+		}
+		size += len(item) + 1
+		end++
+	}
+	return end, nil
 }
 
 func commentaryPublisherURL(listenAddress string) (string, error) {

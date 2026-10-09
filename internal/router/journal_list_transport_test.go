@@ -54,7 +54,7 @@ func TestJournalListTransportPagesLargeAuthenticatedSnapshot(t *testing.T) {
 		if err := json.Unmarshal(output.Bytes(), &got); err != nil {
 			t.Fatal(err)
 		}
-		if !got.OK || len(got.Items) == 0 || len(got.Items) > journalListPageItems || got.Revision == "" {
+		if !got.OK || len(got.Items) == 0 || got.Revision == "" {
 			t.Fatalf("invalid page %d: %+v", offset, got)
 		}
 		if revision != "" && got.Revision != revision {
@@ -82,9 +82,9 @@ func TestJournalListTransportPagesLargeAuthenticatedSnapshot(t *testing.T) {
 
 func TestJournalListTransportRejectsStaleAndInvalidContinuations(t *testing.T) {
 	t.Parallel()
-	items := make([]journalItem, journalListPageItems+1)
+	items := make([]journalItem, 8)
 	for index := range items {
-		items[index] = journalItem{ID: strconv.Itoa(index), Text: "original", Author: "/root"}
+		items[index] = journalItem{ID: strconv.Itoa(index), Text: strings.Repeat("\x01", maxJournalItemBytes-1), Author: "/root"}
 	}
 	broker := newCommentaryBroker()
 	broker.journalLister = func(context.Context, string, string, string) ([]journalItem, error) { return items, nil }
@@ -118,7 +118,7 @@ func TestJournalListTransportRejectsStaleAndInvalidContinuations(t *testing.T) {
 	if err := json.Unmarshal(first.Bytes(), &firstPage); err != nil {
 		t.Fatal(err)
 	}
-	if firstPage.Next != journalListPageItems || firstPage.Revision == "" {
+	if firstPage.Next <= 0 || firstPage.Next >= len(items) || firstPage.Revision == "" {
 		t.Fatalf("first page = %s", first.String())
 	}
 	items[0].Text = "changed"

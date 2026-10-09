@@ -16,12 +16,15 @@ func TestJournalReadPaginationCountersPreserveRevision(t *testing.T) {
 	t.Parallel()
 	for _, view := range []string{"combined", "own", "tasks", "outline"} {
 		for _, state := range []string{"working", "blocked", "done"} {
-			for _, size := range []int{1, journalListPageItems + 2} {
+			for _, size := range []int{1, 8} {
 				t.Run(view+"/"+state+"/"+strconv.Itoa(size), func(t *testing.T) {
 					transform, proxy, _, workspace := newDurableTreeTransform(t)
 					var mutations []journalMutation
 					for range size {
 						mutation := journalMutation{Op: "add", Kind: "task", Title: new("Work"), State: &state}
+						if size > 1 {
+							mutation.Body = new(strings.Repeat("\x01", maxJournalItemBytes-64))
+						}
 						if state == "blocked" {
 							mutation.Reason = new("Waiting for input")
 						}
@@ -37,11 +40,13 @@ func TestJournalReadPaginationCountersPreserveRevision(t *testing.T) {
 					sink := &httpCommentarySink{endpoint: server.URL, token: token, client: server.Client()}
 					var items []journalNode
 					revision := ""
+					pages := uint64(0)
 					for page := 0; ; {
 						payload, err := sink.send(t.Context(), map[string]any{"op": "read", "view": view, "page": page, "revision": revision})
 						if err != nil {
 							t.Fatalf("page %d: %v", page, err)
 						}
+						pages++
 						var result struct {
 							Items    []journalNode `json:"items"`
 							Next     *int          `json:"next"`
@@ -66,7 +71,10 @@ func TestJournalReadPaginationCountersPreserveRevision(t *testing.T) {
 						t.Fatalf("read %d items, want %d", len(items), size)
 					}
 					counts, _ := journalTestCounters(t, proxy, workspace, transform.shellThreadID)
-					if counts.Operations["read"] != uint64((size+journalListPageItems-1)/journalListPageItems) {
+					if size > 1 && (view == "combined" || view == "own") && pages < 2 {
+						t.Fatal("large escaped read did not exercise continuation")
+					}
+					if counts.Operations["read"] != pages {
 						t.Fatalf("page measurements lost: %+v", counts)
 					}
 					// A real authored change must still reject an old revision.

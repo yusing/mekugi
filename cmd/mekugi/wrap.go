@@ -372,7 +372,7 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 		startup += vcsguard.Functions(guardDirectory, vcsguard.KnownPaths(basePath))
 	}
 	environment = slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
-		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, execsegment.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, execsegment.Guard+"=")
+		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, execsegment.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, execsegment.Guard+"=") || strings.HasPrefix(entry, "CODEX_THREAD_ID=")
 	})
 	if helper != "" {
 		socket, trackDirectory := router.ExecTrackPaths(directory)

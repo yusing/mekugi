@@ -814,7 +814,7 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 	if err := os.WriteFile(helper, []byte("#!/bin/sh\nprintf '%s\\n' \"$3\" > \"$MEKUGI_TEST_TRACK_LOG\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "MEKUGI_TEST_TRACK_LOG=" + log, execsegment.Guard + "=1", execsegment.ShTrackerEnvironment + "=/outer/exec-track.sh"}, frontend, helper, false)
+	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "MEKUGI_TEST_TRACK_LOG=" + log, "CODEX_THREAD_ID=outer-thread", execsegment.Guard + "=1", execsegment.ShTrackerEnvironment + "=/outer/exec-track.sh"}, frontend, helper, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -824,13 +824,26 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 	if slices.Contains(environment, execsegment.Guard+"=1") || !slices.Contains(environment, execsegment.ShTrackerEnvironment+"="+filepath.Join(root, "exec-track.sh")) {
 		t.Fatalf("new session inherited shell tracking state: %q", environment)
 	}
+	if slices.Contains(environment, "CODEX_THREAD_ID=outer-thread") {
+		t.Fatal("new session inherited command identity")
+	}
 	guard, _ := vcsguard.Paths(frontend)
 	if _, err := os.Stat(guard); !os.IsNotExist(err) {
 		t.Fatalf("unguarded shell installed guard: %v", err)
 	}
 	const script = "printf local; printf read"
+	// The host's hook shell inherits the launcher environment, not the tool's
+	// thread injection. It must execute without entering command tracking.
+	hook := exec.Command(bash, "-c", script)
+	hook.Env = environment
+	if output, err := hook.CombinedOutput(); err != nil || string(output) != "localread" {
+		t.Fatalf("hook command = %q, %v", output, err)
+	}
+	if _, err := os.Stat(log); !os.IsNotExist(err) {
+		t.Fatalf("hook shell started command tracking: %v", err)
+	}
 	command := exec.Command(bash, "-c", script)
-	command.Env = environment
+	command.Env = append(slices.Clone(environment), "CODEX_THREAD_ID=tool-thread")
 	if output, err := command.CombinedOutput(); err != nil || string(output) != "localread" {
 		t.Fatalf("unguarded command = %q, %v", output, err)
 	}
