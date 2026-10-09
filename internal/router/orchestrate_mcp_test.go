@@ -1,6 +1,7 @@
 package router
 
 import (
+	"encoding/json/jsontext"
 	"path/filepath"
 	"testing"
 
@@ -29,8 +30,9 @@ func TestOrchestrateMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	proxy := &mekugiProxy{journals: journal, replayStore: replay}
+	store := &orchestrate.Store{Directory: t.TempDir()}
 	serverWire, clientWire := mcp.NewInMemoryTransports()
-	server, err := newOrchestrateMCPServer(proxy, &orchestrate.Store{Directory: t.TempDir()}).Connect(t.Context(), serverWire, nil)
+	server, err := newOrchestrateMCPServer(proxy, store).Connect(t.Context(), serverWire, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,4 +65,53 @@ func TestOrchestrateMCP(t *testing.T) {
 	call("prepare", map[string]any{"task_name": "native"}, meta, true)
 	call("prepare", map[string]any{"task_name": "nested"}, mcp.Meta{"threadId": "child", "sessionId": "host-session", "callId": "child-prepare",
 		codexTurnMetadataHeader: map[string]any{"thread_id": "child", "turn_id": "child-turn"}}, true)
+	// A confirmed independent batch root is not another coordinator. Its
+	// admission survives reopening storage with no live parent/controller.
+	b, err := store.Prepare(ctx, workspace, "main", "batch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.BeginLaunch(ctx, workspace, "main", "batch", "work", jsontext.Value(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordThread(ctx, workspace, "main", "batch", "batch-thread", jsontext.Value(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	run := journalRun{Directory: store.Directory, Workspace: workspace, Main: "main"}
+	childCtx, childRelease, err := replay.beginSession(t.Context(), "batch-thread", "host-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer childRelease()
+	workerCtx, workerRelease, err := replay.beginSession(t.Context(), "worker", "host-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer workerRelease()
+	for _, err := range []error{
+		journal.bindRun(ctx, replay, workspace, "main", run),
+		journal.initialize(childCtx, replay, b.Cwd, "batch-thread", "/root", ""),
+		journal.bindIdentity(childCtx, replay, b.Cwd, "batch-thread", "", "/root", true),
+		journal.bindRun(childCtx, replay, b.Cwd, "batch-thread", run),
+		journal.initialize(workerCtx, replay, b.Cwd, "worker", "/root/worker", "batch-thread"),
+		journal.bindIdentity(workerCtx, replay, b.Cwd, "worker", "batch-thread", "/root/worker", true),
+	} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	proxy.replayStore, err = openMekugiReplayStore(replay.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy.journals = newJournalStore()
+	for _, thread := range []string{"batch-thread", "worker"} {
+		call("prepare", map[string]any{"task_name": "nested"}, mcp.Meta{"threadId": thread, "sessionId": "resumed-session", "callId": "nested",
+			codexTurnMetadataHeader: map[string]any{"thread_id": thread, "turn_id": "resumed-turn"}}, true)
+	}
+	call("prepare", map[string]any{"task_name": "other"}, meta, false)
+	manifests, err := filepath.Glob(filepath.Join(store.Directory, "*", "*.json"))
+	if err != nil || len(manifests) != 1 {
+		t.Fatal("nested preparation created run state", manifests, err)
+	}
 }

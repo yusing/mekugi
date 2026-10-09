@@ -110,7 +110,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	if !j.IdentityKnown || j.IdentityConflicted {
 		return result, errors.New("journal summary identity is unavailable or conflicted")
 	}
-	journals, recordErrors, err := newJournalStore().workspaceJournals(s, j.Workspace)
+	journals, recordErrors, err := newJournalStore().relatedJournals(s, j.Workspace, j.Thread)
 	if err != nil {
 		return result, err
 	}

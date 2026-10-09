@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -123,6 +124,14 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 		t.Fatal(err)
 	}
 	batch := batches[0]
+	if _, err := proxy.applyJournal(ctx, workspace, "main", "", []journalMutation{{Op: "add", Kind: "task", Title: new("Integrate batch"), Agent: "/root/batch", State: new("working")}}); err != nil {
+		t.Fatal(err)
+	}
+	sink := proxy.journals.attachNative(workspace, "main")
+	defer proxy.journals.detachNative(sink)
+	if err := proxy.journals.restoreNative(ctx, replay, sink); err != nil {
+		t.Fatal(err)
+	}
 	writeTestFile(t, filepath.Join(batch.Cwd, "input"), "copied input")
 	result = call("spawn_agent", map[string]any{"task_name": "batch", "message": "work"})
 	dispatch()
@@ -133,6 +142,12 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 	}
 	response, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "child", "cwd": batch.Cwd}, "model": "effective-model", "reasoningEffort": "high"})
 	orchestrateTestReply(t, u, request, string(response))
+	sink.mu.Lock()
+	mounted := sink.mounted
+	sink.mu.Unlock()
+	if mounted == nil || !slices.ContainsFunc(mounted.Items, func(item journalItem) bool { return item.Agent == "/root/batch" && item.Path == "/1/@child" }) {
+		t.Fatal("confirmed thread linkage did not refresh Main before the first turn")
+	}
 	request = btwTestRequest(t, w, "turn/start", "child")
 	batches, _ = store.List(ctx, workspace, "main")
 	if batches[0].Launch.ThreadID != "child" || batches[0].State != "started" {

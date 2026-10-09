@@ -34,6 +34,27 @@ func journalRelative(journals map[string]threadJournal, caller, target string) b
 }
 
 func journalReadTarget(journals map[string]threadJournal, recordErrors map[string]error, caller, agent string) (string, error) {
+	// Independent batch threads retain native local selectors. Only the plain
+	// main alias crosses to the coordinator; /root/main stays a local selector.
+	for _, thread := range journalAncestry(journals, caller) {
+		j := journals[thread]
+		if j.Orchestration == nil || j.Parent != j.Orchestration.Main {
+			continue
+		}
+		if agent == "main" {
+			agent = "/root"
+		} else {
+			local := strings.TrimPrefix(agent, "/root/")
+			if agent == "/root" {
+				local = ""
+			}
+			agent = j.Author
+			if local != "" {
+				agent += "/" + local
+			}
+		}
+		break
+	}
 	if agent != "" && !strings.HasPrefix(agent, "/") {
 		agent = "/root/" + agent
 	}
@@ -141,6 +162,7 @@ func mountedJournalItems(journals map[string]threadJournal, recordErrors map[str
 }
 
 func (s *journalStore) readTree(ctx context.Context, store *mekugiReplayStore, workspace, caller, agent, path string, depth *int, view string) ([]journalNode, error) {
+	store = store.scoped(ctx)
 	if !validJournalView(view) {
 		return nil, errJournalView
 	}
@@ -160,7 +182,7 @@ func (s *journalStore) readTree(ctx context.Context, store *mekugiReplayStore, w
 	defer release()
 	var nodes []journalNode
 	read := func() error {
-		journals, recordErrors, err := s.workspaceJournals(store, workspace)
+		journals, recordErrors, err := s.relatedJournals(store, workspace, caller)
 		if err != nil {
 			return err
 		}
@@ -227,6 +249,7 @@ func journalReadView(items []journalItem, path string, depth *int, view string) 
 // Delivery cursors, receipts and counters leave every view unchanged.
 func mountedViewChanged(before, after threadJournal) bool {
 	return before.Parent != after.Parent || before.Author != after.Author || before.IdentityKnown != after.IdentityKnown ||
+		!reflect.DeepEqual(before.Orchestration, after.Orchestration) ||
 		before.IdentityConflicted != after.IdentityConflicted || before.LifecycleState != after.LifecycleState ||
 		before.LifecycleReason != after.LifecycleReason || before.LifecycleAt != after.LifecycleAt || before.Turns != after.Turns ||
 		!reflect.DeepEqual(before.SpawnRoles, after.SpawnRoles) || !reflect.DeepEqual(before.Items, after.Items)
@@ -240,33 +263,41 @@ func (s *journalStore) publishMountedViews(store *mekugiReplayStore, workspace, 
 	s.nativeMu.Lock()
 	var sinks []*nativeJournalSink
 	for _, sink := range s.native {
-		if sink.workspace == workspace {
-			sinks = append(sinks, sink)
-		}
+		sinks = append(sinks, sink)
 	}
 	s.nativeMu.Unlock()
-	related := false
+	if len(sinks) == 0 {
+		return
+	}
+	// Discover only the changed thread's local parent chain before decoding
+	// mounted records. A run reference selects the coordinator sink, not content.
+	var chain []string
+	var run *journalRun
 	seen := make(map[string]bool)
-	for len(sinks) > 0 && thread != "" && !seen[thread] && !related {
-		seen[thread] = true
-		related = slices.ContainsFunc(sinks, func(sink *nativeJournalSink) bool { return sink.thread == thread })
-		j, ok := s.memory[journalKey(workspace, thread)]
+	for current := thread; current != "" && !seen[current]; {
+		seen[current] = true
+		chain = append(chain, current)
+		j, ok := s.memory[journalKey(workspace, current)]
 		if store != nil {
-			var err error
-			if j, ok, err = readThreadJournal(store, workspace, thread); err != nil {
-				related = true // Unreadable ancestry cannot rule a view out.
+			var readErr error
+			j, ok, readErr = readThreadJournal(store, workspace, current)
+			if readErr != nil {
 				break
 			}
 		}
 		if !ok {
 			break
 		}
-		thread = j.Parent
+		run = j.Orchestration
+		current = j.Parent
 	}
-	if !related {
+	sinks = slices.DeleteFunc(sinks, func(sink *nativeJournalSink) bool {
+		return !(sink.workspace == workspace && slices.Contains(chain, sink.thread) || run != nil && sink.workspace == run.Workspace && sink.thread == run.Main)
+	})
+	if len(sinks) == 0 {
 		return
 	}
-	journals, recordErrors, err := s.workspaceJournals(store, workspace)
+	journals, recordErrors, err := s.relatedJournals(store, workspace, thread)
 	if err != nil {
 		// The pane prefers the mounted view, so never leave an older one in
 		// front of the sink's newer own tree.
@@ -344,7 +375,16 @@ func (s *journalStore) validateMountedCompletion(store *mekugiReplayStore, j thr
 	if !slices.ContainsFunc(j.Items, completing) || !slices.ContainsFunc(j.Items, func(item journalItem) bool { return item.Agent != "" }) {
 		return nil
 	}
-	journals, recordErrors, err := s.workspaceJournals(store, j.Workspace)
+	// Native bindings are local to each independent thread tree. Only Main's
+	// integration assignments need projected cross-checkout completion gates.
+	var journals map[string]threadJournal
+	var recordErrors map[string]error
+	var err error
+	if j.Orchestration != nil && j.Thread == j.Orchestration.Main {
+		journals, recordErrors, err = s.relatedJournals(store, j.Workspace, j.Thread)
+	} else {
+		journals, recordErrors, err = s.workspaceJournals(store, j.Workspace)
+	}
 	if err != nil {
 		return err
 	}

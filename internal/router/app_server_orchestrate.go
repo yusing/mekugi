@@ -342,6 +342,13 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 					if err == nil {
 						err = journals.bindIdentity(ctx, replay, cwd, thread, "", "/root", true)
 					}
+					if err == nil {
+						run := journalRun{Directory: store.Directory, Workspace: c.workspace, Main: c.main}
+						err = journals.bindRun(ctx, replay, c.workspace, c.main, run)
+						if err == nil {
+							err = journals.bindRun(ctx, replay, cwd, thread, run)
+						}
+					}
 				}
 			}
 			return func() {

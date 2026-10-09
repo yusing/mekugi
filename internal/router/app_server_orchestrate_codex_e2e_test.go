@@ -129,6 +129,19 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 		return u.thread != "" && !u.modelsLoading && u.statusConfig.PermissionProfile.Kind() == '{'
 	})
 	main := u.thread
+	// This fixture dispatches UI commands directly, without a Main provider turn
+	// that would normally initialize the journal before its MCP call.
+	ctx, releaseMain, err := proxy.replayStore.beginSession(ctx, main, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releaseMain()
+	if err := proxy.journals.initialize(ctx, proxy.replayStore, workspace, main, "/root", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := proxy.journals.bindIdentity(ctx, proxy.replayStore, workspace, main, "", "/root", true); err != nil {
+		t.Fatal(err)
+	}
 	store := &orchestrate.Store{Directory: t.TempDir()}
 	proxy.orchestration = &orchestrateRuntime{store: store}
 	batch, err := store.Prepare(ctx, workspace, main, "batch")
@@ -174,13 +187,26 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 		t.Fatal("native command escaped prepared checkout", output)
 	}
 	nativeScoped := false
+	nativeThread := ""
 	for thread, path := range u.session.paths {
 		if thread != main && thread != result.batch.Launch.ThreadID && strings.HasPrefix(path, "/orchestrate/"+result.batch.Launch.ThreadID+"/") {
 			nativeScoped = true
+			nativeThread = thread
 		}
 	}
 	if !nativeScoped {
 		t.Fatal("native descendant presentation escaped batch identity", u.session.paths)
+	}
+	nodes, err := proxy.readJournalTree(ctx, workspace, main, "", "", nil, "combined")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/@agents/@" + journalPointerKey(result.batch.Launch.ThreadID)
+	if node, ok := mountFind(nodes, path); !ok || node.Agent != "/root/batch" {
+		t.Fatal("installed thread did not mount in Main's journal", node)
+	}
+	if node, ok := mountFind(nodes, path+"/@agents/@"+journalPointerKey(nativeThread)); !ok || node.Agent != "/root/batch/metadata_probe" {
+		t.Fatal("installed native descendant lost cross-checkout journal ancestry", node)
 	}
 	first := <-provider.requests
 	if !strings.Contains(string(first), command.input.Message) {

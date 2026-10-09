@@ -39,7 +39,7 @@ func journalReadSchema() map[string]any {
 		"type": "object", "additionalProperties": false,
 		"properties": map[string]any{
 			"p":     text("Node path to read; omit for top-level nodes"),
-			"agent": text("Proven ancestor or descendant agent path; `/root/` may be omitted. Omit to read your journal"),
+			"agent": text("Proven ancestor or descendant agent path; `/root/` may be omitted. Omit to read your journal. In a batch, main selects its orchestration coordinator"),
 			"depth": map[string]any{"type": "integer", "minimum": 0, "description": "Child levels to include; 0 returns only the selected or top-level nodes. Omit for all levels"},
 			"view": map[string]any{
 				"type": "string", "enum": []string{"combined", "own", "tasks", "outline"},
