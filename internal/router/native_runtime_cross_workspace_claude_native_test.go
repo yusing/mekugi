@@ -28,7 +28,12 @@ func TestNativeRuntimeCrossWorkspaceClaudeNative(t *testing.T) {
 	defer cancel()
 	t.Setenv(routerTestWorkerEnvironment, "1")
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
-	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	configDirectory := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", configDirectory)
+	// Local providers exercise native permissions without a real Auto classifier.
+	if err := os.WriteFile(filepath.Join(configDirectory, "settings.json"), []byte(`{"permissions":{"defaultMode":"default"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("ANTHROPIC_API_KEY", "cross-workspace-fixture")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
@@ -69,13 +74,12 @@ func TestNativeRuntimeCrossWorkspaceClaudeNative(t *testing.T) {
 			default:
 				t.Error("native request budget exceeded")
 			}
-			messages, _ := packet["messages"].([]any)
-			if len(messages) > 0 {
-				last := nativeGuidanceRequestText(messages[len(messages)-1])
-				if strings.Contains(last, "SEED_NATIVE ") {
-					content = []any{map[string]any{"type": "tool_use", "id": "seed-workspace-effect", "name": "Bash", "input": map[string]any{"command": "pwd; printf 'once\\n' >> native-once.txt", "description": "Seed ordinary native workspace effect"}}}
-					stop = "tool_use"
-				}
+			messages := nativeGuidanceRequestText(packet["messages"])
+			// Native engine attachments can follow the user's prompt. The real
+			// tool-use identity, not message position, prevents another execution.
+			if strings.Contains(messages, "SEED_NATIVE ") && !strings.Contains(messages, "seed-workspace-effect") {
+				content = []any{map[string]any{"type": "tool_use", "id": "seed-workspace-effect", "name": "Bash", "input": map[string]any{"command": "pwd; printf 'once\\n' >> native-once.txt", "description": "Seed ordinary native workspace effect"}}}
+				stop = "tool_use"
 			}
 		}
 		nativeGuidanceProviderReply(w, packet, content, stop)
