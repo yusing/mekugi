@@ -47,7 +47,7 @@ func TestJournalSummaryOrdersOpenTasksAndIndexesContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, fact := range []string{"Keep protocol v1 stable", "Read relevant context paths before acting", "Continuation paused: /3: Awaiting API decision"} {
+	for _, fact := range []string{"Keep protocol v1 stable", "No new dependencies", "Continuation paused: /3: Awaiting API decision"} {
 		if !strings.Contains(summary.Text, fact) {
 			t.Errorf("summary omitted %q: %s", fact, summary.Text)
 		}
@@ -279,24 +279,35 @@ func TestJournalSummaryLimitsFactsToCurrentWork(t *testing.T) {
 	}
 }
 
-func TestJournalSummaryIndexesLargeContextForOnDemandReads(t *testing.T) {
+func TestJournalSummaryCarriesScopeAndResumeInputs(t *testing.T) {
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	store, thread, ctx := proxy.replayStore, transform.shellThreadID, transform.ctx
-	body := strings.Repeat("Retained constraint detail. ", 500)
-	for range 4 {
-		if _, err := proxy.journals.apply(ctx, store, workspace, thread, "", []journalMutation{{Op: "add", Kind: "context", Title: new("Constraint"), Body: &body}}); err != nil {
-			t.Fatal(err)
-		}
+	leaf := strings.Repeat("Acceptance input. ", 60) + "Baseline at /var/tmp/base."
+	mutations := []journalMutation{
+		{Op: "add", Kind: "task", Title: new("Outcome"), State: new("working")},
+		{Op: "add", Under: "/1", Kind: "task", Title: new("Next slice"), Body: &leaf},
+		{Op: "add", Kind: "task", Title: new("Other task"), Body: new(strings.Repeat("Unrelated detail. ", 60) + "Other tail.")},
+	}
+	for i := range 8 {
+		mutations = append(mutations, journalMutation{Op: "add", Kind: "context", Title: new(fmt.Sprintf("Constraint %d", i)), Body: new(fmt.Sprintf("Scope %d: ", i) + strings.Repeat("retained constraint detail ", 70))})
+	}
+	if _, err := proxy.journals.apply(ctx, store, workspace, thread, "", mutations); err != nil {
+		t.Fatal(err)
 	}
 	summary, err := summaryForTest(t, ctx, store, workspace, thread)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(summary.Text, "/4 Constraint") || strings.Contains(summary.Text, "Retained constraint detail") || len(summary.Text) > 1024 {
-		t.Fatalf("root context bodies inflated recovery: %s", summary.Text)
+	for _, want := range []string{"Baseline at /var/tmp/base.", "Scope 7: ", "/3 Constraint 0\n", "Root context listed without its body has detail by path."} {
+		if !strings.Contains(summary.Text, want) {
+			t.Errorf("missing %q: %s", want, summary.Text)
+		}
 	}
-	nodes, err := proxy.journals.readTree(ctx, store, workspace, thread, "", "/4", nil, "own")
-	if err != nil || len(nodes) != 1 || nodes[0].Body != body {
+	if strings.Contains(summary.Text, "Scope 0: ") || strings.Contains(summary.Text, "Other tail.") {
+		t.Fatalf("full bodies exceeded the resume branch and newest scope: %s", summary.Text)
+	}
+	nodes, err := proxy.journals.readTree(ctx, store, workspace, thread, "", "/3", nil, "own")
+	if err != nil || len(nodes) != 1 || !strings.HasPrefix(nodes[0].Body, "Scope 0: ") {
 		t.Fatalf("on-demand read lost context: %+v %v", nodes, err)
 	}
 }

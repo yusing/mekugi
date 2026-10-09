@@ -8,11 +8,11 @@
 │ Context paths:                                                                ▌
 │                                                                               ▌
 │ /3 Preserve host authority                                                    ▌
-│ Open tasks:                                                                   ▌
+│ Use retained observations, not revived continuation handles.                  │
+│                                                                               │
+│ Open tasks:                                                                   │
 │                                                                               │
 │ /2 [pending] Second                                                           │
 │ /4 [pending] Continue validation                                              │
-│ Retained changes:                                                             │
-│ No recorded changes.                                                          │
 ╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ─────────────────────────────╯
 

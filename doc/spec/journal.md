@@ -183,8 +183,12 @@ V2 recovery is a deterministic current-work handoff, not a session-wide index of
 completed work. All open tasks retain their paths, states, titles, bindings and
 reasons, with bounded body excerpts. Working tasks precede pending and blocked
 tasks. Context nodes are indexed by path and title; those in the resume task's
-open branch also include bounded body excerpts. Readers must read relevant
-context paths before acting. A listed superseded node shows its replacement
+open branch also include bounded body excerpts. A shared 12 KiB budget, limited
+to what the reserved half leaves after mandatory content, gives up to 2 KiB of
+body to the resume task and its open ancestors, then to current root context
+newest first, so accepted scope and the next step's inputs survive reset without
+a read. Root context that does not fit stays indexed, and one line states that its
+detail is available by path. A listed superseded node shows its replacement
 pointer without its old body, so recovery does not present a replaced decision
 as current.
 

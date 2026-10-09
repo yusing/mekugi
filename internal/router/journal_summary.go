@@ -20,6 +20,10 @@ import (
 const (
 	maxJournalSummaryBytes    = 64 << 10
 	maxJournalSummaryFailures = 8
+	// Fuller bodies for the resume branch and root scope share one budget, so
+	// the next step's inputs survive reset without a recovery read.
+	journalSummaryFullBodies = 12 << 10
+	journalSummaryFullBody   = 2 << 10
 )
 
 type journalSummary struct {
@@ -114,8 +118,8 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	if err != nil {
 		return result, err
 	}
-	// The tree scopes work facts. Root context has no task scope, so keep its
-	// paths for selective reads rather than guessing which old decisions apply.
+	// The tree scopes work facts. Root context has no task scope and applies to
+	// all work, so its newest bodies share the full-body budget.
 	tasks := make(map[string]journalItem)
 	openTasks := make(map[string]bool)
 	superseded := make(map[string]bool)
@@ -226,6 +230,64 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		}
 		return node.String()
 	}
+	rootContext := func(item journalItem) bool {
+		if item.Kind != "context" || strings.Contains(item.Path, "/@") || hiddenBySupersession(item.Path) || item.SupersededBy != "" {
+			return false
+		}
+		for parent := journalParent(item.Path); parent != ""; parent = journalParent(parent) {
+			if _, ok := tasks[parent]; ok {
+				return false
+			}
+		}
+		return true
+	}
+	bodyLimit := func(item journalItem) int {
+		if item.Kind == "task" {
+			if openTasks[item.Path] {
+				return 512
+			}
+			return 0
+		}
+		if currentWork(item.Path) {
+			return 512
+		}
+		return 0
+	}
+	// Indexed paths and open tasks are mandatory; fuller bodies only use what
+	// the reserved half leaves, so they never cause a capacity failure.
+	reserved := 1 << 10
+	for _, item := range items {
+		if item.Kind == "context" && !hiddenBySupersession(item.Path) && !strings.HasSuffix(item.Path, "/@agents") || item.Kind == "task" && (openTasks[item.Path] || keptTasks[item.Path]) {
+			reserved += len(renderNode(item, bodyLimit(item)))
+		}
+	}
+	var candidates []journalItem
+	for path := next; path != ""; path = journalParent(path) {
+		if task, ok := tasks[path]; ok && openTasks[path] {
+			candidates = append(candidates, task)
+		}
+	}
+	for _, item := range slices.Backward(items) {
+		if rootContext(item) {
+			candidates = append(candidates, item)
+		}
+	}
+	fullBody := make(map[string]int)
+	fullBytes, budget := 0, min(journalSummaryFullBodies, maxJournalSummaryBytes/2-reserved)
+	contextOmitted := false
+	for _, item := range candidates {
+		cost := len(renderNode(item, journalSummaryFullBody)) - len(renderNode(item, bodyLimit(item)))
+		if cost == 0 {
+			continue
+		}
+		if cost > budget {
+			contextOmitted = contextOmitted || item.Kind == "context"
+			continue
+		}
+		budget -= cost
+		fullBytes += cost
+		fullBody[item.Path] = journalSummaryFullBody
+	}
 	agentText := make(map[string]*strings.Builder)
 	lastSection := make(map[string]string)
 	var agentOrder []string
@@ -270,17 +332,13 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	}
 	for _, item := range items {
 		if item.Kind == "context" && !hiddenBySupersession(item.Path) && !strings.HasSuffix(item.Path, "/@agents") {
-			limit := 0
-			if currentWork(item.Path) {
-				limit = 512
-			}
-			writeNode("Context paths", item, limit)
+			writeNode("Context paths", item, cmp.Or(fullBody[item.Path], bodyLimit(item)))
 		}
 	}
 	for _, state := range []string{"working", "pending", "blocked", ""} {
 		for _, item := range items {
 			if item.Kind == "task" && item.State == state {
-				writeNode("Open tasks", item, 512)
+				writeNode("Open tasks", item, cmp.Or(fullBody[item.Path], 512))
 			}
 		}
 	}
@@ -289,7 +347,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 			writeNode("Open tasks", item, 0)
 		}
 	}
-	mandatoryBytes := text.Len()
+	mandatoryBytes := text.Len() - fullBytes
 	for _, out := range agentText {
 		mandatoryBytes += out.Len()
 	}
@@ -443,7 +501,10 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	default:
 		text.WriteString("\nResume: no runnable local task.\n")
 	}
-	text.WriteString("Read more: journal({op:\"read\",p:\"PATH\",depth:1}); journal({op:\"read\",view:\"outline\"}) finds own older paths. For an agent, add agent:\"NAME\",view:\"own\" using its heading. Discover older agents with journal({op:\"read\",depth:1}). Read relevant context paths before acting.\n")
+	text.WriteString("Read more: journal({op:\"read\",p:\"PATH\",depth:1}); journal({op:\"read\",view:\"outline\"}) finds own older paths. For an agent, add agent:\"NAME\",view:\"own\" using its heading. Discover older agents with journal({op:\"read\",depth:1}).\n")
+	if contextOmitted {
+		text.WriteString("Root context listed without its body has detail by path.\n")
+	}
 	if text.Len() > maxJournalSummaryBytes {
 		return result, errors.New("journal evidence exceeds summary capacity")
 	}

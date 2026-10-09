@@ -9,10 +9,10 @@
 │ Context paths:                           ▌
 │                                          ▌
 │ /3 Preserve host authority               │
+│ Use retained observations, not revived   │
+│ continuation handles.                    │
+│                                          │
 │ Open tasks:                              │
 │                                          │
 │ /2 [pending] Second                      │
-│ /4 [pending] Continue validation         │
-│ Retained changes:                        │
-│ No recorded changes.                     │
 ╰─ ↑↓ scroll · / find · y copy · esc ──────╯

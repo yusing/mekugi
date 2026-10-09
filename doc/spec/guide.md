@@ -161,10 +161,10 @@ recovery. This check survives router restart and never acknowledges journal even
 
 The hook reads the retained journal and executing-thread-owned change evidence
 through their existing owners. V2 uses the [evidence-backed journal summary](journal.md#evidence-backed-recovery),
-including open task paths and states, a context-path index, bounded current-work
-excerpts and changes/failures captured after the last journal event. Its short read
-hint directs readers to relevant context before acting and explains how to retrieve
-full detail, discover older own paths and find older agents. Child content is
+including open task paths and states, a context-path index, bounded root-scope,
+resume-branch and current-work bodies, and changes/failures captured after the last
+journal event. Its short read hint explains how to retrieve omitted detail, discover
+older own paths and find older agents. Child content is
 grouped once under a readable agent heading with child-local paths, which readers
 can select through `agent` and `view:"own"`. Closed work and
 history remain readable rather than being indexed in every handoff. Retained v1
