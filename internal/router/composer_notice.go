@@ -113,7 +113,7 @@ func (u *appServerUI) composerNoticeMouse(button, x, y int, release bool) bool {
 				u.status, u.alert = "", false
 			}
 		} else {
-			u.shell.openBlocks(u.view, []activityui.Block{{Kind: "error", Body: u.composerErrorText()}})
+			u.viewedUI().shell.openBlocks(u.view, []activityui.Block{{Kind: "error", Body: u.composerErrorText()}})
 		}
 		u.dirty = true
 	}
