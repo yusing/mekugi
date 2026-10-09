@@ -7,10 +7,68 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
+
+func TestUISnapshotNativeGroupedSkills(t *testing.T) {
+	for _, main := range []bool{true, false} {
+		t.Run(fmt.Sprintf("main=%t", main), func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			view := u.view
+			view.conversation, view.bare, view.feedOnly = main, !main, !main
+			view.clock = func() time.Time { return time.Date(2026, 10, 9, 12, 0, 0, 0, time.Local) }
+			u.clock = view.clock
+			var items []appServerItem
+			for i, command := range []string{"skills-mgr get mekugi-owners", "skills-mgr get deliver-vertical-slice", "cat CONTEXT-TESTS.md"} {
+				item := appServerItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, ExitCode: new(0), DurationMS: new(int64(40 + i)), AggregatedOutput: new(fmt.Sprintf("# Guide %d\nUse this guide.\n", i))}
+				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": u.thread, "turnId": "turn", "item": item})
+				if i == 1 && strings.Count(ansi.Strip(strings.Join(view.renderFeed(60, 40).lines, "\n")), "Skill") != 2 {
+					t.Fatal("running skill merged")
+				}
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": u.thread, "turnId": "turn", "item": item})
+				items = append(items, item)
+			}
+			for _, restored := range []bool{false, true} {
+				if main && restored { // Main restores these operations as a folded batch.
+					continue
+				}
+				if restored {
+					clock := view.clock
+					*view = *newLiveActivityView()
+					view.clock = clock
+					view.conversation, view.bare, view.feedOnly = main, !main, !main
+					u.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", CompletedAt: clock().Unix(), Items: items}})
+				}
+				finishPacing(view)
+				feed := view.renderFeed(60, 40)
+				found := false
+				for _, snippet := range feed.snippets {
+					block, ok := view.snippetBlock(snippet)
+					if !ok || len(block.Members) != 2 {
+						continue
+					}
+					found = true
+					if block.Duration != 81*time.Millisecond || !u.shell.openOutput(view, snippet) || len(u.shell.output.pages) != 2 {
+						t.Fatal("group lost timing or output pages")
+					}
+					for page, member := range u.shell.output.pages {
+						if member.Duration != time.Duration(*items[page].DurationMS)*time.Millisecond || strings.Join(member.Tail, "\n") != strings.TrimSuffix(*items[page].AggregatedOutput, "\n") {
+							t.Fatal("dialog page lost invocation output or timing")
+						}
+					}
+					break
+				}
+				if !found {
+					t.Fatalf("no grouped skill dialog target (restored=%t):\n%s", restored, ansi.Strip(strings.Join(feed.lines, "\n")))
+				}
+				uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/native-grouped-skills-%t.txt", main), strings.Join(feed.lines, "\n")+"\n")
+			}
+		})
+	}
+}
 
 func TestUISnapshotNativeSingleCommandElapsed(t *testing.T) {
 	start := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)

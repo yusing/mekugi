@@ -174,8 +174,10 @@ timed commands and pipelines, use begin/EXIT duration rather than the host's
 invocation duration, as specified in [REQ-EXECUTION-002](execution.md).
 The dialog keeps the same elapsed suffix without extra timing metadata rows.
 Timed commands retain their individual rows rather
-than merging reads or folding staging into a commit. Verified journal read/list
-transports are an exception: adjacent successful pages group like other reads,
+than merging reads or folding staging into a commit. Successful Skill reads are
+an exception: consecutive reads group like Read targets, with total elapsed time
+on the group and each invocation's output and timing in the dialog.
+Verified journal read/list transports also group adjacent successful pages like other reads,
 including one-line JSON output, which collapses immediately. Their row sums
 observed page durations; the output dialog retains each page's output and timing.
 Labels identify the requested entries, outline, or task view, agent/task scope,

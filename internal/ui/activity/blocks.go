@@ -526,7 +526,8 @@ func parseLiveActivityReads(label string) ([]Read, bool) {
 // ranges of the same path. Reads whose content is collapsed join too, each
 // target counting the lines read from it; a read still streaming, failed or
 // left open stays its own row until it settles. Merged blocks own their
-// slices; parsed entries are shared.
+// slices; parsed entries are shared. Skill reads retain invocation output and
+// timing in Members, with total duration on the grouped row.
 func MergeLiveActivityReads(blocks []Block) []Block {
 	var merged []Block
 	var first Block // Only the last group can receive another adjacent read.
@@ -548,9 +549,11 @@ func MergeLiveActivityReads(blocks []Block) []Block {
 			last.countContent()
 		}
 		last.Members = append(last.Members, block)
-		if last.JournalTransport {
+		if last.JournalTransport || last.Verb == "Skill" {
 			last.Duration += block.Duration
 			last.Ended = block.Ended
+		}
+		if last.JournalTransport {
 			if last.Results != nil && block.Results != nil {
 				last.Results = new(*last.Results + *block.Results)
 			} else {
@@ -576,7 +579,7 @@ func MergeLiveActivityReads(blocks []Block) []Block {
 func mergesReads(last, next Block) bool {
 	joins := func(b Block) bool {
 		return b.Kind == "reads" && !b.Running && !b.Skipped && b.Approval == "" && (b.Results == nil || b.JournalTransport) && b.ExitCode == 0 &&
-			(b.JournalTransport || b.Started.IsZero() && b.Duration == 0) &&
+			(b.JournalTransport || b.Verb == "Skill" || b.Started.IsZero() && b.Duration == 0) &&
 			(len(b.Tail) == 0 && b.TailOmitted == 0 || b.readContent())
 	}
 	return last.Verb == next.Verb && last.Workdir == next.Workdir && last.JournalTransport == next.JournalTransport && joins(last) && joins(next)
