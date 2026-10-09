@@ -154,14 +154,17 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 		t.Fatal("session replacement can strand the child")
 	}
 	u.draft = ""
-	followup := func(callCtx context.Context, from, target, message, id string) <-chan callResult {
+	messageCall := func(callCtx context.Context, tool, from, target, message, id string) <-chan callResult {
 		meta := mcp.Meta{"threadId": from, "sessionId": "session", "callId": id, codexTurnMetadataHeader: map[string]any{"thread_id": from, "turn_id": from + "-turn"}}
 		result := make(chan callResult, 1)
 		go func() {
-			value, err := client.CallTool(callCtx, &mcp.CallToolParams{Name: "followup_task", Arguments: map[string]any{"target": target, "message": message}, Meta: meta})
+			value, err := client.CallTool(callCtx, &mcp.CallToolParams{Name: tool, Arguments: map[string]any{"target": target, "message": message}, Meta: meta})
 			result <- callResult{value, err}
 		}()
 		return result
+	}
+	followup := func(callCtx context.Context, from, target, message, id string) <-chan callResult {
+		return messageCall(callCtx, "followup_task", from, target, message, id)
 	}
 	assertDelivery := func(result *mcp.CallToolResult, state, turn string) {
 		t.Helper()
@@ -171,6 +174,19 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 			t.Fatalf("delivery: %s, %v", encoded, err)
 		}
 	}
+	for _, text := range []string{"first deferred", "second deferred"} {
+		for range 2 {
+			result = messageCall(t.Context(), "send_message", "main", "batch", text, text)
+			dispatch()
+			assertDelivery(take(result, false), "queued", "")
+		}
+	}
+	if w.Len() != 0 {
+		t.Fatal("deferred message woke or steered its recipient")
+	}
+	result = messageCall(t.Context(), "send_message", "main", "batch", "changed", "first deferred")
+	dispatch()
+	take(result, true)
 	result = followup(t.Context(), "main", "batch", "continue", "running")
 	dispatch()
 	steers := appServerTurnRequests(t, w)
@@ -293,9 +309,15 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 	result = followup(t.Context(), "main", "/root/batch", "resume", "idle")
 	dispatch()
 	request = btwTestRequest(t, w, "turn/start", "child")
+	if len(request.Params.Input) != 1 || request.Params.Input[0].Text != "first deferred\nsecond deferred\nresume" {
+		t.Fatal("deferred messages did not accompany the next turn in order", request)
+	}
 	// Completion can precede the turn/start response.
 	u.orchestrateMessage(appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"child","turn":{"id":"followup-turn","status":"completed"}}`)})
 	orchestrateTestReply(t, u, request, `{"turn":{"id":"followup-turn"}}`)
+	assertDelivery(take(result, false), "delivered", "followup-turn")
+	result = messageCall(t.Context(), "send_message", "main", "batch", "first deferred", "first deferred")
+	dispatch()
 	assertDelivery(take(result, false), "delivered", "followup-turn")
 	if u.orchestrateThreads["child"].turn != "" || u.orchestrateThreads["child"].batch.Launch.TurnID != "child-turn" {
 		t.Fatal("follow-up revived a completed turn or replaced the first launch")
@@ -316,6 +338,9 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 	request = btwTestRequest(t, w, "turn/start", "sibling-child")
 	orchestrateTestReply(t, u, request, `{"turn":{"id":"sibling-turn"}}`)
 	take(result, false)
+	queued := messageCall(t.Context(), "send_message", "child", "/root/main", "sibling deferred", "sibling-queue")
+	dispatch()
+	assertDelivery(take(queued, false), "queued", "")
 	result = followup(t.Context(), "child", "/root/main", "coordinate", "sibling-message")
 	dispatch()
 	request = btwTestRequest(t, w, "turn/steer", "sibling-child")

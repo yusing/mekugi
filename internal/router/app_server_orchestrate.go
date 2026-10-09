@@ -26,6 +26,7 @@ type orchestrateCommand struct {
 	target          string
 	wait            bool
 	followup        bool
+	deferred        bool
 	caller, callID  string
 	reply           chan orchestrateResult
 }

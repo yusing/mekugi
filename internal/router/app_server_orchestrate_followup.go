@@ -44,8 +44,18 @@ func (u *appServerUI) finishOrchestratedFollowup(child *orchestrateChild, c *orc
 func (u *appServerUI) dispatchOrchestratedFollowup(child *orchestrateChild) {
 	c := child.followups[0]
 	store := u.proxy.orchestration.store
+	turn := child.turn
 	u.orchestrateWork(func() func() {
-		d, dispatch, err := store.BeginDelivery(c.ctx, c.workspace, c.main, orchestrate.Delivery{ID: c.callID, From: c.caller, Target: child.batch.Launch.ThreadID, Message: c.input.Message})
+		input := orchestrate.Delivery{ID: c.callID, From: c.caller, Target: child.batch.Launch.ThreadID, Message: c.input.Message, Deferred: c.deferred}
+		var d orchestrate.Delivery
+		var dispatch bool
+		var err error
+		text := input.Message
+		if turn == "" && !c.deferred {
+			d, text, dispatch, err = store.BeginTurnDelivery(c.ctx, c.workspace, c.main, input)
+		} else {
+			d, dispatch, err = store.BeginDelivery(c.ctx, c.workspace, c.main, input)
+		}
 		return func() {
 			if err != nil || !dispatch {
 				u.finishOrchestratedFollowup(child, c, d, err)
@@ -55,8 +65,12 @@ func (u *appServerUI) dispatchOrchestratedFollowup(child *orchestrateChild) {
 				u.retainOrchestratedDelivery(child, c, d, "canceled", "", context.Canceled)
 				return
 			}
+			if child.turn != turn {
+				u.retainOrchestratedDelivery(child, c, d, "rejected", "", errors.New("target turn changed before delivery"))
+				return
+			}
 			method := "turn/start"
-			params := map[string]any{"threadId": d.Target, "input": appserver.Input(d.Message)}
+			params := map[string]any{"threadId": d.Target, "input": appserver.Input(text)}
 			if child.turn != "" {
 				method = "turn/steer"
 				params["expectedTurnId"] = child.turn
